@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -8,11 +9,30 @@ import triton.language as tl
 from flag_gems.ops.linalg_matrix_norm import _nuc_norm as _generic_nuc_norm
 from flag_gems.ops.linalg_matrix_norm import _ord2_norm as _generic_ord2_norm
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._kunlunxin.ops.sum import (
+    _TLE_ACC_DTYPE,
+    _TLE_TL_DTYPE,
+    _tle_row_geom,
+)
 from flag_gems.utils import libentry
 
-from ..utils.tle_copy import tle_copy
+from ..utils.tle_copy import tle_copy, tle_dma_available
 from .copy import copy_ as _gems_copy_
 from .resize import resize_ as _gems_resize_
+
+try:
+    import triton.experimental.tle as _tle  # package: _tle.raw
+    import triton.experimental.tle.language as tle  # language: tle.gpu
+    from triton.runtime import driver
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _tle = None
+    tle = None
+    driver = None
+    TensorDescriptor = None
+    _HAS_TLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +68,209 @@ def _identity(op):
     return float("inf")
 
 
+_TL_OUT_DTYPES = {
+    torch.float16: tl.float16,
+    torch.bfloat16: tl.bfloat16,
+    torch.float32: tl.float32,
+}
+
+
+def _tl_dtype(dtype):
+    """Triton dtype for a result tensor; fp32 is the reduction accumulator
+    default when the caller wants no final cast."""
+    if dtype is None:
+        return tl.float32
+    return _TL_OUT_DTYPES[dtype]
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "c_desc"],
+)
+def _tle_op_row_kernel(
+    a_desc,
+    c_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    OP: tl.constexpr,
+    FINAL_SQRT: tl.constexpr,
+    NEED_FILL: tl.constexpr,
+):
+    """Row-wise reduce of a ``[M, N]`` input along ``N`` on the tle.gpu path.
+
+    Mirrors ``sum.py::_tle_sum_row_kernel`` (GM -> LM -> registers, the cluster
+    DMA does the tile move), generalised to the four reduction operators the
+    norm needs plus a fused sqrt and result cast.  The tail tile is never
+    masked: on the one loop step that can be short the LM buffer is pre-filled
+    with the operator's identity (0 / -inf / +inf), and ``tle.gpu.copy`` clamps
+    itself to the descriptor, so the overhang stays identity and the reduce is
+    exact.  A row block past ``M`` is likewise clamped by the copy on both the
+    way in and the way out.
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a_lmem = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    c_lmem = tle.gpu.alloc([XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem)
+
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
+    c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
+
+    if OP == 3:
+        acc = tl.full([XBLOCK], float("-inf"), ACC_DTYPE)
+    elif OP == 4:
+        acc = tl.full([XBLOCK], float("inf"), ACC_DTYPE)
+    else:
+        acc = tl.zeros([XBLOCK], ACC_DTYPE)
+
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_FILL:
+            if coff + YBLOCK > N:
+                if OP == 3:
+                    tl.store(a_ptrs, tl.full([XBLOCK, YBLOCK], float("-inf"), IN_DTYPE))
+                elif OP == 4:
+                    tl.store(a_ptrs, tl.full([XBLOCK, YBLOCK], float("inf"), IN_DTYPE))
+                else:
+                    tl.store(a_ptrs, tl.zeros([XBLOCK, YBLOCK], IN_DTYPE))
+        tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        x = tl.load(a_ptrs).to(ACC_DTYPE)
+        if OP == 0:
+            acc += tl.sum(x * x, axis=1)
+        elif OP == 1:
+            acc += tl.sum(tl.abs(x), axis=1)
+        elif OP == 2:
+            acc += tl.sum(x, axis=1)
+        elif OP == 3:
+            acc = tl.maximum(acc, tl.max(x, axis=1))
+        else:
+            acc = tl.minimum(acc, tl.min(x, axis=1))
+
+    if FINAL_SQRT:
+        acc = tl.sqrt(acc)
+    tl.store(c_ptrs, acc.to(OUT_DTYPE))
+    tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+
+
+_FLAT = None
+_FLAT_RESOLVED = False
+
+
+def _flat_launchers():
+    """`driver.active.flat_launchers`, resolved once (the attribute walk is a
+    meaningful fraction of this launch-bound path)."""
+    global _FLAT, _FLAT_RESOLVED
+    if not _FLAT_RESOLVED:
+        _FLAT = getattr(driver.active, "flat_launchers", None)
+        _FLAT_RESOLVED = True
+    return _FLAT
+
+
+def _tle_op_row_reduce(a, c, R, C, op, final_sqrt, out_tl_dtype):
+    """Reduce a contiguous 2-D ``[R, C]`` tensor into 1-D ``c`` (length ``R``)."""
+    xblock, yblock, row_blocks = _tle_row_geom(R, C, a.element_size())
+    # A 16-wide fp16/bf16 tile hits a tle_vload vector-packing bug (compile
+    # error for fp16, silently wrong values for bf16).  8-wide and 32-wide are
+    # both fine, so bump the one bad width up to a full 32-element vector; the
+    # descriptor copy clamps itself to C and the identity-fill covers the
+    # overhang, so the reduce is still exact.
+    if yblock == 16 and a.element_size() == 2:
+        yblock = 32
+    consts = (
+        xblock,
+        yblock,
+        _TLE_TL_DTYPE[a.dtype],
+        _TLE_ACC_DTYPE[a.dtype],
+        out_tl_dtype,
+        op,
+        final_sqrt,
+        C % yblock != 0,
+    )
+    grid = (row_blocks,)
+    launchers = _flat_launchers()
+    if launchers is None:  # triton without the launcher cache: correct, slower
+        with torch_device_fn.device(a.device):
+            _tle_op_row_kernel[grid](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock]),
+                C,
+                *consts,
+            )
+        return
+    key = (
+        R,
+        C,
+        row_blocks,
+        a.dtype,
+        c.dtype,
+        xblock,
+        yblock,
+        op,
+        final_sqrt,
+        C % yblock != 0,
+    )
+    launch, stream = launchers.acquire(_tle_op_row_kernel, key)
+    if launch is None:
+        with torch_device_fn.device(a.device):
+            kernel = _tle_op_row_kernel[grid](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock]),
+                C,
+                *consts,
+            )
+        launchers.bind(_tle_op_row_kernel, key, kernel, grid)
+        return
+    # Descriptor ABI: base pointer, then `.shape` (i32) and `.strides` (i64);
+    # the trailing `C` is the kernel's runtime `N` scalar.
+    launch(stream, a.data_ptr(), R, C, C, 1, c.data_ptr(), R, 1, C)
+
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
+_ABSMAX_INF_F32_OBJ = os.path.join(
+    os.path.dirname(_HERE), "payload", "obj", "absmax_inf_f32.o"
+)
+
+_ABSMAX_INF_F16_OBJ = os.path.join(
+    os.path.dirname(_HERE), "payload", "obj", "absmax_inf_f16.o"
+)
+
+_HAS_TLE_RAW = False
+if _HAS_TLE:
+    try:
+
+        @_tle.raw.dialect("xpu3", object=_ABSMAX_INF_F32_OBJ, arch=3)
+        def absmax_inf_f32(x, out, R, C, bid, is_min): ...
+
+        @triton.jit(do_not_specialize=["M", "N", "is_min"])
+        def _absmax_inf_payload_kernel(x, out, M, N, is_min):
+            _tle.raw.call(
+                absmax_inf_f32,
+                (x, out, M, N, tl.program_id(0), is_min),
+            )
+
+        @_tle.raw.dialect("xpu3", object=_ABSMAX_INF_F16_OBJ, arch=3)
+        def absmax_inf_f16(x, out, R, C, bid, is_min): ...
+
+        @triton.jit(do_not_specialize=["M", "N", "is_min"])
+        def _absmax_inf_f16_payload_kernel(x, out, M, N, is_min):
+            _tle.raw.call(
+                absmax_inf_f16,
+                (x, out, M, N, tl.program_id(0), is_min),
+            )
+
+        _HAS_TLE_RAW = True
+    except Exception:  # pragma: no cover - triton without object= support
+        _HAS_TLE_RAW = False
+
+
 @libentry()
 @triton.jit(do_not_specialize=["R", "C_PITCH", "NFULL", "TPC", "RP"])
 def _row_reduce_kernel(
@@ -63,6 +286,7 @@ def _row_reduce_kernel(
     FINAL_SQRT: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
 ):
     """Row-wise reduction of ``X`` along its last axis, ``axis=1`` only.
 
@@ -73,55 +297,57 @@ def _row_reduce_kernel(
     an allocation and ``other=`` -- the backend's single worst silent-error
     source -- is never needed.
 
+    The accumulator is ``[BLOCK_M, 1]`` and each ``[BLOCK_M, BLOCK_N]`` block is
+    reduced *inside* the loop (reduce-INSIDE).  The previous reduce-OUTSIDE form
+    (persist a ``[BLOCK_M, BLOCK_N]`` tile, ``tl.sum`` once after the loop) is
+    both numerically wrong for bf16 on this backend and caps the tile size: the
+    2-D accumulator is what forced ``BLOCK_M * BLOCK_N`` down to 8192 lanes.
+    A ``[BLOCK_M, 1]`` accumulator removes that pressure (cf. ``amax.py``'s
+    ``amax_kernel_2d``, which measures this exact form and the reduce-OUTSIDE
+    miscompile).
+
     NOTE: do not add further runtime (non-``constexpr``) scalar parameters to
     this kernel.  Adding a single unused ``i32`` argument (an attempt at
-    in-kernel column clamping) made ``(1024, 65536)`` ``fro`` go from 1.10 ms to
-    34.5 ms and ``(64, 64)`` ``fro`` from 0.14 ms to 1.50 ms -- a ~15-30x
-    regression across the board, measured on XPU 1 - even with the guarded
-    branch compiled out.
+    in-kernel column clamping) caused a large regression across the board, even
+    with the guarded branch compiled out.
     """
     pid_m = tl.program_id(0)
     chunk = tl.program_id(1)
 
-    rows_raw = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rows_raw = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     if ROWS_ALIGNED:
         rows = rows_raw
     else:
         rows = tl.where(rows_raw < R, rows_raw, R - 1)
 
     ar = tl.arange(0, BLOCK_N)[None, :]
-    base = X + rows[:, None] * C_PITCH
+    base = X + rows * C_PITCH
 
     if OP == 3:
-        acc = tl.full([BLOCK_M, BLOCK_N], float("-inf"), dtype=tl.float32)
+        acc = tl.full([BLOCK_M, 1], float("-inf"), dtype=tl.float32)
     elif OP == 4:
-        acc = tl.full([BLOCK_M, BLOCK_N], float("inf"), dtype=tl.float32)
+        acc = tl.full([BLOCK_M, 1], float("inf"), dtype=tl.float32)
     else:
-        acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        acc = tl.zeros([BLOCK_M, 1], dtype=tl.float32)
 
     t_end = tl.minimum(chunk * TPC + TPC, NFULL)
     for t in range(chunk * TPC, t_end):
         x = tl.load(base + t * BLOCK_N + ar).to(tl.float32)
         if OP == 0:
-            acc += x * x
+            acc += tl.sum(x * x, axis=1)[:, None]
         elif OP == 1:
-            acc += tl.abs(x)
+            acc += tl.sum(tl.abs(x), axis=1)[:, None]
         elif OP == 2:
-            acc += x
+            acc += tl.sum(x, axis=1)[:, None]
         elif OP == 3:
-            acc = tl.maximum(acc, x)
+            acc = tl.maximum(acc, tl.max(x, axis=1)[:, None])
         else:
-            acc = tl.minimum(acc, x)
+            acc = tl.minimum(acc, tl.min(x, axis=1)[:, None])
 
-    if OP == 3:
-        res = tl.max(acc, axis=1)
-    elif OP == 4:
-        res = tl.min(acc, axis=1)
-    else:
-        res = tl.sum(acc, axis=1)
-
+    res = acc
     if FINAL_SQRT:
         res = tl.sqrt(res)
+    res = res.to(OUT_DTYPE)
 
     tl.store(Out + chunk * RP + rows_raw, res)
 
@@ -129,6 +355,19 @@ def _row_reduce_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["R", "XPITCH", "PITCH"])
 def _pad_col_kernel(X, PAD, R, XPITCH, PITCH, BLOCK: tl.constexpr):
+    """Scatter a one-column ``X`` into the first column of the padded buffer.
+
+    ``tle_copy`` has no layout for this destination: collapsing the shape leaves
+    a single element-wide run whose stride is the row pitch, which the copy
+    engine rejects, so the ``R`` live values are laid down by a kernel instead.
+    The buffer is sized in whole ``_BLOCK_M`` row blocks, so the grid covers it
+    exactly and no store needs a mask; the rows past ``R`` re-read the last row
+    and rewrite padding the reduction never reads.  The clamp sits on the
+    *load* -- clamping the stored row instead makes the address non-affine,
+    which is much slower on this backend -- and writing only ``R`` elements
+    beats a full-buffer pass, which the backend runs far slower than
+    ``torch.full``.
+    """
     row = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     tl.store(PAD + row * PITCH, tl.load(X + tl.minimum(row, R - 1) * XPITCH))
 
@@ -141,23 +380,65 @@ def _pad_col(x, pad, R, pitch, ncols):
 
 
 def _native_contiguous(t):
-    """Materialise ``t`` contiguously through the vendor DMA engine.
+    """Materialise ``t`` contiguously.
 
     ``Tensor.contiguous()`` is itself a FlagGems-registered operator, so using
     it here would drag a Triton copy kernel into the timed region (and into
-    every ``use_gems`` call site).  ``tle_copy`` drives the vendor SDNN copy
-    engine directly (no ATen, no FlagGems kernel).
+    every ``use_gems`` call site).  For a strided (e.g. transposed) source the
+    native ATen ``_copy_from`` primitive -- which gems does not override --
+    drives the vendor strided-copy engine directly and beats ``tle_copy``'s
+    compiled transpose plan (8.4us -> 5.8us for a 64x64 fp32 transpose).
     """
     if t.is_contiguous():
         return t
     out = torch.empty(t.shape, dtype=t.dtype, device=t.device)
-    tle_copy(t, out)
+    with torch_device_fn.device(t.device):
+        torch.ops.aten._copy_from(t, out, False)
     return out
 
 
-def _row_reduce(x, R, C, op, final_sqrt=False):
+def _row_reduce(x, R, C, op, final_sqrt=False, out_dtype=None):
+    """Reduce a 2-D ``[R, C]`` view along ``C``.
+
+    ``x`` must have unit stride in its last dimension; the row stride is
+    honoured as-is, so strided row selections (e.g. one row out of every pair)
+    can be reduced without a copy.  Returns a tensor view of length ``R`` in
+    ``out_dtype`` (fp32 when ``out_dtype`` is None), so the caller's final
+    ``.to(out_dtype)`` cast is folded into the store instead of running as a
+    separate kernel.
+
+    When ``C`` is not a multiple of ``BLOCK_N`` the rows are re-materialised
+    into an identity-padded buffer first, so the kernel itself never needs a
+    mask: a conditional tail tile inside the kernel makes TritonXPU emit an
+    ``scf.if`` yielding a tensor, which fails to lower (``triton_xpu.vvaddf op
+    requires the same type for all operands and results``), and clamping the
+    column index instead costs an extra runtime kernel argument, which is worth
+    a 15-30x slowdown here (see ``_row_reduce_kernel``).  ``C`` is additionally
+    split across a second grid axis when there are not enough rows to fill the
+    device; the per-chunk partials are transposed with a native strided copy so
+    that the follow-up fold is again an ``axis=1`` reduction.
+    """
     dev = x.device
     BM, BN = _BLOCK_M, _BLOCK_N
+    out_tl = _tl_dtype(out_dtype)
+    out_dt = out_dtype if out_dtype is not None else torch.float32
+
+    # Contiguous inputs reduce on the tle.gpu cluster-DMA path (same kernel as
+    # sum.py), which is much faster than the pointer kernel below and needs
+    # no identity-padding buffer -- the tail tile is zero-/identity-filled in
+    # kernel.  Strided row views (the k==2 SVD path), C==1 and anything tle
+    # cannot express keep the pointer fallback.
+    if (
+        tle_dma_available()
+        and C >= 2
+        and x.is_contiguous()
+        and x.dtype in _TLE_TL_DTYPE
+        and out_dt in _TL_OUT_DTYPES
+    ):
+        out = torch.empty(R, dtype=out_dt, device=dev)
+        _tle_op_row_reduce(x, out, R, C, op, final_sqrt, out_tl)
+        return out
+
     RP = triton.cdiv(R, BM) * BM
     nrow_blocks = RP // BM
     rows_aligned = R % BM == 0
@@ -167,9 +448,9 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
     ncols = C
     if C % BN:
         ncols = triton.cdiv(C, BN) * BN
-        # `torch.full` lays the identity down natively (1187GB/s), where a
-        # kernel writing the whole buffer manages ~29GB/s, so only the `R` live
-        # rows are written and sized in `_BLOCK_M` row blocks -- that keeps
+        # `torch.full` lays the identity down natively, where a kernel writing
+        # the whole buffer is much slower, so only the `R` live rows are
+        # written and sized in `_BLOCK_M` row blocks -- that keeps
         # `_pad_col_kernel`'s grid exact, and the reduction clamps to `R - 1`
         # rather than reading the rows past `R`.
         pad = torch.full((RP, ncols), _identity(op), dtype=x.dtype, device=dev)
@@ -197,7 +478,11 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
 
     with torch_device_fn.device(dev):
         if nchunk == 1:
-            out = torch.empty(RP + BM, dtype=torch.float32, device=dev)
+            out = torch.empty(
+                RP + BM,
+                dtype=out_dtype if out_dtype is not None else torch.float32,
+                device=dev,
+            )
             _row_reduce_kernel[(nrow_blocks, 1)](
                 x,
                 out,
@@ -211,6 +496,7 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
                 FINAL_SQRT=final_sqrt,
                 BLOCK_M=BM,
                 BLOCK_N=BN,
+                OUT_DTYPE=out_tl,
                 buffer_size_limit=2048,
             )
             return out[:R]
@@ -229,13 +515,18 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
             FINAL_SQRT=False,
             BLOCK_M=BM,
             BLOCK_N=BN,
+            OUT_DTYPE=tl.float32,
             buffer_size_limit=2048,
         )
         cop = _combine_op(op)
         pt = torch.full((R, BN), _identity(cop), dtype=torch.float32, device=dev)
         part_t = part[: nchunk * RP].reshape(nchunk, RP)[:, :R].transpose(0, 1)
         tle_copy(part_t, pt[:, :nchunk])
-        out = torch.empty(RP + BM, dtype=torch.float32, device=dev)
+        out = torch.empty(
+            RP + BM,
+            dtype=out_dtype if out_dtype is not None else torch.float32,
+            device=dev,
+        )
         _row_reduce_kernel[(nrow_blocks, 1)](
             pt,
             out,
@@ -249,6 +540,7 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
             FINAL_SQRT=final_sqrt,
             BLOCK_M=BM,
             BLOCK_N=BN,
+            OUT_DTYPE=out_tl,
             buffer_size_limit=2048,
         )
         return out[:R]
@@ -284,49 +576,28 @@ def _reshape_result(res, A, dim, keepdim, out_dtype):
     return out
 
 
-def _store_out(res, out):
-    if out is None:
-        return res
-    if out.dtype != res.dtype:
-        raise RuntimeError(
-            "linalg_matrix_norm expected out tensor dtype "
-            f"{res.dtype} but got: {out.dtype}"
-        )
-    if out.device != res.device:
-        raise RuntimeError(
-            "linalg_matrix_norm: expected out tensor to be on the same device "
-            f"as the result, but got {out.device} and {res.device}"
-        )
-    _gems_resize_(out, res.shape)
-    _gems_copy_(out, res)
-    return out
+# Width the full-matrix (fro) reduction reshapes each batch's flat row into.
+# A ~4096-wide row keeps the tle grid at enough programs on the large shapes;
+# the pointer-era split cut into `_BLOCK_M`-row pieces instead, which the tle
+# geom collapses to grid=1 (long row -> XBLOCK=64) and slows the reduce.
+_FRO_COLS = 4096
 
 
-def _split_factor(B, L):
-    """Row-split factor for a full-matrix reduction.
-
-    A ``[B, L]`` reduction with ``B < BLOCK_M`` would make every program read
-    ``BLOCK_M`` clamped copies of the same row.  ``fro`` sums the whole matrix,
-    so the segment can be cut into ``S`` equal pieces first (exact, because
-    ``S`` divides ``L``) and folded afterwards.
-    """
-    need = triton.cdiv(_BLOCK_M, B)
-    if need <= 1:
-        return 1
-    for cand in (2, 4, 8, 16, 32, 64, 128):
-        if cand >= need and L % cand == 0 and L // cand >= _BLOCK_N:
-            return cand
-    return 1
-
-
-def _fro(Ab, B, M, N):
+def _fro(Ab, B, M, N, out_dtype=None):
     L = M * N
     flat = Ab.reshape(B, L)
-    S = _split_factor(B, L)
-    if S > 1:
-        part = _row_reduce(flat.reshape(B * S, L // S), B * S, L // S, _OP_SUMSQ)
-        return _row_reduce(part.reshape(B, S), B, S, _OP_SUM, final_sqrt=True)
-    return _row_reduce(flat, B, L, _OP_SUMSQ, final_sqrt=True)
+    if L % _FRO_COLS == 0 and L // _FRO_COLS >= 2:
+        rows = B * (L // _FRO_COLS)
+        part = _row_reduce(flat.reshape(rows, _FRO_COLS), rows, _FRO_COLS, _OP_SUMSQ)
+        return _row_reduce(
+            part.reshape(B, L // _FRO_COLS),
+            B,
+            L // _FRO_COLS,
+            _OP_SUM,
+            final_sqrt=True,
+            out_dtype=out_dtype,
+        )
+    return _row_reduce(flat, B, L, _OP_SUMSQ, final_sqrt=True, out_dtype=out_dtype)
 
 
 @libentry()
@@ -406,8 +677,7 @@ def _rank2_sigma_norm(Ab, B, M, N, mode):
     vectorised branch issues a *masked strided* store into a ``2 * batch``
     buffer - on this backend a store always touches 64 contiguous elements and
     ignores the mask, so it writes far past the allocation and raises
-    ``KL_XID_KERNEL_EXCEPTION`` (observed on XPU 1: the driver had to
-    ``m3 mode1 reset`` the card mid-run).
+    ``KL_XID_KERNEL_EXCEPTION``.
     """
     dev = Ab.device
     BM, BN = _BLOCK_M, _BLOCK_N
@@ -923,31 +1193,84 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         return sig[:, :K].sum(dim=1)
 
 
-def _absmax_norm(Ab, B, M, N, is_min, along_rows):
+def _absmax_norm(Ab, B, M, N, is_min, along_rows, out_dtype=None):
     """|A| row/column sums followed by a max (or min) over the survivors.
 
     ``along_rows=True``  -> ord = +/-inf (sum over N, then max/min over M)
     ``along_rows=False`` -> ord = +/-1   (sum over M, then max/min over N)
     """
     if along_rows:
+        # ord = +/-inf: one cluster payload folds the |row sum| and the
+        # max/min over rows into a single launch (fp32 contiguous only).
+        # The payload's per-core scalar |x| loop only beats the two-stage
+        # tle.gpu reduce while the matrix is small enough to be launch-bound
+        # and each core owns at most one row; past that (or with a big batch)
+        # the serial-row / many-cluster overheads dominate.
+        # ord = +/-inf: one cluster payload folds the |row sum| and the
+        # max/min over rows into a single launch (fp32 contiguous only).  The
+        # |x| sum is 16-wide vectorised; the payload wins for launch-bound and
+        # medium shapes, and only loses to the two-stage tle.gpu reduce when a
+        # matrix is big enough to be memory-bound (or the batch fans out to too
+        # many cluster launches), so it is gated to that regime.
+        # fp16 pays a half->fp32 widen inside the kernel, so its payload only
+        # beats the (already tle.gpu-accelerated) two-stage for launch-bound
+        # small/medium shapes; fp32 widens for free and stays viable further up.
+        numel = M * N
+        if Ab.dtype == torch.float32:
+            payload_ok = 8 <= M <= 512 and numel <= 262144
+        else:  # fp16
+            payload_ok = 32 <= M <= 512 and numel <= 8192
+        if (
+            _HAS_TLE_RAW
+            and payload_ok
+            and N > 0
+            and B <= 8
+            and Ab.is_contiguous()
+            and Ab.dtype in (torch.float16, torch.float32)
+            and (out_dtype is None or out_dtype in (torch.float16, torch.float32))
+        ):
+            out = torch.empty(B, dtype=torch.float32, device=Ab.device)
+            with torch_device_fn.device(Ab.device):
+                if Ab.dtype == torch.float32:
+                    _absmax_inf_payload_kernel[(B,)](Ab, out, M, N, int(is_min))
+                else:
+                    _absmax_inf_f16_payload_kernel[(B,)](Ab, out, M, N, int(is_min))
+            return out
         base, R, C = Ab, B * M, N
     else:
+        # ord = +/-1: reduce |x| over M (rows) then max/min over N (columns).
+        # Transposing first turns that column reduce into the contiguous row
+        # reduce the `absmax_inf_f32` payload already performs, so sum + max/min
+        # collapse into a single launch and the separate second reduce is gone.
+        if (
+            _HAS_TLE_RAW
+            and 8 <= N <= 512
+            and M > 0
+            and M * N <= 262144
+            and B <= 8
+            and Ab.is_contiguous()
+            and Ab.dtype == torch.float32
+            and (out_dtype is None or out_dtype == torch.float32)
+        ):
+            base = _native_contiguous(Ab.transpose(-2, -1))
+            out = torch.empty(B, dtype=torch.float32, device=Ab.device)
+            with torch_device_fn.device(Ab.device):
+                _absmax_inf_payload_kernel[(B,)](base, out, N, M, int(is_min))
+            return out
         base = _native_contiguous(Ab.transpose(-2, -1))
         R, C = B * N, M
     sums = _row_reduce(base.reshape(R, C), R, C, _OP_SUMABS)
     inner = R // B
-    return _row_reduce(sums.reshape(B, inner), B, inner, _OP_MIN if is_min else _OP_MAX)
+    return _row_reduce(
+        sums.reshape(B, inner),
+        B,
+        inner,
+        _OP_MIN if is_min else _OP_MAX,
+        out_dtype=out_dtype,
+    )
 
 
-def linalg_matrix_norm(
-    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
-):
-    """Matrix norm over ``dim``.
-
-    ``out=None`` returns a freshly-allocated result; when ``out`` is given the
-    result is written into it and the aliased tensor is returned (same contract
-    as ``linalg_matrix_norm.out`` / the generic implementation).
-    """
+def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
     logger.debug("GEMS_KUNLUNXIN LINALG_MATRIX_NORM")
 
     if A.ndim < 2:
@@ -984,10 +1307,8 @@ def linalg_matrix_norm(
         k = min(A.size(dim[0]), A.size(dim[1]))
         if k > 2 and (k > _BD_MAX_K or max(A.size(dim[0]), A.size(dim[1])) > _BD_MAX_L):
             if is_str:
-                return _store_out(
-                    _generic_nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype), out
-                )
-            return _store_out(_generic_ord2_norm(A, ord_val, dim, keepdim, dtype), out)
+                return _generic_nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype)
+            return _generic_ord2_norm(A, ord_val, dim, keepdim, dtype)
         out_dtype = dtype if dtype is not None else A.dtype
         if dtype is not None:
             A = A.to(dtype)
@@ -1000,17 +1321,40 @@ def linalg_matrix_norm(
         else:
             mode = 2 if is_str else (0 if ord_val > 0 else 1)
             res = _svd_bidiag_sturm(Ab, B, M, N, mode)
-        return _store_out(_reshape_result(res, A, dim, keepdim, out_dtype), out)
+        return _reshape_result(res, A, dim, keepdim, out_dtype)
 
     out_dtype = dtype if dtype is not None else A.dtype
     Ab, B, M, N = _batched_view(A, dim)
+    # Fold the fp16/bf16 result cast into the final reduce's store; anything the
+    # kernel cannot spell (fp64 etc.) is left to `_reshape_result`'s `.to`.
+    final_dtype = out_dtype if out_dtype in _TL_OUT_DTYPES else None
 
     if is_str:
-        res = _fro(Ab, B, M, N)
+        res = _fro(Ab, B, M, N, out_dtype=final_dtype)
     else:
-        res = _absmax_norm(Ab, B, M, N, ord_val < 0, math.isinf(ord_val))
+        res = _absmax_norm(
+            Ab, B, M, N, ord_val < 0, math.isinf(ord_val), out_dtype=final_dtype
+        )
 
-    return _store_out(_reshape_result(res, A, dim, keepdim, out_dtype), out)
+    return _reshape_result(res, A, dim, keepdim, out_dtype)
+
+
+def _store_out(res, out):
+    if out is None:
+        return res
+    if out.dtype != res.dtype:
+        raise RuntimeError(
+            "linalg_matrix_norm expected out tensor dtype "
+            f"{res.dtype} but got: {out.dtype}"
+        )
+    if out.device != res.device:
+        raise RuntimeError(
+            "linalg_matrix_norm: expected out tensor to be on the same device "
+            f"as the result, but got {out.device} and {res.device}"
+        )
+    _gems_resize_(out, res.shape)
+    _gems_copy_(out, res)
+    return out
 
 
 def linalg_matrix_norm_out(
@@ -1021,14 +1365,12 @@ def linalg_matrix_norm_out(
     Without this override the ``.out`` overload falls through to the generic
     ``flag_gems.ops.linalg_matrix_norm.linalg_matrix_norm_out``, whose Triton
     reduce kernel does an ``axis=0`` 2-D reduction that fails to lower on this
-    backend (``axis must not be 0 for 2D+ shapes`` / uni_sram OOR).  The vendor
-    ``linalg_matrix_norm`` already handles ``out=`` end to end (via
-    ``_store_out``), so the out variant just requires a pre-allocated ``out``
-    and delegates to it.
+    backend.  The vendor ``linalg_matrix_norm`` computes the functional result
+    end to end, so the out variant just needs a pre-allocated ``out`` to copy
+    into (via ``_store_out``).
     """
     logger.debug("GEMS_KUNLUNXIN LINALG_MATRIX_NORM_OUT")
     if out is None:
         raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
-    return linalg_matrix_norm(
-        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
-    )
+    res = linalg_matrix_norm(A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype)
+    return _store_out(res, out)
