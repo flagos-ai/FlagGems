@@ -17315,6 +17315,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv_dilated2d
+  description: Applies a 2D dilated convolution over an input signal composed of
+    several input planes, using the slow (non-cuDNN) reference path. The operator
+    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
+    and supports an optional bias.
+  for:
+  - slow_conv_dilated2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
