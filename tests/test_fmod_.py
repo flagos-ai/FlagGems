@@ -40,9 +40,9 @@ def test_fmod_(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, atol=2.0)
     utils.gems_assert_close(inp, ref_out, dtype, atol=2.0)
 
-    ref_inp1 = utils.to_reference(inp.clone(), False)
     for d in inp2.flatten()[:2]:
         ref_d = utils.to_reference(d, False)
+        ref_inp1 = utils.to_reference(inp.clone(), False)
         ref_out = ref_inp1.fmod_(ref_d)
         with flag_gems.use_gems():
             res_out = inp.clone().fmod_(d)

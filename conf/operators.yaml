@@ -288,6 +288,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: _scaled_mm_v2
+  description: |
+    Recipe-driven scaled matrix multiply: `mat_a @ mat_b` where the low
+    precision (fp8/fp4) operands carry decoding scales described by
+    `recipe_a`/`recipe_b`. Supports the `TensorWise` (one scalar factor per
+    operand) and `RowWise` (one factor per row of `mat_a` / column of
+    `mat_b`) recipes, with an optional bias added to the result.
+  for:
+  - _scaled_mm_v2
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: _stack
   description: |
     Concatenates a sequence of tensors along a new dimension. This is the
@@ -14285,6 +14301,19 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: pack_padded_sequence
+  description: |
+    Packs a padded batch of variable length sequences into a PackedSequence
+    data tensor together with the per-time-step batch sizes.
+  for:
+  - _pack_padded_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: pack_seq_triton
   description: Pack variable-length token sequences into a padded batched tensor.
   for:

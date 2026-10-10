@@ -306,6 +306,7 @@ from flag_gems.ops._nested_tensor_softmax_with_shape import (
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from flag_gems.ops._pack_padded_sequence import _pack_padded_sequence
 from flag_gems.ops._pad_circular import _pad_circular
 from flag_gems.ops._pad_enum import _pad_enum
 from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
@@ -344,6 +345,7 @@ from flag_gems.ops._scaled_dot_product_fused_attention_overrideable_backward imp
     scaled_dot_product_fused_attention_overrideable_backward,
 )
 from flag_gems.ops._scaled_grouped_mm_v2 import _scaled_grouped_mm_v2
+from flag_gems.ops._scaled_mm_v2 import _scaled_mm_v2
 from flag_gems.ops._sobol_engine_ff_ import _sobol_engine_ff_
 from flag_gems.ops._sobol_engine_initialize_state_ import (
     _sobol_engine_initialize_state_,
@@ -1765,6 +1767,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
+    "_pack_padded_sequence",
     "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
@@ -1789,6 +1792,7 @@ __all__ = [
     "_scaled_dot_product_flash_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_scaled_grouped_mm_v2",
+    "_scaled_mm_v2",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_sobol_engine_ff_",
