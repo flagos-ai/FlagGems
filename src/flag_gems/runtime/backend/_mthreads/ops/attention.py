@@ -14,18 +14,30 @@
 
 """MTHREADS-specific scaled_dot_product_attention forward kernel.
 
-Two changes versus the shared Triton flash-attention kernel, both preserving
-the shared kernel's math contract (identical online-softmax formulation in
-the log2 domain, same ``M`` statistics, same output semantics):
+Four optimizations versus the shared Triton flash-attention kernel, all
+preserving the shared kernel's math contract (identical online-softmax
+formulation in the log2 domain, same ``M`` statistics, fp32 accumulators,
+same output semantics):
 
 1. K is loaded as a row-major ``[BLOCK_N, HEAD_DIM]`` tile (sequence rows)
    and transposed in-register before the QK dot. The shared kernel's
    ``[HEAD_DIM, BLOCK_N]`` column tile strides along the KV sequence axis
    between rows, which defeats the MUSA global-to-shared copy pipeline.
 2. The KV loop is split into unmasked full tiles plus a single masked tail
-   tile. Removing the per-tile tail predicates from the hot loop cut the
-   kernel's conditional-instruction count by ~99% (MCU profiling evidence in
-   the PR description).
+   tile, removing the per-tile tail predicates from the hot loop (~99%
+   fewer conditional instructions in the KV loop, per MCU profiling).
+3. ``num_stages=1`` for the KV loop: the MUSA pipeliner's staging never
+   overlaps the online-softmax dependency chain, so deeper staging only
+   costs shared memory (96 KB at stages=3 vs 56 KB at stages=1).
+4. ``Q_CTX``/``KV_CTX`` are ``tl.constexpr``: the masked tail tile compiles
+   to straight-line code instead of an ``scf.if`` region, and loop bounds
+   are compile-time constants.
+
+Changes 3 and 4 act jointly on CTA residency: with 8 warps on MTT S5000
+either change alone still leaves the kernel bound at 2 resident CTAs per
+MP (by shared memory or by the register file, respectively); together
+they reach 3 CTAs/MP, hiding the serial per-tile chain. A 2x2 ablation
+and resource numbers are recorded in the PR description.
 
 The fast path only accepts a conservatively validated subset: 4D fp16/bf16
 tensors with identical dtypes, batch, head counts, head dims and KV lengths,
@@ -35,7 +47,7 @@ unsupported and invalid inputs keep the shared path's behavior and error
 semantics. The backward pass always reuses the shared Triton kernel.
 
 Measured on MTT S5000 (bf16, B=1, heads=32, Q=4096, KV=4122, BSHD views):
-12.9 ms -> 10.1 ms versus the shared kernel.
+12.8 ms (shared) -> 6.45 ms.
 """
 
 import logging
@@ -334,10 +346,12 @@ def scaled_dot_product_attention(
         or dropout_p != 0.0
         or enable_gqa
         or is_causal
-        # The causal variant of this kernel exceeds the 96 KB shared-memory
-        # residency boundary on MUSA (102,400 B vs 98,304 B non-causal at
-        # BLOCK_N=32), halving resident CTAs per SM; the shared kernel is
-        # faster for causal workloads, so route causal there.
+        # This optimization targets non-causal workloads only; causal
+        # inputs keep the shared kernel. (The causal variant of this
+        # kernel measured slower under the previous stages=3 config;
+        # it has not been re-evaluated under the current stages=1 +
+        # constexpr configuration, so no claim is made either way.)
+        # Route causal to the shared implementation.
         or query.dim() != 4
         or query.dtype not in (torch.float16, torch.bfloat16)
         or key.dtype != query.dtype
