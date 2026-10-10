@@ -99,7 +99,20 @@ def batch_norm_elemt(input, weight, bias, mean, invstd, eps=0.0):
     Returns:
         Tensor of same shape as input.
     """
-    assert input.is_cuda, "Input must be a CUDA tensor"
+    # The kernel is platform-agnostic, so check that every operand lives on the
+    # same device rather than asserting a specific backend.
+    for name, t in (
+        ("weight", weight),
+        ("bias", bias),
+        ("mean", mean),
+        ("invstd", invstd),
+    ):
+        if t.device != input.device:
+            raise ValueError(
+                f"{name} must be on the same device as input, "
+                f"got {t.device} vs {input.device}"
+            )
+
     original_shape = input.shape
     N = input.shape[0]
     C = input.shape[1]
