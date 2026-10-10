@@ -96,7 +96,7 @@ runs:
         #   SSH : ServerAlive* (in SSH_CMD) drops a wedged connection in ~10s.
         # A hard SIGKILL timeout still backstops both in case neither fires
         # (e.g. a hang before any transfer); set well above the ~10s detectors.
-        LOW_LIMIT=1000               # bytes/sec
+        LOW_LIMIT=20480              # bytes/sec (20 KiB/s)
         LOW_TIME="$RC_PROBE"         # seconds under the limit before aborting
         HARD=$(( RC_PROBE * 6 ))     # backstop hard kill (s)
         try_fetch() {  # $1=label $2=url  (GIT_SSH_COMMAND set by caller if ssh)
