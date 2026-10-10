@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
 import pytest
 import torch
 
@@ -37,6 +39,18 @@ def _float8_dtypes():
     if torch.version.hip:
         names.append("float8_e4m3fnuz")
     return [getattr(torch, name) for name in names if hasattr(torch, name)]
+
+
+def _e4m3_dtypes():
+    names = ("float8_e4m3fn", "float8_e4m3fnuz")
+    return [getattr(torch, name) for name in names if hasattr(torch, name)]
+
+
+def _floating_output_dtypes():
+    dtypes = [torch.float16, torch.float32]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.append(torch.bfloat16)
+    return dtypes
 
 
 def _is_float8(dtype):
@@ -318,7 +332,7 @@ def test_scaled_grouped_mm_fp8_core(groups, m_per_group, N, K, dtype):
 
 
 @pytest.mark.scaled_grouped_mm
-@pytest.mark.parametrize("dtype", _float8_dtypes(), ids=str)
+@pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
 def test_scaled_grouped_mm_fp8_encodings(dtype):
     # Cover every finite encoding, including subnormals and the largest values.
     bits = torch.arange(256, dtype=torch.int16).to(torch.uint8)
@@ -340,13 +354,14 @@ def test_scaled_grouped_mm_fp8_encodings(dtype):
 
 
 @pytest.mark.scaled_grouped_mm
-def test_scaled_grouped_mm_scale_before_output_cast():
+@pytest.mark.parametrize("dtype", [torch.float16, torch.int8, *_e4m3_dtypes()], ids=str)
+def test_scaled_grouped_mm_scale_before_output_cast(dtype):
     # The unscaled product is 65536: casting it to FP16 before scaling overflows.
-    mat_a = torch.full((1, 3, 16), 64.0, dtype=torch.float16, device="cpu").to(
-        flag_gems.device
+    mat_a = (
+        torch.full((1, 3, 16), 64.0, dtype=torch.float32).to(dtype).to(flag_gems.device)
     )
-    mat_b = torch.full((1, 16, 5), 64.0, dtype=torch.float16, device="cpu").to(
-        flag_gems.device
+    mat_b = (
+        torch.full((1, 16, 5), 64.0, dtype=torch.float32).to(dtype).to(flag_gems.device)
     )
     scale_a = torch.full((1, 3), 0.5, dtype=torch.float32, device="cpu").to(
         flag_gems.device
@@ -354,7 +369,9 @@ def test_scaled_grouped_mm_scale_before_output_cast():
     scale_b = torch.full((1, 5), 0.5, dtype=torch.float32, device="cpu").to(
         flag_gems.device
     )
-    result = flag_gems.scaled_grouped_mm(mat_a, mat_b, scale_a, scale_b)
+    result = flag_gems.scaled_grouped_mm(
+        mat_a, mat_b, scale_a, scale_b, out_dtype=torch.float16
+    )
     expected = torch.full((1, 3, 5), 16384.0, dtype=torch.float16)
     torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
 
@@ -381,5 +398,295 @@ def test_scaled_grouped_mm_reduction_addressing(transposed_b):
         scale_a.to(flag_gems.device),
         scale_b.to(flag_gems.device),
         out_dtype=torch.float32,
+    )
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+_QuantizedCase = tuple[
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    torch.Tensor,
+    Optional[torch.Tensor],
+    Optional[torch.Tensor],
+]
+
+
+def _make_quantized_accuracy_case(
+    case_name: str,
+    dtype: torch.dtype,
+    *,
+    empty_groups: bool = False,
+    zero_axis: Optional[str] = None,
+    bias_kind: str = "grouped",
+) -> _QuantizedCase:
+    # These small shapes exercise numerical boundaries, not performance workloads.
+    # K=65 crosses reduction tile boundaries and includes a masked tail.
+    groups = 5 if empty_groups else 3
+    m, n, k = 5, 7, 65
+    sizes = []
+    if case_name == "m_varying":
+        sizes = [0, 2, 0, 3, 0] if empty_groups else [2, 3, 4]
+        m = sum(sizes)
+    elif case_name == "n_varying":
+        sizes = [0, 2, 0, 5, 0] if empty_groups else [2, 5, 4]
+        n = sum(sizes)
+    elif case_name == "k_varying":
+        sizes = [0, 1, 0, 64, 0] if empty_groups else [1, 32, 32]
+
+    if zero_axis == "M":
+        m = 0
+    elif zero_axis == "N":
+        n = 0
+    elif zero_axis == "K":
+        k = 0
+    if (case_name, zero_axis) in (
+        ("m_varying", "M"),
+        ("n_varying", "N"),
+        ("k_varying", "K"),
+    ):
+        sizes = [0] * groups
+
+    a_shape = (m, k) if case_name in ("m_varying", "k_varying") else (groups, m, k)
+    b_shape = (k, n) if case_name in ("n_varying", "k_varying") else (groups, k, n)
+    if dtype == torch.int8:
+        generator = torch.Generator(device="cpu").manual_seed(20261009)
+        mat_a = torch.randint(-128, 128, a_shape, generator=generator, dtype=dtype)
+        mat_b = torch.randint(-128, 128, b_shape, generator=generator, dtype=dtype)
+        for tensor in (mat_a, mat_b):
+            if tensor.numel() >= 2:
+                tensor.reshape(-1)[:2] = torch.tensor([-128, 127], dtype=dtype)
+    else:
+        # One-hot rows and binary fractions make the FP8 reference exact while
+        # checking group offsets, input strides, and different reduction tiles.
+        mat_a = torch.zeros(a_shape, dtype=torch.float32)
+        if k:
+            rows = mat_a.reshape(-1, k)
+            for row in range(rows.shape[0]):
+                rows[row, (0, 32, 64)[row % 3]] = 1
+        count = 1
+        for extent in b_shape:
+            count *= extent
+        mat_b = (torch.arange(count, dtype=torch.float32) % 17 - 8).reshape(b_shape) / 8
+        mat_a, mat_b = mat_a.to(dtype), mat_b.to(dtype)
+
+    if case_name == "m_varying":
+        sa_shape, sb_shape = (m,), (groups, n)
+    elif case_name == "n_varying":
+        sa_shape, sb_shape = (groups, m), (n,)
+    elif case_name == "k_varying":
+        sa_shape, sb_shape = (groups * m,), (groups * n,)
+    else:
+        sa_shape, sb_shape = (groups, m), (groups, n)
+    scales = []
+    for shape, exponent in ((sa_shape, 7), (sb_shape, 5)):
+        count = 1
+        for extent in shape:
+            count *= extent
+        values = 2.0 ** ((torch.arange(count, dtype=torch.int32) % 3) - exponent)
+        scales.append(values.to(torch.float32).reshape(shape))
+
+    offs = None
+    if sizes:
+        offs = torch.tensor(sizes, dtype=torch.int32).cumsum(0).to(torch.int32)
+    bias = None
+    if bias_kind != "none":
+        bias_shape = (
+            (n,) if bias_kind == "vector" or case_name == "n_varying" else (groups, n)
+        )
+        count = n if len(bias_shape) == 1 else groups * n
+        bias = ((torch.arange(count, dtype=torch.float32) % 9) - 4).reshape(
+            bias_shape
+        ) / 4
+    return mat_a, mat_b, scales[0], scales[1], offs, bias
+
+
+def _quantized_device_view(tensor: torch.Tensor, layout: str) -> torch.Tensor:
+    # Transfer byte storage, then form views; FP8 strided-copy and cast kernels
+    # are not needed to prepare the numerical inputs.
+    bits = tensor.view(torch.uint8)
+    if layout == "column_major":
+        storage = bits.transpose(-1, -2).contiguous().to(flag_gems.device)
+        return storage.transpose(-1, -2).view(tensor.dtype)
+    if layout == "strided":
+        shape = (*bits.shape[:-2], bits.shape[-2] * 2, bits.shape[-1] * 2)
+        storage = torch.zeros(shape, dtype=torch.uint8)
+        storage[..., ::2, ::2].copy_(bits)
+        return storage.to(flag_gems.device)[..., ::2, ::2].view(tensor.dtype)
+    return bits.to(flag_gems.device).view(tensor.dtype)
+
+
+def _assert_quantized_accuracy(
+    cpu_inputs: _QuantizedCase,
+    out_dtype: Optional[torch.dtype],
+    a_layout: str = "contiguous",
+    b_layout: str = "contiguous",
+) -> None:
+    mat_a, mat_b, scale_a, scale_b, offs, bias = cpu_inputs
+    target_dtype = out_dtype or torch.bfloat16
+    ref = _reference(*cpu_inputs, target_dtype)
+    result = flag_gems.scaled_grouped_mm(
+        _quantized_device_view(mat_a, a_layout),
+        _quantized_device_view(mat_b, b_layout),
+        scale_a.to(flag_gems.device),
+        scale_b.to(flag_gems.device),
+        offs=None if offs is None else offs.to(flag_gems.device),
+        bias=None if bias is None else bias.to(flag_gems.device),
+        out_dtype=out_dtype,
+    )
+    # Small integer dots and binary scales/biases have an exact CPU FP32
+    # reference; output rounding is applied once, after scaling and bias.
+    torch.testing.assert_close(result.cpu(), ref, rtol=0, atol=0)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying", "batch"])
+@pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
+@pytest.mark.parametrize("strided", [False, True])
+def test_scaled_grouped_mm_int8_accuracy(case_name, out_dtype, strided):
+    bias_kind = (
+        "none"
+        if case_name == "batch"
+        else "vector" if case_name == "m_varying" else "grouped"
+    )
+    cpu_inputs = _make_quantized_accuracy_case(
+        case_name, torch.int8, bias_kind=bias_kind
+    )
+    if cpu_inputs[-1] is not None:
+        cpu_inputs = (*cpu_inputs[:-1], cpu_inputs[-1].to(out_dtype))
+    # Specify INT8 floating output explicitly: the generic fallback's default
+    # dtype need not match a backend's mixed-precision default.
+    _assert_quantized_accuracy(
+        cpu_inputs,
+        out_dtype,
+        "strided" if strided else "contiguous",
+        "column_major" if strided else "contiguous",
+    )
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
+@pytest.mark.parametrize(
+    "case_name,out_dtype,a_layout,b_layout",
+    [
+        ("m_varying", torch.float16, "strided", "column_major"),
+        ("n_varying", torch.float32, "column_major", "strided"),
+        ("k_varying", None, "column_major", "contiguous"),
+        ("batch", torch.float32, "contiguous", "column_major"),
+    ],
+)
+def test_scaled_grouped_mm_fp8_group_addressing(
+    case_name, out_dtype, a_layout, b_layout, dtype
+):
+    cpu_inputs = _make_quantized_accuracy_case(case_name, dtype)
+    _assert_quantized_accuracy(cpu_inputs, out_dtype, a_layout, b_layout)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
+@pytest.mark.parametrize("case_name", ["m_varying", "n_varying", "k_varying"])
+def test_scaled_grouped_mm_quantized_empty_groups(case_name, dtype):
+    cpu_inputs = _make_quantized_accuracy_case(case_name, dtype, empty_groups=True)
+    _assert_quantized_accuracy(cpu_inputs, torch.float32)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize("dtype", [torch.int8, *_e4m3_dtypes()], ids=str)
+@pytest.mark.parametrize(
+    "case_name,zero_axis",
+    [("m_varying", "M"), ("n_varying", "N"), ("k_varying", "K"), ("batch", "K")],
+)
+def test_scaled_grouped_mm_quantized_zero_extents(case_name, zero_axis, dtype):
+    cpu_inputs = _make_quantized_accuracy_case(case_name, dtype, zero_axis=zero_axis)
+    _assert_quantized_accuracy(cpu_inputs, torch.float32)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize("dtype", _e4m3_dtypes(), ids=str)
+def test_scaled_grouped_mm_fp8_nan(dtype):
+    nan_bits = 128 if dtype == getattr(torch, "float8_e4m3fnuz", None) else 127
+    mat_a = torch.tensor([nan_bits, 0], dtype=torch.uint8).view(dtype).reshape(1, 2, 1)
+    mat_b = torch.ones((1, 1, 2)).to(dtype)
+    result = flag_gems.scaled_grouped_mm(
+        _quantized_device_view(mat_a, "contiguous"),
+        _quantized_device_view(mat_b, "contiguous"),
+        torch.ones((1, 2), device=flag_gems.device),
+        torch.ones((1, 2), device=flag_gems.device),
+        out_dtype=torch.float32,
+    ).cpu()
+    expected = torch.tensor([[[float("nan"), float("nan")], [0.0, 0.0]]])
+    torch.testing.assert_close(result, expected, rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize(
+    "n,k", [(512, 512), (1024, 1024)], ids=["n512_k512", "n1024_k1024"]
+)
+@pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
+def test_scaled_grouped_mm_int8_large_ragged_boundaries(
+    n: int, k: int, out_dtype: torch.dtype
+) -> None:
+    # Large total M exercises the grouped scheduler with empty groups and
+    # lengths immediately below, at, and above the 32/128-row boundaries.
+    lengths = (0, 31, 32, 33, 127, 128, 129, 0, 2048, 1665, 0)
+    groups, total_m = len(lengths), sum(lengths)
+    rows = torch.arange(total_m, dtype=torch.int64)
+    selected_k = (37 * rows) % k
+    mat_a = torch.zeros((total_m, k), dtype=torch.int8)
+    mat_a[rows, selected_k] = 1
+
+    # Every first 256-column span contains all signed INT8 codes. The extra
+    # tile terms distinguish different K/N tiles instead of repeating a bank
+    # every 256 entries; the group term distinguishes neighboring experts.
+    k_indices = torch.arange(k, dtype=torch.int32)[:, None]
+    n_indices = torch.arange(n, dtype=torch.int32)[None, :]
+    codes = (
+        17 * k_indices
+        + 23 * (k_indices // 128)
+        + 29 * n_indices
+        + 11 * (n_indices // 256)
+    )
+    mat_b = torch.empty((groups, k, n), dtype=torch.int8)
+    for group in range(groups):
+        mat_b[group] = ((codes + 37 * group) % 256 - 128).to(torch.int8)
+
+    scale_a = (2.0 ** (rows % 3 - 1)).to(torch.float32)
+    scale_b = (
+        (2.0 ** (torch.arange(groups * n, dtype=torch.int64) % 3 - 3))
+        .to(torch.float32)
+        .reshape(groups, n)
+    )
+    bias = (
+        (torch.arange(groups * n, dtype=torch.int32) % 9 - 4).to(torch.float32) / 4
+    ).reshape(groups, n)
+    offs = torch.tensor(lengths, dtype=torch.int32).cumsum(0).to(torch.int32)
+
+    # A has exactly one unit entry per row, so selecting that B row is an
+    # independent exact dot reference without a large CPU matrix multiply.
+    # Binary scales and quarter-valued bias keep the FP32 epilogue exact;
+    # |result| <= 129 also avoids overflow in every requested output dtype.
+    expected = torch.empty((total_m, n), dtype=torch.float64)
+    start = 0
+    for group, length in enumerate(lengths):
+        end = start + length
+        if length:
+            chunk = mat_b[group, selected_k[start:end], :].to(torch.float64)
+            chunk = (
+                chunk
+                * scale_a[start:end, None].to(torch.float64)
+                * scale_b[group, None, :].to(torch.float64)
+            )
+            expected[start:end] = chunk + bias[group, None, :].to(torch.float64)
+        start = end
+    expected = expected.to(out_dtype)
+
+    result = flag_gems.scaled_grouped_mm(
+        _quantized_device_view(mat_a, "contiguous"),
+        _quantized_device_view(mat_b, "column_major"),
+        scale_a.to(flag_gems.device),
+        scale_b.to(flag_gems.device),
+        offs=offs.to(flag_gems.device),
+        bias=bias.to(flag_gems.device),
+        out_dtype=out_dtype,
     )
     torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
