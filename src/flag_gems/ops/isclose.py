@@ -19,13 +19,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.all import all
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic
 
-try:
-    _isfinited = tl_extra_shim.isfinited
-    _finitef = tl_extra_shim.finitef
-except Exception:
-    pass
 logger = logging.getLogger(__name__)
 
 
@@ -53,8 +48,13 @@ def isclose_func(
     if not zero_tol:
         allowed = atol + tl.abs(rtol * cast_y)
         actual = tl.abs(cast_x - cast_y)
-        actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
-        close |= actual_finite.to(tl.int1) & (actual <= allowed)
+        # Backend-agnostic finiteness check: `actual` is a non-negative
+        # magnitude (tl.abs), so it is finite iff it is neither NaN (x != x) nor
+        # +inf. This avoids CUDA-only libdevice intrinsics (__nv_finitef /
+        # __nv_isfinited) that fail to compile on AMD ROCm, and adds no extra
+        # cost on other backends (this op is memory-bound).
+        actual_finite = (actual == actual) & (actual != float("inf"))
+        close |= actual_finite & (actual <= allowed)
     return close
 
 
