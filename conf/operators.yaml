@@ -277,6 +277,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _reshape_alias_copy
+  description: 'Returns a contiguous copy of the input tensor viewed through the
+    given size and stride. It is the copy companion of _reshape_alias: the view
+    described by size/stride is formed exactly as _reshape_alias does (reusing
+    the storage offset) and then materialized into fresh contiguous storage, so
+    the result never aliases the input.
+
+    '
+  for:
+  - _reshape_alias_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _saturate_weight_to_fp16
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
