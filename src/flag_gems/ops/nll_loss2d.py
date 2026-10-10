@@ -20,6 +20,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.nllloss import nll_loss2d_backward
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,34 +158,14 @@ _TORCH_TO_TL = {
 }
 
 
-def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
-    logger.debug("GEMS NLL_LOSS2D")
-
-    assert self.ndim == 4, "nll_loss2d: expected 4D input (N, C, H, W)"
-    assert self.dtype in (
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-    ), f"nll_loss2d: unsupported dtype {self.dtype}"
-
+def _nll_loss2d_forward(self, target, weight, reduction_val, ignore_index_val):
+    # Returns (output, total_weight). total_weight scales grad_input in the
+    # mean backward; the other reductions pass a zero placeholder, which
+    # the backward kernel does not read.
     N, C, H, W = self.shape
     total = N * H * W
-
-    reduction_val = (
-        int(reduction.item()) if isinstance(reduction, torch.Tensor) else int(reduction)
-    )
-    ignore_index_val = (
-        int(ignore_index.item())
-        if isinstance(ignore_index, torch.Tensor)
-        else int(ignore_index)
-    )
     has_weight = weight is not None
     out_dtype = self.dtype
-
-    self = self.contiguous()
-    target = target.contiguous()
-    if weight is not None:
-        weight = weight.contiguous()
 
     # BLOCK=1024 balances occupancy against the number of stage-1 partials the
     # single-block finalize kernel must later reduce.
@@ -209,7 +191,7 @@ def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
             num_warps=8,
             num_stages=2,
         )
-        return out.to(out_dtype)
+        return out.to(out_dtype), torch.zeros((), dtype=out_dtype, device=self.device)
 
     num_blocks = grid[0]
     # One scratch allocation holding both partial arrays: row 0 = loss, row 1 =
@@ -249,4 +231,61 @@ def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
         OUT_DTYPE=_TORCH_TO_TL[out_dtype],
         BLOCK=finalize_block,
     )
-    return out
+    return out, partial_weight.sum().to(out_dtype)
+
+
+class _NLLLoss2dFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, target, weight, reduction, ignore_index):
+        ctx.reduction = reduction
+        ctx.ignore_index = ignore_index
+        output, total_weight = _nll_loss2d_forward(
+            self, target, weight, reduction, ignore_index
+        )
+        ctx.save_for_backward(self, target, weight, total_weight)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        self, target, weight, total_weight = ctx.saved_tensors
+        grad_input = nll_loss2d_backward(
+            grad_output,
+            self,
+            target,
+            weight,
+            ctx.reduction,
+            ctx.ignore_index,
+            total_weight,
+        )
+        return grad_input, None, None, None, None
+
+
+def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
+    logger.debug("GEMS NLL_LOSS2D")
+
+    assert self.ndim == 4, "nll_loss2d: expected 4D input (N, C, H, W)"
+    assert self.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    ), f"nll_loss2d: unsupported dtype {self.dtype}"
+
+    reduction_val = (
+        int(reduction.item()) if isinstance(reduction, torch.Tensor) else int(reduction)
+    )
+    ignore_index_val = (
+        int(ignore_index.item())
+        if isinstance(ignore_index, torch.Tensor)
+        else int(ignore_index)
+    )
+    self = self.contiguous()
+    target = target.contiguous()
+    if weight is not None:
+        weight = weight.contiguous()
+
+    # The Triton kernels accumulate in float32 and return tensors without
+    # derivative metadata, so the forward is wrapped in an autograd node to
+    # keep gradients flowing through this op.
+    return _NLLLoss2dFunction.apply(
+        self, target, weight, reduction_val, ignore_index_val
+    )

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from typing import Generator
 
 import pytest
@@ -8,7 +22,7 @@ import flag_gems
 from . import base, consts, utils
 
 
-def max_pool3d_input_fn(shape, dtype, device):
+def max_pool3d_with_indices_input_fn(shape, dtype, device):
     inp = utils.generate_tensor_input(shape, dtype, device)
     yield inp, {
         "kernel_size": 3,
@@ -27,15 +41,6 @@ def max_pool3d_input_fn(shape, dtype, device):
                 "dilation": 1,
                 "ceil_mode": False,
             }
-        # With dilation (effective kernel = (3-1)*2+1 = 5, need dim+2*pad >= 5)
-        if shape[-3] >= 4 and shape[-2] >= 4 and shape[-1] >= 4:
-            yield inp, {
-                "kernel_size": 3,
-                "stride": 1,
-                "padding": 1,
-                "dilation": 2,
-                "ceil_mode": False,
-            }
         # With ceil_mode
         yield inp, {
             "kernel_size": 3,
@@ -46,7 +51,7 @@ def max_pool3d_input_fn(shape, dtype, device):
         }
 
 
-class MaxPool3dBenchmark(base.GenericBenchmark):
+class MaxPool3DWithIndicesBenchmark(base.GenericBenchmark):
     def get_input_iter(self, dtype) -> Generator:
         # Representative 5-D (N, C, D, H, W) tensors covering typical 3D-CNN
         # feature-map sizes from shallow/large to deep/small.
@@ -61,22 +66,10 @@ class MaxPool3dBenchmark(base.GenericBenchmark):
             yield from self.input_fn(shape, dtype, self.device)
 
 
-@pytest.mark.max_pool3d
-def test_max_pool3d():
-    bench = MaxPool3dBenchmark(
-        input_fn=max_pool3d_input_fn,
-        op_name="max_pool3d",
-        torch_op=torch.max_pool3d,
-        gems_op=flag_gems.max_pool3d,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run
-
-
 @pytest.mark.max_pool3d_with_indices
-def test_perf_max_pool3d():
-    bench = MaxPool3dBenchmark(
-        input_fn=max_pool3d_input_fn,
+def test_max_pool3d_with_indices():
+    bench = MaxPool3DWithIndicesBenchmark(
+        input_fn=max_pool3d_with_indices_input_fn,
         op_name="max_pool3d_with_indices",
         torch_op=lambda inp, **kwargs: torch.nn.functional.max_pool3d(
             inp, return_indices=True, **kwargs

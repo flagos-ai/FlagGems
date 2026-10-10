@@ -532,9 +532,24 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div.Tensor_mode(
-        ref_inp1, ref_inp2, rounding_mode=rounding_mode
-    )
+    # floor/trunc at low precision: the reference must be computed on a wider
+    # type. Dividing in float16 on CPU rounds the quotient before the rounding
+    # mode is applied on either operand, which moves results across integer
+    # boundaries (the kernel follows the exact quotient, matching CUDA aten and
+    # an fp64 reference).
+    if rounding_mode in ("floor", "trunc") and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        ref_out = torch.ops.aten.div.Tensor_mode(
+            utils.to_reference(inp1, True),
+            utils.to_reference(inp2, True),
+            rounding_mode=rounding_mode,
+        ).to(dtype)
+    else:
+        ref_out = torch.ops.aten.div.Tensor_mode(
+            ref_inp1, ref_inp2, rounding_mode=rounding_mode
+        )
 
     # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
     # gives wrong results. Direct call to flag_gems.ops.div_mode bypasses backend
@@ -581,10 +596,10 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     # differ from both CPU and f64 references. Casting the scalar to the same
     # dtype gives the correct IEEE 754 result that our kernel matches.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_device = (
-            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
-        )
-        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
+        # The scalar must live on the reference's device: in --ref cpu mode
+        # ref_inp is on CPU, and a CUDA scalar tensor would make the aten call
+        # fail with a device mismatch.
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=ref_inp.device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
         )
@@ -647,9 +662,24 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = torch.ops.aten.div_.Tensor_mode(
-        ref_inp1, ref_inp2, rounding_mode=rounding_mode
-    )
+    # floor/trunc at low precision: the reference must be computed on a wider
+    # type. Dividing in float16 on CPU rounds the quotient before the rounding
+    # mode is applied on either operand, which moves results across integer
+    # boundaries (the kernel follows the exact quotient, matching CUDA aten and
+    # an fp64 reference).
+    if rounding_mode in ("floor", "trunc") and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        ref_out = torch.ops.aten.div.Tensor_mode(
+            utils.to_reference(inp1, True),
+            utils.to_reference(inp2, True),
+            rounding_mode=rounding_mode,
+        ).to(dtype)
+    else:
+        ref_out = torch.ops.aten.div_.Tensor_mode(
+            ref_inp1, ref_inp2, rounding_mode=rounding_mode
+        )
 
     # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
     # gives wrong results. Direct call to flag_gems.ops.div_mode_ bypasses backend
@@ -692,10 +722,10 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     # float scalars in trunc mode to avoid aten CUDA's approximate-division
     # inaccuracy on the Scalar_mode path.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_device = (
-            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
-        )
-        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
+        # The scalar must live on the reference's device: in --ref cpu mode
+        # ref_inp is on CPU, and a CUDA scalar tensor would make the aten call
+        # fail with a device mismatch.
+        scalar_tensor = torch.tensor(scalar, dtype=dtype, device=ref_inp.device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
         )

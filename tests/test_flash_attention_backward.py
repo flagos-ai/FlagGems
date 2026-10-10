@@ -378,12 +378,17 @@ def test_scaled_dot_product_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    # The aten cudnn backward kernel exists only for the CUDA backend, so the
+    # reference inputs stay on the accelerator even under --ref cpu. The cudnn
+    # backward indexes the stats input as a 4D (B, H, S, 1) tensor; a squeezed
+    # 3D view is rejected by cuDNN Frontend with "The dim for input_names::Stats
+    # is invalid" on the first call in a process.
+    ref_dOut_bhsd = dOut_bhsd
+    ref_Q_bhsd = Q_bhsd
+    ref_K_bhsd = K_bhsd
+    ref_V_bhsd = V_bhsd
+    ref_out_bhsd = out_bhsd
+    ref_lse = lse.unsqueeze(-1)
 
     (
         ref_dQ_bhsd,
@@ -407,9 +412,9 @@ def test_scaled_dot_product_cudnn_attention_backward(
         is_causal,
         scale=scale,
     )
-    ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous()
-    ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
-    ref_dV = ref_dV_bhsd.permute(0, 2, 1, 3).contiguous()
+    ref_dQ = utils.to_reference(ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous())
+    ref_dK = utils.to_reference(ref_dK_bhsd.permute(0, 2, 1, 3).contiguous())
+    ref_dV = utils.to_reference(ref_dV_bhsd.permute(0, 2, 1, 3).contiguous())
 
     (
         dQ_bhsd,
@@ -751,3 +756,92 @@ def test_scaled_dot_product_efficient_attention_backward(
             f"dBias should be None when need_dbias=False or no bias, "
             f"got type={type(dBias_gems)}"
         )
+
+
+@pytest.mark.scaled_dot_product_flash_attention_backward
+@pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="CUDA is required for the flash SDPA backend"
+)
+@pytest.mark.parametrize(
+    "batch, num_head, q_seq_len, kv_seq_len",
+    [
+        (2, 4, 512, 512),
+        (1, 2, 1024, 1024),
+        (1, 1, 64, 64),
+        (2, 4, 128, 256),
+    ],
+)
+@pytest.mark.parametrize("head_size", [64, 128])
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_flash_attention_backward(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype
+):
+    if is_causal and q_seq_len != kv_seq_len:
+        # The Triton flash backward hits a compile error on the
+        # causal + non-square path; only square causal masks are exercised.
+        pytest.skip("causal with q_seq_len != kv_seq_len is not supported")
+    scale = float(1.0 / math.sqrt(head_size))
+
+    Q, K, V = make_qkv(
+        batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, flag_gems.device
+    )
+
+    out, lse, philox_seed, philox_offset = flash_attn_forward_native(
+        Q,
+        K,
+        V,
+        is_causal=is_causal,
+        softmax_scale=scale,
+    )
+    dOut = torch.randn_like(out)
+
+    # The reference is the mathematical gradient obtained by autograd through
+    # SDPA. It is computed in float32: the opaque ATen backward entry in this
+    # torch build applies layout handling that diverges from the actual
+    # gradients, and an fp16 reference carries too little precision to pin the
+    # expected values down.
+    def ref_grads():
+        # Route through to_reference so the reference follows the test
+        # framework's device selection (CPU under --ref cpu, otherwise the
+        # accelerator).
+        q = utils.to_reference(Q).float().detach().requires_grad_(True)
+        k = utils.to_reference(K).float().detach().requires_grad_(True)
+        v = utils.to_reference(V).float().detach().requires_grad_(True)
+        do = utils.to_reference(dOut).float()
+        o = torch.nn.functional.scaled_dot_product_attention(
+            q.transpose(1, 2),
+            k.transpose(1, 2),
+            v.transpose(1, 2),
+            is_causal=is_causal,
+            scale=scale,
+        ).transpose(1, 2)
+        return torch.autograd.grad(o, (q, k, v), do)
+
+    ref_dQ, ref_dK, ref_dV = ref_grads()
+
+    res_dQ, res_dK, res_dV = flag_gems.scaled_dot_product_flash_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        philox_seed,
+        philox_offset,
+        scale=scale,
+    )
+
+    # Low-precision accumulation in the Triton kernel rounds a small
+    # fraction of elements past the 1e-4 default tolerance (larger at the
+    # causal-mask boundary); 3e-2 matches the SDPA math-test convention and
+    # stays inside the fp16/bf16 resolution.
+    utils.gems_assert_close(res_dQ, ref_dQ, dtype, equal_nan=True, atol=3e-2)
+    utils.gems_assert_close(res_dK, ref_dK, dtype, equal_nan=True, atol=3e-2)
+    utils.gems_assert_close(res_dV, ref_dV, dtype, equal_nan=True, atol=3e-2)

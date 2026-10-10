@@ -31,11 +31,16 @@ def test_lu_unpack(shape, dtype):
     m, n = shape
     k = min(m, n)
     A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A)
 
     # Get LU factorization
     LU, pivots = torch.linalg.lu_factor(A)
-    ref_LU, ref_pivots = torch.linalg.lu_factor(ref_A)
+
+    # cuSOLVER and LAPACK occasionally disagree at pivot-decision points, so
+    # independent factorizations of the same matrix can differ structurally.
+    # lu_unpack is deterministic given (LU, pivots), so the reference unpacks
+    # the same packed factorization.
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
 
     # Unpack using FlagGems
     P, L, U = flag_gems.lu_unpack(LU, pivots)
@@ -57,10 +62,15 @@ def test_lu_unpack_unpack_data_false(shape, dtype):
     # Test with unpack_data=False
     m, n = shape
     A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A)
 
     LU, pivots = torch.linalg.lu_factor(A)
-    ref_LU, ref_pivots = torch.linalg.lu_factor(ref_A)
+
+    # cuSOLVER and LAPACK occasionally disagree at pivot-decision points, so
+    # independent factorizations of the same matrix can differ structurally.
+    # lu_unpack is deterministic given (LU, pivots), so the reference unpacks
+    # the same packed factorization.
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
 
     P, L, U = flag_gems.lu_unpack(LU, pivots, unpack_data=False)
 
@@ -81,10 +91,15 @@ def test_lu_unpack_unpack_pivots_false(shape, dtype):
     # Test with unpack_pivots=False
     m, n = shape
     A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A)
 
     LU, pivots = torch.linalg.lu_factor(A)
-    ref_LU, ref_pivots = torch.linalg.lu_factor(ref_A)
+
+    # cuSOLVER and LAPACK occasionally disagree at pivot-decision points, so
+    # independent factorizations of the same matrix can differ structurally.
+    # lu_unpack is deterministic given (LU, pivots), so the reference unpacks
+    # the same packed factorization.
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
 
     P, L, U = flag_gems.lu_unpack(LU, pivots, unpack_pivots=False)
 
@@ -107,10 +122,15 @@ def test_lu_unpack_batched(shape, dtype):
     m, n = shape
     k = min(m, n)
     A = torch.randn(batch_size, m, n, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A)
 
     LU, pivots = torch.linalg.lu_factor(A)
-    ref_LU, ref_pivots = torch.linalg.lu_factor(ref_A)
+
+    # cuSOLVER and LAPACK occasionally disagree at pivot-decision points, so
+    # independent factorizations of the same matrix can differ structurally.
+    # lu_unpack is deterministic given (LU, pivots), so the reference unpacks
+    # the same packed factorization.
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
 
     P, L, U = flag_gems.lu_unpack(LU, pivots)
 
@@ -122,6 +142,7 @@ def test_lu_unpack_batched(shape, dtype):
 
 
 @pytest.mark.lu_unpack
+@pytest.mark.lu_unpack_out
 @pytest.mark.parametrize("shape", LU_SHAPES)
 @pytest.mark.parametrize("dtype", LU_DTYPES)
 def test_lu_unpack_out(shape, dtype):
@@ -129,10 +150,15 @@ def test_lu_unpack_out(shape, dtype):
     m, n = shape
     k = min(m, n)
     A = torch.randn(m, n, dtype=dtype, device=flag_gems.device)
-    ref_A = utils.to_reference(A)
 
     LU, pivots = torch.linalg.lu_factor(A)
-    ref_LU, ref_pivots = torch.linalg.lu_factor(ref_A)
+
+    # cuSOLVER and LAPACK occasionally disagree at pivot-decision points, so
+    # independent factorizations of the same matrix can differ structurally.
+    # lu_unpack is deterministic given (LU, pivots), so the reference unpacks
+    # the same packed factorization.
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
 
     # Pre-allocate output tensors
     P_out = torch.empty(m, m, dtype=dtype, device=flag_gems.device)
