@@ -506,6 +506,7 @@ _FULL_CONFIG = (
     ("_sparse_semi_structured_addmm", _sparse_semi_structured_addmm),
     ("_sparse_semi_structured_linear", _sparse_semi_structured_linear),
     ("_sparse_semi_structured_mm", _sparse_semi_structured_mm),
+    ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
     ("_spdiags", spdiags),
     ("_spsolve", spsolve, None, (SPARSE_CSR_DISPATCH_KEY,)),
     ("_stack", _stack),

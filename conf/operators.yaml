@@ -17586,6 +17586,20 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sparse_broadcast_to
+  description: 'Broadcasts a sparse COO tensor to the target shape, replicating stored
+    entries across newly prepended sparse dimensions and broadcast (size-1) dimensions.
+
+    '
+  for:
+  - _sparse_broadcast_to
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
