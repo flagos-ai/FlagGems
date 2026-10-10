@@ -38,7 +38,6 @@ def test_soft_margin_loss(shape, dtype, reduction):
     ref_target = utils.to_reference(target)
     ref_out = torch.ops.aten.soft_margin_loss(ref_inp, ref_target, reduction)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.soft_margin_loss(inp, target, reduction)
+    res_out = flag_gems.soft_margin_loss(inp, target, reduction)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
