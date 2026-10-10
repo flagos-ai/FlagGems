@@ -10094,6 +10094,23 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: istft
+  description: |
+    Computes the inverse short-time Fourier transform of an stft spectrogram,
+    equivalent to torch.istft. The spectrum is inverted frame by frame with
+    cuFFT (irfft/ifft), windowed, overlap-added, and normalized by the
+    squared-window envelope; the overlap-add, envelope and normalization run in
+    fused Triton kernels.
+  for:
+  - istft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
