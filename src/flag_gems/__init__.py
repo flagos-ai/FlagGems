@@ -694,6 +694,7 @@ _FULL_CONFIG = (
     ("bartlett_window", bartlett_window),
     ("batch_norm_backward_elemt", batch_norm_backward_elemt),
     ("batch_norm_backward_reduce", batch_norm_backward_reduce),
+    ("batch_norm_elemt", batch_norm_elemt),
     ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
     ("batch_norm_stats", batch_norm_stats),
