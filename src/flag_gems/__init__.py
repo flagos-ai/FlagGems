@@ -1298,6 +1298,7 @@ _FULL_CONFIG = (
     ("median.dim", median_dim),
     ("median.dim_values", median_dim_values),
     ("median.out", median_out),
+    ("mH", mH),
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
