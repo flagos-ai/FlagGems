@@ -50,8 +50,7 @@ def test_mT(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.mT(inp)
+    res_out = flag_gems.mT(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
     _check_view_metadata(res_out, ref_out)
@@ -66,8 +65,7 @@ def test_mT_noncontiguous(dtype):
     inp = base.t()[4:12, 2:14]
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.mT(inp)
+    res_out = flag_gems.mT(inp)
 
     ref_out = torch.ops.aten.mT(ref_inp)
     _check_view_metadata(res_out, ref_out)
@@ -86,8 +84,7 @@ def test_mT_shares_storage(shape):
         inp.storage_offset(),
     )
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.mT(inp)
+    res_out = flag_gems.mT(inp)
 
     assert res_out is not inp
     assert res_out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
@@ -109,8 +106,7 @@ def test_mT_autograd():
     )
     ref_inp = utils.to_reference(inp).detach().requires_grad_(True)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.mT(inp)
+    res_out = flag_gems.mT(inp)
     grad = torch.randn(res_out.shape, device=flag_gems.device, dtype=torch.float32)
     res_out.backward(grad)
 
@@ -125,10 +121,8 @@ def test_mT_rank1_raises():
     # rank 0 follows the deprecated ATen identity path (the same object).
     inp = torch.randn(8, device=flag_gems.device, dtype=torch.float32)
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            flag_gems.mT(inp)
+        flag_gems.mT(inp)
 
     scalar = torch.tensor(3.14, device=flag_gems.device, dtype=torch.float32)
-    with flag_gems.use_gems():
-        res_out = flag_gems.mT(scalar)
+    res_out = flag_gems.mT(scalar)
     assert res_out is scalar
