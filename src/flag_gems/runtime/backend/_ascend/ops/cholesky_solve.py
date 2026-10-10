@@ -662,6 +662,10 @@ def cholesky_solve(B, L, upper=False):
                 stride_B,
                 BLOCK_N=block_n,
                 upper=effective_upper,
+                # bishengir-compile (CANN 9.0.0) segfaults on this kernel's IR
+                # when auto bind sub block is enabled; disable it until the
+                # compiler bug is fixed.
+                enable_auto_bind_sub_block=False,
                 **cfg,
             )
         # Path 3: scalar single-RHS fallback (very large N)
