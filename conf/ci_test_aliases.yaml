@@ -258,3 +258,10 @@ upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 # Underscore-prefixed aten op shares the base operator test file
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
+
+
+# Leading-underscore aten ops: the FlagGems id gets an ``underscore`` prefix
+# (naming Rule 2 - ids must not start with an underscore), while the test file
+# keeps the aten name (tests/test__linalg_det.py). This alias maps the id used
+# by conf/operators.yaml and the pytest marker back to that file.
+underscore_linalg_det: test__linalg_det
