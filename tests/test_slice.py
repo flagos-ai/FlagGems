@@ -146,3 +146,47 @@ def test_bool_slice_view(layout, dim, start, end, step):
     if actual.numel():
         actual.logical_not_()
         utils.gems_assert_equal(actual, utils.to_reference(expected))
+
+
+@pytest.mark.slice
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "layout,dim,start,end,step",
+    [
+        ("contiguous", 1, 2, 6, 1),
+        ("contiguous", 1, -100, 100, 2),
+        ("transpose", 0, -7, -1, 2),
+        ("offset", -1, 1, 5, 2),
+        ("stepped", 1, None, None, 1),
+        ("contiguous", 1, 3, 1, 1),
+        ("empty", 0, 0, 0, 1),
+    ],
+)
+def test_complex_slice_view(dtype, layout, dim, start, end, step):
+    if dtype == torch.complex128 and not utils.fp64_is_supported:
+        pytest.skip("FP64 is not supported")
+    base = torch.randn((6, 8), dtype=dtype, device=flag_gems.device)
+    ref_base = utils.to_reference(base).clone()
+    make_view = {
+        "contiguous": lambda x: x,
+        "transpose": lambda x: x.t(),
+        "offset": lambda x: x[1:, 1:],
+        "stepped": lambda x: x[:, ::2],
+        "empty": lambda x: x[:0],
+    }[layout]
+    inp = make_view(base)
+    ref_inp = make_view(ref_base)
+
+    expected = torch.ops.aten.slice.Tensor(ref_inp, dim, start, end, step)
+    actual = flag_gems.slice(inp, dim, start, end, step)
+
+    assert actual.dtype == dtype
+    utils.gems_assert_equal(actual, expected)
+    assert actual.shape == expected.shape
+    assert actual.stride() == expected.stride()
+    assert actual.storage_offset() == expected.storage_offset()
+    assert actual.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
+    if actual.numel():
+        actual.fill_(3 + 4j)
+        expected.fill_(3 + 4j)
+        utils.gems_assert_equal(base, ref_base)
