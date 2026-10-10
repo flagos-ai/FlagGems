@@ -38,3 +38,5 @@ backends:
     enabled: true
   TX8110:
     enabled: false
+  S60:
+    enabled: true
