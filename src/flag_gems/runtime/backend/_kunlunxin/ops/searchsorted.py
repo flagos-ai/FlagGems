@@ -36,9 +36,10 @@ _SUPPORTED_INPUT_DTYPES = {
     torch.float32,
     torch.float64,
 }
+_INT32_MAX = torch.iinfo(torch.int32).max
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["scalar_value"])
 def _searchsorted_kernel(
     sorted_sequence,
     values,
@@ -46,6 +47,7 @@ def _searchsorted_kernel(
     out,
     total_values,
     values_per_row,
+    scalar_value,
     LOG_SEQUENCE_LEN: tl.constexpr,
     RIGHT: tl.constexpr,
     HAS_SORTER: tl.constexpr,
@@ -54,6 +56,7 @@ def _searchsorted_kernel(
     BLOCK_SIZE: tl.constexpr,
     NEED_MASK: tl.constexpr,
     SEQUENCE_LEN: tl.constexpr,
+    IS_SCALAR: tl.constexpr,
 ):
     # Bitwalk (binary lifting) formulation of searchsorted:
     #   result = # of boundaries strictly below / not above `values`,
@@ -74,6 +77,14 @@ def _searchsorted_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     if NEED_MASK:
         mask = offsets < total_values
+    if IS_SCALAR:
+        # Scalar variants pass the probe value directly as a kernel argument,
+        # avoiding a per-call torch.scalar_tensor device allocation and the
+        # masked values load. Broadcasting the scalar over the (masked) lane
+        # vector reproduces the exact lane-0 result that the 1-element values
+        # tensor produced, so the single stored element is bit-identical.
+        values_in = scalar_value
+    elif NEED_MASK:
         values_in = tl.load(values + offsets, mask=mask, other=0)
     else:
         values_in = tl.load(values + offsets)
@@ -205,56 +216,74 @@ def _check_sorter(sorted_sequence: torch.Tensor, sorter: torch.Tensor | None):
 
 
 def _prepare_out(
-    values: torch.Tensor,
+    values_shape,
+    values_device,
     out_int32: bool,
     out: torch.Tensor | None,
 ):
     out_dtype = torch.int32 if out_int32 else torch.int64
     if out is None:
-        return torch.empty(values.shape, dtype=out_dtype, device=values.device)
+        return torch.empty(values_shape, dtype=out_dtype, device=values_device)
     if out.dtype != out_dtype:
         raise RuntimeError(
             "torch.searchsorted(): output tensor's dtype is wrong, it can only be "
             "Int(int32) or Long(int64) depending on whether out_int32 flag is True"
         )
-    if out.device != values.device:
+    if out.device != values_device:
         raise RuntimeError(
             "torch.searchsorted(): output tensor must be on the same device as input"
         )
-    if tuple(out.shape) != tuple(values.shape):
-        out.resize_(values.shape)
+    if tuple(out.shape) != tuple(values_shape):
+        out.resize_(values_shape)
     return out
 
 
 def _searchsorted_impl(
     sorted_sequence: torch.Tensor,
-    values: torch.Tensor,
+    values: torch.Tensor | None,
     *,
     out_int32: bool,
     right: bool,
     side: str | None,
     sorter: torch.Tensor | None,
     out: torch.Tensor | None = None,
+    scalar_value=None,
 ):
     right = _normalize_right(right, side)
+    is_scalar = scalar_value is not None
     _check_dtype(sorted_sequence, "sorted_sequence")
-    _check_dtype(values, "values")
-    _check_tensor_values_shape(sorted_sequence, values)
+    if is_scalar:
+        # Scalar variants materialize no values tensor: the probe value reaches
+        # the kernel as a scalar argument (IS_SCALAR path), so we only keep the
+        # virtual () shape / numel 1 / sequence device for bookkeeping. This
+        # removes a per-call torch.scalar_tensor device allocation from the
+        # launch-bound hot path while staying bit-identical.
+        values_shape = torch.Size([])
+        values_device = sorted_sequence.device
+        values_numel = 1
+    else:
+        _check_dtype(values, "values")
+        _check_tensor_values_shape(sorted_sequence, values)
+        if values.device != sorted_sequence.device:
+            raise RuntimeError(
+                "torch.searchsorted(): sorted_sequence and values must be on the same device"
+            )
+        values_shape = values.shape
+        values_device = values.device
+        values_numel = values.numel()
     _check_sorter(sorted_sequence, sorter)
-    if values.device != sorted_sequence.device:
-        raise RuntimeError(
-            "torch.searchsorted(): sorted_sequence and values must be on the same device"
-        )
 
-    out = _prepare_out(values, out_int32, out)
-    if values.numel() == 0:
+    out = _prepare_out(values_shape, values_device, out_int32, out)
+    if values_numel == 0:
         return out
     if sorted_sequence.shape[-1] == 0:
         out.zero_()
         return out
 
     sorted_sequence_contiguous = sorted_sequence.contiguous()
-    values_contiguous = values.contiguous()
+    values_contiguous = (
+        sorted_sequence_contiguous if is_scalar else values.contiguous()
+    )
     sorter_contiguous = sorter.contiguous() if sorter is not None else None
     is_ascend = runtime_device.vendor_name == "ascend"
     if sorter_contiguous is not None and is_ascend:
@@ -269,7 +298,9 @@ def _searchsorted_impl(
     )
 
     sequence_len = sorted_sequence.shape[-1]
-    values_per_row = values.shape[-1] if sorted_sequence.dim() != 1 else values.numel()
+    values_per_row = (
+        values_shape[-1] if sorted_sequence.dim() != 1 else values_numel
+    )
     if is_ascend and sorted_sequence.dtype.is_floating_point:
         block_size = _ASCEND_BLOCK_SIZE
     elif is_ascend:
@@ -278,7 +309,7 @@ def _searchsorted_impl(
         # kunlunxin: size-banded block. The probe loads are data-dependent
         # gathers; larger blocks hide per-warp gather latency better, but too
         # large spills registers (2048 regressed on the 256x1024/512 case).
-        numel = values.numel()
+        numel = values_numel
         if numel <= 4096:
             block_size = 256
         elif numel <= 16384:
@@ -286,13 +317,12 @@ def _searchsorted_impl(
         else:
             block_size = 1024
     use_int32_index = (
-        values.numel() < torch.iinfo(torch.int32).max
-        and sorted_sequence.numel() < torch.iinfo(torch.int32).max
+        values_numel < _INT32_MAX and sorted_sequence.numel() < _INT32_MAX
     )
-    need_mask = values.numel() % block_size != 0
+    need_mask = values_numel % block_size != 0
 
     with torch_device_fn.device(sorted_sequence.device):
-        grid = (triton.cdiv(values.numel(), block_size),)
+        grid = (triton.cdiv(values_numel, block_size),)
         _searchsorted_kernel[grid](
             sorted_sequence_contiguous,
             values_contiguous,
@@ -302,8 +332,9 @@ def _searchsorted_impl(
                 else sorted_sequence_contiguous
             ),
             kernel_out,
-            values.numel(),
+            values_numel,
             values_per_row,
+            scalar_value if is_scalar else 0,
             LOG_SEQUENCE_LEN=sequence_len.bit_length(),
             RIGHT=right,
             HAS_SORTER=sorter_contiguous is not None,
@@ -312,6 +343,7 @@ def _searchsorted_impl(
             BLOCK_SIZE=block_size,
             NEED_MASK=need_mask,
             SEQUENCE_LEN=sequence_len,
+            IS_SCALAR=is_scalar,
         )
 
     if kernel_out is not out:
@@ -372,14 +404,14 @@ def searchsorted_scalar(
 ):
     logger.debug("GEMS_KUNLUNXIN SEARCHSORTED_SCALAR")
     _check_scalar_values_shape(sorted_sequence)
-    values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(
         sorted_sequence,
-        values,
+        None,
         out_int32=out_int32,
         right=right,
         side=side,
         sorter=sorter,
+        scalar_value=self,
     )
 
 
@@ -395,13 +427,13 @@ def searchsorted_scalar_out(
 ):
     logger.debug("GEMS_KUNLUNXIN SEARCHSORTED_SCALAR_OUT")
     _check_scalar_values_shape(sorted_sequence)
-    values = torch.scalar_tensor(self, device=sorted_sequence.device)
     return _searchsorted_impl(
         sorted_sequence,
-        values,
+        None,
         out_int32=out_int32,
         right=right,
         side=side,
         sorter=sorter,
         out=out,
+        scalar_value=self,
     )
