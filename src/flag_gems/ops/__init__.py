@@ -271,6 +271,7 @@ from flag_gems.ops._jagged_to_padded_dense_forward import (
 from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
+from flag_gems.ops._linalg_solve_ex import _linalg_solve_ex
 from flag_gems.ops._linalg_svd import _linalg_svd
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
@@ -311,6 +312,7 @@ from flag_gems.ops._pad_packed_sequence import _pad_packed_sequence
 from flag_gems.ops._pdist_backward import _pdist_backward
 from flag_gems.ops._pdist_forward import _pdist_forward
 from flag_gems.ops._philox_normal_ import _philox_normal_
+from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
@@ -574,6 +576,10 @@ from flag_gems.ops.conv_tbc_backward import conv_tbc_backward
 from flag_gems.ops.conv_transpose1d import conv_transpose1d
 from flag_gems.ops.conv_transpose2d import conv_transpose2d
 from flag_gems.ops.conv_transpose3d import conv_transpose3d
+from flag_gems.ops.convolution_backward_overrideable import (
+    convolution_backward_overrideable,
+    convolution_backward_overrideable_out,
+)
 from flag_gems.ops.convolution_overrideable import (
     convolution_overrideable,
     convolution_overrideable_out,
@@ -960,6 +966,7 @@ from flag_gems.ops.masked_scatter_backward import masked_scatter_backward
 from flag_gems.ops.masked_select import masked_select
 from flag_gems.ops.masked_select_backward import masked_select_backward
 from flag_gems.ops.matmul_backward import matmul_backward
+from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
 from flag_gems.ops.max import max, max_dim
@@ -1730,6 +1737,7 @@ __all__ = [
     "_linalg_eigh",
     "_linalg_eigvals",
     "_linalg_slogdet",
+    "_linalg_solve_ex",
     "_linalg_svd",
     "_list_to_tensor",
     "_logcumsumexp",
@@ -1762,6 +1770,7 @@ __all__ = [
     "_pdist_backward",
     "_pdist_forward",
     "_philox_normal_",
+    "_philox_uniform_",
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
@@ -2019,6 +2028,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose2d",
     "conv_transpose3d",
+    "convolution_backward_overrideable",
+    "convolution_backward_overrideable_out",
     "convolution_overrideable",
     "convolution_overrideable_out",
     "copy",
@@ -2459,6 +2470,7 @@ __all__ = [
     "masked_select",
     "masked_select_backward",
     "matmul_backward",
+    "matrix_exp",
     "matrix_exp_backward",
     "matrix_power",
     "matrix_power_out",

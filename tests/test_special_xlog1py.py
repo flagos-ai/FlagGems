@@ -17,8 +17,7 @@ def test_special_xlog1py(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.ops.aten.special_xlog1py(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_xlog1py(inp1, inp2)
+    res_out = flag_gems.special_xlog1py(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -34,8 +33,7 @@ def test_special_xlog1py_x_zero(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.ops.aten.special_xlog1py(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_xlog1py(x, y)
+    res_out = flag_gems.special_xlog1py(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,8 +49,7 @@ def test_special_xlog1py_y_nan(dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.ops.aten.special_xlog1py(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_xlog1py(x, y)
+    res_out = flag_gems.special_xlog1py(x, y)
 
     assert torch.isnan(res_out).all(), "Expected all-NaN output when y is NaN"
     assert torch.isnan(ref_out).all(), "Reference should also produce NaN"
