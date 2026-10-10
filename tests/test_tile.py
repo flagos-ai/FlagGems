@@ -20,6 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # CI trigger: verify runtime-image migration for hygon/metax/mthreads/iluvatar (remove after verify).
+# CI perf test: measure current CI timing across backends (remove after).
 TILE_DIMS = [(0,), (2,), (2, 0), (0, 2), (2, 2), (2, 2, 2), (2, 2, 2, 2)]
 
 
