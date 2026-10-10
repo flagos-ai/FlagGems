@@ -611,9 +611,7 @@ def _searchsorted_impl(
         return out
 
     sorted_sequence_contiguous = sorted_sequence.contiguous()
-    values_contiguous = (
-        sorted_sequence_contiguous if is_scalar else values.contiguous()
-    )
+    values_contiguous = sorted_sequence_contiguous if is_scalar else values.contiguous()
     sorter_contiguous = sorter.contiguous() if sorter is not None else None
     is_ascend = runtime_device.vendor_name == "ascend"
     if sorter_contiguous is not None and is_ascend:
@@ -667,9 +665,7 @@ def _searchsorted_impl(
             return out
 
     sequence_len = sorted_sequence.shape[-1]
-    values_per_row = (
-        values_shape[-1] if sorted_sequence.dim() != 1 else values_numel
-    )
+    values_per_row = values_shape[-1] if sorted_sequence.dim() != 1 else values_numel
     if is_ascend and sorted_sequence.dtype.is_floating_point:
         block_size = _ASCEND_BLOCK_SIZE
     elif is_ascend:
@@ -685,9 +681,7 @@ def _searchsorted_impl(
             block_size = 512
         else:
             block_size = 1024
-    use_int32_index = (
-        values_numel < _INT32_MAX and sorted_sequence.numel() < _INT32_MAX
-    )
+    use_int32_index = values_numel < _INT32_MAX and sorted_sequence.numel() < _INT32_MAX
     need_mask = values_numel % block_size != 0
 
     with torch_device_fn.device(sorted_sequence.device):
