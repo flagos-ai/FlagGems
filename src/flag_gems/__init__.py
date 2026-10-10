@@ -1318,6 +1318,7 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("msort", msort),
     ("msort.out", msort_out),
+    ("mT", mT),
     ("mul.Tensor", mul),
     ("mul_.Tensor", mul_),
     ("multi_margin_loss", multi_margin_loss),
