@@ -1010,6 +1010,7 @@ _FULL_CONFIG = (
     ("geometric_", geometric_),
     ("glu", glu),
     ("glu_backward", glu_backward),
+    ("glu_jvp", glu_jvp),
     ("greater.Scalar", greater_scalar),
     ("greater.Scalar_out", greater_scalar_out),
     ("greater.Tensor", greater),
