@@ -23,6 +23,9 @@ name: ops-test
 permissions:
   contents: read
 
+env:
+  TZ: Asia/Shanghai
+
 on:
   workflow_dispatch:
     inputs:
@@ -70,7 +73,7 @@ jobs:
           ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || 'master' }}
 
       - id: get-date
-        run: echo "DATE=$(date -u '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
+        run: echo "DATE=$(date '+%Y-%m-%d')" >> "$GITHUB_OUTPUT"
 
       - id: build-matrix
         shell: python3 {0}
