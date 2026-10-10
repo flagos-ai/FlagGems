@@ -26,7 +26,14 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.experimental.tle import language as tle_async
+
+try:
+    from triton.experimental.tle import language as tle_async
+
+    HAS_TLE = True
+except ImportError:
+    tle_async = None
+    HAS_TLE = False
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -320,6 +327,11 @@ def _launch(
     k: int,
     bias=None,
 ) -> torch.Tensor:
+    if not HAS_TLE:
+        raise RuntimeError(
+            "THead mm_w8a8_int8 AIU path is unavailable: requires "
+            "triton.experimental.tle."
+        )
     transpose_out = (m == 256 and n >= 16384 and 2048 <= k <= 4096) or (
         m >= 1024 and n <= 1024 and 2048 <= k <= 4096
     )
@@ -562,7 +574,7 @@ def mm_w8a8_int8(
     ([N] or [1,N]). Optional bias is [N] with the output dtype.
     Quantization is the caller's responsibility. No input values are cached.
     """
-    logger.debug("GEMS MM_W8A8_INT8")
+    logger.debug("GEMS_THEAD MM_W8A8_INT8")
     m, n, k = _validate_mm_inputs(a, b, scale_a, scale_b)
     _validate_output_dtype_and_bias(a, n, out_dtype, bias)
     out = torch.empty((m, n), device=a.device, dtype=out_dtype)
@@ -579,7 +591,7 @@ def mm_w8a8_int8_out(
     bias=None,
 ) -> torch.Tensor:
     """Write scaled INT8 GEMM into a contiguous caller-owned [M,N] output."""
-    logger.debug("GEMS MM_W8A8_INT8_OUT")
+    logger.debug("GEMS_THEAD MM_W8A8_INT8_OUT")
     m, n, k = _validate_mm_inputs(a, b, scale_a, scale_b)
     if not isinstance(out, torch.Tensor):
         raise TypeError("out must be a Tensor")

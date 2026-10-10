@@ -33,9 +33,14 @@ def test_sym_storage_offset(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.sym_storage_offset(ref_inp)
     with flag_gems.use_gems():
-        with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_storage_offset"):
+        with caplog.at_level(
+            "DEBUG", logger=utils.gems_log_logger(flag_gems.sym_storage_offset)
+        ):
             res_out = torch.ops.aten.sym_storage_offset(inp)
 
-    assert "GEMS SYM_STORAGE_OFFSET" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.sym_storage_offset)} SYM_STORAGE_OFFSET"
+        in caplog.text
+    )
     # Compare storage offset results (convert to tensors for gems_assert_equal)
     utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))

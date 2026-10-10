@@ -98,6 +98,7 @@ class EmbeddingBagBenchmark(base.Benchmark):
         sparse=False,
         backward=False,
         forward_only=False,
+        default_entry=False,
         **kwargs,
     ):
         self.bag_mode = mode
@@ -106,6 +107,7 @@ class EmbeddingBagBenchmark(base.Benchmark):
         self.sparse = sparse
         self.backward = backward
         self.forward_only = forward_only
+        self.default_entry = default_entry
         super().__init__(*args, **kwargs)
 
     def get_latency(self, op, *args, **kwargs):
@@ -166,10 +168,10 @@ class EmbeddingBagBenchmark(base.Benchmark):
                 include_last,
                 0,
             )
-            yield forward_args
+            yield forward_args[:-1] if self.default_entry else forward_args
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("mode,weighted", FORWARD_MODES)
 def test_embedding_bag(dtype, mode, weighted):
@@ -193,6 +195,22 @@ def test_embedding_bag_forward_only(dtype, mode, weighted):
         torch_op=torch.ops.aten._embedding_bag_forward_only.default,
         gems_op=_embedding_bag_forward_only,
         forward_only=True,
+        dtypes=[dtype],
+        mode=mode,
+        weighted=weighted,
+    )
+    bench.run()
+
+
+@pytest.mark.embedding_bag
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("mode,weighted", FORWARD_MODES)
+def test_embedding_bag_default(dtype, mode, weighted):
+    bench = EmbeddingBagBenchmark(
+        op_name=f"embedding_bag_default_mode{mode}{'_weighted' if weighted else ''}",
+        torch_op=torch.ops.aten.embedding_bag.default,
+        gems_op=flag_gems.embedding_bag,
+        default_entry=True,
         dtypes=[dtype],
         mode=mode,
         weighted=weighted,

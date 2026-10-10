@@ -33,8 +33,7 @@ def test_mul_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -49,8 +48,7 @@ def test_mul_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.mul(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -65,8 +63,7 @@ def test_mul_scalar_tensor(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -82,8 +79,7 @@ def test_mul_scalar_scalar(dtype):
         inp2 = random.randint(0, 100)
 
     ref_out = torch.mul(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -101,8 +97,7 @@ def test_mul_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.mul_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -117,8 +112,7 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.mul_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -141,8 +135,7 @@ def test_mul_broadcast_shape(shape_a, shape_b, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     assert res_out.shape == ref_out.shape, (
         f"Shape mismatch: FlagGems produced {res_out.shape}, "
@@ -173,8 +166,7 @@ def test_mul_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if flag_gems.vendor_name == "cambricon" and complex_dtype == torch.complex32:
         from .accuracy_utils import to_cpu
@@ -221,8 +213,7 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -257,8 +248,7 @@ def test_mul_complex_int_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if flag_gems.vendor_name == "mthreads":
         res_out = res_out.to("cpu")
@@ -288,7 +278,6 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     ref_inp2 = inp2
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)

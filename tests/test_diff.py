@@ -49,8 +49,7 @@ def test_diff(shape, dtype, n):
     inp = _make_input(shape, dtype, flag_gems.device)
     ref_inp = to_reference(inp)
     ref_out = torch.diff(ref_inp, n=n)
-    with flag_gems.use_gems():
-        res_out = torch.diff(inp, n=n)
+    res_out = flag_gems.diff(inp, n=n)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -62,8 +61,7 @@ def test_diff_3d(shape, dim, dtype):
     inp = _make_input(shape, dtype, flag_gems.device)
     ref_inp = to_reference(inp)
     ref_out = torch.diff(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.diff(inp, dim=dim)
+    res_out = flag_gems.diff(inp, dim=dim)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -87,7 +85,6 @@ def test_diff_prepend_append(shape, dtype):
     ref_append = to_reference(append)
 
     ref_out = torch.diff(ref_inp, prepend=ref_prepend, append=ref_append)
-    with flag_gems.use_gems():
-        res_out = torch.diff(inp, prepend=prepend, append=append)
+    res_out = flag_gems.diff(inp, prepend=prepend, append=append)
 
     gems_assert_close(res_out, ref_out, dtype)

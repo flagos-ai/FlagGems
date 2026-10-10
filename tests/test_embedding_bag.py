@@ -215,7 +215,7 @@ def _check_forward(
         assert actual[3].numel() == 0
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.parametrize("values,starts,include_last,padding", CASES)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -246,7 +246,7 @@ def test_embedding_bag_forward_only(
     )
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("mode", [0, 1, 2])
@@ -266,7 +266,7 @@ def test_embedding_bag_single_bag(op, mode, dim, num_indices):
     )
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("mode", [0, 1, 2])
@@ -291,7 +291,7 @@ def test_embedding_bag_single_index(op, mode, padding, include_last, dim):
         torch.testing.assert_close(actual[3].cpu(), expected[3], rtol=0, atol=0)
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -312,7 +312,7 @@ def test_embedding_bag_strided_weighted(op, dtype, weighted, dim):
     torch.testing.assert_close(result[1].cpu(), expected[1], rtol=0, atol=0)
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize(
@@ -329,7 +329,7 @@ def test_embedding_bag_mixed_indices_negative_padding(op, index_dtype, offset_dt
     assert all(t.dtype == torch.int64 for t in out[1:])
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("include_last", [False, True])
@@ -368,7 +368,7 @@ def _unaligned_copy(tensor):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon cached-launch pointer alignment"
 )
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -429,7 +429,7 @@ def _check_tuned_forward(
 @pytest.mark.skipif(
     flag_gems.vendor_name != "nvidia", reason="NVIDIA large-bag float64 specialization"
 )
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("dim,bag_length", [(64, 64), (128, 8), (256, 32), (513, 8)])
 @pytest.mark.parametrize(
@@ -453,7 +453,7 @@ def test_embedding_bag_large_float64(dim, bag_length, mode, weighted, include_la
 @pytest.mark.skipif(
     flag_gems.vendor_name != "mthreads", reason="Mthreads float32 launch specialization"
 )
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize(
     "bags,dim,bag_length", [(8, 16, 4), (32, 64, 8), (128, 256, 32), (128, 513, 8)]
@@ -471,7 +471,7 @@ def test_embedding_bag_mthreads_launch(
     )
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("weighted", [False, True])
@@ -501,7 +501,7 @@ def test_embedding_bag_nonfinite_and_ties(op, weighted):
         torch.testing.assert_close(result.cpu(), reference.cpu(), equal_nan=True)
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("mode", [0, 1, 2])
@@ -522,7 +522,7 @@ def test_embedding_bag_empty_table(op, mode, dim, num_bags):
         )
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize(
@@ -554,7 +554,7 @@ def test_embedding_bag_invalid_values(op, values, starts, last):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize("mode", [1, 2])
@@ -575,7 +575,7 @@ def test_embedding_bag_invalid_after_warmup(op, mode):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
-@pytest.mark.embedding_bag
+@pytest.mark.underscore_embedding_bag
 @pytest.mark.embedding_bag_forward_only
 @pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
 @pytest.mark.parametrize(
@@ -617,3 +617,25 @@ def test_embedding_bag_invalid_metadata(op, error):
         )
     with pytest.raises((ValueError, RuntimeError, TypeError)):
         op(weight, indices, offsets, **kwargs)
+
+
+@pytest.mark.embedding_bag
+@pytest.mark.parametrize("values,starts,include_last,padding", CASES)
+@pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("mode", [0, 1, 2])
+@pytest.mark.parametrize("strided", [False, True])
+def test_embedding_bag_default(
+    values, starts, include_last, padding, index_dtype, dtype, mode, strided
+):
+    weight, indices, offsets = _inputs(
+        values, starts, dtype, index_dtype, strided=strided
+    )
+    psw = torch.ones_like(indices, dtype=dtype) * 0.5 if mode == 0 else None
+    expected = _oracle(weight, indices, offsets, mode, include_last, -1, psw)
+    actual = flag_gems.embedding_bag(
+        weight, indices, offsets, False, mode, False, psw, include_last
+    )
+    flag_gems.testing.assert_close(
+        actual[0].cpu(), expected[0], dtype, reduce_dim=max(1, len(values))
+    )

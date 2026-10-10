@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from ._embedding_bag_backward import _embedding_bag_backward
+from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
@@ -23,6 +25,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -35,6 +38,7 @@ from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .concat import concat
 from .count_nonzero import count_nonzero
 from .cummax import cummax
 from .cummin import cummin
@@ -54,6 +58,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -64,6 +69,7 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
+from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
@@ -90,6 +96,7 @@ from .linalg_solve_triangular import (
 )
 from .linear import linear
 from .linspace import linspace
+from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
@@ -103,6 +110,8 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mode import mode
+from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -131,6 +140,7 @@ from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
+from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
@@ -166,6 +176,7 @@ from .zeros import zeros
 from .zeros_like import zeros_like
 
 __all__ = [
+    "_dyn_quant_matmul_4bit",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
@@ -173,6 +184,7 @@ __all__ = [
     "_segment_reduce_backward_out",
     "_unique2",
     "_upsample_bicubic2d_aa",
+    "adaptive_avg_pool2d",
     "adaptive_max_pool3d",
     "addmm",
     "addmm_dtype",
@@ -190,12 +202,14 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "argsort",
     "baddbmm",
     "bmm",
     "cat",
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "concat",
     "count_nonzero",
     "cummax",
     "cummin",
@@ -221,6 +235,8 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "geometric",
+    "geometric_",
     "group_norm",
     "group_norm_backward",
     "grouped_matmul",
@@ -237,6 +253,9 @@ __all__ = [
     "index_copy_",
     "index_fill",
     "index_fill_",
+    "index_reduce",
+    "index_reduce_",
+    "index_reduce_out",
     "index_select",
     "isin",
     "layer_norm",
@@ -268,6 +287,7 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linear",
     "linspace",
+    "log_",
     "log_normal",
     "log_sigmoid_backward",
     "log_sigmoid_backward_out",
@@ -290,6 +310,8 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mode",
+    "mul",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -322,6 +344,8 @@ __all__ = [
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
+    "rrelu_with_noise",
+    "rrelu_with_noise_",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
     "scaled_dot_product_attention_forward",

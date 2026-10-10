@@ -214,7 +214,7 @@ def max(inp):
 
 
 def max_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS_TSINGMICRO MAX DIM")
+    logger.debug("GEMS_TSINGMICRO MAX_DIM")
     assert dim is not None, "dim must be specified"
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
 

@@ -355,7 +355,7 @@ def max_pool3d_with_indices(
 
     Indices are flat offsets into the (D, H, W) spatial volume of the input.
     """
-    logger.debug("GEMS MAX_POOL3D_WITH_INDICES")
+    logger.debug("GEMS_SUNRISE MAX_POOL3D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
@@ -427,7 +427,7 @@ def max_pool3d_backward(
     ceil_mode,
 ):
     """Backward pass for 3-D max pooling."""
-    logger.debug("GEMS MAX_POOL3D BACKWARD")
+    logger.debug("GEMS_SUNRISE MAX_POOL3D_BACKWARD")
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 

@@ -74,6 +74,7 @@ from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
+from .geometric import geometric, geometric_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .im2col import im2col
@@ -122,6 +123,7 @@ from .ones_like import ones_like
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
+from .polar import polar
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .rad2deg_ import rad2deg_
@@ -235,6 +237,8 @@ __all__ = [
     "gather",
     "gather_backward",
     "gcd_",
+    "geometric",
+    "geometric_",
     "grid_sampler_3d_backward",
     "histc",
     "im2col",
@@ -297,6 +301,7 @@ __all__ = [
     "ormqr",
     "pad",
     "permute_copy",
+    "polar",
     "prod",
     "prod_dim",
     "quantile",
@@ -358,6 +363,7 @@ if get_device_capability(current_device())[0] >= 3:
     from .bmm import bmm  # noqa: F401
     from .gelu import gelu  # noqa: F401
     from .mm import mm  # noqa: F401
+    from .mv import mv  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
     __all__.extend(
@@ -371,6 +377,7 @@ if get_device_capability(current_device())[0] >= 3:
             "bmm",
             "gelu",
             "mm",
+            "mv",
             "tanh",
             "atan2",
             "kthvalue",
@@ -435,3 +442,7 @@ if get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+
+from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+__all__.extend(["scaled_mm", "scaled_mm_out"])

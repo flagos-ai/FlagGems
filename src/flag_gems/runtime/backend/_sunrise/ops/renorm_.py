@@ -56,7 +56,7 @@ def renorm_kernel(X, N, p, maxnorm, BLOCK_SIZE: tl.constexpr):
 
 
 def renorm_(x, p, dim, maxnorm):
-    logger.debug("GEMS RENORM")
+    logger.debug("GEMS_SUNRISE RENORM")
     dim = dim % x.ndim
 
     perm = [dim] + [i for i in range(x.ndim) if i != dim]

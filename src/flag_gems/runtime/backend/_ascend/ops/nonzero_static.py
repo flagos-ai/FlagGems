@@ -252,12 +252,13 @@ def _nonzero_static_single_block_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
-    flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+    flags = _load_sparse_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16)
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
     write_mask = mask & flags & (local_rank < size)
@@ -318,12 +319,13 @@ def _nonzero_static_single_block_generic_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
-    flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+    flags = _load_sparse_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16)
 
     local_rank = tl.cumsum(flags.to(tl.int32), 0) - 1
     global_rank = local_rank.to(tl.int64)
@@ -361,6 +363,7 @@ def _nonzero_static_write_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     SCAN_GROUP_SIZE: tl.constexpr,
 ):
@@ -370,8 +373,10 @@ def _nonzero_static_write_kernel(
     block_nnz = tl.load(counts_ptr + pid)
     prefix = tl.load(prefix_ptr + pid) - block_nnz
 
-    if prefix < size:
-        flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+    if (prefix < size) & (block_nnz > 0):
+        flags = _load_sparse_nonzero_flags(
+            x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16
+        )
         local_rank = _nonzero_static_local_rank(
             flags,
             BLOCK_SIZE,
@@ -415,6 +420,7 @@ def _nonzero_static_write_strided_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     SCAN_GROUP_SIZE: tl.constexpr,
 ):
@@ -435,8 +441,10 @@ def _nonzero_static_write_strided_kernel(
             - block_nnz
         )
 
-        if prefix < size:
-            flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+        if (prefix < size) & (block_nnz > 0):
+            flags = _load_sparse_nonzero_flags(
+                x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16
+            )
             local_rank = _nonzero_static_local_rank(
                 flags,
                 BLOCK_SIZE,
@@ -537,31 +545,38 @@ def _nonzero_static_write_sparse_groups_kernel(
                         prefix,
                     )
                     fallback_count += 1
-                group_ids = tl.arange(0, num_groups)
-                positions = tl.arange(0, SCAN_GROUP_SIZE)
-                remaining = grouped
+                # An all-zero block writes nothing, but the selection below still
+                # costs a full-lane min/where reduction per block. Skip it.
+                if block_nnz > 0:
+                    group_ids = tl.arange(0, num_groups)
+                    positions = tl.arange(0, SCAN_GROUP_SIZE)
+                    remaining = grouped
 
-                for selected_rank in range(SELECT_MAX_NNZ):
-                    selected = tl.min(
-                        tl.where(remaining, positions[None, :], SCAN_GROUP_SIZE),
-                        axis=1,
-                    )
-                    linear = (
-                        block_id * BLOCK_SIZE + group_ids * SCAN_GROUP_SIZE + selected
-                    ).to(tl.int64)
-                    global_rank = prefix + group_offsets + selected_rank
-                    write_mask = (group_counts > selected_rank) & (global_rank < size)
-                    _nonzero_static_store_coordinates(
-                        out_ptr,
-                        global_rank,
-                        linear,
-                        write_mask,
-                        ndim,
-                        D1,
-                        D2,
-                        D3,
-                    )
-                    remaining = remaining & (positions[None, :] > selected[:, None])
+                    for selected_rank in range(SELECT_MAX_NNZ):
+                        selected = tl.min(
+                            tl.where(remaining, positions[None, :], SCAN_GROUP_SIZE),
+                            axis=1,
+                        )
+                        linear = (
+                            block_id * BLOCK_SIZE
+                            + group_ids * SCAN_GROUP_SIZE
+                            + selected
+                        ).to(tl.int64)
+                        global_rank = prefix + group_offsets + selected_rank
+                        write_mask = (group_counts > selected_rank) & (
+                            global_rank < size
+                        )
+                        _nonzero_static_store_coordinates(
+                            out_ptr,
+                            global_rank,
+                            linear,
+                            write_mask,
+                            ndim,
+                            D1,
+                            D2,
+                            D3,
+                        )
+                        remaining = remaining & (positions[None, :] > selected[:, None])
                 running_count += block_nnz
 
     tail_tasks = tl.cdiv(total_out, n_workers * BLOCK_SIZE)
@@ -713,7 +728,8 @@ def _nonzero_static_write_small_counts_kernel(
         offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = block_mask & (offsets < numel)
 
-        if block_mask & (prefix < size):
+        block_nnz = tl.load(counts_ptr + block_id, mask=block_mask, other=0)
+        if block_mask & (prefix < size) & (block_nnz > 0):
             flags = _load_sparse_nonzero_flags(
                 x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16
             )
@@ -843,6 +859,7 @@ def _nonzero_static_write_generic_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     SCAN_GROUP_SIZE: tl.constexpr,
 ):
@@ -850,7 +867,7 @@ def _nonzero_static_write_generic_kernel(
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
-    flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+    flags = _load_sparse_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16)
 
     block_nnz = tl.load(counts_ptr + pid)
     prefix = tl.load(prefix_ptr + pid) - block_nnz
@@ -893,6 +910,7 @@ def _nonzero_static_write_generic_strided_kernel(
     fill_value: tl.constexpr,
     total_out: tl.constexpr,
     IS_COMPLEX: tl.constexpr,
+    IS_BFLOAT16: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
     SCAN_GROUP_SIZE: tl.constexpr,
 ):
@@ -914,7 +932,9 @@ def _nonzero_static_write_generic_strided_kernel(
         )
 
         if prefix < size:
-            flags = _load_nonzero_flags(x_ptr, offsets, mask, IS_COMPLEX)
+            flags = _load_sparse_nonzero_flags(
+                x_ptr, offsets, mask, IS_COMPLEX, IS_BFLOAT16
+            )
             local_rank = _nonzero_static_local_rank(
                 flags,
                 BLOCK_SIZE,
@@ -1092,7 +1112,7 @@ def _nonzero_static_impl(
         with torch_device_fn.device(input.device):
             if use_generic_ndim:
                 _nonzero_static_single_block_generic_kernel[(1,)](
-                    x,
+                    count_x,
                     shape,
                     work_out,
                     size,
@@ -1101,11 +1121,12 @@ def _nonzero_static_impl(
                     fill_value,
                     total_out,
                     IS_COMPLEX=is_complex,
+                    IS_BFLOAT16=is_bfloat16_bits,
                     BLOCK_SIZE=single_block_size,
                 )
             else:
                 _nonzero_static_single_block_kernel[(1,)](
-                    x,
+                    count_x,
                     work_out,
                     size,
                     numel,
@@ -1116,6 +1137,7 @@ def _nonzero_static_impl(
                     fill_value,
                     total_out,
                     IS_COMPLEX=is_complex,
+                    IS_BFLOAT16=is_bfloat16_bits,
                     BLOCK_SIZE=single_block_size,
                 )
         return _finish_nonzero_static_out(
@@ -1251,8 +1273,19 @@ def _nonzero_static_impl(
                 STORE_LINEAR=small_counts_linear_output,
             )
             if small_counts_linear_output:
+                # Size this by how much of the device the launch covers rather
+                # than by a flat constant. The work here is small -- one program
+                # per (row block, axis) pair -- so the runtime is dominated by
+                # how many vector cores are left idle. At a 4096 row output with
+                # ndim 2 the flat 512 gave 16 programs on 40 cores and measured
+                # 94us; letting the row count fall to 32 programs measured 55us
+                # for identical work. Aim for one wave, and let the power of two
+                # rounding land it under the core count.
+                max_rows = max(1, ASCEND_CORE_NUM // ndim)
                 expand_block_size = min(
+                    triton.next_power_of_2(triton.cdiv(size, max_rows)),
                     small_counts_expand_block_size,
+                    ASCEND_EXPAND_MAX_BLOCK_SIZE,
                     1 << (size - 1).bit_length(),
                 )
                 _nonzero_static_expand_coordinates_kernel[
@@ -1287,7 +1320,7 @@ def _nonzero_static_impl(
                 else _nonzero_static_write_generic_kernel
             )
             write_kernel[(program_count,)](
-                x,
+                count_x,
                 shape,
                 prefix,
                 counts,
@@ -1299,6 +1332,7 @@ def _nonzero_static_impl(
                 fill_value,
                 total_out,
                 IS_COMPLEX=is_complex,
+                IS_BFLOAT16=is_bfloat16_bits,
                 BLOCK_SIZE=block_size,
                 SCAN_GROUP_SIZE=scan_group_size,
             )
@@ -1309,7 +1343,7 @@ def _nonzero_static_impl(
                 else _nonzero_static_write_kernel
             )
             write_kernel[(program_count,)](
-                x,
+                count_x,
                 prefix,
                 counts,
                 work_out,
@@ -1323,6 +1357,7 @@ def _nonzero_static_impl(
                 fill_value,
                 total_out,
                 IS_COMPLEX=is_complex,
+                IS_BFLOAT16=is_bfloat16_bits,
                 BLOCK_SIZE=block_size,
                 SCAN_GROUP_SIZE=scan_group_size,
             )
@@ -1347,8 +1382,17 @@ def _nonzero_static_impl(
     )
 
 
-ASCEND_SINGLE_BLOCK_MAX_NUMEL = 8192
-ASCEND_BLOCK_SIZE = 4096
+# The single block kernel exists to save the extra count/write launch on tiny
+# inputs, but it runs the whole input on one vector core, and the store bound
+# means that costs ~26ns per element -- 33us on a 1024 element input, where
+# splitting the same work over 16 cores takes 3.7us. The crossover is around a
+# couple of hundred elements, so the threshold is set just above it.
+ASCEND_SINGLE_BLOCK_MAX_NUMEL = 256
+ASCEND_SMALL_NUMEL_MAX = 262144
+ASCEND_SMALL_NUMEL_BLOCK_SIZE = 512
+ASCEND_LARGE_NUMEL_BLOCK_SIZE = 2048
+ASCEND_ELEMS_PER_BLOCK = 32
+ASCEND_MIN_BLOCK_SIZE = 64
 ASCEND_REDUCED_BLOCK_SIZE = 1024
 ASCEND_REDUCED_BLOCK_RATIO = 128
 ASCEND_SMALL_COUNTS_MAX_BLOCKS = 256
@@ -1359,6 +1403,10 @@ ASCEND_SPARSE_SCAN_GROUP_SIZE = 64
 ASCEND_SPARSE_GROUP_SELECT_MAX_NNZ = 1
 ASCEND_SPARSE_COUNT_GROUP_BLOCKS = 8
 ASCEND_SMALL_LINEAR_EXPAND_BLOCK_SIZE = 512
+# The expand kernel's grid is (cdiv(size, block), ndim), so the block size sets
+# how much of the device the launch uses. 4096 needs more unified buffer than
+# the kernel has (it fails to compile with BLOCK_SIZE=4096), so it is the cap.
+ASCEND_EXPAND_MAX_BLOCK_SIZE = 2048
 ASCEND_SPARSE_MAX_COUNT_GROUPS = 4096
 ASCEND_SPARSE_MAX_NUMEL = (
     ASCEND_SPARSE_BLOCK_SIZE
@@ -1375,17 +1423,33 @@ except (AttributeError, RuntimeError, KeyError):
 
 
 def _get_block_size(input, size):
+    """Pick the block size, and hence the program count, for the count/write kernels.
+
+    These kernels are store bound: a store whose mask is not a plain index range
+    compiles to a per-lane predicated loop instead of a vector store, which on
+    910B costs roughly 26ns per lane against ~0.3ns for a full vector store. The
+    op's cost is therefore about `lanes per vector core x 26ns`, so the thing that
+    matters most is that every core gets a share of the elements. A block size
+    that yields fewer blocks than there are cores leaves most of the device idle,
+    and that is what made the 4096 default slow -- on a 16384 element input it
+    produced 4 blocks for 40 cores and ran ~4x slower than the same kernel at 512.
+
+    Sizes measured best across the benchmark shapes: about one block per 32
+    elements (capped at ASCEND_SMALL_NUMEL_BLOCK_SIZE) up to ASCEND_SMALL_NUMEL_MAX
+    elements, and ASCEND_LARGE_NUMEL_BLOCK_SIZE above that. 4096 is no longer
+    selected; it only ever reduces the block count and lost on every shape tested.
+    """
     if input.dim() > 4:
         return ASCEND_REDUCED_BLOCK_SIZE
-    if (
-        size >= 4096
-        and input.numel() >= size * ASCEND_REDUCED_BLOCK_RATIO
-        and input.numel() < size * ASCEND_SPARSE_GROUP_RATIO
-    ):
-        return ASCEND_BLOCK_SIZE
-    if size > 0 and input.numel() >= size * ASCEND_REDUCED_BLOCK_RATIO:
-        return ASCEND_SPARSE_BLOCK_SIZE
-    return ASCEND_BLOCK_SIZE
+    numel = input.numel()
+    if numel > ASCEND_SMALL_NUMEL_MAX:
+        return ASCEND_LARGE_NUMEL_BLOCK_SIZE
+    # ASCEND_MIN_BLOCK_SIZE is a hard floor: _nonzero_static_local_rank reshapes
+    # the block into SCAN_GROUP_SIZE-wide groups, so BLOCK_SIZE must be a
+    # multiple of it.
+    block_size = triton.next_power_of_2(triton.cdiv(numel, ASCEND_ELEMS_PER_BLOCK))
+    block_size = max(block_size, ASCEND_MIN_BLOCK_SIZE)
+    return min(block_size, ASCEND_SMALL_NUMEL_BLOCK_SIZE)
 
 
 def _use_sparse_groups(input, size):

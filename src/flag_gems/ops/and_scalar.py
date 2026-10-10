@@ -27,5 +27,5 @@ def and_scalar(self, other):
     ``__and__.Scalar`` and ``bitwise_and.Scalar`` are the same operation's two
     entry points in ATen (verified numerically and by schema).
     """
-    logger.debug("GEMS AND SCALAR")
+    logger.debug("GEMS AND_SCALAR")
     return bitwise_and_scalar(self, other)

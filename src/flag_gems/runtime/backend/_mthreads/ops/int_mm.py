@@ -181,12 +181,12 @@ def _launch(self, mat2, out, M, N, K):
 
 
 def int_mm(self, mat2):
-    logger.debug("GEMS MTHREADS INT_MM")
+    logger.debug("GEMS_MTHREADS INT_MM")
     return _int_mm_impl(self, mat2, _launch)
 
 
 def int_mm_out(self, mat2, *, out):
-    logger.debug("GEMS MTHREADS INT_MM_OUT")
+    logger.debug("GEMS_MTHREADS INT_MM_OUT")
     return _int_mm_impl(self, mat2, _launch, out=out)
 
 

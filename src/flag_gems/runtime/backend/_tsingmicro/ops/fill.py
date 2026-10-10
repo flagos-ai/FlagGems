@@ -171,7 +171,7 @@ def _fill_complex_tensor(out, value):
 
 
 def fill_tensor(input, value):
-    logger.debug("GEMS_TSINGMICRO FILL TENSOR")
+    logger.debug("GEMS_TSINGMICRO FILL_TENSOR")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
@@ -191,7 +191,7 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
-    logger.debug("GEMS_TSINGMICRO FILL SCALAR")
+    logger.debug("GEMS_TSINGMICRO FILL_SCALAR")
     if 0 in input.shape:
         return input
     out = torch.empty_like(input)
@@ -207,7 +207,7 @@ def fill_scalar(input, value):
 
 
 def fill_scalar_out(input, value, *, out=None):
-    logger.debug("GEMS_TSINGMICRO FILL SCALAR_OUT")
+    logger.debug("GEMS_TSINGMICRO FILL_SCALAR_OUT")
     if out is None:
         return fill_scalar(input, value)
     if 0 in out.shape:

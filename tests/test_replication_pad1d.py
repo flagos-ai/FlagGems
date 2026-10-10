@@ -38,8 +38,7 @@ def test_replication_pad1d(shape, dtype, padding):
 
     ref_out = torch.ops.aten.replication_pad1d(ref_inp, padding)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.replication_pad1d(inp, padding)
+    act_out = flag_gems.replication_pad1d(inp, padding)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
 
@@ -65,7 +64,6 @@ def test_replication_pad1d_out(shape, dtype, padding):
     ref_out = torch.ops.aten.replication_pad1d.out(ref_inp, padding, out=ref_out_buf)
 
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.replication_pad1d.out(inp, padding, out=act_out_buf)
+    act_out = flag_gems.replication_pad1d_out(inp, padding, act_out_buf)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

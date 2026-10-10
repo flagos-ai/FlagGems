@@ -88,7 +88,7 @@ def topk_softmax(
     gating_output: torch.Tensor,
     renormalize: bool = False,
 ) -> None:
-    logger.debug("GEMS TOPK SOFTMAX")
+    logger.debug("GEMS TOPK_SOFTMAX")
     num_tokens, num_experts = gating_output.shape
     topk = topk_weights.size(-1)
     assert topk <= 32

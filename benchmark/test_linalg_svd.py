@@ -33,3 +33,29 @@ def test_linalg_svd():
         dtypes=[torch.float32],
     )
     bench.run()
+
+
+# ---------------------------------------------------------------------------
+# aten::_linalg_svd
+#
+# The operator id stays `_linalg_svd`, so the benchmark reports under that name
+# (as the merged `_aminmax` benchmark does); the marker is `underscore_linalg_svd`
+# since pytest will not build one from a leading underscore. Kept in this file
+# because it shares the shapes and torch_op with the bare `linalg_svd` above.
+# ---------------------------------------------------------------------------
+
+
+class LinalgSvdPrivateBenchmark(LinalgSvdBenchmark):
+    pass
+
+
+@pytest.mark.underscore_linalg_svd
+def test__linalg_svd():
+    bench = LinalgSvdPrivateBenchmark(
+        op_name="_linalg_svd",
+        # torch.linalg.svd decomposes into aten::_linalg_svd internally.
+        torch_op=torch.linalg.svd,
+        # The Triton SVD kernels only support float32 CUDA matrices.
+        dtypes=[torch.float32],
+    )
+    bench.run()
