@@ -41,8 +41,7 @@ def test_special_ndtri(shape, dtype, caplog):
     with caplog.at_level(
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+        res_out = flag_gems.special_ndtri(inp)
 
     assert (
         f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
@@ -67,8 +66,7 @@ def test_special_ndtri_edge_values(dtype, caplog):
     with caplog.at_level(
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+        res_out = flag_gems.special_ndtri(inp)
 
     assert (
         f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
@@ -96,8 +94,7 @@ def test_special_ndtri_non_contiguous(dtype, caplog):
     with caplog.at_level(
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+        res_out = flag_gems.special_ndtri(inp)
 
     assert (
         f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
@@ -113,5 +110,4 @@ def test_special_ndtri_unsupported_dtype(dtype):
     # NotImplementedError that the PyTorch reference raises for these dtypes.
     inp = torch.empty((8,), dtype=dtype, device=flag_gems.device).uniform_(0.01, 0.99)
     with pytest.raises(NotImplementedError):
-        with flag_gems.use_gems():
-            torch.ops.aten.special_ndtri(inp)
+        flag_gems.special_ndtri(inp)

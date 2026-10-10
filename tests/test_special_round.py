@@ -18,8 +18,7 @@ def test_special_round(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp)
+    res_out = flag_gems.special_round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -37,8 +36,7 @@ def test_special_round_out(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp, out=out)
+    res_out = flag_gems.special_round_out(inp, out)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(out, ref_out)
@@ -81,8 +79,7 @@ def test_special_round_midpoints():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp)
+    res_out = flag_gems.special_round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -108,8 +105,7 @@ def test_special_round_decimals(decimals):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp, decimals=decimals)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp, decimals=decimals)
+    res_out = flag_gems.special_round(inp, decimals=decimals)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -130,8 +126,7 @@ def test_special_round_out_decimals(decimals):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp, decimals=decimals)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp, decimals=decimals, out=out)
+    res_out = flag_gems.special_round_out(inp, out, decimals=decimals)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(out, ref_out)
