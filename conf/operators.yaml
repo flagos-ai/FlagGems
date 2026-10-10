@@ -8464,6 +8464,22 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: geqrf
+  description: 'Computes the packed Householder QR factorization of a (batched)
+    m x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the
+    Householder vectors below it, `tau` holds the scalar factors with shape
+    (*, min(m, n)).
+
+    '
+  for:
+  - geqrf
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
