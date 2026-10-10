@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
+from ._embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from ._embedding_bag_backward import _embedding_bag_backward
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
@@ -175,6 +177,9 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",

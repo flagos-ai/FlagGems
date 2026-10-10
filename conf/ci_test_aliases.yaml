@@ -222,6 +222,7 @@ special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
+embedding_bag_forward_only: test_embedding_bag
 lshift_scalar: test_lshift
 tensor_split_sections: test_tensor_split
 tensor_split_indices: test_tensor_split
@@ -258,3 +259,5 @@ upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 # Underscore-prefixed aten op shares the base operator test file
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
+
+_embedding_bag: test_embedding_bag
