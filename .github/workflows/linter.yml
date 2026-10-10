@@ -50,49 +50,14 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    # Checkout over SSH first: SSH ignores the injected http(s)_proxy and
-    # fetches reliably (~8s, 0 hangs in testing), unlike the proxied HTTPS fetch
-    # which hangs ~half the time. The HTTP attempts below are a fallback —
-    # notably for fork PRs, where secrets.CI_SSH_KEY is empty so this step fails
-    # and the proxied HTTP retries take over.
-    - id: sshco
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung fetch,
+    # rotates links across rounds (see the action). @master ref so it resolves
+    # from the runner's _actions cache before any checkout. ssh-key empty on
+    # fork PRs -> SSH skipped, token HTTP used. The action also registers the
+    # workspace as a safe git dir (needed by pre-commit under HOME=/github/home).
+    - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
       with:
         ssh-key: ${{ secrets.CI_SSH_KEY }}
-      timeout-minutes: 2
-      continue-on-error: true
-    # HTTP fallback: up to 5 attempts, each with a hard 1-minute step timeout.
-    # Only runs if SSH checkout failed.
-    - id: co1
-      if: steps.sshco.outcome == 'failure'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      timeout-minutes: 1
-      continue-on-error: true
-    - id: co2
-      if: steps.co1.outcome == 'failure'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      timeout-minutes: 1
-      continue-on-error: true
-    - id: co3
-      if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      timeout-minutes: 1
-      continue-on-error: true
-    - id: co4
-      if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure' && steps.co3.outcome == 'failure'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      timeout-minutes: 1
-      continue-on-error: true
-    - id: co5
-      if: steps.co1.outcome == 'failure' && steps.co2.outcome == 'failure' && steps.co3.outcome == 'failure' && steps.co4.outcome == 'failure'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      timeout-minutes: 1
-    # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
-    # with HOME=/github/home and git rejects the dir as dubious ownership.
-    # Register it in the persistent global config pre-commit actually reads.
-    - name: Mark workspace as a safe git directory
-      shell: bash
-      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
     - name: Ensure full working tree
       shell: bash
       run: |
