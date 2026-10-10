@@ -97,6 +97,7 @@ from flag_gems.fused.reshape_and_cache_flash import reshape_and_cache_flash
 from flag_gems.fused.rotary_embedding import apply_rotary_pos_emb
 from flag_gems.fused.rwkv_ka_fusion import rwkv_ka_fusion
 from flag_gems.fused.rwkv_mm_sparsity import rwkv_mm_sparsity
+from flag_gems.fused.scaled_mm_int8 import scaled_mm_int8
 from flag_gems.fused.silu_and_mul import silu_and_mul, silu_and_mul_out
 from flag_gems.fused.silu_and_mul_with_clamp import (
     silu_and_mul_with_clamp,
@@ -108,6 +109,7 @@ from flag_gems.fused.stage_deepseek_v4_mega_moe_inputs import (
     stage_deepseek_v4_mega_moe_inputs,
 )
 from flag_gems.fused.swiglu import dswiglu, swiglu
+from flag_gems.fused.swiglu_oai import swiglu_oai
 from flag_gems.fused.top_k_per_row_decode import top_k_per_row_decode
 from flag_gems.fused.top_k_per_row_prefill import top_k_per_row_prefill
 from flag_gems.fused.topk_softmax import topk_softmax
@@ -181,6 +183,7 @@ __all__ = [
     "reshape_and_cache_flash",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
+    "scaled_mm_int8",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",
@@ -190,6 +193,7 @@ __all__ = [
     "sparse_attn_triton",
     "stage_deepseek_v4_mega_moe_inputs",
     "swiglu",
+    "swiglu_oai",
     "top_k_per_row_decode",
     "top_k_per_row_prefill",
     "topk_softmax",
