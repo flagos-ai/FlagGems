@@ -1241,6 +1241,7 @@ from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
+from flag_gems.ops.slow_conv_transpose3d import slow_conv_transpose3d
 from flag_gems.ops.smm import smm
 from flag_gems.ops.smooth_l1_loss import (
     smooth_l1_loss,
@@ -2773,6 +2774,7 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv_transpose3d",
     "smm",
     "smooth_l1_loss",
     "smooth_l1_loss_backward",
