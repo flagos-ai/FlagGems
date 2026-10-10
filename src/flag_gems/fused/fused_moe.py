@@ -332,6 +332,29 @@ def get_moe_wna16_block_config(
         return {"BLOCK_SIZE_N": block_size_n, "BLOCK_SIZE_K": block_size_k}
 
 
+_MOE_SMEM_LIMIT = None
+
+
+def _moe_smem_limit():
+    # The usable shared-memory (LDS) budget for a MoE gemm config. Query the
+    # active device instead of hardcoding ~200KB (NVIDIA-sized), which OOMs on
+    # small-LDS GPUs like gfx1100/RDNA (64KB).
+    global _MOE_SMEM_LIMIT
+    if _MOE_SMEM_LIMIT is None:
+        try:
+            import torch
+
+            di = torch.cuda.current_device()
+            _MOE_SMEM_LIMIT = int(
+                triton.runtime.driver.active.utils.get_device_properties(di)[
+                    "max_shared_mem"
+                ]
+            )
+        except Exception:
+            _MOE_SMEM_LIMIT = 200_000
+    return _MOE_SMEM_LIMIT
+
+
 def get_default_config(
     M: int,
     E: int,
@@ -438,7 +461,7 @@ def get_default_config(
             num_stages = 4
 
         smem_per_stage = (block_m * block_k + block_k * block_n) * 2
-        while num_stages > 2 and smem_per_stage * num_stages > 200_000:
+        while num_stages > 1 and smem_per_stage * num_stages > _moe_smem_limit():
             num_stages -= 1
 
         config = {
@@ -490,7 +513,7 @@ def get_default_config(
         num_stages = 3
 
         smem_per_stage = (block_m * block_k + block_k * block_n) * 2
-        while num_stages > 2 and smem_per_stage * num_stages > 200_000:
+        while num_stages > 1 and smem_per_stage * num_stages > _moe_smem_limit():
             num_stages -= 1
 
         config = {
