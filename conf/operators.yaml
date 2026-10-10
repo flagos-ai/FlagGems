@@ -17315,6 +17315,21 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv_transpose3d
+  description: |
+    Applies a 3D transposed convolution operator over an input image composed of
+    several input planes, using the slow (im2col/col2im) reference algorithm.
+    The ``weight`` tensor uses the transposed-convolution layout
+    ``(in_channels, out_channels, kD, kH, kW)``.
+  for:
+  - slow_conv_transpose3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
