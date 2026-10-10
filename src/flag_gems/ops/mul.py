@@ -33,6 +33,31 @@ logger = logging.getLogger(__name__)
 # not "cuda" (e.g. mthreads reports "musa") from the shared Triton path.
 _DEVICE_NAME = runtime_device.name
 
+# Some integrations expose the accelerator as a *renamed* PrivateUse1 device
+# (e.g. Torch-FL reports "flagos"). There ``device.type`` differs from the
+# active backend device name even though the tensor does live on the
+# accelerator, so recognize both instead of sending a supported accelerator
+# tensor into an aten redispatch that has no device kernel (#6254).
+try:
+    _PRIVATEUSE1_DEVICE_NAME = torch._C._get_privateuse1_backend_name()
+except Exception:  # pragma: no cover - older torch builds
+    _PRIVATEUSE1_DEVICE_NAME = None
+
+_ACCELERATOR_DEVICE_TYPES = {_DEVICE_NAME}
+if _PRIVATEUSE1_DEVICE_NAME:
+    _ACCELERATOR_DEVICE_TYPES.add(_PRIVATEUSE1_DEVICE_NAME)
+
+
+def _is_accelerator_device(device):
+    """True when ``device`` belongs to the active accelerator backend.
+
+    Tensors on plain "cpu" (or any other non-accelerator device type) keep
+    using the aten reference path; the active accelerator keeps using the
+    Triton kernel.
+    """
+    return device.type in _ACCELERATOR_DEVICE_TYPES
+
+
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
@@ -590,7 +615,7 @@ def mul_broadcast_func(a, b, out=None):
         raise TypeError("mul expects tensor or scalar inputs")
 
     device = _select_device(a, b)
-    if device.type != _DEVICE_NAME:
+    if not _is_accelerator_device(device):
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)
@@ -735,7 +760,7 @@ def _launch_complex_generic(
 
 def mul_complex_broadcast_func(a, b, out=None):
     device = _select_device(a, b)
-    if device.type != _DEVICE_NAME:
+    if not _is_accelerator_device(device):
         if out is not None:
             return torch.ops.aten.mul.out.redispatch(_FALLBACK_KEYSET, a, b, out=out)
         return torch.ops.aten.mul.Tensor.redispatch(_FALLBACK_KEYSET, a, b)

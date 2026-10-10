@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import random
 
 import numpy as np
@@ -281,3 +282,26 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
+
+
+def test_mul_accelerator_device_alias(monkeypatch):
+    """A renamed PrivateUse1 accelerator must not take the aten fallback.
+
+    Issue #6254: integrations such as Torch-FL expose the accelerator as a
+    renamed PrivateUse1 device (e.g. ``flagos``), so ``device.type`` differs
+    from the backend device name. Such tensors must keep using the Triton path
+    instead of being redispatched to an aten op with no device kernel.
+    """
+    mul_mod = importlib.import_module("flag_gems.ops.mul")
+
+    class _Device:
+        def __init__(self, type_):
+            self.type = type_
+
+    monkeypatch.setattr(
+        mul_mod, "_ACCELERATOR_DEVICE_TYPES", {mul_mod._DEVICE_NAME, "flagos"}
+    )
+    assert mul_mod._is_accelerator_device(_Device(mul_mod._DEVICE_NAME))
+    assert mul_mod._is_accelerator_device(_Device("flagos"))
+    assert not mul_mod._is_accelerator_device(_Device("cpu"))
+    assert not mul_mod._is_accelerator_device(_Device("meta"))
