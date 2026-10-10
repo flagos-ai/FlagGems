@@ -165,7 +165,7 @@ class ArgsortBenchmark(base.GenericBenchmark2DOnly):
         return super().get_latency(op, *args, **kwargs)
 
     def set_more_shapes(self):
-        return [(1024, 1), (1024, 512)]
+        return [(1024, 1), (1024, 512), (65536, 4), (98307, 8)]
 
 
 def _input_fn(shape, dtype, device):
