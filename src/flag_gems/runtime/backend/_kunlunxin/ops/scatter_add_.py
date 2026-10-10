@@ -238,15 +238,12 @@ def _sa2d_tle_usable(device):
             # leaves the buffer untouched is detectable, rather than passing by
             # chance on allocator-reused memory.
             out = torch.full((R, K), -123.0, device=device, dtype=torch.float32)
-            kernel[(_sa2d_grid(K, R),)](
-                out, out, idx, src, R, K, S, src.stride(0), 1
-            )
+            kernel[(_sa2d_grid(K, R),)](out, out, idx, src, R, K, S, src.stride(0), 1)
             _SA2D_TLE_OK = torch.equal(out.cpu(), ref)
         except Exception as e:  # pragma: no cover - any failure -> atomic fallback
             logger.debug("scatter_add tle probe failed, using fallback: %s", e)
             _SA2D_TLE_OK = False
     return _SA2D_TLE_OK
-
 
 
 def span_for_slice(slice_n: int, block: int) -> int:
