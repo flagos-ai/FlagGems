@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import os
 
 import torch
 import triton
@@ -22,9 +23,412 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..utils.tle_copy import tle_copy
+try:
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _HAS_TLE = False
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# tle.gpu row-reduce path (KL3): log_softmax over the contiguous last axis.
+#
+# The pointer kernels below reduce the row axis with a serial-chain tl.max /
+# tl.sum on XPU, which is the dominant cost on the long-row shapes. tle.gpu
+# moves the tile GM -> LM with the cluster DMA and keeps the reduce core-local,
+# streaming the row in YBLOCK columns, so the running max / sum-of-exp stay
+# [XBLOCK] vectors instead of a full-row tile. log_softmax needs two reductions
+# (max, then sum of exp) plus a subtract, so this is two kernels: an
+# online-softmax reduce that writes (row max, log-sum-exp), and a pass that
+# computes out = x - m - log_z. The partial-column fill is -inf (the max
+# identity; exp(-inf - m) == 0 keeps the sum exact).
+#
+# Only fp16/fp32/bf16, contiguous [M, N] with N >= _TLE_MIN_N_FUSED (and
+# M >= _TLE_MIN_M in the medium-N range) take this path; f64, N == 1, strided
+# views and small rows keep the pointer kernels.
+# =============================================================================
+_TLE_CORE_NUM = 64
+# The online-softmax reduce materialises a [XBLOCK, YBLOCK] fp32 `exp(x - m)`
+# tile per step on top of the loaded tile, roughly twice the register/LM
+# footprint of the plain sum row-reduce. Halve the per-core LM tile budget so
+# that intermediate still fits (4 KB/core overflows for the tiles this path
+# emits).
+_TLE_LM_BYTES_PER_CORE = 2048
+_TLE_XBLOCK = 256
+_TLE_CLUSTERS = 8
+_TLE_WIDE_ROW_BYTES = 32768
+_TLE_NARROW_ROW_BYTES = 2048
+# The fused single-kernel tle path (one launch, no GM round-trip for the row
+# statistics) beats both the pointer singlepass and the two-launch reduce on
+# every pow2 shape measured, so the gate is now about grid size, not row
+# length: a program must cover enough rows for the 2x row read to pay off.
+#   * N < 256: too short for the tle row tiling to beat the pointer path.
+#   * M < 1024 in the medium-N range: grid degenerates to 1-2 programs (e.g.
+#     (256, 256) -> grid=1), launch-bound; the singlepass wins there. Long
+#     rows (N >= _TLE_MIN_N) keep their verified wide-row tiling regardless of
+#     M, which already measures fine for (100, 65536) / (64, 65536).
+_TLE_MIN_N = 8192
+_TLE_MIN_M = 1024
+# FG_LOGSOFTMAX_MIN_N_FUSED overrides the medium-N gate for A/B routing
+# comparisons (e.g. "8192" reproduces the pre-medium-N behavior where only
+# N >= 8192 rows took the fused kernel). Production default is 256.
+_TLE_MIN_N_FUSED = int(os.environ.get("FG_LOGSOFTMAX_MIN_N_FUSED", "256"))
+
+_TLE_TL_DTYPE = {
+    torch.float16: tl.float16,
+    torch.float32: tl.float32,
+    torch.bfloat16: tl.bfloat16,
+}
+
+
+def _tle_available():
+    """`tle.gpu` exists only on the xpu3 (KL3) cluster pipeline."""
+    if not _HAS_TLE:
+        return False
+    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+        return False
+    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+
+
+_TLE_AVAILABLE = _tle_available()
+
+
+def _npo2(x):
+    """`triton.next_power_of_2` is a few us a call, too slow for the small-shape
+    host path; this is the same value without the dispatcher round trip."""
+    return 1 << (x - 1).bit_length() if x > 1 else 1
+
+
+_TLE_ROW_GEOM = {}
+_TLE_GEOM_MISS = object()
+
+
+def _tle_row_geom(M, N, itemsize):
+    """Cached [M, N] row-reduce tiling: `(xblock, yblock, row_blocks)`.
+
+    Same trade as the sum row-reduce: XBLOCK is rows per program, YBLOCK is the
+    LM budget divided by it. Aim for one program per cluster, then let the row
+    length pull XBLOCK down when it is long enough to need a long YBLOCK, or up
+    when the reduce is small enough that launch and result write are all there
+    is. XBLOCK may exceed M -- both copies clamp to the descriptor extents.
+    """
+    geom_key = (M, N, itemsize)
+    geom = _TLE_ROW_GEOM.get(geom_key, _TLE_GEOM_MISS)
+    if geom is not _TLE_GEOM_MISS:
+        return geom
+    xblock = min(_TLE_XBLOCK, max(128, _npo2(-(-M // _TLE_CLUSTERS))))
+    row_bytes = N * itemsize
+    if row_bytes >= _TLE_WIDE_ROW_BYTES:
+        # Long row: buy YBLOCK. The online-softmax budget is halved (2048
+        # bytes/core), so at XBLOCK == 64 YBLOCK is only 512; dropping XBLOCK
+        # to 32 lets YBLOCK reach 1024 (the good width) for the long rows this
+        # path serves.
+        xblock = max(_TLE_CORE_NUM // 2, xblock // 4)
+    elif row_bytes <= _TLE_NARROW_ROW_BYTES:
+        xblock = _TLE_XBLOCK if M > _TLE_CORE_NUM else 128
+    if _TLE_MIN_N_FUSED <= N < _TLE_MIN_N:
+        # Medium row: empirical (xblock, yblock) per (itemsize, N) bucket.
+        # Rule: the widest YBLOCK the 4KB/core LM budget allows (fewer serial
+        # reduce-chain restarts), then XBLOCK for enough programs.
+        # itemsize 4 (fp32): yb is capped at 1024 because [64,2048] fp32 =
+        # 512KB = 8KB/core exceeds the LM budget.
+        if itemsize == 2:
+            if N <= 512:
+                xblock, yblock = 128, 512
+            elif N <= 1024:
+                xblock, yblock = 32, 1024
+            elif N <= 2048:
+                xblock, yblock = 32, 2048
+            else:  # 4096 .. 8191
+                xblock, yblock = 64, 2048
+        else:  # fp32
+            if N <= 512:
+                xblock, yblock = 128, 512
+            elif N <= 1024:
+                xblock, yblock = 64, 1024
+            else:  # 2048 .. 8191
+                xblock, yblock = 64, 1024
+        while yblock > N and yblock > 1:
+            yblock >>= 1
+        geom = (xblock, yblock, -(-M // xblock))
+        _TLE_ROW_GEOM[geom_key] = geom
+        return geom
+
+    # Wide row (N >= 8192) and narrow row (row_bytes <= 2048): nominal LM
+    # budget split by XBLOCK, no medium-row doubling.
+    tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
+    yblock = max(1, min(_npo2(N), tile_elems // xblock))
+    while yblock > N and yblock > 1:
+        yblock >>= 1
+    geom = (xblock, yblock, -(-M // xblock))
+    _TLE_ROW_GEOM[geom_key] = geom
+    return geom
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "m_desc", "lz_desc"],
+)
+def _tle_logsoftmax_reduce_kernel(
+    a_desc,
+    m_desc,
+    lz_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    """Online-softmax row reduce: writes (row max, log-sum-exp) per row.
+
+    The reduction axis is streamed in YBLOCK columns; the running max and
+    sum-of-exp stay [XBLOCK] vectors, so each program reduces whole rows for
+    its slice of the tile with no cross-core barrier. Partial tiles are not
+    masked: the copy clamps to the descriptor, and the short last step is
+    filled with -inf first so the pad columns cannot leak into the running max
+    (their exp contributes 0 to the sum).
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a_lmem = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    m_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.float32, layout=None, scope=tle.gpu.lmem)
+    lz_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.float32, layout=None, scope=tle.gpu.lmem)
+
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
+    m_ptrs = tle.gpu.local_ptr(m_lmem, (tl.arange(0, XBLOCK),))
+    lz_ptrs = tle.gpu.local_ptr(lz_lmem, (tl.arange(0, XBLOCK),))
+
+    m = tl.full([XBLOCK], value=float("-inf"), dtype=tl.float32)
+    z = tl.zeros([XBLOCK], dtype=tl.float32)
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(
+                    a_ptrs,
+                    tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE),
+                )
+        tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        x = tl.load(a_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(
+            all_neg_inf,
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
+        m = m_new
+    tl.store(m_ptrs, m)
+    tl.store(lz_ptrs, tl.log(z))
+    tle.gpu.copy(m_lmem, m_desc, [XBLOCK], [row_off])
+    tle.gpu.copy(lz_lmem, lz_desc, [XBLOCK], [row_off])
+
+
+@triton.jit
+def _logsoftmax_pass_kernel(
+    out_ptr,
+    x_ptr,
+    m_ptr,
+    lz_ptr,
+    N,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Elementwise out = x - m[row] - log_z[row]; reads x a second time.
+
+    Plain pointer pass, one row per program: the reduce kernel already produced
+    (row max, log-sum-exp) into m/lz, and this pass is memory-bound. The
+    full-chunk path is unmasked so the load/store lowers to block-DMA; a masked
+    2D/1D tile on this backend falls back to per-lane gather and is orders of
+    magnitude slower, so it is kept only for the short last block.
+    """
+    pid_m = ext.program_id(0)
+    pid_n = ext.program_id(1)
+    n_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    off = pid_m * N + n_offsets
+    m = tl.load(m_ptr + pid_m)
+    lz = tl.load(lz_ptr + pid_m)
+    if NEED_MASK:
+        mask = n_offsets < N
+        x = tl.load(x_ptr + off, mask=mask, other=0.0).to(tl.float32)
+        tl.store(out_ptr + off, x - m - lz, mask=mask)
+    else:
+        x = tl.load(x_ptr + off).to(tl.float32)
+        tl.store(out_ptr + off, x - m - lz)
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "out_desc"],
+)
+def _tle_logsoftmax_fused_kernel(
+    a_desc,
+    out_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+    ONE_READ: tl.constexpr = False,
+):
+    """Fused reduce + normalize for a long-row [M, N] log_softmax (N >= 8192).
+
+    One kernel: pass 1 streams the row in YBLOCK chunks computing online
+    (max, sum-exp) into per-row [XBLOCK] accumulators held in registers; pass 2
+    streams again and writes out = x - m - log_z. The row is read from GM twice
+    (too long to hold), but there is one launch and the per-row statistics never
+    round-trip through GM -- the separate reduce kernel's LM-strip writeback of
+    m/log_z costs more than a launch. Same structure as the norm skill's WIDE leg.
+
+    ONE_READ: when YBLOCK == N the whole row fits the LM tile, so pass 2 can
+    normalize the tile in place and store once: exactly 1 GM read + 1 GM write
+    per program (the pass-2 re-copy, even L2-served, is pure waste). NOT
+    enabled for every (dtype, tile): the bf16 [128,512] LM store of the result
+    miscompiles while [32,1024] bf16 is exact, so the routing below gates
+    ONE_READ to the verified (dtype, tile) pairs.
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a0 = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a0_ptrs = tle.gpu.local_ptr(a0, (row_ids, col_ids))
+
+    if ONE_READ:
+        # yb == N (single chunk): load once, reduce, normalize in place, store.
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, 0])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        m = tl.max(x, 1)
+        z = tl.sum(tl.exp(x - m[:, None]), 1)
+        o = x - m[:, None] - tl.log(z)[:, None]
+        tl.store(a0_ptrs, o.to(OUT_DTYPE))
+        tle.gpu.copy(a0, out_desc, [XBLOCK, YBLOCK], [row_off, 0])
+        return
+
+    full_n = N - N % YBLOCK
+    m = tl.full([XBLOCK], value=float("-inf"), dtype=tl.float32)
+    z = tl.zeros([XBLOCK], dtype=tl.float32)
+    # ---- pass 1: online-softmax reduce ----
+    for c in tl.range(0, full_n, YBLOCK):
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, c])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        z = z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1)
+        m = m_new
+    if NEED_ZERO:
+        tl.store(
+            a0_ptrs, tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE)
+        )
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, full_n])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        z = z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1)
+        m = m_new
+    log_z = tl.log(z)
+
+    # ---- pass 2: normalize ----
+    for c in tl.range(0, full_n, YBLOCK):
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, c])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        o = x - m[:, None] - log_z[:, None]
+        tl.store(a0_ptrs, o.to(OUT_DTYPE))
+        tle.gpu.copy(a0, out_desc, [XBLOCK, YBLOCK], [row_off, c])
+    if NEED_ZERO:
+        tl.store(
+            a0_ptrs, tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE)
+        )
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, full_n])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        o = x - m[:, None] - log_z[:, None]
+        tl.store(a0_ptrs, o.to(OUT_DTYPE))
+        tle.gpu.copy(a0, out_desc, [XBLOCK, YBLOCK], [row_off, full_n])
+
+
+def _tle_logsoftmax(out, inp, M, N):
+    """log_softmax over a contiguous [M, N] last axis; False if not expressible."""
+    if not _TLE_AVAILABLE:
+        return False
+    if N < _TLE_MIN_N_FUSED:
+        return False
+    if N < _TLE_MIN_N and M < _TLE_MIN_M:
+        # Medium row, few rows: the fused kernel's grid collapses to 1-2
+        # programs (e.g. (256, 256) -> xblock=256, grid=1) and its 2x row read
+        # loses to the single-pass pointer path. Only long rows keep the tle
+        # path at low M (their wide-row tiling still parallelises well).
+        return False
+    if inp.dtype not in _TLE_TL_DTYPE or out.dtype not in _TLE_TL_DTYPE:
+        return False
+    if not inp.is_contiguous() or not out.is_contiguous():
+        return False
+    a = inp.view(M, N)
+    c = out.view(M, N)
+    xblock, yblock, row_blocks = _tle_row_geom(M, N, inp.element_size())
+    if N % yblock != 0:
+        # Non-pow2 tail: the fused kernel's bf16 pass (an LM store of a bf16
+        # result) is wrong on this backend for a partial last chunk, so keep
+        # the verified two-kernel path here. All benchmark long-row shapes are
+        # pow2 and take the fused kernel below.
+        m = torch.empty((M,), dtype=torch.float32, device=inp.device)
+        lz = torch.empty((M,), dtype=torch.float32, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            _tle_logsoftmax_reduce_kernel[(row_blocks,)](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(m, block_shape=[xblock]),
+                TensorDescriptor.from_tensor(lz, block_shape=[xblock]),
+                N,
+                XBLOCK=xblock,
+                YBLOCK=yblock,
+                IN_DTYPE=_TLE_TL_DTYPE[inp.dtype],
+                NEED_ZERO=True,
+            )
+            block_n = min(8192, _npo2(N))
+            _logsoftmax_pass_kernel[(M, triton.cdiv(N, block_n))](
+                c,
+                a,
+                m,
+                lz,
+                N,
+                BLOCK_N=block_n,
+                NEED_MASK=(N % block_n != 0),
+            )
+    else:
+        # ONE_READ single-pass (whole row in LM, yb == N): verified exact and
+        # faster than the two-read form on the wide-row tiles. bf16 [128,512]
+        # stays two-read: its in-place bf16 LM store miscompiles there while
+        # the [32,1024] bf16 tile is exact.
+        one_read = (
+            yblock == N
+            and N in (512, 1024)
+            and (
+                inp.dtype in (torch.float16, torch.float32)
+                or (inp.dtype == torch.bfloat16 and N == 1024)
+            )
+        )
+        with torch_device_fn.device(inp.device):
+            _tle_logsoftmax_fused_kernel[(row_blocks,)](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock, yblock]),
+                N,
+                XBLOCK=xblock,
+                YBLOCK=yblock,
+                IN_DTYPE=_TLE_TL_DTYPE[inp.dtype],
+                OUT_DTYPE=_TLE_TL_DTYPE[out.dtype],
+                NEED_ZERO=False,
+                ONE_READ=one_read,
+            )
+    return True
 
 
 @triton.jit
@@ -105,14 +509,13 @@ def _strided_copy_kernel(
 
 
 def _strided_copy(dst, src):
+    # Same-shape strided copy without native copy_/copy: the gems copy_
+    # override is wedged out of this path (its tle kernel is unreliable on
+    # strided/transposed operands), so all offset math happens in the kernel
+    # from the two stride vectors.
     assert tuple(dst.shape) == tuple(src.shape), "shape mismatch"
     n = dst.numel()
     if n:
-        try:
-            if tle_copy(src, dst):
-                return dst
-        except Exception:  # noqa: BLE001 - unsupported layout -> own kernel
-            logger.debug("tle_copy declined the strided copy; using the gem kernel")
         dims = list(src.shape)
         ss = list(src.stride())
         ds = list(dst.stride())
@@ -148,28 +551,26 @@ def _prev_pow2(x):
 
 
 # ------------------------  forward -------------------------------
-# XPU dispatch (probed on XPU 5, 2026-08-19): the old masked 2D multirow
-# [TILE_M, N] tile and the per-row online inner kernel are 20-100x slower
-# than the special_log_softmax-style paths (measured): (4096,4096) 14.7ms,
-# (10000,256) 3.0ms, (10000,65536) 1548ms. Replaced with:
+# XPU dispatch: the old masked 2D multirow [TILE_M, N] tile and the per-row
+# online inner kernel are far slower than the single-pass paths. Replaced with:
 #   * N <= 4096: single-pass [TILE_M, N] tile with order-preserving uint32-key
-#     integer max (the fp wide-row tl.max is a serial chain on XPU; int-key
-#     max ~2-4x faster), TILE_M bucketed by N, always-true row mask compiled
+#     integer max (the fp wide-row tl.max is a serial chain on XPU; the int-key
+#     max is faster), TILE_M bucketed by N, always-true row mask compiled
 #     away (NEED_MASK); a masked tail launch covers M % TILE_M != 0 rows.
 #   * N > 4096: chunk split partial/combine/pass with FLAT grids and
 #     pid*BN (BN constexpr) offsets -> contiguous block DMA (runtime
-#     row*N + c*BN offsets collapse to discrete gathers on XPU, 20-60x slower).
-#     Full 8192-wide chunks are unmasked (masked column tiles miscompile);
-#     a non-multiple tail is split into <= 4096-lane 1D masked pieces
-#     (masked reduces are exact up to 4096 lanes). A fused combine+pass
-#     kernel miscompiles on this backend -> 3-kernel structure.
+#     row*N + c*BN offsets collapse to discrete gathers on XPU). Full
+#     8192-wide chunks are unmasked (masked column tiles miscompile); a
+#     non-multiple tail is split into <= 4096-lane 1D masked pieces (masked
+#     reduces are exact up to 4096 lanes). A fused combine+pass kernel
+#     miscompiles on this backend -> 3-kernel structure.
 # The per-row online inner kernel below is kept for the K>1 (interior-dim)
 # path only (grid=(M*K,)); the old masked 2D multirow kernel is removed.
 FWD_MULTIROW_MAX_N = 4096  # single-pass 2D tile family (<= 8K elems/prog)
 FWD_CHUNK_BN = 8192  # big-N chunk width (tl.sum/tl.max lane-safety bound)
 FWD_TAIL_PIECE = 4096  # masked 1D tail pieces kept <= 4096 lanes (exact)
-# TILE_M buckets per N (probed XPU 5). Non-power-of-2 N < 64 needs TILE_M>=64
-# to compile correctly; handled in the dispatch.
+# TILE_M buckets per N. Non-power-of-2 N < 64 needs TILE_M>=64 to compile
+# correctly; handled in the dispatch.
 FWD_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 16), (4096, 8)]
 
 
@@ -260,10 +661,9 @@ def log_softmax_kernel_inner(
 FWD_MULTIROW_MAX_N = 4096  # single-pass 2D tile family (<= 8K elems/prog)
 FWD_CHUNK_BN = 8192  # big-N chunk width (tl.sum/tl.max lane-safety bound)
 FWD_TAIL_PIECE = 4096  # masked 1D tail pieces kept <= 4096 lanes (exact)
-# TILE_M buckets per N (probed XPU 5). Non-power-of-2 N < 64 needs TILE_M>=64
-# to compile correctly; handled in the dispatch.
+# TILE_M buckets per N. Non-power-of-2 N < 64 needs TILE_M>=64 to compile
+# correctly; handled in the dispatch.
 FWD_N_TILE_M = [(16, 64), (64, 32), (256, 16), (1024, 16), (4096, 8)]
-FWD_KEY_MAX_N = 64  # singlepass rows wider than this use the exact tl.max
 
 
 @triton.jit
@@ -285,7 +685,6 @@ def log_softmax_kernel_singlepass(
     N: tl.constexpr,
     TILE_M: tl.constexpr,
     NEED_MASK: tl.constexpr,
-    USE_KEY: tl.constexpr,
 ):
     pid_m = ext.program_id(0)
     m_offsets = pid_m * TILE_M + tl.arange(0, TILE_M)
@@ -298,11 +697,13 @@ def log_softmax_kernel_singlepass(
         )
     else:
         inp = tl.load(input_ptr + offsets).to(tl.float32)
-    if USE_KEY:
-        bits = inp.to(tl.uint32, bitcast=True)
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(bits), 1))
-    else:
-        m = tl.max(inp, 1)
+    # Plain ordered max, NOT the int-key bit trick: the uint32 keyed max
+    # silently miscompiles for bf16 input at TILE_M == 32 ([32,64] tile), while
+    # fp16 at the same tile and bf16 at TILE_M == 16 are exact, so the culprit
+    # is the bf16-specific key pattern x TILE_M width, not the reduce itself).
+    # This kernel only ever runs for pow2 N >= 8 (N % 8 == 0, the 2D axis-1
+    # reduce-safety invariant); N < 8 shapes go through the 1D tail kernel.
+    m = tl.max(inp, 1)
     e = tl.exp(inp - m[:, None])
     z = tl.sum(e, 1)
     out = inp - m[:, None] - tl.log(z)[:, None]
@@ -310,6 +711,14 @@ def log_softmax_kernel_singlepass(
         tl.store(output_ptr + offsets, out, mask=mask)
     else:
         tl.store(output_ptr + offsets, out)
+
+
+# NOTE: the old 2D [TILE_M, N] row-masked tail kernel was replaced: on XPU the
+# 2D row-masked STORE is not honored -- it writes the full TILE_M rows, i.e.
+# (TILE_M - M % TILE_M) rows OOB past the output. The 1D per-row masked
+# load/store IS exact, so the tail rows go through this per-row kernel. (A
+# sliced view passed to the launcher also faults on this backend, so the kernel
+# takes the full pointers and a runtime ROW_START instead of views.)
 
 
 @libentry()
@@ -321,7 +730,6 @@ def log_softmax_kernel_singlepass_tail(
     ROW_START,
     N,
     TILE_N: tl.constexpr,
-    USE_KEY: tl.constexpr,
 ):
     """Masked tail rows of the singlepass tile: one program per row, grid =
     M - ROW_START. 1D per-row masked load/store (exact on XPU), unlike the
@@ -331,10 +739,8 @@ def log_softmax_kernel_singlepass_tail(
     off = (ROW_START + pid) * N + n_offsets
     mask = n_offsets < N
     x = tl.load(input_ptr + off, mask=mask, other=-float("inf")).to(tl.float32)
-    if USE_KEY:
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
-    else:
-        m = tl.max(x, 0)
+    m_key = tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0)
+    m = _k_fwd_decode_key(m_key)
     z = tl.sum(tl.exp(x - m), 0)
     out = x - m - tl.log(z)
     tl.store(output_ptr + off, out, mask=mask)
@@ -349,7 +755,6 @@ def log_softmax_kernel_chunk(
     C_FULL,
     C,
     BLOCK_N: tl.constexpr,
-    USE_KEY: tl.constexpr,
 ):
     """Flat (row*C_FULL + c) grid; offsets = pid*BN (BN constexpr -> the
     [M*C_FULL, BN] read is contiguous, block DMA on XPU). Partial (m_c, z_c)
@@ -360,10 +765,8 @@ def log_softmax_kernel_chunk(
     n_offsets = tl.arange(0, BLOCK_N)
     off = pid * BLOCK_N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    if USE_KEY:
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
-    else:
-        m = tl.max(x, 0)
+    m_key = tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0)
+    m = _k_fwd_decode_key(m_key)
     z = tl.sum(tl.exp(x - m), 0)
     tl.store(partial_m_ptr + row * C + c, m)
     tl.store(partial_z_ptr + row * C + c, z)
@@ -425,7 +828,6 @@ def log_softmax_chunk_strided(
     C_FULL,
     C,
     BLOCK_N: tl.constexpr,
-    USE_KEY: tl.constexpr,
 ):
     """Flat (row*C_FULL + c) grid with per-row base offsets (needed when
     N % BN != 0: the flat pid*BN form drifts by the row tail)."""
@@ -435,10 +837,8 @@ def log_softmax_chunk_strided(
     n_offsets = tl.arange(0, BLOCK_N)
     off = row * N + c * BLOCK_N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    if USE_KEY:
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
-    else:
-        m = tl.max(x, 0)
+    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
+    m = _k_fwd_decode_key(tl.max(m_key, 0))
     z = tl.sum(tl.exp(x - m), 0)
     tl.store(partial_m_ptr + row * C + c, m)
     tl.store(partial_z_ptr + row * C + c, z)
@@ -479,22 +879,18 @@ def log_softmax_tail_piece_partial(
     T_SLOT,
     TAIL_BASE,
     PLEN: tl.constexpr,
-    USE_KEY: tl.constexpr,
 ):
     """Partial (m, z) over one exact power-of-2 tail piece of width PLEN<=4096
     (fully inside the row, so loads/stores are UNMASKED). The old masked 1D
     tail tiles (pow2-padded lanes + mask) silently miscompile on XPU for a
-    family of widths (probed 2026-08-20: 65/97/99/101/127/129/193/254/255/257/
-    511/513/1023/1025 etc.); only unmasked lane sets that exactly match the
-    piece are shape-exact."""
+    family of widths; only unmasked lane sets that exactly match the piece are
+    shape-exact."""
     pid = ext.program_id(0)
     n_offsets = TAIL_BASE + tl.arange(0, PLEN)
     off = pid * N + n_offsets
     x = tl.load(input_ptr + off).to(tl.float32)
-    if USE_KEY:
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
-    else:
-        m = tl.max(x, 0)
+    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
+    m = _k_fwd_decode_key(tl.max(m_key, 0))
     z = tl.sum(tl.exp(x - m), 0)
     po = pid * C_STRIDE + T_SLOT
     tl.store(partial_m_ptr + po, m)
@@ -534,7 +930,6 @@ def log_softmax_tail_masked_partial(
     T_SLOT,
     TAIL_BASE,
     TAIL_LEN,
-    USE_KEY: tl.constexpr,
 ):
     """Masked 64-lane piece for the <64 column remainder of a row tail.
     A 64-wide masked tile with <64 real lanes is the exact form the previous
@@ -546,10 +941,8 @@ def log_softmax_tail_masked_partial(
     within = n_offsets < TAIL_LEN
     off = pid * N + TAIL_BASE + n_offsets
     x = tl.load(input_ptr + off, mask=within, other=float("-inf")).to(tl.float32)
-    if USE_KEY:
-        m = _k_fwd_decode_key(tl.max(_k_fwd_key_u32(x.to(tl.uint32, bitcast=True)), 0))
-    else:
-        m = tl.max(x, 0)
+    m_key = _k_fwd_key_u32(x.to(tl.uint32, bitcast=True))
+    m = _k_fwd_decode_key(tl.max(m_key, 0))
     z = tl.sum(tl.exp(x - m), 0)
     po = pid * C_STRIDE + T_SLOT
     tl.store(partial_m_ptr + po, m)
@@ -586,9 +979,7 @@ def log_softmax_tail_masked_pass(
 # result is exactly `x - x` for every element (0.0 for finite inputs, NaN for
 # +-inf, matching eager ATen). One flat contiguous pointwise pass replaces the
 # whole reduction dispatch: no partial buffers, no per-row programs and (for the
-# K > 1 interior-dim case) no transpose copies at all. BLOCK probed on XPU 7:
-# 256/512/1024 all exact over 14 numels x 3 dtypes x (+-inf/NaN) with an
-# out-of-range canary; 512 is the fastest of the three on the benchmark shapes.
+# K > 1 interior-dim case) no transpose copies at all.
 FWD_N1_BLOCK = 512
 
 
@@ -619,15 +1010,13 @@ def _fwd_n1_flat(out, inp):
 
 
 def _fwd_singlepass(out, inp, M, N):
-    use_key = (N <= FWD_KEY_MAX_N) and (inp.dtype != torch.bfloat16)
     if (N & (N - 1)) != 0 and N >= 64:
         # Non-pow2 N in [64, 4096] (e.g. 65/97/99/101/127/129/193/254/255/
         # 257/511/513/1023/1025 ...): the [TILE_M, N] 2D tile silently
-        # miscompiles lanes on XPU for this width family (probed 2026-08-20,
-        # maxdiff ~1.5 on randn inputs vs fp64 ref). The padded per-row
-        # masked single-tile kernel is exact for every probed width
-        # (18 widths x 3 dtypes x fresh cache). Perf: only hit on non-pow2
-        # N, which the official benchmark matrix does not contain.
+        # miscompiles lanes on XPU for this width family. The padded per-row
+        # masked single-tile kernel is exact for every probed width. Perf:
+        # only hit on non-pow2 N, which the official benchmark matrix does not
+        # contain.
         grid = (M, 1, 1)
         log_softmax_kernel_inner[grid](
             out,
@@ -657,7 +1046,6 @@ def _fwd_singlepass(out, inp, M, N):
         N,
         TILE_M=tile_m,
         NEED_MASK=False,
-        USE_KEY=use_key,
         buffer_size_limit=2048,
         num_warps=8,
     )
@@ -673,7 +1061,6 @@ def _fwd_singlepass(out, inp, M, N):
             nfull * tile_m,
             N,
             TILE_N=triton.next_power_of_2(N),
-            USE_KEY=use_key,
             buffer_size_limit=2048,
             num_warps=8,
         )
@@ -684,9 +1071,9 @@ def _pow2_tail_pieces(n, cap=FWD_TAIL_PIECE):
     - pieces: exact power-of-2 lane sets with width >= 64, fully inside the
       row -> unmasked loads/stores (shape-exact on XPU).
     - remainder r = n % 64: handled by the masked 64-lane kernels.
-    Pieces narrower than 64 lanes are NEVER emitted: probes (2026-08-20)
-    show an unmasked <64-wide lane group written by a wider vectorized
-    store corrupts the first (64-w) columns of every row."""
+    Pieces narrower than 64 lanes are NEVER emitted: an unmasked <64-wide lane
+    group written by a wider vectorized store corrupts the first (64-w) columns
+    of every row."""
     r = n % 64
     m = n - r
     pieces = []
@@ -700,9 +1087,6 @@ def _pow2_tail_pieces(n, cap=FWD_TAIL_PIECE):
 
 
 def _fwd_chunk_split(out, inp, M, N):
-    # the wide-chunk path keeps the int-key max for fp16/fp32 (measured 1.42x)
-    # but not for bf16, where it is numerically wrong (FWD_KEY_MAX_N above).
-    use_key = inp.dtype != torch.bfloat16
     c_full = N // FWD_CHUNK_BN
     taillen = N - c_full * FWD_CHUNK_BN
     pieces, rrem = _pow2_tail_pieces(taillen) if taillen else ([], 0)
@@ -725,7 +1109,6 @@ def _fwd_chunk_split(out, inp, M, N):
             c_full + slot,
             base,
             PLEN=plen,
-            USE_KEY=use_key,
             num_warps=8,
         )
         base += plen
@@ -739,7 +1122,6 @@ def _fwd_chunk_split(out, inp, M, N):
             c_full + len(pieces),
             base,
             rrem,
-            USE_KEY=use_key,
             num_warps=8,
         )
     if c_full:
@@ -752,7 +1134,6 @@ def _fwd_chunk_split(out, inp, M, N):
                 c_full,
                 C,
                 BLOCK_N=FWD_CHUNK_BN,
-                USE_KEY=use_key,
                 buffer_size_limit=2048,
                 num_warps=8,
             )
@@ -764,7 +1145,6 @@ def _fwd_chunk_split(out, inp, M, N):
                 c_full,
                 C,
                 BLOCK_N=FWD_CHUNK_BN,
-                USE_KEY=use_key,
                 buffer_size_limit=2048,
                 num_warps=8,
             )
@@ -830,11 +1210,24 @@ def _fwd_chunk_split(out, inp, M, N):
         )
 
 
+# ------------------------  backward -------------------------------
+# log_softmax backward:  scale = sum(out_grad over N); in_grad = out_grad - exp(out)*scale
+#
+# XPU dispatch: the old code sent all N<=8192 to the 2D [TILE_M, N] multirow
+# tile. That tile does an axis=1 reduce that is pathological on XPU for medium
+# N: as N grows TILE_M shrinks (=8192//N), the 2D reduce stops amortizing and
+# gems latency explodes, while the loads/stores stay on the slow masked-memory
+# path even when the mask is always true. Unmasking the always-true row mask
+# (M % TILE_M == 0) flips this completely: the same [TILE_M, N] block-DMA tile
+# becomes faster than the per-row 1D-reduce kernels for every N <= 4096.
+# Per-row 1D-reduce kernels are kept for huge rows (N > 4096, two-pass
+# multi-tile; the unmasked full tiles run 16384 wide, tails stay 8192 wide) and
+# N==1 is a flat pointwise op (scale == out_grad element itself).
 BWD_MULTIROW_MAX_N = 4096
 BWD_SINGLE_TILE_MAX_N = 4096
 BWD_MT_TILE_N = 8192
-# per-row two-pass tile width; measurable 17-20% faster than 8192 when the row
-# length is an exact multiple of it (so there is no masked tail block).
+# per-row two-pass tile width; faster than 8192 when the row length is an exact
+# multiple of it (so there is no masked tail block).
 BWD_MT_TILE_N_WIDE = 16384
 
 
@@ -997,6 +1390,8 @@ def log_softmax_backward_kernel_multirow_tail(
 
 def _forward_launch(out, inp, M, N, K=1):
     if K == 1:
+        if _tle_logsoftmax(out, inp, M, N):
+            return
         if N <= FWD_MULTIROW_MAX_N:
             _fwd_singlepass(out, inp, M, N)
         else:
@@ -1083,12 +1478,9 @@ def _backward_launch(output, grad_output, in_grad, M, N):
         )
     else:
         # large N (N > 4096): per-row two-pass multi-tile instead of the
-        # 3-kernel staged split reduction. Measured on XPU (10000, 65536)
-        # fp32: staged took 45 ms while the per-row two-pass takes 15.1 ms
-        # with a 16384-wide tile and 18.6 ms with 8192. A 16384-wide tile is
-        # also faster for non-exact N (e.g. (10000,40999) 14.4 vs 17.1 ms),
-        # but bf16 miscompiles at 16384-wide (measured maxdiff vs torch ~11.7
-        # vs 1.6e-2 at 8192), so bf16 always stays on the 8192-wide tile.
+        # 3-kernel staged split reduction. A 16384-wide tile is faster than
+        # 8192, but bf16 miscompiles at 16384-wide, so bf16 always stays on the
+        # 8192-wide tile.
         tile_n = (
             BWD_MT_TILE_N if grad_output.dtype == torch.bfloat16 else BWD_MT_TILE_N_WIDE
         )
@@ -1224,33 +1616,35 @@ def log_softmax_out(self, dim, half_to_float=False, *, out):
         # contiguous, then run the fast K == 1 launch family into a contiguous
         # scratch and mirror it back through a transposed view of out. The
         # K > 1 per-row kernel (contiguous load + stride-K scatter store) is
-        # 18-43x slower on XPU than transpose + fast path + transposed copy.
-        # The transposes use the dedicated strided-copy kernel: a generic
-        # `contiguous()` copy via the gems pointwise path costs 2444 ms on
-        # (100, 65536, 100) fp16 (probed on XPU 7, 2026-08-29), and native
-        # `_copy_from` is not used for this backend.
+        # far slower on XPU than transpose + fast path + transposed copy.
+        # Both transposes go through `torch.ops.aten._copy_from` (the vendor's
+        # strided-copy kernel) on purpose: a flag_gems strided pointwise copy is
+        # much slower than the vendor copy. 20+ _kunlunxin ops use this same
+        # escape hatch.
         inp_t = torch.empty((M * K, N), dtype=inp.dtype, device=inp.device)
-        _strided_copy(inp_t.view(M, K, N), inp.view(M, N, K).transpose(1, 2))
+        torch.ops.aten._copy_from(
+            inp.view(M, N, K).transpose(1, 2), inp_t.view(M, K, N), False
+        )
         tmp = torch.empty((M * K, N), dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
             _forward_launch(tmp, inp_t, M * K, N)
         src = tmp.view(M, K, N).transpose(1, 2)
         if out.is_contiguous():
-            _strided_copy(out.view(M, N, K), src)
+            torch.ops.aten._copy_from(src, out.view(M, N, K), False)
         else:
             scratch = torch.empty((M, N, K), dtype=dtype, device=out.device)
-            _strided_copy(scratch, src)
-            _strided_copy(out, scratch.view(self.shape))
+            torch.ops.aten._copy_from(src, scratch, False)
+            torch.ops.aten._copy_from(scratch.view(self.shape), out, False)
         return out
     if not out.is_contiguous():
         # The launch kernels write flat (M, N, K)-contiguous offsets; a
         # strided out (e.g. a slice view) would be corrupted. Compute into a
-        # contiguous scratch, then mirror the result with the strided-copy
-        # kernel instead of the registered copy_ override.
+        # contiguous scratch, then mirror the result with the vendor strided
+        # copy (same escape hatch as above).
         tmp = torch.empty(self.shape, dtype=dtype, device=self.device)
         with torch_device_fn.device(inp.device):
             _forward_launch(tmp, inp, M, N, K)
-        _strided_copy(out, tmp)
+        torch.ops.aten._copy_from(tmp, out, False)
         return out
     with torch_device_fn.device(inp.device):
         _forward_launch(out, inp, M, N, K)
