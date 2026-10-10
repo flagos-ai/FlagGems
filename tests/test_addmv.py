@@ -81,3 +81,21 @@ def test_addmv_out(M, N, scalar, dtype):
     flag_gems.addmv_out(bias, mat, vec, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=N)
+
+
+@pytest.mark.addmv
+@pytest.mark.parametrize("M, N", [(64, 4096), (8, 16384)])
+def test_addmv_float64_precision(M, N):
+    # float64 inputs must be accumulated in float64 (issue #6725).
+    mat = torch.randn((M, N), dtype=torch.float64, device=flag_gems.device)
+    vec = torch.randn((N,), dtype=torch.float64, device=flag_gems.device)
+    bias = torch.randn((M,), dtype=torch.float64, device=flag_gems.device)
+    ref_out = torch.addmv(bias.cpu(), mat.cpu(), vec.cpu(), alpha=0.5, beta=2.0)
+
+    res_out = flag_gems.addmv(bias, mat, vec, alpha=0.5, beta=2.0)
+    assert res_out.dtype == torch.float64
+    torch.testing.assert_close(res_out.cpu(), ref_out, rtol=1e-10, atol=1e-10)
+
+    out = torch.empty((M,), dtype=torch.float64, device=flag_gems.device)
+    flag_gems.addmv_out(bias, mat, vec, alpha=0.5, beta=2.0, out=out)
+    torch.testing.assert_close(out.cpu(), ref_out, rtol=1e-10, atol=1e-10)

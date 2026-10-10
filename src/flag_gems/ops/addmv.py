@@ -25,6 +25,11 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _acc_dtype(dtype):
+    # Accumulate in fp64 for fp64 inputs; fp32 otherwise (fp16/bf16/fp32).
+    return tl.float64 if dtype == torch.float64 else tl.float32
+
+
 @libentry()
 @triton.autotune(
     configs=[
@@ -60,23 +65,24 @@ def addmv_kernel(
     stride_outn,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
 ):
     pid = ext.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
     offset_m = tl.arange(0, BLOCK_M)[None, :]
     n_mask = offset_n < N
-    acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=tl.float32)
+    acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=ACC_DTYPE)
     for m in range(0, M, BLOCK_M):
         m_mask = m + offset_m < M
         A_block_ptrs = A + offset_n * stride_an + (m + offset_m) * stride_am
         B_block_ptrs = B + (m + offset_m) * stride_bm
-        a = tl.load(A_block_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
-        b = tl.load(B_block_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+        a = tl.load(A_block_ptrs, mask=n_mask & m_mask, other=0.0).to(ACC_DTYPE)
+        b = tl.load(B_block_ptrs, mask=m_mask, other=0.0).to(ACC_DTYPE)
         acc += a * b
 
     acc = tl.sum(acc, axis=1)[:, None]
     Inp_ptrs = Inp + offset_n * stride_in
-    inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(tl.float32)
+    inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(ACC_DTYPE)
     Out_ptrs = Out + offset_n * stride_outn
     out_block = acc * alpha + inp * beta
     tl.store(Out_ptrs, out_block, mask=n_mask)
@@ -105,6 +111,7 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
             vec.stride(0),
             self.stride(0),
             out.stride(0),
+            ACC_DTYPE=_acc_dtype(mat.dtype),
         )
     return out
 
@@ -136,5 +143,6 @@ def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
             vec.stride(0),
             self.stride(0),
             out.stride(0),
+            ACC_DTYPE=_acc_dtype(mat.dtype),
         )
     return out
