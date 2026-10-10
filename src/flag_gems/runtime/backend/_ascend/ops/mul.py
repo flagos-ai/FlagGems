@@ -137,6 +137,26 @@ def mul_contiguous_full_kernel(
 
 
 @libentry()
+@triton.jit
+def mul_contiguous_chunked_kernel(
+    x_ptr,
+    y_ptr,
+    output_ptr,
+    BLOCK_SIZE: tl.constexpr,
+    BLOCKS_PER_PROGRAM: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
+        block_id = pid * BLOCKS_PER_PROGRAM + block_offset
+        offsets = block_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        x = tl.load(x_ptr + offsets)
+        y = tl.load(y_ptr + offsets)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out)
+
+
+@libentry()
 @libtuner(
     configs=mul_get_configs(),
     prune_configs_by={"early_config_prune": _prune_mul_flat_configs},
@@ -541,7 +561,26 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     if n_elements == 0:
         return output
     if dtype in (torch.float16, torch.float32, torch.bfloat16) and n_elements % 64 == 0:
+        max_programs = 65535
+
+        chunk_block_size = 8192
+        chunk_blocks = triton.cdiv(n_elements, chunk_block_size)
+        if chunk_blocks > max_programs:
+            blocks_per_program = triton.cdiv(chunk_blocks, max_programs)
+            grid = (triton.cdiv(chunk_blocks, blocks_per_program),)
+            with torch_device_fn.device(output.device):
+                mul_contiguous_chunked_kernel[grid](
+                    a_t,
+                    b_t,
+                    output,
+                    BLOCK_SIZE=chunk_block_size,
+                    BLOCKS_PER_PROGRAM=blocks_per_program,
+                    IS_BOOL=_is_bool_dtype(dtype),
+                )
+            return output
+
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
         with torch_device_fn.device(output.device):
             mul_contiguous_full_kernel[grid](
                 a_t,
