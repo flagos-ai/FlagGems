@@ -786,6 +786,9 @@ from flag_gems.ops.hardswish_backward import hardswish_backward
 from flag_gems.ops.hardtanh import hardtanh, hardtanh_out
 from flag_gems.ops.hardtanh_ import hardtanh_
 from flag_gems.ops.hardtanh_backward import hardtanh_backward
+from flag_gems.ops.has_same_storage_numel import (
+    _has_same_storage_numel as has_same_storage_numel,
+)
 from flag_gems.ops.hash_tensor import hash_tensor
 from flag_gems.ops.heaviside import heaviside
 from flag_gems.ops.heaviside_ import heaviside_
@@ -2254,6 +2257,7 @@ __all__ = [
     "hardtanh_",
     "hardtanh_backward",
     "hardtanh_out",
+    "has_same_storage_numel",
     "hash_tensor",
     "heaviside",
     "heaviside_",
