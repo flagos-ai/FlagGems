@@ -37,6 +37,7 @@ from .arctan2_ import arctan2_
 from .arctan_ import arctan_
 from .argmin import argmin
 from .argsort import argsort
+from .attention import scaled_dot_product_attention
 from .atan2 import atan2
 from .atan2_ import atan2_
 from .avg_pool2d import avg_pool2d_backward
@@ -316,6 +317,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
+    "scaled_dot_product_attention",
     "scaled_grouped_mm",
     "scatter_reduce",
     "scatter_reduce_",
