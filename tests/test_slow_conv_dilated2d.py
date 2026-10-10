@@ -88,11 +88,9 @@ def test_slow_conv_dilated2d(
         ref_inp, ref_weight, list(kernel), ref_bias, stride, padding, dilation
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.slow_conv_dilated2d(
-            inp, weight, list(kernel), bias_tensor, stride, padding, dilation
-        )
-
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, list(kernel), bias_tensor, stride, padding, dilation
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
@@ -108,11 +106,9 @@ def test_slow_conv_dilated2d_projection(dtype):
     ref_out = torch.ops.aten.slow_conv_dilated2d(
         ref_inp, ref_weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.slow_conv_dilated2d(
-            inp, weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
-        )
-
+    res_out = flag_gems.slow_conv_dilated2d(
+        inp, weight, [1, 1], None, [1, 1], [0, 0], [1, 1]
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
