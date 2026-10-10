@@ -345,11 +345,6 @@ def scatter(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER")
     out = inp.clone()
 
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
-
     if has_internal_overlapping(out) == MemOverlap.Yes:
         out = out.contiguous()
 
@@ -379,11 +374,6 @@ def scatter(inp, dim, index, src, reduce=None):
 def scatter_(inp, dim, index, src, reduce=None):
     logger.debug("GEMS SCATTER_")
     out = inp
-
-    if reduce is not None:
-        assert inp.dtype not in (
-            torch.bfloat16,
-        ), "Unsupported operation: reduce scatter bfloat tensors."
 
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
