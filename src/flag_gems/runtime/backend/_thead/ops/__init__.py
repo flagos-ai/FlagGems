@@ -23,9 +23,13 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .as_strided_scatter import as_strided_scatter
+from .baddbmm import baddbmm, baddbmm_out
+from .baddbmm_ import baddbmm_
+from .bmm import bmm, bmm_out
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
@@ -61,6 +65,7 @@ from .repeat import repeat
 from .replication_pad2d import replication_pad2d
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
+from .router_gemm import router_gemm
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
@@ -97,9 +102,16 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm",
     "addmm_",
+    "addmm_out",
     "addmv_",
     "as_strided_scatter",
+    "baddbmm",
+    "baddbmm_",
+    "baddbmm_out",
+    "bmm",
+    "bmm_out",
     "broadcast_tensors",
     "broadcast_to",
     "cholesky_inverse",
@@ -147,6 +159,7 @@ __all__ = [
     "replication_pad2d",
     "replication_pad3d_backward",
     "rms_norm_w8a16_fp8",
+    "router_gemm",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",

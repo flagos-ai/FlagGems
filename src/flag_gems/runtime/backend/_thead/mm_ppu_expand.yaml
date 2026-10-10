@@ -35,6 +35,7 @@ mm_ppu:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       aiu_load_mask: default
       M: default
@@ -57,6 +58,7 @@ mm_ppu_small_m:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       aiu_load_mask: default
       M: default
@@ -81,6 +83,7 @@ mm_ppu_narrow_n:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       aiu_load_mask: default
       M: default
@@ -105,6 +108,7 @@ mm_ppu_mid_m:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       GROUPED_ROWS: default
       aiu_load_mask: default
@@ -126,6 +130,7 @@ gemv_ppu:
     warps: [1, 4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       TRANSPOSED: default
       B_TRANSPOSED: default
       M: default
@@ -167,6 +172,7 @@ mm_ppu_multi_row_gemv:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       M: default
       N: default
@@ -186,6 +192,7 @@ mm_ppu_narrow_columns:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       M: default
       N: default
@@ -207,6 +214,7 @@ mm_ppu_grouped_row_gemv:
     warps: [4, 8]
   - strategy:
       FUSE_ADDMM: default
+      READ_BIAS: default
       B_TRANSPOSED: default
       M: default
       N: default
@@ -290,5 +298,364 @@ mm_ppu_split_k_reduce:
     stages: [1]
     warps: [4, 8]
   - strategy:
+      FUSE_ADDMM: default
+      READ_BIAS: default
       n_elements: default
+      SPLIT_K: default
+
+
+# Batched spaces are bounded neighborhoods of the MM Pareto families. Batch
+# occupancy, layout, and fused bias remain independent tuning keys.
+bmm_ppu:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [32, 64, 128]
+    block_n: [16, 32]
+    block_k: [32, 64]
+    group_m: [1]
+    load_mode: [0, 3]
+    stages: [4, 5]
+    warps: [4]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [32]
+    block_n: [64, 128]
+    block_k: [32, 64]
+    group_m: [1, 4]
+    load_mode: [0, 1, 3]
+    stages: [2, 3]
+    warps: [4]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [64, 128]
+    block_n: [128, 256]
+    block_k: [32, 64]
+    group_m: [8]
+    load_mode: [0, 3]
+    stages: [3, 4]
+    warps: [8]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [32, 64]
+    block_n: [256, 512]
+    block_k: [32]
+    group_m: [1]
+    load_mode: [3]
+    stages: [3, 4]
+    warps: [4, 8]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    # Wider N tiles amortize launch and descriptor work for partially filled
+    # BM32 NT batches without increasing the physical row tile.
+    block_m: [32]
+    block_n: [256, 512]
+    block_k: [64]
+    group_m: [1, 4]
+    load_mode: [0, 1, 2, 3]
+    stages: [2]
+    warps: [4, 8]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [32]
+    block_n: [256]
+    block_k: [128]
+    group_m: [1, 4]
+    load_mode: [0, 1, 2, 3]
+    stages: [2]
+    warps: [4, 8]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      aiu_load_mask: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_ppu_narrow_n:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [64, 128]
+    block_n: [64]
+    block_k: [32, 64]
+    group_m: [1]
+    load_mode: [0, 3]
+    stages: [3, 4, 5]
+    warps: [4]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_m: [256, 512]
+    block_n: [64]
+    block_k: [32, 64]
+    group_m: [1, 4]
+    load_mode: [0, 3]
+    stages: [3, 4, 5]
+    warps: [8]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      aiu_load_mask: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_ppu_multi_row_gemv:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m: [1, 2, 4, 8]
+    block_k: [256, 512, 1024, 2048]
+    stages: [2, 3]
+    warps: [4, 8]
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m: [1, 2]
+    block_k: [512, 1024]
+    stages: [2]
+    warps: [1]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_ppu_narrow_columns:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m: [2, 4, 8, 16]
+    block_k: [1024, 2048, 4096, 8192]
+    stages: [2, 3]
+    warps: [4, 8]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_ppu_small_m:
+  - config:
+    param_map:
+      META:
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_n: [64, 128, 256, 512]
+    block_k: [32, 64]
+    load_mode: [0, 2, 3]
+    stages: [3, 4]
+    warps: [4]
+  - config:
+    param_map:
+      META:
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    block_n: [1024]
+    block_k: [32, 64]
+    load_mode: [0, 1, 3]
+    stages: [3, 4]
+    warps: [8]
+  - config:
+    param_map:
+      META:
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        LOAD_MODE: load_mode
+      num_stages: stages
+      num_warps: warps
+    # Deep NT reductions benefit from fewer K iterations. Keep this
+    # neighborhood within the shared compiler/resource prune envelope.
+    block_n: [64, 128, 256]
+    block_k: [128, 256]
+    load_mode: [0, 2, 3]
+    stages: [2]
+    warps: [4, 8]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      aiu_load_mask: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_gemv_ppu:
+  - config:
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_K: block_k
+      num_stages: stages
+      num_warps: warps
+    block_m: [1, 2, 4, 8, 16]
+    block_k: [256, 512, 1024]
+    stages: [3]
+    warps: [4, 8]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      B_TRANSPOSED: default
+      ROW_VECTOR: default
+      batch: default
+      OUT_SIZE: default
+      K: default
+
+bmm_ppu_split_k:
+  - config:
+    param_map: &bmm_split_k_param_map
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        SPLIT_K: split_k
+        LOAD_MODE: load_mode
+        INTERLEAVED: interleaved
+      num_stages: stages
+      num_warps: warps
+    block_m: [32, 64]
+    block_n: [128, 256]
+    block_k: [64]
+    split_k: [2, 4]
+    load_mode: [3]
+    interleaved: [false]
+    stages: [4]
+    warps: [4]
+  - config:
+    param_map: *bmm_split_k_param_map
+    block_m: [64, 128]
+    block_n: [128, 256]
+    block_k: [32]
+    split_k: [2, 4]
+    load_mode: [3]
+    interleaved: [false]
+    stages: [4]
+    warps: [4]
+  - config:
+    param_map: *bmm_split_k_param_map
+    block_m: [64]
+    block_n: [256]
+    block_k: [32]
+    split_k: [2, 4]
+    load_mode: [1]
+    interleaved: [false]
+    stages: [4]
+    warps: [4]
+  - strategy:
+      B_TRANSPOSED: default
+      aiu_load_mask: default
+      batch: default
+      M: default
+      N: default
+      K: default
+
+bmm_ppu_split_k_reduce:
+  - config:
+    param_map:
+      META:
+        BLOCK: block
+        VEC: vec
+      num_stages: stages
+      num_warps: warps
+    block: [128, 256]
+    vec: [4, 8]
+    stages: [1]
+    warps: [4]
+  - strategy:
+      FUSE_BIAS: default
+      READ_BIAS: default
+      M: default
+      N: default
+      total_elements: default
       SPLIT_K: default
