@@ -1167,7 +1167,7 @@ def mha_fwd(
                         "lse_split_stride": lse_splits.stride(0),
                         "out_b_stride": out.stride(0),
                         "out_s_stride": out.stride(-3),
-                        "out_h_stride": out.stride(-1),
+                        "out_h_stride": out.stride(-2),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
@@ -1175,6 +1175,8 @@ def mha_fwd(
                         "BLOCK_K": BLOCK_K,
                         "q_total": B * H * Q,
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
+                        "num_heads": H,
+                        "seqlen_q": Q,
                     }
                     combine_kernel(**combine_args)
                     return kernel
