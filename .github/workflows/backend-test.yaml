@@ -85,6 +85,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       - uses: ./.github/actions/setup-flaggems
         with:
           backend: ${{ inputs.backend }}
@@ -102,6 +105,10 @@ jobs:
         shell: bash
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           source .venv/bin/activate
           tools/test-op.sh ${{ inputs.pr_id }}
@@ -146,6 +153,9 @@ jobs:
       # /__w, so ./ refs can't be found. Remote refs are fetched into the
       # runner's _actions cache and don't depend on the workspace path.
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
       # .venv and unconditionally reinstalls flagtree from backends.yaml. On the
       # runtime image the compiler and heavy deps (flagtree/torch/xmlir…) are
@@ -183,6 +193,10 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
 
@@ -212,6 +226,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
@@ -241,6 +258,10 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
 
@@ -332,6 +353,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       # Do NOT use setup-flaggems here: it runs setup.sh, which builds a fresh
       # .venv and reinstalls flagtree + heavy deps from the network (flaky — a
       # pip fetch timeout on fsspec already failed this job once). On the runtime
@@ -368,6 +392,10 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
 
@@ -397,6 +425,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
@@ -426,6 +457,10 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
 
@@ -457,6 +492,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
       # Trust the runtime image's preinstalled compiler/deps and reconcile
       # instead of running setup.sh (which rebuilds a venv and reinstalls
       # flagtree + heavy deps over the network). See test-kunlunxin.
@@ -486,5 +524,9 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         env:
           CHANGED_FILES: ${{ inputs.changed_files }}
+          FLAGGEMS_CI_EVENT: ${{ github.event_name }}
+          FLAGGEMS_CI_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FLAGGEMS_CI_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          FLAGGEMS_CI_TESTED_SHA: ${{ github.sha }}
         run: |
           tools/test-op.sh ${{ inputs.pr_id }}
