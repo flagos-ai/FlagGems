@@ -1,0 +1,555 @@
+// tle.raw cluster payload for `upsample_bilinear2d` with exact 2x upsampling
+// (OH == 2*IH, OW == 2*IW, align_corners=False, no explicit scales).
+//
+// Algorithm
+// ---------
+// For scale = 2 the ATen area_pixel_compute_source_index degenerates to a fixed
+// two-tap filter:
+//
+//   out row 2m   = 0.25 * row[m-1] + 0.75 * row[m]
+//   out row 2m+1 = 0.75 * row[m]   + 0.25 * row[m+1]
+//
+// and, along the width (j = input column, ow = output column):
+//
+//   out col 2j   = 0.25 * row[j-1] + 0.75 * row[j]
+//   out col 2j+1 = 0.75 * row[j]   + 0.25 * row[j+1]
+//
+// Out-of-range indices replicate the edge element, which is exactly what
+// ATen does after clamping real_h/real_w to >= 0.
+//
+// Schedule
+// --------
+// The whole machine's cores are split into `NCT` column tiles x `NRG` row
+// groups.  A core owns input columns [c0, c0+tw) and a contiguous run of
+// input rows.  It keeps a 3-row sliding window of **horizontally filtered**
+// rows (H_{m-1}, H_m, H_{m+1}) in local memory and emits output rows 2m and
+// 2m+1 from it, so each input row is fetched exactly once and filtered
+// exactly once: one GM2LM and one horizontal filter per two output rows, one
+// LM2GM per output row.  Every transfer is a contiguous span -- no gather, no
+// per-element DMA.
+//
+// The filter is separable, so applying the horizontal pass first is exact:
+//
+//   out row 2m   col 2t   = 0.25 * HE_{m-1}[t] + 0.75 * HE_m[t]
+//   out row 2m+1 col 2t   = 0.75 * HE_m[t]     + 0.25 * HE_{m+1}[t]
+//
+// (and the same for the odd columns with HO).  Filtering the *input* row and
+// then blending vertically halves the horizontal-filter work and removes the
+// per-output-row fp32 vertical-blend scratch that the previous vertical-first
+// schedule needed.
+//
+// The window is held in **fp32** for every storage type, so all the
+// arithmetic is a plain float loop that the backend vectorises.  The storage
+// type only shows up at the two boundaries: GM2LM -> fp32 on load, and
+// fp32 -> LM2GM on store.  fp16 has no vectorisable scalar half<->float
+// conversion on xpu3 (the cost model rejects `fpext`/`fptrunc`), so that pair
+// is done explicitly with the XTDK 32-lane SIMD helpers.
+//
+// Local memory (per core), T = storage type, TW = tile width in input columns:
+//   (TW + 2) * sizeof(T)       raw staging (unused for fp32)
+//   (TW + 32) * 4              fp32 row window (32 lanes of filter lookahead)
+//   6 * TW * 4                 H_{m-1}, H_m, H_{m+1} x (even, odd) phases
+//   2 * TW * sizeof(T)         output row staging
+//
+// Gate (enforced by the Python caller):
+//   ndim == 4, contiguous, OH == 2*IH, OW == 2*IW, align_corners == False,
+//   scales_h/scales_w == None, IW <= core_num() * TW.
+
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_simd.h"
+
+// float32x16_t and float16x32_t are both 512-bit; the cast is free.
+#define UB2D_H32(x) __builtin_bit_cast(float16x32_t, x)
+#define UB2D_F32(x) __builtin_bit_cast(float32x16_t, x)
+
+// ---------------------------------------------------------------------------
+// Bulk fp16 <-> fp32 conversion with the XTDK SIMD helpers (32 lanes/step).
+// The scalar epilogue covers the (at most 31) tail elements.
+// ---------------------------------------------------------------------------
+static __device__ __inline__ void ub2d_f16_to_f(const _Float16 *s, float *d, int n)
+{
+    int k = 0;
+    for (; k + 32 <= n; k += 32) {
+        float16x32_t h = vload_lm_float16x32(s + k);
+        *(float32x16_t *)(d + k)      = vfp162float_l(h);
+        *(float32x16_t *)(d + k + 16) = vfp162float_h(h);
+    }
+    for (; k < n; k++) d[k] = (float)s[k];
+}
+
+static __device__ __inline__ void ub2d_f_to_f16(const float *s, _Float16 *d, int n)
+{
+    int k = 0;
+    for (; k + 32 <= n; k += 32) {
+        float32x16_t a = *(const float32x16_t *)(s + k);
+        float32x16_t b = *(const float32x16_t *)(s + k + 16);
+        vstore_lm_float16x32(d + k, vfloat2fp16_lh(a, b));
+    }
+    for (; k < n; k++) d[k] = (_Float16)s[k];
+}
+
+// ---------------------------------------------------------------------------
+// bf16 <-> fp32 conversion.  xpu3 clang has no native bf16 storage type, so
+// bf16 is carried as a plain `unsigned short` (a builtin 2-byte type -- a
+// custom struct as the element type makes the whole payload fail with an
+// `lm rdwr conflict`).
+//
+// bf16 is just the high half of an fp32, so both directions are pure 16-bit
+// lane shuffles:
+//
+//   to_f   : vvmerge_l/h(0, S) drops each 16-bit lane of S into the HIGH half
+//            of a 32-bit lane -- exactly the bf16 -> fp32 bit pattern.
+//   from_f : two fp32 are packed into one 32-bit word (bf16 | bf16 << 16), so
+//            the store is 4 bytes per two outputs and vectorises to a full
+//            line.  n is always even here (n == 2 * tw).
+// ---------------------------------------------------------------------------
+static __device__ __inline__ void ub2d_bf16_to_f(const unsigned short *s, float *d, int n)
+{
+    float16x32_t z = {};
+    int k = 0;
+    for (; k + 32 <= n; k += 32) {
+        float16x32_t S = vload_lm_float16x32(s + k);
+        *(float32x16_t *)(d + k)      = UB2D_F32(vvmerge_l_float16x32(z, S));
+        *(float32x16_t *)(d + k + 16) = UB2D_F32(vvmerge_h_float16x32(z, S));
+    }
+    for (; k < n; k++) {
+        union { unsigned int u; float f; } cvt;
+        cvt.u = ((unsigned int)s[k]) << 16;
+        d[k] = cvt.f;
+    }
+}
+
+static __device__ __inline__ void ub2d_f_to_bf16(const float *s, unsigned short *d, int n)
+{
+    const unsigned int *u = (const unsigned int *)s;
+    unsigned int *o = (unsigned int *)d;
+    int k = 0;
+#pragma clang loop vectorize(enable) vectorize_width(16) interleave(disable)
+    for (; k + 2 <= n; k += 2) {
+        o[k >> 1] = (u[k + 1] & 0xFFFF0000u) | (u[k] >> 16);
+    }
+    for (; k < n; k++) {
+        d[k] = (unsigned short)(u[k] >> 16);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Per-storage-type conversion traits.  fp16 is handled by the XTDK SIMD
+// helpers, bf16 by the 16-bit lane shuffle above, and fp32 is the identity
+// and keeps the output row in place.
+// ---------------------------------------------------------------------------
+template <typename T>
+struct ub2d_cvt {
+    static const bool identity = false;
+
+    static __device__ __inline__ void to_f(const T *s, float *d, int n) {
+#pragma clang loop vectorize(enable) vectorize_width(16) interleave(disable)
+        for (int k = 0; k < n; k++) d[k] = (float)s[k];
+    }
+
+    static __device__ __inline__ void from_f(const float *s, T *d, int n) {
+#pragma clang loop vectorize(enable) vectorize_width(16) interleave(disable)
+        for (int k = 0; k < n; k++) d[k] = s[k];
+    }
+};
+
+template <>
+struct ub2d_cvt<unsigned short> {
+    static const bool identity = false;
+
+    static __device__ __inline__ void to_f(const unsigned short *s, float *d, int n) {
+        ub2d_bf16_to_f(s, d, n);
+    }
+
+    static __device__ __inline__ void from_f(const float *s, unsigned short *d, int n) {
+        ub2d_f_to_bf16(s, d, n);
+    }
+};
+
+template <>
+struct ub2d_cvt<float> {
+    static const bool identity = true;
+
+    static __device__ __inline__ void to_f(const float *s, float *d, int n) {
+#pragma clang loop vectorize(enable) vectorize_width(16) interleave(disable)
+        for (int k = 0; k < n; k++) d[k] = s[k];
+    }
+
+    static __device__ __inline__ void from_f(const float *s, float *d, int n) {
+        (void)s;
+        (void)d;
+        (void)n;
+    }
+};
+
+template <>
+struct ub2d_cvt<_Float16> {
+    static const bool identity = false;
+
+    static __device__ __inline__ void to_f(const _Float16 *s, float *d, int n) {
+        ub2d_f16_to_f(s, d, n);
+    }
+
+    static __device__ __inline__ void from_f(const float *s, _Float16 *d, int n) {
+        ub2d_f_to_f16(s, d, n);
+    }
+};
+
+// ---------------------------------------------------------------------------
+// Load one input-row slice into LM: buf[0 .. tw+1] <- row[c0-1 .. c0+tw],
+// clamped to [0, IW-1].  Exactly one GM2LM; the (at most two) replicated edge
+// elements are fixed up in LM so the transfer stays contiguous.
+// ---------------------------------------------------------------------------
+template <typename T>
+static __device__ __inline__ void ub2d_gm2lm_slice(
+        _global_ptr_ const T *row,
+        T *buf,
+        int c0, int tw, int IW)
+{
+    if (c0 == 0) {
+        // Left edge: buf[1 .. tw+1] <- row[0 .. tw] (tw+1 elements, or IW when
+        // the tile is the whole row), then replicate row[0] into buf[0].
+        int n = (tw + 1 <= IW) ? (tw + 1) : IW;
+        GM2LM(row, buf + 1, n * (int)sizeof(T));
+        buf[0] = buf[1];
+        if (c0 + tw >= IW) {
+            buf[tw + 1] = buf[tw];
+        }
+    } else if (c0 + tw < IW) {
+        // Interior: one contiguous TW+2 span.
+        GM2LM(row + c0 - 1, buf, (tw + 2) * (int)sizeof(T));
+    } else {
+        // Right edge: row[c0-1 .. IW-1] then replicate the last column.
+        GM2LM(row + c0 - 1, buf, (tw + 1) * (int)sizeof(T));
+        buf[tw + 1] = buf[tw];
+    }
+}
+
+// Raw staging -> fp32 window.  fp32 skips the staging copy entirely.
+template <typename T>
+static __device__ __inline__ void ub2d_load_slice(
+        _global_ptr_ const T *row, T *stage, float *dst,
+        int c0, int tw, int IW)
+{
+    ub2d_gm2lm_slice(row, stage, c0, tw, IW);
+    ub2d_cvt<T>::to_f(stage, dst, tw + 2);
+}
+
+static __device__ __inline__ void ub2d_load_slice(
+        _global_ptr_ const float *row, float *stage, float *dst,
+        int c0, int tw, int IW)
+{
+    (void)stage;
+    ub2d_gm2lm_slice(row, dst, c0, tw, IW);
+}
+
+// ---------------------------------------------------------------------------
+// Horizontal two-tap filter of one input row R (tw+2 fp32 samples), written as
+// the two output phases:
+//
+//   HE[t] = 0.25 R[t]   + 0.75 R[t+1]
+//   HO[t] = 0.75 R[t+1] + 0.25 R[t+2]
+//
+// The obvious form needs R[t+1] and R[t+2], whose 64-byte vector loads are
+// misaligned; xpu3 faults on those (`misaligned address`) or, worse, silently
+// rounds the base down to the 64-byte boundary.  So the shifted rows are
+// spliced from two ALIGNED loads using the 512-bit zero-fill shifts:
+//
+//   s_k = vsrlp(32k, a) | vsllp(32(16-k), bnext)
+//       = [a_k .. a_15, 0 x k] | [0 x (16-k), b_0 .. b_{k-1}]
+//
+// where a = R[t..t+15] and bnext = R[t+16..t+31].  The two zero runs are
+// disjoint, so a plain OR splices them.  Note the splice term is a LEFT shift
+// of the next block: vsrlp(32k, bnext) would put b_15 in lane 0.
+//
+// The filter runs once per *input* row: the vertical blend is applied to HE/HO
+// afterwards (see ub2d_blend_ilv), which is what makes the two-pass
+// decomposition pay off.
+//
+// `always_inline` is load-bearing: if the compiler emits this out of line, the
+// HE/HO pointers become unknown arguments it must assume may alias, which
+// forces a strict LM load->store order.  That produces adjacent scalar LM
+// read/write pairs, which the XPU LM unit rejects at run time with
+// `reason[27] lm rdwr conflict` (bf16, whose conversion body is large enough
+// to tip the inliner over, hit this).
+// ---------------------------------------------------------------------------
+template <int TW>
+static __device__ __attribute__((always_inline)) inline void ub2d_hfilter_vec(
+        const float *R, float *HE, float *HO)
+{
+#pragma clang loop unroll(full)
+    for (int t = 0; t < TW; t += 16) {
+        float32x16_t a  = *(const float32x16_t *)(R + t);
+        float32x16_t bn = *(const float32x16_t *)(R + t + 16);
+        float32x16_t s1 = UB2D_F32(vvor_float16x32(
+                vsrlp_float16x32(32, UB2D_H32(a)),
+                vsllp_float16x32(480, UB2D_H32(bn))));
+        float32x16_t s2 = UB2D_F32(vvor_float16x32(
+                vsrlp_float16x32(64, UB2D_H32(a)),
+                vsllp_float16x32(448, UB2D_H32(bn))));
+        *(float32x16_t *)(HE + t) = 0.25f * a + 0.75f * s1;
+        *(float32x16_t *)(HO + t) = 0.75f * s1 + 0.25f * s2;
+    }
+}
+
+// Runtime-block variant for the partial right-hand tile.  It runs the *same*
+// 16-lane body with the block count rounded up, so the surplus columns
+// `tw .. nb*16-1` are computed but never reach memory (the LM2GM below stores
+// exactly `2*tw` elements).  The reads stay in bounds because
+// `ceil(tw/16)*16 <= TW` whenever `tw <= TW`, and the fp32 window has 32 lanes
+// of lookahead.
+//
+// This replaced a scalar loop, which is not merely slower: its interleaved
+// scalar LM loads/stores are rejected by the XPU LM unit at run time
+// (`cl_excp_st= 08000000` / `reason[27] lm rdwr conflict`), surfacing as a
+// kernel exception / status 719 and wedging the card.
+static __device__ __attribute__((always_inline)) inline void ub2d_hfilter_vec_n(
+        const float *R, float *HE, float *HO, int nb)
+{
+    for (int b = 0; b < nb; b++) {
+        int t = b * 16;
+        float32x16_t a  = *(const float32x16_t *)(R + t);
+        float32x16_t bn = *(const float32x16_t *)(R + t + 16);
+        float32x16_t s1 = UB2D_F32(vvor_float16x32(
+                vsrlp_float16x32(32, UB2D_H32(a)),
+                vsllp_float16x32(480, UB2D_H32(bn))));
+        float32x16_t s2 = UB2D_F32(vvor_float16x32(
+                vsrlp_float16x32(64, UB2D_H32(a)),
+                vsllp_float16x32(448, UB2D_H32(bn))));
+        *(float32x16_t *)(HE + t) = 0.25f * a + 0.75f * s1;
+        *(float32x16_t *)(HO + t) = 0.75f * s1 + 0.25f * s2;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Vertical blend of two filtered rows, interleaved straight into the output.
+//
+//   obuf[2t]   = wa * pe[t] + wb * ce[t]
+//   obuf[2t+1] = wa * po[t] + wb * co[t]
+//
+// The interleave is the whole reason this is not a plain elementwise loop:
+// the two phases land in alternating output columns, and a stride-2 store
+// makes the vectoriser give up (LLVM emits the whole thing scalar, ~512
+// `mul.f` + 512 `fmac.f` + 512 scalar stores per input row, and the register
+// pressure blows the frame past the 8 KB LM budget).  So each storage type
+// interleaves with the SIMD primitives instead:
+//
+//   fp32 : `vvmerge_l/h_float32x16` interleave the low/high 8 *32-bit* lanes
+//          (dst = {b7,a7,...,b0,a0} and {b15,a15,...,b8,a8}), so the 16 even
+//          and 16 odd outputs of one block become exactly two 64-byte stores.
+//   fp16 : the 16-bit granularity of `vvmerge_l` is already the wanted
+//          element size --
+//            A = vfloat2fp16_lh(e, o)     = [e0..e15, o0..o15]
+//            B = vsrlp_float16x32(256, A) = [o0..o15, 0 x 16]
+//            C = vvmerge_l(A, B)          = [e0, o0, e1, o1, ...]
+//          -- one 64-byte LM store replaces 64 scalar accesses.
+//   bf16 : its 32-bit output word is `high16(e) | high16(o) << 16`, and the
+//          0xFFFF mask below (every odd 16-bit lane) keeps exactly those two
+//          halves.
+//
+// All three therefore run at the same shape as the fp16 path: 8 vector
+// arithmetic ops + 2 interleave ops + 2 stores per output row.
+// ---------------------------------------------------------------------------
+template <typename T>
+static __device__ __attribute__((always_inline)) inline void ub2d_blend_ilv_loop(
+        const float *pe, const float *po, const float *ce, const float *co,
+        float wa, float wb, int tw, T *obuf)
+{
+    for (int t = 0; t < tw; t += 16) {
+        float32x16_t e = wa * *(const float32x16_t *)(pe + t)
+                       + wb * *(const float32x16_t *)(ce + t);
+        float32x16_t o = wa * *(const float32x16_t *)(po + t)
+                       + wb * *(const float32x16_t *)(co + t);
+        *(float32x16_t *)(obuf + 2 * t)      = vvmerge_l_float32x16(e, o);
+        *(float32x16_t *)(obuf + 2 * t + 16) = vvmerge_h_float32x16(e, o);
+    }
+}
+
+template <>
+__device__ __attribute__((always_inline)) inline void ub2d_blend_ilv_loop<_Float16>(
+        const float *pe, const float *po, const float *ce, const float *co,
+        float wa, float wb, int tw, _Float16 *obuf)
+{
+    for (int t = 0; t < tw; t += 16) {
+        float32x16_t e = wa * *(const float32x16_t *)(pe + t)
+                       + wb * *(const float32x16_t *)(ce + t);
+        float32x16_t o = wa * *(const float32x16_t *)(po + t)
+                       + wb * *(const float32x16_t *)(co + t);
+        float16x32_t A = vfloat2fp16_lh(e, o);
+        vstore_lm_float16x32(obuf + 2 * t,
+                             vvmerge_l_float16x32(A, vsrlp_float16x32(256, A)));
+    }
+}
+
+template <>
+__device__ __attribute__((always_inline)) inline void ub2d_blend_ilv_loop<unsigned short>(
+        const float *pe, const float *po, const float *ce, const float *co,
+        float wa, float wb, int tw, unsigned short *obuf)
+{
+    // 0xFFFF in every odd 16-bit lane.  Applied to a bit-cast fp32 vector it
+    // keeps each float's high half (sign|exponent|mantissa-high) in place --
+    // i.e. its bf16 pattern.  The constant folds into two scalar ops plus one
+    // broadcast, hoisted out of the loop.
+    bfloat16x32_t raw = {0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF,
+                         0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF,
+                         0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF,
+                         0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF};
+    const float16x32_t M = __builtin_bit_cast(float16x32_t, raw);
+    for (int t = 0; t < tw; t += 16) {
+        float32x16_t e = wa * *(const float32x16_t *)(pe + t)
+                       + wb * *(const float32x16_t *)(ce + t);
+        float32x16_t o = wa * *(const float32x16_t *)(po + t)
+                       + wb * *(const float32x16_t *)(co + t);
+        // e = [e0.lo, e0.hi, e1.lo, e1.hi, ...]; `e & M` leaves the bf16 of e
+        // in the odd lane, and one 16-bit right shift drops it into the even
+        // lane.  OR-ing o's masked (odd-lane) bf16 gives
+        //   [e0.hi, o0.hi, e1.hi, o1.hi, ...]
+        // = 16 32-bit words whose low half is e's bf16 and high half is o's,
+        // which is exactly the output row's layout.
+        float16x32_t X = UB2D_H32(e);
+        float16x32_t Y = UB2D_H32(o);
+        vstore_lm_float16x32(obuf + 2 * t,
+                vvor_float16x32(vsrlp_float16x32(16, vvand_float16x32(X, M)),
+                                vvand_float16x32(Y, M)));
+    }
+}
+
+template <typename T, int TW>
+static __device__ __attribute__((always_inline)) inline void ub2d_blend_ilv(
+        _global_ptr_ T *outrow,
+        const float *pe, const float *po,
+        const float *ce, const float *co,
+        float wa, float wb, int tw, int c0, T *obuf)
+{
+    if (tw == TW) {
+        // Passing the compile-time TW lets the unrolled shuffle fold to a
+        // fixed-size body; a runtime bound would cost the unroll (~15% on
+        // fp16/bf16, measured).
+        ub2d_blend_ilv_loop<T>(pe, po, ce, co, wa, wb, TW, obuf);
+    } else {
+        // Partial right-hand tile.  Round the width up to whole 16-lane
+        // blocks: the surplus columns are written to `obuf` but the LM2GM
+        // below stores exactly `2*tw` elements, so they are discarded.  The
+        // point is to stay free of scalar LM stores, which the LM unit rejects
+        // at run time (`lm rdwr conflict` / status 719).
+        ub2d_blend_ilv_loop<T>(pe, po, ce, co, wa, wb, ((tw + 15) / 16) * 16, obuf);
+    }
+    // LM2GM issues the DMA before its trailing fence, so the stores above are
+    // not ordered with respect to the DMA's LM reads.  Drain them first.
+    mfence_lm();
+    LM2GM(obuf, outrow + 2 * c0, 2 * tw * (int)sizeof(T));
+}
+
+// ---------------------------------------------------------------------------
+// Whole-op driver.  inp: [NC*IH, IW], out: [NC*2*IH, 2*IW], both contiguous.
+// ---------------------------------------------------------------------------
+template <typename T, int TW>
+static __device__ __inline__ void ub2d_x2_run(
+        _global_ptr_ const T *inp,
+        _global_ptr_ T *out,
+        int NC, int IH, int IW)
+{
+    alignas(64) T     stage[TW + 2];
+    alignas(64) float raw[TW + 32];
+    alignas(64) float hE[3][TW];
+    alignas(64) float hO[3][TW];
+    alignas(64) T     obuf[2 * TW];
+
+    // One program == one cluster; the grid picks how many clusters run.  The
+    // global core index has to fold in `cluster_id()`, otherwise every cluster
+    // re-does core 0..core_num()-1 and the extra clusters are wasted.
+    int cid    = cluster_id() * core_num() + core_id();
+    int ncores = cluster_num() * core_num();
+
+    int NCT = (IW + TW - 1) / TW;
+    if (NCT < 1)      NCT = 1;
+    if (NCT > ncores) NCT = ncores;
+    int NRG = ncores / NCT;
+    if (NRG < 1) NRG = 1;
+
+    int ct = cid % NCT;
+    int rg = cid / NCT;
+    if (rg >= NRG) return;
+
+    int c0 = ct * TW;
+    int tw = IW - c0;
+    if (tw > TW) tw = TW;
+    if (tw <= 0) return;
+
+    // Rows are split over the *flattened* (plane, row) space, not over IH
+    // alone.  With an IH-only split a core owns the same row range in every
+    // one of the NC planes, so whenever NC < NRG only NC*IH of the NRG*IH
+    // core-slots do any work -- for (8,16,128,128) that left most cores idle
+    // and cost ~4.5x.  Flattening keeps every core fed; the only price is
+    // re-priming the window at a plane boundary.
+    int rows_total = NC * IH;
+    int grs = (int)(((long)rg * rows_total) / NRG);
+    int gre = (int)(((long)(rg + 1) * rows_total) / NRG);
+    if (grs >= gre) return;
+
+    int OW = 2 * IW;
+
+    // The window holds H_{m-1}, H_m and H_{m+1}; the pointers roll forward by
+    // one slot per input row.
+    float *pe = hE[0], *po = hO[0];
+    float *ce = hE[1], *co = hO[1];
+    float *ne = hE[2], *no = hO[2];
+
+    for (int gr = grs; gr < gre; gr++) {
+        int nc = gr / IH;
+        int m = gr - nc * IH;
+
+        const _global_ptr_ T *inplane  = inp + (long)nc * IH * IW;
+        _global_ptr_ T       *outplane = out + (long)nc * (2L * IH) * OW;
+
+        // Prime H_{m-1} and H_m on the core's first row (which may be
+        // mid-plane) and again at every plane boundary; otherwise roll.
+        int nb = (tw + 15) / 16;
+        if (m == 0 || gr == grs) {
+            int rA = (m > 0) ? m - 1 : 0;
+            ub2d_load_slice(inplane + (long)rA * IW, stage, raw, c0, tw, IW);
+            if (tw == TW) ub2d_hfilter_vec<TW>(raw, pe, po);
+            else          ub2d_hfilter_vec_n(raw, pe, po, nb);
+            ub2d_load_slice(inplane + (long)m * IW, stage, raw, c0, tw, IW);
+            if (tw == TW) ub2d_hfilter_vec<TW>(raw, ce, co);
+            else          ub2d_hfilter_vec_n(raw, ce, co, nb);
+        }
+        int rn = (m + 1 < IH) ? (m + 1) : (IH - 1);
+        ub2d_load_slice(inplane + (long)rn * IW, stage, raw, c0, tw, IW);
+        if (tw == TW) ub2d_hfilter_vec<TW>(raw, ne, no);
+        else          ub2d_hfilter_vec_n(raw, ne, no, nb);
+
+        ub2d_blend_ilv<T, TW>(outplane + (long)(2 * m) * OW,
+                              pe, po, ce, co, 0.25f, 0.75f, tw, c0, obuf);
+        ub2d_blend_ilv<T, TW>(outplane + (long)(2 * m + 1) * OW,
+                              ce, co, ne, no, 0.75f, 0.25f, tw, c0, obuf);
+
+        float *t;
+        t = pe; pe = ce; ce = ne; ne = t;
+        t = po; po = co; co = no; no = t;
+    }
+}
+
+extern "C" __device__ void upsample_bilinear2d_x2_f32(
+        _global_ptr_ const float *inp,
+        _global_ptr_ float *out,
+        int NC, int IH, int IW)
+{
+    ub2d_x2_run<float, 128>(inp, out, NC, IH, IW);
+}
+
+extern "C" __device__ void upsample_bilinear2d_x2_f16(
+        _global_ptr_ const _Float16 *inp,
+        _global_ptr_ _Float16 *out,
+        int NC, int IH, int IW)
+{
+    ub2d_x2_run<_Float16, 128>(inp, out, NC, IH, IW);
+}
+
+extern "C" __device__ void upsample_bilinear2d_x2_bf16(
+        _global_ptr_ const unsigned short *inp,
+        _global_ptr_ unsigned short *out,
+        int NC, int IH, int IW)
+{
+    ub2d_x2_run<unsigned short, 128>(inp, out, NC, IH, IW);
+}

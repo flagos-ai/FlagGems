@@ -532,7 +532,9 @@ from .safe_softmax import _safe_softmax
 from .scalar_tensor import scalar_tensor
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
-from .scatter_add_ import scatter_add, scatter_add_
+# scatter_add / scatter_add_: self-contained tle.raw cluster kernels
+# (SM atomic or per-core LM accumulation) -- no vendor kernel dependency.
+from .scatter_add import scatter_add, scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
