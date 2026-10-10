@@ -14,6 +14,7 @@
 
 import itertools
 import logging
+from contextlib import contextmanager
 
 import pytest
 import torch
@@ -126,20 +127,34 @@ def _close(actual, expected, dtype, equal_nan=False):
     )
 
 
-def _functional(B, A, flags, entry):
-    if entry == "direct":
-        with _RejectNativeSolve():
-            return flag_gems.triangular_solve(B, A, *flags)
-    with flag_gems.use_gems(include=["triangular_solve"]):
-        return torch.ops.aten.triangular_solve.default(B, A, *flags)
+@contextmanager
+def _registered_triangular_solve():
+    # Used only by the gradient test: direct Triton entry points do not attach
+    # autograd history. ATen supplies the derivative for the registered forward.
+    # Native references run before registration; restore dispatch on every exit.
+    library = torch.library.Library("aten", "IMPL")
+    previous_registrar = flag_gems.current_work_registrar
+    try:
+        flag_gems.only_enable(
+            lib=library,
+            include=["triangular_solve"],
+            registrar=flag_gems.GeneralOpRegistrar,
+        )
+        yield
+    finally:
+        if hasattr(library, "_destroy"):
+            library._destroy()
+        flag_gems.current_work_registrar = previous_registrar
 
 
-def _out(B, A, flags, X, M, entry):
-    if entry == "direct":
-        with _RejectNativeSolve():
-            return flag_gems.triangular_solve_out(B, A, *flags, X=X, M=M)
-    with flag_gems.use_gems(include=["triangular_solve_out"]):
-        return torch.ops.aten.triangular_solve.X(B, A, *flags, X=X, M=M)
+def _functional(B, A, flags):
+    with _RejectNativeSolve():
+        return flag_gems.triangular_solve(B, A, *flags)
+
+
+def _out(B, A, flags, X, M):
+    with _RejectNativeSolve():
+        return flag_gems.triangular_solve_out(B, A, *flags, X=X, M=M)
 
 
 def _column_major_stride(shape):
@@ -171,13 +186,12 @@ def _assert_result(result, reference, B, A, functional=True):
 @pytest.mark.parametrize("system", SYSTEMS)
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve(system, flags, dtype, entry, caplog):
+def test_triangular_solve(system, flags, dtype, caplog):
     B, A = _inputs(*system, dtype, unitriangular=flags[2])
     before_A, before_B = A.clone(), B.clone()
     reference = _reference(B, A, *flags)
     with caplog.at_level(logging.DEBUG):
-        result = _functional(B, A, flags, entry)
+        result = _functional(B, A, flags)
     assert any(
         record.name.endswith(".triangular_solve")
         and record.message.endswith(" TRIANGULAR_SOLVE")
@@ -192,8 +206,7 @@ def test_triangular_solve(system, flags, dtype, entry, caplog):
 @pytest.mark.parametrize("layout", ["transpose", "slice", "expand"])
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_noncontiguous(layout, flags, dtype, entry):
+def test_triangular_solve_noncontiguous(layout, flags, dtype):
     B, A = _inputs((2, 1), (3,), 17, 5, dtype, unitriangular=flags[2])
     if layout == "transpose":
         A = A.transpose(-2, -1).contiguous().transpose(-2, -1)
@@ -209,14 +222,13 @@ def test_triangular_solve_noncontiguous(layout, flags, dtype, entry):
         B = B.expand(2, 3, 17, 5)
     assert not A.is_contiguous() and not B.is_contiguous()
     reference = _reference(B, A, *flags)
-    _assert_result(_functional(B, A, flags, entry), reference, B, A)
+    _assert_result(_functional(B, A, flags), reference, B, A)
 
 
 @pytest.mark.triangular_solve
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("poison", [float("nan"), float("inf")])
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_ignored_entries(flags, poison, entry):
+def test_triangular_solve_ignored_entries(flags, poison):
     B, A = _inputs((2, 1), (3,), 7, 3, torch.float32, flags[2])
     # Poisoning ignored entries must leave the clean system's solution intact.
     # A vendor reference may itself propagate a poisoned implicit diagonal.
@@ -227,7 +239,7 @@ def test_triangular_solve_ignored_entries(flags, poison, entry):
     if flags[2]:
         A.diagonal(0, -2, -1).fill_(poison)
     reference = (reference[0], A.expand(reference[1].shape).cpu())
-    result = _functional(B, A, flags, entry)
+    result = _functional(B, A, flags)
     _assert_result(result, reference, B, A)
     assert torch.isfinite(result[0]).all()
 
@@ -243,7 +255,7 @@ def test_triangular_solve_singular_and_near_singular(diagonal, upper, transpose,
     A[0, 0] = diagonal
     B = torch.ones(4, 2, dtype=dtype, device=flag_gems.device)
     flags = (upper, transpose, False)
-    X, M = _functional(B, A, flags, "direct")
+    X, M = _functional(B, A, flags)
     if diagonal == 0:
         # BLAS implementations differ in singular NaN propagation. Require
         # nonfinite output without prescribing its locations or signs.
@@ -266,19 +278,17 @@ EMPTY_SYSTEMS = [
 
 @pytest.mark.triangular_solve
 @pytest.mark.parametrize("system", EMPTY_SYSTEMS)
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_empty(system, entry):
+def test_triangular_solve_empty(system):
     B, A = _inputs(*system, torch.float32)
     flags = (True, False, False)
-    _assert_result(_functional(B, A, flags, entry), _reference(B, A, *flags), B, A)
+    _assert_result(_functional(B, A, flags), _reference(B, A, *flags), B, A)
 
 
 @pytest.mark.triangular_solve_out
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("layout", ["contiguous", "transpose", "slice", "resize"])
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out(flags, dtype, layout, entry, caplog):
+def test_triangular_solve_out(flags, dtype, layout, caplog):
     B, A = _inputs((2, 1), (3,), 17, 5, dtype, flags[2])
     reference = _reference(B, A, *flags)
     if layout == "resize":
@@ -303,7 +313,7 @@ def test_triangular_solve_out(flags, dtype, layout, entry, caplog):
         X, M = outputs
     pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
     with caplog.at_level(logging.DEBUG):
-        result = _out(B, A, flags, X, M, entry)
+        result = _out(B, A, flags, X, M)
     assert any(
         record.name.endswith(".triangular_solve")
         and record.message.endswith(" TRIANGULAR_SOLVE_OUT")
@@ -320,14 +330,13 @@ def test_triangular_solve_out(flags, dtype, layout, entry, caplog):
 
 
 @pytest.mark.triangular_solve_out
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out_nonempty_resize(entry):
+def test_triangular_solve_out_nonempty_resize():
     B, A = _inputs((), (), 7, 3, torch.float32)
     X = torch.empty(1, dtype=A.dtype, device=A.device)
     M = torch.empty(1, dtype=A.dtype, device=A.device)
     flags = (True, False, False)
     with pytest.warns(UserWarning, match="output.*resized"):
-        result = _out(B, A, flags, X, M, entry)
+        result = _out(B, A, flags, X, M)
     assert result[0] is X and result[1] is M
     _assert_result(result, _reference(B, A, *flags), B, A, functional=False)
 
@@ -339,18 +348,17 @@ def test_triangular_solve_out_empty(system):
     X = torch.empty(0, device=A.device)
     M = torch.empty(0, device=A.device)
     flags = (True, False, False)
-    result = _out(B, A, flags, X, M, "direct")
+    result = _out(B, A, flags, X, M)
     assert result[0] is X and result[1] is M
     _assert_result(result, _reference(B, A, *flags), B, A, functional=False)
 
 
 @pytest.mark.triangular_solve_out
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out_aliases_inputs(entry):
+def test_triangular_solve_out_aliases_inputs():
     B, A = _inputs((2,), (2,), 7, 3, torch.float32)
     flags = (False, True, False)
     reference = _reference(B, A, *flags)
-    result = _out(B, A, flags, B, A, entry)
+    result = _out(B, A, flags, B, A)
     assert result[0] is B and result[1] is A
     _assert_result(result, reference, B, A, functional=False)
 
@@ -368,12 +376,11 @@ INVALID_SHAPES = [
 
 @pytest.mark.triangular_solve
 @pytest.mark.parametrize("b_shape,a_shape", INVALID_SHAPES)
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_invalid_shapes(b_shape, a_shape, entry):
+def test_triangular_solve_invalid_shapes(b_shape, a_shape):
     B = torch.empty(b_shape, device=flag_gems.device)
     A = torch.empty(a_shape, device=flag_gems.device)
     with pytest.raises((RuntimeError, ValueError)):
-        _functional(B, A, (True, False, False), entry)
+        _functional(B, A, (True, False, False))
 
 
 @pytest.mark.triangular_solve_out
@@ -383,7 +390,7 @@ def test_triangular_solve_out_invalid_shapes(b_shape, a_shape):
     A = torch.empty(a_shape, device=flag_gems.device)
     X, M = torch.empty_like(B), torch.empty_like(A)
     with pytest.raises((RuntimeError, ValueError)):
-        _out(B, A, (True, False, False), X, M, "direct")
+        _out(B, A, (True, False, False), X, M)
 
 
 REJECTED_DTYPES = [
@@ -399,14 +406,13 @@ REJECTED_DTYPES = [
 
 @pytest.mark.triangular_solve
 @pytest.mark.parametrize("dtype", REJECTED_DTYPES)
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_rejected_dtype(dtype, entry):
+def test_triangular_solve_rejected_dtype(dtype):
     # Empty inputs avoid native initialization kernels for unsupported dtypes;
     # dtype validation still has to happen before the empty result shortcut.
     B = torch.empty(0, 2, dtype=dtype, device=flag_gems.device)
     A = torch.empty(0, 0, dtype=dtype, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
-        _functional(B, A, (True, False, False), entry)
+        _functional(B, A, (True, False, False))
 
 
 @pytest.mark.triangular_solve_out
@@ -416,7 +422,7 @@ def test_triangular_solve_out_rejected_dtype(dtype):
     A = torch.empty(0, 0, dtype=dtype, device=flag_gems.device)
     X, M = torch.empty_like(B), torch.empty_like(A)
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
-        _out(B, A, (True, False, False), X, M, "direct")
+        _out(B, A, (True, False, False), X, M)
 
 
 @pytest.mark.triangular_solve
@@ -428,7 +434,7 @@ def test_triangular_solve_rejected_float64():
     B = torch.empty(0, 2, dtype=torch.float64, device=flag_gems.device)
     A = torch.empty(0, 0, dtype=torch.float64, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
-        _functional(B, A, (True, False, False), "direct")
+        _functional(B, A, (True, False, False))
 
 
 @pytest.mark.triangular_solve
@@ -437,14 +443,13 @@ def test_triangular_solve_mismatched_inputs(mismatch):
     B, A = _inputs((), (), 4, 2, torch.float32)
     B = B.to(torch.float16) if mismatch == "dtype" else B.cpu()
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        _functional(B, A, (True, False, False), "direct")
+        _functional(B, A, (True, False, False))
 
 
 @pytest.mark.triangular_solve_out
 @pytest.mark.parametrize("output", ["X", "M"])
 @pytest.mark.parametrize("mismatch", ["dtype", "device"])
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out_invalid_outputs(output, mismatch, entry):
+def test_triangular_solve_out_invalid_outputs(output, mismatch):
     B, A = _inputs((), (), 4, 2, torch.float32)
     outputs = {"X": torch.empty_like(B), "M": torch.empty_like(A)}
     outputs[output] = (
@@ -453,13 +458,12 @@ def test_triangular_solve_out_invalid_outputs(output, mismatch, entry):
         else outputs[output].cpu()
     )
     with pytest.raises((RuntimeError, TypeError, ValueError)):
-        _out(B, A, (True, False, False), outputs["X"], outputs["M"], entry)
+        _out(B, A, (True, False, False), outputs["X"], outputs["M"])
 
 
 @pytest.mark.triangular_solve_out
 @pytest.mark.parametrize("output", ["X", "M"])
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out_rejects_expanded_output(output, entry):
+def test_triangular_solve_out_rejects_expanded_output(output):
     B, A = _inputs((), (), 3, 2, torch.float32)
     outputs = {"X": torch.empty_like(B), "M": torch.empty_like(A)}
     matrix = B if output == "X" else A
@@ -467,20 +471,22 @@ def test_triangular_solve_out_rejects_expanded_output(output, entry):
         1, matrix.shape[-1], dtype=matrix.dtype, device=matrix.device
     ).expand(matrix.shape)
     with pytest.raises(RuntimeError, match="single memory location"):
-        _out(B, A, (True, False, False), outputs["X"], outputs["M"], entry)
+        _out(B, A, (True, False, False), outputs["X"], outputs["M"])
 
 
 @pytest.mark.triangular_solve_out
 @pytest.mark.parametrize("requires_grad", ["A", "B", "X", "M"])
-@pytest.mark.parametrize("entry", ["direct", "dispatcher"])
-def test_triangular_solve_out_rejects_autograd(requires_grad, entry):
+def test_triangular_solve_out_rejects_autograd(requires_grad):
     B, A = _inputs((), (), 4, 2, torch.float32)
     tensors = {"B": B, "A": A, "X": torch.empty_like(B), "M": torch.empty_like(A)}
     tensors[requires_grad].requires_grad_()
     with pytest.raises(RuntimeError, match="autograd|automatic differentiation"):
-        _out(B, A, (True, False, False), tensors["X"], tensors["M"], entry)
+        _out(B, A, (True, False, False), tensors["X"], tensors["M"])
 
 
+# Unlike the forward tests, this must call ATen with the Gems forward registered
+# to exercise ATen's derivative formula for both legacy outputs and broadcasting.
+# Calling flag_gems.triangular_solve directly would bypass that autograd wrapper.
 @pytest.mark.triangular_solve
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -498,7 +504,7 @@ def test_triangular_solve_autograd_broadcast(flags, dtype, loss_output):
     if loss_output != "solution":
         ref_loss = ref_loss + (ref_M * weights_M).sum()
     ref_grad = torch.autograd.grad(ref_loss, (ref_B, ref_A), allow_unused=True)
-    with flag_gems.use_gems(include=["triangular_solve"]):
+    with _registered_triangular_solve():
         X, M = torch.ops.aten.triangular_solve.default(B, A, *flags)
         loss = (X * weights_X.to(X.device)).sum() if loss_output != "clone" else 0
         if loss_output != "solution":
@@ -533,7 +539,7 @@ def test_triangular_solve_scipy_reference(flags, n, nrhs):
             unit_diagonal=flags[2],
             check_finite=False,
         )
-    result, coefficient = _functional(B, A, flags, "direct")
+    result, coefficient = _functional(B, A, flags)
     _close(result, torch.from_numpy(expected), torch.float32)
     torch.testing.assert_close(
         coefficient.cpu(), A.cpu().expand(2, 3, n, n), atol=0, rtol=0
@@ -553,10 +559,10 @@ def test_triangular_solve_wide_rhs(use_out):
     if use_out:
         X = torch.empty(nrhs, n, device=B.device, dtype=B.dtype).T
         M = torch.empty(n, n, device=A.device, dtype=A.dtype).T
-        result = _out(B, A, flags, X, M, "direct")
+        result = _out(B, A, flags, X, M)
         assert result[0] is X and result[1] is M
     else:
-        result = _functional(B, A, flags, "direct")
+        result = _functional(B, A, flags)
     _close(result[0], torch.full((n, nrhs), 0.5), torch.float32)
     torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
     assert result[0].mT.is_contiguous()
