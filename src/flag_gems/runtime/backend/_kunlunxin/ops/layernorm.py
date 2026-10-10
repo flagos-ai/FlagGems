@@ -12,6 +12,133 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+# ---- flat_launcher: bind a raw kernel once, replay flat (skip ~20us of the
+# per-call JITFunction.run python). These backward kernels are host/launch-bound
+# on the tiny benchmark shapes, so this is the biggest single win. See
+# mySkill/kernelOpt/flatLaunchSkill.md.
+_FLAT_MISS = object()
+_FLAT = _FLAT_MISS
+
+
+def _flat_launchers():
+    global _FLAT
+    if _FLAT is _FLAT_MISS:
+        try:
+            from triton.runtime import driver
+
+            _FLAT = getattr(driver.active, "flat_launchers", None)
+        except Exception:
+            _FLAT = None
+    return _FLAT
+
+
+def _flat_call(kernel, grid, key, compile_fn, operands):
+    """Bind `kernel` once (via `compile_fn`, which must launch it and return the
+    CompiledKernel) then replay flat with `operands` (data_ptr ints / scalars in
+    signature order, constexprs excluded)."""
+    launchers = _flat_launchers()
+    if launchers is None:
+        compile_fn()
+        return
+    launch, stream = launchers.acquire(kernel, key)
+    if launch is None:
+        compiled = compile_fn()
+        launchers.bind(kernel, key, compiled, grid)
+        return
+    launch(stream, *operands)
+
+
+# ---- SIMD dx (grad_input) via tle.raw (xpu3) --------------------------------
+# Hand-written float32x16 SIMD payload for the small-M / mid-large-N dx path,
+# where the triton dx_row kernel is host+convert bound. One launch, grid == M
+# rows; each row's N-reduction is split across the 64 cores with SIMD vectors
+# (vload2_lm converts fp16/bf16 -> f32 in the load). f32/f16/bf16 all supported
+# (fp16 needs 64-byte-aligned LM buffers), gated to fp32 stats.
+# Any import failure leaves _HAS_LN_DX_RAW False and the triton kernels run.
+_HAS_LN_DX_RAW = False
+_LN_DX_RAW_KERNELS = {}
+try:
+    import os as _os
+
+    import triton.experimental.tle as _tle
+
+    # Precompiled device object: stub names must equal the entry symbols in the .o
+    # and the signatures must match the C++ ABI.
+    _LN_RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
+    _LN_DX_OBJ = _os.path.join(
+        _os.path.dirname(_LN_RAW_DIR), "payload", "obj", "layernorm_backward_dx_raw.o"
+    )
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dx_f32(dy, x, w, mean, rstd, dx, M, N, has_weight): ...
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dx_f16(dy, x, w, mean, rstd, dx, M, N, has_weight): ...
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dx_bf16(dy, x, w, mean, rstd, dx, M, N, has_weight): ...
+
+    _LN_DX_DNS = ["M", "N", "has_weight"]
+    _LN_DX_DNA = ["Dy", "X", "W", "Mean", "Rstd", "Dx"]
+
+    @triton.jit(do_not_specialize=_LN_DX_DNS, do_not_specialize_on_alignment=_LN_DX_DNA)
+    def _ln_dx_raw_kernel_f32(Dy, X, W, Mean, Rstd, Dx, M, N, has_weight):
+        _tle.raw.call(ln_dx_f32, (Dy, X, W, Mean, Rstd, Dx, M, N, has_weight))
+
+    @triton.jit(do_not_specialize=_LN_DX_DNS, do_not_specialize_on_alignment=_LN_DX_DNA)
+    def _ln_dx_raw_kernel_f16(Dy, X, W, Mean, Rstd, Dx, M, N, has_weight):
+        _tle.raw.call(ln_dx_f16, (Dy, X, W, Mean, Rstd, Dx, M, N, has_weight))
+
+    @triton.jit(do_not_specialize=_LN_DX_DNS, do_not_specialize_on_alignment=_LN_DX_DNA)
+    def _ln_dx_raw_kernel_bf16(Dy, X, W, Mean, Rstd, Dx, M, N, has_weight):
+        _tle.raw.call(ln_dx_bf16, (Dy, X, W, Mean, Rstd, Dx, M, N, has_weight))
+
+    _LN_DX_RAW_KERNELS = {
+        torch.float32: _ln_dx_raw_kernel_f32,
+        torch.float16: _ln_dx_raw_kernel_f16,
+        torch.bfloat16: _ln_dx_raw_kernel_bf16,
+    }
+
+    # combined dx + dW/dB in one launch (heterogeneous clusters). grid ==
+    # M + wb_blocks; wb_cols == 64 cores * 32 = 2048 columns per WB cluster.
+    _LN_DXWB_WB_COLS = 2048
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dxwb_f32(dy, x, w, mean, rstd, dx, dw, db, M, N, wb_cols): ...
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dxwb_f16(dy, x, w, mean, rstd, dx, dw, db, M, N, wb_cols): ...
+
+    @_tle.raw.dialect("xpu3", object=_LN_DX_OBJ, arch=3)
+    def ln_dxwb_bf16(dy, x, w, mean, rstd, dx, dw, db, M, N, wb_cols): ...
+
+    _LN_DXWB_DNS = ["M", "N", "wb_cols"]
+    _LN_DXWB_DNA = ["Dy", "X", "W", "Mean", "Rstd", "Dx", "Dw", "Db"]
+
+    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    def _ln_dxwb_raw_kernel_f32(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
+        _tle.raw.call(ln_dxwb_f32, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
+
+    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    def _ln_dxwb_raw_kernel_f16(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
+        _tle.raw.call(ln_dxwb_f16, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
+
+    @triton.jit(do_not_specialize=_LN_DXWB_DNS, do_not_specialize_on_alignment=_LN_DXWB_DNA)
+    def _ln_dxwb_raw_kernel_bf16(Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols):
+        _tle.raw.call(ln_dxwb_bf16, (Dy, X, W, Mean, Rstd, Dx, Dw, Db, M, N, wb_cols))
+
+    _LN_DXWB_RAW_KERNELS = {
+        torch.float32: _ln_dxwb_raw_kernel_f32,
+        torch.float16: _ln_dxwb_raw_kernel_f16,
+        torch.bfloat16: _ln_dxwb_raw_kernel_bf16,
+    }
+    _HAS_LN_DX_RAW = True
+except Exception:  # pragma: no cover - environment without tle.raw
+    _HAS_LN_DX_RAW = False
+    _LN_DX_RAW_KERNELS = {}
+    _LN_DXWB_RAW_KERNELS = {}
+
+
 @triton.jit
 def prev_multiple_of(a, b):
     return tl.cdiv(a, b) * b - b
@@ -466,7 +593,7 @@ def layer_norm_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.where(mask, x - mean, 0.0)
@@ -485,7 +612,7 @@ def layer_norm_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(X + cols[None, :], mask, other=0.0).to(tl.float32)
             if W is None:
@@ -500,7 +627,10 @@ def layer_norm_backward_kernel(
             tl.store(dX + cols, dx, mask=mask)
 
 
-@triton.jit
+@triton.jit(
+    do_not_specialize=["M", "N"],
+    do_not_specialize_on_alignment=["dY", "X", "Mean", "Rstd", "OutW", "OutB"],
+)
 def weight_bias_backward_1d_kernel(
     dY,
     X,
@@ -546,15 +676,38 @@ def weight_bias_backward_1d_kernel(
             accB += tl.where(cmask, dy, 0.0)
     cols = tl.arange(0, C)
     if DIRECT:
-        if OutW is not None:
-            tl.store(OutW + n0 + cols, accW)
-        if OutB is not None:
-            tl.store(OutB + n0 + cols, accB)
+        # NEED_TAIL => C does not divide N, so n0+cols runs past N on the last
+        # column program. The accumulator loads were already masked; the store
+        # must be too, otherwise it writes C-wide past dW/dB (out-of-bounds heap
+        # write -- only invisible because the valid region still checks out).
+        if NEED_TAIL:
+            cmask = n0 + cols < N
+            if OutW is not None:
+                tl.store(OutW + n0 + cols, accW, mask=cmask)
+            if OutB is not None:
+                tl.store(OutB + n0 + cols, accB, mask=cmask)
+        else:
+            if OutW is not None:
+                tl.store(OutW + n0 + cols, accW)
+            if OutB is not None:
+                tl.store(OutB + n0 + cols, accB)
     else:
-        if OutW is not None:
-            tl.store(OutW + mi * N + n0 + cols, accW)
-        if OutB is not None:
-            tl.store(OutB + mi * N + n0 + cols, accB)
+        # DIRECT=False writes per-partial-row buffers pw/pb[P,N]. With NEED_TAIL
+        # (C does not divide N), n0+cols runs past N on the last column program,
+        # so an unmasked store spills C-wide past the row into the next partial
+        # row / past the buffer -- an OOB write that non-deterministically
+        # corrupts adjacent allocations (e.g. in_grad). Mask it like the loads.
+        if NEED_TAIL:
+            cmask = n0 + cols < N
+            if OutW is not None:
+                tl.store(OutW + mi * N + n0 + cols, accW, mask=cmask)
+            if OutB is not None:
+                tl.store(OutB + mi * N + n0 + cols, accB, mask=cmask)
+        else:
+            if OutW is not None:
+                tl.store(OutW + mi * N + n0 + cols, accW)
+            if OutB is not None:
+                tl.store(OutB + mi * N + n0 + cols, accB)
 
 
 @triton.jit
@@ -595,6 +748,103 @@ def weight_bias_backward_finish_kernel(
                 b = tl.load(PB + i * N + cols, mask=cmask, other=0.0).to(tl.float32)
                 accB += tl.where(cmask, b, 0.0)
             tl.store(dB + cols, accB, mask=cmask)
+
+
+@triton.jit(
+    do_not_specialize_on_alignment=["dY", "X", "W", "Mean", "Rstd", "dX"],
+)
+def layer_norm_backward_dx_row_kernel(
+    dY,
+    X,
+    W,
+    Mean,
+    Rstd,
+    dX,
+    N: tl.constexpr,
+    TILE_N: tl.constexpr,
+    HAS_W: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # One triton program == one row. All parallelism is on the M(row) axis, so
+    # this path is only for small M (grid == M). The N-reduction (dx_2, dx_3) is
+    # done per row across the 64 cores of the cluster, then dx is recomputed in a
+    # second pass. Beats the 2D-tile kernel for small-M/large-N (avoids the
+    # masked 2D CoreTiling scatter path).
+    pid = ext.program_id(0)
+    dY += pid * N
+    X += pid * N
+    dX += pid * N
+    mean = tl.load(Mean + pid).to(tl.float32)
+    rstd = tl.load(Rstd + pid).to(tl.float32)
+
+    dx_2 = tl.zeros([TILE_N], dtype=tl.float32)
+    dx_3 = tl.zeros([TILE_N], dtype=tl.float32)
+    for off in range(0, N, TILE_N):
+        cols = off + tl.arange(0, TILE_N)
+        if NEED_MASK:
+            m = cols < N
+            dy = tl.load(dY + cols, mask=m, other=0.0).to(tl.float32)
+            x = tl.load(X + cols, mask=m, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=m, other=0.0).to(tl.float32) if HAS_W else 1.0
+            x_hat = tl.where(m, (x - mean) * rstd, 0.0)
+        else:
+            dy = tl.load(dY + cols).to(tl.float32)
+            x = tl.load(X + cols).to(tl.float32)
+            w = tl.load(W + cols).to(tl.float32) if HAS_W else 1.0
+            x_hat = (x - mean) * rstd
+        dx_hat = dy * w
+        dx_2 += dx_hat
+        dx_3 += dx_hat * x_hat
+    s2 = tl.sum(dx_2, axis=0)
+    s3 = tl.sum(dx_3, axis=0)
+
+    for off in range(0, N, TILE_N):
+        cols = off + tl.arange(0, TILE_N)
+        if NEED_MASK:
+            m = cols < N
+            dy = tl.load(dY + cols, mask=m, other=0.0).to(tl.float32)
+            x = tl.load(X + cols, mask=m, other=0.0).to(tl.float32)
+            w = tl.load(W + cols, mask=m, other=0.0).to(tl.float32) if HAS_W else 1.0
+            x_hat = (x - mean) * rstd
+            dx_hat = dy * w
+            dx = rstd * (dx_hat - (s2 + x_hat * s3) / N)
+            tl.store(dX + cols, dx.to(dX.dtype.element_ty), mask=m)
+        else:
+            dy = tl.load(dY + cols).to(tl.float32)
+            x = tl.load(X + cols).to(tl.float32)
+            w = tl.load(W + cols).to(tl.float32) if HAS_W else 1.0
+            x_hat = (x - mean) * rstd
+            dx_hat = dy * w
+            dx = rstd * (dx_hat - (s2 + x_hat * s3) / N)
+            tl.store(dX + cols, dx.to(dX.dtype.element_ty))
+
+
+# small-M dx routing threshold: grid == M, keep it to a few waves.
+_DX_ROW_M_MAX = 64
+# only apply the small-M dx_row / wide-C wb tuning for moderate N; large N keeps
+# the original (proven-stable) paths.
+_LN_BWD_N_MAX = 16384
+
+# SIMD dx pays off only past a per-dtype N crossover (below it, the triton dx_row
+# is already fast and the SIMD launch + cross-core sync overhead loses). Measured
+# on KL3: bf16 crosses ~4096, f32 only past ~8192 (its triton convert tax is
+# smaller). N must also stay <= _LN_BWD_N_MAX so ceil(N/64) fits the LM tile.
+_LN_DX_SIMD_MIN_N = {torch.float32: 8192, torch.float16: 4096, torch.bfloat16: 4096}
+# Combined dx+WB single launch: try from 2048 up (the launch-saving matters most
+# at small N where each kernel is otherwise launch-bound).
+_LN_DXWB_MIN_N = 2048
+
+
+def _wb_col_size(N):
+    import builtins
+
+    # largest pow2 with grid(cdiv(N,C)) >= 4, floor 512, cap 2048. For small M
+    # the wb reduction is over M(rows), so N is the only parallel axis; wide C
+    # (good per-core vectorization) beats many tiny column programs on KL3.
+    c = triton.next_power_of_2(N)
+    while c > 512 and triton.cdiv(N, c) < 4:
+        c //= 2
+    return builtins.min(c, 2048)
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
@@ -712,6 +962,90 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     return y, mean, rstd
 
 
+def _ln_dx_triton(grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc, need_mask):
+    """Original triton dx path: dx_row (grid==M, mask-free pow2 tile) for small M,
+    else the 2D-tile kernel. Fallback for shapes the SIMD payload doesn't cover."""
+    import builtins
+
+    # dx_row (one program per row) is only used when M is small AND we can pick a
+    # power-of-2 tile that DIVIDES N (mask-free). Masked 1D stores in this single-
+    # program path proved unreliable on KL3 (device-state contamination), so odd /
+    # non-pow2-friendly N fall back to the original 2D-tile kernel.
+    dtype_cap = 4096 if input.dtype == torch.float32 else 1024
+    pow2_div = N & (-N)  # largest power of 2 dividing N
+    tile_n = builtins.min(dtype_cap, pow2_div)
+    use_dx_row = (M <= _DX_ROW_M_MAX) and (tile_n >= 256) and (N <= _LN_BWD_N_MAX)
+    if use_dx_row:
+        has_w = weight is not None
+        grid = (M, 1, 1)
+
+        def _dx_compile():
+            return layer_norm_backward_dx_row_kernel[grid](
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                N,
+                TILE_N=tile_n,
+                HAS_W=has_w,
+                NEED_MASK=False,
+                isCloseUnrollControl=True,
+            )
+        with torch_device_fn.device(input.device):
+            if has_w:
+                key = (input.dtype, N, tile_n, grid[0])
+                operands = (
+                    grad_out.data_ptr(),
+                    input.data_ptr(),
+                    weight.data_ptr(),
+                    mean.data_ptr(),
+                    rstd.data_ptr(),
+                    in_grad.data_ptr(),
+                )
+                _flat_call(
+                    layer_norm_backward_dx_row_kernel, grid, key, _dx_compile, operands
+                )
+            else:
+                _dx_compile()
+    else:
+        # The masked 2D kernel is non-deterministic on KL3 (rare dx spikes from
+        # unreliable masked load/store on partially-OOB row/col blocks). When M
+        # and N have large-enough power-of-2 divisors, pick block sizes that
+        # DIVIDE them so NEED_MASK==False (mask-free -> deterministic). Falls
+        # back to the masked path only when no decent divisor exists (e.g. odd N).
+        import builtins
+
+        def _pow2_div(n, cap):
+            d = n & (-n)  # largest power of 2 dividing n
+            return builtins.min(d, cap)
+
+        br2 = _pow2_div(M, 32)
+        bc2 = _pow2_div(N, bc)
+        if bc2 >= 4 and (M % br2 == 0) and (N % bc2 == 0):
+            eff_br, eff_bc, eff_mask = br2, bc2, False
+        else:
+            eff_br, eff_bc, eff_mask = br, bc, need_mask
+        with torch_device_fn.device(input.device):
+            layer_norm_backward_kernel[(triton.cdiv(M, eff_br), 1, 1)](
+                grad_out,
+                input,
+                weight,
+                mean,
+                rstd,
+                in_grad,
+                M,
+                N,
+                BLOCK_ROW_SIZE=eff_br,
+                BLOCK_COL_SIZE=eff_bc,
+                NEED_MASK=eff_mask,
+                isCloseUnrollControl=eff_mask,
+                isCloseCoreTiling=eff_mask,
+                isCloseVectorization=True,
+            )
+
+
 def layer_norm_backward(
     grad_out,
     input,
@@ -724,40 +1058,131 @@ def layer_norm_backward(
 ):
     logger.debug("GEMS_KUNLUNXIN LAYER_NORM_BACKWARD")
 
-    grad_out = grad_out.contiguous()
-    input = input.contiguous()
-    mean = mean.contiguous()
-    rstd = rstd.contiguous()
-    weight = None if weight is None else weight.contiguous()
-    bias = None if bias is None else bias.contiguous()
+    # These tiny shapes are host-bound: every redundant dispatched op on the
+    # wrapper is pure overhead. Only call .contiguous() when actually needed.
+    def _cont(t):
+        return t if (t is None or t.is_contiguous()) else t.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    grad_out = _cont(grad_out)
+    input = _cont(input)
+    mean = _cont(mean)
+    rstd = _cont(rstd)
+    weight = _cont(weight)
+    bias = _cont(bias)
+
+    # N is the product of normalized_shape (the reduced feature dims); M is
+    # everything else. Using input.shape[0] is only correct when there is exactly
+    # one leading (batch) dim -- for >1 leading dim it mis-splits M/N. Match the
+    # forward's convention (N = prod(normalized_shape)).
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
     bc = _ln_bwd_col_size(N)
     br = triton.next_power_of_2(triton.cdiv(M, 12))
     need_mask = (M % br != 0) or (N % bc != 0)
     need_tail = N % bc != 0
 
+    # ---- combined dx + dW/dB in ONE launch (heterogeneous clusters) --------
+    # When all three grads are needed, fold the dx launch and the wb launch into
+    # a single raw launch (grid == M + wb_blocks). Wins when it fits one cluster
+    # wave (M+wb_blocks <= 12) or N is large enough that the SIMD dx beats triton
+    # anyway (>=4096). At small N + large M (2 waves, tiny per-item work) the
+    # two-launch path is faster, so exclude that corner.
+    _dxwb_blocks = (N + _LN_DXWB_WB_COLS - 1) // _LN_DXWB_WB_COLS
+    if (
+        output_mask[0] and output_mask[1] and output_mask[2]
+        and _HAS_LN_DX_RAW
+        and input.dtype in _LN_DXWB_RAW_KERNELS
+        and weight is not None and bias is not None
+        and mean.dtype == torch.float32 and rstd.dtype == torch.float32
+        and M <= _DX_ROW_M_MAX
+        and _LN_DXWB_MIN_N <= N <= _LN_BWD_N_MAX
+        and (M + _dxwb_blocks <= 12 or N >= 4096)
+    ):
+        in_grad = torch.empty_strided(
+            input.size(), input.stride(), dtype=input.dtype, device=input.device
+        )
+        weight_grad = torch.empty_strided(
+            weight.size(), weight.stride(), dtype=weight.dtype, device=weight.device
+        )
+        bias_grad = torch.empty_strided(
+            bias.size(), bias.stride(), dtype=bias.dtype, device=bias.device
+        )
+        raw_kernel = _LN_DXWB_RAW_KERNELS[input.dtype]
+        wb_blocks = _dxwb_blocks
+        grid = (M + wb_blocks, 1, 1)
+
+        def _dxwb_compile():
+            return raw_kernel[grid](
+                grad_out, input, weight, mean, rstd, in_grad, weight_grad,
+                bias_grad, M, N, _LN_DXWB_WB_COLS,
+            )
+        with torch_device_fn.device(input.device):
+            key = (input.dtype, M, N)
+            operands = (
+                grad_out.data_ptr(), input.data_ptr(), weight.data_ptr(),
+                mean.data_ptr(), rstd.data_ptr(), in_grad.data_ptr(),
+                weight_grad.data_ptr(), bias_grad.data_ptr(),
+                M, N, _LN_DXWB_WB_COLS,
+            )
+            _flat_call(raw_kernel, grid, key, _dxwb_compile, operands)
+        return in_grad, weight_grad, bias_grad
+
     if output_mask[0]:
         in_grad = torch.empty_strided(
             input.size(), input.stride(), dtype=input.dtype, device=input.device
         )
-        with torch_device_fn.device(input.device):
-            layer_norm_backward_kernel[(triton.cdiv(M, br), 1, 1)](
-                grad_out,
-                input,
-                weight,
-                mean,
-                rstd,
-                in_grad,
-                M,
-                N,
-                BLOCK_ROW_SIZE=br,
-                BLOCK_COL_SIZE=bc,
-                NEED_MASK=need_mask,
-                isCloseUnrollControl=need_mask,
-                isCloseCoreTiling=need_mask,
-                isCloseVectorization=True,
+        import builtins
+
+        # SIMD dx (float32x16 tle.raw payload): one launch, grid == M. Only when
+        # stats are fp32 (the kernel reads mean/rstd as float*) and dtype is
+        # f32/bf16 (fp16 conversion path unresolved). N <= _LN_BWD_N_MAX keeps
+        # per-core columns (ceil(N/64)) within the LM tile. Weight required (the
+        # payload always takes a weight pointer). Beats the triton dx_row kernel
+        # by folding the fp16/bf16 -> f32 convert into the SIMD load.
+        use_simd = (
+            _HAS_LN_DX_RAW
+            and input.dtype in _LN_DX_RAW_KERNELS
+            and weight is not None
+            and mean.dtype == torch.float32
+            and rstd.dtype == torch.float32
+            and M <= _DX_ROW_M_MAX
+            and N <= _LN_BWD_N_MAX
+            and N >= _LN_DX_SIMD_MIN_N[input.dtype]
+        )
+        if use_simd:
+            raw_kernel = _LN_DX_RAW_KERNELS[input.dtype]
+            grid = (M, 1, 1)
+
+            def _simd_compile():
+                return raw_kernel[grid](
+                    grad_out,
+                    input,
+                    weight,
+                    mean,
+                    rstd,
+                    in_grad,
+                    M,
+                    N,
+                    1,
+                )
+            with torch_device_fn.device(input.device):
+                key = (input.dtype, M, N)
+                operands = (
+                    grad_out.data_ptr(),
+                    input.data_ptr(),
+                    weight.data_ptr(),
+                    mean.data_ptr(),
+                    rstd.data_ptr(),
+                    in_grad.data_ptr(),
+                    M,
+                    N,
+                    1,
+                )
+                _flat_call(raw_kernel, grid, key, _simd_compile, operands)
+        else:
+            _ln_dx_triton(
+                grad_out, input, weight, mean, rstd, in_grad, M, N, br, bc,
+                need_mask,
             )
     else:
         in_grad = None
@@ -780,8 +1205,18 @@ def layer_norm_backward(
 
     bm = _wb_bm_size(M)
     if bm >= M:
-        with torch_device_fn.device(input.device):
-            weight_bias_backward_1d_kernel[(triton.cdiv(N, bc), 1, 1)](
+        # small/moderate M: reduce over M(rows), parallelize over N columns.
+        # Use a wb-specific column block (wide C, grid>=4) for moderate N; large
+        # N keeps the original bc (proven-stable).
+        if N <= _LN_BWD_N_MAX:
+            wb_c = _wb_col_size(N)
+        else:
+            wb_c = bc
+        wb_need_tail = (N % wb_c) != 0
+        wb_grid = (triton.cdiv(N, wb_c), 1, 1)
+
+        def _wb_compile():
+            return weight_bias_backward_1d_kernel[wb_grid](
                 grad_out,
                 input,
                 mean,
@@ -791,11 +1226,33 @@ def layer_norm_backward(
                 M,
                 N,
                 BM=bm,
-                C=bc,
-                NEED_TAIL=need_tail,
+                C=wb_c,
+                NEED_TAIL=wb_need_tail,
                 DIRECT=True,
                 isCloseUnrollControl=True,
             )
+        with torch_device_fn.device(input.device):
+            if weight_grad is not None and bias_grad is not None:
+                key = (input.dtype, wb_c, bm, wb_need_tail, wb_grid[0])
+                operands = (
+                    grad_out.data_ptr(),
+                    input.data_ptr(),
+                    mean.data_ptr(),
+                    rstd.data_ptr(),
+                    weight_grad.data_ptr(),
+                    bias_grad.data_ptr(),
+                    M,
+                    N,
+                )
+                _flat_call(
+                    weight_bias_backward_1d_kernel,
+                    wb_grid,
+                    key,
+                    _wb_compile,
+                    operands,
+                )
+            else:
+                _wb_compile()
     else:
         P = M // bm
         pw = (

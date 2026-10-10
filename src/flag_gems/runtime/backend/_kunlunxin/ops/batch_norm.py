@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 from torch import Tensor
+from triton.runtime import driver
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -13,6 +14,116 @@ from ._batch_norm_no_update import _batch_norm_no_update
 
 logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
+
+# ---------------------------------------------------------------------------
+# tle.raw hand-written XTDK (xpu3) batch_norm_backward payload.
+#
+# A single-launch cluster kernel (grid = min(feat, 12)) that folds the whole BN
+# backward (term1/term2 reduction + weight_grad/bias_grad + input_grad) into one
+# device launch, removing the 2-3 serial Triton launches the fused/3-stage paths
+# pay on tiny training shapes (feat<=16, small count) where those paths are
+# launch/wave bound.  Optional import: any failure leaves _HAS_BN_RAW False and
+# the existing Triton kernels run unchanged.
+_HAS_BN_RAW = False
+_BN_RAW_KERNELS = {}
+try:
+    import os as _os
+
+    import triton.experimental.tle as _tle
+
+    # Precompiled device object: stub names must equal the entry symbols in the .o
+    # and the signatures must match the C++ ABI.
+    _BN_RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
+    _BN_RAW_OBJ = _os.path.join(
+        _os.path.dirname(_BN_RAW_DIR), "payload", "obj", "batch_norm_backward_raw.o"
+    )
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_f32(
+        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ): ...
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_f16(
+        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ): ...
+
+    @_tle.raw.dialect("xpu3", object=_BN_RAW_OBJ, arch=3)
+    def bn_bwd_bf16(
+        grad, inp, mean_f32, invstd_f32, weight, dx, dw, db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ): ...
+
+    _BN_RAW_DNS = [
+        "batch", "feat", "spatial", "count",
+        "has_weight", "need_ig", "need_wg", "need_bg",
+    ]
+    # Flat replay binds one CompiledKernel and replays it on freshly-allocated
+    # pointers whose alignment class varies call to call. Without this the bound
+    # kernel would emit aligned loads for pointers it was never compiled for
+    # (misfire) or force a recompile per alignment class -- either defeats the
+    # flat fast path. Nothing in the payload reads pointer alignment.
+    _BN_RAW_DNA = ["Grad", "Inp", "Mean", "Invstd", "Weight", "Dx", "Dw", "Db"]
+
+    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    def _bn_bwd_raw_kernel_f32(
+        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_f32,
+            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+        )
+
+    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    def _bn_bwd_raw_kernel_f16(
+        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_f16,
+            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+        )
+
+    @triton.jit(do_not_specialize=_BN_RAW_DNS, do_not_specialize_on_alignment=_BN_RAW_DNA)
+    def _bn_bwd_raw_kernel_bf16(
+        Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+        batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg,
+    ):
+        _tle.raw.call(
+            bn_bwd_bf16,
+            (Grad, Inp, Mean, Invstd, Weight, Dx, Dw, Db,
+             batch, feat, spatial, count, has_weight, need_ig, need_wg, need_bg),
+        )
+
+    _BN_RAW_KERNELS = {
+        torch.float32: _bn_bwd_raw_kernel_f32,
+        torch.float16: _bn_bwd_raw_kernel_f16,
+        torch.bfloat16: _bn_bwd_raw_kernel_bf16,
+    }
+    _HAS_BN_RAW = True
+except Exception:  # pragma: no cover - environment without tle.raw
+    _HAS_BN_RAW = False
+    _BN_RAW_KERNELS = {}
+
+
+# Resolved once. `driver.active` is a lazy proxy, so the attribute walk is not
+# free at ~12us a launch.
+_BN_FLAT_MISS = object()
+_BN_FLAT = _BN_FLAT_MISS
+
+
+def _flat_launchers():
+    """`driver.active.flat_launchers`, resolved once (may be None on older triton)."""
+    global _BN_FLAT
+    if _BN_FLAT is _BN_FLAT_MISS:
+        _BN_FLAT = getattr(driver.active, "flat_launchers", None)
+    return _BN_FLAT
+
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -999,6 +1110,106 @@ def batch_norm_backward(
     input_flat = input_3d.reshape(-1)
     grad_flat = grad_3d.reshape(-1)
     has_weight = weight is not None
+
+    # Restricted fast path: fold the whole BN backward into one hand-written
+    # tle.raw cluster launch for the tiny training shapes that are launch/wave
+    # bound on the Triton fused/3-stage paths.  Requires input_grad and a small,
+    # bounded shape; everything else falls through UNCHANGED (zero regression).
+    if (
+        _HAS_BN_RAW
+        and output_mask[0]
+        and input.dtype in _BN_RAW_KERNELS
+        and batch_dim <= 32
+        and count <= 131072
+        and n_slices <= 4096
+    ):
+        try:
+            raw_kernel = _BN_RAW_KERNELS[input.dtype]
+            grid = min(feat_dim, 12)
+            # dw/db must be a VALID same-dtype pointer even when not requested;
+            # use input_flat (tensor dtype) as the dummy -- NOT the fp32 save_mean.
+            weight_ptr = weight if has_weight else input_flat
+            dw_ptr = weight_grad if output_mask[1] else input_flat
+            db_ptr = bias_grad if output_mask[2] else input_flat
+            input_grad_flat = input_grad.reshape(-1)
+
+            # `fn[grid]` JITFunction.run costs ~8-16us of pure python per call on
+            # these tiny host-bound shapes. Bind the CompiledKernel once and replay
+            # it through the flat launcher ABI afterwards. The key carries grid,
+            # which participates in compilation on XPU; dtype is already
+            # distinguished because each dtype uses a different `raw_kernel` object,
+            # and `acquire` keys on the kfn too. Pointers are deliberately absent,
+            # which is only sound because the kernels drop alignment specialization
+            # (do_not_specialize_on_alignment above).
+            key = (grid,)
+
+            def _run_direct():
+                # Direct `fn[grid]` -- runs the launch correctly AND returns the
+                # CompiledKernel that flat replay binds. Also the fallback path.
+                return raw_kernel[(grid,)](
+                    grad_flat,
+                    input_flat,
+                    save_mean,
+                    save_invstd,
+                    weight_ptr,
+                    input_grad_flat,
+                    dw_ptr,
+                    db_ptr,
+                    batch_dim,
+                    feat_dim,
+                    spatial_dim,
+                    count,
+                    1 if has_weight else 0,
+                    1,
+                    1 if output_mask[1] else 0,
+                    1 if output_mask[2] else 0,
+                )
+
+            launchers = _flat_launchers()
+            with torch_device_fn.device(input.device):
+                if launchers is None:  # triton without the launcher cache
+                    _run_direct()
+                else:
+                    try:
+                        launch, stream = launchers.acquire(raw_kernel, key)
+                        if launch is None:
+                            kernel = _run_direct()
+                            launchers.bind(raw_kernel, key, kernel, (grid,))
+                        else:
+                            # FLAT ABI: the 16 non-constexpr params in signature
+                            # order -- 8 pointers as `.data_ptr()` ints, then 8 ints.
+                            launch(
+                                stream,
+                                grad_flat.data_ptr(),
+                                input_flat.data_ptr(),
+                                save_mean.data_ptr(),
+                                save_invstd.data_ptr(),
+                                weight_ptr.data_ptr(),
+                                input_grad_flat.data_ptr(),
+                                dw_ptr.data_ptr(),
+                                db_ptr.data_ptr(),
+                                batch_dim,
+                                feat_dim,
+                                spatial_dim,
+                                count,
+                                1 if has_weight else 0,
+                                1,
+                                1 if output_mask[1] else 0,
+                                1 if output_mask[2] else 0,
+                            )
+                    except Exception as flat_e:  # any flat failure -> direct call
+                        logger.debug(
+                            "flat bn backward replay failed, using direct: %s",
+                            flat_e,
+                        )
+                        _run_direct()
+            return (
+                input_grad.view_as(input),
+                weight_grad,
+                bias_grad,
+            )
+        except Exception as e:  # pragma: no cover - defensive fallback
+            logger.debug("raw bn backward path failed, falling back: %s", e)
 
     if count <= BNB_FUSED_MAX_ELEMS:
         with torch_device_fn.device(input.device):
