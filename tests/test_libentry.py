@@ -2350,10 +2350,6 @@ def test_mul_config_compiles_and_binds_runtime_kernels():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="Issue #2826: Cannot re-initialize MUSA in forked subprocess",
-)
-@pytest.mark.skipif(
     flag_gems.vendor_name == "metax",
     reason="Issue #2827: It's not stable in full test though it's passed by single test",
 )
