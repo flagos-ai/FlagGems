@@ -61,9 +61,7 @@ def test_glu_jvp(shape, dim, dtype):
     res_glu = torch.nn.functional.glu(x, dim=dim)
 
     ref_out = torch.ops.aten.glu_jvp(ref_glu, ref_x, ref_dx, dim)
-    with flag_gems.use_gems():
-        res_out = flag_gems.glu_jvp(res_glu, x, dx, dim)
-
+    res_out = flag_gems.glu_jvp(res_glu, x, dx, dim)
     atol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
@@ -84,8 +82,6 @@ def test_glu_jvp_non_contiguous(dtype):
     res_glu = torch.nn.functional.glu(x, dim=2)
 
     ref_out = torch.ops.aten.glu_jvp(ref_glu, ref_x, ref_dx, 2)
-    with flag_gems.use_gems():
-        res_out = flag_gems.glu_jvp(res_glu, x, dx, 2)
-
+    res_out = flag_gems.glu_jvp(res_glu, x, dx, 2)
     atol = 1e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
