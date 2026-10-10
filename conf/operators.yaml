@@ -277,6 +277,24 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _reshape_copy
+  description: 'Returns a contiguous copy of the input tensor reshaped to the requested
+    size. The row-major logical order of the input is materialized into fresh contiguous
+    storage, so the result is never a view and never aliases the input. Unlike _reshape_alias_copy
+    no explicit stride is accepted, and size may contain a single -1 dimension that
+    is inferred from the remaining dimensions and the input numel, exactly like PyTorch''s
+    infer_size.
+
+    '
+  for:
+  - _reshape_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: _saturate_weight_to_fp16
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
