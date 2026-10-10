@@ -28,54 +28,38 @@ import torch
 import triton
 import triton.language as tl
 from triton.backends.metax.compiler import MACAOptions
+from triton.experimental.tle import is_primitive_supported
+from triton.experimental.tle import language as tle_async
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-try:
-    from triton.experimental.tle import is_primitive_supported
-    from triton.experimental.tle import language as tle_async
-except ModuleNotFoundError as exc:
-    # Vendor Triton builds without the optional TLE package retain tl.load.
-    # Do not hide missing dependencies inside an otherwise installed TLE.
-    if exc.name != "triton.experimental.tle":
-        raise
-    tle_async = None
-    _TLE_LOAD_AVAILABLE = False
-else:
-    _TLE_LOAD_AVAILABLE = is_primitive_supported("metax", "load")
-
 _MMA_UNROLL_AVAILABLE = "mma_unroll_count" in MACAOptions.__dataclass_fields__
 _SUPPORTED_FLOAT = {torch.bfloat16, torch.float16, torch.float32}
-_SMALL_MMA_K16_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE and "small_mma_k16" in MACAOptions.__dataclass_fields__
-)
+_SMALL_MMA_K16_AVAILABLE = "small_mma_k16" in MACAOptions.__dataclass_fields__
 _STREAM_SHARED_MMA_PEEL_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE and "stream_shared_mma_peel" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_peel" in MACAOptions.__dataclass_fields__
 )
 _STREAM_SHARED_MMA_REVERSE_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE
-    and "stream_shared_mma_reverse" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_reverse" in MACAOptions.__dataclass_fields__
 )
 _STREAM_SHARED_MMA_SMALL_PEEL_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE
-    and "stream_shared_mma_small_peel" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_small_peel" in MACAOptions.__dataclass_fields__
 )
 _STREAM_SHARED_MMA_WIDE_PEEL_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE
-    and "stream_shared_mma_wide_peel" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_wide_peel" in MACAOptions.__dataclass_fields__
 )
-_STREAM_SHARED_MMA_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE and "stream_shared_mma" in MACAOptions.__dataclass_fields__
-)
+_STREAM_SHARED_MMA_AVAILABLE = "stream_shared_mma" in MACAOptions.__dataclass_fields__
 _STREAM_SHARED_MMA_WIDE_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE and "stream_shared_mma_tile" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_tile" in MACAOptions.__dataclass_fields__
 )
 _STREAM_SHARED_MMA_SMALL_AVAILABLE = (
-    _TLE_LOAD_AVAILABLE and "stream_shared_mma_mn" in MACAOptions.__dataclass_fields__
+    "stream_shared_mma_mn" in MACAOptions.__dataclass_fields__
 )
+
+_TLE_LOAD_AVAILABLE = is_primitive_supported("metax", "load")
 
 
 @triton.jit
@@ -1049,8 +1033,7 @@ def _run_mm(a, b, scale_a, scale_b, out, m, n, k):
     a = a.contiguous()
     b = b.t().contiguous().t()
     if (
-        _TLE_LOAD_AVAILABLE
-        and m == 1
+        m == 1
         and n <= 1024
         and 128 <= k <= 4096
         and k % 16 == 0
@@ -1474,8 +1457,6 @@ def _pack_mm_w8a8_int8_weight(bq, scale_b, *, single_shared=False):
     if type(single_shared) is not bool:
         raise TypeError("single_shared must be bool")
     if single_shared:
-        if not _TLE_LOAD_AVAILABLE:
-            raise RuntimeError("single_shared requires the MetaX TLE load primitive")
         from triton.backends.metax.compiler import MACAOptions
 
         if "single_shared_async" not in MACAOptions.__dataclass_fields__:
@@ -1525,8 +1506,7 @@ def _mm_w8a8_int8_packed_prequantized_out(aq, scale_a, weight, *, out):
     if out.dtype not in _SUPPORTED_FLOAT:
         raise TypeError("out must be BF16, FP16 or FP32")
     use_tiled = (
-        _TLE_LOAD_AVAILABLE
-        and weight.tiled is not None
+        weight.tiled is not None
         and m >= 4096
         and aq.is_contiguous()
         and out.dtype == torch.bfloat16
