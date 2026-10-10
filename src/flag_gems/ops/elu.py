@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def elu_forward_kernel(x, alpha, scale, input_scale):
     return tl.where(
         x > 0,
-        scale * input_scale * x,
+        scale * x,
         scale * alpha * (tl.exp(x.to(tl.float32) * input_scale) - 1),
     )
 
@@ -42,7 +42,7 @@ def elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, x):
     x_fp32 = x.to(tl.float32)
     grad_input = tl.where(
         x > 0,
-        grad_output * scale * input_scale,
+        grad_output * scale,
         grad_output * (scale * alpha * tl.exp(x_fp32 * input_scale) * input_scale),
     )
     return grad_input
@@ -55,7 +55,7 @@ def elu_backward_kernel_with_self(grad_output, alpha, scale, input_scale, x):
 def elu_backward_kernel_with_result(grad_output, alpha, scale, input_scale, y):
     grad_input = tl.where(
         y > 0,
-        grad_output * scale * input_scale,
+        grad_output * scale,
         grad_output * ((y + scale * alpha) * input_scale),
     )
     return grad_input
