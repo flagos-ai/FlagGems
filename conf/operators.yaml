@@ -17315,6 +17315,23 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv_transpose2d
+  description: |
+    Applies a 2D transposed convolution operator over an input image composed of
+    several input planes, sometimes also called a fractionally-strided
+    convolution or a deconvolution. It can be seen as the gradient of `Conv2d`
+    with respect to its input: the input is promoted to 4D, scattered onto the
+    output grid according to `stride`, `padding`, `output_padding` and
+    `dilation`, and correlated with the `(C_in, C_out, kH, kW)` weight.
+  for:
+  - slow_conv_transpose2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
