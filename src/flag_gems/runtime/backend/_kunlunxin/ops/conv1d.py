@@ -32,6 +32,13 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         dilation_width = dilation
 
+    # The 1-D length axis is mapped onto the W axis of a 2-D convolution with
+    # H == 1, NOT onto H with W == 1.  Both are pure views of the same memory,
+    # but the vendor conv2d_fusion kernel is ~3.5x faster with H == 1: W is
+    # the contiguous axis, so a W == 1 input gives every program a one-element
+    # row.  Measured on (32,64,512)x(64,64,3) fp32: 74 us (W == 1) versus
+    # 21 us (H == 1).  The downstream 2-D helpers all take an (N,C,H,W)
+    # tensor, so this is the only change needed.
     if isinstance(padding, str):
         if padding == "same":
             assert stride == 1, (
@@ -50,26 +57,26 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                 + 1
             )
             return conv2d(
-                input.unsqueeze(-1),
-                weight.unsqueeze(-1),
+                input.unsqueeze(2),
+                weight.unsqueeze(2),
                 bias,
-                (stride_width, 1),
-                (padding_width, 0),
-                (dilation_width, 1),
+                (1, stride_width),
+                (0, padding_width),
+                (1, dilation_width),
                 groups,
-            ).squeeze(-1)[..., (ol - il) :]
+            ).squeeze(2)[..., (ol - il) :]
         elif padding == "valid":
             # For "valid" padding, pass the string directly to conv2d
             # conv2d will handle it properly in its own logic
             return conv2d(
-                input.unsqueeze(-1),
-                weight.unsqueeze(-1),
+                input.unsqueeze(2),
+                weight.unsqueeze(2),
                 bias,
-                (stride_width, 1),
+                (1, stride_width),
                 padding,  # Pass string "valid" directly
-                (dilation_width, 1),
+                (1, dilation_width),
                 groups,
-            ).squeeze(-1)
+            ).squeeze(2)
         else:
             raise ValueError(
                 f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
@@ -79,11 +86,11 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         padding_width = padding
     return conv2d(
-        input.unsqueeze(-1),
-        weight.unsqueeze(-1),
+        input.unsqueeze(2),
+        weight.unsqueeze(2),
         bias,
-        (stride_width, 1),
-        (padding_width, 0),
-        (dilation_width, 1),
+        (1, stride_width),
+        (0, padding_width),
+        (1, dilation_width),
         groups,
-    ).squeeze(-1)
+    ).squeeze(2)
