@@ -108,9 +108,7 @@ def test_glu_backward_jvp(shape, dim, dtype):
 
     ref_out = _reference(*ref_tensors, dim)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.glu_backward_jvp(*tensors, dim)
-
+    res_out = flag_gems.glu_backward_jvp(*tensors, dim)
     atol = FP32_ATOL if dtype == torch.float32 else LOW_PRECISION_ATOL
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
@@ -133,8 +131,6 @@ def test_glu_backward_jvp_broadcast_dgrad(shape, dim, dtype):
 
     ref_out = _reference(*ref_tensors, dim)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.glu_backward_jvp(*tensors, dim)
-
+    res_out = flag_gems.glu_backward_jvp(*tensors, dim)
     atol = FP32_ATOL if dtype == torch.float32 else LOW_PRECISION_ATOL
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
