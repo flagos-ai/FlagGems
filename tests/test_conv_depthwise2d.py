@@ -19,6 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 SHAPE_DEPTHWISE = [
     ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
     ((18, 16, 4, 4), (16, 1, 2, 2), (2, 2)),
@@ -61,15 +63,28 @@ def test_conv_depthwise2d(
         bias_tensor = None
         ref_bias = None
 
-    ref_out = torch.ops.aten._conv_depthwise2d(
-        ref_inp,
-        ref_weight,
-        kernel,
-        ref_bias,
-        stride,
-        padding,
-        dilation,
-    )
+    if IS_KUNLUNXIN:
+        # aten::_conv_depthwise2d is CUDA-only and has no kernel here, so the
+        # reference is built with the equivalent grouped convolution.
+        ref_out = torch.nn.functional.conv2d(
+            ref_inp.float(),
+            ref_weight.float(),
+            None if ref_bias is None else ref_bias.float(),
+            stride,
+            padding,
+            dilation,
+            groups=ref_inp.shape[1],
+        ).to(dtype)
+    else:
+        ref_out = torch.ops.aten._conv_depthwise2d(
+            ref_inp,
+            ref_weight,
+            kernel,
+            ref_bias,
+            stride,
+            padding,
+            dilation,
+        )
 
     res_out = flag_gems._conv_depthwise2d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
