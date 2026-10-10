@@ -89,16 +89,17 @@ runs:
         # HTTP link via the injected proxy, authenticated with the job token.
         HTTP_URL="https://x-access-token:${RC_TOKEN}@github.com/${RC_REPO}.git"
 
-        # Speed-based abort instead of a blunt time cap, so a slow-but-moving
-        # fetch (e.g. a large fetch-depth 0 history on a slow link) is NOT
-        # killed, while a stalled one aborts quickly:
-        #   HTTP: git aborts if transfer stays < lowSpeedLimit for lowSpeedTime.
+        # Abort a link within ~10s if it isn't moving fast enough, then rotate:
+        #   HTTP: git aborts if transfer stays < 20 KiB/s for lowSpeedTime (10s).
         #   SSH : ServerAlive* (in SSH_CMD) drops a wedged connection in ~10s.
-        # A hard SIGKILL timeout still backstops both in case neither fires
-        # (e.g. a hang before any transfer); set well above the ~10s detectors.
+        # The low-speed checks only start once bytes flow; a stall BEFORE any
+        # transfer (TLS / proxy-CONNECT hang, the common failure here) wouldn't
+        # trigger them, so the hard SIGKILL timeout is also the 10s probe window
+        # to cap that case. A healthy pre-check fetch finishes in a few seconds,
+        # so this does not kill normal (even moderately slow) fetches.
         LOW_LIMIT=20480              # bytes/sec (20 KiB/s)
         LOW_TIME="$RC_PROBE"         # seconds under the limit before aborting
-        HARD=$(( RC_PROBE * 6 ))     # backstop hard kill (s)
+        HARD="$RC_PROBE"             # hard kill (s): also caps connect-stage stalls
         try_fetch() {  # $1=label $2=url  (GIT_SSH_COMMAND set by caller if ssh)
           git remote remove origin 2>/dev/null || true
           git remote add origin "$2"
