@@ -114,11 +114,9 @@ def test_slow_conv_transpose2d(
         dilation,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.slow_conv_transpose2d(
-            inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
-        )
-
+    res_out = flag_gems.slow_conv_transpose2d(
+        inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
+    )
     # Every output element accumulates C_in * kH * kW terms, so scale the
     # absolute tolerance by that count, as the sibling conv tests do.
     reduce_dim = weight_shape[0] * kernel_size[0] * kernel_size[1]
@@ -159,19 +157,17 @@ def test_slow_conv_transpose2d_out_variant(dtype):
     ).to(dtype)
 
     out = torch.empty_like(ref_out, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = flag_gems.slow_conv_transpose2d(
-            inp,
-            weight,
-            kernel_size,
-            bias,
-            stride,
-            padding,
-            output_padding,
-            dilation,
-            out=out,
-        )
-
+    res_out = flag_gems.slow_conv_transpose2d(
+        inp,
+        weight,
+        kernel_size,
+        bias,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+        out=out,
+    )
     assert res_out.data_ptr() == out.data_ptr()
     reduce_dim = weight_shape[0] * kernel_size[0] * kernel_size[1]
     utils.gems_assert_close(
