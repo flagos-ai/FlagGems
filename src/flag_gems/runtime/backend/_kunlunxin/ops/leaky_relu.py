@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -119,8 +120,15 @@ _LEAKY_BACKWARD_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 # fp16/bf16 have fewer bytes per element, so BLOCK must scale up too (the in-flight window
 # only pays off once per-core bytes are large enough).
 _LEAKY_BSL = 8192
-_LEAKY_FAT_BLOCK = 131072
-_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 131072 grid≥32, avoiding under-occupancy
+# Fat BLOCK for large fp16/bf16 shapes (2026-09-21 floor probe, official metric):
+# with the in-flight window filled (bsl 8192), the residual wall is the fp32->bf16
+# store conversion (no single-instruction cvt; lowering emits <16 x i32> + vand.u.mz,
+# full/cvt2 ~= 1.007 -- i.e. store-conversion is the floor, not launch or DMA).
+# At 131072 a 16.7M tensor is only 128 programs, which under-fills the cores; 65536
+# gives 256 programs and sits on the store-conversion floor full (bf16 ~1.33x /
+# fp16 ~1.10x vs the 131072 baseline, correctness preserved -- same flat body).
+_LEAKY_FAT_BLOCK = 65536
+_LEAKY_FAT_MIN_NUMEL = 1 << 22  # 4M: at 65536 grid>=64, keeping every core fed
 
 
 @triton.jit
@@ -179,19 +187,23 @@ def _leaky_relu_backward_flat(grad_output, self, negative_slope):
         block = _LEAKY_FAT_BLOCK
     need_mask = n % block != 0
     grid = (triton.cdiv(n, block),)
-    leaky_relu_backward_flat_kernel[grid](
-        grad_output,
-        self,
-        out,
-        n,
-        negative_slope,
-        BLOCK=block,
-        NEED_MASK=need_mask,
-        USE_BIT=(n <= 8192),
-        num_warps=warps,
-        buffer_size_limit=_LEAKY_BSL,
-        unroll_num=16,
-    )
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        leaky_relu_backward_flat_kernel[grid](
+            grad_output,
+            self,
+            out,
+            n,
+            negative_slope,
+            BLOCK=block,
+            NEED_MASK=need_mask,
+            USE_BIT=(n <= 8192),
+            num_warps=warps,
+            buffer_size_limit=_LEAKY_BSL,
+            unroll_num=16,
+        )
     return out
 
 
