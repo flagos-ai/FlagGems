@@ -66,17 +66,15 @@ def test_slow_conv2d_backward(shape, weight_shape, kernel_size, stride, padding,
     ref_weight = utils.to_reference(weight, True)
     ref_grad_output = utils.to_reference(grad_output, True)
 
-    with flag_gems.use_gems():
-        gi, gw, gb = flag_gems.ops._slow_conv2d_backward(
-            grad_output,
-            inp,
-            weight,
-            kernel_size,
-            stride,
-            padding,
-            [True, True, True],
-        )
-
+    gi, gw, gb = flag_gems.ops._slow_conv2d_backward(
+        grad_output,
+        inp,
+        weight,
+        kernel_size,
+        stride,
+        padding,
+        [True, True, True],
+    )
     ref_gi, ref_gw, ref_gb = torch.ops.aten._slow_conv2d_backward.output_mask(
         ref_grad_output,
         ref_inp,
