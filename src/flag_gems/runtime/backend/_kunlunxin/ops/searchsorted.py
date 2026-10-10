@@ -145,6 +145,15 @@ def _searchsorted_kernel(
         advance = (~go_left).to(tl.int32) & in_range.to(tl.int32)
         idx += step.to(idx.dtype) * advance.to(idx.dtype)
 
+    # NaN must land at the row length (torch ranks NaN above every value).  The
+    # walk above gets that from `~(v <= mv)` being true for NaN -- an ordered-
+    # comparison assumption that holds on some builds but not the CI runner's.
+    # Detect NaN by bit pattern instead (pure integer compare, immune to how the
+    # float comparison lowers) and pin the result.
+    vf32 = values_in.to(tl.float32)
+    is_nan = (vf32.to(tl.int32, bitcast=True) & 0x7FFFFFFF) > 0x7F800000
+    idx = tl.where(is_nan, SEQUENCE_LEN, idx)
+
     if NEED_MASK:
         tl.store(out + offsets, idx, mask=mask)
     else:
@@ -200,8 +209,7 @@ def _searchsorted_sm_staged_kernel(
     the closure walk's user-reachable set, so `VectorizabilityAnalysis` rejects
     the whole closure and every SM read stays scalar. Extending the whitelist
     does not help: the vectorised SM gather itself misbehaves on device (one form
-    crashes the card, another returns wrong results), see
-    `artifacts/op-perf-batch-2026-09/evidence/searchsorted-20260924/vectorization-cycle-20260924/`.
+    crashes the card, another returns wrong results).
     """
     pr = tl.program_id(0)
     pq = tl.program_id(1)
@@ -289,6 +297,13 @@ def _searchsorted_sm_staged_kernel(
             # instructions, not because it is faster.
             idx += step * (~go_left).to(tl.int32)
         idx = tl.where(end_hit, L, idx)
+        # Same NaN pin as the bitwalk kernel: `end_hit` and the loop above rely
+        # on ordered comparisons (`~(v <= mv)` being true for NaN), which the
+        # flagtree mainline's xtdk-llvm22 lowering gets wrong; pin NaN by bit
+        # pattern instead.
+        vf32 = v.to(tl.float32)
+        is_nan = (vf32.to(tl.int32, bitcast=True) & 0x7FFFFFFF) > 0x7F800000
+        idx = tl.where(is_nan, L, idx)
 
         tl.store(tle.gpu.local_ptr(obuf, (rows, cols)), idx.to(OTY))
         tle.gpu.copy(obuf, out_desc, [RP, RQ], [rb, pq * RQ])
@@ -397,6 +412,26 @@ def _sm_staged_supported(sorted_sequence, values, out):
         return None
     q_per_row = values.shape[-1] if sorted_sequence.dim() != 1 else values.numel()
     if q_per_row == 0:
+        return None
+
+    # The staged path builds TensorDescriptors for `seq` and `out`; the flagtree
+    # mainline's TensorDescriptor requires every non-innermost stride to be
+    # 16-byte aligned (a device requirement it enforces, and the internal
+    # toolchain does not).  Shapes whose row pitch is not a multiple of 16 bytes
+    # take the bitwalk fallback instead -- on both toolchains, so behaviour
+    # stays identical.
+    def _pitch_ok(t):
+        # Outer stride of the descriptor view: 0-dim -> view(1, 1) gives pitch 1;
+        # 1-dim -> view(1, -1) gives pitch numel; 2-dim -> stride(-2).
+        if t.dim() == 0:
+            pitch = 1
+        elif t.dim() == 1:
+            pitch = t.numel()
+        else:
+            pitch = t.stride(-2)
+        return (pitch * t.element_size()) % 16 == 0
+
+    if not _pitch_ok(sorted_sequence) or not _pitch_ok(out):
         return None
     n_rows = sorted_sequence.shape[0] if sorted_sequence.dim() != 1 else 1
     if values.numel() != n_rows * q_per_row:

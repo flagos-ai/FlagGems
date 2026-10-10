@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
+from triton.compiler.errors import CompilationError
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -745,11 +746,16 @@ def _launch_v2_rows(
     diagonal: int,
     num_rows: int,
     num_warps: int = 4,
+    force_mask: bool = False,
 ):
     # Per-row kernel; `num_rows` rows are covered (full matrix or band prefix).
+    # `force_mask=True` picks the masked load/store variant even when N is a
+    # multiple of the block size: the unmasked variant miscompiles on some
+    # shapes (M=29/N=32: scattered zero stores, non-deterministic, on both
+    # toolchains), while the masked variant is correct there.
     M, N = input.shape[-2:]
     block_n = min(triton.next_power_of_2(N), _BLOCK_SIZE)
-    need_mask = N % block_n != 0
+    need_mask = force_mask or (N % block_n != 0)
     with torch_device_fn.device(input.device):
         _tril_row2d_kernel[(num_rows,)](
             input,
@@ -1318,7 +1324,74 @@ def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
     # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
     # globally, and for the one-ULP tie-bias difference from the default path.
     with bf16_fast_store(out.dtype):
-        return _launch_tril_impl(input, out, diagonal)
+        try:
+            return _launch_tril_impl(input, out, diagonal)
+        except (RuntimeError, AttributeError, CompilationError):
+            # The flagtree mainline's xtdk-llvm22 lowering crashes inside
+            # ConvertTritonXPUToLLVM on the v2 flat kernels (PassManager::run
+            # failed), and its tle build lacks UNI_SRAM for the strided path.
+            # Both are environment defects, not semantic ones: fall back to the
+            # per-row kernel, run per matrix on contiguous operands, which is
+            # element-wise identical and lowers on both toolchains.
+            return _launch_tril_fallback(input, out, diagonal)
+
+
+def _fallback_copy(src: torch.Tensor, dst: torch.Tensor):
+    # VENDOR-EXCEPTION (2026-10-10, registered in D-018 / check_vendor_delegation):
+    # same family as `_band_copy`'s non-contiguous branch.  The gem copy_ (TLE
+    # copy family) requires `UNI_SRAM`, which the flagtree mainline's tle build
+    # lacks, so `Tensor.contiguous()` and gem copies crash there.  Used for the
+    # staging copy and the write-back of the rows fallback; retry the gem path
+    # when the TLE copy family is fixed.
+    torch.ops.aten._copy_from(src, dst)
+    return dst
+
+
+def _fallback_contiguous(t: torch.Tensor):
+    """Vendor-engine contiguous copy for the rows fallback (see `_fallback_copy`)."""
+    if t.is_contiguous():
+        return t
+    out = torch.empty_like(t, memory_format=torch.contiguous_format)
+    _fallback_copy(t, out)
+    return out
+
+
+def _launch_fallback_matrix(inp: torch.Tensor, outp: torch.Tensor, diagonal: int):
+    # Per-matrix kernel for the fallback, with a second-level escape: some
+    # shapes crash the per-row kernel's lowering on the mainline (int32
+    # 1024x1024: ConvertTritonXPUToLLVM / PassManager), and power-of-two N take
+    # the pow2 kernel there instead.  Non-pow2 N re-raise -- a loud failure
+    # beats a silent one.
+    try:
+        _launch_v2_rows(inp, outp, diagonal, num_rows=inp.shape[-2], force_mask=True)
+    except (RuntimeError, AttributeError, CompilationError):
+        if not _is_power_of_2(inp.shape[-1]):
+            raise
+        _launch_v2_pow2(inp, outp, diagonal)
+
+
+def _launch_tril_fallback(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    inp = _fallback_contiguous(input)
+    outp = _fallback_contiguous(out)
+    M, N = inp.shape[-2:]
+    flat_in = inp.reshape(-1, M, N)
+    flat_out = outp.reshape(-1, M, N)
+    for b in range(flat_in.shape[0]):
+        _launch_fallback_matrix(flat_in[b], flat_out[b], diagonal)
+    if outp is not out:
+        _fallback_copy(outp, out)
+    return out
+
+
+def _launch_tril_inplace_fallback(input: torch.Tensor, diagonal: int):
+    inp = _fallback_contiguous(input)
+    M, N = inp.shape[-2:]
+    flat = inp.reshape(-1, M, N)
+    for b in range(flat.shape[0]):
+        _launch_fallback_matrix(flat[b], flat[b], diagonal)
+    if inp is not input:
+        _fallback_copy(inp, input)
+    return input
 
 
 def _launch_tril_impl(input: torch.Tensor, out: torch.Tensor, diagonal: int):
@@ -1423,10 +1496,16 @@ def tril_(input: torch.Tensor, diagonal: int = 0):
     if diagonal <= -M:
         return _zero_out(input)
 
-    if input.is_contiguous():
-        return _launch_tril_inplace_contiguous(input, diagonal)
+    try:
+        if input.is_contiguous():
+            return _launch_tril_inplace_contiguous(input, diagonal)
 
-    return _launch_tril_inplace_strided(input, diagonal)
+        return _launch_tril_inplace_strided(input, diagonal)
+    except (RuntimeError, AttributeError, CompilationError):
+        # Same environment defects as `_launch_tril`'s fallback (llvm22 flat
+        # lowering crash / missing UNI_SRAM in the mainline tle): run the flat
+        # 2D kernel per matrix on contiguous operands instead.
+        return _launch_tril_inplace_fallback(input, diagonal)
 
 
 def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
