@@ -8516,6 +8516,27 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: gradient
+  description: Computes the numerical gradient of a tensor along the given
+    dimensions with second-order accurate central differences in the interior
+    and first- or second-order one-sided differences at the boundaries
+    (edge_order). Spacing may be unspecified, a Scalar, a list of Scalars, or
+    a list of 1-D coordinate Tensors.
+  for:
+  - gradient.array
+  - gradient.scalarint
+  - gradient.scalararray
+  - gradient.scalarrayint
+  - gradient.scalarrayarray
+  - gradient.tensorarrayint
+  - gradient.tensorarray
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
