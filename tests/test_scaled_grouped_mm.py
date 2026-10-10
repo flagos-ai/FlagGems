@@ -616,3 +616,77 @@ def test_scaled_grouped_mm_fp8_nan(dtype):
     ).cpu()
     expected = torch.tensor([[[float("nan"), float("nan")], [0.0, 0.0]]])
     torch.testing.assert_close(result, expected, rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.scaled_grouped_mm
+@pytest.mark.parametrize(
+    "n,k", [(512, 512), (1024, 1024)], ids=["n512_k512", "n1024_k1024"]
+)
+@pytest.mark.parametrize("out_dtype", _floating_output_dtypes(), ids=str)
+def test_scaled_grouped_mm_int8_large_ragged_boundaries(
+    n: int, k: int, out_dtype: torch.dtype
+) -> None:
+    # Large total M exercises the grouped scheduler with empty groups and
+    # lengths immediately below, at, and above the 32/128-row boundaries.
+    lengths = (0, 31, 32, 33, 127, 128, 129, 0, 2048, 1665, 0)
+    groups, total_m = len(lengths), sum(lengths)
+    rows = torch.arange(total_m, dtype=torch.int64)
+    selected_k = (37 * rows) % k
+    mat_a = torch.zeros((total_m, k), dtype=torch.int8)
+    mat_a[rows, selected_k] = 1
+
+    # Every first 256-column span contains all signed INT8 codes. The extra
+    # tile terms distinguish different K/N tiles instead of repeating a bank
+    # every 256 entries; the group term distinguishes neighboring experts.
+    k_indices = torch.arange(k, dtype=torch.int32)[:, None]
+    n_indices = torch.arange(n, dtype=torch.int32)[None, :]
+    codes = (
+        17 * k_indices
+        + 23 * (k_indices // 128)
+        + 29 * n_indices
+        + 11 * (n_indices // 256)
+    )
+    mat_b = torch.empty((groups, k, n), dtype=torch.int8)
+    for group in range(groups):
+        mat_b[group] = ((codes + 37 * group) % 256 - 128).to(torch.int8)
+
+    scale_a = (2.0 ** (rows % 3 - 1)).to(torch.float32)
+    scale_b = (
+        (2.0 ** (torch.arange(groups * n, dtype=torch.int64) % 3 - 3))
+        .to(torch.float32)
+        .reshape(groups, n)
+    )
+    bias = (
+        (torch.arange(groups * n, dtype=torch.int32) % 9 - 4).to(torch.float32) / 4
+    ).reshape(groups, n)
+    offs = torch.tensor(lengths, dtype=torch.int32).cumsum(0).to(torch.int32)
+
+    # A has exactly one unit entry per row, so selecting that B row is an
+    # independent exact dot reference without a large CPU matrix multiply.
+    # Binary scales and quarter-valued bias keep the FP32 epilogue exact;
+    # |result| <= 129 also avoids overflow in every requested output dtype.
+    expected = torch.empty((total_m, n), dtype=torch.float64)
+    start = 0
+    for group, length in enumerate(lengths):
+        end = start + length
+        if length:
+            chunk = mat_b[group, selected_k[start:end], :].to(torch.float64)
+            chunk = (
+                chunk
+                * scale_a[start:end, None].to(torch.float64)
+                * scale_b[group, None, :].to(torch.float64)
+            )
+            expected[start:end] = chunk + bias[group, None, :].to(torch.float64)
+        start = end
+    expected = expected.to(out_dtype)
+
+    result = flag_gems.scaled_grouped_mm(
+        _quantized_device_view(mat_a, "contiguous"),
+        _quantized_device_view(mat_b, "column_major"),
+        scale_a.to(flag_gems.device),
+        scale_b.to(flag_gems.device),
+        offs=offs.to(flag_gems.device),
+        bias=bias.to(flag_gems.device),
+        out_dtype=out_dtype,
+    )
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)

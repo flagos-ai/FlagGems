@@ -47,8 +47,8 @@ def _select_config(M, N, K, num_groups, mode, is_int8):
     if is_int8:
         if mode != 0:
             return (32, 64, 64, 4)
-        if N >= 1024 and K >= 1024 and M >= 4096:
-            return (128, 128, 64, 8)
+        if N >= 512 and K >= 512 and M >= 4096:
+            return (128, 128, 64, 4)
         if N >= 256 and K >= 256 and M >= 512:
             return (64, 64, 64, 4)
         if N >= 64 and K >= 128:
@@ -161,10 +161,13 @@ def _scaled_grouped_mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     NUM_WARPS: tl.constexpr,
+    GROUP_MAJOR: tl.constexpr = False,
 ):
     # LibEntry does not key compiler options; include the warp count explicitly
     # so different launch configurations cannot alias.
     tl.static_assert(NUM_WARPS > 0)
+    if GROUP_MAJOR:
+        tl.static_assert(IS_INT8 and MODE == 0)
     # MODE: ragged M, ragged N, ragged K, regular batch.
     tile = tl.program_id(0).to(tl.int64)
     other_tile = tl.program_id(1).to(tl.int64)
@@ -182,7 +185,13 @@ def _scaled_grouped_mm_kernel(
         ).to(tl.int64)
         sizes = tl.where(groups < NUM_GROUPS, ends - starts, 0)
         if MODE == 0:
-            tile_ends = tl.cumsum(tl.cdiv(sizes, BLOCK_M), 0)
+            tile_counts = tl.cdiv(sizes, BLOCK_M)
+            if GROUP_MAJOR:
+                TILES_N: tl.constexpr = (N + BLOCK_N - 1) // BLOCK_N
+                # Preserve the INT64 prefix while assigning every N tile to
+                # the same contiguous program-ID interval for its group.
+                tile_counts = tile_counts * TILES_N
+            tile_ends = tl.cumsum(tile_counts, 0)
         else:
             tile_ends = tl.cumsum(tl.cdiv(sizes, BLOCK_N), 0)
         group = tl.sum(((tile >= tile_ends) & (groups < NUM_GROUPS)).to(tl.int32), 0)
@@ -193,7 +202,13 @@ def _scaled_grouped_mm_kernel(
         first_tile = tl.sum(tl.where(groups == group - 1, tile_ends, 0), 0)
         if MODE == 0:
             m_start, m_size = group_start, group_size
-            pid_m, pid_n = tile - first_tile, other_tile
+            if GROUP_MAJOR:
+                local_tile = tile - first_tile
+                # Neighboring programs traverse N before advancing M.
+                pid_m = local_tile // TILES_N
+                pid_n = local_tile % TILES_N
+            else:
+                pid_m, pid_n = tile - first_tile, other_tile
         else:
             n_start, n_size = group_start, group_size
             pid_m, pid_n = other_tile, tile - first_tile
@@ -358,6 +373,13 @@ def scaled_grouped_mm(
         grid = (triton.cdiv(N, bn) + groups - 1, triton.cdiv(M, bm))
     else:
         grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn), groups)
+    # A wider N makes group-local traversal worthwhile; narrower GEMMs retain
+    # the original tile order with the tuned four-warp tile configuration.
+    group_major = is_int8 and mode == 0 and M >= 4096 and N >= 1024 and K >= 512
+    if group_major:
+        # Use the original host upper bound; excess programs return after the
+        # compact GPU prefix lookup. No offsets are copied to the host.
+        grid = (grid[0] * grid[1],)
     fnuz = self.dtype == torch.float8_e4m3fnuz
     a = self if is_int8 else self.view(torch.uint8)
     b = mat2 if is_int8 else mat2.view(torch.uint8)
@@ -394,6 +416,7 @@ def scaled_grouped_mm(
             BLOCK_N=bn,
             BLOCK_K=bk,
             NUM_WARPS=warps,
+            GROUP_MAJOR=group_major,
             num_warps=warps,
             num_stages=2,
             pipeline="basic",
