@@ -19748,6 +19748,20 @@ ops:
     - Tensor
   stages:
     - alpha: '5.5'
+- id: trapezoid
+  description: |
+    A variant of trapezoid() that uses a tensor x to specify sample points
+    along the integration dimension.
+  for:
+    - trapezoid.x
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
+  stages:
+    - alpha: '5.4'
+
 - id: trapz
   description: |
     Computes the trapezoidal rule along a dimension using constant spacing dx.
