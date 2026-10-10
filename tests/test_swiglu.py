@@ -68,7 +68,9 @@ def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
             }[dtype]
             ref_out = TE_OP(input_tensor, None, otype=otype)
             # TE's swiglu flattens leading dims to 2D; restore the original shape.
-            ref_out = ref_out.view(*input_tensor.shape[:-1], input_tensor.shape[-1] // 2)
+            ref_out = ref_out.view(
+                *input_tensor.shape[:-1], input_tensor.shape[-1] // 2
+            )
         else:
             ref_out = TE_OP(input_tensor, quantizer=None)
         ref_out = utils.to_reference(ref_out.to(device))
