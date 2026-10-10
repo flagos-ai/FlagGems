@@ -3460,7 +3460,7 @@ def rnn_tanh(
     bias/no-bias, multiple layers, both directions, batch-first layout,
     training dropout, and pure-Triton backward.
     """
-    logger.debug("GEMS RNN_TANH")
+    logger.debug("GEMS_METAX RNN_TANH")
     prefer_persistent_dot = runtime.device.vendor_name in (
         "nvidia",
         "thead",
