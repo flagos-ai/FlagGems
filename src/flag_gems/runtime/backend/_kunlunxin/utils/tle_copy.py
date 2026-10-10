@@ -66,15 +66,21 @@ try:
     from triton.tools.tensor_descriptor import TensorDescriptor
 
     # Importing `.language` succeeds even on triton builds that expose only a
-    # subset of the tile-language surface, because submodules resolve lazily via
-    # a module-level __getattr__. The copy kernels need BOTH `tle.gpu` (the
-    # cluster/LM tile path) and `tle.dsa` (the SDNN row/transpose path), so probe
-    # them here. A build missing either would otherwise not fail until Triton
-    # walks the kernel body to compute its cache key at warmup, raising
-    # `AttributeError: module '...tle.language' has no attribute 'dsa'` deep in
-    # the compile path; detecting it up front lets tle_copy() return False and
-    # the caller keep its aten fallback instead.
-    _HAS_TLE = hasattr(tle, "gpu") and hasattr(tle, "dsa")
+    # subset of the tile-language surface: a submodule can be present yet still
+    # be missing the specific symbols a kernel body uses (submodules/attrs
+    # resolve lazily). The copy kernels reference the symbols probed below; if
+    # any is absent, Triton would not fail until it walks the kernel body for its
+    # cache key at warmup -- e.g. `AttributeError: module '...tle.language.dsa'
+    # has no attribute 'UNI_SRAM'`. Probe them up front so tle_copy() returns
+    # False and the caller keeps its aten fallback instead of raising.
+    _HAS_TLE = (
+        hasattr(tle, "gpu")
+        and hasattr(tle, "dsa")
+        and all(hasattr(tle.gpu, a) for a in ("alloc", "lmem", "copy"))
+        and all(
+            hasattr(tle.dsa, a) for a in ("UNI_SRAM", "alloc", "copy", "to_tensor")
+        )
+    )
 except ImportError:  # triton without the XPU tile-language extension
     _HAS_TLE = False
 
