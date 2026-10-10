@@ -3493,7 +3493,7 @@ def rnn_tanh_data(
     bidirectional,
 ):
     """PackedSequence overload of :func:`rnn_tanh`, implemented in Triton."""
-    logger.debug("GEMS RNN_TANH_DATA")
+    logger.debug("GEMS_METAX RNN_TANH_DATA")
     if data.ndim != 2:
         raise RuntimeError(f"rnn_tanh.data: expected 2-D data, got {data.ndim}-D")
     params = tuple(params)
