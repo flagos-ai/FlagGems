@@ -199,6 +199,56 @@ except Exception:  # tle unavailable / import failure -> keep atomic fallback
     _SA2D_TLE_TILE_KERNELS = {}
 
 
+# On the CI flagtree Triton build, tle.raw with object= may either be rejected at
+# decoration (caught above -> _HAS_SA2D_TLE False) OR accepted yet silently run
+# the wrong code / no-op, leaving the output buffer untouched and producing wrong
+# results with no error. _HAS_SA2D_TLE only proves the dialect decorated, not that
+# the payload actually computes. Probe once with a tiny known scatter on a
+# sentinel-filled out; only trust the on-chip path when it reproduces the
+# reference, else fall back to the atomic / Triton paths.
+_SA2D_TLE_OK = None
+
+
+def _sa2d_tle_usable(device):
+    global _SA2D_TLE_OK
+    if _SA2D_TLE_OK is None:
+        if not _HAS_SA2D_TLE:
+            _SA2D_TLE_OK = False
+            return _SA2D_TLE_OK
+        try:
+            kernel = _SA2D_TLE_KERNELS.get(torch.float32)
+            if kernel is None:
+                _SA2D_TLE_OK = False
+                return _SA2D_TLE_OK
+            R, K, S = 2, 4, 4
+            idx = torch.tensor(
+                [[0, 1, 2, 3], [3, 2, 1, 0]], device=device, dtype=torch.int64
+            )
+            src = torch.tensor(
+                [[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]],
+                device=device,
+                dtype=torch.float32,
+            )
+            # out[r, idx[r, s]] += src[r, s] with zero-init (zinit=1): a permutation
+            # index + S==K means each out cell receives exactly one add.
+            ref = torch.tensor(
+                [[1.0, 2.0, 3.0, 4.0], [8.0, 7.0, 6.0, 5.0]], dtype=torch.float32
+            )
+            # Sentinel fill (not present in ref) so a silent no-op payload that
+            # leaves the buffer untouched is detectable, rather than passing by
+            # chance on allocator-reused memory.
+            out = torch.full((R, K), -123.0, device=device, dtype=torch.float32)
+            kernel[(_sa2d_grid(K, R),)](
+                out, out, idx, src, R, K, S, src.stride(0), 1
+            )
+            _SA2D_TLE_OK = torch.equal(out.cpu(), ref)
+        except Exception as e:  # pragma: no cover - any failure -> atomic fallback
+            logger.debug("scatter_add tle probe failed, using fallback: %s", e)
+            _SA2D_TLE_OK = False
+    return _SA2D_TLE_OK
+
+
+
 def span_for_slice(slice_n: int, block: int) -> int:
     if slice_n <= 0:
         return block
@@ -693,6 +743,8 @@ def _try_scatter_add_2d_tle(
     # touches, the caller must set require_full_rows=True for that case (only fire
     # when index rows cover every out row).
     if not _HAS_SA2D_TLE:
+        return None
+    if not _sa2d_tle_usable(x.device):
         return None
     if x.ndim != 2 or dim != 1:
         return None

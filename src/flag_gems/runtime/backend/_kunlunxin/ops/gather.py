@@ -29,12 +29,16 @@ try:
         SA2D_TLE_BIG_MAX_K,
         SA2D_TLE_MAX_K,
         _sa2d_grid,
+        _sa2d_tle_usable,
     )
 except Exception:
     _HAS_SA2D_TLE = False
     _SA2D_TLE_KERNELS = {}
     _SA2D_TLE_BIG_KERNELS = {}
     _SA2D_TLE_TILE_KERNELS = {}
+
+    def _sa2d_tle_usable(device):
+        return False
 
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
@@ -715,6 +719,8 @@ def _try_gather_backward_tle(grad, self, dim, index_contiguous, result, zinit=Fa
     # leakage.
     if not _HAS_SA2D_TLE:
         return None
+    if not _sa2d_tle_usable(result.device):
+        return None
     if dim != self.ndim - 1 or self.ndim < 1:
         return None
     if grad.is_complex():
@@ -801,6 +807,7 @@ def gather_backward(grad, self, dim, index, sparse_grad):
     # through untouched (zero regression risk for the general path).
     if (
         _HAS_SA2D_TLE
+        and _sa2d_tle_usable(self.device)
         and self.ndim >= 1
         and not grad.is_complex()
         and index.dtype == torch.int64
