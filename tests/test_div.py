@@ -536,12 +536,9 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
         ref_inp1, ref_inp2, rounding_mode=rounding_mode
     )
 
-    # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
-    # gives wrong results. Direct call to flag_gems.ops.div_mode bypasses backend
-    # dispatch and always uses the common op. Use torch.div with use_gems() to route
-    # through PyTorch dispatch to the mthreads specialization which uses trunc(x / y).
-    # Other backends call flag_gems.ops.div_mode directly (common op path).
-    if flag_gems.vendor_name == "mthreads":
+    # Route through torch.div + use_gems() so the backend specialization (with
+    # the correct half-precision floor algorithm) is used instead of the common op.
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
             res_out = torch.div(inp1, inp2, rounding_mode=rounding_mode)
     else:
@@ -581,9 +578,7 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
     # differ from both CPU and f64 references. Casting the scalar to the same
     # dtype gives the correct IEEE 754 result that our kernel matches.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_device = (
-            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
-        )
+        scalar_device = ref_inp.device
         scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
@@ -593,11 +588,7 @@ def test_div_mode_scalar(shape, scalar, rounding_mode, dtype):
             ref_inp, scalar, rounding_mode=rounding_mode
         )
 
-    # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
-    # gives wrong results. Direct call to flag_gems.ops.div_mode bypasses backend
-    # dispatch and always uses the common op. Use torch.div with use_gems() to route
-    # through PyTorch dispatch to the mthreads specialization which uses trunc(x / y).
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
             res_out = torch.div(inp, scalar, rounding_mode=rounding_mode)
     else:
@@ -651,11 +642,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
         ref_inp1, ref_inp2, rounding_mode=rounding_mode
     )
 
-    # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
-    # gives wrong results. Direct call to flag_gems.ops.div_mode_ bypasses backend
-    # dispatch and always uses the common op. Use torch.div_ with use_gems() to route
-    # through PyTorch dispatch to the mthreads specialization which uses trunc(x / y).
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
             res_out = inp1.div_(inp2, rounding_mode=rounding_mode)
     else:
@@ -692,9 +679,7 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
     # float scalars in trunc mode to avoid aten CUDA's approximate-division
     # inaccuracy on the Scalar_mode path.
     if rounding_mode == "trunc" and isinstance(scalar, float):
-        scalar_device = (
-            ref_inp.device if flag_gems.vendor_name == "cambricon" else flag_gems.device
-        )
+        scalar_device = ref_inp.device
         scalar_tensor = torch.tensor(scalar, dtype=dtype, device=scalar_device)
         ref_out = torch.ops.aten.div.Tensor_mode(
             ref_inp, scalar_tensor, rounding_mode=rounding_mode
@@ -703,11 +688,7 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
         ref_out = torch.ops.aten.div_.Scalar_mode(
             ref_inp, scalar, rounding_mode=rounding_mode
         )
-    # mthreads lacks hardware div_rn, so the common op's trunc(div_rn(x, y)) fallback
-    # gives wrong results. Direct call to flag_gems.ops.div_mode_ bypasses backend
-    # dispatch and always uses the common op. Use torch.div_ with use_gems() to route
-    # through PyTorch dispatch to the mthreads specialization which uses trunc(x / y).
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         with flag_gems.use_gems():
             res_out = inp.div_(scalar, rounding_mode=rounding_mode)
     else:
