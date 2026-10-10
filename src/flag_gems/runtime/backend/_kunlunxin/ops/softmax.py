@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -12,7 +13,391 @@ from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.tle_copy import tle_copy
 
+try:
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _HAS_TLE = False
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# tle.gpu row-reduce path (KL3): softmax over the contiguous last axis.
+#
+# The pointer kernels below reduce the row axis with a serial-chain tl.max /
+# tl.sum on XPU, which is the dominant cost on the long-row shapes. tle.gpu
+# moves the tile GM -> LM with the cluster DMA and keeps the reduce core-local,
+# streaming the row in YBLOCK columns, so the running max / sum-of-exp stay
+# [XBLOCK] vectors instead of a full-row tile. softmax needs the same two
+# reductions (max, then sum of exp) and differs only in the normalise pass:
+# out = exp(x - m) / z. The partial-column fill is -inf (the max identity;
+# exp(-inf - m) == 0 keeps the sum exact).
+#
+# Only fp16/fp32/bf16, contiguous [M, N] with N >= _TLE_MIN_N_FUSED (and
+# M >= _TLE_MIN_M in the medium-N range, M >= _TLE_CLUSTERS everywhere) take
+# this path; f64, N == 1, strided views and tiny/single-row shapes keep the
+# pointer kernels.
+# =============================================================================
+_TLE_CORE_NUM = 64
+# The online-softmax reduce materialises a [XBLOCK, YBLOCK] fp32 `exp(x - m)`
+# tile per step on top of the loaded tile, roughly twice the register/LM
+# footprint of the plain sum row-reduce. Halve the per-core LM tile budget so
+# that intermediate still fits (4 KB/core overflows for the tiles this path
+# emits).
+_TLE_LM_BYTES_PER_CORE = 2048
+_TLE_XBLOCK = 256
+_TLE_CLUSTERS = 8
+_TLE_WIDE_ROW_BYTES = 32768
+_TLE_NARROW_ROW_BYTES = 2048
+_TLE_MIN_N = 8192
+_TLE_MIN_M = 1024
+# FG_SOFTMAX_MIN_N_FUSED overrides the medium-N gate for A/B routing. Default
+# 256 mirrors log_softmax: below that the tle row tiling cannot beat the
+# pointer single-pass.
+_TLE_MIN_N_FUSED = int(os.environ.get("FG_SOFTMAX_MIN_N_FUSED", "256"))
+# Medium rows (256 <= N < 8192) only route to tle up to this width. Above it the
+# row is memory-bound and the pointer multirow single-pass (1 read + 1 exp)
+# beats the tle two-read fused kernel (2 reads + 2 exps).
+_TLE_MED_ROWS_MAX_N = 256
+
+_TLE_TL_DTYPE = {
+    torch.float16: tl.float16,
+    torch.float32: tl.float32,
+    torch.bfloat16: tl.bfloat16,
+}
+
+
+def _tle_available():
+    """`tle.gpu` exists only on the xpu3 (KL3) cluster pipeline."""
+    if not _HAS_TLE:
+        return False
+    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+        return False
+    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+
+
+_TLE_AVAILABLE = _tle_available()
+
+
+def _npo2(x):
+    """`triton.next_power_of_2` is a few us a call, too slow for the small-shape
+    host path; this is the same value without the dispatcher round trip."""
+    return 1 << (x - 1).bit_length() if x > 1 else 1
+
+
+_TLE_ROW_GEOM = {}
+_TLE_GEOM_MISS = object()
+
+
+def _tle_row_geom(M, N, itemsize):
+    """Cached [M, N] row-reduce tiling: `(xblock, yblock, row_blocks)`.
+
+    Same trade as the sum/log_softmax row-reduce: XBLOCK is rows per program,
+    YBLOCK is the LM budget divided by it. Aim for one program per cluster, then
+    let the row length pull XBLOCK down when it is long enough to need a long
+    YBLOCK, or up when the reduce is small enough that launch and result write
+    are all there is. XBLOCK may exceed M -- both copies clamp to the descriptor
+    extents.
+    """
+    geom_key = (M, N, itemsize)
+    geom = _TLE_ROW_GEOM.get(geom_key, _TLE_GEOM_MISS)
+    if geom is not _TLE_GEOM_MISS:
+        return geom
+    xblock = min(_TLE_XBLOCK, max(128, _npo2(-(-M // _TLE_CLUSTERS))))
+    row_bytes = N * itemsize
+    if row_bytes >= _TLE_WIDE_ROW_BYTES:
+        xblock = max(_TLE_CORE_NUM // 2, xblock // 4)
+    elif row_bytes <= _TLE_NARROW_ROW_BYTES:
+        xblock = _TLE_XBLOCK if M > _TLE_CORE_NUM else 128
+    if _TLE_MIN_N_FUSED <= N < _TLE_MIN_N:
+        # Medium row: empirical (xblock, yblock) per (itemsize, N) bucket,
+        # carried over from the log_softmax tle path (identical reduce phase):
+        # widest YBLOCK the 4KB/core LM budget allows, then XBLOCK for enough
+        # programs. itemsize 4 (fp32) caps yb at 1024 because [64,2048] fp32
+        # exceeds the LM budget.
+        if itemsize == 2:
+            if N <= 512:
+                xblock, yblock = 128, 512
+            elif N <= 1024:
+                xblock, yblock = 32, 1024
+            elif N <= 2048:
+                xblock, yblock = 32, 2048
+            else:  # 4096 .. 8191
+                # (32, 2048), not log_softmax's (64, 2048): softmax's normalise
+                # pass adds an extra tl.exp, and (64, 2048) bf16 (= 256KB LM
+                # tile) exceeds the local-memory stack budget on this arch.
+                xblock, yblock = 32, 2048
+        else:  # fp32
+            if N <= 512:
+                xblock, yblock = 128, 512
+            elif N <= 1024:
+                xblock, yblock = 64, 1024
+            else:  # 2048 .. 8191
+                xblock, yblock = 64, 1024
+        while yblock > N and yblock > 1:
+            yblock >>= 1
+        geom = (xblock, yblock, -(-M // xblock))
+        _TLE_ROW_GEOM[geom_key] = geom
+        return geom
+
+    # Wide row (N >= 8192) and narrow row (row_bytes <= 2048): nominal LM
+    # budget split by XBLOCK, no medium-row doubling.
+    tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
+    yblock = max(1, min(_npo2(N), tile_elems // xblock))
+    while yblock > N and yblock > 1:
+        yblock >>= 1
+    geom = (xblock, yblock, -(-M // xblock))
+    _TLE_ROW_GEOM[geom_key] = geom
+    return geom
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "m_desc", "z_desc"],
+)
+def _tle_softmax_reduce_kernel(
+    a_desc,
+    m_desc,
+    z_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    """Online-softmax row reduce: writes (row max, sum-of-exp) per row.
+
+    The reduction axis is streamed in YBLOCK columns; the running max and
+    sum-of-exp stay [XBLOCK] vectors, so each program reduces whole rows for
+    its slice of the tile with no cross-core barrier. Partial tiles are not
+    masked: the copy clamps to the descriptor, and the short last step is
+    filled with -inf first so the pad columns cannot leak into the running max
+    (their exp contributes 0 to the sum).
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a_lmem = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    m_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.float32, layout=None, scope=tle.gpu.lmem)
+    z_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.float32, layout=None, scope=tle.gpu.lmem)
+
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
+    m_ptrs = tle.gpu.local_ptr(m_lmem, (tl.arange(0, XBLOCK),))
+    z_ptrs = tle.gpu.local_ptr(z_lmem, (tl.arange(0, XBLOCK),))
+
+    m = tl.full([XBLOCK], value=float("-inf"), dtype=tl.float32)
+    z = tl.zeros([XBLOCK], dtype=tl.float32)
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(
+                    a_ptrs,
+                    tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE),
+                )
+        tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        x = tl.load(a_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(
+            all_neg_inf,
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
+        m = m_new
+    tl.store(m_ptrs, m)
+    tl.store(z_ptrs, z)
+    tle.gpu.copy(m_lmem, m_desc, [XBLOCK], [row_off])
+    tle.gpu.copy(z_lmem, z_desc, [XBLOCK], [row_off])
+
+
+@triton.jit
+def _softmax_pass_kernel(
+    out_ptr,
+    x_ptr,
+    m_ptr,
+    z_ptr,
+    N,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Elementwise out = exp(x - m[row]) / z[row]; reads x a second time.
+
+    Plain pointer pass, one row per program: the reduce kernel already produced
+    (row max, sum-of-exp) into m/z, and this pass is memory-bound. The
+    full-chunk path is unmasked so the load/store lowers to block-DMA; a masked
+    2D/1D tile on this backend falls back to per-lane gather and is orders of
+    magnitude slower, so it is kept only for the short last block.
+    """
+    pid_m = ext.program_id(0)
+    pid_n = ext.program_id(1)
+    n_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    off = pid_m * N + n_offsets
+    m = tl.load(m_ptr + pid_m)
+    z = tl.load(z_ptr + pid_m)
+    if NEED_MASK:
+        mask = n_offsets < N
+        x = tl.load(x_ptr + off, mask=mask, other=float("-inf")).to(tl.float32)
+        tl.store(out_ptr + off, tl.exp(x - m) / z, mask=mask)
+    else:
+        x = tl.load(x_ptr + off).to(tl.float32)
+        tl.store(out_ptr + off, tl.exp(x - m) / z)
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "out_desc"],
+)
+def _tle_softmax_fused_kernel(
+    a_desc,
+    out_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    """Fused reduce + normalize for a [M, N] softmax (N >= 256).
+
+    One kernel: pass 1 streams the row in YBLOCK chunks computing online
+    (max, sum-exp) into per-row [XBLOCK] accumulators held in registers; pass 2
+    streams again and writes out = exp(x - m) / z. The row is read from GM
+    twice (too long to hold), but there is one launch and the per-row
+    statistics never round-trip through GM -- the separate reduce kernel's
+    LM-strip writeback of m/z costs more than a launch (mirrors the log_softmax
+    fused kernel).
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a0 = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a0_ptrs = tle.gpu.local_ptr(a0, (row_ids, col_ids))
+
+    full_n = N - N % YBLOCK
+    m = tl.full([XBLOCK], value=float("-inf"), dtype=tl.float32)
+    z = tl.zeros([XBLOCK], dtype=tl.float32)
+    # ---- pass 1: online-softmax reduce ----
+    for c in tl.range(0, full_n, YBLOCK):
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, c])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(
+            all_neg_inf,
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
+        m = m_new
+    if NEED_ZERO:
+        tl.store(
+            a0_ptrs, tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE)
+        )
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, full_n])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        m_new = tl.maximum(m, tl.max(x, 1))
+        all_neg_inf = m_new == float("-inf")
+        z = tl.where(
+            all_neg_inf,
+            z,
+            z * tl.exp(m - m_new) + tl.sum(tl.exp(x - m_new[:, None]), 1),
+        )
+        m = m_new
+
+    # ---- pass 2: normalize ----
+    for c in tl.range(0, full_n, YBLOCK):
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, c])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        o = tl.exp(x - m[:, None]) / z[:, None]
+        tl.store(a0_ptrs, o.to(OUT_DTYPE))
+        tle.gpu.copy(a0, out_desc, [XBLOCK, YBLOCK], [row_off, c])
+    if NEED_ZERO:
+        tl.store(
+            a0_ptrs, tl.full([XBLOCK, YBLOCK], value=float("-inf"), dtype=IN_DTYPE)
+        )
+        tle.gpu.copy(a_desc, a0, [XBLOCK, YBLOCK], [row_off, full_n])
+        x = tl.load(a0_ptrs).to(tl.float32)
+        o = tl.exp(x - m[:, None]) / z[:, None]
+        tl.store(a0_ptrs, o.to(OUT_DTYPE))
+        tle.gpu.copy(a0, out_desc, [XBLOCK, YBLOCK], [row_off, full_n])
+
+
+def _tle_softmax(out, inp, M, N):
+    """softmax over a contiguous [M, N] last axis; False if not expressible."""
+    if not _TLE_AVAILABLE:
+        return False
+    if N < _TLE_MIN_N_FUSED:
+        return False
+    if M < _TLE_CLUSTERS:
+        # Fewer rows than a cluster: the tle grid collapses to 1-2 programs and
+        # loses to the parallel chunk-split path (e.g. the 1-D [268435456] flat
+        # softmax goes through 32768-way chunk split, not a single program).
+        return False
+    if N < _TLE_MIN_N:
+        # Medium rows (256 <= N < 8192). Two bounds keep the tle path off where
+        # the pointer single-pass (multirow: 1 read + 1 exp) wins:
+        #   * N > _TLE_MED_ROWS_MAX_N: memory-bound medium rows (N >= 512) where
+        #     the fused kernel's second row read + second exp lose.
+        #   * M < _TLE_MIN_M: grid collapses to 1-2 programs and its 2x row
+        #     read loses to the single-pass pointer path.
+        if N > _TLE_MED_ROWS_MAX_N or M < _TLE_MIN_M:
+            return False
+    if inp.dtype not in _TLE_TL_DTYPE or out.dtype not in _TLE_TL_DTYPE:
+        return False
+    if not inp.is_contiguous() or not out.is_contiguous():
+        return False
+    a = inp.view(M, N)
+    c = out.view(M, N)
+    xblock, yblock, row_blocks = _tle_row_geom(M, N, inp.element_size())
+    if N % yblock != 0:
+        # Non-pow2 tail: keep the two-kernel path (reduce then pass); the
+        # fused kernel's partial last chunk is only exercised by pow2 rows.
+        m = torch.empty((M,), dtype=torch.float32, device=inp.device)
+        z = torch.empty((M,), dtype=torch.float32, device=inp.device)
+        with torch_device_fn.device(inp.device):
+            _tle_softmax_reduce_kernel[(row_blocks,)](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(m, block_shape=[xblock]),
+                TensorDescriptor.from_tensor(z, block_shape=[xblock]),
+                N,
+                XBLOCK=xblock,
+                YBLOCK=yblock,
+                IN_DTYPE=_TLE_TL_DTYPE[inp.dtype],
+                NEED_ZERO=True,
+            )
+            block_n = min(8192, _npo2(N))
+            _softmax_pass_kernel[(M, triton.cdiv(N, block_n))](
+                c,
+                a,
+                m,
+                z,
+                N,
+                BLOCK_N=block_n,
+                NEED_MASK=(N % block_n != 0),
+            )
+    else:
+        with torch_device_fn.device(inp.device):
+            _tle_softmax_fused_kernel[(row_blocks,)](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock, yblock]),
+                N,
+                XBLOCK=xblock,
+                YBLOCK=yblock,
+                IN_DTYPE=_TLE_TL_DTYPE[inp.dtype],
+                OUT_DTYPE=_TLE_TL_DTYPE[out.dtype],
+                NEED_ZERO=False,
+            )
+    return True
 
 
 @triton.jit
@@ -535,11 +920,13 @@ _SM_CHUNK_SPLIT_MAX_N = 8192 * 1024
 
 def _softmax_forward_launch(output, inp, M, N):
     """Inner launch on a contiguous [M, N] view (reduced dim innermost)."""
+    if _tle_softmax(output, inp, M, N):
+        return
     use_multirow = N <= _SM_MR_MAX_N and ((N & (N - 1)) == 0)
     if use_multirow:
         # Prefer a large TILE_M; shrink (by halving) until it divides M so we
         # still take the multirow path for non-power-of-two M instead of the
-        # much slower per-row `softmax_kernel_inner` (measured 5-15x slower).
+        # much slower per-row `softmax_kernel_inner`.
         tile_m = _SM_MR_TILE_M if N <= 2048 else _SM_MR_TILE_M_N4096
         while tile_m > 1 and M % tile_m != 0:
             tile_m >>= 1
@@ -977,8 +1364,8 @@ def _native_contiguous(t):
 
     `Tensor.contiguous()` lowers to aten::contiguous -> aten::copy_, and
     `copy_` IS a gems-registered op, so inside `flag_gems.use_gems()` it turns
-    into a gems strided pointwise copy (measured 57-1600x slower than the
-    native XPU strided copy). `aten::_copy_from` is never overridden by gems.
+    into a gems strided pointwise copy, which is far slower than the native XPU
+    strided copy. `aten::_copy_from` is never overridden by gems.
     """
     dst = torch.empty(t.shape, dtype=t.dtype, device=t.device)
     if not tle_copy(t, dst):
