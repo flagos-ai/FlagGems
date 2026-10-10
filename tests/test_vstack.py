@@ -72,7 +72,6 @@ def test_accuracy_vstack(shape, dtype):
     ref_inp = [utils.to_reference(e) for e in inp]
     ref_out = torch.vstack(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.vstack(inp)
+    res_out = flag_gems.vstack(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

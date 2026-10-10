@@ -43,7 +43,9 @@ else:
     ]
 
 
-def upsample_bilinear2d_aa_backward_call(grad, input_size, align_corners):
+def upsample_bilinear2d_aa_backward_call(
+    grad, input_size, align_corners, use_flag_gems=False
+):
     orig_shape = tuple(input_size)
     n, c, in_h, in_w = orig_shape
 
@@ -53,14 +55,24 @@ def upsample_bilinear2d_aa_backward_call(grad, input_size, align_corners):
 
     grad_4d = grad.reshape(n, c, out_h, out_w)
 
-    out = torch.ops.aten._upsample_bilinear2d_aa_backward(
-        grad_4d,
-        [out_h, out_w],
-        list(shape_4d),
-        align_corners,
-        None,
-        None,
-    )
+    if use_flag_gems:
+        out = flag_gems._upsample_bilinear2d_aa_backward(
+            grad_4d,
+            [out_h, out_w],
+            list(shape_4d),
+            align_corners,
+            None,
+            None,
+        )
+    else:
+        out = torch.ops.aten._upsample_bilinear2d_aa_backward(
+            grad_4d,
+            [out_h, out_w],
+            list(shape_4d),
+            align_corners,
+            None,
+            None,
+        )
 
     return out.reshape(orig_shape)
 
@@ -92,12 +104,12 @@ def test_upsample_bilinear2d_aa_backward(
         align_corners,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = upsample_bilinear2d_aa_backward_call(
-            res_grad.to(dtype),
-            shape,
-            align_corners,
-        )
+    res_out = upsample_bilinear2d_aa_backward_call(
+        res_grad.to(dtype),
+        shape,
+        align_corners,
+        use_flag_gems=True,
+    )
 
     assert res_out.shape == shape
 

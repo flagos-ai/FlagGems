@@ -37,8 +37,7 @@ def test_weight_int8pack_mm(M, N, K, dtype):
     ref_B = utils.to_reference(B, False)
     ref_scales = utils.to_reference(scales, False)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.weight_int8pack_mm(A, B, scales)
+    res_out = flag_gems.weight_int8pack_mm(A, B, scales)
 
     ref_out = _ref_weight_int8pack_mm(ref_A, ref_B, ref_scales)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)

@@ -40,8 +40,7 @@ def test_unflatten(shape, dtype, dim):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unflatten(ref_inp, dim, sizes)
-    with flag_gems.use_gems():
-        res_out = torch.unflatten(inp, dim, sizes)
+    res_out = flag_gems.unflatten(inp, dim, sizes)
 
     res_out_ref = utils.to_reference(res_out)
     ref_out_ref = utils.to_reference(ref_out)

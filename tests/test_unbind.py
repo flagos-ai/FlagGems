@@ -29,8 +29,7 @@ def test_unbind(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unbind(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_out = torch.unbind(inp, dim)
+    res_out = flag_gems.unbind(inp, dim)
 
     assert len(res_out) == len(
         ref_out
@@ -51,8 +50,7 @@ def test_unbind_default_dim(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unbind(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.unbind(inp)
+    res_out = flag_gems.unbind(inp)
 
     assert len(res_out) == len(
         ref_out
@@ -71,8 +69,7 @@ def test_unbind_negative_dim(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unbind(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_out = torch.unbind(inp, dim)
+    res_out = flag_gems.unbind(inp, dim)
 
     assert len(res_out) == len(
         ref_out

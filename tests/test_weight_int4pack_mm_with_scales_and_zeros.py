@@ -124,10 +124,9 @@ def test_weight_int4pack_mm_with_scales_and_zeros(M, K, N, qGroupSize, dtype):
     ref_out = reference_mm(ref_A, ref_mat2, qgs, ref_qScale, ref_qZeros)
 
     # Get result from GEMS
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._weight_int4pack_mm_with_scales_and_zeros(
-            A, mat2, qgs, qScale, qZeros
-        )
+    res_out = flag_gems._weight_int4pack_mm_with_scales_and_zeros(
+        A, mat2, qgs, qScale, qZeros
+    )
 
     # Move both to CPU for comparison
     res_out = res_out.to("cpu")

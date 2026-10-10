@@ -48,10 +48,9 @@ def test_upsample_nearest_exact2d_backward(shape, dtype):
         grad_output, output_size, input_size
     )
 
-    with flag_gems.use_gems():
-        res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
-            grad_output.to(flag_gems.device), output_size, input_size
-        )
+    res_grad_input = flag_gems._upsample_nearest_exact2d_backward(
+        grad_output.to(flag_gems.device), output_size, input_size
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
 
@@ -83,9 +82,8 @@ def test_upsample_nearest_exact2d_backward_with_scales(shape, dtype):
         grad_output, output_size, input_size, scale_h, scale_w
     )
 
-    with flag_gems.use_gems():
-        res_grad_input = torch.ops.aten._upsample_nearest_exact2d_backward.default(
-            grad_output.to(flag_gems.device), output_size, input_size, scale_h, scale_w
-        )
+    res_grad_input = flag_gems._upsample_nearest_exact2d_backward(
+        grad_output.to(flag_gems.device), output_size, input_size, scale_h, scale_w
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)

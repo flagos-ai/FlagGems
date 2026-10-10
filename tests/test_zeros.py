@@ -31,14 +31,12 @@ device = flag_gems.device
 def test_zeros(shape, dtype):
     expected_dev = "cpu" if cfg.TO_CPU else device
     # without dtype
-    with flag_gems.use_gems():
-        res_out = torch.zeros(shape, device=flag_gems.device)
+    res_out = flag_gems.zeros(shape, device=flag_gems.device)
 
     utils.gems_assert_equal(res_out, torch.zeros(shape, device=expected_dev))
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.zeros(shape, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.zeros(shape, dtype=dtype, device=expected_dev)
