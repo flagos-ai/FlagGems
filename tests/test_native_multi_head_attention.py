@@ -20,9 +20,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
-
-
 
 # The aten op is registered under the name `_native_multi_head_attention`, which
 # starts with an underscore.  pytest >= 8.0 rejects marker names that start with
