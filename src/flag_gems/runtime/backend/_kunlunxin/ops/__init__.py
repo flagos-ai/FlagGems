@@ -303,7 +303,7 @@ from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hardshrink import hardshrink, hardshrink_out
-from .hardsigmoid import hardsigmoid, hardsigmoid_out
+from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
@@ -442,6 +442,7 @@ from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
+from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
 from .native_group_norm import native_group_norm
 from .native_layer_norm import native_layer_norm
@@ -1015,6 +1016,7 @@ __all__ = [
     "hardshrink",
     "hardshrink_out",
     "hardsigmoid",
+    "hardsigmoid_",
     "hardsigmoid_out",
     "histc",
     "hstack",
@@ -1190,6 +1192,7 @@ __all__ = [
     "narrow_copy",
     "native_batch_norm",
     "native_batch_norm_legit_no_training",
+    "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
     "native_layer_norm",

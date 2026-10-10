@@ -58,10 +58,10 @@ jobs:
     - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
       with:
         ssh-key: ${{ secrets.CI_SSH_KEY }}
-        # ~10 min of rotation (30 rounds x [SSH 10s + HTTP 10s]) to ride out
+        # ~20 min of rotation (60 rounds x [SSH 10s + HTTP 10s]) to ride out
         # windows where both links are temporarily down; a good link still hits
         # on round 1 (~10s).
-        rounds: "30"
+        rounds: "60"
     - name: Ensure full working tree
       shell: bash
       run: |
