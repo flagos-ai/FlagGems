@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
+
 import pytest
 import torch
 
@@ -27,6 +29,13 @@ try:
     HAS_VLLM_FUSED_MOE = True
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+
+if HAS_VLLM_FUSED_MOE:
+    VLLM_SUPPORTS_INPLACE = (
+        "inplace" in inspect.signature(vllm_fused_experts_impl).parameters
+    )
+else:
+    VLLM_SUPPORTS_INPLACE = False
 
 
 class InplaceFusedExpertsBenchmark(base.Benchmark):
@@ -93,6 +102,8 @@ class InplaceFusedExpertsBenchmark(base.Benchmark):
 
 def _vllm_inplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vllm fused_experts_impl in-place."""
+    if not VLLM_SUPPORTS_INPLACE:
+        pytest.skip("installed vLLM fused_experts_impl does not accept inplace")
     vllm_fused_experts_impl(
         hidden_states,
         w1,

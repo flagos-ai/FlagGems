@@ -16,6 +16,7 @@
 #
 # Triton implementation of linalg_solve.
 # Solves AX = B via fused LU decomposition + triangular solves in a single kernel.
+import contextlib
 import logging
 import math
 
@@ -25,7 +26,33 @@ import triton.language as tl
 
 from flag_gems.utils import libentry
 
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+except (ImportError, ModuleNotFoundError):
+    # Triton < 3.6 does not have triton.knobs module
+    _autotuning_knobs = None
+
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _disable_aabs():
+    """Temporarily disable FlagTree AABS while launching this kernel.
+
+    AABS re-sizes the tl.arange-driven BLOCK_K from the K extent, so a launch
+    that already passes BLOCK_K explicitly binds the argument twice and raises
+    "got multiple values for keyword argument 'BLOCK_K'". The kernel derives
+    both block sizes on the host, so the adjusted configs are not needed.
+    """
+    adjust_block_size = getattr(_autotuning_knobs, "adjust_block_size", None)
+    if adjust_block_size is None:
+        yield
+        return
+    _autotuning_knobs.adjust_block_size = False
+    try:
+        yield
+    finally:
+        _autotuning_knobs.adjust_block_size = adjust_block_size
 
 
 @libentry()
@@ -231,7 +258,7 @@ def linalg_solve(A, B, *, left=True):
 
     grid = (batch,)
 
-    with torch.no_grad():
+    with torch.no_grad(), _disable_aabs():
         linalg_solve_kernel[grid](
             A_work,
             LU,

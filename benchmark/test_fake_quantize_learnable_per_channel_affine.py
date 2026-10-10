@@ -37,46 +37,53 @@ PER_CHANNEL_SHAPES = [
 QUANT_RANGES = [(0, 255), (-128, 127)]
 
 
+def _case_fn(case, dtype):
+    del dtype
+    shape, axis = case
+    yield consts.BenchmarkCasePlan(
+        shape={"input": shape},
+        params={"axis": axis},
+        builder_args=(shape, axis),
+    )
+
+
+def _build_inputs(plan, dtype, device):
+    shape, axis = plan.builder_args
+    x = torch.randn(shape, dtype=dtype, device=device)
+    channels = shape[axis]
+    scale = torch.rand(channels, dtype=torch.float32, device=device) * 0.5 + 0.01
+    zero_point = torch.randn(channels, dtype=torch.float32, device=device)
+    return x, scale, zero_point, axis
+
+
 class FakeQuantizeLearnablePerChannelAffineBenchmark(base.GenericBenchmark):
     """GenericBenchmark for the learnable per-channel fake-quantise affine op.
 
     The op is parameterised by ``(shape, axis)`` with scale/zero-point living
-    along ``axis``. The base ``GenericBenchmark`` pulls shapes from the shared
-    ``core_shapes.yaml`` and only merges subclass shapes in COMPREHENSIVE mode,
-    which does not fit a per-axis quantiser. We therefore override
-    ``get_input_iter`` to iterate the curated ``(shape, axis)`` pairs directly,
-    ignoring the YAML shape set, and keep ``set_more_shapes`` as a no-op.
-
-    ``quant_min`` / ``quant_max`` are bound on the instance before ``run()``.
+    along ``axis``, which does not fit the shared ``core_shapes.yaml`` shape
+    set. Cases come from the curated ``PER_CHANNEL_SHAPES`` pairs; the
+    ``quant_min`` / ``quant_max`` range is bound into the tensor builder.
     """
 
-    def set_more_shapes(self):
-        return []
-
-    def get_input_iter(self, dtype):
-        for shape, axis in PER_CHANNEL_SHAPES:
-            x = torch.randn(shape, dtype=dtype, device=self.device)
-            channels = shape[axis]
-            scale = (
-                torch.rand(channels, dtype=torch.float32, device=self.device) * 0.5
-                + 0.01
-            )
-            zero_point = torch.randn(channels, dtype=torch.float32, device=self.device)
-            args = (x, scale, zero_point, axis, self._quant_min, self._quant_max)
-            yield args
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(PER_CHANNEL_SHAPES)
+        self.shape_desc = "shape, axis"
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine
 @pytest.mark.parametrize("shape, axis", PER_CHANNEL_SHAPES)
 @pytest.mark.parametrize("quant_min, quant_max", QUANT_RANGES)
 def test_fake_quantize_learnable_per_channel_affine(shape, axis, quant_min, quant_max):
+    def build_inputs_fn(plan, dtype, device):
+        x, scale, zero_point, case_axis = _build_inputs(plan, dtype, device)
+        return x, scale, zero_point, case_axis, quant_min, quant_max
+
     bench = FakeQuantizeLearnablePerChannelAffineBenchmark(
         op_name="fake_quantize_learnable_per_channel_affine",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine,
-        input_fn=None,
         gems_op=flag_gems._fake_quantize_learnable_per_channel_affine,
+        case_fn=_case_fn,
+        build_inputs_fn=build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench._quant_min = quant_min
-    bench._quant_max = quant_max
     bench.run()
