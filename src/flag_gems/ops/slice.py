@@ -196,11 +196,6 @@ def slice(input_tensor, dim=0, start=None, end=None, step=1):
     # ``aten::slice.Tensor`` is a view operation: the returned tensor shares
     # storage with the input.  The result is built as a zero-copy view via
     # ``torch.as_strided`` rather than an allocated copy.
-    assert input_tensor.dtype not in (
-        torch.complex64,
-        torch.complex128,
-    ), f"slice: unsupported dtype {input_tensor.dtype}"
-
     ndim = input_tensor.ndim
     dim = int(dim) % ndim if ndim > 0 else 0
     dim_size = int(input_tensor.size(dim))
