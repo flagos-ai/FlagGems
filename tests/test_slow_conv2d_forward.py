@@ -85,16 +85,14 @@ def test_slow_conv2d_forward(shape, kernel_size, stride, padding, has_bias, dtyp
         [padding[0], padding[1]],
     )
 
-    with flag_gems.use_gems():
-        res_out = flag_gems._slow_conv2d_forward(
-            inp,
-            weight,
-            [kh, kw],
-            bias,
-            [stride[0], stride[1]],
-            [padding[0], padding[1]],
-        )
-
+    res_out = flag_gems._slow_conv2d_forward(
+        inp,
+        weight,
+        [kh, kw],
+        bias,
+        [stride[0], stride[1]],
+        [padding[0], padding[1]],
+    )
     assert res_out.shape == (n, c_out, h_out, w_out)
     # fp16/bf16 convolutions accumulate over the full reduction window in the
     # same fp32 accumulator on both sides, but the tap ordering differs, so the
