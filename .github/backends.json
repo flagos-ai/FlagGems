@@ -23,7 +23,7 @@
     "runner_label": "enflame",
     "command_aliases": ["enflame"],
     "label": "vendor/Enflame",
-    "gpu_check": "",
+    "gpu_check": "tools/gpu_check_enflame.sh",
     "enabled": true,
     "containerized": true,
     "container": {
