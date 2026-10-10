@@ -111,6 +111,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
 
@@ -222,6 +223,8 @@ __all__ = [
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
+    "triangular_solve",
+    "triangular_solve_out",
     "var",
     "var_correction",
     "var_dim",

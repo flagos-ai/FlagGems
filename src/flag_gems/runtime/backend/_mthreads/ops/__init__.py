@@ -158,6 +158,7 @@ from .special_round_out import special_round_out
 from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
@@ -335,6 +336,8 @@ __all__ = [
     "square_",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "true_divide",
     "true_divide_",
     "true_divide_out",
