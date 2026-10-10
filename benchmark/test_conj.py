@@ -18,12 +18,21 @@ import torch
 from . import base, consts
 
 
+def _conj_materialize(x):
+    # Materialized reference: force both sides to do O(N) device work.
+    # Native torch._conj is a lazy view (conj bit only, zero device work);
+    # resolve_conj() materializes it. On the gems side the override already
+    # returns a materialized (is_conj()==False) tensor, so resolve_conj() is a
+    # cheap no-op there -> both sides measure one O(N) negate-copy pass.
+    return torch._conj(x).resolve_conj()
+
+
 @pytest.mark.conj
 def test_conj():
     # _conj only operates on complex dtypes (FLOAT_DTYPES not applicable)
     bench = base.UnaryPointwiseBenchmark(
         op_name="conj",
-        torch_op=torch._conj,
+        torch_op=_conj_materialize,
         dtypes=consts.COMPLEX_DTYPES,
     )
     bench.run()
