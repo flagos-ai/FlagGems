@@ -85,11 +85,9 @@ def test_slow_conv_dilated3d(case, bias, dtype):
         list(dilation),
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.slow_conv_dilated3d(
-            inp, weight, kernel_size, bias_t, stride, padding, dilation
-        )
-
+    res_out = flag_gems.slow_conv_dilated3d(
+        inp, weight, kernel_size, bias_t, stride, padding, dilation
+    )
     # fp16/bf16 accumulate in fp32 inside the kernel but the baseline is an
     # fp64 im2col + GEMM, so those two need a loosened absolute tolerance.
     atol = 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
