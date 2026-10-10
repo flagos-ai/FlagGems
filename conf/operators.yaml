@@ -12950,6 +12950,17 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: mT
+  description: Returns a view of this tensor with the last two dimensions transposed.
+  for:
+  - mT
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
