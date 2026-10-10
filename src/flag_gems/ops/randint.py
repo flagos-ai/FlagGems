@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
+@triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N", "high"])
 def randint_kernel(
     out_ptr,
     N,
