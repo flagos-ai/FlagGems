@@ -35,10 +35,6 @@ def double(in_ptr, out_ptr, n, TILE_SIZE: tl.constexpr):
     flag_gems.vendor_name == "kunlunxin",
     reason="Issue #2853: not working",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="Issue #2854: torch.complex not supported",
-)
 def test_typed_pointer():
     real = torch.randn(10, 10, device=flag_gems.device)
     imag = torch.randn(10, 10, device=flag_gems.device)
@@ -60,10 +56,6 @@ def test_typed_pointer():
 @pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin",
     reason="Issue #2853: not working",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="Issue #2854: torch.complex not supported",
 )
 def test_typed_pointer_reinterpret_with_offset():
     real = torch.randn(100, device=flag_gems.device)

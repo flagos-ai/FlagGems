@@ -95,3 +95,18 @@ You can verify the active backend at runtime by checking `flag_gems.vendor_name`
 import flag_gems
 print(flag_gems.vendor_name)
 ```
+
+## 5. Backend-specific environment variables
+
+Some backends need extra environment variables so that individual operators
+compile or run correctly. Set them before importing *FlagGems*.
+
+### Moore Threads (MUSA)
+
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `DISABLE_LLVM_OPT` | `1` | Keep compatibility with the older LLVM stack used by this backend. Required by some reduction/backward kernels (e.g. `layer_norm` backward, `post_layer_norm_residual`) and by some benchmarks (`instance_norm`, `randperm`). |
+
+```shell
+export DISABLE_LLVM_OPT=1
+```

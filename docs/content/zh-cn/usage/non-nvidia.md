@@ -169,3 +169,18 @@ You can verify the active backend at runtime by checking `flag_gems.vendor_name`
 import flag_gems
 print(flag_gems.vendor_name)
 ```
+
+## 5. 后端特定的环境变量
+
+部分后端需要额外的环境变量，才能保证某些算子正确编译或运行。
+请在导入 *FlagGems* 之前设置这些变量。
+
+### 摩尔线程（MUSA）
+
+| 环境变量 | 取值 | 用途 |
+| --- | --- | --- |
+| `DISABLE_LLVM_OPT` | `1` | 与该后端使用的较旧 LLVM 编译栈保持兼容。部分归约/反向算子（如 `layer_norm` 反向、`post_layer_norm_residual`）以及部分基准测试（`instance_norm`、`randperm`）需要设置该项。 |
+
+```shell
+export DISABLE_LLVM_OPT=1
+```

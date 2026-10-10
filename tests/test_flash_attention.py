@@ -178,6 +178,7 @@ def dense_flash_attention_ref(q, k, v, scale, is_causal):
 
 
 @pytest.mark.underscore_flash_attention_forward
+@pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
     FLASH_ATTENTION_FORWARD_CONFIGS,
