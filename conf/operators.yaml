@@ -27,60 +27,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
-- id: _aminmax
-  description: 'Computes the minimum and maximum values of the `input` tensor.
-
-    '
-  for:
-  - _aminmax
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Reduction
-  stages:
-  - alpha: '5.5'
-- id: _aminmax_out
-  description: 'A variant of _aminmax() that writes the result into the out tensor.
-
-    '
-  for:
-  - _aminmax.out
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Reduction
-  stages:
-  - alpha: '5.5'
-- id: _conj_physical
-  description: 'Computes the element-wise conjugate of the given `input` tensor as
-    a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
-
-    '
-  for:
-  - _conj_physical
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.5'
-- id: _conj_physical_out
-  description: 'A variant of `_conj_physical()` that writes the result into the `out`
-    tensor.
-
-    '
-  for:
-  - _conj_physical.out
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.5'
 - id: _ctc_loss
   description: 'Computes the CTC loss and the alpha lattice used by its backward pass.
 
@@ -88,32 +34,6 @@ ops:
   for:
   - _ctc_loss
   - _ctc_loss.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5'
-- id: _ctc_loss_backward
-  description: 'Computes the gradient of the CTC loss with respect to log_probs.
-
-    '
-  for:
-  - _ctc_loss_backward
-  - _ctc_loss_backward.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5'
-- id: _ctc_loss_backward_out
-  description: A variant of `_ctc_loss_backward` that allows the output to be assigned
-    to `out`.
-  for:
-  - _ctc_loss_backward.out
   labels:
   - aten
   - KernelGen
@@ -277,30 +197,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
-- id: _saturate_weight_to_fp16
-  description: Triton kernel implementation for _saturate_weight_to_fp16.
-  for:
-  - _saturate_weight_to_fp16
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
-- id: _stack
-  description: |
-    Concatenates a sequence of tensors along a new dimension. This is the
-    internal `_stack` implementation that mirrors `stack`.
-  for:
-  - _stack
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: _transformer_encoder_layer_fwd
   description: Triton kernel implementation for _transformer_encoder_layer_fwd.
   for:
@@ -499,7 +395,7 @@ ops:
 
     '
   for:
-  - adaptive_avg_pool3d_backward.grad_input
+  - adaptive_avg_pool3d_backward
   labels:
   - aten
   - KernelGen
@@ -813,10 +709,13 @@ ops:
   stages:
   - alpha: '5.4'
 - id: addmm_activation
-  description: |
-    Performs `addmm` followed by an activation function. Computes
+  description: 'Performs `addmm` followed by an activation function. Computes
+
     `beta * input + alpha * (mat1 @ mat2)` and applies ReLU, or GELU (tanh
+
     approximation) when `use_gelu` is True.
+
+    '
   for:
   - _addmm_activation
   labels:
@@ -827,7 +726,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: addmm_activation_out
-  description: A variant of `_addmm_activation()` that assigns the output to the provided `out` parameter.
+  description: A variant of `_addmm_activation()` that assigns the output to the provided
+    `out` parameter.
   for:
   - _addmm_activation.out
   labels:
@@ -889,8 +789,8 @@ ops:
   stages:
   - beta: '5.4'
 - id: addmm_vector_bias
-  description: A variant of `addmm` that exercises the vector bias (1-D `input`)
-    broadcast path.
+  description: A variant of `addmm` that exercises the vector bias (1-D `input`) broadcast
+    path.
   for:
   - addmm
   labels:
@@ -1924,22 +1824,8 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
-- id: bartlett_window
-  description: Generates a Bartlett window of given length, returning a 1-D tensor
-    with the triangular window coefficients.
-  for:
-  - bartlett_window
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.5'
 - id: batch_norm
   description: An internal operator used for implementing the `BatchNorm` functionality.
-  for:
-  - native_batch_norm
   labels:
   - aten
   kind:
@@ -1956,29 +1842,11 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '3.0'
-- id: batch_norm_backward_elemt
-  description: 'Compute the per-element gradient for batch normalization backward
-    pass.
-
-    Given pre-computed channel statistics (sum_dy, sum_dy_xmu), produces
-
-    grad_input without reduction.
-
-    '
-  for:
-  - batch_norm_backward_elemt
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5'
 - id: batch_norm_backward_reduce
   description: Triton kernel implementation for batch normalization backward reduce
     stage.
   for:
-  - batch_norm_backward_reduce
+  - native_batch_norm_backward_reduce
   labels:
   - aten
   - KernelGen
@@ -1999,8 +1867,10 @@ ops:
   stages:
   - alpha: '5.5'
 - id: batch_norm_gather_stats_with_counts
-  description: |
-    Triton kernel implementation for gathering per-device batch normalization statistics with per-segment counts into global mean and inverse standard deviation.
+  description: 'Triton kernel implementation for gathering per-device batch normalization
+    statistics with per-segment counts into global mean and inverse standard deviation.
+
+    '
   for:
   - batch_norm_gather_stats_with_counts
   labels:
@@ -2078,8 +1948,8 @@ ops:
   stages:
   - alpha: '5.5'
 - id: batch_norm_with_update
-  description: Applies training-mode Batch Normalization using batch statistics and updates
-    running_mean/running_var in place.
+  description: Applies training-mode Batch Normalization using batch statistics and
+    updates running_mean/running_var in place.
   for:
   - _batch_norm_with_update
   labels:
@@ -2340,7 +2210,7 @@ ops:
 - id: bitwise_left_shift
   description: Computes the left arithmetic shift of `input` by `other` bits.
   for:
-  - bitwise_left_shift.Tensor
+  - bitwise_left_shift
   labels:
   - aten
   - pointwise
@@ -2351,7 +2221,7 @@ ops:
 - id: bitwise_left_shift_
   description: The in-place version of `bitwise_left_shift()`.
   for:
-  - bitwise_left_shift_.Tensor
+  - bitwise_left_shift_
   labels:
   - aten
   - KernelGen
@@ -2440,7 +2310,7 @@ ops:
 - id: bitwise_right_shift
   description: Computes the right arithmetic shift of `input` by `other` bits.
   for:
-  - bitwise_right_shift.Tensor
+  - bitwise_right_shift
   labels:
   - aten
   - pointwise
@@ -2451,7 +2321,7 @@ ops:
 - id: bitwise_right_shift_
   description: The in-place version of `bitwise_right_shift()`.
   for:
-  - bitwise_right_shift_.Tensor
+  - bitwise_right_shift_
   labels:
   - aten
   - KernelGen
@@ -3427,34 +3297,10 @@ ops:
   stages:
   - beta: '2.2'
   - stable: '5.3'
-- id: conv_tbc
-  description: Applies a 1D convolution over an input with time-batch-channel (T,
-    B, C) layout.
-  for:
-  - conv_tbc
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: conv_tbc_backward
   description: Triton kernel implementation for conv_tbc_backward.
   for:
   - conv_tbc_backward
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: conv_tbc_out
-  description: A variant of `conv_tbc()` that assigns the output to the given `out`
-    parameter.
-  for:
-  - conv_tbc.out
   labels:
   - aten
   - KernelGen
@@ -3482,7 +3328,7 @@ ops:
 
     '
   for:
-  - conv_transpose2d.input
+  - conv_transpose2d
   labels:
   - aten
   - KernelGen
@@ -3496,7 +3342,7 @@ ops:
 
     '
   for:
-  - conv_transpose3d.input
+  - conv_transpose3d
   labels:
   - aten
   - KernelGen
@@ -3666,7 +3512,7 @@ ops:
 
     '
   for:
-  - copysign.Tensor
+  - copysign
   labels:
   - aten
   - pointwise
@@ -3791,10 +3637,14 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cosine_similarity
-  description: |
-    Computes the cosine similarity between x1 and x2 along dim, broadcasting the
+  description: 'Computes the cosine similarity between x1 and x2 along dim, broadcasting
+    the
+
     inputs to a common shape first. Returns <x1, x2> / (max(||x1||_2, eps) *
+
     max(||x2||_2, eps)) reduced over dim, with eps guarding against zero norms.
+
+    '
   for:
   - cosine_similarity
   labels:
@@ -3854,7 +3704,8 @@ ops:
   stages:
   - beta: '5.3'
 - id: cross
-  description: Computes the cross product of two 3-dimensional vectors along a dimension of size 3.
+  description: Computes the cross product of two 3-dimensional vectors along a dimension
+    of size 3.
   for:
   - cross
   labels:
@@ -3863,22 +3714,6 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
-- id: cross_attention
-  description: 'Forward-only dense cross attention over BNSD tensors: computes
-    softmax(scale * Q @ K^T) @ V with an optional bool/uint8 mask whose non-zero
-    entries block the corresponding key.  Supports MHA, GQA and MQA, and a value
-    head dimension smaller than the query/key head dimension.
-    '
-  for:
-  - cross_attention
-  labels:
-  - Attention
-  - NoCPU
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.5'
-  cpp: '5.5'
 - id: cross_entropy_loss
   description: Computes the cross entropy loss between input logits and target.
   for:
@@ -3928,10 +3763,10 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-    - alpha: '5.4'
+  - alpha: '5.4'
 - id: ctc_loss_backward
-  description: The backward computation of `ctc_loss()`, exercised through the
-    autograd of the forward operator.
+  description: The backward computation of `ctc_loss()`, exercised through the autograd
+    of the forward operator.
   for:
   - ctc_loss.Tensor
   labels:
@@ -3941,23 +3776,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
-- id: cudnn_attention_backward
-  description: 'Backward kernel for cuDNN attention, computing gradients of query,
-
-    key, and value from the cuDNN attention forward pass.  Uses a BHSD-native
-    two-kernel design that eliminates the BHSD-BSHD permute+contiguous overhead.
-
-    '
-  for:
-  - _cudnn_attention_backward
-  labels:
-  - aten
-  - NoCPU
-  - KernelGen
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: cudnn_attention_forward
   description: 'Forward kernel for cuDNN attention, computing scaled dot-product
 
@@ -4015,9 +3833,9 @@ ops:
   - alpha: '5.4'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
-    the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
-    GRU modes with multi-layer, bidirectional, LSTM projection (proj_size > 0),
-    dropout during training, and packed variable-length sequences.
+    the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and GRU
+    modes with multi-layer, bidirectional, LSTM projection (proj_size > 0), dropout
+    during training, and packed variable-length sequences.
 
     '
   for:
@@ -4169,24 +3987,8 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: cumprod_backward
-  description: |
-    Backward pass for `cumprod`. Given the output gradient, the forward input and the forward
-    output, computes the gradient with respect to the input. Zero elements along the reduction
-    dimension are handled explicitly: the reverse cumulative sum of `grad * output` divided by
-    `input` gives the gradient for non-zero positions, while the first zero position uses a
-    modified cumulative product. Accumulation is performed in float32 for numerical stability.
-  for:
-  - cumprod_backward
-  labels:
-  - aten
-  - Reduction
-  kind:
-  - Math
-  stages:
-  - alpha: '5.5.0'
 - id: cumsum
-  description: Returns the cumulative sum of elements of `input` in the dimension
+  destination: Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
   for:
   - cumsum
@@ -4208,7 +4010,7 @@ ops:
   stages:
   - alpha: '5.4'
 - id: cumsum_out
-  description: 'Returns the cumulative sum of elements of `input` in the dimension
+  destination: 'Returns the cumulative sum of elements of `input` in the dimension
     `dim`.
 
     It is a variant of `cumsum()`.
@@ -4282,6 +4084,7 @@ ops:
 
     '
   for:
+  - dequantize
   - dequantize.self
   labels:
   - aten
@@ -20727,6 +20530,19 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: values
+  description: 'Returns the values tensor of a sparse COO tensor as a zero-copy view.
+
+    '
+  for:
+  - values
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: vander
   description: Generates a Vandermonde matrix from a 1-D input tensor.
   for:

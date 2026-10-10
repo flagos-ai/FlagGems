@@ -1474,6 +1474,7 @@ from flag_gems.ops.upsample_trilinear3d_backward import upsample_trilinear3d_bac
 from flag_gems.ops.value_selecting_reduction_backward import (
     value_selecting_reduction_backward,
 )
+from flag_gems.ops.values import _values as values
 from flag_gems.ops.vander import vander
 from flag_gems.ops.var import var, var_correction, var_dim
 from flag_gems.ops.var_mean import var_mean
@@ -2996,6 +2997,7 @@ __all__ = [
     "upsample_trilinear3d",
     "upsample_trilinear3d_backward",
     "value_selecting_reduction_backward",
+    "values",
     "vander",
     "var",
     "var_correction",
