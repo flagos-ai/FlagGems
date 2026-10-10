@@ -41,7 +41,6 @@ def test_replication_pad3d(shape, padding, dtype):
     m_ref = torch.nn.ReplicationPad3d(padding)
     ref = m_ref(x)
     ref_out = utils.to_reference(ref, True)
-    with flag_gems.use_gems():
-        res_out_functional = flag_gems.replication_pad3d(x, padding)
+    res_out_functional = flag_gems.replication_pad3d(x, padding)
 
     utils.gems_assert_close(res_out_functional, ref_out, dtype, reduce_dim=1)

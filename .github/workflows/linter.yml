@@ -36,14 +36,32 @@ jobs:
       cancel-in-progress: true
     # cpu-runner is an already-running container; no container: image needed.
     runs-on: cpu-runner
+    env:
+      # Point pre-commit at the hook venvs prebuilt into the cpu-runner image
+      # (see .github/docker/cpu-runner.Dockerfile). Without this, pre-commit
+      # falls back to ~/.cache/pre-commit (empty on the ephemeral pod) and
+      # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
+      PRE_COMMIT_HOME: /opt/pre-commit-cache
+      # Override the platform-injected proxy (which fails ~1/3 of git fetches)
+      # with a working one from secrets, so actions/checkout's fetch is reliable.
+      # Only lowercase: GitHub treats env names case-insensitively, so defining
+      # both http_proxy and HTTP_PROXY is a duplicate-key error that fails the
+      # whole workflow to parse. git/curl honor the lowercase names.
+      http_proxy: ${{ secrets.CI_HTTP_PROXY }}
+      https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    # checkout marks the repo safe only in a throwaway HOME; pre-commit runs
-    # with HOME=/github/home and git rejects the dir as dubious ownership.
-    # Register it in the persistent global config pre-commit actually reads.
-    - name: Mark workspace as a safe git directory
-      shell: bash
-      run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+    # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung fetch,
+    # rotates links across rounds (see the action). @master ref so it resolves
+    # from the runner's _actions cache before any checkout. ssh-key empty on
+    # fork PRs -> SSH skipped, token HTTP used. The action also registers the
+    # workspace as a safe git dir (needed by pre-commit under HOME=/github/home).
+    - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
+      with:
+        ssh-key: ${{ secrets.CI_SSH_KEY }}
+        # ~10 min of rotation (30 rounds x [SSH 10s + HTTP 10s]) to ride out
+        # windows where both links are temporarily down; a good link still hits
+        # on round 1 (~10s).
+        rounds: "30"
     - name: Ensure full working tree
       shell: bash
       run: |
@@ -56,13 +74,12 @@ jobs:
         git sparse-checkout disable 2>/dev/null || true
         git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
         git checkout --force HEAD -- .
-    # pre-commit is preinstalled in the runner image but its console-script
-    # entrypoint lives in /usr/local/bin, which is not on the PATH inherited by
-    # steps running directly on cpu-runner (it was only on PATH when the job ran
-    # inside a container). Invoke it via `python3 -m pre_commit` so it resolves
-    # by import path instead of PATH lookup. Ensure it is present first.
+    # pre-commit and its hook venvs are preinstalled in the cpu-runner image and
+    # found via the job-level PRE_COMMIT_HOME above, so no install or hook
+    # bootstrapping happens here. Invoke via `python3 -m pre_commit` since the
+    # console-script entrypoint is not on the PATH inherited by steps running
+    # directly on cpu-runner.
     - name: Run pre-commit
       shell: bash
       run: |
-        python3 -m pre_commit --version || python3 -m pip install pre-commit
         python3 -m pre_commit run --show-diff-on-failure --color=always --all-files

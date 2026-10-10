@@ -35,8 +35,7 @@ def test_rsub_tensor(shape, dtype):
     ref_inp2 = to_reference(inp2)
 
     ref_out = torch.rsub(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.rsub(inp1, inp2)
+    res_out = flag_gems.rsub_tensor(inp1, inp2)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -50,7 +49,6 @@ def test_rsub_scalar(shape, dtype):
     inp2 = 0.5
 
     ref_out = torch.rsub(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.rsub(inp1, inp2)
+    res_out = flag_gems.rsub_scalar(inp1, inp2)
 
     gems_assert_close(res_out, ref_out, dtype)

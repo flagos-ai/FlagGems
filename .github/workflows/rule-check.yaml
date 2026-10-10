@@ -55,10 +55,29 @@ jobs:
   rule-check-required:
     # cpu-runner is an already-running container; no container: image needed.
     runs-on: cpu-runner
+    env:
+      # Override the platform-injected proxy (which fails ~1/3 of git fetches)
+      # with a working one from secrets, so actions/checkout's fetch is reliable.
+      # Only lowercase: GitHub treats env names case-insensitively, so defining
+      # both http_proxy and HTTP_PROXY is a duplicate-key error that fails the
+      # whole workflow to parse. git/curl honor the lowercase names.
+      http_proxy: ${{ secrets.CI_HTTP_PROXY }}
+      https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung
+      # fetch, rotates links across rounds (see the action). @master ref so the
+      # action resolves from the runner's _actions cache before any checkout.
+      # fetch-depth 0 for base...head diffs; ssh-key empty on fork PRs -> SSH
+      # skipped, token HTTP used.
+      - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
         with:
           fetch-depth: 0
+          ssh-key: ${{ secrets.CI_SSH_KEY }}
+          # ~10 min of rotation (30 rounds x [SSH 10s + HTTP 10s]) to ride out
+          # windows where both links are temporarily down; a good link still
+          # hits on round 1 (~10s), so this only costs time when the network is
+          # fully unreachable.
+          rounds: "30"
       - name: Ensure full working tree
         shell: bash
         run: |
@@ -73,8 +92,8 @@ jobs:
           git sparse-checkout disable 2>/dev/null || true
           git ls-files -z | xargs -0 -r git update-index --no-skip-worktree
           git checkout --force HEAD -- .
-      - name: Install dependencies
-        run: pip install pyyaml
+      # pyyaml (the only third-party import in tools/ci_checks/*.py) is
+      # preinstalled in the cpu-runner image, so no install step is needed here.
 
       - name: Derive changed operators
         id: derive
