@@ -38,7 +38,7 @@ def _greater_equal_fused(x, y):
 
 
 def greater_equal_(A, B):
-    logger.debug("GEMS METAX GREATER_EQUAL_")
+    logger.debug("GEMS_METAX GREATER_EQUAL_")
     if A.device != B.device:
         B = B.to(A.device)
     return _greater_equal_fused(A, B, out0=A)

@@ -32,8 +32,7 @@ def test_pixel_unshuffle(shape_factor, dtype):
     ref_input = utils.to_reference(input_tensor, True)
     ref_out = torch.ops.aten.pixel_unshuffle(ref_input, downscale_factor)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.pixel_unshuffle(input_tensor, downscale_factor)
+    act_out = flag_gems.pixel_unshuffle(input_tensor, downscale_factor)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
 
@@ -58,9 +57,6 @@ def test_pixel_unshuffle_out(shape_factor, dtype):
     )
 
     out_act = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.pixel_unshuffle.out(
-            input_tensor, downscale_factor, out=out_act
-        )
+    act_out = flag_gems.pixel_unshuffle_out(input_tensor, downscale_factor, out=out_act)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)

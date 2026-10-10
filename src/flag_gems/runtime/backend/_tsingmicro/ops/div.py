@@ -139,7 +139,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS_TSINGMICRO TRUE_DIVIDE OUT")
+    logger.debug("GEMS_TSINGMICRO TRUE_DIVIDE_OUT")
     if _is_complex(A) or _is_complex(B):
         return _true_divide_complex(A, B, out=out)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):

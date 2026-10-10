@@ -382,7 +382,7 @@ def _upsample_lanczos2d_aa(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE LANCZOS2D AA")
+    logger.debug("GEMS UPSAMPLE_LANCZOS2D_AA")
     output_size = _validate(input, output_size)
     channels_last = input.is_contiguous(memory_format=torch.channels_last)
     if input.shape[0] == 0:

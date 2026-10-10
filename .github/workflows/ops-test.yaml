@@ -17,7 +17,7 @@
 #
 # Main config: .github/configs/backends/config.yaml
 # Per-backend config: .github/configs/backends/<NAME>.yaml
-# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD
+# vendors: Nvidia,MThreads,KunLunXin,Iluvatar,Ascend,Hygon,Metax,THead,Cambricon,AMD,TsingMicro
 name: ops-test
 
 permissions:
@@ -270,10 +270,24 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # Best-effort run: this backend only uses the script output for
+            # logging/inspection, so a non-zero exit here must not fail the job.
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          else
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          fi
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
-          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # This backend deliberately pins the GPUs under test to the
+            # configured test_gpus list (e.g. only the first N cards on a host
+            # that exposes more). Ignore the gpu_check result and use test_gpus.
+            AVAILABLE_GPUS="${{ matrix.test_gpus }}"
+            echo "[GPU check] force_test_gpus=true -> using configured test_gpus"
+          else
+            AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
@@ -423,10 +437,24 @@ jobs:
         shell: bash --login -e -o pipefail {0}
         run: |
           echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # Best-effort run: this backend only uses the script output for
+            # logging/inspection, so a non-zero exit here must not fail the job.
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
+          else
+            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
+          fi
           echo "[GPU check] GPU availability check output:"
           echo "$GPU_OUTPUT"
-          AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
+            # This backend deliberately pins the GPUs under test to the
+            # configured test_gpus list (e.g. only the first N cards on a host
+            # that exposes more). Ignore the gpu_check result and use test_gpus.
+            AVAILABLE_GPUS="${{ matrix.test_gpus }}"
+            echo "[GPU check] force_test_gpus=true -> using configured test_gpus"
+          else
+            AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
+          fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 

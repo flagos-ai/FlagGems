@@ -36,3 +36,5 @@ backends:
     enabled: true
   W7900D:
     enabled: true
+  TX8110:
+    enabled: false

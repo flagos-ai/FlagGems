@@ -162,7 +162,7 @@ def _launch_index_copy(out, dim, index, src):
 
 
 def index_copy(inp, dim, index, src):
-    logger.debug("GEMS ASCEND INDEX_COPY")
+    logger.debug("GEMS_ASCEND INDEX_COPY")
     dim %= inp.ndim
     out = inp.clone()
     _launch_index_copy(out, dim, index, src)
@@ -170,7 +170,7 @@ def index_copy(inp, dim, index, src):
 
 
 def index_copy_(inp, dim, index, src):
-    logger.debug("GEMS ASCEND INDEX_COPY_")
+    logger.debug("GEMS_ASCEND INDEX_COPY_")
     dim %= inp.ndim
     _launch_index_copy(inp, dim, index, src)
     return inp

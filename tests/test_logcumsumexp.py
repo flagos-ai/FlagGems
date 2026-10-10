@@ -39,8 +39,7 @@ def test_logcumsumexp(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.logcumsumexp(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.logcumsumexp(inp, dim=dim)
+    res_out = flag_gems.logcumsumexp(inp, dim=dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])
 
@@ -57,7 +56,6 @@ def test_logcumsumexp_out(shape, dtype):
     ref_out = torch.ops.aten.logcumsumexp.out(ref_inp, dim, out=ref_out_buf)
 
     res_out_buf = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.logcumsumexp.out(inp, dim, out=res_out_buf)
+    res_out = flag_gems.logcumsumexp_out(inp, dim, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[dim])

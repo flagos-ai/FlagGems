@@ -113,7 +113,7 @@ def _softplus_backward_generic(grad_output, x, beta, threshold):
 
 
 def softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
-    logger.debug("GEMS ILUVATAR SOFTPLUS BACKWARD")
+    logger.debug("GEMS_ILUVATAR SOFTPLUS_BACKWARD")
     if (
         self.is_contiguous()
         and grad_output.is_contiguous()
