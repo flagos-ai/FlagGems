@@ -44,10 +44,7 @@ _LOCK = threading.Lock()
 _CACHE = {}
 _MAX_KEYS = 64
 _GENERIC = None
-# Steady-state fast path: serving loops hand us the same input objects every
-# call, so an identity check (GIL-atomic tuple swap, no lock) skips rebuilding
-# and hashing the config tuple.
-_LAST = None  # (query, key, value, flags, rec)
+_LAST = None
 
 
 def _generic_entry():
@@ -130,7 +127,7 @@ def _match_indices(a, tensors):
         for i, x in enumerate(a):
             if isinstance(x, torch.Tensor) and x.data_ptr() == t.data_ptr():
                 if hit is not None:
-                    hit = None  # ambiguous
+                    hit = None
                     break
                 hit = i
         if hit is None:

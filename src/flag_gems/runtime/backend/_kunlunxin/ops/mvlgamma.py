@@ -130,7 +130,7 @@ def mvlgamma(*args, **kwargs):
         return torch.empty_like(A)
 
     output = torch.empty_like(x)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, 512),)
     with torch_device_fn.device(x.device):
         mvlgamma_kernel_xpu[grid](x, output, n_elements, p_tensor, BLOCK_SIZE=512)
     return output

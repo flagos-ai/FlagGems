@@ -1070,7 +1070,6 @@ def _square_pad_conv2d(input, weight, bias, stride, padding, dilation, groups):
     ih = input.shape[-2]
     iw = input.shape[-1]
     m = max(ih, iw)
-    # zero-pad via the backend's own implementation
     xp = _klx_pad(input, (0, m - iw, 0, m - ih))
     out = Conv2d.apply(xp, weight, bias, stride, padding, dilation, groups)
     if isinstance(padding, str):

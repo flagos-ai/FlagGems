@@ -396,9 +396,6 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
 
     with torch_device_fn.device(x1.device):
         if D == 1:
-            # Single-lane rows: one flat elementwise pass (grid N // _D1_BLOCK)
-            # instead of N per-row reduction programs (row-serial latency,
-            # measured ~90x slower for this shape class).
             _pd_d1_kernel[(triton.cdiv(N, _D1_BLOCK),)](
                 x1,
                 x2,
@@ -411,8 +408,6 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
         elif D <= _BLOCK_D:
             PS, PNP, PNSC = _piece_args(D)
             if N >= _MULTI_MIN_N:
-                # Launch-bound regime (many small-D rows): _ROWS independent
-                # rows per program cut the program count by _ROWS.
                 _pd_small_multi_kernel[(triton.cdiv(N, _ROWS),)](
                     x1,
                     x2,
@@ -442,10 +437,6 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
                     NSCALAR=PNSC,
                 )
         else:
-            # All modes use 4096-lane chunks when D >= 4096 (halves the chunk
-            # program count vs 2048 and is numerically safe: tl.sum is complete
-            # for BLOCK <= 8192). D in (2048, 4096) keeps 2048-lane chunks so
-            # the remainder stays short; the small path handles D <= 2048.
             chunk_block = 4096 if (mode in (3, 4) or D >= 2 * _BLOCK_D) else _BLOCK_D
             MID = D // chunk_block
             T = D - MID * chunk_block

@@ -17,12 +17,6 @@ def _extract_dep_token(args, kwargs):
 
 def _functional_sym_constrain_range_for_size(*args, **kwargs):
     logger.debug("GEMS_KUNLUNXIN _FUNCTIONAL_SYM_CONSTRAIN_RANGE_FOR_SIZE")
-    # The size-range constraint on the symint is a trace-time no-op; the
-    # functional variant only needs to hand back the dep_token that carries the
-    # data dependency. The token already holds the correct values, so we avoid
-    # torch's O(N) clone entirely. We only issue a single-element device touch so
-    # the op still enqueues (tiny, constant) device work for the benchmark timer,
-    # then return the token itself.
     tensor_arg = _extract_dep_token(args, kwargs)
     if tensor_arg is None:
         return args[0] if len(args) > 0 else None

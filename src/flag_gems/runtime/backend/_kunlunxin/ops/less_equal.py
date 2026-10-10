@@ -1,6 +1,3 @@
-# Kunlunxin (XPU) override of less_equal / less_equal_scalar (== le / le_scalar,
-# i.e. x <= y). Tuned CodeGenConfig + native fused compare fast paths; the
-# shared rationale (fusion, M=1e38, NaN boundary) lives in le.py.
 import logging
 import math
 import os
@@ -42,9 +39,6 @@ def less_equal_func(x, y):
 
 def less_equal(A, B):
     logger.debug("GEMS_KUNLUNXIN LESS_EQUAL")
-    # Fast path for small/mid contiguous same-shape float tensors
-    # (numel <= 2^18): saturating fp32 {0,1} then cast to bool. Generic
-    # fused compare path otherwise.
     numel = A.numel()
     if (
         A.dtype in (torch.float16, torch.float32, torch.bfloat16)
@@ -55,12 +49,9 @@ def less_equal(A, B):
         and 0 < numel <= _LESS_EQUAL_TENSOR_FAST_MAX
     ):
         if numel % _LESS_EQUAL_TENSOR_FAST_TILE == 0:
-            # exact-multiple flat tiles (grid = numel / TILE >= 1): no mask.
             return _less_equal_tensor_fast(
                 A, B, (numel // _LESS_EQUAL_TENSOR_FAST_TILE,)
             )
-        # non-multiple mids / sub-tile sizes: flat tiles with a real tail
-        # mask (grid = ceil(numel / TILE) >= 1 for numel >= 1).
         return _less_equal_tensor_fast_masked(A, B, numel)
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
@@ -70,10 +61,6 @@ def less_equal(A, B):
     return res
 
 
-# ---------------------------------------------------------------------------
-# less_equal tensor-tensor fast path (fp16/fp32/bf16, contiguous, same shape,
-# numel <= 2^18): native fused compare (x <= y) writing bool directly, no fp32
-# buffer and no _copy_from. NaN <= y -> False (matches torch).
 _LESS_EQUAL_TENSOR_FAST_TILE = 131072
 _LESS_EQUAL_TENSOR_FAST_MAX = 1 << 18
 
@@ -98,9 +85,6 @@ def less_equal_tensor_native_masked_kernel(
 
 
 def _less_equal_tensor_native(A, B, numel, masked):
-    # Native fused compare (x <= y, same dtype) writing bool directly -- no fp32
-    # buffer, no _copy_from. Env set at compile time so the fusion pass sees it
-    # (same pattern as less_equal_scalar's native path).
     out = torch.empty_like(A, dtype=torch.bool)
     x = A.reshape(-1)
     y = B.reshape(-1)
@@ -158,9 +142,6 @@ def less_equal_func_scalar(x, y):
 
 def less_equal_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_SCALAR")
-    # Fast paths below (same two-stage recipe as the closed le_scalar family:
-    # saturating fp32 store + vendor fp32->bool conversion, no i1 ever
-    # materialized). Generic path otherwise, unchanged behavior.
     numel = A.numel()
     dtype = A.dtype
     if (
@@ -172,25 +153,12 @@ def less_equal_scalar(A, B):
             numel >= _LESS_EQUAL_SCALAR_FAST_TILE
             and numel % _LESS_EQUAL_SCALAR_FAST_TILE == 0
         ):
-            # exact-multiple flat tiles (grid = numel / TILE >= 1): no mask, no
-            # i1 -- a saturating fp32 store + vendor bool conversion. Applies
-            # to every tile-divisible size (grid >= 128 on the big benchmark
-            # shapes, down to grid == 1 mid sizes like [10000,256] = 20 tiles).
             return _less_equal_scalar_native(A, float(B), numel, masked=False)
         if (
             numel >= _LESS_EQUAL_SCALAR_MASKED_MIN
             and numel % _LESS_EQUAL_SCALAR_FAST_TILE != 0
         ):
-            # non-multiple mid sizes (e.g. 2.56M+1): flat tiles with a real
-            # tail mask. The mask is genuine (tail elements), so the
-            # masked-memory path is the only penalty and the i1/bool-store
-            # catastrophe is still avoided.
             return _less_equal_scalar_native(A, float(B), numel, masked=True)
-        # Small / thin shapes (numel < FAST_TILE): route to the native fused
-        # kernel with an adaptive small TILE instead of the ~10x-slower
-        # generic pointwise path. Tile hugs numel (next_pow2, floor 1024) so
-        # we don't launch a 131072-lane program for a few-K-element tensor.
-        # Same fix as le_scalar's small-shape branch.
         if 0 < numel < _LESS_EQUAL_SCALAR_FAST_TILE:
             tile = min(
                 _LESS_EQUAL_SCALAR_FAST_TILE,
@@ -205,15 +173,6 @@ def less_equal_scalar(A, B):
 
 _LESS_EQUAL_SCALAR_FAST_TILE = 131072
 _LESS_EQUAL_SCALAR_MASKED_MIN = 1 << 20
-
-# ---------------------------------------------------------------------------
-# Native dtype-compare fast path (option A, mirrors le_scalar). less_equal is
-# byte-identical to le (x <= s), so le_scalar's probe-verified native compare
-# correctness carries over: the scalar is downcast to the input dtype
-# in-kernel (`scalar.to(DTYPE)`) so both operands share the input dtype; with
-# TRITONXPU_COMPARE_FUSION=1 the backend fuses CmpFOp(i1)+ExtUI(i8)+Store into
-# one vendor compare-store intrinsic (3 B/elem, one pass) instead of the
-# two-stage saturating recipe's fp32 buffer + _copy_from (~11 B/elem).
 
 
 @triton.jit
@@ -242,10 +201,6 @@ def less_equal_scalar_native_masked_kernel(
 def _less_equal_scalar_native(
     A, scalar, numel, masked, tile=_LESS_EQUAL_SCALAR_FAST_TILE
 ):
-    # Single-kernel native compare: writes the bool result directly, so the
-    # fp32 intermediate buffer and _copy_from pass of the saturating recipe
-    # are gone. Env must be set before the (first) launch so the fusion pass
-    # sees it at compile time (same set/del pattern as less_equal above).
     out = torch.empty_like(A, dtype=torch.bool)
     x = A.reshape(-1)
     grid = (math.ceil(numel / tile),) if masked else (numel // tile,)
@@ -288,11 +243,6 @@ def _less_equal_scalar_native(
     return out
 
 
-# ---------------------------------------------------------------------------
-# less_equal_ / less_equal_scalar_ (in-place, x.less_equal_(y/s)): saturating
-# fp32 recipe le = 1 - min(1, max(0, (x-y)*1e64)) written back into x, no i1.
-# In-place-safe config (DEFAULT isCloseMemoryAsync) avoids the noc-idle-timeout
-# deadlock that async-copy has under aliasing. NaN/subnormal follow le family.
 config_inplace_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -333,19 +283,12 @@ def less_equal_(A, B):
             * _LESS_EQUAL_TENSOR_INPLACE_MIN_GRID
             and numel % _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE == 0
         ):
-            # exact-multiple flat tiles: no mask at all; grid fixed.
             return _less_equal_tensor_inplace_fast(A, B, numel)
         less_equal_func_tensor_inplace(A, B, out0=A)
         return A
-    # Everything else (non-float dtype, non-contiguous, ...) keeps the
-    # original generic in-place path, behavior unchanged.
     return _generic_less_equal_(A, B)
 
 
-# in-place alias safety: the fast kernel writes into the SAME tensor it
-# reads, so it must keep the DEFAULT isCloseMemoryAsync (True = async copy
-# closed); passing False with in-place aliasing is the documented "noc idle
-# timeout" deadlock, same as le.py's/gt.py's in-place fast path note.
 _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE = 131072
 _LESS_EQUAL_TENSOR_INPLACE_MIN_GRID = 128
 
@@ -406,15 +349,12 @@ def less_equal_scalar_(A, B):
             * _LESS_EQUAL_SCALAR_INPLACE_MIN_GRID
             and numel % _LESS_EQUAL_SCALAR_INPLACE_FAST_TILE == 0
         ):
-            # exact-multiple flat tiles: no mask at all; grid fixed.
             return _less_equal_scalar_inplace_fast(A, float(B))
         less_equal_func_scalar_inplace(A, B, out0=A)
         return A
     return less_equal_func_scalar(A, B, out0=A)
 
 
-# in-place alias safety: same as _LESS_EQUAL_TENSOR_INPLACE_FAST_TILE note
-# (write into the SAME tensor it reads -> DEFAULT isCloseMemoryAsync).
 _LESS_EQUAL_SCALAR_INPLACE_FAST_TILE = 131072
 _LESS_EQUAL_SCALAR_INPLACE_MIN_GRID = 128
 
