@@ -34,6 +34,8 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .cudnn_convolution import cudnn_convolution
@@ -141,6 +143,8 @@ __all__ = [
     "cholesky_solve_out",
     "concatenate",
     "constant_pad_nd",
+    "conv1d",
+    "conv2d",
     "conv_transpose1d",
     "cudnn_convolution",
     "diagonal_scatter",
