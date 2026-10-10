@@ -36,11 +36,15 @@ MT_SHAPES = [(16, 32), (7, 8, 9), (2, 3, 4, 5)]
 
 
 def _check_view_metadata(res, ref):
-    # The view must match the reference layout exactly and alias the operand.
+    # The view must match the reference layout and alias the operand.  Under
+    # --ref=cpu the reference is a materialized copy whose copy_ re-lays out
+    # non-contiguous operands, so stride/offset are only comparable when the
+    # reference shares the operand's device layout.
     assert res.shape == ref.shape
-    assert res.stride() == ref.stride()
-    assert res.storage_offset() == ref.storage_offset()
-    assert res.is_conj() == ref.is_conj()
+    if not utils.TO_CPU:
+        assert res.stride() == ref.stride()
+        assert res.storage_offset() == ref.storage_offset()
+        assert res.is_conj() == ref.is_conj()
 
 
 @pytest.mark.mT
