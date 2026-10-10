@@ -15,6 +15,7 @@
 import logging
 import math
 import operator
+import os
 
 import torch
 import triton
@@ -25,6 +26,46 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+# SIMD store-only arange fast path for large fp32/fp16: a float32x16 ramp
+# generates 16/32 values per instruction and a contiguous LM2GM writes each
+# tile, hitting ~bandwidth (fp32 ~0.92x, fp16 ~1.05x of torch at 16M). The
+# kernels are loaded from the precompiled device library arange_simd.o in the
+# payload/obj directory; the two stubs below just bind to its entry symbols.
+# Optional: only usable where the xpu3 cluster tle.raw pipeline is available.
+try:
+    import triton.experimental.tle as tle
+
+    _PAY_OBJ = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "payload", "obj"
+    )
+    _ARANGE_OBJ = os.path.join(_PAY_OBJ, "arange_simd.o")
+
+    @tle.raw.dialect("xpu3", object=_ARANGE_OBJ, arch=3)
+    def arange_f32(out, n, start, step, pid, npid):
+        ...
+
+    @tle.raw.dialect("xpu3", object=_ARANGE_OBJ, arch=3)
+    def arange_f16(out, n, start, step, pid, npid):
+        ...
+
+    @triton.jit(do_not_specialize=["n", "npid"])
+    def _arange_f32_raw(out, n, start, step, npid):
+        tle.raw.call(arange_f32, (out, n, start, step, tl.program_id(0), npid))
+
+    @triton.jit(do_not_specialize=["n", "npid"])
+    def _arange_f16_raw(out, n, start, step, npid):
+        tle.raw.call(arange_f16, (out, n, start, step, tl.program_id(0), npid))
+
+    _HAS_ARANGE_RAW = True
+except Exception:  # pragma: no cover - tle.raw not available on this build
+    _HAS_ARANGE_RAW = False
+
+# Below this element count the ~30us raw launch floor is not worth it, so the
+# Triton path (which is ~1x for small shapes) is kept. npid=12 is the measured
+# sweet spot on this part.
+_ARANGE_RAW_MIN = 1 << 20
+_ARANGE_RAW_NPID = 12
 
 
 def _is_integral_scalar(x):
@@ -120,6 +161,18 @@ def arange_start(
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
+
+    # Large fp32/fp16 store-only arange -> hand-written SIMD tle.raw (near-BW).
+    if (
+        _HAS_ARANGE_RAW
+        and size >= _ARANGE_RAW_MIN
+        and dtype in (torch.float32, torch.float16)
+    ):
+        npid = _ARANGE_RAW_NPID
+        raw = _arange_f32_raw if dtype is torch.float32 else _arange_f16_raw
+        raw[(npid,)](result, size, float(start), float(step), npid)
+        return result
+
     if dtype in (torch.float16, torch.float32, torch.bfloat16):
         # fp32-base fast path (avoids slow large-int -> float conversion)
         arange_func_float[grid,](
