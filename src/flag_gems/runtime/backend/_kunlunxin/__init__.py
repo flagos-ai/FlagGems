@@ -31,7 +31,6 @@ CUSTOMIZED_UNUSED_OPS = (
     "searchsorted",
     "searchsorted_out",
     "searchsorted_scalar",
-    "searchsorted_scalar_out",
     "topk",
     "unique",
     "slice",
