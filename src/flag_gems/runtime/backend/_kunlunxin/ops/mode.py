@@ -505,6 +505,33 @@ def _normalize_dim(dim, ndim):
     )
 
 
+# On the CI flagtree Triton build, tle_copy() can return True without actually
+# performing the copy (silent no-op), leaving the destination buffer with
+# uninitialized/garbage values and producing wrong results with no error. Its
+# bool return is therefore not trustworthy as a "did it copy" signal. Probe once
+# with a known strided transpose and sentinel-filled destination; only trust
+# tle_copy when the probe proves it actually copied, else fall back to aten.
+_TLE_COPY_OK = None
+
+
+def _tle_copy_usable(device):
+    global _TLE_COPY_OK
+    if _TLE_COPY_OK is None:
+        try:
+            src = torch.arange(6, device=device, dtype=torch.float32).reshape(2, 3)
+            view = torch.movedim(src, 0, -1)  # (3, 2), strided
+            ref = view.cpu().clone()
+            # Sentinel fill (not present in ref) so a silent no-op copy that
+            # leaves the buffer untouched is detectable, rather than passing by
+            # chance on allocator-reused memory.
+            dst = torch.full((3, 2), -1.0, device=device, dtype=torch.float32)
+            _TLE_COPY_OK = bool(tle_copy(view, dst)) and torch.equal(dst.cpu(), ref)
+        except Exception as e:  # pragma: no cover - any failure means no tle copy
+            logger.debug("tle_copy probe failed, using aten fallback: %s", e)
+            _TLE_COPY_OK = False
+    return _TLE_COPY_OK
+
+
 def _mode_impl(inp, dim, keepdim):
     if inp.ndim == 0:
         values = inp.clone()
@@ -547,7 +574,7 @@ def _mode_impl(inp, dim, keepdim):
     if dim != inp.ndim - 1:
         view = torch.movedim(inp, dim, -1)
         rows = torch.empty((M, N), device=inp.device, dtype=inp.dtype)
-        if not tle_copy(view, rows):
+        if not (_tle_copy_usable(inp.device) and tle_copy(view, rows)):
             torch.ops.aten._copy_from(view, rows, False)
     else:
         rows = inp.reshape(M, N)
