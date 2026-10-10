@@ -1372,6 +1372,7 @@ from flag_gems.ops.std_mean import (
     std_mean_dim,
     std_mean_names_dim,
 )
+from flag_gems.ops.stft import stft, stft_center
 from flag_gems.ops.sub import sub, sub_
 from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
@@ -2891,6 +2892,8 @@ __all__ = [
     "std_mean_correction_out",
     "std_mean_dim",
     "std_mean_names_dim",
+    "stft",
+    "stft_center",
     "sub",
     "sub_",
     "subtract",

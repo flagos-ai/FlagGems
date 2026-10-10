@@ -18,7 +18,12 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton import knobs
+
+try:
+    from triton import knobs
+except ImportError:
+    # Older Triton releases do not expose the optional FlagTree AABS controls.
+    knobs = None
 
 from flag_gems.ops.linalg_solve import linalg_solve
 from flag_gems.runtime import torch_device_fn
