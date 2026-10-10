@@ -8516,6 +8516,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_jvp
+  description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
+  for:
+  - glu_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
