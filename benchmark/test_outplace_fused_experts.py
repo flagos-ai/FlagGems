@@ -19,6 +19,11 @@ import flag_gems
 
 from . import base
 
+# The substituted baseline below is scoped to Kunlunxin, where the official vLLM
+# baseline cannot be constructed (see NOTE). Every other backend keeps the
+# original vLLM fused_experts_impl comparison.
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (
         fused_experts_impl as vllm_fused_experts_impl,
@@ -91,8 +96,75 @@ class OutplaceFusedExpertsBenchmark(base.Benchmark):
         yield (hidden_states, w1, w2, topk_weights, topk_ids)
 
 
+# ---------------------------------------------------------------------------
+# SUBSTITUTED DEVICE BASELINE -- NOT THE OFFICIAL vLLM BASELINE.
+#
+# The official contract for this marker is FlagGems vs vLLM's own
+# fused_experts_impl. That baseline is NOT constructible on this Kunlunxin/XPU
+# stack, measured 2026-10-08:
+#   * vllm._C / vllm._moe_C cannot load -- ABI mismatch. vLLM needs
+#     c10::cuda::c10_cuda_check_implementation(int, char const*, char const*,
+#     unsigned int, bool) (mangled ...EiPKcS2_jb); this torch provides the
+#     (..., int, bool) form (...EiPKcS2_ib). Preloading libc10_cuda.so does not
+#     resolve it. Both .so are NVIDIA-only (sm_52/80/89/90/100/120,
+#     NEEDED libcuda.so.1 + libcudart.so.12) and cannot execute on XPU anyway.
+#   * Supplying the three missing native glue ops as device implementations
+#     (moe_align_block_size fused_moe.py:1839, silu_and_mul activation.py:115,
+#     moe_sum fused_moe.py:1919) does get vLLM's own Triton fused_experts_impl
+#     to launch, but that kernel then fails on XPU both ways: at M=8 it compiles,
+#     launches and faults with an illegal memory access (XPU status 700); at M=1
+#     (naive_block_assignment, which bypasses the align helper) it fails to
+#     compile -- PassManager::run failed ... [TritonSDNNLegalize], vLLM
+#     fused_moe.py:315.
+#
+# Therefore the number reported here is measured against a SUBSTITUTED device
+# baseline: a straightforward unfused per-expert index_select + matmul
+# implementation. It is recorded so the comparison stays visible and reviewable.
+# It is NOT an official-contract measurement and must not be counted as a pass
+# without an explicit test-contract decision.
+# ---------------------------------------------------------------------------
+def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, topk_ids):
+    """Unfused per-expert MoE (silu gating), all device ops, no vLLM.
+
+    Routing is computed once with a single stable argsort (one host sync per
+    call); the expert loop then runs sync-free so E=256 shapes stay tractable.
+    """
+    num_experts = w1.shape[0]
+    top_k = topk_ids.shape[1]
+    out = torch.zeros_like(hidden_states)
+    flat_expert = topk_ids.reshape(-1)
+    counts = torch.bincount(flat_expert, minlength=num_experts)
+    bounds = (torch.cumsum(counts, 0) - counts).tolist()
+    ends = torch.cumsum(counts, 0).tolist()
+    order = torch.argsort(flat_expert, stable=True)
+    for ei in range(num_experts):
+        lo, hi = bounds[ei], ends[ei]
+        if hi <= lo:
+            continue
+        sel = order[lo:hi]
+        tok = torch.div(sel, top_k, rounding_mode="floor")
+        kth = sel - tok * top_k
+        x = hidden_states.index_select(0, tok)
+        a = x @ w1[ei].t()
+        inter = a.shape[-1] // 2
+        act = torch.nn.functional.silu(a[:, :inter]) * a[:, inter:]
+        y = act @ w2[ei].t()
+        w = topk_weights[tok, kth].to(hidden_states.dtype).unsqueeze(1)
+        out.index_add_(0, tok, y * w)
+    return out
+
+
 def _vllm_outplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
-    """Wrapper to call vLLM fused_experts_impl out-of-place."""
+    """Baseline for the comparison, per vendor.
+
+    On Kunlunxin/XPU the official vLLM baseline is not constructible (see NOTE
+    above), so a SUBSTITUTED unfused device baseline is used there. All other
+    backends keep the original vLLM fused_experts_impl baseline unchanged.
+    """
+    if IS_KUNLUNXIN:
+        return _unfused_moe_experts_device_baseline(
+            hidden_states.clone(), w1, w2, topk_weights, topk_ids
+        )
     return vllm_fused_experts_impl(
         hidden_states.clone(),
         w1,
