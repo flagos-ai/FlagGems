@@ -12,37 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-bmm:
-  - config:
-    param_map:
-      META:
-        TILE_M: block_m
-        TILE_N: block_n
-        TILE_K: block_k
-      num_stages: stages
-      num_warps: warps
-    block_m:
-      - 32
-      - 64
-      - 128
-    block_n:
-      - 32
-      - 64
-      - 128
-    block_k:
-      - 32
-      - 64
-      - 128
-      - 256
-    stages:
-      - 1
-      - 2
-      - 3
-      - 4
-    warps:
-      - 4
-      - 8
-  - strategy:
-     M: default
-     N: default
-     K: default
+# Public registration plus compatibility helpers used by MThreads baddbmm.
+from .bmm import bmm as bmm
+from .bmm import bmm_out as bmm_out
+from .bmm import bmm_sqmma as bmm_sqmma  # noqa: F401
+from .bmm import is_sqmma_compatible as is_sqmma_compatible  # noqa: F401
+
+__all__ = ["bmm", "bmm_out"]
