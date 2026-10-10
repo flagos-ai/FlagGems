@@ -41,7 +41,7 @@ exact operations via an IS_FAST constexpr.
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra import libdevice as _ld
+import triton.language.extra.corex.libdevice as _ld
 
 _BLOCK = 512
 _NUM_WARPS = 4

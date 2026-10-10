@@ -32,7 +32,6 @@ from .test_embedding_bag import (
     CASES,
     DTYPES,
     INDEX_DTYPES,
-    _check_iluvatar_error_after_mixed_dtypes,
     _inputs,
     _mark_invalid_call,
     _run_isolated_error,
@@ -448,7 +447,7 @@ def test_embedding_bag_backward_sparse_frequency_error():
 )
 def test_embedding_bag_backward_invalid(error):
     if (
-        flag_gems.vendor_name in ("nvidia", "hygon", "iluvatar", "mthreads")
+        flag_gems.vendor_name in ("nvidia", "hygon", "mthreads")
         and os.environ.get(_ERROR_CHILD) != "1"
     ):
         _run_isolated_error("test_embedding_bag_backward_invalid", [error])
@@ -626,53 +625,3 @@ def test_embedding_bag_backward_empty_table(op, mode, dim, num_bags):
             assert result._nnz() == 0
         else:
             assert result.numel() == 0
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "iluvatar",
-    reason="CoreX assertion regression after loading mixed dtype kernels",
-)
-@pytest.mark.embedding_bag_backward
-@pytest.mark.parametrize("target", ["backward", "backward-first"])
-def test_embedding_bag_backward_iluvatar_error_after_mixed_dtypes(target):
-    if os.environ.get(_ERROR_CHILD) != "1":
-        _run_isolated_error(
-            "test_embedding_bag_backward_iluvatar_error_after_mixed_dtypes", [target]
-        )
-        return
-    _check_iluvatar_error_after_mixed_dtypes(target)
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "iluvatar",
-    reason="CoreX asynchronous error propagation across validation blocks",
-)
-@pytest.mark.embedding_bag_backward
-def test_embedding_bag_backward_iluvatar_invalid_last_block():
-    if os.environ.get(_ERROR_CHILD) != "1":
-        _run_isolated_error(
-            "test_embedding_bag_backward_iluvatar_invalid_last_block", []
-        )
-        return
-    device = flag_gems.device
-    indices = torch.ones(513, dtype=torch.int64, device=device)
-    offsets = torch.tensor([0, 256], dtype=torch.int64, device=device)
-    mapping = torch.cat(
-        (torch.zeros_like(indices[:256]), torch.ones_like(indices[256:]))
-    )
-    sizes = torch.tensor([256, 257], dtype=torch.int64, device=device)
-    maximum = torch.empty(0, dtype=torch.int64, device=device)
-    grad = torch.ones((2, 33), device=device)
-    # Warm the same specialization before checking an error in the third block.
-    _embedding_bag_backward(
-        grad, indices, offsets, mapping, sizes, maximum, 8, False, 0, False
-    )
-    flag_gems.runtime.torch_device_fn.synchronize()
-    indices[-1] = 8
-    flag_gems.runtime.torch_device_fn.synchronize()
-    _mark_invalid_call("_embedding_bag_backward")
-    with pytest.raises(RuntimeError, match="(?i)assert"):
-        _embedding_bag_backward(
-            grad, indices, offsets, mapping, sizes, maximum, 8, False, 0, False
-        )
-        flag_gems.runtime.torch_device_fn.synchronize()

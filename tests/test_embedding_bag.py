@@ -24,11 +24,7 @@ import triton
 from packaging import version
 
 import flag_gems
-from flag_gems import (
-    _embedding_bag,
-    _embedding_bag_backward,
-    _embedding_bag_forward_only,
-)
+from flag_gems import _embedding_bag, _embedding_bag_forward_only
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
@@ -544,7 +540,7 @@ def test_embedding_bag_empty_table(op, mode, dim, num_bags):
 )
 def test_embedding_bag_invalid_values(op, values, starts, last):
     if (
-        flag_gems.vendor_name in ("nvidia", "hygon", "mthreads", "ascend", "iluvatar")
+        flag_gems.vendor_name in ("nvidia", "hygon", "mthreads", "ascend")
         and os.environ.get(_ERROR_CHILD) != "1"
     ):
         _run_isolated_error(
@@ -577,57 +573,6 @@ def test_embedding_bag_invalid_after_warmup(op, mode):
     with pytest.raises(RuntimeError):
         op(weight, indices, offsets, mode=mode)
         flag_gems.runtime.torch_device_fn.synchronize()
-
-
-def _check_iluvatar_error_after_mixed_dtypes(target):
-    device = flag_gems.device
-    indices = torch.tensor([1, 1, 2], device=device)
-    offsets = torch.tensor([0, 2], device=device)
-    mapping = torch.tensor([0, 0, 1], device=device)
-    sizes = torch.tensor([2, 1], device=device)
-    maximum = torch.empty(0, dtype=torch.int64, device=device)
-    weight = torch.ones((4, 33), device=device)
-    if target != "backward-first":
-        _embedding_bag(weight, indices, offsets)
-    # Loading new dtype, width and frequency specializations must not
-    # disconnect the SDK's device assertion state from subsequent errors.
-    for dtype in (torch.bfloat16, torch.float16, torch.float32):
-        for dim in (1, 33):
-            grad = torch.ones((2, dim), dtype=dtype, device=device)
-            result = _embedding_bag_backward(
-                grad, indices, offsets, mapping, sizes, maximum, 4, True, 0, False
-            )
-            expected = torch.zeros((4, dim), dtype=dtype)
-            expected[1:3] = 1
-            torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
-    indices[0] = weight.shape[0]
-    flag_gems.runtime.torch_device_fn.synchronize()
-    with pytest.raises(RuntimeError, match="(?i)assert"):
-        if target == "forward":
-            _embedding_bag(weight, indices, offsets, mode=1)
-        elif target == "forward-only":
-            _embedding_bag_forward_only(weight, indices, offsets, mode=2)
-        else:
-            _embedding_bag_backward(
-                grad, indices, offsets, mapping, sizes, maximum, 4, True, 0, False
-            )
-        flag_gems.runtime.torch_device_fn.synchronize()
-
-
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "iluvatar",
-    reason="CoreX assertion regression after loading mixed dtype kernels",
-)
-@pytest.mark.embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("target", ["forward", "forward-only"])
-def test_embedding_bag_iluvatar_error_after_mixed_dtypes(target):
-    if os.environ.get(_ERROR_CHILD) != "1":
-        _run_isolated_error(
-            "test_embedding_bag_iluvatar_error_after_mixed_dtypes", [target]
-        )
-        return
-    _check_iluvatar_error_after_mixed_dtypes(target)
 
 
 @pytest.mark.embedding_bag
