@@ -12617,6 +12617,18 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: mH
+  description: Returns a view of this tensor with the last two dimensions conjugated
+    and transposed.
+  for:
+  - mH
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
