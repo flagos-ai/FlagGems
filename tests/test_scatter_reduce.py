@@ -22,6 +22,36 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+
+@pytest.mark.parametrize("programs", [65534, 65535, 65536, 98307])
+@pytest.mark.parametrize("include_self", [False, True])
+@pytest.mark.parametrize("is_2d", [False, True])
+@pytest.mark.scatter_reduce_two
+def test_scatter_reduce_prod_launch_boundary(programs, include_self, is_2d):
+    # The Ascend lock path consumes four sources per logical program. Leave
+    # a partial final program and an untouched destination; include collisions
+    # and signs so lost or repeated updates cannot silently look like identity.
+    count = programs * 4 - 1
+    size = count // 2 + 3
+    inp = torch.full((size,), 2.0)
+    index = torch.arange(count, dtype=torch.int64) % (size - 1)
+    src = torch.where(torch.arange(count) % 3 == 0, -1.0, 1.0)
+    if is_2d:
+        inp, index, src = (tensor.unsqueeze(0) for tensor in (inp, index, src))
+    expected = torch.scatter_reduce(
+        inp, -1, index, src, "prod", include_self=include_self
+    )
+    actual = flag_gems.scatter_reduce(
+        inp.to(flag_gems.device),
+        -1,
+        index.to(flag_gems.device),
+        src.to(flag_gems.device),
+        "prod",
+        include_self=include_self,
+    )
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
 FLOAT_DTYPES = utils.FLOAT_DTYPES
 REDUCE_MODES = ("sum", "prod", "mean", "amax", "amin")
 # None exercises the schema default by omitting the include_self keyword.
@@ -158,7 +188,6 @@ def _assert_scatter_reduce_close(result, reference, dtype, dim, src, reduce):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce(shape, dim, dtype, reduce, include_self):
     """Validate ordinary accuracy for aten::scatter_reduce.two."""
     inp, index, src = _make_test_data(shape, dim, dtype, reduce)
@@ -179,7 +208,6 @@ def test_scatter_reduce(shape, dim, dtype, reduce, include_self):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_(shape, dim, dtype, reduce, include_self):
     """Validate ordinary accuracy and aliasing for aten::scatter_reduce_.two."""
     inp, index, src = _make_test_data(shape, dim, dtype, reduce)
@@ -200,7 +228,6 @@ def test_scatter_reduce_(shape, dim, dtype, reduce, include_self):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
     """Validate ordinary accuracy and storage for aten::scatter_reduce.two_out."""
     inp, index, src = _make_test_data(shape, dim, dtype, reduce)
@@ -225,7 +252,6 @@ def test_scatter_reduce_out(shape, dim, dtype, reduce, include_self):
 @pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_high_dim(shape, dim, reduce, include_self):
     """Validate the functional overload for 6-D and 8-D tensors."""
     dtype = torch.float32
@@ -246,7 +272,6 @@ def test_scatter_reduce_high_dim(shape, dim, reduce, include_self):
 @pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce__high_dim(shape, dim, reduce, include_self):
     """Validate the in-place overload for 6-D and 8-D tensors."""
     dtype = torch.float32
@@ -267,7 +292,6 @@ def test_scatter_reduce__high_dim(shape, dim, reduce, include_self):
 @pytest.mark.parametrize("shape,dim", HIGH_DIM_SHAPE_DIM_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_out_high_dim(shape, dim, reduce, include_self):
     """Validate the out overload for 6-D and 8-D tensors."""
     dtype = torch.float32
@@ -293,7 +317,6 @@ def test_scatter_reduce_out_high_dim(shape, dim, reduce, include_self):
 @pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_high_dim_active_prefix(
     dim, self_shape, index_shape, src_shape, reduce, include_self
 ):
@@ -330,7 +353,6 @@ def test_scatter_reduce_high_dim_active_prefix(
 @pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce__high_dim_active_prefix(
     dim, self_shape, index_shape, src_shape, reduce, include_self
 ):
@@ -367,7 +389,6 @@ def test_scatter_reduce__high_dim_active_prefix(
 @pytest.mark.parametrize("dim,self_shape,index_shape,src_shape", ACTIVE_PREFIX_CASES)
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_out_high_dim_active_prefix(
     dim, self_shape, index_shape, src_shape, reduce, include_self
 ):
@@ -407,7 +428,6 @@ def test_scatter_reduce_out_high_dim_active_prefix(
 
 @pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("reduce", ("amax", "amin"))
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_5d_canonical_gate(monkeypatch, reduce):
     """Exercise the large-5D extrema gate without allocating a benchmark shape."""
     scatter_reduce_module = importlib.import_module("flag_gems.ops.scatter_reduce")
@@ -445,7 +465,6 @@ def _make_empty_test_data(shape, dtype=torch.float32):
 @pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce.two for an empty index and source."""
     dtype = torch.float32
@@ -469,7 +488,6 @@ def test_scatter_reduce_empty(shape, dim, include_self, reduce):
 @pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce__empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce_.two for an empty index and source."""
     dtype = torch.float32
@@ -491,7 +509,6 @@ def test_scatter_reduce__empty(shape, dim, include_self, reduce):
 @pytest.mark.parametrize("shape,dim", EMPTY_CASES)
 @pytest.mark.parametrize("include_self", (True, False))
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_out_empty(shape, dim, include_self, reduce):
     """Validate aten::scatter_reduce.two_out for an empty index and source."""
     dtype = torch.float32
@@ -525,7 +542,6 @@ def test_scatter_reduce_out_empty(shape, dim, include_self, reduce):
 
 @pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_noncontiguous(reduce):
     """Validate aten::scatter_reduce.two with noncontiguous tensors."""
     dtype = torch.float32
@@ -547,7 +563,6 @@ def test_scatter_reduce_noncontiguous(reduce):
 
 @pytest.mark.scatter_reduce_two
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_high_contention(reduce):
     """Validate aten::scatter_reduce.two when all source values share one index."""
     dtype = torch.float32
@@ -565,7 +580,6 @@ def test_scatter_reduce_high_contention(reduce):
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_nan():
     """Validate NaN propagation for aten::scatter_reduce.two with sum reduction."""
     dtype = torch.float32
@@ -581,7 +595,6 @@ def test_scatter_reduce_nan():
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_prod_nan():
     """Validate special values on the optimized two-dimensional product path."""
     dtype = torch.float32
@@ -614,7 +627,6 @@ def test_scatter_reduce_prod_nan():
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_invalid_reduce():
     """Validate the error contract of aten::scatter_reduce.two for an invalid reduction."""
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
@@ -624,7 +636,6 @@ def test_scatter_reduce_invalid_reduce():
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_invalid_dim():
     """Validate the error contract of aten::scatter_reduce.two for an invalid dimension."""
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
@@ -634,7 +645,6 @@ def test_scatter_reduce_invalid_dim():
 
 
 @pytest.mark.scatter_reduce_two_out
-@pytest.mark.scatter_reduce
 def test_scatter_reduce_out_dtype_mismatch():
     """Validate the error contract of aten::scatter_reduce.two_out for a wrong out dtype."""
     inp, index, src = _make_test_data((8,), 0, torch.float32, "sum")
@@ -661,7 +671,6 @@ def linked_product_inputs(request):
 
 
 @pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_prod_partial_blocks(linked_product_inputs, dtype, include_self):
@@ -683,7 +692,6 @@ def test_scatter_reduce_prod_partial_blocks(linked_product_inputs, dtype, includ
 
 
 @pytest.mark.scatter_reduce_two_
-@pytest.mark.scatter_reduce
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_inplace_prod_partial_blocks(
@@ -708,7 +716,6 @@ def test_scatter_reduce_inplace_prod_partial_blocks(
 
 
 @pytest.mark.scatter_reduce_two_out
-@pytest.mark.scatter_reduce
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("include_self", [True, False])
 def test_scatter_reduce_out_prod_partial_blocks(
@@ -734,7 +741,6 @@ def test_scatter_reduce_out_prod_partial_blocks(
 
 
 @pytest.mark.scatter_reduce_two_
-@pytest.mark.scatter_reduce
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="HCU short-row and CAS regression"
 )
@@ -778,14 +784,18 @@ def test_scatter_reduce_inplace_extrema_special_values(
     )
 
 
-@pytest.mark.scatter_reduce_two
-@pytest.mark.scatter_reduce_two_
-@pytest.mark.scatter_reduce_two_out
-@pytest.mark.scatter_reduce
+@pytest.mark.parametrize(
+    "variant",
+    [
+        pytest.param("functional", marks=pytest.mark.scatter_reduce_two),
+        pytest.param("inplace", marks=pytest.mark.scatter_reduce_two_),
+        pytest.param("out", marks=pytest.mark.scatter_reduce_two_out),
+    ],
+)
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="HCU sum CAS regression")
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("include_self", [True, False])
-def test_scatter_reduce_sum_contention(dtype, include_self):
+def test_scatter_reduce_sum_contention(dtype, include_self, variant):
     torch.manual_seed(19)
     inp = torch.ones((64, 256), dtype=dtype, device=flag_gems.device)
     index = torch.randint(0, 32, (64, 255), device=flag_gems.device)
@@ -799,18 +809,21 @@ def test_scatter_reduce_sum_contention(dtype, include_self):
         include_self=include_self,
     )
     for _ in range(8):
-        functional = flag_gems.scatter_reduce(
-            inp, -1, index, src, "sum", include_self=include_self
-        )
-        inplace = inp.clone()
-        returned = flag_gems.scatter_reduce_(
-            inplace, -1, index, src, "sum", include_self=include_self
-        )
-        assert returned is inplace
-        out = torch.empty_like(inp)
-        returned = flag_gems.scatter_reduce_out(
-            inp, -1, index, src, "sum", include_self=include_self, out=out
-        )
-        assert returned is out
-        for actual in (functional, inplace, out):
-            torch.testing.assert_close(actual.cpu().float(), reference, rtol=0, atol=0)
+        if variant == "functional":
+            actual = flag_gems.scatter_reduce(
+                inp, -1, index, src, "sum", include_self=include_self
+            )
+            assert actual.data_ptr() != inp.data_ptr()
+        elif variant == "inplace":
+            target = inp.clone()
+            actual = flag_gems.scatter_reduce_(
+                target, -1, index, src, "sum", include_self=include_self
+            )
+            assert actual is target
+        else:
+            target = torch.empty_like(inp)
+            actual = flag_gems.scatter_reduce_out(
+                inp, -1, index, src, "sum", include_self=include_self, out=target
+            )
+            assert actual is target
+        torch.testing.assert_close(actual.cpu().float(), reference, rtol=0, atol=0)

@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 _CANONICALIZE_5D_MIN_ELEMENTS = 1 << 23
 _MAX_ROWWISE_GRID_X = 65535
+_MAX_PRODUCT_LOCK_PROGRAMS = 32768
 _ROWWISE_TARGET_VENDORS = frozenset(("hygon", "metax", "mthreads", "nvidia"))
 _ROWWISE_REDUCE_IDS = {"sum": 0, "prod": 1, "mean": 2, "amax": 3, "amin": 4}
 # At this size, reducing 5D extrema through the 3D decoder amortizes the view
@@ -89,9 +90,11 @@ def heur_prod_block(args):
     return heur_block(args)
 
 
-def _prod_grid(N, max_grid_x=None):
+def _prod_grid(N, max_grid_x=None, max_programs=None):
     def grid(meta):
         programs = triton.cdiv(N, meta["BLOCK"] * meta["LOOP"])
+        if max_programs is not None:
+            return (min(programs, max_programs),)
         if max_grid_x is not None:
             grid_x = min(programs, max_grid_x)
             return (grid_x, triton.cdiv(programs, grid_x))
@@ -878,68 +881,76 @@ def scatter_reduce_prod_2d_kernel(
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
-    if USE_CLAIM:
-        program_claimed = tl.atomic_cas(
-            claim_ptr + pid,
-            0,
-            1,
-            sem="acq_rel",
-        )
-    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
-
-    for i in range(LOOP):
-        offsets = (base_offsets + i * BLOCK).to(tl.int64)
-        mask = offsets < N
+    first_pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
+    workers = tl.num_programs(0) * tl.num_programs(1)
+    tasks = tl.cdiv(N, BLOCK * LOOP) if USE_LOCK else workers
+    for pid in range(first_pid, tasks, workers):
         if USE_CLAIM:
-            mask &= program_claimed == 0
-
-        row = offsets // idx_ncols
-        col = offsets % idx_ncols
-
-        if DIM == 0:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = idx * out_ncols + col
-        else:
-            idx_offsets = row * idx_ncols + col
-            src_offsets = row * src_ncols + col
-            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-            out_offsets = row * out_ncols + idx
-
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
-
-        if USE_LOCK:
-            _locked_multiply(
-                out_ptr,
-                lock_ptr,
-                out_offsets,
-                src_val,
-                mask,
-                out_numel,
-                BLOCK,
+            program_claimed = tl.atomic_cas(
+                claim_ptr + pid,
+                0,
+                1,
+                sem="acq_rel",
             )
-        else:
-            # CAS on the raw float32 bit pattern is portable across the
-            # backends that select this path.
-            stop = tl.where(mask, 0, 1).to(tl.int1)
-            block_stop = False
-            out_ptr_i32 = (out_ptr + out_offsets).to(
-                tl.pointer_type(tl.int32, 1), bitcast=True
-            )
-            while not block_stop:
-                cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
-                cur_val = cur_bits.to(tl.float32, bitcast=True)
-                new_val = tl.where(stop, cur_val, cur_val * src_val)
-                new_bits = new_val.to(tl.int32, bitcast=True)
-                cas_res = tl.atomic_cas(out_ptr_i32, cur_bits, new_bits, sem="acq_rel")
-                stop |= cur_bits == cas_res
-                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+        base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
 
-        if USE_MASK:
-            ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.store(mask_ptr + out_offsets, ones, mask=mask)
+        for i in range(LOOP):
+            offsets = (base_offsets + i * BLOCK).to(tl.int64)
+            mask = offsets < N
+            if USE_CLAIM:
+                mask &= program_claimed == 0
+
+            row = offsets // idx_ncols
+            col = offsets % idx_ncols
+
+            if DIM == 0:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = idx * out_ncols + col
+            else:
+                idx_offsets = row * idx_ncols + col
+                src_offsets = row * src_ncols + col
+                idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
+                out_offsets = row * out_ncols + idx
+
+            src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+
+            if USE_LOCK:
+                _locked_multiply(
+                    out_ptr,
+                    lock_ptr,
+                    out_offsets,
+                    src_val,
+                    mask,
+                    out_numel,
+                    BLOCK,
+                )
+            else:
+                # CAS on the raw float32 bit pattern is portable across the
+                # backends that select this path.
+                stop = tl.where(mask, 0, 1).to(tl.int1)
+                block_stop = False
+                # atomic_cas has no mask; inactive tail lanes must still
+                # point inside the allocation. Their zero-to-zero CAS is a no-op.
+                safe_offsets = tl.where(mask, out_offsets, 0)
+                out_ptr_i32 = (out_ptr + safe_offsets).to(
+                    tl.pointer_type(tl.int32, 1), bitcast=True
+                )
+                while not block_stop:
+                    cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
+                    cur_val = cur_bits.to(tl.float32, bitcast=True)
+                    new_val = tl.where(stop, cur_val, cur_val * src_val)
+                    new_bits = new_val.to(tl.int32, bitcast=True)
+                    cas_res = tl.atomic_cas(
+                        out_ptr_i32, cur_bits, new_bits, sem="acq_rel"
+                    )
+                    stop |= cur_bits == cas_res
+                    block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+
+            if USE_MASK:
+                ones = tl.full((BLOCK,), 1, dtype=tl.int32)
+                tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -1251,122 +1262,134 @@ def scatter_reduce_prod_kernel(
     BLOCK: tl.constexpr,
     LOOP: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
-    if USE_CLAIM:
-        program_claimed = tl.atomic_cas(
-            claim_ptr + pid,
-            0,
-            1,
-            sem="acq_rel",
-        )
-    base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
-
-    for i in range(LOOP):
-        offsets = (base_offsets + i * BLOCK).to(tl.int64)
-        mask = offsets < N
+    first_pid = tl.program_id(axis=0) + tl.program_id(axis=1) * tl.num_programs(axis=0)
+    workers = tl.num_programs(0) * tl.num_programs(1)
+    tasks = tl.cdiv(N, BLOCK * LOOP) if USE_LOCK else workers
+    for pid in range(first_pid, tasks, workers):
         if USE_CLAIM:
-            mask &= program_claimed == 0
-
-        remaining = offsets
-        coord0 = remaining // (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4)
-        coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
-        coord2 = remaining // (src_shape_3 * src_shape_4)
-        remaining = remaining % (src_shape_3 * src_shape_4)
-        coord3 = remaining // src_shape_4
-        coord4 = remaining % src_shape_4
-
-        idx_offsets = (
-            coord0 * idx_stride_0
-            + coord1 * idx_stride_1
-            + coord2 * idx_stride_2
-            + coord3 * idx_stride_3
-            + coord4 * idx_stride_4
-        )
-        src_offsets = (
-            coord0 * src_stride_0
-            + coord1 * src_stride_1
-            + coord2 * src_stride_2
-            + coord3 * src_stride_3
-            + coord4 * src_stride_4
-        )
-
-        idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
-
-        if DIM == 0:
-            out_offsets = (
-                idx * out_stride_0
-                + coord1 * out_stride_1
-                + coord2 * out_stride_2
-                + coord3 * out_stride_3
-                + coord4 * out_stride_4
+            program_claimed = tl.atomic_cas(
+                claim_ptr + pid,
+                0,
+                1,
+                sem="acq_rel",
             )
-        elif DIM == 1:
-            out_offsets = (
-                coord0 * out_stride_0
-                + idx * out_stride_1
-                + coord2 * out_stride_2
-                + coord3 * out_stride_3
-                + coord4 * out_stride_4
+        base_offsets = pid * BLOCK * LOOP + tl.arange(0, BLOCK)
+
+        for i in range(LOOP):
+            offsets = (base_offsets + i * BLOCK).to(tl.int64)
+            mask = offsets < N
+            if USE_CLAIM:
+                mask &= program_claimed == 0
+
+            remaining = offsets
+            coord0 = remaining // (
+                src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
             )
-        elif DIM == 2:
-            out_offsets = (
-                coord0 * out_stride_0
-                + coord1 * out_stride_1
-                + idx * out_stride_2
-                + coord3 * out_stride_3
-                + coord4 * out_stride_4
+            remaining = remaining % (
+                src_shape_1 * src_shape_2 * src_shape_3 * src_shape_4
             )
-        elif DIM == 3:
-            out_offsets = (
-                coord0 * out_stride_0
-                + coord1 * out_stride_1
-                + coord2 * out_stride_2
-                + idx * out_stride_3
-                + coord4 * out_stride_4
+            coord1 = remaining // (src_shape_2 * src_shape_3 * src_shape_4)
+            remaining = remaining % (src_shape_2 * src_shape_3 * src_shape_4)
+            coord2 = remaining // (src_shape_3 * src_shape_4)
+            remaining = remaining % (src_shape_3 * src_shape_4)
+            coord3 = remaining // src_shape_4
+            coord4 = remaining % src_shape_4
+
+            idx_offsets = (
+                coord0 * idx_stride_0
+                + coord1 * idx_stride_1
+                + coord2 * idx_stride_2
+                + coord3 * idx_stride_3
+                + coord4 * idx_stride_4
             )
-        else:
-            out_offsets = (
-                coord0 * out_stride_0
-                + coord1 * out_stride_1
-                + coord2 * out_stride_2
-                + coord3 * out_stride_3
-                + idx * out_stride_4
+            src_offsets = (
+                coord0 * src_stride_0
+                + coord1 * src_stride_1
+                + coord2 * src_stride_2
+                + coord3 * src_stride_3
+                + coord4 * src_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+            idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
 
-        if USE_LOCK:
-            _locked_multiply(
-                out_ptr,
-                lock_ptr,
-                out_offsets,
-                src_val,
-                mask,
-                out_numel,
-                BLOCK,
-            )
-        else:
-            # CAS on bits preserves NaNs and avoids floating-point CAS
-            # differences between the backends that select this path.
-            stop = tl.where(mask, 0, 1).to(tl.int1)
-            block_stop = False
-            out_ptr_i32 = (out_ptr + out_offsets).to(
-                tl.pointer_type(tl.int32, 1), bitcast=True
-            )
-            while not block_stop:
-                cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
-                cur_val = cur_bits.to(tl.float32, bitcast=True)
-                new_val = tl.where(stop, cur_val, cur_val * src_val)
-                new_bits = new_val.to(tl.int32, bitcast=True)
-                cas_res = tl.atomic_cas(out_ptr_i32, cur_bits, new_bits, sem="acq_rel")
-                stop |= cur_bits == cas_res
-                block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+            if DIM == 0:
+                out_offsets = (
+                    idx * out_stride_0
+                    + coord1 * out_stride_1
+                    + coord2 * out_stride_2
+                    + coord3 * out_stride_3
+                    + coord4 * out_stride_4
+                )
+            elif DIM == 1:
+                out_offsets = (
+                    coord0 * out_stride_0
+                    + idx * out_stride_1
+                    + coord2 * out_stride_2
+                    + coord3 * out_stride_3
+                    + coord4 * out_stride_4
+                )
+            elif DIM == 2:
+                out_offsets = (
+                    coord0 * out_stride_0
+                    + coord1 * out_stride_1
+                    + idx * out_stride_2
+                    + coord3 * out_stride_3
+                    + coord4 * out_stride_4
+                )
+            elif DIM == 3:
+                out_offsets = (
+                    coord0 * out_stride_0
+                    + coord1 * out_stride_1
+                    + coord2 * out_stride_2
+                    + idx * out_stride_3
+                    + coord4 * out_stride_4
+                )
+            else:
+                out_offsets = (
+                    coord0 * out_stride_0
+                    + coord1 * out_stride_1
+                    + coord2 * out_stride_2
+                    + coord3 * out_stride_3
+                    + idx * out_stride_4
+                )
 
-        if USE_MASK:
-            ones = tl.full((BLOCK,), 1, dtype=tl.int32)
-            tl.store(mask_ptr + out_offsets, ones, mask=mask)
+            src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+
+            if USE_LOCK:
+                _locked_multiply(
+                    out_ptr,
+                    lock_ptr,
+                    out_offsets,
+                    src_val,
+                    mask,
+                    out_numel,
+                    BLOCK,
+                )
+            else:
+                # CAS on bits preserves NaNs and avoids floating-point CAS
+                # differences between the backends that select this path.
+                stop = tl.where(mask, 0, 1).to(tl.int1)
+                block_stop = False
+                # atomic_cas has no mask; inactive tail lanes must still
+                # point inside the allocation. Their zero-to-zero CAS is a no-op.
+                safe_offsets = tl.where(mask, out_offsets, 0)
+                out_ptr_i32 = (out_ptr + safe_offsets).to(
+                    tl.pointer_type(tl.int32, 1), bitcast=True
+                )
+                while not block_stop:
+                    cur_bits = tl.load(out_ptr_i32, mask=mask, other=0)
+                    cur_val = cur_bits.to(tl.float32, bitcast=True)
+                    new_val = tl.where(stop, cur_val, cur_val * src_val)
+                    new_bits = new_val.to(tl.int32, bitcast=True)
+                    cas_res = tl.atomic_cas(
+                        out_ptr_i32, cur_bits, new_bits, sem="acq_rel"
+                    )
+                    stop |= cur_bits == cas_res
+                    block_stop = tl.sum(stop.to(tl.int32)) == BLOCK
+
+            if USE_MASK:
+                ones = tl.full((BLOCK,), 1, dtype=tl.int32)
+                tl.store(mask_ptr + out_offsets, ones, mask=mask)
 
 
 @libentry()
@@ -1982,7 +2005,11 @@ def scatter_reduce(
     out_strides_p = [int(x) for x in _pad5(list(out.stride()), 0)]
 
     grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
-    prod_grid = _prod_grid(N, _product_grid_limit)
+    prod_grid = _prod_grid(
+        N,
+        _product_grid_limit,
+        _MAX_PRODUCT_LOCK_PROGRAMS if _use_product_lock else None,
+    )
 
     dummy_mask = torch.empty(1, dtype=torch.int32, device=inp.device)
     mask_ptr = reduced_mask if use_mask else dummy_mask
