@@ -62,17 +62,23 @@ def _launch_resident(entry, pointers, constants, grid):
     kernel[(grid[0], 1, 1)](*pointers, *constants, stream=stream)
 
 
-# This compiler closure cannot lower the resident gather loop correctly.
-# Retain the existing pure-Triton panel solver for that supported runtime.
+# These compiler closures cannot lower the resident substitution loop.
+# Use streamed substitution or the existing pure-Triton panel solver instead.
 try:
-    _USE_PANEL_SOLVER = (
-        triton.__version__ == "3.2.0" and version("flagtree") == "0.6.0+ascend3.2"
+    _USE_PANEL_SOLVER = (triton.__version__, version("flagtree")) in (
+        ("3.2.0", "0.6.0+ascend3.2"),
+        ("3.5.1", "0.7.0+ascend3.5"),
     )
-    _USE_LAUNCH_CACHE = (
-        triton.__version__ == "3.5.1" and version("flagtree") == "0.6.0+ascend3.5"
+    _USE_STREAMED_SOLVER = (
+        triton.__version__ == "3.5.1" and version("flagtree") == "0.7.0+ascend3.5"
+    )
+    _USE_LAUNCH_CACHE = triton.__version__ == "3.5.1" and version("flagtree") in (
+        "0.6.0+ascend3.5",
+        "0.7.0+ascend3.5",
     )
 except PackageNotFoundError:
     _USE_PANEL_SOLVER = False
+    _USE_STREAMED_SOLVER = False
     _USE_LAUNCH_CACHE = False
 
 
@@ -176,6 +182,85 @@ def _resident_solve_kernel(
         tl.store(X + batch * N * K + rhs[:, None] * N + rows[None, :], x, valid)
 
 
+@triton.jit
+def _streamed_solve_kernel(
+    A,
+    B,
+    X,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BATCH: tl.constexpr,
+    A_STRIDES: tl.constexpr,
+    B_STRIDES: tl.constexpr,
+    UPPER: tl.constexpr,
+    UNIT: tl.constexpr,
+    ROWS: tl.constexpr,
+    COLS: tl.constexpr,
+    ITEMS: tl.constexpr,
+):
+    # Store completed rows in the column-major output. This avoids a
+    # loop-carried RHS tensor, which the newer compiler cannot plan in UB.
+    WIDE: tl.constexpr = (
+        _wide_matrix_offsets(BATCH, A_STRIDES, ROWS, ROWS)
+        or _wide_matrix_offsets(BATCH, B_STRIDES, ROWS, ((K + COLS - 1) // COLS) * COLS)
+        or ITEMS * COLS * N >= 2**31
+        or 2 * ITEMS >= 2**31
+    )
+    rows = tl.arange(0, ROWS)
+    cols = tl.arange(0, COLS)
+    if WIDE:
+        rows = rows.to(tl.int64)
+        cols = cols.to(tl.int64)
+        per_core = tl.cdiv(tl.full((), ITEMS, tl.int64), tl.num_programs(0))
+        start = tl.program_id(0).to(tl.int64) * per_core
+    else:
+        per_core = tl.cdiv(ITEMS, tl.num_programs(0))
+        start = tl.program_id(0) * per_core
+    for item in range(start, tl.minimum(start + per_core, ITEMS)):
+        batch = item // tl.cdiv(K, COLS)
+        col_tile = item - batch * tl.cdiv(K, COLS)
+        remainder = batch
+        a_offset = 0
+        b_offset = 0
+        for dim in tl.static_range(len(BATCH) - 1, -1, -1):
+            coord = remainder - (remainder // BATCH[dim]) * BATCH[dim]
+            remainder = remainder // BATCH[dim]
+            a_offset += coord * A_STRIDES[dim]
+            b_offset += coord * B_STRIDES[dim]
+        a_ptr = A + a_offset
+        b_ptr = B + b_offset
+        rhs = col_tile * COLS + cols
+        x_ptr = X + batch * N * K
+        for step in range(N):
+            row = N - 1 - step if UPPER else step
+            address_row = row.to(tl.int64) if WIDE else row
+            solved = rows > row if UPPER else rows < row
+            weights = tl.load(
+                a_ptr + address_row * A_STRIDES[-2] + rows * A_STRIDES[-1],
+                mask=(rows < N) & solved,
+                other=0.0,
+            )
+            previous = tl.load(
+                x_ptr + rhs[:, None] * N + rows[None, :],
+                mask=(rhs[:, None] < K) & (rows[None, :] < N) & solved[None, :],
+                other=0.0,
+            )
+            value = tl.load(
+                b_ptr + address_row * B_STRIDES[-2] + rhs * B_STRIDES[-1],
+                mask=rhs < K,
+                other=0.0,
+            ) - tl.sum(previous * weights[None, :], axis=1)
+            if not UNIT:
+                diagonal = tl.load(
+                    a_ptr + address_row * (A_STRIDES[-2] + A_STRIDES[-1])
+                )
+                value = value / diagonal
+            tl.store(x_ptr + rhs * N + address_row, value, rhs < K)
+            tl.debug_barrier()
+
+
+_streamed_solve_entry = libentry()(_streamed_solve_kernel)
+
 _resident_solve_entry = libentry()(_resident_solve_kernel)
 
 
@@ -199,6 +284,7 @@ def _resident_solve_fused_kernel(
     ROWS: tl.constexpr,
     COLS: tl.constexpr,
     ITEMS: tl.constexpr,
+    STREAMED: tl.constexpr = False,
 ):
     # Small systems share one launch for the solve and full original-A copy.
     # Copy tiles are distributed over the same programs as the RHS columns.
@@ -249,31 +335,53 @@ def _resident_solve_fused_kernel(
             original,
             valid,
         )
-    _resident_solve_kernel(
-        A,
-        B,
-        X,
-        N,
-        K,
-        BATCH,
-        A_STRIDES,
-        B_STRIDES,
-        UPPER,
-        UNIT,
-        ROWS,
-        COLS,
-        ITEMS,
-    )
+    if STREAMED:
+        _streamed_solve_kernel(
+            A,
+            B,
+            X,
+            N,
+            K,
+            BATCH,
+            A_STRIDES,
+            B_STRIDES,
+            UPPER,
+            UNIT,
+            ROWS,
+            COLS,
+            ITEMS,
+        )
+    else:
+        _resident_solve_kernel(
+            A,
+            B,
+            X,
+            N,
+            K,
+            BATCH,
+            A_STRIDES,
+            B_STRIDES,
+            UPPER,
+            UNIT,
+            ROWS,
+            COLS,
+            ITEMS,
+        )
 
 
 def _resident_solve(
     A, B, *, upper, unitriangular, out=None, coefficient=None, original=None
 ):
-    if _USE_PANEL_SOLVER:
+    n, k = B.shape[-2:]
+    streamed = _USE_STREAMED_SOLVER and n <= 1024
+    if _USE_PANEL_SOLVER and not streamed:
         if coefficient is not None:
             _copy_matrix(coefficient, original)
-        return linalg_solve_triangular(A, B, upper=upper, unitriangular=unitriangular)
-    n, k = B.shape[-2:]
+        result = linalg_solve_triangular(A, B, upper=upper, unitriangular=unitriangular)
+        if out is not None:
+            _copy_matrix(out, result)
+            return out
+        return result
     batch = tuple(B.shape[:-2])
     result = (
         out
@@ -282,7 +390,7 @@ def _resident_solve(
     )
     # Limit the live RHS tile for large orders: four columns corrupt the
     # loop-carried state at n=1024 on the supported Ascend 3.5 compiler.
-    cols = 1 if n > 512 else min(4, 1 << (k - 1).bit_length())
+    cols = 1 if n > 512 and not streamed else min(4, 1 << (k - 1).bit_length())
     items = math.prod(batch) * ((k + cols - 1) // cols)
     grid = (min(items, _num_cores()),)
     args = (
@@ -294,6 +402,7 @@ def _resident_solve(
     )
     solve_args = (upper, unitriangular, 1 << (n - 1).bit_length(), cols, items)
     if coefficient is not None and n <= 128:
+        solve_args = (*solve_args, streamed)
         _launch_resident(
             _resident_solve_fused_kernel,
             (A, B, result, original, coefficient),
@@ -304,7 +413,10 @@ def _resident_solve(
         if coefficient is not None:
             _copy_matrix(coefficient, original)
         _launch_resident(
-            _resident_solve_entry, (A, B, result), (*args, *solve_args), grid
+            _streamed_solve_entry if streamed else _resident_solve_entry,
+            (A, B, result),
+            (*args, *solve_args),
+            grid,
         )
     return result
 
