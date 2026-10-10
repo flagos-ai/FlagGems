@@ -195,6 +195,18 @@ at::Tensor cross_attention(const at::Tensor &query,
                            const std::optional<at::Tensor> &attn_mask = std::nullopt,
                            const std::optional<double> &scale = std::nullopt);
 
+// moe_load_balance_loss(Tensor gate_logits, SymInt top_k=2,
+//                       Tensor? attention_mask=None) -> Tensor
+// Top-K MoE load-balancing auxiliary loss ``L_ib = N_e * sum_i f_i * P_i``,
+// with ``f_i`` the Top-K assignment frequency and ``P_i`` the mean routing
+// probability of expert ``i``, both computed in fp32 from the [T, N_e] router
+// logits (fp16 / bf16 / fp32).  The optional attention_mask holds T entries;
+// zero entries are excluded from both statistics.  Forward only; the returned
+// float32 scalar is zero when every token is masked out.
+at::Tensor moe_load_balance_loss(const at::Tensor &gate_logits,
+                                 int64_t top_k = 2,
+                                 const std::optional<at::Tensor> &attention_mask = std::nullopt);
+
 struct FlashFwdParams {
   // tensor pointers
   at::Tensor q;

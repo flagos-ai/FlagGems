@@ -12887,6 +12887,23 @@ ops:
   stages:
   - beta: '4.0'
   - stable: '4.2'
+- id: moe_load_balance_loss
+  description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss
+    L_ib = N_e * sum_i f_i P_i, where f_i is expert i''s Top-K assignment
+    frequency and P_i its mean routing probability. Both statistics are computed
+    in fp32 from the router logits; an optional attention_mask excludes zero
+    entries from both statistics and the denominator. Returns a float32 scalar.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  - MoE
+  kind:
+  - MoE
+  stages:
+  - beta: '5.5'
 - id: moe_sum
   description: 'An implementation of Mixture of Experts (MoE) with sum-based aggregation
 

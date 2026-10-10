@@ -993,6 +993,22 @@ MoeAlignBlockSizeBenchmark:
     - [8, 64]
     - [128, 4]
 
+# ``T`` = tokens, ``N_e`` = experts, ``K`` = Top-K.  Covers the small/medium
+# router shapes seen in practice up to the large ``32768 x 128`` case that
+# switches the MUSA kernels to the wider token tile.
+moe_load_balance_loss: &moe_load_balance_loss_shapes
+  shapes:
+    - [256, 8, 2]
+    - [1024, 8, 2]
+    - [4096, 16, 2]
+    - [4096, 64, 4]
+    - [16384, 64, 4]
+    - [32768, 128, 8]
+  shape_desc: "T, N_e, K"
+
+moe_load_balance_loss_mask:
+  <<: *moe_load_balance_loss_shapes
+
 ConcatAndCacheMLABenchmark:
   shapes:
     - [16, 8, 84, 32, 4]

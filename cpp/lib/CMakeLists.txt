@@ -39,6 +39,7 @@ add_library(operators
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
             cross_attention.cpp
+            moe_load_balance_loss.cpp
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp

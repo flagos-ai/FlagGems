@@ -57,9 +57,9 @@ NO_QUICK_CPU_TESTS=(
 TEST_CASES=()
 PERF_TEST_CASES=()
 TEST_CASES_CPU=()
-# Operator implementation files (generic ops/ or a backend's ops/) that changed
-# but bring no test file of their own. We still want to exercise them, selected
-# by pytest marker below.
+# Operator implementation files (the generic ops/ or fused/ package, or a
+# backend's ops/ or fused/ package) that changed but bring no test file of
+# their own. We still want to exercise them, selected by pytest marker below.
 OPS_IMPL_FILES=()
 for item in $CHANGED_FILES; do
   file_name=$(basename "$item")
@@ -75,7 +75,9 @@ for item in $CHANGED_FILES; do
     benchmark/test*)
       PERF_TEST_CASES+=($item)
       ;;
-    src/flag_gems/ops/*.py | src/flag_gems/runtime/backend/*/ops/*.py)
+    src/flag_gems/ops/*.py | src/flag_gems/fused/*.py | \
+      src/flag_gems/runtime/backend/*/ops/*.py | \
+      src/flag_gems/runtime/backend/*/fused/*.py)
       if [[ "$file_name" != "__init__.py" ]]; then
         OPS_IMPL_FILES+=($item)
       fi

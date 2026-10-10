@@ -149,6 +149,14 @@ PYBIND11_MODULE(c_operators, m) {
       py::arg("value"),
       py::arg("attn_mask") = py::none(),
       py::arg("scale") = py::none());
+  m.def(
+      "moe_load_balance_loss",
+      [](const at::Tensor& gate_logits, int64_t top_k, const std::optional<at::Tensor>& attention_mask) {
+        return flag_gems::moe_load_balance_loss(gate_logits, top_k, attention_mask);
+      },
+      py::arg("gate_logits"),
+      py::arg("top_k") = 2,
+      py::arg("attention_mask") = py::none());
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
@@ -299,6 +307,9 @@ TORCH_LIBRARY(flag_gems, m) {
   m.def(
       "cross_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, "
       "float? scale=None) -> Tensor");
+  m.def(
+      "moe_load_balance_loss(Tensor gate_logits, SymInt top_k=2, Tensor? attention_mask=None) -> "
+      "Tensor");
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
   m.def("copy_(Tensor(a!) dst, Tensor src, bool non_blocking=False) -> Tensor(a!)");
@@ -396,6 +407,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
   m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
   m.impl("cross_attention", TORCH_FN(cross_attention));
+  m.impl("moe_load_balance_loss", TORCH_FN(moe_load_balance_loss));
   m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
   m.impl("to_copy", TORCH_FN(to_copy));
