@@ -493,6 +493,7 @@ _FULL_CONFIG = (
     ("_scaled_mm_v2", _scaled_mm_v2),
     ("_segment_reduce_backward", _segment_reduce_backward),
     ("_segment_reduce_backward.out", _segment_reduce_backward_out),
+    ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
     (

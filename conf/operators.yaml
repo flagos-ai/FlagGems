@@ -17315,6 +17315,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv2d_forward
+  description: |
+    An internal slow reference implementation of the 2-D convolution forward
+    pass that applies a 2-D cross-correlation over the input with the given
+    kernel.
+  for:
+  - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
