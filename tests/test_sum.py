@@ -77,6 +77,28 @@ def test_sum_dim(shape, dim, keepdim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=_dim)
 
 
+@pytest.mark.sum_dim
+@pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
+@pytest.mark.parametrize("keepdim", KEEPDIM)
+@pytest.mark.parametrize("dim", DIM_LIST)
+def test_sum_dim_bool(shape, dim, keepdim):
+    # Regression test for #6704: sum.dim_IntList on a bool input must count
+    # True values, not saturate to an "any" 0/1. Force a mix of True/False
+    # along the reduced dim so a saturated accumulator disagrees with a
+    # true count instead of accidentally matching it.
+    inp = torch.zeros(shape, dtype=torch.bool, device=flag_gems.device)
+    idx = [slice(None)] * inp.ndim
+    idx[dim] = slice(0, shape[dim] // 2 + 1)
+    inp[tuple(idx)] = True
+    ref_inp = utils.to_reference(inp, False)
+
+    ref_out = torch.sum(ref_inp, dim=dim, keepdim=keepdim)
+    with flag_gems.use_gems():
+        res_out = torch.sum(inp, dim=dim, keepdim=keepdim)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
 @pytest.mark.sum_dim_out
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("keepdim", KEEPDIM)
