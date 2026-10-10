@@ -276,33 +276,36 @@ def flash_attn_varlen_func_ref(*args, **kwargs):
     # TODO(Qiming): don't import things in the middle
     from vllm.vllm_flash_attn.flash_attn_interface import flash_attn_varlen_func
 
+    # Keyword arguments: the vLLM signature orders the FA3 tail parameters
+    # (num_splits / fa_version / s_aux / cp_*) differently across releases,
+    # so positional passing would bind fa_version into num_splits.
     result = flash_attn_varlen_func(
-        q,
-        k,
-        v,
-        max_seqlen_q,
-        cu_seqlens_q,
-        max_seqlen_k,
-        cu_seqlens_k,  # only used for non-paged prefill
-        seqused_k,
-        q_v,
-        dropout_p,
-        softmax_scale,
-        causal,
-        window_size,
-        softcap,  # 0.0 means deactivated
-        alibi_slopes,
-        deterministic,
-        return_attn_probs,
-        block_table,
-        return_softmax_lse,
-        out,
+        q=q,
+        k=k,
+        v=v,
+        max_seqlen_q=max_seqlen_q,
+        cu_seqlens_q=cu_seqlens_q,
+        max_seqlen_k=max_seqlen_k,
+        cu_seqlens_k=cu_seqlens_k,  # only used for non-paged prefill
+        seqused_k=seqused_k,
+        q_v=q_v,
+        dropout_p=dropout_p,
+        softmax_scale=softmax_scale,
+        causal=causal,
+        window_size=window_size,
+        softcap=softcap,  # 0.0 means deactivated
+        alibi_slopes=alibi_slopes,
+        deterministic=deterministic,
+        return_attn_probs=return_attn_probs,
+        block_table=block_table,
+        return_softmax_lse=return_softmax_lse,
+        out=out,
         # Dummy FA3 arguments
-        scheduler_metadata,
-        q_descale,
-        k_descale,
-        v_descale,
-        fa_version,
+        scheduler_metadata=scheduler_metadata,
+        q_descale=q_descale,
+        k_descale=k_descale,
+        v_descale=v_descale,
+        fa_version=fa_version,
     )
     return result
 

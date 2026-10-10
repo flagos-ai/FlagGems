@@ -104,6 +104,7 @@ def test_scatter_reduce(reduce, include_self):
     bench.run()
 
 
+@pytest.mark.scatter_reduce_
 @pytest.mark.scatter_reduce_two_
 @pytest.mark.parametrize("reduce", REDUCE_MODES)
 @pytest.mark.parametrize("include_self", INCLUDE_SELF_CASES)
