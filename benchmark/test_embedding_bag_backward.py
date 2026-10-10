@@ -81,7 +81,7 @@ class EmbeddingBagBackwardBenchmark(EmbeddingBagBenchmark):
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
-    reason="Native aten::_embedding_bag_backward falls back to CPU on CANN 8.5 and 9.0",
+    reason="Native aten::_embedding_bag_backward falls back to CPU on CANN 8.5, 9.0 and 9.1.1",
 )
 @pytest.mark.embedding_bag_backward
 @pytest.mark.parametrize(

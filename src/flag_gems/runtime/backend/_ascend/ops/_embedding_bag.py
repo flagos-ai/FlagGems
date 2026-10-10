@@ -42,7 +42,7 @@ def _embedding_bag_check_flags(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["padding"])
 def _embedding_bag_one_index_kernel(
     weight,
     indices,
@@ -63,7 +63,7 @@ def _embedding_bag_one_index_kernel(
     stride_i: tl.constexpr,  # indices stride
     stride_o: tl.constexpr,  # offsets stride
     stride_p: tl.constexpr,  # per-sample-weight stride
-    padding: tl.constexpr,
+    padding,
     mode: tl.constexpr,
     has_per_sample: tl.constexpr,
     block_l: tl.constexpr,  # bag-length block size
@@ -189,7 +189,7 @@ def _embedding_bag_metadata(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["padding"])
 def _embedding_bag_sum_kernel(
     weight,
     indices,
@@ -210,7 +210,7 @@ def _embedding_bag_sum_kernel(
     stride_i: tl.constexpr,  # indices stride
     stride_o: tl.constexpr,  # offsets stride
     stride_p: tl.constexpr,  # per-sample-weight stride
-    padding: tl.constexpr,
+    padding,
     mode: tl.constexpr,
     has_per_sample: tl.constexpr,
     block_l: tl.constexpr,  # bag-length block size
@@ -327,7 +327,7 @@ def _embedding_bag_sum_kernel(
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["padding"])
 def _embedding_bag_max_kernel(
     weight,
     indices,
@@ -348,7 +348,7 @@ def _embedding_bag_max_kernel(
     stride_i: tl.constexpr,  # indices stride
     stride_o: tl.constexpr,  # offsets stride
     stride_p: tl.constexpr,  # per-sample-weight stride
-    padding: tl.constexpr,
+    padding,
     mode: tl.constexpr,
     has_per_sample: tl.constexpr,
     block_l: tl.constexpr,  # bag-length block size
@@ -517,6 +517,35 @@ def _auxiliary_result(result, mode, padding_idx):
     return result
 
 
+def _embedding_bag_launch_config(weight, indices, offsets, include_last_offset, mode):
+    if weight.ndim != 2:
+        return None
+    bags = max(offsets.numel() - int(include_last_offset), 1)
+    dim = weight.shape[1]
+    index_block = min(
+        128, triton.next_power_of_2(max(triton.cdiv(indices.numel(), bags), 1))
+    )
+    if weight.stride(1) != 1:
+        # Strided gathers need smaller tiles to fit the vector-core UB.
+        return (4, min(32, triton.next_power_of_2(max(dim, 1))), 32, 4)
+    if (
+        weight.is_contiguous()
+        and dim >= 64
+        and dim % 64 == 0
+        and indices.numel() <= bags * 8
+    ):
+        # Contiguous short bags benefit from wider feature tiles. The average
+        # length only selects a tile; each bag still loops over its full range.
+        feature_limit = 256 if mode == 2 else 512
+        return (8, min(feature_limit, triton.next_power_of_2(dim)), index_block, 4)
+    return (
+        16 if indices.numel() <= bags * 16 else 32,
+        min(64, triton.next_power_of_2(max(dim, 1))),
+        index_block,
+        4,
+    )
+
+
 def _embedding_bag(
     weight,
     indices,
@@ -529,21 +558,9 @@ def _embedding_bag(
     padding_idx=-1,
 ):
     logger.debug("GEMS_ASCEND _EMBEDDING_BAG")
-    # Strided gathers need smaller tiles to fit the vector-core UB.
-    config = None
-    if weight.ndim == 2:
-        bags = max(offsets.numel() - int(include_last_offset), 1)
-        index_block = min(
-            128, triton.next_power_of_2(max(triton.cdiv(indices.numel(), bags), 1))
-        )
-        config = (
-            16 if indices.numel() <= bags * 16 else 32,
-            min(64, triton.next_power_of_2(max(weight.shape[1], 1))),
-            index_block,
-            4,
-        )
-    if weight.ndim == 2 and weight.stride(1) != 1:
-        config = (4, min(32, triton.next_power_of_2(max(weight.shape[1], 1))), 32, 4)
+    config = _embedding_bag_launch_config(
+        weight, indices, offsets, include_last_offset, mode
+    )
     result = _embedding_bag_impl(
         weight,
         indices,
@@ -579,20 +596,9 @@ def _embedding_bag_forward_only(
     padding_idx=-1,
 ):
     logger.debug("GEMS_ASCEND _EMBEDDING_BAG_FORWARD_ONLY")
-    config = None
-    if weight.ndim == 2:
-        bags = max(offsets.numel() - int(include_last_offset), 1)
-        index_block = min(
-            128, triton.next_power_of_2(max(triton.cdiv(indices.numel(), bags), 1))
-        )
-        config = (
-            16 if indices.numel() <= bags * 16 else 32,
-            min(64, triton.next_power_of_2(max(weight.shape[1], 1))),
-            index_block,
-            4,
-        )
-    if weight.ndim == 2 and weight.stride(1) != 1:
-        config = (4, min(32, triton.next_power_of_2(max(weight.shape[1], 1))), 32, 4)
+    config = _embedding_bag_launch_config(
+        weight, indices, offsets, include_last_offset, mode
+    )
     result = _embedding_bag_impl(
         weight,
         indices,

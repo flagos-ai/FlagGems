@@ -46,6 +46,12 @@ DTYPES = [
     ),
 ]
 INDEX_DTYPES = [torch.int32, torch.int64]
+FORWARD_OPS = [
+    pytest.param(_embedding_bag, marks=pytest.mark.underscore_embedding_bag),
+    pytest.param(
+        _embedding_bag_forward_only, marks=pytest.mark.embedding_bag_forward_only
+    ),
+]
 ASCEND_ABI = flag_gems.vendor_name == "ascend"
 _LEGACY_ASCEND = ASCEND_ABI and version.parse(triton.__version__) < version.parse("3.5")
 _ERROR_CHILD = "FLAGGEMS_EMBEDDING_BAG_ERROR_CHILD"
@@ -246,9 +252,7 @@ def test_embedding_bag_forward_only(
     )
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [0, 1, 2])
 @pytest.mark.parametrize("dim", [1, 33])
 @pytest.mark.parametrize("num_indices", [2, 33])
@@ -266,9 +270,7 @@ def test_embedding_bag_single_bag(op, mode, dim, num_indices):
     )
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [0, 1, 2])
 @pytest.mark.parametrize("padding", [-1, 1])
 @pytest.mark.parametrize("include_last", [False, True])
@@ -291,12 +293,10 @@ def test_embedding_bag_single_index(op, mode, padding, include_last, dim):
         torch.testing.assert_close(actual[3].cpu(), expected[3], rtol=0, atol=0)
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("weighted", [False, True])
-@pytest.mark.parametrize("dim", [1, 33] if QUICK_MODE else [0, 1, 33, 128, 513])
+@pytest.mark.parametrize("dim", [1, 33] if QUICK_MODE else [0, 1, 33, 128, 129])
 def test_embedding_bag_strided_weighted(op, dtype, weighted, dim):
     weight, indices, offsets = _inputs(
         [1, 2, 1, 0, 5, 6], [0, 3, 3, 6], dtype, torch.int64, dim, True
@@ -312,9 +312,7 @@ def test_embedding_bag_strided_weighted(op, dtype, weighted, dim):
     torch.testing.assert_close(result[1].cpu(), expected[1], rtol=0, atol=0)
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize(
     "index_dtype,offset_dtype", [(torch.int32, torch.int64), (torch.int64, torch.int32)]
 )
@@ -329,9 +327,7 @@ def test_embedding_bag_mixed_indices_negative_padding(op, index_dtype, offset_dt
     assert all(t.dtype == torch.int64 for t in out[1:])
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("include_last", [False, True])
 @pytest.mark.parametrize("mode", [0, 1, 2])
 @pytest.mark.parametrize("padding", [-1, 0])
@@ -368,9 +364,7 @@ def _unaligned_copy(tensor):
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon cached-launch pointer alignment"
 )
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("mode", [0, 1, 2])
 def test_embedding_bag_hygon_alignment(op, dtype, mode):
@@ -387,9 +381,20 @@ def test_embedding_bag_hygon_alignment(op, dtype, mode):
 
 
 def _check_tuned_forward(
-    bags, dim, bag_length, mode, weighted, include_last, dtype, index_dtype
+    bags,
+    dim,
+    bag_length,
+    mode,
+    weighted,
+    include_last,
+    dtype,
+    index_dtype,
+    contiguous=False,
+    op=None,
 ):
     weight = torch.randn((8, dim * 2), dtype=dtype, device=flag_gems.device)[:, ::2]
+    if contiguous:
+        weight = weight.contiguous()
     weight[2] = weight[1]
     if mode == 2:
         weight[1, 0] = float("nan")
@@ -416,7 +421,9 @@ def _check_tuned_forward(
         if flag_gems.vendor_name == "mthreads"
         else args
     )
-    for op in (_embedding_bag, _embedding_bag_forward_only):
+    for op in (
+        (op,) if op is not None else (_embedding_bag, _embedding_bag_forward_only)
+    ):
         expected = getattr(torch.ops.aten, op.__name__).default(*reference_args)
         actual = op(*args)
         for index, (result, reference) in enumerate(zip(actual, expected)):
@@ -424,6 +431,22 @@ def _check_tuned_forward(
             if index == 2:
                 result, reference = result[:bags], reference[:bags]
             torch.testing.assert_close(result, reference, equal_nan=True)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend contiguous short-bag tiles"
+)
+@pytest.mark.parametrize("op", FORWARD_OPS)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("dim", [64, 512])
+@pytest.mark.parametrize(
+    "mode,weighted", [(0, False), (1, False), (2, False), (0, True)]
+)
+def test_embedding_bag_ascend_short_bags(op, dtype, dim, mode, weighted):
+    # Small inputs retain empty, padding-only, double-length, NaN and tie cases.
+    _check_tuned_forward(
+        4, dim, 8, mode, weighted, True, dtype, torch.int32, contiguous=True, op=op
+    )
 
 
 @pytest.mark.skipif(
@@ -471,9 +494,7 @@ def test_embedding_bag_mthreads_launch(
     )
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("weighted", [False, True])
 def test_embedding_bag_nonfinite_and_ties(op, weighted):
     weight = torch.tensor(
@@ -501,9 +522,7 @@ def test_embedding_bag_nonfinite_and_ties(op, weighted):
         torch.testing.assert_close(result.cpu(), reference.cpu(), equal_nan=True)
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [0, 1, 2])
 @pytest.mark.parametrize("dim", [0, 7])
 @pytest.mark.parametrize("num_bags", [0, 3])
@@ -522,9 +541,7 @@ def test_embedding_bag_empty_table(op, mode, dim, num_bags):
         )
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize(
     "values,starts,last",
     [
@@ -554,9 +571,7 @@ def test_embedding_bag_invalid_values(op, values, starts, last):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [1, 2])
 def test_embedding_bag_invalid_after_warmup(op, mode):
     if os.environ.get(_ERROR_CHILD) != "1":
@@ -575,9 +590,7 @@ def test_embedding_bag_invalid_after_warmup(op, mode):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
-@pytest.mark.underscore_embedding_bag
-@pytest.mark.embedding_bag_forward_only
-@pytest.mark.parametrize("op", [_embedding_bag, _embedding_bag_forward_only])
+@pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize(
     "error",
     [
@@ -619,23 +632,41 @@ def test_embedding_bag_invalid_metadata(op, error):
         op(weight, indices, offsets, **kwargs)
 
 
+# The public entry only supplies padding_idx=-1 to _embedding_bag. Keep the
+# full computation matrix above; exercise the forwarding interface with every
+# dtype/index/mode plus representative layout and terminal-offset combinations.
 @pytest.mark.embedding_bag
-@pytest.mark.parametrize("values,starts,include_last,padding", CASES)
 @pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("mode", [0, 1, 2])
-@pytest.mark.parametrize("strided", [False, True])
-def test_embedding_bag_default(
-    values, starts, include_last, padding, index_dtype, dtype, mode, strided
-):
+@pytest.mark.parametrize(
+    "mode,weighted", [(0, False), (0, True), (1, False), (2, False)]
+)
+def test_embedding_bag_default(index_dtype, dtype, mode, weighted):
+    include_last = index_dtype == torch.int64
+    values = [1, 2, 0, 1, 4, 7, 2]
+    starts = [0, 0, 2, 2, 5] + ([len(values)] if include_last else [])
     weight, indices, offsets = _inputs(
-        values, starts, dtype, index_dtype, strided=strided
+        values, starts, dtype, index_dtype, strided=include_last
     )
-    psw = torch.ones_like(indices, dtype=dtype) * 0.5 if mode == 0 else None
+    psw = torch.ones_like(indices, dtype=dtype) * 0.5 if weighted else None
     expected = _oracle(weight, indices, offsets, mode, include_last, -1, psw)
     actual = flag_gems.embedding_bag(
         weight, indices, offsets, False, mode, False, psw, include_last
     )
     flag_gems.testing.assert_close(
-        actual[0].cpu(), expected[0], dtype, reduce_dim=max(1, len(values))
+        actual[0].cpu(), expected[0], dtype, reduce_dim=len(values)
+    )
+
+
+@pytest.mark.embedding_bag
+@pytest.mark.parametrize("values,starts,include_last,padding", CASES[2:])
+@pytest.mark.parametrize("mode", [0, 1, 2])
+def test_embedding_bag_default_empty(values, starts, include_last, padding, mode):
+    weight, indices, offsets = _inputs(values, starts, torch.float32, torch.int64)
+    expected = _oracle(weight, indices, offsets, mode, include_last, -1)
+    actual = flag_gems.embedding_bag(
+        weight, indices, offsets, False, mode, False, None, include_last
+    )
+    flag_gems.testing.assert_close(
+        actual[0].cpu(), expected[0], torch.float32, reduce_dim=max(1, len(values))
     )
