@@ -39,7 +39,6 @@ from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
 from .atan2_ import atan2_
-from .attention import scaled_dot_product_attention
 from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
@@ -142,6 +141,7 @@ from .replication_pad2d import replication_pad2d
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scaled_dot_product_attention import scaled_dot_product_attention
 from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
