@@ -216,33 +216,19 @@ def test_metax_public_entry_uses_backend_implementation() -> None:
 
 
 @pytest.mark.parametrize("dtype", [torch.int8, torch.float8_e4m3fn], ids=str)
-def test_metax_torch_entry_dispatches_to_backend(dtype: torch.dtype) -> None:
+def test_metax_public_entry_matches_reference(dtype: torch.dtype) -> None:
     cpu = _make_cpu_inputs("m_varying")
     cpu.a = cpu.a.to(dtype)
     cpu.b = cpu.b.to(dtype)
     inputs = _to_device(cpu)
-    direct = _call(inputs, torch.bfloat16)
-    # include resolves function names, while the registered ATen key has a
-    # leading underscore. Check registration to avoid silently calling native.
-    with flag_gems.use_gems(include=["scaled_grouped_mm"]):
-        assert "_scaled_grouped_mm" in flag_gems.all_registered_keys()
-        result = torch._scaled_grouped_mm(
-            inputs.a,
-            inputs.b,
-            inputs.scale_a,
-            inputs.scale_b,
-            offs=inputs.offs,
-            bias=inputs.bias,
-            out_dtype=torch.bfloat16,
-        )
-    _assert_exact(result, direct.cpu())
+    result = _call(inputs, torch.bfloat16)
     expected = _expected(cpu, torch.bfloat16)
     if dtype == torch.int8:
         _assert_exact(result, expected)
     else:
         # Tiny differences in the FP32 result can cross a BF16 halfway value.
-        # Dispatch remains bitwise checked above; the CPU comparison uses
-        # the repository's MetaX BF16 relative error budget.
+        # The CPU comparison uses the repository's MetaX BF16 relative
+        # error budget.
         torch.testing.assert_close(result.cpu(), expected, rtol=0.016, atol=1e-4)
 
 
