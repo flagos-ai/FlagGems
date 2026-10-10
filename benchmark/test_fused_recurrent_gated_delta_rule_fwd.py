@@ -129,6 +129,10 @@ class FusedRecurrentGatedDeltaRuleBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.fused_recurrent_gated_delta_rule_fwd
+@pytest.mark.skipif(
+    not HAS_VLLM_FLA,
+    reason="vLLM FLA fused_recurrent_gated_delta_rule is not available",
+)
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 def test_benchmark_fused_recurrent_gated_delta_rule_fwd():
     bench = FusedRecurrentGatedDeltaRuleBenchmark(
