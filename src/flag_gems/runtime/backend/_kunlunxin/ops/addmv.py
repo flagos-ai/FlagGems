@@ -144,14 +144,12 @@ def _addmv_addmm(self, mat, vec, beta, alpha, out, N, M):
 
 def _addmv_mv(self, mat, vec, beta, alpha, out, N):
     mv_res = mv(mat, vec).reshape(N)
-    bias = torch.zeros_like(mv_res) if beta == 0 else self.broadcast_to((N,))
+    bias = self.broadcast_to((N,))
     _addmv_combine_kernel(mv_res, bias, alpha, beta, out0=out)
     return out
 
 
 def _addmv_triton(self, mat, vec, beta, alpha, out, N, M):
-    if beta == 0:
-        self = torch.zeros_like(self)
     self = self.broadcast_to((N,))
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(mat.device):
@@ -181,13 +179,6 @@ def _addmv_impl(self, mat, vec, beta, alpha, out):
         out = torch.empty(N, device=mat.device, dtype=mat.dtype)
     else:
         assert out.shape == (N,), "Incompatible output shape"
-
-    if M == 0:
-        if beta == 0:
-            out.zero_()
-        else:
-            out.copy_(self.broadcast_to((N,)).mul(beta))
-        return out
 
     if M >= _MV_DELEGATE_M:
         if (

@@ -207,7 +207,10 @@ def addmm_kernel(
     i_ptrs = i_ptr + stride_im * offs_cm[:, None] + stride_in * offs_cn[None, :]
 
     if EVEN:
-        if BIAS_1D:
+        if beta == 0:
+            # Beta zero must ignore bias (including NaN/Inf), matching aten::addmm.
+            accumulator = accumulator * alpha
+        elif BIAS_1D:
             bias1d = tl.load(i_ptr + stride_in * offs_cn)
             accumulator = accumulator * alpha + bias1d[None, :] * beta
         else:
@@ -216,8 +219,11 @@ def addmm_kernel(
         tl.store(c_ptrs, accumulator)
     else:
         c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-        bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
-        accumulator = accumulator * alpha + bias * beta
+        if beta == 0:
+            accumulator = accumulator * alpha
+        else:
+            bias = tl.load(i_ptrs, mask=c_mask, other=0.0)
+            accumulator = accumulator * alpha + bias * beta
         tl.store(c_ptrs, accumulator, mask=c_mask)
 
 

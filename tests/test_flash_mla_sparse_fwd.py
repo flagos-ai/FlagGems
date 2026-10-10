@@ -23,6 +23,8 @@ import flag_gems
 
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 random.seed(42)
 
 try:
@@ -30,7 +32,18 @@ try:
         flash_mla_sparse_fwd as vllm_flash_mla_sparse_fwd,
     )
 
-    HAS_VLLM_FLASHMLA_SPARSE = True
+    if IS_KUNLUNXIN:
+        # The vLLM Python wrapper imports even when its compiled extension is
+        # absent, so a successful import does NOT mean the op can run. On the
+        # kunlunxin/XPU build _flashmla_C is NVIDIA-only, so key the flag on
+        # vLLM's own availability marker and fall back to the in-tree reference.
+        from vllm.v1.attention.ops.flashmla import _flashmla_C_AVAILABLE
+
+        HAS_VLLM_FLASHMLA_SPARSE = bool(_flashmla_C_AVAILABLE)
+        if not HAS_VLLM_FLASHMLA_SPARSE:
+            torch.set_float32_matmul_precision("high")
+    else:
+        HAS_VLLM_FLASHMLA_SPARSE = True
 except ImportError:
     HAS_VLLM_FLASHMLA_SPARSE = False
     print(
@@ -113,7 +126,14 @@ class FlashmlaSparseTestKit:
             .reshape(s_q, topk, d_qk)
             .float()
         )
-        P = q @ gathered_kv.transpose(1, 2)
+        if IS_KUNLUNXIN:
+            # A batched fp32 matmul aborts the process on the XPU build, so run
+            # one 2-D matmul per query instead.
+            P = torch.empty(s_q, h_q, topk, dtype=torch.float32, device=q.device)
+            for _i in range(s_q):
+                P[_i] = q[_i] @ gathered_kv[_i].transpose(0, 1)
+        else:
+            P = q @ gathered_kv.transpose(1, 2)
         P *= sm_scale
         P[invalid_mask.unsqueeze(1).broadcast_to(P.shape)] = float("-inf")
 
@@ -127,7 +147,12 @@ class FlashmlaSparseTestKit:
             "+inf"
         )  # So that corresponding O will be 0
         s_for_o = torch.exp(P - lse_for_o.unsqueeze(-1))
-        out = s_for_o @ gathered_kv[..., :d_v]
+        if IS_KUNLUNXIN:
+            out = torch.empty(s_q, h_q, d_v, dtype=torch.float32, device=q.device)
+            for _i in range(s_q):
+                out[_i] = s_for_o[_i] @ gathered_kv[_i, :, :d_v]
+        else:
+            out = s_for_o @ gathered_kv[..., :d_v]
 
         lonely_q_mask = orig_lse == float("-inf")
         orig_lse[lonely_q_mask] = float("+inf")
