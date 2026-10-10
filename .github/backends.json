@@ -23,8 +23,15 @@
     "runner_label": "enflame",
     "command_aliases": ["enflame"],
     "label": "vendor/Enflame",
-    "gpu_check": "",
-    "enabled": true
+    "gpu_check": "tools/gpu_check_enflame.sh",
+    "enabled": true,
+    "containerized": true,
+    "container": {
+      "image": "harbor.baai.ac.cn/flagos-runtime/flagos-runtime-enflame-tops1.10.6:2.2.0",
+      "volumes": [],
+      "runs_on_default": "enflame-s60-tmp",
+      "runs_on_vllm": "enflame-s60-1"
+    }
   },
   {
     "backend": "hygon",

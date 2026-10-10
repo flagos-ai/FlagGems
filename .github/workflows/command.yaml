@@ -153,13 +153,43 @@ jobs:
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-  # Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
+  # Enflame, Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
   # driver/runtime set up inside a vendor container, mirroring backend-test.yaml.
   # The image/options/runner labels come from .github/backends.json via the
   # preprocess resolve-backend step. Each runs on whichever physical machine
   # this repo has access to (FlagGems-vllm uses the "-1" host, FlagGems uses
   # "-0"), and uses fully-qualified @master action refs since local ./ refs
   # can't be resolved inside these containers.
+  test-operator-enflame:
+    needs: preprocess
+    if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'enflame'
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
   test-operator-hygon:
     needs: preprocess
     if: needs.preprocess.outputs.continue == 'true' && needs.preprocess.outputs.runner == 'hygon'
