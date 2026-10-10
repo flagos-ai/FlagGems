@@ -51,6 +51,17 @@ OPS_FILE_RE = re.compile(r"^src/flag_gems/ops/(.+)\.py$")
 BACKEND_OPS_FILE_RE = re.compile(
     r"^src/flag_gems/runtime/backend/_[^/]+/(?:[^/]+/)*ops/(.+)\.py$"
 )
+# Fused operator implementations, generic and backend-specific, e.g.
+#   src/flag_gems/fused/moe_load_balance_loss.py         -> moe_load_balance_loss
+#   src/flag_gems/runtime/backend/_mthreads/fused/foo.py -> foo
+# Same file-stem == operator-id convention as ops/: the generic `fused` package
+# holds the device-neutral kernels and a same-named vendor `fused` package
+# shadows them (runtime/backend/__init__.py::get_customized_ops). Without these
+# a PR that only touches a fused kernel would derive no marker and run no test.
+FUSED_FILE_RE = re.compile(r"^src/flag_gems/fused/(.+)\.py$")
+BACKEND_FUSED_FILE_RE = re.compile(
+    r"^src/flag_gems/runtime/backend/_[^/]+/(?:[^/]+/)*fused/(.+)\.py$"
+)
 TEST_FILE_RE = re.compile(r"^tests/test_(.+)\.py$")
 
 
@@ -140,8 +151,14 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
             changed_ops.add("__operators_yaml_changed__")
             continue
 
-        # Case 2: ops source file changed (generic or backend-specific)
-        m = OPS_FILE_RE.match(filepath) or BACKEND_OPS_FILE_RE.match(filepath)
+        # Case 2: operator source file changed (generic or backend-specific,
+        # from either the ops/ or the fused/ package)
+        m = (
+            OPS_FILE_RE.match(filepath)
+            or BACKEND_OPS_FILE_RE.match(filepath)
+            or FUSED_FILE_RE.match(filepath)
+            or BACKEND_FUSED_FILE_RE.match(filepath)
+        )
         if m:
             stem = m.group(1)
             # Handle subdirectory ops like ops/sub/file.py -> sub/file

@@ -142,6 +142,11 @@ target_link_libraries(test_triton_cross_attention
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
 add_test(NAME test_triton_cross_attention COMMAND test_triton_cross_attention)
 
+add_executable(test_triton_moe_load_balance_loss test_triton_moe_load_balance_loss.cpp)
+target_link_libraries(test_triton_moe_load_balance_loss
+  PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
+add_test(NAME test_triton_moe_load_balance_loss COMMAND test_triton_moe_load_balance_loss)
+
 add_executable(test_triton_rwkv_ka_fusion test_triton_rwkv_ka_fusion.cpp)
 target_link_libraries(test_triton_rwkv_ka_fusion
   PRIVATE Torch::Torch operators GTest::gtest GTest::gtest_main)
