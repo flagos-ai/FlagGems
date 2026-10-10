@@ -52,12 +52,9 @@ def test_mH(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = ref_inp.mH
-    # include-scoped dispatch: a full use_gems() also intercepts aten::conj with
-    # FlagGems' materializing _conj kernel, which erases the lazy conjugate bit
-    # and breaks mH's zero-copy view contract. Only mH itself may be routed.
-    with flag_gems.use_gems(include=["mH"]):
-        res_out = flag_gems.ops.mH(inp)
-
+    # Call the wrapper directly (no dispatch): mH is a zero-copy view, so its
+    # contract must be observed on the FlagGems implementation itself.
+    res_out = flag_gems.ops.mH(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
@@ -76,12 +73,9 @@ def test_mH_non_contiguous(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = ref_inp.mH
-    # include-scoped dispatch: a full use_gems() also intercepts aten::conj with
-    # FlagGems' materializing _conj kernel, which erases the lazy conjugate bit
-    # and breaks mH's zero-copy view contract. Only mH itself may be routed.
-    with flag_gems.use_gems(include=["mH"]):
-        res_out = flag_gems.ops.mH(inp)
-
+    # Call the wrapper directly (no dispatch): mH is a zero-copy view, so its
+    # contract must be observed on the FlagGems implementation itself.
+    res_out = flag_gems.ops.mH(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out.shape == ref_out.shape
     assert res_out.stride() == ref_out.stride()
@@ -101,12 +95,9 @@ def test_mH_complex(shape):
     ref_inp = utils.to_reference(inp)
 
     ref_out = ref_inp.mH
-    # include-scoped dispatch: a full use_gems() also intercepts aten::conj with
-    # FlagGems' materializing _conj kernel, which erases the lazy conjugate bit
-    # and breaks mH's zero-copy view contract. Only mH itself may be routed.
-    with flag_gems.use_gems(include=["mH"]):
-        res_out = flag_gems.ops.mH(inp)
-
+    # Call the wrapper directly (no dispatch): mH is a zero-copy view, so its
+    # contract must be observed on the FlagGems implementation itself.
+    res_out = flag_gems.ops.mH(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out.is_conj()
     assert res_out.shape == ref_out.shape
@@ -120,8 +111,7 @@ def test_mH_complex(shape):
 def test_mH_write_through_view():
     """A write through the mH view is visible in the base tensor."""
     inp = torch.zeros(4, 6, dtype=torch.float32, device=flag_gems.device)
-    with flag_gems.use_gems(include=["mH"]):
-        res = flag_gems.ops.mH(inp)
+    res = flag_gems.ops.mH(inp)
     res[0, 0] = 7.0
     assert inp[0, 0].item() == 7.0
 
@@ -131,24 +121,21 @@ def test_mH_1d_raises():
     """1-D input is rejected with the same RuntimeError as aten."""
     inp = torch.randn(8, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems(include=["mH"]):
-            flag_gems.ops.mH(inp)
+        flag_gems.ops.mH(inp)
 
 
 @pytest.mark.mH
 def test_mH_0d_warns_and_conjugates():
     """0-D input follows the deprecated aten path: warn once, return conj()."""
     inp_real = torch.randn((), dtype=torch.float32, device=flag_gems.device)
-    with flag_gems.use_gems(include=["mH"]):
-        res_real = flag_gems.ops.mH(inp_real)
+    res_real = flag_gems.ops.mH(inp_real)
     assert res_real.shape == ()
     assert (
         res_real.untyped_storage().data_ptr() == inp_real.untyped_storage().data_ptr()
     )
 
     inp_cplx = torch.randn((), dtype=torch.complex64, device=flag_gems.device)
-    with flag_gems.use_gems(include=["mH"]):
-        res_cplx = flag_gems.ops.mH(inp_cplx)
+    res_cplx = flag_gems.ops.mH(inp_cplx)
     assert res_cplx.is_conj()
     assert (
         res_cplx.untyped_storage().data_ptr() == inp_cplx.untyped_storage().data_ptr()
