@@ -1107,6 +1107,7 @@ _FULL_CONFIG = (
     ("isneginf.out", isneginf_out),
     ("isposinf", isposinf),
     ("isreal", isreal),
+    ("istft", istft),
     ("kaiser_window", kaiser_window),
     ("kaiser_window.beta", kaiser_window_beta),
     ("kaiser_window.periodic", kaiser_window_periodic),
