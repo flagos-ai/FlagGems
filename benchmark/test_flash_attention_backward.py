@@ -25,6 +25,13 @@ from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
 
+# kunlunxin: this backend's dense efficient-attention kernels cap the
+# sequence length at 1024 (widening the guard hangs the device) and do
+# not implement the attention-bias gradient, so the benchmark roster is
+# restricted to the configurations the backend can actually execute.
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+_KUNLUNXIN_MAX_SEQ = 1024
+
 
 def _is_unsafe_decode_causal(seq_len: int, is_causal: bool) -> bool:
     return seq_len == 1 and is_causal
@@ -170,20 +177,39 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
-        Q_fa,
-        K_fa,
-        V_fa,
-        bias,
-        None,
-        None,
-        Q.shape[2],
-        K.shape[2],
-        dropout_p=dropout_p,
-        custom_mask_type=1 if is_causal else 0,
-        compute_log_sumexp=True,
-        scale=scale,
-    )
+    if IS_KUNLUNXIN:
+        # The native efficient-attention forward on this XPU build rejects an
+        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
+        # yet"), so the sequence lengths are inferred from the tensor shapes.
+        results = torch.ops.aten._efficient_attention_forward(
+            Q_fa,
+            K_fa,
+            V_fa,
+            bias,
+            None,
+            None,
+            None,
+            None,
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
+    else:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q_fa,
+            K_fa,
+            V_fa,
+            bias,
+            None,
+            None,
+            Q.shape[2],
+            K.shape[2],
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
     out_fa = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
@@ -793,6 +819,8 @@ def efficient_attn_bwd_input_fn(config, dtype, device):
     is_causal = custom_mask_type == 1
     if _is_unsafe_decode_causal(seq_len, is_causal):
         return
+    if IS_KUNLUNXIN and (seq_len > _KUNLUNXIN_MAX_SEQ or has_bias):
+        return
     scale = 1.0 / math.sqrt(head_size)
 
     dev_idx = _device_index(device)
@@ -898,7 +926,7 @@ def _efficient_attn_bwd_aten(
         custom_mask_type,
         bias_requires_grad,
         scale=scale,
-        num_splits_key=0,
+        num_splits_key=None if IS_KUNLUNXIN else 0,
     )
 
 
@@ -922,7 +950,16 @@ def _efficient_attn_bwd_gems(
     lse,
     scale=None,
 ):
-    return flag_gems.ops.efficient_attention_backward(
+    # kunlunxin registers a backend implementation of this operator, and that
+    # is the implementation the accuracy test exercises.  `flag_gems.ops.*` is
+    # the generic module and resolves to a different, unrelated kernel there, so
+    # on kunlunxin the candidate is taken from the public (registered) name.
+    _candidate = (
+        flag_gems.efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.efficient_attention_backward
+    )
+    return _candidate(
         dOut_bshd,
         Q_bshd,
         K_bshd,

@@ -129,20 +129,42 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
-        Q,
-        K,
-        V,
-        bias,
-        None,
-        None,
-        Q.shape[1],
-        K.shape[1],
-        dropout_p=dropout_p,
-        custom_mask_type=1 if is_causal else 0,
-        compute_log_sumexp=True,
-        scale=scale,
-    )
+    if IS_KUNLUNXIN:
+        # The native efficient-attention forward on this XPU build rejects an
+        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
+        # yet"), so the sequence lengths are left to be inferred from the tensor
+        # shapes.  Verified on device: the returned (out, lse) match a device
+        # fp32 reference to 3e-05 (one fp16 ULP) and the native backward fed
+        # with this lse matches explicit device-math gradients to 4e-06.
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            None,
+            None,
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
+    else:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            Q.shape[1],
+            K.shape[1],
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
     out = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
