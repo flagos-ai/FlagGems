@@ -1370,19 +1370,23 @@ def flash_varlen_fwd_kernel(
         alibi_slope /= scale_softmax
     else:
         alibi_slope = 0.0
-
-    if not is_causal and not is_local:
-        n_masking_steps = 1
-    elif is_even_mn:
-        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N)
-    else:
-        n_masking_steps = tl.cdiv(BLOCK_M, BLOCK_N) + 1
-
-    n_masking_steps = min(n_block_max - n_block_min, n_masking_steps)
-
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    n_block = n_block_max - 1
-    for step in tl.range(0, n_masking_steps):
+    # Single fused KV loop.  The upstream body walks the KV range twice: a
+    # "masking steps" loop whose blocks straddle the causal boundary, then a
+    # tail loop over the fully-unmasked blocks.  The two loop bodies are
+    # near-duplicates, and on this backend the duplication alone pushes the
+    # TritonSDNNPipeline event demand past the hardware budget
+    # ([C-015] event demand 135 > 94 for xpu_arch 3).
+    #
+    # Folding them into one loop is numerically identical: n_block_max is
+    # capped by the causal bound and n_masking_steps covers every block that
+    # straddles it, so for the tail blocks the causal predicate
+    # `col_idx > col_rb` is false for every element and the boundary predicate
+    # `col_idx >= k_len` likewise, i.e. the mask is a no-op there.  Likewise
+    # `is_border=True` only differs from `is_border=is_local` for a row whose
+    # running max is still -inf, which cannot happen after the first block
+    # (it always contains the diagonal).
+    for n_block in tl.range(n_block_max - 1, n_block_min - 1, step=-1):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(
             col_idx,
@@ -1447,75 +1451,6 @@ def flash_varlen_fwd_kernel(
                 BLOCK_N=BLOCK_N,
             )
 
-        acc_ = tl.dot(P, bV, acc_)
-        n_block -= 1
-
-    for n_block in tl.range(
-        n_block_max - n_masking_steps - 1, n_block_min - 1, step=-1
-    ):
-        col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
-        bK, bV = load_from_kvcache(
-            col_idx,
-            page_table_ptr,
-            k_ptr_base,
-            v_ptr_base,
-            block_size,
-            d,
-            k_row_stride,
-            BLOCK_K=BLOCK_K,
-        )
-        S = tl.dot(bQ, bK, out_dtype=tl.float32)
-        S = apply_softcap(S, softcap, is_softcap)
-        S = apply_alibi(
-            S,
-            col_idx,
-            row_idx,
-            q_len,
-            k_len,
-            is_causal=is_causal,
-            is_alibi=is_alibi,
-            alibi_slope=alibi_slope,
-        )
-        S = apply_mask(
-            S,
-            col_idx,
-            row_idx,
-            q_len,
-            k_len,
-            window_size_left,
-            window_size_right,
-            is_even_mn=True,
-            is_causal=False,
-            is_local=is_local,
-        )
-
-        acc_, P, rowmax_, rowsum_ = softmax_rescale(
-            acc_,
-            S,
-            rowmax_,
-            rowsum_,
-            softmax_scale_log2e=scale_softmax_log2,
-            is_border=is_local,
-        )
-        P = P.to(v_ptr.type.element_ty)
-
-        if is_dropout:
-            P = apply_dropout(
-                P,
-                m_block * BLOCK_M,
-                n_block * BLOCK_N,
-                k_len,
-                bid,
-                hid,
-                philox_seed,
-                philox_offset,
-                p_dropout_in_uint8_t,
-                is_dropout,
-                encode_dropout_in_sign_bit=False,
-                NUM_HEADS=h,
-                BLOCK_M=BLOCK_M,
-                BLOCK_N=BLOCK_N,
-            )
         acc_ = tl.dot(P, bV, acc_)
 
     # LSE
