@@ -1,0 +1,34 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+# Exact SM90 decode shapes. Other M values use the generic block32 kernel.
+# tile = [BLOCK_SIZE_M, BLOCK_SIZE_N, BLOCK_SIZE_K, GROUP_SIZE_M,
+#         num_warps, num_stages]. The Hopper kernel applies each K32 scale
+# separately and reduces float32 partials when split_k > 1.
+NVIDIA_H100_80GB_HBM3: &sm90_shapes
+  "1792,5120":
+    "144": &split4
+      kernel: hopper
+      exact_m: true
+      tile: [64, 64, 32, 1, 4, 3]
+      swap_ab: true
+      split_k: 4
+  "16384,1280":
+    "120": &split1
+      kernel: hopper
+      exact_m: true
+      tile: [64, 64, 32, 1, 4, 3]
+      swap_ab: true
+      split_k: 1
+    "144": *split1
+  "5120,4096":
+    "120": &split2
+      kernel: hopper
+      exact_m: true
+      tile: [64, 64, 32, 1, 4, 3]
+      swap_ab: true
+      split_k: 2
+    "144": *split2
+  "576,5120":
+    "480": *split4
+    "576": *split4
+NVIDIA_H200: *sm90_shapes
