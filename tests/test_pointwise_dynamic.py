@@ -323,6 +323,47 @@ def test_dynamic_function_with_broadcasting2(use_block_pointer):
 
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+def test_dynamic_function_with_broadcasting_block_pointer(use_block_pointer):
+    # Issue #2307: block pointer mode must fall back to the plain multi-index
+    # path when an operand is broadcasted (zero strides), because
+    # tl.make_block_ptr cannot represent zero strides and Triton's
+    # TensorDescriptor asserts that the last dimension is contiguous.
+    # Regression test for RMSNorm-style broadcasts with prefer_1d_tile=False.
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2,
+        is_tensor=[True, True],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def rmsnorm_mul(x, scale):
+        return x * scale
+
+    B, S, D = 4, 8, 64
+    x = torch.randn([B, S, D], device=flag_gems.device)
+    # broadcast on the leading dims, e.g. x * weight
+    weight = torch.randn([D], device=flag_gems.device)
+    out = rmsnorm_mul(x, weight)
+    torch.testing.assert_close(out, x * weight)
+    # broadcast on the last dim (keepdim), e.g. x * rms -> last stride is 0
+    rms = torch.randn([B, S, 1], device=flag_gems.device)
+    out = rmsnorm_mul(x, rms)
+    torch.testing.assert_close(out, x * rms)
+    # the caller-provided config object must not be mutated
+    assert config.prefer_block_pointer == use_block_pointer
+    # block pointer is disabled for the broadcasted operator instance
+    assert rmsnorm_mul.config.prefer_block_pointer is False
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
 )
