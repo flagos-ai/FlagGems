@@ -37,6 +37,32 @@ else:
 random.seed(time.time() // 100)
 
 
+# Regression test for issue #6109: `softmax_heur_tile_n_inner` used to return
+# next_power_of_2(N) for every N up to 32768, so rows of 16385..32768 widened to
+# a 32768-element tile.  The ONE_TILE_PER_CTA branch of `softmax_kernel_inner`
+# keeps that row plus its fp32 exp() result live, which does not fit Ascend's
+# 192 KiB unified buffer, and the compiler fails with
+# "ub overflow ... while 1572864 bits available".  32769 is the control: it
+# already used TILE_N == 4096 and kept working.
+_WIDE_INNER_ROWS = [16385] if cfg.QUICK_MODE else [16385, 20000, 32768, 32769]
+
+
+@pytest.mark.softmax
+@pytest.mark.parametrize("n", _WIDE_INNER_ROWS)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("neg_inf", [True, False])
+def test_softmax_wide_inner_row(n, dtype, neg_inf):
+    inp = torch.randn((2, n), dtype=dtype, device=flag_gems.device)
+    if neg_inf:
+        inp = torch.where(inp < 0.0, float("-inf"), inp)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.nn.functional.softmax(ref_inp, dim=-1)
+    res_out = flag_gems.softmax(inp, -1)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
 # Issue 2852: This fails at (1, 2) (200, 40999, 3)
 @pytest.mark.softmax
 @pytest.mark.parametrize("shape", SHAPES)

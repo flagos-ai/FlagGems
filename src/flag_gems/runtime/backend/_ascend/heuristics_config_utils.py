@@ -224,7 +224,15 @@ def softmax_heur_num_warps_non_inner(args):
 
 
 def softmax_heur_tile_n_inner(args):
-    if args["N"] <= (32 * 1024):
+    # `one_tile_per_cta` is `TILE_N >= N`, and that branch keeps the loaded row
+    # plus its fp32 exp() result live at the same time. Ascend's unified buffer
+    # is 192 KiB, so a 32768-wide tile needs 196640 B with 16-bit inputs and
+    # 262176 B in fp32 -- both over budget, and the compiler aborts with
+    # "ub overflow ... while 1572864 bits available" (BiShengHIR pipeline).
+    # 16384 is the largest tile that fits in every supported dtype
+    # (16384*4 + 16384*4 = 131072 B), so only single-tile shapes up to that
+    # width may use next_power_of_2; wider rows fall back to the tiled path.
+    if args["N"] <= (16 * 1024):
         return triton.next_power_of_2(args["N"])
     else:
         return 4096
