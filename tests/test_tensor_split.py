@@ -146,3 +146,39 @@ def test_tensor_split_by_tensor(shape, dtype):
     # Compare each split
     for i, (res, ref) in enumerate(zip(res_out, ref_out)):
         utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.tensor_split_indices
+@pytest.mark.parametrize("layout", ["contiguous", "strided", "empty"])
+@pytest.mark.parametrize("dim", [0, -1])
+@pytest.mark.parametrize(
+    "form", ["sections", "indices", "tensor_sections", "tensor_indices"]
+)
+def test_ascend_tensor_split_preserves_views(layout, dim, form):
+    if flag_gems.vendor_name != "ascend":
+        pytest.skip("Ascend tensor_split view implementation required")
+    assert flag_gems.tensor_split.__module__.endswith("_ascend.ops.tensor_split")
+
+    inp = torch.arange(48, dtype=torch.float32, device=flag_gems.device).reshape(6, 8)
+    if layout == "strided":
+        inp = inp[1::2, 1::2].transpose(0, 1)
+    elif layout == "empty":
+        inp = inp[:, :0]
+    ref_inp = inp.clone()
+    boundaries = 12 if "sections" in form else [4, 1, 1, -2, -100, 100]
+    if form.startswith("tensor_"):
+        boundaries = torch.tensor(boundaries, dtype=torch.int64, device="cpu")
+    ref_out = torch.tensor_split(ref_inp, boundaries, dim=dim)
+    with flag_gems.use_gems(include=["tensor_split"]):
+        res_out = torch.tensor_split(inp, boundaries, dim=dim)
+
+    assert len(res_out) == len(ref_out)
+    for res, ref in zip(res_out, ref_out):
+        utils.gems_assert_equal(res, ref)
+        assert res.stride() == inp.stride()
+        assert res.untyped_storage()._cdata == inp.untyped_storage()._cdata
+    # Overlapping outputs must observe sequential writes into the same input.
+    for i, (res, ref) in enumerate(zip(res_out, ref_out)):
+        res.fill_(100 + i)
+        ref.fill_(100 + i)
+        utils.gems_assert_equal(inp, ref_inp)
