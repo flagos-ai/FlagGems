@@ -117,6 +117,7 @@ from .full_like import full_like
 from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .greater_ import greater_
 from .greater_equal_ import greater_equal_
@@ -210,7 +211,7 @@ from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_, multiply, multiply_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -554,7 +555,10 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
+    "multiply",
+    "multiply_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
