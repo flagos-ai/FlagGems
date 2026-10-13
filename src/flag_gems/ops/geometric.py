@@ -48,11 +48,12 @@ def geometric_kernel(
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
 
-    # Convert random uint32 to uniform float in [0, 1)
-    u0 = uint_to_uniform_float(r0)
-    u1 = uint_to_uniform_float(r1)
-    u2 = uint_to_uniform_float(r2)
-    u3 = uint_to_uniform_float(r3)
+    # Convert random uint32 to uniform float in (0, 1); clamp away from 0
+    # to avoid below tl.log(0) -> -inf
+    u0 = tl.maximum(uint_to_uniform_float(r0), 1e-10)
+    u1 = tl.maximum(uint_to_uniform_float(r1), 1e-10)
+    u2 = tl.maximum(uint_to_uniform_float(r2), 1e-10)
+    u3 = tl.maximum(uint_to_uniform_float(r3), 1e-10)
 
     # Geometric distribution: ceil(log(u) / log(1-p))
     # where u is uniform in (0, 1). Use log1p for numerical stability.
