@@ -72,6 +72,7 @@ from .concat import concat
 from .concatenate import concatenate
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
+from .conv3d import conv3d
 from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cross import cross
@@ -228,6 +229,7 @@ from .not_equal import not_equal
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import constant_pad_nd, pad
 from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .permute_copy import permute_copy
@@ -389,6 +391,8 @@ __all__ = [
     "concatenate",
     "cosh_",
     "cosine_embedding_loss",
+    "constant_pad_nd",
+    "conv3d",
     "count_nonzero",
     "cross",
     "cudnn_convolution",
@@ -584,6 +588,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad",
     "pad_sequence",
     "pairwise_distance",
     "permute_copy",
