@@ -38,6 +38,24 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
+def _bmm_reference(mat1, mat2):
+    """High-precision CPU reference for ``torch.bmm``.
+
+    Issue #2947: the reference must not inherit the device fp32 matmul
+    precision. Some backends run native fp32 matmul in reduced precision
+    (e.g. TF32 on Moore Threads / MUSA), which makes an on-device reference an
+    invalid baseline for fp16/bf16/fp32 inputs. Build the reference on CPU
+    instead, upcasting low-precision inputs for extra headroom, mirroring
+    ``tests/test_addmm.py``.
+    """
+    ref_mat1 = mat1.detach().cpu()
+    ref_mat2 = mat2.detach().cpu()
+    if ref_mat1.dtype in (torch.float16, torch.bfloat16):
+        ref_mat1 = ref_mat1.float()
+        ref_mat2 = ref_mat2.float()
+    return torch.bmm(ref_mat1, ref_mat2)
+
+
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -54,11 +72,12 @@ def test_bmm(monkeypatch, M, N, K, dtype):
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-
-    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    ref_out = _bmm_reference(mat1, mat2)
     res_out = flag_gems.bmm(mat1, mat2)
+    if utils.TO_CPU:
+        res_out = res_out.to("cpu")
+    else:
+        ref_out = ref_out.to(flag_gems.device)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
@@ -88,10 +107,12 @@ def test_bmm_non_contiguous(M, N, K, dtype):
         # Skipping non-contiguous test for small N or K
         return
 
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    ref_out = _bmm_reference(mat1, mat2)
     res_out = flag_gems.bmm(mat1, mat2)
+    if utils.TO_CPU:
+        res_out = res_out.to("cpu")
+    else:
+        ref_out = ref_out.to(flag_gems.device)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
@@ -112,11 +133,10 @@ def test_bmm_out(M, N, K, dtype):
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
     out = torch.empty((batch, M, N), dtype=dtype, device=flag_gems.device)
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-
-    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    ref_out = _bmm_reference(mat1, mat2)
     flag_gems.bmm_out(mat1, mat2, out=out)
+    if not utils.TO_CPU:
+        ref_out = ref_out.to(flag_gems.device)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
 
