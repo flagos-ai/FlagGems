@@ -37,7 +37,7 @@ def zeros_like(
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
     # grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
-    grid_fn = lambda meta: (triton.cdiv(N, 32768),)
+    grid_fn = lambda meta: (min(triton.cdiv(N, 32768), 65535),)
     with torch_device_fn.device(x.device):
         zeros_kernel[grid_fn](out, N, BLOCK_SIZE=32768, BLOCK_SIZE_SUB=1024)
     return out
