@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import logging
 import os
 from typing import Any, Callable, List, Mapping, Tuple
@@ -21,7 +20,7 @@ import torch
 
 from flag_gems import runtime
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
+from flag_gems.utils.code_utils import IndentedBuffer, load_generated_module
 
 logger = logging.getLogger(__name__)
 
@@ -381,15 +380,11 @@ class IndexFunction:
 
             file_name = f"index_{key}.py"
             file_path = code_cache_dir() / file_name
-            write_atomic(file_path, code.getvalue())
-
-            spec = importlib.util.spec_from_file_location(
+            m = load_generated_module(
                 f"_gen_module_rank_{key}",
                 file_path,
+                code.getvalue(),
             )
-
-            m = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(m)
             overload = getattr(m, "_index_wrapper")
             self.overloads[key] = overload
 
@@ -602,15 +597,11 @@ class LinearizedAdjacentIndexFunction:
 
             file_name = f"index_linearized_{key}.py"
             file_path = code_cache_dir() / file_name
-            write_atomic(file_path, code.getvalue())
-
-            spec = importlib.util.spec_from_file_location(
+            m = load_generated_module(
                 f"_gen_module_index_linearized_{key}",
                 file_path,
+                code.getvalue(),
             )
-
-            m = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(m)
             overload = getattr(m, "_index_linearized_wrapper")
             self.overloads[key] = overload
 
