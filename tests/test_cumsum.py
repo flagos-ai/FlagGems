@@ -125,3 +125,18 @@ def test_cumsum_out(shape, dtype):
     flag_gems.cumsum_out(inp, dim=dim, out=out)
 
     utils.gems_assert_close(out, ref_out_buf, dtype, reduce_dim=shape[dim])
+
+
+@pytest.mark.cumsum_out
+@pytest.mark.parametrize("shape, dim", [((2637,), 0), ((3, 257), 1), ((5, 7), 0)])
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_cumsum_out_integer(shape, dim, dtype):
+    inp = torch.randint(-3, 3, shape, device=flag_gems.device).to(dtype)
+    ref_inp = utils.to_reference(inp)
+    out = torch.empty_like(inp)
+    ref_out = torch.empty_like(ref_inp)
+    torch.cumsum(ref_inp, dim=dim, out=ref_out)
+    result = flag_gems.cumsum_out(inp, dim=dim, out=out)
+    assert result is out
+    assert result.dtype == dtype
+    utils.gems_assert_equal(out, ref_out)
