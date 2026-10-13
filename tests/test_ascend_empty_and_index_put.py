@@ -33,6 +33,15 @@ def test_diff_empty_dimensions(shape, n):
     assert torch.equal(actual, expected)
 
 
+@pytest.mark.pad
+@pytest.mark.parametrize("shape", [(0, 5), (2, 0)])
+def test_constant_pad_empty_input(shape):
+    x = torch.empty(shape, device=flag_gems.device)
+    expected = torch.nn.functional.pad(x, (2, 3, 1, 1), value=2.5)
+    actual = flag_gems.pad(x, (2, 3, 1, 1), value=2.5)
+    assert torch.equal(actual, expected)
+
+
 @pytest.mark.index_put
 @pytest.mark.parametrize("shape,positions", [((8, 4, 16), [1, 3, -1]), ((2, 0), [0])])
 @pytest.mark.parametrize("inplace", [False, True])
