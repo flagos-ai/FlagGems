@@ -59,6 +59,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -113,7 +114,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_, multiply, multiply_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -315,7 +316,10 @@ __all__ = [
     "mm_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
+    "multiply",
+    "multiply_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
