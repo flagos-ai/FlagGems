@@ -18,6 +18,19 @@ from .__rshift__ import __rshift__  # noqa: F401
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from ._foreach_binary import (
+    _foreach_addcdiv_ScalarList,
+    _foreach_addcdiv_Tensor,
+    _foreach_lerp_List,
+)
+from ._foreach_unary import (
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_sin,
+    _foreach_sin_,
+)
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._conj import _conj  # noqa: F401
@@ -764,6 +777,15 @@ __all__ = [
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
+    "_foreach_addcdiv_ScalarList",
+    "_foreach_addcdiv_Tensor",
+    "_foreach_cos",
+    "_foreach_cos_",
+    "_foreach_exp",
+    "_foreach_exp_",
+    "_foreach_lerp_List",
+    "_foreach_sin",
+    "_foreach_sin_",
     "_assert_async",
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
