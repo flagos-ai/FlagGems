@@ -31,3 +31,38 @@ def test_diff_empty_dimensions(shape, n):
     expected = torch.diff(x, n=n)
     actual = flag_gems.diff(x, n=n)
     assert torch.equal(actual, expected)
+
+
+@pytest.mark.index_put
+@pytest.mark.parametrize("shape,positions", [((8, 4, 16), [1, 3, -1]), ((2, 0), [0])])
+@pytest.mark.parametrize("inplace", [False, True])
+def test_index_put_first_dimension(shape, positions, inplace):
+    x = torch.zeros(shape, dtype=torch.bfloat16, device=flag_gems.device)
+    indices = torch.tensor(positions, dtype=torch.int64, device=x.device)
+    values = torch.ones((len(positions), *shape[1:]), dtype=x.dtype, device=x.device)
+    expected = x.clone()
+    expected.index_put_((indices,), values)
+    actual = x.clone()
+    if inplace:
+        result = flag_gems.index_put_(actual, (indices,), values)
+        assert result is actual
+    else:
+        result = flag_gems.index_put(actual, (indices,), values)
+        assert result is not actual
+        assert torch.equal(actual, x)
+    assert torch.equal(result, expected)
+
+
+@pytest.mark.index_put
+def test_index_put_uses_tensor_device():
+    if torch.npu.device_count() < 2:
+        pytest.skip("requires two NPU devices")
+    x = torch.zeros((4, 8), device="npu:0")
+    indices = torch.tensor([1, 3], device=x.device)
+    values = torch.ones((2, 8), device=x.device)
+    expected = x.clone()
+    expected.index_put_((indices,), values)
+    with torch.npu.device(1):
+        actual = x.clone()
+        flag_gems.index_put_(actual, (indices,), values)
+    assert torch.equal(actual, expected)
