@@ -72,6 +72,7 @@ from .concat import concat
 from .concatenate import concatenate
 from .cosh_ import cosh_
 from .cosine_embedding_loss import cosine_embedding_loss
+from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cross import cross
 from .cudnn_convolution import cudnn_convolution
@@ -152,6 +153,7 @@ from .leaky_relu_out import leaky_relu_out
 from .less_ import less_
 from .less_equal import less_equal
 from .less_equal_ import less_equal_
+from .lift_fresh import lift_fresh, lift_fresh_copy, lift_fresh_copy_out
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
