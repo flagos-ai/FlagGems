@@ -30,7 +30,18 @@ def _compute_broadcast_shape(tensors):
     for i in range(max_ndim):
         dim_size = 1
         for shape in padded_shapes:
-            dim_size = max(dim_size, shape[i])
+            # A singleton broadcasts to every size, including zero. Distinct
+            # non-singleton sizes are incompatible (zero is not a singleton).
+            if shape[i] == 1:
+                continue
+            if dim_size == 1:
+                dim_size = shape[i]
+            elif dim_size != shape[i]:
+                raise RuntimeError(
+                    "The size of tensor a ("
+                    f"{dim_size}) must match the size of tensor b "
+                    f"({shape[i]}) at non-singleton dimension {i}"
+                )
         broadcast_shape.append(dim_size)
 
     return tuple(broadcast_shape)
