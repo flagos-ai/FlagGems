@@ -37,6 +37,7 @@ from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
+from .conv3d import conv3d
 from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
@@ -124,6 +125,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import constant_pad_nd, pad
 from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
@@ -214,6 +216,8 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "concat",
+    "constant_pad_nd",
+    "conv3d",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
@@ -338,6 +342,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad",
     "pad_sequence",
     "pairwise_distance",
     "polar",
