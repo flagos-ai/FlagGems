@@ -147,3 +147,26 @@ def test_index_add_invalid_index(inplace):
             flag_gems.index_add(inp, dim, index, src)
 
     utils.gems_assert_equal(inp, ref_inp)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.float32, torch.int32, torch.int64]
+)
+def test_index_add_empty_index(inplace, dtype):
+    """An empty index is a no-op, not a division by zero (issue #6657)."""
+    inp = torch.ones((2, 4, 8), dtype=dtype, device=flag_gems.device)
+    index = torch.empty(0, dtype=torch.int64, device=flag_gems.device)
+    src = torch.empty((2, 0, 8), dtype=dtype, device=flag_gems.device)
+    expected = inp.clone()
+
+    if inplace:
+        flag_gems.index_add_(inp, 1, index, src)
+        utils.gems_assert_equal(inp, expected)
+    else:
+        res = flag_gems.index_add(inp, 1, index, src)
+        utils.gems_assert_equal(res, expected)
+        # The out-of-place form must leave the input untouched.
+        utils.gems_assert_equal(inp, expected)
