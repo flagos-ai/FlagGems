@@ -109,8 +109,17 @@ def bmm_kernel(
             else:
                 mask_b = mask_k[:, None] & mask_n[None, :]
 
-        a = tl.load(a_ptrs, mask_a)
-        b = tl.load(b_ptrs, mask_b)
+        # masked-out lanes MUST be filled with 0 (not garbage) so tl.dot
+        # does not accumulate NaN when K is not divisible by TILE_K.
+        # `other` cannot be passed when mask is None, so branch on None.
+        if mask_a is not None:
+            a = tl.load(a_ptrs, mask_a, other=0.0)
+        else:
+            a = tl.load(a_ptrs)
+        if mask_b is not None:
+            b = tl.load(b_ptrs, mask_b, other=0.0)
+        else:
+            b = tl.load(b_ptrs)
 
         offs_k += TILE_K
         a_ptrs += TILE_K
