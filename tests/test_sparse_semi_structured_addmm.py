@@ -122,6 +122,7 @@ def _maybe_cross_check_native(
 @pytest.mark.parametrize("shape", [(64, 64), (128, 128), (256, 128)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sparse_semi_structured_addmm(shape, dtype):
+    torch.manual_seed(0)
     M, N = shape
     K4 = 32  # K = 4 * K4
 
@@ -135,7 +136,10 @@ def test_sparse_semi_structured_addmm(shape, dtype):
         input_tensor, mat1, mat1_meta, mat2
     )
 
-    ref_out = utils.to_reference(ref_out)
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == input_tensor.device
+    ref_out = utils.to_reference(ref_out, True)
     if dtype == torch.bfloat16:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.2)
     elif dtype == torch.float16:
@@ -150,6 +154,7 @@ def test_sparse_semi_structured_addmm(shape, dtype):
 @pytest.mark.parametrize("shape", [(64, 64), (128, 128)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sparse_semi_structured_addmm_with_alpha_beta(shape, dtype):
+    torch.manual_seed(0)
     M, N = shape
     K4 = 32  # K = 4 * K4
     alpha = 2.5
@@ -165,7 +170,10 @@ def test_sparse_semi_structured_addmm_with_alpha_beta(shape, dtype):
         input_tensor, mat1, mat1_meta, mat2, alpha=alpha, beta=beta
     )
 
-    ref_out = utils.to_reference(ref_out)
+    assert res_out.shape == (M, N)
+    assert res_out.dtype == dtype
+    assert res_out.device == input_tensor.device
+    ref_out = utils.to_reference(ref_out, True)
     if dtype == torch.bfloat16:
         utils.gems_assert_close(res_out, ref_out, dtype, atol=0.5)
     elif dtype == torch.float16:
