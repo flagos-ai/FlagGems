@@ -11,6 +11,7 @@ VENDOR_NAME = getattr(flag_gems, "vendor_name", "")
 IS_ASCEND = VENDOR_NAME == "ascend"
 IS_ILUVATAR = VENDOR_NAME == "iluvatar"
 IS_THEAD = VENDOR_NAME == "thead"
+IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
 
@@ -237,7 +238,7 @@ def _assert_cholesky_solve_matches(A, factor, rhs, dtype, upper=False):
 _REAL_DTYPES = [torch.float32] + ([torch.float64] if SUPPORT_FP64 else [])
 _COMPLEX_DTYPES = (
     []
-    if IS_ASCEND
+    if (IS_ASCEND or IS_KUNLUNXIN)
     else [torch.complex64] + ([torch.complex128] if SUPPORT_FP64 else [])
 )
 
@@ -478,7 +479,9 @@ def test_cholesky_solve_direct(shape, dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("shape", CHOLESKY_SOLVE_COMPLEX_SHAPES)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
@@ -490,7 +493,9 @@ def test_cholesky_solve_complex(shape, dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_noncontiguous(dtype, upper):
@@ -503,7 +508,9 @@ def test_cholesky_solve_complex_noncontiguous(dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_broadcast(dtype, upper):
@@ -521,7 +528,9 @@ def test_cholesky_solve_complex_broadcast(dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_small_gather_conditioned(dtype, upper):
@@ -532,7 +541,9 @@ def test_cholesky_solve_complex_small_gather_conditioned(dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("shape", CHOLESKY_SOLVE_COMPLEX_BLOCKED_SHAPES)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
@@ -544,7 +555,9 @@ def test_cholesky_solve_complex_blocked(shape, dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_blocked_conditioned(dtype, upper):
@@ -555,7 +568,9 @@ def test_cholesky_solve_complex_blocked_conditioned(dtype, upper):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("shape", [(16, 5), (64, 4), (128, 1), (256, 16)])
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
@@ -567,7 +582,9 @@ def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
 
 
 @pytest.mark.cholesky_solve
-@pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(
+    (IS_ASCEND or IS_KUNLUNXIN), reason="complex not supported on this backend"
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
     A, L, rhs = _make_cholesky_solve_inputs((64, 4), dtype)
