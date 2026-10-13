@@ -72,6 +72,11 @@ class PersistantModel(object):
         config: Union[triton.Config, Dict[str, Union[bool, int, float, str]]],
     ) -> None: ...
 
+    @abstractmethod
+    def delete_config(
+        self, name: str, keys: Sequence[Union[bool, int, float, str]]
+    ) -> None: ...
+
     @overload
     def put_benchmark(
         self,
