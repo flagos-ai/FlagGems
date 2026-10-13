@@ -58,6 +58,27 @@ runs:
           exit 1
         fi
 
+    - name: Install transformer_engine (nvidia only)
+      if: startsWith(inputs.backend, 'nvidia')
+      shell: bash
+      env:
+        TE_VERSION: "2.16.1"
+      run: |
+        source .venv/bin/activate
+        # Record Layer 1 state before transformer_engine install
+        uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer1-snapshot-te.txt
+
+        # Install transformer_engine[pytorch]
+        uv pip install --no-build-isolation "transformer_engine[pytorch]==${TE_VERSION}"
+
+        # Verify Layer 1 packages were not modified
+        uv pip freeze | grep -iE '^(torch|triton|flag)' | sort > /tmp/layer2-snapshot-te.txt
+        if ! diff -q /tmp/layer1-snapshot-te.txt /tmp/layer2-snapshot-te.txt > /dev/null 2>&1; then
+          echo "::error::Layer 1 packages were modified by transformer_engine install!"
+          diff /tmp/layer1-snapshot-te.txt /tmp/layer2-snapshot-te.txt
+          exit 1
+        fi
+
     - name: Check GPU availability
       if: inputs.gpu_check_script != ''
       shell: bash
