@@ -22,15 +22,16 @@ from . import conftest as cfg
 
 
 def _init_vllm():
-    if not torch.cuda.is_available():
-        return None, False
+    # Build the reference on the active accelerator (``flag_gems.device``) rather
+    # than hardcoding CUDA: the operator and its vLLM reference also run on
+    # non-NVIDIA backends such as MUSA.  See issue #2884.
+    device = flag_gems.device
     try:
         from vllm._custom_ops import apply_repetition_penalties as fn
 
-        t, m = torch.randn(2, 1024, device="cuda"), torch.zeros(
-            2, 1024, dtype=torch.bool, device="cuda"
-        )
-        fn(t, m, m, torch.full((2,), 1.2, device="cuda"))
+        t = torch.randn(2, 1024, device=device)
+        m = torch.zeros(2, 1024, dtype=torch.bool, device=device)
+        fn(t, m, m, torch.full((2,), 1.2, device=device))
         return fn, True
     except (ImportError, RuntimeError, AttributeError):
 
@@ -52,7 +53,7 @@ if cfg.QUICK_MODE:
             (1, 1024),
         ],
         "penalties": [1.0, 1.2],
-        "device": torch.device("cuda:0"),
+        "device": flag_gems.device,
     }
 else:
     _REP_PENALTY_CFG = {
@@ -66,14 +67,12 @@ else:
             (8, 8192),
         ],
         "penalties": [1.0, 1.2, 1.5],
-        "device": torch.device("cuda:0"),
+        "device": flag_gems.device,
     }
 
 
 @pytest.mark.apply_repetition_penalties
-@pytest.mark.skipif(
-    not _VLLM_OK or not torch.cuda.is_available(), reason="need VLLM+CUDA"
-)
+@pytest.mark.skipif(not _VLLM_OK, reason="need VLLM")
 @pytest.mark.parametrize("shape", _REP_PENALTY_CFG["shapes"])
 @pytest.mark.parametrize("penalty", _REP_PENALTY_CFG["penalties"])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
