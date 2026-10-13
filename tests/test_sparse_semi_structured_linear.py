@@ -1,4 +1,5 @@
 import contextlib
+import functools
 
 import pytest
 import torch
@@ -70,7 +71,9 @@ def _probe_native_cutlass():
 # Whether the native CUTLASS op is available for the optional cross-check. This
 # does NOT gate the test module; the gems kernel is always compared against
 # ``_pytorch_ref``.
-NATIVE_AVAILABLE, _NATIVE_UNAVAILABLE_REASON = _probe_native_cutlass()
+@functools.lru_cache(maxsize=1)
+def _native_available():
+    return _probe_native_cutlass()[0]
 
 # The gems kernel supports fp16 / bf16 on all backends; the pure-PyTorch
 # reference is dtype-agnostic, so these run everywhere.
@@ -190,7 +193,7 @@ def _native_can_serve(weight, *, dtype=None, activation=None, out_dtype=None):
     caller as (native matmul + aten gelu), and no float out_dtype. Anything else
     returns False so only ``_pytorch_ref`` is used.
     """
-    if not NATIVE_AVAILABLE:
+    if not _native_available():
         return False
     if out_dtype is not None:
         return False
@@ -225,14 +228,11 @@ def _atol_for(dtype):
 
 
 def _assert_close(res, ref, dtype, atol):
-    """Compare gems result against a reference.
-
-    Under ``--ref=cpu`` move both tensors to CPU first so
-    ``gems_assert_close``'s ``to_cpu`` sees a CPU reference, matching the
-    convention in ``test_act_quant``.
-    """
+    """Compare against a reference while preserving the KG output contract."""
+    assert res.shape == ref.shape
+    assert res.dtype == dtype
+    ref = utils.to_reference(ref, True)
     if TO_CPU:
-        ref = ref.to("cpu")
         res = res.to("cpu")
     utils.gems_assert_close(res, ref, dtype, atol=atol)
 
