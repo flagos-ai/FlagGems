@@ -14,21 +14,8 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from . import base, consts
-
-# ``_transformer_encoder_layer_fwd`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._transformer_encoder_layer_fwd``
-# and ``-m _transformer_encoder_layer_fwd`` both work.
-setattr(
-    pytest.mark,
-    "_transformer_encoder_layer_fwd",
-    MarkDecorator(
-        Mark("_transformer_encoder_layer_fwd", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
 
 def input_fn(shape, dtype, device):
@@ -98,7 +85,7 @@ def input_fn(shape, dtype, device):
     )
 
 
-@pytest.mark._transformer_encoder_layer_fwd
+@pytest.mark.transformer_encoder_layer_fwd
 def test__transformer_encoder_layer_fwd():
     bench = base.GenericBenchmark(
         op_name="_transformer_encoder_layer_fwd",
