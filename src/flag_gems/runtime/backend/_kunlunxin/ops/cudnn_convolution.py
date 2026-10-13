@@ -26,14 +26,12 @@ from .conv3d import conv3d
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# [0920 C-190] aten::cudnn_convolution host fast path (capture/replay, same
-# pattern as the conv_depthwise2d overlay).  Small-shape calls are dominated
-# by host-side preparation (schema handling, launch assembly); on the first
-# call for a config we delegate to the plain path and capture the deepest
-# launcher arguments; later calls replay them with fresh tensor arguments
-# spliced back in.  Any doubt (grad tensors, non-device tensors, string
-# padding, non-square inputs, ambiguous captures) falls back to the plain
-# path.  FG_CUDNNCONV_FASTPATH=0 disables.
+# [0920 C-190] aten::cudnn_convolution host fast path.  Small-shape calls are
+# dominated by host-side preparation; after the first call for a config the
+# launch config is cached and later calls reuse it with fresh tensor arguments.
+# Any doubt (grad tensors, non-device tensors, string padding, non-square
+# inputs, ambiguous matches) falls back to the plain path.
+# FG_CUDNNCONV_FASTPATH=0 disables.
 # ---------------------------------------------------------------------------
 _ENABLED = os.environ.get("FG_CUDNNCONV_FASTPATH", "1") != "0"
 _LOCK = threading.Lock()
