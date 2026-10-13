@@ -144,6 +144,7 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .inverse import inverse
+from .is_same_size import is_same_size
 from .isin import isin
 from .isposinf import isposinf
 from .kl_div import kl_div
@@ -316,7 +317,7 @@ from .xlogy_out import xlogy_out
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
 from .xlogy_tensor_scalar_out import xlogy_tensor_scalar_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -472,6 +473,7 @@ __all__ = [
     "index_select_backward",
     "inner",
     "inverse",
+    "is_same_size",
     "isin",
     "isposinf",
     "kl_div",
@@ -679,6 +681,7 @@ __all__ = [
     "xlogy_tensor_scalar",
     "xlogy_tensor_scalar_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]
