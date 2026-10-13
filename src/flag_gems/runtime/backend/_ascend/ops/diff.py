@@ -420,7 +420,13 @@ def _run_slow(
     return out
 
 
-def diff(x, n, dim, prepend, append):
+def diff(x, n=1, dim=-1, prepend=None, append=None):
+    n_ = int(n)
+    if n_ < 0:
+        raise RuntimeError(f"order must be non-negative but got {n_}")
+    if n_ == 0:
+        return x
+
     ndim = x.dim()
     dimn = int(dim) % ndim
     shape = list(x.shape)
@@ -433,10 +439,9 @@ def diff(x, n, dim, prepend, append):
     xdim = shape[dimn]
     pdim = int(prepend.shape[dimn]) if prepend is not None else 0
     adim = int(append.shape[dimn]) if append is not None else 0
-    n_ = int(n)
-    out_len = pdim + xdim + adim - n_
+    out_len = max(pdim + xdim + adim - n_, 0)
 
-    if out_len <= 0:
+    if out_len == 0 or outer == 0 or inner == 0:
         oshape = list(shape)
         oshape[dimn] = out_len
         return torch.empty(oshape, dtype=x.dtype, device=x.device)

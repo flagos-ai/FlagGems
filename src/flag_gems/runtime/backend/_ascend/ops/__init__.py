@@ -37,6 +37,7 @@ from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
+from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -72,6 +73,7 @@ from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
+from .lift_fresh import lift_fresh, lift_fresh_copy, lift_fresh_copy_out
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
