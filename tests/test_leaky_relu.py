@@ -84,3 +84,18 @@ def test_leaky_relu_backward(shape, dtype):
     )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+@pytest.mark.leaky_relu_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_leaky_relu_inplace_autotune(dtype):
+    # An uncommon size avoids the forward tests' autotune cache entries.
+    # All-negative values make repeated slope application observable.
+    original = torch.full((1031,), -2.0, dtype=dtype, device=flag_gems.device)
+    ref = utils.to_reference(original.clone())
+    expected = torch.nn.functional.leaky_relu(ref, negative_slope=0.5)
+    for _ in range(2):
+        inp = original.clone()
+        result = flag_gems.leaky_relu_(inp, negative_slope=0.5)
+        assert result is inp
+        utils.gems_assert_equal(result, expected)
