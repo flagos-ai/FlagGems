@@ -16,6 +16,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.mse_loss_backward import mse_loss_backward as generic_backward
 
 from . import accuracy_utils as utils
 
@@ -44,4 +45,32 @@ def test_mse_loss_backward(shape, dtype, reduction):
         ref_grad_output, ref_inp, ref_target, reduction
     )
     res_out = flag_gems.mse_loss_backward(grad_output, inp, target, reduction)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.mse_loss_backward
+@pytest.mark.parametrize("reduction", [0, 1, 2])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(4,), (2, 3), (1025,)])
+@pytest.mark.parametrize("implementation", ["generic", "dispatch"])
+def test_mse_loss_backward_scalar_grad(shape, dtype, reduction, implementation):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    target = torch.randn_like(inp)
+    # A scalar view with known adjacent values exposes incorrect offset loads
+    # deterministically, without relying on unallocated device memory.
+    storage = torch.tensor([1.0, 7.0, 11.0, 13.0], dtype=dtype, device=flag_gems.device)
+    grad_output = storage[0].reshape(())
+    ref_out = torch.ops.aten.mse_loss_backward(
+        utils.to_reference(grad_output),
+        utils.to_reference(inp),
+        utils.to_reference(target),
+        reduction,
+    )
+    if implementation == "generic":
+        res_out = generic_backward(grad_output, inp, target, reduction)
+    else:
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.mse_loss_backward(
+                grad_output, inp, target, reduction
+            )
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
