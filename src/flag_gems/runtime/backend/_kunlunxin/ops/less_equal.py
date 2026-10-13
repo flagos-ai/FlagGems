@@ -87,9 +87,7 @@ def less_equal_tensor_native_kernel(out_ptr, x_ptr, y_ptr, TILE: tl.constexpr):
 
 
 @triton.jit
-def less_equal_tensor_native_masked_kernel(
-    out_ptr, x_ptr, y_ptr, numel, TILE: tl.constexpr
-):
+def less_equal_tensor_native_masked_kernel(out_ptr, x_ptr, y_ptr, numel, TILE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
@@ -111,26 +109,13 @@ def _less_equal_tensor_native(A, B, numel, masked):
     try:
         if masked:
             less_equal_tensor_native_masked_kernel[grid](
-                out,
-                x,
-                y,
-                numel,
-                TILE=tile,
-                num_warps=4,
-                buffer_size_limit=8192,
-                unroll_num=16,
-                isCloseMemoryAsync=False,
+                out, x, y, numel, TILE=tile, num_warps=4,
+                buffer_size_limit=8192, unroll_num=16, isCloseMemoryAsync=False,
             )
         else:
             less_equal_tensor_native_kernel[grid](
-                out,
-                x,
-                y,
-                TILE=tile,
-                num_warps=4,
-                buffer_size_limit=8192,
-                unroll_num=16,
-                isCloseMemoryAsync=False,
+                out, x, y, TILE=tile, num_warps=4,
+                buffer_size_limit=8192, unroll_num=16, isCloseMemoryAsync=False,
             )
     finally:
         del os.environ["TRITONXPU_COMPARE_FUSION"]
@@ -203,6 +188,10 @@ def less_equal_scalar(A, B):
     return res
 
 
+# ---------------------------------------------------------------------------
+# less_equal_scalar: native fused in-dtype compare (see the native block
+# below). The scalar gate admits only scalars exactly representable in
+# A.dtype, so the in-dtype compare is bit-identical to torch.
 _LESS_EQUAL_SCALAR_FAST_TILE = 131072
 _LESS_EQUAL_SCALAR_MASKED_MIN = 1 << 20
 
@@ -217,9 +206,7 @@ _LESS_EQUAL_SCALAR_MASKED_MIN = 1 << 20
 
 
 @triton.jit
-def less_equal_scalar_native_kernel(
-    out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def less_equal_scalar_native_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid)
@@ -228,9 +215,7 @@ def less_equal_scalar_native_kernel(
 
 
 @triton.jit
-def less_equal_scalar_native_masked_kernel(
-    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def less_equal_scalar_native_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
@@ -239,9 +224,7 @@ def less_equal_scalar_native_masked_kernel(
     tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
 
 
-def _less_equal_scalar_native(
-    A, scalar, numel, masked, tile=_LESS_EQUAL_SCALAR_FAST_TILE
-):
+def _less_equal_scalar_native(A, scalar, numel, masked, tile=_LESS_EQUAL_SCALAR_FAST_TILE):
     # Single-kernel native compare: writes the bool result directly, so the
     # fp32 intermediate buffer and _copy_from pass of the saturating recipe
     # are gone. Env must be set before the (first) launch so the fusion pass

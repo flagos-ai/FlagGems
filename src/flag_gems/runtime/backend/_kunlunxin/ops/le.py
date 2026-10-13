@@ -97,6 +97,11 @@ def le_scalar(A, B):
     return res
 
 
+# ---------------------------------------------------------------------------
+# le_scalar: native fused in-dtype compare (x <= scalar.to(DTYPE)) under
+# TRITONXPU_COMPARE_FUSION=1 -> one vcmpf->ui32 + vstore_mask64_mz pass,
+# bool written directly (no fp32 buffer). The scalar gate admits only
+# scalars exactly representable in A.dtype, so it is bit-identical to torch.
 _LE_SCALAR_FAST_TILE = 131072
 _LE_SCALAR_MASKED_MIN = 1 << 20
 
@@ -106,9 +111,7 @@ _LE_SCALAR_MASKED_MIN = 1 << 20
 
 
 @triton.jit
-def le_scalar_native_kernel(
-    out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def le_scalar_native_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid)
@@ -117,9 +120,7 @@ def le_scalar_native_kernel(
 
 
 @triton.jit
-def le_scalar_native_masked_kernel(
-    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr
-):
+def le_scalar_native_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
@@ -173,7 +174,6 @@ def _le_scalar_native(A, scalar, numel, masked, tile=_LE_SCALAR_FAST_TILE):
         del os.environ["TRITONXPU_COMPARE_FUSION"]
         del os.environ["TRITONXPU_FP16_FAST"]
     return out
-
 
 # ---------------------------------------------------------------------------
 # le_ (in-place x.le_(y)): saturating fp32 le = 1 - min(1,max(0,(x-y)*1e64))
