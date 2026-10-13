@@ -147,3 +147,73 @@ def test_instance_norm(
             utils.gems_assert_close(
                 res_bias_grad, ref_bias_grad, dtype, reduce_dim=B * N
             )
+
+
+# Regression tests for issue #4885: the running-stats update kernel recovered
+# the biased variance from rstd as (1 / rstd**2 + eps), but 1 / rstd**2 is
+# already var + eps (rstd = rsqrt(var + eps)), so running_var was updated with
+# (var + 2 * eps) instead of var. The default eps=1e-5 keeps the error below
+# the accuracy tolerance, so these tests use a large eps to expose it. The
+# shapes span all three forward kernels that store rstd: N <= 128 (multiline
+# persistent), 128 < N <= 4096 (persistent) and N > 4096 (loop).
+INSTANCE_NORM_RUNNING_STATS_EPS = [0.1, 1.0]
+INSTANCE_NORM_RUNNING_STATS_SHAPES = [
+    (4, 16, 8, 8),  # N=64, multiline persistent kernel
+    (2, 3, 1024),  # N=1024, persistent kernel
+    (2, 3, 128, 128),  # N=16384, loop kernel
+]
+
+
+@pytest.mark.instance_norm_running_stats
+@pytest.mark.parametrize("shape", INSTANCE_NORM_RUNNING_STATS_SHAPES)
+@pytest.mark.parametrize("eps", INSTANCE_NORM_RUNNING_STATS_EPS)
+def test_instance_norm_running_var_recovery(shape, eps):
+    torch.manual_seed(0)
+    x = torch.randn(shape, device=device)
+    C = shape[1]
+    momentum = 0.1
+
+    ref_running_mean = torch.zeros(C)
+    ref_running_var = torch.ones(C)
+    torch.nn.functional.instance_norm(
+        x.cpu(),
+        running_mean=ref_running_mean,
+        running_var=ref_running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+
+    running_mean = torch.zeros(C, device=device)
+    running_var = torch.ones(C, device=device)
+    flag_gems.instance_norm(
+        x,
+        running_mean=running_mean,
+        running_var=running_var,
+        use_input_stats=True,
+        momentum=momentum,
+        eps=eps,
+    )
+
+    utils.gems_assert_close(running_mean.cpu(), ref_running_mean, torch.float32)
+    utils.gems_assert_close(running_var.cpu(), ref_running_var, torch.float32)
+
+
+@pytest.mark.instance_norm_running_stats
+@pytest.mark.parametrize("shape", [(2, 3, 16), (2, 3, 64)])
+def test_instance_norm_running_var_non_negative(shape):
+    """Near-constant channels: subtractive cancellation must not go negative."""
+    torch.manual_seed(1)
+    x = torch.ones(shape, device=device) + torch.randn(shape, device=device) * 1e-6
+    C = shape[1]
+    running_mean = torch.zeros(C, device=device)
+    running_var = torch.ones(C, device=device)
+    flag_gems.instance_norm(
+        x,
+        running_mean=running_mean,
+        running_var=running_var,
+        use_input_stats=True,
+        momentum=0.1,
+        eps=1e-5,
+    )
+    assert bool(torch.all(running_var >= 0)), "running_var must stay non-negative"
