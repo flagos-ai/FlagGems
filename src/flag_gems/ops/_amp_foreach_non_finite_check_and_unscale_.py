@@ -48,8 +48,13 @@ def _amp_foreach_non_finite_check_and_unscale_kernel(
     inp_fp32 = inp.to(tl.float32)
     scale_fp32 = scale.to(tl.float32)
 
-    # Check for non-finite values (inf or nan) using float32
-    is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
+    # Check for non-finite values (inf or nan) using float32.
+    # finitef() may be lowered to an int1 (triton >= 3.6) or to a wider int
+    # (0/1) on other versions/backends.  Bitwise-not (~) is only equivalent to
+    # logical negation for int1; on a wider int it yields -1/-2, which is always
+    # non-zero, so the tl.where below would never scale finite values.
+    # Comparing against zero gives the correct predicate on every variant.
+    is_non_finite = tl_extra_shim.finitef(inp_fp32) == 0
 
     # Scale the values: only finite values are scaled
     # Non-finite values stay as-is (in original dtype)
