@@ -278,13 +278,13 @@ def generate_tile_kernel(
     with code.indent():
         # get pid
         code.writeline("# task id & masking")
-        pid_stmt = "pid = ext.program_id(0)"
+        pid_stmt = "pid = ext.program_id(0).to(tl.int64)"
         code.writeline(pid_stmt)
 
-        code.writeline("num_ctas = ext.num_programs(0)")
+        code.writeline("num_ctas = ext.num_programs(0).to(tl.int64)")
 
         # get tid (a.k.a task id)
-        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
+        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size).to(tl.int64)"
         code.writeline(tid_stmt)
 
         # one-tile-per-cta, monolithic kernel style
