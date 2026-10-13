@@ -76,12 +76,33 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     tl.store(out, mean_val)
 
 
-def mean(inp, *, dtype=None):
-    logger.debug("GEMS MEAN")
-    inp = inp.contiguous()
-    M = inp.numel()
+def _mean_dtype(inp, dtype):
     if dtype is None:
         dtype = inp.dtype
+        if not (dtype.is_floating_point or dtype.is_complex):
+            raise RuntimeError(
+                "mean(): could not infer output dtype. Input dtype must be either "
+                f"a floating point or complex dtype. Got: {dtype}"
+            )
+    elif not (dtype.is_floating_point or dtype.is_complex):
+        raise RuntimeError(
+            "mean(): could not infer output dtype. Optional dtype must be either "
+            f"a floating point or complex dtype. Got: {dtype}"
+        )
+    return dtype
+
+
+def mean(inp, *, dtype=None):
+    logger.debug("GEMS MEAN")
+    M = inp.numel()
+    dtype = _mean_dtype(inp, dtype)
+
+    if M == 0:
+        out = torch.empty([], dtype=dtype, device=inp.device)
+        out.fill_(float("nan"))
+        return out
+
+    inp = inp.contiguous()
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -294,11 +315,7 @@ def mean_dim_kernel(
 
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     logger.debug("GEMS MEAN_DIM")
-    if dtype is None:
-        dtype = inp.dtype
-        if dtype is torch.bool:
-            inp = inp.to(torch.int64)
-            dtype = torch.int64
+    dtype = _mean_dtype(inp, dtype)
 
     if dim == [] or dim == ():
         # mean over all elements
@@ -329,12 +346,19 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         N = inp.shape[dim0]  # reduction length
         # product of dims before dim0; use initializer 1 for empty slice
         M = reduce(lambda x, y: x * y, shape[:dim0], 1)
-        inp = inp.contiguous()
-        K = inp.numel() // M // N
+        K = reduce(lambda x, y: x * y, shape[dim0 + 1 :], 1)
         shape[dim0] = 1
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
+        if M * K == 0:
+            return out if keepdim else out.squeeze(dim=dim0)
+
+        if N == 0:
+            out.fill_(float("nan"))
+            return out if keepdim else out.squeeze(dim=dim0)
+
+        inp = inp.contiguous()
         with torch_device_fn.device(inp.device):
             if K >= 1024:
                 input_dtype = inp.dtype
@@ -380,15 +404,22 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
             out = out.squeeze(dim=dim0)
         return out
     else:
-        inp = dim_compress(inp, dim)
         N = 1
         for i in dim:
             N *= shape[i]
             shape[i] = 1
-        M = inp.numel() // N
+        M = reduce(lambda x, y: x * y, shape, 1)
         if out is None:
             out = torch.empty(shape, dtype=dtype, device=inp.device)
 
+        if M == 0:
+            return out if keepdim else out.squeeze(dim=dim)
+
+        if N == 0:
+            out.fill_(float("nan"))
+            return out if keepdim else out.squeeze(dim=dim)
+
+        inp = dim_compress(inp, dim)
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             mean_dim_kernel[grid](inp, out, M, N)
