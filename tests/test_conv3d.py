@@ -207,8 +207,14 @@ def test_ascend_conv3d_regressions(case):
     try:
         if case == "forced_grid":
             module._CONV3D_MAX_GRID = 2
-        with flag_gems.use_gems(include=["conv3d"]):
+        previous_registrar = flag_gems.current_work_registrar
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=lib, include=["conv3d"])
             actual = F.conv3d(inp, weight, bias, stride, padding, groups=groups)
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
     finally:
         module._CONV3D_MAX_GRID = cap
     torch.testing.assert_close(

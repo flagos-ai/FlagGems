@@ -128,8 +128,14 @@ def test_ascend_diff_zero_order_copy(layout, registered):
     append = torch.full_like(x, 100)
     expected = torch.diff(x, n=0, prepend=prepend, append=append)
     if registered:
-        with flag_gems.use_gems():
+        previous_registrar = flag_gems.current_work_registrar
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=lib, include=["diff"])
             actual = torch.diff(x, n=0, prepend=prepend, append=append)
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
     else:
         actual = flag_gems.diff(x, n=0, prepend=prepend, append=append)
 

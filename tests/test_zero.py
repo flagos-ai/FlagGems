@@ -47,7 +47,7 @@ def test_zero(shape, dtype):
 )
 def test_zero_(shape, dtype):
     out = torch.ones(shape, dtype=dtype, device=flag_gems.device)
-    ref_out = utils.to_reference(out)
+    ref_out = utils.to_reference(out).clone()
     ref_out.zero_()
 
     flag_gems.zero_(out)

@@ -134,12 +134,24 @@ def test_ascend_pad_regressions(case):
     value = None if mode == "reflect" else 3.5
     # TorchNPU does not support negative ReflectionPad1d; CPU is only the oracle.
     reference = F.pad(inp.cpu(), padding, mode, value).to(inp.device)
-    with flag_gems.use_gems(include=["pad", "constant_pad_nd"]):
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["pad", "constant_pad_nd"])
         actual = F.pad(inp, padding, mode, value)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
     assert torch.equal(actual, reference)
     if mode == "constant":
-        with flag_gems.use_gems(include=["constant_pad_nd"]):
+        previous_registrar = flag_gems.current_work_registrar
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=lib, include=["constant_pad_nd"])
             actual = torch.ops.aten.constant_pad_nd(inp, padding, value)
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
         assert torch.equal(actual, reference)
 
 
