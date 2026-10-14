@@ -28,23 +28,22 @@ def _index_put_first_dim_kernel(
     input_ptr,
     indices_ptr,
     values_ptr,
-    n_rows,
-    row_size,
-    input_rows,
+    n_rows: tl.constexpr,
+    row_size: tl.constexpr,
+    input_rows: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    total = n_rows * row_size
-    for start in range(pid * BLOCK, total, tl.num_programs(0) * BLOCK):
-        offsets = start + tl.arange(0, BLOCK)
-        row = offsets // row_size
-        col = offsets % row_size
-        mask = offsets < total
-        index = tl.load(indices_ptr + row, mask=mask, other=0)
+    tiles_per_row = tl.cdiv(row_size, BLOCK)
+    for tile in range(ext.program_id(0), n_rows * tiles_per_row, tl.num_programs(0)):
+        row = tile // tiles_per_row
+        col = (tile % tiles_per_row) * BLOCK + tl.arange(0, BLOCK)
+        index = tl.load(indices_ptr + row)
         index = tl.where(index < 0, index + input_rows, index)
-        valid = mask & (index >= 0) & (index < input_rows)
-        value = tl.load(values_ptr + offsets, mask=mask, other=0)
-        tl.store(input_ptr + index * row_size + col, value, mask=valid)
+        valid_index = (index >= 0) & (index < input_rows)
+        value = tl.load(values_ptr + row * row_size + col, col < row_size, other=0)
+        tl.store(
+            input_ptr + index * row_size + col, value, valid_index & (col < row_size)
+        )
 
 
 @triton.jit
@@ -56,20 +55,15 @@ def _index_put_pairs_scalar_kernel(
     n_indices,
     n_rows,
     n_cols,
-    BLOCK: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    for start in range(pid * BLOCK, n_indices, tl.num_programs(0) * BLOCK):
-        offsets = start + tl.arange(0, BLOCK)
-        in_range = offsets < n_indices
-        rows = tl.load(row_indices_ptr + offsets, mask=in_range, other=0)
-        cols = tl.load(col_indices_ptr + offsets, mask=in_range, other=0)
-        rows = tl.where(rows < 0, rows + n_rows, rows)
-        cols = tl.where(cols < 0, cols + n_cols, cols)
-        valid = in_range & (rows >= 0) & (rows < n_rows)
-        valid = valid & (cols >= 0) & (cols < n_cols)
-        value = tl.load(value_ptr)
-        tl.store(input_ptr + rows * n_cols + cols, value, mask=valid)
+    value = tl.load(value_ptr)
+    for offset in range(ext.program_id(0), n_indices, tl.num_programs(0)):
+        row = tl.load(row_indices_ptr + offset)
+        col = tl.load(col_indices_ptr + offset)
+        row = tl.where(row < 0, row + n_rows, row)
+        col = tl.where(col < 0, col + n_cols, col)
+        valid = (row >= 0) & (row < n_rows) & (col >= 0) & (col < n_cols)
+        tl.store(input_ptr + row * n_cols + col, value, valid)
 
 
 def index_put(inp, indices, values, accumulate=False):
@@ -108,10 +102,11 @@ def index_put_(inp, indices, values, accumulate=False):
         total = n_rows * row_size
         if total == 0:
             return inp
-        grid = (min(triton.cdiv(total, 1024), 65535),)
+        block = min(triton.next_power_of_2(row_size), 1024)
+        grid = (min(n_rows * triton.cdiv(row_size, block), 48),)
         with torch_device_fn.device(inp.device):
             _index_put_first_dim_kernel[grid](
-                inp, indices[0], values, n_rows, row_size, inp.shape[0], BLOCK=1024
+                inp, indices[0], values, n_rows, row_size, inp.shape[0], BLOCK=block
             )
         return inp
     # vLLM min_tokens masks (request, stop-token) pairs with one scalar -inf.
@@ -133,7 +128,7 @@ def index_put_(inp, indices, values, accumulate=False):
         n_indices = indices[0].numel()
         if n_indices == 0:
             return inp
-        grid = (min(triton.cdiv(n_indices, 256), 65535),)
+        grid = (min(n_indices, 48),)
         with torch_device_fn.device(inp.device):
             _index_put_pairs_scalar_kernel[grid](
                 inp,
@@ -143,7 +138,6 @@ def index_put_(inp, indices, values, accumulate=False):
                 n_indices,
                 inp.shape[0],
                 inp.shape[1],
-                BLOCK=256,
             )
         return inp
     return generic_index_put_(inp, indices, values, accumulate)

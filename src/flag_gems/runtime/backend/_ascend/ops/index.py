@@ -105,7 +105,7 @@ def _gather_function(
     lines += [
         "def kernel(" + ", ".join(args) + "):",
         "    for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), PROGRAMS):",
-        "        linear = tile * BLOCK + tl.arange(0, BLOCK)",
+        "        linear = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)",
         "        active = linear < N",
         "        remaining = linear.to(tl.int64)",
         "        source = tl.full((BLOCK,), 0, tl.int64)",
@@ -144,6 +144,80 @@ def _gather_function(
         "        value = tl.load(inp + source, active, other=0)",
         "        tl.store(out + linear, value, linear < N)",
     ]
+    plain_shape = tuple(output_shape[axis] for _, axis in plain_axes)
+    plain_numel = 1
+    for extent in plain_shape:
+        plain_numel *= extent
+    broadcast_numel = 1
+    for extent in broadcast_shape:
+        broadcast_numel *= extent
+    span = sum((extent - 1) * stride for extent, stride in zip(shape, strides))
+    # A program owns a broadcast index and one small plain-data tile. Index
+    # loads and int64 normalization are scalar, amortized across that tile.
+    scalar_indices = (
+        1 < broadcast_numel <= 65535 and plain_numel <= 1024 and span < 2**31
+    )
+    if scalar_indices:
+        out_strides = [1] * len(output_shape)
+        for axis in range(len(output_shape) - 2, -1, -1):
+            out_strides[axis] = out_strides[axis + 1] * output_shape[axis + 1]
+        block = triton.next_power_of_2(plain_numel)
+        lines = lines[:5] + [
+            "def kernel(" + ", ".join(args) + "):",
+            f"    for item in range(tl.program_id(0), {broadcast_numel}, PROGRAMS):",
+            "        broadcast_remaining = item.to(tl.int64)",
+            "        destination_base = 0",
+        ]
+        for dim in reversed(range(len(broadcast_shape))):
+            axis = broadcast_axes[dim]
+            lines += [
+                f"        b{dim} = broadcast_remaining % {broadcast_shape[dim]}",
+                f"        broadcast_remaining = broadcast_remaining // {broadcast_shape[dim]}",
+                f"        destination_base += b{dim} * {out_strides[axis]}",
+            ]
+        lines += [
+            "        source_base = tl.full((), 0, tl.int64)",
+            "        valid_index = tl.full((), True, tl.int1)",
+        ]
+        for i, dim in enumerate(index_dims):
+            terms = [
+                f"b{j} * {stride}"
+                for j, stride in enumerate(index_strides[i])
+                if stride and broadcast_shape[j] > 1
+            ]
+            offset = " + ".join(terms) or "0"
+            lines += [
+                f"        raw{i} = tl.load(index{i} + ({offset})).to(tl.int64)",
+                f"        normalized{i} = tl.where(raw{i} < 0, raw{i} + {shape[dim]}, raw{i})",
+                f"        valid{i} = (normalized{i} >= 0) & (normalized{i} < {shape[dim]})",
+                f'        tl.device_assert(valid{i}, "index out of bounds")',
+                f"        source_base += tl.where(valid{i}, normalized{i}, 0) * {strides[dim]}",
+                f"        valid_index = valid_index & valid{i}",
+            ]
+        lines += [
+            "        source_base = source_base.to(tl.int32)",
+            "        destination_base = destination_base.to(tl.int32)",
+            f"        plain = tl.arange(0, {block})",
+            "        remaining = plain",
+            f"        source = tl.full(({block},), 0, tl.int32)",
+            "        destination = destination_base + tl.full(("
+            + str(block)
+            + ",), 0, tl.int32)",
+        ]
+        for j in reversed(range(len(plain_axes))):
+            dim, axis = plain_axes[j]
+            lines += [
+                f"        c{j} = remaining % {output_shape[axis]}",
+                f"        remaining = remaining // {output_shape[axis]}",
+                f"        source += c{j} * {strides[dim]}",
+                f"        destination += c{j} * {out_strides[axis]}",
+            ]
+        lines += [
+            f"        active = (plain < {plain_numel}) & valid_index",
+            "        value = tl.load(inp + source_base + source, active, other=0)",
+            f"        tl.store(out + destination, value, plain < {plain_numel})",
+        ]
+
     code = "\n".join(lines) + "\n"
     key = sha256(code.encode()).hexdigest()
     path = code_cache_dir() / f"ascend_strided_index_{key}.py"
@@ -151,7 +225,7 @@ def _gather_function(
     spec = importlib.util.spec_from_file_location(f"ascend_strided_index_{key}", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.kernel
+    return module.kernel, broadcast_numel if scalar_indices else None
 
 
 def _index_impl(inp, indices):
@@ -208,7 +282,7 @@ def _index_impl(inp, indices):
     )
     out = torch.empty(output_shape, device=inp.device, dtype=inp.dtype)
     if out.numel():
-        kernel = _gather_function(
+        kernel, index_tiles = _gather_function(
             tuple(inp.shape),
             tuple(inp.stride()),
             index_dims,
@@ -218,7 +292,7 @@ def _index_impl(inp, indices):
             plain_axes,
             broadcast_axes,
         )
-        programs = min(48, triton.cdiv(out.numel(), 1024))
+        programs = min(48, index_tiles or triton.cdiv(out.numel(), 1024))
         # Match Triton's standard debug-controlled bounds assertions. The
         # load mask remains active regardless of debug to prevent invalid reads.
         kernel[(programs,)](inp, *tensors, out, out.numel(), 1024, programs)
