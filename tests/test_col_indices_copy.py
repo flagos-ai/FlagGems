@@ -406,10 +406,20 @@ def test_col_indices_copy_out_spec_shapes(case, dtype):
     _assert_copy_semantics(out, ref_out, inp, ref_inp)
 
 
+# Only indices are copied; one ordinary values range per dtype is sufficient.
+# uint8 keeps nonzero samples when available to detect unintended values writes.
+_VALUE_DTYPE_RANGE_CASES = [
+    (
+        dtype,
+        ["0", "max"]
+        if dtype == torch.uint8 and ["0", "max"] in _VALUE_RANGES
+        else _VALUE_RANGES[0],
+    )
+    for dtype in _VALUE_RANGE_DTYPES
+]
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("case", _COLS_RANGE_CASES)
-@pytest.mark.parametrize("value_range", _VALUE_RANGES)
-@pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_col_indices_copy_value_ranges(case, value_range, dtype):
     # The op output is device-independent, but --ref=cpu moves the native
     # reference to CPU; this suite is validated on the device path.
@@ -427,8 +437,7 @@ def test_col_indices_copy_value_ranges(case, value_range, dtype):
 
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("case", _COLS_RANGE_CASES)
-@pytest.mark.parametrize("value_range", _VALUE_RANGES)
-@pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
+@pytest.mark.parametrize("dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_col_indices_copy_out_value_ranges(case, value_range, dtype):
     # The op output is device-independent, but --ref=cpu moves the native
     # reference to CPU; this suite is validated on the device path.
