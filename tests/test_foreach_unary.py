@@ -517,12 +517,20 @@ def test_foreach_unary_launch_count_is_independent_of_list_length():
     """
     if flag_gems.device != "cuda":
         return
-    if IS_KUNLUNXIN:
-        pytest.skip("kunlunxin backend does not expose device kernel events")
 
-    def run(n):
-        ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
-        return _cuda_kernel_count(lambda: flag_gems._foreach_sin(ts))
+    if IS_KUNLUNXIN:
+        from _kunlunxin.utils.foreach import launch_stats
+
+        def run(n):
+            ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
+            flag_gems._foreach_sin(ts)
+            return launch_stats()["executor_launches"]
+
+    else:
+
+        def run(n):
+            ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
+            return _cuda_kernel_count(lambda: flag_gems._foreach_sin(ts))
 
     baseline = run(1)
     for n in (16, 64, 128, 256):
@@ -539,7 +547,7 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
     if flag_gems.device != "cuda":
         return
     if IS_KUNLUNXIN:
-        pytest.skip("kunlunxin backend reports launch stats through its own executor")
+        pytest.skip("kunlunxin backend has no float64, so this dtype list cannot group")
     from flag_gems.utils.foreach import launch_stats
 
     for dtypes in (
