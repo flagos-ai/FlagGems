@@ -88,3 +88,17 @@ def test_diff_prepend_append(shape, dtype):
     res_out = flag_gems.diff(inp, prepend=prepend, append=append)
 
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend kernel regression cases"
+)
+@pytest.mark.diff
+@pytest.mark.parametrize(
+    "shape,n", [((0, 7), 1), ((3, 0), 1), ((0, 7), 0), ((3, 2), 4)]
+)
+def test_ascend_diff_empty_dimensions(shape, n):
+    x = torch.randn(shape, device=flag_gems.device)
+    expected = torch.diff(x, n=n)
+    actual = flag_gems.diff(x, n=n)
+    assert torch.equal(actual, expected)
