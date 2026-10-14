@@ -43,8 +43,14 @@ def _flat2_kernel(x_ptr, out_ptr, BLOCK: tl.constexpr):
     v0 = tl.load(x_ptr + i)
     v1 = tl.load(x_ptr + i + 1)
     v2 = tl.load(x_ptr + i + 2)
-    t = v1 - v0
-    d1 = v2 - v1
+    # Promote explicitly so BF16 lowering cannot erase the intermediate cast.
+    if x_ptr.dtype.element_ty == tl.bfloat16 or x_ptr.dtype.element_ty == tl.float16:
+        v0 = v0.to(tl.float32)
+        v1 = v1.to(tl.float32)
+        v2 = v2.to(tl.float32)
+    # torch.diff materializes each first difference in the input dtype.
+    t = (v1 - v0).to(x_ptr.dtype.element_ty)
+    d1 = (v2 - v1).to(x_ptr.dtype.element_ty)
     tl.store(out_ptr + i, d1 - t)
 
 
@@ -79,8 +85,14 @@ def _row2d2_kernel(
     v0 = tl.load(x_ptr + off)
     v1 = tl.load(x_ptr + off + 1)
     v2 = tl.load(x_ptr + off + 2)
-    t = v1 - v0
-    d1 = v2 - v1
+    # Promote explicitly so BF16 lowering cannot erase the intermediate cast.
+    if x_ptr.dtype.element_ty == tl.bfloat16 or x_ptr.dtype.element_ty == tl.float16:
+        v0 = v0.to(tl.float32)
+        v1 = v1.to(tl.float32)
+        v2 = v2.to(tl.float32)
+    # torch.diff materializes each first difference in the input dtype.
+    t = (v1 - v0).to(x_ptr.dtype.element_ty)
+    d1 = (v2 - v1).to(x_ptr.dtype.element_ty)
     ooff = rows[:, None] * ostride + j[None, :]
     tl.store(out_ptr + ooff, d1 - t)
 
@@ -256,8 +268,14 @@ def _diff2_kernel(
         HAS_PRE,
         HAS_APP,
     )
-    t = v1 - v0
-    d1 = v2 - v1
+    # Promote explicitly so BF16 lowering cannot erase the intermediate cast.
+    if x_ptr.dtype.element_ty == tl.bfloat16 or x_ptr.dtype.element_ty == tl.float16:
+        v0 = v0.to(tl.float32)
+        v1 = v1.to(tl.float32)
+        v2 = v2.to(tl.float32)
+    # torch.diff materializes each first difference in the input dtype.
+    t = (v1 - v0).to(x_ptr.dtype.element_ty)
+    d1 = (v2 - v1).to(x_ptr.dtype.element_ty)
     tl.store(out_ptr + e * (out_len * inner) + i + j * inner, d1 - t, mask=smask)
 
 
@@ -425,7 +443,7 @@ def diff(x, n=1, dim=-1, prepend=None, append=None):
     if n_ < 0:
         raise RuntimeError(f"order must be non-negative but got {n_}")
     if n_ == 0:
-        return x
+        return x.clone()
 
     ndim = x.dim()
     dimn = int(dim) % ndim
