@@ -74,10 +74,34 @@ _KUNLUNXIN_UNSUPPORTED = {
 
 _KUNLUNXIN_UNIMPLEMENTED = {"lgamma"}
 
+_KUNLUNXIN_INTEGRAL = (torch.bool, torch.int16, torch.int32, torch.int64)
+
+_KUNLUNXIN_REGISTERED = frozenset(
+    {
+        "cos",
+        "cos_",
+        "cosh",
+        "cosh_",
+        "exp",
+        "exp_",
+        "expm1",
+        "expm1_",
+        "log2",
+        "log2_",
+        "sin",
+        "sin_",
+        "sinh",
+        "sinh_",
+    }
+)
+
 
 def _supports(name, dtype):
-    if IS_KUNLUNXIN and name in _KUNLUNXIN_UNSUPPORTED.get(dtype, ()):
-        return False
+    if IS_KUNLUNXIN:
+        if name in _KUNLUNXIN_UNSUPPORTED.get(dtype, ()):
+            return False
+        if dtype in _KUNLUNXIN_INTEGRAL and name not in _KUNLUNXIN_REGISTERED:
+            return False
     allowed = UNARY_OPS[name].allowed
     return allowed is None or dtype in allowed
 
