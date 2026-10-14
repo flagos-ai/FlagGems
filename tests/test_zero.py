@@ -67,3 +67,31 @@ def test_zero_out(shape, dtype):
     act_out = flag_gems.zero_out(act_x, out=act_x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
+
+
+@pytest.mark.zero_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize(
+    "layout", ["transpose", "offset_singleton", "holes", "expanded"]
+)
+def test_ascend_zero_storage_layout(layout):
+    base = torch.ones((8, 12), device=flag_gems.device)
+    if layout == "transpose":
+        view = base.t()
+    elif layout == "offset_singleton":
+        view = base[2:6].t().unsqueeze(1)
+    elif layout == "holes":
+        view = base[:, ::3]
+    else:
+        view = base[2:3].expand(4, 12)
+    expected = torch.ones((8, 12))
+    if layout == "transpose":
+        expected.t().zero_()
+    elif layout == "offset_singleton":
+        expected[2:6].t().unsqueeze(1).zero_()
+    elif layout == "holes":
+        expected[:, ::3].zero_()
+    else:
+        expected[2:3].zero_()
+    assert flag_gems.zero_(view) is view
+    assert torch.equal(base.cpu(), expected)

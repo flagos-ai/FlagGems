@@ -355,3 +355,83 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.index_put_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend kernel regression cases"
+)
+@pytest.mark.index_put
+@pytest.mark.parametrize("shape,positions", [((8, 4, 16), [1, 3, -1]), ((2, 0), [0])])
+@pytest.mark.parametrize("inplace", [False, True])
+def test_ascend_index_put_first_dimension(shape, positions, inplace):
+    x = torch.zeros(shape, dtype=torch.bfloat16, device=flag_gems.device)
+    indices = torch.tensor(positions, dtype=torch.int64, device=x.device)
+    values = torch.ones((len(positions), *shape[1:]), dtype=x.dtype, device=x.device)
+    expected = x.clone()
+    expected.index_put_((indices,), values)
+    actual = x.clone()
+    if inplace:
+        result = flag_gems.index_put_(actual, (indices,), values)
+        assert result is actual
+    else:
+        result = flag_gems.index_put(actual, (indices,), values)
+        assert result is not actual
+        assert torch.equal(actual, x)
+    assert torch.equal(result, expected)
+
+
+@pytest.mark.index_put_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend kernel regression cases"
+)
+@pytest.mark.index_put
+def test_ascend_index_put_uses_tensor_device():
+    if torch.npu.device_count() < 2:
+        pytest.skip("requires two NPU devices")
+    x = torch.zeros((4, 8), device="npu:0")
+    indices = torch.tensor([1, 3], device=x.device)
+    values = torch.ones((2, 8), device=x.device)
+    expected = x.clone()
+    expected.index_put_((indices,), values)
+    with torch.npu.device(1):
+        actual = x.clone()
+        flag_gems.index_put_(actual, (indices,), values)
+    assert torch.equal(actual, expected)
+
+
+@pytest.mark.index_put
+@pytest.mark.index_put_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize("paired", [False, True])
+def test_ascend_index_put_large_invalid_indices_do_not_wrap(paired):
+    """Vendor masked OOB lanes leave storage untouched; this is not a Torch oracle."""
+    x = torch.zeros((8, 4), device=flag_gems.device)
+    indices = torch.tensor([2**32 + 1, -(2**32) - 1, -1], device=x.device)
+    expected = torch.zeros((8, 4))
+    if paired:
+        cols = torch.tensor([0, 1, -1], device=x.device)
+        value = torch.tensor(3.0, device=x.device)
+        flag_gems.index_put_(x, [indices, cols], value)
+        expected[-1, -1] = 3
+    else:
+        values = torch.full((3, 4), 3.0, device=x.device)
+        flag_gems.index_put_(x, [indices], values)
+        expected[-1] = 3
+    assert torch.equal(x.cpu(), expected)
+
+
+@pytest.mark.index_put
+@pytest.mark.index_put_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize("shape", [(8,), (8, 7), (8, 2053)])
+def test_ascend_index_put_row_tile_tails(shape):
+    x = torch.zeros(shape, device=flag_gems.device)
+    index = torch.tensor([1, 3, -1], device=x.device)
+    values = torch.arange(3 * x[0].numel(), dtype=x.dtype, device=x.device).reshape(
+        3, *shape[1:]
+    )
+    expected = torch.zeros(shape)
+    expected[[1, 3, -1]] = values.cpu()
+    assert flag_gems.index_put_(x, [index], values) is x
+    assert torch.equal(x.cpu(), expected)

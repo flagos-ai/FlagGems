@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -161,3 +164,56 @@ def test_conv3d_padding(
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conv3d
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend padding and conv3d implementations required",
+)
+@pytest.mark.parametrize("case", ["vision_bf16", "grouped", "same_even", "forced_grid"])
+def test_ascend_conv3d_regressions(case):
+    assert flag_gems.conv3d.__module__.endswith("_ascend.ops.conv3d")
+    dtype = torch.bfloat16 if case == "vision_bf16" else torch.float32
+    shape = (
+        (1, 3, 2, 16, 16)
+        if case == "vision_bf16"
+        else (1, 6, 5, 5, 5) if case in ("grouped", "forced_grid") else (1, 2, 5, 6, 7)
+    )
+    wshape = (
+        (1152, 3, 2, 16, 16)
+        if case == "vision_bf16"
+        else (
+            (66, 3, 2, 2, 2)
+            if case == "forced_grid"
+            else (8, 3, 2, 2, 2) if case == "grouped" else (3, 2, 2, 3, 4)
+        )
+    )
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    weight = torch.randn(wshape, device=inp.device, dtype=dtype)
+    bias = torch.randn(wshape[0] * 2, device=inp.device, dtype=dtype)[::2]
+    stride = (2, 16, 16) if case == "vision_bf16" else 1
+    groups = 2 if case in ("grouped", "forced_grid") else 1
+    padding = "same" if case == "same_even" else 0
+    previous_hf32 = torch.npu.conv.allow_hf32
+    try:
+        if dtype == torch.float32:
+            torch.npu.conv.allow_hf32 = False
+        reference = F.conv3d(inp, weight, bias, stride, padding, groups=groups)
+    finally:
+        torch.npu.conv.allow_hf32 = previous_hf32
+    module = importlib.import_module(flag_gems.conv3d.__module__)
+    cap = module._CONV3D_MAX_GRID
+    try:
+        if case == "forced_grid":
+            module._CONV3D_MAX_GRID = 2
+        with flag_gems.use_gems(include=["conv3d"]):
+            actual = F.conv3d(inp, weight, bias, stride, padding, groups=groups)
+    finally:
+        module._CONV3D_MAX_GRID = cap
+    torch.testing.assert_close(
+        actual,
+        reference,
+        rtol=1e-2 if dtype == torch.bfloat16 else 2e-3,
+        atol=0.125 if dtype == torch.bfloat16 else 2e-4,
+    )
