@@ -358,8 +358,14 @@ def test_ascend_index_strided(dtype, case):
             torch.tensor([[0, 2, 4]], device=inp.device),
         ]
     reference = torch.ops.aten.index.Tensor(inp, indices)
-    with flag_gems.use_gems(include=["index"]):
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["index"])
         actual = torch.ops.aten.index.Tensor(inp, indices)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
     assert actual.shape == reference.shape
     assert torch.equal(actual, reference)
 
@@ -397,8 +403,14 @@ def test_ascend_index_singleton(case):
             )
         ]
     reference = torch.ops.aten.index.Tensor(inp, indices)
-    with flag_gems.use_gems(include=["index"]):
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["index"])
         actual = torch.ops.aten.index.Tensor(inp, indices)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
     assert actual.shape == reference.shape
     assert torch.equal(actual, reference)
 

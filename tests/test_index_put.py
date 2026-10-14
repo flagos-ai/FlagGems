@@ -197,7 +197,7 @@ def test_index_put__acc_false(input_shape, indices_shape, values_shape, is_bool,
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
         )
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp).clone()
     ref_indices = [utils.to_reference(index) for index in indices]
     ref_values = utils.to_reference(values)
     torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)
@@ -252,7 +252,7 @@ def test_index_put__acc_true(input_shape, indices_shape, values_shape, is_bool, 
             values_shape, dtype=dtype, device=flag_gems.device, requires_grad=False
         )
 
-    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_inp = utils.to_reference(inp, upcast=True).clone()
     ref_indices = [utils.to_reference(index) for index in indices]
     ref_values = utils.to_reference(values, upcast=True)
     torch.index_put_(ref_inp, ref_indices, ref_values, accumulate)

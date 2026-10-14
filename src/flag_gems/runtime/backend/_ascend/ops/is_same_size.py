@@ -12,8 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
+
+logger = logging.getLogger("flag_gems.ops.is_same_size")
 
 
 def is_same_size(self: torch.Tensor, other: torch.Tensor) -> bool:
+    logger.debug("GEMS_ASCEND IS_SAME_SIZE")
     return self.size() == other.size()

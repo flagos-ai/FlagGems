@@ -164,14 +164,20 @@ def test_ascend_tensor_split_preserves_views(layout, dim, form):
         inp = inp[1::2, 1::2].transpose(0, 1)
     elif layout == "empty":
         inp = inp[:, :0]
-    ref_inp = inp.clone()
+    ref_inp = utils.to_reference(inp).clone()
     boundaries = 12 if "sections" in form else [4, 1, 1, -2, -100, 100]
     if form.startswith("tensor_"):
         boundaries = torch.tensor(boundaries, dtype=torch.int64, device="cpu")
     ref_out = torch.tensor_split(ref_inp, boundaries, dim=dim)
-    with flag_gems.use_gems(include=["tensor_split"]):
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["tensor_split"])
         res_out = torch.tensor_split(inp, boundaries, dim=dim)
 
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
     assert len(res_out) == len(ref_out)
     for res, ref in zip(res_out, ref_out):
         utils.gems_assert_equal(res, ref)

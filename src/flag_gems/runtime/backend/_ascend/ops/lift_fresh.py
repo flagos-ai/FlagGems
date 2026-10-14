@@ -15,9 +15,7 @@
 import torch
 
 from flag_gems.ops.lift_fresh import lift_fresh as _generic_lift_fresh
-from flag_gems.ops.lift_fresh_copy import (
-    lift_fresh_copy as _generic_lift_fresh_copy,
-)
+from flag_gems.ops.lift_fresh_copy import lift_fresh_copy as _generic_lift_fresh_copy
 from flag_gems.ops.lift_fresh_copy import (
     lift_fresh_copy_out as _generic_lift_fresh_copy_out,
 )
@@ -25,7 +23,11 @@ from flag_gems.ops.lift_fresh_copy import (
 
 def _input_tensor(args, kwargs):
     return next(
-        (value for value in (*args, *kwargs.values()) if isinstance(value, torch.Tensor)),
+        (
+            value
+            for value in (*args, *kwargs.values())
+            if isinstance(value, torch.Tensor)
+        ),
         None,
     )
 
