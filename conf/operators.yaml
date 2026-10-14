@@ -8570,6 +8570,19 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: ger
+  description: 'Outer product of two 1-D tensors: out[i, j] = self[i] * vec2[j].
+
+    '
+  for:
+  - ger
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
