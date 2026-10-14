@@ -58,7 +58,49 @@ def _gems_op(name, inplace=False):
     return getattr(flag_gems, f"_foreach_{name}_" if inplace else f"_foreach_{name}")
 
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+_KUNLUNXIN_UNSUPPORTED = {
+    torch.float16: {"acos", "asin", "log2", "lgamma"},
+    torch.float32: {"acos", "asin", "log2", "lgamma"},
+    torch.bfloat16: {"cosh", "log10", "log2", "sinh", "lgamma"},
+    torch.int16: {
+        "ceil",
+        "cosh",
+        "exp",
+        "expm1",
+        "floor",
+        "lgamma",
+        "log10",
+        "log2",
+        "round",
+        "sign",
+        "sinh",
+    },
+    torch.int32: {
+        "ceil",
+        "cosh",
+        "exp",
+        "expm1",
+        "floor",
+        "lgamma",
+        "log10",
+        "log2",
+        "round",
+        "sinh",
+    },
+    torch.int64: {"ceil", "floor", "lgamma", "log10", "log2"},
+    torch.bool: {"cosh", "exp", "expm1", "lgamma", "log10", "sinh"},
+    torch.complex64: set(UNARY_NAMES),
+    torch.complex128: set(UNARY_NAMES),
+}
+
+_KUNLUNXIN_UNIMPLEMENTED = {"lgamma"}
+
+
 def _supports(name, dtype):
+    if IS_KUNLUNXIN and name in _KUNLUNXIN_UNSUPPORTED.get(dtype, ()):
+        return False
     allowed = UNARY_OPS[name].allowed
     return allowed is None or dtype in allowed
 
@@ -398,6 +440,8 @@ def test_accuracy_foreach_unary_inplace_writes_through_views(name):
 @pytest.mark.foreach_unary
 def test_accuracy_foreach_unary_inplace_rejects_overlap():
     """``expand`` aliases one element many times; ATen refuses to write it."""
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend does not raise for this overlap")
     src = torch.randn(1, 8, device=flag_gems.device).expand(4, 8)
     with pytest.raises(RuntimeError):
         torch._foreach_neg_([src])
@@ -452,9 +496,13 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     """
     if flag_gems.device != "cuda":
         return
+    if IS_KUNLUNXIN and name in _KUNLUNXIN_UNIMPLEMENTED:
+        pytest.skip(f"kunlunxin backend has no kernel for _foreach_{name}")
     inp = [_sample((8,), torch.float32, flag_gems.device)]
     want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
     logger_name = "flag_gems.ops._foreach_unary"
+    if IS_KUNLUNXIN:
+        caplog.set_level(logging.DEBUG)
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
         caplog.clear()
@@ -492,6 +540,8 @@ def test_foreach_unary_launch_count_is_independent_of_list_length():
     """
     if flag_gems.device != "cuda":
         return
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend does not expose device kernel events")
 
     def run(n):
         ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
@@ -511,6 +561,8 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
     """Launches track ``(device, dtype)`` groups, which is the real bound."""
     if flag_gems.device != "cuda":
         return
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend reports launch stats through its own executor")
     from flag_gems.utils.foreach import launch_stats
 
     for dtypes in (
@@ -588,6 +640,8 @@ def test_accuracy_foreach_abs_complex_large(dtype):
     The modulus is the shared dependency of every complex operator here, so it
     is asserted for its own sake as well as through the operators above.
     """
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend has no complex kernel for _foreach_abs")
     mag = LARGE_COMPLEX[dtype]
     base = torch.tensor([complex(mag, mag)], dtype=dtype)
     inp = [base.to(flag_gems.device)]
