@@ -30,11 +30,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
-from ..utils.foreach import (
-    foreach_binary_list,
-    foreach_binary_scalar,
-    foreach_ternary,
-)
+
+from ..utils.foreach import foreach_binary_list, foreach_binary_scalar, foreach_ternary
 
 # The same device function ``ops/pow.py`` uses; ``tl.math.pow`` does not exist
 # in this Triton version.

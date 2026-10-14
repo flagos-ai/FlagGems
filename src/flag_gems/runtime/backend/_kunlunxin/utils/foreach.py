@@ -202,9 +202,7 @@ def _promotion_method(in_dtypes, out_dtype: torch.dtype) -> str:
     integral operand promoted to a floating result is ``INT_TO_FLOAT`` -- that
     is ``div`` on integers -- and everything else is ``DEFAULT``.
     """
-    integral = any(
-        not d.is_floating_point and not d.is_complex for d in in_dtypes
-    )
+    integral = any(not d.is_floating_point and not d.is_complex for d in in_dtypes)
     if integral and out_dtype.is_floating_point:
         return "INT_TO_FLOAT"
     return "DEFAULT"
@@ -626,7 +624,15 @@ def _launch_group(
             else foreach_unary_c2c_kernel
         )
         kernel[grid](
-            meta, fn, nt, tl_dtype(real_dtype), acc, tile, tpc, ncta, num_warps=num_warps
+            meta,
+            fn,
+            nt,
+            tl_dtype(real_dtype),
+            acc,
+            tile,
+            tpc,
+            ncta,
+            num_warps=num_warps,
         )
     else:
         foreach_unary_kernel[grid](
@@ -738,6 +744,20 @@ def foreach_unary(
             src = t if is_flat_addressable(t) else t.contiguous()
             if src is not t:
                 _STATS.staged_inputs += 1
+            # A promoting operator on an integral input is converted on the
+            # device before the kernel sees it.  The backend's elementwise
+            # lowering keeps the operand's original dtype when the value reaches
+            # the transcendental through a cast, so a kernel that loads the
+            # integral tensor directly evaluates the wrong function for
+            # ``exp``/``expm1``/``cosh``/``sinh``.  Converting first makes the
+            # kernel load the floating dtype and evaluate the right one.
+            if out_dtype is not dtype and not dtype.is_floating_point:
+                if not out_dtype.is_floating_point:
+                    raise RuntimeError(
+                        "foreach executor has no kernel for this conversion"
+                    )
+                src = src.to(out_dtype)
+                key = (t.device, out_dtype)
             # empty_like reproduces PyTorch's foreach output stride policy: it
             # keeps a dense tensor's stride (so transposed inputs give
             # transposed outputs) and normalizes everything else to contiguous.

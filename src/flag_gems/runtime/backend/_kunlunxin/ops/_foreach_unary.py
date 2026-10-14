@@ -65,7 +65,6 @@ from flag_gems.ops.frac_ import frac_func
 from flag_gems.ops.lgamma_ import lgamma_func
 from flag_gems.ops.log import log_func
 from flag_gems.ops.log1p import log1p_func
-from flag_gems.ops.log2 import log2_func
 from flag_gems.ops.log10 import log10_func
 from flag_gems.ops.neg import neg_func
 from flag_gems.ops.reciprocal import reciprocal_func
@@ -79,12 +78,8 @@ from flag_gems.ops.sqrt import sqrt_func
 from flag_gems.ops.tan import tan_func
 from flag_gems.ops.tanh import tanh_kernel
 from flag_gems.ops.trunc_ import trunc_func
-from ..utils.foreach import (
-    foreach_unary,
-    int_to_float,
-    real_dtype_of,
-    same_dtype,
-)
+
+from ..utils.foreach import foreach_unary, int_to_float, real_dtype_of, same_dtype
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +127,13 @@ def _sign_func(x):
 @triton.jit
 def _abs_func(x):
     return tl.abs(x)
+
+
+@triton.jit
+def _log2_func(x):
+    # Base-2 logarithm as a ratio of natural logarithms: the backend's direct
+    # base-2 lowering returns the natural logarithm for this operand form.
+    return tl.log(x.to(tl.float32)) / 0.6931471805599453
 
 
 @triton.jit
@@ -204,7 +206,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("log", _scalar_fn(log_func), int_to_float, NO_COMPLEX32, c_log),
         UnaryOp("log10", _scalar_fn(log10_func), int_to_float, NO_COMPLEX32, c_log10),
         UnaryOp("log1p", _scalar_fn(log1p_func), int_to_float, NO_COMPLEX32, c_log1p),
-        UnaryOp("log2", _scalar_fn(log2_func), int_to_float, NO_COMPLEX32, c_log2),
+        UnaryOp("log2", _log2_func, int_to_float, NO_COMPLEX32, c_log2),
         UnaryOp("neg", _scalar_fn(neg_func), same_dtype, NO_BOOL, c_neg),
         UnaryOp(
             "reciprocal",
