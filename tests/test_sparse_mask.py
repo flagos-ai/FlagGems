@@ -58,10 +58,13 @@ _SPARSE_MASK_NON_CONTIGUOUS_CASES = [
     ((6, 10), (6, 5)),
 ]
 
+# Bool input generation ignores value_range; keep one sample per workload.
 _SPARSE_MASK_VALUE_RANGE_CASES = [
     (shape, value_range, dtype)
     for dtype in _SPARSE_MASK_DTYPES
-    for value_range in tu.selected_ranges()
+    for value_range in (
+        tu.selected_ranges()[:1] if dtype == torch.bool else tu.selected_ranges()
+    )
     for shape in tu.selected_shapes()
 ]
 
