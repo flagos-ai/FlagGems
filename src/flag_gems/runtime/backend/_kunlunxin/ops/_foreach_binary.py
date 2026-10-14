@@ -37,7 +37,7 @@ from ..utils.foreach import foreach_binary_list, foreach_binary_scalar, foreach_
 # in this Triton version.
 _pow = tl_extra_shim.pow
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops._foreach_binary")
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ BINARY_OPS: Dict[str, BinaryOp] = {
 
 
 def _log(name: str, overload: str, inplace: bool) -> None:
-    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     del overload
 
 

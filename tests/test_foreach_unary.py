@@ -23,7 +23,12 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
-from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
+from .accuracy_utils import (
+    gems_assert_close,
+    gems_assert_equal,
+    gems_log_prefix,
+    to_reference,
+)
 
 # Every operator name in the table; used to parameterize the shared cases.
 UNARY_NAMES = sorted(UNARY_OPS)
@@ -502,7 +507,10 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
     logger_name = "flag_gems.ops._foreach_unary"
     if IS_KUNLUNXIN:
-        caplog.set_level(logging.DEBUG)
+        want = (
+            f"{gems_log_prefix(_gems_op(name, inplace))}"
+            f" _FOREACH_{name.upper()}{'_' if inplace else ''}"
+        )
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
         caplog.clear()

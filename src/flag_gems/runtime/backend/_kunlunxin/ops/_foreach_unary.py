@@ -81,7 +81,7 @@ from flag_gems.ops.trunc_ import trunc_func
 
 from ..utils.foreach import foreach_unary, int_to_float, real_dtype_of, same_dtype
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops._foreach_unary")
 
 
 def _scalar_fn(pointwise_fn) -> Callable:
@@ -238,7 +238,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
 def apply_unary(name: str, self, inplace: bool):
     """Dispatch one table row through the shared executor."""
     op = UNARY_OPS[name]
-    logger.debug("GEMS _FOREACH_%s%s", name.upper(), "_" if inplace else "")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_%s%s", name.upper(), "_" if inplace else "")
     if inplace:
         for t in self:
             if t.dtype.is_complex and op.out_dtype_fn is real_dtype_of:
