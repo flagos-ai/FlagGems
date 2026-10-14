@@ -17,6 +17,7 @@ import time
 
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -89,3 +90,97 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         ref_out = ref_out.to(res_out.dtype)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend kernel regression cases"
+)
+@pytest.mark.pad
+@pytest.mark.parametrize("shape", [(0, 5), (2, 0)])
+def test_ascend_constant_pad_empty_input(shape):
+    x = torch.empty(shape, device=flag_gems.device)
+    expected = torch.nn.functional.pad(x, (2, 3, 1, 1), value=2.5)
+    actual = flag_gems.pad(x, (2, 3, 1, 1), value=2.5)
+    assert torch.equal(actual, expected)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend padding and conv3d implementations required",
+)
+@pytest.mark.parametrize(
+    "case", ["empty", "rank3_strided", "rank5", "rank6", "negative_reflect"]
+)
+def test_ascend_pad_regressions(case):
+    assert flag_gems.pad.__module__.endswith("_ascend.ops.pad")
+    assert flag_gems.constant_pad_nd.__module__.endswith("_ascend.ops.pad")
+    shape = {
+        "empty": (2, 0),
+        "rank3_strided": (2, 3, 4),
+        "rank5": (1, 3, 2, 4, 4),
+        "rank6": (1, 2, 3, 2, 4, 4),
+        "negative_reflect": (2, 3, 7),
+    }[case]
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    if case == "rank3_strided":
+        inp = inp.transpose(1, 2)
+    padding = (
+        (0, 0, 0, 0, 0, 0, 0, 13)
+        if case in ("rank5", "rank6")
+        else (-1, 2) if case == "negative_reflect" else (1, 2)
+    )
+    mode = "reflect" if case == "negative_reflect" else "constant"
+    value = None if mode == "reflect" else 3.5
+    # TorchNPU does not support negative ReflectionPad1d; CPU is only the oracle.
+    reference = F.pad(inp.cpu(), padding, mode, value).to(inp.device)
+    with flag_gems.use_gems(include=["pad", "constant_pad_nd"]):
+        actual = F.pad(inp, padding, mode, value)
+    assert torch.equal(actual, reference)
+    if mode == "constant":
+        with flag_gems.use_gems(include=["constant_pad_nd"]):
+            actual = torch.ops.aten.constant_pad_nd(inp, padding, value)
+        assert torch.equal(actual, reference)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize("mode", ["replicate", "reflect", "circular"])
+def test_ascend_pad_address_span_guard_and_wide_fallback(monkeypatch, mode):
+    import importlib
+
+    module = importlib.import_module(flag_gems.pad.__module__)
+    guard = module._pad_can_use_int32
+    assert guard((2, 3), (3, 1), (4, 5), (1, 1), (1, 1), 20, 1024)
+    assert not guard((2,), (2**31,), (2,), (0,), (0,), 2, 1024)
+    assert not guard((2**31 - 1,), (1,), (2**31 - 1,), (0,), (0,), 2**31 - 1, 1024)
+    monkeypatch.setattr(module, "_pad_can_use_int32", lambda *args: False)
+    x = torch.arange(24, device=flag_gems.device).reshape(2, 3, 4).transpose(1, 2)
+    expected = torch.nn.functional.pad(x.cpu(), (-1, 2), mode=mode)
+    assert torch.equal(flag_gems.pad(x, (-1, 2), mode=mode).cpu(), expected)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+def test_ascend_pad_large_reflect_exact_coordinates():
+    generator = torch.Generator(device="cpu").manual_seed(20261014)
+    x_cpu = torch.randn((64, 64, 64, 64), dtype=torch.float16, generator=generator)
+    padding = (3, 5, 4, 2, 1, 7)
+    expected = F.pad(x_cpu.float(), padding, mode="reflect").to(x_cpu.dtype)
+    assert expected.numel() > 2**24
+    actual = flag_gems.pad(x_cpu.to(flag_gems.device), padding, mode="reflect")
+    assert torch.equal(actual.cpu(), expected)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+def test_ascend_pad_strided_constant_safe_masked_addresses():
+    generator = torch.Generator(device="cpu").manual_seed(20261014)
+    base = torch.randn((1, 64, 112, 112), dtype=torch.float32, generator=generator)
+    x_cpu = base[::2, ::2]
+    x = base.to(flag_gems.device)[::2, ::2]
+    assert not x.is_contiguous()
+    padding = (3, 5, 4, 2, 1, 7, 2, 3)
+    expected = F.pad(x_cpu, padding, mode="constant", value=27.0)
+    actual = flag_gems.pad(x, padding, mode="constant", value=27.0)
+    assert torch.equal(actual.cpu(), expected)
