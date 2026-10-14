@@ -134,3 +134,52 @@ def test_amp_foreach_non_finite_check_and_unscale__nan(dtype):
 
     # Compare found_inf - should be 1.0 when nan is present
     utils.gems_assert_equal(res_found_inf, ref_found_inf)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="FP32 opmath for the unscale is specific to the Ascend kernel",
+)
+@pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.parametrize("dtype", PRIMARY_FLOAT_DTYPES)
+@pytest.mark.parametrize("inv_scale_value", [1.0 / 3.0, 1.0 / 7.0, 0.1])
+def test_amp_foreach_non_finite_check_and_unscale__inexact_scale(
+    dtype, inv_scale_value
+):
+    """Scales that are not exactly representable must use FP32 opmath.
+
+    Narrowing inv_scale to FP16 before the multiply changes the result for
+    values such as 1/3; the other cases all use 2.0, which is exact in FP16
+    and therefore hides the difference.
+    """
+    from flag_gems.runtime.backend._ascend.ops import (
+        _amp_foreach_non_finite_check_and_unscale_ as ascend_unscale_,
+    )
+
+    inv_scale = torch.tensor(
+        inv_scale_value, device=flag_gems.device, dtype=torch.float32
+    )
+    found_inf = torch.tensor(0.0, device=flag_gems.device, dtype=torch.float32)
+
+    tensors = [
+        torch.randn(16, 32, device=flag_gems.device, dtype=dtype) * 100,
+        torch.randn(8, 16, device=flag_gems.device, dtype=dtype) * 100,
+    ]
+
+    ref_tensors = [utils.to_reference(t.clone()) for t in tensors]
+    ref_found_inf = utils.to_reference(found_inf.clone())
+    ref_inv_scale = utils.to_reference(inv_scale.clone())
+    getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
+        ref_tensors, ref_found_inf, ref_inv_scale
+    )
+
+    res_tensors = [t.clone() for t in tensors]
+    res_found_inf = found_inf.clone()
+    ascend_unscale_(res_tensors, res_found_inf, inv_scale)
+
+    # Compared exactly, not with gems_assert_close: FP32 opmath reproduces
+    # ATen bit-for-bit, while an FP16-narrowed scale is off by ~1e-3 relative,
+    # which still falls inside the FP16 tolerance and would go unnoticed.
+    for inp, ref_inp in zip(res_tensors, ref_tensors):
+        utils.gems_assert_equal(inp, ref_inp)
+    utils.gems_assert_equal(res_found_inf, ref_found_inf)
