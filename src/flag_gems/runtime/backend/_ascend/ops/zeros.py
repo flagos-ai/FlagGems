@@ -84,7 +84,20 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 def zero_(x: torch.Tensor) -> torch.Tensor:
     if x.numel() == 0:
         return x
-    if not x.is_contiguous():
+    # Dense permutations cover one contiguous storage interval from data_ptr().
+    # Ignore size-one axes; holes and overlapping/expanded layouts use strides.
+    dense = x.is_contiguous()
+    if not dense:
+        expected_stride = 1
+        dense = True
+        for stride, extent in sorted(
+            (s, n) for s, n in zip(x.stride(), x.shape) if n > 1
+        ):
+            if stride != expected_stride:
+                dense = False
+                break
+            expected_stride *= extent
+    if not dense:
         shape = tuple(x.shape)
         strides = tuple(x.stride())
         divisors = [1] * x.ndim
