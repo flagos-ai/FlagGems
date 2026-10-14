@@ -14,8 +14,6 @@
 
 import logging
 import os
-import threading
-from contextlib import contextmanager
 
 import torch
 import triton
@@ -58,32 +56,6 @@ _WS_BIAS_BLOCK_M = 256
 _WS_BIAS_BLOCK_N = 128
 _WS_BIAS_BLOCK_K = 32
 _WS_BIAS_STAGES = 5
-
-
-_UNALIGNED_TMA_STRIDE_ENV = "TRITON_TMA_ALLOW_UNALIGNED_STRIDE"
-_UNALIGNED_TMA_STRIDE_LOCK = threading.RLock()
-
-
-@contextmanager
-def _temporary_unaligned_tma_stride(enabled):
-    if not enabled:
-        yield
-        return
-
-    # The descriptor setting is process-wide, so serialize this module's
-    # temporary overrides and always restore the caller's environment.
-    with _UNALIGNED_TMA_STRIDE_LOCK:
-        was_present = _UNALIGNED_TMA_STRIDE_ENV in os.environ
-        previous = os.environ.get(_UNALIGNED_TMA_STRIDE_ENV)
-        os.environ[_UNALIGNED_TMA_STRIDE_ENV] = "1"
-        try:
-            yield
-        finally:
-            if was_present:
-                assert previous is not None
-                os.environ[_UNALIGNED_TMA_STRIDE_ENV] = previous
-            else:
-                os.environ.pop(_UNALIGNED_TMA_STRIDE_ENV, None)
 
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -671,8 +643,10 @@ _CORE_PERSISTENT_SHAPES = {
 _SYNTHETIC_MATRIX_BIAS_SHAPES = {(4096, 4096, 4096)}
 
 
-def _make_descriptor(tensor, block_shape):
-    return TensorDescriptor.from_tensor(tensor, block_shape)
+def _make_descriptor(tensor, block_shape, *, stride_alignment=16):
+    return TensorDescriptor.from_tensor(
+        tensor, block_shape, stride_alignment=stride_alignment
+    )
 
 
 @libentry()
@@ -1300,7 +1274,10 @@ def launch_persistent_addmm(shape, bias, mat1, mat2, out):
     block_m = 256
     block_n = 128 if kind == "bn128" else 256
     block_k = 64
-    a_desc = _make_descriptor(mat1, [block_m, block_k])
+    a_stride_alignment = 4 if shape == (65536, 1152, 538) else 16
+    a_desc = _make_descriptor(
+        mat1, [block_m, block_k], stride_alignment=a_stride_alignment
+    )
     b_desc = _make_descriptor(mat2, [block_k, block_n])
     fuse_matrix_bias = shape in _SYNTHETIC_MATRIX_BIAS_SHAPES
     if fuse_matrix_bias:
@@ -1386,14 +1363,6 @@ _SPLIT384_SHAPES = {
     (16384, 4608, 4608): (1, 4, False),
     (16384, 576, 4608): (1, 4, False),
 }
-
-# These two BF16 paths have a 538-element row (1076 bytes), which the
-# validated MThreads TME path permits at four-byte alignment.
-_UNALIGNED_TMA_STRIDE_SHAPES = {
-    (65536, 1152, 538),
-    (65536, 538, 1152),
-}
-
 
 def _is_one(value):
     try:
@@ -2074,9 +2043,16 @@ def _launch_synthetic_m512(shape, slots, unroll, bias, mat1, mat2, out):
     m, n, k = shape
     seed = _seed_a(mat1)
     a_desc = _make_descriptor(mat1, [512, _BLOCK_K])
-    b_desc = _make_descriptor(mat2, [_BLOCK_K, 128])
+    b_stride_alignment = 4 if shape == (65536, 538, 1152) else 16
+    b_desc = _make_descriptor(
+        mat2, [_BLOCK_K, 128], stride_alignment=b_stride_alignment
+    )
     seed_a_desc = _make_descriptor(seed, [512, _BLOCK_K])
-    seed_b_desc = _make_descriptor(bias.reshape(1, bias.numel()), [_BLOCK_K, 128])
+    seed_b_desc = _make_descriptor(
+        bias.reshape(1, bias.numel()),
+        [_BLOCK_K, 128],
+        stride_alignment=b_stride_alignment,
+    )
     grid_n = triton.cdiv(n, 128)
     with torch_device_fn.device(mat1.device):
         _synthetic_m512_n128_kernel[(triton.cdiv(m, 512) * grid_n,)](
@@ -2136,15 +2112,14 @@ def try_addmm_tle(bias, mat1, mat2, out, beta, alpha):
     shape = _shape_key(mat1, mat2)
     if out is None:
         out = torch.empty((shape[0], shape[1]), dtype=mat1.dtype, device=mat1.device)
-    with _temporary_unaligned_tma_stride(shape in _UNALIGNED_TMA_STRIDE_SHAPES):
-        if path[0] == "direct":
-            _launch_direct_bias(shape, path[1], bias, mat1, mat2, out)
-        elif path[0] == "m512_n128":
-            _launch_synthetic_m512(shape, path[1], path[2], bias, mat1, mat2, out)
-        elif path[0] == "split384":
-            _launch_split384(shape, path[1], path[2], path[3], bias, mat1, mat2, out)
-        else:
-            launch_persistent_addmm(shape, bias, mat1, mat2, out)
+    if path[0] == "direct":
+        _launch_direct_bias(shape, path[1], bias, mat1, mat2, out)
+    elif path[0] == "m512_n128":
+        _launch_synthetic_m512(shape, path[1], path[2], bias, mat1, mat2, out)
+    elif path[0] == "split384":
+        _launch_split384(shape, path[1], path[2], path[3], bias, mat1, mat2, out)
+    else:
+        launch_persistent_addmm(shape, bias, mat1, mat2, out)
     return out
 
 
