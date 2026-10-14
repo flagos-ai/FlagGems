@@ -131,8 +131,8 @@ def _abs_func(x):
 
 @triton.jit
 def _log2_func(x):
-    # Base-2 logarithm as a ratio of natural logarithms: the backend's direct
-    # base-2 lowering returns the natural logarithm for this operand form.
+    # Base-2 logarithm as a ratio of natural logarithms: the direct form
+    # returns the natural logarithm on this backend.
     return tl.log(x.to(tl.float32)) / 0.6931471805599453
 
 

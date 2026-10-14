@@ -744,13 +744,11 @@ def foreach_unary(
             src = t if is_flat_addressable(t) else t.contiguous()
             if src is not t:
                 _STATS.staged_inputs += 1
-            # A promoting operator on an integral input is converted on the
-            # device before the kernel sees it.  The backend's elementwise
-            # lowering keeps the operand's original dtype when the value reaches
-            # the transcendental through a cast, so a kernel that loads the
-            # integral tensor directly evaluates the wrong function for
-            # ``exp``/``expm1``/``cosh``/``sinh``.  Converting first makes the
-            # kernel load the floating dtype and evaluate the right one.
+            # A promoting operator's integral input is converted on the device
+            # before the kernel runs: handed an integral tensor directly, the
+            # kernel evaluates the wrong function for ``exp``/``expm1``/``cosh``
+            # /``sinh``.  Converting first makes the kernel load the floating
+            # dtype.
             if out_dtype is not dtype and not dtype.is_floating_point:
                 if not out_dtype.is_floating_point:
                     raise RuntimeError(
