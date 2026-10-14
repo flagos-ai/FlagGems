@@ -26,6 +26,27 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
+def _pad_can_use_int32(shape, strides, out_shape, before, after, numel, block):
+    limit = (1 << 31) - 1
+    # Include masked lanes in the last tile: their index arithmetic executes
+    # even though they never load or store. Tensor numel alone also misses the
+    # address span of transposed, sliced and expanded inputs.
+    if triton.cdiv(numel, block) * block - 1 > limit:
+        return False
+    source_bound = 0
+    for size, stride, out, left, right in zip(shape, strides, out_shape, before, after):
+        # Bound coord-left, reflection's 2*size-2-idx, and circular's
+        # idx-start / idx+extent before their selects or modulo operations.
+        # This deliberately also bounds invalid constant-padding addresses.
+        index_bound = out - 1 + abs(left) + 2 * size + abs(right)
+        if index_bound > limit or abs(stride) > limit:
+            return False
+        source_bound += index_bound * abs(stride)
+        if source_bound > limit:
+            return False
+    return True
+
+
 @libentry()
 @triton.jit
 def _pad_kernel(
@@ -39,17 +60,24 @@ def _pad_kernel(
     AFTER: tl.constexpr,
     MODE: tl.constexpr,
     VALUE: tl.constexpr,
+    USE_INT32: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     # Grid-stride iteration keeps even large rank-5 vision tensors below the
     # Ascend coreDim limit; strides also support transposed and expanded input.
+    if USE_INT32:
+        index_dtype: tl.constexpr = tl.int32
+    else:
+        index_dtype: tl.constexpr = tl.int64
     for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
-        offsets = tile * BLOCK + tl.arange(0, BLOCK)
+        offsets = tile.to(index_dtype) * BLOCK + tl.arange(0, BLOCK)
+        # Coordinate division must remain exact for large flattened offsets.
+        # The range guard still permits int32 source-address arithmetic.
         remaining = offsets.to(tl.int64)
-        source = tl.full((BLOCK,), 0, tl.int64)
+        source = tl.full((BLOCK,), 0, index_dtype)
         valid = offsets < N
         for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
-            coord = remaining % OUT_SHAPE[dim]
+            coord = (remaining % OUT_SHAPE[dim]).to(index_dtype)
             remaining = remaining // OUT_SHAPE[dim]
             idx = coord - BEFORE[dim]
             if MODE == "constant":
@@ -82,7 +110,7 @@ def _pad_fill_kernel(Y, N: tl.constexpr, VALUE: tl.constexpr, BLOCK: tl.constexp
     # A masked load from an empty input may still fault on Ascend. This kernel
     # has no input pointer and emits only stores for the all-padding case.
     for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
-        offsets = tile * BLOCK + tl.arange(0, BLOCK)
+        offsets = tile.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
         data = tl.full((BLOCK,), VALUE, Y.dtype.element_ty)
         tl.store(Y + offsets, data, mask=offsets < N)
 
@@ -147,17 +175,21 @@ def _pad_impl(self, pad, mode="constant", value=None):
                     output, numel, 0 if value is None else value, BLOCK=1024
                 )
             else:
+                strides = tuple(self.stride())
                 _pad_kernel[grid](
                     self,
                     output,
                     numel,
                     shape,
-                    tuple(self.stride()),
+                    strides,
                     out_shape,
                     tuple(before),
                     tuple(after),
                     mode,
                     0 if value is None else value,
+                    USE_INT32=_pad_can_use_int32(
+                        shape, strides, out_shape, before, after, numel, 1024
+                    ),
                     BLOCK=1024,
                 )
     return output
