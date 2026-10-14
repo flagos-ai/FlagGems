@@ -343,10 +343,19 @@ def _edge_input(dtype, kind):
     return value.reshape(1)
 
 
+# Bool input generation ignores value_range; keep one sample per workload.
+_DTYPE_RANGE_CASES = [
+    (dtype, value_range)
+    for dtype in SUPPORTED_DTYPES
+    for value_range in (
+        selected_ranges()[:1] if dtype == torch.bool else selected_ranges()
+    )
+]
+
+
 @pytest.mark.special_scaled_modified_bessel_k0
 @pytest.mark.parametrize("shape", selected_shapes())
-@pytest.mark.parametrize("value_range", selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test_special_scaled_modified_bessel_k0(shape, value_range, dtype):
     inp = make_input(dtype, shape, value_range)
     ref_inp = to_reference(inp)
