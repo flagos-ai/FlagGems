@@ -699,8 +699,8 @@ def _persistent_producer(
     grid_n: tl.constexpr,
     tile_iters: tl.constexpr,
     group_m: tl.constexpr,
-    real_k_tiles: tl.constexpr,
-    total_k_tiles: tl.constexpr,
+    real_k_tiles,
+    total_k_tiles,
     block_m: tl.constexpr,
     block_n: tl.constexpr,
     block_k: tl.constexpr,
@@ -768,7 +768,7 @@ def _persistent_bn256_consumer_synced(
     grid_n: tl.constexpr,
     tile_iters: tl.constexpr,
     group_m: tl.constexpr,
-    k_tiles: tl.constexpr,
+    k_tiles,
     M: tl.constexpr,
     N: tl.constexpr,
     block_m: tl.constexpr,
@@ -847,7 +847,7 @@ def _persistent_bn256_consumer(
     grid_n: tl.constexpr,
     tile_iters: tl.constexpr,
     group_m: tl.constexpr,
-    k_tiles: tl.constexpr,
+    k_tiles,
     M: tl.constexpr,
     N: tl.constexpr,
     block_m: tl.constexpr,
@@ -920,7 +920,7 @@ def _persistent_bn128_consumer(
     grid_n: tl.constexpr,
     tile_iters: tl.constexpr,
     group_m: tl.constexpr,
-    k_tiles: tl.constexpr,
+    k_tiles,
     M: tl.constexpr,
     N: tl.constexpr,
     block_m: tl.constexpr,
@@ -972,7 +972,7 @@ def _persistent_bn256_synced_kernel(
     out_ptr,
     M: tl.constexpr,
     N: tl.constexpr,
-    K: tl.constexpr,
+    K,
     TOTAL_TILES: tl.constexpr,
     GRID_M: tl.constexpr,
     GRID_N: tl.constexpr,
@@ -1010,8 +1010,8 @@ def _persistent_bn256_synced_kernel(
     )
     consumer_epoch = tle.gpu.alloc_barrier(arrive_count=16, init=tle.gpu.PENDING)
     tile_iters: tl.constexpr = tl.cdiv(TOTAL_TILES, NUM_SMS)
-    real_k_tiles: tl.constexpr = tl.cdiv(K, block_k)
-    k_tiles: tl.constexpr = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
+    real_k_tiles = tl.cdiv(K, block_k)
+    k_tiles = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
     tle.gpu.warp_specialize(
         [
             (
@@ -1077,7 +1077,7 @@ def _persistent_bn256_kernel(
     out_ptr,
     M: tl.constexpr,
     N: tl.constexpr,
-    K: tl.constexpr,
+    K,
     TOTAL_TILES: tl.constexpr,
     GRID_M: tl.constexpr,
     GRID_N: tl.constexpr,
@@ -1113,8 +1113,8 @@ def _persistent_bn256_kernel(
         b=b_smem,
     )
     tile_iters: tl.constexpr = tl.cdiv(TOTAL_TILES, NUM_SMS)
-    real_k_tiles: tl.constexpr = tl.cdiv(K, block_k)
-    k_tiles: tl.constexpr = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
+    real_k_tiles = tl.cdiv(K, block_k)
+    k_tiles = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
     tle.gpu.warp_specialize(
         [
             (
@@ -1178,7 +1178,7 @@ def _persistent_bn128_kernel(
     out_ptr,
     M: tl.constexpr,
     N: tl.constexpr,
-    K: tl.constexpr,
+    K,
     TOTAL_TILES: tl.constexpr,
     GRID_M: tl.constexpr,
     GRID_N: tl.constexpr,
@@ -1214,8 +1214,8 @@ def _persistent_bn128_kernel(
         b=b_smem,
     )
     tile_iters: tl.constexpr = tl.cdiv(TOTAL_TILES, NUM_SMS)
-    real_k_tiles: tl.constexpr = tl.cdiv(K, block_k)
-    k_tiles: tl.constexpr = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
+    real_k_tiles = tl.cdiv(K, block_k)
+    k_tiles = real_k_tiles + (4 if FUSE_MATRIX_BIAS else 0)
     tle.gpu.warp_specialize(
         [
             (
