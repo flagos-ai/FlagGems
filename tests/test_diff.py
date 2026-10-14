@@ -102,3 +102,75 @@ def test_ascend_diff_empty_dimensions(shape, n):
     expected = torch.diff(x, n=n)
     actual = flag_gems.diff(x, n=n)
     assert torch.equal(actual, expected)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend zero-order copy regression"
+)
+@pytest.mark.diff
+@pytest.mark.parametrize("registered", [False, True], ids=["direct", "registered"])
+@pytest.mark.parametrize(
+    "layout", ["contiguous", "transpose", "offset_slice", "empty", "channels_last"]
+)
+def test_ascend_diff_zero_order_copy(layout, registered):
+    x = torch.arange(24, dtype=torch.float32, device=flag_gems.device).reshape(4, 6)
+    if layout == "transpose":
+        x = x.t()
+    elif layout == "offset_slice":
+        x = x[1:, 1::2]
+    elif layout == "empty":
+        x = x[:0]
+    elif layout == "channels_last":
+        x = x.reshape(1, 3, 4, 2).permute(0, 3, 1, 2)
+
+    before = x.clone()
+    prepend = torch.full_like(x, -100)
+    append = torch.full_like(x, 100)
+    expected = torch.diff(x, n=0, prepend=prepend, append=append)
+    if registered:
+        with flag_gems.use_gems():
+            actual = torch.diff(x, n=0, prepend=prepend, append=append)
+    else:
+        actual = flag_gems.diff(x, n=0, prepend=prepend, append=append)
+
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert actual.device == expected.device
+    assert actual.stride() == expected.stride()
+    assert torch.equal(actual, expected)
+    assert actual is not x
+    assert actual.untyped_storage()._cdata != x.untyped_storage()._cdata
+    actual.fill_(42)
+    assert torch.equal(x, before)
+
+
+# Exact rounding witnesses cover all n2 implementations deterministically.
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend second-order rounding regression"
+)
+@pytest.mark.diff
+@pytest.mark.parametrize(
+    "dtype,small", [(torch.float16, 1 / 4096), (torch.bfloat16, 1 / 512)]
+)
+@pytest.mark.parametrize("path", ["flat", "row", "inner", "prepend_append"])
+def test_ascend_diff_second_order_rounding(dtype, small, path):
+    values = torch.tensor([1.0, small, 0.0], dtype=dtype).repeat(342)
+    kwargs = dict(n=2)
+    if path == "flat":
+        cpu = values[:1024]
+    elif path == "row":
+        cpu = values[:51].reshape(3, 17)
+    elif path == "inner":
+        cpu = values[:102].reshape(2, 17, 3)
+        kwargs["dim"] = 1
+    else:
+        cpu = values[:51].reshape(3, 17)
+        kwargs["prepend"] = torch.tensor([[1.0, small]] * 3, dtype=dtype)
+        kwargs["append"] = torch.zeros((3, 1), dtype=dtype)
+    expected = torch.diff(cpu, **kwargs)
+    device_kwargs = {
+        k: v.to(flag_gems.device) if isinstance(v, torch.Tensor) else v
+        for k, v in kwargs.items()
+    }
+    actual = flag_gems.diff(cpu.to(flag_gems.device), **device_kwargs)
+    assert torch.equal(actual.cpu(), expected)
