@@ -72,7 +72,6 @@ _KUNLUNXIN_UNSUPPORTED = {
     torch.complex128: set(UNARY_NAMES),
 }
 
-_KUNLUNXIN_UNIMPLEMENTED = {"lgamma"}
 
 _KUNLUNXIN_INTEGRAL = (torch.bool, torch.int16, torch.int32, torch.int64)
 
@@ -497,8 +496,8 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     """
     if flag_gems.device != "cuda":
         return
-    if IS_KUNLUNXIN and name in _KUNLUNXIN_UNIMPLEMENTED:
-        pytest.skip(f"kunlunxin backend has no kernel for _foreach_{name}")
+    if IS_KUNLUNXIN and not _supports(name, torch.float32):
+        pytest.skip(f"kunlunxin backend has no kernel for _foreach_{name} on float32")
     inp = [_sample((8,), torch.float32, flag_gems.device)]
     want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
     logger_name = "flag_gems.ops._foreach_unary"
