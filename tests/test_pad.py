@@ -196,3 +196,45 @@ def test_ascend_pad_strided_constant_safe_masked_addresses():
     expected = F.pad(x_cpu, padding, mode="constant", value=27.0)
     actual = flag_gems.pad(x, padding, mode="constant", value=27.0)
     assert torch.equal(actual.cpu(), expected)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize("divisor", [1, 3, 9, 16, 729, 2**20 - 1, 2**20])
+def test_ascend_pad_small_coordinate_divmod_exact(divisor):
+    import importlib
+
+    import triton
+    import triton.language as tl
+
+    module = importlib.import_module(flag_gems.pad.__module__)
+
+    @triton.jit
+    def check_divmod(X, Q, R, N: tl.constexpr, D: tl.constexpr, DIVMOD: tl.constexpr):
+        for tile in range(tl.program_id(0), tl.cdiv(N, 1024), tl.num_programs(0)):
+            offsets = tile * 1024 + tl.arange(0, 1024)
+            values = tl.load(X + offsets, offsets < N, other=0)
+            quotient, residual = DIVMOD(values, D)
+            tl.store(Q + offsets, quotient, offsets < N)
+            tl.store(R + offsets, residual, offsets < N)
+
+    values = torch.arange(2**20, dtype=torch.int32)
+    x = values.to(flag_gems.device)
+    quotient = torch.empty_like(x)
+    residual = torch.empty_like(x)
+    check_divmod[(48,)](
+        x, quotient, residual, x.numel(), divisor, module._pad_small_divmod
+    )
+    assert torch.equal(quotient.cpu(), values // divisor)
+    assert torch.equal(residual.cpu(), values % divisor)
+
+
+@pytest.mark.pad
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+@pytest.mark.parametrize("width", [524277, 524278, 524279])
+def test_ascend_pad_small_coordinate_guard_boundary(width):
+    generator = torch.Generator(device="cpu").manual_seed(20261014)
+    x_cpu = torch.randn((1, 2, width), generator=generator)
+    expected = F.pad(x_cpu, (3, 7), mode="reflect")
+    actual = flag_gems.pad(x_cpu.to(flag_gems.device), (3, 7), mode="reflect")
+    assert torch.equal(actual.cpu(), expected)
