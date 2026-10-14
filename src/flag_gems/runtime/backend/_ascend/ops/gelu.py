@@ -39,8 +39,8 @@ def gelu_none(x):
 @triton.jit
 def gelu_tanh(x):
     x_fp32 = x.to(tl.float32)
-    output = 0.5 * x * (
-        1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * x_fp32 * x_fp32))
+    output = (
+        0.5 * x * (1 + tanh(x_fp32 * 0.79788456 * (1 + 0.044715 * x_fp32 * x_fp32)))
     )
     return output
 
