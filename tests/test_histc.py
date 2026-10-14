@@ -86,3 +86,51 @@ def test_accuracy_histc_with_range(shape, bins, dtype):
     ref_out = torch.histc(ref_inp, bins=bins, min=0, max=10)
     res_out = flag_gems.histc(inp, bins=bins, min=0, max=10)
     gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="empty-input handling is specific to the Ascend kernel",
+)
+@pytest.mark.histc
+@pytest.mark.parametrize("bins", HISTC_BINS)
+@pytest.mark.parametrize("dtype", HISTC_DTYPES)
+def test_accuracy_histc_empty(bins, dtype):
+    # ATen returns `bins` zeros; launching used to build a zero-sized grid,
+    # which aborts the process on Ascend ("coreDim is invalid").
+    from flag_gems.runtime.backend._ascend.ops import histc as ascend_histc
+
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp)
+
+    ref_out = torch.histc(ref_inp, bins=bins, min=0, max=10)
+    res_out = ascend_histc(inp, bins=bins, min=0, max=10)
+
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="dense-input handling is specific to the Ascend kernel",
+)
+@pytest.mark.histc
+@pytest.mark.parametrize("bins", HISTC_BINS)
+@pytest.mark.parametrize("dtype", HISTC_DTYPES)
+@pytest.mark.parametrize("use_range", [True, False])
+def test_accuracy_histc_non_contiguous(bins, dtype, use_range):
+    from flag_gems.runtime.backend._ascend.ops import histc as ascend_histc
+
+    # A strided view is traversed linearly by both the min/max and the partial
+    # histogram kernels, so it has to be made dense first.
+    base = make_histc_input(
+        (256,), dtype, flag_gems.device, 0.0, 10.0, include_endpoints=True
+    )
+    inp = base[::2]
+    assert not inp.is_contiguous()
+    ref_inp = to_reference(inp)
+
+    bounds = {"min": 0, "max": 10} if use_range else {"min": 0, "max": 0}
+    ref_out = torch.histc(ref_inp, bins=bins, **bounds)
+    res_out = ascend_histc(inp, bins=bins, **bounds)
+
+    gems_assert_close(res_out, ref_out, dtype)
