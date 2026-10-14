@@ -58,6 +58,98 @@ def test_round_(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="round-half-to-even boundary fix is specific to the Ascend kernel",
+)
+@pytest.mark.round_
+@pytest.mark.parametrize(
+    "value",
+    # Half-integers around +-2**22 and +-2**23: fp32 still represents these
+    # exactly, so round-half-to-even must apply (regression test for a
+    # magic-constant implementation that returned them unchanged).
+    [
+        2**22 - 0.5,
+        2**22 + 0.5,
+        2**22 + 1.5,
+        2**23 - 0.5,
+        -(2**22) - 0.5,
+        -(2**22) - 1.5,
+        -(2**23) + 0.5,
+    ],
+)
+def test_round__large_half_integers(value):
+    from flag_gems.runtime.backend._ascend.ops import round_ as ascend_round_
+
+    inp = torch.tensor([value], dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone())
+
+    ref_out = torch.round_(ref_inp)
+    res_out = ascend_round_(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="integral fast path is specific to the Ascend kernel",
+)
+@pytest.mark.round_
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32, torch.int64])
+def test_round__integral_unchanged(dtype):
+    # round_ must leave integral tensors bit-identical; routing them through
+    # fp32 would corrupt values above 2**24 (checked for the wider dtypes,
+    # where such values are representable).
+    values = [0, 1, -1]
+    if torch.iinfo(dtype).max > 2**24 + 3:
+        values += [2**24 + 3, -(2**24) - 3]
+    from flag_gems.runtime.backend._ascend.ops import round_ as ascend_round_
+
+    inp = torch.tensor(values, dtype=dtype, device=flag_gems.device)
+    expected = utils.to_reference(inp.clone())
+
+    res_out = ascend_round_(inp)
+
+    utils.gems_assert_equal(res_out, expected)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="empty-input handling is specific to the Ascend kernel",
+)
+@pytest.mark.round_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round__empty(dtype):
+    from flag_gems.runtime.backend._ascend.ops import round_ as ascend_round_
+
+    inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone())
+
+    ref_out = torch.round_(ref_inp)
+    res_out = ascend_round_(inp)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="contiguity guard is specific to the Ascend kernel",
+)
+@pytest.mark.round_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round__non_contiguous_rejected(dtype):
+    # A strided view would be traversed linearly by the kernel and corrupt
+    # neighbouring elements, so it must be rejected rather than silently wrong.
+    from flag_gems.runtime.backend._ascend.ops import round_ as ascend_round_
+
+    base = torch.randn(16, dtype=dtype, device=flag_gems.device)
+    view = base[::2]
+    assert not view.is_contiguous()
+
+    with pytest.raises(ValueError):
+        ascend_round_(view)
+
+
 @pytest.mark.round_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
