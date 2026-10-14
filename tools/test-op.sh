@@ -167,19 +167,18 @@ if [[ ${#OPS_MARKERS[@]} -gt 0 ]]; then
 
   if [[ -n "$MARKER_EXPR" ]]; then
     echo "Running marker-selected tests for changed operators: ${MARKER_EXPR}"
-    # Run and capture output. When a marker matches no test, pytest DESELECTS
-    # all tests and still exits 0 (it exits 5 only for a truly empty
-    # collection), so the exit code alone cannot tell "passed" from "ran
-    # nothing". We therefore also inspect the summary line: a run that executed
-    # zero tests (all deselected / no tests ran) is reported as a warning rather
-    # than a silent pass, while genuine collection errors keep pytest's non-zero
-    # exit and are recorded as failures.
+    # Run and capture output. When a marker matches no test, pytest deselects
+    # everything and exits 5, so the exit code alone cannot tell "passed" from
+    # "ran nothing". We therefore also inspect the summary line: a run that
+    # executed zero tests (all deselected / no tests ran) is reported as a
+    # warning rather than a silent pass, while genuine collection errors keep
+    # pytest's non-zero exit and are recorded as failures.
     marker_log="marker-run-${GITHUB_SHA::7}.log"
     # `| tee` would mask pytest's exit status, so read it from PIPESTATUS.
     coverage run -m pytest -s ${EXTRA_OPTS} tests/ -m "${MARKER_EXPR}" \
         2>&1 | tee "${marker_log}"
     rc=${PIPESTATUS[0]}
-    if [[ $rc -eq 0 ]]; then
+    if [[ $rc -eq 0 || $rc -eq 5 ]]; then
       if grep -qE "no tests ran|[0-9]+ deselected" "${marker_log}" \
           && ! grep -qE "[0-9]+ (passed|failed|error)" "${marker_log}"; then
         echo "::warning::No tests matched markers for changed operators (${MARKER_EXPR}); nothing ran."
