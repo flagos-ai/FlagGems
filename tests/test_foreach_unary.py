@@ -445,9 +445,13 @@ def test_accuracy_foreach_unary_inplace_writes_through_views(name):
 @pytest.mark.foreach_unary
 def test_accuracy_foreach_unary_inplace_rejects_overlap():
     """``expand`` aliases one element many times; ATen refuses to write it."""
-    if IS_KUNLUNXIN:
-        pytest.skip("kunlunxin backend does not raise for this overlap")
     src = torch.randn(1, 8, device=flag_gems.device).expand(4, 8)
+    if IS_KUNLUNXIN:
+        with pytest.raises(RuntimeError):
+            _gems_op("cos", inplace=True)([src])
+        with pytest.raises(RuntimeError):
+            _gems_op("neg", inplace=True)([src])
+        return
     with pytest.raises(RuntimeError):
         torch._foreach_neg_([src])
 
