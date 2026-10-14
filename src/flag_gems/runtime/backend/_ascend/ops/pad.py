@@ -47,6 +47,18 @@ def _pad_can_use_int32(shape, strides, out_shape, before, after, numel, block):
     return True
 
 
+@triton.jit
+def _pad_small_divmod(value, divisor: tl.constexpr):
+    # Caller bounds both operands by 2**20. RN error is below one integer;
+    # the exact residual corrects either adjacent quotient without overflow.
+    divisor_fp32 = tl.full(value.shape, divisor, tl.float32)
+    quotient = tl.div_rn(value.to(tl.float32), divisor_fp32).to(tl.int32)
+    residual = value - quotient * divisor
+    quotient = tl.where(residual.to(tl.float32) < 0, quotient - 1, quotient)
+    quotient = tl.where(residual.to(tl.float32) >= divisor_fp32, quotient + 1, quotient)
+    return quotient, value - quotient * divisor
+
+
 @libentry()
 @triton.jit
 def _pad_kernel(
@@ -71,14 +83,20 @@ def _pad_kernel(
         index_dtype: tl.constexpr = tl.int64
     for tile in range(tl.program_id(0), tl.cdiv(N, BLOCK), tl.num_programs(0)):
         offsets = tile.to(index_dtype) * BLOCK + tl.arange(0, BLOCK)
-        # Coordinate division must remain exact for large flattened offsets.
-        # The range guard still permits int32 source-address arithmetic.
-        remaining = offsets.to(tl.int64)
+        # Include masked tail lanes in the small-coordinate bound. Larger
+        # offsets keep exact int64 decoding on both supported compiler stacks.
+        if USE_INT32 and tl.cdiv(N, BLOCK) * BLOCK <= 2**20:
+            remaining = offsets
+        else:
+            remaining = offsets.to(tl.int64)
         source = tl.full((BLOCK,), 0, index_dtype)
         valid = offsets < N
         for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
-            coord = (remaining % OUT_SHAPE[dim]).to(index_dtype)
-            remaining = remaining // OUT_SHAPE[dim]
+            if USE_INT32 and tl.cdiv(N, BLOCK) * BLOCK <= 2**20:
+                remaining, coord = _pad_small_divmod(remaining, OUT_SHAPE[dim])
+            else:
+                coord = (remaining % OUT_SHAPE[dim]).to(index_dtype)
+                remaining = remaining // OUT_SHAPE[dim]
             idx = coord - BEFORE[dim]
             if MODE == "constant":
                 valid = valid & (idx >= 0) & (idx < SHAPE[dim])
