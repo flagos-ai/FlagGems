@@ -39,6 +39,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .avg_pool3d_backward import avg_pool3d_backward
+from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
@@ -221,7 +222,9 @@ __all__ = [
     "argsort",
     "as_strided_scatter",
     "avg_pool3d_backward",
+    "baddbmm",
     "baddbmm_",
+    "baddbmm_out",
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
