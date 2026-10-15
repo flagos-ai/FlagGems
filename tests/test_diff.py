@@ -180,3 +180,88 @@ def test_ascend_diff_second_order_rounding(dtype, small, path):
     }
     actual = flag_gems.diff(cpu.to(flag_gems.device), **device_kwargs)
     assert torch.equal(actual.cpu(), expected)
+
+
+@pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend diff slow-path regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "length,n", [(4099, 1), (4099, 2), (20, 3), (22, 5), (1027, 3)]
+)
+def test_ascend_diff_slow_path_bounds(dtype, length, n):
+    # Include the UB limit, higher orders, and output-tile boundaries.
+    cpu = (
+        ((torch.arange(2 * length * 3) % 17).float() / 8)
+        .to(dtype)
+        .reshape(2, length, 3)
+    )
+    expected = torch.diff(cpu, n=n, dim=1)
+    actual = flag_gems.diff(cpu.to(flag_gems.device), n=n, dim=1)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend diff launch batching"
+)
+@pytest.mark.parametrize("dtype,n", [(torch.float32, 3), (torch.bfloat16, 5)])
+def test_ascend_diff_batched_programs(monkeypatch, dtype, n):
+    import importlib
+
+    backend = importlib.import_module(flag_gems.diff.__module__)
+    # Exercise several batches on every difference pass without a large allocation.
+    monkeypatch.setattr(backend, "_MAX_SLOW_GRID", 2)
+    length = 17 + n
+    cpu = (
+        ((torch.arange(2 * length * 3) % 17).float() / 8)
+        .to(dtype)
+        .reshape(2, length, 3)
+    )
+    expected = torch.diff(cpu, n=n, dim=1)
+    actual = flag_gems.diff(cpu.to(flag_gems.device), n=n, dim=1)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend diff input-tail regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize(
+    "shape,n",
+    [
+        ((16,), 1),
+        ((16,), 2),
+        ((18,), 1),
+        ((19,), 2),
+        ((17, 2), 1),
+        ((17, 3), 2),
+        ((3, 17), 2),
+        ((256, 256), 1),
+    ],
+)
+def test_ascend_diff_fast_path_tail(shape, n, dtype):
+    size = 1
+    for length in shape:
+        size *= length
+    cpu = ((torch.arange(size) % 17).float() / 8).to(dtype).reshape(shape)
+    expected = torch.diff(cpu, n=n)
+    actual = flag_gems.diff(cpu.to(flag_gems.device), n=n)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.diff
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend diff strided input"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("n,dim", [(1, 1), (3, 0)])
+def test_ascend_diff_strided_input(dtype, n, dim):
+    cpu = ((torch.arange(32).float() % 17) / 8).to(dtype).reshape(4, 8).t()
+    inp = cpu.to(flag_gems.device)
+    assert not inp.is_contiguous()
+    expected = torch.diff(cpu, n=n, dim=dim)
+    actual = flag_gems.diff(inp, n=n, dim=dim)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)

@@ -81,3 +81,39 @@ def test_gelu_(shape, dtype, approximate):
         res_out = res_out.cpu()
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.gelu
+@pytest.mark.gelu_
+@pytest.mark.gelu_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend GELU precision")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+@pytest.mark.parametrize("approximate", ["none", "tanh"])
+@pytest.mark.parametrize("operation", ["forward", "inplace", "backward"])
+def test_ascend_gelu_fixed_cpu_reference(dtype, approximate, operation):
+    cpu = torch.cat(
+        (
+            torch.arange(-768, 769, dtype=torch.float32) / 64,
+            torch.tensor([-1000, -80, -1e-6, 0, 1e-6, 80, 1000]),
+        )
+    ).to(dtype)
+    inp = cpu.to(flag_gems.device)
+    reference = cpu.double()
+    if operation == "backward":
+        grad = torch.linspace(-2, 2, cpu.numel()).to(dtype)
+        expected = torch.ops.aten.gelu_backward(
+            grad.double(), reference, approximate=approximate
+        )
+        actual = flag_gems.gelu_backward(
+            grad.to(flag_gems.device), inp, approximate=approximate
+        )
+    else:
+        expected = torch.nn.functional.gelu(reference, approximate=approximate)
+        if operation == "inplace":
+            copied = inp.clone()
+            actual = flag_gems.gelu_(copied, approximate=approximate)
+            assert actual is copied
+            torch.testing.assert_close(inp.cpu(), cpu, rtol=0, atol=0)
+        else:
+            actual = flag_gems.gelu(inp, approximate=approximate)
+    utils.gems_assert_close(actual.cpu(), expected, dtype)
