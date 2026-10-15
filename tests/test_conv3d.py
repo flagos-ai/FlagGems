@@ -77,6 +77,8 @@ def test_conv3d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
+    if vendor_name == "ascend":
+        monkeypatch.setattr(torch.npu.conv, "allow_hf32", False)
     weight = torch.randn(
         kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -130,6 +132,8 @@ def test_conv3d_padding(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
+    if vendor_name == "ascend":
+        monkeypatch.setattr(torch.npu.conv, "allow_hf32", False)
     weight = torch.randn(
         kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -223,3 +227,24 @@ def test_ascend_conv3d_regressions(case):
         rtol=1e-2 if dtype == torch.bfloat16 else 2e-3,
         atol=0.125 if dtype == torch.bfloat16 else 2e-4,
     )
+
+
+@pytest.mark.conv3d
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend FP32 precision")
+@pytest.mark.parametrize("groups, channels", [(1, 3), (2, 3), (2, 17)])
+@pytest.mark.parametrize("seed", [0, 3])
+def test_ascend_conv3d_fp32_cpu_reference(groups, channels, seed):
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    inp = torch.randn((1, groups * channels, 5, 5, 5), generator=generator)
+    weight = torch.randn((groups * 4, channels, 2, 2, 2), generator=generator)
+    bias_base = torch.randn(groups * 8, generator=generator)
+    reference = F.conv3d(
+        inp.double(), weight.double(), bias_base[::2].double(), groups=groups
+    ).float()
+    actual = flag_gems.conv3d(
+        inp.to(flag_gems.device),
+        weight.to(flag_gems.device),
+        bias_base.to(flag_gems.device)[::2],
+        groups=groups,
+    )
+    torch.testing.assert_close(actual.cpu(), reference, rtol=2e-3, atol=2e-4)

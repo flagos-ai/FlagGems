@@ -174,10 +174,51 @@ def conv3d_forward_kernel(
                 output_c_offset < out_per_group_c
             )[None, :]
 
-            input_block = tl.load(curr_input_pointer, mask=input_mask, other=0)
-            weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0)
-
-            accum += tl.dot(input_block, weight_block, allow_tf32=False)
+            if input_pointer.dtype.element_ty == tl.float32:
+                # Ascend Cube FP32 dot can lose precision despite IEEE input
+                # precision. Accumulate full-precision channel products on
+                # Vector; FP16/BF16 retain the Cube path below.
+                spatial_mask = (
+                    (in_n_point_value < in_n)
+                    & (input_depth_offset >= 0)
+                    & (input_depth_offset < input_depth)
+                    & (input_height_offset >= 0)
+                    & (input_height_offset < input_height)
+                    & (input_width_offset >= 0)
+                    & (input_width_offset < input_width)
+                )
+                input_base = (
+                    input_n_stride * in_n_point_value
+                    + input_c_stride * pid_group * weight_c
+                    + input_depth_stride * input_depth_offset
+                    + input_height_stride * input_height_offset
+                    + input_width_stride * input_width_offset
+                )
+                channel_mask = output_c_offset < out_per_group_c
+                weight_base = (
+                    weight_n_stride * (pid_group * out_per_group_c + output_c_offset)
+                    + weight_depth_stride * d
+                    + weight_height_stride * h
+                    + weight_width_stride * w
+                )
+                for lane in range(tl.minimum(BLOCK_CI, weight_c - c)):
+                    input_offset = tl.where(
+                        spatial_mask, input_base + input_c_stride * (c + lane), 0
+                    )
+                    weight_offset = tl.where(
+                        channel_mask, weight_base + weight_c_stride * (c + lane), 0
+                    )
+                    input_value = tl.load(
+                        input_pointer + input_offset, spatial_mask, other=0
+                    )
+                    weight_value = tl.load(
+                        weight_pointer + weight_offset, channel_mask, other=0
+                    )
+                    accum = tl.fma(input_value[:, None], weight_value[None, :], accum)
+            else:
+                input_block = tl.load(curr_input_pointer, mask=input_mask, other=0)
+                weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0)
+                accum += tl.dot(input_block, weight_block, allow_tf32=False)
         if HAS_BIAS:
             bias_offset = (pid_group * out_per_group_c + output_c_offset) * bias_stride
             bias = tl.load(
@@ -265,9 +306,9 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
             raise RuntimeError("conv3d padding must be nonnegative")
     n, _, depth, height, width = input.shape
     out_c, weight_c, kd, kh, kw = weight.shape
-    # Cube's K tile is always 16. Explicit vendor padding handles the original
-    # small-channel rank-5 case and grouped rank-6 case without aten.pad.
-    if weight_c < 16:
+    # The FP16/BF16 Cube path needs a K tile of 16. FP32 uses Vector FMA and
+    # keeps the original channel count without unnecessary aligned padding.
+    if weight_c < 16 and input.dtype != torch.float32:
         pad_c = 16 - weight_c
         if groups == 1:
             input = constant_pad_nd(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
@@ -290,7 +331,8 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     )
     if output.numel():
         tiles_m = triton.cdiv(n * out_spatial[0] * out_spatial[1] * out_spatial[2], 32)
-        tiles_co = triton.cdiv(out_c // groups, 32)
+        block_co = 8 if input.dtype == torch.float32 else 32
+        tiles_co = triton.cdiv(out_c // groups, block_co)
         grid = (min(tiles_m * tiles_co * groups, _CONV3D_MAX_GRID),)
         with torch_device_fn.device(input.device):
             conv3d_forward_kernel[grid](
@@ -321,6 +363,6 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                 bias_stride=0 if bias is None else bias.stride(0),
                 BLOCK_NI_DO_HO_WO=32,
                 BLOCK_CI=16,
-                BLOCK_CO=32,
+                BLOCK_CO=block_co,
             )
     return output.squeeze(0) if unbatched else output
