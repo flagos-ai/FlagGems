@@ -3190,18 +3190,6 @@ ops:
   - Math
   stages:
   - beta: '5.3'
-- id: clone
-  description: Pure layout/memory operation (clone).
-  for:
-  - clone
-  labels:
-  - KernelGen
-  - aten
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: coalesced_
   description: 'Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
 
@@ -8342,18 +8330,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
-- id: fused_moe
-  description: The generic interface for fused MoE.
-  for:
-  - vllm.model_executor.layers.fused_moe.fused_moe.fused_experts_impl
-  labels:
-  - fused
-  - vLLM
-  - MoE
-  kind:
-  - NeuralNetwork
-  stages:
-  - beta: '5.3'
 - id: fused_moving_avg_obs_fake_quant
   description: 'Fused moving-average observer with fake-quantize for QAT; performs
     min/max reduction, EMA running stats update, scale/zero_point calculation, and
