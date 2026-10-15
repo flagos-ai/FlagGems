@@ -1,0 +1,4 @@
+# The repo-root .gitignore ignores any `obj/` directory as a C#/build artifact.
+# Here payload/obj holds the SHIPPED precompiled `.o` payloads the ops load, so
+# re-include it. (A .gitignore this deep outranks the root one.)
+!obj/

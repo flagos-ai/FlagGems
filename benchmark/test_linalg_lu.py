@@ -15,8 +15,11 @@ if VENDOR == "nvidia":
 else:
     _TEST_DTYPES = [torch.float32]
 
-# pivot=False is only supported on CUDA
-if DEVICE == "cuda":
+# pivot=False is only genuinely supported on real CUDA. On Kunlunxin (which
+# also reports DEVICE == "cuda") there is no no-pivot LU: the flag_gems kernel
+# raises NotImplementedError (the vendor lu_factor_ex primitive rejects it) and
+# torch.linalg.lu(pivot=False) falls back to CPU where it is unimplemented.
+if DEVICE == "cuda" and VENDOR != "kunlunxin":
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]
