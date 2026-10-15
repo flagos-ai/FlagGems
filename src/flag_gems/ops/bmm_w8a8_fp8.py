@@ -145,7 +145,7 @@ def bmm_w8a8_fp8(
     out_dtype=torch.bfloat16,
     out=None,
 ):
-    logger.debug("GEMS BMM W8A8 FP8 BLOCK_SCALE")
+    logger.debug("GEMS BMM_W8A8_FP8_BLOCK_SCALE")
     assert A.ndim == 3 and B.ndim == 3 and A_scale.ndim == 3 and B_scale.ndim == 3
     assert A.shape[0] == B.shape[0] == A_scale.shape[0] == B_scale.shape[0]
     assert A.shape[2] == B.shape[1], "K dim mismatch"

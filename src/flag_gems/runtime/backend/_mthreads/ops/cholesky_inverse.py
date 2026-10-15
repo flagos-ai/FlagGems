@@ -47,7 +47,17 @@ def _f64_bmm_fallback(a, b):
     return res
 
 
-def _matmul_with_fallback(a, b):
+def _scatter_fallback_result(out, res):
+    # `out=` is part of the public signature of both patched entry points, so it
+    # has to survive the shim: write the fallback result into the caller's
+    # buffer instead of returning a fresh tensor.
+    if out is None:
+        return res
+    out.copy_(res)
+    return out
+
+
+def _matmul_with_fallback(a, b, *, out=None):
     if (
         isinstance(a, torch.Tensor)
         and isinstance(b, torch.Tensor)
@@ -59,13 +69,13 @@ def _matmul_with_fallback(a, b):
         and a.shape[:-2] == b.shape[:-2]
     ):
         try:
-            return _orig_matmul(a, b)
+            return _orig_matmul(a, b, out=out)
         except RuntimeError:
-            return _f64_bmm_fallback(a, b)
-    return _orig_matmul(a, b)
+            return _scatter_fallback_result(out, _f64_bmm_fallback(a, b))
+    return _orig_matmul(a, b, out=out)
 
 
-def _bmm_with_fallback(a, b):
+def _bmm_with_fallback(a, b, *, out=None):
     if (
         isinstance(a, torch.Tensor)
         and isinstance(b, torch.Tensor)
@@ -76,10 +86,10 @@ def _bmm_with_fallback(a, b):
         and (a.device.type == "musa" or b.device.type == "musa")
     ):
         try:
-            return _orig_bmm(a, b)
+            return _orig_bmm(a, b, out=out)
         except RuntimeError:
-            return _f64_bmm_fallback(a, b)
-    return _orig_bmm(a, b)
+            return _scatter_fallback_result(out, _f64_bmm_fallback(a, b))
+    return _orig_bmm(a, b, out=out)
 
 
 torch.Tensor.__matmul__ = _matmul_with_fallback

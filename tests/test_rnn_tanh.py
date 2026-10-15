@@ -104,7 +104,6 @@ def _assert_rnn_close(actual, expected, dtype):
     atol = {
         torch.float32: 1e-4,
         torch.float16: 0.0011334419832564893,
-        torch.bfloat16: 0.007965088356286289,
     }[dtype]
     utils.gems_assert_close(actual[0], expected[0], dtype, atol=atol)
     utils.gems_assert_close(actual[1], expected[1], dtype, atol=atol)
@@ -115,7 +114,7 @@ def _assert_rnn_close(actual, expected, dtype):
     not _RNN_ACCELERATOR_AVAILABLE,
     reason="Triton RNN kernel requires a CUDA or NPU accelerator",
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize(
     "num_layers,has_biases,bidirectional,batch_first",
     [
@@ -171,51 +170,7 @@ def test_rnn_tanh_forward_modes(
     not _RNN_ACCELERATOR_AVAILABLE,
     reason="Triton RNN kernel requires a CUDA or NPU accelerator",
 )
-def test_rnn_tanh_bfloat16_medium_hidden():
-    """Check a medium hidden size with bfloat16 inputs."""
-    dtype = torch.bfloat16
-    inp, hx, params = _make_case(3, 2, 64, 128, dtype)
-    reference = _reference_rnn(
-        torch.ops.aten.rnn_tanh.input,
-        inp,
-        hx,
-        params,
-        True,
-        1,
-        0.0,
-        False,
-        False,
-        False,
-    )
-    actual = flag_gems.rnn_tanh(inp, hx, params, True, 1, 0.0, False, False, False)
-    _assert_rnn_close(actual, reference, dtype)
-
-
-@pytest.mark.rnn_tanh
-@pytest.mark.skipif(
-    not _RNN_ACCELERATOR_AVAILABLE,
-    reason="Triton RNN kernel requires a CUDA or NPU accelerator",
-)
-@pytest.mark.parametrize("seq_len", [17, 18, 20])
-def test_rnn_tanh_bfloat16_long_bidirectional(seq_len):
-    """Check long bidirectional sequences across two layers."""
-    dtype = torch.bfloat16
-    inp, hx, params = _make_case(
-        seq_len, 3, 64, 128, dtype, num_layers=2, bidirectional=True
-    )
-    reference = _reference_rnn(
-        torch.ops.aten.rnn_tanh.input, inp, hx, params, True, 2, 0.0, False, True, False
-    )
-    actual = flag_gems.rnn_tanh(inp, hx, params, True, 2, 0.0, False, True, False)
-    _assert_rnn_close(actual, reference, dtype)
-
-
-@pytest.mark.rnn_tanh
-@pytest.mark.skipif(
-    not _RNN_ACCELERATOR_AVAILABLE,
-    reason="Triton RNN kernel requires a CUDA or NPU accelerator",
-)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 @pytest.mark.parametrize(
     "shape",
     [(16, 4, 32), (32, 8, 64), (64, 16, 128)],

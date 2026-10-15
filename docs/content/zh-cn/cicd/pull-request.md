@@ -218,6 +218,20 @@ Because these jobs are skipped when the corresponding label is absent, a
 `examples`, `backend-tests`, and `alpha-ops` with `if: always()`, so branch
 protection can require a single, always-present check instead of the
 individual label-gated jobs.
+
+The `python-op` and `examples` jobs in `unittest.yaml`, plus the jobs in
+`cpp-op-test.yaml` and `backend-test.yaml`, first run an independent
+`actions/checkout` with `continue-on-error`, then call `checkout-retry`.
+The composite action makes at most three attempts (one initial attempt and
+two retries, waiting 30s before each retry), so these PR test jobs can make
+up to four checkout attempts in total. `rule-check.yaml` and `linter.yml`
+instead use `robust-checkout` with `rounds: 30` (the action defaults to 3).
+Each round tries SSH when a key is available, then HTTPS, and stops after a
+successful fetch. Each link has a 10s connection probe and a 180s hard fetch
+timeout. HTTP fetch also aborts after 20s below 20 KiB/s; SSH uses keepalives
+every 5s and aborts after two unanswered probes. There is no fixed wait
+between rounds. The 30-round setting counts link-rotation cycles, not checkout
+retries; the four-attempt limit above does not apply to these workflows.
 -->
 `backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会检出 PR 代码、
 运行对应厂商的 GPU 可用性检查、通过 `setup-flaggems` 组合动作搭建环境，
@@ -235,6 +249,20 @@ individual label-gated jobs.
 `if: always()` 聚合 `preprocess`、`cpp-op`、`python-op`、`examples`、
 `backend-tests`、`alpha-ops` 的结果，使分支保护规则可以要求这一个始终存在
 的检查，而不必逐个要求那些按标签门控的作业。
+
+`unittest.yaml` 的 `python-op`、`examples`，以及 `cpp-op-test.yaml`、
+`backend-test.yaml` 中的作业，会先独立执行一次允许失败的
+`actions/checkout`，再调用 `checkout-retry`。该组合动作内部最多尝试检出
+3 次（首次检出加最多 2 次重试，每次重试前等待 30 秒），因此这类 PR 测试
+作业合计最多可尝试检出 4 次。
+
+`rule-check.yaml` 和 `linter.yml` 均将 `robust-checkout` 的 `rounds`
+设为 30（动作默认值为 3）。每轮先尝试 SSH（有密钥时），再尝试 HTTPS；
+任一链路成功就结束，密钥为空时跳过 SSH。每条链路的连接探测最多 10 秒，
+fetch 的硬超时为 180 秒。HTTP fetch 若连续 20 秒低于 20 KiB/s 也会中止；
+SSH 每隔 5 秒发送 keepalive，连续 2 次无响应则中止。
+轮次之间没有固定等待。“30 轮”指链路轮转次数，并非重试检出 30 次；
+上述 4 次检出上限不适用于这两个工作流。
 
 <!--
 ## 5. On-demand and comment-triggered workflows

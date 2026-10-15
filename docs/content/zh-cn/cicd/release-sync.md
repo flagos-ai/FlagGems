@@ -115,21 +115,64 @@ project stays available on domestic Git hosting mirrors.
 托管平台上同样保持可用。
 
 <!--
+## `build-deb.yml` and `build-rpm.yml` — distribution packages
+
+**Trigger:** `pull_request` against `master` that touches
+`packaging/debian/**` (or `packaging/rpm/**`) or
+`packaging/verify-installed-package.py`; also manual `workflow_dispatch`.
+
+These workflows only verify that the packaging definition still builds and
+installs; they are not a release path. Packages published to the FlagOS
+repositories are built and uploaded by `flagos-ai/build-infra` from a pinned
+ref, so no tag triggers a build here. The `pull_request` path filter is
+deliberate: a source-only PR has no consumer for a `.deb` or `.rpm`, so
+those changes are covered by the repository's own tests instead.
+
+Each workflow builds its package in a `manylinux_2_28_x86_64` container,
+then smoke-tests the result by installing it into a clean `ubuntu:22.04`
+(`.deb`) or `fedora:43` (`.rpm`) image and running
+`packaging/verify-installed-package.py`. That step exists because a package
+can install cleanly and still be broken: a bare `Depends:`/`Requires:` can
+resolve to a too-old distro version, and a subpackage missing an
+`__init__.py` is silently dropped by `find_packages()`. Both only surface at
+import time, long after `dpkg -l` or `rpm -q` reports success.
+
+Artifacts are uploaded as `flag-gems-amd64-packages` and
+`flag-gems-amd64-rpm-packages` (7-day retention).
+
 ## Other operational workflows
 
-- **`probe-node.yaml`** — manual `workflow_dispatch` to check a self-hosted
-  runner (e.g. `h100`, `a100`) is online and healthy.
-- **`random-test.yaml`** — manual `workflow_dispatch` to run an arbitrary
-  set of operators against arbitrary GPUs on a chosen runner, for ad-hoc
-  investigation.
-- **`review-stats.yaml`** — manual `workflow_dispatch` to generate PR review
-  statistics for a date range.
+The manually dispatched tools that do not touch releases — `probe-node.yaml`,
+`random-test.yaml`, `review-stats.yaml`, plus the comment-triggered
+`fix-sort.yaml` — are documented in
+[Scheduled and on-demand testing](/FlagGems/zh-cn/cicd/scheduled/), which
+owns everything you start by hand.
 -->
+## `build-deb.yml` 与 `build-rpm.yml` —— 发行版安装包
+
+**触发条件：** 针对 `master` 且改动了 `packaging/debian/**`
+（或 `packaging/rpm/**`）、`packaging/verify-installed-package.py` 的
+`pull_request`；此外支持手动触发（`workflow_dispatch`）。
+
+这两个工作流只验证打包定义仍能构建并安装，不是发布路径：发布到 FlagOS
+软件仓库的安装包由 `flagos-ai/build-infra` 按固定的 ref 统一构建并上传，
+因此这里不再由标签触发构建。`pull_request` 的路径过滤是有意为之：纯粹的
+源码 PR 没有 `.deb` 或 `.rpm` 的使用方，这类改动由仓库自身的测试覆盖即可。
+
+两个工作流均在 `manylinux_2_28_x86_64` 容器内构建安装包，随后把产物安装到
+干净的 `ubuntu:22.04`（`.deb`）或 `fedora:43`（`.rpm`）镜像中运行
+`packaging/verify-installed-package.py` 做冒烟测试。这一步很有必要，因为
+安装成功并不代表可用：未加版本约束的 `Depends:`/`Requires:` 可能解析到发行版
+中过旧的版本，而缺少 `__init__.py` 的子包会被 `find_packages()` 静默丢弃。
+这两种问题都要到导入时才暴露，而那时 `dpkg -l` 或 `rpm -q` 早已显示安装成功。
+
+构件分别以 `flag-gems-amd64-packages` 和 `flag-gems-amd64-rpm-packages`
+上传，保留 7 天。
+
 ## 其他运维类工作流
 
-- **`probe-node.yaml`** —— 手动触发（`workflow_dispatch`），用于检查某个
-  自托管 runner（例如 `h100`、`a100`）是否在线且状态正常。
-- **`random-test.yaml`** —— 手动触发（`workflow_dispatch`），可在指定 runner
-  上针对任意选定的算子和 GPU 组合运行测试，用于临时排查问题。
-- **`review-stats.yaml`** —— 手动触发（`workflow_dispatch`），用于生成
-  指定日期范围内的 PR 评审统计数据。
+不涉及发布、需要手动触发的工具类工作流 —— `probe-node.yaml`、
+`random-test.yaml`、`review-stats.yaml`，以及由评论触发的
+`fix-sort.yaml` —— 统一记录在
+[定时与按需测试](/FlagGems/zh-cn/cicd/scheduled/)，凡是需要手动启动的
+工作流都归那一页。

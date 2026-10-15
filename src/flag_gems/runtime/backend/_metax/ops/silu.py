@@ -51,5 +51,5 @@ silu_forward = pointwise_dynamic(
 def silu(self: torch.Tensor) -> torch.Tensor:
     if not self.is_contiguous() or self.dtype not in _SUPPORTED_DTYPES:
         return _generic_silu(self)
-    logger.debug("GEMS_METAX SILU FORWARD")
+    logger.debug("GEMS_METAX SILU_FORWARD")
     return silu_forward(self)

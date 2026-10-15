@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
+import os
 
 import torch
 import triton
@@ -25,6 +27,20 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 
 logger = logging.getLogger(__name__)
+
+
+# The 910B compiler reads the environment; keep compilation and launch aligned.
+@contextlib.contextmanager
+def _blockified():
+    previous = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TRITON_ALL_BLOCKS_PARALLEL", None)
+        else:
+            os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = previous
 
 
 # Preserve the existing candidates for other dtypes, layouts, and small GEMMs.
@@ -303,15 +319,31 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
     ):
         partial = torch.empty((M, N), dtype=torch.float32, device=mat1.device)
         bm = 64 if N < 512 else 256
-        with torch_device_fn.device(mat1.device):
+        with torch_device_fn.device(mat1.device), _blockified():
             _addmm_small_mm[(triton.cdiv(M, bm) * triton.cdiv(N, 128),)](
-                mat1, mat2, partial, N, bm, num_warps=4, num_stages=2
+                mat1,
+                mat2,
+                partial,
+                N,
+                bm,
+                enable_auto_blockify=True,
+                num_warps=4,
+                num_stages=2,
             )
             if alpha == 1 and beta == 1:
-                _addmm_small_add[(triton.cdiv(M * N, 8192),)](partial, bias, out, N)
+                _addmm_small_add[(triton.cdiv(M * N, 8192),)](
+                    partial, bias, out, N, enable_auto_blockify=True
+                )
             else:
                 _addmm_small_finish[(triton.cdiv(M * N, 8192),)](
-                    partial, bias, out, alpha, beta, N, UNIT=False
+                    partial,
+                    bias,
+                    out,
+                    alpha,
+                    beta,
+                    N,
+                    UNIT=False,
+                    enable_auto_blockify=True,
                 )
         return out
 
@@ -354,7 +386,7 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         META.get("SPLIT_K", 1),
     )
-    with torch_device_fn.device(mat1.device):
+    with torch_device_fn.device(mat1.device), _blockified():
         addmm_kernel[grid](
             mat1,
             mat2,
@@ -375,6 +407,7 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
             out.stride(1),
             dot_out_dtype=dot_out_dtype,
             GROUP_M=8,
+            enable_auto_blockify=True,
             BIAS_IS_VECTOR=bias_is_vector,
             BIAS_IS_SCALAR=bias_is_scalar,
             DOT_PAD_ONLY_K=(
@@ -415,6 +448,13 @@ def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
+        # Preserve aliased inputs before writing the output.
+        if torch._C._is_alias_of(out, bias):
+            bias = bias.clone()
+        if torch._C._is_alias_of(out, mat1):
+            mat1 = mat1.clone()
+        if torch._C._is_alias_of(out, mat2):
+            mat2 = mat2.clone()
     return _launch_addmm(bias, mat1, mat2, out, alpha, beta)
 
 

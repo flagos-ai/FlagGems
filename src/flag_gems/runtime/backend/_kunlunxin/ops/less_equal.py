@@ -315,7 +315,7 @@ def less_equal_func_tensor_inplace(x, y):
 
 
 def less_equal_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL__TENSOR")
     if A.device != B.device:
         if A.device.type == device:
             B = B.to(A.device)
@@ -392,7 +392,7 @@ def less_equal_func_scalar_inplace(x, y):
 
 
 def less_equal_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN LESS_EQUAL__SCALAR")
     numel = A.numel()
     if (
         A.is_contiguous()

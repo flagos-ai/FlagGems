@@ -20,7 +20,7 @@ from .bitwise_and import bitwise_and_func_scalar, bitwise_and_scalar
 
 # Use the generic op's logger name so the functional test's
 # ``caplog.at_level("DEBUG", logger="flag_gems.ops.and_scalar")`` assertion on
-# the "GEMS AND SCALAR" message still fires from this backend override.
+# the "GEMS AND_SCALAR" message still fires from this backend override.
 logger = logging.getLogger("flag_gems.ops.and_scalar")
 
 

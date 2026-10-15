@@ -15,6 +15,9 @@ COMPLEX_DTYPES = [torch.complex64]
 if flag_gems.runtime.device.support_fp64:
     SUPPORTED_DTYPES.extend([torch.float64, torch.complex128])
     COMPLEX_DTYPES.append(torch.complex128)
+if not utils.complex_is_supported:
+    SUPPORTED_DTYPES = [d for d in SUPPORTED_DTYPES if not d.is_complex]
+    COMPLEX_DTYPES = []
 
 
 def _randn(shape, dtype):

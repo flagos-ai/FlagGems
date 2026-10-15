@@ -270,7 +270,7 @@ def _launch_column(call, split_k=-1):
 
 def mv(input, vec, *, out=None):
     """Dispatch the workload from tensor metadata, then launch the selected plan."""
-    logger.debug("GEMS METAX MV")
+    logger.debug("GEMS_METAX MV")
     m, k = input.shape
     if out is None:
         out = torch.empty((m,), device=input.device, dtype=input.dtype)

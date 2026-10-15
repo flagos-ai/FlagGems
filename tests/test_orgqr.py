@@ -5,6 +5,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
+
 ORGQR_SHAPES = [(3, 0), (4, 3), (8, 5), (16, 8), (32, 16), (64, 32), (128, 64)]
 ORGQR_BATCH_SHAPES = [(0, 4, 3), (2, 8, 5), (2, 3, 16, 8)]
 ORGQR_DTYPES = [torch.float32, torch.float64]
@@ -50,7 +54,7 @@ def test_orgqr_invalid_shapes():
 
 
 @pytest.mark.orgqr
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_orgqr_complex_is_explicitly_unsupported(dtype):
     input, tau = make_reflectors((4, 3), dtype)
     assert torch.orgqr(input, tau).dtype == dtype

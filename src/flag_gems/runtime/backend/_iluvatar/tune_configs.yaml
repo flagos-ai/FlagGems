@@ -1208,130 +1208,120 @@ var_mean:
   - 8
   - 16
 conv2d_forward:
-- META:
-    BLOCK_NI_HO_WO: 16
-    BLOCK_CO: 16
-    BLOCK_CI: 16
-- META:
-    BLOCK_NI_HO_WO: 32
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 2
-- META:
-    BLOCK_NI_HO_WO: 32
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_warps: 4
-  num_stages: 3
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 256
-    BLOCK_CI: 32
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_NI_HO_WO: 256
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_NI_HO_WO: 256
-    BLOCK_CO: 64
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 256
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 128
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_NI_HO_WO: 128
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_NI_HO_WO: 64
-    BLOCK_CO: 32
-    BLOCK_CI: 32
-  num_stages: 5
-  num_warps: 2
+  - META:
+      BLOCK_NI_HO_WO: 16
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 64
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 64
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 64
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 64
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 64
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 256
+      BLOCK_CO: 64
+      BLOCK_CI: 16
+    num_warps: 16
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 32
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 64
+      BLOCK_CI: 32
+    num_warps: 16
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 16
+    num_stages: 1
 conv2d_backward_weight:
 - META:
     BLOCK_CI_HK_WK: 32

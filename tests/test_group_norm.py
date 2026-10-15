@@ -60,7 +60,9 @@ def test_native_group_norm(shape, num_groups, dtype, affine, caplog):
         eps,
     )
 
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.native_group_norm"):
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.native_group_norm)
+    ):
         result = flag_gems.native_group_norm(
             inp,
             weight,

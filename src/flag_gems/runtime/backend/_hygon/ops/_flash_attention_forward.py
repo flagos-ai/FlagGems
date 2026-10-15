@@ -261,7 +261,7 @@ def run(
     seqused_k=None,
     alibi_slopes=None,
 ):
-    _GEMS_LOGGER.debug("GEMS _FLASH_ATTENTION_FORWARD")
+    _GEMS_LOGGER.debug("GEMS_HYGON _FLASH_ATTENTION_FORWARD")
     q4 = query
     k4 = key
     v4 = value

@@ -1047,7 +1047,7 @@ def nll_loss_nd_forward(
     reduction: int = 1,
     ignore_index: int = -100,
 ):
-    logger.debug("GEMS_KUNLUNXIN NLL LOSS ND FWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_ND_FWD")
     if input.numel() == 0:
         if reduction == 0:
             loss = torch.empty(target.shape, dtype=input.dtype, device=input.device)
@@ -1076,7 +1076,7 @@ def nll_loss_nd_backward(
     ignore_index: int = -100,
     total_weight: torch.Tensor = None,
 ):
-    logger.debug("GEMS_KUNLUNXIN NLL LOSS ND BWD")
+    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_ND_BWD")
     if input.numel() == 0:
         return torch.empty_like(input)
     if input.dim() < 3:

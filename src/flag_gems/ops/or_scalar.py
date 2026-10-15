@@ -27,5 +27,5 @@ def or_scalar(self, other):
     ``__or__.Scalar`` and ``bitwise_or.Scalar`` are the same operation's two
     entry points in ATen (verified numerically and by schema).
     """
-    logger.debug("GEMS OR SCALAR")
+    logger.debug("GEMS OR_SCALAR")
     return bitwise_or_scalar(self, other)

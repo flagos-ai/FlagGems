@@ -1310,3 +1310,33 @@ mul_broadcast_tiled:
       BLOCK_N: 32
     num_warps: 4
     num_stages: 3
+
+linear:
+- META:
+    BLOCK_M: 16
+    BLOCK_N: 256
+    BLOCK_K: 256
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 64
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 128
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 256
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 256
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 256
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 256

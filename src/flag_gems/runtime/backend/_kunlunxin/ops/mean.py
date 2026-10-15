@@ -180,6 +180,10 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
         return out
 
     shape = list(x.shape)
+    # `flag_gems.mean_dim` may be called with a bare int dim (the generic
+    # implementation accepts that form); normalize before iterating.
+    if isinstance(dim, int):
+        dim = [dim]
     dim = [d % x.ndim for d in dim]
 
     # Empty reduction domain (e.g. a (0, 3) input reduced over dim=0): torch

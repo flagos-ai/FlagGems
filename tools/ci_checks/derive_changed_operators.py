@@ -85,6 +85,26 @@ def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
     on the base branch after the PR was created. This matches the semantics of
     GitHub's "Files changed" view.
     """
+    # Fail early with a clear message if either endpoint isn't a local commit.
+    # Otherwise `git diff base...head` reports the internal "Invalid symmetric
+    # difference expression", which looks like a syntax error but actually means
+    # the SHA's commit object is absent (e.g. robust-checkout didn't fetch the
+    # base). git's own wording misleads whoever reads the CI log.
+    for label, sha in (("base", base_sha), ("head", head_sha)):
+        probe = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            print(
+                f"::error::{label} SHA {sha} is not present in the local repo "
+                f"(its commit object was never fetched), so base...head diffs "
+                f"cannot resolve. Ensure the checkout fetches this ref.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     try:
         result = subprocess.run(
             [
@@ -128,6 +148,50 @@ def filename_to_operator_id(filename: str) -> str | None:
     return filename if filename else None
 
 
+def resolve_multi_op_impl(filepath: str, all_operators: dict) -> list[str]:
+    """Resolve the operator ids exported by a shared backend impl module.
+
+    Some backend implementation files implement several operators at once (e.g.
+    ``_kunlunxin/ops/_foreach_binary_scalar.py`` exports every
+    ``_foreach_*.Scalar``/``.ScalarList`` overload), so their file stem is not
+    an operator id.  The ops ``__init__.py`` re-exports each of them as
+    ``from ._module import (name, ...)``, and each ``name`` is an
+    ``operators.yaml`` ``for`` value with ``.`` replaced by ``_``, so names can
+    be resolved back to operator ids.
+
+    Return the resolved ids, or [] when the file is not a multi-op impl (or
+    nothing can be resolved).
+    """
+    init_path = Path(filepath).with_name("__init__.py")
+    if not init_path.exists():
+        return []
+    # Reverse map: "<for value with . -> _>" (the re-export name) -> op id.
+    # Example: _foreach_mul_.Scalar -> _foreach_mul__Scalar -> foreach_mul_scalar_.
+    rev = {}
+    for op in all_operators.values():
+        for f in op.get("for", []) or []:
+            rev[f.replace(".", "_")] = op["id"]
+    try:
+        src = init_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    stem = Path(filepath).stem
+    m = re.search(rf"from \.{re.escape(stem)} import \((.*?)\)", src, re.DOTALL)
+    if m is None:
+        m = re.search(rf"from \.{re.escape(stem)} import ([^\n()]+)", src)
+    if m is None:
+        return []
+    ids = []
+    for token in re.split(r"[,\s()]+", m.group(1)):
+        name = token.split("#")[0].strip()
+        if not name:
+            continue
+        op_id = rev.get(name)
+        if op_id is not None and op_id not in ids:
+            ids.append(op_id)
+    return ids
+
+
 def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]:
     """Given changed files, derive which operator IDs are affected."""
     changed_ops = set()
@@ -153,9 +217,17 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
             if op_id in all_operators:
                 changed_ops.add(op_id)
             else:
-                # Try without trailing underscore (inplace variants)
-                # e.g., ops file might be abs_.py for abs_ operator
-                changed_ops.add(op_id)
+                # The file stem is not an operator id: it may be a shared impl
+                # module exporting several operators (e.g.
+                # _foreach_binary_scalar.py). Resolve the real ids from the
+                # ops/__init__.py re-exports; fall back to the raw stem when
+                # nothing can be resolved so behavior for unknown files is
+                # unchanged.
+                resolved = resolve_multi_op_impl(filepath, all_operators)
+                if resolved:
+                    changed_ops.update(resolved)
+                else:
+                    changed_ops.add(op_id)
             continue
 
         # Case 3: test file changed

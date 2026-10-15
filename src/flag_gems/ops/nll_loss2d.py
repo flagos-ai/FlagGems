@@ -158,95 +158,9 @@ _TORCH_TO_TL = {
 
 def nll_loss2d(self, target, weight=None, reduction=1, ignore_index=-100):
     logger.debug("GEMS NLL_LOSS2D")
+    from flag_gems.ops.nllloss import NllLoss2dForwardFunction
 
-    assert self.ndim == 4, "nll_loss2d: expected 4D input (N, C, H, W)"
-    assert self.dtype in (
-        torch.float16,
-        torch.bfloat16,
-        torch.float32,
-    ), f"nll_loss2d: unsupported dtype {self.dtype}"
-
-    N, C, H, W = self.shape
-    total = N * H * W
-
-    reduction_val = (
-        int(reduction.item()) if isinstance(reduction, torch.Tensor) else int(reduction)
+    output, _ = NllLoss2dForwardFunction.apply(
+        self, target, weight, reduction, ignore_index
     )
-    ignore_index_val = (
-        int(ignore_index.item())
-        if isinstance(ignore_index, torch.Tensor)
-        else int(ignore_index)
-    )
-    has_weight = weight is not None
-    out_dtype = self.dtype
-
-    self = self.contiguous()
-    target = target.contiguous()
-    if weight is not None:
-        weight = weight.contiguous()
-
-    # BLOCK=1024 balances occupancy against the number of stage-1 partials the
-    # single-block finalize kernel must later reduce.
-    BLOCK = 1024
-    grid = (triton.cdiv(total, BLOCK),)
-
-    # reduction: 0=none, 1=mean, 2=sum
-    if reduction_val == 0:
-        out = torch.empty((N, H, W), dtype=torch.float32, device=self.device)
-        _nll_loss2d_none_kernel[grid](
-            self,
-            target,
-            weight,
-            out,
-            N,
-            C,
-            H,
-            W,
-            total,
-            HAS_WEIGHT=has_weight,
-            IGNORE_INDEX=ignore_index_val,
-            BLOCK=BLOCK,
-            num_warps=8,
-            num_stages=2,
-        )
-        return out.to(out_dtype)
-
-    num_blocks = grid[0]
-    # One scratch allocation holding both partial arrays: row 0 = loss, row 1 =
-    # weight. Views are free, so this is a single device allocation.
-    partials = torch.empty((2, num_blocks), dtype=torch.float32, device=self.device)
-    partial_loss = partials[0]
-    partial_weight = partials[1]
-
-    _nll_loss2d_reduce_kernel[grid](
-        self,
-        target,
-        weight,
-        partial_loss,
-        partial_weight,
-        N,
-        C,
-        H,
-        W,
-        total,
-        HAS_WEIGHT=has_weight,
-        REDUCTION=reduction_val,
-        IGNORE_INDEX=ignore_index_val,
-        BLOCK=BLOCK,
-        num_warps=8,
-        num_stages=2,
-    )
-
-    out = torch.empty((), dtype=out_dtype, device=self.device)
-    # Single block reduces every stage-1 partial; size it to cover num_blocks.
-    finalize_block = triton.next_power_of_2(num_blocks)
-    _nll_loss2d_finalize_kernel[(1,)](
-        partial_loss,
-        partial_weight,
-        out,
-        num_blocks,
-        REDUCTION=reduction_val,
-        OUT_DTYPE=_TORCH_TO_TL[out_dtype],
-        BLOCK=finalize_block,
-    )
-    return out
+    return output

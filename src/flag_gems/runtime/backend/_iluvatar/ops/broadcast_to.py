@@ -33,7 +33,7 @@ def broadcast_to(x, size):
     ``torch.as_strided``, matching PyTorch's O(1) metadata-only
     semantics.  Same approach as the thead backend (PR #50).
     """
-    logger.debug("GEMS ILUVATAR BROADCAST_TO")
+    logger.debug("GEMS_ILUVATAR BROADCAST_TO")
 
     if not isinstance(size, (list, tuple, torch.Size)):
         raise TypeError("broadcast_to size must be a list/tuple/torch.Size of ints")

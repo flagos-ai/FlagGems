@@ -28,7 +28,12 @@ FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
-EXTRA_INT_DTYPES = [torch.int8, torch.uint8, torch.int64]
+# int64 is gated on the backend: on targets that only emulate it (gcu300, where
+# the topsaten path aborts the process rather than raising) generating int64
+# cases would kill the whole benchmark run.
+EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
+if flag_gems.runtime.device.support_int64:
+    EXTRA_INT_DTYPES.append(torch.int64)
 
 
 def get_fp8_dtype():

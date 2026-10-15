@@ -151,6 +151,8 @@ def _argsort_before(a, ai, b, bi, DESC: tl.constexpr):
 
 @triton.jit
 def _argsort_row_offset(row, SHAPE: tl.constexpr, STRIDES: tl.constexpr):
+    if len(SHAPE) == 1:
+        return row.to(tl.int64) * STRIDES[0]
     offset = tl.full(row.shape, 0, tl.int64)
     for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
         coord = row - row // SHAPE[axis] * SHAPE[axis]
@@ -206,13 +208,13 @@ def _argsort_pack_key(values, indices, INDEX_BITS: tl.constexpr, DESC: tl.conste
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["ROWS"])
 def _argsort_tiles(
     inp,
     values_out,
     indices_out,
     N: tl.constexpr,
-    ROWS: tl.constexpr,
+    ROWS,
     SHAPE: tl.constexpr,
     STRIDES: tl.constexpr,
     AXIS_STRIDE: tl.constexpr,
@@ -479,6 +481,10 @@ def _argsort_merge_entry(inp, dim=-1, descending=False):
         raise NotImplementedError("argsort supports fewer than 2**31 elements per row")
     rows = inp.numel() // n
     shape = tuple((s for i, s in enumerate(inp.shape) if i != dim))
+    # A single row dimension needs only its stride; its size must not create
+    # another compiled kernel for each batch size.
+    if len(shape) == 1:
+        shape = (1,)
     strides = tuple((s for i, s in enumerate(inp.stride()) if i != dim))
     out_strides = tuple((s for i, s in enumerate(out.stride()) if i != dim))
     axis_stride = inp.stride(dim) if rank else 1
@@ -986,6 +992,10 @@ def _argsort_radix(inp, dim, descending):
     n = inp.shape[dim] if rank else 1
     rows = inp.numel() // n
     shape = tuple((s for i, s in enumerate(inp.shape) if i != dim))
+    # A single row dimension needs only its stride; its size must not create
+    # another compiled kernel for each batch size.
+    if len(shape) == 1:
+        shape = (1,)
     strides = tuple((s for i, s in enumerate(inp.stride()) if i != dim))
     out = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
     out_strides = tuple((s for i, s in enumerate(out.stride()) if i != dim))

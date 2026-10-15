@@ -32,8 +32,7 @@ def test_triu(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.triu(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.triu(inp, diagonal)
+    res_out = flag_gems.triu(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous(), "triu output should be contiguous"
@@ -52,8 +51,7 @@ def test_triu_noncontiguous(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.triu(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.triu(inp, diagonal)
+    res_out = flag_gems.triu(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous(), "triu output should always be contiguous"
@@ -74,8 +72,7 @@ def test_triu_(shape, diagonal, dtype):
     original_stride = inp.stride()
     original_data_ptr = inp.data_ptr()
 
-    with flag_gems.use_gems():
-        res = inp.triu_(diagonal)
+    res = flag_gems.triu_(inp, diagonal)
 
     utils.gems_assert_equal(inp, ref_inp)
 
@@ -117,8 +114,7 @@ def test_triu_inplace_noncontiguous(shape, diagonal, dtype):
     original_stride = inp.stride()
     original_data_ptr = inp.data_ptr()
 
-    with flag_gems.use_gems():
-        res = inp.triu_(diagonal)
+    res = flag_gems.triu_(inp, diagonal)
 
     utils.gems_assert_equal(inp, ref_inp)
 

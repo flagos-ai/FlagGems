@@ -50,8 +50,7 @@ def test_sym_constrain_range(size, min_val, max_val):
     implementation matches ATen: both accept in-range values and return None.
     """
     ref_out = torch.ops.aten.sym_constrain_range(size, min=min_val, max=max_val)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.sym_constrain_range(size, min=min_val, max=max_val)
+    res_out = flag_gems.sym_constrain_range(size, min=min_val, max=max_val)
 
     assert res_out is None
     assert ref_out is None
@@ -66,7 +65,7 @@ def test_sym_constrain_range_gems_impl(size, min_val, max_val, caplog):
     kernel, so we call the FlagGems wrapper directly to guarantee the Triton
     range-check kernel runs (verified via the debug log) and returns None.
     """
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.sym_constrain_range"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_impl)):
         res_out = gems_impl(size, min=min_val, max=max_val)
 
     assert (

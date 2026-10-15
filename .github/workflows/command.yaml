@@ -27,15 +27,20 @@ jobs:
   preprocess:
     runs-on: ubuntu-latest
     outputs:
-      continue: ${{ steps.check.outputs.continue }}
+      continue: ${{ steps.check.outputs.continue == 'true' && steps.resolve-backend.outputs.continue == 'true' }}
       op: ${{ steps.parse-command.outputs.OP_ID}}
       runner: ${{ steps.parse-command.outputs.RUNNER }}
       pull: ${{ steps.parse-command.outputs.PR_NUMBER }}
       existing: ${{ steps.parse-command.outputs.EXISTING_OP }}
-      container_image: ${{ steps.lookup-container.outputs.image }}
-      container_options: ${{ steps.lookup-container.outputs.options }}
-      runs_on_default: ${{ steps.lookup-container.outputs.runs_on_default }}
-      runs_on_vllm: ${{ steps.lookup-container.outputs.runs_on_vllm }}
+      backend: ${{ steps.resolve-backend.outputs.backend }}
+      vendor: ${{ steps.resolve-backend.outputs.vendor }}
+      compiler: ${{ steps.resolve-backend.outputs.compiler }}
+      gpu_check: ${{ steps.resolve-backend.outputs.gpu_check }}
+      containerized: ${{ steps.resolve-backend.outputs.containerized }}
+      container_image: ${{ steps.resolve-backend.outputs.container_image }}
+      container_options: ${{ steps.resolve-backend.outputs.container_options }}
+      runs_on_default: ${{ steps.resolve-backend.outputs.runs_on_default }}
+      runs_on_vllm: ${{ steps.resolve-backend.outputs.runs_on_vllm }}
     steps:
       - id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -73,91 +78,62 @@ jobs:
             echo "EXISTING_OP=1" >> $GITHUB_OUTPUT
           fi
 
-      - id: lookup-container
+      # Looks up the runner alias in backends.json's command_aliases (the
+      # single source of truth also used by resolve-vendor below) instead of
+      # a hand-written case/dict. An alias that matches no backend (e.g.
+      # "nvidia-cuda133", a backend id rather than a runner label) gets a
+      # comment back listing the valid aliases, instead of silently queuing
+      # against a non-existent runner.
+      - id: resolve-backend
         if: ${{ steps.check.outputs.continue == 'true' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             const fs = require('fs');
             const backends = JSON.parse(fs.readFileSync('.github/backends.json', 'utf8'));
-            // Maps the /test comment's runner alias to the backend id in backends.json
-            const runnerToBackend = {
-              hygon: 'hygon',
-              mthreads: 'mthreads-musa520',
-              metax: 'metax-maca3810',
-              maca381: 'metax-maca3810',
-              iluvatar: 'iluvatar',
-              kunlunxin: 'kunlunxin',
-            };
             const runner = '${{ steps.parse-command.outputs.RUNNER }}';
-            const backendId = runnerToBackend[runner];
-            const backend = backends.find(b => b.backend === backendId);
-            const container = backend?.container || {};
-            core.setOutput('image', container.image || '');
-            core.setOutput('options', container.options || '');
+            const backend = backends.find(b => (b.command_aliases || []).includes(runner));
+
+            if (!backend) {
+              const aliases = backends.flatMap(b => b.command_aliases || []).sort();
+              const list = aliases.map(a => `\`${a}\``).join(', ');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `⚠️ Unknown runner \`${runner}\` in \`/test\` command. Valid runners are: ${list}.`,
+              });
+              core.setOutput('continue', 'false');
+              return;
+            }
+
+            const container = backend.container || {};
+            core.setOutput('continue', 'true');
+            core.setOutput('backend', backend.backend);
+            core.setOutput('vendor', backend.vendor);
+            core.setOutput('compiler', backend.compiler || '');
+            core.setOutput('gpu_check', backend.gpu_check || '');
+            core.setOutput('containerized', backend.containerized ? 'true' : 'false');
+            core.setOutput('container_image', container.image || '');
+            core.setOutput('container_options', container.options || '');
             core.setOutput('runs_on_default', container.runs_on_default || '');
             core.setOutput('runs_on_vllm', container.runs_on_vllm || '');
 
-  # Generic (non-containerized) runners. Everything except the 5 vendors whose
-  # driver/runtime is only set up inside a container. The backend/vendor is
-  # derived from the runner label at runtime. Uses local ./ action refs since
-  # these runners resolve them against the checked-out workspace.
+  # Generic (non-containerized) runners. Everything except the vendors whose
+  # driver/runtime is only set up inside a container (containerized: true in
+  # backends.json). The runner label itself (e.g. h20, a100, h100) is what
+  # these machines are labeled with in GitHub Actions, independent of the
+  # resolved backend/vendor. Uses local ./ action refs since these runners
+  # resolve them against the checked-out workspace.
   test-operator:
     needs: preprocess
     if: >-
       needs.preprocess.outputs.continue == 'true' &&
-      !contains(fromJSON('["hygon", "mthreads", "metax", "maca381", "iluvatar", "kunlunxin"]'), needs.preprocess.outputs.runner)
+      needs.preprocess.outputs.containerized == 'false'
     runs-on: ${{ needs.preprocess.outputs.runner }}
+    env:
+      COMPILER: ${{ needs.preprocess.outputs.compiler }}
     steps:
-      - id: resolve-vendor
-        shell: bash
-        env:
-          RUNNER_LABEL: ${{ needs.preprocess.outputs.runner }}
-        run: |
-          case "${RUNNER_LABEL}" in
-            h20)
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda133"
-              ;;
-            a100)
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda133"
-              ;;
-            h100)
-              # Driver 535.183.06 supports up to CUDA 12.9, so use the 12.8
-              # profile (cuda133 requires a newer driver). Note: nvcc is not on
-              # PATH in this node's container (cuda at /usr/local/cuda-12.9);
-              # C++ extension builds may need PATH/CUDA_HOME set.
-              # This node's container glibc is too old for FlagTree
-              # (needs GLIBC 2.38), so use upstream Triton instead.
-              VENDOR="nvidia"
-              BACKEND="nvidia-cuda128"
-              echo "COMPILER=triton" >> $GITHUB_ENV
-              ;;
-            ascend)
-              VENDOR="ascend"
-              BACKEND="ascend-cann900"
-              ;;
-            cann9)
-              VENDOR="ascend"
-              BACKEND="ascend-cann900"
-              ;;
-            enflame)
-              VENDOR="enflame"
-              BACKEND="enflame-tops1106"
-              ;;
-            cambricon)
-              VENDOR="cambricon"
-              BACKEND="cambricon-neuware472"
-              ;;
-            *)
-              VENDOR="${RUNNER_LABEL}"
-              BACKEND="${RUNNER_LABEL}"
-              ;;
-          esac
-          echo "VENDOR=${VENDOR}" >> $GITHUB_ENV
-          echo "BACKEND=${BACKEND}" >> $GITHUB_ENV
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
       - uses: ./.github/actions/checkout-retry
@@ -167,12 +143,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-flaggems
         with:
-          backend: ${{ env.BACKEND }}
-          gpu_check_script: tools/gpu_check_${{ env.VENDOR }}.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: ./.github/actions/ondemand-test
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ env.BACKEND }}
+          backend: ${{ needs.preprocess.outputs.backend }}
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -180,7 +156,7 @@ jobs:
   # Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
   # driver/runtime set up inside a vendor container, mirroring backend-test.yaml.
   # The image/options/runner labels come from .github/backends.json via the
-  # preprocess lookup-container step. Each runs on whichever physical machine
+  # preprocess resolve-backend step. Each runs on whichever physical machine
   # this repo has access to (FlagGems-vllm uses the "-1" host, FlagGems uses
   # "-0"), and uses fully-qualified @master action refs since local ./ refs
   # can't be resolved inside these containers.
@@ -204,12 +180,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: hygon
-          gpu_check_script: tools/gpu_check_hygon.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: hygon
+          backend: ${{ needs.preprocess.outputs.backend }}
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -236,12 +212,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: mthreads-musa520
-          gpu_check_script: tools/gpu_check_mthreads.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: mthreads-musa520
+          backend: ${{ needs.preprocess.outputs.backend }}
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -268,12 +244,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: metax-maca3810
-          gpu_check_script: tools/gpu_check_metax.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: metax-maca3810
+          backend: ${{ needs.preprocess.outputs.backend }}
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -298,12 +274,12 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: iluvatar
-          gpu_check_script: tools/gpu_check_iluvatar.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: iluvatar
+          backend: ${{ needs.preprocess.outputs.backend }}
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -338,12 +314,50 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
         with:
-          backend: kunlunxin
-          gpu_check_script: tools/gpu_check_kunlunxin.sh
+          backend: ${{ needs.preprocess.outputs.backend }}
+          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
       - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
         with:
           op: ${{ needs.preprocess.outputs.op }}
-          backend: kunlunxin
+          backend: ${{ needs.preprocess.outputs.backend }}
+          runner: ${{ needs.preprocess.outputs.runner }}
+          existing: ${{ needs.preprocess.outputs.existing }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # THead's flagcicd-810e runner needs the PPU driver/runtime that only
+  # exists inside this image. Unlike hygon/metax/iluvatar/mthreads above, the
+  # image only ships a bare torch — flagtree for this backend isn't published
+  # to FlagOS's pypi_base yet (see backends.yaml's extra_index comment), so
+  # setup-flaggems/setup.sh installs it from the vendor's temporary index here
+  # instead of reconcile_backend_deps.py.
+  test-operator-thead:
+    needs: preprocess
+    if: >-
+      needs.preprocess.outputs.continue == 'true' &&
+      (needs.preprocess.outputs.runner == 'thead' || needs.preprocess.outputs.runner == 'flagcicd-810e')
+    runs-on: >-
+      ${{ github.repository == 'flagos-ai/FlagGems-vllm'
+          && needs.preprocess.outputs.runs_on_vllm
+          || needs.preprocess.outputs.runs_on_default }}
+    container:
+      image: ${{ needs.preprocess.outputs.container_image }}
+      options: ${{ needs.preprocess.outputs.container_options }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+        with:
+          pull: ${{ needs.preprocess.outputs.pull }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+        with:
+          backend: thead
+          gpu_check_script: tools/gpu_check_thead.sh
+      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+        with:
+          op: ${{ needs.preprocess.outputs.op }}
+          backend: thead
           runner: ${{ needs.preprocess.outputs.runner }}
           existing: ${{ needs.preprocess.outputs.existing }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

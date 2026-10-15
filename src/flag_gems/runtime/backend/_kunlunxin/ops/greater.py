@@ -76,55 +76,19 @@ def greater_out(A, B, *, out=None):
 )
 @triton.jit
 def greater_func_scalar(x, y):
-    return x.to(tl.float32) > y
+    if x.dtype == tl.float16 or x.dtype == tl.bfloat16:
+        return x > y.to(x.dtype)
+    else:
+        return x.to(tl.float32) > y
 
 
 def greater_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GREATER_SCALAR")
-    if (
-        A.is_contiguous()
-        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
-        and (numel := A.numel()) >= _GREATER_SCALAR_FAST_TILE
-        and numel % _GREATER_SCALAR_FAST_TILE == 0
-        and numel // _GREATER_SCALAR_FAST_TILE >= _GREATER_SCALAR_MIN_GRID
-        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
-    ):
-        return _greater_scalar_fast(A, float(B))
-    res = greater_func_scalar(A, B)
-    return res
-
-
-_GREATER_SCALAR_FAST_TILE = 131072
-_GREATER_SCALAR_MIN_GRID = 512
-
-
-@triton.jit
-def greater_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
-    pid = tl.program_id(0)
-    tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    t = (x - scalar) * 1.0e30
-    t = tl.maximum(0.0, t)
-    t = tl.minimum(1.0, t)
-    tl.store(out_ptr + tid, t)
-
-
-def _greater_scalar_fast(A, scalar):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (A.numel() // _GREATER_SCALAR_FAST_TILE,)
-    greater_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_GREATER_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
+    prev = _greater_set_compare_env()
+    try:
+        return greater_func_scalar(A, B)
+    finally:
+        _greater_restore_compare_env(prev)
 
 
 # Direct scalar compare vectorizes on XPU with TRITONXPU_COMPARE_FUSION=1 (the
@@ -259,9 +223,13 @@ def greater_scalar_out(A, B, *, out=None):
                 A.dtype == torch.bfloat16 and abs(wrapped) <= _FP16_MAX
             )
             return _greater_scalar_out_cmp(A, wrapped, out, tile, use_half, numel)
-    if out is None:
-        res = greater_func_scalar(A, B)
-    else:
-        greater_func_scalar(A, B, out0=out)
-        res = out
+    prev = _greater_set_compare_env()
+    try:
+        if out is None:
+            res = greater_func_scalar(A, B)
+        else:
+            greater_func_scalar(A, B, out0=out)
+            res = out
+    finally:
+        _greater_restore_compare_env(prev)
     return res

@@ -66,15 +66,51 @@ def log(msg: str) -> None:
     print(msg, file=sys.stderr)
 
 
-def load_backend(backend: str) -> dict:
+def load_config() -> dict:
     with open(BACKENDS_YAML) as f:
-        data = yaml.safe_load(f)
+        return yaml.safe_load(f)
+
+
+def load_backend(backend: str) -> dict:
+    return load_backend_from(load_config(), backend)
+
+
+def load_backend_from(data: dict, backend: str) -> dict:
     backends = data.get("backends", {})
     if backend not in backends:
         log(f"::error::unknown backend '{backend}' in {BACKENDS_YAML}")
         log("available: " + ", ".join(sorted(backends)))
         sys.exit(2)
     return backends[backend]
+
+
+def vendor_of(backend: str) -> str:
+    """Derive the vendor from a backend label, e.g. 'nvidia-cuda133' -> 'nvidia'.
+
+    Mirrors setup.sh: strip a trailing '-<suffix>' if present, else the
+    backend label itself is the vendor (e.g. 'hygon', 'thead').
+    """
+    vendor, _, suffix = backend.rpartition("-")
+    return vendor if vendor and suffix else backend
+
+
+def resolve_indexes(data: dict, backend: str) -> list[str]:
+    """pypi_base (vendor-specific) and mirror, in the order setup.sh uses them.
+
+    These are the two indexes a pinned package (torch, flagtree, …) is
+    expected to live on; reinstalling a mismatch should search them instead
+    of relying on whatever index-url the caller's environment happens to
+    have configured (e.g. a public mirror that doesn't carry a vendor's
+    local-version build).
+    """
+    pypi_base = data.get("pypi_base", "")
+    mirror = data.get("mirror", "")
+    indexes = []
+    if pypi_base:
+        indexes.append(pypi_base.format(vendor=vendor_of(backend)))
+    if mirror:
+        indexes.append(mirror)
+    return indexes
 
 
 def collect_requirements(cfg: dict) -> list[str]:
@@ -172,14 +208,10 @@ def main() -> None:
         action="store_true",
         help="only report packages needing (re)install; do not install",
     )
-    parser.add_argument(
-        "--index",
-        default="",
-        help="extra index URL passed to pip when installing mismatches",
-    )
     args = parser.parse_args()
 
-    cfg = load_backend(args.backend)
+    data = load_config()
+    cfg = load_backend_from(data, args.backend)
     reqs = collect_requirements(cfg)
     log(f"Reconciling {len(reqs)} pinned dep(s) for backend '{args.backend}':")
 
@@ -196,9 +228,14 @@ def main() -> None:
     if args.dry_run or not to_install:
         return
 
-    # Reinstall only the mismatches. --no-deps so we don't perturb the rest of
-    # the image's carefully assembled environment (e.g. reinstalling torch's
-    # transitive deps); we are reconciling explicit pins, not resolving a tree.
+    # Reinstall only the mismatches, searching backends.yaml's own indexes
+    # (pypi_base, mirror) rather than whatever index-url the caller's
+    # environment happens to have configured — a pinned local-version build
+    # (torch==…+ppu3.6) only lives on the vendor's pypi_base, not on a public
+    # mirror. --no-deps so we don't perturb the rest of the image's carefully
+    # assembled environment (e.g. reinstalling torch's transitive deps); we
+    # are reconciling explicit pins, not resolving a tree.
+    indexes = resolve_indexes(data, args.backend)
     cmd = [
         sys.executable,
         "-m",
@@ -208,8 +245,10 @@ def main() -> None:
         "--reinstall" if _pip_supports_reinstall() else "--force-reinstall",
         *to_install,
     ]
-    if args.index:
-        cmd += ["--extra-index-url", args.index]
+    if indexes:
+        cmd += ["--index-url", indexes[0]]
+        for extra in indexes[1:]:
+            cmd += ["--extra-index-url", extra]
     log("Running: " + " ".join(cmd))
     subprocess.run(cmd, check=True)
 

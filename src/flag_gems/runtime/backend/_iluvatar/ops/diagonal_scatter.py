@@ -53,7 +53,7 @@ def diagonal_scatter(input, src, offset=0, dim1=0, dim2=1):
     equivalent (step 2), but avoids the additional permute-contiguous
     round-trips that the generic implementation performs.
     """
-    logger.debug("GEMS ILUVATAR DIAGONAL SCATTER")
+    logger.debug("GEMS_ILUVATAR DIAGONAL_SCATTER")
 
     ndim = input.ndim
     if dim1 < 0:

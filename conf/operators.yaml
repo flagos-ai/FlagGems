@@ -53,6 +53,19 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _conj
+  description: 'The private conjugate primitive backing ``torch.conj`` and
+    ``torch._conj``. Raises on non-complex inputs.
+    '
+  for:
+  - _conj
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: _conj_physical
   description: 'Computes the element-wise conjugate of the given `input` tensor as
     a physical (non-view) tensor. For non-complex dtypes the input is returned unchanged.
@@ -146,6 +159,16 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: _fused_dropout
+  description: Applies dropout using a keep probability and returns a uint8 mask.
+  for:
+  - _fused_dropout
+  labels:
+  - aten
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _linalg_eigh
   description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
     matrix.
@@ -168,6 +191,24 @@ ops:
     '
   for:
   - _linalg_slogdet
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: _linalg_solve_ex
+  description: 'Solves a linear system AX = B (or XA = B) via fused LU decomposition
+    with partial pivoting and forward/backward substitution in a single Triton kernel;
+    the private primitive backing torch.linalg.solve_ex and the autograd formula of
+    torch.linalg.solve. Returns (result, LU, pivots, info) where LU and pivots are
+    the factorization of A that the backward pass reuses and info indicates
+    singularity status.
+
+    '
+  for:
+  - _linalg_solve_ex
   labels:
   - aten
   - KernelGen
@@ -217,6 +258,21 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: _philox_uniform_
+  description: |
+    Fills the tensor in place with samples from a uniform distribution over
+    [low, high) drawn from a stateless Philox RNG stream identified by the
+    (seed, offset) pair in `key`.
+  for:
+  - _philox_uniform_
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.5.0'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -234,6 +290,41 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: _reshape_alias_copy
+  description: 'Returns a contiguous copy of the input tensor viewed through the
+    given size and stride. It is the copy companion of _reshape_alias: the view
+    described by size/stride is formed exactly as _reshape_alias does (reusing
+    the storage offset) and then materialized into fresh contiguous storage, so
+    the result never aliases the input.
+
+    '
+  for:
+  - _reshape_alias_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: _reshape_copy
+  description: 'Returns a contiguous copy of the input tensor reshaped to the requested
+    size. The row-major logical order of the input is materialized into fresh contiguous
+    storage, so the result is never a view and never aliases the input. Unlike _reshape_alias_copy
+    no explicit stride is accepted, and size may contain a single -1 dimension that
+    is inferred from the remaining dimensions and the input numel, exactly like PyTorch''s
+    infer_size.
+
+    '
+  for:
+  - _reshape_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: _saturate_weight_to_fp16
   description: Triton kernel implementation for _saturate_weight_to_fp16.
   for:
@@ -245,6 +336,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: _scaled_mm_v2
+  description: |
+    Recipe-driven scaled matrix multiply: `mat_a @ mat_b` where the low
+    precision (fp8/fp4) operands carry decoding scales described by
+    `recipe_a`/`recipe_b`. Supports the `TensorWise` (one scalar factor per
+    operand) and `RowWise` (one factor per row of `mat_a` / column of
+    `mat_b`) recipes, with an optional bias added to the result.
+  for:
+  - _scaled_mm_v2
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: _stack
   description: |
     Concatenates a sequence of tensors along a new dimension. This is the
@@ -929,6 +1036,20 @@ ops:
   - BLAS
   stages:
   - stable: '4.0'
+- id: adjoint
+  description: 'Returns the conjugate transpose view of a tensor: out[..., j, i]
+    = conj(self[..., i, j]).
+
+    '
+  for:
+  - adjoint
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: affine_grid_generator
   description: 'Generates a 2D or 3D flow field (sampling grid), given a batch of
     affine matrices theta.
@@ -1769,6 +1890,32 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: atleast_1d
+  description: Returns a view of the input tensor with at least one dimension (view
+    operation).
+  for:
+  - atleast_1d
+  - atleast_1d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: atleast_3d
+  description: Returns a view of the input tensor with at least three dimensions (view
+    operation).
+  for:
+  - atleast_3d
+  - atleast_3d.Sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: avg_pool1d
   description: 'Applies 1D average-pooling operation in kL regions by step size sL
     steps.
@@ -1938,6 +2085,20 @@ ops:
   - batch_norm_backward_reduce
   labels:
   - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: batch_norm_elemt
+  description: |
+    Applies the elementwise Batch Normalization transform using precomputed
+    per-channel mean and inverse standard deviation: out = (input - mean) * invstd * weight + bias.
+  for:
+  - batch_norm_elemt
+  labels:
+  - aten
   - KernelGen
   kind:
   - NeuralNetwork
@@ -1950,6 +2111,7 @@ ops:
   - batch_norm_gather_stats
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -1962,6 +2124,7 @@ ops:
   - batch_norm_gather_stats_with_counts
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -2015,6 +2178,18 @@ ops:
     normalization.
   for:
   - batch_norm_stats
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: batch_norm_update_stats
+  description: |
+    Triton kernel implementation for computing per-channel mean and invstd from input and updating running statistics.
+  for:
+  - batch_norm_update_stats
   labels:
   - aten
   - KernelGen
@@ -2593,6 +2768,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: cartesian_prod
+  description: Returns the cartesian product of the given sequence of 1-D tensors.
+  for:
+  - cartesian_prod
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cat
   description: Concatenates the given sequence of tensors in tensors in the given
     dimension.
@@ -3053,6 +3239,18 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: col_indices
+  description: Returns the column indices of a sparse compressed tensor as a zero-copy
+    view.
+  for:
+  - col_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: column_stack
   description: 'Creates a new tensor by horizontally stacking the tensors in tensors.
     Equivalent to
@@ -3192,18 +3390,16 @@ ops:
 - id: conj
   description: 'Computes the element-wise conjugate of a complex tensor.
 
-    For non-complex tensors, returns the input unchanged.
-
     '
   for:
-  - _conj
+  - conj
   labels:
   - aten
   - KernelGen
   kind:
   - Math
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: conj_copy
   description: 'Computes the element-wise conjugate of a complex `input` tensor and
 
@@ -3460,6 +3656,32 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: convolution_backward_overrideable
+  description: 'Computes the gradients of a convolution with respect to the input,
+    weight, and bias, returning (grad_input, grad_weight, grad_bias).
+    '
+  for:
+  - convolution_backward_overrideable
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5'
+- id: convolution_backward_overrideable_out
+  description: 'A variant of convolution_backward_overrideable() that writes the result
+    into the out tensors.
+    '
+  for:
+  - convolution_backward_overrideable.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5'
 - id: convolution_double_backward
   description: 'Second-order backward of a convolution, supporting both 1D (3-D operands
 
@@ -3820,6 +4042,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: crow_indices_copy
+  description: 'Returns a fresh copy of the crow (row) indices of a sparse compressed
+    tensor, mirroring `aten::crow_indices_copy`.
+
+    '
+  for:
+  - crow_indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cslt_sparse_mm
   description: Triton implementation of aten._cslt_sparse_mm; decodes the cuSPARSELt
     2:4 structured-sparse compressed blob back to dense and runs a tiled dense matmul,
@@ -3830,6 +4066,7 @@ ops:
   - _cslt_sparse_mm
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -3962,6 +4199,7 @@ ops:
   - _cudnn_rnn_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -4239,6 +4477,18 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: detach_copy
+  description: Returns a tensor with the same values as `self` in freshly allocated
+    memory, detached from the autograd graph (equivalent to `self.detach().clone()`).
+  for:
+  - detach_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dgeglu
   description: 'Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
@@ -4399,6 +4649,7 @@ ops:
   - _dirichlet_grad
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Math
@@ -4610,6 +4861,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: dstack
+  description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
+    are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
+    single depth slot.
+
+    '
+  for:
+  - dstack
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: dswiglu
   description: 'Swish-Gated Linear Unit, a variant of GLU with the Swish activation
     function.
@@ -5480,6 +5746,7 @@ ops:
   - _fill_mem_eff_dropout_mask_
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - NeuralNetwork
@@ -6013,6 +6280,1675 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: foreach_abs
+  description: Apply absolute value to each tensor in a list.
+  for:
+  - _foreach_abs
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_abs_
+  description: In-place absolute value for each tensor in a list.
+  for:
+  - _foreach_abs_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_acos
+  description: Apply arccosine to each tensor in a list.
+  for:
+  - _foreach_acos
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_acos_
+  description: In-place arccosine for each tensor in a list.
+  for:
+  - _foreach_acos_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_list
+  description: element-wise addition for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_add.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_list_
+  description: In-place element-wise addition for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_add_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_scalar
+  description: element-wise addition for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_add.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_scalar_
+  description: In-place element-wise addition for each tensor in a list, against a
+    single scalar.
+  for:
+  - _foreach_add_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_scalar_list
+  description: element-wise addition for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_add.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_scalar_list_
+  description: In-place element-wise addition for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_add_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_tensor
+  description: element-wise addition for each tensor in a list, against a broadcast
+    tensor.
+  for:
+  - _foreach_add.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_add_tensor_
+  description: In-place element-wise addition for each tensor in a list, against a
+    broadcast tensor.
+  for:
+  - _foreach_add_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_scalar
+  description: add the element-wise quotient of two tensors, scaled for each tensor
+    in a list, against a single scalar.
+  for:
+  - _foreach_addcdiv.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_scalar_
+  description: In-place add the element-wise quotient of two tensors, scaled for each
+    tensor in a list, against a single scalar.
+  for:
+  - _foreach_addcdiv_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_scalar_list
+  description: add the element-wise quotient of two tensors, scaled for each tensor
+    in a list, against one scalar per tensor.
+  for:
+  - _foreach_addcdiv.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_scalar_list_
+  description: In-place add the element-wise quotient of two tensors, scaled for each
+    tensor in a list, against one scalar per tensor.
+  for:
+  - _foreach_addcdiv_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_tensor
+  description: add the element-wise quotient of two tensors, scaled for each tensor
+    in a list, against a broadcast tensor.
+  for:
+  - _foreach_addcdiv.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcdiv_tensor_
+  description: In-place add the element-wise quotient of two tensors, scaled for each
+    tensor in a list, against a broadcast tensor.
+  for:
+  - _foreach_addcdiv_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_scalar
+  description: add the element-wise product of two tensors, scaled for each tensor
+    in a list, against a single scalar.
+  for:
+  - _foreach_addcmul.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_scalar_
+  description: In-place add the element-wise product of two tensors, scaled for each
+    tensor in a list, against a single scalar.
+  for:
+  - _foreach_addcmul_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_scalar_list
+  description: add the element-wise product of two tensors, scaled for each tensor
+    in a list, against one scalar per tensor.
+  for:
+  - _foreach_addcmul.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_scalar_list_
+  description: In-place add the element-wise product of two tensors, scaled for each
+    tensor in a list, against one scalar per tensor.
+  for:
+  - _foreach_addcmul_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_tensor
+  description: add the element-wise product of two tensors, scaled for each tensor
+    in a list, against a broadcast tensor.
+  for:
+  - _foreach_addcmul.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_addcmul_tensor_
+  description: In-place add the element-wise product of two tensors, scaled for each
+    tensor in a list, against a broadcast tensor.
+  for:
+  - _foreach_addcmul_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_asin
+  description: Apply arcsine to each tensor in a list.
+  for:
+  - _foreach_asin
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_asin_
+  description: In-place arcsine for each tensor in a list.
+  for:
+  - _foreach_asin_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_atan
+  description: Apply arctangent to each tensor in a list.
+  for:
+  - _foreach_atan
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_atan_
+  description: In-place arctangent for each tensor in a list.
+  for:
+  - _foreach_atan_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_ceil
+  description: Apply ceiling to each tensor in a list.
+  for:
+  - _foreach_ceil
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_ceil_
+  description: In-place ceiling for each tensor in a list.
+  for:
+  - _foreach_ceil_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_list
+  description: element-wise upper clamp for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_clamp_max.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_list_
+  description: In-place element-wise upper clamp for each tensor in a list, paired
+    with a second tensor list.
+  for:
+  - _foreach_clamp_max_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_scalar
+  description: element-wise upper clamp for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_clamp_max.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_scalar_
+  description: In-place element-wise upper clamp for each tensor in a list, against
+    a single scalar.
+  for:
+  - _foreach_clamp_max_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_scalar_list
+  description: element-wise upper clamp for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_clamp_max.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_max_scalar_list_
+  description: In-place element-wise upper clamp for each tensor in a list, against
+    one scalar per tensor.
+  for:
+  - _foreach_clamp_max_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_list
+  description: element-wise lower clamp for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_clamp_min.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_list_
+  description: In-place element-wise lower clamp for each tensor in a list, paired
+    with a second tensor list.
+  for:
+  - _foreach_clamp_min_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_scalar
+  description: element-wise lower clamp for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_clamp_min.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_scalar_
+  description: In-place element-wise lower clamp for each tensor in a list, against
+    a single scalar.
+  for:
+  - _foreach_clamp_min_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_scalar_list
+  description: element-wise lower clamp for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_clamp_min.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_clamp_min_scalar_list_
+  description: In-place element-wise lower clamp for each tensor in a list, against
+    one scalar per tensor.
+  for:
+  - _foreach_clamp_min_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_copy
+  description: copy values from a source list for each tensor in a list.
+  for:
+  - _foreach_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_copy_
+  description: In-place copy values from a source list for each tensor in a list.
+  for:
+  - _foreach_copy_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_cos
+  description: Apply cosine to each tensor in a list.
+  for:
+  - _foreach_cos
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_cos_
+  description: In-place cosine for each tensor in a list.
+  for:
+  - _foreach_cos_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_cosh
+  description: Apply hyperbolic cosine to each tensor in a list.
+  for:
+  - _foreach_cosh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_cosh_
+  description: In-place hyperbolic cosine for each tensor in a list.
+  for:
+  - _foreach_cosh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_list
+  description: element-wise division for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_div.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_list_
+  description: In-place element-wise division for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_div_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_scalar
+  description: element-wise division for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_div.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_scalar_
+  description: In-place element-wise division for each tensor in a list, against a
+    single scalar.
+  for:
+  - _foreach_div_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_scalar_list
+  description: element-wise division for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_div.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_scalar_list_
+  description: In-place element-wise division for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_div_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_tensor
+  description: element-wise division for each tensor in a list, against a broadcast
+    tensor.
+  for:
+  - _foreach_div.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_div_tensor_
+  description: In-place element-wise division for each tensor in a list, against a
+    broadcast tensor.
+  for:
+  - _foreach_div_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_erf
+  description: Apply error function to each tensor in a list.
+  for:
+  - _foreach_erf
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_erf_
+  description: In-place error function for each tensor in a list.
+  for:
+  - _foreach_erf_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_erfc
+  description: Apply complementary error function to each tensor in a list.
+  for:
+  - _foreach_erfc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_erfc_
+  description: In-place complementary error function for each tensor in a list.
+  for:
+  - _foreach_erfc_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_exp
+  description: Apply exponential to each tensor in a list.
+  for:
+  - _foreach_exp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_exp_
+  description: In-place exponential for each tensor in a list.
+  for:
+  - _foreach_exp_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_expm1
+  description: Apply exp(x) - 1 to each tensor in a list.
+  for:
+  - _foreach_expm1
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_expm1_
+  description: In-place exp(x) - 1 for each tensor in a list.
+  for:
+  - _foreach_expm1_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_floor
+  description: Apply floor to each tensor in a list.
+  for:
+  - _foreach_floor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_floor_
+  description: In-place floor for each tensor in a list.
+  for:
+  - _foreach_floor_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_frac
+  description: Apply fractional part to each tensor in a list.
+  for:
+  - _foreach_frac
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_frac_
+  description: In-place fractional part for each tensor in a list.
+  for:
+  - _foreach_frac_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_list
+  description: linear interpolation for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_lerp.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_list_
+  description: In-place linear interpolation for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_lerp_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_scalar
+  description: linear interpolation for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_lerp.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_scalar_
+  description: In-place linear interpolation for each tensor in a list, against a
+    single scalar.
+  for:
+  - _foreach_lerp_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_scalar_list
+  description: linear interpolation for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_lerp.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lerp_scalar_list_
+  description: In-place linear interpolation for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_lerp_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lgamma
+  description: Apply log absolute gamma to each tensor in a list.
+  for:
+  - _foreach_lgamma
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_lgamma_
+  description: In-place log absolute gamma for each tensor in a list.
+  for:
+  - _foreach_lgamma_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log
+  description: Apply natural logarithm to each tensor in a list.
+  for:
+  - _foreach_log
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log10
+  description: Apply base-10 logarithm to each tensor in a list.
+  for:
+  - _foreach_log10
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log10_
+  description: In-place base-10 logarithm for each tensor in a list.
+  for:
+  - _foreach_log10_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log1p
+  description: Apply log(1 + x) to each tensor in a list.
+  for:
+  - _foreach_log1p
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log1p_
+  description: In-place log(1 + x) for each tensor in a list.
+  for:
+  - _foreach_log1p_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log2
+  description: Apply base-2 logarithm to each tensor in a list.
+  for:
+  - _foreach_log2
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log2_
+  description: In-place base-2 logarithm for each tensor in a list.
+  for:
+  - _foreach_log2_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_log_
+  description: In-place natural logarithm for each tensor in a list.
+  for:
+  - _foreach_log_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_max
+  description: per-tensor maximum reduction for each tensor in a list.
+  for:
+  - _foreach_max
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_list
+  description: element-wise maximum for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_maximum.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_list_
+  description: In-place element-wise maximum for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_maximum_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_scalar
+  description: element-wise maximum for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_maximum.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_scalar_
+  description: In-place element-wise maximum for each tensor in a list, against a
+    single scalar.
+  for:
+  - _foreach_maximum_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_scalar_list
+  description: element-wise maximum for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_maximum.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_maximum_scalar_list_
+  description: In-place element-wise maximum for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_maximum_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_list
+  description: element-wise minimum for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_minimum.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_list_
+  description: In-place element-wise minimum for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_minimum_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_scalar
+  description: element-wise minimum for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_minimum.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_scalar_
+  description: In-place element-wise minimum for each tensor in a list, against a
+    single scalar.
+  for:
+  - _foreach_minimum_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_scalar_list
+  description: element-wise minimum for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_minimum.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_minimum_scalar_list_
+  description: In-place element-wise minimum for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_minimum_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_list
+  description: element-wise multiplication for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_mul.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_list_
+  description: In-place element-wise multiplication for each tensor in a list, paired
+    with a second tensor list.
+  for:
+  - _foreach_mul_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_scalar
+  description: element-wise multiplication for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_mul.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_scalar_
+  description: In-place element-wise multiplication for each tensor in a list, against
+    a single scalar.
+  for:
+  - _foreach_mul_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_scalar_list
+  description: element-wise multiplication for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_mul.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_scalar_list_
+  description: In-place element-wise multiplication for each tensor in a list, against
+    one scalar per tensor.
+  for:
+  - _foreach_mul_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_tensor
+  description: element-wise multiplication for each tensor in a list, against a broadcast
+    tensor.
+  for:
+  - _foreach_mul.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_mul_tensor_
+  description: In-place element-wise multiplication for each tensor in a list, against
+    a broadcast tensor.
+  for:
+  - _foreach_mul_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_neg
+  description: Apply negation to each tensor in a list.
+  for:
+  - _foreach_neg
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_neg_
+  description: In-place negation for each tensor in a list.
+  for:
+  - _foreach_neg_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_norm_scalar
+  description: per-tensor vector norm for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_norm.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_list
+  description: element-wise power for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_pow.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_list_
+  description: In-place element-wise power for each tensor in a list, paired with
+    a second tensor list.
+  for:
+  - _foreach_pow_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_scalar
+  description: element-wise power for each tensor in a list, against a single scalar.
+  for:
+  - _foreach_pow.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_scalar_
+  description: In-place element-wise power for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_pow_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_scalar_and_tensor
+  description: element-wise power for each tensor in a list, with a scalar base and
+    a tensor-list exponent.
+  for:
+  - _foreach_pow.ScalarAndTensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_scalar_list
+  description: element-wise power for each tensor in a list, against one scalar per
+    tensor.
+  for:
+  - _foreach_pow.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_pow_scalar_list_
+  description: In-place element-wise power for each tensor in a list, against one
+    scalar per tensor.
+  for:
+  - _foreach_pow_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_reciprocal
+  description: Apply reciprocal to each tensor in a list.
+  for:
+  - _foreach_reciprocal
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_reciprocal_
+  description: In-place reciprocal for each tensor in a list.
+  for:
+  - _foreach_reciprocal_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_round
+  description: Apply round to nearest integer to each tensor in a list.
+  for:
+  - _foreach_round
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_round_
+  description: In-place round to nearest integer for each tensor in a list.
+  for:
+  - _foreach_round_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_rsqrt
+  description: Apply reciprocal square root to each tensor in a list.
+  for:
+  - _foreach_rsqrt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_rsqrt_
+  description: In-place reciprocal square root for each tensor in a list.
+  for:
+  - _foreach_rsqrt_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sigmoid
+  description: Apply sigmoid to each tensor in a list.
+  for:
+  - _foreach_sigmoid
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sigmoid_
+  description: In-place sigmoid for each tensor in a list.
+  for:
+  - _foreach_sigmoid_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sign
+  description: Apply sign to each tensor in a list.
+  for:
+  - _foreach_sign
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sign_
+  description: In-place sign for each tensor in a list.
+  for:
+  - _foreach_sign_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sin
+  description: Apply sine to each tensor in a list.
+  for:
+  - _foreach_sin
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sin_
+  description: In-place sine for each tensor in a list.
+  for:
+  - _foreach_sin_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sinh
+  description: Apply hyperbolic sine to each tensor in a list.
+  for:
+  - _foreach_sinh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sinh_
+  description: In-place hyperbolic sine for each tensor in a list.
+  for:
+  - _foreach_sinh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sqrt
+  description: Apply square root to each tensor in a list.
+  for:
+  - _foreach_sqrt
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sqrt_
+  description: In-place square root for each tensor in a list.
+  for:
+  - _foreach_sqrt_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_list
+  description: element-wise subtraction for each tensor in a list, paired with a second
+    tensor list.
+  for:
+  - _foreach_sub.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_list_
+  description: In-place element-wise subtraction for each tensor in a list, paired
+    with a second tensor list.
+  for:
+  - _foreach_sub_.List
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_scalar
+  description: element-wise subtraction for each tensor in a list, against a single
+    scalar.
+  for:
+  - _foreach_sub.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_scalar_
+  description: In-place element-wise subtraction for each tensor in a list, against
+    a single scalar.
+  for:
+  - _foreach_sub_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_scalar_list
+  description: element-wise subtraction for each tensor in a list, against one scalar
+    per tensor.
+  for:
+  - _foreach_sub.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_sub_scalar_list_
+  description: In-place element-wise subtraction for each tensor in a list, against
+    one scalar per tensor.
+  for:
+  - _foreach_sub_.ScalarList
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_tan
+  description: Apply tangent to each tensor in a list.
+  for:
+  - _foreach_tan
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_tan_
+  description: In-place tangent for each tensor in a list.
+  for:
+  - _foreach_tan_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_tanh
+  description: Apply hyperbolic tangent to each tensor in a list.
+  for:
+  - _foreach_tanh
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_tanh_
+  description: In-place hyperbolic tangent for each tensor in a list.
+  for:
+  - _foreach_tanh_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_trunc
+  description: Apply truncate to each tensor in a list.
+  for:
+  - _foreach_trunc
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_trunc_
+  description: In-place truncate for each tensor in a list.
+  for:
+  - _foreach_trunc_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_zero
+  description: fill each tensor with zeros for each tensor in a list.
+  for:
+  - _foreach_zero
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
+- id: foreach_zero_
+  description: In-place fill each tensor with zeros for each tensor in a list.
+  for:
+  - _foreach_zero_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.4'
 - id: fp8_fp4_mega_moe
   description: 'Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
 
@@ -6264,6 +8200,26 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fused_adamw_
+  description: In-place fused AdamW with scalar learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: fused_adamw__tensor_lr
+  description: In-place fused AdamW with tensor learning rate, AMSGrad and AMP.
+  for:
+  - _fused_adamw_.tensor_lr
+  labels:
+  - aten
   kind:
   - Math
   stages:
@@ -6592,7 +8548,6 @@ ops:
   description: Computes `input` is greater or equal to `other` element-wise.
   for:
   - ge.Tensor
-  - greater_equal.Tensor
   labels:
   - aten
   - pointwise
@@ -6604,7 +8559,6 @@ ops:
   description: The scalar version of `ge()`.
   for:
   - ge.Scalar
-  - greater_equal.Scalar
   labels:
   - aten
   - pointwise
@@ -6698,6 +8652,22 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: geqrf
+  description: 'Computes the packed Householder QR factorization of a (batched)
+    m x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the
+    Householder vectors below it, `tau` holds the scalar factors with shape
+    (*, min(m, n)).
+
+    '
+  for:
+  - geqrf
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: get_paged_mqa_logits_metadata
   description: Build scheduling metadata for paged MQA logits.
   for:
@@ -6750,6 +8720,17 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: glu_jvp
+  description: 'This function computes the Jacobian-vector product of :func:`~torch.nn.functional.glu`.'
+  for:
+  - glu_jvp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: greater
   description: Test if input is greater than `other` elementwise.
   for:
@@ -6772,6 +8753,18 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: greater_equal
+  description: Computes `input` is greater or equal to `other` element-wise. An alias
+    for `ge()`.
+  for:
+  - greater_equal.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: greater_equal_
   description: The in-place version of `greater_equal()`, which is an alias for `ge()`.
   for:
@@ -6784,6 +8777,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: greater_equal_scalar
+  description: The scalar version of `greater_equal()`, which is an alias for `ge()`.
+  for:
+  - greater_equal.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: greater_out
   description: A variant of `greater` that saves the output to the specified `out`.
   for:
@@ -6814,6 +8818,22 @@ ops:
   - Math
   stages:
   - stable: '5.3'
+- id: grid_sampler
+  description: 'Given an `input` and a flow-field `grid`, computes the `output` using
+    `input` values and pixel locations from `grid`. Supports bilinear, nearest, and
+    bicubic interpolation with zeros, border, and reflection padding for 4D inputs,
+    and trilinear/nearest for 5D inputs.
+
+    '
+  for:
+  - grid_sampler
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: grid_sampler_2d
   description: 'Performs 2D grid sampling of the input tensor using the given grid.
 
@@ -8328,6 +10348,23 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: istft
+  description: |
+    Computes the inverse short-time Fourier transform of an stft spectrogram,
+    equivalent to torch.istft. The spectrum is inverted frame by frame with
+    cuFFT (irfft/ifft), windowed, overlap-added, and normalized by the
+    squared-window envelope; the overlap-add, envelope and normalization run in
+    fused Triton kernels.
+  for:
+  - istft
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+
 - id: ixor
   description: 'Computes the bitwise XOR of input tensors or a tensor and a scalar
     (inplace).
@@ -9121,6 +11158,25 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: linalg_lu_solve
+  description: 'Solves a linear system AX = B given the LU factorization of A with
+    partial pivoting.
+
+    Performs pivot permutation, forward substitution (L), and backward substitution
+    (U)
+
+    in a single fused Triton kernel.
+
+    '
+  for:
+  - linalg_lu_solve
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: linalg_matmul
   description: Triton kernel implementation for linalg_matmul.
   for:
@@ -9478,7 +11534,6 @@ ops:
     where info indicates singularity status.
   for:
   - linalg_solve_ex
-  - _linalg_solve_ex
   labels:
   - aten
   - KernelGen
@@ -10520,6 +12575,19 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_exp
+  description: Computes the matrix exponential of one or more square matrices via
+    scaling-and-squaring with a degree-18 Taylor polynomial, evaluated entirely with
+    the Triton bmm kernel.
+  for:
+  - matrix_exp
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: matrix_exp_backward
   description: Triton kernel implementation for matrix_exp_backward.
   for:
@@ -10820,6 +12888,18 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
+- id: mH
+  description: Returns a view of this tensor with the last two dimensions conjugated
+    and transposed.
+  for:
+  - mH
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mhc_bwd
   description: 'The backward case for MHC (Manifold-Constrained Hyper-Connections).
 
@@ -10903,6 +12983,18 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: miopen_batch_norm
+  description: Computes batch normalization on the input tensor using the MIOpen
+    convention and updates the running statistics.
+  for:
+  - miopen_batch_norm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: miopen_batch_norm_backward
   description: Triton kernel implementation for miopen_batch_norm_backward.
   for:
@@ -11153,6 +13245,17 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: mT
+  description: Returns a view of this tensor with the last two dimensions transposed.
+  for:
+  - mT
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mul
   description: Multiplies `input` by `other`.
   for:
@@ -11766,6 +13869,7 @@ ops:
   - _nested_from_padded_tensor
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -11780,6 +13884,7 @@ ops:
   - _nested_select_backward
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -11891,6 +13996,7 @@ ops:
   - _nested_view_from_jagged
   labels:
   - aten
+  - NoCPU
   - KernelGen
   kind:
   - Tensor
@@ -12504,6 +14610,19 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: pack_padded_sequence
+  description: |
+    Packs a padded batch of variable length sequences into a PackedSequence
+    data tensor together with the per-time-step batch sizes.
+  for:
+  - _pack_padded_sequence
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: pack_seq_triton
   description: Pack variable-length token sequences into a padded batched tensor.
   for:
@@ -14196,7 +16315,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
 - id: row_stack_out
   description: |
     A variant of row_stack() that writes the result into the out tensor.
@@ -14208,7 +16327,21 @@ ops:
   kind:
   - Tensor
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5.0'
+- id: rrelu
+  description: |
+    Applies the randomized leaky ReLU (RReLU) function element-wise. In training
+    mode the slope for negative inputs is drawn uniformly from [lower, upper],
+    while in evaluation mode the average of lower and upper is used.
+  for:
+  - rrelu
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: rrelu_
   description: |
     In-place Randomized Leaky ReLU (RReLU). Applies RReLU in place: positive
@@ -14671,12 +16804,7 @@ ops:
   stages:
   - alpha: '5.5.0'
 - id: scaled_mm
-  description: 'Performs a scaled matrix multiplication. The result of `self @ mat2`
-    is
-
-    multiplied by `scale_a` and `scale_b`, then an optional bias is added.
-
-    '
+  description: Scaled FP8 matrix multiplication with FP32 scales and optional bias.
   for:
   - _scaled_mm
   labels:
@@ -15003,6 +17131,22 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: select_copy
+  description: |
+    Returns a copy of the input with the selected slice along the given
+    dimension at the given index removed. This is the out-of-place counterpart
+    of `torch.select()`: the output has one dimension less than the input and
+    is freshly created instead of aliasing the input, equivalent to
+    `self.select(dim, index).clone()`.
+  for:
+  - select_copy.int
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: select_scatter
   description: 'Embeds the values of the `src` tensor into `input` at the given index.
 
@@ -15510,6 +17654,20 @@ ops:
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: slow_conv2d_forward
+  description: |
+    An internal slow reference implementation of the 2-D convolution forward
+    pass that applies a 2-D cross-correlation over the input with the given
+    kernel.
+  for:
+  - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: smm
   description: |
     Performs a matrix multiplication of the sparse (COO) matrix `self` with the
@@ -16575,6 +18733,38 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_modified_bessel_i1
+  description: 'Computes the modified Bessel function of the first kind of order 1
+
+    (I_1(x)) for each element of `input`.
+
+    '
+  for:
+  - special_modified_bessel_i1
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
+- id: special_modified_bessel_i1_out
+  description: 'A variant of `special_modified_bessel_i1()` with output saved to
+
+    provided `out`.
+
+    '
+  for:
+  - special_modified_bessel_i1.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: special_modified_bessel_k0
   description: Triton kernel implementation for special_modified_bessel_k0.
   for:
@@ -16809,6 +18999,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_spherical_bessel_j0
+  description: Computes the spherical Bessel function of the first kind of order 0.
+  for:
+  - special_spherical_bessel_j0
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: special_xlog1py
   description: 'Computes `x * log1p(y)` for each element pair in the input tensors
     `x` and `y`.
@@ -17191,6 +19392,26 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: stft
+  description: Short-time Fourier transform with explicit vendor FFT execution.
+  for:
+  - stft
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: stft_center
+  description: Short-time Fourier transform with configurable centered padding.
+  for:
+  - stft.center
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: sub
   description: Subtracts `other`, scaled by `alpha`, from the `input` tensor.
   for:
@@ -17300,6 +19521,17 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
+- id: svd
+  description: Computes the singular value decomposition returning `(U, S, V)` such
+    that `input = U diag(S) V^H`.
+  for:
+  - svd
+  labels:
+  - aten
   kind:
   - Math
   stages:
@@ -17987,6 +20219,28 @@ ops:
     - Math
   stages:
     - alpha: '5.5'
+- id: triangular_solve
+  description: Solves a dense triangular system and returns a full coefficient clone.
+  for:
+  - triangular_solve
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
+- id: triangular_solve_out
+  description: Writes the triangular solution and coefficient clone to supplied outputs.
+  for:
+  - triangular_solve.X
+  labels:
+  - aten
+  kind:
+  - LinearAlg
+  - BLAS
+  stages:
+  - alpha: '5.4'
 - id: tril
   description: 'Returns the lower triangular part of an input matrix (or a batch of
     matrices) and
@@ -18216,6 +20470,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: underscore_linalg_det
+  description: Computes the determinant of a square matrix (or a batch of square
+    matrices), returning it together with the LU factorisation and pivots.
+  for:
+  - _linalg_det
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5.0'
 - id: underscore_sobol_engine_draw
   description: 'Generates quasi-random Sobol sequence points. XOR-based algorithm
     using Gray code for low-discrepancy sampling.
@@ -18228,6 +20494,18 @@ ops:
   - KernelGen
   kind:
   - Distribution
+  stages:
+  - alpha: '5.5.0'
+- id: underscore_sobol_engine_scramble_
+  description: 'Scrambles Sobol quasi-random number generator state using Owen scrambling.
+    Performs in-place matrix multiplication in GF(2) (binary field) for each dimension. '
+  for:
+  - _sobol_engine_scramble_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - RandomSampling
   stages:
   - alpha: '5.5.0'
 - id: unflatten

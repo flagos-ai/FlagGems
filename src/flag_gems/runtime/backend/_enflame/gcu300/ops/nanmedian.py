@@ -1370,17 +1370,17 @@ def nanmedian(inp):
 
 
 def nanmedian_out(inp, *, out):
-    logger.debug("GEMS_ENFLAME NANMEDIAN OUT")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_OUT")
     _check_supported_dtype(inp)
     return _nanmedian_flat_impl(inp, out=out)
 
 
 def nanmedian_dim(inp, dim=-1, keepdim=False):
-    logger.debug("GEMS_ENFLAME NANMEDIAN DIM")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_DIM")
     _check_supported_dtype(inp)
     return _nanmedian_dim_impl(inp, dim, keepdim)
 
 
 def nanmedian_dim_values(inp, dim=-1, keepdim=False, *, values, indices):
-    logger.debug("GEMS_ENFLAME NANMEDIAN DIM VALUES")
+    logger.debug("GEMS_ENFLAME NANMEDIAN_DIM_VALUES")
     return _nanmedian_dim_impl(inp, dim, keepdim, out=(values, indices))

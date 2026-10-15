@@ -43,4 +43,5 @@ def test_abs_(shape, dtype):
     ref_out = torch.abs_(ref_inp)
     res_out = flag_gems.abs_(inp)
 
+    assert res_out.data_ptr() == inp.data_ptr()
     utils.gems_assert_equal(res_out, ref_out)
