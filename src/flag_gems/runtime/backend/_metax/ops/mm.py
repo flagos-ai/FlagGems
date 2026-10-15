@@ -32,6 +32,72 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_metax_expand.yaml")
 )
 
+# MetaX C550's MACA MMA lowers to m16n8k16 fragments, so neither extent of a
+# dense tile can be smaller than 16.  Triton rejects such a `tl.dot` in the
+# frontend, and the MetaX dialect additionally trips
+# `MACAMmaEncodingAttr::composeSharedLayoutForOperand`:
+#
+#   BLOCK_M < 16 -> Assertion `shape_judge && "tn and tk not meet conditon"` failed
+#   BLOCK_N < 16 -> Assertion `shape_judge && "tm and tk not meet conditon"` failed
+#
+# Both surface as an opaque `RuntimeError: PassManager::run failed`, which
+# aborts the whole operator (and stops vLLM from starting) when such a tile is
+# the one that gets compiled.
+_DENSE_MM_MIN_BLOCK_M = 16
+_DENSE_MM_MIN_BLOCK_N = 16
+
+# The extents that carry the floor above, in the order they are checked.
+_MMA_EXTENT_FLOORS = (
+    ("BLOCK_M", _DENSE_MM_MIN_BLOCK_M),
+    ("BLOCK_N", _DENSE_MM_MIN_BLOCK_N),
+)
+
+# Timing reported for a tile that must never be compiled.  ``LibTuner`` treats a
+# non-finite measurement as "this candidate lost", which is exactly how a tile
+# that cannot compile should be ranked.
+_MACA_BENCH_FAILURE = float("inf")
+
+# Last-resort dense tiles for config spaces that contain no legal candidate at
+# all (for example an externally overridden expanded YAML).  Every entry has a
+# BLOCK_M at or above the MACA minimum and a shape that survives
+# `_prune_mm_dense_configs` on both the small and the large branch, so the
+# operator always has a tile it can actually compile.
+_DENSE_MM_FALLBACK_CONFIGS = (
+    triton.Config(
+        {
+            "BLOCK_M": 32,
+            "BLOCK_N": 64,
+            "BLOCK_K": 64,
+            "pipeline": "basic",
+            "scenario": "",
+        },
+        num_warps=4,
+        num_stages=4,
+    ),
+    triton.Config(
+        {
+            "BLOCK_M": 64,
+            "BLOCK_N": 64,
+            "BLOCK_K": 64,
+            "pipeline": "basic",
+            "scenario": "",
+        },
+        num_warps=4,
+        num_stages=4,
+    ),
+    triton.Config(
+        {
+            "BLOCK_M": 16,
+            "BLOCK_N": 64,
+            "BLOCK_K": 64,
+            "pipeline": "basic",
+            "scenario": "",
+        },
+        num_warps=4,
+        num_stages=4,
+    ),
+)
+
 
 def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
     configs = list(configs)
@@ -47,6 +113,12 @@ def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
         pipeline = config.kwargs["pipeline"]
         warps = config.num_warps
         stages = config.num_stages
+
+        # A dense tile below the MACA MMA M extent can never compile (see
+        # _DENSE_MM_MIN_BLOCK_M).  Rejecting it here is what keeps one
+        # unsupported candidate from aborting the whole autotune.
+        if block_m < _DENSE_MM_MIN_BLOCK_M:
+            continue
 
         if block_k == 128:
             if block_m > 128 or block_n > 128 or pipeline != "cpasync":
@@ -82,7 +154,20 @@ def _prune_mm_dense_configs(configs, named_args, transposed_b=False, **kwargs):
 
         pruned_configs.append(config)
 
-    return pruned_configs or list(configs)
+    if pruned_configs:
+        return pruned_configs
+
+    # Pruning left nothing usable.  Returning the unpruned list would hand back
+    # exactly the illegal tiles that were just rejected and, for an overridden
+    # config space, guarantee a "PassManager::run failed" abort.  Tiles that
+    # only violate the shape heuristics stay legal for MMA, so prefer those and
+    # only then fall back to the built-in safe set.
+    legal_configs = [
+        config
+        for config in configs
+        if config.kwargs["BLOCK_M"] >= _DENSE_MM_MIN_BLOCK_M
+    ]
+    return legal_configs or list(_DENSE_MM_FALLBACK_CONFIGS)
 
 
 _prune_mm_dense_configs_nt = functools.partial(
@@ -665,10 +750,18 @@ def _prune_mm_splitk_two_step_configs(configs, named_args, **kwargs):
     pruned_configs = [
         config
         for config in configs
+        # Same MACA MMA floor as the dense tiles: a sub-16 BLOCK_M can never
+        # compile on this backend.
+        if config.kwargs["BLOCK_M"] >= _DENSE_MM_MIN_BLOCK_M
         if not _splitk_nt_config_aborts(config, transposed_b)
         if config.kwargs["BLOCK_N"] in block_ns
     ]
-    return pruned_configs or list(configs)
+    legal_configs = [
+        config
+        for config in configs
+        if config.kwargs["BLOCK_M"] >= _DENSE_MM_MIN_BLOCK_M
+    ]
+    return pruned_configs or legal_configs or list(configs)
 
 
 @libentry()
@@ -1209,6 +1302,211 @@ def get_higher_dtype(a, b):
             return a
 
 
+def _tile_is_legal(config):
+    """Return whether both MMA extents of ``config`` meet the MACA minimum."""
+    for name, floor in _MMA_EXTENT_FLOORS:
+        value = config.kwargs.get(name)
+        if isinstance(value, int) and value < floor:
+            return False
+    return True
+
+
+def _floor_dense_tile(config, kernel_name=None):
+    """Return ``config`` with its MMA tile extents raised to the MACA minimum.
+
+    The tile has to be corrected on the ``triton.Config`` itself, not on the
+    keyword arguments of a single launch.  The tuner hands the config it
+    selected to the persistent ``ConfigCache``, and ``LibEntry`` reads the tile
+    back out of ``LibTuner.best_config`` to build the launch metadata it caches
+    (``constexprs``/``tune_constexprs``, plus the heuristics recomputed from
+    them).  Correcting the config keeps all of those views describing the same
+    tile as the kernel that is actually compiled.  Correcting only one launch's
+    kwargs would leave both the cached config and that metadata still
+    advertising a sub-16 tile, and the next cache hit would launch a tile that
+    disagrees with the compiled kernel.
+
+    An already legal config is returned unchanged, so a legal candidate keeps
+    its identity and its place in the candidate list.
+    """
+    changes = {}
+    for name, floor in _MMA_EXTENT_FLOORS:
+        value = config.kwargs.get(name)
+        if isinstance(value, int) and value < floor:
+            changes[name] = floor
+    if not changes:
+        return config
+    if kernel_name is not None:
+        logger.warning(
+            "%s: %s below the MACA MMA minimum, using %s",
+            kernel_name,
+            ", ".join(f"{name}={config.kwargs[name]}" for name in changes),
+            ", ".join(f"{name}={floor}" for name, floor in changes.items()),
+        )
+    return triton.Config(
+        {**config.kwargs, **changes},
+        num_warps=config.num_warps,
+        num_stages=config.num_stages,
+        num_ctas=config.num_ctas,
+        maxnreg=config.maxnreg,
+        pre_hook=config.pre_hook,
+        ir_override=config.ir_override,
+    )
+
+
+def _install_dense_config_guard(tuner, kernel_name):
+    """Keep a sub-16 MACA MMA tile out of the config the tuner selects.
+
+    ``LibTuner.run`` compiles, caches and launches whatever the policy returns
+    without checking it against the pruned candidate list.  FlagTune's cost
+    model derives the tile from the problem shape
+    (``BLOCK_M = next_power_of_2(M)``, ``BLOCK_N = next_power_of_2(N)``), so for
+    a decode-shaped problem it can return a tile that was never a candidate and
+    therefore never met the pruner's floor.
+
+    Replacing such a proposal with the best legal candidate the policy actually
+    measured normalizes the config before it is compiled and before it is
+    written to the persistent ``ConfigCache``.
+    """
+    policy = getattr(tuner, "policy", None)
+    if policy is None or getattr(policy, "_metax_tile_guard", False):
+        return
+
+    def floored_policy(bench, configs, args, kwargs):
+        candidates = list(configs)
+        legal = [config for config in candidates if _tile_is_legal(config)]
+        if not legal:
+            # Nothing legal to substitute with; the pruner's own fallback set
+            # (see _prune_mm_dense_configs) is the remaining line of defence.
+            return policy(bench, candidates, args, kwargs)
+
+        measured = {}
+
+        def measuring_bench(config):
+            if not _tile_is_legal(config):
+                # The cost model builds its own candidates from the problem
+                # shape, so a decode-shaped problem makes it benchmark a
+                # sub-16 tile that the pruner never saw.  Compiling that tile
+                # can only fail, so report it as a non-candidate instead: the
+                # policy then cannot select it, and no failed compile is
+                # emitted for it.
+                measured[config] = float("inf")
+                return [_MACA_BENCH_FAILURE] * 3
+            timings = bench(config)
+            try:
+                measured[config] = float(timings[0])
+            except (TypeError, IndexError, ValueError):
+                measured[config] = float("inf")
+            return timings
+
+        best, timings = policy(measuring_bench, candidates, args, kwargs)
+        if best is not None and _tile_is_legal(best):
+            return best, timings
+
+        measured_legal = [config for config in legal if config in measured]
+        chosen = (
+            min(measured_legal, key=measured.__getitem__)
+            if measured_legal
+            else legal[0]
+        )
+        logger.warning(
+            "%s: the tuning policy proposed BLOCK_M=%s below the MACA MMA "
+            "minimum, falling back to a legal candidate (BLOCK_M=%s)",
+            kernel_name,
+            None if best is None else best.kwargs.get("BLOCK_M"),
+            chosen.kwargs.get("BLOCK_M"),
+        )
+        return chosen, timings
+
+    floored_policy._metax_tile_guard = True
+    tuner.policy = floored_policy
+
+
+def _install_dense_space_guard(tuner, kernel_name):
+    """Floor the MMA extents whenever the tuner swaps its config space.
+
+    FlagTune resolves its candidate space at run time and installs it through
+    ``_set_configs_and_strategy``, which replaces ``self.configs`` and rebinds
+    ``self.cache``.  Flooring the config space only at import time would be
+    discarded by that swap, and the replaced cache would lose its floor too.
+
+    Transforming the incoming list keeps ``configs_hash``/``config_table_name``
+    describing the space that is actually searched, and re-arming the cache
+    guard afterwards keeps the rebound cache normalized as well.  This is the
+    one swap point every resolution path goes through, including the
+    exhaustive-collection route that benches the space without consulting the
+    policy.
+    """
+    original = tuner._set_configs_and_strategy
+    if getattr(original, "_metax_space_guard", False):
+        return
+
+    def guarded_set_configs_and_strategy(configs, strategy, *, mode=None):
+        result = original(
+            [_floor_dense_tile(config) for config in configs], strategy, mode=mode
+        )
+        # the swap rebinds LibTuner.cache to a different ConfigCache
+        _install_dense_cache_guard(tuner, kernel_name)
+        return result
+
+    guarded_set_configs_and_strategy._metax_space_guard = True
+    tuner._set_configs_and_strategy = guarded_set_configs_and_strategy
+
+
+def _install_dense_cache_guard(tuner, kernel_name):
+    """Floor the MMA extents on every read and write of the tuner's cache.
+
+    ``LibTuner.run`` replays the config stored in the persistent ``ConfigCache``
+    straight into the compiler without consulting the pruner, so a tile that was
+    written by an older config space -- before the MACA floor existed -- would
+    still be replayed as-is.
+
+    ``get`` and ``set`` are ordinary methods, so shadowing them on the instance
+    normalizes the store in both directions without subclassing or replacing it:
+    a stale row reads back legal, and every new selection is stored legal, so
+    the cache heals itself on the next write.
+    """
+    cache = getattr(tuner, "cache", None)
+    if cache is None or getattr(cache, "_metax_tile_guard", False):
+        return
+    original_get = cache.get
+    original_set = cache.set
+
+    def floored_get(key):
+        config = original_get(key)
+        return None if config is None else _floor_dense_tile(config, kernel_name)
+
+    def floored_set(key, config):
+        return original_set(key, _floor_dense_tile(config, kernel_name))
+
+    cache.get = floored_get
+    cache.set = floored_set
+    cache._metax_tile_guard = True
+
+
+# Every kernel in this module that feeds a MACA MMA.  The ones without a
+# `tl.dot` (gemv, the elementwise small-N path, the split-K reduction) are left
+# alone because a sub-16 extent is legal for them.  The names are passed
+# explicitly because the kernels are wrapped by ``libentry``/``libtuner`` and no
+# longer expose a usable ``__name__``.
+for _dense_kernel_name, _dense_kernel in (
+    ("mm_kernel", mm_kernel),
+    ("mm_kernel_nn", mm_kernel_nn),
+    ("mm_kernel_nt", mm_kernel_nt),
+    ("mm_kernel_splitk", mm_kernel_splitk),
+    ("mm_kernel_splitk_partial", mm_kernel_splitk_partial),
+):
+    _dense_tuner = _dense_kernel.fn
+    # ``LibTuner.run`` uses the declared candidate list as-is when it holds a
+    # single config, which is the one path that never reaches the pruner.
+    _dense_tuner.configs = [
+        _floor_dense_tile(config) for config in _dense_tuner.configs
+    ]
+    _install_dense_space_guard(_dense_tuner, _dense_kernel_name)
+    _install_dense_config_guard(_dense_tuner, _dense_kernel_name)
+    _install_dense_cache_guard(_dense_tuner, _dense_kernel_name)
+del _dense_kernel_name, _dense_kernel, _dense_tuner
+
+
 def general_mm(a, b, c, M, N, K):
     dot_out_dtype = tl.float32
     grid = lambda META: (
@@ -1239,15 +1537,7 @@ def general_mm_nn(a, b, c, M, N, K):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        mm_kernel_nn[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            GROUP_M=8,
-        )
+        mm_kernel_nn[grid](a, b, c, M, N, K, GROUP_M=8)
     return c
 
 
@@ -1256,15 +1546,7 @@ def general_mm_nt(a, b, c, M, N, K):
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
     with torch_device_fn.device(a.device):
-        mm_kernel_nt[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            GROUP_M=8,
-        )
+        mm_kernel_nt[grid](a, b, c, M, N, K, GROUP_M=8)
     return c
 
 
