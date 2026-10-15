@@ -1136,3 +1136,17 @@ unique2:
     - [65536]
     - [262144]
   shape_desc: "N"
+
+# batch_norm_elemt normalizes over the (N, C, *) layout, so the spatial extent
+# must be non-degenerate: the default 2D shapes collapse to HW=1 and would
+# launch one program per element. These cover typical CNN activation maps.
+batch_norm_elemt:
+  shapes:
+    - [2, 64, 112, 112]
+    - [8, 128, 56, 56]
+    - [16, 256, 28, 28]
+    - [32, 512, 14, 14]
+    - [64, 1024, 7, 7]
+    - [128, 256, 32, 32]
+    - [4, 32, 8, 8, 8]
+  shape_desc: "N, C, *spatial"
