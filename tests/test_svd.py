@@ -280,8 +280,8 @@ def test_accuracy_svd_fallback_modes(shape, some):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise",
-    reason="Issue #3856:sunrise does not support complex dtype",
+    not flag_gems.runtime.device.support_complex,
+    reason="complex64 is not supported on this device",
 )
 @pytest.mark.svd
 def test_accuracy_svd_non_contiguous_empty_and_complex():
@@ -305,8 +305,8 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "sunrise",
-    reason="Issue #3856:sunrise does not support complex dtype",
+    not flag_gems.runtime.device.support_complex,
+    reason="complex64 is not supported on this device",
 )
 @pytest.mark.svd
 @pytest.mark.parametrize("shape", SVD_COMPLEX64_SHAPES)

@@ -683,6 +683,7 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .svd import svd
 from .t_copy import t_copy, t_copy_out
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
@@ -1485,6 +1486,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "svd",
     "SUPPORTED_FP8_DTYPE",
     "t_copy",
     "t_copy_out",
