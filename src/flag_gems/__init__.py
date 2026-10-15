@@ -1978,6 +1978,7 @@ _FULL_CONFIG = (
     ("tanh_backward", tanh_backward),
     ("tensordot", tensordot),
     ("tensordot.out", tensordot_out),
+    ("thnn_conv2d", thnn_conv2d),
     ("threshold", threshold),
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
