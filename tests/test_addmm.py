@@ -100,6 +100,57 @@ def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     utils.gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=K)
 
 
+def _float64_is_usable():
+    """Whether this device can hold and compute on float64 tensors at all.
+
+    Deliberately not ``utils.fp64_is_supported``: that is a per-vendor
+    declaration, and a vendor can declare float64 unsupported while its Triton
+    backend still lowers float64 arithmetic natively. The mthreads backend does
+    exactly that (``fp64_enabled=False`` in ``_mthreads/__init__.py``, while a
+    float64 ``tl.dot`` compiles to a chain of ``llvm.fmuladd.f64``), and it is
+    the backend whose float64 addmm this test exists to guard.
+    """
+    try:
+        torch.empty(1, dtype=torch.float64, device=flag_gems.device)
+    except Exception:
+        return False
+    return True
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", utils.SCALARS)
+def test_addmm_fp64(scalar, M, N, K):
+    """float64 addmm must accumulate in float64, not in downcast float32.
+
+    The mthreads kernel cast both dot operands to float32 before an otherwise
+    float64 accumulation, which is ~1e-3 relative error where float64
+    arithmetic is good to ~1e-12: seven digits discarded silently. ``atol=0``
+    keeps this a pure relative check, so a float32-grade result cannot pass at
+    the float64 tolerance (``RESOLUTION[torch.float64] == 1e-7``).
+    """
+    if not _float64_is_usable():
+        pytest.skip("float64 tensors are not usable on this device")
+
+    dtype = torch.float64
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    alpha = beta = scalar
+
+    for bias_shape in ((N,), (M, N)):
+        bias = torch.randn(bias_shape, dtype=dtype, device=flag_gems.device)
+        ref_out = torch.addmm(
+            utils.to_reference(bias, True),
+            utils.to_reference(mat1, True),
+            utils.to_reference(mat2, True),
+            alpha=alpha,
+            beta=beta,
+        )
+        res_out = flag_gems.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+
+        utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K, atol=0)
+
+
 @pytest.mark.addmm
 @_addmm_beta_zero_only
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
