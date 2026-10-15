@@ -528,3 +528,30 @@ def test_ascend_mul_cast_output_shape_error_preserves_output():
     with pytest.raises(RuntimeError, match="output with shape"):
         m.mul(a, a, out=out)
     torch.testing.assert_close(out.cpu(), torch.full((3,), 7, dtype=torch.complex64))
+
+
+@pytest.mark.mul
+@pytest.mark.mul_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend complex64 kernels"
+)
+@pytest.mark.parametrize("case", ["contiguous", "transpose", "mixed", "inplace"])
+def test_ascend_mul_complex_fixed_cpu_reference(case):
+    real = torch.tensor([0.25, 1.25, -2.5, 0, 8, -0.03125, 3.5, -4])
+    imag = torch.tensor([1.5, -0.5, 2, 3.25, -0.125, 4, -2.5, 0.75])
+    a = torch.complex(real, imag).reshape(2, 4)
+    b = torch.complex(imag + 0.25, real - 0.5).reshape(2, 4)
+    if case == "transpose":
+        a, b = a.t(), b.t()
+    elif case == "mixed":
+        b = real.reshape(2, 4)
+    expected = (a.to(torch.complex128) * b.to(torch.complex128)).to(torch.complex64)
+    inp, other = a.to(flag_gems.device), b.to(flag_gems.device)
+    if case == "inplace":
+        actual = flag_gems.mul_(inp, other)
+        assert actual is inp
+    else:
+        actual = flag_gems.mul(inp, other)
+        torch.testing.assert_close(inp.cpu(), a, rtol=0, atol=0)
+    # All component products are exact dyadic fractions in this witness.
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
