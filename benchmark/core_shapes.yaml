@@ -533,6 +533,40 @@ EmbeddingBenchmark:
     - [256, 256]
     - [1024, 1024]
 
+
+# Shapes chosen to span the runtime regimes ``embedding_spmdm`` encounters
+# in practice: tiny embed tables, wide embedding dims, large batch sizes
+# and large bag sizes.  ``V`` = vocabulary size, ``D`` = embedding dim,
+# ``B`` = batch size, ``S`` = bag size.
+embedding_spmdm:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+embedding_spmdm_weighted:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+
 # [N, C, H, W]
 UpsampleBenchmark:
   shapes:

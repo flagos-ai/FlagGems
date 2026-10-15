@@ -479,6 +479,7 @@ from flag_gems.ops.embedding_bag import embedding_bag
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
+from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
@@ -1790,6 +1791,7 @@ __all__ = [
     "embedding_dense_backward",
     "embedding_renorm_",
     "embedding_sparse_backward",
+    "embedding_spmdm",
     "empty",
     "empty_permuted",
     "eq",
