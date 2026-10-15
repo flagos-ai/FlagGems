@@ -152,10 +152,9 @@ def _attn_fwd_inner(
 
 # NOTE: we assert BLOCK_N <= HEAD_DIM in _attn_fwd, so for small head_dim,
 # we need to generate more configs.
-# [kunlunxin] single-config: on this backend the attention kernel body compiles
-# to a launch-table stub, so multi-config autotuning would benchmark the stub on
-# every new (KV_CTX, HEAD_DIM) key and fold ~100 ms into the first call. Only
-# BLOCK_M is consumed here (it drives the grid).
+# [kunlunxin] single-config: on this backend multi-config autotuning adds
+# ~100 ms to the first call for every new (KV_CTX, HEAD_DIM) key. Only BLOCK_M
+# is consumed here (it drives the grid).
 configs = [
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 16, "PRE_LOAD_V": 0}, num_stages=2, num_warps=4
@@ -1248,6 +1247,18 @@ def efficient_attention_backward(
     )
 
 
+def _sdpa_attn_fwd_grid(args):
+    # Module-level (stable identity) launch grid for ``_attn_fwd``. A per-call
+    # ``lambda`` grid forces a full recompile on every launch (~160-180 ms/call);
+    # reading the shape from the kernel args keeps the math identical while
+    # making the callable stable.
+    return (
+        triton.cdiv(args["Q_CTX"], args["BLOCK_M"]),
+        args["Z"] * args["q_head_num"],
+        1,
+    )
+
+
 class ScaleDotProductAttention(torch.autograd.Function):
     @staticmethod
     def forward(
@@ -1290,11 +1301,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
             "enable_gqa must be True to support different head numbers."
         )
 
-        grid = lambda args: (
-            triton.cdiv(query.shape[2], args["BLOCK_M"]),
-            query.shape[0] * query.shape[1],
-            1,
-        )
+        grid = _sdpa_attn_fwd_grid
 
         if attn_mask is not None:
             HAS_ATTN_MASK = True
@@ -1787,17 +1794,17 @@ def _fa_pad_d(t, padded):
 # and `_scaled_dot_product_fused_attention_overrideable` launch); measured
 # 163 us on the same shape.
 #
-# `_attn_fwd` is launched through the vendor `handle_mha` decoder, which is
-# sensitive to the runtime-argument layout: the argument order, the 3-element
-# grid callable and the "attn_mask must be None (not a dummy tensor)" rule are
-# all copied verbatim from `_scaled_dot_product_fused_attention_overrideable`,
-# which is the call pattern proven to be accepted by the handler.
+# The launch is sensitive to the runtime-argument layout: the argument order,
+# the 3-element grid callable and the "attn_mask must be None (not a dummy
+# tensor)" rule are all copied verbatim from
+# `_scaled_dot_product_fused_attention_overrideable`, the call pattern that is
+# known to be accepted.
 # ---------------------------------------------------------------------------
 _TILED_GRID_CACHE = {}
 
 
 def _tiled_grid_for(seq_q, batch_heads):
-    """Stable grid callable per shape (the XPU JIT keys its compile cache on it)."""
+    """Stable grid callable per shape (a per-call callable forces recompiles)."""
     key = (seq_q, batch_heads)
     fn = _TILED_GRID_CACHE.get(key)
     if fn is None:
@@ -1827,9 +1834,9 @@ def _flash_forward_tiled(
     """Run the tiled flash kernel; returns (out_bshd, lse_bhq).
 
     ``mask`` is an optional additive (B, H, S_q, S_k) bias.  It must be a
-    materialised contiguous tensor: the vendor ``handle_mha`` decoder rejects a
-    broadcast (stride-0) mask by silently declining the launch, which would
-    leave the kernel's stub body to run and return uninitialised memory.
+    materialised contiguous tensor: a broadcast (stride-0) mask is rejected by
+    the launch path, which silently declines the launch and would leave the
+    kernel body to run and return uninitialised memory.
     """
     batch, _, q_head_num, _ = query.shape
     kv_head_num = key.shape[2]
@@ -1843,9 +1850,9 @@ def _flash_forward_tiled(
     else:
         q_in, k_in, v_in = query, key, value
 
-    # `_attn_fwd` indexes (batch, head, seq, dim) and the vendor `handle_mha`
-    # decoder requires that layout to be materialised (a transposed stride view
-    # is decoded with the wrong strides and silently produces a wrong result),
+    # `_attn_fwd` indexes (batch, head, seq, dim) and the launch path requires
+    # that layout to be materialised (a transposed stride view is decoded with
+    # the wrong strides and silently produces a wrong result),
     # so make the BHSD copies explicitly.
     q_t = q_in.transpose(1, 2).contiguous()
     k_t = k_in.transpose(1, 2).contiguous()

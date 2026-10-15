@@ -18,74 +18,84 @@ import os
 
 import torch
 import triton
-import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# Stable per-shape grid callables (see _grid_for): the XPU JIT keys its compile
-# cache on the grid object, so these must not be rebuilt per call.
-_GRID_CACHE = {}
+# The four metadata outputs are constants for a given (batch, seq_q, seq_k):
+# one packed template per shape, copied into a fresh buffer on every call.
+_METADATA_TEMPLATES = {}
+
+# Zero-element debug masks, one per (dtype, device). A zero-element tensor holds
+# no data, so reusing one is indistinguishable from allocating a fresh one.
+_EMPTY_MASKS = {}
+
+# The tiled flash kernel, its tile config and its launch grid, resolved once
+# (see _tiled_flash_forward).
+_FLASH_KERNEL = None
+_FLASH_TILE = None
+
+# Accumulation knobs for the tiled flash kernel, read once per process.
+_FA_ACCUM_TYPE = os.environ.get("FLAG_GEMS_FA_ACCUM_TYPE", "float")
+_FA_GEMM_TYPE = os.environ.get("FLAG_GEMS_FA_GEMM_TYPE", "float")
 
 
-@triton.jit
-def _sdpa_init_metadata_kernel(
-    cum_seq_q,
-    cum_seq_k,
-    philox_seed,
-    philox_offset,
-    seq_q,
-    seq_k,
-    BATCH: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    if pid < BATCH:
-        tl.store(cum_seq_q + pid * 2, 0)
-        tl.store(cum_seq_q + pid * 2 + 1, seq_q)
-        tl.store(cum_seq_k + pid * 2, 0)
-        tl.store(cum_seq_k + pid * 2 + 1, seq_k)
-    if pid == 0:
-        tl.store(philox_seed, 0)
-        tl.store(philox_offset, 0)
+def _metadata_template(batch_size, seq_q, seq_k, device):
+    """Packed metadata constants for one shape, as ``2 * batch_size + 2`` int64 lanes.
 
-
-def _grid_for(seq_q, batch_heads):
-    """Return a STABLE grid callable for ``(seq_q, batch*heads)``.
-
-    The XPU JIT folds the ``grid`` callable into its compile cache key, so
-    building a fresh ``lambda`` per call makes every launch a cache miss and
-    recompiles the kernel -- measured at ~170 ms per call, which dominated the
-    benchmark (a flat 160-195 ms across every shape and dtype, versus 0.10 ms
-    for the real launch). Caching one callable per shape keeps the object
-    identity stable, so repeated calls with the same shape hit the cache.
+    Layout ``[cum_seq_q | cum_seq_k | philox_seed | philox_offset]``, padded up to
+    a power of two. A cum_seq lane packs its ``(0, seq)`` int32 pair, so the low
+    word is 0 and the high word is the sequence length.
     """
-    key = (seq_q, batch_heads)
-    fn = _GRID_CACHE.get(key)
-    if fn is None:
+    key = (batch_size, seq_q, seq_k, device)
+    tmpl = _METADATA_TEMPLATES.get(key)
+    if tmpl is None:
+        width = triton.next_power_of_2(2 * batch_size + 2)
+        host = torch.zeros(width, dtype=torch.int64)
+        for i in range(batch_size):
+            host[i] = seq_q << 32
+            host[batch_size + i] = seq_k << 32
+        tmpl = host.to(device)
+        _METADATA_TEMPLATES[key] = tmpl
+    return tmpl
 
-        def fn(args, _seq_q=seq_q, _batch_heads=batch_heads):
-            return (triton.cdiv(_seq_q, args["BLOCK_M"]), _batch_heads, 1)
 
-        _GRID_CACHE[key] = fn
-    return fn
+def _empty_debug_mask(query):
+    """The empty debug mask returned when ``return_debug_mask`` is false."""
+    key = (query.dtype, query.device)
+    mask = _EMPTY_MASKS.get(key)
+    if mask is None:
+        mask = _EMPTY_MASKS[key] = torch.empty(
+            0, dtype=query.dtype, device=query.device
+        )
+    return mask
 
 
 def _tiled_flash_forward():
     """Resolve the backend's tiled flash-attention kernel ``_attn_fwd``.
 
-    Resolved through THIS module's own package (the runtime backend package is
-    the top-level ``_kunlunxin.ops`` one; a second copy also exists under
-    ``flag_gems.runtime.backend._kunlunxin.ops``), and resolved lazily so that
-    importing this module never changes the backend package's import order.
+    Resolved lazily, through THIS module's own package, and cached together with
+    the tile config its launch needs: importing this module must not change the
+    backend package's import order, and the hot path must not repeat the import
+    lookup nor the per-call argument binding the tile-config wrapper performs.
     """
-    att = importlib.import_module(__package__ + ".attention")
-    kern = getattr(att, "_attn_fwd", None)
-    if kern is None:
-        raise NotImplementedError(
-            "kunlunxin attention module does not expose the tiled flash kernel _attn_fwd"
+    global _FLASH_KERNEL, _FLASH_TILE
+    if _FLASH_KERNEL is None:
+        att = importlib.import_module(__package__ + ".attention")
+        kern = getattr(att, "_attn_fwd", None)
+        configs = getattr(att, "configs", None)
+        if kern is None or not configs or len(configs) != 1:
+            raise NotImplementedError(
+                "kunlunxin attention module does not expose a single-config tiled "
+                "flash kernel _attn_fwd"
+            )
+        cfg = configs[0]
+        _FLASH_KERNEL = kern.fn
+        _FLASH_TILE = dict(
+            cfg.kwargs, num_warps=cfg.num_warps, num_stages=cfg.num_stages
         )
-    return kern
+    return _FLASH_KERNEL
 
 
 def _normalize_attn_bias(attn_bias, batch_size, num_heads, seq_q, seq_k, dtype, device):
@@ -149,24 +159,33 @@ def _scaled_dot_product_fused_attention_overrideable(
 
     batch_size, num_query_heads, seq_q, head_dim = query.shape
     _, num_key_heads, seq_k, _ = key.shape
-    attn_mask, has_bias = _normalize_attn_bias(
-        attn_bias,
-        batch_size,
-        num_query_heads,
-        seq_q,
-        seq_k,
-        query.dtype,
-        query.device,
+    if attn_bias is None:
+        attn_mask, has_bias = None, False
+    else:
+        attn_mask, has_bias = _normalize_attn_bias(
+            attn_bias,
+            batch_size,
+            num_query_heads,
+            seq_q,
+            seq_k,
+            query.dtype,
+            query.device,
+        )
+
+    # The four metadata outputs are shape constants: copy the packed template
+    # into a fresh buffer and hand out one view per output.
+    metadata = _metadata_template(batch_size, seq_q, seq_k, query.device).clone()
+    cum_seq_q = metadata[:batch_size].view(torch.int32).view(batch_size, 2)
+    cum_seq_k = metadata[batch_size : 2 * batch_size].view(torch.int32).view(
+        batch_size, 2
     )
+    philox_seed = metadata[2 * batch_size : 2 * batch_size + 1]
+    philox_offset = metadata[2 * batch_size + 1 : 2 * batch_size + 2]
 
     output = torch.empty_like(query)
     logsumexp = torch.empty(
         (batch_size, num_query_heads, seq_q), dtype=torch.float32, device=query.device
     )
-    cum_seq_q = torch.empty((batch_size, 2), dtype=torch.int32, device=query.device)
-    cum_seq_k = torch.empty((batch_size, 2), dtype=torch.int32, device=query.device)
-    philox_seed = torch.empty(1, dtype=torch.int64, device=query.device)
-    philox_offset = torch.empty(1, dtype=torch.int64, device=query.device)
     debug_attn_mask = (
         torch.empty(
             (batch_size, num_query_heads, seq_q, seq_k),
@@ -174,28 +193,7 @@ def _scaled_dot_product_fused_attention_overrideable(
             device=query.device,
         )
         if return_debug_mask
-        else torch.empty(0, dtype=query.dtype, device=query.device)
-    )
-
-    # NOTE (2026-10-09): producing these four outputs costs 0.048 ms at
-    # (2,8,64,64) on this device -- about 60% of this operator's total time.
-    # Every cheaper alternative was measured and this kernel is the best of
-    # them: `torch.zeros` + column fill is worse (0.094 ms), and `arange` +
-    # `expand` scores 0.3966 aggregate against this kernel's 0.3475.  The cost
-    # is the device's Triton launch overhead (0.0132 ms for a trivial
-    # one-pointer kernel, about +0.0125 per extra pointer argument), not the
-    # work being done.  Kept as-is deliberately: the only way to remove it is to
-    # return tensors cached across calls, which would make the returned outputs
-    # alias between calls.
-    _sdpa_init_metadata_kernel[(max(batch_size, 1),)](
-        cum_seq_q,
-        cum_seq_k,
-        philox_seed,
-        philox_offset,
-        seq_q,
-        seq_k,
-        BATCH=batch_size,
-        num_warps=1,
+        else _empty_debug_mask(query)
     )
 
     # Delegate the score/softmax/output computation to the backend's tiled
@@ -204,20 +202,26 @@ def _scaled_dot_product_fused_attention_overrideable(
     # launches; it writes the fp32 (B, H, S) log-sum-exp into its `M` argument.
     sm_scale = scale if scale is not None else 1.0 / (head_dim**0.5)
     stage = 3 if is_causal else 1
-    fa_accum_type = os.environ.get("FLAG_GEMS_FA_ACCUM_TYPE", "float")
-    fa_gemm_type = os.environ.get("FLAG_GEMS_FA_GEMM_TYPE", "float")
-    grid = _grid_for(seq_q, batch_size * num_query_heads)
+    fa_accum_type = _FA_ACCUM_TYPE
+    fa_gemm_type = _FA_GEMM_TYPE
+    kernel = _FLASH_KERNEL
+    if kernel is None:
+        kernel = _tiled_flash_forward()
+    tile = _FLASH_TILE
+    grid = (triton.cdiv(seq_q, tile["BLOCK_M"]), batch_size * num_query_heads, 1)
 
-    with torch_device_fn.device(query.device):
-        _tiled_flash_forward()[grid](
+    # The launch goes to the current device, so switch to the tensors' device
+    # first -- but only when it is not already the current one. The launch is
+    # written out twice on purpose: building the argument list as a tuple and
+    # unpacking it costs more than the duplication.
+    device_index = query.device.index
+    if device_index is None or device_index == torch.cuda.current_device():
+        kernel[grid](
             query,
             key,
             value,
-            attn_mask,  # must stay None when there is no mask: the vendor
-            # `handle_mha` decoder (launch_extra.cpp:1238) requires exactly 23
-            # runtime params in the unmasked case, and slot 3 (attn_mask) is a
-            # hole in its position->signature table. A dummy tensor here yields
-            # 24 params and the handler rejects the launch with err_code 1.
+            attn_mask,  # must stay None when there is no mask: a placeholder
+            # tensor here changes the launch signature and the backend rejects it.
             sm_scale,
             logsumexp,
             output,  #
@@ -249,7 +253,48 @@ def _scaled_dot_product_fused_attention_overrideable(
             HAS_ATTN_MASK=has_bias,  #
             ACCUM_TYPE=fa_accum_type,
             GEMM_TYPE=fa_gemm_type,
+            **tile,
         )
+    else:
+        with torch_device_fn.device(query.device):
+            kernel[grid](
+                query,
+                key,
+                value,
+                attn_mask,
+                sm_scale,
+                logsumexp,
+                output,  #
+                query.stride(0),
+                query.stride(1),
+                query.stride(2),
+                query.stride(3),  #
+                key.stride(0),
+                key.stride(1),
+                key.stride(2),
+                key.stride(3),  #
+                value.stride(0),
+                value.stride(1),
+                value.stride(2),
+                value.stride(3),  #
+                *(attn_mask.stride() if has_bias else (1, 1, 1, 1)),
+                output.stride(0),
+                output.stride(1),
+                output.stride(2),
+                output.stride(3),  #
+                batch_size,
+                num_query_heads,
+                num_key_heads,  #
+                num_query_heads // num_key_heads,  # group_head
+                seq_q,  #
+                seq_k,  #
+                head_dim,  #
+                STAGE=stage,  #
+                HAS_ATTN_MASK=has_bias,  #
+                ACCUM_TYPE=fa_accum_type,
+                GEMM_TYPE=fa_gemm_type,
+                **tile,
+            )
 
     return (
         output,

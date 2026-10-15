@@ -1154,7 +1154,12 @@ def _sdp_eff_attn_bwd_gems(
     is_causal,
     scale=None,
 ):
-    return flag_gems.ops.scaled_dot_product_efficient_attention_backward(
+    _candidate = (
+        flag_gems.scaled_dot_product_efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.scaled_dot_product_efficient_attention_backward
+    )
+    return _candidate(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
