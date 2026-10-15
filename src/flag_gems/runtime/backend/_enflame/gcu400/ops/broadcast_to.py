@@ -23,6 +23,24 @@ import flag_gems
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# 输出与标准结果（torch.broadcast_to / x.expand）对齐：值与 stride 逐维一致。
+# 三个 kernel 保持原始实现逐字节不变，全部调整都在 wrapper 的传参与返回上：
+#   * repeat fast path：n_elements 传 X（= x.numel()）。offsets < X 时
+#     offsets % X == offsets，kernel 退化为「把 x 全量拷进 X 元素缓冲」；
+#   * row fast path：cols 传 1。store 落在 row*1 + 0 == row，同样退化为拷贝；
+#   * general path：out_shape/out_cumprod/in_stride 元数据与 n_elements 改传
+#     x 自己的形状分解，kernel 的 store 目标 offsets 随之只在 [0, x.numel())
+#     内取值，得到的同样是 x 的紧凑拷贝；
+#   * 三条物化路径最后统一 ``buf.view(in_shape).expand(out_shape)``：expand
+#     视图的 stride 恰为标准输出 stride（广播维 0、其余沿用输入 stride），
+#     值即 x 本身。每个调用仍只 launch 一次 Triton kernel，且写次数从
+#     numel(out) 降为 numel(x)。
+#   * 非连续输入：x.expand 本身就是 torch.broadcast_to 的原生语义（同值、同
+#     stride 的视图——广播维 stride 0、其余沿用 x 的实际 stride），直接返回
+#     该视图即精确对齐；无广播 / 0 元素 / 索引空间 >= 2^31 同样返回视图（O(1)）。
+# ---------------------------------------------------------------------------
+
 
 @triton.jit
 def broadcast_to_repeat_kernel(
@@ -111,7 +129,8 @@ def broadcast_to(x, size):
         size (list, tuple, or torch.Size): the new shape.
 
     Returns:
-        Tensor: The broadcasted tensor.
+        Tensor: The broadcasted tensor. Its values and stride match the
+        standard ``expand`` result (broadcast dims have stride 0).
     """
     logger.debug("GEMS_ENFLAME BROADCAST_TO")
 
@@ -164,17 +183,20 @@ def broadcast_to(x, size):
     for s in out_shape:
         n_elements *= s
     if n_elements == 0:
-        return torch.empty(out_shape, dtype=x.dtype, device=x.device)
+        # 0 元素：返回标准 expand 视图（stride 与 torch.broadcast_to 一致）
+        return x.expand(out_shape)
 
-    # ---- int32 无法表达的极端输出: aten 物化 fallback ----
+    # ---- int32 无法表达的极端输出: 返回标准 expand 视图（纯元数据操作，
+    # 值与 stride 均与 torch.broadcast_to 一致，且免去超大物化）----
     if n_elements >= 2**31:
-        return x.expand(size).contiguous()
+        return x.expand(out_shape)
 
-    out = torch.empty(out_shape, dtype=x.dtype, device=x.device)
-
-    # ---- Fast path: x contiguous 且构成 out 尾部重复单元 (常见 leading
+    # ---- Fast path 1: x contiguous 且构成 out 尾部重复单元 (常见 leading
     # broadcast / addmm bias [N]->[M,N])。周期 X = 最长公共后缀积,
-    # 若 == x.numel(), 输出每 X 个连续元素恰为 x 全量, 一次 launch 周期复制。
+    # 若 == x.numel(), 输出每 X 个连续元素恰为 x 全量。
+    # n_elements 传 X: offsets < X 时 offsets % X == offsets, kernel 恰好把
+    # x 全量拷进 buf (写次数 numel(x), 远小于 numel(out)), 再 expand 出标准
+    # stride 视图, 一次 launch。
     x_numel = x.numel()
     X = 1
     if x.is_contiguous():
@@ -184,21 +206,24 @@ def broadcast_to(x, size):
                 break
             X *= x_shape[len(x_shape) - i]
     if X == x_numel and X > 0 and n_elements % X == 0:
-        BLOCK_SIZE = _select_block_size(n_elements)
-        grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+        buf = torch.empty_like(x)
+        BLOCK_SIZE = _select_block_size(X)
+        grid = (triton.cdiv(X, BLOCK_SIZE),)
         broadcast_to_repeat_kernel[grid](
             x,
-            out,
-            n_elements,
+            buf,
+            X,
             BLOCK_SIZE=BLOCK_SIZE,
             X=X,
             num_warps=4,
         )
-        return out
+        return buf.view(in_shape).expand(out_shape)
 
     # ---- Fast path 2: 尾部列扩展 x[..., 1] -> out[..., C] (每行标量行复制)。
     # X fast path 在 x[-1]==1 处取模周期断裂而失效, 但逐行语义简单:
     # out 可看作 (rows, cols), x 每行一个标量, 按行复制即可。
+    # cols 传 1: tiles_per_row==1 且 mask 只留 lane 0, store 落在
+    # row*1 + 0 == row, kernel 退化为把 x 逐元素拷进 buf, 再 expand。
     if (
         x.is_contiguous()
         and in_shape[-1] == 1
@@ -206,39 +231,37 @@ def broadcast_to(x, size):
         and in_shape[:-1] == out_shape[:-1]
     ):
         rows = x.numel()
-        cols = out_shape[-1]
-        # 列宽对齐大 BLOCK 时整列/整行单任务更省调度; 否则回退小 BLOCK 防 mask 空转。
-        if cols % 4096 == 0:
-            BLOCK_SIZE = 4096
-        elif cols % 2048 == 0 and cols >= 2048:
-            BLOCK_SIZE = 2048
-        else:
-            BLOCK_SIZE = 1024
-        NUM_GRID = min(48, triton.cdiv(n_elements, BLOCK_SIZE))
-        grid = (NUM_GRID,)
-        broadcast_to_row_kernel[grid](
+        buf = torch.empty(rows, dtype=x.dtype, device=x.device)
+        NUM_GRID = max(1, min(48, rows))
+        broadcast_to_row_kernel[(NUM_GRID,)](
             x,
-            out,
+            buf,
             rows,
-            cols,
-            BLOCK_SIZE=BLOCK_SIZE,
+            1,
+            BLOCK_SIZE=1024,
             NUM_GRID=NUM_GRID,
             num_warps=4,
         )
-        return out
+        return buf.view(in_shape).expand(out_shape)
 
     # ---- General path: 逐维分解 ----
+    # kernel 与全部传参语义不变，只是「输出形状」改取 x 自己的形状分解：
+    # store 目标 offsets 只在 [0, x.numel()) 内取值，kernel 恰好把 x 的逻辑
+    # 元素按 flat 序拷进 buf（连续输入时 in_offsets == offsets；非连续输入
+    # 时 in_offsets 是 x 的真实存储偏移，同样落在 x 的数据上），得到 x 的
+    # 紧凑逻辑拷贝，再 expand 出标准 stride 视图。
+    x_numel = x.numel()
+    x_shape_eff = list(in_shape)  # 左侧补 1 后的输入形状
+    x_cumprod_right = [0] * out_ndim
+    prod = 1
+    for d in range(out_ndim - 1, -1, -1):
+        x_cumprod_right[d] = prod
+        prod *= x_shape_eff[d]
+
     # Effective input strides: 0 for broadcasted dims, original stride otherwise
     in_stride_eff = [
         int(in_strides[d]) if in_shape[d] != 1 else 0 for d in range(out_ndim)
     ]
-
-    # Prepare decomposition multipliers: product of sizes to the right per dim
-    out_cumprod_right = [0] * out_ndim
-    prod = 1
-    for d in range(out_ndim - 1, -1, -1):
-        out_cumprod_right[d] = prod
-        prod *= out_shape[d]
 
     # GCU 不支持 int64 tensor: shape/strides 元数据必须 int32。
     def _to_device(data, device):
@@ -247,24 +270,26 @@ def broadcast_to(x, size):
             t = t.pin_memory()
         return t.to(device, non_blocking=True)
 
-    out_shape_arr = _to_device(out_shape, x.device)
-    out_cumprod_arr = _to_device(out_cumprod_right, x.device)
+    x_shape_arr = _to_device(x_shape_eff, x.device)
+    x_cumprod_arr = _to_device(x_cumprod_right, x.device)
     in_stride_arr = _to_device(in_stride_eff, x.device)
 
-    BLOCK_SIZE = _select_block_size(n_elements)
-    NUM_GRID = min(48, triton.cdiv(n_elements, BLOCK_SIZE))
+    buf = torch.empty(x_numel, dtype=x.dtype, device=x.device)
+
+    BLOCK_SIZE = _select_block_size(x_numel)
+    NUM_GRID = min(48, triton.cdiv(x_numel, BLOCK_SIZE))
     grid = (NUM_GRID,)
 
     broadcast_to_kernel[grid](
         x,
-        out,
-        n_elements,
+        buf,
+        x_numel,
         out_ndim,
-        out_shape_arr,
-        out_cumprod_arr,
+        x_shape_arr,
+        x_cumprod_arr,
         in_stride_arr,
         BLOCK_SIZE=BLOCK_SIZE,
         NUM_GRID=NUM_GRID,
         num_warps=4,
     )
-    return out
+    return buf.view(in_shape).expand(out_shape)
