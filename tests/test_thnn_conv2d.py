@@ -304,7 +304,14 @@ def test_thnn_conv2d_noncontiguous_input(dtype):
 def test_thnn_conv2d_does_not_mutate_operands(dtype):
     """The inputs are read-only; the result is a fresh buffer."""
     inp, weight, bias = _conv_operands((2, 3, 16, 16), 4, dtype, 3)
-    before = (inp.clone(), weight.clone(), bias.clone())
+    # The snapshots must live on the oracle device: gems_assert_equal moves the
+    # candidate result to the reference side and asserts the reference is
+    # already there, which a CUDA-side clone would violate in quick-cpu mode.
+    before = (
+        utils.to_reference(inp.clone()),
+        utils.to_reference(weight.clone()),
+        utils.to_reference(bias.clone()),
+    )
 
     res_out = flag_gems.thnn_conv2d(inp, weight, (3, 3), bias, [1, 1], [1, 1])
 
