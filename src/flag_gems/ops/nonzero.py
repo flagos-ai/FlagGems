@@ -60,9 +60,12 @@ def nonzero(inp, *, as_tuple=False):
     logger.debug("GEMS NONZERO")
 
     inp_ndim = inp.ndim
+    n_elements = inp.numel()
+    if n_elements == 0:
+        out = torch.empty((0, inp_ndim), dtype=torch.int64, device=inp.device)
+        return torch.unbind(out, dim=1) if as_tuple else out
 
     inp = inp.contiguous()
-    n_elements = inp.numel()
     inp_view = inp.view(n_elements)
 
     shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
