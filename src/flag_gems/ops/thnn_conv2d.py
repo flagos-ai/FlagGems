@@ -195,18 +195,36 @@ def _thnn_conv2d_direct64(
     tl.store(out_ptr + out_off, acc.to(out_ptr.dtype.element_ty), mask=out_ok)
 
 
-def run(self, weight, kernel_size, bias=None, stride=1, padding=0):
+def thnn_conv2d(self, weight, kernel_size, bias=None, stride=1, padding=0):
     logger.debug("GEMS THNN_CONV2D")
     x = self
     # Both kernels address their operands with a packed NCHW linear index, which
     # only matches logical element order when the tensor is contiguous. Strided
     # and transposed views are therefore materialised first, otherwise they are
-    # read in storage order and silently give the wrong answer.
+    # read in storage order and silently give the wrong answer. The bias is
+    # indexed as a contiguous 1-D buffer (b_ptr + offs_n) and needs the same
+    # treatment.
     if not x.is_contiguous():
         x = x.contiguous()
     if not weight.is_contiguous():
         weight = weight.contiguous()
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
+
+    # The kernels index weight as C_out x C_in x KH x KW and reuse C_in for the
+    # packed input addressing, so these match the native op's shape checks
+    # ("non-empty 2D or 4D weight tensor expected" / "tensor.size[1] == C_in").
+    if weight.dim() != 4:
+        raise RuntimeError(
+            f"thnn_conv2d(): non-empty 4D weight tensor expected, but got: "
+            f"{list(weight.shape)}"
+        )
     N, C_in, H, W = x.shape
+    if weight.shape[1] != C_in:
+        raise RuntimeError(
+            f"thnn_conv2d(): Expected input tensor to have channel dimension "
+            f"{weight.shape[1]} at index 1, but got channel dimension {C_in} instead"
+        )
     C_out = weight.shape[0]
 
     if isinstance(kernel_size, (tuple, list)):

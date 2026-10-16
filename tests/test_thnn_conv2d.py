@@ -340,3 +340,25 @@ def test_thnn_conv2d_rejects_non_tensor_weight():
 
     with pytest.raises((RuntimeError, TypeError, AttributeError)):
         flag_gems.thnn_conv2d(inp, [[[0.0]]], (3, 3), None, [1, 1], [1, 1])
+
+
+@pytest.mark.thnn_conv2d
+def test_thnn_conv2d_rejects_rank3_weight():
+    """A rank-3 weight has no native kernel ("non-empty 2D or 4D weight tensor
+    expected") and the candidate's packed addressing cannot accept it either."""
+    inp = torch.randn((2, 3, 8, 8), dtype=torch.float32, device=gems_device)
+    weight = torch.randn((4, 3, 3), dtype=torch.float32, device=gems_device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.thnn_conv2d(inp, weight, (3, 3), None, [1, 1], [1, 1])
+
+
+@pytest.mark.thnn_conv2d
+def test_thnn_conv2d_rejects_cin_mismatch():
+    """A weight whose C_in differs from the input's is rejected, matching the
+    native "Expected input tensor to have channel dimension N at index 1"."""
+    inp = torch.randn((2, 3, 8, 8), dtype=torch.float32, device=gems_device)
+    weight = torch.randn((4, 5, 3, 3), dtype=torch.float32, device=gems_device)
+
+    with pytest.raises(RuntimeError):
+        flag_gems.thnn_conv2d(inp, weight, (3, 3), None, [1, 1], [1, 1])
