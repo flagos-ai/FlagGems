@@ -3,6 +3,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -54,13 +55,334 @@ def nll_loss_forward_kernel(
         tl.store(out_ptr + offsets_n, out, mask=mask_n)
         if reduction != 0:
             tl.store(ignore_wgt_tgt_ptr + offsets_n, wgt_tgt, mask=mask_n)
+        elif pid_n == 0:
+            # reduction == 0 ('none'): the caller wants a `total_weight` scalar
+            # and ATen's reference value there is always 0.  Emitting it from
+            # this kernel keeps the caller off the device tensor-creation path
+            # (a `torch.zeros([])` here re-enters the flag_gems `zeros`
+            # override, paying a second Triton launch plus its host bookkeeping).
+            tl.store(ignore_wgt_tgt_ptr, 0.0)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["ignore_index"])
+def nll_loss_forward_reduce_kernel(
+    inp_ptr,
+    tgt_ptr,
+    wgt_ptr,
+    out_ptr,
+    total_wgt_ptr,
+    ignore_index,
+    N,
+    C,
+    REDUCTION: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Single-launch gather + reduction for the case where all N targets fit
+    in one block (N <= BLOCK_N).  Produces the same (output, total_weight)
+    pair as the two-launch ``nll_loss_forward_kernel`` + ``nll_loss_reduce_kernel``
+    path, without materializing the per-element intermediate buffers."""
+    offsets = tl.arange(0, BLOCK_N)
+    mask = offsets < N
+    tgt = tl.load(tgt_ptr + offsets, mask=mask, other=0)
+    ignore_mask = not (tgt == ignore_index) and mask
+
+    if wgt_ptr is None:
+        wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
+    else:
+        wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+
+    inp_tgt = tl.load(inp_ptr + offsets * C + tgt, mask=ignore_mask, other=0).to(
+        tl.float32
+    )
+    total_loss = tl.sum(inp_tgt * wgt_tgt * -1)
+    total_wgt = tl.sum(wgt_tgt)
+
+    if REDUCTION == 1:
+        res = total_loss / total_wgt
+    else:
+        res = total_loss
+
+    tl.store(out_ptr, res.to(out_ptr.dtype.element_ty))
+    tl.store(total_wgt_ptr, total_wgt.to(total_wgt_ptr.dtype.element_ty))
+
+
+# ---------------------------------------------------------------------------
+# Flat-launched two-stage gather+reduce (used when a single-program tile would
+# be serial in N, i.e. 8192 < N <= _NLL_FUSE_BLOCK_MAX).  Stage 1 is a grid of
+# programs each gathering one [BLOCK] chunk into a per-program partial; stage 2
+# folds the NPROG partials into the final scalar.  Both launches are bound once
+# through `driver.active.flat_launchers` and replayed flat, because on this
+# backend the two `fn[grid]` launches alone would dominate the small amount of
+# GPU work they feed.  The weight/no-weight kernels are split so the flat ABI
+# operand count is fixed: a single `HAS_WEIGHT` kernel folds the unused weight
+# pointer out of the compiled body, changing the operand arity per key.
+# ---------------------------------------------------------------------------
+_FLAT_MISS = object()
+_FLAT_LAUNCHERS = _FLAT_MISS
+
+
+def _flat_launchers():
+    global _FLAT_LAUNCHERS
+    if _FLAT_LAUNCHERS is _FLAT_MISS:
+        _FLAT_LAUNCHERS = getattr(driver.active, "flat_launchers", None)
+    return _FLAT_LAUNCHERS
+
+
+@triton.jit(
+    do_not_specialize=["ignore_index", "N", "C"],
+    do_not_specialize_on_alignment=[
+        "inp_ptr",
+        "tgt_ptr",
+        "wgt_ptr",
+        "po_ptr",
+        "pw_ptr",
+    ],
+)
+def nll_loss_partial_wgt_kernel(
+    inp_ptr,
+    tgt_ptr,
+    wgt_ptr,
+    po_ptr,
+    pw_ptr,
+    ignore_index,
+    N,
+    C,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < N
+    tgt = tl.load(tgt_ptr + offsets, mask=mask, other=0)
+    ignore_mask = not (tgt == ignore_index) and mask
+    wgt_tgt = tl.load(wgt_ptr + tgt, mask=ignore_mask, other=0).to(tl.float32)
+    inp_tgt = tl.load(inp_ptr + offsets * C + tgt, mask=ignore_mask, other=0).to(
+        tl.float32
+    )
+    tl.store(po_ptr + pid, tl.sum(inp_tgt * wgt_tgt * -1.0))
+    tl.store(pw_ptr + pid, tl.sum(wgt_tgt))
+
+
+@triton.jit(
+    do_not_specialize=["ignore_index", "N", "C"],
+    do_not_specialize_on_alignment=["inp_ptr", "tgt_ptr", "po_ptr", "pw_ptr"],
+)
+def nll_loss_partial_nowgt_kernel(
+    inp_ptr,
+    tgt_ptr,
+    po_ptr,
+    pw_ptr,
+    ignore_index,
+    N,
+    C,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < N
+    tgt = tl.load(tgt_ptr + offsets, mask=mask, other=0)
+    ignore_mask = not (tgt == ignore_index) and mask
+    wgt_tgt = tl.where(ignore_mask, 1.0, 0.0)
+    inp_tgt = tl.load(inp_ptr + offsets * C + tgt, mask=ignore_mask, other=0).to(
+        tl.float32
+    )
+    tl.store(po_ptr + pid, tl.sum(inp_tgt * wgt_tgt * -1.0))
+    tl.store(pw_ptr + pid, tl.sum(wgt_tgt))
+
+
+@triton.jit(
+    do_not_specialize=["NPROG"],
+    do_not_specialize_on_alignment=["po_ptr", "pw_ptr", "out_ptr", "tw_ptr"],
+)
+def nll_loss_finalize_kernel(
+    po_ptr,
+    pw_ptr,
+    out_ptr,
+    tw_ptr,
+    NPROG,
+    MEAN: tl.constexpr,
+    NP2: tl.constexpr,
+):
+    offsets = tl.arange(0, NP2)
+    mask = offsets < NPROG
+    total_loss = tl.sum(tl.load(po_ptr + offsets, mask=mask, other=0).to(tl.float32))
+    total_wgt = tl.sum(tl.load(pw_ptr + offsets, mask=mask, other=0).to(tl.float32))
+    res = total_loss / total_wgt if MEAN else total_loss
+    tl.store(out_ptr, res.to(out_ptr.dtype.element_ty))
+    tl.store(tw_ptr, total_wgt.to(tw_ptr.dtype.element_ty))
+
+
+_NLL_FLAT_BLOCK = 1024
+_NLL_FLAT_WARPS = 4
+
+
+def _nll_loss_forward_flat(self, target, weight, reduction, ignore_index, N, C):
+    """Two-stage flat-launched gather+reduce for `reduction != 0`."""
+    nprog = triton.cdiv(N, _NLL_FLAT_BLOCK)
+    partial_o = torch.empty((nprog,), dtype=torch.float32, device=self.device)
+    partial_w = torch.empty((nprog,), dtype=torch.float32, device=self.device)
+    output = torch.empty([], dtype=self.dtype, device=self.device)
+    total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+
+    launchers = _flat_launchers()
+    grid = (nprog,)
+    has_weight = weight is not None
+    kfn = nll_loss_partial_wgt_kernel if has_weight else nll_loss_partial_nowgt_kernel
+    key = (self.dtype, _NLL_FLAT_BLOCK, _NLL_FLAT_WARPS, grid[0], has_weight)
+
+    with torch_device_fn.device(self.device):
+        if launchers is None:  # older triton: correct, just the usual overhead
+            if has_weight:
+                kfn[grid](
+                    self,
+                    target,
+                    weight,
+                    partial_o,
+                    partial_w,
+                    ignore_index,
+                    N,
+                    C,
+                    _NLL_FLAT_BLOCK,
+                    num_warps=_NLL_FLAT_WARPS,
+                    is_use_mask_zero=True,
+                )
+            else:
+                kfn[grid](
+                    self,
+                    target,
+                    partial_o,
+                    partial_w,
+                    ignore_index,
+                    N,
+                    C,
+                    _NLL_FLAT_BLOCK,
+                    num_warps=_NLL_FLAT_WARPS,
+                    is_use_mask_zero=True,
+                )
+        else:
+            launch, stream = launchers.acquire(kfn, key)
+            if launch is None:
+                if has_weight:
+                    kernel = kfn[grid](
+                        self,
+                        target,
+                        weight,
+                        partial_o,
+                        partial_w,
+                        ignore_index,
+                        N,
+                        C,
+                        _NLL_FLAT_BLOCK,
+                        num_warps=_NLL_FLAT_WARPS,
+                        is_use_mask_zero=True,
+                    )
+                else:
+                    kernel = kfn[grid](
+                        self,
+                        target,
+                        partial_o,
+                        partial_w,
+                        ignore_index,
+                        N,
+                        C,
+                        _NLL_FLAT_BLOCK,
+                        num_warps=_NLL_FLAT_WARPS,
+                        is_use_mask_zero=True,
+                    )
+                launchers.bind(kfn, key, kernel, grid)
+            else:
+                if has_weight:
+                    launch(
+                        stream,
+                        self.data_ptr(),
+                        target.data_ptr(),
+                        weight.data_ptr(),
+                        partial_o.data_ptr(),
+                        partial_w.data_ptr(),
+                        ignore_index,
+                        N,
+                        C,
+                    )
+                else:
+                    launch(
+                        stream,
+                        self.data_ptr(),
+                        target.data_ptr(),
+                        partial_o.data_ptr(),
+                        partial_w.data_ptr(),
+                        ignore_index,
+                        N,
+                        C,
+                    )
+
+        mean = reduction == 1
+        np2 = triton.next_power_of_2(nprog)
+        fkey = (self.dtype, _NLL_FLAT_WARPS, 1, mean, np2)
+        if launchers is None:
+            nll_loss_finalize_kernel[(1,)](
+                partial_o,
+                partial_w,
+                output,
+                total_weight,
+                nprog,
+                mean,
+                np2,
+                num_warps=_NLL_FLAT_WARPS,
+                is_use_mask_zero=True,
+            )
+        else:
+            launch, stream = launchers.acquire(nll_loss_finalize_kernel, fkey)
+            if launch is None:
+                kernel = nll_loss_finalize_kernel[(1,)](
+                    partial_o,
+                    partial_w,
+                    output,
+                    total_weight,
+                    nprog,
+                    mean,
+                    np2,
+                    num_warps=_NLL_FLAT_WARPS,
+                    is_use_mask_zero=True,
+                )
+                launchers.bind(nll_loss_finalize_kernel, fkey, kernel, (1,))
+            else:
+                launch(
+                    stream,
+                    partial_o.data_ptr(),
+                    partial_w.data_ptr(),
+                    output.data_ptr(),
+                    total_weight.data_ptr(),
+                    nprog,
+                )
+
+    return output, total_weight
 
 
 _NLL_REDUCE_TILE = 8192
 _NLL_REDUCE_MAX_TILES = 2
+# Widest single tile the fused gather+reduce kernel may take.  `next_pow2(N)`
+# is used as the tile while it fits here, so `ntiles == 1` and the shape is
+# handled by one launch; a 16384-wide block is the widest that still pays off
+# (a single-program kernel is serial in `N`, so this stays bounded).
+_NLL_FUSE_BLOCK_MAX = 16384
+# Below this N the single-program fused tile is already fast; only the
+# 16384-wide tile that `_nll_reduce_tile` picks for larger N goes serial.
+_NLL_FLAT_MIN_N = _NLL_REDUCE_TILE + 1
 _NLL_FWD_BLOCK_SMALL = 256
 _NLL_FWD_BLOCK_LARGE = 512
 _NLL_FWD_BLOCK_SWITCH = 1024
+
+
+def _nll_reduce_tile(n):
+    """`(ntiles, TL)` for the reduce path.
+
+    `_NLL_FUSE_BLOCK_MAX` bounds the tile so the fused path stays correct for
+    every `N` it is offered: `ntiles == 1` implies `TL >= N` and the whole
+    shape is gathered and reduced inside one program.
+    """
+    pow2 = triton.next_power_of_2(n)
+    tl_width = pow2 if pow2 <= _NLL_FUSE_BLOCK_MAX else _NLL_REDUCE_TILE
+    return triton.cdiv(n, tl_width), tl_width
 
 
 def _nll_fwd_block(n):
@@ -718,13 +1040,65 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
     target = target.contiguous()
     weight = None if weight is None else weight.contiguous()
 
-    BLOCK_N = _nll_fwd_block(N)
-    fused = False
-    if reduction != 0:
-        TL = min(_NLL_REDUCE_TILE, triton.next_power_of_2(N))
-        ntiles = triton.cdiv(N, TL)
-        fused = ntiles <= _NLL_REDUCE_MAX_TILES
+    if reduction == 0:
+        BLOCK_N = _nll_fwd_block(N)
+        out = torch.empty(shape, dtype=self.dtype, device=self.device)
+        # `nll_loss_forward_kernel` writes the (always zero) `total_weight`
+        # scalar itself, so no device-side `torch.zeros([])` is needed here.
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+        n_blocks = triton.cdiv(N, BLOCK_N)
+        with torch_device_fn.device(self.device):
+            nll_loss_forward_kernel[(n_blocks, 1, 1)](
+                self,
+                target,
+                weight,
+                out,
+                total_weight,
+                ignore_index,
+                N,
+                C,
+                reduction,
+                BLOCK_N,
+                False,
+                is_use_mask_zero=True,
+            )
+        return out, total_weight
 
+    # 8192 < N <= 16384: the single fused tile would be 16384-wide and serial in
+    # N, where the flat-launched two-stage is clearly faster.  Smaller N keeps
+    # the single fused tile, larger N keeps the staged path below.
+    if _NLL_FLAT_MIN_N <= N <= _NLL_FUSE_BLOCK_MAX:
+        return _nll_loss_forward_flat(
+            self, target, weight, reduction, ignore_index, N, C
+        )
+
+    ntiles, TL = _nll_reduce_tile(N)
+
+    if ntiles == 1:
+        # Single-launch fused gather + reduction: all N targets fit in one
+        # block, so emit the final (output, total_weight) scalar pair directly
+        # instead of materializing the per-element buffers and launching a
+        # second reduce kernel.
+        output = torch.empty([], dtype=self.dtype, device=self.device)
+        total_weight = torch.empty([], dtype=self.dtype, device=self.device)
+        with torch_device_fn.device(self.device):
+            nll_loss_forward_reduce_kernel[(1, 1, 1)](
+                self,
+                target,
+                weight,
+                output,
+                total_weight,
+                ignore_index,
+                N,
+                C,
+                reduction,
+                TL,
+                is_use_mask_zero=True,
+            )
+        return output, total_weight
+
+    BLOCK_N = _nll_fwd_block(N)
+    fused = ntiles <= _NLL_REDUCE_MAX_TILES
     if fused:
         pad_n = triton.cdiv(ntiles * TL, BLOCK_N) * BLOCK_N
         out = torch.empty(pad_n, dtype=self.dtype, device=self.device)
@@ -732,11 +1106,9 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
         n_blocks = pad_n // BLOCK_N
     else:
         out = torch.empty(shape, dtype=self.dtype, device=self.device)
-        ignore_weight_tgt = None
-        if reduction != 0:
-            ignore_weight_tgt = torch.empty(
-                target.shape, dtype=self.dtype, device=self.device
-            )
+        ignore_weight_tgt = torch.empty(
+            target.shape, dtype=self.dtype, device=self.device
+        )
         n_blocks = triton.cdiv(N, BLOCK_N)
 
     with torch_device_fn.device(self.device):
@@ -754,9 +1126,6 @@ def nll_loss_forward(self, target, weight=None, reduction=1, ignore_index=-100):
             fused,
             is_use_mask_zero=True,
         )
-
-    if reduction == 0:
-        return out, torch.zeros([], dtype=self.dtype, device=self.device)
 
     if fused:
         output = torch.empty([], dtype=self.dtype, device=self.device)
