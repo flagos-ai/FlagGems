@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import logging
+import math
 
 import torch
 import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -75,8 +77,29 @@ def _igammac_autotune_configs():
     ]
 
 
+def _igammac_ascend_do_bench(fn, quantiles=None):
+    from triton.backends.ascend.testing import do_bench_npu
+
+    # Compile before profiling. Use the device timer rather than the default
+    # Triton event timer, which fails with 507000 on some 910B hosts.
+    fn()
+    torch_device_fn.synchronize()
+    latency = float(do_bench_npu(fn, warmup=10, active=50, clear_l2_cache=False))
+    if not math.isfinite(latency) or latency <= 0:
+        raise RuntimeError(f"IGAMMAC: invalid Ascend tuning measurement: {latency}")
+    if quantiles is None:
+        return latency
+    # The timer returns one aggregate, not per-launch quantiles. Repeat that
+    # score to satisfy the autotuner's requested result shape.
+    return [latency for _ in quantiles]
+
+
 @libentry()
-@triton.autotune(configs=_igammac_autotune_configs(), key=["n_elements"])
+@triton.autotune(
+    configs=_igammac_autotune_configs(),
+    key=["n_elements"],
+    do_bench=_igammac_ascend_do_bench,
+)
 @triton.jit
 def igammac_kernel(
     a_ptr,
