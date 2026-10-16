@@ -34,6 +34,19 @@ _TRANSPOSE_BLOCK = 32
 
 _PACK_BLOCK = 256
 
+# CANN flattens Triton's launch grid into blockDim, whose valid range is [1, 65535].
+_ASCEND_MAX_CORE_DIM = 65535
+
+# mm_out uses 2D output tiles internally; estimate its blockDim before taking this path.
+_ASCEND_MM_OUT_TILE_M = 32
+_ASCEND_MM_OUT_TILE_N = 16
+
+# Packed+bias h-split keeps extra fp32 tiles live; 32x128 is the largest safe tile.
+_GRU_PACKED_BIAS_UB_SAFE_BLOCK_B = 32
+_GRU_PACKED_BIAS_UB_SAFE_BLOCK_H = 128
+_GRU_PACKED_BIAS_UB_SAFE_TILE_ELEMS = (
+    _GRU_PACKED_BIAS_UB_SAFE_BLOCK_B * _GRU_PACKED_BIAS_UB_SAFE_BLOCK_H
+)
 
 @libentry()
 @triton.jit
@@ -1040,7 +1053,23 @@ def _direction_prep(
     )
 
     macs = seq_len * batch_size * input_size * 3 * hidden_size
-    use_mm = macs >= _IGEMM_MM_MIN_MACS
+    rows = seq_len * batch_size
+    cols = 3 * hidden_size
+    x_aug_programs = (
+        seq_len
+        * batch_size
+        * triton.cdiv(input_size + 1, _PACK_BLOCK)
+    )
+    mm_out_programs = triton.cdiv(rows, _ASCEND_MM_OUT_TILE_M) * triton.cdiv(
+        cols, _ASCEND_MM_OUT_TILE_N
+    )
+    # Skip the mm_out fast path when either preparatory packing or mm_out would
+    # exceed CANN's blockDim limit; the Triton GEMM fallback has bounded launches.
+    use_mm = (
+        macs >= _IGEMM_MM_MIN_MACS
+        and x_aug_programs <= _ASCEND_MAX_CORE_DIM
+        and mm_out_programs <= _ASCEND_MAX_CORE_DIM
+    )
     with torch_device_fn.device(layer_input.device):
         if use_mm:
             m = seq_len * batch_size
@@ -1184,7 +1213,14 @@ def _run_direction(
     grid = (triton.cdiv(batch_size, block_b),)
     divisible = batch_size % block_b == 0 and hidden_size % block_h == 0
     hsplit = _hsplit_tiles(batch_size, hidden_size, layer_input.device)
-
+    # Packed+bias h-split overflows UB at 64x128; keep only tiles up to 32x128.
+    if (
+        hsplit is not None
+        and batch_sizes is not None
+        and has_biases
+        and hsplit[0] * block_h > _GRU_PACKED_BIAS_UB_SAFE_TILE_ELEMS
+    ):
+        hsplit = None
     # Tail of the timeloop kernels' argument list, identical for both variants.
     tail_args = (
         input_gates.stride(0),
