@@ -780,6 +780,7 @@ _FULL_CONFIG = (
     ("ceil_", ceil_),
     ("celu", celu),
     ("celu_", celu_),
+    ("chain_matmul", chain_matmul),
     ("chalf", chalf),
     ("channel_shuffle", channel_shuffle),
     ("cholesky_inverse", cholesky_inverse),

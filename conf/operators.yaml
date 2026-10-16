@@ -2937,6 +2937,18 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: chain_matmul
+  description: Computes the product of a chain of 2-D matrices using an optimal (minimum-flop)
+    parenthesization.
+  for:
+  - chain_matmul
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
 - id: chalf
   description: 'Returns a copy of the tensor cast to the ``complex32`` dtype. Real
     inputs are
