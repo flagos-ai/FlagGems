@@ -75,6 +75,52 @@ def test_slice_scatter(shape, stride, dim, dtype, start, end, step):
 
 
 @pytest.mark.slice_scatter
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "shape,stride,dim,start,end,step",
+    [
+        ((3, 2), (1, 3), 1, 0, 1, 1),
+        ((3, 2), (1, 3), 0, 1, 3, 1),
+        ((3, 4), (8, 2), 1, 1, 4, 2),
+        ((3, 2, 4), (4, 12, 1), 2, 1, 4, 2),
+        ((2, 3, 4), (24, 8, 2), 1, 0, 3, 2),
+        ((3, 517), (1, 3), 1, 1, 516, 2),
+    ],
+)
+def test_slice_scatter_noncontiguous_input(shape, stride, dim, dtype, start, end, step):
+    inp = torch.empty_strided(shape, stride, dtype=dtype, device=flag_gems.device)
+    # Vary the unchanged values too, so misplaced writes cannot pass unnoticed.
+    inp.copy_(
+        torch.arange(inp.numel(), dtype=torch.float32, device=flag_gems.device).reshape(
+            shape
+        )
+    )
+    src_shape = list(shape)
+    src_shape[dim] = (end - start + step - 1) // step
+    src = torch.empty(src_shape, dtype=dtype, device=flag_gems.device)
+    src.copy_(
+        -torch.arange(
+            1, src.numel() + 1, dtype=torch.float32, device=flag_gems.device
+        ).reshape(src_shape)
+    )
+
+    ref_out = torch.slice_scatter(
+        utils.to_reference(inp),
+        utils.to_reference(src),
+        dim=dim,
+        start=start,
+        end=end,
+        step=step,
+    )
+    res_out = flag_gems.slice_scatter(
+        inp, src, dim=dim, start=start, end=end, step=step
+    )
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.stride() == inp.stride()
+
+
+@pytest.mark.slice_scatter
 def testslice_scatter_with_self_overlapping_input():
     inp = torch.randn((3, 1), device=flag_gems.device).broadcast_to((3, 8))
     src = torch.rand((3, 4), device=flag_gems.device)

@@ -34,6 +34,8 @@ def slice_scatter_kernel(
     start,
     step,
     src_dim_size,
+    OUT_SHAPE: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -60,7 +62,17 @@ def slice_scatter_kernel(
     )
     src_data = tl.load(src_ptr + src_idx, mask=mask & slice_mask)
     result = tl.where(slice_mask, src_data, inp_data)
-    tl.store(out_ptr + idx, result, mask=mask)
+
+    out_idx = idx
+    if len(OUT_SHAPE) > 0:
+        # Inputs are contiguous, but the output can retain the original strides.
+        remaining = idx
+        out_idx = tl.full((BLOCK_SIZE,), 0, tl.int64)
+        for axis in tl.static_range(len(OUT_SHAPE) - 1, -1, -1):
+            coordinate = remaining % OUT_SHAPE[axis]
+            out_idx += coordinate.to(tl.int64) * OUT_STRIDES[axis]
+            remaining = remaining // OUT_SHAPE[axis]
+    tl.store(out_ptr + out_idx, result, mask=mask)
 
 
 def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
@@ -102,6 +114,13 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
     BLOCK_SIZE = 1024
     grid = (triton.cdiv(total_elements, BLOCK_SIZE),)
 
+    # Empty metadata keeps the existing linear store for contiguous outputs.
+    out_shape = ()
+    out_strides = ()
+    if not out.is_contiguous():
+        out_shape = tuple(out.shape)
+        out_strides = out.stride()
+
     slice_scatter_kernel[grid](
         out,
         inp,
@@ -112,6 +131,8 @@ def slice_scatter(inp, src, dim=0, start=None, end=None, step=1):
         start,
         step,
         src_dim_size,
+        OUT_SHAPE=out_shape,
+        OUT_STRIDES=out_strides,
         BLOCK_SIZE=BLOCK_SIZE,
     )
 
