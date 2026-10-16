@@ -42,27 +42,163 @@ jobs:
       # falls back to ~/.cache/pre-commit (empty on the ephemeral pod) and
       # rebuilds every hook env (~128s). Must match the image's PRE_COMMIT_HOME.
       PRE_COMMIT_HOME: /opt/pre-commit-cache
-      # Override the platform-injected proxy (which fails ~1/3 of git fetches)
-      # with a working one from secrets, so actions/checkout's fetch is reliable.
-      # Only lowercase: GitHub treats env names case-insensitively, so defining
-      # both http_proxy and HTTP_PROXY is a duplicate-key error that fails the
-      # whole workflow to parse. git/curl honor the lowercase names.
-      http_proxy: ${{ secrets.CI_HTTP_PROXY }}
-      https_proxy: ${{ secrets.CI_HTTP_PROXY }}
+      # NOTE: no http_proxy/https_proxy override here. It used to be
+      # `${{ secrets.CI_HTTP_PROXY }}`, but secrets are unavailable on fork
+      # PRs -> empty string -> clobbered the runner's own working proxy
+      # (injected into the step env) -> git tried direct github.com, which
+      # times out behind the firewall. The runner already exports its proxy
+      # to every step; don't touch it.
     steps:
     # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung fetch,
-    # rotates links across rounds (see the action). @master ref so it resolves
-    # from the runner's _actions cache before any checkout. ssh-key empty on
-    # fork PRs -> SSH skipped, token HTTP used. The action also registers the
-    # workspace as a safe git dir (needed by pre-commit under HOME=/github/home).
-    - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
-      with:
-        ssh-key: ${{ secrets.CI_SSH_KEY }}
+    # rotates links across rounds. Inlined on purpose (NOT `uses:` of
+    # .github/actions/robust-checkout): a same-repo composite action makes the
+    # runner download the whole repo as a tarball from codeload.github.com
+    # during "Prepare all required actions", which times out through the flaky
+    # proxy (3 x 100s, no link rotation possible) before ANY step can run. A
+    # local `uses: ./...` path can't be used for the checkout step itself (the
+    # repo isn't checked out yet), so the script lives here verbatim. ssh-key
+    # empty on fork PRs -> SSH skipped, token HTTP used. The script also
+    # registers the workspace as a safe git dir (needed by pre-commit under
+    # HOME=/github/home).
+    - name: Robust checkout
+      shell: bash
+      env:
+        RC_REPO: ${{ github.repository }}
+        RC_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        RC_DEPTH: "1"
+        RC_SSH_KEY: ${{ secrets.CI_SSH_KEY }}
+        RC_CONNECT: "10"
+        RC_PROBE: "20"
         # Each round is a connect probe (fast reject of a wedged link) then a
         # throughput-judged fetch, so a slow-but-moving link finishes in round 1
-        # instead of being clock-killed. Rounds only buy retries across short
-        # outage blips; a full outage fails fast on the connect probe either way.
-        rounds: "30"
+        # instead of being clock-killed. 60 rounds x ~20s = ~20 min of rotation
+        # to ride out the observed >=5 min full-proxy outages (a 30-round run
+        # died at exactly 5:00 with every probe killed). A healthy link still
+        # hits on round 1 (~10s); rounds only cost time when both links are
+        # fully unreachable, and a full outage still fails fast per-round on
+        # the connect probe. Same sizing as the composite action on master
+        # (68e1108c4).
+        RC_TRANSFER: "600"
+        RC_ROUNDS: "60"
+        RC_TOKEN: ${{ github.token }}
+      run: |
+        set -eu
+        cd "$GITHUB_WORKSPACE"
+
+        # Trust the workspace for every later git call (pre-commit, ci_checks),
+        # otherwise HOME=/github/home git calls hit dubious-ownership.
+        git config --global --add safe.directory "$GITHUB_WORKSPACE" || true
+
+        # Fresh repo each run: the cpu-runner reuses _work across runs and a
+        # stale index/sparse state can hide tracked files. Start clean.
+        rm -rf .git
+        git init -q
+        git config --global --add safe.directory "$GITHUB_WORKSPACE" || true
+
+        depth_arg=""
+        [ "$RC_DEPTH" != "0" ] && depth_arg="--depth=$RC_DEPTH"
+
+        # SSH link (only if a key was provided — fork PRs pass empty).
+        ssh_ready=0
+        if [ -n "$RC_SSH_KEY" ]; then
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RC_SSH_KEY" > ~/.ssh/rc_key && chmod 600 ~/.ssh/rc_key
+          ssh_ready=1
+        fi
+        SSH_URL="git@github.com:${RC_REPO}.git"
+        # ServerAlive* makes SSH drop a silently-wedged connection after
+        # ~10s (5s x 2) of no response, so a hung SSH fetch aborts on its own
+        # instead of transferring nothing until the hard timeout. A fetch that
+        # is slow but still moving keeps its keepalives answered and survives.
+        SSH_CMD="ssh -i $HOME/.ssh/rc_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=2"
+
+        # HTTP link via the injected proxy, authenticated with the job token.
+        HTTP_URL="https://x-access-token:${RC_TOKEN}@github.com/${RC_REPO}.git"
+
+        # Two failure modes need two different limits, so they're decoupled:
+        #
+        #   connect-stage hang (TLS / proxy-CONNECT stall, the common failure
+        #   here): no bytes flow, so git's low-speed check never fires and git has
+        #   no usable http.connectTimeout. The ONLY cap is an external hard kill.
+        #   We probe the link with `ls-remote` (tiny ref advertisement, <1s on a
+        #   healthy link) under a short SIGKILL window; a wedged link is rotated in
+        #   ~connect-seconds instead of waiting out the OS TCP timeout (~75s).
+        #
+        #   slow transfer: once the probe passes, the real fetch is judged on
+        #   THROUGHPUT, not the clock — git aborts only if it stays below
+        #   ~20 KiB/s for probe-seconds. A low-bandwidth-but-moving runner (e.g.
+        #   ~300 KiB/s pulling ~14 MiB -> ~45s) finishes instead of being killed.
+        #   transfer-seconds is just a catch-all SIGKILL so a fetch that neither
+        #   finishes nor drops below the floor can't hang a round forever. Sized
+        #   for the worst healthy link: 20 KiB/s is git's abort floor, so a
+        #   fetch that survives the low-speed check can still legitimately need
+        #   minutes (a depth-1 pull of ~14 MiB at 60 KiB/s -> ~4 min); the old
+        #   180s cap killed a MOVING full-pack fetch at 187s and threw the
+        #   progress away.
+        #
+        #   http.version=HTTP/1.1: git's default HTTP/2 over a CONNECT proxy is
+        #   the known cause of the long zero-byte connect stalls this step
+        #   exists to survive. Forcing HTTP/1.1 removes that failure mode
+        #   outright (both in the probe and the fetch) instead of only
+        #   recovering from it.
+        LOW_LIMIT=20480              # bytes/sec (20 KiB/s) low-speed floor
+        LOW_TIME="$RC_PROBE"         # seconds under the floor before git aborts
+        CONNECT="$RC_CONNECT"        # hard kill (s) for the connect probe
+        HARD="$RC_TRANSFER"          # hard kill (s) catch-all for the transfer
+        try_fetch() {  # $1=label $2=url  (GIT_SSH_COMMAND set by caller if ssh)
+          git remote remove origin 2>/dev/null || true
+          git remote add origin "$2"
+          local start end ms
+          start=$(date +%s%N)
+          # Stage 1: connect probe. Fast reject of a wedged link.
+          if ! timeout -s KILL "$CONNECT" git -c http.version=HTTP/1.1 \
+               ls-remote --quiet origin "$RC_REF" >/dev/null 2>&1; then
+            end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
+            echo "  $1: FAIL (connect) ${ms}ms"
+            return 1
+          fi
+          # Stage 2: transfer. Judged on throughput (low-speed), with a generous
+          # hard-kill only as a last-resort catch-all.
+          if timeout -s KILL "$HARD" git -c http.version=HTTP/1.1 \
+               -c http.lowSpeedLimit="$LOW_LIMIT" -c http.lowSpeedTime="$LOW_TIME" \
+               fetch -q --no-tags --prune $depth_arg origin "$RC_REF"; then
+            end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
+            echo "  $1: ok ${ms}ms"
+            return 0
+          fi
+          end=$(date +%s%N); ms=$(( (end-start)/1000000 ))
+          echo "  $1: FAIL (transfer) ${ms}ms"
+          return 1
+        }
+
+        ok=0
+        for r in $(seq 1 "$RC_ROUNDS"); do
+          echo "=== round $r ==="
+        # A fetch hard-killed by the probe timeout leaves .git/shallow.lock
+        # (and possibly index.lock) behind; every later round would then fail
+        # instantly with "Unable to create ... shallow.lock: File exists"
+        # even once the network recovers. Clear stale locks before each
+        # attempt.
+        rm -f .git/shallow.lock .git/index.lock 2>/dev/null || true
+          if [ "$ssh_ready" = 1 ]; then
+            if GIT_SSH_COMMAND="$SSH_CMD" try_fetch "ssh" "$SSH_URL"; then ok=1; break; fi
+          else
+            echo "  ssh: skipped (no key)"
+          fi
+          if try_fetch "http" "$HTTP_URL"; then ok=1; break; fi
+        done
+
+        # Scrub credentials regardless of outcome.
+        rm -f ~/.ssh/rc_key 2>/dev/null || true
+        git remote set-url origin "https://github.com/${RC_REPO}.git" 2>/dev/null || true
+
+        if [ "$ok" != 1 ]; then
+          echo "::error::robust-checkout: all links failed after $RC_ROUNDS rounds"
+          exit 1
+        fi
+
+        git checkout -q --force FETCH_HEAD
+        echo "robust-checkout: done ($(git rev-parse --short HEAD))"
     - name: Ensure full working tree
       shell: bash
       run: |
