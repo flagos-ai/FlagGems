@@ -729,6 +729,220 @@ def _bn_fused_tile_s(spatial_dim):
     return 128, (spatial_dim % 128) != 0
 
 
+# ---------------------------------------------------------------------------
+# Training fast path: ONE launch covering both stats and normalize, a single
+# program with a [C, NB*W] block (column j -> (j // W) * NROW + (j % W)) so a
+# block row is one channel and tl.sum(acc, axis=1) is the per-channel
+# reduction (mirrors native_batch_norm.native_batch_norm_fused_kernel, which
+# reached 0.95-2.45x on the official shapes).  Measured on this device:
+# ~8 us fixed + ~8 us per 128 KiB of traffic; the per-slice 1D [TILE] kernels
+# below cost 3-10x more and are kept only as the fallback.
+#
+# TAIL handling (S % W != 0): 2D masked loads/stores are miscompiled on this
+# backend, so the dead lanes clamp their address to S-1 (in-bounds, unmasked
+# load) and the stats multiply the loaded values by a 0/1 column mask while
+# the normalize stores the (redundantly computed) value of the last element a
+# second time -- an idempotent write, so no corruption.  TAIL is a constexpr
+# so the clamp/mask path is only compiled for the last tile.
+# ---------------------------------------------------------------------------
+
+_BNF_MAX_LANES = 1 << 17
+_BNF_MAX_NIT = 8
+_BNF_MAX_W = 2048  # W=4096 + bfloat16 wedges the card (noc idle timeout)
+_BNF_MIN_LANES = 64
+
+
+def _is_pow2(value):
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def _bn_fused_plan(
+    batch_dim, feat_dim, spatial_dim, w_cap=_BNF_MAX_W, max_nit=_BNF_MAX_NIT
+):
+    """Pick (W, NB, IN, R, NIT) for the single-launch fused training kernel.
+
+    W is a power-of-two divisor of spatial_dim (exact fit, no masks), NB
+    divides batch_dim, 64 <= W <= w_cap, 64 <= C*NB*W <= 2^17 lanes.  The
+    static unroll NIT = (batch_dim // NB) * (spatial_dim // W) is capped at
+    max_nit: bfloat16 silently miscompiles / raises illegal memory access at
+    NIT in {11, 12, 16, 24} (measured), while fp32/fp16 tolerate 11.  Ties are
+    broken by the smallest NIT then the widest W.  Returns None if ineligible.
+    """
+    if not _is_pow2(feat_dim):
+        return None
+    best_key = None
+    best = None
+    w = 1
+    while w <= min(w_cap, max(spatial_dim, 1)):
+        if w >= _BNF_MIN_LANES or w == spatial_dim:
+            if spatial_dim % w == 0:
+                r = spatial_dim // w
+                nb = 1
+                while nb <= batch_dim:
+                    lanes = feat_dim * nb * w
+                    if (
+                        batch_dim % nb == 0
+                        and _BNF_MIN_LANES <= lanes <= _BNF_MAX_LANES
+                    ):
+                        nit = (batch_dim // nb) * r
+                        if nit <= max_nit:
+                            key = (nit, -w)
+                            if best_key is None or key < best_key:
+                                best_key = key
+                                best = (w, nb, batch_dim // nb, r, nit)
+                    nb *= 2
+        w *= 2
+    return best
+
+
+def _bn_max_nit(dtype):
+    """Static-unroll budget per dtype (see _bn_fused_plan)."""
+    return _BNF_MAX_NIT if dtype == torch.bfloat16 else 11
+
+
+@libentry()
+@triton.jit(do_not_specialize=["momentum", "eps", "var_correction"])
+def batch_norm_fused_train_kernel(
+    input_pointer,  # [N, C, S] contiguous, flattened
+    output_pointer,
+    mean_pointer,  # [C] f32 out
+    inv_std_pointer,  # [C] f32 out
+    save_mean_pointer,  # [C] input-dtype out
+    save_inv_std_pointer,  # [C] input-dtype out
+    running_mean_pointer,  # [C] in/out, or unused alias
+    running_var_pointer,  # [C] in/out, or unused alias
+    weight_pointer,  # [C], or unused alias
+    bias_pointer,  # [C], or unused alias
+    count,  # batch_dim * spatial_dim
+    momentum,
+    eps,
+    var_correction,  # count / (count - 1), 1.0 when count <= 1
+    HAS_RM: tl.constexpr,
+    HAS_RV: tl.constexpr,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    C: tl.constexpr,
+    S: tl.constexpr,
+    NROW: tl.constexpr,  # C * S
+    W: tl.constexpr,
+    NB: tl.constexpr,
+    NBW: tl.constexpr,  # NB * W
+    IN: tl.constexpr,  # N // NB
+    R: tl.constexpr,  # ceil(S / W)
+    TAIL: tl.constexpr,
+):
+    row = tl.arange(0, C)[:, None] * S
+    j = tl.arange(0, NBW)
+    col = ((j // W) * NROW + (j % W))[None, :]
+    acc = tl.zeros([C, NBW], dtype=tl.float32)
+    acc_sq = tl.zeros([C, NBW], dtype=tl.float32)
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            if TAIL and t * W + W > S:
+                # clamped in-bounds load; dead lanes read element S-1 and are
+                # zeroed by the column multiply, so the sums stay exact
+                mi = (t * W + (j % W) < S).to(tl.float32)
+                x = tl.load(
+                    input_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W)
+                ).to(tl.float32)
+                x = x * mi[None, :]
+                acc += x
+                acc_sq += x * x
+            else:
+                x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                    tl.float32
+                )
+                acc += x
+                acc_sq += x * x
+
+    idx = tl.arange(0, C)
+    keep = idx < C
+    mean = tl.sum(acc, axis=1) / count
+    var = tl.sum(acc_sq, axis=1) / count - mean * mean
+    inv_std = rsqrt(var + eps)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        weight = tl.full([C], 1.0, tl.float32)
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + idx, mask=keep, other=0.0).to(tl.float32)
+    else:
+        bias = tl.zeros([C], dtype=tl.float32)
+    gain = weight * inv_std
+    scale = gain[:, None]
+    shift = (bias - mean * gain)[:, None]
+
+    for g in tl.static_range(IN):
+        for t in tl.static_range(R):
+            if TAIL and t * W + W > S:
+                # idempotent store: dead lanes re-write the value of element
+                # S-1 at its own address (same channel, same scalar math)
+                x = tl.load(
+                    input_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W)
+                ).to(tl.float32)
+                tl.store(
+                    output_pointer
+                    + (g * NB * NROW + t * W)
+                    + row
+                    + (j // W) * NROW
+                    + tl.minimum(j % W, S - 1 - t * W),
+                    (x * scale + shift).to(output_pointer.dtype.element_ty),
+                )
+            else:
+                # inline at the load and at the store: binding the address to a
+                # Python local makes TritonXPUUnrollControl report
+                # `operand #1 does not dominate this use` for f16/bf16
+                x = tl.load(input_pointer + (g * NB * NROW + t * W) + row + col).to(
+                    tl.float32
+                )
+                tl.store(
+                    output_pointer + (g * NB * NROW + t * W) + row + col,
+                    (x * scale + shift).to(output_pointer.dtype.element_ty),
+                )
+
+    # Epilogue AFTER every wide store: a `mask=` on an earlier load can leak
+    # its predicate into a later wide store in the same program, so all wide
+    # traffic above is maskless and all narrow traffic is here.
+    tl.store(
+        save_mean_pointer + idx, mean.to(save_mean_pointer.dtype.element_ty), mask=keep
+    )
+    tl.store(
+        save_inv_std_pointer + idx,
+        inv_std.to(save_inv_std_pointer.dtype.element_ty),
+        mask=keep,
+    )
+    if HAS_RM:
+        running_mean = tl.load(running_mean_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        tl.store(
+            running_mean_pointer + idx,
+            ((1.0 - momentum) * running_mean + momentum * mean).to(
+                running_mean_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+    if HAS_RV:
+        running_var = tl.load(running_var_pointer + idx, mask=keep, other=0.0).to(
+            tl.float32
+        )
+        tl.store(
+            running_var_pointer + idx,
+            ((1.0 - momentum) * running_var + momentum * var * var_correction).to(
+                running_var_pointer.dtype.element_ty
+            ),
+            mask=keep,
+        )
+
+
 def batch_norm(
     input: Tensor,
     weight=None,
@@ -788,6 +1002,57 @@ def batch_norm(
         (count / (count - 1)) if (unbiased_running_var and count > 1) else 1.0
     )
 
+    # Single-launch fused plan (stats + normalize in one launch): exact-fit
+    # power-of-two tiles, one program, static unroll bounded per dtype.
+    plan = _bn_fused_plan(
+        batch_dim,
+        feat_dim,
+        spatial_dim,
+        w_cap=_BNF_MAX_W,
+        max_nit=_bn_max_nit(input.dtype),
+    )
+    if plan is not None:
+        w_plan, nb, inn, r_plan, _ = plan
+        mean_d = torch.empty(feat_dim, device=input.device, dtype=input.dtype)
+        inv_std_d = torch.empty_like(mean_d)
+        with torch_device_fn.device(input.device):
+            batch_norm_fused_train_kernel[(1,)](
+                input_flat,
+                output_flat,
+                mean_d,
+                inv_std_d,
+                mean_d,
+                inv_std_d,
+                running_mean if has_rm else mean_d,
+                running_var if has_rv else inv_std_d,
+                weight if has_weight else mean_d,
+                bias if has_bias else inv_std_d,
+                count,
+                momentum,
+                eps,
+                var_correction,
+                HAS_RM=has_rm,
+                HAS_RV=has_rv,
+                HAS_WEIGHT=has_weight,
+                HAS_BIAS=has_bias,
+                C=feat_dim,
+                S=spatial_dim,
+                NROW=feat_dim * spatial_dim,
+                W=w_plan,
+                NB=nb,
+                NBW=nb * w_plan,
+                IN=inn,
+                R=r_plan,
+                TAIL=(r_plan * w_plan) != spatial_dim,
+                num_warps=4,
+                isCloseVectorization=False,
+                buffer_size_limit=8192,
+            )
+        return output.view_as(input), mean_d, inv_std_d
+
+    # Fallback: the 3-stage per-slice path (kept from the original vendor
+    # implementation), used when the exact-fit plan does not apply (non-pow2
+    # channels, prime spatial sizes, huge tensors, bf16 NIT limits).
     if count <= BN_FUSED_TRAIN_MAX_ELEMS:
         fused_tile_s, fused_need_m = _bn_fused_tile_s(spatial_dim)
         mean_f = torch.empty(feat_dim, device=input.device, dtype=torch.float32)

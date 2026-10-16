@@ -18,7 +18,6 @@ from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
-from .cudnn_convolution import cudnn_convolution
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -129,6 +128,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .tanh import tanh
 from .to_copy import to_copy
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_linear1d import upsample_linear1d
@@ -170,7 +170,6 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
-    "cudnn_convolution",
     "erfinv",
     "erfinv_",
     "exponential_",
@@ -292,6 +291,8 @@ __all__ = [
     "tanh",
     "to_copy",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "upsample_linear1d",
     "upsample_nearest2d",
     "weight_int8pack_mm",

@@ -12,10 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
-import logging
-import math
-import statistics
 
 import pytest
 import torch
@@ -23,10 +19,7 @@ import torch
 import flag_gems
 
 from . import base
-from .conftest import TEST_RESULTS, Config, emit_record_logger
-from .consts import BenchmarkCasePlan, BenchMode
-
-LOGGER = logging.getLogger(__name__)
+from .consts import BenchmarkCasePlan
 
 # Both native overloads unconditionally reject the call in this vendor source:
 # https://github.com/MooreThreads/torch_musa/blob/
@@ -89,40 +82,6 @@ ADAMW_DTYPES = (
 
 
 class FusedAdamWBenchmark(base.GenericBenchmark):
-    def _time_callable(self, fn, xs):
-        if flag_gems.vendor_name != "ascend" or Config.mode != BenchMode.KERNEL:
-            return super()._time_callable(fn, xs)
-        # Ascend do_bench_npu averages CSV kernel rows, which does not measure
-        # a multi-launch optimizer call. Device events enclose every launch of
-        # the complete native/candidate operation on the same stream. Timings
-        # include stream gaps between launches; no per-kernel mean is used.
-        for _ in range(5):
-            fn()
-        torch.npu.synchronize()
-        start = torch.npu.Event(enable_timing=True)
-        end = torch.npu.Event(enable_timing=True)
-        start.record()
-        for _ in range(5):
-            fn()
-        end.record()
-        end.synchronize()
-        estimate_ms = start.elapsed_time(end) / 5
-        if not math.isfinite(estimate_ms) or estimate_ms <= 0:
-            pytest.fail("AdamW NPU event timing must be finite and positive")
-        for _ in range(max(1, int(Config.warm_up / estimate_ms))):
-            fn()
-        torch.npu.synchronize()
-        repetitions = max(1, int(Config.repetition / (20 * estimate_ms)))
-        samples = []
-        for _ in range(20):
-            start.record()
-            for _ in range(repetitions):
-                fn()
-            end.record()
-            end.synchronize()
-            samples.append(start.elapsed_time(end) / repetitions)
-        return statistics.median(samples)
-
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(range(len(ADAMW_WORKLOADS)))
         self.shape_desc = "parameter tensor list, AMSGrad"
@@ -133,45 +92,6 @@ class FusedAdamWBenchmark(base.GenericBenchmark):
         if user_desired_dtypes and self.dtypes[0] not in user_desired_dtypes:
             pytest.skip(f"{self.dtypes[0]} was not selected by --dtypes")
         self.to_bench_dtypes = self.dtypes
-
-    def _emit_result(self, dtype, metrics):
-        result = super()._emit_result(dtype, metrics)
-        expected_ids = {case.case_id for case in self.get_case_iter(dtype)}
-        observed_ids = {metric.case_id for metric in metrics}
-        summary = {
-            "backend": flag_gems.vendor_name,
-            "overload": self.op_name,
-            "dtype": str(dtype),
-            "mode": Config.mode.value,
-            "timing_method": (
-                "npu_event_whole_operation"
-                if flag_gems.vendor_name == "ascend" and Config.mode == BenchMode.KERNEL
-                else Config.mode.value
-            ),
-            "level": Config.bench_level.value,
-            "expected_cases": len(expected_ids),
-            "measured_cases": len(metrics),
-            "geomean_speedup": None,
-        }
-        if observed_ids != expected_ids or len(metrics) != len(expected_ids):
-            summary["status"] = "INCOMPLETE"
-        elif any(
-            metric.latency_base is None or metric.latency is None for metric in metrics
-        ):
-            summary["status"] = "NO_NATIVE_COMPARISON"
-        else:
-            ratios = [metric.latency_base / metric.latency for metric in metrics]
-            if any(not math.isfinite(ratio) or ratio <= 0 for ratio in ratios):
-                pytest.fail("AdamW timings must give finite positive speedups")
-            summary["status"] = "COMPLETE"
-            summary["geomean_speedup"] = math.exp(
-                math.fsum(math.log(ratio) for ratio in ratios) / len(ratios)
-            )
-        LOGGER.info("AdamW performance summary: %s", json.dumps(summary))
-        emit_record_logger(json.dumps(summary))
-        if Config.record_json:
-            TEST_RESULTS[self.op_name].setdefault("geomean", {})[str(dtype)] = summary
-        return result
 
 
 def _case_fn(workload_index, dtype):

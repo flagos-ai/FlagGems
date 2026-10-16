@@ -308,6 +308,27 @@ def to_reference(inp, upcast=False):
     return ref_inp
 
 
+def ref_div_rounding(a, b, rounding_mode):
+    # Kunlunxin eager does not implement div with a rounding_mode, or computes
+    # it with fp32 opmath that differs from CPU half-precision semantics, so
+    # compute the reference on CPU there. Other backends keep the on-device
+    # reference (their eager implementation matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.div(a, b, rounding_mode=rounding_mode)
+    a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b
+    ref = torch.div(a_cpu, b_cpu, rounding_mode=rounding_mode)
+    if not TO_CPU:
+        dev = None
+        for x in (a, b):
+            if isinstance(x, torch.Tensor) and x.device.type != "cpu":
+                dev = x.device
+                break
+        if dev is not None and isinstance(ref, torch.Tensor):
+            ref = ref.to(dev)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")

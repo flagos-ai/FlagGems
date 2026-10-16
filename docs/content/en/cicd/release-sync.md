@@ -66,15 +66,16 @@ project stays available on domestic Git hosting mirrors.
 
 ## `build-deb.yml` and `build-rpm.yml` — distribution packages
 
-**Trigger:** `push` of a `v*` tag; `pull_request` against `master` that
-touches `packaging/debian/**` (or `packaging/rpm/**`) or
+**Trigger:** `pull_request` against `master` that touches
+`packaging/debian/**` (or `packaging/rpm/**`) or
 `packaging/verify-installed-package.py`; also manual `workflow_dispatch`.
 
-Unlike `release.yaml`, these use the broad `v*` tag pattern, so pre-release
-tags build packages too (they are not published, only attached as
-artifacts). The `pull_request` path filter is deliberate: a source-only PR
-has no consumer for a `.deb` or `.rpm`, so those changes are covered by the
-repository's own tests instead.
+These workflows only verify that the packaging definition still builds and
+installs; they are not a release path. Packages published to the FlagOS
+repositories are built and uploaded by `flagos-ai/build-infra` from a pinned
+ref, so no tag triggers a build here. The `pull_request` path filter is
+deliberate: a source-only PR has no consumer for a `.deb` or `.rpm`, so
+those changes are covered by the repository's own tests instead.
 
 Each workflow builds its package in a `manylinux_2_28_x86_64` container,
 then smoke-tests the result by installing it into a clean `ubuntu:22.04`
@@ -87,17 +88,6 @@ import time, long after `dpkg -l` or `rpm -q` reports success.
 
 Artifacts are uploaded as `flag-gems-amd64-packages` and
 `flag-gems-amd64-rpm-packages` (7-day retention).
-
-## `upload-nexus.yml` — upload release artifacts to Nexus
-
-**Trigger:** `push` of a `v*` tag; also manual `workflow_dispatch` with an
-optional `run_id` input (blank uses the latest successful run).
-
-A thin caller for the shared workflow at
-`flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`; the upload
-logic lives there. This exact file, with no per-repo edits, is placed in
-every FlagOS component repository, and org-level secrets reach it through
-`secrets: inherit`.
 
 ## Other operational workflows
 

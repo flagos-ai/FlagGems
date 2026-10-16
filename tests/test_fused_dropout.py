@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import functools
+import importlib
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -47,6 +48,67 @@ FLOAT_DTYPES = [
 ]
 SHAPES = [(), (0,), (2, 0, 3), (1,), (17,), (4097,), (96000,)]
 KEEP_PROBABILITIES = [0.0, 0.2, 0.5, 0.8, 1.0]
+
+
+@pytest.mark.fused_dropout
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("fatal error: gflags/gflags.h: No such file or directory"),
+        RuntimeError("fatal error: 'gflags/gflags.h' file not found"),
+        RuntimeError("Python.h: file not found"),
+        OSError("compiler unavailable"),
+        ImportError("extension cannot be loaded"),
+        RuntimeError(),
+    ],
+)
+def test_fused_dropout_rng_bridge_build_failure(monkeypatch, caplog, error):
+    module = importlib.import_module("flag_gems.ops._fused_dropout")
+    extension = importlib.import_module("torch.utils.cpp_extension")
+    calls = []
+
+    def build(**kwargs):
+        calls.append(kwargs)
+        raise error
+
+    monkeypatch.setattr(module, "_rng_bridge", None)
+    monkeypatch.setattr(extension, "load_inline", build)
+    bridge = module._get_rng_bridge()
+    assert isinstance(bridge, module._PythonRngBridge)
+    assert not bridge.uses_native_mutex
+    assert module._get_rng_bridge() is bridge
+    assert len(calls) == 1
+    assert caplog.text.count("native mutex is unavailable") == 1
+
+
+@pytest.mark.fused_dropout
+@pytest.mark.parametrize("p", [0.0, 0.2, 0.8, 1.0])
+def test_fused_dropout_python_reservation_matches_native(monkeypatch, p):
+    module = importlib.import_module("flag_gems.ops._fused_dropout")
+    if not getattr(module._get_rng_bridge(), "uses_native_mutex", True):
+        pytest.skip("Native RNG bridge unavailable for bridge equivalence comparison")
+    inp = torch.ones(4097, device=flag_gems.device)
+    generator = _generator(inp)
+    generator.set_offset(2**34 - 4)
+    initial = generator.get_state().clone()
+    output, mask = flag_gems._fused_dropout(inp, p, generator=generator)
+    final = generator.get_state().clone()
+    generator.set_state(initial)
+    monkeypatch.setattr(module, "_rng_bridge", module._PythonRngBridge())
+    replay_output, replay_mask = flag_gems._fused_dropout(inp, p, generator=generator)
+    torch.testing.assert_close(output, replay_output, rtol=0, atol=0, equal_nan=True)
+    assert torch.equal(mask, replay_mask)
+    assert torch.equal(final, generator.get_state())
+
+
+@pytest.mark.fused_dropout
+def test_fused_dropout_python_reservation_contract(monkeypatch):
+    module = importlib.import_module("flag_gems.ops._fused_dropout")
+    monkeypatch.setattr(module, "_rng_bridge", module._PythonRngBridge())
+    test_fused_dropout_default_generator_replay()
+    test_fused_dropout_empty_default_rng(0.5)
+    test_fused_dropout_generator_offset_overflow_leaves_state_unchanged()
+    test_fused_dropout_concurrent_generator_reservations()
 
 
 @contextmanager
@@ -308,6 +370,9 @@ def test_fused_dropout_concurrent_generator_reservations():
     flag_gems.vendor_name != "nvidia", reason="Native CUDA generator mutex regression"
 )
 def test_fused_dropout_reservations_interoperate_with_native_rand():
+    module = importlib.import_module("flag_gems.ops._fused_dropout")
+    if not getattr(module._get_rng_bridge(), "uses_native_mutex", True):
+        pytest.skip("Python reservation cannot synchronize with native RNG operations")
     inp = torch.ones(4097, device=flag_gems.device)
     generator = _generator(inp, seed=812)
 

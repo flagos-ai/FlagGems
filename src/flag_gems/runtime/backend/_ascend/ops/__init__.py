@@ -51,6 +51,7 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -165,6 +166,7 @@ from .tensor_split import tensor_split
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -230,6 +232,7 @@ __all__ = [
     "dist",
     "dot",
     "embedding",
+    "embedding_spmdm",
     "exponential",
     "exponential_",
     "fill_scalar",
@@ -398,6 +401,8 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "triangular_solve",
+    "triangular_solve_out",
     "triu",
     "unique_dim",
     "unsafe_index",

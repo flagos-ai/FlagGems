@@ -479,6 +479,7 @@ from flag_gems.ops.atan import atan, atan_
 from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.atan2_ import atan2_
 from flag_gems.ops.atanh import atanh, atanh_
+from flag_gems.ops.atleast_1d import run as atleast_1d
 from flag_gems.ops.atleast_3d import run as atleast_3d
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -498,6 +499,7 @@ from flag_gems.ops.bartlett_window import bartlett_window
 from flag_gems.ops.batch_norm import batch_norm, batch_norm_backward
 from flag_gems.ops.batch_norm_backward_elemt import batch_norm_backward_elemt
 from flag_gems.ops.batch_norm_backward_reduce import batch_norm_backward_reduce
+from flag_gems.ops.batch_norm_elemt import batch_norm_elemt
 from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
@@ -548,6 +550,7 @@ from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.broadcast_tensors import broadcast_tensors
 from flag_gems.ops.broadcast_to import broadcast_to
 from flag_gems.ops.bucketize import bucketize
+from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
@@ -654,6 +657,7 @@ from flag_gems.ops.embedding_bag import embedding_bag
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
+from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
@@ -1445,6 +1449,7 @@ from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
+from flag_gems.ops.triangular_solve import triangular_solve, triangular_solve_out
 from flag_gems.ops.tril import tril, tril_, tril_out
 from flag_gems.ops.trilinear import _trilinear, _trilinear_out
 from flag_gems.ops.triplet_margin_loss import triplet_margin_loss
@@ -1970,6 +1975,7 @@ __all__ = [
     "atan_",
     "atanh",
     "atanh_",
+    "atleast_1d",
     "atleast_3d",
     "avg_pool1d",
     "avg_pool2d",
@@ -1984,6 +1990,7 @@ __all__ = [
     "batch_norm_backward",
     "batch_norm_backward_elemt",
     "batch_norm_backward_reduce",
+    "batch_norm_elemt",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
     "batch_norm_stats",
@@ -2028,6 +2035,7 @@ __all__ = [
     "broadcast_tensors",
     "broadcast_to",
     "bucketize",
+    "cartesian_prod",
     "cat",
     "cat_out",
     "cauchy",
@@ -2151,6 +2159,7 @@ __all__ = [
     "embedding_dense_backward",
     "embedding_renorm_",
     "embedding_sparse_backward",
+    "embedding_spmdm",
     "empty",
     "empty_permuted",
     "eq",
@@ -3006,6 +3015,8 @@ __all__ = [
     "transpose",
     "transpose_copy",
     "trapz",
+    "triangular_solve",
+    "triangular_solve_out",
     "tril",
     "tril_",
     "tril_indices",

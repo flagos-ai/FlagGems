@@ -109,6 +109,7 @@ import json
 import os
 import platform
 import queue as queue_module
+import re
 import shlex
 import shutil
 import signal
@@ -452,6 +453,129 @@ def _strip_cpu_fallback():
         del os.environ[var]
 
 
+def _read_cann_version():
+    """Read CANN version from $ASCEND_HOME_PATH/opp/version.info (best-effort).
+
+    The file holds a ``Version=8.5.0`` line; return the value after ``Version=``.
+    """
+    roots = [
+        os.environ.get(v)
+        for v in (
+            "ASCEND_HOME_PATH",
+            "ASCEND_TOOLKIT_HOME",
+            "ASCEND_TOOLKIT_LATEST_HOME",
+        )
+    ]
+    roots.append("/usr/local/Ascend/ascend-toolkit/latest")
+    for root in filter(None, roots):
+        info = Path(root) / "opp" / "version.info"
+        if info.is_file():
+            try:
+                m = re.search(r"^Version=([\w.]+)", info.read_text(), re.MULTILINE)
+                if m:
+                    return m.group(1)
+            except Exception:
+                pass
+    return None
+
+
+def _read_xpu_version():
+    """Read Kunlunxin XRE version from /usr/local/xpu/version.txt (first line)."""
+    txt = Path("/usr/local/xpu/version.txt")
+    if txt.is_file():
+        try:
+            first = txt.read_text().strip().splitlines()[0].strip()
+            if first:
+                return first
+        except Exception:
+            pass
+    return None
+
+
+def _read_tops_version():
+    """Read Enflame TOPS version from the ``EFSMI:`` field of ``efsmi`` output."""
+    try:
+        out = subprocess.run(
+            ["efsmi"], capture_output=True, text=True, timeout=30
+        ).stdout
+        m = re.search(r"EFSMI:\s*([\d.]+)", out)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def _read_ppu_version():
+    """Read T-Head PPU version from /usr/local/PPU_SDK/release.yaml.
+
+    The file has a ``version: 2.1.0-a5f865`` line; keep the numeric part.
+    """
+    yml = Path("/usr/local/PPU_SDK/release.yaml")
+    if yml.is_file():
+        try:
+            m = re.search(r"^version:\s*(\d+\.\d+\.\d+)", yml.read_text(), re.MULTILINE)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    return None
+
+
+def _probe_sdk():
+    """Probe the accelerator SDK version.
+
+    Most domestic torch builds encode their SDK version in the PyPI local
+    version suffix (``torch==<ver>+<vendor><sdk>``); scan those first. Then a
+    vendor fallback for stacks that expose the SDK elsewhere (Ascend/CANN,
+    Kunlunxin/XRE) -- these come before generic CUDA because such boxes also
+    report a CUDA-compatible version we do not want to pick. Finally plain CUDA
+    via ``torch.version.cuda`` for NVIDIA and pure CUDA-compatible stacks.
+    """
+    import torch
+
+    full = metadata.version("torch")
+    name, version = None, None
+
+    # (display name, regex capturing the SDK version from the torch suffix)
+    SDK_SUFFIX = (
+        ("COREX", r"corex\.?(\d+\.\d+\.\d+)"),  # iluvatar: 4.5.0.20260804 -> 4.5.0
+        ("METAX", r"metax(\d+\.\d+\.\d+)"),  # metax:    3.8.1.0       -> 3.8.1
+        ("MUSA", r"musa(\d+\.\d+\.\d+)"),  # mthreads: 5.2.0
+        ("DTK", r"dtk(\d+)"),  # hygon:    2604
+    )
+    for sdk_name, pat in SDK_SUFFIX:
+        m = re.search(pat, full)
+        if m:
+            name, version = sdk_name, m.group(1)
+            if sdk_name == "DTK":  # 2604 -> 26.04 (year.month)
+                version = f"{version[:2]}.{version[2:]}"
+            break
+
+    if version is None:
+        vendor = ENV_INFO.get("flag_gems", {}).get("vendor", "")
+        if vendor == "ascend":
+            name = "CANN"
+            version = os.environ.get("ASCEND_TOOLKIT_VERSION") or _read_cann_version()
+        elif vendor == "kunlunxin":
+            name = "XRE"
+            version = _read_xpu_version()
+        elif vendor == "enflame":
+            name = "TOPS"
+            version = _read_tops_version()
+        elif vendor == "thead":
+            name = "PPU"
+            version = _read_ppu_version()
+
+    if version is None:
+        v = getattr(torch.version, "cuda", None)
+        if v:
+            name, version = "CUDA", v
+
+    ENV_INFO["sdk"] = {"name": name, "version": version}
+    pinfo(f"SDK detection ... {name} {version}")
+
+
 def probe_env():
     ENV_INFO["architecture"] = platform.machine()
     ENV_INFO["os_name"] = distro.id()
@@ -463,6 +587,7 @@ def probe_env():
     _probe_triton()
     _probe_flaggems()
     _probe_vllm()
+    _probe_sdk()
 
 
 def get_env(gpu_ids):

@@ -117,15 +117,16 @@ project stays available on domestic Git hosting mirrors.
 <!--
 ## `build-deb.yml` and `build-rpm.yml` — distribution packages
 
-**Trigger:** `push` of a `v*` tag; `pull_request` against `master` that
-touches `packaging/debian/**` (or `packaging/rpm/**`) or
+**Trigger:** `pull_request` against `master` that touches
+`packaging/debian/**` (or `packaging/rpm/**`) or
 `packaging/verify-installed-package.py`; also manual `workflow_dispatch`.
 
-Unlike `release.yaml`, these use the broad `v*` tag pattern, so pre-release
-tags build packages too (they are not published, only attached as
-artifacts). The `pull_request` path filter is deliberate: a source-only PR
-has no consumer for a `.deb` or `.rpm`, so those changes are covered by the
-repository's own tests instead.
+These workflows only verify that the packaging definition still builds and
+installs; they are not a release path. Packages published to the FlagOS
+repositories are built and uploaded by `flagos-ai/build-infra` from a pinned
+ref, so no tag triggers a build here. The `pull_request` path filter is
+deliberate: a source-only PR has no consumer for a `.deb` or `.rpm`, so
+those changes are covered by the repository's own tests instead.
 
 Each workflow builds its package in a `manylinux_2_28_x86_64` container,
 then smoke-tests the result by installing it into a clean `ubuntu:22.04`
@@ -139,17 +140,6 @@ import time, long after `dpkg -l` or `rpm -q` reports success.
 Artifacts are uploaded as `flag-gems-amd64-packages` and
 `flag-gems-amd64-rpm-packages` (7-day retention).
 
-## `upload-nexus.yml` — upload release artifacts to Nexus
-
-**Trigger:** `push` of a `v*` tag; also manual `workflow_dispatch` with an
-optional `run_id` input (blank uses the latest successful run).
-
-A thin caller for the shared workflow at
-`flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`; the upload
-logic lives there. This exact file, with no per-repo edits, is placed in
-every FlagOS component repository, and org-level secrets reach it through
-`secrets: inherit`.
-
 ## Other operational workflows
 
 The manually dispatched tools that do not touch releases — `probe-node.yaml`,
@@ -160,15 +150,14 @@ owns everything you start by hand.
 -->
 ## `build-deb.yml` 与 `build-rpm.yml` —— 发行版安装包
 
-**触发条件：** 推送 `v*` 标签；针对 `master` 且改动了
-`packaging/debian/**`（或 `packaging/rpm/**`）、
-`packaging/verify-installed-package.py` 的 `pull_request`；此外支持手动触发
-（`workflow_dispatch`）。
+**触发条件：** 针对 `master` 且改动了 `packaging/debian/**`
+（或 `packaging/rpm/**`）、`packaging/verify-installed-package.py` 的
+`pull_request`；此外支持手动触发（`workflow_dispatch`）。
 
-与 `release.yaml` 不同，这两个工作流使用宽泛的 `v*` 标签匹配，因此预发布
-标签也会构建安装包（但不发布，仅作为构件附带）。`pull_request` 的路径过滤
-是有意为之：纯粹的源码 PR 没有 `.deb` 或 `.rpm` 的使用方，这类改动由仓库
-自身的测试覆盖即可。
+这两个工作流只验证打包定义仍能构建并安装，不是发布路径：发布到 FlagOS
+软件仓库的安装包由 `flagos-ai/build-infra` 按固定的 ref 统一构建并上传，
+因此这里不再由标签触发构建。`pull_request` 的路径过滤是有意为之：纯粹的
+源码 PR 没有 `.deb` 或 `.rpm` 的使用方，这类改动由仓库自身的测试覆盖即可。
 
 两个工作流均在 `manylinux_2_28_x86_64` 容器内构建安装包，随后把产物安装到
 干净的 `ubuntu:22.04`（`.deb`）或 `fedora:43`（`.rpm`）镜像中运行
@@ -179,15 +168,6 @@ owns everything you start by hand.
 
 构件分别以 `flag-gems-amd64-packages` 和 `flag-gems-amd64-rpm-packages`
 上传，保留 7 天。
-
-## `upload-nexus.yml` —— 上传发布产物到 Nexus
-
-**触发条件：** 推送 `v*` 标签；此外支持手动触发（`workflow_dispatch`），
-可选输入 `run_id`（留空则使用最近一次成功的运行）。
-
-它是共享工作流 `flagos-ai/build-infra/.github/workflows/upload-nexus.yml@main`
-的薄调用层，上传逻辑位于共享工作流中。该文件不做任何按仓库的修改，原样放入
-每个 FlagOS 组件仓库；组织级密钥通过 `secrets: inherit` 传递给共享工作流。
 
 ## 其他运维类工作流
 

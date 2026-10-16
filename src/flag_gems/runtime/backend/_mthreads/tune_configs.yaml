@@ -54,6 +54,16 @@ log_softmax:
       BLOCK_N: 512
     num_warps: 8
 mm:
+  # FP32 on MTT S5000 needs the wider warp configuration.  The existing
+  # four-warp entries leave the scalar FMA path severely under-filled;
+  # retaining them lets autotune keep the better choice for other dtypes and
+  # smaller or irregular shapes.
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 8
   - META:
       BLOCK_M: 64
       BLOCK_N: 64

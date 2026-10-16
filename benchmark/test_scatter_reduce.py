@@ -48,7 +48,7 @@ class TensorSelectBenchmark(base.GenericBenchmark2DOnly):
             return []
 
         shapes = super().set_more_shapes()
-        return [
+        return [(1, 262145), (1, 524287)] + [
             shape
             for shape in shapes
             if len(shape) == 2 and shape[0] > 16 and shape[1] > 16

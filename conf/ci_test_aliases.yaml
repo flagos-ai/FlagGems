@@ -248,6 +248,7 @@ std_mean_correction_out: test_std_mean
 std_mean_dim: test_std_mean
 std_mean_names_dim: test_std_mean
 stft_center: test_stft
+triangular_solve_out: test_triangular_solve
 tril_indices: test_triangular_indices
 trilinear_out: test_trilinear
 triu_indices: test_triangular_indices
@@ -258,11 +259,12 @@ upsample_linear1d_backward: test_upsample_linear1d
 upsample_nearest2d_backward_grad_input: test_upsample_nearest2d_backward
 
 # Underscore-prefixed aten op shares the base operator test file
+_fused_dropout: test_fused_dropout
 _linalg_eigh: test_linalg_eigh
 _flash_attention_forward: test_flash_attention
 
-fused_adamw_: test__fused_adamw_
-fused_adamw__tensor_lr: test__fused_adamw_
+fused_adamw_: test_fused_adamw_
+fused_adamw__tensor_lr: test_fused_adamw_
 
 
 # Leading-underscore aten ops: the FlagGems id gets an ``underscore`` prefix
