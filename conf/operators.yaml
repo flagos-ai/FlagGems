@@ -8555,6 +8555,22 @@ ops:
   - Math
   stages:
   - stable: '2.0'
+- id: ge_
+  description: |
+    The in-place version of `ge()`: compares `self >= other` element-wise and
+    writes the 0/1 result into the receiver, for both the Tensor and Scalar
+    overloads.
+  for:
+  - ge_.Tensor
+  - ge_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: ge_scalar
   description: The scalar version of `ge()`.
   for:
