@@ -843,7 +843,18 @@ class WrapperGenerator:
                 "   num_ctas = 12 # XPU BLOCK_NUM",
                 "   num_tiles = 12 # XPU BLOCK_NUM",
             ]
-            if self.config.kunlunAutoGrid is True:
+            if self.config.num_ctas_1d > 0:
+                code.writelines(
+                    [
+                        "if num_tasks <= 2048*64:",
+                        "   num_ctas = 1 # XPU BLOCK_NUM",
+                        "   num_tiles = 1 # XPU BLOCK_NUM",
+                        "else:",
+                        f"   num_ctas = {self.config.num_ctas_1d} # XPU BLOCK_NUM",
+                        f"   num_tiles = {self.config.num_ctas_1d} # XPU BLOCK_NUM",
+                    ]
+                )
+            elif self.config.kunlunAutoGrid is True:
                 code.writelines(determine_num_ctas_and_tiles)
             else:
                 code.writeline("num_ctas = 12 # XPU BLOCK_NUM")
