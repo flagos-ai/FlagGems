@@ -14,7 +14,6 @@
 
 import torch
 
-from flag_gems.ops.lift_fresh import lift_fresh as _generic_lift_fresh
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy as _generic_lift_fresh_copy
 from flag_gems.ops.lift_fresh_copy import (
     lift_fresh_copy_out as _generic_lift_fresh_copy_out,
@@ -33,10 +32,12 @@ def _input_tensor(args, kwargs):
 
 
 def lift_fresh(*args, **kwargs):
+    # ATen guarantees that the input is fresh and requires an aliasing result.
+    # Only lift_fresh_copy materializes a separate allocation.
     x = _input_tensor(args, kwargs)
-    if x is not None and x.numel() == 0:
-        return x.clone()
-    return _generic_lift_fresh(*args, **kwargs)
+    if x is None:
+        raise ValueError("lift_fresh expects a Tensor argument")
+    return x
 
 
 def lift_fresh_copy(*args, **kwargs):
