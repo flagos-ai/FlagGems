@@ -74,11 +74,14 @@ from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
-from ._foreach_unary import (
+from ._foreach_tan import _foreach_tan  # noqa: F401
+from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_unary import (  # noqa: F401
     _foreach_acos,
     _foreach_acos_,
     _foreach_asin,
     _foreach_asin_,
+    _foreach_ceil,
     _foreach_cos,
     _foreach_cos_,
     _foreach_cosh,
@@ -87,8 +90,11 @@ from ._foreach_unary import (
     _foreach_exp_,
     _foreach_expm1,
     _foreach_expm1_,
+    _foreach_log,
+    _foreach_log1p_,
     _foreach_log2,
     _foreach_log2_,
+    _foreach_log_,
     _foreach_reciprocal_,
     _foreach_rsqrt_,
     _foreach_sin,
@@ -97,8 +103,6 @@ from ._foreach_unary import (
     _foreach_sinh_,
     _foreach_sqrt_,
 )
-from ._foreach_tan import _foreach_tan  # noqa: F401
-from ._foreach_tan_ import _foreach_tan_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,

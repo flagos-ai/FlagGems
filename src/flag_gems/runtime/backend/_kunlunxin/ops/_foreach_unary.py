@@ -51,8 +51,6 @@ from flag_gems.ops._foreach_complex_math import (
     c_tan,
     c_tanh,
 )
-from flag_gems.ops.acos import acos_kernel
-from flag_gems.ops.asin import asin_kernel
 from flag_gems.ops.atan import atan_kernel
 from flag_gems.ops.ceil import ceil_func
 from flag_gems.ops.cos import cos_func
@@ -67,21 +65,54 @@ from flag_gems.ops.log import log_func
 from flag_gems.ops.log1p import log1p_func
 from flag_gems.ops.log10 import log10_func
 from flag_gems.ops.neg import neg_func
-from flag_gems.ops.reciprocal import reciprocal_func
 from flag_gems.ops.round import round_half_to_even_impl
-from flag_gems.ops.rsqrt import rsqrt_func
 from flag_gems.ops.sigmoid import sigmoid_forward
 from flag_gems.ops.sin import sin_func
 from flag_gems.ops.sinh import sinh_kernel
 from flag_gems.ops.special_erfc import _erfc_kernel
-from flag_gems.ops.sqrt import sqrt_func
 from flag_gems.ops.tan import tan_func
 from flag_gems.ops.tanh import tanh_kernel
 from flag_gems.ops.trunc_ import trunc_func
+from flag_gems.utils import tl_extra_shim
 
 from ..utils.foreach import foreach_unary, int_to_float, real_dtype_of, same_dtype
 
 logger = logging.getLogger("flag_gems.ops._foreach_unary")
+
+
+@triton.jit
+def _rsqrt_func(x):
+    return tl_extra_shim.rsqrt(x.to(tl.float32))
+
+
+@triton.jit
+def _sqrt_func(x):
+    # x * rsqrt(x) is sqrt(x); the zero case would otherwise be 0 * inf.
+    v = x.to(tl.float32)
+    return tl.where(v == 0.0, v, v * tl_extra_shim.rsqrt(v))
+
+
+@triton.jit
+def _reciprocal_func(x):
+    # rsqrt needs a non-negative argument, so the sign is reapplied afterwards.
+    v = x.to(tl.float32)
+    p = tl_extra_shim.rsqrt(tl.abs(v))
+    p = p * p
+    return tl.where(v < 0.0, -p, p)
+
+
+@triton.jit
+def _acos_func(x):
+    # acos(x) = pi/2 - asin(x)
+    v = x.to(tl.float32)
+    return 1.5707963267948966 - tl_extra_shim.atan(v / tl.sqrt((1.0 - v) * (1.0 + v)))
+
+
+@triton.jit
+def _asin_func(x):
+    # asin(x) = atan(x / sqrt((1 - x) * (1 + x)))
+    v = x.to(tl.float32)
+    return tl_extra_shim.atan(v / tl.sqrt((1.0 - v) * (1.0 + v)))
 
 
 def _scalar_fn(pointwise_fn) -> Callable:
@@ -190,8 +221,8 @@ UNARY_OPS: Dict[str, UnaryOp] = {
     op.name: op
     for op in (
         UnaryOp("abs", _abs_func, real_dtype_of, None, _abs_complex_func),
-        UnaryOp("acos", _scalar_fn(acos_kernel), int_to_float, NO_COMPLEX32, c_acos),
-        UnaryOp("asin", _scalar_fn(asin_kernel), int_to_float, NO_COMPLEX32, c_asin),
+        UnaryOp("acos", _acos_func, int_to_float, NO_COMPLEX32, c_acos),
+        UnaryOp("asin", _asin_func, int_to_float, NO_COMPLEX32, c_asin),
         UnaryOp("atan", _scalar_fn(atan_kernel), int_to_float, NO_COMPLEX32, c_atan),
         UnaryOp("ceil", _scalar_fn(ceil_func), same_dtype, NO_BOOL_NO_COMPLEX),
         UnaryOp("cos", _scalar_fn(cos_func), int_to_float, NO_COMPLEX32, c_cos),
@@ -210,13 +241,13 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("neg", _scalar_fn(neg_func), same_dtype, NO_BOOL, c_neg),
         UnaryOp(
             "reciprocal",
-            _scalar_fn(reciprocal_func),
+            _reciprocal_func,
             int_to_float,
             NO_COMPLEX32,
             c_reciprocal,
         ),
         UnaryOp("round", _round_func, same_dtype, NO_BOOL_NO_COMPLEX),
-        UnaryOp("rsqrt", _scalar_fn(rsqrt_func), int_to_float, NO_COMPLEX32, c_rsqrt),
+        UnaryOp("rsqrt", _rsqrt_func, int_to_float, NO_COMPLEX32, c_rsqrt),
         UnaryOp(
             "sigmoid",
             _scalar_fn(sigmoid_forward),
@@ -227,7 +258,7 @@ UNARY_OPS: Dict[str, UnaryOp] = {
         UnaryOp("sign", _sign_func, same_dtype, NO_COMPLEX),
         UnaryOp("sin", _scalar_fn(sin_func), int_to_float, NO_COMPLEX32, c_sin),
         UnaryOp("sinh", _scalar_fn(sinh_kernel), int_to_float, NO_COMPLEX32, c_sinh),
-        UnaryOp("sqrt", _scalar_fn(sqrt_func), int_to_float, NO_COMPLEX32, c_sqrt),
+        UnaryOp("sqrt", _sqrt_func, int_to_float, NO_COMPLEX32, c_sqrt),
         UnaryOp("tan", _scalar_fn(tan_func), int_to_float, NO_COMPLEX32, c_tan),
         UnaryOp("tanh", _scalar_fn(tanh_kernel), int_to_float, NO_COMPLEX32, c_tanh),
         UnaryOp("trunc", _scalar_fn(trunc_func), same_dtype, NO_BOOL_NO_COMPLEX),

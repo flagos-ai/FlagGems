@@ -66,8 +66,8 @@ def _gems_op(name, inplace=False):
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 _KUNLUNXIN_UNSUPPORTED = {
-    torch.float16: {"acos", "asin", "log2", "lgamma"},
-    torch.float32: {"acos", "asin", "lgamma", "sigmoid"},
+    torch.float16: {"log2", "lgamma"},
+    torch.float32: {"lgamma", "sigmoid"},
     torch.bfloat16: {"cosh", "log10", "sinh", "log2", "lgamma", "sigmoid"},
     torch.int16: {"ceil", "floor", "lgamma", "log10", "round", "sign"},
     torch.int32: {"ceil", "floor", "lgamma", "log10", "round", "sign"},
