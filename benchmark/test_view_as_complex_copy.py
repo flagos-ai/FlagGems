@@ -15,7 +15,14 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+_ASCEND_COMPLEX32_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend copy does not support complex32 output",
+)
 
 # (input_shape, row_strided) tuples. Every shape ends with the required size-2
 # last dimension; `row_strided=True` feeds a non-contiguous batch view (even
@@ -57,10 +64,20 @@ class ViewAsComplexCopyBenchmark(base.Benchmark):
 
 
 @pytest.mark.view_as_complex_copy
-def test_view_as_complex_copy():
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_COMPLEX32_SKIP if dtype == torch.float16 else ()
+        )
+        for dtype in BENCH_DTYPES
+    ],
+    ids=str,
+)
+def test_view_as_complex_copy(dtype):
     bench = ViewAsComplexCopyBenchmark(
         op_name="view_as_complex_copy",
         torch_op=torch.ops.aten.view_as_complex_copy,
-        dtypes=BENCH_DTYPES,
+        dtypes=[dtype],
     )
     bench.run()
