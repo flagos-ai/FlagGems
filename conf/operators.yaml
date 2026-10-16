@@ -4849,6 +4849,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: embedding_spmdm
+  description: 'Fixed-length embedding lookup followed by an optional per-sample
+    weighted sum; equivalent to F.embedding_bag with mode="sum" for a 2D
+    [B, bag_size] index matrix, returning a [B, D] tensor.
+    '
+  for:
+  - None
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
