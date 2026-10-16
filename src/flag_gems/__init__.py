@@ -1146,6 +1146,8 @@ _FULL_CONFIG = (
         infinitely_differentiable_gelu_backward,
     ),
     ("inner", inner),
+    ("int_repr", int_repr),
+    ("int_repr.out", int_repr),
     ("inverse", inverse),
     ("is_nonzero", is_nonzero),
     ("is_same_size", is_same_size),

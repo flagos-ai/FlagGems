@@ -859,6 +859,7 @@ from flag_gems.ops.infinitely_differentiable_gelu_backward import (
 )
 from flag_gems.ops.inner import inner
 from flag_gems.ops.int_mm import int_mm, int_mm_out
+from flag_gems.ops.int_repr import run as int_repr
 from flag_gems.ops.inverse import inverse
 from flag_gems.ops.ior_scalar import ior_scalar
 from flag_gems.ops.ior_tensor import ior_tensor
@@ -2398,6 +2399,7 @@ __all__ = [
     "inner",
     "int_mm",
     "int_mm_out",
+    "int_repr",
     "inverse",
     "ior_scalar",
     "ior_tensor",

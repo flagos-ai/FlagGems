@@ -10283,6 +10283,21 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5'
+- id: int_repr
+  description: |
+    Returns the raw integer codes stored by an affine-quantized tensor, mapping
+    quint8/qint8/qint32 storage to uint8/int8/int32 without applying the scale
+    or zero point, with an out variant.
+  for:
+  - int_repr
+  - int_repr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: inverse
   description: |
     Computes the inverse of a square matrix, batched over the leading dimensions
