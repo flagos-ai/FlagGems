@@ -30,6 +30,11 @@ from flag_gems.utils.limits import get_dtype_max
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _amin_combine(a, b):
+    return tl.minimum(a, b, propagate_nan=tl.PropagateNan.ALL)
+
+
 @libentry()
 @triton.jit
 def amin_kernel_1(
@@ -43,9 +48,15 @@ def amin_kernel_1(
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     inp_ptrs = inp + offset
     mask = offset < M
-    max_value = get_dtype_max(inp.type.element_ty)
+    max_value = (
+        1 if inp.type.element_ty == tl.int1 else get_dtype_max(inp.type.element_ty)
+    )
     inp_val = tl.load(inp_ptrs, mask=mask, other=max_value)
-    amin_val = tl.min(inp_val)
+    if inp.type.element_ty == tl.int1:
+        inp_val = inp_val.to(tl.int32)
+    elif inp.type.element_ty == tl.bfloat16:
+        inp_val = inp_val.to(tl.float32)
+    amin_val = tl.reduce(inp_val, 0, _amin_combine)
     mid_ptr = mid + pid
     tl.store(mid_ptr, amin_val)
 
@@ -56,9 +67,15 @@ def amin_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     offset = tl.arange(0, BLOCK_MID)
     mid_ptrs = mid + offset
     mask = offset < mid_size
-    max_value = get_dtype_max(mid.type.element_ty)
+    max_value = (
+        1 if mid.type.element_ty == tl.int1 else get_dtype_max(mid.type.element_ty)
+    )
     mid_val = tl.load(mid_ptrs, mask=mask, other=max_value)
-    amin_val = tl.min(mid_val)
+    if mid.type.element_ty == tl.int1:
+        mid_val = mid_val.to(tl.int32)
+    elif mid.type.element_ty == tl.bfloat16:
+        mid_val = mid_val.to(tl.float32)
+    amin_val = tl.reduce(mid_val, 0, _amin_combine)
     tl.store(out, amin_val)
 
 
@@ -77,7 +94,7 @@ def amin_kernel(
     BLOCK_N: tl.constexpr,
 ):
     dtype = inp.type.element_ty
-    max_value = get_dtype_max(dtype)
+    max_value = 1 if dtype == tl.int1 else get_dtype_max(dtype)
 
     # Map the program id to the row of inp it should compute.
     pid = tle.program_id(0)
@@ -86,27 +103,46 @@ def amin_kernel(
     out = out + rows
     row_mask = rows < M
 
-    acc_type = tl.float32 if dtype is tl.bfloat16 else dtype
+    acc_type = (
+        tl.int32
+        if dtype == tl.int1
+        else (tl.float32 if dtype is tl.bfloat16 else dtype)
+    )
     _all = tl.full([BLOCK_M, BLOCK_N], value=max_value, dtype=acc_type)
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         a = tl.load(inp + cols, mask, other=max_value)
-        _all = tl.minimum(_all, a)
-    all = tl.min(_all, axis=1)[:, None]
+        _all = tl.minimum(_all, a, propagate_nan=tl.PropagateNan.ALL)
+    all = tl.reduce(_all, 1, _amin_combine)[:, None]
     tl.store(out, all, row_mask)
 
 
 def amin(inp, dim=None, keepdim=False):
     logger.debug("GEMS AMIN")
-    assert inp.dtype in (
-        torch.float32,
-        torch.float16,
-        torch.bfloat16,
-    ), "amin only supports float dtypes"
+    if inp.is_complex():
+        raise RuntimeError("amin is not supported for complex tensors")
+    if isinstance(dim, int):
+        dim = [dim]
+    if dim is not None:
+        rank = max(inp.ndim, 1)
+        normalized = []
+        for d in dim:
+            if d < -rank or d >= rank:
+                raise IndexError(
+                    f"Dimension out of range for tensor of dimension {inp.ndim}"
+                )
+            d %= rank
+            if d in normalized:
+                raise RuntimeError("dim appears multiple times in the list of dims")
+            normalized.append(d)
+        dim = normalized if inp.ndim else []
     if dim is None or len(dim) == 0:
         M = inp.numel()
+        if M == 0:
+            raise RuntimeError("amin(): reduction over an empty tensor has no identity")
+        inp = inp.contiguous()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -131,9 +167,6 @@ def amin(inp, dim=None, keepdim=False):
             )  # max block size is 128k, so mid does not requires int64 index
         return out
     else:
-        if isinstance(dim, int):
-            dim = [dim]
-        assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
         dtype = inp.dtype
 
         shape = list(inp.shape)
@@ -143,9 +176,13 @@ def amin(inp, dim=None, keepdim=False):
         for i in dim:
             N *= shape[i]
             shape[i] = 1
+        if N == 0:
+            raise IndexError("amin(): reduction dimension must have non-zero size")
         M = inp.numel() // N
 
         out = torch.empty(shape, dtype=dtype, device=inp.device)
+        if M == 0:
+            return out if keepdim else out.squeeze(dim=dim)
 
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
