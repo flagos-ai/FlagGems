@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .to import to_copy
+
 logger = logging.getLogger(__name__)
 
 
@@ -200,7 +202,17 @@ def mm_kernel(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        # [kunlunxin] bf16: extend the operands to fp32 for an exact product
+        # and round once at the end, to match the native matmul numerics.
+        if a.dtype == tl.bfloat16:
+            acc += tl.dot(
+                a.to(tl.float32),
+                b.to(tl.float32),
+                out_dtype=dot_out_dtype,
+                allow_tf32=False,
+            )
+        else:
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -287,7 +299,17 @@ def mm_kernel_aligned(
         if a.dtype != b.dtype:
             a = a.to(C.dtype.element_ty)
             b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+        # [kunlunxin] bf16: extend the operands to fp32 for an exact product
+        # and round once at the end, to match the native matmul numerics.
+        if a.dtype == tl.bfloat16:
+            acc += tl.dot(
+                a.to(tl.float32),
+                b.to(tl.float32),
+                out_dtype=dot_out_dtype,
+                allow_tf32=False,
+            )
+        else:
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
         A += BLOCK_K * SPLIT_K * stride_ak
         B += BLOCK_K * SPLIT_K * stride_bk
     acc = acc.to(C.dtype.element_ty)
@@ -490,6 +512,14 @@ def _padded_or_direct(a, b, dest, M, K, N, blk_m, blk_n, dot_out_dtype, device):
 
 def mm(a, b):
     logger.debug("GEMS_KUNLUNXIN MM")
+    # [kunlunxin] bf16: compute the product in fp32 and round the result once,
+    # to match the native matmul numerics.  The casts and the fp32 product use
+    # the backend's own kernels by direct import.
+    if a.dtype == torch.bfloat16 and b.dtype == torch.bfloat16:
+        af = to_copy(a, dtype=torch.float32)
+        bf = to_copy(b, dtype=torch.float32)
+        c = mm(af, bf)
+        return to_copy(c, dtype=torch.bfloat16)
     device = a.device
     # NOTE: no ``x.contiguous()`` here.  Inside use_gems()/enable() a strided
     # input (e.g. the column-major self-transpose view) dispatches through the
