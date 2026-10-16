@@ -19,6 +19,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 
+from .upsample_bilinear2d_x2 import upsample_bilinear2d_x2
+
 # XPU perf repair 2026-08-16: @triton.autotune over 12 configs recompiled per
 # (OH, OW) key on the XPU backend and picked suboptimal tiles; fixed bounded
 # dispatch (BLOCK_X=256 for OW<=512 else 512, BLOCK_Y=2, num_warps=4) measured
@@ -96,6 +98,14 @@ def _upsample_bilinear2d_aa(
 
     n, c, ih, iw = input.shape
     oh, ow = output_size
+
+    # Exact 2x fast path (tle.raw cluster kernel).  At scale 2 the triangular
+    # antialias filter degenerates to the plain two-tap bilinear filter, so the
+    # same payload serves both operators.  None => generic kernel below.
+    fast = upsample_bilinear2d_x2(input, output_size, align_corners, scales_h, scales_w)
+    if fast is not None:
+        return fast
+
     output = torch.empty((n, c, oh, ow), device=input.device, dtype=input.dtype)
     if align_corners:
         reciprocal_scale_h = (ih - 1) / (oh - 1) if oh > 1 else 0.0

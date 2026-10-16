@@ -1,0 +1,432 @@
+// tle.raw cluster payloads for scatter_add (fused, dtype-generic).
+//
+// Two strategies, each templated on the storage type T (float / __half /
+// __xpu_bfloat16) and the index type TID (int / long):
+//
+//   scatter_add_lm_<T>_<TID>      -- LM per-core accumulation, no atomics
+//   scatter_add_atomic_<T>_<TID>  -- SM atomic accumulation (wide ylen only)
+//
+// Both are extern "C" __device__ functions, inlined into a cluster kernel by
+// tle.raw.  The Python caller selects the strategy via _use_atomic() and the
+// instantiation from (inp.dtype, index.dtype).
+//
+// FUSED: the payloads take BOTH the output pointer and the input pointer, so
+// the host no longer has to run `out = inp.clone()`.  Rows of idx/src are
+// addressed with explicit row strides (IDX_RS / SRC_RS), so the host no longer
+// has to materialise a contiguous copy of `src` either.  The whole op is
+// therefore a single kernel launch on the benchmark layout.
+//
+// NATIVE HALF: for fp16/bf16 the tile lives in LM/SM as the narrow type and the
+// accumulate promotes to float, exactly like vendor's
+// `arith_type_trait<T, ADD>::type` / `ScatterOp<ADD,T>` (`*t = (T)((float)*t +
+// (float)u)`).  This removes the three fp32-promotion passes the previous
+// version needed.
+//
+// Inner-loop shape mirrors vendor's `scatter_element.xpu` (run_core_batch /
+// run_cluster_batch_atomic):
+//   * idx/src are streamed with the NON-blocking GM2LM_ASYNC into a 2-deep
+//     ring buffer, so the DMA of batch b+1 overlaps the RMW of batch b.
+//     (Plain GM2LM() is blocking -- cluster_memory.h calls mfence() inside it,
+//     so a straight GM2LM -> mfence -> RMW loop can never overlap.)
+//   * the RMW is unrolled 8x, like vendor's `AtomicCal/NaiveCal::run`
+//     (`constexpr int unroll_cnt = 8`), to expose independent LM/SM
+//     read-modify-writes to the scheduler.
+// Both payloads keep LM inside vendor's 6144 B budget (LM_BUFFER_BYTES).
+
+#include "xpu/kernel/xtdk.h"
+#include "xpu/kernel/xtdk_atomic_sm_xpu3.h"
+#include "xpu/kernel/xtdk_primitive.h"
+#include "xpu/kernel/xtdk_fp16.h"
+#include "xpu/kernel/xtdk_bf16.h"
+
+// xpu3's xtdk_atomic_sm_xpu3.h `atomicadd(_shared_ptr_ float*, float)` is
+// broken on this toolchain: __builtin_xpu_loada() returns `int`, so
+//   float x = __builtin_xpu_loada(sm);
+//   ... __builtin_xpu_storea(x + n, sm);
+// performs implicit numeric int<->float conversions and the CAS loop
+// degenerates into an integer counter (64x "+1.0f" leaves the bit pattern
+// 0x00000040, i.e. 8.97e-44, instead of 64.0f).  Vendor does not use that
+// overload either -- bn_common.h hand-writes a bit-preserving LL/SC pair
+// with loada.w/storea.w.  Use the same form.
+static __device__ inline void sm_atomic_add_f(_shared_ptr_ float* ptr, float v) {
+    bool fail = true;
+    while (fail) {
+        float a;
+        __asm__ __volatile__("loada.w %0,%1" : "=&r"(a) : "r"(ptr));
+        a += v;
+        __asm__ __volatile__("storea.w %0,%1,%2" : "=&r"(fail)
+                             : "r"(a), "r"(ptr));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 8x-unrolled accumulate macros.  Written as macros (not helpers) so the
+// operands keep their `__local__` / `_shared_ptr_` address space -- passing
+// them through a `float*` parameter would decay to the generic space.
+//
+// The accumulate `y[k] = (float)y[k] + (float)v` is type-generic: for float it
+// is the identity, for __half / __xpu_bfloat16 it is the float-intermediate
+// update (both classes expose `operator float()` and `operator=(float)`).
+// ---------------------------------------------------------------------------
+
+// LM variant: y_lm[col] += sj[j], col = ij[j] - c0, kept iff 0 <= col < tw.
+#define SCATTER_LM_ADD8(y_lm, ij, sj, bsz, c0, tw)                             \
+    do {                                                                       \
+        int _j = 0;                                                            \
+        for (; _j + 8 <= (bsz); _j += 8) {                                     \
+            int _k0 = (int)((ij)[_j + 0] - (c0));                              \
+            if (_k0 >= 0 && _k0 < (tw))                                        \
+                (y_lm)[_k0] = (float)(y_lm)[_k0] + (float)(sj)[_j + 0];        \
+            int _k1 = (int)((ij)[_j + 1] - (c0));                              \
+            if (_k1 >= 0 && _k1 < (tw))                                        \
+                (y_lm)[_k1] = (float)(y_lm)[_k1] + (float)(sj)[_j + 1];        \
+            int _k2 = (int)((ij)[_j + 2] - (c0));                              \
+            if (_k2 >= 0 && _k2 < (tw))                                        \
+                (y_lm)[_k2] = (float)(y_lm)[_k2] + (float)(sj)[_j + 2];        \
+            int _k3 = (int)((ij)[_j + 3] - (c0));                              \
+            if (_k3 >= 0 && _k3 < (tw))                                        \
+                (y_lm)[_k3] = (float)(y_lm)[_k3] + (float)(sj)[_j + 3];        \
+            int _k4 = (int)((ij)[_j + 4] - (c0));                              \
+            if (_k4 >= 0 && _k4 < (tw))                                        \
+                (y_lm)[_k4] = (float)(y_lm)[_k4] + (float)(sj)[_j + 4];        \
+            int _k5 = (int)((ij)[_j + 5] - (c0));                              \
+            if (_k5 >= 0 && _k5 < (tw))                                        \
+                (y_lm)[_k5] = (float)(y_lm)[_k5] + (float)(sj)[_j + 5];        \
+            int _k6 = (int)((ij)[_j + 6] - (c0));                              \
+            if (_k6 >= 0 && _k6 < (tw))                                        \
+                (y_lm)[_k6] = (float)(y_lm)[_k6] + (float)(sj)[_j + 6];        \
+            int _k7 = (int)((ij)[_j + 7] - (c0));                              \
+            if (_k7 >= 0 && _k7 < (tw))                                        \
+                (y_lm)[_k7] = (float)(y_lm)[_k7] + (float)(sj)[_j + 7];        \
+        }                                                                      \
+        for (; _j < (bsz); _j++) {                                             \
+            int _k = (int)((ij)[_j] - (c0));                                   \
+            if (_k >= 0 && _k < (tw))                                          \
+                (y_lm)[_k] = (float)(y_lm)[_k] + (float)(sj)[_j];              \
+        }                                                                      \
+    } while (0)
+
+// SM-atomic variant: same predicate, accumulate with the LL/SC atomicadd.
+#define SCATTER_SM_ADD8(sm_y, ij, sj, bsz, c0, tw)                             \
+    do {                                                                       \
+        int _j = 0;                                                            \
+        for (; _j + 8 <= (bsz); _j += 8) {                                     \
+            int _k0 = (int)((ij)[_j + 0] - (c0));                              \
+            if (_k0 >= 0 && _k0 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k0),           \
+                                (float)(sj)[_j + 0]);                          \
+            int _k1 = (int)((ij)[_j + 1] - (c0));                              \
+            if (_k1 >= 0 && _k1 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k1),           \
+                                (float)(sj)[_j + 1]);                          \
+            int _k2 = (int)((ij)[_j + 2] - (c0));                              \
+            if (_k2 >= 0 && _k2 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k2),           \
+                                (float)(sj)[_j + 2]);                          \
+            int _k3 = (int)((ij)[_j + 3] - (c0));                              \
+            if (_k3 >= 0 && _k3 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k3),           \
+                                (float)(sj)[_j + 3]);                          \
+            int _k4 = (int)((ij)[_j + 4] - (c0));                              \
+            if (_k4 >= 0 && _k4 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k4),           \
+                                (float)(sj)[_j + 4]);                          \
+            int _k5 = (int)((ij)[_j + 5] - (c0));                              \
+            if (_k5 >= 0 && _k5 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k5),           \
+                                (float)(sj)[_j + 5]);                          \
+            int _k6 = (int)((ij)[_j + 6] - (c0));                              \
+            if (_k6 >= 0 && _k6 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k6),           \
+                                (float)(sj)[_j + 6]);                          \
+            int _k7 = (int)((ij)[_j + 7] - (c0));                              \
+            if (_k7 >= 0 && _k7 < (tw))                                        \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k7),           \
+                                (float)(sj)[_j + 7]);                          \
+        }                                                                      \
+        for (; _j < (bsz); _j++) {                                             \
+            int _k = (int)((ij)[_j] - (c0));                                   \
+            if (_k >= 0 && _k < (tw))                                          \
+                sm_atomic_add_f((_shared_ptr_ float*)((sm_y) + _k),            \
+                                (float)(sj)[_j]);                              \
+        }                                                                      \
+    } while (0)
+
+// ---------------------------------------------------------------------------
+// LM budget (vendor LM_BUFFER_BYTES = 6144 B per core):
+//   LM  path: y_lm[1024] + 2*BATCH_SZ*(sizeof(TID)+sizeof(T))
+//             float/i32 = 4096+2048 = 6144 (vendor's own split)
+//             float/i64 = 4096+1536 = 5632
+//             half /i32 = 2048+1536 = 3584
+//             half /i64 = 2048+1280 = 3328
+//   ATO path: ring + stage_lm[256]
+//             float/i32 = 4096+1024 = 5120
+//             half /i64 = 2560+ 512 = 3072
+// ---------------------------------------------------------------------------
+#define SM_BUF 65536
+#define MAX_TILE_W 1024
+#define STAGE 256
+#define LM_BSZ(TID) (((sizeof(TID) == 4) ? 128 : 64))
+#define ATOMIC_BSZ(TID) (((sizeof(TID) == 4) ? 256 : 128))
+
+// ---------------------------------------------------------------------------
+// Strategy 1: core_batch (LM per-core accumulation, no atomics)
+// ---------------------------------------------------------------------------
+// Each core round-robins over rows.  For each row, the output accumulator
+// column-tile is staged into LM (4096B = 1024 fp32 / 2048 fp16), idx/src pairs
+// are streamed in through a 2-deep async ring, and scatter-add happens in LM.
+// For NCOL > 1024 the row is column-tiled; each tile scans ALL K pairs.
+
+template <typename T, typename TID>
+__device__ void scatter_add_lm_impl(
+        _global_ptr_ T*           out_ptr,
+        _global_ptr_ const T*     inp_ptr,
+        _global_ptr_ const TID*   idx_ptr,
+        _global_ptr_ const T*     src_ptr,
+        int NROW,
+        int NCOL,
+        int K,
+        int SRC_RS,
+        int IDX_RS
+) {
+    constexpr int BATCH_SZ = LM_BSZ(TID);
+
+    // core_id()/core_num() are cluster-local (64 cores); the grid holds
+    // cluster_num() of them.  Build a device-wide work index the same way the
+    // vendor does: tid = core_id()*nclusters + cluster_id(), nthreads = the
+    // product.
+    int tid      = core_id() * cluster_num() + cluster_id();
+    int nthreads = core_num() * cluster_num();
+
+    __local__ T   y_lm[MAX_TILE_W];
+    __local__ TID idx_lm[2][BATCH_SZ];
+    __local__ T   src_lm[2][BATCH_SZ];
+
+    int tile_w = NCOL < MAX_TILE_W ? NCOL : MAX_TILE_W;
+    int ntiles = (NCOL + tile_w - 1) / tile_w;
+
+    for (int row = tid; row < NROW; row += nthreads) {
+        _global_ptr_ T*         out_row = out_ptr + (long)row * NCOL;
+        _global_ptr_ const T*   inp_row = inp_ptr + (long)row * NCOL;
+        _global_ptr_ const TID* idx_row = idx_ptr + (long)row * IDX_RS;
+        _global_ptr_ const T*   src_row = src_ptr + (long)row * SRC_RS;
+
+        for (int tile = 0; tile < ntiles; tile++) {
+            int c0 = tile * tile_w;
+            int tw = NCOL - c0;
+            if (tw > tile_w) tw = tile_w;
+
+            // 1. Load the output accumulator slice [c0, c0+tw) from inp.
+            GM2LM(inp_row + c0, y_lm, tw * (int)sizeof(T));
+
+            // 2. Walk index/src through a 2-deep async ring, accumulate in LM.
+            int cur = 0;
+            int n0 = K < BATCH_SZ ? K : BATCH_SZ;
+            if (n0 > 0) {
+                GM2LM_ASYNC(idx_row, idx_lm[0], n0 * (int)sizeof(TID));
+                GM2LM_ASYNC(src_row, src_lm[0], n0 * (int)sizeof(T));
+            }
+            mfence();
+
+            for (int b = 0; b < K; b += BATCH_SZ) {
+                int bsz = K - b;
+                if (bsz > BATCH_SZ) bsz = BATCH_SZ;
+
+                int nb = b + BATCH_SZ;
+                if (nb < K) {
+                    int nbsz = K - nb;
+                    if (nbsz > BATCH_SZ) nbsz = BATCH_SZ;
+                    GM2LM_ASYNC(idx_row + nb, idx_lm[1 - cur],
+                                nbsz * (int)sizeof(TID));
+                    GM2LM_ASYNC(src_row + nb, src_lm[1 - cur],
+                                nbsz * (int)sizeof(T));
+                }
+
+                SCATTER_LM_ADD8(y_lm, idx_lm[cur], src_lm[cur], bsz, c0, tw);
+
+                mfence();
+                cur = 1 - cur;
+            }
+
+            // 3. Flush accumulator back to GM.
+            LM2GM(y_lm, out_row + c0, tw * (int)sizeof(T));
+            mfence();
+        }
+    }
+    mfence();
+}
+
+// ---------------------------------------------------------------------------
+// Strategy 2: cluster_batch_atomic (SM atomic accumulation)
+// ---------------------------------------------------------------------------
+// 64 cores cooperate per cluster.  For each batch row:
+//   1. Cooperatively DMA the output tile inp[batch, c0:c0+tw] into SM.
+//   2. Each core takes a chunk of the idx/src pairs, streams them to LM with a
+//      2-deep async ring, then does atomicadd on the SM accumulator.
+//   3. Cooperatively DMA SM back to GM.
+//
+// The SM accumulator is always float (there is no fp16/bf16 atomicadd on this
+// toolchain); for narrow T the tile is staged through LM to convert.
+//
+// SM budget: 256 KB = 65536 fp32.  Benchmark max ylen=65536, fits one tile.
+
+template <typename T, typename TID>
+__device__ void scatter_add_atomic_impl(
+        _global_ptr_ T*           out_ptr,
+        _global_ptr_ const T*     inp_ptr,
+        _global_ptr_ const TID*   idx_ptr,
+        _global_ptr_ const T*     src_ptr,
+        int BATCH,
+        int IDXLEN,
+        int YLEN,
+        int SRC_RS,
+        int IDX_RS
+) {
+    constexpr int ATOMIC_BATCH = ATOMIC_BSZ(TID);
+
+    int cid    = core_id();
+    int ncores = core_num();
+    int clid   = cluster_id();
+    int ncl    = cluster_num();
+
+    __shared__ float sm_y[SM_BUF];
+
+    __local__ TID idx_lm[2][ATOMIC_BATCH];
+    __local__ T   src_lm[2][ATOMIC_BATCH];
+    __local__ T   stage_lm[STAGE];
+
+    int sm_buf = SM_BUF;
+    if (sm_buf > YLEN) sm_buf = YLEN;
+
+    for (int ib = clid; ib < BATCH; ib += ncl) {
+        _global_ptr_ T*         out_row = out_ptr + (long)ib * YLEN;
+        _global_ptr_ const T*   inp_row = inp_ptr + (long)ib * YLEN;
+        _global_ptr_ const TID* idx_row = idx_ptr + (long)ib * IDX_RS;
+        _global_ptr_ const T*   src_row = src_ptr + (long)ib * SRC_RS;
+
+        for (int iy = 0; iy < YLEN; iy += sm_buf) {
+            int tw = YLEN - iy;
+            if (tw > sm_buf) tw = sm_buf;
+
+            // 1. Cooperatively load the inp tile into SM (as float).
+            int my_start, my_end;
+            partition(cid, ncores, tw, 64, &my_start, &my_end);
+            int n = my_end - my_start;
+            if (sizeof(T) == 4) {
+                if (n > 0) {
+                    GM2SM((_global_ptr_ const void*)(inp_row + iy + my_start),
+                          (_shared_ptr_ float*)(sm_y + my_start),
+                          n * (int)sizeof(float));
+                }
+            } else {
+                for (int o = 0; o < n; o += STAGE) {
+                    int c = n - o;
+                    if (c > STAGE) c = STAGE;
+                    GM2LM(inp_row + iy + my_start + o, stage_lm,
+                          c * (int)sizeof(T));
+                    mfence();
+                    for (int i = 0; i < c; i++) {
+                        sm_y[my_start + o + i] = (float)stage_lm[i];
+                    }
+                }
+            }
+            sync_all();
+
+            // 2. Each core handles a chunk of idx/src, atomicadd into SM.
+            int chunk = (IDXLEN + ncores - 1) / ncores;
+            int my_idx_start = cid * chunk;
+            int my_idx_len   = IDXLEN - my_idx_start;
+            if (my_idx_len > chunk) my_idx_len = chunk;
+            if (my_idx_len < 0)     my_idx_len = 0;
+
+            _global_ptr_ const TID* my_idx = idx_row + my_idx_start;
+            _global_ptr_ const T*   my_src = src_row + my_idx_start;
+
+            int cur = 0;
+            int n0 = my_idx_len < ATOMIC_BATCH ? my_idx_len : ATOMIC_BATCH;
+            if (n0 > 0) {
+                GM2LM_ASYNC(my_idx, idx_lm[0], n0 * (int)sizeof(TID));
+                GM2LM_ASYNC(my_src, src_lm[0], n0 * (int)sizeof(T));
+            }
+            mfence();
+
+            for (int b = 0; b < my_idx_len; b += ATOMIC_BATCH) {
+                int bsz = my_idx_len - b;
+                if (bsz > ATOMIC_BATCH) bsz = ATOMIC_BATCH;
+
+                int nb = b + ATOMIC_BATCH;
+                if (nb < my_idx_len) {
+                    int nbsz = my_idx_len - nb;
+                    if (nbsz > ATOMIC_BATCH) nbsz = ATOMIC_BATCH;
+                    GM2LM_ASYNC(my_idx + nb, idx_lm[1 - cur],
+                                nbsz * (int)sizeof(TID));
+                    GM2LM_ASYNC(my_src + nb, src_lm[1 - cur],
+                                nbsz * (int)sizeof(T));
+                }
+
+                SCATTER_SM_ADD8(sm_y, idx_lm[cur], src_lm[cur], bsz, iy, tw);
+
+                mfence();
+                cur = 1 - cur;
+            }
+            sync_all();
+
+            // 3. Cooperatively flush SM back to GM (as T).
+            if (sizeof(T) == 4) {
+                if (n > 0) {
+                    SM2GM((_shared_ptr_ float*)(sm_y + my_start),
+                          (_global_ptr_ void*)(out_row + iy + my_start),
+                          n * (int)sizeof(float));
+                }
+            } else {
+                for (int o = 0; o < n; o += STAGE) {
+                    int c = n - o;
+                    if (c > STAGE) c = STAGE;
+                    for (int i = 0; i < c; i++) {
+                        stage_lm[i] = sm_y[my_start + o + i];
+                    }
+                    mfence();
+                    LM2GM(stage_lm, out_row + iy + my_start + o,
+                          c * (int)sizeof(T));
+                }
+            }
+            mfence_sm();
+            sync_all();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exported instantiations.
+// ---------------------------------------------------------------------------
+#define EXPORT_LM(NAME, T, TID)                                                \
+    extern "C" __device__ void NAME(                                           \
+            _global_ptr_ T* out_ptr, _global_ptr_ const T* inp_ptr,            \
+            _global_ptr_ const TID* idx_ptr, _global_ptr_ const T* src_ptr,    \
+            int NROW, int NCOL, int K, int SRC_RS, int IDX_RS) {               \
+        scatter_add_lm_impl<T, TID>(out_ptr, inp_ptr, idx_ptr, src_ptr,        \
+                                    NROW, NCOL, K, SRC_RS, IDX_RS);            \
+    }
+
+#define EXPORT_ATOMIC(NAME, T, TID)                                            \
+    extern "C" __device__ void NAME(                                           \
+            _global_ptr_ T* out_ptr, _global_ptr_ const T* inp_ptr,            \
+            _global_ptr_ const TID* idx_ptr, _global_ptr_ const T* src_ptr,    \
+            int BATCH, int IDXLEN, int YLEN, int SRC_RS, int IDX_RS) {         \
+        scatter_add_atomic_impl<T, TID>(out_ptr, inp_ptr, idx_ptr, src_ptr,    \
+                                        BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS);  \
+    }
+
+EXPORT_LM(scatter_add_lm_f32_i32, float, int)
+EXPORT_LM(scatter_add_lm_f32_i64, float, long)
+EXPORT_LM(scatter_add_lm_f16_i32, __half, int)
+EXPORT_LM(scatter_add_lm_f16_i64, __half, long)
+EXPORT_LM(scatter_add_lm_bf16_i32, __xpu_bfloat16, int)
+EXPORT_LM(scatter_add_lm_bf16_i64, __xpu_bfloat16, long)
+
+EXPORT_ATOMIC(scatter_add_atomic_f32_i32, float, int)
+EXPORT_ATOMIC(scatter_add_atomic_f32_i64, float, long)
+EXPORT_ATOMIC(scatter_add_atomic_f16_i32, __half, int)
+EXPORT_ATOMIC(scatter_add_atomic_f16_i64, __half, long)
+EXPORT_ATOMIC(scatter_add_atomic_bf16_i32, __xpu_bfloat16, int)
+EXPORT_ATOMIC(scatter_add_atomic_bf16_i64, __xpu_bfloat16, long)
