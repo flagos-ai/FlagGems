@@ -431,6 +431,7 @@ from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor, logical_xor_
+from .logit import logit, logit_, logit_out
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
@@ -576,6 +577,7 @@ from .rnn_relu import rnn_relu
 from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
+from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -639,6 +641,7 @@ from .special_erfcx import special_erfcx
 from .special_erfinv import special_erfinv, special_erfinv_, special_erfinv_out
 from .special_exp2 import special_exp2
 from .special_expit import special_expit
+from .special_expm1 import special_expm1
 from .special_gammainc import special_gammainc
 from .special_gammaincc import special_gammaincc
 from .special_gammaln import special_gammaln
@@ -1195,6 +1198,9 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
+    "logit",
+    "logit_",
+    "logit_out",
     "logspace",
     "logsumexp",
     "lt",
@@ -1372,6 +1378,8 @@ __all__ = [
     "round",
     "round_",
     "round_out",
+    "row_indices_copy",
+    "row_indices_copy_out",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
@@ -1457,6 +1465,7 @@ __all__ = [
     "special_erfinv_out",
     "special_exp2",
     "special_expit",
+    "special_expm1",
     "special_gammainc",
     "special_gammaincc",
     "special_gammaln",
