@@ -25,6 +25,24 @@ from flag_gems.utils.triton_lang_extension import div_rn, fmod, trunc
 logger = logging.getLogger(__name__)
 
 
+def _scalar_to_device(A, B):
+    """Move a 0-dim CPU operand onto the other tensor's device.
+
+    PyTorch accepts a 0-dim CPU tensor as a scalar operand of a device tensor,
+    but the generated Triton kernels require every tensor pointer to be on the
+    same device. `ops/add.py` applies the same guard. See Issue #6960.
+    """
+    if not (isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)):
+        return A, B
+    if A.device == B.device:
+        return A, B
+    if A.ndim == 0:
+        return A.to(B.device), B
+    if B.ndim == 0:
+        return A, B.to(A.device)
+    return A, B
+
+
 @pointwise_dynamic(
     is_tensor=[True, True, True, True],
     num_outputs=2,
@@ -87,6 +105,7 @@ true_div_func_scalar_tensor.register_complex(
 
 def true_divide(A, B):
     logger.debug("GEMS TRUE_DIVIDE")
+    A, B = _scalar_to_device(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -100,6 +119,7 @@ def true_divide(A, B):
 
 def true_divide_out(A, B, out):
     logger.debug("GEMS TRUE_DIVIDE_OUT")
+    A, B = _scalar_to_device(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):
@@ -113,6 +133,7 @@ def true_divide_out(A, B, out):
 
 def true_divide_(A, B):
     logger.debug("GEMS TRUE_DIVIDE_")
+    A, B = _scalar_to_device(A, B)
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
     else:
@@ -162,6 +183,7 @@ def trunc_div_int_func_scalar_tensor(x, y):
 
 def trunc_divide(A, B):
     logger.debug("GEMS TRUNC_DIVIDE")
+    A, B = _scalar_to_device(A, B)
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if isinstance(A, torch.Tensor) and not A.is_floating_point():
         if isinstance(B, torch.Tensor):
@@ -183,6 +205,7 @@ def trunc_divide(A, B):
 
 def trunc_divide_(A, B):
     logger.debug("GEMS TRUNC_DIVIDE_")
+    A, B = _scalar_to_device(A, B)
     # Integer types: use dedicated int kernels (Triton // is C-style truncation)
     if not A.is_floating_point():
         if isinstance(B, torch.Tensor):
@@ -282,6 +305,7 @@ def floor_div_func_scalar_tensor(x, y):
 
 def floor_divide(A, B):
     logger.debug("GEMS FLOOR_DIVIDE")
+    A, B = _scalar_to_device(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return floor_div_func(A, B)
     elif isinstance(A, torch.Tensor):
@@ -295,6 +319,7 @@ def floor_divide(A, B):
 
 def floor_divide_(A, B):
     logger.debug("GEMS FLOOR_DIVIDE_")
+    A, B = _scalar_to_device(A, B)
     if isinstance(B, torch.Tensor):
         return floor_div_func(A, B, out0=A)
     else:

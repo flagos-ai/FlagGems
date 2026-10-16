@@ -23,6 +23,24 @@ from flag_gems.utils.pointwise_dynamic import ComplexMode
 logger = logging.getLogger(__name__)
 
 
+def _scalar_to_device(A, B):
+    """Move a 0-dim CPU operand onto the other tensor's device.
+
+    PyTorch accepts a 0-dim CPU tensor as a scalar operand of a device tensor,
+    but the generated Triton kernels require every tensor pointer to be on the
+    same device. `ops/add.py` applies the same guard. See Issue #6960.
+    """
+    if not (isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor)):
+        return A, B
+    if A.device == B.device:
+        return A, B
+    if A.ndim == 0:
+        return A.to(B.device), B
+    if B.ndim == 0:
+        return A, B.to(A.device)
+    return A, B
+
+
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def sub_func(x, y, alpha):
@@ -57,6 +75,7 @@ sub_func_scalar_tensor.register_complex(
 
 def sub(A, B, *, alpha=1):
     logger.debug("GEMS SUB")
+    A, B = _scalar_to_device(A, B)
     A_is_complex = (isinstance(A, torch.Tensor) and A.is_complex()) or isinstance(
         A, complex
     )
@@ -108,6 +127,7 @@ def sub(A, B, *, alpha=1):
 
 def sub_(A, B, *, alpha=1):
     logger.debug("GEMS SUB_")
+    A, B = _scalar_to_device(A, B)
     if isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha, out0=A)
     else:
