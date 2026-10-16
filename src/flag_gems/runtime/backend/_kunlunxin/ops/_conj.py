@@ -12,10 +12,14 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def _conj_flat_kernel(fin, fout, n2, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-    i = pid * BLOCK + tl.arange(0, BLOCK)
+    lane = tl.arange(0, BLOCK)
+    i = pid * BLOCK + lane
     m = i < n2
     x = tl.load(fin + i, mask=m)
-    out = tl.where((i % 2) == 1, -x, x)
+    # lane % 2 (not i % 2): lane is a compile-time arange so the parity folds at
+    # compile time; BLOCK is even => bit-identical to (i % 2) but ~25% faster
+    # (README 2026-09-11). Odd lanes are the imaginary slots -> negate.
+    out = tl.where((lane % 2) == 1, -x, x)
     tl.store(fout + i, out, mask=m)
 
 
@@ -61,6 +65,12 @@ def _conj_from_storage(input: torch.Tensor) -> torch.Tensor:
 
 
 def _conj(input: torch.Tensor) -> torch.Tensor:
+    """Materialized conjugate (Triton kernel).
+
+    NOTE: this is the *materializing* form. ``aten::_conj`` is natively a lazy
+    view (toggles the conjugate bit, zero device work); materializing here forces
+    O(N) device traffic. Kept per request to measure the both-materialize speedup.
+    """
     logger.debug("GEMS_KUNLUNXIN CONJ")
     if not input.is_complex():
         raise RuntimeError("_conj only supports complex tensors")
