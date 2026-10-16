@@ -31,6 +31,15 @@ from . import accuracy_utils as utils
 
 _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
+
+
+def _input_marks(dtype):
+    return (_ASCEND_COMPLEX_SKIP,) if dtype.is_complex else ()
+
 # Sparse index metadata is built in the widest index dtype this backend
 # declares support for, so no implicit int64 tensor is created on
 # int32-only devices.
@@ -418,7 +427,13 @@ _STRIDED_OUT_CASES = [
 
 
 @pytest.mark.values_copy
-@pytest.mark.parametrize("case,dtype,value_range", _COPY_ROWS)
+@pytest.mark.parametrize(
+    "case,dtype,value_range",
+    [
+        pytest.param(case, dtype, value_range, marks=_input_marks(dtype))
+        for case, dtype, value_range in _COPY_ROWS
+    ],
+)
 def test_values_copy(case, dtype, value_range):
     inp = _make_sparse(*case, dtype=dtype, value_range=value_range)
     ref_inp = utils.to_reference(inp)
@@ -431,7 +446,13 @@ def test_values_copy(case, dtype, value_range):
 
 
 @pytest.mark.values_copy_out
-@pytest.mark.parametrize("case,dtype,value_range", _COPY_ROWS)
+@pytest.mark.parametrize(
+    "case,dtype,value_range",
+    [
+        pytest.param(case, dtype, value_range, marks=_input_marks(dtype))
+        for case, dtype, value_range in _COPY_ROWS
+    ],
+)
 def test_values_copy_out(case, dtype, value_range):
     inp = _make_sparse(*case, dtype=dtype, value_range=value_range)
     ref_inp = utils.to_reference(inp)
@@ -448,7 +469,13 @@ def test_values_copy_out(case, dtype, value_range):
 
 
 @pytest.mark.values_copy
-@pytest.mark.parametrize("kind,dtype", _VIEW_CASES)
+@pytest.mark.parametrize(
+    "kind,dtype",
+    [
+        pytest.param(kind, dtype, marks=_input_marks(dtype))
+        for kind, dtype in _VIEW_CASES
+    ],
+)
 def test_values_copy_values_view(kind, dtype):
     """A strided or offset stored-values view is copied faithfully, unmodified."""
     nnz = 4
