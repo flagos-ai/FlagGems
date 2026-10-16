@@ -361,7 +361,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     rstd = torch.empty(M, dtype=input.dtype, device=input.device)
 
     with torch_device_fn.device(input.device):
-        if N <= 128:
+        if N <= 128 and runtime.device.vendor_name != "metax":
             TILE_N = triton.next_power_of_2(N)
             TILE_M = triton.cdiv(1024, TILE_N)
             grid = (triton.cdiv(M, TILE_M), 1, 1)
