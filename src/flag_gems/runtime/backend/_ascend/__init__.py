@@ -49,6 +49,8 @@ CUSTOMIZED_UNUSED_OPS = (
     "topk",
     "cat",  # TODO: Err occurred when running Qwen3.6 vLLM with flagtree ascend3.5
     "exponential_",  # TODO: Err occurred when running Qwen3.6 vLLM with flagtree ascend3.5
+    "zeros",  # GIL violation in Triton Ascend driver during vLLM multiprocess KV cache allocation
+    "zero_",  # GIL violation in Triton Ascend driver during vLLM multiprocess KV cache allocation
 )
 
 
