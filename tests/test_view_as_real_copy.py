@@ -44,6 +44,15 @@ if not VIEW_AS_REAL_COMPLEX_DTYPES:
 if not cfg.QUICK_MODE and utils.fp64_is_supported:
     VIEW_AS_REAL_COMPLEX_DTYPES.append(torch.complex128)
 
+_ASCEND_COMPLEX_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend complex input/reference support is incomplete",
+)
+VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS = [
+    pytest.param(dtype, marks=_ASCEND_COMPLEX_SKIP)
+    for dtype in VIEW_AS_REAL_COMPLEX_DTYPES
+]
+
 if cfg.QUICK_MODE:
     # (input_shape,) tuples of complex tensors.
     VIEW_AS_REAL_SHAPES = [
@@ -93,7 +102,7 @@ def _assert_matches(res, ref, inp):
 
 @pytest.mark.view_as_real_copy
 @pytest.mark.parametrize("input_shape", VIEW_AS_REAL_SHAPES)
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy(input_shape, dtype):
     inp = torch.randn(input_shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
@@ -105,7 +114,7 @@ def test_accuracy_view_as_real_copy(input_shape, dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_dtype_mapping(dtype):
     inp = torch.randn(6, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.view_as_real_copy(inp)
@@ -120,7 +129,7 @@ def test_accuracy_view_as_real_copy_dtype_mapping(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_values(dtype):
     # The reinterpret must be bit-exact: last dim index 0 = real part, index 1
     # = imag part.
@@ -131,7 +140,7 @@ def test_accuracy_view_as_real_copy_values(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_noncontiguous(dtype):
     # Every stride is legal for view_as_real; the strided gather path must
     # honor the real-view strides.
@@ -145,7 +154,7 @@ def test_accuracy_view_as_real_copy_noncontiguous(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_transposed(dtype):
     base = torch.randn(3, 5, dtype=dtype, device=flag_gems.device)
     inp = base.transpose(0, 1)
@@ -157,7 +166,7 @@ def test_accuracy_view_as_real_copy_transposed(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_high_rank_noncontiguous(dtype):
     # 3-D/4-D/5-D non-contiguous inputs: only non-contiguous inputs reach
     # _view_as_real_copy_strided_kernel, whose leading-dim stride slots are
@@ -184,7 +193,7 @@ def test_accuracy_view_as_real_copy_high_rank_noncontiguous(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_expanded(dtype):
     # Zero-stride batch dims must be materialized into concrete copies.
     base = torch.randn(1, dtype=dtype, device=flag_gems.device)
@@ -197,7 +206,7 @@ def test_accuracy_view_as_real_copy_expanded(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_storage_offset(dtype):
     base = torch.randn(20, dtype=dtype, device=flag_gems.device)
     inp = base[4:12]
@@ -209,7 +218,7 @@ def test_accuracy_view_as_real_copy_storage_offset(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_1d_strided(dtype):
     # A 1-D strided complex view has complex stride != 1; the real view then
     # exposes a non-contiguous layout the kernel must decompose.
@@ -223,7 +232,7 @@ def test_accuracy_view_as_real_copy_1d_strided(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_independent_storage(dtype):
     inp = torch.randn(8, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.view_as_real_copy(inp)
@@ -238,7 +247,7 @@ def test_accuracy_view_as_real_copy_independent_storage(dtype):
 
 
 @pytest.mark.view_as_real_copy
-@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPES)
+@pytest.mark.parametrize("dtype", VIEW_AS_REAL_COMPLEX_DTYPE_PARAMS)
 def test_accuracy_view_as_real_copy_conj(dtype):
     # A lazy conjugate input must be resolved before the reinterpret.
     inp = torch.randn(4, 3, dtype=dtype, device=flag_gems.device)
@@ -251,6 +260,7 @@ def test_accuracy_view_as_real_copy_conj(dtype):
 
 
 @pytest.mark.view_as_real_copy
+@_ASCEND_COMPLEX_SKIP
 def test_accuracy_view_as_real_copy_empty():
     inp = torch.randn(0, dtype=torch.complex64, device=flag_gems.device)
     res_out = flag_gems.view_as_real_copy(inp)
@@ -265,6 +275,7 @@ def test_accuracy_view_as_real_copy_empty():
 
 
 @pytest.mark.view_as_real_copy
+@_ASCEND_COMPLEX_SKIP
 def test_accuracy_view_as_real_copy_zero_dim():
     inp = torch.randn((), dtype=torch.complex64, device=flag_gems.device)
     res = flag_gems.view_as_real_copy(inp)
@@ -274,6 +285,7 @@ def test_accuracy_view_as_real_copy_zero_dim():
 
 
 @pytest.mark.view_as_real_copy
+@_ASCEND_COMPLEX_SKIP
 def test_accuracy_view_as_real_copy_error_paths():
     dev = flag_gems.device
 

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # (input_shape, row_strided) tuples of complex tensors. `row_strided=True`
@@ -66,6 +68,10 @@ class ViewAsRealCopyBenchmark(base.Benchmark):
 
 
 @pytest.mark.view_as_real_copy
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input dtypes",
+)
 def test_view_as_real_copy():
     bench = ViewAsRealCopyBenchmark(
         op_name="view_as_real_copy",
