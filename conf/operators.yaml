@@ -3319,6 +3319,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: combinations
+  description: Returns all r-length combinations of the elements of a 1-D input tensor,
+    optionally with replacement.
+  for:
+  - combinations
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: combine_topk_swa_indices
   description: 'Combines compressed top-k sparse attention indices with sliding-window
     attention indices
