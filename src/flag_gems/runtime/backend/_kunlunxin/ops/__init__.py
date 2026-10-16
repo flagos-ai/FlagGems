@@ -27,6 +27,7 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
     _embedding_bag_per_sample_weights_backward,
 )
 from ._euclidean_dist import _euclidean_dist
+from ._foreach_pow_ import _foreach_pow__List
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__ScalarList,
@@ -65,6 +66,7 @@ from ._masked_scale import _masked_scale  # noqa: F401
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
+from ._pad_enum import _pad_enum
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -303,6 +305,8 @@ from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_tensor_tensor_,
     float_power_tensor_tensor_out,
 )
+from .fix import fix, fix_out
+from .fix_ import fix_
 from .floor import floor, floor_, floor_out
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
@@ -766,6 +770,7 @@ __all__ = [
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_foreach_pow__List",
     "_flash_attention_forward",
     "_foreach_sigmoid",
     "_foreach_sigmoid_",
@@ -779,6 +784,7 @@ __all__ = [
     "_native_batch_norm_legit_functional",
     "_native_batch_norm_legit_no_training",
     "_nested_view_from_buffer_copy",
+    "_pad_enum",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -1022,6 +1028,9 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "fix",
+    "fix_",
+    "fix_out",
     "floor",
     "floor_",
     "floor_divide",
