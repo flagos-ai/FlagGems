@@ -38,6 +38,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_LOW_PRECISION_REFERENCE_SKIP = pytest.mark.skipif(
+    utils.TO_CPU or flag_gems.vendor_name == "ascend",
+    reason="glu_jvp reference does not support FP16/BF16",
+)
+
 # Shapes mirror utils.GLU_SHAPES: even extents on the narrowed dim for every
 # rank covered by the kernel's slot addressing, plus a non-contiguous variant.
 SHAPES = [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60)]
@@ -47,7 +52,20 @@ NON_CONTIGUOUS_SHAPE = (8, 2, 6, 8)
 @pytest.mark.glu_jvp
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dim", [-1, 0, 1])
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _LOW_PRECISION_REFERENCE_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in utils.FLOAT_DTYPES
+    ],
+)
 def test_glu_jvp(shape, dim, dtype):
     if dim >= len(shape):
         pytest.skip("dim out of range for this shape")
@@ -67,7 +85,20 @@ def test_glu_jvp(shape, dim, dtype):
 
 
 @pytest.mark.glu_jvp
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _LOW_PRECISION_REFERENCE_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in utils.FLOAT_DTYPES
+    ],
+)
 def test_glu_jvp_non_contiguous(dtype):
     # x/dx non-contiguous via a transpose on an axis other than the narrowed
     # dim, so the kernel takes the general (index-decomposed) addressing path.
