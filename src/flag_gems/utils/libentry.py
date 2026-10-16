@@ -49,6 +49,15 @@ from typing import (
 import triton
 
 try:
+    # OutOfResources is a TritonError, NOT a RuntimeError, so it is not caught by
+    # a bare `except RuntimeError` during config benchmarking. Catch it too so an
+    # over-large config (e.g. one exceeding the LDS/shared-memory limit) is
+    # pruned instead of crashing the whole tuning run.
+    from triton.runtime.errors import OutOfResources as _TritonOutOfResources
+except Exception:  # pragma: no cover - older/newer triton layouts
+    _TritonOutOfResources = ()
+
+try:
     import triton.flagtune  # noqa: F401
 except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
@@ -1039,7 +1048,7 @@ class LibTuner(triton.runtime.Autotuner):
                     if ret is None:
                         try:
                             ret = self._bench(*args, config=config, **kwargs)
-                        except RuntimeError as e:
+                        except (RuntimeError, _TritonOutOfResources) as e:
                             if getattr(self, "_flagtune_strict_benchmark", False):
                                 raise
                             # A config whose COMPILE raises a plain RuntimeError
@@ -1126,11 +1135,52 @@ class LibTuner(triton.runtime.Autotuner):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
+        try:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.all_kwargs(),
+            )
+        except _TritonOutOfResources:
+            # The selected config exceeds a hardware limit (e.g. LDS/shared
+            # memory) on this device. Some selection paths (single-config, cost
+            # model, cached result) never launch the kernel during tuning, so
+            # the limit only surfaces here. Retry the remaining configs,
+            # smallest first, and keep the first one that fits.
+            def _cfg_size(c):
+                blocks = 1
+                for k, v in c.kwargs.items():
+                    if isinstance(v, int) and "BLOCK" in k.upper():
+                        blocks *= max(1, v)
+                return (getattr(c, "num_stages", 1) or 1, blocks)
+
+            # Honor early_config_prune so the retry never picks a config the
+            # user's prune hook already ruled out; fall back to all configs if
+            # pruning is unset or fails.
+            candidate_configs = self.configs
+            if getattr(self, "early_config_prune", None) is not None:
+                try:
+                    pruned = self.early_config_prune(self.configs, self.nargs, **kwargs)
+                    if pruned:
+                        candidate_configs = pruned
+                except Exception:
+                    candidate_configs = self.configs
+
+            ret = None
+            for alt in sorted(candidate_configs, key=_cfg_size):
+                if alt is config:
+                    continue
+                try:
+                    if alt.pre_hook is not None:
+                        alt.pre_hook({**self.nargs, **kwargs, **alt.all_kwargs()})
+                    ret = self.fn.run(*args, **kwargs, **alt.all_kwargs())
+                    config = alt
+                    self.best_config = alt
+                    break
+                except _TritonOutOfResources:
+                    continue
+            if ret is None:
+                raise
         self.nargs = None
         return ret
 
@@ -1399,6 +1449,28 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+
+    @staticmethod
+    def _resolve_tensor_spec_fn():
+        # On backends whose pointer specialization depends on tensor size (AMD
+        # and hygon mark tensors <2GB so their pointers use 32-bit buffer-op
+        # addressing), that specialization must be part of the kernel cache key.
+        # Otherwise a kernel compiled for a <2GB tensor is wrongly reused for a
+        # >2GB tensor and its 32-bit offset overflows.
+        vendor = device.vendor_name
+        backend = None
+        try:
+            if vendor == "amd":
+                from triton.backends.amd.compiler import HIPBackend as backend
+            elif vendor == "hygon" and hasattr(triton.backends, "hcu"):
+                from triton.backends.hcu.compiler import HIPBackend as backend
+        except ImportError:
+            backend = None
+        if backend is None:
+            return None
+        fn = getattr(backend, "get_tensor_specialization", None)
+        return fn if callable(fn) else None
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1434,22 +1506,10 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
-                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
-                    try:
-                        from triton.backends.hcu.compiler import HIPBackend
-                    except ImportError:
-                        tensor_spec = None
-                    else:
-                        tensor_spec = getattr(
-                            HIPBackend, "get_tensor_specialization", None
-                        )
-                    if callable(tensor_spec):
-                        return (
-                            arg.dtype,
-                            arg.data_ptr() % self.divisibility == 0,
-                            tensor_spec(arg),
-                        )
-                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                if self._tensor_spec_fn is not None:
+                    return base + (self._tensor_spec_fn(arg),)
+                return base
             return (type(arg), arg)
 
         def dns_arg(arg):

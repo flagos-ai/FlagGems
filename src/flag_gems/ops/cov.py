@@ -19,7 +19,15 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# tf32/tf32x3 are NVIDIA tensor-core precisions; other backends (e.g. AMD) only
+# accept ieee/bf16x3/bf16x6, so fall back to full-precision ieee there.
+_IS_NVIDIA = runtime.device.vendor_name == "nvidia"
+_DOT_PRECISION_HIGH = tl.constexpr("tf32x3" if _IS_NVIDIA else "ieee")
+_DOT_PRECISION = tl.constexpr("tf32" if _IS_NVIDIA else "ieee")
 
 
 @triton.jit
@@ -154,9 +162,13 @@ def _cov_kernel(
         xj_centered = tl.where(mask_m[None, :], xj_centered, 0.0)
 
         if HIGH_PRECISION:
-            acc += tl.dot(xi_centered, tl.trans(xj_centered), input_precision="tf32x3")
+            acc += tl.dot(
+                xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION_HIGH
+            )
         else:
-            acc += tl.dot(xi_centered, tl.trans(xj_centered), input_precision="tf32")
+            acc += tl.dot(
+                xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION
+            )
 
     c = acc / fact
 
