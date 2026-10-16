@@ -68,6 +68,13 @@ def lift_fresh(*args, **kwargs):
     if x_contig.is_complex():
         return x_contig.clone()
 
+    # Triton address offsets are 32-bit: above 2**31-1 elements `pid * BLOCK_SIZE`
+    # wraps to a negative offset and the mask stops matching, so the kernel
+    # performs out-of-bounds accesses. Fall back to a native copy, the same guard
+    # `ops/copy.py` applies. See Issue #6954.
+    if x_contig.numel() > 2**31 - 1:
+        return x_contig.clone()
+
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
 
     n_elements = x_contig.numel()
