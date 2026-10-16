@@ -426,6 +426,8 @@ _FULL_CONFIG = (
         _native_batch_norm_legit_no_training,
     ),
     ("_native_multi_head_attention", _native_multi_head_attention),
+    ("_neg_view_copy", _neg_view_copy),
+    ("_neg_view_copy.out", _neg_view_copy_out),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),

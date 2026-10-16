@@ -14095,6 +14095,32 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: neg_view_copy
+  description: 'Returns a fresh contiguous tensor holding the element-wise negation
+    of `self`, the materialized (copied) counterpart of the `_neg_view` view.
+
+    '
+  for:
+  - _neg_view_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: neg_view_copy_out
+  description: A variant of `_neg_view_copy()` that writes the result into the
+    `out` tensor.
+  for:
+  - _neg_view_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: negative
   description: negative operator
   for:
