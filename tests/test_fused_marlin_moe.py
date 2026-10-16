@@ -30,6 +30,7 @@ import torch
 
 import flag_gems
 from flag_gems.fused.fused_marlin_moe import (
+    QUANT_TYPE_FLOAT8_E4M3FN,
     QUANT_TYPE_FP4_E2M1,
     QUANT_TYPE_UINT4B8,
     QUANT_TYPE_UINT8B128,
@@ -462,6 +463,80 @@ def _make_inputs_w4a16_mxfp4(
     )
 
 
+def _quantize_moe_weight_fp8(w_fp, group_size):
+    """Quantize each expert's weights to FP8 E4M3 with per-group scales."""
+    num_experts, out_dim, in_dim = w_fp.shape
+    assert in_dim % group_size == 0
+
+    fp8_dtype = torch.float8_e4m3fn
+    fp8_info = torch.finfo(fp8_dtype)
+    num_groups = in_dim // group_size
+    w_q = torch.empty(num_experts, out_dim, in_dim, device=w_fp.device, dtype=fp8_dtype)
+    w_ref = torch.empty_like(w_fp)
+    scales = torch.empty(
+        num_experts,
+        out_dim,
+        num_groups,
+        device=w_fp.device,
+        dtype=w_fp.dtype,
+    )
+    for expert in range(num_experts):
+        w_grouped = w_fp[expert].reshape(out_dim, num_groups, group_size).float()
+        scales_fp = (w_grouped.abs().amax(dim=-1, keepdim=True) / fp8_info.max).clamp(
+            min=1e-8
+        )
+        q_expert = (
+            (w_grouped / scales_fp).clamp(fp8_info.min, fp8_info.max).to(fp8_dtype)
+        )
+        w_q[expert] = q_expert.reshape(out_dim, in_dim)
+        w_ref[expert] = (
+            (q_expert.float() * scales_fp).to(w_fp.dtype).reshape(out_dim, in_dim)
+        )
+        scales[expert] = scales_fp.squeeze(-1).to(w_fp.dtype)
+    return w_q, w_ref, scales.contiguous()
+
+
+def _make_inputs_fp8_weight(
+    num_tokens, num_experts, hidden_size, intermediate_size, topk, dtype, device
+):
+    """Build a W(FP8)A16 case with FP16/BF16 activations."""
+    torch.manual_seed(0)
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1_fp = (
+        torch.randn(
+            num_experts,
+            intermediate_size * 2,
+            hidden_size,
+            device=device,
+            dtype=dtype,
+        )
+        / 10.0
+    )
+    w2_fp = (
+        torch.randn(
+            num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+        )
+        / 10.0
+    )
+    w1_q, w1_ref, w1_scale = _quantize_moe_weight_fp8(w1_fp, GROUP_SIZE)
+    w2_q, w2_ref, w2_scale = _quantize_moe_weight_fp8(w2_fp, GROUP_SIZE)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = (topk_weights / topk_weights.sum(dim=-1, keepdim=True)).to(dtype)
+    return (
+        hidden_states,
+        w1_q,
+        w2_q,
+        w1_ref,
+        w2_ref,
+        topk_weights,
+        topk_ids,
+        w1_scale,
+        w2_scale,
+    )
+
+
 def compute_max_diff(output, output_ref):
     """vLLM's Marlin accuracy metric (mean relative error), from
     vllm/tests/kernels/utils.py; test_marlin_gemm.py asserts it < 0.04."""
@@ -688,3 +763,37 @@ def test_rejects_fp8_input_dtype():
             quant_type_id=QUANT_TYPE_UINT4B8,
             input_dtype=torch.float8_e4m3fn,
         )
+
+
+@pytest.mark.skipif(not _is_hopper(), reason="W(FP8)A16 fast path requires Hopper")
+@pytest.mark.parametrize("config", QUICK_CONFIGS)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_fused_marlin_moe_vs_ref_fp8_weight(config, dtype):
+    """Compare W(FP8)A16 against a dequantized PyTorch MoE reference."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = config
+    device = flag_gems.device
+    hs, w1_q, w2_q, w1_ref, w2_ref, tw, ti, w1s, w2s = _make_inputs_fp8_weight(
+        num_tokens,
+        num_experts,
+        hidden_size,
+        intermediate_size,
+        topk,
+        dtype,
+        device,
+    )
+    result = fused_marlin_moe(
+        hidden_states=hs,
+        w1=w1_q,
+        w2=w2_q,
+        bias1=None,
+        bias2=None,
+        w1_scale=w1s,
+        w2_scale=w2s,
+        topk_weights=tw,
+        topk_ids=ti,
+        quant_type_id=QUANT_TYPE_FLOAT8_E4M3FN,
+    )
+    ref = _reference_swiglu_moe(hs, w1_ref, w2_ref, tw, ti)
+    torch.cuda.synchronize()
+    max_diff = compute_max_diff(result.float(), ref)
+    assert max_diff < 0.04, f"max_diff={max_diff:.4f}"
