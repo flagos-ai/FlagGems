@@ -27,11 +27,15 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func(x, exponent):
-    if (
-        tl.constexpr(exponent.dtype.is_fp32())
-        or tl.constexpr(exponent.dtype.is_fp16())
-        or tl.constexpr(exponent.dtype.is_bf16())
-    ):
+    # Ascend's libdevice `pow` only supplies matching-dtype entries --
+    # (f32, f32), (f16, f16), (bf16, bf16) -- so a 16-bit exponent has to be
+    # widened along with the base; passing it through raised
+    # "KeyError: (float32, float16)" in the codegen. A single `is_fp32()` test
+    # covers that, and it also drops the former three-way `a or b or c`
+    # condition, which the triton-ascend 3.2 frontend selects for the cann850
+    # backend rejects with "chained boolean operators (A or B or C) are not
+    # supported" (issue #5732).
+    if tl.constexpr(exponent.dtype.is_fp32()):
         return _pow(x.to(tl.float32), exponent)
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
@@ -51,11 +55,7 @@ def pow_tensor_tensor_(A, exponent):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_tensor_scalar(x, exponent):
-    if (
-        tl.constexpr(exponent.dtype.is_fp32())
-        or tl.constexpr(exponent.dtype.is_fp16())
-        or tl.constexpr(exponent.dtype.is_bf16())
-    ):
+    if tl.constexpr(exponent.dtype.is_fp32()):
         return _pow(x.to(tl.float32), exponent)
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
@@ -75,11 +75,7 @@ def pow_tensor_scalar_(A, exponent):
 @pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
 @triton.jit
 def pow_func_scalar_tensor(x, exponent):
-    if (
-        tl.constexpr(exponent.dtype.is_fp32())
-        or tl.constexpr(exponent.dtype.is_fp16())
-        or tl.constexpr(exponent.dtype.is_bf16())
-    ):
+    if tl.constexpr(exponent.dtype.is_fp32()):
         return _pow(x.to(tl.float32), exponent)
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
