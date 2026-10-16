@@ -288,3 +288,4 @@ underscore_embedding_bag: test_embedding_bag
 
 # The out overload shares correctness tests with the functional overload.
 upsample_nearest_exact2d_out: test_upsample_nearest_exact2d
+multiply_scalar: test_multiply
