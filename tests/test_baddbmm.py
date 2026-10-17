@@ -18,7 +18,12 @@ import torch
 import flag_gems
 
 from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
-from .accuracy_utils import SCALARS, gems_assert_close, to_reference
+from .accuracy_utils import (
+    SCALARS,
+    fp64_is_supported,
+    gems_assert_close,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 if QUICK_MODE:
@@ -132,3 +137,29 @@ def test_baddbmm_backward(M, N, K, scalar, dtype):
     gems_assert_close(res_in_bias, ref_in_bias, dtype, reduce_dim=K)
     gems_assert_close(res_in_grad1, ref_in_grad1, dtype, reduce_dim=N)
     gems_assert_close(res_in_grad2, ref_in_grad2, dtype, reduce_dim=M)
+
+
+@pytest.mark.baddbmm
+@pytest.mark.baddbmm_out
+@pytest.mark.skipif(not fp64_is_supported, reason="float64 is not supported")
+@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("scalar", SCALARS)
+def test_baddbmm_float64(M, N, K, scalar):
+    dtype = torch.float64
+    batch = 4
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
+    out = torch.empty((batch, M, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = to_reference(mat1)
+    ref_mat2 = to_reference(mat2)
+    ref_bias = to_reference(bias)
+
+    alpha = beta = scalar
+
+    ref_out = torch.baddbmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
+    res_out = flag_gems.baddbmm(bias, mat1, mat2, alpha=alpha, beta=beta)
+    flag_gems.baddbmm_out(bias, mat1, mat2, alpha=alpha, beta=beta, out=out)
+
+    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close(out, ref_out, dtype, reduce_dim=K)
