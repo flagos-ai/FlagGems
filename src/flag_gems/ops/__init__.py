@@ -1105,6 +1105,7 @@ from flag_gems.ops.nllloss import (
     nll_loss_backward,
     nll_loss_forward,
 )
+from flag_gems.ops.nnpack_spatial_convolution import run as nnpack_spatial_convolution
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.nonzero_static import nonzero_static, nonzero_static_out
@@ -2677,6 +2678,7 @@ __all__ = [
     "nll_loss_forward",
     "nll_loss_nd_backward",
     "nll_loss_nd_forward",
+    "nnpack_spatial_convolution",
     "nonzero",
     "nonzero_numpy",
     "nonzero_static",

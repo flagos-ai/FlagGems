@@ -14460,6 +14460,20 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: nnpack_spatial_convolution
+  description: 'Applies a 2D spatial convolution over an NCHW input using the NNPACK
+    CPU engine, with the given kernel weights, optional bias, padding and stride.
+
+    '
+  for:
+  - _nnpack_spatial_convolution
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nonzero
   description: 'Returns a 2-D tensor where each row is the index for a nonzero value.
 
