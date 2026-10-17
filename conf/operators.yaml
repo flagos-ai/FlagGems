@@ -273,6 +273,20 @@ ops:
   - Distribution
   stages:
   - alpha: '5.5.0'
+- id: _pin_memory
+  description: 'Pins a strided CPU tensor into page-locked host memory (the internal
+    aten entry dispatched on the CPU key).
+
+    '
+  for:
+  - _pin_memory
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -20956,6 +20970,18 @@ ops:
   - Tensor
   stages:
   - beta: '5.4'
+- id: unique_dim_consecutive
+  description: Removes all but the first slice from every consecutive group of equivalent
+    slices along a dimension.
+  for:
+  - unique_dim_consecutive
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.5'
 - id: unpack_seq_triton
   description: Unpack a packed sequence tensor back to its original variable-length
     form.
