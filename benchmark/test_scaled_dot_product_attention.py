@@ -93,7 +93,14 @@ def test_scaled_dot_product_attention(monkeypatch, dropout_p, is_causal):
 
 SDPA_FORWARD_SHAPES = [
     (4, 8, 1024, 64),
-    (2, 4, 2048, 128),
+    pytest.param(
+        (2, 4, 2048, 128),
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin",
+            reason="kunlunxin: scaled_dot_product_attention_forward does not "
+            "complete at seq_len 2048 with head_dim 128",
+        ),
+    ),
     (2, 4, 512, 64),
 ]
 

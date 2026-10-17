@@ -9,7 +9,7 @@ from flag_gems.runtime import torch_device_fn
 logger = logging.getLogger(__name__)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_find_pivot_main_kernel(
     LU,
     PARTIAL_VALUES,
@@ -17,7 +17,7 @@ def _lu_find_pivot_main_kernel(
     M,
     N,
     K,
-    J: tl.constexpr,
+    J,
     BLOCKS: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
@@ -42,7 +42,7 @@ def _lu_find_pivot_main_kernel(
     )
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_find_pivot_tail_kernel(
     LU,
     PARTIAL_VALUES,
@@ -50,7 +50,7 @@ def _lu_find_pivot_tail_kernel(
     M,
     N,
     K,
-    J: tl.constexpr,
+    J,
     TAIL_START: tl.constexpr,
     BLOCK_M: tl.constexpr,
     SLOT: tl.constexpr,
@@ -69,13 +69,13 @@ def _lu_find_pivot_tail_kernel(
     )
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_finish_pivot_kernel(
     PARTIAL_VALUES,
     PARTIAL_ROWS,
     PIVOTS,
     K,
-    J: tl.constexpr,
+    J,
     BLOCK_P: tl.constexpr,
 ):
     # BLOCK_P = next_pow2(slots); pad slots are pre-filled with -inf so the
@@ -89,9 +89,9 @@ def _lu_finish_pivot_kernel(
     tl.store(PIVOTS + batch * K + J, row + 1)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_swap_rows_kernel(
-    LU, PIVOTS, M, N, K, J: tl.constexpr, BLOCKS: tl.constexpr, BLOCK_N: tl.constexpr
+    LU, PIVOTS, M, N, K, J, BLOCKS: tl.constexpr, BLOCK_N: tl.constexpr
 ):
     pid = tl.program_id(0)
     batch = pid // BLOCKS
@@ -105,10 +105,8 @@ def _lu_swap_rows_kernel(
     tl.store(base + pivot_row * N + columns, current, mask=columns < N)
 
 
-@triton.jit
-def _lu_scale_column_kernel(
-    LU, M, N, J: tl.constexpr, BLOCKS: tl.constexpr, BLOCK_M: tl.constexpr
-):
+@triton.jit(do_not_specialize=["J"])
+def _lu_scale_column_kernel(LU, M, N, J, BLOCKS: tl.constexpr, BLOCK_M: tl.constexpr):
     pid = tl.program_id(0)
     batch = pid // BLOCKS
     block = pid % BLOCKS
@@ -116,15 +114,18 @@ def _lu_scale_column_kernel(
     base = LU + batch * M * N
     pivot = tl.load(base + J * N + J)
     values = tl.load(base + rows * N + J, mask=rows < M, other=0.0)
-    tl.store(base + rows * N + J, values / pivot, mask=rows < M)
+    safe_pivot = tl.where(pivot != 0.0, pivot, 1.0)
+    scaled = values / safe_pivot
+    scaled = tl.where(pivot != 0.0, scaled, 0.0)
+    tl.store(base + rows * N + J, scaled, mask=rows < M)
 
 
-@triton.jit
+@triton.jit(do_not_specialize=["J"])
 def _lu_update_trailing_kernel(
     LU,
     M,
     N,
-    J: tl.constexpr,
+    J,
     ROWS: tl.constexpr,
     BLOCKS: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -247,7 +248,7 @@ def _linalg_lu_factor(input, pivot):
                 num_warps=4,
             )
             if j + 1 < m:
-                scale_blocks = triton.cdiv(m - j - 1, 64)
+                scale_blocks = triton.cdiv(m, 64)
                 _lu_scale_column_kernel[(batch * scale_blocks,)](
                     lu,
                     m,
@@ -258,8 +259,8 @@ def _linalg_lu_factor(input, pivot):
                     num_warps=4,
                 )
             if j + 1 < m and j + 1 < n:
-                trailing_rows = m - j - 1
-                trailing_blocks = triton.cdiv(n - j - 1, 128)
+                trailing_rows = m
+                trailing_blocks = triton.cdiv(n, 128)
                 _lu_update_trailing_kernel[(batch * trailing_rows * trailing_blocks,)](
                     lu,
                     m,

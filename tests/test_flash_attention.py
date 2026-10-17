@@ -30,6 +30,7 @@ from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # The GCU torch build does not register several operators this module relies on:
 # `aten::_flash_attention_forward` (the reference oracle for the dense tests),
@@ -116,6 +117,45 @@ def make_input(
     return q, k, v
 
 
+def _flash_fwd_device_ref(
+    q, k, v, scale, is_causal, window_size_left=None, window_size_right=None
+):
+    B, Sq, H, D = q.shape
+    Sk = k.shape[1]
+    Hk = k.shape[2]
+    g = H // Hk
+    qf = q.float()
+    kf = k.float().repeat_interleave(g, dim=2)
+    vf = v.float().repeat_interleave(g, dim=2)
+    wl = -1 if window_size_left is None else window_size_left
+    wr = -1 if window_size_right is None else window_size_right
+    row = torch.arange(Sq, device=q.device)[:, None]
+    col = torch.arange(Sk, device=q.device)[None, :]
+    off = Sk - Sq
+    if is_causal:
+        valid = col <= (row + off)
+    else:
+        valid = torch.ones((Sq, Sk), dtype=torch.bool, device=q.device)
+    if wl < 0 and wr >= 0:
+        valid = valid & (col <= (row + off + wr))
+    elif wl >= 0:
+        hi = torch.minimum(row + off + wr, torch.tensor(Sk, device=q.device))
+        valid = valid & (col <= hi) & (col >= (row + off - wl))
+    out = torch.empty((B, Sq, H, D), dtype=torch.float32, device=q.device)
+    lse = torch.empty((B, H, Sq), dtype=torch.float32, device=q.device)
+    for b in range(B):
+        for h in range(H):
+            scores = (qf[b, :, h, :] @ kf[b, :, h, :].t()) * scale
+            scores = scores.masked_fill(~valid, float("-inf"))
+            m = scores.max(dim=-1, keepdim=True).values
+            m_safe = torch.where(torch.isfinite(m), m, torch.zeros_like(m))
+            p = torch.exp(scores - m_safe)
+            denom = p.sum(dim=-1, keepdim=True)
+            lse[b, h] = (m_safe + torch.log(denom)).squeeze(-1)
+            out[b, :, h, :] = (p / denom.clamp(min=1e-30)) @ vf[b, :, h, :]
+    return out.to(q.dtype), lse
+
+
 def torch_flash_fwd(
     q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
 ):
@@ -123,26 +163,38 @@ def torch_flash_fwd(
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
 
-    (
-        out,
-        lse,
-        seed,
-        offset,
-        debug_softmax,
-    ) = torch.ops.aten._flash_attention_forward(
-        q,
-        k,
-        v,
-        None,
-        None,
-        q.shape[-3],
-        k.shape[-3],
-        dropout_p,
-        is_causal,
-        return_debug_mask,
-        scale=scale,
-        **extra_kwargs,
-    )
+    if IS_KUNLUNXIN:
+        out, lse = _flash_fwd_device_ref(
+            q,
+            k,
+            v,
+            scale,
+            is_causal,
+            window_size_left=extra_kwargs.get("window_size_left"),
+            window_size_right=extra_kwargs.get("window_size_right"),
+        )
+        seed, offset, debug_softmax = None, None, None
+    else:
+        (
+            out,
+            lse,
+            seed,
+            offset,
+            debug_softmax,
+        ) = torch.ops.aten._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale=scale,
+            **extra_kwargs,
+        )
 
     return out, lse, seed, offset, debug_softmax
 
@@ -342,8 +394,9 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
 
 
 @pytest.mark.flash_attention_forward
-@pytest.mark.skip(
-    reason="Issue #2809: The operator fails this test on Nvidia at least."
+@pytest.mark.skipif(
+    vendor_name != "kunlunxin",
+    reason="Issue #2809: The operator fails this test on Nvidia at least.",
 )
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not supported")
@@ -534,7 +587,6 @@ def attention_ref(
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -611,7 +663,6 @@ def test_flash_attention_forward_gqa_alibi_softcap(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -687,7 +738,6 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="Issue #5254: Not supported")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
@@ -753,7 +803,6 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(triton.__version__ < "3.1", reason="RequiresTriton >= 3.1")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
-@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS

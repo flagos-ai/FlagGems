@@ -158,6 +158,146 @@ def _fused_moe_routed_gemm_kernel(
         )
 
 
+@triton.jit(
+    do_not_specialize=[
+        "fg_num_tokens",
+        "fg_top_k",
+        "fg_num_experts",
+        "fg_fuse_silu",
+        "fg_mul_routed_weight",
+        "fg_direct_routing",
+        "fg_has_bias",
+    ]
+)
+def _experts_route_dot_reference(
+    a_ptr,
+    b_ptr,
+    c_ptr,
+    b_bias_ptr,
+    topk_weights_ptr,
+    sorted_token_ids_ptr,
+    expert_ids_ptr,
+    num_tokens_post_padded_ptr,
+    N,
+    K: tl.constexpr,
+    num_valid_tokens,
+    stride_am,
+    stride_ak,
+    stride_be,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    stride_bias_e,
+    stride_bias_n,
+    MUL_ROUTED_WEIGHT: tl.constexpr,
+    ROUTED_WEIGHT_ON_INPUT: tl.constexpr,
+    top_k: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    FUSE_SILU: tl.constexpr,
+    DIRECT_ROUTING: tl.constexpr,
+    ALIGN_BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    fg_num_tokens,
+    fg_top_k,
+    fg_num_experts,
+    fg_fuse_silu,
+    fg_mul_routed_weight,
+    fg_direct_routing,
+    fg_has_bias,
+):
+    route = tl.program_id(0)
+    n_start = tl.program_id(1) * BLOCK_SIZE_N
+    if DIRECT_ROUTING:
+        token = route
+        expert = tl.load(sorted_token_ids_ptr + route).to(tl.int64)
+        valid_route = True
+    else:
+        token = tl.load(sorted_token_ids_ptr + route).to(tl.int64)
+        expert = tl.load(expert_ids_ptr + route // ALIGN_BLOCK_SIZE_M).to(tl.int64)
+        valid_route = token < num_valid_tokens
+    n_out = N // 2 if FUSE_SILU else N
+    a_row = tl.where(valid_route, token // top_k, 0)
+    if MUL_ROUTED_WEIGHT or ROUTED_WEIGHT_ON_INPUT:
+        routed_weight = tl.load(
+            topk_weights_ptr + token, mask=valid_route, other=0.0
+        ).to(tl.float32)
+
+    for n_offset in tl.static_range(0, BLOCK_SIZE_N):
+        offs_n = n_start + n_offset
+        n_mask = valid_route & (expert >= 0) & (offs_n < n_out)
+        accumulator = 0.0
+        if FUSE_SILU:
+            up_accumulator = 0.0
+
+        for k_block in tl.static_range(0, (K + BLOCK_SIZE_K - 1) // BLOCK_SIZE_K):
+            offs_k = k_block * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
+            k_mask = n_mask & (offs_k < K)
+            a = tl.load(
+                a_ptr + a_row * stride_am + offs_k * stride_ak,
+                mask=k_mask,
+                other=0.0,
+            ).to(tl.float32)
+            if ROUTED_WEIGHT_ON_INPUT:
+                a *= routed_weight
+            b = tl.load(
+                b_ptr + expert * stride_be + offs_k * stride_bk + offs_n * stride_bn,
+                mask=k_mask,
+                other=0.0,
+            ).to(tl.float32)
+            accumulator += tl.sum(a * b, axis=0)
+
+            if FUSE_SILU:
+                up = tl.load(
+                    b_ptr
+                    + expert * stride_be
+                    + offs_k * stride_bk
+                    + (offs_n + n_out) * stride_bn,
+                    mask=k_mask,
+                    other=0.0,
+                ).to(tl.float32)
+                up_accumulator += tl.sum(a * up, axis=0)
+
+        if HAS_BIAS:
+            accumulator += tl.load(
+                b_bias_ptr + expert * stride_bias_e + offs_n * stride_bias_n,
+                mask=n_mask,
+                other=0.0,
+            ).to(tl.float32)
+            if FUSE_SILU:
+                up_accumulator += tl.load(
+                    b_bias_ptr
+                    + expert * stride_bias_e
+                    + (offs_n + n_out) * stride_bias_n,
+                    mask=n_mask,
+                    other=0.0,
+                ).to(tl.float32)
+
+        if FUSE_SILU:
+            accumulator = accumulator * tl.sigmoid(accumulator) * up_accumulator
+        if MUL_ROUTED_WEIGHT:
+            accumulator *= routed_weight
+
+        # fg_* metadata liveness: always-true mask terms keep the params in
+        # the launcher ABI (the XPU launch-table handler reads them from
+        # kernelParams; triton drops unused args from the generated launcher).
+        meta_ok = (
+            (fg_num_tokens >= 0)
+            & (fg_top_k >= 0)
+            & (fg_num_experts >= 0)
+            & (fg_fuse_silu >= 0)
+            & (fg_mul_routed_weight >= 0)
+            & (fg_direct_routing >= 0)
+            & (fg_has_bias >= 0)
+        )
+        tl.store(
+            c_ptr + token * stride_cm + offs_n * stride_cn,
+            accumulator,
+            mask=valid_route & (offs_n < n_out) & meta_ok,
+        )
+
+
 @triton.jit
 def _moe_sum_kernel(
     input_ptr,
@@ -232,6 +372,7 @@ def invoke_kunlunxin_fused_moe_kernel(
     FUSE_SILU: bool,
     direct_routing: bool = False,
     routed_weight_on_input: bool = False,
+    generic_route: bool = False,
 ) -> None:
     logger.debug("GEMS_KUNLUNXIN INVOKE_FUSED_MOE_KERNEL")
     # int64 topk_ids -> "*i64" launcher signature (unmapped in the XPU
@@ -287,7 +428,10 @@ def invoke_kunlunxin_fused_moe_kernel(
     n_blocks = triton.cdiv(n_out, block_size_n)
     align_block_size_m = config["BLOCK_SIZE_M"]
     grid = (num_routes, n_blocks)
-    _fused_moe_routed_gemm_kernel[grid](
+    route_kernel = (
+        _experts_route_dot_reference if generic_route else _fused_moe_routed_gemm_kernel
+    )
+    route_kernel[grid](
         A,
         B,
         C,

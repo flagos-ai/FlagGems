@@ -23,6 +23,8 @@ from flag_gems.utils.random_utils import set_philox_state
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
@@ -39,6 +41,167 @@ def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     return Q, K, V
 
 
+def _device_attn_forward(
+    Q_bhsd,
+    K_bhsd,
+    V_bhsd,
+    is_causal=False,
+    scale=None,
+    attn_bias=None,
+    window_size_left=-1,
+    window_size_right=-1,
+):
+    b, h, s_q, d = Q_bhsd.shape
+    s_kv = K_bhsd.shape[2]
+    if scale is None:
+        scale = 1.0 / math.sqrt(d)
+    q = Q_bhsd.float()
+    k = K_bhsd.float()
+    v = V_bhsd.float()
+    row = torch.arange(s_q, device=q.device).unsqueeze(1)
+    col = torch.arange(s_kv, device=q.device).unsqueeze(0)
+    keep = torch.ones(s_q, s_kv, dtype=torch.bool, device=q.device)
+    if is_causal:
+        keep = keep & (col <= row)
+    wl = -1 if window_size_left is None else window_size_left
+    wr = -1 if window_size_right is None else window_size_right
+    if wl is not None and wl >= 0:
+        keep = keep & (col >= row - wl)
+    if wr is not None and wr >= 0:
+        keep = keep & (col <= row + wr)
+    outs = []
+    lses = []
+    for i in range(b):
+        oi = []
+        li = []
+        for j in range(h):
+            score = (q[i, j] @ k[i, j].transpose(0, 1)) * scale
+            if attn_bias is not None:
+                score = score + attn_bias[i, j].float()
+            score = score.masked_fill(~keep, float("-inf"))
+            lse = torch.logsumexp(score, dim=-1)
+            prob = torch.nan_to_num(
+                torch.exp(score - lse.unsqueeze(-1)), nan=0.0, posinf=0.0
+            )
+            oi.append(prob @ v[i, j])
+            li.append(lse)
+        outs.append(torch.stack(oi))
+        lses.append(torch.stack(li))
+    return torch.stack(outs), torch.stack(lses)
+
+
+def _attn_backward_by_autograd(
+    dOut_bhsd, Q_bhsd, K_bhsd, V_bhsd, is_causal, scale, attn_bias, wl, wr
+):
+    _q = Q_bhsd.detach().float().requires_grad_(True)
+    _k = K_bhsd.detach().float().requires_grad_(True)
+    _v = V_bhsd.detach().float().requires_grad_(True)
+    _o, _ = _device_attn_forward(
+        _q,
+        _k,
+        _v,
+        is_causal=is_causal,
+        scale=scale,
+        attn_bias=attn_bias,
+        window_size_left=wl,
+        window_size_right=wr,
+    )
+    return torch.autograd.grad(_o, (_q, _k, _v), dOut_bhsd.detach().float())
+
+
+def _flash_attention_backward_reference(
+    dOut,
+    Q,
+    K,
+    V,
+    out,
+    lse,
+    q_seq_len,
+    kv_seq_len,
+    is_causal,
+    scale,
+    window_size_left,
+    window_size_right,
+    philox_seed,
+    philox_offset,
+):
+    if IS_KUNLUNXIN:
+        grads = _attn_backward_by_autograd(
+            dOut.permute(0, 2, 1, 3).contiguous(),
+            Q.permute(0, 2, 1, 3).contiguous(),
+            K.permute(0, 2, 1, 3).contiguous(),
+            V.permute(0, 2, 1, 3).contiguous(),
+            is_causal,
+            scale,
+            None,
+            window_size_left,
+            window_size_right,
+        )
+        return tuple(g.permute(0, 2, 1, 3).contiguous() for g in grads)
+    extra_bwd = {}
+    if window_size_left is not None:
+        extra_bwd["window_size_left"] = window_size_left
+    if window_size_right is not None:
+        extra_bwd["window_size_right"] = window_size_right
+    return torch.ops.aten._flash_attention_backward(
+        utils.to_reference(dOut),
+        utils.to_reference(Q),
+        utils.to_reference(K),
+        utils.to_reference(V),
+        utils.to_reference(out),
+        utils.to_reference(lse),
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        philox_seed,
+        philox_offset,
+        scale=scale,
+        **extra_bwd,
+    )
+
+
+def _cudnn_attention_backward_reference(
+    dOut_bhsd,
+    Q_bhsd,
+    K_bhsd,
+    V_bhsd,
+    out_bhsd,
+    lse,
+    attn_bias,
+    q_seq_len,
+    kv_seq_len,
+    is_causal,
+    scale,
+    philox_seed,
+    philox_offset,
+):
+    if IS_KUNLUNXIN:
+        return _attn_backward_by_autograd(
+            dOut_bhsd, Q_bhsd, K_bhsd, V_bhsd, is_causal, scale, attn_bias, -1, -1
+        )
+    return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
+        utils.to_reference(dOut_bhsd),
+        utils.to_reference(Q_bhsd),
+        utils.to_reference(K_bhsd),
+        utils.to_reference(V_bhsd),
+        utils.to_reference(out_bhsd),
+        utils.to_reference(lse),
+        philox_seed,
+        philox_offset,
+        attn_bias,
+        None,
+        None,
+        q_seq_len,
+        kv_seq_len,
+        0.0,
+        is_causal,
+        scale=scale,
+    )
+
+
 def flash_attn_forward_native(
     Q,
     K,
@@ -52,6 +215,24 @@ def flash_attn_forward_native(
     scale = (
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
+
+    if IS_KUNLUNXIN:
+        out_bhsd, lse_bhsd = _device_attn_forward(
+            Q.permute(0, 2, 1, 3).contiguous(),
+            K.permute(0, 2, 1, 3).contiguous(),
+            V.permute(0, 2, 1, 3).contiguous(),
+            is_causal=is_causal,
+            scale=scale,
+            window_size_left=window_size_left,
+            window_size_right=window_size_right,
+        )
+        zeros = torch.zeros((), dtype=torch.int64, device=Q.device)
+        return (
+            out_bhsd.permute(0, 2, 1, 3).contiguous(),
+            lse_bhsd.float(),
+            zeros,
+            zeros,
+        )
 
     kwargs = dict(scale=scale)
     if window_size_left >= 0:
@@ -95,6 +276,23 @@ def cudnn_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
+    if IS_KUNLUNXIN:
+        out_bhsd, lse_bhsd = _device_attn_forward(
+            Q_bhsd,
+            K_bhsd,
+            V_bhsd,
+            is_causal=is_causal,
+            scale=scale,
+            attn_bias=attn_bias,
+        )
+        zeros = torch.zeros((), dtype=torch.int64, device=Q.device)
+        return (
+            out_bhsd.permute(0, 2, 1, 3).contiguous(),
+            lse_bhsd.float(),
+            zeros,
+            zeros,
+        )
+
     results = torch.ops.aten._scaled_dot_product_cudnn_attention(
         Q_bhsd,
         K_bhsd,
@@ -129,20 +327,36 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
-        Q,
-        K,
-        V,
-        bias,
-        None,
-        None,
-        Q.shape[1],
-        K.shape[1],
-        dropout_p=dropout_p,
-        custom_mask_type=1 if is_causal else 0,
-        compute_log_sumexp=True,
-        scale=scale,
-    )
+    if IS_KUNLUNXIN:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            None,
+            None,
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
+    else:
+        results = torch.ops.aten._efficient_attention_forward(
+            Q,
+            K,
+            V,
+            bias,
+            None,
+            None,
+            Q.shape[1],
+            K.shape[1],
+            dropout_p=dropout_p,
+            custom_mask_type=1 if is_causal else 0,
+            compute_log_sumexp=True,
+            scale=scale,
+        )
     out = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
@@ -255,29 +469,21 @@ def test_flash_attention_backward(
         extra_bwd["window_size_left"] = window_size_left
     if window_size_right is not None:
         extra_bwd["window_size_right"] = window_size_right
-    ref_dOut = utils.to_reference(dOut)
-    ref_Q = utils.to_reference(Q)
-    ref_K = utils.to_reference(K)
-    ref_V = utils.to_reference(V)
-    ref_out = utils.to_reference(out)
-    ref_lse = utils.to_reference(lse)
-    ref_dQ, ref_dK, ref_dV = torch.ops.aten._flash_attention_backward(
-        ref_dOut,
-        ref_Q,
-        ref_K,
-        ref_V,
-        ref_out,
-        ref_lse,
-        None,
-        None,
+    ref_dQ, ref_dK, ref_dV = _flash_attention_backward_reference(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
         q_seq_len,
         kv_seq_len,
-        0.0,
         is_causal,
+        scale,
+        window_size_left,
+        window_size_right,
         philox_seed,
         philox_offset,
-        scale=scale,
-        **extra_bwd,
     )
 
     dQ, dK, dV = flag_gems.flash_attention_backward(
@@ -378,34 +584,24 @@ def test_scaled_dot_product_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
-
     (
         ref_dQ_bhsd,
         ref_dK_bhsd,
         ref_dV_bhsd,
-    ) = torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
-        ref_dOut_bhsd,
-        ref_Q_bhsd,
-        ref_K_bhsd,
-        ref_V_bhsd,
-        ref_out_bhsd,
-        ref_lse,
-        philox_seed,
-        philox_offset,
+    ) = _cudnn_attention_backward_reference(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        out_bhsd,
+        lse,
         attn_bias,
-        None,
-        None,
         q_seq_len,
         kv_seq_len,
-        0.0,
         is_causal,
-        scale=scale,
+        scale,
+        philox_seed,
+        philox_offset,
     )
     ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
@@ -574,6 +770,110 @@ def test_efficient_attention_backward(
         utils.gems_assert_close(dBias_gems, ref_dBias, dtype, equal_nan=True)
 
 
+def _attn_bias_gradient_device(
+    dOut_bhsd, Q_bhsd, K_bhsd, V_bhsd, attn_bias, is_causal, scale
+):
+    batch, heads, q_len, kv_len = attn_bias.shape
+    qf = Q_bhsd.detach().float()
+    kf = K_bhsd.detach().float()
+    vf = V_bhsd.detach().float()
+    bf = attn_bias.detach().float()
+    do = dOut_bhsd.detach().float()
+
+    keep = None
+    if is_causal:
+        q_idx = torch.arange(q_len, device=bf.device).view(q_len, 1)
+        k_idx = torch.arange(kv_len, device=bf.device).view(1, kv_len)
+        keep = k_idx <= q_idx + (kv_len - q_len)
+
+    grads = []
+    for bi in range(batch):
+        for hi in range(heads):
+            s = torch.matmul(qf[bi, hi], kf[bi, hi].transpose(0, 1)) * scale
+            s = s + bf[bi, hi]
+            if keep is not None:
+                s = s.masked_fill(~keep, float("-inf"))
+            p = torch.softmax(s, dim=-1)
+            o = torch.matmul(p, vf[bi, hi])
+            grads.append(
+                p
+                * (
+                    torch.matmul(do[bi, hi], vf[bi, hi].transpose(0, 1))
+                    - (do[bi, hi] * o).sum(dim=-1, keepdim=True)
+                )
+            )
+    return (
+        torch.stack(grads)
+        .view(batch, heads, q_len, kv_len)
+        .to(device=attn_bias.device, dtype=attn_bias.dtype)
+    )
+
+
+def _efficient_attention_backward_reference(
+    ref_dOut_bhsd,
+    ref_Q_bhsd,
+    ref_K_bhsd,
+    ref_V_bhsd,
+    ref_bias,
+    ref_out_bhsd,
+    ref_lse,
+    philox_seed,
+    philox_offset,
+    grad_input_mask,
+    is_causal,
+    scale,
+):
+    if IS_KUNLUNXIN and grad_input_mask[3] and ref_bias is not None:
+        native_mask = (
+            grad_input_mask[0],
+            grad_input_mask[1],
+            grad_input_mask[2],
+            False,
+        )
+        ref_dQ_bhsd, ref_dK_bhsd, ref_dV_bhsd, _ = (
+            torch.ops.aten._scaled_dot_product_efficient_attention_backward(
+                ref_dOut_bhsd,
+                ref_Q_bhsd,
+                ref_K_bhsd,
+                ref_V_bhsd,
+                ref_bias,
+                ref_out_bhsd,
+                ref_lse,
+                philox_seed,
+                philox_offset,
+                0.0,
+                native_mask,
+                is_causal,
+                scale=scale,
+            )
+        )
+        ref_dBias = _attn_bias_gradient_device(
+            ref_dOut_bhsd,
+            ref_Q_bhsd,
+            ref_K_bhsd,
+            ref_V_bhsd,
+            ref_bias,
+            is_causal,
+            scale,
+        )
+        return ref_dQ_bhsd, ref_dK_bhsd, ref_dV_bhsd, ref_dBias
+    return torch.ops.aten._scaled_dot_product_efficient_attention_backward(
+        ref_dOut_bhsd,
+        ref_Q_bhsd,
+        ref_K_bhsd,
+        ref_V_bhsd,
+        ref_bias,
+        ref_out_bhsd,
+        ref_lse,
+        philox_seed,
+        philox_offset,
+        0.0,
+        grad_input_mask,
+        is_causal,
+        scale=scale,
+    )
+
+
 @pytest.mark.scaled_dot_product_efficient_attention_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -674,7 +974,7 @@ def test_scaled_dot_product_efficient_attention_backward(
         ref_dK_bhsd,
         ref_dV_bhsd,
         ref_dBias,
-    ) = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
+    ) = _efficient_attention_backward_reference(
         ref_dOut_bhsd,
         ref_Q_bhsd,
         ref_K_bhsd,
@@ -684,10 +984,9 @@ def test_scaled_dot_product_efficient_attention_backward(
         ref_lse,
         philox_seed,
         philox_offset,
-        0.0,
         grad_input_mask,
         is_causal,
-        scale=scale,
+        scale,
     )
     ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()

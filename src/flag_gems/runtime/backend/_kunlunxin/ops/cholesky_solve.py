@@ -19,6 +19,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
+_SINGLE_BLOCK_MAX_N = 128
+_SPLIT_HEAD = 128
+
 _generic = importlib.import_module("flag_gems.ops.cholesky_solve")
 
 
@@ -353,6 +358,458 @@ def _cholesky_solve_complex_rows(B, L, upper, out):
     return out
 
 
+@libentry()
+@triton.jit
+def cholesky_solve_column_kernel(
+    L_ptr,
+    B_ptr,
+    X_ptr,
+    bL,
+    bB,
+    bX,
+    sL,
+    sB,
+    sX,
+    N,
+    nrhs,
+    BN: tl.constexpr,
+    upper: tl.constexpr,
+):
+    """Whole-system register-resident sweep for N <= 128, one program per
+    (batch, rhs column).  Solves L y = b then L^T x = y (or the upper-storage
+    counterparts) with a diagonal-pre-scaled serial sweep."""
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, BN)
+    m = rows < N
+    Lp = L_ptr + batch * bL
+    Bp = B_ptr + batch * bB + col
+    Xp = X_ptr + batch * bX + col
+    b = tl.load(Bp + rows * sB, mask=m, other=0.0)
+    diag = tl.load(Lp + rows * sL + rows, mask=m, other=1.0)
+    inv = 1.0 / diag
+    inv = inv * (2.0 - diag * inv)
+    w = b * inv
+    for i in range(N):
+        if upper:
+            colv = tl.load(Lp + i * sL + rows, mask=m, other=0.0)
+        else:
+            colv = tl.load(Lp + rows * sL + i, mask=m, other=0.0)
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        fac = tl.maximum(tl.minimum(df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        w = w - fac * (colv * inv) * w_i
+    w = w * inv
+    for i in range(N - 1, -1, -1):
+        if upper:
+            colv = tl.load(Lp + rows * sL + i, mask=m, other=0.0)
+        else:
+            colv = tl.load(Lp + i * sL + rows, mask=m, other=0.0)
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        fac2 = tl.maximum(tl.minimum(-df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        w = w - fac2 * (colv * inv) * w_i
+    tl.store(Xp + rows * sX, w, mask=m)
+
+
+@libentry()
+@triton.jit
+def cholesky_solve_fwd_kernel(
+    L_ptr,
+    IN_ptr,
+    OUT_ptr,
+    off_L,
+    off_IN,
+    off_OUT,
+    bL,
+    bIN,
+    bOUT,
+    sL,
+    sIN,
+    sOUT,
+    Nb,
+    nrhs,
+    BN: tl.constexpr,
+    upper: tl.constexpr,
+):
+    """Forward sub-solve of one diagonal block: OUT <- solve(L_bb, IN).
+
+    lower storage: solves L_bb y = b for the block.
+    upper storage: solves U_bb^T y = b for the block.
+    """
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, BN)
+    m = rows < Nb
+    Lp = L_ptr + off_L + batch * bL
+    Ip = IN_ptr + off_IN + batch * bIN + col
+    Op = OUT_ptr + off_OUT + batch * bOUT + col
+    diag = tl.load(Lp + rows * sL + rows, mask=m, other=1.0)
+    inv = 1.0 / diag
+    inv = inv * (2.0 - diag * inv)
+    w = tl.load(Ip + rows * sIN, mask=m, other=0.0) * inv
+    for i in range(Nb):
+        if upper:
+            colv = tl.load(Lp + i * sL + rows, mask=m, other=0.0)
+        else:
+            colv = tl.load(Lp + rows * sL + i, mask=m, other=0.0)
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        fac = tl.maximum(tl.minimum(df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        w = w - fac * (colv * inv) * w_i
+    tl.store(Op + rows * sOUT, w, mask=m)
+
+
+@libentry()
+@triton.jit
+def cholesky_solve_bwd_kernel(
+    L_ptr,
+    IN_ptr,
+    OUT_ptr,
+    off_L,
+    off_IN,
+    off_OUT,
+    bL,
+    bIN,
+    bOUT,
+    sL,
+    sIN,
+    sOUT,
+    Nb,
+    nrhs,
+    BN: tl.constexpr,
+    upper: tl.constexpr,
+):
+    """Backward sub-solve of one diagonal block: OUT <- solve(L_bb^T, IN).
+
+    lower storage: solves L_bb^T x = y for the block.
+    upper storage: solves U_bb x = y for the block.
+    """
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, BN)
+    m = rows < Nb
+    Lp = L_ptr + off_L + batch * bL
+    Ip = IN_ptr + off_IN + batch * bIN + col
+    Op = OUT_ptr + off_OUT + batch * bOUT + col
+    diag = tl.load(Lp + rows * sL + rows, mask=m, other=1.0)
+    inv = 1.0 / diag
+    inv = inv * (2.0 - diag * inv)
+    w = tl.load(Ip + rows * sIN, mask=m, other=0.0) * inv
+    for i in range(Nb - 1, -1, -1):
+        if upper:
+            colv = tl.load(Lp + rows * sL + i, mask=m, other=0.0)
+        else:
+            colv = tl.load(Lp + i * sL + rows, mask=m, other=0.0)
+        df = (rows - i).to(tl.float32)
+        oh = tl.maximum(1.0 - tl.abs(df), 0.0)
+        fac2 = tl.maximum(tl.minimum(-df, 1.0), 0.0)
+        w_i = tl.sum(w * oh, axis=0)
+        w = w - fac2 * (colv * inv) * w_i
+    tl.store(Op + rows * sOUT, w, mask=m)
+
+
+@libentry()
+@triton.jit
+def _cholesky_matvec_left_kernel(
+    A_ptr,
+    Y_ptr,
+    ZIN_ptr,
+    ZOUT_ptr,
+    offA,
+    offY,
+    offZI,
+    offZO,
+    bA,
+    bY,
+    bZI,
+    bZO,
+    sA,
+    sY,
+    sZI,
+    sZO,
+    M,
+    K,
+    nrhs,
+    MBN: tl.constexpr,
+    KBN: tl.constexpr,
+):
+    """ZOUT[:, c] <- ZIN[:, c] - A @ Y[:, c] for every rhs column c.
+
+    Fused because a sum-derived value stores correctly even with a strided
+    store; only dot-derived values need the scratch + apply split."""
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, MBN)
+    cc = tl.arange(0, KBN)
+    m = rows < M
+    Ap = A_ptr + offA + batch * bA
+    Yp = Y_ptr + offY + batch * bY + col
+    ZIp = ZIN_ptr + offZI + batch * bZI + col
+    ZOp = ZOUT_ptr + offZO + batch * bZO + col
+    t = tl.load(ZIp + rows * sZI, mask=m, other=0.0)
+    At = tl.load(Ap + rows[:, None] * sA + cc[None, :])
+    yv = tl.load(Yp + cc * sY)
+    t = t - tl.sum(At * yv[None, :], axis=1)
+    tl.store(ZOp + rows * sZO, t, mask=m)
+
+
+@libentry()
+@triton.jit
+def _cholesky_dot_right_kernel(
+    A_ptr,
+    Y_ptr,
+    UPD_ptr,
+    offA,
+    offY,
+    offU,
+    bA,
+    bY,
+    sA,
+    sY,
+    sU,
+    M,
+    K,
+    nrhs,
+    KBN: tl.constexpr,
+    MBN: tl.constexpr,
+):
+    """UPD[:, c] <- A^T @ Y[:, c] for every rhs column c (dot-only, see left)."""
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, KBN)
+    mm = tl.arange(0, MBN)
+    Ap = A_ptr + offA + batch * bA
+    Yp = Y_ptr + offY + batch * bY + col
+    Up = UPD_ptr + offU + col * sU
+    At = tl.load(Ap + mm[:, None] * sA + rows[None, :])
+    yv = tl.load(Yp + mm * sY)
+    upd = tl.dot(yv[None, :], At, input_precision="ieee")
+    tl.store(Up + rows, tl.reshape(upd, [KBN]))
+
+
+@libentry()
+@triton.jit
+def _cholesky_apply_sub_kernel(
+    ZIN_ptr,
+    ZOUT_ptr,
+    UPD_ptr,
+    offZI,
+    offZO,
+    offU,
+    bZI,
+    bZO,
+    sZI,
+    sZO,
+    sU,
+    K,
+    nrhs,
+    KBN: tl.constexpr,
+):
+    """ZOUT[:, c] <- ZIN[:, c] - UPD[:, c] for every rhs column c."""
+    pid = tl.program_id(0)
+    batch = pid // nrhs
+    col = pid % nrhs
+    rows = tl.arange(0, KBN)
+    ZIp = ZIN_ptr + offZI + batch * bZI + col
+    ZOp = ZOUT_ptr + offZO + batch * bZO + col
+    Up = UPD_ptr + offU + col * sU
+    t = tl.load(ZIp + rows * sZI)
+    u = tl.load(Up + rows)
+    tl.store(ZOp + rows * sZO, t - u)
+
+
+def _solve_single_block(X, B, L, batch_size, N, nrhs, upper):
+    """N <= 128: one combined kernel launch."""
+    BN = triton.next_power_of_2(N)
+    grid = (batch_size * nrhs,)
+    Lk = L.reshape(-1, N, N)
+    Bk = B.reshape(-1, N, nrhs)
+    Xk = X.reshape(-1, N, nrhs)
+    cholesky_solve_column_kernel[grid](
+        Lk,
+        Bk,
+        Xk,
+        Lk.stride(0),
+        Bk.stride(0),
+        Xk.stride(0),
+        Lk.stride(1),
+        Bk.stride(1),
+        Xk.stride(1),
+        N,
+        nrhs,
+        BN=BN,
+        upper=upper,
+    )
+
+
+def _solve_two_block(X, B, L, batch_size, N, nrhs, upper):
+    """N == 256: two-block decomposition with sub-solves plus matvec updates.
+
+    Runs entirely in device kernels; X carries the working data and the
+    result.  The right-transpose matvec is split into a dot kernel writing a
+    contiguous scratch plus an apply kernel (``Z -= scratch``) because a
+    strided store of a dot-derived value miscompiles in this backend."""
+    h1 = _SPLIT_HEAD
+    h2 = N - h1
+    if h2 != h1:
+        raise RuntimeError(
+            "cholesky_solve: N > 128 is only supported for N == 256 on this backend"
+        )
+    BN1 = triton.next_power_of_2(h1)
+    BN2 = triton.next_power_of_2(h2)
+    grid = (batch_size * nrhs,)
+    Xk = X.reshape(-1, N, nrhs)
+    Bk = B.reshape(-1, N, nrhs)
+    Lk = L.reshape(-1, N, N)
+    bX = Xk.stride(0)
+    sX = Xk.stride(1)
+    bL = Lk.stride(0)
+    sL = Lk.stride(1)
+    bB = Bk.stride(0)
+    sB = Bk.stride(1)
+    scratch = torch.empty((nrhs, h1), dtype=X.dtype, device=X.device)
+    sU = scratch.stride(0)
+    off_x1 = 0
+    off_x2 = h1 * sX
+    off_l11 = 0
+    off_l22 = h1 * sL + h1
+
+    def _fwd(off_l, use_x, off_o, ni, up):
+        cholesky_solve_fwd_kernel[grid](
+            Lk,
+            Xk if use_x else Bk,
+            Xk,
+            off_l,
+            off_o if use_x else 0,
+            off_o,
+            bL,
+            bX if use_x else bB,
+            bX,
+            sL,
+            sX if use_x else sB,
+            sX,
+            ni,
+            nrhs,
+            BN=(BN1 if ni == h1 else BN2),
+            upper=up,
+        )
+
+    def _bwd(off_l, off_io, ni, up):
+        cholesky_solve_bwd_kernel[grid](
+            Lk,
+            Xk,
+            Xk,
+            off_l,
+            off_io,
+            off_io,
+            bL,
+            bX,
+            bX,
+            sL,
+            sX,
+            sX,
+            ni,
+            nrhs,
+            BN=(BN1 if ni == h1 else BN2),
+            upper=up,
+        )
+
+    def _mv_left(off_a, off_yv, from_b, off_zi, off_zo, m, k):
+        zi_ptr = Bk if from_b else Xk
+        zi_off = h1 * sB if from_b else off_zi
+        bzi = bB if from_b else bX
+        szi = sB if from_b else sX
+        _cholesky_matvec_left_kernel[grid](
+            Lk,
+            Xk,
+            zi_ptr,
+            Xk,
+            off_a,
+            off_yv,
+            zi_off,
+            off_zo,
+            bL,
+            bX,
+            bzi,
+            bX,
+            sL,
+            sX,
+            szi,
+            sX,
+            m,
+            k,
+            nrhs,
+            MBN=(BN1 if m == h1 else BN2),
+            KBN=(BN1 if k == h1 else BN2),
+        )
+
+    def _dot_right_apply(off_a, off_yv, from_b, off_zt, m, k):
+        _cholesky_dot_right_kernel[grid](
+            Lk,
+            Xk,
+            scratch,
+            off_a,
+            off_yv,
+            0,
+            bL,
+            bX,
+            sL,
+            sX,
+            sU,
+            m,
+            k,
+            nrhs,
+            KBN=(BN1 if k == h1 else BN2),
+            MBN=(BN1 if m == h1 else BN2),
+        )
+        zi_ptr = Bk if from_b else Xk
+        zi_off = h1 * sB if from_b else off_zt
+        bzi = bB if from_b else bX
+        szi = sB if from_b else sX
+        _cholesky_apply_sub_kernel[grid](
+            zi_ptr,
+            Xk,
+            scratch,
+            zi_off,
+            off_zt,
+            0,
+            bzi,
+            bX,
+            szi,
+            sX,
+            sU,
+            k,
+            nrhs,
+            KBN=(BN1 if k == h1 else BN2),
+        )
+
+    if not upper:
+        off_cross = h1 * sL
+        _fwd(off_l11, False, off_x1, h1, 0)
+        _mv_left(off_cross, off_x1, True, 0, off_x2, h2, h1)
+        _fwd(off_l22, True, off_x2, h2, 0)
+        _bwd(off_l22, off_x2, h2, 0)
+        _dot_right_apply(off_cross, off_x2, False, off_x1, h2, h1)
+        _bwd(off_l11, off_x1, h1, 0)
+    else:
+        off_cross = h1
+        _fwd(off_l11, False, off_x1, h1, 1)
+        _dot_right_apply(off_cross, off_x1, True, off_x2, h1, h2)
+        _fwd(off_l22, True, off_x2, h2, 1)
+        _bwd(off_l22, off_x2, h2, 1)
+        _mv_left(off_cross, off_x2, False, off_x1, off_x1, h1, h2)
+        _bwd(off_l11, off_x1, h1, 1)
+
+
 def cholesky_solve(B, L, upper=False, *, _out=None):
     if B.numel() == 0 or L.numel() == 0:
         if _out is not None:
@@ -439,6 +896,21 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
     B_kernel = B_kernel.reshape(-1, n, nrhs)
     X_kernel = X.reshape(-1, n, nrhs)
     batch_size = B_kernel.shape[0]
+
+    # Peer-derived Triton-only FP32 solver. Preserve the local wrapper and
+    # all unsupported/complex paths. The two-block scratch is not batch-indexed,
+    # so only unbatched N=256 is eligible; other sizes retain the local path.
+    if B.dtype == torch.float32 and X.is_contiguous():
+        if n <= _SINGLE_BLOCK_MAX_N:
+            _solve_single_block(
+                X_kernel, B_kernel, L_kernel, batch_size, n, nrhs, effective_upper
+            )
+            return output
+        if n == 256 and batch_size == 1:
+            _solve_two_block(
+                X_kernel, B_kernel, L_kernel, batch_size, n, nrhs, effective_upper
+            )
+            return output
 
     if _can_use_row_kernel(B, L):
         block_rhs = triton.next_power_of_2(nrhs)
