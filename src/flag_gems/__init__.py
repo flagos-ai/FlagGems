@@ -990,6 +990,7 @@ _FULL_CONFIG = (
     ("feature_alpha_dropout_", feature_alpha_dropout_),
     ("feature_dropout", feature_dropout),
     ("feature_dropout_", feature_dropout_),
+    ("fft_ifftshift", fft_ifftshift),
     ("fft_irfftn", fft_irfftn),
     ("fft_rfft", fft_rfft),
     ("fill.Scalar", fill_scalar),

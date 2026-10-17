@@ -5821,6 +5821,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_ifftshift
+  description: Shifts the zero-frequency component to the beginning of the
+    tensor, the inverse of torch.fft.fftshift().
+  for:
+  - fft_ifftshift
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_irfftn
   description: Computes the N-dimensional inverse of torch.fft.rfftn.
   for:
