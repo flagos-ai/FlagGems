@@ -12595,6 +12595,34 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: make_dual_copy
+  description: 'Returns a fresh dual tensor whose primal is a copy of `primal`
+and whose forward-AD tangent is `tangent`.
+
+    '
+  for:
+  - _make_dual_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: make_dual_copy_out
+  description: 'Returns a fresh dual tensor whose primal is a copy of `primal`
+and whose forward-AD tangent is `tangent`.
+
+    '
+  for:
+  - _make_dual_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: margin_ranking_loss
   description: Compute the margin ranking loss.
   for:

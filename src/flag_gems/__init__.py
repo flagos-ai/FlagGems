@@ -407,6 +407,8 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    ("_make_dual_copy", _make_dual_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_make_dual_copy.out", _make_dual_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_masked_scale", _masked_scale),
     ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
