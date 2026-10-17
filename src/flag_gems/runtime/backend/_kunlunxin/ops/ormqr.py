@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 _XPU_VEC = 64
 
-_SWEEP_WIDTHS = (64, 128, 1024, 2048)
+_SWEEP_WIDTHS = (64, 128, 1024, 2048, 4096)
 _SWEEP_ACC64_MAX = 128
 
 
@@ -825,6 +826,199 @@ def _apply_one(
         )
 
 
+# ---------------------------------------------------------------------------
+# Blocked (dlarfb-style) left-mode path for large fp32 shapes.
+#
+# The sweep path above applies the reflectors one at a time; the per-reflector
+# 1-D->scalar reduction makes that path reduction-bound for large M.  Here we
+# apply the reflectors in blocks of _BLOCK_NB via the compact-WY form
+#   P = H_1..H_nb = I - V T V^T,   C -= V (T (V^T C)),
+# which is three tl.dot matmuls per block.  T is the small upper-triangular
+# factor built by the tle.raw payload `payload/src/ormqr_larft.xpu`.
+# Scope: fp32, left, transpose=False, 2-D, M >= _BLOCK_MIN_M; otherwise the
+# caller falls back to the existing paths.
+# ---------------------------------------------------------------------------
+
+try:
+    import triton.experimental.tle as tle
+
+    _BLOCK_TLE_OK = True
+except ImportError:
+    tle = None
+    _BLOCK_TLE_OK = False
+
+_BLOCK_NB = 32
+_BLOCK_MIN_M = 512
+_BLOCK_BM = 64
+_BLOCK_BN = 256
+_BLOCK_BK = 128
+_BLOCK_NW = 8
+
+if _BLOCK_TLE_OK:
+    try:
+        _ORMQR_LARFT_OBJ = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..",
+            "payload",
+            "obj",
+            "ormqr_larft.o",
+        )
+
+        @tle.raw.dialect("xpu3", object=_ORMQR_LARFT_OBJ, arch=3)
+        def ormqr_larft_raw(G, TAU, T, NB): ...
+
+        @triton.jit
+        def _ormqr_larft_payload(G, TAU, T, NB):
+            tle.raw.call(ormqr_larft_raw, (G, TAU, T, NB))
+
+    except TypeError:
+        # Older flagtree builds ship a tle.raw.RawJITFunction that does not
+        # accept `object=`, so the payload cannot be registered; fall back to
+        # the non-blocked sweep path instead of failing at import time.
+        _BLOCK_TLE_OK = False
+
+
+@triton.jit
+def _ormqr_make_v_kernel(
+    IN, V, M, K, s_im, s_ik, s_vm, s_vk, BM: tl.constexpr, BN: tl.constexpr
+):
+    """V[r, i] = 1 (r == i), input[r, i] (r > i), 0 (r < i) -- the packed
+    reflector matrix.  The load mask is bounds-only: on this backend a
+    combined `bounds & (r > c)` mask silently does not mask."""
+    pm = tl.program_id(0)
+    pn = tl.program_id(1)
+    r = pm * BM + tl.arange(0, BM)
+    c = pn * BN + tl.arange(0, BN)
+    m = (r[:, None] < M) & (c[None, :] < K)
+    v = tl.load(IN + r[:, None] * s_im + c[None, :] * s_ik, mask=m, other=0.0)
+    val = tl.where(
+        r[:, None] > c[None, :], v, tl.where(r[:, None] == c[None, :], 1.0, 0.0)
+    )
+    tl.store(V + r[:, None] * s_vm + c[None, :] * s_vk, val, mask=m)
+
+
+@triton.jit
+def _ormqr_gemm_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    s_am,
+    s_ak,
+    s_bk,
+    s_bn,
+    s_cm,
+    s_cn,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    SUB: tl.constexpr,
+):
+    """C = A @ B  (SUB=False) or C = C - A @ B (SUB=True), fp32-exact dot."""
+    pm = tl.program_id(0)
+    pn = tl.program_id(1)
+    rm = pm * BM + tl.arange(0, BM)
+    rn = pn * BN + tl.arange(0, BN)
+    rk = tl.arange(0, BK)
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for k0 in range(0, K, BK):
+        kk = k0 + rk
+        a = tl.load(
+            A + rm[:, None] * s_am + kk[None, :] * s_ak,
+            mask=(rm[:, None] < M) & (kk[None, :] < K),
+            other=0.0,
+        )
+        b = tl.load(
+            B + kk[:, None] * s_bk + rn[None, :] * s_bn,
+            mask=(kk[:, None] < K) & (rn[None, :] < N),
+            other=0.0,
+        )
+        acc = tl.dot(a, b, acc, input_precision="ieee")
+    cm = (rm[:, None] < M) & (rn[None, :] < N)
+    cp = C + rm[:, None] * s_cm + rn[None, :] * s_cn
+    if SUB:
+        tl.store(cp, tl.load(cp, mask=cm, other=0.0) - acc, mask=cm)
+    else:
+        tl.store(cp, acc, mask=cm)
+
+
+def _ormqr_blocked(inp, tau, other):
+    """Blocked left-mode ormqr for fp32 2-D transpose=False; None if unsupported."""
+    if not _BLOCK_TLE_OK:
+        return None
+    if other.dim() != 2 or inp.dim() != 2 or tau.dim() != 1:
+        return None
+    if other.shape[-2] < _BLOCK_MIN_M:
+        return None
+    M, k = inp.shape
+    N = other.shape[1]
+    if tau.shape[0] != k or other.shape[0] != M:
+        return None
+    nb = _BLOCK_NB
+    dev = other.device
+    V = torch.empty(M, k, dtype=torch.float32, device=dev)
+    _ormqr_make_v_kernel[(triton.cdiv(M, 64), triton.cdiv(k, 64))](
+        inp,
+        V,
+        M,
+        k,
+        inp.stride(0),
+        inp.stride(1),
+        V.stride(0),
+        V.stride(1),
+        BM=64,
+        BN=64,
+    )
+    C = other.contiguous().clone()
+    G = torch.empty(nb, nb, dtype=torch.float32, device=dev)
+    T = torch.empty(nb, nb, dtype=torch.float32, device=dev)
+    W = torch.empty(nb, N, dtype=torch.float32, device=dev)
+    X = torch.empty(nb, N, dtype=torch.float32, device=dev)
+
+    def gem(A, B, Cout, m, n, kk, sub=False, at=False):
+        # at=True means A is used transposed (A^T): walk its natural row-major
+        # strides in the opposite order, exactly like `Vb` standing in for Vb^T.
+        s_am, s_ak = (A.stride(1), A.stride(0)) if at else (A.stride(0), A.stride(1))
+        _ormqr_gemm_kernel[(triton.cdiv(m, _BLOCK_BM), triton.cdiv(n, _BLOCK_BN))](
+            A,
+            B,
+            Cout,
+            m,
+            n,
+            kk,
+            s_am,
+            s_ak,
+            B.stride(0),
+            B.stride(1),
+            Cout.stride(0),
+            Cout.stride(1),
+            BM=_BLOCK_BM,
+            BN=_BLOCK_BN,
+            BK=_BLOCK_BK,
+            SUB=sub,
+            num_warps=_BLOCK_NW,
+        )
+
+    nblk = (k + nb - 1) // nb
+    for jb in range(nblk - 1, -1, -1):
+        i0 = jb * nb
+        i1 = min(k, i0 + nb)
+        m_ = i1 - i0
+        Vb = V[:, i0:i1]
+        Gv = G[:m_, :m_]
+        Tv = T[:m_, :m_]
+        Wv = W[:m_, :]
+        Xv = X[:m_, :]
+        gem(Vb, Vb, Gv, m_, m_, M, at=True)  # G = Vb^T Vb
+        _ormqr_larft_payload[(1,)](Gv, tau[i0:i1].contiguous(), Tv, m_)
+        gem(Vb, C, Wv, m_, N, M, at=True)  # W = Vb^T C
+        gem(Tv, Wv, Xv, m_, N, m_)  # X = T W
+        gem(Vb, Xv, C, M, N, m_, sub=True)  # C -= Vb X
+    return C
+
+
 def ormqr(input, tau, other, left=True, transpose=False):
     """Multiply a general matrix by the Householder-reflector product Q."""
     logger.debug("GEMS_KUNLUNXIN ORMQR")
@@ -833,6 +1027,11 @@ def ormqr(input, tau, other, left=True, transpose=False):
         torch.float64,
     ), f"ormqr only supports float32 and float64, got {input.dtype}"
     DT = tl.float32 if input.dtype == torch.float32 else tl.float64
+
+    if left and not transpose and input.dtype == torch.float32:
+        blk = _ormqr_blocked(input, tau, other)
+        if blk is not None:
+            return blk
 
     fast = _ormqr_sweep(input, tau, other, bool(left), bool(transpose))
     if fast is not None:
