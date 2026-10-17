@@ -232,6 +232,7 @@ rshift_scalar: test_rshift
 rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift
 rshift_tensor_out: test_rshift
+embedding_bag_forward_only: test_embedding_bag
 batch_norm_backward: test_batch_norm
 cumprod_backward: test_cumprod
 erfinv: test_erfinv_
@@ -273,3 +274,6 @@ fused_adamw__tensor_lr: test_fused_adamw_
 # conf/operators.yaml cannot find its test.
 underscore_linalg_det: test__linalg_det
 underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
+
+_embedding_bag: test_embedding_bag
+underscore_embedding_bag: test_embedding_bag

@@ -65,6 +65,8 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .exponential import exponential
 from .exponential_ import exponential_
@@ -206,6 +208,9 @@ from .weight_norm import (
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_flash_attention_forward",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
