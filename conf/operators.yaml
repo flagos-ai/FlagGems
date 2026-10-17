@@ -16289,6 +16289,18 @@ ops:
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: reshape_from_tensor
+  description: |
+    Reshape using a tensor of dimensions, preserving views when possible and copying otherwise.
+  for:
+    - _reshape_from_tensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: resize
   description: Resizes the input tensor to the specified size.
   for:

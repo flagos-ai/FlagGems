@@ -452,6 +452,7 @@ _FULL_CONFIG = (
     ("_reshape_alias", _reshape_alias),
     ("_reshape_alias_copy", _reshape_alias_copy),
     ("_reshape_copy", _reshape_copy),
+    ("_reshape_from_tensor", _reshape_from_tensor),
     ("_resize_output", _resize_output),
     ("_resize_output_", _resize_output_),
     ("_safe_softmax", _safe_softmax),
