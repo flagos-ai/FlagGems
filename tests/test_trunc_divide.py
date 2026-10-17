@@ -45,12 +45,11 @@ def test_trunc_div(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
 
-    upcast = False
-    if flag_gems.vendor_name not in ["cambricon", "iluvatar", "kunlunxin"]:
-        upcast = True
-
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.div(ref_inp1, ref_inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
@@ -83,11 +82,11 @@ def test_trunc_divide_(shape, dtype):
 
     inp1 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
-    upcast = True
-    if flag_gems.vendor_name in ("cambricon", "kunlunxin", "iluvatar", "tsingmicro"):
-        upcast = False
-    ref_inp1 = utils.to_reference(inp1, upcast)
-    ref_inp2 = utils.to_reference(inp2, upcast)
+    # The reference stays in the operator's dtype: an fp64 reference disagrees
+    # with fp32 trunc semantics when the exact quotient sits just below an
+    # integer boundary (fp32 rounds it up to the boundary, then trunc drops it).
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.div_(ref_inp2, rounding_mode="trunc")
     with flag_gems.use_gems():
