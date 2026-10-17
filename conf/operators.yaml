@@ -18274,6 +18274,23 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_compressed_tensor
+  description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
+    components: the compressed-axis index vector, the plain-axis index vector and
+    the payload (values), with an explicit logical size or one inferred from the
+    component buffers.
+
+    '
+  for:
+  - sparse_compressed_tensor.comp_plain_value
+  - sparse_compressed_tensor.comp_plain_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
