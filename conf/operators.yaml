@@ -13581,6 +13581,22 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: multilabel_margin_loss
+  description: 'Multi-label margin (hinge) loss between an (N, C) input and an int64
+    target listing the active class ids of each row, terminated by the first -1.
+
+    '
+  for:
+  - multilabel_margin_loss
+  - multilabel_margin_loss.out
+  labels:
+  - aten
+  - KernelGen
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multilabel_margin_loss_forward
   description: 'Computes the forward multi-label margin loss and returns both the
     loss and the per-class target membership mask.'
