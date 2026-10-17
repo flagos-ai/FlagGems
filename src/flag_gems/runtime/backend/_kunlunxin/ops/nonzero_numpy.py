@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import logging
+import os
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
@@ -22,6 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from .cumsum import cumsum
 from .nonzero import (
     _count_nonzero,
     _dense_result,
@@ -32,11 +35,79 @@ from .nonzero import (
 
 logger = logging.getLogger(__name__)
 
+try:
+    import triton.experimental.tle as tle
+
+    _TLE_OK = True
+except ImportError:
+    tle = None
+    _TLE_OK = False
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+
 # Block width of the compaction chain below. 8192 is the documented safe
 # `tl.sum` / `tl.cumsum` tile on this backend (the value the closed nonzero
 # counter and the closed masked_scatter compaction both use).
 _NZNP_BLOCK = 8192
 _NZNP_WARPS = 16
+# Block width of the raw cluster payload below. Larger than _NZNP_BLOCK so each
+# core's GM2LM/LM2GM transfer is bigger (small transfers run far below the DMA
+# bandwidth). Must be a power-of-two multiple of _NZNP_BLOCK (the count pass
+# granularity) and small enough that ibuf + obuf fit the per-core LM budget.
+_NZNP_RAW_BLOCK = 16384
+# When the raw block grid is at most this, the payload derives each block's
+# output base itself from the device count array (`nz_pack_scan`) instead of
+# taking a host-computed `bases` vector. The host->device copy of that vector
+# costs a fixed amount even for a handful of entries, which dominates every mid
+# shape; the in-payload scan is one coalesced pass over `bid * 2` entries.
+# The cap is deliberately conservative: the scan is redone per program, so its
+# total volume grows as blocks^2, which outruns the copy for very large grids.
+_NZNP_SCAN_MAX_BLOCKS = 512
+
+if _TLE_OK:
+    try:
+        # Every entry lives in the precompiled device object
+        # `payload/obj/nz_pack.o` (built from payload/src/nz_pack.xpu + the shared
+        # compaction primitives by payload/gen_payloads.py). It ships as machine
+        # code -- the C++ source is not in the tree -- and each triton wrapper below
+        # calls exactly one entry, so a compiled kernel links only the entry it uses.
+        _NZ_OBJ = os.path.join(os.path.dirname(_HERE), "payload", "obj", "nz_pack.o")
+
+        @tle.raw.dialect("xpu3", object=_NZ_OBJ, arch=3)
+        def nz_pack(in_, out, bases, n, bid, D1, esz, sign_mask): ...
+
+        @triton.jit(do_not_specialize=["n", "D1", "esz", "sign_mask"])
+        def nz_pack_kernel(In, Out, Bases, n, D1, esz, sign_mask):
+            pid = tl.program_id(0)
+            tle.raw.call(nz_pack, (In, Out, Bases, n, pid, D1, esz, sign_mask))
+
+        @tle.raw.dialect("xpu3", object=_NZ_OBJ, arch=3)
+        def nz_pack_scan(in_, out, counts, n, bid, D1, esz, sign_mask, per_raw): ...
+
+        @triton.jit(do_not_specialize=["n", "D1", "esz", "sign_mask", "per_raw"])
+        def nz_pack_scan_kernel(In, Out, Counts, n, D1, esz, sign_mask, per_raw):
+            pid = tl.program_id(0)
+            tle.raw.call(
+                nz_pack_scan, (In, Out, Counts, n, pid, D1, esz, sign_mask, per_raw)
+            )
+
+        @tle.raw.dialect("xpu3", object=_NZ_OBJ, arch=3)
+        def nz_pack_whole(in_, out, total_out, n, D1, esz, sign_mask): ...
+
+        @triton.jit(do_not_specialize=["n", "D1", "esz", "sign_mask"])
+        def nz_pack_whole_kernel(In, Out, TotalOut, n, D1, esz, sign_mask):
+            tle.raw.call(nz_pack_whole, (In, Out, TotalOut, n, D1, esz, sign_mask))
+
+        @tle.raw.dialect("xpu3", object=_NZ_OBJ, arch=3)
+        def nz_dense(out, n, bid, D1): ...
+
+        @triton.jit(do_not_specialize=["n", "D1"])
+        def nz_dense_kernel(Out, n, D1):
+            pid = tl.program_id(0)
+            tle.raw.call(nz_dense, (Out, n, pid, D1))
+
+    except Exception:  # pragma: no cover - triton without object= support
+        _TLE_OK = False
 
 
 @libentry()
@@ -89,10 +160,10 @@ def _nznp_clean_dim_kernel(
     #     it does not lower in a kernel of this shape (uni_sram validation
     #     failure at every block size / warp count, whether the dim size comes
     #     from a global load, a list or an if-chain over scalar args).
-    #   * SINGLE-TERM STORE ADDRESS. `outd + base + lanes` runs at 229 GB/s, but
-    #     adding one more runtime scalar to the address expression
+    #   * SINGLE-TERM STORE ADDRESS. `outd + base + lanes` runs at full DMA
+    #     bandwidth, but adding one more runtime scalar to the address expression
     #     (`out + dim_off + base + lanes`, i.e. indexing the [ndim, N] buffer
-    #     inside the kernel) drops it to 5.9 GB/s -- a 39x cliff. The per-dim
+    #     inside the kernel) collapses it to a scalar-store cliff. The per-dim
     #     row is therefore passed in as its own pointer (`out.select(0, d)`).
     pid = ext.program_id(0)
     blk = tl.load(ids + pid)
@@ -180,12 +251,276 @@ def _nznp_tail_dim_kernel(
     tl.store(outd + r, coord.to(tl.int64), mask=nz)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["total"])
+def _nznp_bool_pack_full_kernel(
+    inp, prefix, out, total, D1: tl.constexpr, BLOCK: tl.constexpr
+):
+    # bool 2-D compaction with a single packed u64 store per nonzero: both dim
+    # coordinates (each < 2**31) are packed into one int64 (hi32=dim0, lo32=dim1)
+    # and scattered once, halving the gather-store count of the two-store path.
+    # Inactive lanes are redirected to the [total, total + BLOCK) scratch (the
+    # store mask is not honoured on this backend), same as _nznp_dirty_dim_kernel.
+    pid = ext.program_id(0)
+    lanes = tl.arange(0, BLOCK)
+    cols = pid * BLOCK + lanes
+    w = tl.load(inp + cols)
+    oo = tl.load(prefix + cols) - 1
+    nz = w
+    r = tl.where(nz, oo.to(tl.int64), total.to(tl.int64) + lanes.to(tl.int64))
+    c0 = cols // D1
+    c1 = cols - c0 * D1
+    packed = (c0.to(tl.int64) << 32) | c1.to(tl.int64)
+    tl.store(out + r, packed, mask=nz)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["total", "n_elements", "n_main"])
+def _nznp_bool_pack_tail_kernel(
+    inp,
+    prefix,
+    out,
+    total,
+    n_elements,
+    n_main,
+    D1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Remainder block of the bool packed compaction: same clamp + ok discipline
+    # as _nznp_tail_dim_kernel, same per-lane scratch redirect.
+    lanes = tl.arange(0, BLOCK)
+    cols = n_main + lanes
+    last = n_elements - 1
+    cclamp = tl.minimum(cols, last)
+    ok = cols < n_elements
+    w = tl.load(inp + cclamp)
+    oo = tl.load(prefix + cclamp) - 1
+    nz = w & ok
+    r = tl.where(nz, oo.to(tl.int64), total.to(tl.int64) + lanes.to(tl.int64))
+    c0 = cols // D1
+    c1 = cols - c0 * D1
+    packed = (c0.to(tl.int64) << 32) | c1.to(tl.int64)
+    tl.store(out + r, packed, mask=nz)
+
+
+@libentry()
+@triton.jit
+def _nznp_bool_unpack_kernel(packed, out0, out1, total, BLOCK: tl.constexpr):
+    # Affine unpack of the packed u64 into two contiguous per-dim index tensors:
+    # hi32 -> dim0, lo32 -> dim1. Purely affine loads/stores (the mask is on
+    # contiguous offsets), so it stays on the fast block-DMA path. A single
+    # interleaved [total, 2] buffer would force stride-2 stores (much slower).
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    v = tl.load(packed + offs, mask=mask)
+    tl.store(out0 + offs, v >> 32, mask=mask)
+    tl.store(out1 + offs, v & 0xFFFFFFFF, mask=mask)
+
+
+def _nznp_bool_sparse(inp, n_elements, total):
+    """bool 2-D path: one packed u64 gather-store per nonzero instead of the
+    two int64 stores the generic scatter performs, then an affine unpack into
+    the two per-dim index tensors.
+
+    The bool mask is dense in the benchmark, so every 8192-block is dirty
+    and the generic `_sparse_result` (full prefix-sum + two-store scatter) is the
+    dominant cost. Packing halves the gather-store count; the prefix is the
+    usual closed int64 `cumsum`.
+    """
+    dev = inp.device
+    block = _NZNP_BLOCK
+    flat = inp.view(-1).contiguous()
+    n_full = n_elements // block
+    rem = n_elements - n_full * block
+    with torch_device_fn.device(dev):
+        prefix = cumsum(flat, dim=0)
+        buf = torch.empty(total + block, dtype=torch.int64, device=dev)
+        if n_full > 0:
+            _nznp_bool_pack_full_kernel[(n_full,)](
+                flat,
+                prefix,
+                buf,
+                total,
+                D1=inp.shape[1],
+                BLOCK=block,
+                num_warps=_NZNP_WARPS,
+            )
+        if rem > 0:
+            _nznp_bool_pack_tail_kernel[(1,)](
+                flat,
+                prefix,
+                buf,
+                total,
+                n_elements,
+                n_full * block,
+                D1=inp.shape[1],
+                BLOCK=block,
+                num_warps=_NZNP_WARPS,
+            )
+        out0 = torch.empty(total, dtype=torch.int64, device=dev)
+        out1 = torch.empty(total, dtype=torch.int64, device=dev)
+        if total > 0:
+            _nznp_bool_unpack_kernel[(triton.cdiv(total, block),)](
+                buf,
+                out0,
+                out1,
+                total,
+                BLOCK=block,
+                num_warps=_NZNP_WARPS,
+            )
+    return [out0, out1]
+
+
+# dtypes handled by the raw cluster payload: (element bytes, nonzero-test mask).
+# Floating dtypes mask the sign bit so -0.0 counts as zero, matching x != 0.
+_RAW_DTYPES = {
+    torch.bool: (1, 0xFF),
+    torch.int16: (2, 0xFFFF),
+    torch.float16: (2, 0x7FFF),
+    torch.bfloat16: (2, 0x7FFF),
+    torch.int32: (4, -1),  # 0xFFFFFFFF as signed int32 (payload param is int)
+    torch.float32: (4, 0x7FFFFFFF),
+}
+
+
+def _nznp_raw(inp, n_elements, counts_h, counts, total):
+    """2-D path via a raw cluster payload: cub-style block compaction, any
+    density, for 1/2/4-byte dtypes.
+
+    Each program compacts one `_NZNP_RAW_BLOCK`-block by scattering into on-chip
+    memory (`__shared__` cross-core scan + `__local__` per-core compact) and
+    writing out with one contiguous LM2GM per core, so the global write is
+    affine instead of the triton gather store. Returns None when the raw path
+    does not apply, so callers fall back.
+
+    `counts`/`counts_h` are the same per-`_NZNP_BLOCK` count vector, still on the
+    device and copied to the host. When the block grid is small enough for the
+    payload to scan itself (`_NZNP_SCAN_MAX_BLOCKS`), the device copy is handed
+    straight to the kernel and no host-side base vector is built or copied over;
+    above that cap the exclusive scan runs on the host as before.
+    """
+    info = _RAW_DTYPES.get(inp.dtype)
+    if info is None or not _TLE_OK or total == 0:
+        return None
+    esz, sign_mask = info
+    dev = inp.device
+    block = _NZNP_RAW_BLOCK
+    flat = inp.view(-1).contiguous()
+    flat_u8 = flat.view(torch.uint8)
+    n_blocks = (n_elements + block - 1) // block
+
+    # The count pass above runs at _NZNP_BLOCK granularity, so one raw block
+    # spans `per_raw` count entries (a power-of-two multiple).
+    per_raw = block // _NZNP_BLOCK
+
+    out = torch.empty(total, 2, dtype=torch.int64, device=dev)
+    if n_blocks <= _NZNP_SCAN_MAX_BLOCKS:
+        with torch_device_fn.device(dev):
+            nz_pack_scan_kernel[(n_blocks,)](
+                flat_u8,
+                out,
+                counts,
+                n_elements,
+                inp.shape[1],
+                esz,
+                sign_mask,
+                per_raw,
+            )
+        return _unbind_views(out)
+
+    if per_raw == 1:
+        counts_raw = counts_h
+    else:
+        # Pair the _NZNP_BLOCK counts up into raw-block counts. Done in numpy:
+        # torch CPU reductions are pathological in this environment, and this
+        # runs on every raw call, so it would otherwise dominate large shapes.
+        arr = counts_h.numpy()
+        pad = (per_raw - arr.shape[0] % per_raw) % per_raw
+        if pad:
+            arr = np.concatenate([arr, np.zeros(pad, dtype=arr.dtype)])
+        counts_raw = torch.from_numpy(arr.reshape(-1, per_raw).sum(axis=1))
+
+    bases_h = torch.empty_like(counts_raw)
+    bases_h[0] = 0
+    if n_blocks > 1:
+        torch.cumsum(counts_raw[: n_blocks - 1], dim=0, out=bases_h[1:])
+    bases = bases_h.to(torch.int64).to(dev)
+
+    with torch_device_fn.device(dev):
+        nz_pack_kernel[(n_blocks,)](
+            flat_u8,
+            out,
+            bases,
+            n_elements,
+            inp.shape[1],
+            esz,
+            sign_mask,
+        )
+    return _unbind_views(out)
+
+
+def _nznp_dense_raw(inp, n_elements, total):
+    """2-D dense path via a raw payload: every element is nonzero, so each
+    output row is just the flat index's row/col. No input read, no count/scan.
+    Returns None when the raw path does not apply, so callers fall back to
+    `_dense_result`.
+    """
+    if not _TLE_OK or inp.ndim != 2:
+        return None
+    dev = inp.device
+    block = _NZNP_RAW_BLOCK
+    n_blocks = (n_elements + block - 1) // block
+    out = torch.empty(total, 2, dtype=torch.int64, device=dev)
+    with torch_device_fn.device(dev):
+        nz_dense_kernel[(n_blocks,)](out, n_elements, inp.shape[1])
+    return _unbind_views(out)
+
+
+def _nznp_raw_small(inp, n_elements):
+    """Single-cluster small-input 2-D path: one fused kernel counts + compacts
+    and writes the total to a device scalar, so the whole count pass (extra
+    launch + host reduction) is skipped and the host syncs exactly once.
+
+    Only for numel that fits one cluster block (<= _NZNP_RAW_BLOCK) and the
+    dtypes `_RAW_DTYPES` covers. Returns None otherwise, so callers fall back.
+    """
+    info = _RAW_DTYPES.get(inp.dtype)
+    if info is None or not _TLE_OK or n_elements == 0:
+        return None
+    if n_elements > _NZNP_RAW_BLOCK or inp.ndim != 2:
+        return None
+    esz, sign_mask = info
+    dev = inp.device
+    flat_u8 = inp.view(-1).contiguous().view(torch.uint8)
+    out = torch.empty(n_elements, 2, dtype=torch.int64, device=dev)
+    total_dev = torch.empty(1, dtype=torch.int64, device=dev)
+    with torch_device_fn.device(dev):
+        nz_pack_whole_kernel[(1,)](
+            flat_u8,
+            out,
+            total_dev,
+            n_elements,
+            inp.shape[1],
+            esz,
+            sign_mask,
+        )
+    total = int(total_dev.item())
+    if total == 0:
+        return [torch.empty(0, dtype=torch.int64, device=dev) for _ in range(2)]
+    return _unbind_views(out[:total])
+
+
 def _nznp_block_counts(flat, n_elements):
     """Per-block nonzero counts (one read pass) brought back to the host.
 
     The same pass yields the exact total (so the separate two-phase counter is
     not needed), every block's output base, and the clean/dirty classification
     the compaction kernels are launched from.
+
+    Returns the counts twice: `counts_h` on the host (the total and the routing
+    decisions need it) and `counts` still on the device (the raw payload reads
+    it directly when it derives its own bases).
     """
     dev = flat.device
     block = _NZNP_BLOCK
@@ -208,7 +543,7 @@ def _nznp_block_counts(flat, n_elements):
                 BLOCK=block,
                 num_warps=_NZNP_WARPS,
             )
-    return n_full, rem, counts.cpu()
+    return n_full, rem, counts.cpu(), counts
 
 
 def _nznp_compact(inp, n_elements, n_full, rem, counts_h, total):
@@ -316,7 +651,7 @@ def nonzero_numpy(inp):
       through a dim-major block compaction. A clean block writes its whole slot
       run with mask-free affine stores and never reads the input, so the run
       costs dense-path time instead of full-scatter time.
-    * genuinely sparse inputs (a ~50%-True bool mask) would dirty every block,
+    * genuinely sparse inputs (a dense bool mask) would dirty every block,
       where the in-block rank scan does not pay for itself, so they keep the
       previously closed prefix-sum scatter -- with the total taken from the
       counts above, so no second counting pass is needed.
@@ -345,12 +680,28 @@ def nonzero_numpy(inp):
     inp = inp.contiguous()
 
     if inp_ndim <= 8 and n_elements < 2**31:
-        n_full, rem, counts_h = _nznp_block_counts(inp.view(-1), n_elements)
-        total = int(counts_h.sum().item())
+        # Small inputs skip the count pass entirely: one fused kernel counts +
+        # compacts and reports the total, so only one host sync is paid.
+        small = _nznp_raw_small(inp, n_elements)
+        if small is not None:
+            return small
+        n_full, rem, counts_h, counts = _nznp_block_counts(inp.view(-1), n_elements)
+        total = int(
+            counts_h.numpy().sum()
+        )  # numpy: torch CPU .sum() is pathological here
         if total * inp_ndim < 2**31:
             if total == n_elements:
+                dense_raw = _nznp_dense_raw(inp, n_elements, total)
+                if dense_raw is not None:
+                    return dense_raw
                 return list(_dense_result(inp, total, True))
-            n_dirty = int((counts_h[:n_full] != _NZNP_BLOCK).sum().item())
+            if inp_ndim == 2:
+                raw = _nznp_raw(inp, n_elements, counts_h, counts, total)
+                if raw is not None:
+                    return raw
+                if inp.dtype == torch.bool:
+                    return _nznp_bool_sparse(inp, n_elements, total)
+            n_dirty = int((counts_h[:n_full].numpy() != _NZNP_BLOCK).sum())
             if 4 * n_dirty <= n_full:
                 return _nznp_compact(inp, n_elements, n_full, rem, counts_h, total)
             return list(_sparse_result(inp, inp_ndim, n_elements, total, True))
