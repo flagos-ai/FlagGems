@@ -5238,6 +5238,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: empty_affine_quantized
+  description: |
+    Allocate a quantized tensor with affine quantizer metadata and initialize its storage with Triton.
+  for:
+    - _empty_affine_quantized
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: empty_permuted
   description: 'Tensor factory operator — allocates an uninitialized tensor whose
     memory
