@@ -292,10 +292,15 @@ def conv_transpose2d(
     use_cast_ride = orig_dtype == torch.bfloat16 or (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
+    # fp32 reride for the fp16+bias case; rounded back to fp16 once.
+    fp32_reride = orig_dtype == torch.float16 and bias is not None and not use_cast_ride
     scratch_x = scratch_w = None
     if use_cast_ride:
         scratch_x = _scratch_buf(input.shape, input.device)
         scratch_w = _scratch_buf(weight.shape, weight.device)
+    elif fp32_reride:
+        input = _fast_cast(input, torch.float32)
+        weight = _fast_cast(weight, torch.float32)
 
     if bias is None:
         # a None argument would drop its slot from the launcher parameter
@@ -428,6 +433,9 @@ def conv_transpose2d(
             out = out + b
         else:
             out = _fast_cast(_fast_cast(out, torch.float32) + b, out.dtype)
+    if fp32_reride:
+        # single rounding back to the requested dtype, matching the reference
+        out = _fast_cast(out, orig_dtype)
     if input_was_unbatched:
         out = out.squeeze(0)
     return out
