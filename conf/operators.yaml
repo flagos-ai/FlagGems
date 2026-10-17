@@ -8588,6 +8588,34 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: fw_primal_copy
+  description: 'Returns a fresh copy of the primal value saved by `fw_primal`:
+the copy-out counterpart of `_fw_primal`.
+
+    '
+  for:
+  - _fw_primal_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: fw_primal_copy_out
+  description: 'Returns a fresh copy of the primal value saved by `fw_primal`:
+the copy-out counterpart of `_fw_primal`.
+
+    '
+  for:
+  - _fw_primal_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: gather
   description: Gathers values along an axis specified by `dim`.
   for:

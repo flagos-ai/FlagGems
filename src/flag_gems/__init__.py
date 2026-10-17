@@ -361,6 +361,8 @@ _FULL_CONFIG = (
     ("_fused_rms_norm_backward", _fused_rms_norm_backward),
     ("_fused_sgd_", _fused_sgd_),
     ("_fused_sgd_.tensor_lr", _fused_sgd__tensor_lr),
+    ("_fw_primal_copy", _fw_primal_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_fw_primal_copy.out", _fw_primal_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_gather_sparse_backward", _gather_sparse_backward),
     ("_grouped_mm", group_mm),
     (
