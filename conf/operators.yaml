@@ -19237,6 +19237,36 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: special_scaled_modified_bessel_k0
+  description: 'Computes the scaled modified Bessel function of the second kind
+    of order 0 (scaled K_0(x) = exp(x)*K_0(x)) for each element in the input tensor.
+
+    '
+  for:
+  - special.scaled_modified_bessel_k0
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: special_scaled_modified_bessel_k0_out
+  description: 'A variant of `special_scaled_modified_bessel_k0` with output
+    written to provided `out`.
+
+    '
+  for:
+  - special.scaled_modified_bessel_k0.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_scaled_modified_bessel_k1
   description: 'Computes the scaled modified Bessel function of the first kind
 
