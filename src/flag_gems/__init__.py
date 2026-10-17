@@ -1469,6 +1469,7 @@ _FULL_CONFIG = (
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
     ("nuclear_norm", nuclear_norm),
+    ("numpy_T", numpy_T),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),

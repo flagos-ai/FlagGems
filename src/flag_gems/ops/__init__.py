@@ -1120,6 +1120,7 @@ from flag_gems.ops.normal_functional import normal_functional
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.nuclear_norm import nuclear_norm
+from flag_gems.ops.numpy_T import numpy_T
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -2696,6 +2697,7 @@ __all__ = [
     "not_equal_scalar",
     "not_equal_scalar_",
     "nuclear_norm",
+    "numpy_T",
     "one_hot",
     "ones",
     "ones_like",

@@ -14743,6 +14743,20 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: numpy_T
+  description: 'Returns a view of the input with its dimensions reversed, the
+    zero-copy equivalent of ``numpy.ndarray.T``.
+
+    '
+  for:
+  - numpy_T
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: one_hot
   description: 'Takes LongTensor with index values of shape `(*)` and returns a tensor
     of shape `(*, num_classes)`
