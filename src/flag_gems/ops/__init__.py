@@ -1418,6 +1418,7 @@ from flag_gems.ops.special_zeta import (
     special_zeta_tensor_scalar,
     special_zeta_tensor_scalar_out,
 )
+from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes import split_with_sizes
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
@@ -2994,6 +2995,7 @@ __all__ = [
     "special_zeta_scalar_tensor_out",
     "special_zeta_tensor_scalar",
     "special_zeta_tensor_scalar_out",
+    "split_copy",
     "split_with_sizes",
     "split_with_sizes_copy",
     "spsolve",

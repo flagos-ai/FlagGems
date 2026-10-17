@@ -1813,6 +1813,7 @@ _FULL_CONFIG = (
     ("special_zeta.out", special_zeta_out),
     ("special_zeta.self_scalar", special_zeta_scalar_tensor),
     ("special_zeta.self_scalar_out", special_zeta_scalar_tensor_out),
+    ("split_copy.Tensor", split_copy),
     ("split_with_sizes", split_with_sizes),
     ("split_with_sizes_copy", split_with_sizes_copy),
     ("sqrt", sqrt),

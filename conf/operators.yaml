@@ -19468,6 +19468,22 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: split_copy
+  description: |
+    Splits a tensor into chunks along a given dimension, each of the given
+    split_size, and returns a list of contiguous copies. This is the
+    out-of-place counterpart of `torch.split()`: the last chunk is smaller
+    when the dimension size is not divisible by split_size, and every output
+    chunk is freshly created instead of aliasing the input.
+  for:
+  - split_copy.Tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: split_with_sizes
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
