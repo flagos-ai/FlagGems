@@ -1580,6 +1580,10 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 
 
 @pytest.mark.mm_w8a8_fp8
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="The parallel FP8 benchmark requires CUDA Graph; use test_mm_w8a8_fp8.py on other backends",
+)
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")
