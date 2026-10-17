@@ -20,6 +20,12 @@ from flag_gems.ops.__rshift__ import __rshift__
 from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
 from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from flag_gems.ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d as adaptive_avg_pool3d,
+)
+from flag_gems.ops._adaptive_avg_pool3d import (
+    _adaptive_avg_pool3d_out as adaptive_avg_pool3d_out,
+)
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
@@ -1916,7 +1922,9 @@ __all__ = [
     "acosh_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool3d",
     "adaptive_avg_pool3d_backward_grad_input",
+    "adaptive_avg_pool3d_out",
     "adaptive_max_pool1d",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
