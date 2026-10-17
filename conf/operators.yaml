@@ -3853,6 +3853,21 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_from
+  description: |
+    Copies the elements from `self` into the `dst` tensor and returns `dst`.
+    This is the device-dispatch entry point that `copy_` redispatches to, so
+    it shares the semantics of `dst.copy_(self)`.
+  for:
+    - _copy_from
+  labels:
+    - aten
+    - KernelGen
+    - pointwise
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.1'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
