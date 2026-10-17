@@ -773,6 +773,7 @@ from flag_gems.ops.geqrf import geqrf
 from flag_gems.ops.get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from flag_gems.ops.get_scheduler_metadata import get_scheduler_metadata
 from flag_gems.ops.glu import glu, glu_backward
+from flag_gems.ops.glu_backward_jvp import glu_backward_jvp
 from flag_gems.ops.glu_jvp import glu_jvp
 from flag_gems.ops.gradient import gradient
 from flag_gems.ops.greater import (
@@ -2307,6 +2308,7 @@ __all__ = [
     "get_scheduler_metadata",
     "glu",
     "glu_backward",
+    "glu_backward_jvp",
     "glu_jvp",
     "gradient",
     "greater",

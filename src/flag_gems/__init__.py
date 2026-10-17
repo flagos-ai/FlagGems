@@ -1052,6 +1052,7 @@ _FULL_CONFIG = (
     ("geqrf", geqrf),
     ("glu", glu),
     ("glu_backward", glu_backward),
+    ("glu_backward_jvp", glu_backward_jvp),
     ("glu_jvp", glu_jvp),
     ("gradient.array", gradient),
     ("gradient.scalararray", gradient),
