@@ -200,6 +200,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
+from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
 from .clamp import (
     clamp,
     clamp_,
@@ -943,6 +944,7 @@ __all__ = [
     "cholesky_solve_out",
     "chunk",
     "chunk_cat",
+    "chunk_gated_delta_rule_fwd",
     "clamp",
     "clamp_",
     "clamp_max",
