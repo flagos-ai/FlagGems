@@ -5,14 +5,88 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.copy import copy_ as _gems_copy_impl
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.tle_copy import tle_copy
+from .expand_copy import _launch_gather
 
 logger = logging.getLogger(__name__)
+
+
+def _gems_copy(dst, src):
+    """Copy ``src`` into ``dst`` with the generic gems Triton ``copy_``.
+
+    This is the replacement for the banned ``aten::_copy_from`` fallback on the
+    copies whose destination is a *strided* view (K>1 ``softmax_out`` with a
+    non-contiguous ``out``, or ``grad_input`` in the backward ``.out`` variant):
+    ``_launch_gather`` can only store into a contiguous buffer, so the
+    strided-store side goes through the pointwise ``copy_`` kernel, which honours
+    arbitrary output strides.  It is the general ``flag_gems.ops.copy.copy_`` (not
+    the vendor ``copy_slice`` whose strided branch wedges the device with status
+    700); calling it by reference bypasses the dispatcher so it does not re-enter
+    the vendor ``copy_``.
+
+    ``copy_`` redispatches to ``aten::copy_`` when ``dst.numel() == 0`` (see
+    ``flag_gems/ops/copy.py``), so the empty case is guarded here to avoid
+    reintroducing an aten fallback -- an empty copy is a no-op anyway.
+    """
+    if dst.numel() == 0:
+        return dst
+    return _gems_copy_impl(dst, src)
+
+
+def _materialize_contiguous(t):
+    """Return a contiguous copy of a (possibly strided) ``t`` with gems kernels.
+
+    Replaces the banned ``aten::_copy_from`` / ``Tensor.contiguous()`` fallback.
+    A strided source into a fresh contiguous destination is exactly the gather
+    ``_launch_gather`` performs bit-exactly (int32 offsets, at most 6 addressed
+    dims), so use it whenever the rank and the largest source offset fit int32;
+    otherwise fall back to the generic gems ``copy_`` (correct for any
+    rank/stride, only slower).
+    """
+    dst = torch.empty(t.shape, dtype=t.dtype, device=t.device)
+    if dst.numel() == 0:
+        return dst
+    use_gather = t.ndim <= 6 and dst.numel() <= 0x7FFFFFFF
+    if use_gather:
+        max_off = sum((s - 1) * abs(st) for s, st in zip(t.shape, t.stride()))
+        use_gather = max_off <= 0x7FFFFFFF
+    if use_gather:
+        _launch_gather(tuple(t.shape), tuple(t.stride()), t, dst, dst.numel())
+    else:
+        _gems_copy(dst, t)
+    return dst
+
+
+def _ensure_contiguous(t):
+    """``t`` if already contiguous, else a gems-materialized contiguous copy."""
+    return t if t.is_contiguous() else _materialize_contiguous(t)
+
+
+def _regularize_reshape_copy(src_view, dst):
+    """Materialize a (transposed) softmax reshape view into contiguous ``dst``.
+
+    Used only when ``tle_copy`` cannot express the layout.  ``src_view`` is the
+    ``self.view(M, N, K).transpose(1, 2)`` regularization view (always rank 3);
+    ``dst`` is its contiguous ``(M, K, N)`` destination.  ``_launch_gather``
+    decomposes the contiguous output index into per-dim indices and multiplies
+    by the source strides, so it is bit-exact for any strided source into a
+    contiguous destination (the transpose case here) with a gems Triton kernel
+    -- replacing the banned ``aten::_copy_from`` fallback.  The gather addresses
+    at most 6 dims with int32 offsets, which covers every rank-3 softmax view.
+    """
+    _launch_gather(
+        tuple(src_view.shape),
+        tuple(src_view.stride()),
+        src_view,
+        dst,
+        dst.numel(),
+    )
 
 
 @triton.jit
@@ -537,9 +611,6 @@ def _softmax_forward_launch(output, inp, M, N):
     """Inner launch on a contiguous [M, N] view (reduced dim innermost)."""
     use_multirow = N <= _SM_MR_MAX_N and ((N & (N - 1)) == 0)
     if use_multirow:
-        # Prefer a large TILE_M; shrink (by halving) until it divides M so we
-        # still take the multirow path for non-power-of-two M instead of the
-        # much slower per-row `softmax_kernel_inner` (measured 5-15x slower).
         tile_m = _SM_MR_TILE_M if N <= 2048 else _SM_MR_TILE_M_N4096
         while tile_m > 1 and M % tile_m != 0:
             tile_m >>= 1
@@ -918,7 +989,7 @@ def softmax(self, dim, half_to_float=False):
     N = self.shape[dim]
     for i in range(dim):
         M *= self.shape[i]
-    self = self.contiguous()
+    self = _ensure_contiguous(self)
     if half_to_float:
         dtype = torch.float32
     else:
@@ -929,8 +1000,8 @@ def softmax(self, dim, half_to_float=False):
         if K > 1:
             inp_view = self.view(M, N, K).transpose(1, 2)
             inp_reshaped = torch.empty((M * K, N), dtype=self.dtype, device=self.device)
-            if not tle_copy(inp_view, inp_reshaped):
-                torch.ops.aten._copy_from(inp_view, inp_reshaped, False)
+            if not tle_copy(inp_view, inp_reshaped.view(M, K, N)):
+                _regularize_reshape_copy(inp_view, inp_reshaped.view(M, K, N))
             out_reshaped = torch.empty((M * K, N), dtype=dtype, device=self.device)
 
             _softmax_forward_launch(out_reshaped, inp_reshaped, M * K, N)
@@ -940,6 +1011,15 @@ def softmax(self, dim, half_to_float=False):
             out = torch.empty_like(self, dtype=dtype)
             _softmax_forward_launch(out, self, M, N)
     return out
+
+
+def special_softmax(self, dim, dtype=None):
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_SOFTMAX")
+
+    if dtype is not None:
+        self = self.to(dtype)
+
+    return softmax(self, dim)
 
 
 _SM_N1_BLOCK = 512
@@ -973,17 +1053,15 @@ def _softmax_n1_flat(out, inp):
 
 
 def _native_contiguous(t):
-    """Materialize `t` contiguously through the native strided copy.
+    """Materialize ``t`` contiguously with a gems Triton gather.
 
-    `Tensor.contiguous()` lowers to aten::contiguous -> aten::copy_, and
-    `copy_` IS a gems-registered op, so inside `flag_gems.use_gems()` it turns
-    into a gems strided pointwise copy (measured 57-1600x slower than the
-    native XPU strided copy). `aten::_copy_from` is never overridden by gems.
+    ``Tensor.contiguous()`` lowers to ``aten::copy_`` (a gems-registered op that
+    turns into a slow strided pointwise copy inside ``use_gems``), and
+    ``aten::_copy_from`` is a banned fallback.  ``_materialize_contiguous`` uses
+    the ``_launch_gather`` strided-source -> contiguous-destination kernel
+    instead, bit-exact for any softmax input layout.
     """
-    dst = torch.empty(t.shape, dtype=t.dtype, device=t.device)
-    if not tle_copy(t, dst):
-        torch.ops.aten._copy_from(t, dst, False)
-    return dst
+    return _materialize_contiguous(t)
 
 
 def softmax_out(self, dim, half_to_float=False, *, out):
@@ -996,7 +1074,11 @@ def softmax_out(self, dim, half_to_float=False, *, out):
             raise RuntimeError(
                 f"_softmax.out: expected out dtype {dtype}, got {out.dtype}"
             )
-        out.copy_(softmax(self, dim, half_to_float))
+        res = softmax(self, dim, half_to_float)
+        if not tle_copy(res, out):
+            # 0-dim is a single element; copy through a 1-element view so the
+            # pointwise copy_ kernel gets a rank>=1 tensor.
+            _gems_copy(out.view(1), res.view(1))
         return out
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
@@ -1030,24 +1112,24 @@ def softmax_out(self, dim, half_to_float=False, *, out):
             inp_t = torch.empty((M * K, N), dtype=inp.dtype, device=inp.device)
             inp_view = inp.view(M, N, K).transpose(1, 2)
             if not tle_copy(inp_view, inp_t.view(M, K, N)):
-                torch.ops.aten._copy_from(inp_view, inp_t.view(M, K, N), False)
+                _regularize_reshape_copy(inp_view, inp_t.view(M, K, N))
             tmp = torch.empty((M * K, N), dtype=dtype, device=inp.device)
             _softmax_forward_launch(tmp, inp_t, M * K, N)
             src = tmp.view(M, K, N).transpose(1, 2)
             if out.is_contiguous():
                 if not tle_copy(src, out.view(M, N, K)):
-                    torch.ops.aten._copy_from(src, out.view(M, N, K), False)
+                    _regularize_reshape_copy(src, out.view(M, N, K))
             else:
                 scratch = torch.empty((M, N, K), dtype=dtype, device=out.device)
                 if not tle_copy(src, scratch):
-                    torch.ops.aten._copy_from(src, scratch, False)
+                    _regularize_reshape_copy(src, scratch)
                 if not tle_copy(scratch.view(self.shape), out):
-                    torch.ops.aten._copy_from(scratch.view(self.shape), out, False)
+                    _gems_copy(out, scratch.view(self.shape))
         elif not out.is_contiguous():
             tmp = torch.empty(self.shape, dtype=dtype, device=self.device)
             _softmax_forward_launch(tmp, inp, M, N)
             if not tle_copy(tmp, out):
-                torch.ops.aten._copy_from(tmp, out, False)
+                _gems_copy(out, tmp)
         else:
             _softmax_forward_launch(out, inp, M, N)
     return out
@@ -1084,9 +1166,9 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
                 (M * K, N), dtype=output.dtype, device=output.device
             )
             if not tle_copy(out_grad_view, out_grad_reshaped):
-                torch.ops.aten._copy_from(out_grad_view, out_grad_reshaped, False)
+                _regularize_reshape_copy(out_grad_view, out_grad_reshaped)
             if not tle_copy(out_view, out_reshaped):
-                torch.ops.aten._copy_from(out_view, out_reshaped, False)
+                _regularize_reshape_copy(out_view, out_reshaped)
             in_grad_reshaped = torch.empty(
                 (M * K, N), dtype=in_grad.dtype, device=in_grad.device
             )
@@ -1117,5 +1199,5 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
     )
     if result is not grad_input:
         if not tle_copy(result, grad_input):
-            torch.ops.aten._copy_from(result, grad_input, False)
+            _gems_copy(grad_input, result)
     return grad_input

@@ -121,6 +121,7 @@ def shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n):
 
 
 def special_shifted_chebyshev_polynomial_t(x, n):
+    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
     logger.debug("GEMS_KUNLUNXIN SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
     # Same contract as the generic implementation: eager CUDA has no
     # Half/BFloat16 kernel for this op.
