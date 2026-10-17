@@ -436,6 +436,7 @@ _FULL_CONFIG = (
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
+    ("_new_zeros_with_same_feature_meta", _new_zeros_with_same_feature_meta),
     ("_pack_padded_sequence", _pack_padded_sequence),
     ("_pad_circular", _pad_circular, None, ["CompositeImplicitAutograd"]),
     ("_pad_enum", _pad_enum),
