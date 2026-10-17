@@ -21702,6 +21702,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: view_as_complex_copy
+  description: |
+    Copies a real tensor whose last dimension has size 2 and stride 1 into a
+    freshly allocated complex tensor. This is the out-of-place counterpart of
+    `torch.view_as_complex()`: float32 becomes complex64, float64 becomes
+    complex128 and float16 becomes complex32, the batch dimensions may be
+    non-contiguous, and the result never aliases the input.
+  for:
+  - view_as_complex_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_copy
   description: 'Returns a copy of the tensor with the specified shape.
 

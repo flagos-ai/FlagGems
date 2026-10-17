@@ -1543,6 +1543,7 @@ from flag_gems.ops.var_mean import var_mean
 from flag_gems.ops.vdot import vdot
 from flag_gems.ops.vector_norm import vector_norm
 from flag_gems.ops.view_as_complex import view_as_complex
+from flag_gems.ops.view_as_complex_copy import view_as_complex_copy
 from flag_gems.ops.view_copy import view_copy
 from flag_gems.ops.vsplit import vsplit
 from flag_gems.ops.vstack import vstack
@@ -3130,6 +3131,7 @@ __all__ = [
     "vdot",
     "vector_norm",
     "view_as_complex",
+    "view_as_complex_copy",
     "view_copy",
     "vsplit",
     "vstack",
