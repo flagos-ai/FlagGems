@@ -2722,29 +2722,6 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: broadcast_tensors
-  description: Broadcasts the given tensors to a common shape according to broadcasting
-    semantics, returning a list of tensors.
-  for:
-  - broadcast_tensors
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: broadcast_to
-  description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
-  for:
-  - broadcast_to
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: bucket_sort_topk
   description: A wrapper of the TLE version and the Triton version bucket-sort topk
     operation.
@@ -3030,17 +3007,6 @@ ops:
     '
   for:
   - choose_qparams_optimized
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
-- id: chunk
-  description: Split a tensor into a specific number of chunks along a given dimension.
-  for:
-  - chunk
   labels:
   - aten
   - KernelGen
@@ -4948,24 +4914,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: dsplit
-  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
-    returning zero-copy views.
-
-    '
-  for:
-  - dsplit.int
-  - dsplit.array
-  marks:
-  - dsplit
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: dstack
   description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
     are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
@@ -13866,19 +13814,6 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.4'
-- id: narrow
-  description: Pure layout operation (narrow); returns a zero-copy view sharing storage
-    with the input.
-  for:
-  - narrow
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: narrow_copy
   description: Triton kernel implementation for narrow_copy.
   for:
@@ -17860,22 +17795,6 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.0'
-- id: slice
-  description: 'Slices the input tensor along the specified dimension.
-
-    Returns a view of the original tensor with the given dimension sliced from start
-    to end.
-
-    '
-  for:
-  - slice.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -19453,21 +19372,6 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
-- id: split_with_sizes
-  description: 'Splits a tensor into sub-tensors along a given dimension,
-
-    where each split has a specified size. Returns views into the input.
-
-    '
-  for:
-  - split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -20147,42 +20051,6 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: tensor_split_indices
-  description: Splits a tensor into multiple sub-tensors at the given indices along
-    a given dimension.
-  for:
-  - tensor_split.indices
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a number of sections.
-  for:
-  - tensor_split.sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_tensor_indices_or_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a tensor of split indices.
-  for:
-  - tensor_split.tensor_indices_or_sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
 - id: tensordot
   description: Triton kernel implementation for tensordot.
   for:
@@ -20969,17 +20837,6 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: unsafe_chunk
-  description: Split a tensor into a specified number of chunks along a given dimension.
-  for:
-  - unsafe_chunk
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unsafe_index
   description: 'Indexes `input` along each dimension with the given indices, matching
 
@@ -21702,22 +21559,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
-- id: vsplit
-  description: 'Split a tensor along the first axis (row-wise).
-
-    Each chunk is copied into a freshly allocated output by a Triton kernel.
-
-    '
-  for:
-  - vsplit.int
-  - vsplit.array
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:

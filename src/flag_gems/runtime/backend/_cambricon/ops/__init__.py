@@ -77,7 +77,6 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
-from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_
 from .ceil import ceil, ceil_, ceil_out
@@ -258,7 +257,6 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .resize import resize, resize_
-from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .roll import roll
@@ -328,6 +326,7 @@ from .where import where_scalar_other, where_scalar_self, where_self, where_self
 from .zero import zero, zero_out
 from .zeros import zero_, zeros
 from .zeros_like import zeros_like
+from .resolve_conj import resolve_conj
 
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
@@ -407,7 +406,6 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
-    "broadcast_to",
     "cat",
     "cat_out",
     "cauchy",

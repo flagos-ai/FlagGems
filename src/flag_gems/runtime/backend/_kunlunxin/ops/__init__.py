@@ -187,8 +187,6 @@ from .bitwise_xor import (
 from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .bucketize import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
@@ -197,7 +195,6 @@ from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
-from .chunk import chunk
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .clamp import (
@@ -319,7 +316,6 @@ from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
-from .functional_assert_async import _functional_assert_async
 from .fused_experts_impl import (
     fused_experts_impl,
     inplace_fused_experts,
@@ -484,7 +480,6 @@ from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num, nan_to_num_
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
-from .narrow import narrow  # noqa: F401
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
@@ -619,7 +614,6 @@ from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinc import sinc, sinc_, special_sinc
 from .sinh import sinh, sinh_  # noqa: F401
-from .slice import slice
 from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .smooth_l1_loss import smooth_l1_loss, smooth_l1_loss_backward, smooth_l1_loss_out
@@ -720,8 +714,6 @@ from .uniform import uniform_
 from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
-from .unsafe_chunk import unsafe_chunk  # noqa: F401
-from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
@@ -759,6 +751,8 @@ from .xlogy import (
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+from .functional_assert_async import _functional_assert_async
+from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 
 __all__ = [
     "__iand___scalar",
@@ -926,8 +920,6 @@ __all__ = [
     "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
-    "broadcast_tensors",
-    "broadcast_to",
     "bucketize",
     "cat",
     "cat_out",
@@ -941,7 +933,6 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
-    "chunk",
     "chunk_cat",
     "clamp",
     "clamp_",
@@ -1442,7 +1433,6 @@ __all__ = [
     "sin_",
     "sinc",
     "sinc_",
-    "slice",
     "slice_backward",
     "slice_scatter",
     "smooth_l1_loss",
@@ -1563,7 +1553,6 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
-    "unsafe_chunk",
     "upsample_bilinear2d",
     "upsample_linear1d",
     "upsample_linear1d_backward",
