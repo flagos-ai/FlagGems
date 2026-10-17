@@ -54,6 +54,7 @@ def _assert_result(result, reference):
         )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 @pytest.mark.parametrize("shapes", TENSOR_TENSOR_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -69,6 +70,7 @@ def test_float_power_tensor_tensor(shapes, dtype):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 def test_float_power_tensor_tensor_noncontiguous_and_special_values():
     base = torch.tensor(
@@ -90,6 +92,7 @@ def test_float_power_tensor_tensor_noncontiguous_and_special_values():
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -103,6 +106,7 @@ def test_float_power_tensor_scalar(shape, dtype, exponent):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -116,6 +120,7 @@ def test_float_power_scalar_tensor(shape, dtype, base):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 @pytest.mark.parametrize("shapes", TENSOR_TENSOR_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -144,6 +149,7 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -164,6 +170,7 @@ def test_float_power_tensor_scalar_out(shape, dtype):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor_out
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -183,6 +190,7 @@ def test_float_power_scalar_tensor_out(shape, dtype):
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 def test_float_power_tensor_tensor_out_noncontiguous():
     base = torch.rand((3, 4), device=flag_gems.device)
@@ -197,6 +205,7 @@ def test_float_power_tensor_tensor_out_noncontiguous():
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 def test_float_power_out_rejects_non_double_output():
     if flag_gems.vendor_name == "kunlunxin":
