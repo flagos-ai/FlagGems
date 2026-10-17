@@ -5038,6 +5038,18 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: efficientzerotensor
+  description: |
+    Create a lazy immutable ZeroTensor with native dispatch metadata and no materialized data.
+  for:
+    - _efficientzerotensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: einsum
   description: 'Sums the product of the elements of the input `operands` along dimensions
     specified using a notation

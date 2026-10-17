@@ -166,6 +166,7 @@ _FULL_CONFIG = (
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
     ("_efficient_attention_backward", efficient_attention_backward),
+    ("_efficientzerotensor", _efficientzerotensor),
     ("_embedding_bag_dense_backward", _embedding_bag_dense_backward),
     (
         "_embedding_bag_per_sample_weights_backward",
