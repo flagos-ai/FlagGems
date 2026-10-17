@@ -21,6 +21,14 @@ import flag_gems
 
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend lacks FP8 input casts/fills and native diagflat zeroing",
+)
+
+
 # Place flattened input values on a diagonal and zero the rest.
 _DIAGFLAT_DTYPES = tu.REQUIRED_DTYPES + [torch.int16, torch.float64, torch.bool]
 
@@ -62,7 +70,15 @@ def _assert_output(res_out, ref_out):
     "shape", tu.selected_cases(_DIAGFLAT_SHAPES, quick=[(2, 19, 7)])
 )
 @pytest.mark.parametrize("offset", _DIAGFLAT_OFFSETS)
-@pytest.mark.parametrize("dtype", _DIAGFLAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _DIAGFLAT_DTYPES
+    ],
+)
 def test_diagflat(shape, offset, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -87,7 +103,17 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", _DIAGFLAT_RANGE_SHAPES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_diagflat_value_ranges(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -101,7 +127,15 @@ def test_diagflat_value_ranges(shape, value_range, dtype):
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", [(2,), (16,)])
 @pytest.mark.parametrize("offset", [-7, -3, 3, 7])
-@pytest.mark.parametrize("dtype", _DIAGFLAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _DIAGFLAT_DTYPES
+    ],
+)
 def test_diagflat_large_offset(shape, offset, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -115,7 +149,15 @@ def test_diagflat_large_offset(shape, offset, dtype):
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", _DIAGFLAT_NONCONTIG_SHAPES)
 @pytest.mark.parametrize("offset", [-1, 0, 1])
-@pytest.mark.parametrize("dtype", _DIAGFLAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _DIAGFLAT_DTYPES
+    ],
+)
 def test_diagflat_non_contiguous(shape, offset, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -131,7 +173,15 @@ def test_diagflat_non_contiguous(shape, offset, dtype):
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", _DIAGFLAT_STRIDED_SHAPES)
 @pytest.mark.parametrize("offset", [-1, 0, 1])
-@pytest.mark.parametrize("dtype", _DIAGFLAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _DIAGFLAT_DTYPES
+    ],
+)
 def test_diagflat_strided(shape, offset, dtype):
     base = tu.make_input(dtype, shape, ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -147,7 +197,17 @@ def test_diagflat_strided(shape, offset, dtype):
 
 @pytest.mark.diagflat
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_DIAGFLAT_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_DIAGFLAT_DTYPES)
+        )
+    ],
 )
 def test_diagflat_nan_inf(dtype, scenario):
     values = tu.make_special_input(dtype, scenario)
@@ -161,7 +221,15 @@ def test_diagflat_nan_inf(dtype, scenario):
 
 @pytest.mark.diagflat
 @pytest.mark.parametrize("offset", [-4, -1, 0, 1, 4])
-@pytest.mark.parametrize("dtype", _DIAGFLAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _DIAGFLAT_DTYPES
+    ],
+)
 def test_diagflat_empty_input(offset, dtype):
     inp = tu.make_input(dtype, (0,), ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -175,7 +243,15 @@ def test_diagflat_empty_input(offset, dtype):
 @pytest.mark.diagflat
 @pytest.mark.parametrize("shape", _DIAGFLAT_BACKWARD_SHAPES)
 @pytest.mark.parametrize("offset", [-1, 0, 1])
-@pytest.mark.parametrize("dtype", tu.selected_cases(_GRAD_DTYPES))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in tu.selected_cases(_GRAD_DTYPES)
+    ],
+)
 def test_diagflat_backward(shape, offset, dtype):
     # Backward gathers the offset diagonal and reshapes it to the input.
     n = math.prod(shape)

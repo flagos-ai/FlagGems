@@ -20,6 +20,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+)
+
 # aten::split_copy.Tensor(Tensor self, SymInt split_size, int dim=0) -> Tensor[]
 # aten::split_copy.Tensor_out(Tensor self, SymInt split_size, int dim=0, *,
 #                             Tensor(a!)[] out) -> ()
@@ -193,7 +199,21 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.split_copy
 @pytest.mark.parametrize("shape", _SPLIT_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "ascend"
+                and (dtype in _FP8_DTYPES or (dtype.is_complex and not utils.TO_CPU)),
+                reason="Ascend FP8 input construction or device complex comparison is unsupported",
+            ),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_split_copy_value_ranges(shape, value_range, dtype):
     split_size, dim = _main_split(shape)
     inp = tu.make_input(dtype, shape, value_range)
@@ -465,8 +485,17 @@ def test_split_copy_backward(shape, split_size, dim):
 
 @pytest.mark.split_copy
 @pytest.mark.parametrize(
-    "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else (),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SPECIAL_DTYPES), quick=[]
+        )
+    ],
 )
 def test_split_copy_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)

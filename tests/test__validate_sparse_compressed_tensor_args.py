@@ -20,6 +20,24 @@ import flag_gems
 from . import accuracy_utils as au
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    assert result.dtype == reference.dtype
+    if not au.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::_validate_sparse_compressed_tensor_args(compressed_indices, plain_indices,
 #     values, int[] size, Layout layout) -> ()
 #
@@ -285,9 +303,33 @@ _VALUE_DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.validate_sparse_compressed_tensor_args
-@pytest.mark.parametrize("layout,batch,base,dense,blocks,nnz", _DESCRIPTORS)
+@pytest.mark.parametrize(
+    "layout, batch, base, dense, blocks, nnz, values_dtype, value_range",
+    [
+        pytest.param(
+            layout,
+            batch,
+            base,
+            dense,
+            blocks,
+            nnz,
+            values_dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_INPUT_SKIP
+                if values_dtype in _FP8_DTYPES
+                and (
+                    all(_values_shape(layout, batch, nnz, blocks, dense))
+                    or value_range[0] == value_range[1]
+                )
+                else ()
+            ),
+        )
+        for layout, batch, base, dense, blocks, nnz in _DESCRIPTORS
+        for values_dtype, value_range in _VALUE_DTYPE_RANGE_CASES
+    ],
+)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("values_dtype, value_range", _VALUE_DTYPE_RANGE_CASES)
 def test_validate_sparse_compressed_tensor_args(
     layout, batch, base, dense, blocks, nnz, index_dtype, values_dtype, value_range
 ):
@@ -308,9 +350,9 @@ def test_validate_sparse_compressed_tensor_args(
     )
 
     assert res_out is None
-    tu.assert_result_equal(compressed, ref_compressed)
-    tu.assert_result_equal(plain, ref_plain)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed)
+    _assert_result_equal(plain, ref_plain)
+    _assert_result_equal(values, ref_values)
 
 
 _SPECIAL_VALUES_CASES = tu.selected_cases(
@@ -363,7 +405,17 @@ def _capacity_base(layout, nnz, blocks):
 
 
 @pytest.mark.validate_sparse_compressed_tensor_args
-@pytest.mark.parametrize("values_dtype,scenario", _SPECIAL_VALUES_CASES)
+@pytest.mark.parametrize(
+    "values_dtype, scenario",
+    [
+        pytest.param(
+            values_dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if values_dtype in _FP8_DTYPES else ()),
+        )
+        for values_dtype, scenario in _SPECIAL_VALUES_CASES
+    ],
+)
 @pytest.mark.parametrize("layout", _SPECIAL_LAYOUTS)
 def test_validate_sparse_compressed_tensor_args_special_values(
     values_dtype, scenario, layout
@@ -389,9 +441,9 @@ def test_validate_sparse_compressed_tensor_args_special_values(
     )
 
     assert res_out is None
-    tu.assert_result_equal(compressed, ref_compressed)
-    tu.assert_result_equal(plain, ref_plain)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed)
+    _assert_result_equal(plain, ref_plain)
+    _assert_result_equal(values, ref_values)
 
 
 # Supplementary values-dtype family; selected default-only so that quick keeps the
@@ -448,9 +500,9 @@ def test_validate_sparse_compressed_tensor_args_extra_values_dtypes(
     )
 
     assert res_out is None
-    tu.assert_result_equal(compressed, ref_compressed)
-    tu.assert_result_equal(plain, ref_plain)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed)
+    _assert_result_equal(plain, ref_plain)
+    _assert_result_equal(values, ref_values)
 
 
 # Valid descriptions whose operands are non-contiguous or carry a storage offset:
@@ -549,11 +601,11 @@ def test_validate_sparse_compressed_tensor_args_offsets_and_strides(case):
     # checks catch a candidate that re-pointed an operand's storage with set_ (which
     # leaves the parent untouched and the geometry identical), and the parent checks
     # also catch a rewritten hidden index prefix or values stride gap.
-    tu.assert_result_equal(compressed, ref_compressed)
-    tu.assert_result_equal(plain, ref_plain)
-    tu.assert_result_equal(values, ref_values)
+    _assert_result_equal(compressed, ref_compressed)
+    _assert_result_equal(plain, ref_plain)
+    _assert_result_equal(values, ref_values)
     for parent, ref_parent in zip(parents, ref_parents):
-        tu.assert_result_equal(parent, ref_parent)
+        _assert_result_equal(parent, ref_parent)
 
 
 # Structural violations, one argument family each. Every entry raises a clean

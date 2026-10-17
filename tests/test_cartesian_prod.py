@@ -22,6 +22,12 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
 # Gather one row per combination, with the first input varying slowest.
 _FP8_DTYPES = [torch.float8_e4m3fn, torch.float8_e5m2]
 
@@ -69,8 +75,24 @@ _BACKWARD_SIZES = tu.selected_cases(
 
 
 @pytest.mark.cartesian_prod
-@pytest.mark.parametrize("sizes", _CARTESIAN_PROD_SIZES)
-@pytest.mark.parametrize("dtype,value_range", _RANGE_PAIRS)
+@pytest.mark.parametrize(
+    "sizes, dtype, value_range",
+    [
+        pytest.param(
+            sizes,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_INPUT_SKIP
+                if dtype in _FP8_DTYPES
+                and (any(sizes) or value_range[0] == value_range[1])
+                else ()
+            ),
+        )
+        for sizes in _CARTESIAN_PROD_SIZES
+        for dtype, value_range in _RANGE_PAIRS
+    ],
+)
 def test_cartesian_prod(sizes, dtype, value_range):
     inp = [tu.make_input(dtype, (size,), value_range) for size in sizes]
     ref_inp = [tu.to_reference(t) for t in inp]
@@ -110,7 +132,15 @@ def test_cartesian_prod_row_order(dtype):
 
 
 @pytest.mark.cartesian_prod
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SUPPORTED_DTYPES
+    ],
+)
 def test_cartesian_prod_non_contiguous(dtype):
     base = tu.make_input(dtype, (16,), ["-1", "1"])
     ref_base = tu.to_reference(base)
@@ -127,7 +157,17 @@ def test_cartesian_prod_non_contiguous(dtype):
 
 @pytest.mark.cartesian_prod
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(_SUPPORTED_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SUPPORTED_DTYPES)
+        )
+    ],
 )
 def test_cartesian_prod_nan_inf(dtype, scenario):
     values = tu.make_special_input(dtype, scenario)
@@ -147,15 +187,20 @@ def test_cartesian_prod_nan_inf(dtype, scenario):
 # A single input returns a view and supports FP8 backward. Multiple inputs
 # repeat values; their backward uses sum, whose CUDA kernel rejects FP8.
 @pytest.mark.parametrize(
-    "sizes,dtype",
-    tu.selected_cases(
-        [
-            (sizes, dtype)
-            for sizes in _BACKWARD_SIZES
-            for dtype in utils.ALL_FLOAT_DTYPES + _FP8_DTYPES
-            if len(sizes) == 1 or dtype not in _FP8_DTYPES
-        ]
-    ),
+    "sizes, dtype",
+    [
+        pytest.param(
+            sizes, dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for sizes, dtype in tu.selected_cases(
+            [
+                (sizes, dtype)
+                for sizes in _BACKWARD_SIZES
+                for dtype in utils.ALL_FLOAT_DTYPES + _FP8_DTYPES
+                if len(sizes) == 1 or dtype not in _FP8_DTYPES
+            ]
+        )
+    ],
 )
 def test_cartesian_prod_backward(sizes, dtype):
     out_shape = (sizes[0],) if len(sizes) == 1 else (math.prod(sizes), len(sizes))

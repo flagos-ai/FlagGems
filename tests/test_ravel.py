@@ -21,6 +21,24 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    assert result.dtype == reference.dtype
+    if not utils.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::ravel exposes only the `default` overload on the configured backend
 # (ravel.overloads() == ["default"], and there is no `.out` form), so there is
 # no out= workload to write. The native op aliases the input storage only for an
@@ -69,7 +87,17 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.ravel
 @pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_ravel(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -80,13 +108,13 @@ def test_ravel(shape, value_range, dtype):
 
     # Each grid input is contiguous, so this flatten only rewrites shape
     # metadata: no element is copied and the values must compare exactly.
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert tuple(res_out.shape) == (inp.numel(),)
     assert res_out.stride() == (1,)
     assert res_out.data_ptr() == inp.data_ptr()
     assert res_out.storage_offset() == inp.storage_offset()
     # The result shares the input storage, so the source must stay untouched.
-    tu.assert_result_equal(inp, source_snapshot)
+    _assert_result_equal(inp, source_snapshot)
 
 
 def _layout_input(kind, base):
@@ -161,13 +189,14 @@ LAYOUT_CASES = [
 def test_ravel_layout(kind, base_shape, dtype):
     base = tu.make_input(dtype, base_shape, ["-1", "1"])
     inp, parent = _layout_input(kind, base)
-    ref_inp = tu.to_reference(inp)
+    # Rebuild the view after transfer: a CPU copy can compact strides/lazy bits.
+    ref_inp = _layout_input(kind, tu.to_reference(base))[0]
     parent_snapshot = tu.to_reference(parent)
 
     ref_out = torch.ops.aten.ravel(ref_inp)
     res_out = flag_gems.ravel(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     assert tuple(res_out.shape) == (inp.numel(),)
     assert res_out.stride() == (1,)
 
@@ -186,7 +215,7 @@ def test_ravel_layout(kind, base_shape, dtype):
     # every element in place, and the materializing copy path only reads them.
     # That covers the elements outside a sliced window too, which the output
     # comparison alone cannot observe.
-    tu.assert_result_equal(parent, parent_snapshot)
+    _assert_result_equal(parent, parent_snapshot)
 
 
 # Copy-path geometries: ravel materializes fresh contiguous elements and the
@@ -213,17 +242,17 @@ def test_ravel_copy_isolation(layout, base_shape):
     assert res_out.stride() == (1,)
     # This path materializes, so the result must not share the input storage.
     assert res_out.data_ptr() != inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(parent, source_snapshot)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(parent, source_snapshot)
 
     res_out.fill_(-3)
     # Writing the materialized copy must not reach the source storage.
-    tu.assert_result_equal(parent, source_snapshot)
+    _assert_result_equal(parent, source_snapshot)
 
     out_snapshot = tu.to_reference(res_out)
     base.fill_(7)
     # Writing the source storage must not reach the earlier copy.
-    tu.assert_result_equal(res_out, out_snapshot)
+    _assert_result_equal(res_out, out_snapshot)
 
 
 _INPLACE_DTYPES = _supported_dtypes(
@@ -239,7 +268,15 @@ _INPLACE_DTYPES = _supported_dtypes(
 
 
 @pytest.mark.ravel
-@pytest.mark.parametrize("dtype", tu.selected_cases(_INPLACE_DTYPES, quick=[]))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in tu.selected_cases(_INPLACE_DTYPES, quick=[])
+    ],
+)
 def test_ravel_view_mutation(dtype):
     """Writes through a view result must land in the source window only."""
     base = tu.make_input(dtype, (6, 5), ["-1", "1"])
@@ -254,16 +291,16 @@ def test_ravel_view_mutation(dtype):
     # input is caught here, before the write-through below can hide it.
     assert tuple(res_out.shape) == tuple(ref_out.shape) == (20,)
     assert res_out.data_ptr() == inp.data_ptr()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     res_out.fill_(1)
     ref_out.fill_(1)
 
     # The write travels through the flattened view into the source window ...
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(inp, ref_inp)
     # ... and must not touch storage outside that window.
-    tu.assert_result_equal(base[0], ref_base[0])
-    tu.assert_result_equal(base[5], ref_base[5])
+    _assert_result_equal(base[0], ref_base[0])
+    _assert_result_equal(base[5], ref_base[5])
 
 
 _BACKWARD_CASES = [
@@ -298,16 +335,16 @@ def test_ravel_backward(shape, layout, dtype):
 
     ref_out = torch.ops.aten.ravel(ref_inp)
     res_out = flag_gems.ravel(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     ref_grad = torch.autograd.grad(ref_out, ref_base, grad_outputs=ref_upstream)[0]
     res_grad = torch.autograd.grad(res_out, base, grad_outputs=upstream)[0]
 
     assert tuple(res_grad.shape) == tuple(ref_grad.shape) == tuple(shape)
     # Flattening only reorders gradients, so the comparison is exact.
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
     # Neither the forward nor the backward pass may rewrite the backing storage.
-    tu.assert_result_equal(parent, parent_snapshot)
+    _assert_result_equal(parent, parent_snapshot)
 
 
 _SPECIAL_DTYPES = _supported_dtypes(
@@ -324,8 +361,17 @@ _SPECIAL_DTYPES = _supported_dtypes(
 
 @pytest.mark.ravel
 @pytest.mark.parametrize(
-    "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(_SPECIAL_DTYPES), quick=[]),
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SPECIAL_DTYPES), quick=[]
+        )
+    ],
 )
 def test_ravel_special_values(dtype, scenario):
     # The shared generator only emits representable scenarios: float8_e4m3fn
@@ -337,9 +383,9 @@ def test_ravel_special_values(dtype, scenario):
     ref_out = torch.ops.aten.ravel(ref_inp)
     res_out = flag_gems.ravel(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     # Special payloads are rearranged, never rewritten.
-    tu.assert_result_equal(inp, source_snapshot)
+    _assert_result_equal(inp, source_snapshot)
 
 
 @pytest.mark.ravel

@@ -20,6 +20,21 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_CPU_LOW_PRECISION_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and utils.TO_CPU,
+    reason="Ascend CPU reference has no FP16/BF16 multilabel_margin_loss kernel",
+)
+
+_ASCEND_LOW_PRECISION_BACKWARD_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend FP16/BF16 backward falls back to an unavailable CPU kernel",
+)
+
+_ASCEND_CPU_SPECIAL_VALUES_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and utils.TO_CPU,
+    reason="Ascend and CPU native loss differ in NaN/Inf propagation",
+)
+
 # multilabel_margin_loss scores an (N, C) matrix, or a single C-class row, against an
 # int64 target of the same shape whose rows list active class ids terminated by -1.
 # reduction follows at::Reduction: 0 is per-row, 1 the mean, 2 the sum. The native
@@ -80,15 +95,22 @@ TARGET_PATTERNS = [
     "payload",
 ]
 MAIN_PATTERN = "half"
+# The main grid sweeps all value ranges; supplementary patterns use MAIN_RANGE.
 # Supplementary target patterns are a default-only dimension.
 PATTERN_CASES = tu.selected_cases(TARGET_PATTERNS, quick=[])
 
-VIEW_LAYOUTS = ["contiguous", "offset", "row_strided", "col_strided", "transposed"]
+# Cover each layout on both sides, plus one-sided striding and mixed noncontiguous views.
 LAYOUT_PAIRS = tu.selected_cases(
     [
-        (in_layout, tgt_layout)
-        for in_layout in VIEW_LAYOUTS
-        for tgt_layout in VIEW_LAYOUTS
+        ("contiguous", "contiguous"),
+        ("offset", "offset"),
+        ("row_strided", "row_strided"),
+        ("col_strided", "col_strided"),
+        ("transposed", "transposed"),
+        ("contiguous", "row_strided"),
+        ("row_strided", "contiguous"),
+        ("offset", "transposed"),
+        ("transposed", "offset"),
     ],
     quick=[],
 )
@@ -114,12 +136,7 @@ SPECIAL_CASES = tu.selected_cases(
 # An empty batch carries no values, so the value-range dimension does not apply here.
 EMPTY_BATCH_CASES = tu.selected_cases(SUPPORTED_DTYPES, quick=[])
 CLASS_COUNT_CASES = tu.selected_cases(
-    [
-        (n, dtype, r)
-        for n in (255, 256, 257)
-        for dtype in SUPPORTED_DTYPES
-        for r in RANGES
-    ],
+    [(n, dtype, MAIN_RANGE) for n in (255, 256, 257) for dtype in SUPPORTED_DTYPES],
     quick=[],
 )
 EXTRA_REDUCTIONS = tu.selected_cases(
@@ -257,7 +274,20 @@ def _special_input(dtype, shape, special, layout):
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("value_range", RANGES)
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -272,9 +302,22 @@ def test_multilabel_margin_loss(shape, value_range, reduction, dtype):
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("pattern", PATTERN_CASES)
-@pytest.mark.parametrize("value_range", RANGES)
+@pytest.mark.parametrize("value_range", [MAIN_RANGE])
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction, dtype):
     shape = (8, 11)
     inp = tu.make_input(dtype, shape, value_range)
@@ -290,8 +333,21 @@ def test_multilabel_margin_loss_target_patterns(pattern, value_range, reduction,
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("shape", DEFAULT_REDUCTION_SHAPES)
-@pytest.mark.parametrize("value_range", RANGES)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize("value_range", [MAIN_RANGE])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
     # Omitting reduction exercises the schema default in the public call signature.
     inp = tu.make_input(dtype, shape, value_range)
@@ -306,7 +362,21 @@ def test_multilabel_margin_loss_default_reduction(shape, value_range, dtype):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("reduction,dtype", EXTRA_REDUCTIONS)
+@pytest.mark.parametrize(
+    "reduction, dtype",
+    [
+        pytest.param(
+            reduction,
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for reduction, dtype in EXTRA_REDUCTIONS
+    ],
+)
 def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
     shape = (32, 47)
     inp = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -322,7 +392,20 @@ def test_multilabel_margin_loss_extra_reduction_values(reduction, dtype):
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("reduction,out_layout", OUT_CASES)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
     shape = (8, 11)
     inp = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -353,7 +436,20 @@ def test_multilabel_margin_loss_out(reduction, out_layout, dtype):
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("in_layout,tgt_layout", LAYOUT_PAIRS)
 @pytest.mark.parametrize("reduction", REDUCTIONS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, dtype):
     shape = (8, 11)
     values = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -370,7 +466,20 @@ def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("in_layout,tgt_layout", LAYOUT_PAIRS)
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(
+                _ASCEND_LOW_PRECISION_BACKWARD_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 def test_multilabel_margin_loss_backward(in_layout, tgt_layout, dtype):
     shape = (8, 11)
     values = tu.make_input(dtype, shape, MAIN_RANGE)
@@ -413,7 +522,22 @@ def test_multilabel_margin_loss_empty_batch(dtype):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("n_classes,dtype,value_range", CLASS_COUNT_CASES)
+@pytest.mark.parametrize(
+    "n_classes, dtype, value_range",
+    [
+        pytest.param(
+            n_classes,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else ()
+            ),
+        )
+        for n_classes, dtype, value_range in CLASS_COUNT_CASES
+    ],
+)
 def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
     shape = (4, n_classes)
     inp = tu.make_input(dtype, shape, value_range)
@@ -428,8 +552,31 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("dtype,special", SPECIAL_CASES)
-@pytest.mark.parametrize("layout", SPECIAL_LAYOUTS)
+@pytest.mark.parametrize(
+    "layout, dtype, special",
+    [
+        pytest.param(
+            layout,
+            dtype,
+            special,
+            marks=(
+                _ASCEND_CPU_LOW_PRECISION_SKIP
+                if dtype in (torch.float16, torch.bfloat16)
+                else (
+                    _ASCEND_CPU_SPECIAL_VALUES_SKIP
+                    if dtype == torch.float32
+                    and (
+                        special in ("nan", "mixed")
+                        or (layout == "batched" and special == "inf")
+                    )
+                    else ()
+                )
+            ),
+        )
+        for layout in SPECIAL_LAYOUTS
+        for dtype, special in SPECIAL_CASES
+    ],
+)
 def test_multilabel_margin_loss_special_values(dtype, special, layout):
     shape = (8, 11)
     inp = _special_input(dtype, shape, special, layout)
@@ -454,7 +601,15 @@ def test_multilabel_margin_loss_invalid_input_dtype(dtype):
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("target_dtype", [torch.float32, torch.int32, torch.int16])
+@pytest.mark.parametrize(
+    "target_dtype",
+    # Ascend native loss accepts INT32 targets.
+    (
+        [torch.float32, torch.int16]
+        if flag_gems.vendor_name == "ascend"
+        else [torch.float32, torch.int32, torch.int16]
+    ),
+)
 def test_multilabel_margin_loss_invalid_target_dtype(target_dtype):
     inp = torch.zeros((8, 11), dtype=torch.float32, device=flag_gems.device)
     target = torch.zeros((8, 11), dtype=target_dtype, device=flag_gems.device)

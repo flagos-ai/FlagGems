@@ -20,6 +20,16 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct nonempty FP8 payloads with device casts",
+)
+_ASCEND_FP8_COMPARISON_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend device comparison does not support FP8, including empty values",
+)
+
 # _values returns a non-differentiable view of the COO value storage.
 # Explicit zeros and duplicate entries are preserved; dense and CSR inputs fail.
 _VALUES_DTYPES = (
@@ -84,7 +94,15 @@ def _assert_result(res_out, ref_out, inp, ref_inp):
 
 @pytest.mark.values
 @pytest.mark.parametrize("case", _VALUES_COO_CASES)
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_layouts(case, dtype):
     shape, sparse_dim, nnz = case
     inp = _make_coo_input(shape, sparse_dim, nnz, dtype, ["-1", "1"])
@@ -99,7 +117,15 @@ def test__values_layouts(case, dtype):
 @pytest.mark.values
 @pytest.mark.parametrize("case", _VALUES_RANGE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_value_ranges(case, value_range, dtype):
     shape, sparse_dim, nnz = case
     inp = _make_coo_input(shape, sparse_dim, nnz, dtype, value_range)
@@ -112,7 +138,15 @@ def test__values_value_ranges(case, value_range, dtype):
 
 
 @pytest.mark.values
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_COMPARISON_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_empty(dtype):
     shape, sparse_dim = (3, 4), 2
     indices = torch.empty(sparse_dim, 0, dtype=torch.long, device=flag_gems.device)
@@ -128,7 +162,15 @@ def test__values_empty(dtype):
 
 
 @pytest.mark.values
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_COMPARISON_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_empty_hybrid(dtype):
     shape, sparse_dim = (4, 5, 6), 2
     indices = torch.empty(sparse_dim, 0, dtype=torch.long, device=flag_gems.device)
@@ -144,7 +186,15 @@ def test__values_empty_hybrid(dtype):
 
 
 @pytest.mark.values
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_full_storage(dtype):
     shape = (2, 3)
     nnz = shape[0] * shape[1]
@@ -163,7 +213,15 @@ def test__values_full_storage(dtype):
 
 
 @pytest.mark.values
-@pytest.mark.parametrize("dtype", _VALUES_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()
+        )
+        for dtype in _VALUES_DTYPES
+    ],
+)
 def test__values_uncoalesced(dtype):
     shape = (3, 4)
     indices = torch.tensor([[0, 0, 1, 2, 0], [1, 1, 2, 3, 1]], dtype=torch.long)
@@ -180,7 +238,15 @@ def test__values_uncoalesced(dtype):
 
 @pytest.mark.values
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_VALUES_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else (),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_VALUES_DTYPES))
+    ],
 )
 def test__values_nan_inf(dtype, scenario):
     values = tu.make_special_input(dtype, scenario).repeat(2)[:6]

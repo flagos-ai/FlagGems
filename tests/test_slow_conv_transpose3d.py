@@ -20,6 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_FP64_REFERENCE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not utils.TO_CPU,
+    reason="Ascend NPU reference upcast/comparison does not preserve FP64",
+)
+_ASCEND_FP64_BACKWARD_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend native convolution backward does not support FP64",
+)
+
 # Test transposed conv3d; weight dimensions are (C_in, C_out, kD, kH, kW).
 # Extreme ranges retain their bounds and use the original reference dtype to preserve overflow.
 # Cases: (input shape, weight shape, kernel size, stride, padding, output padding, dilation).
@@ -251,7 +260,15 @@ def _assert_close(res_out, ref_out, dtype, equal_nan=False):
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
     SLOW_CONV_TRANSPOSE3D_CASES,
 )
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else ()
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d(
     inp_shape,
@@ -290,8 +307,22 @@ def test_slow_conv_transpose3d(
 
 @pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize("case", _VALUE_RANGE_CASES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "value_range, dtype",
+    [
+        pytest.param(
+            value_range,
+            dtype,
+            marks=(
+                _ASCEND_FP64_REFERENCE_SKIP
+                if dtype == torch.float64 and not tu.is_extreme_range(value_range)
+                else ()
+            ),
+        )
+        for value_range in tu.selected_ranges()
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     (
@@ -336,7 +367,15 @@ def test_slow_conv_transpose3d_value_ranges(case, value_range, dtype, bias):
     "inp_shape, weight_shape, kernel_size, stride, padding, output_padding, dilation",
     SLOW_CONV_TRANSPOSE3D_CASES,
 )
-@pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else ()
+        )
+        for dtype in SUPPORTED_DTYPES
+    ],
+)
 @pytest.mark.parametrize("bias", BIASES)
 def test_slow_conv_transpose3d_out(
     inp_shape,
@@ -398,7 +437,15 @@ def test_slow_conv_transpose3d_out(
 
 @pytest.mark.slow_conv_transpose3d_backward
 @pytest.mark.parametrize("case", _BACKWARD_CASES)
-@pytest.mark.parametrize("dtype", tu.selected_cases(_BACKWARD_DTYPES))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=_ASCEND_FP64_BACKWARD_SKIP if dtype == torch.float64 else ()
+        )
+        for dtype in tu.selected_cases(_BACKWARD_DTYPES)
+    ],
+)
 def test_slow_conv_transpose3d_backward(case, dtype):
     (
         inp_shape,
@@ -461,7 +508,17 @@ def test_slow_conv_transpose3d_backward(case, dtype):
 
 @pytest.mark.slow_conv_transpose3d_nan_inf
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(SUPPORTED_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=_ASCEND_FP64_REFERENCE_SKIP if dtype == torch.float64 else (),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(SUPPORTED_DTYPES)
+        )
+    ],
 )
 @pytest.mark.parametrize("special_arg", ["inp", "weight", "bias"])
 def test_slow_conv_transpose3d_nan_inf(dtype, scenario, special_arg):

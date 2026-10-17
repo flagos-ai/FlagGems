@@ -20,6 +20,24 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Compare complex and high-rank payloads on CPU; keep their original metadata checks.
+    assert result.dtype == reference.dtype
+    if not utils.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and (result.is_complex() or result.ndim > 8):
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # `_validate_sparse_bsc_tensor_args` inspects BSC metadata and the encoded index
 # contents, then returns `None`. `.default` is its only overload: there is no
 # tensor output, no `.out` form, no broadcasting and no autograd, so those spec
@@ -139,7 +157,17 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.validate_sparse_bsc_tensor_args
 @pytest.mark.parametrize("shape", _BSC_SHAPES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test__validate_sparse_bsc_tensor_args_values(shape, value_range, dtype):
     # 1x1 blocks keep the main-grid descriptor shape (nnz == number of columns);
     # the structural rows below supply the nontrivial and dense block shapes.
@@ -160,9 +188,9 @@ def test__validate_sparse_bsc_tensor_args_values(shape, value_range, dtype):
     assert result is None
     # The operator only inspects descriptors: it must leave the index tensors and
     # the values payload exactly as it received them.
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # --- structural descriptors --------------------------------------------------
@@ -222,9 +250,9 @@ def test__validate_sparse_bsc_tensor_args_layout(layout, dtype, index_dtype):
     result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # Every batch element has the same nnz here but distributes it over the block
@@ -252,9 +280,9 @@ def test__validate_sparse_bsc_tensor_args_batch_distributions(dtype, index_dtype
     result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # Accepted descriptors whose tensors are not canonical: index tensors may be
@@ -318,9 +346,9 @@ def test__validate_sparse_bsc_tensor_args_offset_and_strided_inputs(case, dtype)
     )
 
     assert result is None
-    tu.assert_result_equal(ccol_parent, ccol_parent_ref)
-    tu.assert_result_equal(row_parent, row_parent_ref)
-    tu.assert_result_equal(values_parent, values_parent_ref)
+    _assert_result_equal(ccol_parent, ccol_parent_ref)
+    _assert_result_equal(row_parent, row_parent_ref)
+    _assert_result_equal(values_parent, values_parent_ref)
 
 
 # The native row bound is the full logical extent and the block-row index is
@@ -349,9 +377,9 @@ def test__validate_sparse_bsc_tensor_args_int64_row_range(dtype):
     result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # The native worker clamps a zero block extent to 1 (`std::max<int64_t>(1,
@@ -380,9 +408,9 @@ def test__validate_sparse_bsc_tensor_args_zero_block_extents(dtype):
     result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # --- accepted `size` call forms ---------------------------------------------
@@ -416,9 +444,9 @@ def test__validate_sparse_bsc_tensor_args_size_forms(form):
         result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # --- special values ----------------------------------------------------------
@@ -432,7 +460,17 @@ _SPECIAL_CASES = tu.selected_cases(
 
 
 @pytest.mark.validate_sparse_bsc_tensor_args
-@pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in _SPECIAL_CASES
+    ],
+)
 def test__validate_sparse_bsc_tensor_args_special_values(dtype, scenario):
     payload = tu.make_special_input(dtype, scenario)
     nnz = int(payload.numel())
@@ -448,9 +486,9 @@ def test__validate_sparse_bsc_tensor_args_special_values(dtype, scenario):
     result = flag_gems._validate_sparse_bsc_tensor_args(ccol, row, values, size)
 
     assert result is None
-    tu.assert_result_equal(ccol, ccol_ref)
-    tu.assert_result_equal(row, row_ref)
-    tu.assert_result_equal(values, values_ref)
+    _assert_result_equal(ccol, ccol_ref)
+    _assert_result_equal(row, row_ref)
+    _assert_result_equal(values, values_ref)
 
 
 # --- rejected input space ----------------------------------------------------

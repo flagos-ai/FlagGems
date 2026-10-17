@@ -20,6 +20,24 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    assert result.dtype == reference.dtype
+    if not utils.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # aten::select_copy only moves elements, so every result is compared exactly.
 # The capability flags are static (read once at import), so no dtype support
 # probe runs while collecting or running these tests.
@@ -181,7 +199,17 @@ _DTYPE_RANGE_CASES = [
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("shape,dim,index", _SELECT_CASES)
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_select_copy(shape, dim, index, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
@@ -190,8 +218,8 @@ def test_select_copy(shape, dim, index, value_range, dtype):
     res_out = flag_gems.select_copy(inp, dim, index)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
     _assert_dense_copy(res_out, ref_out, inp)
 
 
@@ -206,8 +234,8 @@ def test_select_copy_dim_index_boundaries(shape, dim, index, dtype):
     res_out = flag_gems.select_copy(inp, dim, index)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -220,13 +248,21 @@ def test_select_copy_accepts_bool_parameters(dim, index):
     res_out = flag_gems.select_copy(inp, dim, index)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
 @pytest.mark.parametrize("shape,dim,index", _OUT_CASES)
-@pytest.mark.parametrize("dtype", _SELECT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SELECT_DTYPES
+    ],
+)
 def test_select_copy_out(shape, dim, index, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -240,8 +276,8 @@ def test_select_copy_out(shape, dim, index, dtype):
 
     assert res_out is buf
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -266,9 +302,9 @@ def test_select_copy_out_into_strided_view(shape, dim, index):
     assert res_out.stride() == ref_out.stride()
     assert res_out.storage_offset() == ref_out.storage_offset()
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(parent, ref_parent)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(parent, ref_parent)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -284,9 +320,9 @@ def test_select_copy_strided_input(layout, dtype, dim, index):
     res_out = flag_gems.select_copy(inp, dim, index)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
-    tu.assert_result_equal(parent, ref_parent)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(parent, ref_parent)
     _assert_dense_copy(res_out, ref_out, inp)
 
 
@@ -303,8 +339,8 @@ def test_select_copy_empty_result(dtype):
 
     assert res_out.shape == (0, 5)
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -316,14 +352,14 @@ def test_select_copy_result_does_not_alias_input(dtype):
     ref_out = torch.ops.aten.select_copy.int(ref_inp, 1, 5)
     res_out = flag_gems.select_copy(inp, 1, 5)
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     fill = 1.5 if dtype.is_floating_point else 3
     res_out.fill_(fill)
     ref_out.fill_(fill)
 
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -340,14 +376,14 @@ def test_select_copy_backward(shape, dim, index, dtype):
 
     res_out = flag_gems.select_copy(inp, dim, index)
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     assert res_grad.device == inp.device
 
     # backward scatters every upstream entry exactly once into zeros, so the
     # gradient introduces no rounding and is compared exactly.
-    tu.assert_result_equal(res_grad, ref_grad)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.select_copy
@@ -371,17 +407,28 @@ def test_select_copy_backward_view_input(layout, dtype):
 
     res_out = flag_gems.select_copy(inp, 0, 5)
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     res_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
     assert res_grad.device == inp.device
 
-    tu.assert_result_equal(res_grad, ref_grad)
-    tu.assert_result_equal(inp, ref_inp)
-    tu.assert_result_equal(base_tensor, ref_base)
+    _assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(inp, ref_inp)
+    _assert_result_equal(base_tensor, ref_base)
 
 
 @pytest.mark.select_copy
-@pytest.mark.parametrize("dtype,scenario,index", _SPECIAL_CASES)
+@pytest.mark.parametrize(
+    "dtype, scenario, index",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            index,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario, index in _SPECIAL_CASES
+    ],
+)
 def test_select_copy_special_values(dtype, scenario, index):
     inp = tu.make_special_input(dtype, scenario).reshape(1, -1)
     ref_inp = tu.to_reference(inp)
@@ -390,8 +437,8 @@ def test_select_copy_special_values(dtype, scenario, index):
     res_out = flag_gems.select_copy(inp, 1, index)
 
     assert res_out.device == inp.device
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 # Negative cases call the candidate only; the native probe evidence belongs to

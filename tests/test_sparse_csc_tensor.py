@@ -21,6 +21,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+# Empty FP8 casts work; constant fills fail even for empty values.
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
 # Store CSC indices and values verbatim, including repeated/unsorted rows.
 # Pass dtype and device explicitly to the ATen factory.
 _EXACT_CSC_DTYPES = [torch.int8, torch.uint8] + utils.ALL_INT_DTYPES + [torch.bool]
@@ -137,9 +146,26 @@ _DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.sparse_csc_tensor
-@pytest.mark.parametrize("shape, nnz", _CSC_CASES)
+@pytest.mark.parametrize(
+    "shape, nnz, dtype, value_range",
+    [
+        pytest.param(
+            shape,
+            nnz,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_INPUT_SKIP
+                if dtype in _FP8_DTYPES
+                and (nnz > 0 or value_range[0] == value_range[1])
+                else ()
+            ),
+        )
+        for shape, nnz in _CSC_CASES
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_csc_tensor(shape, nnz, dtype, index_dtype, value_range):
     ccol, row, values = _make_csc_inputs(
         shape, nnz, dtype, index_dtype=index_dtype, value_range=value_range
@@ -176,7 +202,17 @@ def test_sparse_csc_tensor(shape, nnz, dtype, index_dtype, value_range):
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("shape, nnz", _CSC_BATCHED_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_sparse_csc_tensor_batched(shape, nnz, dtype, index_dtype, value_range):
     ccol, row, values = _make_csc_inputs(
         shape, nnz, dtype, index_dtype=index_dtype, value_range=value_range
@@ -211,9 +247,26 @@ def test_sparse_csc_tensor_batched(shape, nnz, dtype, index_dtype, value_range):
 
 
 @pytest.mark.sparse_csc_tensor
-@pytest.mark.parametrize("ccol_list, row_list", _CSC_NO_SIZE_CASES)
+@pytest.mark.parametrize(
+    "ccol_list, row_list, dtype, value_range",
+    [
+        pytest.param(
+            ccol_list,
+            row_list,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_INPUT_SKIP
+                if dtype in _FP8_DTYPES
+                and (bool(row_list) or value_range[0] == value_range[1])
+                else ()
+            ),
+        )
+        for ccol_list, row_list in _CSC_NO_SIZE_CASES
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_CASES)
 def test_sparse_csc_tensor_no_size(
     ccol_list, row_list, dtype, index_dtype, value_range
 ):
@@ -250,7 +303,15 @@ def test_sparse_csc_tensor_no_size(
 
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype", _CSC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _CSC_DTYPES
+    ],
+)
 def test_sparse_csc_tensor_unchecked_uncoalesced(dtype, index_dtype):
     ccol = torch.tensor([0, 1, 3], dtype=index_dtype, device=flag_gems.device)
     row = torch.tensor([0, 0, 0], dtype=index_dtype, device=flag_gems.device)
@@ -287,7 +348,15 @@ def test_sparse_csc_tensor_unchecked_uncoalesced(dtype, index_dtype):
 
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype", _CSC_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _CSC_DTYPES
+    ],
+)
 def test_sparse_csc_tensor_unchecked_unsorted_rows(dtype, index_dtype):
     ccol = torch.tensor([0, 3, 3], dtype=index_dtype, device=flag_gems.device)
     row = torch.tensor([1, 0, 2], dtype=index_dtype, device=flag_gems.device)
@@ -324,8 +393,18 @@ def test_sparse_csc_tensor_unchecked_unsorted_rows(dtype, index_dtype):
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize("shape, nnz", _CSC_SHAPE_CASES)
 @pytest.mark.parametrize("index_dtype", _INDEX_DTYPES)
-@pytest.mark.parametrize("dtype", _FLOAT_STORAGE_DTYPES)
-@pytest.mark.parametrize("value_range", tu.selected_ranges())
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype in _FLOAT_STORAGE_DTYPES
+        for value_range in tu.selected_ranges()
+    ],
+)
 def test_sparse_csc_tensor_shape_levels(shape, nnz, dtype, index_dtype, value_range):
     ccol, row, values = _make_csc_inputs(
         shape, nnz, dtype, index_dtype=index_dtype, value_range=value_range
@@ -371,7 +450,17 @@ _BOUNDARY_DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.sparse_csc_tensor
-@pytest.mark.parametrize("dtype, value_range", _BOUNDARY_DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, value_range in _BOUNDARY_DTYPE_RANGE_CASES
+    ],
+)
 def test_sparse_csc_tensor_boundary_values(dtype, value_range):
     ccol, row, values = _make_csc_inputs(
         (4, 4), 4, dtype, index_dtype=torch.int64, value_range=value_range
@@ -407,7 +496,15 @@ def test_sparse_csc_tensor_boundary_values(dtype, value_range):
 
 @pytest.mark.sparse_csc_tensor
 @pytest.mark.parametrize(
-    "dtype,scenario", tu.selected_cases(tu.special_value_cases(_CSC_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(_CSC_DTYPES))
+    ],
 )
 def test_sparse_csc_tensor_nan_inf_values(dtype, scenario):
     values = tu.make_special_input(dtype, scenario)

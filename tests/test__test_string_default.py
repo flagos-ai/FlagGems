@@ -17,7 +17,26 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
 from . import test_utils as tu
+
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    assert result.dtype == reference.dtype
+    if not utils.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
 
 # aten::_test_string_default(Tensor dummy, str a="\"'\\", str b="\"'\\") is an
 # ATen schema self-test: it accepts only the schema's three-character default
@@ -98,8 +117,24 @@ _DTYPE_RANGE_CASES = [
 
 
 @pytest.mark.test_string_default
-@pytest.mark.parametrize("shape", tu.selected_shapes())
-@pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
+@pytest.mark.parametrize(
+    "shape, dtype, value_range",
+    [
+        pytest.param(
+            shape,
+            dtype,
+            value_range,
+            marks=(
+                _ASCEND_FP8_INPUT_SKIP
+                if dtype in _FP8_DTYPES
+                and (all(shape) or value_range[0] == value_range[1])
+                else ()
+            ),
+        )
+        for shape in tu.selected_shapes()
+        for dtype, value_range in _DTYPE_RANGE_CASES
+    ],
+)
 def test_test_string_default_value_ranges(shape, value_range, dtype):
     # Values are never read; the grid still asserts that every dtype and shape
     # passes through unchanged (and that the schema default strings hold).
@@ -110,7 +145,7 @@ def test_test_string_default_value_ranges(shape, value_range, dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
@@ -131,7 +166,15 @@ _CALL_FORM_SHAPES = tu.selected_cases([(2, 19, 7), (20, 320, 15)], quick=[(2, 19
 @pytest.mark.test_string_default
 @pytest.mark.parametrize("shape", _CALL_FORM_SHAPES)
 @pytest.mark.parametrize("args, kwargs", _CALL_FORMS)
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SUPPORTED_DTYPES
+    ],
+)
 def test_test_string_default_call_forms(shape, args, kwargs, dtype):
     inp = tu.make_input(dtype, shape, ["-1", "1"])
     ref_inp = tu.to_reference(inp)
@@ -140,7 +183,7 @@ def test_test_string_default_call_forms(shape, args, kwargs, dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp, *args, **kwargs)
     res_out = flag_gems._test_string_default(inp, *args, **kwargs)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
@@ -166,7 +209,15 @@ def _layout_view(base, layout):
 
 @pytest.mark.test_string_default
 @pytest.mark.parametrize("layout, storage_shape", _LAYOUT_ROWS)
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SUPPORTED_DTYPES
+    ],
+)
 def test_test_string_default_preserves_layout(layout, storage_shape, dtype):
     base = tu.make_input(dtype, storage_shape, ["-1", "1"])
     inp = _layout_view(base, layout)
@@ -176,7 +227,7 @@ def test_test_string_default_preserves_layout(layout, storage_shape, dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
@@ -191,15 +242,25 @@ def test_test_string_default_preserves_lazy_conjugate(dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
 @pytest.mark.test_string_default
-@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _FLOAT_DTYPES
+    ],
+)
 def test_test_string_default_preserves_lazy_negative(dtype):
-    inp = torch._neg_view(tu.make_input(dtype, (4, 6), ["-1", "1"]))
-    ref_inp = tu.to_reference(inp)
+    base = tu.make_input(dtype, (4, 6), ["-1", "1"])
+    inp = torch._neg_view(base)
+    # Transfer the ordinary base first so CPU reference retains the lazy bit.
+    ref_inp = torch._neg_view(tu.to_reference(base))
     before_state, before_ptr = _operand_state(inp), inp.data_ptr()
 
     ref_out = torch.ops.aten._test_string_default(ref_inp)
@@ -209,7 +270,7 @@ def test_test_string_default_preserves_lazy_negative(dtype):
     assert res_out.is_neg() and ref_out.is_neg()
     # Clearing the asserted lazy bit on both views compares the complete stored
     # payload without invoking an unavailable FP8 numeric-negation kernel.
-    tu.assert_result_equal(torch._neg_view(res_out), torch._neg_view(ref_out))
+    _assert_result_equal(torch._neg_view(res_out), torch._neg_view(ref_out))
 
 
 _EMPTY_SHAPES = [(0,), (0, 3), (3, 0, 7)]
@@ -226,7 +287,7 @@ def test_test_string_default_empty_input(shape, dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
@@ -235,7 +296,15 @@ _SCALAR_SHAPES = [(), (1,)]
 
 @pytest.mark.test_string_default
 @pytest.mark.parametrize("shape", _SCALAR_SHAPES)
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SUPPORTED_DTYPES
+    ],
+)
 def test_test_string_default_scalar_operand(shape, dtype):
     # The scalar-operand form: a 0-dim tensor (plus its single-element 1-dim
     # neighbour). The string operands are covered by the call-form test.
@@ -246,14 +315,23 @@ def test_test_string_default_scalar_operand(shape, dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp, _DEFAULT, _DEFAULT)
     res_out = flag_gems._test_string_default(inp, _DEFAULT, _DEFAULT)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
 @pytest.mark.test_string_default
 @pytest.mark.parametrize(
     "dtype, scenario",
-    tu.selected_cases(tu.special_value_cases(_SUPPORTED_DTYPES), quick=[]),
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SUPPORTED_DTYPES), quick=[]
+        )
+    ],
 )
 def test_test_string_default_special_values(dtype, scenario):
     inp = tu.make_special_input(dtype, scenario)
@@ -263,12 +341,20 @@ def test_test_string_default_special_values(dtype, scenario):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
 
 @pytest.mark.test_string_default
-@pytest.mark.parametrize("dtype", tu.selected_cases(_FLOAT_DTYPES, quick=[]))
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in tu.selected_cases(_FLOAT_DTYPES, quick=[])
+    ],
+)
 def test_test_string_default_backward(dtype):
     # Differentiate through the original leaf with an independent upstream
     # gradient. The native gradient is that upstream tensor itself, so the
@@ -281,14 +367,22 @@ def test_test_string_default_backward(dtype):
 
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_leaf, grad_outputs=ref_upstream)
     (res_grad,) = torch.autograd.grad(res_out, leaf, grad_outputs=upstream)
-    tu.assert_result_equal(res_grad, ref_grad)
+    _assert_result_equal(res_grad, ref_grad)
 
 
 @pytest.mark.test_string_default
-@pytest.mark.parametrize("dtype", _SUPPORTED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SUPPORTED_DTYPES
+    ],
+)
 def test_test_string_default_alias_write_through(dtype):
     inp = tu.make_input(dtype, (3, 4), ["0", "1"])
     ref_inp = tu.to_reference(inp)
@@ -297,15 +391,15 @@ def test_test_string_default_alias_write_through(dtype):
     ref_out = torch.ops.aten._test_string_default(ref_inp)
     res_out = flag_gems._test_string_default(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
     _assert_operand_preserved(res_out, inp, before_state, before_ptr)
 
     # The result shares the operand's storage, so a write through it has to show
     # up in the operand rather than in a private copy.
     res_out.fill_(1)
     ref_out.fill_(1)
-    tu.assert_result_equal(res_out, ref_out)
-    tu.assert_result_equal(inp, ref_inp)
+    _assert_result_equal(res_out, ref_out)
+    _assert_result_equal(inp, ref_inp)
 
 
 @pytest.mark.test_string_default

@@ -20,6 +20,14 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
+
+_ASCEND_FP8_INPUT_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot generate FP8 payloads with device casts or fills",
+)
+
+
 # Build compressed sparse storage from index and value tensors.
 # Pass dtype explicitly: these ATen factories default to float32.
 # Accelerator inputs also need an explicit device.
@@ -149,7 +157,15 @@ def _assert_result(res_out, ref_out, dtype, layout, index_dtype):
 @pytest.mark.parametrize(
     "shape", [shape for shape in tu.selected_shapes() if len(shape) >= 2]
 )
-@pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.float8_e4m3fn])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in [torch.float32, torch.int32, torch.float8_e4m3fn]
+    ],
+)
 def test_sparse_compressed_tensor_shape_levels(shape, dtype):
     layout = torch.sparse_csr
     nnz = 8
@@ -183,7 +199,15 @@ def test_sparse_compressed_tensor_shape_levels(shape, dtype):
 
 @pytest.mark.sparse_compressed_tensor
 @pytest.mark.parametrize("case", _LAYOUT_CASES)
-@pytest.mark.parametrize("dtype", _SPARSE_COMPRESSED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SPARSE_COMPRESSED_DTYPES
+    ],
+)
 def test_sparse_compressed_tensor(case, dtype):
     layout, shape, nnz, index_dtype = case
     compressed, plain, values = _make_input(layout, shape, nnz, dtype, index_dtype)
@@ -215,7 +239,15 @@ def test_sparse_compressed_tensor(case, dtype):
 
 @pytest.mark.sparse_compressed_tensor
 @pytest.mark.parametrize("case", _NO_SIZE_CASES)
-@pytest.mark.parametrize("dtype", _SPARSE_COMPRESSED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SPARSE_COMPRESSED_DTYPES
+    ],
+)
 def test_sparse_compressed_tensor_no_size(case, dtype):
     layout, shape, nnz, index_dtype = case
     compressed, plain, values = _make_input(layout, shape, nnz, dtype, index_dtype)
@@ -278,7 +310,15 @@ def test_sparse_compressed_tensor_empty(case, dtype):
 @pytest.mark.sparse_compressed_tensor
 @pytest.mark.parametrize("case", _VALUE_CASES)
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
-@pytest.mark.parametrize("dtype", _SPARSE_COMPRESSED_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype, marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ())
+        )
+        for dtype in _SPARSE_COMPRESSED_DTYPES
+    ],
+)
 def test_sparse_compressed_tensor_value_ranges(case, value_range, dtype):
     layout, shape, nnz, index_dtype = case
     compressed, plain, values = _make_input(
@@ -312,8 +352,17 @@ def test_sparse_compressed_tensor_value_ranges(case, value_range, dtype):
 
 @pytest.mark.sparse_compressed_tensor
 @pytest.mark.parametrize(
-    "dtype,scenario",
-    tu.selected_cases(tu.special_value_cases(_SPARSE_COMPRESSED_DTYPES)),
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_FP8_INPUT_SKIP if dtype in _FP8_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(
+            tu.special_value_cases(_SPARSE_COMPRESSED_DTYPES)
+        )
+    ],
 )
 def test_sparse_compressed_tensor_nan_inf_values(dtype, scenario):
     layout = torch.sparse_csr

@@ -20,6 +20,28 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+_ASCEND_UNSUPPORTED_DTYPES = (
+    torch.float8_e4m3fn,
+    torch.float8_e5m2,
+    torch.complex32,
+)
+
+_ASCEND_DSTACK_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend FP8 input/reference and complex32 dstack support is incomplete",
+)
+
+
+def _assert_result_equal(result, reference):
+    # Keep dtype/device checks before moving complex comparisons off the NPU.
+    assert result.dtype == reference.dtype
+    if not utils.TO_CPU:
+        assert result.device == reference.device
+    if flag_gems.vendor_name == "ascend" and result.is_complex():
+        result, reference = result.cpu(), reference.cpu()
+    tu.assert_result_equal(result, reference)
+
+
 # Promote inputs to at least 3-D, then concatenate along dimension 2.
 DSTACK_DTYPES = (
     tu.REQUIRED_DTYPES
@@ -95,12 +117,21 @@ _DTYPE_RANGE_PAIRS = [
 def _assert_dstack_output(res_out, ref_out):
     assert res_out.is_contiguous()
     assert not res_out._is_view()
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.dstack
 @pytest.mark.parametrize("shape_set", _DSTACK_SHAPE_SETS)
-@pytest.mark.parametrize("dtype", DSTACK_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype in DSTACK_DTYPES
+    ],
+)
 def test_dstack(shape_set, dtype):
     inp = [tu.make_input(dtype, s, _MAIN_RANGE) for s in shape_set]
     ref_inp = [tu.to_reference(t) for t in inp]
@@ -113,7 +144,17 @@ def test_dstack(shape_set, dtype):
 
 @pytest.mark.dstack
 @pytest.mark.parametrize("shape_set", _DSTACK_RANGE_SHAPE_SETS)
-@pytest.mark.parametrize("dtype, value_range", _DTYPE_RANGE_PAIRS)
+@pytest.mark.parametrize(
+    "dtype, value_range",
+    [
+        pytest.param(
+            dtype,
+            value_range,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype, value_range in _DTYPE_RANGE_PAIRS
+    ],
+)
 def test_dstack_value_ranges(shape_set, dtype, value_range):
     inp = [tu.make_input(dtype, s, value_range) for s in shape_set]
     ref_inp = [tu.to_reference(t) for t in inp]
@@ -121,12 +162,21 @@ def test_dstack_value_ranges(shape_set, dtype, value_range):
     ref_out = torch.ops.aten.dstack(ref_inp)
     res_out = flag_gems.dstack(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.dstack_out
 @pytest.mark.parametrize("shape_set", _DSTACK_OUT_SHAPE_SETS)
-@pytest.mark.parametrize("dtype", DSTACK_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype in DSTACK_DTYPES
+    ],
+)
 def test_dstack_out(shape_set, dtype):
     inp = [tu.make_input(dtype, s, _MAIN_RANGE) for s in shape_set]
     ref_inp = [tu.to_reference(t) for t in inp]
@@ -140,13 +190,22 @@ def test_dstack_out(shape_set, dtype):
 
     # The .out variant must return the out tensor itself (alias semantics).
     assert res_ret.data_ptr() == out.data_ptr()
-    tu.assert_result_equal(res_ret, ref_ret)
-    tu.assert_result_equal(out, ref_out)
+    _assert_result_equal(res_ret, ref_ret)
+    _assert_result_equal(out, ref_out)
 
 
 @pytest.mark.dstack
 @pytest.mark.parametrize("shape_set", _DSTACK_EMPTY_SHAPE_SETS)
-@pytest.mark.parametrize("dtype", DSTACK_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype in DSTACK_DTYPES
+    ],
+)
 def test_dstack_empty_inputs(shape_set, dtype):
     inp = [tu.make_input(dtype, s, _MAIN_RANGE) for s in shape_set]
     ref_inp = [tu.to_reference(t) for t in inp]
@@ -159,7 +218,15 @@ def test_dstack_empty_inputs(shape_set, dtype):
 
 @pytest.mark.dstack
 @pytest.mark.parametrize(
-    "dtype, scenario", tu.selected_cases(tu.special_value_cases(DSTACK_DTYPES))
+    "dtype, scenario",
+    [
+        pytest.param(
+            dtype,
+            scenario,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype, scenario in tu.selected_cases(tu.special_value_cases(DSTACK_DTYPES))
+    ],
 )
 def test_dstack_nan_inf(dtype, scenario):
     values = tu.make_special_input(dtype, scenario)
@@ -169,11 +236,20 @@ def test_dstack_nan_inf(dtype, scenario):
     ref_out = torch.ops.aten.dstack(ref_inp)
     res_out = flag_gems.dstack(inp)
 
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
 
 @pytest.mark.dstack
-@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        pytest.param(
+            dtype,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype in utils.COMPLEX_DTYPES
+    ],
+)
 def test_dstack_complex(dtype):
     inp = [
         tu.make_input(dtype, (4, 5, 6), _MAIN_RANGE),
@@ -191,9 +267,15 @@ def test_dstack_complex(dtype):
 @pytest.mark.parametrize("shape_set", _DSTACK_BACKWARD_SHAPE_SETS)
 @pytest.mark.parametrize(
     "dtype",
-    tu.selected_cases(
-        [d for d in DSTACK_DTYPES if d.is_floating_point or d.is_complex]
-    ),
+    [
+        pytest.param(
+            dtype,
+            marks=(_ASCEND_DSTACK_SKIP if dtype in _ASCEND_UNSUPPORTED_DTYPES else ()),
+        )
+        for dtype in tu.selected_cases(
+            [d for d in DSTACK_DTYPES if d.is_floating_point or d.is_complex]
+        )
+    ],
 )
 def test_dstack_backward(shape_set, dtype):
     inp = [tu.make_input(dtype, s, _MAIN_RANGE).requires_grad_() for s in shape_set]
@@ -205,12 +287,12 @@ def test_dstack_backward(shape_set, dtype):
     ref_in_grads = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_grad)
 
     res_out = flag_gems.dstack(inp)
-    tu.assert_result_equal(res_out, ref_out)
+    _assert_result_equal(res_out, ref_out)
 
     assert res_out.requires_grad
     res_in_grads = torch.autograd.grad(res_out, inp, grad_outputs=grad)
     for res_g, ref_g in zip(res_in_grads, ref_in_grads):
-        tu.assert_result_equal(res_g, ref_g)
+        _assert_result_equal(res_g, ref_g)
 
 
 @pytest.mark.dstack_negative
