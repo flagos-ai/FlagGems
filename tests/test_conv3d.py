@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
+import torch.nn.functional as F
 
 import flag_gems
 
@@ -74,6 +77,8 @@ def test_conv3d(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
+    if vendor_name == "ascend":
+        monkeypatch.setattr(torch.npu.conv, "allow_hf32", False)
     weight = torch.randn(
         kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -127,6 +132,8 @@ def test_conv3d_padding(
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=False)
     ref_inp = utils.to_reference(inp, True)
     torch.backends.cudnn.allow_tf32 = False
+    if vendor_name == "ascend":
+        monkeypatch.setattr(torch.npu.conv, "allow_hf32", False)
     weight = torch.randn(
         kernel, dtype=dtype, device=flag_gems.device, requires_grad=False
     )
@@ -161,3 +168,83 @@ def test_conv3d_padding(
     )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.conv3d
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend padding and conv3d implementations required",
+)
+@pytest.mark.parametrize("case", ["vision_bf16", "grouped", "same_even", "forced_grid"])
+def test_ascend_conv3d_regressions(case):
+    assert flag_gems.conv3d.__module__.endswith("_ascend.ops.conv3d")
+    dtype = torch.bfloat16 if case == "vision_bf16" else torch.float32
+    shape = (
+        (1, 3, 2, 16, 16)
+        if case == "vision_bf16"
+        else (1, 6, 5, 5, 5) if case in ("grouped", "forced_grid") else (1, 2, 5, 6, 7)
+    )
+    wshape = (
+        (1152, 3, 2, 16, 16)
+        if case == "vision_bf16"
+        else (
+            (66, 3, 2, 2, 2)
+            if case == "forced_grid"
+            else (8, 3, 2, 2, 2) if case == "grouped" else (3, 2, 2, 3, 4)
+        )
+    )
+    inp = torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    weight = torch.randn(wshape, device=inp.device, dtype=dtype)
+    bias = torch.randn(wshape[0] * 2, device=inp.device, dtype=dtype)[::2]
+    stride = (2, 16, 16) if case == "vision_bf16" else 1
+    groups = 2 if case in ("grouped", "forced_grid") else 1
+    padding = "same" if case == "same_even" else 0
+    previous_hf32 = torch.npu.conv.allow_hf32
+    try:
+        if dtype == torch.float32:
+            torch.npu.conv.allow_hf32 = False
+        reference = F.conv3d(inp, weight, bias, stride, padding, groups=groups)
+    finally:
+        torch.npu.conv.allow_hf32 = previous_hf32
+    module = importlib.import_module(flag_gems.conv3d.__module__)
+    cap = module._CONV3D_MAX_GRID
+    try:
+        if case == "forced_grid":
+            module._CONV3D_MAX_GRID = 2
+        previous_registrar = flag_gems.current_work_registrar
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=lib, include=["conv3d"])
+            actual = F.conv3d(inp, weight, bias, stride, padding, groups=groups)
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
+    finally:
+        module._CONV3D_MAX_GRID = cap
+    torch.testing.assert_close(
+        actual,
+        reference,
+        rtol=1e-2 if dtype == torch.bfloat16 else 2e-3,
+        atol=0.125 if dtype == torch.bfloat16 else 2e-4,
+    )
+
+
+@pytest.mark.conv3d
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend FP32 precision")
+@pytest.mark.parametrize("groups, channels", [(1, 3), (2, 3), (2, 17)])
+@pytest.mark.parametrize("seed", [0, 3])
+def test_ascend_conv3d_fp32_cpu_reference(groups, channels, seed):
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+    inp = torch.randn((1, groups * channels, 5, 5, 5), generator=generator)
+    weight = torch.randn((groups * 4, channels, 2, 2, 2), generator=generator)
+    bias_base = torch.randn(groups * 8, generator=generator)
+    reference = F.conv3d(
+        inp.double(), weight.double(), bias_base[::2].double(), groups=groups
+    ).float()
+    actual = flag_gems.conv3d(
+        inp.to(flag_gems.device),
+        weight.to(flag_gems.device),
+        bias_base.to(flag_gems.device)[::2],
+        groups=groups,
+    )
+    torch.testing.assert_close(actual.cpu(), reference, rtol=2e-3, atol=2e-4)
