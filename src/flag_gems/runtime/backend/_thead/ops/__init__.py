@@ -41,6 +41,7 @@ from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .gru import gru
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .lcm import lcm, lcm_
@@ -125,6 +126,7 @@ __all__ = [
     "gcd",
     "gcd_",
     "grid_sampler_3d_backward",
+    "gru",
     "index_copy",
     "index_copy_",
     "index_select_backward",
