@@ -703,6 +703,7 @@ from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .t_copy import t_copy, t_copy_out
+from .take_along_dim import take_along_dim_kernel  # noqa: F401
 from .tan import tan, tan_
 from .tanh import tanh, tanh_, tanh_backward
 from .te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
