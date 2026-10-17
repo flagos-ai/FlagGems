@@ -1442,6 +1442,8 @@ _FULL_CONFIG = (
     ),
     ("new_full", new_full),
     ("new_ones", new_ones),
+    ("new_zeros", new_zeros),
+    ("new_zeros.out", new_zeros_out),
     ("nextafter", nextafter),
     ("nextafter.out", nextafter),
     ("nextafter_", nextafter_),
