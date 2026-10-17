@@ -1903,6 +1903,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: atleast_2d
+  description: 'Returns a 2-D view of the input: tensors with two or more dimensions
+    are returned unchanged.'
+  for:
+  - atleast_2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: atleast_3d
   description: Returns a view of the input tensor with at least three dimensions (view
     operation).
