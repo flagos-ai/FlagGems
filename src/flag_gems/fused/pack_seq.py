@@ -117,7 +117,12 @@ def pack_seq_triton(
         x_reshaped = x
 
     B = lengths.numel()
-    Lmax = int(lengths.max().item())
+    if 0 < B <= 64 and lengths.device.type == "npu" and lengths.ndim == 1:
+        # Copy tiny length vectors once instead of launching a device reduction.
+        # Keep larger batches and other devices on the original reduction path.
+        Lmax = int(max(lengths.cpu().tolist()))
+    else:
+        Lmax = int(lengths.max().item())
 
     out = torch.empty((B, Lmax, D), device=x.device, dtype=x.dtype)
     num_warps = 4
