@@ -263,6 +263,7 @@ def sum_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
+            inp = inp.to(torch.int64)
             dtype = torch.int64
 
     if dim is None:
