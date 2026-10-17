@@ -6071,6 +6071,18 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: flatten_dense_tensors
+  description: |
+    Flatten and concatenate dense real tensors into a contiguous one-dimensional buffer.
+  for:
+    - flatten_dense_tensors
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: flip
   description: Reverse the order of an n-D tensor along given axis in dims.
   for:

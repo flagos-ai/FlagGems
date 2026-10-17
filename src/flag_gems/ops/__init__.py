@@ -727,6 +727,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flatten import flatten
+from flag_gems.ops.flatten_dense_tensors import flatten_dense_tensors
 from flag_gems.ops.flip import flip
 from flag_gems.ops.fliplr import fliplr
 from flag_gems.ops.flipud import flipud
@@ -2252,6 +2253,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flatten",
+    "flatten_dense_tensors",
     "flip",
     "fliplr",
     "flipud",
