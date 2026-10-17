@@ -345,3 +345,96 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+# The next two tests guard against signed int32 address overflow in the kernel
+# shared by `index_put_` and `_index_put_impl_`. `index * input_stride` for
+# int32 indices can exceed 2**31 on large strided tensors and wrap before the
+# pointer offset is formed, silently redirecting the store to a wrapped
+# address. A `2**31`-element prefix guard contains those writes so the defect is
+# observable instead of corrupting unrelated memory. See Issue #6411.
+
+_INDEX_PUT_ENTRIES = ["index_put_", "_index_put_impl_"]
+
+
+@pytest.mark.index_put_
+@pytest.mark.parametrize("op_name", _INDEX_PUT_ENTRIES)
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_index_put__large_strided_offset(op_name, index_dtype, accumulate):
+    """`index * stride` must not wrap in int32 on large strided tensors."""
+    if flag_gems.device != "cuda":
+        pytest.skip("requires CUDA-compatible memory accounting")
+
+    guard = 2**31
+    stride = 102400
+    row = (guard + stride - 1) // stride
+    size = guard + (row + 1) * stride + 1
+    if torch.cuda.mem_get_info()[0] < size * 4 + 2**30:
+        pytest.skip("requires ~9 GiB of free memory including the guard")
+
+    storage = torch.full((size,), 17, dtype=torch.float32, device=flag_gems.device)
+    try:
+        inp = storage[guard:].as_strided((row + 2, 1), (stride, 1))
+        index = torch.tensor(
+            [row - 1, row, row + 1], dtype=index_dtype, device=inp.device
+        )
+        values = torch.tensor([[1], [2], [3]], dtype=inp.dtype, device=inp.device)
+        expected = values + 17 if accumulate else values
+
+        # Native ATen is the width/semantics control on the same strided view.
+        getattr(torch.ops.aten, op_name).default(inp, [index], values, accumulate)
+        torch.testing.assert_close(inp[index], expected, rtol=0, atol=0)
+        inp[index] = 17
+
+        getattr(flag_gems, op_name)(inp, [index], values, accumulate)
+        torch.cuda.synchronize()
+
+        torch.testing.assert_close(inp[index], expected, rtol=0, atol=0)
+        # A wrapped int32 offset lands in the prefix guard; it must stay intact.
+        assert storage[:guard].eq(17).all().item()
+    finally:
+        del storage
+
+
+@pytest.mark.index_put_
+@pytest.mark.parametrize("op_name", _INDEX_PUT_ENTRIES)
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+def test_index_put__bf16_strided_boundary(op_name, index_dtype):
+    """A row whose tail crosses 2**31 must not redirect its wrapped writes."""
+    if flag_gems.device != "cuda":
+        pytest.skip("requires CUDA-compatible memory accounting")
+
+    guard = 2**31
+    stride = 294912
+    width = 16 * 128 * 128
+    rows = [7280, 7281, 7282, 7415, 9108]
+    size = guard + rows[-1] * stride + width
+    if torch.cuda.mem_get_info()[0] < size * 2 + 2**30:
+        pytest.skip("requires ~10 GiB of free memory including the guard")
+
+    storage = torch.full((size,), 17, dtype=torch.bfloat16, device=flag_gems.device)
+    try:
+        inp = storage[guard:].as_strided(
+            (rows[-1] + 1, 16, 128, 128), (stride, 16384, 128, 1)
+        )
+        index = torch.tensor(rows, dtype=index_dtype, device=inp.device)
+        # Non-contiguous index and values exercise independent offset paths.
+        index = torch.stack((index, index), dim=1)[:, 0]
+        values = torch.ones(
+            (len(rows), 16, 128, 256), dtype=inp.dtype, device=inp.device
+        )[..., ::2]
+
+        values.fill_(3)
+        getattr(torch.ops.aten, op_name).default(inp, [index], values, False)
+        torch.testing.assert_close(inp[index], values, rtol=0, atol=0)
+        inp[index] = 17
+
+        values.fill_(7)
+        getattr(flag_gems, op_name)(inp, [index], values, False)
+        torch.cuda.synchronize()
+
+        torch.testing.assert_close(inp[index], values, rtol=0, atol=0)
+        assert storage[:guard].eq(17).all().item()
+    finally:
+        del storage
