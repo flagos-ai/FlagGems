@@ -3853,6 +3853,18 @@ ops:
   - Tensor
   stages:
   - stable: '4.1'
+- id: copy_sparse_to_sparse_
+  description: |
+    Copy COO indices, values, and coalesced metadata into a sparse destination in place.
+  for:
+    - copy_sparse_to_sparse_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.4'
 - id: copysign
   description: 'Create a new floating-point tensor with the magnitude of input and
     the sign of other, elementwise.
