@@ -134,6 +134,8 @@ _FULL_CONFIG = (
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
     ("_chunk_cat", _chunk_cat),
+    ("_coalesce", _coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_coalesce.out", _coalesce_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_coalesced_", _coalesced_, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_compute_linear_combination", _compute_linear_combination),
     ("_compute_linear_combination.out", _compute_linear_combination_out),

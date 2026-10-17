@@ -53,6 +53,33 @@ ops:
   - Reduction
   stages:
   - alpha: '5.5'
+- id: _coalesce
+  description: 'De-duplicates a sparse COO tensor: groups the stored coordinates
+    by their linear index, sorts the unique coordinates ascending and sums the
+    duplicated values. Returns a fresh coalesced tensor.
+
+    '
+  for:
+  - _coalesce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _coalesce_out
+  description: A variant of `_coalesce()` that writes the coalesced result into
+    the `out` sparse tensor.
+  for:
+  - _coalesce.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _conj
   description: 'The private conjugate primitive backing ``torch.conj`` and
     ``torch._conj``. Raises on non-complex inputs.
