@@ -15752,6 +15752,21 @@ ops:
   - Distribution
   stages:
   - stable: '2.2'
+- id: ravel
+  description: 'Returns a flattened (1-D) view of the input when possible, otherwise
+    a contiguous copy.
+
+    '
+  for:
+  - ravel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+
 - id: range
   description: 'Returns a 1-D tensor of size `floor(end - start) + 1` with values
     from `start` to
