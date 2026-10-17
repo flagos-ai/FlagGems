@@ -80,3 +80,38 @@ To proactively warm up your system in order to populate the tuning cache:
 For more details (e.g. customizing your tuning cache path and settings),
 refer to the [`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/v4.2.0/examples/pretune.py)
 as an example.
+
+## Caching ATen routing and launch plans
+
+Small, frequently repeated pointwise operators can spend more host time in
+shape routing, dtype promotion, grid calculation, and Triton argument expansion
+than in the GPU kernel itself. The experimental ATen plan cache stores this
+structural work after warmup. It uses a monomorphic last-plan entry followed by
+a bounded LRU for dynamic shapes.
+
+The feature is disabled by default. Enable it explicitly through Python or an
+environment variable:
+
+```python
+import flag_gems
+
+flag_gems.enable_aten_plan_cache(max_size=128)
+```
+
+```bash
+export FLAGGEMS_ATEN_PLAN_CACHE=1
+export FLAGGEMS_ATEN_PLAN_CACHE_SIZE=128
+```
+
+`FLAGGEMS_ATEN_PLAN_CACHE_INCLUDE` and `FLAGGEMS_ATEN_PLAN_CACHE_EXCLUDE`
+accept comma-separated glob patterns over the fully qualified kernel name.
+`arange_func` is excluded by default because its measured setup cost was lower
+than a plan-cache lookup. Runtime statistics are available from
+`flag_gems.aten_plan_cache_stats()`.
+
+Cache keys include the vendor, device, device capability, dtype, shape, stride,
+broadcast pattern, scalar values, output semantics, and code-generation
+configuration. Cached plans do not retain tensors, data pointers, streams,
+events, or graphs. Plans are cleared after `fork`, and FlagTune changes
+invalidate affected launch plans. Use `disable_aten_plan_cache()` for a quick
+A/B test or `uninstall_aten_plan_cache()` to restore the original wrappers.

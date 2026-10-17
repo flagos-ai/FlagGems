@@ -1430,6 +1430,13 @@ class LibEntry(triton.KernelInterface):
             for cache in self.kernel_cache:
                 cache.clear()
             self._cpu_cache.clear()
+            self._aten_plan_tuning_epoch = (
+                getattr(self, "_aten_plan_tuning_epoch", 0) + 1
+            )
+            plan_cache = getattr(self, "_aten_launch_plan_cache", None)
+            if plan_cache is not None:
+                plan_cache.clear(reset_stats=False)
+        return changed
 
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
