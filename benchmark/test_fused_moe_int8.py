@@ -19,6 +19,12 @@ import flag_gems
 
 from . import base
 
+if flag_gems.vendor_name == "kunlunxin":
+    pytest.skip(
+        "quantized-weight fused_experts_impl is not executable on kunlunxin",
+        allow_module_level=True,
+    )
+
 try:
     from vllm.model_executor.layers.fused_moe.fused_moe import (
         fused_experts_impl as vllm_fused_experts_impl,
