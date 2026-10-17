@@ -20,10 +20,125 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    tensorview_call,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle.language.dsa import tile_load, tile_store
+
+# ---------------------------------------------------------------------------
+# TensorView fast path (forward only)
+#
+# The generic kernel runs one program per row. Here a PartitionView hands a
+# whole [BLOCK_M, WIDTH] tile to each program as one block DMA, so the row
+# reduction happens over a tile instead of a single row, and the weight vector
+# is fetched once per program through its own 1-D view.
+#
+# The backward pass is untouched: it needs per-row dx and a partial-sum
+# reduction for dw that the existing kernels already express well.
+# ---------------------------------------------------------------------------
+TV_BLOCK_M = 32
+
+if HAS_TENSORVIEW:
+
+    @triton.jit(do_not_specialize=["eps"])
+    def rms_norm_tv_kernel(
+        y,
+        inv_rms,
+        x,
+        weight,
+        num_rows,
+        eps,
+        WIDTH: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_WIDTH: tl.constexpr,
+    ):
+        row_block = tl.program_id(0)
+        rows = row_block * BLOCK_M + tl.arange(0, BLOCK_M)
+
+        x_view = tle_exp.make_partition_view(
+            x,
+            shape=[num_rows, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+        )
+        weight_view = tle_exp.make_partition_view(
+            weight, shape=[WIDTH], strides=[1], tile=[BLOCK_WIDTH]
+        )
+        tile = tile_load(
+            x_view, index=(row_block, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+        scale = tile_load(
+            weight_view, index=(0,), dst_space=tle_exp.language.dsa.ascend.UB
+        ).to(tl.float32)
+
+        rrms = 1.0 / tl.sqrt(tl.sum(tile * tile, axis=1) / WIDTH + eps)
+        normalized = tile * rrms[:, None] * scale[None, :]
+
+        y_view = tle_exp.make_gather_scatter_view(
+            y,
+            shape=[num_rows, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_M, BLOCK_WIDTH],
+            sparse_dim=[0],
+        )
+        tile_store(
+            y_view,
+            value=normalized.to(y.dtype.element_ty),
+            index=(rows.to(tl.int32), 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+        tl.store(inv_rms + rows, rrms, mask=rows < num_rows)
+
+    def _tv_block_m(width):
+        """Rows per tile: the tile and the normalized result are live as fp32."""
+        return tile_rows_for_ub(triton.next_power_of_2(width) * 4, 2, TV_BLOCK_M)
+
+    def _rms_norm_forward_tensorview(x, weight, M, N, eps, block_m=None):
+        block_m = _tv_block_m(N) if block_m is None else block_m
+        logger.debug("GEMS_ASCEND RMS_NORM_FORWARD(TENSORVIEW)")
+        y = torch.empty_like(x)
+        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+        grid = (triton.cdiv(M, block_m),)
+        with torch_device_fn.device(x.device):
+            rms_norm_tv_kernel[grid](
+                y,
+                inv_rms,
+                x,
+                weight,
+                M,
+                eps,
+                WIDTH=N,
+                BLOCK_M=block_m,
+                BLOCK_WIDTH=triton.next_power_of_2(N),
+            )
+        return y, inv_rms
+
+    def _rms_norm_tv_eligible(x, weight, normalized_shape, N):
+        # The view is 2-D [rows, width], so only the last axis may be
+        # normalized and the weight must cover exactly that width. A width that
+        # is not a power of two makes the dense tile wider than the view, which
+        # the padding path handles but costs more than it saves here.
+        return (
+            len(normalized_shape) == 1
+            and x.numel() > 0
+            and x.shape[-1] == N
+            and weight.numel() == N
+            and triton.next_power_of_2(N) == N
+            # The win comes from batching rows into one tile. Once the row is
+            # wide enough that only a single row fits in UB the fast path is
+            # doing the same work as the per-row generic kernel -- measured at
+            # 1.00x for width 8192 -- so there is nothing to gain.
+            and _tv_block_m(N) > 1
+        )
 
 
 @libentry()
@@ -180,11 +295,29 @@ class RmsNorm(torch.autograd.Function):
 
         x = x.contiguous()
         weight = weight.contiguous()
-        y = torch.empty_like(x)
-        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
 
-        with torch_device_fn.device(x.device):
-            rms_norm_kernel[M,](y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE)
+        def _generic_forward(x, weight, M, N, eps):
+            y = torch.empty_like(x)
+            inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+            with torch_device_fn.device(x.device):
+                rms_norm_kernel[M,](
+                    y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE
+                )
+            return y, inv_rms
+
+        if HAS_TENSORVIEW and _rms_norm_tv_eligible(x, weight, normalized_shape, N):
+            y, inv_rms = tensorview_call(
+                "RMS_NORM_FORWARD",
+                _rms_norm_forward_tensorview,
+                _generic_forward,
+                x,
+                weight,
+                M,
+                N,
+                eps,
+            )
+        else:
+            y, inv_rms = _generic_forward(x, weight, M, N, eps)
 
         ctx.save_for_backward(x, inv_rms, weight)
         ctx.normalized_shape = normalized_shape
