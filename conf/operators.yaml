@@ -10219,6 +10219,32 @@ ops:
   - Quantization
   stages:
   - beta: '5.3'
+- id: indices_copy
+  description: 'Returns a fresh non-aliasing copy of the coordinate (indices) tensor
+    of a sparse COO tensor, shaped (sparse_dim, nnz).
+
+    '
+  for:
+  - indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: indices_copy_out
+  description: A variant of `indices_copy()` that writes the indices copy into
+    the `out` tensor.
+  for:
+  - indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: infinitely_differentiable_gelu_backward
   description: The smooth (erf-based) GELU gradient used by higher-order autograd,
     computed as `grad * (0.5 * erf(x / sqrt(2)) + 0.5 + x * exp(-x * x / 2) / sqrt(2

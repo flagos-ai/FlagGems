@@ -1142,6 +1142,8 @@ _FULL_CONFIG = (
     ("index_reduce_", index_reduce_),
     ("index_select", index_select),
     ("index_select_backward", index_select_backward),
+    ("indices_copy", indices_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("indices_copy.out", indices_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "infinitely_differentiable_gelu_backward",
         infinitely_differentiable_gelu_backward,
