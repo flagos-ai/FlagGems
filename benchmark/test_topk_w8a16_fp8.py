@@ -116,7 +116,7 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
             yield x_fp8, x_scale, k, dequant, group_size
 
 
-@pytest.mark.topk_w8a16_fp8
+@pytest.mark.topk_w8a16
 @pytest.mark.skipif(
     getattr(flag_gems, "vendor_name", None)
     not in ("thead", "hygon", "mthreads", "nvidia", "metax"),
@@ -129,7 +129,7 @@ class TopKFp8W8A16Benchmark(base.Benchmark):
 )
 def test_topk_w8a16_fp8(baseline):
     bench = TopKFp8W8A16Benchmark(
-        op_name="topk_w8a16_fp8",
+        op_name="topk_w8a16",
         torch_op=_torch_topk_w8a16 if baseline == "torch" else _gems_bf16_topk,
         dtypes=[torch.bfloat16],
     )

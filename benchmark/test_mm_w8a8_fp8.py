@@ -88,7 +88,7 @@ class MmW8A8Fp8Benchmark(base.BlasBenchmark):
         return args[0].shape[0] * args[0].shape[1] * args[1].shape[1] * 2
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_fp8(monkeypatch):
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires a supported FP8 backend")

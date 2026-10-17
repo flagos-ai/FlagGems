@@ -13358,31 +13358,25 @@ ops:
   - BLAS
   stages:
   - beta: '5.4'
-- id: mm_w8a8_fp8
-  description: Dynamically quantizes BF16 activations and weights to FP8 E4M3, computes
-    their matrix product with FP8 Tensor Cores, and applies FP32 scales.
+- id: mm_w8a8
+  description: 'W8A8 matrix multiplication with FP32 scales. Precisions: FP8 E4M3
+    (dynamically quantizes BF16 activations and weights, FP8 Tensor Cores) and INT8
+    (prequantized INT8 matrices with scalar or per-row/column scales and optional
+    bias; input quantization is external).
+
+    '
   for:
-  - None
+  - mm_w8a8_int8
   labels:
   - NoCPU
+  - non-aten
   - Quantization
   kind:
   - BLAS
   stages:
   - alpha: '5.4'
-- id: mm_w8a8_int8
-  description: Multiplies prequantized INT8 matrices with scalar or per-row/column
-    FP32 scales and optional bias; input quantization is external.
-  for:
-  - mm_w8a8_int8
-  labels:
-  - non-aten
-  kind:
-  - BLAS
-  stages:
-  - alpha: '5.5'
-- id: mm_w8a8_int8_out
-  description: A variant of mm_w8a8_int8 with caller-owned output.
+- id: mm_w8a8_out
+  description: A variant of mm_w8a8 with caller-owned output.
   for:
   - mm_w8a8_int8_out
   labels:
@@ -16406,26 +16400,10 @@ ops:
   stages:
   - stable: '2.0'
   cpp: '4.0'
-- id: rms_norm_w8a16_fp8
+- id: rms_norm_w8a16
   description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
 
-    group-wise FP8 E4M3 weights and per-group scales.
-
-    '
-  for:
-  - None
-  labels:
-  - NoCPU
-  - Normalization
-  - Quantization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
-- id: rms_norm_w8a16_int8
-  description: 'Applies Root Mean Square Layer Normalization to BF16 activations using
-
-    group-wise INT8 weights and per-group scales.
+    group-wise 8-bit weights and per-group scales. Precisions: FP8 E4M3 and INT8.
 
     '
   for:
@@ -20465,7 +20443,7 @@ ops:
   - MoE
   stages:
   - beta: '5.3'
-- id: topk_w8a16_fp8
+- id: topk_w8a16
   description: 'Returns the k largest (or smallest) elements of a group-wise FP8 E4M3FN/E5M2
     tensor along the last dimension, dequantizing with per-group scales.
 

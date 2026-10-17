@@ -70,7 +70,7 @@ class ParallelMmW8A8Int8Benchmark(ParallelBlasBenchmark):
         return 2 * a.shape[0] * a.shape[1] * b.shape[1]
 
 
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8():
     if flag_gems.vendor_name == "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
         pytest.skip("mm_w8a8_int8 is not implemented by the active backend")
@@ -130,7 +130,7 @@ class ParallelMmW8A8Int8THeadBenchmark(ParallelMmW8A8Fp8Benchmark):
         return 2 * a.shape[0] * a.shape[1] * b.shape[1]
 
 
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_thead():
     if flag_gems.vendor_name != "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
         pytest.skip("mm_w8a8_int8 benchmark requires the THead INT8 backend")
