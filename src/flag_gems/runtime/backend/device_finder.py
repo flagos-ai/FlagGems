@@ -58,6 +58,19 @@ class DeviceDetector:
             self.support_bf16 = self.info.bf16_enabled
             self.support_int64 = self.info.int64_enabled
             self.support_fp8 = self.info.fp8_enabled
+            if self.support_fp8 and self.name == "cuda":
+                # fp8 kernels only lower on Ada/Hopper and newer (compute
+                # capability >= 8.9).  Older parts such as A100 (sm80) report
+                # the vendor flag but Triton rejects the fp8 types at compile
+                # time, so the capability must override the static flag.
+                try:
+                    if (
+                        torch.cuda.is_available()
+                        and torch.cuda.get_device_capability() < (8, 9)
+                    ):
+                        self.support_fp8 = False
+                except Exception:
+                    pass
             self.support_complex = self.info.complex_enabled
 
     def get_vendor(self, vendor_name=None) -> tuple:
