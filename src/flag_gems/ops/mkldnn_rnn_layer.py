@@ -20,9 +20,230 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# tle.raw SDNN MMA path (fp16).  tl.dot routes to the SDNN pipeline whose arch-3
+# limit of 64 events a 4-gate LSTM exhausts (eight dots, or two packed dots plus
+# a reshape/split, both hit the cap).  This raw payload drives the SDNN DS+MAC
+# coprocessors directly, as one opaque op per packed GEMM, so the two-matmul LSTM
+# step fits.  Adapted from third_party/xpu/test/tle_raw/matmul/mm_tile.xpu; the
+# second entry (mm_acc) accumulates into the same output so the two GEMMs share a
+# single uni_sram buffer (two raw outputs cannot be elementwise-added).
+# The precompiled payload ships in payload/obj/mkldnn_rnn_layer.o (see _MMA_OBJ_FILE).
+# ---------------------------------------------------------------------------
+try:
+    import triton.experimental.tle as _tle
+
+    _HAS_TLE_RAW = hasattr(_tle, "raw")
+except Exception:  # pragma: no cover - TLE optional
+    _tle = None
+    _HAS_TLE_RAW = False
+
+_MMA_OBJ_FILE = "../runtime/backend/_kunlunxin/payload/obj/mkldnn_rnn_layer.o"
+
+if _HAS_TLE_RAW:
+    try:
+
+        @_tle.raw.dialect("xpu3", object=_MMA_OBJ_FILE, arch=3)
+        def mm_tile(c, a, b, dtype): ...
+
+        @_tle.raw.dialect("xpu3", object=_MMA_OBJ_FILE, arch=3)
+        def mm_tile_acc(c, a, b, dtype): ...
+
+    except Exception:  # pragma: no cover - triton without object= support
+        _HAS_TLE_RAW = False
+
+
+@triton.jit(do_not_specialize=["dtype_code"])
+def _lstm_mma_kernel(
+    x_ptr,
+    h_prev_ptr,
+    w_ih_ptr,
+    w_hh_ptr,
+    b_ih_ptr,
+    b_hh_ptr,
+    gates_ptr,
+    dtype_code,
+    BLOCK_B: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    b_offs = tl.arange(0, BLOCK_B)
+    k_ids = tl.arange(0, BLOCK_K)
+    h_ids = tl.arange(0, BLOCK_H)
+    j4 = tl.arange(0, 4 * BLOCK_H)
+    x = tl.load(x_ptr + b_offs[:, None] * BLOCK_K + k_ids[None, :])
+    W_ih = tl.load(w_ih_ptr + k_ids[:, None] * (4 * BLOCK_H) + j4[None, :])
+    W_hh = tl.load(w_hh_ptr + h_ids[:, None] * (4 * BLOCK_H) + j4[None, :])
+    h_prev = tl.load(h_prev_ptr + b_offs[:, None] * BLOCK_H + h_ids[None, :]).to(
+        W_ih.dtype
+    )
+    bias = tl.load(b_ih_ptr + j4).to(tl.float32) + tl.load(b_hh_ptr + j4).to(tl.float32)
+    c = tl.zeros((BLOCK_B, 4 * BLOCK_H), dtype=tl.float32)
+    c = _tle.raw.call(mm_tile, c, (x, W_ih, dtype_code))
+    c = _tle.raw.call(mm_tile_acc, c, (h_prev, W_hh, dtype_code))
+    gates = c + bias[None, :]
+    tl.store(gates_ptr + b_offs[:, None] * (4 * BLOCK_H) + j4[None, :], gates)
+
+
+@triton.jit
+def _lstm_act_kernel(
+    gates_ptr,
+    c_prev_ptr,
+    h_next_ptr,
+    c_next_ptr,
+    out_ptr,
+    t,
+    B,
+    H,
+    s_out_t,
+    s_out_b,
+    s_out_h,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    b_offs = tl.arange(0, BLOCK_B)
+    h_ids = tl.arange(0, BLOCK_H)
+    bm = b_offs < B
+    hm = h_ids < H
+    c_prev = tl.load(c_prev_ptr + b_offs[:, None] * BLOCK_H + h_ids[None, :]).to(
+        tl.float32
+    )
+    i_pre = tl.load(
+        gates_ptr + b_offs[:, None] * (4 * BLOCK_H) + h_ids[None, :] * 4 + 0
+    )
+    f_pre = tl.load(
+        gates_ptr + b_offs[:, None] * (4 * BLOCK_H) + h_ids[None, :] * 4 + 1
+    )
+    g_pre = tl.load(
+        gates_ptr + b_offs[:, None] * (4 * BLOCK_H) + h_ids[None, :] * 4 + 2
+    )
+    o_pre = tl.load(
+        gates_ptr + b_offs[:, None] * (4 * BLOCK_H) + h_ids[None, :] * 4 + 3
+    )
+    i_g = tl.sigmoid(i_pre)
+    f_g = tl.sigmoid(f_pre)
+    g_g = tl_extra_shim.tanh(g_pre)
+    o_g = tl.sigmoid(o_pre)
+    c_next = f_g * c_prev + i_g * g_g
+    h_next = o_g * tl_extra_shim.tanh(c_next)
+    tl.store(h_next_ptr + b_offs[:, None] * BLOCK_H + h_ids[None, :], h_next)
+    tl.store(c_next_ptr + b_offs[:, None] * BLOCK_H + h_ids[None, :], c_next)
+    tl.store(
+        out_ptr + t * s_out_t + b_offs[:, None] * s_out_b + h_ids[None, :] * s_out_h,
+        h_next,
+        mask=bm[:, None] & hm[None, :],
+    )
+
+
+def _interleave_bias(b, hidden_size):
+    """Re-pack a packed (4H,) gate vector into j = h*4 + gate order."""
+    return b.reshape(4, hidden_size).permute(1, 0).reshape(4 * hidden_size)
+
+
+def _mkldnn_rnn_layer_forward_mma(
+    input, w_ih, w_hh, b_ih, b_hh, hx, cx, reverse, hidden_size, has_biases
+):
+    """Launch the tle.raw SDNN-MMA LSTM (fp16/fp32 tensor cores; KL3 lacks bf16 MMA)."""
+    seq_len, batch_size, input_size = input.shape
+    dtype_code = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}[input.dtype]
+
+    BLOCK_B = max(16, triton.next_power_of_2(batch_size))
+    BLOCK_K = max(16, triton.next_power_of_2(input_size))
+    BLOCK_H = max(16, triton.next_power_of_2(hidden_size))
+
+    # Pre-transpose + interleave + pad the weights to the constexpr block sizes
+    # (the raw call needs a clean, constexpr-strided layout).
+    W_ih = (
+        w_ih.reshape(4, hidden_size, input_size)
+        .permute(2, 1, 0)
+        .reshape(input_size, 4 * hidden_size)
+        .contiguous()
+    )
+    W_ih_pad = torch.zeros(BLOCK_K, 4 * BLOCK_H, dtype=input.dtype, device=input.device)
+    W_ih_pad[:input_size, : 4 * hidden_size] = W_ih
+    W_hh = (
+        w_hh.reshape(4, hidden_size, hidden_size)
+        .permute(2, 1, 0)
+        .reshape(hidden_size, 4 * hidden_size)
+        .contiguous()
+    )
+    W_hh_pad = torch.zeros(BLOCK_H, 4 * BLOCK_H, dtype=input.dtype, device=input.device)
+    W_hh_pad[:hidden_size, : 4 * hidden_size] = W_hh
+
+    if has_biases:
+        b_ih_i = torch.zeros(4 * BLOCK_H, dtype=input.dtype, device=input.device)
+        b_ih_i[: 4 * hidden_size] = _interleave_bias(b_ih, hidden_size)
+        b_hh_i = torch.zeros(4 * BLOCK_H, dtype=input.dtype, device=input.device)
+        b_hh_i[: 4 * hidden_size] = _interleave_bias(b_hh, hidden_size)
+    else:
+        b_ih_i = torch.zeros(4 * BLOCK_H, dtype=input.dtype, device=input.device)
+        b_hh_i = torch.zeros(4 * BLOCK_H, dtype=input.dtype, device=input.device)
+
+    x_pad = torch.zeros(
+        seq_len, BLOCK_B, BLOCK_K, dtype=input.dtype, device=input.device
+    )
+    x_pad[:, :batch_size, :input_size] = input
+
+    # Recurrent state buffers in fp32 (matches the fp32 reference accumulation);
+    # only the MMA operands are downcast to fp16 for the tensor cores.
+    h_work = torch.zeros(BLOCK_B, BLOCK_H, dtype=torch.float32, device=input.device)
+    h_work[:batch_size, :hidden_size] = hx
+    c_work = torch.zeros(BLOCK_B, BLOCK_H, dtype=torch.float32, device=input.device)
+    c_work[:batch_size, :hidden_size] = cx
+    h_next = torch.empty_like(h_work)
+    c_next = torch.empty_like(c_work)
+    gates = torch.empty(BLOCK_B, 4 * BLOCK_H, dtype=torch.float32, device=input.device)
+
+    output = torch.empty(
+        (seq_len, batch_size, hidden_size), dtype=input.dtype, device=input.device
+    )
+
+    with runtime.torch_device_fn.device(input.device):
+        for step in range(seq_len):
+            t = seq_len - 1 - step if reverse else step
+            _lstm_mma_kernel[(1,)](
+                x_pad[t],
+                h_work,
+                W_ih_pad,
+                W_hh_pad,
+                b_ih_i,
+                b_hh_i,
+                gates,
+                dtype_code,
+                BLOCK_B=BLOCK_B,
+                BLOCK_K=BLOCK_K,
+                BLOCK_H=BLOCK_H,
+                is_sdnn=True,
+                num_stages=2,
+            )
+            _lstm_act_kernel[(1,)](
+                gates,
+                c_work,
+                h_next,
+                c_next,
+                output,
+                t,
+                batch_size,
+                hidden_size,
+                output.stride(0),
+                output.stride(1),
+                output.stride(2),
+                BLOCK_B=BLOCK_B,
+                BLOCK_H=BLOCK_H,
+            )
+            h_work, h_next = h_next, h_work
+            c_work, c_next = c_next, c_work
+
+    return (
+        output,
+        h_work[:batch_size, :hidden_size].to(input.dtype),
+        c_work[:batch_size, :hidden_size].to(input.dtype),
+    )
 
 
 @libentry()
@@ -33,15 +254,13 @@ def mkldnn_rnn_layer_forward_kernel(
     w_hh_ptr,
     b_ih_ptr,
     b_hh_ptr,
-    hx_ptr,
-    cx_ptr,
+    h_prev_ptr,
+    c_prev_ptr,
     output_ptr,
-    hy_ptr,
-    cy_ptr,
-    seq_len,
+    h_next_ptr,
+    c_next_ptr,
+    seq_idx,
     batch_size,
-    input_size,
-    hidden_size,
     s_in_t,
     s_in_b,
     s_in_k,
@@ -51,156 +270,190 @@ def mkldnn_rnn_layer_forward_kernel(
     s_whh_c,
     s_bih,
     s_bhh,
-    s_hx_b,
-    s_hx_h,
-    s_cx_b,
-    s_cx_h,
     s_out_t,
     s_out_b,
     s_out_h,
-    s_hy_b,
-    s_hy_h,
-    s_cy_b,
-    s_cy_h,
-    REVERSE: tl.constexpr,
+    input_size,
+    hidden_size,
+    BLOCK_B: tl.constexpr,
     BLOCK_H: tl.constexpr,
-    BLOCK_IN: tl.constexpr,
 ):
     """Single-layer unidirectional LSTM forward (oneDNN mkldnn_rnn_layer, mode=2).
 
-    Grid: (batch_size,) — one program per batch element, all time steps run
-    sequentially inside the program. All accumulation is done in fp32 to match
-    the oneDNN reference regardless of the input dtype.
+    Correctness-first outer-product kernel: the two GEMVs (``W_ih @ x`` and
+    ``W_hh @ h_prev``) are accumulated as outer products ``acc[b,h] += w[h] *
+    x[b]`` over the feature dim, which avoids ``tl.dot`` entirely. ``tl.dot``
+    routes to the SDNN pipeline whose arch-3 limit of 64 events a 4-gate LSTM
+    exhausts (eight dots, or two packed dots plus a split, both hit the cap on
+    KL3). Keeping everything 2-D ([BLOCK_B, BLOCK_H]) also keeps
+    TritonXPUCoreTiling's encodings consistent; broadcasting a 1-D state
+    against 2-D weight tiles is the failure mode this replaces.
 
     Gate layout follows PyTorch/oneDNN packing i, f, g, o:
-      i = sigmoid(W_i x + U_i h + b_i)   (input gate)
-      f = sigmoid(W_f x + U_f h + b_f)   (forget gate)
-      g = tanh   (W_g x + U_g h + b_g)   (cell candidate)
-      o = sigmoid(W_o x + U_o h + b_o)   (output gate)
-      c' = f * c + i * g
-      h' = o * tanh(c')
+      i = sigmoid(W_i x + U_i h + b_i),  f = sigmoid(W_f x + U_f h + b_f)
+      g = tanh   (W_g x + U_g h + b_g),  o = sigmoid(W_o x + U_o h + b_o)
+      c' = f * c + i * g,                h' = o * tanh(c')
     """
-    b = tl.program_id(0)
-    if b >= batch_size:
-        return
+    b_offs = tl.program_id(0) * BLOCK_B + tl.arange(0, BLOCK_B)
+    b_mask = b_offs < batch_size
 
     h_ids = tl.arange(0, BLOCK_H)
-    in_ids = tl.arange(0, BLOCK_IN)
     hmask = h_ids < hidden_size
-    inmask = in_ids < input_size
 
-    hstate = tl.load(hx_ptr + b * s_hx_b + h_ids * s_hx_h, mask=hmask, other=0.0).to(
+    b_cols = b_offs[:, None]  # [BLOCK_B, 1]
+    h_cols = h_ids[None, :]  # [1, BLOCK_H]
+
+    cstate = tl.load(
+        c_prev_ptr + b_cols * hidden_size + h_cols,
+        mask=b_mask[:, None] & hmask[None, :],
+        other=0.0,
+    ).to(
         tl.float32
-    )
-    cstate = tl.load(cx_ptr + b * s_cx_b + h_ids * s_cx_h, mask=hmask, other=0.0).to(
-        tl.float32
-    )
+    )  # [BLOCK_B, BLOCK_H]
 
-    # Gate row offsets into the packed (4H, *) weight/bias tensors.
-    r0 = 0 * hidden_size + h_ids
-    r1 = 1 * hidden_size + h_ids
-    r2 = 2 * hidden_size + h_ids
-    r3 = 3 * hidden_size + h_ids
+    i_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    f_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    g_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    o_acc = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
 
-    # Bias (i, f, g, o) is time-invariant — load once outside the time loop.
-    b0 = tl.load(b_ih_ptr + r0 * s_bih, mask=hmask, other=0.0).to(tl.float32) + tl.load(
-        b_hh_ptr + r0 * s_bhh, mask=hmask, other=0.0
-    ).to(tl.float32)
-    b1 = tl.load(b_ih_ptr + r1 * s_bih, mask=hmask, other=0.0).to(tl.float32) + tl.load(
-        b_hh_ptr + r1 * s_bhh, mask=hmask, other=0.0
-    ).to(tl.float32)
-    b2 = tl.load(b_ih_ptr + r2 * s_bih, mask=hmask, other=0.0).to(tl.float32) + tl.load(
-        b_hh_ptr + r2 * s_bhh, mask=hmask, other=0.0
-    ).to(tl.float32)
-    b3 = tl.load(b_ih_ptr + r3 * s_bih, mask=hmask, other=0.0).to(tl.float32) + tl.load(
-        b_hh_ptr + r3 * s_bhh, mask=hmask, other=0.0
-    ).to(tl.float32)
+    # Input matmul W_ih @ x as an outer-product accumulation over the input
+    # feature dim. Avoids tl.dot entirely: tl.dot routes to the SDNN pipeline,
+    # whose arch-3 limit of 64 events a 4-gate LSTM exhausts. The outer-product
+    # path stays in the regular TritonXPU pipeline (no MMA events).
+    for k in range(0, input_size):
+        x_k = tl.load(
+            input_ptr + seq_idx * s_in_t + b_cols * s_in_b + k * s_in_k,
+            mask=b_mask[:, None],
+            other=0.0,
+        ).to(
+            tl.float32
+        )  # [BLOCK_B, 1]
 
-    # Input-to-hidden weight tiles (4H, IN) are time-invariant too.
-    w0 = tl.load(
-        w_ih_ptr + r0[:, None] * s_wih_r + in_ids[None, :] * s_wih_c,
-        mask=hmask[:, None] & inmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    w1 = tl.load(
-        w_ih_ptr + r1[:, None] * s_wih_r + in_ids[None, :] * s_wih_c,
-        mask=hmask[:, None] & inmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    w2 = tl.load(
-        w_ih_ptr + r2[:, None] * s_wih_r + in_ids[None, :] * s_wih_c,
-        mask=hmask[:, None] & inmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    w3 = tl.load(
-        w_ih_ptr + r3[:, None] * s_wih_r + in_ids[None, :] * s_wih_c,
-        mask=hmask[:, None] & inmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-
-    # Hidden-to-hidden weight tiles (4H, H).
-    wh0 = tl.load(
-        w_hh_ptr + r0[:, None] * s_whh_r + h_ids[None, :] * s_whh_c,
-        mask=hmask[:, None] & hmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    wh1 = tl.load(
-        w_hh_ptr + r1[:, None] * s_whh_r + h_ids[None, :] * s_whh_c,
-        mask=hmask[:, None] & hmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    wh2 = tl.load(
-        w_hh_ptr + r2[:, None] * s_whh_r + h_ids[None, :] * s_whh_c,
-        mask=hmask[:, None] & hmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    wh3 = tl.load(
-        w_hh_ptr + r3[:, None] * s_whh_r + h_ids[None, :] * s_whh_c,
-        mask=hmask[:, None] & hmask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-
-    for step in range(0, seq_len):
-        # reverse=True consumes the sequence back-to-front (used by the
-        # reverse direction of a bidirectional layer).
-        t = seq_len - 1 - step if REVERSE else step
-
-        x = tl.load(
-            input_ptr + t * s_in_t + b * s_in_b + in_ids * s_in_k,
-            mask=inmask,
+        w_i = tl.load(
+            w_ih_ptr + (0 * hidden_size + h_ids) * s_wih_r + k * s_wih_c,
+            mask=hmask,
+            other=0.0,
+        ).to(
+            tl.float32
+        )  # [BLOCK_H]
+        w_f = tl.load(
+            w_ih_ptr + (1 * hidden_size + h_ids) * s_wih_r + k * s_wih_c,
+            mask=hmask,
+            other=0.0,
+        ).to(tl.float32)
+        w_g = tl.load(
+            w_ih_ptr + (2 * hidden_size + h_ids) * s_wih_r + k * s_wih_c,
+            mask=hmask,
+            other=0.0,
+        ).to(tl.float32)
+        w_o = tl.load(
+            w_ih_ptr + (3 * hidden_size + h_ids) * s_wih_r + k * s_wih_c,
+            mask=hmask,
             other=0.0,
         ).to(tl.float32)
 
-        pre0 = (
-            tl.sum(w0 * x[None, :], axis=1) + tl.sum(wh0 * hstate[None, :], axis=1) + b0
-        )
-        pre1 = (
-            tl.sum(w1 * x[None, :], axis=1) + tl.sum(wh1 * hstate[None, :], axis=1) + b1
-        )
-        pre2 = (
-            tl.sum(w2 * x[None, :], axis=1) + tl.sum(wh2 * hstate[None, :], axis=1) + b2
-        )
-        pre3 = (
-            tl.sum(w3 * x[None, :], axis=1) + tl.sum(wh3 * hstate[None, :], axis=1) + b3
-        )
+        i_acc += w_i[None, :] * x_k
+        f_acc += w_f[None, :] * x_k
+        g_acc += w_g[None, :] * x_k
+        o_acc += w_o[None, :] * x_k
 
-        i_gate = tl.sigmoid(pre0)
-        f_gate = tl.sigmoid(pre1)
-        # tanh(x) == 2 * sigmoid(2x) - 1 — avoids a dedicated tl.tanh intrinsic.
-        g_gate = 2.0 * tl.sigmoid(2.0 * pre2) - 1.0
-        o_gate = tl.sigmoid(pre3)
+    # Hidden matmul W_hh @ h_prev, same outer-product accumulation.
+    for k in range(0, hidden_size):
+        h_k = tl.load(
+            h_prev_ptr + b_cols * hidden_size + k,
+            mask=b_mask[:, None],
+            other=0.0,
+        ).to(
+            tl.float32
+        )  # [BLOCK_B, 1]
 
-        cstate = f_gate * cstate + i_gate * g_gate
-        hstate = o_gate * (2.0 * tl.sigmoid(2.0 * cstate) - 1.0)
-
-        tl.store(
-            output_ptr + t * s_out_t + b * s_out_b + h_ids * s_out_h,
-            hstate,
+        wh_i = tl.load(
+            w_hh_ptr + (0 * hidden_size + h_ids) * s_whh_r + k * s_whh_c,
             mask=hmask,
-        )
+            other=0.0,
+        ).to(tl.float32)
+        wh_f = tl.load(
+            w_hh_ptr + (1 * hidden_size + h_ids) * s_whh_r + k * s_whh_c,
+            mask=hmask,
+            other=0.0,
+        ).to(tl.float32)
+        wh_g = tl.load(
+            w_hh_ptr + (2 * hidden_size + h_ids) * s_whh_r + k * s_whh_c,
+            mask=hmask,
+            other=0.0,
+        ).to(tl.float32)
+        wh_o = tl.load(
+            w_hh_ptr + (3 * hidden_size + h_ids) * s_whh_r + k * s_whh_c,
+            mask=hmask,
+            other=0.0,
+        ).to(tl.float32)
 
-    tl.store(hy_ptr + b * s_hy_b + h_ids * s_hy_h, hstate, mask=hmask)
-    tl.store(cy_ptr + b * s_cy_b + h_ids * s_cy_h, cstate, mask=hmask)
+        i_acc += wh_i[None, :] * h_k
+        f_acc += wh_f[None, :] * h_k
+        g_acc += wh_g[None, :] * h_k
+        o_acc += wh_o[None, :] * h_k
+
+    # Bias [BLOCK_H] per gate, from both input and hidden bias vectors (i, f,
+    # g, o). oneDNN applies b_ih + b_hh once; adding the two here keeps the
+    # whole accumulation inside the kernel (no host-side torch.add).
+    bih_i = tl.load(
+        b_ih_ptr + (0 * hidden_size + h_ids) * s_bih, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bih_f = tl.load(
+        b_ih_ptr + (1 * hidden_size + h_ids) * s_bih, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bih_g = tl.load(
+        b_ih_ptr + (2 * hidden_size + h_ids) * s_bih, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bih_o = tl.load(
+        b_ih_ptr + (3 * hidden_size + h_ids) * s_bih, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bhh_i = tl.load(
+        b_hh_ptr + (0 * hidden_size + h_ids) * s_bhh, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bhh_f = tl.load(
+        b_hh_ptr + (1 * hidden_size + h_ids) * s_bhh, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bhh_g = tl.load(
+        b_hh_ptr + (2 * hidden_size + h_ids) * s_bhh, mask=hmask, other=0.0
+    ).to(tl.float32)
+    bhh_o = tl.load(
+        b_hh_ptr + (3 * hidden_size + h_ids) * s_bhh, mask=hmask, other=0.0
+    ).to(tl.float32)
+
+    i_acc += (bih_i + bhh_i)[None, :]
+    f_acc += (bih_f + bhh_f)[None, :]
+    g_acc += (bih_g + bhh_g)[None, :]
+    o_acc += (bih_o + bhh_o)[None, :]
+
+    # Activations: sigmoid via tl.sigmoid and tanh via the libdevice shim. In
+    # this all-2D kernel the scalar constants no longer CSE with the 1-D weight
+    # mask fills, so the standard tl.sigmoid (whose `-x` needs a bare 0.0) is
+    # safe again; it also avoids the fp64 log2e constant that tl.exp2 would
+    # otherwise promote the fp32 accumulator to on this fp64-less device.
+    i_gate = tl.sigmoid(i_acc)
+    f_gate = tl.sigmoid(f_acc)
+    g_gate = tl_extra_shim.tanh(g_acc)
+    o_gate = tl.sigmoid(o_acc)
+
+    c_next = f_gate * cstate + i_gate * g_gate
+    h_next = o_gate * tl_extra_shim.tanh(c_next)
+
+    tl.store(
+        output_ptr + seq_idx * s_out_t + b_cols * s_out_b + h_cols * s_out_h,
+        h_next,
+        mask=b_mask[:, None] & hmask[None, :],
+    )
+    tl.store(
+        h_next_ptr + b_cols * hidden_size + h_cols,
+        h_next,
+        mask=b_mask[:, None] & hmask[None, :],
+    )
+    tl.store(
+        c_next_ptr + b_cols * hidden_size + h_cols,
+        c_next,
+        mask=b_mask[:, None] & hmask[None, :],
+    )
 
 
 def _mkldnn_rnn_layer_forward(
@@ -216,6 +469,31 @@ def _mkldnn_rnn_layer_forward(
     has_biases,
 ):
     """Launch the Triton LSTM kernel for a single unidirectional layer."""
+    if _HAS_TLE_RAW and input.dtype in (torch.float16, torch.bfloat16, torch.float32):
+        if input.dtype == torch.bfloat16:
+            # KL3 has no native bf16 MMA; upcast to fp32 (lossless) and run the
+            # fp32 tensor-core path, then cast the results back to bf16.
+            output, hy, cy = _mkldnn_rnn_layer_forward_mma(
+                input.float(),
+                w_ih.float(),
+                w_hh.float(),
+                b_ih.float() if b_ih is not None else None,
+                b_hh.float() if b_hh is not None else None,
+                hx.float(),
+                cx.float(),
+                reverse,
+                hidden_size,
+                has_biases,
+            )
+            return (
+                output.to(torch.bfloat16),
+                hy.to(torch.bfloat16),
+                cy.to(torch.bfloat16),
+            )
+        return _mkldnn_rnn_layer_forward_mma(
+            input, w_ih, w_hh, b_ih, b_hh, hx, cx, reverse, hidden_size, has_biases
+        )
+
     seq_len, batch_size, input_size = input.shape
 
     input = input.contiguous()
@@ -235,11 +513,15 @@ def _mkldnn_rnn_layer_forward(
     output = torch.empty(
         (seq_len, batch_size, hidden_size), dtype=input.dtype, device=input.device
     )
-    hy = torch.empty((batch_size, hidden_size), dtype=input.dtype, device=input.device)
-    cy = torch.empty((batch_size, hidden_size), dtype=input.dtype, device=input.device)
 
-    BLOCK_H = triton.next_power_of_2(hidden_size)
-    BLOCK_IN = triton.next_power_of_2(input_size)
+    # Ping-pong work buffers for the recurrent state (contiguous [batch, H]).
+    h_work = hx.clone()
+    c_work = cx.clone()
+    h_next = torch.empty_like(h_work)
+    c_next = torch.empty_like(c_work)
+
+    BLOCK_B = max(16, triton.next_power_of_2(batch_size))
+    BLOCK_H = max(16, triton.next_power_of_2(hidden_size))
 
     # Warp count scales with hidden width: wider gate vectors profit from more
     # warps, while narrow ones are launch-bound and prefer fewer.
@@ -250,50 +532,45 @@ def _mkldnn_rnn_layer_forward(
     else:
         num_warps = 2
 
-    grid = (batch_size,)
+    grid = (triton.cdiv(batch_size, BLOCK_B),)
     with runtime.torch_device_fn.device(input.device):
-        mkldnn_rnn_layer_forward_kernel[grid](
-            input,
-            w_ih,
-            w_hh,
-            b_ih,
-            b_hh,
-            hx,
-            cx,
-            output,
-            hy,
-            cy,
-            seq_len,
-            batch_size,
-            input_size,
-            hidden_size,
-            input.stride(0),
-            input.stride(1),
-            input.stride(2),
-            w_ih.stride(0),
-            w_ih.stride(1),
-            w_hh.stride(0),
-            w_hh.stride(1),
-            b_ih.stride(0),
-            b_hh.stride(0),
-            hx.stride(0),
-            hx.stride(1),
-            cx.stride(0),
-            cx.stride(1),
-            output.stride(0),
-            output.stride(1),
-            output.stride(2),
-            hy.stride(0),
-            hy.stride(1),
-            cy.stride(0),
-            cy.stride(1),
-            REVERSE=reverse,
-            BLOCK_H=BLOCK_H,
-            BLOCK_IN=BLOCK_IN,
-            num_warps=num_warps,
-        )
+        for step in range(seq_len):
+            seq_idx = seq_len - 1 - step if reverse else step
+            mkldnn_rnn_layer_forward_kernel[grid](
+                input,
+                w_ih,
+                w_hh,
+                b_ih,
+                b_hh,
+                h_work,
+                c_work,
+                output,
+                h_next,
+                c_next,
+                seq_idx,
+                batch_size,
+                input.stride(0),
+                input.stride(1),
+                input.stride(2),
+                w_ih.stride(0),
+                w_ih.stride(1),
+                w_hh.stride(0),
+                w_hh.stride(1),
+                b_ih.stride(0),
+                b_hh.stride(0),
+                output.stride(0),
+                output.stride(1),
+                output.stride(2),
+                input_size=input_size,
+                hidden_size=hidden_size,
+                BLOCK_B=BLOCK_B,
+                BLOCK_H=BLOCK_H,
+                num_warps=num_warps,
+            )
+            h_work, h_next = h_next, h_work
+            c_work, c_next = c_next, c_work
 
-    return output, hy, cy
+    return output, h_work, c_work
 
 
 class MkldnnRnnLayerFunction(torch.autograd.Function):
