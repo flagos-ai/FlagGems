@@ -376,6 +376,34 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _values_copy
+  description: 'Returns a fresh non-aliasing copy of the values tensor of a
+sparse COO tensor, shaped (nnz,) + dense_shape.
+
+    '
+  for:
+  - _values_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _values_copy_out
+  description: 'Returns a fresh non-aliasing copy of the values tensor of a
+sparse COO tensor, shaped (nnz,) + dense_shape.
+
+    '
+  for:
+  - _values_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _weight_norm
   description: 'Reparameterizes a module''s weight tensor by decoupling its magnitude
     (g)
