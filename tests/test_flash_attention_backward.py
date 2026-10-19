@@ -115,7 +115,7 @@ def cudnn_attn_forward_native(
 
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
     lse = lse_4d.squeeze(-1).float()
-    return out, lse, philox_seed, philox_offset
+    return out, lse, lse_4d, philox_seed, philox_offset
 
 
 def efficient_attn_forward_native(
@@ -387,7 +387,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
             * 0.1
         )
 
-    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+    out, lse, lse_4d, philox_seed, philox_offset = cudnn_attn_forward_native(
         Q,
         K,
         V,
@@ -407,7 +407,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
     ref_K_bhsd = utils.to_reference(K_bhsd)
     ref_V_bhsd = utils.to_reference(V_bhsd)
     ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
+    ref_lse_4d = utils.to_reference(lse_4d)
 
     (
         ref_dQ_bhsd,
@@ -419,7 +419,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
         ref_K_bhsd,
         ref_V_bhsd,
         ref_out_bhsd,
-        ref_lse,
+        ref_lse_4d,
         philox_seed,
         philox_offset,
         attn_bias,

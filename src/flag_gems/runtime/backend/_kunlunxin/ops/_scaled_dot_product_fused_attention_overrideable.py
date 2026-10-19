@@ -176,8 +176,8 @@ def _scaled_dot_product_fused_attention_overrideable(
     # into a fresh buffer and hand out one view per output.
     metadata = _metadata_template(batch_size, seq_q, seq_k, query.device).clone()
     cum_seq_q = metadata[:batch_size].view(torch.int32).view(batch_size, 2)
-    cum_seq_k = metadata[batch_size : 2 * batch_size].view(torch.int32).view(
-        batch_size, 2
+    cum_seq_k = (
+        metadata[batch_size : 2 * batch_size].view(torch.int32).view(batch_size, 2)
     )
     philox_seed = metadata[2 * batch_size : 2 * batch_size + 1]
     philox_offset = metadata[2 * batch_size + 1 : 2 * batch_size + 2]

@@ -302,6 +302,12 @@ def test__flash_attention_forward(
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
+    elif vendor_name == "kunlunxin":
+        ref_out, ref_lse = dense_flash_attention_ref(
+            ref_q.cpu(), ref_k.cpu(), ref_v.cpu(), scale, is_causal
+        )
+        ref_out = ref_out.to(q.device)
+        ref_lse = ref_lse.to(q.device)
     else:
         ref_result = torch.ops.aten._flash_attention_forward.default(
             ref_q,
