@@ -39,6 +39,20 @@ class SwapaxesInplaceBenchmark(base.Benchmark):
 
     DEFAULT_SHAPE_DESC = "input shape"
 
+    def get_latency(self, op, inp, *args, **kwargs):
+        # Metadata-only ops need host timing, not GPU events or payload copies.
+        reference_only = getattr(base.Config, "reference_only", False)
+        if not reference_only and base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError("Metadata benchmarks require host timing, not CUDA graphs")
+        warmup, repeat = (0, 1) if reference_only else (5, 100)
+        # Prepare independent Tensor metadata before the measured batch.
+        inputs = iter([inp.detach() for _ in range(warmup + repeat)])
+        return base.measure_calls(
+            lambda: op(next(inputs), *args, **kwargs),
+            warmup_calls=warmup,
+            repeat_calls=repeat,
+        )
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = SWAPAXES_SHAPES
 
