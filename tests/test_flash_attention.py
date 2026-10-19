@@ -128,13 +128,15 @@ def _flash_fwd_device_ref(
     stack.  Masks follow this file's own ``construct_local_mask`` /
     ``attention_ref`` semantics.
     """
-    B, Sq, H, D = q.shape
-    Sk = k.shape[1]
-    Hk = k.shape[2]
+    # ``torch_flash_fwd`` transposes to (B, H, S, D) before dispatching, so the
+    # tensors arriving here are already in that layout.
+    B, H, Sq, D = q.shape
+    Sk = k.shape[-2]
+    Hk = k.shape[1]
     g = H // Hk
     qf = q.float()
-    kf = k.float().repeat_interleave(g, dim=2)
-    vf = v.float().repeat_interleave(g, dim=2)
+    kf = k.float().repeat_interleave(g, dim=1)
+    vf = v.float().repeat_interleave(g, dim=1)
     wl = -1 if window_size_left is None else window_size_left
     wr = -1 if window_size_right is None else window_size_right
     row = torch.arange(Sq, device=q.device)[:, None]
@@ -149,11 +151,11 @@ def _flash_fwd_device_ref(
     elif wl >= 0:
         hi = torch.minimum(row + off + wr, torch.tensor(Sk, device=q.device))
         valid = valid & (col <= hi) & (col >= (row + off - wl))
-    out = torch.empty((B, Sq, H, D), dtype=torch.float32, device=q.device)
+    out = torch.empty((B, H, Sq, D), dtype=torch.float32, device=q.device)
     lse = torch.empty((B, H, Sq), dtype=torch.float32, device=q.device)
     for b in range(B):
         for h in range(H):
-            scores = (qf[b, :, h, :] @ kf[b, :, h, :].t()) * scale
+            scores = (qf[b, h] @ kf[b, h].t()) * scale
             scores = scores.masked_fill(~valid, float("-inf"))
             m = scores.max(dim=-1, keepdim=True).values
             # A fully masked row (possible for a window outside its band) has
@@ -163,7 +165,7 @@ def _flash_fwd_device_ref(
             p = torch.exp(scores - m_safe)
             denom = p.sum(dim=-1, keepdim=True)
             lse[b, h] = (m_safe + torch.log(denom)).squeeze(-1)
-            out[b, :, h, :] = (p / denom.clamp(min=1e-30)) @ vf[b, :, h, :]
+            out[b, h] = (p / denom.clamp(min=1e-30)) @ vf[b, h]
     return out.to(q.dtype), lse
 
 
