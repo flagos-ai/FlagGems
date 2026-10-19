@@ -153,8 +153,8 @@ def cudnn_attn_forward_native(
     )
     out = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
+    philox_seed = results[6]
+    philox_offset = results[7]
 
     lse = lse_4d.squeeze(-1).float()
     return out, lse, philox_seed, philox_offset
@@ -714,7 +714,7 @@ def _cudnn_attn_bwd_aten(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse,
+        lse.unsqueeze(-1),
         philox_seed,
         philox_offset,
         attn_bias,
