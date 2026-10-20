@@ -137,12 +137,21 @@ def make_input(dtype, shape, value_range):
         high = min(high, int(dtype_max))
         low = min(low, high)
 
-    if low == high:
-        return torch.full(shape, low, device=flag_gems.device, dtype=dtype)
-
-    return torch.testing.make_tensor(
-        shape, dtype=dtype, device=flag_gems.device, low=low, high=high
+    # Ascend and Kunlunxin can store and transfer FP8, but their device cast is
+    # unavailable on some stacks. Encode the payload on CPU, keeping the
+    # operator input on its original target device with the requested dtype.
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
     )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    if low == high:
+        result = torch.full(shape, low, device=creation_device, dtype=dtype)
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device=creation_device, low=low, high=high
+        )
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
 
 
 _FP8_DTYPES = {
@@ -334,9 +343,16 @@ def make_special_input(dtype, scenario):
         "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
         "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
     }
-    return torch.tensor(
-        payloads[scenario], device=flag_gems.device, dtype=torch.float32
+    # Like make_input, encode backend FP8 on CPU before transferring its bytes.
+    make_fp8_on_cpu = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    )
+    creation_device = "cpu" if make_fp8_on_cpu else flag_gems.device
+    result = torch.tensor(
+        payloads[scenario], device=creation_device, dtype=torch.float32
     ).to(dtype)
+    return result.to(flag_gems.device) if make_fp8_on_cpu else result
 
 
 def is_extreme_range(value_range):
