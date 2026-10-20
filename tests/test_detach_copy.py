@@ -32,6 +32,9 @@ if QUICK_MODE:
 # that backend (rather than skipped).
 _HAS_COMPLEX = flag_gems.vendor_name != "kunlunxin"
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.detach_copy
+
 
 def _gen_input(shape, dtype):
     # Complex dtypes must be generated explicitly: without this branch they

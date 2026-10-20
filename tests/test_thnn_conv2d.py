@@ -32,6 +32,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.thnn_conv2d
+
 gems_device = flag_gems.device
 
 # The native thnn_conv2d routes float32 through an im2col + GEMM path whose

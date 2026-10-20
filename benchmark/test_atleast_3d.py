@@ -18,6 +18,10 @@ import torch
 from . import base, consts
 
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_3d
+
+
 def _atleast_3d_input_fn(shape, cur_dtype, device):
     yield base.generate_tensor_input(shape, cur_dtype, device),
 

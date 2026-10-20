@@ -20,6 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.sparse_bsc_tensor
+
+
 def _make_bsc(shape, dtype, density=0.3, blocksize=(16, 16)):
     """Build a block-compressed sparse column tensor on the device."""
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)

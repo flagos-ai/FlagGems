@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.ccol_indices_copy
+
 # Shapes for the dtype sweep: square/rectangular CSC plus a single-column case.
 CSC_SHAPES = [(4, 6), (16, 32), (5, 5), (3, 1)]
 if QUICK_MODE:

@@ -34,6 +34,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.slow_conv_transpose2d
+
 # (input_shape, weight_shape, use_bias, stride, padding, output_padding, dilation)
 # Covers the 4-D batched and 3-D unbatched entry points, the plain stride-1
 # route, strided routes with and without output_padding, asymmetric pairs and a

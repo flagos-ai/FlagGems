@@ -42,6 +42,9 @@ from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 from .conftest import QUICK_MODE
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.slow_conv_dilated3d
+
 # (input shape, weight shape, kernel_size, stride, padding, dilation)
 SHAPES = [
     ((1, 2, 5, 5, 5), (4, 2, 3, 3, 3), 3, 1, 0, 1),  # (a) tiny spatial

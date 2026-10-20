@@ -24,6 +24,10 @@ from . import accuracy_utils as utils
 from .accuracy_utils import _SKIP_FP64
 
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.sparse_coo_tensor
+
+
 def _components(nnz=37, sparse_dim=2, dense_shape=(), dtype=torch.float32):
     indices = torch.randint(0, 13, (sparse_dim, nnz), device=flag_gems.device)
     values = torch.randn((nnz, *dense_shape), dtype=dtype, device=flag_gems.device)

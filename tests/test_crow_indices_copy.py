@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.crow_indices_copy
+
 # ``crow_indices_copy`` returns a freshly allocated copy of the row-indices
 # buffer of a sparse compressed tensor. Coverage is driven by layout, by the
 # batch shape of that buffer (``batch_dims + (nrows + 1,)``) and by the

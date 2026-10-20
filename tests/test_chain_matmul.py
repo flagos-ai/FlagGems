@@ -22,6 +22,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.chain_matmul
+
+
 @pytest.fixture(autouse=True)
 def _fp32_reference_ieee():
     # The aten fp32 reference must run at true fp32 (ieee), matching the
