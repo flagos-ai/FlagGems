@@ -157,18 +157,82 @@ def _select_flat_block_size(numel, inner_size):
     return 1024
 
 
+@libentry()
+@triton.jit
+def index_copy_ascend_strided_kernel(
+    out_ptr,
+    src_ptr,
+    index_ptr,
+    numel,
+    input_dim,
+    SHAPE: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
+    SRC_STRIDES: tl.constexpr,
+    DIM: tl.constexpr,
+    INDEX_STRIDE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(0).to(tl.int64)
+    step = tle.num_programs(0).to(tl.int64) * BLOCK_SIZE
+    for start in range(pid * BLOCK_SIZE, numel, step):
+        offsets = start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < numel
+        remaining = offsets
+        src_offset = tl.full((BLOCK_SIZE,), 0, tl.int64)
+        dst_offset = tl.full((BLOCK_SIZE,), 0, tl.int64)
+        valid_index = tl.full((BLOCK_SIZE,), True, tl.int1)
+        for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+            coordinate = remaining % SHAPE[axis]
+            remaining = remaining // SHAPE[axis]
+            src_offset += coordinate * SRC_STRIDES[axis]
+            if axis == DIM:
+                if SHAPE[axis] == 1:
+                    # A scalar load avoids a masked, repeated-address gather.
+                    index = tl.load(index_ptr).to(tl.int64)
+                else:
+                    index = tl.load(
+                        index_ptr + coordinate * INDEX_STRIDE, mask, other=0
+                    ).to(tl.int64)
+                valid_index = (index >= 0) & (index < input_dim)
+                dst_offset += index * OUT_STRIDES[axis]
+            else:
+                dst_offset += coordinate * OUT_STRIDES[axis]
+        value = tl.load(src_ptr + src_offset, mask & valid_index, other=0)
+        tl.store(out_ptr + dst_offset, value, mask & valid_index)
+
+
 def _launch_index_copy(out, dim, index, src):
     index_len = index.numel()
     inner_size = math.prod(out.shape[dim + 1 :])
     outer_size = math.prod(out.shape[:dim])
 
-    if index_len == 0 or inner_size == 0:
+    if index_len == 0 or inner_size == 0 or outer_size == 0:
         return
 
     input_dim = out.size(dim)
     numel = outer_size * index_len * inner_size
 
     with torch_device_fn.device(out.device):
+        if not (out.is_contiguous() and src.is_contiguous() and index.is_contiguous()):
+            # Iterate in destination storage order for coalesced writes. Tensor
+            # pointers already include storage_offset; strides describe the view.
+            order = sorted(range(out.ndim), key=lambda axis: -out.stride(axis))
+            block_size = 256
+            grid = _ascend_launch_grid(triton.cdiv(numel, block_size))
+            index_copy_ascend_strided_kernel[grid](
+                out,
+                src,
+                index,
+                numel,
+                input_dim,
+                SHAPE=tuple(src.shape[axis] for axis in order),
+                OUT_STRIDES=tuple(out.stride(axis) for axis in order),
+                SRC_STRIDES=tuple(src.stride(axis) for axis in order),
+                DIM=order.index(dim),
+                INDEX_STRIDE=index.stride(0) if index.ndim else 1,
+                BLOCK_SIZE=block_size,
+            )
+            return
         if inner_size <= 4:
             # flat kernel for tiny suffixes
             block_size = _select_flat_block_size(numel, inner_size)
