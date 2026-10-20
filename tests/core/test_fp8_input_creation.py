@@ -1,6 +1,6 @@
 # Copyright 2026 FlagOS Contributors
 # SPDX-License-Identifier: Apache-2.0
-"""Exercise real Ascend FP8 input construction without device-side casts."""
+"""Exercise backend FP8 input construction without device-side casts."""
 
 import pytest
 import torch
@@ -11,8 +11,8 @@ from tests import kernelgen_test_utils as tu
 pytestmark = [
     pytest.mark.fp8_input_creation,
     pytest.mark.skipif(
-        flag_gems.vendor_name != "ascend",
-        reason="Ascend FP8 input construction regression",
+        flag_gems.vendor_name not in ("ascend", "kunlunxin"),
+        reason="Ascend/Kunlunxin FP8 input construction regression",
     ),
 ]
 
@@ -24,7 +24,7 @@ def test_fp8_input_has_target_storage_and_requested_values(dtype, shape, value_r
     result = tu.make_input(dtype, shape, value_range)
     target = torch.device(flag_gems.device)
     if target.index is None:
-        target = torch.device(target.type, torch.npu.current_device())
+        target = torch.device(target.type, getattr(torch, target.type).current_device())
     assert result.device == target
     assert result.dtype == dtype
     assert tuple(result.shape) == shape
@@ -54,7 +54,7 @@ def test_fp8_special_input_preserves_encoded_values(dtype, scenario):
     result = tu.make_special_input(dtype, scenario)
     target = torch.device(flag_gems.device)
     if target.index is None:
-        target = torch.device(target.type, torch.npu.current_device())
+        target = torch.device(target.type, getattr(torch, target.type).current_device())
     assert result.device == target
     assert result.dtype == dtype
     assert result.shape == expected.shape
