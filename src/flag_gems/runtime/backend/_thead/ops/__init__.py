@@ -56,6 +56,7 @@ from .matmul_bias_activation import matmul_bias_activation
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
@@ -150,6 +151,8 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mul",
+    "mul_",
     "mv",
     "mvlgamma",
     "nll_loss_backward",
