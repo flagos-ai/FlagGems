@@ -226,10 +226,11 @@ def assert_result_equal(result, reference):
 def to_reference(inp, upcast=False):
     """Independent tensor oracle for these tests, retaining view metadata.
 
-    A plain clone can compact strides, reset offsets or materialize lazy flags.
-    Copy dense storage to keep those tested properties. This does not reproduce
-    inter-input aliases or autograd history; version-counter tests use their
-    own reference setup.
+    A plain clone or device transfer can compact strides, reset offsets or
+    materialize lazy flags. Copy dense storage to the reference device before
+    rebuilding the view. Optional upcasting still follows accuracy_utils' value
+    conversion policy. This does not reproduce inter-input aliases or autograd
+    history; version-counter tests use their own reference setup.
     """
     from . import accuracy_utils as utils
 
@@ -238,8 +239,13 @@ def to_reference(inp, upcast=False):
     if inp.layout != torch.strided or inp.is_quantized or inp.is_nested:
         reference = inp.detach().clone()
     else:
-        reference = torch.empty(0, dtype=inp.dtype, device=inp.device).set_(
-            inp.untyped_storage().clone(),
+        storage = inp.untyped_storage()
+        if utils.TO_CPU and inp.device.type != "cpu":
+            storage = storage.cpu()
+        else:
+            storage = storage.clone()
+        reference = torch.empty(0, dtype=inp.dtype, device=storage.device).set_(
+            storage,
             inp.storage_offset(),
             inp.size(),
             inp.stride(),
