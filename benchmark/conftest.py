@@ -742,18 +742,17 @@ def pytest_runtest_logreport(report):
     if not Config.record_json:
         return
 
+    if report.when != "call" and report.outcome == "passed":
+        return
+
     op = report.opid
-    TEST_RESULTS.setdefault(op, {})
-
-    if report.when == "setup":
-        if report.outcome == "skipped":
-            _record_outcome(op, "skipped", report.nodeid, get_reason(report))
-
-    elif report.when == "call":
-        reason = None
-        if report.outcome in ["skipped", "failed"]:
-            reason = get_reason(report)
-        _record_outcome(op, report.outcome, report.nodeid, reason)
+    result = TEST_RESULTS.setdefault(op, {})
+    reason = None if report.outcome == "passed" else get_reason(report)
+    if report.outcome == "skipped":
+        result.setdefault("skipped_cases", []).append(
+            {"test_case": report.nodeid, "phase": report.when, "reason": reason}
+        )
+    _record_outcome(op, report.outcome, report.nodeid, reason)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
