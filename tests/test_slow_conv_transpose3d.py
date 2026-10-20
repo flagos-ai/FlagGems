@@ -32,6 +32,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.slow_conv_transpose3d
+
 # (input_shape, weight_shape) pairs, weight is (C_in, C_out, kD, kH, kW).
 # Input volumes are kept at D=8, H=16, W=16 or smaller: 3D conv outputs scale
 # as D*H*W*kD*kH*kW*C_in*C_out, and larger volumes push the slow reference
