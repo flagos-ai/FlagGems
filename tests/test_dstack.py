@@ -20,6 +20,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.dstack
+
 # Each entry is one tensor list. 0-D and 1-D entries check the atleast_3d
 # promotion ((1,1,1) and (1,N,1)), where every input contributes a single depth
 # slot and the kernel takes its interleaving path; the 3-D and higher entries
