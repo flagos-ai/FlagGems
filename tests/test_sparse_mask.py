@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import kernelgen_test_utils as tu
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.sparse_mask
+
 # Gather values at the sparse mask positions; both operands must have the same shape.
 # The reference rejects FP8 self operands during dtype promotion.
 _SPARSE_MASK_DTYPES = (

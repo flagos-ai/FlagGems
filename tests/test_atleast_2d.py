@@ -22,6 +22,9 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_2d
+
 # atleast_2d is a pure host-side reshape: its output only depends on the
 # input rank, never on element values. The dtype sweep exercises every
 # branch (identity / one unsqueeze / two unsqueezes) across dtype classes.

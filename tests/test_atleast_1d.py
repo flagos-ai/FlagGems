@@ -20,6 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_1d
+
+
 @pytest.mark.atleast_1d
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

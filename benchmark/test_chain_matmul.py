@@ -35,6 +35,9 @@ import flag_gems
 
 from . import base, consts, utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.chain_matmul
+
 # Chain dimensions (d0, d1, ..., dn): n matrices of shapes (d0, d1) ... and an
 # (d0, dn) output. The narrow inner dimensions are what make the optimal
 # parenthesization non-trivial. These were the comprehensive-level cases of the

@@ -21,6 +21,9 @@ import flag_gems
 
 from . import base, consts, utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.detach_copy
+
 # 1-D sizes plus a 2-D square: cover the flat-copy kernel across small to
 # large sizes and a multi-warp 2-D case.
 DETACH_COPY_SHAPES = [(1024,), (65536,), (1048576,), (1024, 1024)]

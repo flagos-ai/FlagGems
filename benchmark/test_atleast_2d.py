@@ -21,6 +21,9 @@ import flag_gems
 
 from . import base, consts
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.atleast_2d
+
 # atleast_2d is a pure view/reshape: its cost is independent of numel, so
 # the shape sweep spans small-to-large 1-D sizes plus a 2-D square. Yield
 # 1-tuples: the harness unpacks each yielded item as an argument list.

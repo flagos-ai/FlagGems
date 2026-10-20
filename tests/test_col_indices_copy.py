@@ -21,6 +21,9 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Select every overload and contract case with the operator marker.
+pytestmark = pytest.mark.col_indices_copy
+
 # col_indices_copy returns an independent, contiguous copy of sparse indices.
 # Prefill out buffers with -1 so missing writes cannot match valid indices.
 # The dtype and case lists mirror the KernelGen acceptance suite so the
