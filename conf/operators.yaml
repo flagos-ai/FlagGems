@@ -4855,7 +4855,7 @@ ops:
     [B, bag_size] index matrix, returning a [B, D] tensor.
     '
   for:
-  - None
+  - GenerateEmbeddingSpMDM
   labels:
   - fused
   - Reduction
@@ -4863,6 +4863,8 @@ ops:
   - NeuralNetwork
   stages:
   - beta: '5.5'
+  source:
+  - fbgemm
 - id: empty
   description: Tensor factory operator — verifies dtype inference for newly allocated
     tensors.
