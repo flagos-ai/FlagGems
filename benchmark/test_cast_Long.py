@@ -31,10 +31,13 @@ class CastLongBenchmark(Benchmark):
 
 @pytest.mark.cast_Long
 def test_cast_Long():
+    dtypes = [torch.float32, torch.float16]
+    if flag_gems.runtime.device.support_bf16:
+        dtypes.append(torch.bfloat16)
     bench = CastLongBenchmark(
         op_name="cast_Long",
         torch_op=torch.ops.aten._cast_Long.default,
         gems_op=flag_gems.cast_Long,
-        dtypes=[torch.float32, torch.float16, torch.bfloat16],
+        dtypes=dtypes,
     )
     bench.run()

@@ -31,10 +31,13 @@ class CastShortBenchmark(Benchmark):
 
 @pytest.mark.cast_Short
 def test_cast_Short():
+    dtypes = [torch.float32, torch.float16]
+    if flag_gems.runtime.device.support_fp64:
+        dtypes.append(torch.float64)
     bench = CastShortBenchmark(
         op_name="cast_Short",
         torch_op=torch.ops.aten._cast_Short.default,
         gems_op=flag_gems.cast_Short,
-        dtypes=[torch.float32, torch.float16, torch.float64],
+        dtypes=dtypes,
     )
     bench.run()
