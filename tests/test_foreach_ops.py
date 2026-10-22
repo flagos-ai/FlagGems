@@ -311,7 +311,7 @@ def test_accuracy_foreach_ops(key, dtype):
 
     if args is None:  # pow.ScalarAndTensor: the scalar is the base
         ref_out = _aten(key)(2.0, [to_reference(t) for t in inp])
-        res_out = ALL_WRAPPERS[key](2.0, inp)
+        res_out = _gems(key)(2.0, inp)
         _compare(res_out, ref_out, dtype)
         return
 
@@ -322,7 +322,7 @@ def test_accuracy_foreach_ops(key, dtype):
     ref_args = _to_ref(args)
 
     ref_out = _aten(key)(ref_inp, *ref_args)
-    res_out = ALL_WRAPPERS[key](inp, *args)
+    res_out = _gems(key)(inp, *args)
 
     if inplace:
         # The in-place schemas return ``()``; a wrapper handing back the list
@@ -577,15 +577,12 @@ def test_foreach_ops_dtype_sets_match_aten(core):
 
 
 def _gems(key):
-    """The public FlagGems function an ATen key is registered to.
-
-    Public names spell the overload with an underscore suffix rather than
-    ATen's dot (``_foreach_add_List``, not ``_foreach_add.List``), so the key is
-    rewritten rather than looked up verbatim.  ``ALL_WRAPPERS`` carries the
-    vendor overlay (see above), so these named cases exercise the same wrapper
-    a ``use_gems()`` dispatch would reach instead of the generic baseline.
-    """
-    return ALL_WRAPPERS[key]
+    """Resolve the live public candidate, retaining the vendor wrapper fallback."""
+    candidate = getattr(flag_gems, _marks_for(key), None)
+    if callable(candidate):
+        return candidate
+    native_name = key.replace(".", "_")
+    return getattr(flag_gems, native_name, ALL_WRAPPERS[key])
 
 
 def _foreach_ref(fn, refs, *args):
