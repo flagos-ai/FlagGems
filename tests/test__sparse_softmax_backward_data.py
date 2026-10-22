@@ -21,6 +21,102 @@ import flag_gems
 
 from . import kernelgen_test_utils as tu
 
+# These backends have no runnable native sparse-softmax reference. Keep the
+# original grid, use native CPU ATen as oracle, and check target ABI before CPU
+# numerical observation. Transport preserves sparse support and payload dtype.
+_CPU_REFERENCE = flag_gems.vendor_name in {"ascend", "kunlunxin"}
+
+
+def _copy_dense_physical(x, device):
+    """Copy raw storage, then reconstruct geometry and lazy bits; detached by design."""
+    assert isinstance(x, torch.Tensor) and x.layout == torch.strided
+    shape, stride, offset = tuple(x.shape), x.stride(), x.storage_offset()
+    raw = torch.empty(0, dtype=torch.uint8, device=x.device).set_(
+        x.untyped_storage(), 0, (x.untyped_storage().nbytes(),), (1,)
+    )
+    raw = raw.to(device=device).clone()
+    y = raw.view(x.dtype).as_strided(shape, stride, offset)
+    if x.is_conj():
+        y = y.conj()
+    if x.is_neg():
+        y = torch._neg_view(y)
+    assert y.dtype == x.dtype and y.shape == x.shape and y.stride() == stride
+    assert y.storage_offset() == offset and y.is_neg() == x.is_neg()
+    assert y.is_conj() == x.is_conj() and y.device == torch.device(device)
+    return y
+
+
+def _copy_tensor(x, device, *, preserve_requires_grad=False):
+    assert isinstance(x, torch.Tensor)
+    if x.layout == torch.sparse_coo:
+        y = torch.sparse_coo_tensor(
+            _copy_dense_physical(x._indices(), device),
+            _copy_dense_physical(x._values(), device),
+            tuple(x.shape),
+            device=device,
+            dtype=x.dtype,
+            is_coalesced=x.is_coalesced(),
+        )
+        assert y.sparse_dim() == x.sparse_dim() and y.dense_dim() == x.dense_dim()
+        assert y.is_coalesced() == x.is_coalesced()
+    elif x.layout == torch.strided:
+        y = _copy_dense_physical(x, device)
+    else:
+        raise NotImplementedError("Expected COO or dense-negative input")
+    if preserve_requires_grad and x.requires_grad:
+        y.requires_grad_(True)
+    return y
+
+
+def _to_reference(inp):
+    if _CPU_REFERENCE:
+        return _copy_tensor(inp, "cpu", preserve_requires_grad=True)
+    return tu.to_reference(inp)
+
+
+def _assert_result_close(result, reference, *, expected_device):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    if _CPU_REFERENCE:
+        result = _copy_tensor(result, "cpu")
+    tu.assert_result_close(result, reference)
+
+
+def _write_out(original_out, cpu_result):
+    # Only original out-object identity is promised; native may resize/rebind storage.
+    target = _copy_tensor(cpu_result, original_out.device)
+    original_out.data = target
+    return original_out
+
+
+def backward_data(grad, output, dim, self_tensor, *, out=None):
+    required_device = self_tensor.device
+    if grad.device != required_device or output.device != required_device:
+        raise RuntimeError(
+            "original grad/output/self device mismatch before CPU transport"
+        )
+    if out is not None and out.device != required_device:
+        raise RuntimeError("original out device mismatch before CPU transport")
+    args = [_copy_tensor(x, "cpu", preserve_requires_grad=True) for x in (grad, output)]
+    cpu_self = _copy_tensor(self_tensor, "cpu", preserve_requires_grad=True)
+    if out is None:
+        result = torch.ops.aten._sparse_softmax_backward_data.default(
+            *args, dim, cpu_self
+        )
+        return _copy_tensor(result, required_device)
+    cpu_out = _copy_tensor(out, "cpu", preserve_requires_grad=True)
+    result = torch.ops.aten._sparse_softmax_backward_data.out(
+        *args, dim, cpu_self, out=cpu_out
+    )
+    assert result is cpu_out
+    return _write_out(out, result)
+
+
+_cpu_oracle = backward_data
+
+
 # Only SparseCPU / SparseCUDA kernels are registered and the CUDA kernel
 # dispatches on AT_DISPATCH_FLOATING_TYPES, so the supported set is the static
 # device capability: float32 plus float64 when the device reports fp64 support.
@@ -207,17 +303,18 @@ SPECIAL_ROW = Row(
 def test__sparse_softmax_backward_data(case, dtype):
     grad, output, self_tensor = _make_inputs(case, dtype)
 
+    expected_device = self_tensor.device
     ref = torch.ops.aten._sparse_softmax_backward_data(
-        tu.to_reference(grad),
-        tu.to_reference(output),
+        _to_reference(grad),
+        _to_reference(output),
         case.dim,
-        tu.to_reference(self_tensor),
+        _to_reference(self_tensor),
     )
     res = flag_gems._sparse_softmax_backward_data(grad, output, case.dim, self_tensor)
 
     # The value comparison does not cover the coalesced flag the kernel must set.
     assert res.is_coalesced()
-    tu.assert_result_close(res, ref)
+    _assert_result_close(res, ref, expected_device=expected_device)
 
 
 @pytest.mark.sparse_softmax_backward_data
@@ -267,13 +364,14 @@ def test__sparse_softmax_backward_data_out(shape, dtype):
     # directly on both sides. The reference buffer follows the configured
     # reference device; the two buffers own their storage.
     res_buffer = _zeroed_buffer(grad)
-    ref_buffer = tu.to_reference(_zeroed_buffer(grad))
+    ref_buffer = _to_reference(_zeroed_buffer(grad))
 
+    expected_device = self_tensor.device
     ref = torch.ops.aten._sparse_softmax_backward_data.out(
-        tu.to_reference(grad),
-        tu.to_reference(output),
+        _to_reference(grad),
+        _to_reference(output),
         -1,
-        tu.to_reference(self_tensor),
+        _to_reference(self_tensor),
         out=ref_buffer,
     )
     res = flag_gems._sparse_softmax_backward_data(
@@ -284,7 +382,7 @@ def test__sparse_softmax_backward_data_out(shape, dtype):
     # tensor, so identity with the buffer and the mutated buffer are checked.
     assert res is res_buffer
     assert res_buffer.is_coalesced()
-    tu.assert_result_close(res, ref)
+    _assert_result_close(res, ref, expected_device=expected_device)
 
 
 def _make_special_inputs(dtype, scenario):
@@ -303,11 +401,12 @@ def _make_special_inputs(dtype, scenario):
 def test__sparse_softmax_backward_data_special_values(dtype, scenario):
     grad, output, self_tensor = _make_special_inputs(dtype, scenario)
 
+    expected_device = self_tensor.device
     ref = torch.ops.aten._sparse_softmax_backward_data(
-        tu.to_reference(grad),
-        tu.to_reference(output),
+        _to_reference(grad),
+        _to_reference(output),
         SPECIAL_ROW.dim,
-        tu.to_reference(self_tensor),
+        _to_reference(self_tensor),
     )
     res = flag_gems._sparse_softmax_backward_data(
         grad, output, SPECIAL_ROW.dim, self_tensor
@@ -316,7 +415,7 @@ def test__sparse_softmax_backward_data_special_values(dtype, scenario):
     # Stored NaN / Inf entries flow through unchanged, so matching NaNs are part
     # of the expected result.
     assert res.is_coalesced()
-    tu.assert_result_close(res, ref)
+    _assert_result_close(res, ref, expected_device=expected_device)
 
 
 # dim is the only non-tensor parameter and ATen accepts it only as a Python int,
