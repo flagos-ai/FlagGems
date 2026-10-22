@@ -220,6 +220,10 @@ def test__logcumsumexp_fp64_precision(shape, dim):
 
 
 @pytest.mark.underscore_logcumsumexp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input generation",
+)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize(
     "shape,dim", [((3, 4), 1), ((3, 4), 0), ((2, 3, 4), 2), ((64,), 0)]
@@ -588,6 +592,10 @@ def _assert_complex_scan_close(res_out, ref_out):
 
 
 @pytest.mark.underscore_logcumsumexp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend normal_ does not support complex input generation",
+)
 @pytest.mark.parametrize(
     "shape,dim",
     [
