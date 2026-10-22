@@ -14,10 +14,168 @@
 
 import pytest
 import torch
+from torch.autograd.function import once_differentiable
 
 import flag_gems
 
 from . import kernelgen_test_utils as tu
+
+# These backends have no runnable native sparse-softmax reference. Keep the
+# original grid, use native CPU ATen as oracle, and check target ABI before CPU
+# numerical observation. Transport preserves sparse support and payload dtype.
+_CPU_REFERENCE = flag_gems.vendor_name in {"ascend", "kunlunxin"}
+
+
+def _copy_dense_physical(x, device):
+    """Copy raw storage, then reconstruct geometry and lazy bits; detached by design."""
+    assert isinstance(x, torch.Tensor) and x.layout == torch.strided
+    shape, stride, offset = tuple(x.shape), x.stride(), x.storage_offset()
+    raw = torch.empty(0, dtype=torch.uint8, device=x.device).set_(
+        x.untyped_storage(), 0, (x.untyped_storage().nbytes(),), (1,)
+    )
+    raw = raw.to(device=device).clone()
+    y = raw.view(x.dtype).as_strided(shape, stride, offset)
+    if x.is_conj():
+        y = y.conj()
+    if x.is_neg():
+        y = torch._neg_view(y)
+    assert y.dtype == x.dtype and y.shape == x.shape and y.stride() == stride
+    assert y.storage_offset() == offset and y.is_neg() == x.is_neg()
+    assert y.is_conj() == x.is_conj() and y.device == torch.device(device)
+    return y
+
+
+def _copy_tensor(x, device, *, preserve_requires_grad=False):
+    assert isinstance(x, torch.Tensor)
+    if x.layout == torch.sparse_coo:
+        y = torch.sparse_coo_tensor(
+            _copy_dense_physical(x._indices(), device),
+            _copy_dense_physical(x._values(), device),
+            tuple(x.shape),
+            device=device,
+            dtype=x.dtype,
+            is_coalesced=x.is_coalesced(),
+        )
+        assert y.sparse_dim() == x.sparse_dim() and y.dense_dim() == x.dense_dim()
+        assert y.is_coalesced() == x.is_coalesced()
+    elif x.layout == torch.strided:
+        y = _copy_dense_physical(x, device)
+    else:
+        raise NotImplementedError("Expected COO or dense-negative input")
+    if preserve_requires_grad and x.requires_grad:
+        y.requires_grad_(True)
+    return y
+
+
+def _to_reference(inp):
+    if _CPU_REFERENCE:
+        return _copy_tensor(inp, "cpu", preserve_requires_grad=True)
+    return tu.to_reference(inp)
+
+
+def _assert_result_close(result, reference, *, expected_device):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    if _CPU_REFERENCE:
+        result = _copy_tensor(result, "cpu")
+    tu.assert_result_close(result, reference)
+
+
+def _forward_native(x, dim, overload, dtype, half_to_float):
+    if overload == "default":
+        return torch.ops.aten._sparse_softmax.default(x, dim, half_to_float)
+    if overload == "int":
+        return torch.ops.aten._sparse_softmax.int(x, dim, dtype=dtype)
+    raise ValueError(overload)
+
+
+class _ForwardBridge(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, overload, dtype, half_to_float):
+        cpu = _copy_tensor(inp, "cpu")
+        out = _forward_native(cpu, dim, overload, dtype, half_to_float)
+        ctx.save_for_backward(out)
+        ctx.dim, ctx.input_dtype, ctx.input_device = dim, inp.dtype, inp.device
+        return _copy_tensor(out, inp.device)
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad_output):
+        (output_cpu,) = ctx.saved_tensors
+        grad_cpu = _copy_tensor(grad_output, "cpu")
+        self_cpu = torch.empty(1, dtype=ctx.input_dtype, device="cpu")
+        result = torch.ops.aten._sparse_softmax_backward_data.default(
+            grad_cpu, output_cpu, ctx.dim, self_cpu
+        )
+        # .int's CPU conversion gradient returns the original floating input dtype.
+        if result.dtype != ctx.input_dtype:
+            result = result.to(dtype=ctx.input_dtype)
+        return _copy_tensor(result, ctx.input_device), None, None, None, None
+
+
+def forward_default(inp, dim, half_to_float=False):
+    return _ForwardBridge.apply(inp, dim, "default", None, half_to_float)
+
+
+def forward_int(inp, dim, dtype=None):
+    return _ForwardBridge.apply(inp, dim, "int", dtype, False)
+
+
+def _write_out(original_out, cpu_result):
+    # Only original out-object identity is promised; native may resize/rebind storage.
+    target = _copy_tensor(cpu_result, original_out.device)
+    original_out.data = target
+    return original_out
+
+
+def forward_out(inp, dim, half_to_float, *, out):
+    if out.device != inp.device:
+        raise RuntimeError("input/out device mismatch before CPU transport")
+    cpu = _copy_tensor(inp, "cpu", preserve_requires_grad=True)
+    cpu_out = _copy_tensor(out, "cpu", preserve_requires_grad=True)
+    result = torch.ops.aten._sparse_softmax.out(cpu, dim, half_to_float, out=cpu_out)
+    assert result is cpu_out
+    return _write_out(out, result)
+
+
+def _cpu_oracle(inp, dim, half_to_float=None, *, dtype=None, out=None):
+    if out is not None:
+        return forward_out(
+            inp, dim, False if half_to_float is None else half_to_float, out=out
+        )
+    if half_to_float is not None:
+        return forward_default(inp, dim, half_to_float)
+    return forward_int(inp, dim, dtype)
+
+
+def _coalesce_input(inp):
+    # Ascend's native coalescer rejects these stored-value dtypes before the
+    # softmax candidate runs. Keep their original payload/support on CPU rather
+    # than dropping the dtype or converting the input to a different dtype.
+    needs_cpu = flag_gems.vendor_name == "kunlunxin" or (
+        flag_gems.vendor_name == "ascend"
+        and inp.dtype in (torch.int8, torch.uint8, torch.int64)
+    )
+    if needs_cpu:
+        return _copy_tensor(_copy_tensor(inp, "cpu").coalesce(), inp.device)
+    return inp.coalesce()
+
+
+def _make_input(dtype, shape, value_range):
+    if _CPU_REFERENCE and dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        # Encode unsupported device-side FP8 casts on CPU without changing the
+        # original value-range recipe or the actual target payload dtype.
+        low, high = [tu.resolve_bound(bound, dtype) for bound in value_range]
+        value = torch.testing.make_tensor(
+            shape, dtype=torch.float32, device="cpu", low=low, high=high
+        ).to(dtype)
+        return _copy_dense_physical(
+            value, torch.empty(0, device=flag_gems.device).device
+        )
+    return tu.make_input(dtype, shape, value_range)
+
 
 # aten::_sparse_softmax(x, dim, False) binds the positional bool to the ScalarType
 # parameter of .int, so every family names its overload: .default for the
@@ -134,7 +292,19 @@ def _support_coords(shape, dim, support):
 
 def _stored_values(count, dtype, value_range=None, scenario=None):
     if scenario is None:
-        return tu.make_input(dtype, (count,), value_range)
+        return _make_input(dtype, (count,), value_range)
+    if _CPU_REFERENCE and dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        payload = torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        repeats = (count + payload.numel() - 1) // payload.numel()
+        value = payload.repeat(repeats)[:count].to(dtype)
+        return _copy_dense_physical(
+            value, torch.empty(0, device=flag_gems.device).device
+        )
     payload = tu.make_special_input(dtype, scenario)
     repeats = (count + payload.numel() - 1) // payload.numel()
     return payload.repeat(repeats)[:count]
@@ -153,7 +323,7 @@ def _make_sparse(shape, dim, support, dtype, value_range=None, scenario=None):
     if support[0] == "dup":
         # Left uncoalesced on purpose: the operator must merge duplicate columns.
         return inp
-    return inp.coalesce()
+    return _coalesce_input(inp)
 
 
 def _make_hybrid(shape, sparse_dim, nnz, dtype, value_range):
@@ -161,10 +331,11 @@ def _make_hybrid(shape, sparse_dim, nnz, dtype, value_range):
     # the whole shape is the block, so a single entry covers it.
     dense = tuple(shape[sparse_dim:])
     indices = _linear_coords(shape[:sparse_dim], nnz)
-    values = tu.make_input(dtype, (indices.shape[1],) + dense, value_range)
-    return torch.sparse_coo_tensor(
+    values = _make_input(dtype, (indices.shape[1],) + dense, value_range)
+    inp = torch.sparse_coo_tensor(
         indices, values, shape, dtype=dtype, device=flag_gems.device
-    ).coalesce()
+    )
+    return _coalesce_input(inp)
 
 
 def _empty_out(shape, dtype, device):
@@ -184,13 +355,13 @@ def _rejection_input(shape, dim, nnz, dtype):
     )
     if dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
         return inp
-    return inp.coalesce()
+    return _coalesce_input(inp)
 
 
 def _upstream_like(inp, shape):
     # Non-constant upstream over groups of several entries: an all-ones upstream
     # only checks zero gradients, since the entries of one group sum to one.
-    values = tu.make_input(inp.dtype, (inp._nnz(),), ["-1", "1"])
+    values = _make_input(inp.dtype, (inp._nnz(),), ["-1", "1"])
     return torch.sparse_coo_tensor(
         inp._indices(), values, shape, dtype=inp.dtype, device=inp.device
     )
@@ -322,12 +493,13 @@ _SPECIAL_CONVERT_SCENARIOS = tu.selected_cases(
 def test__sparse_softmax_default_form(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -340,12 +512,13 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
     # runnable at all.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float32)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -356,12 +529,13 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
 def test__sparse_softmax_dtype_conversion_float64(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float64)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float64)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -374,12 +548,13 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
     # candidate's own default matches the schema instead of a hardcoded float32.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim)
     res_out = flag_gems._sparse_softmax(inp, dim)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -390,12 +565,13 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
 def test__sparse_softmax_hybrid(case, value_range, dtype):
     shape, sparse_dim, nnz, dim = case
     inp = _make_hybrid(shape, sparse_dim, nnz, dtype, value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -406,7 +582,8 @@ def test__sparse_softmax_hybrid(case, value_range, dtype):
 def test__sparse_softmax_out(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
     out = _empty_out(shape, inp.dtype, inp.device)
     ref_out = _empty_out(shape, ref_inp.dtype, ref_inp.device)
 
@@ -418,7 +595,7 @@ def test__sparse_softmax_out(case, value_range, dtype):
     # Native .out returns the supplied buffer, so the candidate must both write it
     # and return it, with the values the native call returned.
     assert res_ret is out
-    tu.assert_result_close(res_ret, ref_ret)
+    _assert_result_close(res_ret, ref_ret, expected_device=expected_device)
     assert res_ret.is_coalesced() == ref_ret.is_coalesced()
 
 
@@ -431,17 +608,18 @@ def test__sparse_softmax_backward(case, value_range, dtype):
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
     inp.requires_grad_(True)
     upstream = _upstream_like(inp, shape)
-    ref_inp = tu.to_reference(inp)
-    ref_upstream = tu.to_reference(upstream)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
+    ref_upstream = _to_reference(upstream)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
-    tu.assert_result_close(res_grad, ref_grad)
+    _assert_result_close(res_grad, ref_grad, expected_device=expected_device)
 
 
 @pytest.mark.sparse_softmax
@@ -512,12 +690,13 @@ def test__sparse_softmax_backward_all_single(dtype):
 def test__sparse_softmax_special_values(case, dtype, scenario):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, scenario=scenario)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -529,12 +708,13 @@ def test__sparse_softmax_special_values_dtype_conversion(case, dtype, scenario):
     # converts them, so their NaN/Inf payloads still have a native result to match.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, scenario=scenario)
-    ref_inp = tu.to_reference(inp)
+    expected_device = inp.device
+    ref_inp = _to_reference(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float32)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
     assert res_out.is_coalesced() == ref_out.is_coalesced()
 
 
@@ -602,7 +782,7 @@ def test__sparse_softmax_rejects_zero_dim_input(nnz, dim):
 
 @pytest.mark.sparse_softmax
 def test__sparse_softmax_rejects_dense_input():
-    inp = tu.make_input(torch.float32, (8, 9), ["-1", "1"])
+    inp = _make_input(torch.float32, (8, 9), ["-1", "1"])
 
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
         flag_gems._sparse_softmax(inp, 1, half_to_float=False)
