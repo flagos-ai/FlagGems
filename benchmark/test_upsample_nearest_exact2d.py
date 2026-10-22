@@ -28,7 +28,7 @@ def test_upsample_nearest_exact2d():
     bench.run()
 
 
-@pytest.mark.upsample_nearest_exact2d
+@pytest.mark.upsample_nearest_exact2d_out
 def test_upsample_nearest_exact2d_out():
     op_label = "_upsample_nearest_exact2d_out"
     assert op_label
@@ -53,7 +53,7 @@ def test_upsample_nearest_exact2d_out():
                 yield x, out_size, None, None, {"out": out}
 
     bench = UpsampleNearestExact2dOutBenchmark(
-        op_name="upsample_nearest_exact2d",
+        op_name="upsample_nearest_exact2d_out",
         torch_op=torch.ops.aten._upsample_nearest_exact2d.out,
         dtypes=consts.FLOAT_DTYPES,
     )
