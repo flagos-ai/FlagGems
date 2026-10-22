@@ -27,6 +27,11 @@ REAL_DTYPES = [torch.float32, torch.float64]
 COMPLEX_DTYPES = [torch.complex64, torch.complex128]
 
 
+def _skip_eye_input(dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        pytest.skip("Ascend torch.eye input construction does not support FP64")
+
+
 def _tols(dtype, n):
     """Tolerances scaled by matrix size: LU error grows with the pivot count."""
     if dtype in (torch.float32, torch.complex64):
@@ -61,6 +66,8 @@ def test_slogdet(shape, dtype):
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
 def test_slogdet_complex(shape, dtype):
     """Complex input: sign is a unit-modulus complex number, logabsdet is real."""
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend torch.randn input construction does not support complex dtypes")
     A = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_A = utils.to_reference(A)
 
@@ -114,6 +121,7 @@ def test_slogdet_near_singular_scaled(dtype):
 @pytest.mark.parametrize("scale", [1e-3, 1e-2, 1e2, 1e3])
 def test_slogdet_scaled_identity(dtype, scale):
     """Uniformly scaled matrices stay accurate away from unit magnitude."""
+    _skip_eye_input(dtype)
     n = 4
     A = torch.eye(n, dtype=dtype, device=flag_gems.device) * scale
     ref = torch.linalg.slogdet(utils.to_reference(A))
@@ -302,6 +310,7 @@ def test_slogdet_large(n):
     Rounding both dimensions up to a power of two would make n=1025 build a
     2048x2048 block and exceed Triton's maximum tensor size.
     """
+    _skip_eye_input(torch.float64)
     dtype = torch.float64
     torch.manual_seed(0)
     # A diagonally dominant matrix keeps the LU well conditioned so the
@@ -321,6 +330,7 @@ def test_slogdet_large(n):
 @pytest.mark.slogdet
 def test_slogdet_large_1025():
     """The exact size called out in review: 1025x1025."""
+    _skip_eye_input(torch.float64)
     n = 1025
     dtype = torch.float64
     torch.manual_seed(0)
@@ -357,6 +367,7 @@ def test_slogdet_invalid_inputs():
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_backward(dtype):
     """d logabsdet / dA == inv(A)^T, matching ATen."""
+    _skip_eye_input(dtype)
     n = 5
     torch.manual_seed(0)
     A = torch.randn(n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
@@ -395,6 +406,7 @@ def test_slogdet_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_batched_backward(dtype):
     """Batched backward parity."""
+    _skip_eye_input(dtype)
     n = 4
     torch.manual_seed(0)
     A = torch.randn(3, n, n, dtype=dtype, device=flag_gems.device) + n * torch.eye(
@@ -433,6 +445,7 @@ def test_slogdet_batched_backward(dtype):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_identity(dtype):
     """The identity has sign 1 and logabsdet 0."""
+    _skip_eye_input(dtype)
     for n in (1, 3, 8, 65):
         A = torch.eye(n, dtype=dtype, device=flag_gems.device)
         res_sign, res_logabsdet = flag_gems.slogdet(A)
