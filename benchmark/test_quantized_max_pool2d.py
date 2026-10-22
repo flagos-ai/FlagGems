@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from flag_gems.ops.quantized_max_pool2d import (
     _parse_pool_params,
     max_pool2d_output_size,
@@ -164,6 +166,10 @@ def quantized_max_pool2d_out_input_fn(shape, dtype, device, comprehensive=True):
 
 
 @pytest.mark.quantized_max_pool2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon",
+    reason="Hygon native quantized_max_pool2d benchmark baseline requires cuDNN",
+)
 def test_quantized_max_pool2d():
     bench = QuantizedMaxPool2dBenchmark(
         op_name="quantized_max_pool2d",

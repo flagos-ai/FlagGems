@@ -268,6 +268,10 @@ def test_quantized_max_pool2d_4d_output_is_channels_last(dtype):
 
 @pytest.mark.quantized_max_pool2d
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon",
+    reason="Hygon native quantized_max_pool2d is built without cuDNN support",
+)
+@pytest.mark.skipif(
     torch.device(flag_gems.device).type != "cuda",
     reason="compares the operator against native quantized_max_pool2d_cudnn",
 )
