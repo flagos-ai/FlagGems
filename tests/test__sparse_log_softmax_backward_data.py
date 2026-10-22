@@ -21,6 +21,169 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import kernelgen_test_utils as tu
 
+# Native sparse log-softmax routes are unavailable on these backends. Keep
+# the original cases and use CPU ATen, preserving the original target ABI before
+# moving values to CPU for numerical comparison.
+_CPU_REFERENCE = flag_gems.vendor_name in {"ascend", "kunlunxin"}
+
+
+def _copy_dense_physical(x, device):
+    """Copy raw storage, then reconstruct geometry and lazy bits; detached by design."""
+    assert isinstance(x, torch.Tensor) and x.layout == torch.strided
+    shape, stride, offset = tuple(x.shape), x.stride(), x.storage_offset()
+    raw = torch.empty(0, dtype=torch.uint8, device=x.device).set_(
+        x.untyped_storage(), 0, (x.untyped_storage().nbytes(),), (1,)
+    )
+    raw = raw.to(device=device).clone()
+    y = raw.view(x.dtype).as_strided(shape, stride, offset)
+    if x.is_conj():
+        y = y.conj()
+    if x.is_neg():
+        y = torch._neg_view(y)
+    assert y.dtype == x.dtype and y.shape == x.shape and y.stride() == stride
+    assert y.storage_offset() == offset and y.is_neg() == x.is_neg()
+    assert y.is_conj() == x.is_conj() and y.device == torch.device(device)
+    return y
+
+
+def _copy_tensor(x, device, *, preserve_requires_grad=False):
+    assert isinstance(x, torch.Tensor)
+    if x.layout == torch.sparse_coo:
+        y = torch.sparse_coo_tensor(
+            _copy_dense_physical(x._indices(), device),
+            _copy_dense_physical(x._values(), device),
+            tuple(x.shape),
+            device=device,
+            dtype=x.dtype,
+            is_coalesced=x.is_coalesced(),
+        )
+        assert y.sparse_dim() == x.sparse_dim() and y.dense_dim() == x.dense_dim()
+        assert y.is_coalesced() == x.is_coalesced()
+    elif x.layout == torch.strided:
+        y = _copy_dense_physical(x, device)
+    else:
+        raise NotImplementedError("Expected COO or dense-negative input")
+    if preserve_requires_grad and x.requires_grad:
+        y.requires_grad_(True)
+    return y
+
+
+def _to_reference(inp):
+    if _CPU_REFERENCE:
+        return _copy_tensor(inp, "cpu", preserve_requires_grad=True)
+    return tu.to_reference(inp)
+
+
+def _assert_result_close(result, reference, *, expected_device):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    if _CPU_REFERENCE:
+        result = _copy_tensor(result, "cpu")
+    tu.assert_result_close(result, reference)
+
+
+def _assert_result_equal(result, reference, *, expected_device):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype and result.shape == reference.shape
+    assert result.layout == reference.layout
+    if _CPU_REFERENCE:
+        result = _copy_tensor(result, "cpu")
+    tu.assert_result_equal(result, reference)
+
+
+def _readonly_state(inp):
+    """Snapshot the input ABI and backing bytes before invoking the candidate."""
+    assert isinstance(inp, torch.Tensor) and inp.layout == torch.sparse_coo
+    outer = (
+        inp.device,
+        inp.dtype,
+        tuple(inp.shape),
+        inp.layout,
+        inp.sparse_dim(),
+        inp.dense_dim(),
+        inp.is_coalesced(),
+        inp.requires_grad,
+        inp._version,
+    )
+    parts = []
+    for part in (inp._indices(), inp._values()):
+        storage = part.untyped_storage()
+        metadata = (
+            part.device,
+            part.dtype,
+            tuple(part.shape),
+            part.stride(),
+            part.storage_offset(),
+            part.is_conj(),
+            part.is_neg(),
+            part.requires_grad,
+            part._version,
+            storage._cdata,
+            storage.nbytes(),
+            storage.data_ptr(),
+            part.data_ptr(),
+        )
+        raw = torch.empty(0, dtype=torch.uint8, device=part.device).set_(
+            storage, 0, (storage.nbytes(),), (1,)
+        )
+        # Hold the original storage alive and save scalar pointers now: a live
+        # Storage object can itself be resized/reallocated by a bad candidate.
+        parts.append((storage, metadata, raw.to(device="cpu").clone()))
+    return outer, parts
+
+
+def _assert_readonly(inp, before):
+    outer, parts = _readonly_state(inp)
+    assert outer == before[0]
+    for (_, metadata, raw), (_, old_metadata, old_raw) in zip(parts, before[1]):
+        assert metadata == old_metadata
+        assert torch.equal(raw, old_raw)
+
+
+def _write_out(original_out, cpu_result):
+    # Only original out-object identity is promised; native may resize/rebind storage.
+    target = _copy_tensor(cpu_result, original_out.device)
+    original_out.data = target
+    return original_out
+
+
+def backward_data(grad, output, dim, self_tensor, *, out=None):
+    required_device = self_tensor.device
+    if grad.device != required_device or output.device != required_device:
+        raise RuntimeError(
+            "original grad/output/self device mismatch before CPU transport"
+        )
+    if out is not None and out.device != required_device:
+        raise RuntimeError("original out device mismatch before CPU transport")
+    args = [_copy_tensor(x, "cpu", preserve_requires_grad=True) for x in (grad, output)]
+    cpu_self = _copy_tensor(self_tensor, "cpu", preserve_requires_grad=True)
+    if out is None:
+        result = torch.ops.aten._sparse_log_softmax_backward_data.default(
+            *args, dim, cpu_self
+        )
+        return _copy_tensor(result, required_device)
+    cpu_out = _copy_tensor(out, "cpu", preserve_requires_grad=True)
+    result = torch.ops.aten._sparse_log_softmax_backward_data.out(
+        *args, dim, cpu_self, out=cpu_out
+    )
+    assert result is cpu_out
+    return _write_out(out, result)
+
+
+_cpu_oracle = backward_data
+
+
+def _coalesce_input(inp):
+    # Kunlunxin's native COO coalescer fails before the candidate runs. Keep
+    # the original support/value dtype and the deliberately uncoalesced cases.
+    if flag_gems.vendor_name == "kunlunxin":
+        return _copy_tensor(_copy_tensor(inp, "cpu").coalesce(), inp.device)
+    return inp.coalesce()
+
+
 # The CUDA operator has float32/float64 kernels only: it reports
 # "'log_softmax_backward' not implemented" for the reduced-precision and integer types
 # and "'coalesce_sparse_cuda' not implemented" for fp8. float64 is gated on the static
@@ -44,7 +207,7 @@ _STRUCTURE_ROWS = tu.selected_cases(
         ((6,), 1, 0, (0, 2, 4), (0, 2, 4), True),
         # same size, different support
         ((6,), 1, 0, (0, 2, 4), (1, 3, 5), True),
-        # partial overlap; the result covers the union of the supports
+        # partial overlap; native keeps the output support and aligns the gradient
         ((6,), 1, 0, (0, 1, 2, 3), (1, 2, 3, 4), True),
         # disjoint support
         ((6,), 1, -1, (0, 1, 2), (3, 4, 5), True),
@@ -214,9 +377,10 @@ def _coo(size, sparse_dim, dim, nnz, dtype, value_range, phase):
     size = tuple(size)
     values = tu.make_input(dtype, (nnz,) + size[sparse_dim:], value_range)
     indices = _coords(size, sparse_dim, dim, nnz, phase)
-    return torch.sparse_coo_tensor(
+    sparse = torch.sparse_coo_tensor(
         indices, values, torch.Size(size), device=flag_gems.device
-    ).coalesce()
+    )
+    return _coalesce_input(sparse)
 
 
 def _coo_on_support(
@@ -237,7 +401,7 @@ def _coo_on_support(
     )
     # The rows that test duplicate coordinates must stay uncoalesced, otherwise the
     # operator never sees the duplicates.
-    return sparse.coalesce() if coalesce else sparse
+    return _coalesce_input(sparse) if coalesce else sparse
 
 
 def _coo_unit(size, sparse_dim, nnz, dtype, phase):
@@ -271,11 +435,13 @@ def test__sparse_log_softmax_backward_data_value_range(size, value_range, dtype)
     output = _coo(shape, len(shape), dim, nnz, dtype, value_range, phase=0)
     self_ = _coo(shape, len(shape), dim, nnz, dtype, value_range, phase=0)
 
+    expected_device = self_.device
+
     ref_out = torch.ops.aten._sparse_log_softmax_backward_data(
-        tu.to_reference(grad_output),
-        tu.to_reference(output),
+        _to_reference(grad_output),
+        _to_reference(output),
         dim,
-        tu.to_reference(self_),
+        _to_reference(self_),
     )
     res_out = flag_gems._sparse_log_softmax_backward_data(
         grad_output, output, dim, self_
@@ -283,7 +449,7 @@ def test__sparse_log_softmax_backward_data_value_range(size, value_range, dtype)
 
     # Compared as sparse COO: layout, support size and values are all part of the
     # operator's output contract.
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
 
 
 @pytest.mark.sparse_log_softmax_backward_data
@@ -298,17 +464,19 @@ def test__sparse_log_softmax_backward_data_dim(size, dim, dtype):
     output = _coo(shape, len(shape), dim, nnz, dtype, _DEFAULT_RANGE, phase=0)
     self_ = _coo(shape, len(shape), dim, nnz, dtype, _DEFAULT_RANGE, phase=0)
 
+    expected_device = self_.device
+
     ref_out = torch.ops.aten._sparse_log_softmax_backward_data(
-        tu.to_reference(grad_output),
-        tu.to_reference(output),
+        _to_reference(grad_output),
+        _to_reference(output),
         dim,
-        tu.to_reference(self_),
+        _to_reference(self_),
     )
     res_out = flag_gems._sparse_log_softmax_backward_data(
         grad_output, output, dim, self_
     )
 
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
 
 
 @pytest.mark.sparse_log_softmax_backward_data
@@ -329,11 +497,13 @@ def test__sparse_log_softmax_backward_data_structure(
         size, sparse_dim, grad_coords, dtype, _DEFAULT_RANGE, coalesce
     )
 
+    expected_device = self_.device
+
     ref_out = torch.ops.aten._sparse_log_softmax_backward_data(
-        tu.to_reference(grad_output),
-        tu.to_reference(output),
+        _to_reference(grad_output),
+        _to_reference(output),
         dim,
-        tu.to_reference(self_),
+        _to_reference(self_),
     )
     res_out = flag_gems._sparse_log_softmax_backward_data(
         grad_output, output, dim, self_
@@ -341,7 +511,7 @@ def test__sparse_log_softmax_backward_data_structure(
 
     # Operands with different supports must still yield the native sparse result,
     # support size included.
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
 
 
 @pytest.mark.sparse_log_softmax_backward_data
@@ -376,18 +546,20 @@ def test__sparse_log_softmax_backward_data_special_values(dtype, scenario, slot)
         size, sparse_dim, support, dtype, _DEFAULT_RANGE, True, values=unit
     )
 
+    expected_device = self_.device
+
     ref_out = torch.ops.aten._sparse_log_softmax_backward_data(
-        tu.to_reference(grad_output),
-        tu.to_reference(output),
+        _to_reference(grad_output),
+        _to_reference(output),
         dim,
-        tu.to_reference(self_),
+        _to_reference(self_),
     )
     res_out = flag_gems._sparse_log_softmax_backward_data(
         grad_output, output, dim, self_
     )
 
     # Matching nan positions are part of the reference semantics.
-    tu.assert_result_close(res_out, ref_out)
+    _assert_result_close(res_out, ref_out, expected_device=expected_device)
 
 
 @pytest.mark.sparse_log_softmax_backward_data
@@ -404,16 +576,19 @@ def test__sparse_log_softmax_backward_data_out(coords, coalesce, dtype):
     self_ = _coo_on_support(size, sparse_dim, support, dtype, _DEFAULT_RANGE, True)
     out_buf = _coo_on_support(size, sparse_dim, coords, dtype, _DEFAULT_RANGE, coalesce)
 
-    ref_buf = tu.to_reference(out_buf)
-    grad_before = tu.to_reference(grad_output)
-    output_before = tu.to_reference(output)
-    self_before = tu.to_reference(self_)
+    expected_device = self_.device
+
+    input_states = tuple(_readonly_state(x) for x in (grad_output, output, self_))
+    ref_buf = _to_reference(out_buf)
+    grad_before = _to_reference(grad_output)
+    output_before = _to_reference(output)
+    self_before = _to_reference(self_)
 
     ref_ret = torch.ops.aten._sparse_log_softmax_backward_data(
-        tu.to_reference(grad_output),
-        tu.to_reference(output),
+        _to_reference(grad_output),
+        _to_reference(output),
         dim,
-        tu.to_reference(self_),
+        _to_reference(self_),
         out=ref_buf,
     )
     res_ret = flag_gems._sparse_log_softmax_backward_data(
@@ -422,12 +597,14 @@ def test__sparse_log_softmax_backward_data_out(coords, coalesce, dtype):
 
     # `.out` returns the buffer itself, so the value comparison below covers the buffer.
     assert res_ret is out_buf
-    tu.assert_result_close(res_ret, ref_ret)
+    _assert_result_close(res_ret, ref_ret, expected_device=expected_device)
     # The inputs are only read: they must stay bit-identical to the snapshots taken
     # before the call, so this uses the exact comparison rather than a tolerance.
-    tu.assert_result_equal(grad_output, grad_before)
-    tu.assert_result_equal(output, output_before)
-    tu.assert_result_equal(self_, self_before)
+    for inp, state in zip((grad_output, output, self_), input_states):
+        _assert_readonly(inp, state)
+    _assert_result_equal(grad_output, grad_before, expected_device=expected_device)
+    _assert_result_equal(output, output_before, expected_device=expected_device)
+    _assert_result_equal(self_, self_before, expected_device=expected_device)
 
 
 @pytest.mark.sparse_log_softmax_backward_data
