@@ -88,12 +88,12 @@ def _torch_op(name, inplace=False):
 
 
 def _gems_op(name, inplace=False):
-    """The FlagGems wrapper that ``aten::_foreach_<name>`` is registered to.
-
-    Calling it directly is what ``use_gems()`` would have dispatched to, and the
-    CI check_kernelgen_tests job rejects use_gems() in test files.
-    """
-    return getattr(flag_gems, f"_foreach_{name}_" if inplace else f"_foreach_{name}")
+    """Resolve a canonical injected candidate or the current backend wrapper."""
+    suffix = "_" if inplace else ""
+    candidate = getattr(flag_gems, f"foreach_{name}{suffix}", None)
+    if callable(candidate):
+        return candidate
+    return getattr(flag_gems, f"_foreach_{name}{suffix}")
 
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
