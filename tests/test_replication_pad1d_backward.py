@@ -74,22 +74,30 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
     ],
 )
 def test_replication_pad1d_backward(shape, padding, dtype):
-    use_cpu_reference = flag_gems.vendor_name == "mthreads" and dtype == torch.complex64
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend randn does not support complex input construction")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = inp.cpu() if use_cpu_reference else utils.to_reference(inp)
-
-    pad_input = ref_inp if use_cpu_reference else inp
-    padded_out = torch.ops.aten.replication_pad1d(pad_input, padding)
-    grad_output = torch.ones_like(padded_out, device=inp.device)
-    ref_grad = (
-        grad_output.cpu() if use_cpu_reference else utils.to_reference(grad_output)
-    )
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128:
+        # Only the gradient's geometry depends on the forward call.
+        grad_shape = (*inp.shape[:-1], inp.shape[-1] + sum(padding))
+        grad_output = torch.ones(grad_shape, dtype=dtype, device=inp.device)
+        ref_inp, ref_grad = inp.cpu(), grad_output.cpu()
+    elif flag_gems.vendor_name == "mthreads" and dtype == torch.complex64:
+        ref_inp = inp.cpu()
+        padded_out = torch.ops.aten.replication_pad1d(ref_inp, padding)
+        grad_output = torch.ones_like(padded_out, device=inp.device)
+        ref_grad = grad_output.cpu()
+    else:
+        ref_inp = utils.to_reference(inp)
+        padded_out = torch.ops.aten.replication_pad1d(inp, padding)
+        grad_output = torch.ones_like(padded_out)
+        ref_grad = utils.to_reference(grad_output)
 
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)
     res_out = flag_gems.replication_pad1d_backward(grad_output, inp, padding)
 
-    if use_cpu_reference:
-        assert res_out.device == inp.device
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
