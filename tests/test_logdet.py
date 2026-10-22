@@ -195,6 +195,10 @@ def test_logdet_empty(dtype):
 
 @pytest.mark.logdet
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend cannot construct the complex eye input for this rejection test",
+)
 def test_logdet_rejects_complex(dtype):
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
     real = torch.randn((2, 4, 4), dtype=real_dtype, device=flag_gems.device)
