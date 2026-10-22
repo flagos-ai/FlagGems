@@ -540,27 +540,36 @@ def test_quantized_max_pool3d_out_adopts_input_qparams(out_qparams):
 
 
 @pytest.mark.quantized_max_pool3d_out
-def test_quantized_max_pool3d_out_dtype_mismatch():
+@pytest.mark.parametrize("dtype", [torch.qint8, torch.qint32, torch.float32])
+def test_quantized_max_pool3d_out_dtype_mismatch(dtype):
     """An ``out`` whose dtype differs from the input is rejected."""
     qx = _make_qinput((1, 2, 6, 6, 6), device=flag_gems.device)
     ref_inp = qx.to("cpu")
     ref_out = torch.quantized_max_pool3d(ref_inp, kernel_size=2, stride=2)
 
-    for dtype, zero_point in [(torch.qint8, 0), (torch.qint32, 0)]:
-        ref_o = _make_qout(ref_out.shape, "cpu", SCALE, zero_point, dtype)
-        with pytest.raises(RuntimeError) as ref_exc:
-            _aten_out(ref_inp, ref_o, 2, 2, 0, 1, False)
+    if dtype == torch.float32:
+        # A non-quantized out is rejected too.
+        out_float = torch.zeros(ref_out.shape, device=flag_gems.device)
+        with pytest.raises(RuntimeError):
+            flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_float)
+        return
 
-        out_q = _make_qout(ref_out.shape, flag_gems.device, SCALE, zero_point, dtype)
-        with pytest.raises(RuntimeError) as res_exc:
-            flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_q)
+    # MUSA quantize_per_tensor only supports qint8/quint8, so qint32 ``out``
+    # buffers are materialized on the CPU and moved to the device afterwards.
+    prepare_on_cpu = flag_gems.vendor_name == "mthreads" and dtype == torch.qint32
+    out_device = "cpu" if prepare_on_cpu else flag_gems.device
+    zero_point = 0
+    ref_o = _make_qout(ref_out.shape, "cpu", SCALE, zero_point, dtype)
+    with pytest.raises(RuntimeError) as ref_exc:
+        _aten_out(ref_inp, ref_o, 2, 2, 0, 1, False)
 
-        assert str(res_exc.value) == str(ref_exc.value)
+    out_q = _make_qout(ref_out.shape, out_device, SCALE, zero_point, dtype)
+    if prepare_on_cpu:
+        out_q = out_q.to(flag_gems.device)
+    with pytest.raises(RuntimeError) as res_exc:
+        flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_q)
 
-    # A non-quantized out is rejected too.
-    out_float = torch.zeros(ref_out.shape, device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        flag_gems.quantized_max_pool3d_out(qx, 2, 2, out=out_float)
+    assert str(res_exc.value) == str(ref_exc.value)
 
 
 @pytest.mark.quantized_max_pool3d_out
