@@ -285,3 +285,6 @@ underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
 
 _embedding_bag: test_embedding_bag
 underscore_embedding_bag: test_embedding_bag
+
+# The out overload shares correctness tests with the functional overload.
+upsample_nearest_exact2d_out: test_upsample_nearest_exact2d
