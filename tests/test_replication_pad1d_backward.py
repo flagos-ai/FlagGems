@@ -73,6 +73,8 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
     ],
 )
 def test_replication_pad1d_backward(shape, padding, dtype):
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend randn does not support complex input construction")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if flag_gems.vendor_name == "iluvatar" and dtype == torch.complex128:
         # Only the gradient's geometry depends on the forward call.
