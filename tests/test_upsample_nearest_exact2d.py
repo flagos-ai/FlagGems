@@ -19,7 +19,7 @@ def test_upsample_nearest_exact2d(shape, dtype, factor):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.upsample_nearest_exact2d
+@pytest.mark.upsample_nearest_exact2d_out
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("factor", [2, 3])
