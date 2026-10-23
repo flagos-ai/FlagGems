@@ -64,6 +64,13 @@ def _make_input(shape, dtype):
 
 
 def _to_reference(inp):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and inp.dtype == torch.complex32
+        and not utils.TO_CPU
+    ):
+        # NPU can store ComplexHalf, but its device cast cannot upcast it.
+        return utils.to_reference(inp.cpu(), True).to(inp.device)
     return utils.to_reference(inp, inp.is_floating_point() or inp.is_complex())
 
 
