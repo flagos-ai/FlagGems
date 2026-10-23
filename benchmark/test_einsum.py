@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Generator
+from functools import partial
 
 import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
-class EinsumBenchmark(base.Benchmark):
+class EinsumBenchmark(OperatorBenchmark):
     DEFAULT_METRICS = consts.DEFAULT_METRICS[:] + ["tflops"]
     DEFAULT_SHAPES = [(1, 512, 512, 512), (1, 1024, 1024, 1024), (16, 512, 512, 512)]
 
-    def __init__(self, *args, batched=False, input_fn=None, **kwargs):
+    def __init__(self, *args, batched=False, **kwargs):
         self.batched = batched
         super().__init__(*args, **kwargs)
 
@@ -34,65 +35,58 @@ class EinsumBenchmark(base.Benchmark):
     def set_shapes(self, *args, **kwargs):
         self.shapes = self.DEFAULT_SHAPES
 
-    def get_input_iter(self, dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            if self.batched:
-                inp1 = torch.randn([b, m, k], dtype=dtype, device=self.device)
-                inp2 = torch.randn([b, k, n], dtype=dtype, device=self.device)
-            else:
-                inp1 = torch.randn([m, k], dtype=dtype, device=self.device)
-                inp2 = torch.randn([k, n], dtype=dtype, device=self.device)
-            yield inp1, inp2
-
     def get_tflops(self, op, *args, **kwargs):
-        A, B = args[0], args[1]
+        A, B = args[1], args[2]
         if self.batched:
             return A.shape[0] * A.shape[1] * B.shape[2] * A.shape[2] * 2
         return A.shape[0] * B.shape[1] * A.shape[1] * 2
 
 
-class EinsumGenericBenchmark(base.GenericBenchmark):
+class EinsumGenericBenchmark(OperatorBenchmark):
     def set_shapes(self, *args, **kwargs):
         pass  # keep shapes set by caller
 
 
-def dot_input_fn(shape, dtype, device):
-    (n,) = shape
-    yield torch.randn(n, dtype=dtype, device=device), torch.randn(
-        n, dtype=dtype, device=device
+def _case_fn(shape, dtype, *, equation):
+    del dtype
+    if equation in ("ij,jk->ik", "bij,bjk->bik"):
+        b, m, n, k = shape
+        operands = (
+            ((b, m, k), (b, k, n))
+            if equation == "bij,bjk->bik"
+            else ((m, k), (k, n))
+        )
+    elif equation == "i,i->":
+        operands = (tuple(shape), tuple(shape))
+    elif equation == "i,j->ij":
+        m, n = shape
+        operands = ((m,), (n,))
+    elif equation == "...ij,...jk->...ik":
+        b, h, m, k, n = shape
+        operands = ((b, h, m, k), (b, h, k, n))
+    else:
+        operands = (tuple(shape),)
+    yield base.BenchmarkCasePlan(
+        shape={"operands": [list(dims) for dims in operands]},
+        params={"equation": equation},
+        builder_args=operands,
     )
 
 
-def outer_input_fn(shape, dtype, device):
-    m, n = shape
-    yield torch.randn(m, dtype=dtype, device=device), torch.randn(
-        n, dtype=dtype, device=device
-    )
-
-
-def unary_2d_input_fn(shape, dtype, device):
-    m, n = shape
-    yield (torch.randn(m, n, dtype=dtype, device=device),)
-
-
-def unary_3d_input_fn(shape, dtype, device):
-    m, n, k = shape
-    yield (torch.randn(m, n, k, dtype=dtype, device=device),)
-
-
-def ellipsis_input_fn(shape, dtype, device):
-    b, h, m, k, n = shape
-    yield torch.randn(b, h, m, k, dtype=dtype, device=device), torch.randn(
-        b, h, k, n, dtype=dtype, device=device
-    )
+def _build_inputs_fn(plan, dtype, device):
+    operands = [
+        torch.randn(dims, dtype=dtype, device=device) for dims in plan.builder_args
+    ]
+    return (plan.params["equation"], *operands)
 
 
 @pytest.mark.einsum
 def test_einsum_matmul():
     bench = EinsumBenchmark(
-        input_fn=None,
+        case_fn=partial(_case_fn, equation="ij,jk->ik"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A, B: torch.einsum("ij,jk->ik", A, B),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
@@ -101,9 +95,10 @@ def test_einsum_matmul():
 @pytest.mark.einsum
 def test_einsum_bmm():
     bench = EinsumBenchmark(
-        input_fn=None,
+        case_fn=partial(_case_fn, equation="bij,bjk->bik"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A, B: torch.einsum("bij,bjk->bik", A, B),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
         batched=True,
     )
@@ -113,9 +108,10 @@ def test_einsum_bmm():
 @pytest.mark.einsum
 def test_einsum_dot():
     bench = EinsumGenericBenchmark(
-        input_fn=dot_input_fn,
+        case_fn=partial(_case_fn, equation="i,i->"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A, B: torch.einsum("i,i->", A, B),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024,), (4096,), (65536,)]
@@ -125,9 +121,10 @@ def test_einsum_dot():
 @pytest.mark.einsum
 def test_einsum_outer():
     bench = EinsumGenericBenchmark(
-        input_fn=outer_input_fn,
+        case_fn=partial(_case_fn, equation="i,j->ij"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A, B: torch.einsum("i,j->ij", A, B),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]
@@ -137,9 +134,10 @@ def test_einsum_outer():
 @pytest.mark.einsum
 def test_einsum_trace():
     bench = EinsumGenericBenchmark(
-        input_fn=unary_2d_input_fn,
+        case_fn=partial(_case_fn, equation="ii->"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ii->", A),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]
@@ -149,9 +147,10 @@ def test_einsum_trace():
 @pytest.mark.einsum
 def test_einsum_diagonal():
     bench = EinsumGenericBenchmark(
-        input_fn=unary_2d_input_fn,
+        case_fn=partial(_case_fn, equation="ii->i"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ii->i", A),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]
@@ -161,9 +160,10 @@ def test_einsum_diagonal():
 @pytest.mark.einsum
 def test_einsum_transpose():
     bench = EinsumGenericBenchmark(
-        input_fn=unary_2d_input_fn,
+        case_fn=partial(_case_fn, equation="ij->ji"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ij->ji", A),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(1024, 1024), (4096, 4096)]
@@ -173,9 +173,10 @@ def test_einsum_transpose():
 @pytest.mark.einsum
 def test_einsum_sum_all():
     bench = EinsumGenericBenchmark(
-        input_fn=unary_3d_input_fn,
+        case_fn=partial(_case_fn, equation="ijk->"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ijk->", A),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(64, 64, 64), (128, 128, 128)]
@@ -185,9 +186,10 @@ def test_einsum_sum_all():
 @pytest.mark.einsum
 def test_einsum_sum_dim():
     bench = EinsumGenericBenchmark(
-        input_fn=unary_3d_input_fn,
+        case_fn=partial(_case_fn, equation="ijk->j"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A: torch.einsum("ijk->j", A),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(64, 64, 64), (128, 128, 128)]
@@ -197,9 +199,10 @@ def test_einsum_sum_dim():
 @pytest.mark.einsum
 def test_einsum_ellipsis():
     bench = EinsumGenericBenchmark(
-        input_fn=ellipsis_input_fn,
+        case_fn=partial(_case_fn, equation="...ij,...jk->...ik"),
+        build_inputs_fn=_build_inputs_fn,
         op_name="einsum",
-        torch_op=lambda A, B: torch.einsum("...ij,...jk->...ik", A, B),
+        torch_op=torch.einsum,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.shapes = [(2, 4, 64, 64, 128), (2, 8, 128, 128, 256)]
