@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 import flag_gems
 
@@ -63,3 +64,65 @@ def test_gems_log_logger(module):
     # Operator modules log via logging.getLogger(__name__), so the logger name
     # is the resolved function's own module path.
     assert utils.gems_log_logger(_function_from(module)) == module
+
+
+@pytest.mark.parametrize("supports_fp64", [False, True])
+@pytest.mark.parametrize(
+    "dtype, mode, numerator, denominator, expected",
+    [
+        (torch.float16, "floor", 9.8984375, 0.01512908935546875, 654.0),
+        (torch.float16, "trunc", 8.3125, 1.6630859375, 4.0),
+        (torch.bfloat16, "floor", 8.6875, -0.036376953125, -239.0),
+        (torch.bfloat16, "trunc", -7.9375, 0.0771484375, -102.0),
+    ],
+)
+def test_ref_div_rounding_low_precision(
+    monkeypatch, supports_fp64, dtype, mode, numerator, denominator, expected
+):
+    monkeypatch.setattr(flag_gems, "vendor_name", "test_vendor")
+    monkeypatch.setattr(utils, "fp64_is_supported", supports_fp64)
+    a = torch.tensor([numerator], dtype=dtype)
+    b = torch.tensor([denominator], dtype=dtype)
+
+    result = utils.ref_div_rounding(a, b, mode)
+
+    assert result.dtype == dtype
+    assert result.device.type == "cpu"
+    assert result.item() == expected
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
+@pytest.mark.parametrize("mode", [None, "floor", "trunc"])
+def test_ref_div_rounding_regular_dtypes(monkeypatch, dtype, mode):
+    monkeypatch.setattr(flag_gems, "vendor_name", "test_vendor")
+    a = torch.tensor([7, -7, 0], dtype=dtype)
+    b = torch.tensor([2, 2, 2], dtype=dtype)
+
+    torch.testing.assert_close(
+        utils.ref_div_rounding(a, b, mode), torch.div(a, b, rounding_mode=mode)
+    )
+
+
+@pytest.mark.parametrize("scalar_first", [False, True])
+@pytest.mark.parametrize("mode", [None, "floor", "trunc"])
+def test_ref_div_rounding_scalar_operands(monkeypatch, scalar_first, mode):
+    monkeypatch.setattr(flag_gems, "vendor_name", "test_vendor")
+    tensor = torch.tensor([7.0, -7.0], dtype=torch.float16)
+    a, b = (2.0, tensor) if scalar_first else (tensor, 2.0)
+    wide_a, wide_b = (2.0, tensor.double()) if scalar_first else (tensor.double(), 2.0)
+    expected = torch.div(wide_a, wide_b, rounding_mode=mode).to(torch.float16)
+
+    torch.testing.assert_close(utils.ref_div_rounding(a, b, mode), expected)
+
+
+@pytest.mark.parametrize("to_cpu", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_ref_div_rounding_kunlunxin_uses_cpu_semantics(monkeypatch, to_cpu, dtype):
+    monkeypatch.setattr(flag_gems, "vendor_name", "kunlunxin")
+    monkeypatch.setattr(utils, "TO_CPU", to_cpu)
+    a = torch.tensor([9.8984375, -7.9375], dtype=dtype)
+    b = torch.tensor([0.01512908935546875, 0.0771484375], dtype=dtype)
+
+    torch.testing.assert_close(
+        utils.ref_div_rounding(a, b, "floor"), torch.div(a, b, rounding_mode="floor")
+    )
