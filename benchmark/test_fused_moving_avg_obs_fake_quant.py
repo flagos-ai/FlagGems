@@ -38,8 +38,8 @@ class FusedMovingAvgObsFakeQuantBenchmark(base.GenericBenchmark):
 def fused_moving_avg_obs_fake_quant_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=torch.float32, device=device)
 
-    observer_on = torch.tensor([1], dtype=torch.int32, device=device)
-    fake_quant_on = torch.tensor([1], dtype=torch.int32, device=device)
+    observer_on = torch.tensor([1], dtype=torch.int64, device=device)
+    fake_quant_on = torch.tensor([1], dtype=torch.int64, device=device)
     running_min = torch.tensor([-0.5], dtype=torch.float32, device=device)
     running_max = torch.tensor([0.5], dtype=torch.float32, device=device)
     scale = torch.ones(1, dtype=torch.float32, device=device)
