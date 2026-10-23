@@ -23,6 +23,7 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
+from . import accuracy_utils as utils
 from .accuracy_utils import (
     fp64_is_supported,
     gems_assert_close,
@@ -299,6 +300,8 @@ def test_accuracy_foreach_unary_bool(name):
 def test_accuracy_foreach_unary_complex(name, dtype):
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
         return
+    if name == "tanh" and flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native foreach_tanh does not support complex NPU reference")
     inp = [_sample((16,), dtype, flag_gems.device) for _ in range(2)]
     ref_inp = [to_reference(t) for t in inp]
 
@@ -670,6 +673,8 @@ def test_accuracy_foreach_unary_complex_large(name, dtype):
     """A large finite complex input must not overflow the modulus."""
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
         return
+    if name == "tanh" and flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native foreach_tanh does not support complex NPU reference")
     mag = LARGE_COMPLEX[dtype]
     base = torch.tensor([complex(mag, mag), complex(mag, -mag)], dtype=dtype)
     inp = [base.to(flag_gems.device)]
