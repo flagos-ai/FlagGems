@@ -589,7 +589,7 @@ def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
 @pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
-def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
+def test_cholesky_solve_complex_lazy_conjugate_direct(dtype):
     A, L, rhs = _make_cholesky_solve_inputs((64, 4), dtype)
     factor = L.mH
     assert factor.is_conj()

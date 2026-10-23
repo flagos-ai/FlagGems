@@ -55,7 +55,6 @@ def test_linalg_svdvals(M, N, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
 
-    # Verify dispatch via use_gems()
     gems_out = flag_gems.linalg_svdvals(A)
     utils.gems_assert_close(gems_out, ref_out, dtype, atol=SVD_ATOL)
 

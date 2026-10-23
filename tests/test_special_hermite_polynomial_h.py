@@ -53,6 +53,14 @@ def test_special_hermite_polynomial_h(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
+def _assert_gems_call(caplog):
+    expected = (
+        f"{utils.gems_log_prefix(flag_gems.special_hermite_polynomial_h)} "
+        "SPECIAL_HERMITE_POLYNOMIAL_H"
+    )
+    assert expected in caplog.text
+
+
 @pytest.mark.special_hermite_polynomial_h
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # special.hermite_polynomial_h reference only supports float32 and float64
@@ -79,6 +87,32 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     # bound the absolute error by that magnitude.
     atol = max(1e-4, 16 * torch.finfo(dtype).eps * ref_out.abs().max().item())
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
+
+
+@pytest.mark.special_hermite_polynomial_h
+@pytest.mark.parametrize("overload", ["default", "n_scalar"])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_special_hermite_polynomial_h_direct_call(overload, dtype, caplog):
+    x = torch.tensor([-1.0, -0.25, 0.5, 1.0], dtype=dtype, device=flag_gems.device)
+    degree = (
+        torch.tensor([0, 1, 5, 9], dtype=torch.int64, device=flag_gems.device)
+        if overload == "default"
+        else 9
+    )
+    ref_x = utils.to_reference(x, True)
+    ref_degree = (
+        utils.to_reference(degree, False)
+        if isinstance(degree, torch.Tensor)
+        else degree
+    )
+    reference_op = getattr(torch.ops.aten.special_hermite_polynomial_h, overload)
+    ref_out = reference_op(ref_x, ref_degree)
+
+    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_hermite_polynomial_h"):
+        res_out = flag_gems.special_hermite_polynomial_h(x, degree)
+
+    _assert_gems_call(caplog)
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.special_hermite_polynomial_h
