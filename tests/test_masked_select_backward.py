@@ -75,6 +75,15 @@ def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
     "dtype", [torch.bool, torch.int32, torch.float64, torch.complex64]
 )
 def test_accuracy_masked_select_backward_extended_dtypes(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype in (torch.bool, torch.complex64)
+        or flag_gems.vendor_name == "ascend"
+        and dtype.is_complex
+    ) and not utils.TO_CPU:
+        pytest.skip(
+            "backend native masked_select_backward reference lacks this bool/complex dtype"
+        )
     torch.manual_seed(0)
     shape = (73, 71)
     mask = torch.rand(shape, device=flag_gems.device) < 0.4
@@ -82,8 +91,15 @@ def test_accuracy_masked_select_backward_extended_dtypes(dtype):
         inp = torch.rand(shape, device=flag_gems.device) < 0.5
         grad = torch.rand(int(mask.sum()), device=flag_gems.device) < 0.5
     elif dtype.is_complex:
-        inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-        grad = torch.randn(int(mask.sum()), dtype=dtype, device=flag_gems.device)
+        factory_device = (
+            "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+        )
+        inp = torch.randn(shape, dtype=dtype, device=factory_device).to(
+            flag_gems.device
+        )
+        grad = torch.randn(int(mask.sum()), dtype=dtype, device=factory_device).to(
+            flag_gems.device
+        )
     elif dtype.is_floating_point:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         grad = torch.randn(int(mask.sum()), dtype=dtype, device=flag_gems.device)
@@ -114,10 +130,18 @@ def test_accuracy_masked_select_backward_preserves_layout(layout):
     if layout == "transpose":
         inp = torch.randn((11, 7), device=flag_gems.device).T
     else:
-        inp = torch.randn((2, 3, 5, 7), device=flag_gems.device).contiguous(
-            memory_format=torch.channels_last
+        factory_device = (
+            "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
         )
-    mask = (torch.rand_like(inp) < 0.5).contiguous()
+        inp = (
+            torch.randn((2, 3, 5, 7), device=factory_device)
+            .contiguous(memory_format=torch.channels_last)
+            .to(flag_gems.device)
+        )
+    if flag_gems.vendor_name == "ascend" and layout == "channels_last":
+        mask = (torch.rand(inp.shape, device=flag_gems.device) < 0.5).contiguous()
+    else:
+        mask = (torch.rand_like(inp) < 0.5).contiguous()
     grad = torch.randn(int(mask.sum()), device=flag_gems.device)
     _assert_matches_reference(grad, inp, mask)
 
@@ -208,9 +232,18 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_masked_select_backward_conjugated_grad(dtype):
+    if flag_gems.vendor_name in ("ascend", "kunlunxin") and not utils.TO_CPU:
+        pytest.skip(
+            "backend native masked_select_backward reference lacks complex support"
+        )
     torch.manual_seed(0)
-    inp = torch.randn(73, dtype=dtype, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+    inp = torch.randn(73, dtype=dtype, device=factory_device).to(flag_gems.device)
     mask = torch.arange(73, device=inp.device) % 2 == 0
-    grad = torch.randn(int(mask.sum()), dtype=dtype, device=inp.device).conj()
+    grad = (
+        torch.randn(int(mask.sum()), dtype=dtype, device=factory_device)
+        .to(inp.device)
+        .conj()
+    )
     assert grad.is_conj() and grad.is_contiguous()
     _assert_matches_reference(grad, inp, mask)

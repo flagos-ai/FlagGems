@@ -28,20 +28,29 @@ def test_linalg_cholesky(shape, dtype):
     # Create a positive-definite matrix: A = B @ B^T + I
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
-    n = shape[-1]
-    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    A = (
-        B @ B.transpose(-2, -1)
-        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        else flag_gems.device
     )
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=factory_device)
+    A = (
+        B @ B.transpose(-2, -1) + torch.eye(n, dtype=dtype, device=factory_device) * 0.1
+    ).to(flag_gems.device)
 
     # For reference, convert to CPU and use torch.linalg.cholesky
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.cholesky(ref_A)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.linalg_cholesky(A)
+    res_out = flag_gems.linalg_cholesky(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -54,20 +63,29 @@ def test_linalg_cholesky_upper(shape, dtype):
     # Test with upper=True
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
-    n = shape[-1]
-    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    A = (
-        B @ B.transpose(-2, -1)
-        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        else flag_gems.device
     )
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=factory_device)
+    A = (
+        B @ B.transpose(-2, -1) + torch.eye(n, dtype=dtype, device=factory_device) * 0.1
+    ).to(flag_gems.device)
 
     # For reference, convert to CPU and use torch.linalg.cholesky
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.cholesky(ref_A, upper=True)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.linalg_cholesky(A, upper=True)
+    res_out = flag_gems.linalg_cholesky(A, upper=True)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -80,19 +98,28 @@ def test_linalg_cholesky_batch(shape, dtype):
     # Create positive-definite matrices for batched input: A = B @ B^T + I
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
-    n = shape[-1]
-    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    A = (
-        B @ B.transpose(-2, -1)
-        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    if (
+        flag_gems.vendor_name == "ascend"
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        else flag_gems.device
     )
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=factory_device)
+    A = (
+        B @ B.transpose(-2, -1) + torch.eye(n, dtype=dtype, device=factory_device) * 0.1
+    ).to(flag_gems.device)
 
     # For reference, convert to CPU and use torch.linalg.cholesky
     ref_A = utils.to_reference(A)
     ref_out = torch.linalg.cholesky(ref_A)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.linalg_cholesky(A)
+    res_out = flag_gems.linalg_cholesky(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -19,8 +19,12 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
-REAL_DTYPES = utils.ALL_FLOAT_DTYPES + [torch.int8, torch.uint8] + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+REAL_DTYPES = (
+    utils.ALL_FLOAT_DTYPES
+    + [torch.int8, torch.uint8]
+    + utils.ALL_INT_DTYPES
+    + utils.BOOL_TYPES
+)
 CASES = [
     ((32, 32), (32, 32), 0),
     ((32, 32), (32, 32), -1),
@@ -38,7 +42,13 @@ def _make_input(shape, dtype):
         return torch.randint(0, 2, shape, device=flag_gems.device).bool()
     if dtype.is_floating_point:
         return torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    return torch.randint(0 if dtype == torch.uint8 else -50, 50, shape, dtype=dtype, device=flag_gems.device)
+    return torch.randint(
+        0 if dtype == torch.uint8 else -50,
+        50,
+        shape,
+        dtype=dtype,
+        device=flag_gems.device,
+    )
 
 
 def _make_index(inp_shape, idx_shape, dim):
@@ -51,9 +61,19 @@ def _make_index(inp_shape, idx_shape, dim):
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 @pytest.mark.parametrize("inp_shape,idx_shape,dim", CASES)
 def test_take_along_dim_out_preserves_storage(dtype, inp_shape, idx_shape, dim):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and dtype in (torch.uint8, torch.int16)
+    ):
+        pytest.skip(
+            "Kunlunxin native take_along_dim reference lacks uint8/int16 support"
+        )
     inp = _make_input(inp_shape, dtype)
     index = _make_index(inp_shape, idx_shape, dim)
-    ref = torch.take_along_dim(utils.to_reference(inp, False), utils.to_reference(index, False), dim=dim)
+    ref = torch.take_along_dim(
+        utils.to_reference(inp, False), utils.to_reference(index, False), dim=dim
+    )
     out = torch.empty(idx_shape, dtype=dtype, device=flag_gems.device)
     pointer, stride, storage_offset = out.data_ptr(), out.stride(), out.storage_offset()
     result = flag_gems.take_along_dim_out(inp, index, dim=dim, out=out)
@@ -69,7 +89,9 @@ def test_take_along_dim_out_none_and_resize():
     torch.manual_seed(0)
     inp = torch.randn((8, 8), device=flag_gems.device)
     index = torch.randint(0, inp.numel(), (3, 5), device=flag_gems.device)
-    ref = torch.take_along_dim(utils.to_reference(inp, False), utils.to_reference(index, False))
+    ref = torch.take_along_dim(
+        utils.to_reference(inp, False), utils.to_reference(index, False)
+    )
     out = torch.empty((0,), dtype=inp.dtype, device=flag_gems.device)
     result = flag_gems.take_along_dim_out(inp, index, dim=None, out=out)
     assert result is out
@@ -82,7 +104,9 @@ def test_take_along_dim_out_noncontiguous():
     torch.manual_seed(0)
     inp = torch.randn((7, 11), device=flag_gems.device).T
     index = torch.randint(0, inp.shape[1], (11, 4), device=flag_gems.device)
-    ref = torch.take_along_dim(utils.to_reference(inp, False), utils.to_reference(index, False), dim=1)
+    ref = torch.take_along_dim(
+        utils.to_reference(inp, False), utils.to_reference(index, False), dim=1
+    )
     out = torch.empty((4, 11), device=flag_gems.device).T
     pointer, stride, storage_offset = out.data_ptr(), out.stride(), out.storage_offset()
     result = flag_gems.take_along_dim_out(inp, index, dim=1, out=out)

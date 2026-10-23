@@ -43,6 +43,14 @@ def _make_input(shape, dtype):
 
 
 def _to_reference(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
+    ):
+        pytest.skip(
+            "Kunlunxin native sign reference does not support this integer dtype"
+        )
     return utils.to_reference(inp, False)
 
 
