@@ -487,7 +487,7 @@ def test_ascend_mul_bounded_grid_complete_traversal(kind):
             a, b, out, n, BLOCKS_PER_PROGRAM=3, **kw
         )
         ref = torch.mul(a, b)
-    torch.testing.assert_close(out.cpu(), ref.cpu())
+    utils.gems_assert_close(out.cpu(), ref.cpu(), out.dtype, atol=1e-5)
 
 
 @pytest.mark.mul
@@ -511,7 +511,7 @@ def test_ascend_mul_inplace_autotuning_first_and_second_call(shape, bshape, dtyp
         ref = torch.mul(a, b)
         result = m.mul_(a, b)
         assert result is a
-        torch.testing.assert_close(result.cpu(), ref.cpu())
+        utils.gems_assert_close(result.cpu(), ref.cpu(), result.dtype, atol=1e-5)
 
 
 @pytest.mark.mul
@@ -525,7 +525,7 @@ def test_ascend_mul_inplace_safe_cast(ad, bd):
     a = torch.tensor([2, 3], dtype=ad, device=flag_gems.device)
     b = torch.tensor([3, 4], dtype=bd, device=flag_gems.device)
     ref = a.clone().mul_(b)
-    torch.testing.assert_close(m.mul_(a, b).cpu(), ref.cpu())
+    utils.gems_assert_equal(m.mul_(a, b).cpu(), ref.cpu())
 
 
 @pytest.mark.mul
@@ -537,7 +537,7 @@ def test_ascend_mul_output_safe_cast():
     out = torch.empty(2, dtype=torch.float32, device=flag_gems.device)
     ref = torch.mul(a, b, out=torch.empty_like(out))
     assert m.mul(a, b, out=out) is out
-    torch.testing.assert_close(out.cpu(), ref.cpu())
+    utils.gems_assert_equal(out.cpu(), ref.cpu())
 
 
 @pytest.mark.mul
@@ -567,7 +567,7 @@ def test_ascend_mul_complex_output_cast(ad, od):
     out = torch.empty(2, dtype=od, device=flag_gems.device)
     ref = torch.mul(a, b, out=torch.empty_like(out))
     assert m.mul(a, b, out=out) is out
-    torch.testing.assert_close(out.cpu(), ref.cpu())
+    utils.gems_assert_equal(out.cpu(), ref.cpu())
 
 
 @pytest.mark.mul
@@ -581,7 +581,7 @@ def test_ascend_mul_complex_out_preserves_real_computation(dtype, values):
     out = torch.empty(2, dtype=torch.complex64, device=flag_gems.device)
     ref = torch.mul(a, a, out=torch.empty_like(out))
     m.mul(a, a, out=out)
-    torch.testing.assert_close(out.cpu(), ref.cpu(), rtol=0, atol=0)
+    utils.gems_assert_equal(out.cpu(), ref.cpu())
 
 
 @pytest.mark.mul
@@ -592,7 +592,7 @@ def test_ascend_mul_cast_output_shape_error_preserves_output():
     out = torch.full((3,), 7, dtype=torch.complex64, device=flag_gems.device)
     with pytest.raises(RuntimeError, match="output with shape"):
         m.mul(a, a, out=out)
-    torch.testing.assert_close(out.cpu(), torch.full((3,), 7, dtype=torch.complex64))
+    utils.gems_assert_equal(out.cpu(), torch.full((3,), 7, dtype=torch.complex64))
 
 
 @pytest.mark.mul
@@ -617,6 +617,6 @@ def test_ascend_mul_complex_fixed_cpu_reference(case):
         assert actual is inp
     else:
         actual = flag_gems.mul(inp, other)
-        torch.testing.assert_close(inp.cpu(), a, rtol=0, atol=0)
+        utils.gems_assert_equal(inp.cpu(), a)
     # All component products are exact dyadic fractions in this witness.
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual.cpu(), expected)

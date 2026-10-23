@@ -113,7 +113,7 @@ def test_ascend_gelu_fixed_cpu_reference(dtype, approximate, operation):
             copied = inp.clone()
             actual = flag_gems.gelu_(copied, approximate=approximate)
             assert actual is copied
-            torch.testing.assert_close(inp.cpu(), cpu, rtol=0, atol=0)
+            utils.gems_assert_equal(inp.cpu(), cpu)
         else:
             actual = flag_gems.gelu(inp, approximate=approximate)
     utils.gems_assert_close(actual.cpu(), expected, dtype)

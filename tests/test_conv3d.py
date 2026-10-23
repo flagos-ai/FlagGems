@@ -221,11 +221,12 @@ def test_ascend_conv3d_regressions(case):
             flag_gems.current_work_registrar = previous_registrar
     finally:
         module._CONV3D_MAX_GRID = cap
-    torch.testing.assert_close(
-        actual,
-        reference,
-        rtol=1e-2 if dtype == torch.bfloat16 else 2e-3,
+    utils.gems_assert_close(
+        actual.cpu(),
+        reference.cpu(),
+        actual.dtype,
         atol=0.125 if dtype == torch.bfloat16 else 2e-4,
+        rtol=1e-2 if dtype == torch.bfloat16 else 2e-3,
     )
 
 
@@ -247,4 +248,4 @@ def test_ascend_conv3d_fp32_cpu_reference(groups, channels, seed):
         bias_base.to(flag_gems.device)[::2],
         groups=groups,
     )
-    torch.testing.assert_close(actual.cpu(), reference, rtol=2e-3, atol=2e-4)
+    utils.gems_assert_close(actual.cpu(), reference, actual.dtype, atol=2e-4, rtol=2e-3)

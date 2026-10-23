@@ -19,7 +19,7 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import gems_assert_close, to_reference
+from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
 from .conftest import QUICK_MODE
 
 DIM_LIST = [1] if QUICK_MODE else [0, 1]
@@ -141,9 +141,9 @@ def test_ascend_index_copy_strides(dtype, inplace, layout, dim):
     if inplace:
         actual = flag_gems.index_copy_(inp, dim, index, source)
         assert actual is inp
-        torch.testing.assert_close(raw.cpu(), cpu_raw, rtol=0, atol=0)
+        gems_assert_equal(raw.cpu(), cpu_raw)
     else:
         actual = flag_gems.index_copy(inp, dim, index, source)
         assert not torch._C._is_alias_of(actual, inp)
-        torch.testing.assert_close(raw, initial, rtol=0, atol=0)
-    torch.testing.assert_close(actual.cpu(), reference, rtol=0, atol=0)
+        gems_assert_equal(raw.cpu(), initial.cpu())
+    gems_assert_equal(actual.cpu(), reference)

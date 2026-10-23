@@ -73,12 +73,10 @@ def test_ascend_lift_fresh_alias(dtype, layout):
     assert actual.shape == inp.shape
     assert actual.stride() == inp.stride()
     assert actual.storage_offset() == inp.storage_offset()
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    utils.gems_assert_equal(actual.cpu(), expected)
     if inp.numel():
         inp.fill_(1)
-        torch.testing.assert_close(
-            actual.cpu(), torch.ones_like(expected), rtol=0, atol=0
-        )
+        utils.gems_assert_equal(actual.cpu(), torch.ones_like(expected))
 
 
 @pytest.mark.lift_fresh

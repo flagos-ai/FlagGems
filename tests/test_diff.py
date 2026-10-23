@@ -17,7 +17,13 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, INT_DTYPES, gems_assert_close, to_reference
+from .accuracy_utils import (
+    FLOAT_DTYPES,
+    INT_DTYPES,
+    gems_assert_close,
+    gems_assert_equal,
+    to_reference,
+)
 from .conftest import QUICK_MODE
 
 DIFF_SHAPES = [(1024,), (100, 200), (10, 20, 30)]
@@ -199,7 +205,7 @@ def test_ascend_diff_slow_path_bounds(dtype, length, n):
     )
     expected = torch.diff(cpu, n=n, dim=1)
     actual = flag_gems.diff(cpu.to(flag_gems.device), n=n, dim=1)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.diff
@@ -221,7 +227,7 @@ def test_ascend_diff_batched_programs(monkeypatch, dtype, n):
     )
     expected = torch.diff(cpu, n=n, dim=1)
     actual = flag_gems.diff(cpu.to(flag_gems.device), n=n, dim=1)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.diff
@@ -249,7 +255,7 @@ def test_ascend_diff_fast_path_tail(shape, n, dtype):
     cpu = ((torch.arange(size) % 17).float() / 8).to(dtype).reshape(shape)
     expected = torch.diff(cpu, n=n)
     actual = flag_gems.diff(cpu.to(flag_gems.device), n=n)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.diff
@@ -264,4 +270,4 @@ def test_ascend_diff_strided_input(dtype, n, dim):
     assert not inp.is_contiguous()
     expected = torch.diff(cpu, n=n, dim=dim)
     actual = flag_gems.diff(inp, n=n, dim=dim)
-    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+    gems_assert_equal(actual.cpu(), expected)
