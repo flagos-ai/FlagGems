@@ -50,7 +50,7 @@ def test_special_psi():
         op_name="special_psi",
         torch_op=torch.ops.aten.special_psi.default,
         dtypes=_BENCH_DTYPES,
-        gems_op=getattr(flag_gems, "special_psi", None),
+        gems_op=flag_gems.special_psi,
     )
     bench.run()
 

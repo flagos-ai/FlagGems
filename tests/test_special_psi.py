@@ -281,8 +281,15 @@ def _out_buffer(shape, dtype, layout, device):
 
 
 def _boundary_input(dtype, kind):
-    """Boundary input tensor for ``kind``, built on the target device."""
-    device = flag_gems.device
+    """Boundary input tensor for ``kind``, returned on the target device."""
+    # Hygon lacks nextafter for Half. Keep the original dtype and complete
+    # signed-subnormal/pole-neighbour recipe on CPU, then copy its payload back.
+    cpu_boundary = (
+        flag_gems.vendor_name == "hygon"
+        and dtype == torch.float16
+        and kind in ("tiny_values", "pole_neighbours")
+    )
+    device = "cpu" if cpu_boundary else flag_gems.device
 
     def as_tensor(values):
         return torch.tensor(values, dtype=dtype, device=device)
@@ -302,7 +309,8 @@ def _boundary_input(dtype, kind):
             torch.ones(1, dtype=dtype, device=device),
         )
         tiny = torch.finfo(dtype).tiny
-        return torch.cat([as_tensor([tiny, -tiny]), smallest, -smallest])
+        result = torch.cat([as_tensor([tiny, -tiny]), smallest, -smallest])
+        return result.to(flag_gems.device) if cpu_boundary else result
     if kind == "negative_poles":
         return as_tensor([-1.0, -2.0, -7.0])
     if kind == "pole_neighbours":
@@ -314,11 +322,23 @@ def _boundary_input(dtype, kind):
         below = torch.nextafter(poles, as_tensor([-float("inf")] * 3))
         above = torch.nextafter(poles, as_tensor([0.0] * 3))
         literal = as_tensor([-1.1, -0.9, -1.01, -0.99, -2.01, -1.99])
-        return torch.cat([literal, below, above])
+        result = torch.cat([literal, below, above])
+        return result.to(flag_gems.device) if cpu_boundary else result
     if kind == "positive":
         return as_tensor([0.5, 1.0, 2.0, 10.0, 1e3])
     finfo = torch.finfo(dtype)
     return as_tensor([finfo.max, finfo.min])
+
+
+def _assert_psi_result(result, reference, expected_device):
+    # Check the candidate's ABI before the numerical comparator moves values
+    # to CPU (in particular when the reference itself runs on CPU).
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    assert result.layout == reference.layout == torch.strided
+    assert_result_close(result, reference)
 
 
 @pytest.mark.special_psi
@@ -331,9 +351,10 @@ def test_special_psi(shape, dtype, value_range):
     ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -344,9 +365,10 @@ def test_special_psi_layout(kind, dtype):
     ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -357,9 +379,10 @@ def test_special_psi_boundary_values(kind, dtype):
     ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -371,9 +394,10 @@ def test_special_psi_special_values(dtype, scenario):
     ref_inp = to_reference(inp)
 
     ref_out = torch.ops.aten.special_psi(ref_inp)
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
 
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -388,11 +412,12 @@ def test_special_psi_out(in_kind, out_layout, dtype):
 
     res_out = _out_buffer(inp.shape, dtype, out_layout, inp.device)
     layout_before = (res_out.stride(), res_out.storage_offset())
+    expected_device = inp.device
     res_ret = flag_gems.special_psi(inp, out=res_out)
 
     assert res_ret is res_out
     assert (res_out.stride(), res_out.storage_offset()) == layout_before
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -408,10 +433,11 @@ def test_special_psi_out_promoted(dtype):
     torch.ops.aten.special_psi.out(ref_inp, out=ref_out)
 
     res_out = torch.empty(inp.shape, dtype=torch.float32, device=inp.device)
+    expected_device = inp.device
     res_ret = flag_gems.special_psi(inp, out=res_out)
 
     assert res_ret is res_out
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
 
 
 @pytest.mark.special_psi
@@ -428,11 +454,12 @@ def test_special_psi_backward(dtype):
     ref_out = torch.ops.aten.special_psi(ref_inp)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
 
+    expected_device = inp.device
     res_out = flag_gems.special_psi(inp)
-    assert_result_close(res_out, ref_out)
+    _assert_psi_result(res_out, ref_out, expected_device)
     (res_grad,) = torch.autograd.grad(res_out, inp, grad_outputs=upstream)
 
-    assert_result_close(res_grad, ref_grad)
+    _assert_psi_result(res_grad, ref_grad, expected_device)
 
 
 @pytest.mark.special_psi
