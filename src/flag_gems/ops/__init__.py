@@ -1346,6 +1346,10 @@ from flag_gems.ops.quantize_per_tensor import (
     quantize_per_tensor,
     quantize_per_tensor_out,
 )
+from flag_gems.ops.quantize_per_tensor_dynamic import (
+    quantize_per_tensor_dynamic,
+    quantize_per_tensor_dynamic_out,
+)
 from flag_gems.ops.quantized_batch_norm import (
     quantized_batch_norm,
     quantized_batch_norm_out,
@@ -3085,6 +3089,8 @@ __all__ = [
     "quantize_per_channel",
     "quantize_per_channel_out",
     "quantize_per_tensor",
+    "quantize_per_tensor_dynamic",
+    "quantize_per_tensor_dynamic_out",
     "quantize_per_tensor_out",
     "quantized_batch_norm",
     "quantized_batch_norm_out",
