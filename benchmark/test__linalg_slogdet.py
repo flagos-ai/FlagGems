@@ -14,21 +14,10 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from flag_gems import _linalg_slogdet
 
 from . import base
-
-# ``_linalg_slogdet`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._linalg_slogdet`` and ``-m
-# _linalg_slogdet`` both work.
-setattr(
-    pytest.mark,
-    "_linalg_slogdet",
-    MarkDecorator(Mark("_linalg_slogdet", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Use linalg-specific square-matrix shapes: one batched small case covers
 # the (*, n, n) interface, and 4x4 through 32x32 covers the small/medium
@@ -52,7 +41,7 @@ class SlogdetBenchmark(base.Benchmark):
             yield (A,)
 
 
-@pytest.mark._linalg_slogdet
+@pytest.mark.underscore_linalg_slogdet
 def test__linalg_slogdet():
     bench = SlogdetBenchmark(
         op_name="_linalg_slogdet",
