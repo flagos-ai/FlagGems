@@ -40,6 +40,7 @@ This backend provides support for Alibaba Cloud's T-Head Zhenwu PPU (Processing 
 - **acdnn**: Deep neural network operators (Conv, BatchNorm, Pooling, Softmax, etc.)
 - **acblas**: BLAS operations (GEMM, GEMV, Matrix transformations)
 - **acfft**: FFT transformations (R2C, C2R, C2C, D2Z, Z2Z)
+<!-- STFT uses acFFT through src/flag_gems/utils/fft_intf.py; no backend-specific STFT override is needed. -->
 - **acsolver**: Linear algebra solvers (LU, Cholesky, QR, SVD)
 - **acrand**: Random number generation (XORWOW, MRG32K3A, PHILOX4_32_10)
 - **acsparse**: Sparse matrix operations
