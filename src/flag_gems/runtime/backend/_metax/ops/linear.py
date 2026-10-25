@@ -17,11 +17,14 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.knobs import autotuning as _autotuning_knobs
-
 from flag_gems import runtime
+from flag_gems.ops.linear_primitives import (
+    linear_gemv_untransposed_kernel,
+    linear_program_ids,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from triton.knobs import autotuning as _autotuning_knobs
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +80,8 @@ def linear_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    ORDER: tl.constexpr = 0,
+    GROUP_M: tl.constexpr = 1,
 ):
     """
     Linear kernel: y = x @ W^T + b
@@ -85,8 +90,7 @@ def linear_kernel(
     - bias: (N,) optional
     - output: (M, N)
     """
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_m, pid_n = linear_program_ids(M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, ORDER, GROUP_M)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
@@ -140,6 +144,21 @@ def linear_kernel(
     tl.store(output_ptrs, output, mask=output_mask)
 
 
+def _jit_launch_handle(kernel):
+    # Read the immutable JIT object; never replace a tuner or its defaults.
+    while not isinstance(kernel, triton.JITFunction):
+        kernel = kernel.fn
+    return kernel
+
+
+# Same dot tile selected by the pinned native implementation for this shape.
+# Only traversal changes: all N programs for an M tile are consecutive.
+_PREFILL_ORDER = dict(
+    BLOCK_SIZE_M=128, BLOCK_SIZE_N=128, BLOCK_SIZE_K=64, num_warps=8, num_stages=3
+)
+_ordered_linear_kernel = _jit_launch_handle(linear_kernel)
+
+
 def linear(input, weight, bias=None):
     """
     Applies a linear transformation to the incoming data: y = xA^T + b
@@ -179,6 +198,61 @@ def linear(input, weight, bias=None):
     # Allocate output
     output = torch.empty((M, N), device=input.device, dtype=input.dtype)
 
+    qualified_shape = (M == 1 and K == 6144 and N in (384, 768)) or (
+        M == 8192 and N == 1024 and K == 6144
+    )
+    if (
+        qualified_shape
+        and bias is None
+        and input.dtype == weight.dtype == torch.bfloat16
+        and not (input.requires_grad or weight.requires_grad)
+        and input_flat.is_contiguous()
+    ):
+        if M == 1 and K == 6144 and N in (384, 768):
+            with torch_device_fn.device(input.device):
+                linear_gemv_untransposed_kernel[(M, N)](
+                    input_flat,
+                    weight,
+                    output,
+                    M,
+                    N,
+                    K,
+                    BM=1,
+                    BN=1,
+                    BK=512,
+                    num_warps=4,
+                    num_stages=1,
+                )
+            return (
+                output.view(*batch_dims, N).squeeze(0)
+                if single_1d
+                else output.view(*batch_dims, N)
+            )
+        if (M, N, K) == (8192, 1024, 6144):
+            with torch_device_fn.device(input.device):
+                _ordered_linear_kernel[(triton.cdiv(M, 128) * triton.cdiv(N, 128),)](
+                    input_flat,
+                    weight,
+                    weight,
+                    output,
+                    M,
+                    N,
+                    K,
+                    input_flat.stride(0),
+                    input_flat.stride(1),
+                    weight.stride(0),
+                    weight.stride(1),
+                    output.stride(0),
+                    output.stride(1),
+                    0,
+                    BIAS=False,
+                    ORDER=1,
+                    GROUP_M=1,
+                    **_PREFILL_ORDER,
+                )
+            return output.view(*batch_dims, N)
+
+    # Unqualified shapes/dtypes/bias/training keep the existing native path.
     # Launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_SIZE_M"]),

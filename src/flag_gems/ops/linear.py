@@ -17,8 +17,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems import runtime
+from flag_gems.ops.linear_primitives import linear_program_ids
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
@@ -66,6 +66,8 @@ def linear_kernel(
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
     BLOCK_SIZE_K: tl.constexpr,
+    ORDER: tl.constexpr = 0,
+    GROUP_M: tl.constexpr = 1,
 ):
     """
     Linear kernel: y = x @ W^T + b
@@ -74,8 +76,7 @@ def linear_kernel(
     - bias: (N,) optional
     - output: (M, N)
     """
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
+    pid_m, pid_n = linear_program_ids(M, N, BLOCK_SIZE_M, BLOCK_SIZE_N, ORDER, GROUP_M)
 
     offs_m = (pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)).to(tl.int64)
     offs_n = (pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)).to(tl.int64)
