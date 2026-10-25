@@ -171,6 +171,45 @@ def test_topk_w8a16_fp8_row_scale(shape, topk):
     torch.testing.assert_close(gathered, res_value.float(), rtol=0, atol=2e-2)
 
 
+@NVIDIA_ONLY
+@pytest.mark.topk_w8a16
+@pytest.mark.parametrize("shape", [(24, 1542), (3076, 1025), (16384, 4096)])
+def test_topk_w8a16_fp8_row_scale_k512_graph(shape):
+    torch.manual_seed(512)
+    group_size = shape[-1]
+    x = torch.randn(shape, dtype=torch.bfloat16, device=flag_gems.device)
+    q, scale = _quantize_fp8_grouped(
+        x, group_size=group_size, fp8_dtype=torch.float8_e4m3fn
+    )
+    stream = torch.cuda.Stream()
+    stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(stream):
+        for _ in range(3):
+            flag_gems.topk_w8a16_fp8(q, scale, 512, group_size=group_size)
+    torch.cuda.current_stream().wait_stream(stream)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        values, indices = flag_gems.topk_w8a16_fp8(q, scale, 512, group_size=group_size)
+    for changed in (False, True):
+        if changed:
+            q_new, scale_new = _quantize_fp8_grouped(
+                torch.randn_like(x),
+                group_size=group_size,
+                fp8_dtype=torch.float8_e4m3fn,
+            )
+            q.copy_(q_new)
+            scale.copy_(scale_new)
+        graph.replay()
+        ref = (q.float() * scale.float()).to(torch.bfloat16)
+        expected = torch.topk(ref, 512, dim=-1, sorted=True).values
+        torch.testing.assert_close(values, expected, rtol=0, atol=0)
+        assert ((indices >= 0) & (indices < shape[-1])).all()
+        assert (indices.sort(dim=-1).values.diff(dim=-1) != 0).all()
+        torch.testing.assert_close(
+            torch.gather(ref, -1, indices), values, rtol=0, atol=0
+        )
+
+
 # E4M3FN extensions stay in the shared operator file. PPU retains its original
 # E5M2/BF16 coverage until these additional contracts are supported there.
 E4M3_ONLY = pytest.mark.skipif(
