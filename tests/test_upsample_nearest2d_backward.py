@@ -127,6 +127,7 @@ def _reference(grad_output, output_size, input_size, sh, sw):
         "mthreads",
         "hygon",
         "iluvatar",
+        "thead",
     ):
         return _ceil_cpu_reference(grad_output, output_size, input_size, sh, sw)
     return torch.ops.aten.upsample_nearest2d_backward.default(
@@ -515,6 +516,7 @@ def test_upsample_nearest2d_backward_uint8(variant, case, layout):
             "mthreads",
             "hygon",
             "iluvatar",
+            "thead",
         ):
             expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)
         else:
