@@ -887,6 +887,8 @@ _FULL_CONFIG = (
     ("conv_transpose2d.input", conv_transpose2d),
     ("conv_transpose3d.input", conv_transpose3d),
     ("convolution", convolution),
+    ("convolution_backward", convolution_backward),
+    ("convolution_backward.out", convolution_backward_out),
     ("convolution_backward_overrideable", convolution_backward_overrideable),
     ("convolution_backward_overrideable.out", convolution_backward_overrideable_out),
     ("convolution_overrideable", convolution_overrideable),
