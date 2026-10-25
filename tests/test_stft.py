@@ -28,7 +28,6 @@ require_stft_fft = stft_utils.require_stft_fft
 
 pytestmark = pytest.mark.stft
 
-# PPU exercises these real and complex cases through the shared acFFT interface.
 COMMON_DTYPES = (torch.float32, torch.complex64)
 NVIDIA_DTYPES = (torch.float16, torch.float64, torch.complex32, torch.complex128)
 DTYPES = COMMON_DTYPES + (NVIDIA_DTYPES if flag_gems.vendor_name == "nvidia" else ())
