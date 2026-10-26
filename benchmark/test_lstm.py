@@ -21,6 +21,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if base.vendor_name == "thead" and dtype == torch.float32:
+        pytest.skip("PPU native LSTM does not support float32")
     batch, seq, input_size, hidden, layers, bidirectional = plan.builder_args[0]
     module = torch.nn.LSTM(input_size, hidden, layers, bias=True, bidirectional=bidirectional, batch_first=True).to(device=device, dtype=dtype)
     directions = 2 if bidirectional else 1
