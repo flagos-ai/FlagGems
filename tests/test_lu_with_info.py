@@ -19,11 +19,64 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name
 _TEST_DTYPES = [torch.float32, torch.float64] if VENDOR == "nvidia" else [torch.float32]
 _PIVOT_VALUES = [True, False] if not utils.TO_CPU and DEVICE == "cuda" else [True]
+
+
+def _cpu_lu_without_lapack(input, *, pivot=True, check_errors=False):
+    """Gaussian elimination on CPU, including 1-based partial pivots and info."""
+    assert input.device.type == "cpu" and input.ndim >= 2
+    m, n = input.shape[-2:]
+    k = min(m, n)
+    lu = input.clone()
+    pivots = torch.empty((*input.shape[:-2], k), dtype=torch.int32)
+    info = torch.zeros(input.shape[:-2], dtype=torch.int32)
+    if not input.numel() or not k:
+        return lu, pivots, info
+    matrix = lu.reshape(-1, m, n)
+    batch = torch.arange(matrix.shape[0])
+    flat_pivots, flat_info = pivots.reshape(-1, k), info.reshape(-1)
+    for j in range(k):
+        selected = (
+            matrix[:, j:, j].abs().argmax(dim=-1) + j
+            if pivot
+            else torch.full_like(batch, j)
+        )
+        flat_pivots[:, j] = selected.to(torch.int32) + 1
+        old_row = matrix[:, j, :].clone()
+        matrix[:, j, :] = matrix[batch, selected, :]
+        matrix[batch, selected, :] = old_row
+        diagonal = matrix[:, j, j]
+        zero = diagonal == 0
+        flat_info[(flat_info == 0) & zero] = j + 1
+        if j + 1 < m:
+            matrix[:, j + 1 :, j] = torch.where(
+                zero[:, None],
+                matrix[:, j + 1 :, j],
+                matrix[:, j + 1 :, j] / diagonal[:, None],
+            )
+            if j + 1 < n:
+                matrix[:, j + 1 :, j + 1 :] -= (
+                    matrix[:, j + 1 :, j, None] * matrix[:, None, j, j + 1 :]
+                )
+    if check_errors and (info > 0).any():
+        raise RuntimeError("LU factorization has a zero diagonal pivot")
+    return lu, pivots, info
+
+
+def _reference_lu(input, *, pivot=True, check_errors=False):
+    try:
+        return torch._lu_with_info(input, pivot=pivot, check_errors=check_errors)
+    except RuntimeError as error:
+        if not (
+            VENDOR == "mthreads"
+            and input.device.type == "cpu"
+            and "requires compiling PyTorch with LAPACK" in str(error)
+        ):
+            raise
+        return _cpu_lu_without_lapack(input, pivot=pivot, check_errors=check_errors)
 
 
 def _make_input(shape, pivot, dtype):
@@ -56,7 +109,9 @@ def _assert_reconstruction(inp, lu, pivots, pivot, dtype):
     else:
         lower, upper = _unpack_no_pivot(lu)
         reconstructed = lower @ upper
-    utils.gems_assert_close(reconstructed, utils.to_reference(inp, True), dtype, reduce_dim=k)
+    utils.gems_assert_close(
+        reconstructed, utils.to_reference(inp, True), dtype, reduce_dim=k
+    )
 
 
 @pytest.mark.lu_with_info
@@ -77,14 +132,13 @@ def test_lu_with_info(shape, dtype, pivot):
     ):
         pytest.skip("PPU native LU without pivoting aborts for these two square shapes")
     inp = _make_input(shape, pivot, dtype)
-    ref_lu, ref_pivots, ref_info = torch._lu_with_info(
+    ref_lu, ref_pivots, ref_info = _reference_lu(
         utils.to_reference(inp, True), pivot=pivot, check_errors=False
     )
-    lu, pivots, info = flag_gems._lu_with_info(
-        inp, pivot=pivot, check_errors=False
-    )
+    lu, pivots, info = flag_gems._lu_with_info(inp, pivot=pivot, check_errors=False)
 
-    assert lu.shape == ref_lu.shape and lu.dtype == ref_lu.dtype
+    assert lu.shape == ref_lu.shape and lu.dtype == inp.dtype
+    assert all(value.device == inp.device for value in (lu, pivots, info))
     assert pivots.shape == ref_pivots.shape and pivots.dtype == torch.int32
     assert info.shape == ref_info.shape and info.dtype == torch.int32
     assert (info >= 0).all() and (info <= min(shape[-2:])).all()
@@ -102,12 +156,10 @@ def test_lu_with_info_singular(shape, dtype):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=DEVICE)
     inp[..., -1, :] = 0.0
-    _, _, ref_info = torch._lu_with_info(
+    _, _, ref_info = _reference_lu(
         utils.to_reference(inp, True), pivot=True, check_errors=False
     )
-    lu, pivots, info = flag_gems._lu_with_info(
-        inp, pivot=True, check_errors=False
-    )
+    lu, pivots, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
 
     assert (ref_info > 0).all() and (info > 0).all()
     assert torch.isfinite(lu).all()
@@ -122,31 +174,32 @@ def test_lu_with_info_singular(shape, dtype):
 def test_lu_with_info_empty_matrices(shape, dtype):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=DEVICE)
-    reference = torch._lu_with_info(utils.to_reference(inp, True), check_errors=False)
+    reference = _reference_lu(utils.to_reference(inp, True), check_errors=False)
     result = flag_gems._lu_with_info(inp, check_errors=False)
 
-    for value, expected in zip(result, reference):
+    for i, (value, expected) in enumerate(zip(result, reference)):
         assert value.shape == expected.shape
-        assert value.dtype == expected.dtype
+        assert value.dtype == (inp.dtype if i == 0 else torch.int32)
+        assert value.device == inp.device
     utils.gems_assert_equal(result[2], reference[2])
 
 
 @pytest.mark.lu_with_info
 @pytest.mark.underscore_lu_with_info
-@pytest.mark.parametrize(
-    "shape", [(0, 3, 3), (2, 0, 3, 3), (2, 3, 0, 3), (0, 0, 4, 4)]
-)
+@pytest.mark.parametrize("shape", [(0, 3, 3), (2, 0, 3, 3), (2, 3, 0, 3), (0, 0, 4, 4)])
 def test_lu_with_info_empty_batch_dimensions(shape):
     if VENDOR == "kunlunxin":
         pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     inp = torch.zeros(shape, dtype=torch.float64, device=DEVICE)
-    reference = torch._lu_with_info(utils.to_reference(inp, True), check_errors=False)
+    reference = _reference_lu(utils.to_reference(inp, True), check_errors=False)
     result = flag_gems._lu_with_info(inp, check_errors=False)
 
     assert result[2].dtype == torch.int32
     assert (result[2] == 0).all()
-    for value, expected in zip(result, reference):
+    for i, (value, expected) in enumerate(zip(result, reference)):
         assert value.shape == expected.shape
+        assert value.dtype == (inp.dtype if i == 0 else torch.int32)
+        assert value.device == inp.device
     utils.gems_assert_equal(result[2], reference[2])
 
 
@@ -155,12 +208,10 @@ def test_lu_with_info_empty_batch_dimensions(shape):
 @pytest.mark.parametrize("check_errors", [True, False])
 def test_lu_with_info_check_errors_on_nonsingular_input(check_errors):
     inp = torch.eye(8, dtype=torch.float32, device=DEVICE)
-    reference = torch._lu_with_info(
+    reference = _reference_lu(
         utils.to_reference(inp, True), pivot=True, check_errors=check_errors
     )
-    result = flag_gems._lu_with_info(
-        inp, pivot=True, check_errors=check_errors
-    )
+    result = flag_gems._lu_with_info(inp, pivot=True, check_errors=check_errors)
     _assert_reconstruction(inp, result[0], result[1], True, torch.float32)
     utils.gems_assert_equal(result[2], reference[2])
 
@@ -207,7 +258,7 @@ def test_lu_with_info_exact_zero_pivot_position(zero_pos):
     diagonal = [1.0, 2.0, 3.0, 4.0, 5.0]
     diagonal[zero_pos] = 0.0
     inp = torch.diag(torch.tensor(diagonal, dtype=torch.float64)).to(DEVICE)
-    _, _, ref_info = torch._lu_with_info(
+    _, _, ref_info = _reference_lu(
         utils.to_reference(inp, True), pivot=True, check_errors=False
     )
     _, _, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
