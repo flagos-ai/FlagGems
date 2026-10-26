@@ -69,8 +69,13 @@ def _assert_reconstruction(inp, lu, pivots, pivot, dtype):
 def test_lu_with_info(shape, dtype, pivot):
     if VENDOR == "kunlunxin" and not utils.TO_CPU and not pivot:
         pytest.skip("Kunlunxin native LU does not support pivot=False")
-    if VENDOR == "thead" and not utils.TO_CPU and not pivot and shape == (1024, 1024):
-        pytest.skip("PPU native LU without pivoting aborts for the 1024-square case")
+    if (
+        VENDOR == "thead"
+        and not utils.TO_CPU
+        and not pivot
+        and shape in ((512, 512), (1024, 1024))
+    ):
+        pytest.skip("PPU native LU without pivoting aborts for these two square shapes")
     inp = _make_input(shape, pivot, dtype)
     ref_lu, ref_pivots, ref_info = torch._lu_with_info(
         utils.to_reference(inp, True), pivot=pivot, check_errors=False
