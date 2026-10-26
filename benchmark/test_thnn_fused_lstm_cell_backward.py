@@ -94,6 +94,7 @@ class FusedLSTMCellBackwardBenchmark(base.Benchmark):
 
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
+@torch.no_grad()
 def test_thnn_fused_lstm_cell_backward():
     bench = FusedLSTMCellBackwardBenchmark(
         op_name="_thnn_fused_lstm_cell_backward",
