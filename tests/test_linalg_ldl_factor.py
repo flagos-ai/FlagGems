@@ -39,7 +39,9 @@ def _make_symmetric_positive_definite(shape, dtype, device):
     return inp.to(device)
 
 
-def _skip_unsupported_native_reference(dtype):
+def _skip_unsupported_case(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin cannot preserve float64 input storage")
     if (
         flag_gems.vendor_name == "iluvatar"
         and dtype == torch.float64
@@ -67,7 +69,7 @@ def _assert_factorization_equal(result, reference, dtype, expected_device):
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 @pytest.mark.parametrize("hermitian", [False, True])
 def test_linalg_ldl_factor(shape, dtype, hermitian):
-    _skip_unsupported_native_reference(dtype)
+    _skip_unsupported_case(dtype)
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)
@@ -88,7 +90,7 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
 @pytest.mark.parametrize("shape", [(2, 4, 4), (3, 8, 8)])
 @pytest.mark.parametrize("dtype", LDL_FACTOR_DTYPES)
 def test_linalg_ldl_factor_batched(shape, dtype):
-    _skip_unsupported_native_reference(dtype)
+    _skip_unsupported_case(dtype)
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)

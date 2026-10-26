@@ -39,6 +39,8 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
+    if base.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin cannot preserve float64 input storage")
     if base.vendor_name == "iluvatar" and dtype == torch.float64:
         pytest.skip("Iluvatar native ldl_factor does not support float64")
     torch.manual_seed(0)
