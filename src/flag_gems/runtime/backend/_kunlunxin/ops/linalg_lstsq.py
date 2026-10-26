@@ -10,28 +10,34 @@ launch dies in ``make_ttxir`` with ``OutOfResources: uni_sram`` even for a
 This backend-local version keeps the same algorithm (Householder QR of the
 augmented matrix for m >= n, minimum-norm QR of A^T for m < n, Q never formed
 on the tall path) but expresses it entirely with primitives that this compiler
-lowers correctly.  Measured on XPU 3 (probes in /tmp/lstsq_probe*.py):
+lowers correctly.  Measured on XPU 3 (probes in /tmp/lstsq_probe*.py) and XPU 5
+(harness perf_ir/prof_linalg_lstsq_*):
 
 * ``tl.sum(.., axis=0)`` on a 2-D tile is rejected outright ("axis must not be
   0 for 2D+ shapes"), and a 1-D -> scalar reduce in the same kernel as a 2-D
-  ``axis=1`` reduce crashes CoreTiling.  => every reduction here is a single
-  2-D ``axis=1`` ``tl.sum``; scalars are carried through global memory.
+  ``axis=1`` reduce crashes CoreTiling.  => every reduction here is a per-row
+  1-D ``tl.sum`` (one program per row); no kernel mixes the two shapes.
 * a dynamic loop wrapped around a 2-D reduction always OOMs uni_sram.  => the
-  reduction tile spans the full padded row (validated to 4096 wide), and the
   Householder sweep is driven from the host, one launch per step.
-* a square tile feeding a 2-D reduce OOMs uni_sram.  => tile rows (BC, KP) are
-  always far smaller than tile columns (MP).
+* a square tile feeding a 2-D reduce OOMs uni_sram.  => tile rows are always far
+  smaller than tile columns.
 * broadcasting a 1-D vector along the LAST axis of a tile that is then STORED
   silently produces wrong values once that axis exceeds 128 elements.  => the
-  rank-1 update loads both operands as stride-0 duplicated-address 2-D tiles.
+  rank-1 update is one program per row: a scalar coefficient times a 1-D row.
+* a stride-0 duplicated-address 2-D load lowers to a per-lane gathered access
+  (that is how the old ``_dot_kernel`` carried u, and it dominated the profile).
+  => the projection ``u . W[c]`` is reduced from the row the update program
+  already holds, so neither a gather nor a second pass over the matrix exists.
 * ``tl.where`` inside a reduction operand, and a masked load feeding one, are
-  both miscompiled.  => anything that needs masking is pre-zeroed into its own
-  scratch buffer by a separate elementwise kernel.
-* reading address X of a buffer while storing to address Y != X of the SAME
-  buffer inside one kernel returns stale data.  => read and write buffers are
-  kept disjoint in every kernel.
+  both miscompiled.  => v is zeroed above the diagonal in ``_pivot_kernel``
+  before it is ever used as a reduce operand.
 * masked tail loads are unreliable, so every buffer is zero-padded to the tile
   shape and every load/store covers the whole tile unmasked.
+
+Each sweep step is therefore two launches (``_pivot_kernel`` +
+``_row_apply_kernel``), back-substitution is two, and the min-norm Q-apply is
+one; the operator is launch-bound on small batch and reduction-bound on large
+square shapes.
 
 Zero padding is exact, not approximate: extra zero ROWS of the augmented
 matrix leave R unchanged, and extra zero COLUMNS stay zero under every
@@ -58,6 +64,24 @@ _LANES = 64
 _MIN_ROW = 64
 _MIN_COL = 64
 
+# Rows per program in the fused reduce-and-update kernels.  One row per program
+# leaves too little work per program for the 12-CTA grid on the batched
+# small-width cases; R rows reuse the reflector vector and amortise the reduce
+# tree.  Row counts handed to these kernels are multiples of _LANES, so R
+# divides them exactly and no tail masking is needed.  Wide rows already give a
+# program plenty of work, so they take the larger factor (fewer waves, more
+# reflector reuse); the narrow back-substitution / Q-apply rows keep it small so
+# their grids still cover the CTAs.
+_ROWS_WIDE = 8
+_ROWS = 4
+
+
+def _rows(k, mp):
+    r = _ROWS_WIDE if mp >= 1024 else _ROWS
+    while r > 1 and k % r:
+        r //= 2
+    return r
+
 
 def _p2(x):
     return 1 << (max(1, int(x)) - 1).bit_length()
@@ -69,61 +93,11 @@ def _ceil_to(x, m):
 
 @libentry()
 @triton.jit
-def _mk_v_kernel(
+def _pivot_kernel(
     W,
     V,
-    XJ,
-    J,
-    NCP: tl.constexpr,
-    MP: tl.constexpr,
-):
-    """v <- pivot column of M, zeroed above the diagonal; xj <- v[J].
-
-    The zeroing has to happen here, in its own elementwise kernel writing its
-    own buffer: masking it inside the dot product below is miscompiled.
-    """
-    b = tl.program_id(0)
-    r = tl.arange(0, MP)
-    base = b * (NCP * MP) + J * MP
-    x = tl.load(W + base + r)
-    tl.store(V + b * MP + r, tl.where(r >= J, x, 0.0))
-    tl.store(XJ + b, tl.load(W + base + J))
-
-
-@libentry()
-@triton.jit
-def _dot_kernel(
-    W,
-    V,
-    S,
-    C0,
-    NCP: tl.constexpr,
-    MP: tl.constexpr,
-    BC: tl.constexpr,
-):
-    """S[c] = x . M[:, c]  for the c-block starting at C0.
-
-    The single 2-D axis=1 tl.sum in the whole factorisation. v arrives as a
-    stride-0 duplicated-address tile so no 1-D broadcast reaches the reduce.
-    Kept as-is deliberately: a 1-D per-row reduce over mp was measured slower
-    for the wide-MP cases (m >> n) than this 2-D form, which amortises the
-    reduction across BC rows.
-    """
-    b = tl.program_id(0)
-    c = C0 + tl.program_id(1) * BC + tl.arange(0, BC)
-    r = tl.arange(0, MP)
-    t = tl.load(W + b * (NCP * MP) + c[:, None] * MP + r[None, :])
-    vt = tl.load(V + b * MP + r[None, :] + c[:, None] * 0)
-    tl.store(S + b * NCP + c, tl.sum(t * vt, axis=1))
-
-
-@libentry()
-@triton.jit
-def _scal_kernel(
-    W,
-    V,
-    S,
-    XJ,
+    VS,
+    BETAS,
     ALPHA,
     BETA,
     DIAG,
@@ -132,62 +106,110 @@ def _scal_kernel(
     NP,
     NCP: tl.constexpr,
     MP: tl.constexpr,
+    KEEP: tl.constexpr,
 ):
-    """Reflector scalars for step J.
+    """Reflector J in ONE launch: v <- column J (zeroed above the diagonal),
+    ||x||^2 by a 1-D reduce, the scalars, and (optionally) the saved reflector.
 
-    alpha = -sign(x_J) ||x||, beta = 1 / (||x||^2 - alpha x_J) = 2 / v^T v.
-    ||x||^2 is S[J], already reduced. RMAX keeps the running max |r_ii| for the
-    rank guard and is ping-ponged between two slots so no address is both read
-    and written in one launch. Only scalars are written here: a masked store is
-    NOT honoured on this backend (it writes the whole tile), so row J of the
-    factor is left to the generic rank-1 update, which produces it exactly.
+    Folding the norm here removes the whole ``_dot_kernel`` pass the old design
+    ran over every trailing row just to read ``S[J]``: ||x||^2 is a reduction of
+    the pivot row the program already holds.  Every access is a 1-D affine row,
+    which is the "one program per row" reduce shape this backend lowers
+    correctly; a 2-D axis=0 reduce is rejected outright.
+
+    v is stored with its pivot lane already shifted (``x_J - alpha``), i.e. in
+    the form the rank-1 update consumes, so the old separate scalar kernel that
+    patched ``V[J]`` after the fact is gone too.
     """
     b = tl.program_id(0)
-    nrm2 = tl.load(S + b * NCP + J)
-    xj = tl.load(XJ + b)
+    r = tl.arange(0, MP)
+    base = b * (NCP * MP) + J * MP
+    x = tl.load(W + base + r)
+    xj = tl.load(W + base + J)
+    v = tl.where(r >= J, x, 0.0)
+    nrm2 = tl.sum(v * v)
     alpha = -tl.where(xj >= 0.0, 1.0, -1.0) * tl.sqrt(tl.maximum(nrm2, 0.0))
     den = nrm2 - alpha * xj
     beta = tl.where(den > 0.0, 1.0 / tl.where(den > 0.0, den, 1.0), 0.0)
+    u = tl.where(r == J, xj - alpha, v)
+    tl.store(V + b * MP + r, u)
     tl.store(ALPHA + b, alpha)
     tl.store(BETA + b, beta)
     tl.store(DIAG + b * NP + J, alpha)
     prev = tl.load(RMAX + b * 2 + (J % 2))
     tl.store(RMAX + b * 2 + ((J + 1) % 2), tl.maximum(prev, tl.abs(alpha)))
-    tl.store(V + b * MP + J, xj - alpha)
+    if KEEP:
+        tl.store(VS + b * (NP * MP) + J * MP + r, u)
+        tl.store(BETAS + b * NP + J, beta)
 
 
 @libentry()
 @triton.jit
-def _wvec_kernel(
+def _row_apply_kernel(
     W,
-    S,
-    ALPHA,
+    U,
     BETA,
-    WV,
-    J,
     C0,
+    J,
     NCP: tl.constexpr,
     MP: tl.constexpr,
-    BC: tl.constexpr,
+    R: tl.constexpr,
 ):
-    """WV[c] = beta * v . M[:, c], forced to exactly 0 for the finished c < J.
+    """One pass over the trailing matrix: W[c] <- (I - beta u u^T) W[c].
 
-    v . M[:,c] = x . M[:,c] - alpha * M[J,c] = S[c] - alpha * W[c, J], so the
-    reflector's own alpha term never needs a second reduction. Column J of W is
-    read here rather than in the update kernel: reading one address of W while
-    storing to another returns stale data on this backend.
+    ``s = u . W[c]`` is reduced in registers from the row this program already
+    holds, so the old ``_dot_kernel`` + ``_wvec_kernel`` + ``_upd_kernel`` chain
+    (three launches, and a stride-0 duplicated-address tile for u that lowered
+    to a per-lane gather) collapses into a single load + store of each row.
+    ``u`` already carries the shifted pivot, so ``beta * (u . W[c])`` equals the
+    old ``beta * (S[c] - alpha * W[c, J])`` term exactly.
 
-    c == J is kept: there WV[J] == beta * (||x||^2 - alpha x_J) == 1, so the
-    generic update turns row J into (alpha, 0, .., 0), which is exactly the
-    finished row of the factor.
+    Rows below J are finished rows of the factor; they must not change, and
+    their coefficient is forced to 0 (the same no-op the old WV did).
     """
     b = tl.program_id(0)
-    c = C0 + tl.program_id(1) * BC + tl.arange(0, BC)
-    a = tl.load(ALPHA + b)
+    cbase = C0 + tl.program_id(1) * R
+    r = tl.arange(0, MP)
+    u = tl.load(U + b * MP + r)
     be = tl.load(BETA + b)
-    s = tl.load(S + b * NCP + c)
-    wcj = tl.load(W + b * (NCP * MP) + c * MP + J)
-    tl.store(WV + b * NCP + c, tl.where(c >= J, be * (s - a * wcj), 0.0))
+    for i in tl.range(0, R):
+        c = cbase + i
+        off = b * (NCP * MP) + c * MP + r
+        row = tl.load(W + off)
+        s = tl.sum(row * u)
+        coef = tl.where(c >= J, be * s, 0.0)
+        tl.store(W + off, row - coef * u)
+
+
+@libentry()
+@triton.jit
+def _qapply_kernel(
+    Z,
+    VS,
+    BETAS,
+    J,
+    NP,
+    KP: tl.constexpr,
+    MP: tl.constexpr,
+    R: tl.constexpr,
+):
+    """Z[k] <- Z[k] - (betas[J] * (Z[k] . v_J)) v_J for the min-norm Q-apply.
+
+    Same fused reduce-and-subtract as ``_row_apply_kernel``; folds the old
+    ``_rowcpy_kernel`` + ``_dot_kernel`` + ``_scale_kernel`` + ``_upd_kernel``
+    chain (four launches per reflector) into one.
+    """
+    b = tl.program_id(0)
+    kbase = tl.program_id(1) * R
+    r = tl.arange(0, MP)
+    u = tl.load(VS + b * (NP * MP) + J * MP + r)
+    be = tl.load(BETAS + b * NP + J)
+    for i in tl.range(0, R):
+        k = kbase + i
+        off = b * (KP * MP) + k * MP + r
+        row = tl.load(Z + off)
+        s = tl.sum(row * u)
+        tl.store(Z + off, row - (be * s) * u)
 
 
 @libentry()
@@ -222,36 +244,33 @@ def _upd_kernel(
 
 @libentry()
 @triton.jit
-def _vsave_kernel(
-    V,
-    BETA,
-    VS,
-    BETAS,
-    J,
-    NP,
+def _solve_upd_kernel(
+    RHS,
+    W,
+    XI,
+    ROW,
+    NCP: tl.constexpr,
     MP: tl.constexpr,
+    NW: tl.constexpr,
+    KP: tl.constexpr,
+    R: tl.constexpr,
 ):
-    """Keep reflector J: the minimum-norm path has to APPLY Q afterwards."""
-    b = tl.program_id(0)
-    r = tl.arange(0, MP)
-    tl.store(VS + b * (NP * MP) + J * MP + r, tl.load(V + b * MP + r))
-    tl.store(BETAS + b * NP + J, tl.load(BETA + b))
+    """RHS[k] <- RHS[k] - XI[k] * W[ROW, :] in one launch.
 
-
-@libentry()
-@triton.jit
-def _rowcpy_kernel(SRC, DST, SBATCH, J, LD: tl.constexpr, NW: tl.constexpr):
-    """DST[b, :NW] <- SRC[b, J, :NW].
-
-    Row J is materialised as its own per-batch vector so that every reduce can
-    reach it through the ONE stride-0 form that lowers correctly here, namely
-    ``base + b*NW + r[None, :] + c[:, None]*0``. Folding the row offset J*LD
-    into a stride-0 2-D load instead ("scalar*stride + vector") is silently
-    miscomputed on this backend -- verified against a host dump.
+    W[ROW, :] is row ROW of the factorised matrix, i.e. row ROW of R, so the old
+    ``_rowcpy_kernel`` staging copy of it (one launch per back-substitution
+    step) is gone; the row is read straight out of W with a 1-D affine load.
     """
     b = tl.program_id(0)
-    i = tl.arange(0, NW)
-    tl.store(DST + b * NW + i, tl.load(SRC + b * SBATCH + J * LD + i))
+    kbase = tl.program_id(1) * R
+    r = tl.arange(0, NW)
+    u = tl.load(W + b * (NCP * MP) + ROW * MP + r)
+    for i in tl.range(0, R):
+        k = kbase + i
+        off = b * (KP * NW) + k * NW + r
+        row = tl.load(RHS + off)
+        coef = tl.load(XI + b * KP + k)
+        tl.store(RHS + off, row - coef * u)
 
 
 @libentry()
@@ -262,15 +281,6 @@ def _colcpy_kernel(SRC, DST, SBATCH, J, LD: tl.constexpr, NW: tl.constexpr):
     b = tl.program_id(0)
     i = tl.arange(0, NW)
     tl.store(DST + b * NW + i, tl.load(SRC + b * SBATCH + i * LD + J))
-
-
-@libentry()
-@triton.jit
-def _scale_kernel(SRC, FAC, DST, J, NP, KP: tl.constexpr):
-    """DST[k] <- FAC[J] * SRC[k], the rank-1 coefficient of the Q-apply."""
-    b = tl.program_id(0)
-    k = tl.arange(0, KP)
-    tl.store(DST + b * KP + k, tl.load(FAC + b * NP + J) * tl.load(SRC + b * KP + k))
 
 
 @libentry()
@@ -338,33 +348,50 @@ def _qr_sweep(W, NCP, MP, NP, nsteps, batch, dt, dev, keep_reflectors):
 
     When keep_reflectors is set, also returns (VS, BETAS) for the Q-apply of
     the minimum-norm path.
+
+    Each sweep step is two launches: ``_pivot_kernel`` (reflector + norm +
+    scalars) and ``_row_apply_kernel`` (the rank-1 update, which also performs
+    the projection the old ``_dot_kernel`` pass computed separately).
     """
     BC = _LANES
     V = torch.zeros((batch, MP), dtype=dt, device=dev)
-    XJ = torch.zeros((batch,), dtype=dt, device=dev)
-    S = torch.zeros((batch, NCP), dtype=dt, device=dev)
-    WV = torch.zeros((batch, NCP), dtype=dt, device=dev)
     ALPHA = torch.zeros((batch,), dtype=dt, device=dev)
     BETA = torch.zeros((batch,), dtype=dt, device=dev)
     DIAG = torch.zeros((batch, NP), dtype=dt, device=dev)
     RMAX = torch.zeros((batch, 2), dtype=dt, device=dev)
-    VS = BETAS = None
     if keep_reflectors:
         VS = torch.zeros((batch, NP, MP), dtype=dt, device=dev)
         BETAS = torch.zeros((batch, NP), dtype=dt, device=dev)
+    else:
+        # Unused on the tall path (KEEP is a constexpr False, so the stores are
+        # dead code); a 1-element allocation avoids zero-filling an NP x MP
+        # buffer that would never be read.
+        VS = torch.empty(1, dtype=dt, device=dev)
+        BETAS = torch.empty(1, dtype=dt, device=dev)
 
     for j in range(nsteps):
         c0 = (j // BC) * BC
-        nb = (NCP - c0) // BC
-        _mk_v_kernel[(batch,)](W, V, XJ, j, NCP=NCP, MP=MP)
-        _dot_kernel[(batch, nb)](W, V, S, c0, NCP=NCP, MP=MP, BC=BC)
-        _scal_kernel[(batch,)](
-            W, V, S, XJ, ALPHA, BETA, DIAG, RMAX, j, NP, NCP=NCP, MP=MP
+        _pivot_kernel[(batch,)](
+            W,
+            V,
+            VS,
+            BETAS,
+            ALPHA,
+            BETA,
+            DIAG,
+            RMAX,
+            j,
+            NP,
+            NCP=NCP,
+            MP=MP,
+            KEEP=keep_reflectors,
         )
-        if keep_reflectors:
-            _vsave_kernel[(batch,)](V, BETA, VS, BETAS, j, NP, MP=MP)
-        _wvec_kernel[(batch, nb)](W, S, ALPHA, BETA, WV, j, c0, NCP=NCP, MP=MP, BC=BC)
-        _upd_kernel[(batch, NCP - c0)](W, WV, V, c0, NCP=NCP, MP=MP)
+        rw = _rows(NCP - c0, MP)
+        _row_apply_kernel[(batch, (NCP - c0) // rw)](
+            W, V, BETA, c0, j, NCP=NCP, MP=MP, R=rw
+        )
+    if not keep_reflectors:
+        VS, BETAS = None, None
     return DIAG, RMAX, VS, BETAS
 
 
@@ -389,14 +416,15 @@ def _lstsq_tall(A, B, rcond):
         RHS = W[:, n : n + KP, :NP].contiguous()
         XS = torch.zeros((batch, NP, KP), dtype=dt, device=dev)
         XI = torch.zeros((batch, KP), dtype=dt, device=dev)
-        RROW = torch.zeros((batch, NP), dtype=dt, device=dev)
         for t in range(n):
             i = n - 1 - t
             _solve_step_kernel[(batch,)](
                 RHS, XI, XS, DIAG, RMAX, rcond, i, n, NW=NP, KP=KP
             )
-            _rowcpy_kernel[(batch,)](W, RROW, NCP * MP, i, LD=MP, NW=NP)
-            _upd_kernel[(batch, KP)](RHS, XI, RROW, 0, NCP=KP, MP=NP)
+            rs = _rows(KP, NP)
+            _solve_upd_kernel[(batch, KP // rs)](
+                RHS, W, XI, i, NCP=NCP, MP=MP, NW=NP, KP=KP, R=rs
+            )
 
         RES = torch.zeros((batch, KP), dtype=dt, device=dev)
         if m > n:
@@ -443,15 +471,10 @@ def _lstsq_wide(A, B, rcond):
 
         Z = torch.zeros((batch, KP, MP), dtype=dt, device=dev)
         Z[:, :nrhs, :m] = YS[:, :m, :nrhs].transpose(-1, -2)
-        DOT = torch.zeros((batch, KP), dtype=dt, device=dev)
-        COEF = torch.zeros((batch, KP), dtype=dt, device=dev)
-        RROW = torch.zeros((batch, MP), dtype=dt, device=dev)
         for t in range(m):
             j = m - 1 - t
-            _rowcpy_kernel[(batch,)](VS, RROW, NRP * MP, j, LD=MP, NW=MP)
-            _dot_kernel[(batch, 1)](Z, RROW, DOT, 0, NCP=KP, MP=MP, BC=KP)
-            _scale_kernel[(batch,)](DOT, BETAS, COEF, j, NRP, KP=KP)
-            _upd_kernel[(batch, KP)](Z, COEF, RROW, 0, NCP=KP, MP=MP)
+            rs = _rows(KP, MP)
+            _qapply_kernel[(batch, KP // rs)](Z, VS, BETAS, j, NRP, KP=KP, MP=MP, R=rs)
 
     return Z[:, :nrhs, :n].transpose(-1, -2).contiguous()
 
