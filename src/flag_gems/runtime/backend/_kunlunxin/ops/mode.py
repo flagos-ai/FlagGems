@@ -7,6 +7,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -173,6 +174,125 @@ def _mode_lm_run(rows, flat_values, flat_indices, M, N, wrapper):
     return True
 
 
+# 16-bit inputs (every value exactly representable in a 32-bit type, with the
+# same ordering) use the in-LM 32-bit radix path for short rows.  The 65536-
+# bucket histogram is a per-row fixed cost: it wins when N is large, but for
+# N<=1024 the bucket scan dominates (7680x200 fp16: 38ms, 99.9% in
+# `_mode_hist_f16_w`), while the 32-bit in-LM radix does the same rows in
+# 0.8ms.  Widen with a gems Triton cast, sort, then narrow straight into the
+# caller's outputs (no aten cast/copy in the tested path).
+_MODE_CAST_LM = {
+    torch.float16: torch.float32,
+    torch.bfloat16: torch.float32,
+    torch.int16: torch.int32,
+}
+_MODE_CAST_BLOCK = 1024
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n"])
+def _mode_widen_cast_kernel(
+    src_ptr,
+    dst_ptr,
+    n,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    TO_INT: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    if NEED_MASK:
+        mask = off < n
+        v = tl.load(src_ptr + off, mask=mask)
+        if TO_INT:
+            tl.store(dst_ptr + off, v.to(tl.int32), mask=mask)
+        else:
+            tl.store(dst_ptr + off, v.to(tl.float32), mask=mask)
+    else:
+        v = tl.load(src_ptr + off)
+        if TO_INT:
+            tl.store(dst_ptr + off, v.to(tl.int32))
+        else:
+            tl.store(dst_ptr + off, v.to(tl.float32))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["M"])
+def _mode_narrow_store_kernel(
+    val_ptr,
+    idx_ptr,
+    out_v_ptr,
+    out_i_ptr,
+    M,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    TO_INT: tl.constexpr,
+    OUT_BF16: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    if NEED_MASK:
+        mask = off < M
+        v = tl.load(val_ptr + off, mask=mask)
+        idx = tl.load(idx_ptr + off, mask=mask)
+        if TO_INT:
+            tl.store(out_v_ptr + off, v.to(tl.int16), mask=mask)
+        elif OUT_BF16:
+            tl.store(out_v_ptr + off, v.to(tl.bfloat16), mask=mask)
+        else:
+            tl.store(out_v_ptr + off, v.to(tl.float16), mask=mask)
+        tl.store(out_i_ptr + off, idx.to(tl.int64), mask=mask)
+    else:
+        v = tl.load(val_ptr + off)
+        idx = tl.load(idx_ptr + off)
+        if TO_INT:
+            tl.store(out_v_ptr + off, v.to(tl.int16))
+        elif OUT_BF16:
+            tl.store(out_v_ptr + off, v.to(tl.bfloat16))
+        else:
+            tl.store(out_v_ptr + off, v.to(tl.float16))
+        tl.store(out_i_ptr + off, idx.to(tl.int64))
+
+
+def _mode_lm_run_cast(rows, flat_values, flat_indices, M, N, wrapper):
+    """Widen 16-bit rows to 32-bit, run the in-LM radix sort, and narrow the
+    results straight into the caller's outputs.  Order is preserved by every
+    cast (fp16/bf16 -> fp32 and int16 -> int32 are exact), so the modal value
+    and a valid occurrence index are identical to the native-width sort."""
+    wide = _MODE_CAST_LM[rows.dtype]
+    to_int = rows.dtype == torch.int16
+    out_bf16 = rows.dtype == torch.bfloat16
+    rows32 = torch.empty((M, N), dtype=wide, device=rows.device)
+    n = M * N
+    with torch_device_fn.device(rows.device):
+        grid = (triton.cdiv(n, _MODE_CAST_BLOCK),)
+        _mode_widen_cast_kernel[grid](
+            rows,
+            rows32,
+            n,
+            _MODE_CAST_BLOCK,
+            n % _MODE_CAST_BLOCK != 0,
+            to_int,
+        )
+        oval = torch.empty(M, dtype=wide, device=rows.device)
+        oidx32 = torch.empty(M, dtype=torch.int32, device=rows.device)
+        g = min(12 * 64, max(1, M))
+        wrapper[(min(12, (M + 63) // 64),)](rows32, oval, oidx32, M, N, g)
+        grid = (triton.cdiv(M, _MODE_CAST_BLOCK),)
+        _mode_narrow_store_kernel[grid](
+            oval,
+            oidx32,
+            flat_values,
+            flat_indices,
+            M,
+            _MODE_CAST_BLOCK,
+            M % _MODE_CAST_BLOCK != 0,
+            to_int,
+            out_bf16,
+        )
+    return True
+
+
 def _mode_cluster_run(rows, flat_values, flat_indices, M, N, wrapper):
     """Cluster-cooperative radix sort (large-N).  Few-row (M<=32) spreads over
     g=min(8,M) clusters; many-row large-N uses g=12 (probe: g=12 beats g=8 on
@@ -242,13 +362,30 @@ def _mode_sorted_rows_kernel(
     tl.store(output_indices + row, best_index)
 
 
+# Vectorized fill for the N==1 case.  The original kernel launched one
+# program *per row* (`grid=(M,)`) with a single scalar load/store per program;
+# on XPU that costs ~6-7us of per-CTA overhead per row (1024x1 fp16: 6.3ms,
+# 100% of the operator time in `_mode_fill_first`).  A flat block tile moves
+# the same elements with `ceil(M/BLOCK)` programs.
+_MODE_FILL_BLOCK = 1024
+
+
 @libentry()
-@triton.jit
-def _mode_fill_first(x_ptr, out_v_ptr, out_i_ptr, RS: tl.constexpr, N: tl.constexpr):
+@triton.jit(do_not_specialize=["M"])
+def _mode_fill_first(
+    x_ptr, out_v_ptr, out_i_ptr, M, BLOCK: tl.constexpr, NEED_MASK: tl.constexpr
+):
     pid = tl.program_id(0)
-    v = tl.load(x_ptr + pid * RS)
-    tl.store(out_v_ptr + pid, v)
-    tl.store(out_i_ptr + pid, 0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    if NEED_MASK:
+        mask = off < M
+        v = tl.load(x_ptr + off, mask=mask)
+        tl.store(out_v_ptr + off, v, mask=mask)
+        tl.store(out_i_ptr + off, tl.zeros((BLOCK,), tl.int64), mask=mask)
+    else:
+        v = tl.load(x_ptr + off)
+        tl.store(out_v_ptr + off, v)
+        tl.store(out_i_ptr + off, tl.zeros((BLOCK,), tl.int64))
 
 
 # ---------------------------------------------------------------------------
@@ -574,21 +711,46 @@ def _mode_impl(inp, dim, keepdim):
     if dim != inp.ndim - 1:
         view = torch.movedim(inp, dim, -1)
         rows = torch.empty((M, N), device=inp.device, dtype=inp.dtype)
-        if not (_tle_copy_usable(inp.device) and tle_copy(view, rows)):
-            torch.ops.aten._copy_from(view, rows, False)
+        # `tle_copy` requires matching shapes (it rejects a rank mismatch
+        # silently), so expose the destination as the moved view's shape.
+        view_rows = rows.view(*out_shape, N) if len(out_shape) else rows
+        if not (_tle_copy_usable(inp.device) and tle_copy(view, view_rows)):
+            # Shape/stride combinations tle cannot express (e.g. 1-byte
+            # transposes) go through the gems Triton copy kernel by direct
+            # reference; never the aten `_copy_from` fallback.
+            _gems_copy_(view_rows, view)
     else:
         rows = inp.reshape(M, N)
 
     if N == 1:
+        grid = (triton.cdiv(M, _MODE_FILL_BLOCK),)
+        need_mask = M % _MODE_FILL_BLOCK != 0
         with torch_device_fn.device(inp.device):
-            _mode_fill_first[(M,)](rows, flat_values, flat_indices, RS=N, N=N)
+            _mode_fill_first[grid](
+                rows, flat_values, flat_indices, M, _MODE_FILL_BLOCK, need_mask
+            )
     elif _HAS_RAW_HIST and inp.dtype in _RAW_HIST and rows.is_contiguous():
         # fp16/bf16/int16: O(N) histogram mode (breaks the sort ceiling).
-        try:
-            _mode_hist_run(rows, flat_values, flat_indices, M, N, _RAW_HIST[inp.dtype])
-        except Exception as e:  # pragma: no cover - fall back to radix path
-            logger.debug("mode histogram fell back to radix path: %s", e)
-            _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
+        if _HAS_RAW_RADIX and inp.dtype in _MODE_CAST_LM and N <= _MODE_LM2_MAX_N:
+            # Short rows: the 16-bit histogram's fixed 2x32K-bucket scan per
+            # row dominates; widen to 32 bit and use the in-LM radix instead.
+            wide = _MODE_CAST_LM[inp.dtype]
+            wrapper = _RAW_LM[wide] if N <= _MODE_LM_MAX_N else _RAW_LM2[wide]
+            try:
+                _mode_lm_run_cast(rows, flat_values, flat_indices, M, N, wrapper)
+            except Exception as e:  # pragma: no cover - fall back to histogram
+                logger.debug("mode cast LM radix fell back to histogram: %s", e)
+                _mode_hist_run(
+                    rows, flat_values, flat_indices, M, N, _RAW_HIST[inp.dtype]
+                )
+        else:
+            try:
+                _mode_hist_run(
+                    rows, flat_values, flat_indices, M, N, _RAW_HIST[inp.dtype]
+                )
+            except Exception as e:  # pragma: no cover - fall back to radix path
+                logger.debug("mode histogram fell back to radix path: %s", e)
+                _mode_radix_fallback(rows, flat_values, flat_indices, M, N, inp.device)
     elif (
         _HAS_RAW_RADIX
         and inp.dtype in _RAW_LM
