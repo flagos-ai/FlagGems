@@ -86,12 +86,12 @@ def _median_dim_build_inputs_fn(plan, dtype, device):
 
 def _median_dim_values_build_inputs_fn(plan, dtype, device):
     inp, dim, keepdim = _median_dim_build_inputs_fn(plan, dtype, device)
-    dim %= inp.ndim
+    normalized_dim = dim % inp.ndim
     out_shape = list(inp.shape)
     if keepdim:
-        out_shape[dim] = 1
+        out_shape[normalized_dim] = 1
     else:
-        del out_shape[dim]
+        del out_shape[normalized_dim]
     values = torch.empty(out_shape, dtype=dtype, device=device)
     indices = torch.empty(out_shape, dtype=torch.int64, device=device)
     return inp, dim, keepdim, {"values": values, "indices": indices}
