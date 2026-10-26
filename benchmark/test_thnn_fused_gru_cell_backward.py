@@ -57,6 +57,10 @@ class FusedGRUCellBackwardBenchmark(base.Benchmark):
 
     def get_input_iter(self, cur_dtype):
         for batch_size, hidden_size, has_bias in self.shapes:
+            if flag_gems.vendor_name == "kunlunxin" and not has_bias:
+                # The native GRU backward returns biases when has_bias=False, so
+                # only the has_bias=True shapes can be measured there.
+                continue
             workspace = _make_workspace(batch_size, hidden_size, cur_dtype, self.device)
             grad_hy = torch.randn(
                 batch_size,
