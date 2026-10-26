@@ -125,6 +125,13 @@ def _assert_median_dim_equal(
 @pytest.mark.parametrize("shape", NO_DIM_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_median_no_dim(shape, dtype):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.bfloat16
+        and shape == (1,)
+    ):
+        pytest.skip("Ascend native median does not support bfloat16 with one element")
     inp = _make_input(shape, dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -430,6 +437,12 @@ def test_median_empty_no_dim(dtype):
 def test_median_extra_no_dim_dtypes(dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.float64
+    ):
+        pytest.skip("Ascend native median does not support float64")
     inp = _make_input((9,), dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -716,6 +729,8 @@ def test_median_float64_key_select(width, keepdim):
 @pytest.mark.median_dim
 @pytest.mark.parametrize("width", [640, 4096])
 def test_median_float64_key_select_nan_first_index(width):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native median with a dimension does not support float64")
     inp = torch.randn((3, width), dtype=torch.float64, device=flag_gems.device)
     expected_indices = torch.tensor([0, width // 2, width - 1], device=flag_gems.device)
     inp[0, 0] = float("nan")
@@ -1363,8 +1378,17 @@ def test_median_int_lastdim_select_boundaries(dtype, width):
 @pytest.mark.parametrize("width", [65, 1536])
 def test_median_int_lastdim_select_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
-    first = torch.arange(width, dtype=dtype, device=flag_gems.device)
-    second = torch.arange(width, dtype=dtype, device=flag_gems.device).roll(7)
+    input_device = (
+        "cpu"
+        if flag_gems.vendor_name == "ascend" and dtype == torch.int16
+        else flag_gems.device
+    )
+    first = torch.arange(width, dtype=dtype, device=input_device).to(flag_gems.device)
+    second = (
+        torch.arange(width, dtype=dtype, device=input_device)
+        .roll(7)
+        .to(flag_gems.device)
+    )
     inp = torch.stack((first, second))
     expected_indices = torch.tensor([rank, (rank + 7) % width], device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
