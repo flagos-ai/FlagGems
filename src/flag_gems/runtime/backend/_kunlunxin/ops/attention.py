@@ -809,11 +809,10 @@ def scaled_dot_product_attention_forward(
         else:
             cmask[..., :kv_len] = 0.0
         if is_causal:
-            # Causal mask: n <= m + (K - Q); the two bounds coincide when
-            # q_len == kv_len.
+            # Top-left alignment, matching torch SDPA: row i attends keys <= i.
             rows = torch.arange(q_len, device=device)[:, None]
             cols = torch.arange(kv_len, device=device)[None, :]
-            allowed = cols <= (rows + kv_len - q_len)  # (Q, K)
+            allowed = cols <= rows  # (Q, K)
             cmask[..., :kv_len] = torch.where(allowed[None, None], 0.0, 1e30).expand(
                 batch, q_head_num, q_len, kv_len
             )
