@@ -204,6 +204,11 @@ def test_fused_rms_norm_backward(shape, dtype, output_mask):
         grad, inp, normalized_shape, rstd, weight, list(output_mask)
     )
 
+    for actual, expected in zip((res_dx, res_dw), (ref_dx, ref_dw)):
+        if expected is not None:
+            assert actual.device == inp.device
+            assert actual.dtype == dtype
+            assert actual.shape == expected.shape
     if output_mask[0]:
         utils.gems_assert_close(res_dx, ref_dx, dtype)
     else:
@@ -246,4 +251,7 @@ def test_fused_rms_norm_backward_no_weight(shape, dtype):
     )
 
     assert res_dw is None
+    assert res_dx.device == inp.device
+    assert res_dx.dtype == dtype
+    assert res_dx.shape == inp.shape
     utils.gems_assert_close(res_dx, ref_dx, dtype)

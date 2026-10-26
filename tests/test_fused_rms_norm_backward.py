@@ -69,6 +69,9 @@ def test_fused_rms_norm_backward(shape, dtype, output_mask):
     )
     for enabled, actual, expected in zip(output_mask, result, ref):
         if enabled:
+            assert actual.device == inp.device
+            assert actual.dtype == dtype
+            assert actual.shape == expected.shape
             utils.gems_assert_close(actual, expected, dtype, reduce_dim=shape[-1])
         else:
             assert actual is None
@@ -91,4 +94,7 @@ def test_fused_rms_norm_backward_without_weight(dtype):
         grad, inp, [32], rstd, None, [True, False]
     )
     assert grad_weight is None
+    assert grad_input.device == inp.device
+    assert grad_input.dtype == dtype
+    assert grad_input.shape == inp.shape
     utils.gems_assert_close(grad_input, ref_input, dtype, reduce_dim=32)
