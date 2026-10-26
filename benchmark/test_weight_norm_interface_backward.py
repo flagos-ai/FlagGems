@@ -64,7 +64,6 @@ def test_weight_norm_interface_backward():
     WeightNormBackwardBenchmark(
         op_name="weight_norm_interface_backward",
         torch_op=torch.ops.aten._weight_norm_interface_backward.default,
-        gems_op=flag_gems.weight_norm_interface_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

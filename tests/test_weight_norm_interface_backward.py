@@ -45,11 +45,11 @@ def test_weight_norm_interface_backward_values(shape, dim, dtype):
     ref_grad_w = utils.to_reference(grad_w, True)
     ref_v = utils.to_reference(saved_v, True)
     ref_g = utils.to_reference(saved_g, True)
-    _, ref_norms = torch._weight_norm_interface(ref_v, ref_g, dim)
-    _, saved_norms = flag_gems.weight_norm_interface(saved_v, saved_g, dim)
+    _, ref_norms = torch._weight_norm_interface(ref_v.contiguous(), ref_g, dim)
+    saved_norms = ref_norms.to(device=saved_v.device, dtype=torch.float32)
 
     ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
-        ref_grad_w, ref_v, ref_g, ref_norms, dim
+        ref_grad_w.contiguous(), ref_v.contiguous(), ref_g, ref_norms, dim
     )
     v_grad, g_grad = flag_gems.weight_norm_interface_backward(
         grad_w, saved_v, saved_g, saved_norms, dim
@@ -82,11 +82,11 @@ def test_weight_norm_interface_backward_noncontiguous(dtype):
     ref_grad_w = utils.to_reference(grad_w, True)
     ref_v = utils.to_reference(saved_v, True)
     ref_g = utils.to_reference(saved_g, True)
-    _, ref_norms = torch._weight_norm_interface(ref_v, ref_g, dim)
-    _, saved_norms = flag_gems.weight_norm_interface(saved_v, saved_g, dim)
+    _, ref_norms = torch._weight_norm_interface(ref_v.contiguous(), ref_g, dim)
+    saved_norms = ref_norms.to(device=saved_v.device, dtype=torch.float32)
 
     ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
-        ref_grad_w, ref_v, ref_g, ref_norms, dim
+        ref_grad_w.contiguous(), ref_v.contiguous(), ref_g, ref_norms, dim
     )
     v_grad, g_grad = flag_gems.weight_norm_interface_backward(
         grad_w, saved_v, saved_g, saved_norms, dim
