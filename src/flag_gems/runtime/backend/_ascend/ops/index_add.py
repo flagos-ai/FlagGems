@@ -160,6 +160,54 @@ def _index_add_contiguous_suffix_flat_kernel(
         tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
 
 
+@libentry()
+@triton.jit
+def _index_add_short_kernel(
+    out,
+    index,
+    src,
+    count,
+    out_dim,
+    alpha,
+    INDEX_LEN: tl.constexpr,
+    SUFFIX: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Each program owns disjoint [prefix, suffix] coordinates. Resolve the
+    # duplicate-index case before storing, so no atomic operation is needed.
+    pid = tle.program_id(0)
+    index0 = tl.load(index).to(tl.int64)
+    valid0 = (index0 >= 0) & (index0 < out_dim)
+    if INDEX_LEN == 2:
+        index1 = tl.load(index + 1).to(tl.int64)
+        valid1 = (index1 >= 0) & (index1 < out_dim)
+        duplicate = index0 == index1
+    output_dtype = out.dtype.element_ty
+    for start in range(
+        ((pid - 1) * BLOCK).to(tl.int64),
+        count,
+        (tl.num_programs(0) - 1) * BLOCK,
+    ):
+        offsets = start + tl.arange(0, BLOCK)
+        mask = (pid > 0) & (offsets < count)
+        prefix = offsets // SUFFIX
+        col = offsets % SUFFIX
+        src0 = (prefix * INDEX_LEN) * SUFFIX + col
+        dst0 = (prefix * out_dim + index0) * SUFFIX + col
+        value0 = tl.load(src + src0, mask, other=0).to(output_dtype)
+        old0 = tl.load(out + dst0, mask & valid0, other=0)
+        result0 = (old0 + value0 * alpha).to(output_dtype)
+        if INDEX_LEN == 2:
+            value1 = tl.load(src + src0 + SUFFIX, mask, other=0).to(output_dtype)
+            dst1 = (prefix * out_dim + index1) * SUFFIX + col
+            old1 = tl.load(out + dst1, mask & valid1 & ~duplicate, other=0)
+            result1 = (old1 + value1 * alpha).to(output_dtype)
+            combined = (result0 + value1 * alpha).to(output_dtype)
+            result0 = tl.where(duplicate, combined, result0)
+            tl.store(out + dst1, result1, mask & valid1 & ~duplicate)
+        tl.store(out + dst0, result0, mask & valid0)
+
+
 def _get_block_config(M, N):
     BLOCK_M = 4 if M < 4096 else 8
     BLOCK_N = max(4, min(512, triton.next_power_of_2(N)))
@@ -174,7 +222,13 @@ def _volume(shape):
 
 
 def _assert_index_in_bounds(index, upper_bound):
-    # Validate before scatter so an in-place call leaves its input unchanged on error.
+    # Capture cannot synchronize device values back to Python. The suffix kernels
+    # mask every index on each execution, including replays with new indices.
+    # Keep eager validation before scatter to preserve the input on failure.
+    if index.device.type != "cpu":
+        with torch_device_fn.device(index.device):
+            if torch_device_fn.is_current_stream_capturing():
+                return
     lower, upper = torch.ops.aten.aminmax.default.redispatch(
         _FALLBACK_KEYSET, index, dim=None, keepdim=False
     )
@@ -198,7 +252,9 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
         and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
     ):
         return False
-    return _volume(src.shape[dim + 1 :]) > 1
+    # A unit suffix includes 1-D counters and final-dimension updates. They also
+    # require atomic accumulation when an index occurs more than once.
+    return _volume(src.shape[dim + 1 :]) >= 1
 
 
 def _flat_contiguous_suffix_block_config(total_count):
@@ -258,6 +314,24 @@ def _contiguous_suffix_block_config(row_count, suffix_size):
 
 def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     suffix_size = _volume(src.shape[dim + 1 :])
+    if index.numel() <= 2:
+        count = _volume(src.shape[:dim]) * suffix_size
+        block = 256
+        grid = (min(triton.cdiv(count, block), 65534) + 1,)
+        with torch_device_fn.device(out.device):
+            _index_add_short_kernel[grid](
+                out,
+                index,
+                src,
+                count,
+                out.size(dim),
+                alpha,
+                INDEX_LEN=index.numel(),
+                SUFFIX=suffix_size,
+                BLOCK=block,
+                enable_fp_fusion=False,
+            )
+        return True
     if dim == 0 or suffix_size < 16:
         return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
 
@@ -302,6 +376,10 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return torch.ops.aten.index_add.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
@@ -356,6 +434,10 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return torch.ops.aten.index_add_.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
