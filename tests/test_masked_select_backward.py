@@ -232,6 +232,8 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_masked_select_backward_conjugated_grad(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        pytest.skip("Kunlunxin input storage cannot preserve complex128 dtype")
     if flag_gems.vendor_name in ("ascend", "kunlunxin") and not utils.TO_CPU:
         pytest.skip(
             "backend native masked_select_backward reference lacks complex support"
