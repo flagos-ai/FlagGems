@@ -221,6 +221,7 @@ nvidia-cuda128 = [
 ]
 
 nvidia-cuda133 = [
+    "flagcx==0.14.0rc2.post2+cuda13.3",
     "torch==2.11.0+cu130",
     "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
@@ -242,7 +243,7 @@ sunrise = [
 
 thead = [
     "torch==2.10.0+v0.1.0.ppu2.1.1",
-    "flagtree==0.6.2a2+ppu3.6",
+    "flagtree==0.7.0+ppu3.6",
 ]
 
 tsingmicro = [

@@ -135,3 +135,4 @@ FlagGems 将 Ascend 配置为 NPU 后端（`device_name="npu"`），并使用已
 - [cannbot-skills：Ascend 编译选项](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/04-Compilation-Pipeline/07-compile-options.md)
 - [cannbot-skills：Ascend 内存模型与扩展 API](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/01-Programming-Model/03-memory-model.md)
 - [Triton-Ascend 后端编译器（`NPUOptions`）](https://github.com/triton-lang/triton-ascend/blob/main/third_party/ascend/backend/compiler.py)
+- [Triton-Ascend：环境变量与编译选项参考](https://triton-ascend.readthedocs.io/zh-cn/v3.6.0/environment_variable_and_compiler_options_reference.html#id1)

@@ -118,6 +118,7 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.softmax_backward_data
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)

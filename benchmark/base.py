@@ -1473,6 +1473,20 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
         return inp, {"out": out}
 
 
+class BoolUnaryPointwiseOutBenchmark(UnaryPointwiseOutBenchmark):
+    """Unary pointwise op whose out argument must be bool.
+
+    Predicates like isneginf/signbit reject non-boolean out tensors, so the
+    output is allocated with torch.bool instead of the input dtype.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty(inp.shape, dtype=torch.bool, device=self.device)
+            yield inp, {"out": out}
+
+
 class MarginRankingLossBenchmark(GenericBenchmark):
     """
     A benchmark class specifically for margin_ranking_loss to avoid OOM issues.

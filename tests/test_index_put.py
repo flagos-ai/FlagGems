@@ -335,13 +335,23 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
             ref_indices.append(unique_pool.cpu())
 
     ref_inp = utils.to_reference(inp)
+    # Kunlunxin native advanced indexing is incorrect when multiple tensor
+    # indices are mixed with slices; when the reference runs on-device, compute
+    # it on CPU and move the result back for comparison.
+    use_cpu_ref = flag_gems.vendor_name == "kunlunxin" and ref_inp.device.type != "cpu"
+    if use_cpu_ref:
+        ref_inp = ref_inp.cpu()
     target_shape = ref_inp[tuple(ref_indices)].shape
 
     values = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
     ref_values = utils.to_reference(values)
+    if use_cpu_ref:
+        ref_values = ref_values.cpu()
 
     ref_out = ref_inp.clone()
     ref_out[tuple(ref_indices)] = ref_values
+    if use_cpu_ref:
+        ref_out = ref_out.to(flag_gems.device)
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)

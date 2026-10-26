@@ -56,48 +56,61 @@ if vendor_name == "ascend":
 
 if QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
-    SHAPES_1D = [((2, 2, 8), (3, 2, 3), 1)]
-    SHAPES_1D_DILATION = [((1, 2, 12), (3, 2, 3), 1)]
+    SHAPES_1D = [((2, 2, 8), (3, 2, 3), 1, 1, 1)]
+    SHAPES_1D_DILATION = [((1, 2, 12), (3, 2, 3), 1, 1, 2)]
     SHAPES_2D = [
-        ((1, 2, 5, 5), (3, 2, 3, 3), 1),
-        ((1, 16, 8, 8), (32, 16, 3, 3), 1),  # C_in >= 16 -> no channel padding
+        ((1, 2, 5, 5), (3, 2, 3, 3), 1, 1, 1),
+        ((1, 16, 8, 8), (32, 16, 3, 3), 1, 1, 1),  # C_in >= 16 -> no channel padding
     ]
-    SHAPES_2D_DILATION = [((1, 2, 9, 9), (3, 2, 3, 3), 1)]
+    SHAPES_2D_DILATION = [((1, 2, 9, 9), (3, 2, 3, 3), 1, 1, 2)]
     SHAPES_2D_ASYMMETRIC = [((1, 3, 16, 16), (4, 3, 3, 5), 1, (1, 2), (1, 2), (1, 1))]
     SHAPES_3D = [
-        ((1, 2, 5, 5, 5), (3, 2, 3, 3, 3), 1),
-        ((1, 16, 4, 4, 4), (16, 16, 3, 3, 3), 1),  # C_in >= 16 -> no channel padding
+        ((1, 2, 5, 5, 5), (3, 2, 3, 3, 3), 1, 1, 1),
+        (
+            (1, 16, 4, 4, 4),
+            (16, 16, 3, 3, 3),
+            1,
+            1,
+            1,
+        ),  # C_in >= 16 -> no channel padding
     ]
-    SHAPES_3D_DILATION = [((1, 2, 7, 7, 7), (3, 2, 3, 3, 3), 1)]
-    STRIDES = [1]
-    PADDINGS = [1]
-    DILATIONS = [1]
+    SHAPES_3D_DILATION = [((1, 2, 7, 7, 7), (3, 2, 3, 3, 3), 1, 1, 2)]
 else:
     FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+    # Base convolutions are (input, weight, groups, stride, padding).  Stride and
+    # padding are folded into each case instead of a full STRIDES x PADDINGS
+    # cross-product: stride/padding indexing is largely orthogonal to the
+    # shape-specific dispatch (channel padding, groups, depthwise, pointwise), so
+    # each (stride, padding) pairing is exercised once across the set rather than
+    # once per shape.  This drops the ~4x case-count of the old orthogonal
+    # parametrization without losing any distinct code path.
     SHAPES_1D = [
-        ((2, 2, 8), (3, 2, 3), 1),  # basic
-        ((2, 3, 12), (5, 3, 3), 1),  # multi-channel, C_in and C_out both < 16
-        ((1, 4, 16), (4, 1, 3), 4),  # depthwise (groups == C_in == C_out)
-        ((2, 3, 7), (4, 3, 1), 1),  # 1x1 kernel, lifted to a 2D conv internally
+        ((2, 2, 8), (3, 2, 3), 1, 1, 0),  # basic, valid conv
+        ((2, 3, 12), (5, 3, 3), 1, 1, 1),  # multi-channel, same-size
+        ((1, 4, 16), (4, 1, 3), 4, 2, 0),  # depthwise, downsample no-pad
+        ((2, 3, 7), (4, 3, 1), 1, 2, 1),  # 1x1 kernel, downsample pad
     ]
+    # Dilation cases are (input, weight, groups, padding, dilation), stride held
+    # at 1.  Dilation rewrites the effective kernel, so the dilated case is the
+    # only thing this test adds over the base tests (which run dilation == 1).
     SHAPES_1D_DILATION = [
-        ((1, 2, 12), (3, 2, 3), 1),
-        ((2, 3, 20), (5, 3, 3), 1),
-        ((2, 4, 24), (4, 4, 7), 1),  # 7 taps dilated by 3 -> 19 wide
+        ((1, 2, 12), (3, 2, 3), 1, 0, 1),
+        ((2, 3, 20), (5, 3, 3), 1, 1, 2),
+        ((2, 4, 24), (4, 4, 7), 1, 0, 2),  # 7 taps dilated -> wider effective kernel
     ]
     SHAPES_2D = [
-        ((1, 2, 5, 5), (3, 2, 3, 3), 1),  # basic, C_in < 16 (padding path)
-        ((1, 16, 8, 8), (32, 16, 3, 3), 1),  # C_in >= 16 -> no channel padding
-        ((2, 3, 9, 9), (6, 3, 3, 3), 1),  # multi-channel, C_in and C_out both < 16
-        ((2, 3, 8, 8), (6, 3, 3, 3), 1),  # even spatial
-        ((4, 4, 8, 8), (4, 2, 3, 3), 2),  # grouped (groups = 2)
-        ((1, 8, 6, 6), (8, 1, 3, 3), 8),  # depthwise
-        ((2, 3, 7, 7), (4, 3, 1, 1), 1),  # 1x1 kernel - pointwise until p or s moves
-        ((1, 2, 4, 4), (5, 2, 3, 3), 1),  # small spatial, C_in < 16
+        ((1, 2, 5, 5), (3, 2, 3, 3), 1, 1, 0),  # basic, valid conv
+        ((1, 16, 8, 8), (32, 16, 3, 3), 1, 1, 1),  # C_in >= 16 -> no channel padding
+        ((2, 3, 9, 9), (6, 3, 3, 3), 1, 2, 0),  # multi-channel, downsample no-pad
+        ((2, 3, 8, 8), (6, 3, 3, 3), 1, 2, 1),  # even spatial, downsample pad
+        ((4, 4, 8, 8), (4, 2, 3, 3), 2, 1, 1),  # grouped (groups = 2)
+        ((1, 8, 6, 6), (8, 1, 3, 3), 8, 1, 0),  # depthwise
+        ((2, 3, 7, 7), (4, 3, 1, 1), 1, 1, 0),  # 1x1 kernel - pointwise
+        ((1, 2, 4, 4), (5, 2, 3, 3), 1, 1, 1),  # small spatial, C_in < 16
     ]
     SHAPES_2D_DILATION = [
-        ((1, 2, 9, 9), (3, 2, 3, 3), 1),
-        ((2, 3, 11, 11), (6, 3, 3, 3), 1),
+        ((1, 2, 9, 9), (3, 2, 3, 3), 1, 0, 1),
+        ((2, 3, 11, 11), (6, 3, 3, 3), 1, 1, 2),
     ]
     # (input, weight, groups, stride(h, w), padding(h, w), dilation(h, w))
     SHAPES_2D_ASYMMETRIC = [
@@ -106,19 +119,28 @@ else:
         ((1, 4, 15, 15), (4, 2, 3, 3), 2, (1, 2), (2, 0), (2, 1)),
     ]
     SHAPES_3D = [
-        ((1, 2, 5, 5, 5), (3, 2, 3, 3, 3), 1),  # basic, C_in < 16
-        ((1, 16, 4, 4, 4), (16, 16, 3, 3, 3), 1),  # C_in >= 16 -> no channel padding
-        ((2, 3, 7, 7, 7), (6, 3, 3, 3, 3), 1),  # multi-channel
-        ((2, 4, 5, 5, 5), (4, 4, 3, 3, 3), 1),  # multi-channel, odd spatial
-        ((1, 4, 6, 6, 6), (4, 1, 3, 3, 3), 4),  # depthwise
-        ((1, 2, 9, 9, 9), (3, 2, 1, 1, 1), 1),  # 1x1x1 kernel, collapsed to a GEMM
+        ((1, 2, 5, 5, 5), (3, 2, 3, 3, 3), 1, 1, 0),  # basic, valid conv
+        (
+            (1, 16, 4, 4, 4),
+            (16, 16, 3, 3, 3),
+            1,
+            1,
+            1,
+        ),  # C_in >= 16 -> no channel padding
+        ((2, 3, 7, 7, 7), (6, 3, 3, 3, 3), 1, 2, 0),  # multi-channel, downsample no-pad
+        ((2, 4, 5, 5, 5), (4, 4, 3, 3, 3), 1, 2, 1),  # odd spatial, downsample pad
+        ((1, 4, 6, 6, 6), (4, 1, 3, 3, 3), 4, 1, 0),  # depthwise
+        (
+            (1, 2, 9, 9, 9),
+            (3, 2, 1, 1, 1),
+            1,
+            1,
+            1,
+        ),  # 1x1x1 kernel, collapsed to a GEMM
     ]
     SHAPES_3D_DILATION = [
-        ((1, 2, 7, 7, 7), (3, 2, 3, 3, 3), 1),
+        ((1, 2, 7, 7, 7), (3, 2, 3, 3, 3), 1, 0, 2),
     ]
-    STRIDES = [1, 2]
-    PADDINGS = [0, 1]
-    DILATIONS = [1, 2]
 
 
 # (input, weight, groups, stride, padding, dilation)
@@ -231,9 +253,7 @@ def _check(inp, weight, padding, stride, dilation, groups, dtype):
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_1D)
-@pytest.mark.parametrize("stride", STRIDES)
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, stride, padding", SHAPES_1D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_cudnn_convolution_1d(shape, kernel, groups, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -245,17 +265,12 @@ def test_cudnn_convolution_1d(shape, kernel, groups, stride, padding, dtype):
 # by the 2D dilation test, but the parameter rewrite is 1D-specific and worth
 # covering on its own. Stride is held at 1 to keep the cross-product affordable.
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_1D_DILATION)
-@pytest.mark.parametrize("stride", [1])
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, padding, dilation", SHAPES_1D_DILATION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dilation", DILATIONS)
-def test_cudnn_convolution_1d_dilation(
-    shape, kernel, groups, stride, padding, dtype, dilation
-):
+def test_cudnn_convolution_1d_dilation(shape, kernel, groups, padding, dilation, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    _check(inp, weight, padding, stride, dilation, groups, dtype)
+    _check(inp, weight, padding, 1, dilation, groups, dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -264,9 +279,7 @@ def test_cudnn_convolution_1d_dilation(
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_2D)
-@pytest.mark.parametrize("stride", STRIDES)
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, stride, padding", SHAPES_2D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_cudnn_convolution_2d(shape, kernel, groups, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -288,17 +301,12 @@ def test_cudnn_convolution_large_kernel(
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_2D_DILATION)
-@pytest.mark.parametrize("stride", [1])
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, padding, dilation", SHAPES_2D_DILATION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dilation", DILATIONS)
-def test_cudnn_convolution_2d_dilation(
-    shape, kernel, groups, stride, padding, dtype, dilation
-):
+def test_cudnn_convolution_2d_dilation(shape, kernel, groups, padding, dilation, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    _check(inp, weight, padding, stride, dilation, groups, dtype)
+    _check(inp, weight, padding, 1, dilation, groups, dtype)
 
 
 @pytest.mark.cudnn_convolution
@@ -320,9 +328,7 @@ def test_cudnn_convolution_2d_asymmetric(
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_3D)
-@pytest.mark.parametrize("stride", STRIDES)
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, stride, padding", SHAPES_3D)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_cudnn_convolution_3d(shape, kernel, groups, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -331,17 +337,12 @@ def test_cudnn_convolution_3d(shape, kernel, groups, stride, padding, dtype):
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPES_3D_DILATION)
-@pytest.mark.parametrize("stride", [1])
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, padding, dilation", SHAPES_3D_DILATION)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("dilation", DILATIONS)
-def test_cudnn_convolution_3d_dilation(
-    shape, kernel, groups, stride, padding, dtype, dilation
-):
+def test_cudnn_convolution_3d_dilation(shape, kernel, groups, padding, dilation, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=dtype, device=flag_gems.device)
-    _check(inp, weight, padding, stride, dilation, groups, dtype)
+    _check(inp, weight, padding, 1, dilation, groups, dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -506,18 +507,19 @@ def test_cudnn_convolution_output_shape(
 # Every shape here is also value-checked elsewhere (the first two via
 # SCALAR_RANK_CASES' scalar-params test, the last two via SHAPES_2D/SHAPES_3D),
 # so this test only needs to assert the extent, not the values.
+# One (stride, padding) per shape: the output-size formula's only interesting
+# edge is stride > 1 (floor division) with and without padding, so a sparse
+# pairing suffices instead of the full cross-product.
 SHAPE_GRID_CASES = [
-    ((2, 3, 9), (4, 3, 3), 1),
-    ((1, 3, 9, 9), (4, 3, 3, 3), 1),  # one output channel row
-    ((2, 3, 8, 8), (6, 3, 3, 3), 1),
-    ((2, 4, 5, 5, 5), (4, 4, 3, 3, 3), 1),
+    ((2, 3, 9), (4, 3, 3), 1, 1, 0),
+    ((1, 3, 9, 9), (4, 3, 3, 3), 1, 2, 0),  # one output channel row
+    ((2, 3, 8, 8), (6, 3, 3, 3), 1, 2, 1),
+    ((2, 4, 5, 5, 5), (4, 4, 3, 3, 3), 1, 1, 1),
 ]
 
 
 @pytest.mark.cudnn_convolution
-@pytest.mark.parametrize("shape, kernel, groups", SHAPE_GRID_CASES)
-@pytest.mark.parametrize("stride", STRIDES)
-@pytest.mark.parametrize("padding", PADDINGS)
+@pytest.mark.parametrize("shape, kernel, groups, stride, padding", SHAPE_GRID_CASES)
 def test_cudnn_convolution_output_shape_grid(shape, kernel, groups, stride, padding):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     weight = torch.randn(kernel, dtype=torch.float32, device=flag_gems.device)

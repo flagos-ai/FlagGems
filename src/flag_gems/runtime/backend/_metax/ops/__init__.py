@@ -1,4 +1,3 @@
-from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
@@ -13,7 +12,6 @@ from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .bmm import bmm
-from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
@@ -81,6 +79,8 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
+from ._make_dep_token import _make_dep_token
+from .mode import mode
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -164,7 +164,6 @@ __all__ = [
     "baddbmm",
     "baddbmm_out",
     "bmm",
-    "broadcast_to",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
@@ -239,6 +238,7 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mode",
     "mv",
     "mvlgamma",
     "mvlgamma_",

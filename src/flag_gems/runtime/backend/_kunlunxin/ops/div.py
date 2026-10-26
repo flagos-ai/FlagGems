@@ -486,7 +486,7 @@ def true_divide_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN TRUE_DIVIDE_TENSOR")
     # keep the dispatch-contract log line expected by tests/test_true_divide.py
     # (caplog on logger "flag_gems.ops.true_divide", same pattern as special_erf)
-    logging.getLogger("flag_gems.ops.true_divide").debug("GEMS TRUE_DIVIDE")
+    logging.getLogger(__name__).debug("GEMS TRUE_DIVIDE")
     return true_divide(A, B)
 
 

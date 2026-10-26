@@ -28,7 +28,7 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 # dropped, breaking the `assert "GEMS SPECIAL_NDTRI" in caplog.text` in all four
 # test functions.  `record.pathname` still points at this file, which is what the
 # dispatch evidence uses.
-logger = logging.getLogger("flag_gems.ops.special_ndtri")
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,

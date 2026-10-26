@@ -26,6 +26,7 @@ Exit codes:
 """
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -74,6 +75,30 @@ def expected_marker(op_id: str, all_op_ids: set) -> str:
     if stripped in all_op_ids:
         return f"underscore_{stripped}"
     return stripped
+
+
+def declared_markers() -> set[str]:
+    """Return the pytest markers declared by the test files.
+
+    A marker that no test declares selects nothing, so emitting it makes the
+    caller's ``pytest -m`` run deselect everything. Used to drop markers
+    derived from backend helper modules (whose file stem is not an operator id
+    and which no test marks).
+    """
+    declared: set[str] = set()
+    for path in Path(TESTS_DIR).glob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "mark"
+            ):
+                declared.add(node.attr)
+    return declared
 
 
 def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
@@ -303,9 +328,15 @@ def main():
     if args.ops_only:
         # Machine-readable: just the markers, one per line. Apply the marker
         # convention here so callers select the right tests (a raw id like
-        # _pad_enum would deselect everything).
+        # _pad_enum would deselect everything). Markers that no test declares
+        # are dropped: a backend helper module (e.g.
+        # _kunlunxin/ops/fused_moe_kernel.py) has no marker of its own, and
+        # emitting one would make the caller's pytest run deselect everything.
+        declared = declared_markers()
         for op in changed_ops:
-            print(expected_marker(op, all_op_ids))
+            marker = expected_marker(op, all_op_ids)
+            if op in all_op_ids or marker in declared:
+                print(marker)
         return
 
     if args.base and args.head:

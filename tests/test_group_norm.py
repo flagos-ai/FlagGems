@@ -136,6 +136,7 @@ def test_group_norm(N, C, H, W, num_groups, dtype, wb_none):
 
 
 @pytest.mark.group_norm_backward
+@pytest.mark.native_group_norm_backward
 @pytest.mark.parametrize(
     "N, C, H, W, num_groups",
     [
