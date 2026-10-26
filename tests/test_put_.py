@@ -680,7 +680,7 @@ def test_put__complex32_rejected():
     # Native CUDA `put_` has no ComplexHalf kernel; `complex32` used to fall
     # through to the FP16 real-view path, silently succeeding where ATen raises.
     factory_device = (
-        "cpu" if flag_gems.vendor_name == "kunlunxin" else flag_gems.device
+        "cpu" if flag_gems.vendor_name in ("kunlunxin", "mthreads") else flag_gems.device
     )
     inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(
         flag_gems.device

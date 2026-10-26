@@ -663,9 +663,11 @@ def test_put_complex32_rejected():
     # Native CUDA `put` has no ComplexHalf kernel. `complex32` used to be routed
     # through the FP16 real-view path, silently producing a result where ATen
     # raises; the two must agree on the exception type and message.
-    inp = torch.zeros(4, dtype=torch.complex32, device=flag_gems.device)
+    # MUSA stores ComplexHalf, but its device fill kernel does not support it.
+    factory_device = "cpu" if flag_gems.vendor_name == "mthreads" else flag_gems.device
+    inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(flag_gems.device)
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
-    source = torch.ones(1, dtype=torch.complex32, device=flag_gems.device)
+    source = torch.ones(1, dtype=torch.complex32, device=factory_device).to(flag_gems.device)
 
     # Compare against the native call on the same device so the message and the
     # exception type are checked against the CUDA kernel, not the CPU fallback.
