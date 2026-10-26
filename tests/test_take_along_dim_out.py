@@ -95,7 +95,7 @@ def test_take_along_dim_out_none_and_resize():
     out = torch.empty((0,), dtype=inp.dtype, device=flag_gems.device)
     result = flag_gems.take_along_dim_out(inp, index, dim=None, out=out)
     assert result is out
-    assert out.shape == index.shape
+    assert out.shape == ref.shape
     utils.gems_assert_equal(out, ref)
 
 
@@ -126,4 +126,7 @@ def test_take_along_dim_out_rejects_dtype_mismatch():
     snapshot = out.clone()
     with pytest.raises(RuntimeError):
         flag_gems.take_along_dim_out(inp, index, dim=1, out=out)
-    utils.gems_assert_equal(out, snapshot)
+    assert out.device == snapshot.device
+    assert out.dtype == snapshot.dtype
+    assert out.shape == snapshot.shape
+    utils.gems_assert_equal(out.cpu(), snapshot.cpu())
