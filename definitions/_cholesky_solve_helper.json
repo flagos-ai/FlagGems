@@ -1,0 +1,33 @@
+{
+  "api_version": "v6.0",
+  "name": "_cholesky_solve_helper",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_cholesky_solve_helper(Tensor self, Tensor A, bool upper) -> Tensor. The public artifact ID maps to the private canonical ATen helper registered by FlagGems. Tests cover lower and upper factors, unbatched and broadcast batched systems in both directions, multiple right-hand sides, float32/float64, incompatible batches, dtype/device mismatches, invalid ranks and matrix shapes, and explicit autograd rejection.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "upper",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

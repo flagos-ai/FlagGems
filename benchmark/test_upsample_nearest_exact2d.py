@@ -34,8 +34,9 @@ class UpsampleNearestExact2dBenchmark(base.Benchmark):
 
 
 @pytest.mark.upsample_nearest_exact2d
+@pytest.mark.underscore_upsample_nearest_exact2d
 def test_upsample_nearest_exact2d():
-    UpsampleNearestExact2dBenchmark(op_name="upsample_nearest_exact2d", torch_op=torch.ops.aten._upsample_nearest_exact2d, dtypes=consts.FLOAT_DTYPES).run()
+    UpsampleNearestExact2dBenchmark(op_name="_upsample_nearest_exact2d", torch_op=torch.ops.aten._upsample_nearest_exact2d, dtypes=consts.FLOAT_DTYPES).run()
 
 
 @pytest.mark.upsample_nearest_exact2d_out

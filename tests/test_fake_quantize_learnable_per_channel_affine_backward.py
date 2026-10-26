@@ -60,6 +60,7 @@ def _make_inputs(shape, axis, quant_max):
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 @pytest.mark.parametrize("shape, axis", PER_CHANNEL_CASES)
 @pytest.mark.parametrize("quant_min, quant_max", QUANT_RANGES)
 @pytest.mark.parametrize("grad_factor", GRAD_FACTORS)
@@ -104,6 +105,7 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
     cfg.TO_CPU, reason="CPU reference diverges on infinite saturation gradients"
 )
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
     shape, axis = (4, 16), 1
     scale = torch.full((16,), 0.1, device=flag_gems.device)
@@ -132,6 +134,7 @@ def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_empty():
     shape, axis = (2, 0, 3), 1
     grad = torch.empty(shape, device=flag_gems.device)
@@ -150,6 +153,7 @@ def test_fake_quantize_learnable_per_channel_affine_backward_empty():
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_rejects_dtype():
     shape, axis = (4, 8), 1
     tensors = [

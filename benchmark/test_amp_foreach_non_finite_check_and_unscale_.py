@@ -51,9 +51,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 def test_amp_foreach_non_finite_check_and_unscale_():
     AmpForeachBenchmark(
-        op_name="amp_foreach_non_finite_check_and_unscale_",
+        op_name="_amp_foreach_non_finite_check_and_unscale_",
         torch_op=torch._amp_foreach_non_finite_check_and_unscale_,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

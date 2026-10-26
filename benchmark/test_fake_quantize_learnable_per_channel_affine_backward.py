@@ -61,9 +61,10 @@ class FakeQuantizeLearnablePerChannelAffineBackwardBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
+@pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward():
     bench = FakeQuantizeLearnablePerChannelAffineBackwardBenchmark(
-        op_name="fake_quantize_learnable_per_channel_affine_backward",
+        op_name="_fake_quantize_learnable_per_channel_affine_backward",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

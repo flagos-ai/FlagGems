@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 
 _ATEN_OP = torch.ops.aten._foreach_tanh
@@ -130,6 +131,10 @@ def test_foreach_tanh_integer_promotion():
 
 
 @pytest.mark.foreach_tanh
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend" and not cfg.TO_CPU,
+    reason="Ascend native _foreach_tanh does not support complex64 NPU reference",
+)
 def test_foreach_tanh_complex_values():
     values = [_sample((9,), torch.complex64)]
     reference_values = _reference(values)

@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _ATEN_OP = torch.ops.aten._foreach_tan_
 
 
@@ -126,6 +125,10 @@ def test_foreach_tan__writes_through_noncontiguous_view():
 
 @pytest.mark.foreach_tan_
 def test_foreach_tan__integer_contract():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip(
+            "backend native foreach does not support the integer reference contract"
+        )
     values = [_sample((11,), torch.int32)]
     reference_values = _reference(values)
     if not _INTEGER_SUPPORTED or not _SAME_DTYPE_INTEGER:

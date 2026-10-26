@@ -302,7 +302,7 @@ def test_linalg_tensorinv_out(shape, dtype):
     out = torch.empty(
         A.shape[ind:] + A.shape[:ind], dtype=dtype, device=flag_gems.device
     )
-    res_out = flag_gems.linalg_tensorinv(A, ind=ind, out=out)
+    res_out = flag_gems.linalg_tensorinv_out(A, ind=ind, out=out)
 
     assert res_out is out, "linalg_tensorinv(out=) must return the provided out tensor"
     utils.gems_assert_close(out, ref_out, dtype)
@@ -479,7 +479,7 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
 
     # Pre-fill with values that would be obviously wrong if left in place.
     out = torch.full((m, m), float("nan"), dtype=dtype, device=flag_gems.device)
-    res_out = flag_gems.linalg_tensorinv(A, ind=ind, out=out)
+    res_out = flag_gems.linalg_tensorinv_out(A, ind=ind, out=out)
 
     assert res_out is out
     assert not torch.isnan(out).any(), "out= must be fully overwritten"
@@ -496,7 +496,7 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
         )
     else:
         ref_view = torch.linalg.tensorinv(ref_view_A, ind=ind)
-    res_view = flag_gems.linalg_tensorinv(A_view, ind=ind, out=out2)
+    res_view = flag_gems.linalg_tensorinv_out(A_view, ind=ind, out=out2)
 
     assert res_view is out2
     utils.gems_assert_close(out2, ref_view, dtype, atol=1e-2, reduce_dim=1)

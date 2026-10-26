@@ -48,9 +48,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.underscore_scaled_dot_product_attention_math
 def test_scaled_dot_product_attention_math():
     AttentionBenchmark(
-        op_name="scaled_dot_product_attention_math",
+        op_name="_scaled_dot_product_attention_math",
         torch_op=torch.ops.aten._scaled_dot_product_attention_math,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

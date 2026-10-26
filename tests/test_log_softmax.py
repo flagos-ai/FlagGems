@@ -79,6 +79,7 @@ def test_accuracy_log_softmax_out(shape, dtype, dim):
 
 
 @pytest.mark.log_softmax_backward_data
+@pytest.mark.log_softmax_backward
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)

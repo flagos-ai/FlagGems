@@ -40,9 +40,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.thnn_fused_lstm_cell_backward_impl
+@pytest.mark.underscore_thnn_fused_lstm_cell_backward_impl
 def test_thnn_fused_lstm_cell_backward_impl():
     LstmCellBackwardBenchmark(
-        op_name="thnn_fused_lstm_cell_backward_impl",
+        op_name="_thnn_fused_lstm_cell_backward_impl",
         torch_op=torch.ops.aten._thnn_fused_lstm_cell_backward_impl,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

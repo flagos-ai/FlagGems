@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 _MKLDNN_RNN_LAYER_SHAPES = [
@@ -104,7 +102,6 @@ def test_mkldnn_rnn_layer():
         build_inputs_fn=mkldnn_rnn_layer_build_inputs_fn,
         op_name="mkldnn_rnn_layer",
         torch_op=_torch_lstm_layer_baseline,
-        gems_op=flag_gems.ops.mkldnn_rnn_layer,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -46,8 +44,8 @@ def _build_inputs_fn(plan, dtype, device):
     inp = torch.randn(shape, dtype=torch.float32, device=device)
     return (
         inp,
-        torch.tensor([1], dtype=torch.int32, device=device),
-        torch.tensor([1], dtype=torch.int32, device=device),
+        torch.tensor([1], dtype=torch.int64, device=device),
+        torch.tensor([1], dtype=torch.int64, device=device),
         torch.tensor([-0.5], dtype=torch.float32, device=device),
         torch.tensor([0.5], dtype=torch.float32, device=device),
         torch.ones(1, dtype=torch.float32, device=device),
@@ -66,7 +64,6 @@ def test_fused_moving_avg_obs_fake_quant():
     FusedMovingAvgObsFakeQuantBenchmark(
         op_name="fused_moving_avg_obs_fake_quant",
         torch_op=torch.fused_moving_avg_obs_fake_quant,
-        gems_op=flag_gems.fused_moving_avg_obs_fake_quant,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

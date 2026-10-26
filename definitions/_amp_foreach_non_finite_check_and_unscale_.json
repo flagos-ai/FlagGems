@@ -1,0 +1,34 @@
+{
+  "api_version": "v6.0",
+  "name": "_amp_foreach_non_finite_check_and_unscale_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_amp_foreach_non_finite_check_and_unscale_(Tensor(a!)[] self, Tensor(b!) found_inf, Tensor inv_scale) -> (). Unscales finite gradient values in place, preserves non-finite values, and records non-finite input in found_inf. Tests cover float16/float32, finite/inf/nan, preexisting found_inf, empty lists and tensors, invalid input type, void return, every list element identity/storage/value, found_inf mutation, and inv_scale non-mutation.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "found_inf",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "inv_scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self",
+      "found_inf"
+    ],
+    "returns_alias_of": {}
+  }
+}

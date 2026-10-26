@@ -55,6 +55,7 @@ def _grouped_reference(mat_a, mat_b, offs):
 
 
 @pytest.mark.grouped_mm
+@pytest.mark.group_mm
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
@@ -80,6 +81,7 @@ def test_grouped_mm(groups, n_size, k_size, dtype):
 
 
 @pytest.mark.grouped_mm
+@pytest.mark.group_mm
 @pytest.mark.parametrize("invalid", ["mat_a_rank", "mat_b_rank", "offs_count"])
 def test_grouped_mm_rejects_invalid_layout(invalid):
     mat_a, mat_b, offs = _make_grouped_inputs(3, 16, 32, torch.bfloat16)

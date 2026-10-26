@@ -1,0 +1,41 @@
+{
+  "api_version": "v6.0",
+  "name": "_pad_packed_sequence",
+  "requires_triton_kernel": true,
+  "description": "Pads a packed batch of variable length sequences back into a dense\n(T, B, *) tensor together with the per-batch-element sequence lengths.",
+  "parameters": [
+    {
+      "name": "data",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "batch_sizes",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "batch_first",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "padding_value",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "total_length",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "padded",
+    "lengths"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

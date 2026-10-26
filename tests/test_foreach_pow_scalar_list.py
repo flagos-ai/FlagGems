@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _ATEN_OP = torch.ops.aten._foreach_pow.ScalarList
 
 
@@ -46,11 +45,15 @@ def test_foreach_pow_scalar_list(dtype):
     reference_self = [utils.to_reference(t.clone(), True) for t in self_tensors]
     reference_exponent = (
         [utils.to_reference(t, True) for t in exponent]
-        if exponent and isinstance(exponent, list) and isinstance(exponent[0], torch.Tensor)
+        if exponent
+        and isinstance(exponent, list)
+        and isinstance(exponent[0], torch.Tensor)
         else exponent
     )
     pointers = [t.data_ptr() for t in self_tensors]
-    expected = torch.ops.aten._foreach_pow.ScalarList(reference_self, reference_exponent)
+    expected = torch.ops.aten._foreach_pow.ScalarList(
+        reference_self, reference_exponent
+    )
     result = _candidate(self_tensors, exponent)
 
     assert len(result) == len(expected)
@@ -69,6 +72,10 @@ def test_foreach_pow_scalar_list_empty_list():
 
 @pytest.mark.foreach_pow_scalar_list
 def test_foreach_pow_scalar_list_bool_base():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip(
+            "Kunlunxin native pow does not support boolean-base ScalarList inputs"
+        )
     tensors = [
         torch.tensor([True, True, False], dtype=torch.bool, device=flag_gems.device),
         torch.tensor([False, True], dtype=torch.bool, device=flag_gems.device),

@@ -18,7 +18,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 MKLDNN_RNN_HIDDEN_SIZES = [8, 16]
 
@@ -84,7 +83,7 @@ def _reference_mkldnn_rnn_layer(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.device != "cuda" or not torch.cuda.is_available(),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -126,25 +125,29 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
         reverse,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hy, res_cy, _ws = torch.mkldnn_rnn_layer(
-            input_tensor,
-            w_ih,
-            w_hh,
-            b_ih,
-            b_hh,
-            hx,
-            cx,
-            reverse,
-            [],
-            _MODE,
-            hidden_size,
-            _NUM_LAYERS,
-            True,
-            _BIDIRECTIONAL,
-            _BATCH_FIRST,
-            False,
-        )
+    res_out, res_hy, res_cy, _ws = flag_gems.mkldnn_rnn_layer(
+        input_tensor,
+        w_ih,
+        w_hh,
+        b_ih,
+        b_hh,
+        hx,
+        cx,
+        reverse,
+        [],
+        _MODE,
+        hidden_size,
+        _NUM_LAYERS,
+        True,
+        _BIDIRECTIONAL,
+        _BATCH_FIRST,
+        False,
+    )
+
+    for result, reference in zip((res_out, res_hy, res_cy), (ref_out, ref_hy, ref_cy)):
+        assert result.device == input_tensor.device
+        assert result.dtype == dtype
+        assert result.shape == reference.shape
 
     # fp16 LSTM accumulation over a sequence disagrees with oneDNN at the
     # ~1-ULP level; use FlagGems' RNN-level fp16 tolerance (5e-3).
@@ -155,7 +158,7 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.device != "cuda" or not torch.cuda.is_available(),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -170,8 +173,6 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 ):
     """Direct wrapper smoke test: call the gems wrapper directly and compare
     against the oneDNN reference."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
-
     input_tensor = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
     )
@@ -181,7 +182,7 @@ def test_mkldnn_rnn_layer_direct_wrapper(
     hx = torch.randn(batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
     cx = torch.randn(batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
 
-    out, hy, cy, _ws = gems_op(
+    out, hy, cy, _ws = flag_gems.mkldnn_rnn_layer(
         input_tensor,
         w_ih,
         w_hh,
@@ -212,6 +213,11 @@ def test_mkldnn_rnn_layer_direct_wrapper(
         reverse,
     )
 
+    for result, reference in zip((out, hy, cy), (ref_out, ref_hy, ref_cy)):
+        assert result.device == input_tensor.device
+        assert result.dtype == dtype
+        assert result.shape == reference.shape
+
     atol = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
     utils.gems_assert_close(out, ref_out, dtype, atol=atol)
     utils.gems_assert_close(hy, ref_hy, dtype, atol=atol)
@@ -219,15 +225,13 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.device != "cuda" or not torch.cuda.is_available(),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
 def test_mkldnn_rnn_layer_direct_backward():
     """Direct wrapper backward: compare gradients against a native PyTorch
     LSTM recomputation (matching the backward internals)."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
-
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
     dtype = torch.float32
 
@@ -250,7 +254,7 @@ def test_mkldnn_rnn_layer_direct_backward():
     whh_g = w_hh_d.detach().clone().requires_grad_(True)
     bih_g = b_ih_d.detach().clone().requires_grad_(True)
     bhh_g = b_hh_d.detach().clone().requires_grad_(True)
-    out_g, hy_g, cy_g, _ws = gems_op(
+    out_g, hy_g, cy_g, _ws = flag_gems.mkldnn_rnn_layer(
         inp_g,
         wih_g,
         whh_g,
@@ -268,16 +272,22 @@ def test_mkldnn_rnn_layer_direct_backward():
         _BATCH_FIRST,
         True,
     )
+    for result in (out_g, hy_g, cy_g):
+        assert result.device == inp_g.device
+        assert result.dtype == dtype
+    assert out_g.shape == (seq, batch, hidden_size)
+    assert hy_g.shape == hx_g.shape
+    assert cy_g.shape == cx_g.shape
     (out_g.sum() + hy_g.sum() + cy_g.sum()).backward()
 
     # Side 2: native PyTorch LSTM recompute (same as backward internals)
-    inp_r = inp_data.detach().clone().requires_grad_(True)
-    hx_r = hx_data.detach().clone().requires_grad_(True)
-    cx_r = cx_data.detach().clone().requires_grad_(True)
-    wih_r = w_ih_d.detach().clone().requires_grad_(True)
-    whh_r = w_hh_d.detach().clone().requires_grad_(True)
-    bih_r = b_ih_d.detach().clone().requires_grad_(True)
-    bhh_r = b_hh_d.detach().clone().requires_grad_(True)
+    inp_r = utils.to_reference(inp_data).detach().clone().requires_grad_(True)
+    hx_r = utils.to_reference(hx_data).detach().clone().requires_grad_(True)
+    cx_r = utils.to_reference(cx_data).detach().clone().requires_grad_(True)
+    wih_r = utils.to_reference(w_ih_d).detach().clone().requires_grad_(True)
+    whh_r = utils.to_reference(w_hh_d).detach().clone().requires_grad_(True)
+    bih_r = utils.to_reference(b_ih_d).detach().clone().requires_grad_(True)
+    bhh_r = utils.to_reference(b_hh_d).detach().clone().requires_grad_(True)
     h = hx_r.clone()
     c = cx_r.clone()
     outputs = []

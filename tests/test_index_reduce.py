@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 REDUCTIONS = ("prod", "mean", "amax", "amin")
 SHAPE_DIMS = (((8,), 0), ((4, 7), 1), ((3, 5, 2), -2))
 
@@ -27,7 +26,9 @@ SHAPE_DIMS = (((8,), 0), ((4, 7), 1), ((3, 5, 2), -2))
 def _values(shape, dtype):
     torch.manual_seed(0)
     if dtype in (torch.float16, torch.bfloat16):
-        return torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(0.5, 1.5)
+        return torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(
+            0.5, 1.5
+        )
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
 
@@ -38,7 +39,9 @@ def _case(shape, dim, dtype, index_dtype=torch.int64):
     inp = _values(shape, dtype)
     source = _values(tuple(source_shape), dtype)
     index = (
-        torch.arange(source_shape[normalized_dim], dtype=index_dtype, device=flag_gems.device)
+        torch.arange(
+            source_shape[normalized_dim], dtype=index_dtype, device=flag_gems.device
+        )
         * 3
         + 1
     ) % shape[normalized_dim]
@@ -64,10 +67,9 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
         include_self=include_self,
     )
 
-    with flag_gems.use_gems():
-        result = torch.index_reduce(
-            inp, dim, index, source, reduce, include_self=include_self
-        )
+    result = flag_gems.index_reduce(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
 
     assert result is not inp
     assert result.shape == inp.shape
@@ -92,21 +94,23 @@ def test_index_reduce_noncontiguous(reduce):
         include_self=False,
     )
 
-    with flag_gems.use_gems():
-        result = torch.index_reduce(
-            inp, 1, index, source, reduce, include_self=False
-        )
+    result = flag_gems.index_reduce(inp, 1, index, source, reduce, include_self=False)
 
     assert result.is_contiguous()
     utils.gems_assert_close(result, ref_out, dtype=torch.float32, reduce_dim=8)
 
 
-@pytest.mark.index_reduce
 @pytest.mark.parametrize("reduce", REDUCTIONS)
 @pytest.mark.parametrize(
     "index", ([0, 2, 4, 5], [0, 2, 2, 4]), ids=("unique", "duplicate")
 )
-@pytest.mark.parametrize("inplace", (False, True))
+@pytest.mark.parametrize(
+    "inplace",
+    [
+        pytest.param(False, marks=pytest.mark.index_reduce),
+        pytest.param(True, marks=pytest.mark.index_reduce_),
+    ],
+)
 def test_index_reduce_index_pattern(reduce, index, inplace):
     inp = _values((4, 6), torch.float32)
     source = _values((4, 4), torch.float32)
@@ -119,24 +123,20 @@ def test_index_reduce_index_pattern(reduce, index, inplace):
             1, ref_index, ref_source, reduce, include_self=True
         )
         pointer = inp.data_ptr()
-        with flag_gems.use_gems():
-            result = inp.index_reduce_(
-                1, index, source, reduce, include_self=True
-            )
+        result = flag_gems.index_reduce_(
+            inp, 1, index, source, reduce, include_self=True
+        )
         assert result is inp
         assert result.data_ptr() == pointer
     else:
         ref_out = torch.index_reduce(
             ref_inp, 1, ref_index, ref_source, reduce, include_self=True
         )
-        with flag_gems.use_gems():
-            result = torch.index_reduce(
-                inp, 1, index, source, reduce, include_self=True
-            )
+        result = flag_gems.index_reduce(
+            inp, 1, index, source, reduce, include_self=True
+        )
         assert result is not inp
-    utils.gems_assert_close(
-        result, ref_out, dtype=inp.dtype, reduce_dim=source.size(1)
-    )
+    utils.gems_assert_close(result, ref_out, dtype=inp.dtype, reduce_dim=source.size(1))
 
 
 @pytest.mark.index_reduce
@@ -154,10 +154,9 @@ def test_index_reduce_empty_index(include_self):
         include_self=include_self,
     )
 
-    with flag_gems.use_gems():
-        result = torch.index_reduce(
-            inp, 1, index, source, "mean", include_self=include_self
-        )
+    result = flag_gems.index_reduce(
+        inp, 1, index, source, "mean", include_self=include_self
+    )
 
     utils.gems_assert_close(result, ref_out, dtype=inp.dtype)
 
@@ -168,8 +167,8 @@ def test_index_reduce_rejects_invalid_reduce():
     source = torch.ones((2, 1), device=flag_gems.device)
     index = torch.zeros((1,), dtype=torch.int64, device=flag_gems.device)
 
-    with flag_gems.use_gems(), pytest.raises((AssertionError, RuntimeError)):
-        torch.index_reduce(inp, 1, index, source, "sum")
+    with pytest.raises((AssertionError, RuntimeError)):
+        flag_gems.index_reduce(inp, 1, index, source, "sum")
 
 
 # Keep the shared legacy in-place family selectable while the spreadsheet item
@@ -189,10 +188,9 @@ def test_index_reduce_inplace_shared_family(reduce, include_self):
         include_self=include_self,
     )
 
-    with flag_gems.use_gems():
-        result = inp.index_reduce_(
-            dim, index, source, reduce, include_self=include_self
-        )
+    result = flag_gems.index_reduce_(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
 
     assert result is inp
     assert result.data_ptr() == pointer

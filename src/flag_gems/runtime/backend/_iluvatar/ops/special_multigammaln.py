@@ -205,7 +205,7 @@ def _attach_cushion(x):
 
 
 def run(self, p):
-    _logger.debug("GEMS SPECIAL_MULTIGAMMALN")
+    _logger.debug("GEMS_ILUVATAR SPECIAL_MULTIGAMMALN")
     if isinstance(p, torch.Tensor):
         p = p.item()
     p = int(p)

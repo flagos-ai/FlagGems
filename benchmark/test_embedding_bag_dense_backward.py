@@ -60,9 +60,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.embedding_bag_dense_backward
+@pytest.mark.underscore_embedding_bag_dense_backward
 def test_embedding_bag_dense_backward():
     bench = EmbeddingBagDenseBackwardBenchmark(
-        op_name="embedding_bag_dense_backward",
+        op_name="_embedding_bag_dense_backward",
         torch_op=torch.ops.aten._embedding_bag_dense_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

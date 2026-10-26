@@ -172,7 +172,7 @@ def special_hermite_polynomial_h_tensor_tensor(x, n):
 
 
 def special_hermite_polynomial_h(x, n):
-    logger.debug("GEMS SPECIAL_HERMITE_POLYNOMIAL_H")
+    logger.debug("GEMS_THEAD SPECIAL_HERMITE_POLYNOMIAL_H")
     if not isinstance(x, torch.Tensor):
         raise ValueError("First argument must be a tensor")
     _validate_dtype(x)

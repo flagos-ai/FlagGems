@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "einsum",
+  "requires_triton_kernel": true,
+  "description": "Representative PyTorch signature: einsum(equation, *operands) -> Tensor. Evaluate the supplied Einstein summation equation. Existing tests cover matrix and batched matrix multiplication, dot and outer products, trace, diagonal extraction, transposition, full and dimension reductions, and ellipsis batch dimensions. The equation and every operand are passed to the candidate; operands are not mutated.",
+  "parameters": [
+    {
+      "name": "equation",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "str"
+    },
+    {
+      "name": "operands",
+      "kind": "var_positional",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

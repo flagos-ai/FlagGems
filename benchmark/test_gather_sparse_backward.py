@@ -37,10 +37,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.skipif((not torch.cuda.is_available()) or (flag_gems.device != "cuda"), reason="CUDA backend is not available for this benchmark.")
 def test_gather_sparse_backward():
     GatherSparseBackwardBenchmark(
-        op_name="gather_sparse_backward",
+        op_name="_gather_sparse_backward",
         torch_op=torch.ops.aten._gather_sparse_backward.default,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

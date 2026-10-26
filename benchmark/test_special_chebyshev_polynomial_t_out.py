@@ -15,11 +15,8 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
 
 _SHAPES = [
     (1024, 1024),
@@ -48,9 +45,7 @@ class ChebyshevPolynomialTOutBenchmark(OperatorBenchmark):
             base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE
             and not base.Config.query
         ):
-            self.shapes = list(
-                dict.fromkeys([*self.shapes, *_COMPREHENSIVE_SHAPES])
-            )
+            self.shapes = list(dict.fromkeys([*self.shapes, *_COMPREHENSIVE_SHAPES]))
 
     def get_tflops(self, op, *args, **kwargs):
         del op, kwargs
@@ -90,7 +85,6 @@ def test_special_chebyshev_polynomial_t_out():
     bench = ChebyshevPolynomialTOutBenchmark(
         op_name="special_chebyshev_polynomial_t_out",
         torch_op=torch.special.chebyshev_polynomial_t,
-        gems_op=flag_gems.special_chebyshev_polynomial_t_out,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

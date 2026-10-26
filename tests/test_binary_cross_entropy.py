@@ -34,7 +34,9 @@ def _inputs(shape, dtype, weighted):
     torch.manual_seed(0)
     inp = torch.sigmoid(torch.randn(shape, dtype=dtype, device=flag_gems.device))
     target = torch.randint(0, 2, shape, device=flag_gems.device).to(dtype)
-    weight = torch.rand(shape, dtype=dtype, device=flag_gems.device) if weighted else None
+    weight = (
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) if weighted else None
+    )
     return inp, target, weight
 
 
@@ -54,6 +56,14 @@ def _assert_loss(result, reference, dtype, reduction, numel):
 @pytest.mark.parametrize("reduction", _REDUCTIONS)
 @pytest.mark.parametrize("weighted", [False, True])
 def test_binary_cross_entropy(shape, dtype, reduction, weighted):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and shape in ((0,), (2, 0, 3))
+    ):
+        pytest.skip(
+            "Kunlunxin native binary-cross-entropy reference rejects empty input"
+        )
     inp, target, weight = _inputs(shape, dtype, weighted)
     inp_before = inp.clone()
     target_before = target.clone()
@@ -69,16 +79,31 @@ def test_binary_cross_entropy(shape, dtype, reduction, weighted):
     )
 
     _assert_loss(result, reference, dtype, reduction, inp.numel())
+    assert inp.device == inp_before.device
+    assert inp.dtype == inp_before.dtype and inp.shape == inp_before.shape
+    assert target.device == target_before.device
+    assert target.dtype == target_before.dtype and target.shape == target_before.shape
+    if utils.TO_CPU:
+        inp_before = inp_before.cpu()
+        target_before = target_before.cpu()
     utils.gems_assert_equal(inp, inp_before)
     utils.gems_assert_equal(target, target_before)
 
 
-@pytest.mark.binary_cross_entropy
+@pytest.mark.binary_cross_entropy_out
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("reduction", _REDUCTIONS)
 @pytest.mark.parametrize("weighted", [False, True])
 def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and shape in ((0,), (2, 0, 3))
+    ):
+        pytest.skip(
+            "Kunlunxin native binary-cross-entropy reference rejects empty input"
+        )
     inp, target, weight = _inputs(shape, dtype, weighted)
     reference = torch.nn.functional.binary_cross_entropy(
         utils.to_reference(inp, True),
@@ -104,9 +129,7 @@ def test_binary_cross_entropy_out(shape, dtype, reduction, weighted):
 @pytest.mark.parametrize("weighted", [False, True])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_binary_cross_entropy_boundary(dtype, reduction, weighted):
-    inp = torch.tensor(
-        [0.0, 1.0, 0.0, 1.0, 0.5], dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.tensor([0.0, 1.0, 0.0, 1.0, 0.5], dtype=dtype, device=flag_gems.device)
     target = torch.tensor(
         [1.0, 0.0, 0.0, 1.0, 1.0], dtype=dtype, device=flag_gems.device
     )
@@ -118,10 +141,9 @@ def test_binary_cross_entropy_boundary(dtype, reduction, weighted):
         reduction=reduction,
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.binary_cross_entropy(
-            inp, target, weight, _REDUCTION_ENUM[reduction]
-        )
+    result = flag_gems.binary_cross_entropy(
+        inp, target, weight=weight, reduction=reduction
+    )
 
     _assert_loss(result, reference, dtype, reduction, inp.numel())
 

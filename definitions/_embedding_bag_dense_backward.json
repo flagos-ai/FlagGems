@@ -1,0 +1,76 @@
+{
+  "api_version": "v6.0",
+  "name": "_embedding_bag_dense_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_embedding_bag_dense_backward(Tensor grad, Tensor indices, Tensor offset2bag, Tensor bag_size, Tensor maximum_indices, SymInt num_weights, bool scale_grad_by_freq, int mode, Tensor? per_sample_weights, int padding_idx=-1) -> Tensor. Tests preserve bag-count, embedding-width, mode, per-sample-weight, offset metadata, dtype, and vendor-limit coverage.",
+  "parameters": [
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "offset2bag",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "bag_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "maximum_indices",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "num_weights",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "SymInt"
+    },
+    {
+      "name": "scale_grad_by_freq",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "mode",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "per_sample_weights",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "padding_idx",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": -1,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "grad_weight"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

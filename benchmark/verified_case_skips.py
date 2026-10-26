@@ -23,4 +23,4 @@ def skip_verified_case(vendor, case):
     ).hexdigest()
     reason = _rules().get((vendor, case.case_id, digest))
     if reason:
-        pytest.skip(f"Verified {reason}: {vendor} {case.case_id} (2026-10-22)")
+        pytest.skip(f"Verified {reason}: {vendor} {case.case_id}")

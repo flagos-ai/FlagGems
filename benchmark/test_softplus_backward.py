@@ -15,10 +15,9 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -45,6 +44,5 @@ def test_softplus_backward():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.softplus_backward,
-        gems_op=getattr(flag_gems, "softplus_backward", None),
         dtypes=consts.FLOAT_DTYPES,
     ).run()

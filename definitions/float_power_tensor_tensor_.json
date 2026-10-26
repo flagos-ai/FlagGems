@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "float_power_tensor_tensor_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::float_power_.Tensor(Tensor(a!) self, Tensor exponent) -> Tensor(a!). The correctness suite also covers the Scalar overload. It computes float_power into self, returns the same Tensor object and storage, and leaves a Tensor exponent unchanged. Tests cover deterministic equal-shape and broadcast inputs, scalar exponents, zero-sized and noncontiguous tensors, special values, output metadata, mutation and identity, gradients, and rejection of non-broadcastable shapes.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "exponent",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

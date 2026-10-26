@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 LIST_LENGTH = 8
@@ -52,7 +50,6 @@ def _build_inputs_fn(plan, dtype, device):
 def test_foreach_lerp_list():
     bench = base.GenericBenchmark(
         op_name="foreach_lerp_list",
-        gems_op=flag_gems.foreach_lerp_list,
         torch_op=torch.ops.aten._foreach_lerp.List,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

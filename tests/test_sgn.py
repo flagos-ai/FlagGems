@@ -39,6 +39,8 @@ def _seed_random_inputs():
 
 
 def _make_input(shape, dtype):
+    if flag_gems.vendor_name == "ascend" and dtype.is_complex:
+        return torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     if dtype == torch.bool:
         return torch.randint(
             0, 2, shape, dtype=torch.int32, device=flag_gems.device
@@ -59,6 +61,13 @@ def _make_input(shape, dtype):
 
 
 def _to_reference(inp):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and inp.dtype == torch.complex32
+        and not utils.TO_CPU
+    ):
+        # NPU can store ComplexHalf, but its device cast cannot upcast it.
+        return utils.to_reference(inp.cpu(), True).to(inp.device)
     return utils.to_reference(inp, inp.dtype in utils.COMPLEX_DTYPES)
 
 
@@ -70,6 +79,22 @@ def _assert_sgn_equal(result, reference, dtype):
 
 
 def _assert_matches_torch(inp, out=None):
+    if (
+        out is not None
+        and flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
+    ):
+        pytest.skip("Ascend native sgn out reference does not support int8/uint8/int16")
+    if (
+        out is not None
+        and flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
+    ):
+        pytest.skip(
+            "Kunlunxin native sgn out reference does not support this integer dtype"
+        )
     ref_inp = _to_reference(inp)
     if out is None:
         ref_out = torch.sgn(ref_inp)

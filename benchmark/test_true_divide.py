@@ -28,8 +28,9 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.true_divide
+@pytest.mark.true_divide_tensor
 def test_true_divide_tensor_dispatch():
-    OperatorBenchmark(op_name="true_divide", torch_op=torch.ops.aten.true_divide.Tensor, case_fn=_tensor_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
+    OperatorBenchmark(op_name="true_divide_tensor", torch_op=torch.ops.aten.true_divide.Tensor, case_fn=_tensor_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
 
 
 @pytest.mark.div_scalar

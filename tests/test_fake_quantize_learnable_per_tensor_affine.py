@@ -38,6 +38,7 @@ def _make_inputs(shape, dtype, quant_min, quant_max):
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("quant_range", QUANT_RANGES)
@@ -59,6 +60,7 @@ def test_fake_quantize_learnable_per_tensor_affine(shape, dtype, quant_range):
 
 
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
+@pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fake_quantize_learnable_per_tensor_affine_grad_factor(shape, dtype):

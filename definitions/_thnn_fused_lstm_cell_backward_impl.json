@@ -1,0 +1,53 @@
+{
+  "api_version": "v6.0",
+  "name": "_thnn_fused_lstm_cell_backward_impl",
+  "requires_triton_kernel": true,
+  "description": "Compute fused LSTM-cell gate, cell-state, and optional bias gradients from the forward workspace.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "grad_cy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor?"
+    },
+    {
+      "name": "cx",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "cy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "workspace",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "has_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_cx",
+    "grad_biases"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

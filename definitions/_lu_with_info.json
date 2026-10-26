@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "_lu_with_info",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_lu_with_info(Tensor self, bool pivot=True, bool check_errors=True) -> (Tensor LU, Tensor pivots, Tensor info). Computes a packed LU factorization, one-indexed int32 pivots and an int32 status tensor. Coverage validates pivoted and supported non-pivoted factorization by reconstruction, singular and empty matrices, empty batch dimensions, status shapes, check_errors, exact-zero pivot reporting and the distinction between zero and non-finite pivots. The private upstream leading underscore is the canonical base; the repository artifact ID remains lu_with_info. Inputs are not mutated and outputs do not alias self.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "pivot",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "check_errors",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "LU",
+    "pivots",
+    "info"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

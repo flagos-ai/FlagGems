@@ -1,0 +1,54 @@
+{
+  "api_version": "v6.0",
+  "name": "_upsample_nearest_exact3d_backward",
+  "requires_triton_kernel": true,
+  "description": "A backward case for `_upsample_nearest_exact3d()`.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "output_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int, int, int]"
+    },
+    {
+      "name": "input_size",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tuple[int, int, int, int, int]"
+    },
+    {
+      "name": "scales_d",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_h",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    },
+    {
+      "name": "scales_w",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "Optional[float]"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

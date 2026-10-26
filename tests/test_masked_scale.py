@@ -42,6 +42,7 @@ def _reference(inp, mask, scale):
 
 
 @pytest.mark.masked_scale
+@pytest.mark.underscore_masked_scale
 @pytest.mark.parametrize("shape", _SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("scale", _SCALES)
@@ -63,6 +64,7 @@ def test_masked_scale(shape, dtype, scale):
 
 
 @pytest.mark.masked_scale
+@pytest.mark.underscore_masked_scale
 def test_masked_scale_noncontiguous():
     torch.manual_seed(0)
     inp = torch.randn((4, 7, 9), dtype=torch.float32, device=flag_gems.device).transpose(0, 2)
@@ -77,6 +79,7 @@ def test_masked_scale_noncontiguous():
 
 
 @pytest.mark.masked_scale
+@pytest.mark.underscore_masked_scale
 def test_masked_scale_special_values():
     inp = torch.tensor(
         [float("nan"), float("inf"), -float("inf"), -0.0, 0.0, 1.0],

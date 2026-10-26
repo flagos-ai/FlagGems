@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "float_power_tensor_scalar_",
+  "requires_triton_kernel": true,
+  "description": "ATen schema aten::float_power_.Scalar(Tensor(a!) self, Scalar exponent) -> Tensor(a!). Computes float_power into self, returns the same Tensor object and storage, and preserves self shape and dtype. The scalar overload correctness suite covers deterministic inputs, scalar exponents and zero-sized tensors, output metadata, mutation and identity.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "exponent",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

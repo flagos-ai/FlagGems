@@ -105,6 +105,7 @@ def _run_sparse_backward(
 
 # Hardcoded bag counts covering small/medium batch sizes for sparse backward coverage.
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 # Hardcoded embedding dims covering typical small/medium embedding vector widths.
 @pytest.mark.parametrize("embedding_dim", [16, 32])
@@ -140,6 +141,7 @@ def test_embedding_bag_sparse_backward_sum(num_bags, embedding_dim, dtype):
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -173,6 +175,7 @@ def test_embedding_bag_sparse_backward_mean(num_bags, embedding_dim, dtype):
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -192,6 +195,14 @@ def test_embedding_bag_sparse_backward_per_sample_weights(
     output, offset2bag, bag_size, _ = torch.ops.aten._embedding_bag(
         weight, indices, offsets, False, 0, True, per_sample_weights, False, -1
     )
+    if offset2bag.numel() == 0:
+        # The native sum-mode fast path may omit this map.  Sparse backward
+        # needs one bag id per index when per-sample weights are present.
+        cpu_offsets = offsets.cpu()
+        ends = torch.cat((cpu_offsets[1:], cpu_offsets.new_tensor([indices.numel()])))
+        offset2bag = torch.repeat_interleave(
+            torch.arange(cpu_offsets.numel()), ends - cpu_offsets
+        ).to(indices.device)
 
     grad = torch.randn_like(output)
     _run_sparse_backward(
@@ -208,6 +219,7 @@ def test_embedding_bag_sparse_backward_per_sample_weights(
 
 
 @pytest.mark.embedding_bag_sparse_backward
+@pytest.mark.underscore_embedding_bag_sparse_backward
 @pytest.mark.parametrize("num_bags", [3, 8])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

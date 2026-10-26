@@ -74,8 +74,7 @@ def test_column_stack(shapes, dtype):
     inputs = [_make_tensor(shape, dtype) for shape in shapes]
     reference = torch.column_stack(_reference_inputs(inputs, dtype))
 
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs)
+    result = flag_gems.column_stack(inputs)
 
     _assert_result(result, reference, dtype)
 
@@ -91,8 +90,7 @@ def test_column_stack_noncontiguous(dtype):
     assert all(not tensor.is_contiguous() for tensor in inputs)
     reference = torch.column_stack(_reference_inputs(inputs, dtype))
 
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs)
+    result = flag_gems.column_stack(inputs)
 
     _assert_result(result, reference, dtype)
 
@@ -109,8 +107,7 @@ def test_column_stack_mixed_dtype_and_tuple_input():
     reference_inputs = tuple(utils.to_reference(tensor) for tensor in inputs)
     reference = torch.column_stack(reference_inputs)
 
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs)
+    result = flag_gems.column_stack(inputs)
 
     assert result.dtype == reference.dtype
     utils.gems_assert_equal(result, reference)
@@ -122,11 +119,11 @@ def test_column_stack_rejects_incompatible_shapes(shapes):
     torch.manual_seed(0)
     inputs = [_make_tensor(shape, torch.float32) for shape in shapes]
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.column_stack(inputs)
+    with pytest.raises(RuntimeError):
+        flag_gems.column_stack(inputs)
 
 
 @pytest.mark.column_stack
 def test_column_stack_rejects_empty_tensor_list():
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.column_stack([])
+    with pytest.raises(RuntimeError):
+        flag_gems.column_stack([])

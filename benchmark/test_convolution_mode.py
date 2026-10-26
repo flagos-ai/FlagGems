@@ -38,5 +38,6 @@ def _build_inputs_fn(plan,dtype,device):
     return (torch.randn((n,cin,h,w),dtype=dtype,device=device),torch.randn((cout,cin//groups,kh,kw),dtype=dtype,device=device),None,(stride,stride),padding,(dilation,dilation),groups)
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 def test_convolution_mode():
-    ConvolutionModeBenchmark(op_name="convolution_mode",torch_op=torch.ops.aten._convolution_mode.default,gems_op=flag_gems._convolution_mode,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=consts.FLOAT_DTYPES).run()
+    ConvolutionModeBenchmark(op_name="_convolution_mode",torch_op=torch.ops.aten._convolution_mode.default,gems_op=flag_gems._convolution_mode,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=consts.FLOAT_DTYPES).run()

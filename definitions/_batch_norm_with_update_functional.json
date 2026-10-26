@@ -1,0 +1,62 @@
+{
+  "api_version": "v6.0",
+  "name": "_batch_norm_with_update_functional",
+  "requires_triton_kernel": true,
+  "description": "Functional variant of _batch_norm_with_update that applies training-mode Batch Normalization and updates running statistics.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "running_mean",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "running_var",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null
+    },
+    {
+      "name": "momentum",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 0.1
+    },
+    {
+      "name": "eps",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": 1e-05
+    }
+  ],
+  "outputs": [
+    "out",
+    "save_mean",
+    "save_invstd",
+    "reserve",
+    "running_mean_out",
+    "running_var_out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

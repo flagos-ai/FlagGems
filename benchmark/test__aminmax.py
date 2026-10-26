@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -39,6 +37,5 @@ def test__aminmax():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch._aminmax,
-        gems_op=getattr(flag_gems, "_aminmax", None),
         dtypes=consts.FLOAT_DTYPES,
     ).run()

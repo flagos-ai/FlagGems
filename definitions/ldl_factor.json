@@ -1,0 +1,29 @@
+{
+  "api_version": "v6.0",
+  "name": "ldl_factor",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::linalg_ldl_factor(Tensor self, *, bool hermitian=False) -> (Tensor LD, Tensor pivots). Computes a compact LDL factorization without mutating or aliasing self. Tests preserve float32/float64 square-matrix and hermitian coverage and additionally cover batches, output metadata, input non-mutation, and invalid rank, shape, dtype, and implementation-size limits.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "hermitian",
+      "kind": "keyword_only",
+      "required": false,
+      "default": false,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "LD",
+    "pivots"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

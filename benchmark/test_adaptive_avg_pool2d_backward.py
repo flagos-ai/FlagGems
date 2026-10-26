@@ -59,9 +59,10 @@ class AdaptiveAvgPool2DBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.adaptive_avg_pool2d_backward
+@pytest.mark.underscore_adaptive_avg_pool2d_backward
 def test_adaptive_avg_pool2d_backward():
     AdaptiveAvgPool2DBackwardBenchmark(
-        op_name="adaptive_avg_pool2d_backward",
+        op_name="_adaptive_avg_pool2d_backward",
         torch_op=torch.ops.aten._adaptive_avg_pool2d_backward,
         dtypes=consts.FLOAT_DTYPES,
     ).run()

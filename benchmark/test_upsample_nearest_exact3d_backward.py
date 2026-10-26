@@ -79,9 +79,10 @@ class UpsampleNearestExact3dBackwardGradInputBenchmark(
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward():
     bench = UpsampleNearestExact3dBackwardBenchmark(
-        op_name="upsample_nearest_exact3d_backward",
+        op_name="_upsample_nearest_exact3d_backward",
         torch_op=torch.ops.aten._upsample_nearest_exact3d_backward.default,
         dtypes=consts.FLOAT_DTYPES,
     )
@@ -89,9 +90,10 @@ def test_upsample_nearest_exact3d_backward():
 
 
 @pytest.mark.upsample_nearest_exact3d_backward_grad_input
+@pytest.mark.underscore_upsample_nearest_exact3d_backward_grad_input
 def test_upsample_nearest_exact3d_backward_grad_input():
     bench = UpsampleNearestExact3dBackwardGradInputBenchmark(
-        op_name="upsample_nearest_exact3d_backward_grad_input",
+        op_name="_upsample_nearest_exact3d_backward_grad_input",
         torch_op=torch.ops.aten._upsample_nearest_exact3d_backward.grad_input,
         dtypes=consts.FLOAT_DTYPES,
     )

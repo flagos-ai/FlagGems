@@ -310,7 +310,7 @@ def _flash_attention_forward(
     alibi_slopes=None,
 ):
     logging.getLogger("flag_gems.ops._flash_attention_forward").debug(
-        "GEMS _FLASH_ATTENTION_FORWARD"
+        "GEMS_THEAD _FLASH_ATTENTION_FORWARD"
     )
 
     q = query

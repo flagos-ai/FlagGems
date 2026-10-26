@@ -40,7 +40,7 @@ When n is an exact multiple of the launch BLOCK, maskless kernel variants are
 used so loads/stores become unconditional (all eval shapes qualify).
 
 The flaggems adapter correctness test asserts the op log marker
-'GEMS SPECIAL_MULTIGAMMALN' in caplog.text, so run() emits it through the
+'GEMS_THEAD SPECIAL_MULTIGAMMALN' in caplog.text, so run() emits it through the
 flag_gems logger namespace exactly like the reference op wrapper.
 """
 
@@ -65,7 +65,7 @@ _GEMS_RECORD = logging.LogRecord(
     logging.DEBUG,
     __file__,
     0,
-    "GEMS SPECIAL_MULTIGAMMALN",
+    "GEMS_THEAD SPECIAL_MULTIGAMMALN",
     (),
     None,
 )

@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -70,10 +68,6 @@ def _torch_op(qx, **kwargs):
     return torch.ops.aten.quantized_max_pool1d.out(_cpu_input(qx), out=_cpu_input(out), **kwargs)
 
 
-def _gems_op(qx, **kwargs):
-    return flag_gems.quantized_max_pool1d_out(qx, **kwargs)
-
-
 @pytest.mark.quantized_max_pool1d_out
 def test_quantized_max_pool1d_out():
-    QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d_out", torch_op=_torch_op, gems_op=_gems_op, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE], is_inplace=True, fresh_inputs=True).run()
+    QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d_out", torch_op=_torch_op, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE], is_inplace=True, fresh_inputs=True).run()

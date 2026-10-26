@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _ATEN_OP = torch.ops.aten._foreach_pow.Scalar
 
 
@@ -46,7 +45,9 @@ def test_foreach_pow_scalar(dtype):
     reference_self = [utils.to_reference(t.clone(), True) for t in self_tensors]
     reference_exponent = (
         [utils.to_reference(t, True) for t in exponent]
-        if exponent and isinstance(exponent, list) and isinstance(exponent[0], torch.Tensor)
+        if exponent
+        and isinstance(exponent, list)
+        and isinstance(exponent[0], torch.Tensor)
         else exponent
     )
     pointers = [t.data_ptr() for t in self_tensors]
@@ -70,6 +71,14 @@ def test_foreach_pow_scalar_empty_list():
 @pytest.mark.foreach_pow_scalar
 @pytest.mark.parametrize("exponent", [True, False, 0, 2, 0.5, -1.0, float("inf")])
 def test_foreach_pow_scalar_bool_base(exponent):
+    if not utils.TO_CPU and (
+        (flag_gems.vendor_name == "ascend" and isinstance(exponent, bool))
+        or (
+            flag_gems.vendor_name == "kunlunxin"
+            and (exponent is False or type(exponent) is int)
+        )
+    ):
+        pytest.skip("backend native bool-base pow does not support this scalar type")
     tensors = [
         torch.tensor([True, True, False], dtype=torch.bool, device=flag_gems.device)
     ]

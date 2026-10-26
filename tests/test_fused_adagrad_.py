@@ -115,6 +115,7 @@ def _make_inputs(shape, dtype, device, *, nonzero_state=False, step=3.0):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("shape", FUSED_ADAGRAD_SHAPES)
 @pytest.mark.parametrize("dtype", ADAGRAD_DTYPES)
 def test_fused_adagrad__basic(shape, dtype):
@@ -141,6 +142,7 @@ def test_fused_adagrad__basic(shape, dtype):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 @pytest.mark.parametrize(
@@ -181,6 +183,7 @@ def test_fused_adagrad__options(
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("scale", [2.0, 1024.0])
@@ -215,6 +218,7 @@ def test_fused_adagrad__grad_scale(shape, dtype, scale, weight_decay, maximize):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("dtype", [torch.float32])
 # ATen compares found_inf against 1 exactly: 0.0 and 2.0 both still update.
 @pytest.mark.parametrize("found_inf_val", [0.0, 1.0, 2.0])
@@ -254,6 +258,7 @@ def test_fused_adagrad__found_inf(dtype, found_inf_val):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_fused_adagrad__empty(dtype):
     """Empty parameters are a no-op and must not raise or launch a null grid."""
@@ -281,6 +286,7 @@ def test_fused_adagrad__empty(dtype):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("dtype", [torch.float32])
 def test_fused_adagrad__mixed_empty_and_nonempty(dtype):
     """An empty entry must not stop the remaining parameters from updating."""
@@ -320,6 +326,7 @@ def test_fused_adagrad__mixed_empty_and_nonempty(dtype):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 def test_fused_adagrad__mismatched_list_lengths():
     """Shorter companion lists must be rejected before any buffer is touched."""
     dtype = torch.float32
@@ -351,6 +358,7 @@ def test_fused_adagrad__mismatched_list_lengths():
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize(
     "bad_kind,match",
     [
@@ -418,6 +426,7 @@ def _assert_buffers_untouched(params, params_before, state_sums, sums_before):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize(
     "bad_kind,match",
     [
@@ -476,6 +485,7 @@ def test_fused_adagrad__later_entry_bad_dtype_or_device(bad_kind, match):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize(
     "bad_kind,match",
     [
@@ -537,6 +547,7 @@ def test_fused_adagrad__later_entry_bad_state_step(bad_kind, match):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("shape", [(1024,), (256, 256)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_fused_adagrad__multi_tensor(shape, dtype):
@@ -576,6 +587,7 @@ def test_fused_adagrad__multi_tensor(shape, dtype):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_fused_adagrad__transposed_parity(dtype):
     # ATen accepts strided tensors that are non-overlapping and dense, so a
@@ -619,6 +631,7 @@ def test_fused_adagrad__transposed_parity(dtype):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 def test_fused_adagrad__internal_overlap_rejected():
     # An expanded tensor has no well-defined element order; ATen's
     # non-overlapping-and-dense requirement rejects it too.
@@ -652,6 +665,7 @@ def _assert_layout_preserved(tensors, snapshots):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 @pytest.mark.parametrize("found_inf_value", [0.0, 1.0, 2.0])
 def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
     """All list elements keep identity/storage while native-declared mutations match."""

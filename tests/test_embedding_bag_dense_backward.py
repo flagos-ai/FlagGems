@@ -75,6 +75,7 @@ def _make_metadata(
 
 @_SKIP_CAMBRICON
 @pytest.mark.embedding_bag_dense_backward
+@pytest.mark.underscore_embedding_bag_dense_backward
 @pytest.mark.parametrize("num_bags", [3, 8, 16])
 @pytest.mark.parametrize("embedding_dim", [16, 32])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

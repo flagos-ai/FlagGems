@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-
 import pytest
 import torch
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+from .test_fused_rms_norm import _RmsBackwardBaseline, _torch_fused_rms_norm_backward
 
 SHAPES = [(4, 64), (8, 256), (16, 1024)]
 
 
-class OperatorCaseBenchmark(OperatorBenchmark):
+class OperatorCaseBenchmark(_RmsBackwardBaseline, OperatorBenchmark):
+    baseline_benchmark = "benchmark/test_fused_rms_norm_backward.py"
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "operator-specific shape"
@@ -48,10 +49,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fused_rms_norm_backward
+@pytest.mark.underscore_fused_rms_norm_backward
 def test_fused_rms_norm_backward():
     OperatorCaseBenchmark(
-        op_name="fused_rms_norm_backward",
-        torch_op=torch.ops.aten._fused_rms_norm_backward,
+        op_name="_fused_rms_norm_backward",
+        torch_op=_torch_fused_rms_norm_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,

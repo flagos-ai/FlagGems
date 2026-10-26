@@ -51,9 +51,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 def test_compute_linear_combination():
     ComputeLinearCombinationBenchmark(
-        op_name="compute_linear_combination",
+        op_name="_compute_linear_combination",
         torch_op=torch._compute_linear_combination,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

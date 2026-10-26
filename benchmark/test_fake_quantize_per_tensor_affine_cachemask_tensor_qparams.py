@@ -33,6 +33,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if base.vendor_name == "hygon" and dtype == torch.bfloat16:
+        pytest.skip("Hygon native fake-quant benchmark reference lacks bfloat16")
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
@@ -43,9 +45,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.underscore_fake_quantize_per_tensor_affine_cachemask_tensor_qparams
 def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams():
     bench = OperatorBenchmark(
-        op_name="fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+        op_name="_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
         torch_op=torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -51,7 +49,6 @@ def test_foreach_tanh_benchmark():
     bench = OperatorBenchmark(
         op_name="foreach_tanh",
         torch_op=_ATEN_OP,
-        gems_op=flag_gems.foreach_tanh,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,

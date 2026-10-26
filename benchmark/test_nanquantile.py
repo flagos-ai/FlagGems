@@ -15,11 +15,8 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
 
 _DEFAULT_SHAPES = [
     (1,),
@@ -63,7 +60,6 @@ def test_nanquantile():
     NanquantileBenchmark(
         op_name="nanquantile",
         torch_op=torch.ops.aten.nanquantile.default,
-        gems_op=flag_gems.nanquantile,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

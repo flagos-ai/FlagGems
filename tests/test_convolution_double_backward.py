@@ -114,6 +114,7 @@ def _forward(x, w, bias, stride, padding, dilation, transposed, output_padding, 
 
 
 @pytest.mark.convolution_double_backward
+@pytest.mark.underscore_convolution_double_backward
 @pytest.mark.parametrize(
     "shape, weight_shape, groups, stride, padding, dilation, transposed, output_padding",
     CONV_CASES + CONV1D_CASES,
@@ -240,6 +241,7 @@ def test_convolution_double_backward(
 
 
 @pytest.mark.convolution_double_backward
+@pytest.mark.underscore_convolution_double_backward
 @pytest.mark.parametrize("output_mask", [(True, True, True), (True, False, True), (False, True, False)])
 def test_convolution_double_backward_output_mask_metadata(output_mask):
     torch.manual_seed(0)

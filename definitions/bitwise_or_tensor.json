@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "bitwise_or_tensor",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::__or__.Tensor(Tensor self, Tensor other) -> Tensor. Computes elementwise bitwise OR without mutating or aliasing either input.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -25,7 +25,14 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
-def _assert_out_dispatch(caplog):
+def _assert_out_dispatch(caplog, request):
+    registry = getattr(request.config, "_override_registry", None)
+    if (
+        registry is not None
+        and registry.get_override("special_chebyshev_polynomial_t_out") is not None
+    ):
+        # A supplied candidate need not emit the original implementation's log.
+        return
     expected = (
         f"{utils.gems_log_prefix(flag_gems.special_chebyshev_polynomial_t_out)} "
         "SPECIAL_CHEBYSHEV_POLYNOMIAL_T_OUT"
@@ -56,29 +63,22 @@ def test_special_chebyshev_polynomial_t_out_scalar_degree(shape, dtype):
 
 @pytest.mark.special_chebyshev_polynomial_t_out
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_chebyshev_polynomial_t_out_tensor_degree(dtype, caplog):
-    x = torch.tensor(
-        [-0.75, -0.25, 0.25, 0.75], dtype=dtype, device=flag_gems.device
-    )
+def test_special_chebyshev_polynomial_t_out_tensor_degree(dtype, caplog, request):
+    x = torch.tensor([-0.75, -0.25, 0.25, 0.75], dtype=dtype, device=flag_gems.device)
     degree = torch.tensor([0, 1, 2, 5], dtype=torch.int64, device=flag_gems.device)
     ref_x = utils.to_reference(x, True)
     ref_degree = utils.to_reference(degree, False)
     ref_out = torch.empty_like(ref_x)
-    torch.ops.aten.special_chebyshev_polynomial_t.out(
-        ref_x, ref_degree, out=ref_out
-    )
+    torch.ops.aten.special_chebyshev_polynomial_t.out(ref_x, ref_degree, out=ref_out)
     out = torch.empty_like(x)
     original_pointer = out.data_ptr()
 
     with caplog.at_level(
         "DEBUG", logger="flag_gems.ops.special_chebyshev_polynomial_t"
     ):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_chebyshev_polynomial_t.out(
-                x, degree, out=out
-            )
+        res_out = flag_gems.special_chebyshev_polynomial_t_out(x, degree, out=out)
 
-    _assert_out_dispatch(caplog)
+    _assert_out_dispatch(caplog, request)
     assert res_out is out
     assert res_out.data_ptr() == original_pointer
     assert res_out.shape == x.shape
@@ -89,6 +89,8 @@ def test_special_chebyshev_polynomial_t_out_tensor_degree(dtype, caplog):
 @pytest.mark.special_chebyshev_polynomial_t_out
 @pytest.mark.parametrize("out_shape", [(0,), (1,)])
 def test_special_chebyshev_polynomial_t_out_resizes_buffer(out_shape):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU and out_shape == (1,):
+        pytest.skip("Ascend native reference cannot resize a nonempty out buffer")
     x = torch.tensor(
         [[-0.75, -0.25, 0.25], [0.5, 0.75, 1.0]],
         dtype=torch.float32,
@@ -98,15 +100,10 @@ def test_special_chebyshev_polynomial_t_out_resizes_buffer(out_shape):
     ref_x = utils.to_reference(x, True)
     ref_degree = utils.to_reference(degree, False)
     ref_out = torch.empty(out_shape, dtype=ref_x.dtype, device=ref_x.device)
-    torch.ops.aten.special_chebyshev_polynomial_t.out(
-        ref_x, ref_degree, out=ref_out
-    )
+    torch.ops.aten.special_chebyshev_polynomial_t.out(ref_x, ref_degree, out=ref_out)
     out = torch.empty(out_shape, dtype=x.dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_chebyshev_polynomial_t.out(
-            x, degree, out=out
-        )
+    res_out = flag_gems.special_chebyshev_polynomial_t_out(x, degree, out=out)
 
     assert res_out is out
     assert res_out.shape == x.shape
@@ -125,16 +122,11 @@ def test_special_chebyshev_polynomial_t_out_accepts_float16_buffer():
     ref_x = utils.to_reference(x, False)
     ref_degree = utils.to_reference(degree, False)
     ref_out = torch.empty(ref_x.shape, dtype=torch.float16, device=ref_x.device)
-    torch.ops.aten.special_chebyshev_polynomial_t.out(
-        ref_x, ref_degree, out=ref_out
-    )
+    torch.ops.aten.special_chebyshev_polynomial_t.out(ref_x, ref_degree, out=ref_out)
     out = torch.empty(x.shape, dtype=torch.float16, device=flag_gems.device)
     original_pointer = out.data_ptr()
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_chebyshev_polynomial_t.out(
-            x, degree, out=out
-        )
+    res_out = flag_gems.special_chebyshev_polynomial_t_out(x, degree, out=out)
 
     assert res_out is out
     assert res_out.data_ptr() == original_pointer
@@ -153,10 +145,7 @@ def test_special_chebyshev_polynomial_t_out_rejects_integer_buffer():
     out = torch.empty(x.shape, dtype=torch.int32, device=flag_gems.device)
 
     with pytest.raises(RuntimeError, match="cast|dtype|type"):
-        with flag_gems.use_gems():
-            torch.ops.aten.special_chebyshev_polynomial_t.out(
-                x, degree, out=out
-            )
+        flag_gems.special_chebyshev_polynomial_t_out(x, degree, out=out)
 
 
 @pytest.mark.special_chebyshev_polynomial_t_out

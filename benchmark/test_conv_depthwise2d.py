@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -40,5 +38,6 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, weight, [kh,kw], None, [stride,stride], [padding,padding], [dilation,dilation]
 
 @pytest.mark.conv_depthwise2d
+@pytest.mark.underscore_conv_depthwise2d
 def test_conv_depthwise2d():
-    ConvDepthwise2dBenchmark(op_name="conv_depthwise2d", torch_op=torch.ops.aten._conv_depthwise2d.default, gems_op=flag_gems._conv_depthwise2d, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
+    ConvDepthwise2dBenchmark(op_name="_conv_depthwise2d", torch_op=torch.ops.aten._conv_depthwise2d.default, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()

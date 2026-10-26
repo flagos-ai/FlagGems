@@ -67,6 +67,7 @@ def test_log_softmax_out():
 
 
 @pytest.mark.log_softmax_backward_data
+@pytest.mark.log_softmax_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -85,7 +86,7 @@ def test_log_softmax_backward_data():
         return grad_output, output, -1, cur_dtype
 
     bench = base.GenericBenchmark2DOnly(
-        op_name="log_softmax_backward_data",
+        op_name="log_softmax_backward",
         case_fn=log_softmax_backward_data_case_fn,
         build_inputs_fn=log_softmax_backward_data_build_inputs_fn,
         torch_op=torch._log_softmax_backward_data,

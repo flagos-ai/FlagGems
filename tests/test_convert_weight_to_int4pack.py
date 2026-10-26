@@ -38,6 +38,7 @@ def _reference_int4pack(inp, innerKTiles):
 
 
 @pytest.mark.convert_weight_to_int4pack
+@pytest.mark.underscore_convert_weight_to_int4pack
 @pytest.mark.parametrize("shape", [(16, 64), (16, 128), (32, 128)])
 @pytest.mark.parametrize("innerKTiles", [2, 4, 8])
 def test_convert_weight_to_int4pack(shape, innerKTiles):

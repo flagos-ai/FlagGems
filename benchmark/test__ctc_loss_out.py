@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -31,6 +29,10 @@ class CtcLossOutBenchmark(OperatorBenchmark):
         (1024, 32, 128, 96),
     ]
     DEFAULT_SHAPE_DESC = "T, N, C, S"
+
+    def set_shapes(self, shape_file_path=None):
+        # This recipe needs T/N/C/S, not a backend's generic matrix shapes.
+        super().set_shapes(shape_file_path, default_shapes=self.DEFAULT_SHAPES)
 
     def set_more_shapes(self):
         return []
@@ -78,7 +80,6 @@ def test_perf__ctc_loss_out():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._ctc_loss.out,
-        gems_op=flag_gems.ops._ctc_loss_out,
         dtypes=CTC_DTYPES,
         is_inplace=True,
         fresh_inputs=True,

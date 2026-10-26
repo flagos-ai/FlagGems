@@ -38,6 +38,7 @@ def _assert_inputs_unchanged(actual, expected):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 @pytest.mark.parametrize("m,n,k", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination(m, n, k, dtype):
@@ -61,6 +62,7 @@ def test_compute_linear_combination(m, n, k, dtype):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 @pytest.mark.parametrize("m,n,a,b", HIGHER_RANK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_higher_rank(m, n, a, b, dtype):
@@ -79,6 +81,7 @@ def test_compute_linear_combination_higher_rank(m, n, a, b, dtype):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_noncontiguous(dtype):
     torch.manual_seed(2)
@@ -98,6 +101,7 @@ def test_compute_linear_combination_noncontiguous(dtype):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 @pytest.mark.parametrize("m,n,k", [(2, 8, 64), (4, 16, 32)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_zeros(m, n, k, dtype):
@@ -114,6 +118,7 @@ def test_compute_linear_combination_zeros(m, n, k, dtype):
 
 
 @pytest.mark.compute_linear_combination
+@pytest.mark.underscore_compute_linear_combination
 @pytest.mark.parametrize(
     "input_shape,coefficient_shape",
     [

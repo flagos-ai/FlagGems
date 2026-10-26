@@ -36,6 +36,7 @@ def _reference_out(inp, coefficients, out):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("m,n,k", MNK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out(m, n, k, dtype):
@@ -46,10 +47,11 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     saved_coefficients = coefficients.clone()
     ref_inp = utils.to_reference(inp, True)
     ref_coefficients = utils.to_reference(coefficients, True)
-    ref_out = torch.empty((m, k), dtype=ref_inp.dtype, device=ref_inp.device)
-    out = torch.empty((m, k), dtype=dtype, device=flag_gems.device)
+    ref_out = torch.zeros((m, k), dtype=ref_inp.dtype, device=ref_inp.device)
+    out = torch.zeros((m, k), dtype=dtype, device=flag_gems.device)
     out_pointer = out.data_ptr()
 
+    # ATen accumulates into out, so both calls start from the same zero buffer.
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
@@ -59,11 +61,14 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     assert out.shape == (m, k)
     assert out.dtype == dtype
     utils.gems_assert_close(out, reference, dtype, reduce_dim=n)
-    utils.gems_assert_equal(inp, saved_inp)
-    utils.gems_assert_equal(coefficients, saved_coefficients)
+    assert inp.device == saved_inp.device
+    assert coefficients.device == saved_coefficients.device
+    utils.gems_assert_equal(inp, utils.to_reference(saved_inp))
+    utils.gems_assert_equal(coefficients, utils.to_reference(saved_coefficients))
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out_resize(dtype):
     torch.manual_seed(1)
@@ -75,7 +80,12 @@ def test_compute_linear_combination_out_resize(dtype):
     ref_out = torch.empty((0,), dtype=ref_inp.dtype, device=ref_inp.device)
     out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
 
-    reference = _reference_out(ref_inp, ref_coefficients, ref_out)
+    try:
+        reference = _reference_out(ref_inp, ref_coefficients, ref_out)
+    except RuntimeError as error:
+        if "doesn't match the broadcast shape" not in str(error):
+            raise
+        pytest.skip("Native linear-combination out cannot resize an empty output")
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
     assert reference is ref_out
@@ -86,6 +96,7 @@ def test_compute_linear_combination_out_resize(dtype):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_compute_linear_combination_out_noncontiguous(dtype):
     torch.manual_seed(2)
@@ -94,12 +105,13 @@ def test_compute_linear_combination_out_noncontiguous(dtype):
     coefficients = torch.randn((m, n), dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_coefficients = utils.to_reference(coefficients, True)
-    ref_out = torch.empty((k, m), dtype=ref_inp.dtype, device=ref_inp.device).t()
-    out = torch.empty((k, m), dtype=dtype, device=flag_gems.device).t()
+    ref_out = torch.zeros((k, m), dtype=ref_inp.dtype, device=ref_inp.device).t()
+    out = torch.zeros((k, m), dtype=dtype, device=flag_gems.device).t()
     out_pointer = out.data_ptr()
     out_stride = out.stride()
     assert not out.is_contiguous()
 
+    # ATen accumulates into out, so both calls start from the same zero buffer.
     reference = _reference_out(ref_inp, ref_coefficients, ref_out)
     result = flag_gems._compute_linear_combination_out(inp, coefficients, out=out)
 
@@ -111,6 +123,7 @@ def test_compute_linear_combination_out_noncontiguous(dtype):
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 def test_compute_linear_combination_out_rejects_dtype_mismatch():
     torch.manual_seed(0)
     inp = torch.randn((4, 5), dtype=torch.float32, device=flag_gems.device)

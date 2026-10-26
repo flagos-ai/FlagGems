@@ -80,10 +80,11 @@ class NestedViewFromJaggedCopyBenchmark(base.Benchmark):
 
 
 @pytest.mark.nested_view_from_jagged_copy
+@pytest.mark.underscore_nested_view_from_jagged_copy
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test__nested_view_from_jagged_copy(dtype):
     bench = NestedViewFromJaggedCopyBenchmark(
-        op_name="nested_view_from_jagged_copy",
+        op_name="_nested_view_from_jagged_copy",
         torch_op=_torch_ref,
         gems_op=flag_gems._nested_view_from_jagged_copy,
         dtypes=[dtype],

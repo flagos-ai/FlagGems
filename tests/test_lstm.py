@@ -78,6 +78,12 @@ def test_lstm(
     ref_h0 = utils.to_reference(h0, True)
     ref_c0 = utils.to_reference(c0, True)
     ref_params = tuple(utils.to_reference(param, True) for param in params)
+    if (
+        flag_gems.vendor_name == "thead"
+        and not utils.TO_CPU
+        and ref_input.dtype in (torch.float32, torch.float64)
+    ):
+        pytest.skip("PPU native LSTM reference does not support float32/float64")
     ref_out, ref_hn, ref_cn = torch.lstm(
         ref_input,
         (ref_h0, ref_c0),
@@ -90,18 +96,24 @@ def test_lstm(
         batch_first,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = torch.lstm(
-            input,
-            (h0, c0),
-            params,
-            has_biases,
-            num_layers,
-            0.0,
-            False,
-            bidirectional,
-            batch_first,
-        )
+    res_out, res_hn, res_cn = flag_gems.lstm(
+        input,
+        (h0, c0),
+        params,
+        has_biases,
+        num_layers,
+        0.0,
+        False,
+        bidirectional,
+        batch_first,
+    )
+
+    for result in (res_out, res_hn, res_cn):
+        assert result.device == input.device
+        assert result.dtype == dtype
+    assert res_out.shape == (*input_shape[:-1], hidden_size * num_directions)
+    assert res_hn.shape == state_shape
+    assert res_cn.shape == state_shape
 
     atol = 3e-2 if dtype is torch.bfloat16 else 2e-2 if dtype is torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)

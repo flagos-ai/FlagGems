@@ -120,6 +120,7 @@ def test_true_divide_scalar_tensor(shape, scalar, dtype):
 
 
 @pytest.mark.true_divide
+@pytest.mark.true_divide_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_tensor_dispatch(shape, dtype):
@@ -135,6 +136,7 @@ def test_true_divide_tensor_dispatch(shape, dtype):
 
 
 @pytest.mark.true_divide_
+@pytest.mark.true_divide_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_tensor_inplace_dispatch(shape, dtype):

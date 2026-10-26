@@ -22,6 +22,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.batch_norm_with_update_functional
+@pytest.mark.underscore_batch_norm_with_update_functional
 @pytest.mark.parametrize(
     "shape",
     [

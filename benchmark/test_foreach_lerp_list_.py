@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -53,7 +51,6 @@ def _build_inputs_fn(plan, dtype, device):
 def test_foreach_lerp_list_():
     bench = OperatorBenchmark(
         op_name="foreach_lerp_list_",
-        gems_op=flag_gems.foreach_lerp_list_,
         torch_op=torch.ops.aten._foreach_lerp_.List,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

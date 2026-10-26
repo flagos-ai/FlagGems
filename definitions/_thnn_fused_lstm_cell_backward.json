@@ -1,0 +1,49 @@
+{
+  "api_version": "v6.0",
+  "name": "_thnn_fused_lstm_cell_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes and duplicates the input, hidden, and bias gradients produced by\nthe fused LSTM cell backward implementation.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "grad_cy",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "cx",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "cy",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "workspace",
+      "kind": "positional_or_keyword",
+      "required": true
+    },
+    {
+      "name": "has_bias",
+      "kind": "positional_or_keyword",
+      "required": true
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_hidden_gates",
+    "grad_cx",
+    "grad_input_bias",
+    "grad_hidden_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

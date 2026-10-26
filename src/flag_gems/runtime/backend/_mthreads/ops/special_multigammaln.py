@@ -349,7 +349,7 @@ def _specialized_special_multigammaln(self, p):
 
 
 def special_multigammaln(self, p):
-    logger.debug("GEMS_MTHREADS SPECIAL_MULTIGAMMALN")
+    _logger.debug("GEMS_MTHREADS SPECIAL_MULTIGAMMALN")
     if (
         isinstance(self, torch.Tensor)
         and self.device.type == "musa"

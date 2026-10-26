@@ -1,0 +1,95 @@
+{
+  "api_version": "v6.0",
+  "name": "_convolution_double_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_convolution_double_backward(Tensor? ggI, Tensor? ggW, Tensor? ggb, Tensor gO, Tensor weight, Tensor self, SymInt[] stride, SymInt[] padding, SymInt[] dilation, bool transposed, SymInt[] output_padding, SymInt groups, bool[3] output_mask) -> (Tensor, Tensor, Tensor). Tests 1D/2D, grouped and transposed cases, optional second-gradient inputs, output masks, multi-output metadata, and None propagation.",
+  "parameters": [
+    {
+      "name": "ggI",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "ggW",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "ggb",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | None"
+    },
+    {
+      "name": "gO",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "weight",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "stride",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "dilation",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "transposed",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "output_padding",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "list[int]"
+    },
+    {
+      "name": "groups",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "output_mask",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "tuple[bool, bool, bool]"
+    }
+  ],
+  "outputs": [
+    "grad_ggO",
+    "grad_self",
+    "grad_weight"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

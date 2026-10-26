@@ -1,0 +1,86 @@
+{
+  "api_version": "v6.0",
+  "name": "_fused_adagrad_",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_fused_adagrad_(Tensor(a!)[] self, Tensor(b!)[] grads, Tensor(c!)[] state_sums, Tensor(d!)[] state_steps, *, float lr, float lr_decay, float weight_decay, float eps, bool maximize, Tensor? grad_scale=None, Tensor? found_inf=None) -> (). Performs a fused in-place Adagrad step. Tests preserve the legacy dtype, shape, option, AMP, empty, multi-tensor, transposed-layout, and validation matrices, and additionally verify the void return plus every list element object, pointer, stride, storage offset, and value contract.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "grads",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "state_sums",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "state_steps",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "lr",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "lr_decay",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "weight_decay",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "eps",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "float"
+    },
+    {
+      "name": "maximize",
+      "kind": "keyword_only",
+      "required": true,
+      "type_hint": "bool"
+    },
+    {
+      "name": "grad_scale",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Optional[Tensor]",
+      "default": null
+    },
+    {
+      "name": "found_inf",
+      "kind": "keyword_only",
+      "required": false,
+      "type_hint": "Optional[Tensor]",
+      "default": null
+    }
+  ],
+  "outputs": [],
+  "effects": {
+    "mutates": [
+      "self",
+      "grads",
+      "state_sums",
+      "state_steps"
+    ],
+    "returns_alias_of": {}
+  }
+}

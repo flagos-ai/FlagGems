@@ -60,12 +60,22 @@ def _assert_reconstruction(inp, lu, pivots, pivot, dtype):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
 @pytest.mark.parametrize(
     "shape", [(64, 64), (256, 256), (512, 512), (1024, 1024), (8, 128, 128)]
 )
 @pytest.mark.parametrize("pivot", _PIVOT_VALUES)
 def test_lu_with_info(shape, dtype, pivot):
+    if VENDOR == "kunlunxin" and not utils.TO_CPU and not pivot:
+        pytest.skip("Kunlunxin native LU does not support pivot=False")
+    if (
+        VENDOR == "thead"
+        and not utils.TO_CPU
+        and not pivot
+        and shape in ((512, 512), (1024, 1024))
+    ):
+        pytest.skip("PPU native LU without pivoting aborts for these two square shapes")
     inp = _make_input(shape, pivot, dtype)
     ref_lu, ref_pivots, ref_info = torch._lu_with_info(
         utils.to_reference(inp, True), pivot=pivot, check_errors=False
@@ -85,6 +95,7 @@ def test_lu_with_info(shape, dtype, pivot):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
 @pytest.mark.parametrize("shape", [(64, 64), (8, 128, 128)])
 def test_lu_with_info_singular(shape, dtype):
@@ -105,6 +116,7 @@ def test_lu_with_info_singular(shape, dtype):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
 @pytest.mark.parametrize("shape", [(0, 3), (3, 0), (2, 0, 5), (2, 5, 0)])
 def test_lu_with_info_empty_matrices(shape, dtype):
@@ -120,10 +132,13 @@ def test_lu_with_info_empty_matrices(shape, dtype):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize(
     "shape", [(0, 3, 3), (2, 0, 3, 3), (2, 3, 0, 3), (0, 0, 4, 4)]
 )
 def test_lu_with_info_empty_batch_dimensions(shape):
+    if VENDOR == "kunlunxin":
+        pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     inp = torch.zeros(shape, dtype=torch.float64, device=DEVICE)
     reference = torch._lu_with_info(utils.to_reference(inp, True), check_errors=False)
     result = flag_gems._lu_with_info(inp, check_errors=False)
@@ -136,6 +151,7 @@ def test_lu_with_info_empty_batch_dimensions(shape):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("check_errors", [True, False])
 def test_lu_with_info_check_errors_on_nonsingular_input(check_errors):
     inp = torch.eye(8, dtype=torch.float32, device=DEVICE)
@@ -179,12 +195,15 @@ def test_lu_info_nonfinite_pivots_are_not_singular():
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("zero_pos", [0, 2, 4], ids=["first", "middle", "last"])
 @pytest.mark.xfail(
     reason="shared linalg_lu_factor divides by early zero pivots",
     strict=False,
 )
 def test_lu_with_info_exact_zero_pivot_position(zero_pos):
+    if VENDOR == "kunlunxin":
+        pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     diagonal = [1.0, 2.0, 3.0, 4.0, 5.0]
     diagonal[zero_pos] = 0.0
     inp = torch.diag(torch.tensor(diagonal, dtype=torch.float64)).to(DEVICE)

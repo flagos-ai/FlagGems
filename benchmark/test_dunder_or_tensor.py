@@ -38,9 +38,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.dunder_or_tensor
+@pytest.mark.bitwise_or_tensor
 def test_dunder_or_tensor():
     OperatorBenchmark(
-        op_name="dunder_or_tensor",
+        op_name="bitwise_or_tensor",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.__or__.Tensor,

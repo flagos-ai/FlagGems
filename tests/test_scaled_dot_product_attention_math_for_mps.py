@@ -22,6 +22,7 @@ from .accuracy_utils import gems_assert_close
 
 
 @pytest.mark.scaled_dot_product_attention_math_for_mps
+@pytest.mark.underscore_scaled_dot_product_attention_math_for_mps
 @pytest.mark.parametrize("batch", [1, 2])
 @pytest.mark.parametrize("num_head", [4, 8])
 @pytest.mark.parametrize("seq_len", [16, 32, 128])

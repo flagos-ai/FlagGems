@@ -557,6 +557,21 @@ def extract_and_log_op_attributes(request):
         emit_record_logger(json.dumps(op_attributes, indent=2))
 
 
+# When several tests share one operator mark, a failure stays visible and a
+# skipped test never hides a passed one.
+_RESULT_PRIORITY = {"skipped": 0, "passed": 1, "failed": 2}
+
+
+def _record_outcome(op, outcome, test_case, reason):
+    entry = TEST_RESULTS[op]
+    previous = entry.get("result")
+    if _RESULT_PRIORITY.get(previous, -1) > _RESULT_PRIORITY.get(outcome, -1):
+        return
+    entry["result"] = outcome
+    entry["test_case"] = test_case
+    entry["reason"] = reason
+
+
 def get_reason(report):
     """Get reason for skipped or failed test."""
 
@@ -604,20 +619,13 @@ def pytest_runtest_logreport(report):
 
     if report.when == "setup":
         if report.outcome == "skipped":
-            reason = get_reason(report)
-            TEST_RESULTS[op]["result"] = "skipped"
-            TEST_RESULTS[op]["reason"] = reason
-            TEST_RESULTS[op]["test_case"] = report.nodeid
+            _record_outcome(op, "skipped", report.nodeid, get_reason(report))
 
     elif report.when == "call":
-        TEST_RESULTS[op]["result"] = report.outcome
-        TEST_RESULTS[op]["test_case"] = report.nodeid
-
+        reason = None
         if report.outcome in ["skipped", "failed"]:
             reason = get_reason(report)
-            TEST_RESULTS[op]["reason"] = reason
-        else:
-            TEST_RESULTS[op]["reason"] = None
+        _record_outcome(op, report.outcome, report.nodeid, reason)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):

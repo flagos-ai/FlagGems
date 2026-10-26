@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "_compute_linear_combination",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_compute_linear_combination(Tensor input, Tensor coefficients) -> Tensor. Forms m linear combinations from coefficients shaped (m, n) and an input shaped (n, ...). Tests preserve the legacy matrix, higher-rank and zero cases and add noncontiguous inputs, metadata, non-mutation and invalid-shape contracts.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "coefficients",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "result"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

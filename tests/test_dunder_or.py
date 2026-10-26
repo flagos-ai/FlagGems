@@ -23,6 +23,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.dunder_or_tensor
+@pytest.mark.bitwise_or_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_dunder_or(shape, dtype):

@@ -61,6 +61,7 @@ def _run_reference(x, observer_on, fake_quant_on, per_channel, ch_axis, symmetri
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.underscore_fused_moving_avg_obs_fq_helper
 @pytest.mark.parametrize("shape,ch_axis", FMAOFQ_SHAPES)
 @pytest.mark.parametrize("observer_on", [1, 0])
 @pytest.mark.parametrize("fake_quant_on", [1, 0])
@@ -82,7 +83,8 @@ def test_fused_moving_avg_obs_fq_helper(
     base = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # Reference on the reference device (CPU when --ref=cpu, else CUDA).
-    ref_x = utils.to_reference(base, True)
+    # The native helper consumes float32 observer state and float32 input.
+    ref_x = utils.to_reference(base, False)
     (
         ref_out,
         ref_mask,
@@ -136,12 +138,19 @@ def test_fused_moving_avg_obs_fq_helper(
 
 
 @pytest.mark.fused_moving_avg_obs_fq_helper
+@pytest.mark.underscore_fused_moving_avg_obs_fq_helper
 @pytest.mark.parametrize("dtype", UNSUPPORTED_DTYPES)
 def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     """Match ATen's float32-only input contract."""
     dev = flag_gems.device
     torch.manual_seed(0)
     x = torch.randn((16, 32), dtype=dtype, device=dev)
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and x.dtype != dtype
+    ):
+        pytest.skip("Kunlunxin stores requested float64 input as float32")
     obs = torch.tensor(1, dtype=torch.long, device=dev)
     fq = torch.tensor(1, dtype=torch.long, device=dev)
     running_min = torch.full((1,), -0.5, dtype=torch.float32, device=dev)
@@ -165,9 +174,15 @@ def test_fused_moving_avg_obs_fq_helper_rejects_non_fp32(dtype):
     )
     error = "expected scalar type Float but found"
 
-    # The exact native error text varies by PyTorch version depending on which
-    # dtype check runs first, but every supported version rejects these inputs.
+    # The generated API's float32-only rejection is also checked against CPU
+    # ATen: Kunlunxin's native Half path instead accepts and promotes to Float.
+    ref_x, ref_args = x, args
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float16:
+        ref_x = x.cpu()
+        ref_args = tuple(
+            value.cpu() if isinstance(value, torch.Tensor) else value for value in args
+        )
     with pytest.raises(RuntimeError):
-        torch.ops.aten._fused_moving_avg_obs_fq_helper(x, *args)
+        torch.ops.aten._fused_moving_avg_obs_fq_helper(ref_x, *ref_args)
     with pytest.raises(RuntimeError, match=error):
         flag_gems._fused_moving_avg_obs_fq_helper(x, *args)

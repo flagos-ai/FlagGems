@@ -66,9 +66,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.fused_adagrad_
+@pytest.mark.underscore_fused_adagrad_
 def test_fused_adagrad_():
     FusedAdagradBenchmark(
-        op_name="fused_adagrad_",
+        op_name="_fused_adagrad_",
         torch_op=torch._fused_adagrad_,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

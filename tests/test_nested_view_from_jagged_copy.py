@@ -34,6 +34,7 @@ def _assert_nested_close(res, ref, dtype):
 
 
 @pytest.mark.nested_view_from_jagged_copy
+@pytest.mark.underscore_nested_view_from_jagged_copy
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nested_view_from_jagged_copy_2d(dtype):
     total = 64
@@ -59,6 +60,7 @@ def test_nested_view_from_jagged_copy_2d(dtype):
 
 
 @pytest.mark.nested_view_from_jagged_copy
+@pytest.mark.underscore_nested_view_from_jagged_copy
 def test_nested_view_from_jagged_copy_1d():
     dtype = torch.float32
     values = torch.randn(12, dtype=dtype, device=flag_gems.device)
@@ -78,6 +80,7 @@ def test_nested_view_from_jagged_copy_1d():
 
 
 @pytest.mark.nested_view_from_jagged_copy
+@pytest.mark.underscore_nested_view_from_jagged_copy
 def test_nested_view_from_jagged_copy_lengths():
     dtype = torch.float32
     values = torch.arange(12, dtype=dtype, device=flag_gems.device).reshape(6, 2)
@@ -101,6 +104,7 @@ def test_nested_view_from_jagged_copy_lengths():
 
 
 @pytest.mark.nested_view_from_jagged_copy
+@pytest.mark.underscore_nested_view_from_jagged_copy
 def test_nested_view_from_jagged_copy_min_seqlen():
     dtype = torch.float32
     values = torch.randn(8, 3, dtype=dtype, device=flag_gems.device)

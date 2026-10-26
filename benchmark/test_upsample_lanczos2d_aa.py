@@ -164,11 +164,12 @@ def _build_inputs_fn_vec(plan, dtype, device):
 
 
 @pytest.mark.upsample_lanczos2d_aa_vec
+@pytest.mark.underscore_upsample_lanczos2d_aa_vec
 def test_upsample_lanczos2d_aa_vec():
     bench = UpsampleLanczosBenchmark(
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn_vec,
-        op_name="upsample_lanczos2d_aa_vec",
+        op_name="_upsample_lanczos2d_aa_vec",
         torch_op=_composite_reference_vec,
         gems_op=_upsample_lanczos2d_aa_vec,
         dtypes=consts.FLOAT_DTYPES,

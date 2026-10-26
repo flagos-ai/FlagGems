@@ -12,6 +12,7 @@ LDLD_DTYPES = [torch.float32]
 
 
 @pytest.mark.linalg_ldl_factor_ex
+@pytest.mark.ldl_factor_ex
 @pytest.mark.parametrize("shape", LDLD_SHAPES)
 @pytest.mark.parametrize("dtype", LDLD_DTYPES)
 def test_linalg_ldl_factor_ex(shape, dtype):

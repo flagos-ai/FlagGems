@@ -163,6 +163,7 @@ def test_upsample_lanczos2d_aa_out(noncontiguous):
 
 
 @pytest.mark.upsample_lanczos2d_aa_vec
+@pytest.mark.underscore_upsample_lanczos2d_aa_vec
 @pytest.mark.parametrize("use_scale_factors", [False, True])
 def test_upsample_lanczos2d_aa_vec(use_scale_factors):
     input = torch.randn((1, 2, 8, 10), device=flag_gems.device)
@@ -182,6 +183,7 @@ def test_upsample_lanczos2d_aa_vec(use_scale_factors):
 
 
 @pytest.mark.upsample_lanczos2d_aa_vec
+@pytest.mark.underscore_upsample_lanczos2d_aa_vec
 @pytest.mark.parametrize(
     "output_size,scale_factors", [(None, None), ((12, 7), (1.5, 0.7))]
 )

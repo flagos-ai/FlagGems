@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "log_softmax_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes the gradient of the input tensor with respect to a `log_softmax` operation\nduring backpropagation.",
+  "parameters": [
+    {
+      "name": "grad_output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "output",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "input_dtype",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "dtype"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

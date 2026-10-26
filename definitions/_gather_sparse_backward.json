@@ -1,0 +1,39 @@
+{
+  "api_version": "v6.0",
+  "name": "_gather_sparse_backward",
+  "requires_triton_kernel": true,
+  "description": "Representative ATen schema: aten::_gather_sparse_backward(Tensor self, int dim, Tensor index, Tensor grad) -> Tensor. Builds the sparse COO input gradient for gather, including negative dimensions and sparse structure checks. Effects below describe only the representative signature.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "index",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "grad",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -56,11 +54,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.convert_weight_to_int4pack
+@pytest.mark.underscore_convert_weight_to_int4pack
 def test_convert_weight_to_int4pack():
     ConvertWeightBenchmark(
-        op_name="convert_weight_to_int4pack",
+        op_name="_convert_weight_to_int4pack",
         torch_op=_reference_int4pack,
-        gems_op=flag_gems._convert_weight_to_int4pack,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.int32],

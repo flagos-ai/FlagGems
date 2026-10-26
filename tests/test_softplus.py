@@ -51,9 +51,8 @@ def test_softplus_backward(shape, dtype):
     ref_grad_input = torch.ops.aten.softplus_backward(
         ref_grad_output, ref_inp, beta=beta, threshold=threshold
     )
-    with flag_gems.use_gems():
-        res_grad_input = torch.ops.aten.softplus_backward(
-            res_grad_output, res_inp, beta=beta, threshold=threshold
-        )
+    res_grad_input = flag_gems.softplus_backward(
+        res_grad_output, res_inp, beta=beta, threshold=threshold
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)

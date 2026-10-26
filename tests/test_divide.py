@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _EQUAL_SHAPES = [*utils.POINTWISE_SHAPES, (2, 0, 3)]
 _BROADCAST_CASES = [
     pytest.param((7, 13), (1, 13), id="leading-dimension"),
@@ -37,7 +36,7 @@ def _nonzero_input(shape, dtype):
 @pytest.mark.divide
 @pytest.mark.parametrize("shape", _EQUAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_divide_equal_shape(shape, dtype, caplog):
+def test_divide_equal_shape(shape, dtype, caplog, request):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = _nonzero_input(shape, dtype)
@@ -50,10 +49,19 @@ def test_divide_equal_shape(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger="flag_gems.ops.divide"):
         res_out = flag_gems.divide(inp, other)
 
-    assert f"{utils.gems_log_prefix(flag_gems.divide)} DIVIDE" in caplog.text
+    registry = getattr(request.config, "_override_registry", None)
+    if registry is None or registry.get_override("divide") is None:
+        assert f"{utils.gems_log_prefix(flag_gems.divide)} DIVIDE" in caplog.text
     assert res_out.shape == ref_out.shape
     assert res_out.dtype == dtype
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    assert inp.device == inp_before.device
+    assert inp.dtype == inp_before.dtype and inp.shape == inp_before.shape
+    assert other.device == other_before.device
+    assert other.dtype == other_before.dtype and other.shape == other_before.shape
+    if utils.TO_CPU:
+        inp_before = inp_before.cpu()
+        other_before = other_before.cpu()
     utils.gems_assert_equal(inp, inp_before)
     utils.gems_assert_equal(other, other_before)
 
@@ -122,8 +130,7 @@ def test_divide_backward(dtype):
     ref_other = utils.to_reference(other.detach(), True).requires_grad_(True)
 
     ref_out = torch.ops.aten.divide.Tensor(ref_inp, ref_other)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.divide.Tensor(inp, other)
+    res_out = flag_gems.divide(inp, other)
 
     grad_output = torch.randn_like(res_out)
     ref_grad_output = utils.to_reference(grad_output, True)

@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _ATEN_OP = torch.ops.aten._foreach_floor
 
 
@@ -99,7 +98,9 @@ def test_foreach_floor_accuracy(dtype, noncontiguous):
 
     _assert_values(result, expected, _output_dtype(dtype))
     for output, source in zip(result, values):
-        assert output.untyped_storage().data_ptr() != source.untyped_storage().data_ptr()
+        assert (
+            output.untyped_storage().data_ptr() != source.untyped_storage().data_ptr()
+        )
 
 
 @pytest.mark.foreach_floor
@@ -116,6 +117,10 @@ def test_foreach_floor_mixed_shapes_and_empty_tensor():
 
 @pytest.mark.foreach_floor
 def test_foreach_floor_integer_promotion():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip(
+            "backend native foreach does not support the integer reference contract"
+        )
     values = [_sample((11,), torch.int32)]
     reference_values = _reference(values)
     if not _INTEGER_SUPPORTED:

@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
-from .conftest import QUICK_MODE
+from .conftest import QUICK_MODE, TO_CPU
 
 FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
 
@@ -112,6 +112,28 @@ def test_avg_pool3d_backward(
     divisor_override,
     dtype,
 ):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not TO_CPU
+        and (
+            (
+                shape,
+                kernel_size,
+                stride,
+                padding,
+                ceil_mode,
+                count_include_pad,
+                divisor_override,
+            )
+            in (
+                ((2, 4, 15, 15, 15), 3, 2, 1, True, True, None),
+                ((1, 1, 7, 7, 7), 2, 1, 0, False, True, 1),
+            )
+        )
+    ):
+        pytest.skip(
+            "Kunlunxin native avg_pool3d reference lacks ceil_mode/divisor_override"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 

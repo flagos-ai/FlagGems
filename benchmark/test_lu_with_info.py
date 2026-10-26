@@ -64,10 +64,10 @@ class LuWithInfoBenchmark(base.Benchmark):
 
 
 @pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
 def test_lu_with_info():
     LuWithInfoBenchmark(
-        op_name="lu_with_info",
+        op_name="_lu_with_info",
         torch_op=torch._lu_with_info,
-        gems_op=flag_gems._lu_with_info,
         dtypes=_TEST_DTYPES,
     ).run()

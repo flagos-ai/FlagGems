@@ -29,12 +29,26 @@ CASES = [
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("input_size,output_size,scales", CASES)
 @pytest.mark.parametrize("dtype", [*utils.FLOAT_DTYPES, torch.float64])
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin cannot preserve float64 input storage")
+    if flag_gems.vendor_name == "ascend":
+        uses_device_reference = not utils.TO_CPU or scales == (1.5, 2.5, 0.75)
+        if dtype == torch.float64 and uses_device_reference:
+            pytest.skip(
+                "Ascend native nearest-exact3d backward does not support float64"
+            )
+        if dtype == torch.float16 and not uses_device_reference:
+            pytest.skip(
+                "Ascend environment CPU nearest-exact3d backward raises SIGILL for float16"
+            )
     grad_output = torch.randn(
         (*input_size[:2], *output_size), dtype=dtype, device=flag_gems.device
     )
+    assert grad_output.dtype == dtype
     if scales == (1.5, 2.5, 0.75):
         # Native CPU ignores inconsistent explicit scales in this overload,
         # whereas CUDA uses them.  FlagGems implements the CUDA dispatch key.
@@ -55,7 +69,12 @@ def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtyp
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 def test_upsample_nearest_exact3d_backward_uint8():
+    if flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        pytest.skip(
+            "Native nearest-exact3d backward does not support uint8 on this backend"
+        )
     input_size = (1, 2, 3, 4, 5)
     output_size = (7, 6, 9)
     grad_output = torch.randint(
@@ -75,8 +94,13 @@ def test_upsample_nearest_exact3d_backward_uint8():
 
 
 @pytest.mark.upsample_nearest_exact3d_backward
+@pytest.mark.underscore_upsample_nearest_exact3d_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU and dtype == torch.float16:
+        pytest.skip(
+            "Ascend environment CPU nearest-exact3d backward raises SIGILL for float16"
+        )
     input_size = (2, 3, 3, 4, 5)
     output_size = (4, 5, 6)
     base = torch.randn((2, 3, 8, 10, 12), dtype=dtype, device=flag_gems.device)
@@ -93,6 +117,7 @@ def test_upsample_nearest_exact3d_backward_noncontiguous(dtype):
 
 
 @pytest.mark.upsample_nearest_exact3d_backward_grad_input
+@pytest.mark.underscore_upsample_nearest_exact3d_backward_grad_input
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_upsample_nearest_exact3d_backward_grad_input(noncontiguous):
     input_size = (2, 3, 3, 4, 5)

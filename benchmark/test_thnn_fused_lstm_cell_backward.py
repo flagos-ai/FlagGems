@@ -67,6 +67,11 @@ class FusedLSTMCellBackwardBenchmark(base.Benchmark):
     def build_inputs(self, case):
         batch_size, hidden_size, has_bias = case.builder_args[0].builder_args
         cur_dtype = case.dtype
+        if flag_gems.vendor_name == "ascend" and cur_dtype == torch.bfloat16:
+            pytest.skip(
+                "Ascend native LSTM forward used to build backward inputs "
+                "does not support bfloat16 (input_gates must be float or half)."
+            )
         input_gates = torch.randn(
             batch_size,
             4 * hidden_size,
@@ -88,9 +93,11 @@ class FusedLSTMCellBackwardBenchmark(base.Benchmark):
 
 
 @pytest.mark.thnn_fused_lstm_cell_backward
+@pytest.mark.underscore_thnn_fused_lstm_cell_backward
+@torch.no_grad()
 def test_thnn_fused_lstm_cell_backward():
     bench = FusedLSTMCellBackwardBenchmark(
-        op_name="thnn_fused_lstm_cell_backward",
+        op_name="_thnn_fused_lstm_cell_backward",
         torch_op=_thnn_fused_lstm_cell_backward_no_grad,
         dtypes=DTYPES,
     )

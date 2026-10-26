@@ -173,7 +173,7 @@ def special_erf(x):
     # 0.0695x, worst-case ~120x slower per case). Route it to the shared
     # odd-poly fast path instead.
     logger.debug("GEMS_KUNLUNXIN SPECIAL_ERF")
-    # tests/test_erf.py asserts the "GEMS SPECIAL_ERF" debug record on logger
-    # "flag_gems.ops.special_erf" (caplog.at_level contract); keep it intact.
-    logging.getLogger("flag_gems.ops.special_erf").debug("GEMS SPECIAL_ERF")
+    # Retain the canonical logger captured by tests/test_erf.py,
+    # with the vendor prefix expected by gems_log_prefix().
+    logging.getLogger("flag_gems.ops.special_erf").debug("GEMS_KUNLUNXIN SPECIAL_ERF")
     return erf(x)

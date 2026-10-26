@@ -62,7 +62,7 @@ def test_linalg_cond(shape, dtype):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A)
-    res_out = torch.linalg.cond(A)
+    res_out = flag_gems.linalg_cond(A)
 
     # Use relative comparison for condition numbers
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
@@ -78,7 +78,7 @@ def test_linalg_cond_with_p(shape, dtype, p):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A, p=p)
-    res_out = torch.linalg.cond(A, p=p)
+    res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
@@ -100,7 +100,7 @@ def test_linalg_cond_svd(shape, dtype, p):
     ref_A = utils.to_reference(A, True)
 
     ref_out = torch.linalg.cond(ref_A, p=p)
-    res_out = torch.linalg.cond(A, p=p)
+    res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)

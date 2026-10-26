@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 
 # (m, n) shapes where m >= n (required by householder_product)
@@ -33,7 +31,7 @@ class LinalgHouseholderProductBenchmark(base.Benchmark):
 
     def build_inputs(self, case):
         plan = case.builder_args[0]
-        (m, n) = plan.builder_args[0]
+        m, n = plan.builder_args[0]
         # Use geqrf to generate valid (h, tau) pair
         A = torch.randn(m, n, dtype=case.dtype, device=self.device)
         h, tau = torch.geqrf(A)
@@ -48,5 +46,4 @@ def test_linalg_householder_product():
         # Only float32 supported: geqrf/householder_product requires float32/float64 on CUDA
         dtypes=[torch.float32],
     )
-    bench.set_gems(flag_gems.linalg_householder_product)
     bench.run()

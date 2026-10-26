@@ -1,0 +1,37 @@
+{
+  "api_version": "v6.0",
+  "name": "_thnn_fused_gru_cell_backward",
+  "requires_triton_kernel": true,
+  "description": "Computes gradients for a fused GRU cell.",
+  "parameters": [
+    {
+      "name": "grad_hy",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "workspace",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "has_bias",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "bool"
+    }
+  ],
+  "outputs": [
+    "grad_input_gates",
+    "grad_hidden_gates",
+    "grad_hx",
+    "grad_input_bias",
+    "grad_hidden_bias"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

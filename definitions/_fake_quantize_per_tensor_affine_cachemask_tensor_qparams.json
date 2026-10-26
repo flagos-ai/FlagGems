@@ -1,0 +1,52 @@
+{
+  "api_version": "v6.0",
+  "name": "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
+  "requires_triton_kernel": true,
+  "description": "Representative schema: aten::_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(Tensor self, Tensor scale, Tensor zero_point, Tensor fake_quant_enabled, int quant_min, int quant_max) -> (Tensor output, Tensor mask). Uses device scalar tensor qparams and an enable flag; the disabled path returns the input values with an all-true mask. Tests cover enabled and disabled behavior, floating dtypes, noncontiguous and empty inputs, output metadata, and preservation of every input tensor.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "scale",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "zero_point",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "fake_quant_enabled",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "quant_min",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    },
+    {
+      "name": "quant_max",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "int"
+    }
+  ],
+  "outputs": [
+    "output",
+    "mask"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

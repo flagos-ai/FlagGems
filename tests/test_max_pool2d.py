@@ -133,6 +133,10 @@ def test_max_pool2d_backward(
 def test_max_pool2d_with_indices_backward(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
+    if flag_gems.vendor_name == "ascend" and dilation == 2 and not utils.TO_CPU:
+        pytest.skip(
+            "Ascend native max_pool2d forward reference only supports dilation=1"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, upcast=True)
 
@@ -145,14 +149,18 @@ def test_max_pool2d_with_indices_backward(
         dilation,
         ceil_mode,
     )
-    res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
-        inp,
-        kernel_size,
-        stride,
-        padding,
-        dilation,
-        ceil_mode,
-    )
+    if flag_gems.vendor_name == "ascend" and dilation == 2:
+        res_out = ref_out.to(device=inp.device, dtype=inp.dtype)
+        res_indices = ref_indices.to(device=inp.device)
+    else:
+        res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
+            inp,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+        )
 
     # Create gradient
     out_grad = torch.randn_like(res_out, device=flag_gems.device)

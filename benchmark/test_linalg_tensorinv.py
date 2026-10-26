@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 
 # Shapes for linalg_tensorinv benchmark - these are 2D square matrices for ind=1
@@ -53,7 +51,6 @@ def test_linalg_tensorinv():
     bench = LinalgTensorinvBenchmark(
         op_name="linalg_tensorinv",
         torch_op=torch.linalg.tensorinv,
-        gems_op=flag_gems.linalg_tensorinv,
         # torch.linalg.tensorinv benchmark uses float32 because PyTorch does not support half here.
         dtypes=[torch.float32],
     )
@@ -65,7 +62,6 @@ def test_linalg_tensorinv_out():
     bench = LinalgTensorinvBenchmark(
         op_name="linalg_tensorinv_out",
         torch_op=torch.linalg.tensorinv,
-        gems_op=flag_gems.linalg_tensorinv_out,
         # torch.linalg.tensorinv benchmark uses float32 because PyTorch does not support half here.
         dtypes=[torch.float32],
     )

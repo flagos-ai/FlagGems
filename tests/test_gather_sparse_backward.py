@@ -88,6 +88,7 @@ def _assert_sparse_equal(res, ref, dtype, atol=None):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", DIMS)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -107,6 +108,7 @@ def test_gather_sparse_backward_float(inp_shape, dim, dtype):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", DIMS)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -130,6 +132,7 @@ def test_gather_sparse_backward_duplicate(inp_shape, dim, dtype, duplicate_indic
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", DIMS)
 @pytest.mark.parametrize("dtype", INT_DTYPES)
@@ -149,6 +152,7 @@ def test_gather_sparse_backward_int(inp_shape, dim, dtype):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize(
     "shape,dim",
     [
@@ -206,6 +210,7 @@ def test_gather_sparse_backward_edge(shape, dim, dtype):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize("inp_shape", INPUT_SHAPES)
 @pytest.mark.parametrize("dim", DIMS)
 # Negative-dim normalization coverage uses float32 only to isolate dim-handling
@@ -229,6 +234,7 @@ def test_gather_sparse_backward_negative_dim(inp_shape, dim, dtype):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize(
     "self_shape,index_shape",
     [
@@ -261,6 +267,7 @@ def test_gather_sparse_backward_scalar(self_shape, index_shape, dtype):
 
 
 @pytest.mark.gather_sparse_backward
+@pytest.mark.underscore_gather_sparse_backward
 @pytest.mark.parametrize(
     "self_shape,index_shape,grad_shape",
     [

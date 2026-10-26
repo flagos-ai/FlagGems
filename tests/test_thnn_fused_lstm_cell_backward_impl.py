@@ -29,13 +29,40 @@ LSTM_SHAPES = [
 ]
 
 
+def _cpu_reference(grad_hy, grad_cy, cx, cy, workspace):
+    dtype = cx.dtype
+    compute_dtype = torch.float64 if dtype == torch.float64 else torch.float32
+    grad_hy, grad_cy, cx, cy, workspace = (
+        value.detach().cpu().to(compute_dtype)
+        for value in (grad_hy, grad_cy, cx, cy, workspace)
+    )
+    input_gate, forget_gate, cell_gate, output_gate = workspace.chunk(4, dim=1)
+    tanh_cy = cy.tanh()
+    grad_cell = grad_cy + grad_hy * output_gate * (1 - tanh_cy * tanh_cy)
+    grad_gates = torch.cat(
+        (
+            grad_cell * cell_gate * input_gate * (1 - input_gate),
+            grad_cell * cx * forget_gate * (1 - forget_gate),
+            grad_cell * input_gate * (1 - cell_gate * cell_gate),
+            grad_hy * tanh_cy * output_gate * (1 - output_gate),
+        ),
+        dim=1,
+    ).to(dtype)
+    grad_cx = (grad_cell * forget_gate).to(dtype)
+    grad_bias = grad_gates.to(compute_dtype).sum(dim=0).to(dtype)
+    return grad_gates, grad_cx, grad_bias
+
+
 @pytest.mark.thnn_fused_lstm_cell_backward_impl
+@pytest.mark.underscore_thnn_fused_lstm_cell_backward_impl
 @pytest.mark.parametrize("shape", LSTM_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     """Test accuracy for _thnn_fused_lstm_cell_backward_impl."""
     if flag_gems.vendor_name == "cambricon" and dtype == torch.bfloat16:
         pytest.skip("Issue #5254: Not supported")
+    if flag_gems.vendor_name == "ascend" and dtype == torch.bfloat16:
+        pytest.skip("Ascend native LSTM forward setup supports only float and half")
     torch.manual_seed(0)
     batch_size, hidden_size = shape
     dev = flag_gems.device
@@ -57,21 +84,24 @@ def test_thnn_fused_lstm_cell_backward_impl(shape, dtype):
     grad_cy = torch.randn_like(cy)
 
     # Backward pass — ATen reference (outside use_gems, on CUDA)
-    ref_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
-        grad_hy, grad_cy, cx, cy, workspace, True
-    )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
+    if utils.TO_CPU:
+        ref_out = _cpu_reference(grad_hy, grad_cy, cx, cy, workspace)
+    else:
+        ref_out = torch.ops.aten._thnn_fused_lstm_cell_backward_impl(
             grad_hy, grad_cy, cx, cy, workspace, True
         )
+    res_out = flag_gems._thnn_fused_lstm_cell_backward_impl(
+        grad_hy, grad_cy, cx, cy, workspace, True
+    )
 
     # Compare outputs — ref_out order: (grad_input_gates, grad_cx, grad_biases)
     for i, (ref, res) in enumerate(zip(ref_out, res_out)):
-        ref = utils.to_reference(ref, True)
+        assert res.device == cx.device
         assert (
             res.shape == ref.shape
         ), f"Shape mismatch at output[{i}]: {res.shape} vs {ref.shape}"
         assert (
-            res.dtype == ref.dtype
+            res.dtype == ref.dtype == dtype
         ), f"Dtype mismatch at output[{i}]: {res.dtype} vs {ref.dtype}"
+        ref = utils.to_reference(ref, dtype != torch.float64)
         utils.gems_assert_close(res.cpu(), ref.cpu(), dtype, atol=5e-2)

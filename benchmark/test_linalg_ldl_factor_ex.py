@@ -27,9 +27,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.linalg_ldl_factor_ex
+@pytest.mark.ldl_factor_ex
 def test_linalg_ldl_factor_ex():
     LinalgLdlFactorExBenchmark(
-        op_name="linalg_ldl_factor_ex",
+        op_name="ldl_factor_ex",
         torch_op=torch.linalg.ldl_factor_ex,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

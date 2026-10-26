@@ -58,10 +58,11 @@ def _scalar_build_inputs_fn(plan, dtype, device):
     return inp, exponent
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_tensor_():
     bench = OperatorBenchmark(
-        op_name="float_power_",
+        op_name="float_power_tensor_tensor_",
         torch_op=lambda inp, exponent: inp.float_power_(exponent),
         case_fn=_tensor_case_fn,
         build_inputs_fn=_tensor_build_inputs_fn,
@@ -72,10 +73,11 @@ def test_float_power_tensor_():
     bench.run()
 
 
+@pytest.mark.float_power_tensor_scalar_
 @pytest.mark.float_power_
 def test_float_power_scalar_():
     bench = OperatorBenchmark(
-        op_name="float_power_",
+        op_name="float_power_tensor_scalar_",
         torch_op=lambda inp, exponent: inp.float_power_(exponent),
         case_fn=_scalar_case_fn,
         build_inputs_fn=_scalar_build_inputs_fn,

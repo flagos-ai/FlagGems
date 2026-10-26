@@ -37,8 +37,9 @@ def torch_ref(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False,
 
 
 @pytest.mark.scaled_dot_product_attention_math_for_mps
+@pytest.mark.underscore_scaled_dot_product_attention_math_for_mps
 @pytest.mark.parametrize("is_causal", [False, True])
 def test_scaled_dot_product_attention_math_for_mps(is_causal):
-    bench = AttentionBenchmark(op_name="scaled_dot_product_attention_math_for_mps", case_fn=_case_fn_for(is_causal), build_inputs_fn=_build_inputs_fn, torch_op=torch_ref, dtypes=consts.FLOAT_DTYPES)
+    bench = AttentionBenchmark(op_name="_scaled_dot_product_attention_math_for_mps", case_fn=_case_fn_for(is_causal), build_inputs_fn=_build_inputs_fn, torch_op=torch_ref, dtypes=consts.FLOAT_DTYPES)
     bench.set_gems(flag_gems._scaled_dot_product_attention_math_for_mps)
     bench.run()

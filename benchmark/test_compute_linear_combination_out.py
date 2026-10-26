@@ -51,14 +51,15 @@ def _build_inputs_fn(plan, dtype, device):
     torch.manual_seed(0)
     inp = torch.randn((n, k), dtype=dtype, device=device)
     coefficients = torch.randn((m, n), dtype=dtype, device=device)
-    out = torch.empty((m, k), dtype=dtype, device=device)
+    out = torch.zeros((m, k), dtype=dtype, device=device)
     return inp, coefficients, {"out": out}
 
 
 @pytest.mark.compute_linear_combination_out
+@pytest.mark.underscore_compute_linear_combination_out
 def test_compute_linear_combination_out():
     ComputeLinearCombinationOutBenchmark(
-        op_name="compute_linear_combination_out",
+        op_name="_compute_linear_combination_out",
         torch_op=torch.ops.aten._compute_linear_combination.out,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

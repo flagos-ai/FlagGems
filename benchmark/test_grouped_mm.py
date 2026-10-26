@@ -71,13 +71,14 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.grouped_mm
+@pytest.mark.group_mm
 @pytest.mark.skipif(
     utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
 )
 def test_grouped_mm():
     GroupedMMBenchmark(
-        op_name="grouped_mm",
+        op_name="group_mm",
         torch_op=torch._grouped_mm,
         gems_op=flag_gems.group_mm,
         case_fn=_case_fn,

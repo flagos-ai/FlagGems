@@ -141,6 +141,8 @@ def test_pinverse_nonfinite(value, rcond):
         with pytest.raises(NotImplementedError, match="negative rcond"):
             flag_gems.pinverse(inp, rcond=rcond)
         return
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU and value != value:
+        pytest.skip("Kunlunxin native SVD reference rejects NaN input")
     ref_inp = utils.to_reference(inp)
     if ref_inp.device.type == "cpu" and (torch.isnan(ref_inp).any() or rcond < 0):
         pytest.skip("CPU and CUDA SVD differ for this non-finite input")
@@ -161,7 +163,12 @@ def test_pinverse_nonfinite(value, rcond):
     ],
 )
 def test_pinverse_invalid_input(shape, dtype):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name == "ascend" and dtype.is_complex
+        else flag_gems.device
+    )
+    inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.pinverse(inp)
 

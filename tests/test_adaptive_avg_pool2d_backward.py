@@ -29,6 +29,7 @@ CASES = [
 
 
 @pytest.mark.adaptive_avg_pool2d_backward
+@pytest.mark.underscore_adaptive_avg_pool2d_backward
 @pytest.mark.parametrize("shape,output_size", CASES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_adaptive_avg_pool2d_backward(shape, output_size, dtype):

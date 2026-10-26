@@ -29,6 +29,7 @@ def _deterministic_seed():
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 @pytest.mark.parametrize("dtype", PRIMARY_FLOAT_DTYPES)
 def test_amp_foreach_non_finite_check_and_unscale_(dtype):
     """Test _amp_foreach_non_finite_check_and_unscale_ with normal tensors."""
@@ -67,6 +68,7 @@ def test_amp_foreach_non_finite_check_and_unscale_(dtype):
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 @pytest.mark.parametrize("dtype", PRIMARY_FLOAT_DTYPES)
 def test_amp_foreach_non_finite_check_and_unscale__inf(dtype):
     """Test _amp_foreach_non_finite_check_and_unscale_ with inf values."""
@@ -108,6 +110,7 @@ def test_amp_foreach_non_finite_check_and_unscale__inf(dtype):
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 @pytest.mark.parametrize("dtype", PRIMARY_FLOAT_DTYPES)
 def test_amp_foreach_non_finite_check_and_unscale__nan(dtype):
     """Test _amp_foreach_non_finite_check_and_unscale_ with nan values."""
@@ -163,6 +166,7 @@ def _assert_layout_preserved(tensors, snapshots):
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 @pytest.mark.parametrize("initial_found_inf", [0.0, 2.0])
 def test_amp_foreach_non_finite_check_and_unscale__mutation_contract(
     initial_found_inf
@@ -208,6 +212,7 @@ def test_amp_foreach_non_finite_check_and_unscale__mutation_contract(
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 def test_amp_foreach_non_finite_check_and_unscale__empty_list():
     found_inf = torch.tensor(0.0, device=flag_gems.device)
     inv_scale = torch.tensor(0.5, device=flag_gems.device)
@@ -224,6 +229,7 @@ def test_amp_foreach_non_finite_check_and_unscale__empty_list():
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
+@pytest.mark.underscore_amp_foreach_non_finite_check_and_unscale_
 def test_amp_foreach_non_finite_check_and_unscale__rejects_non_sequence():
     found_inf = torch.tensor(0.0, device=flag_gems.device)
     inv_scale = torch.tensor(0.5, device=flag_gems.device)

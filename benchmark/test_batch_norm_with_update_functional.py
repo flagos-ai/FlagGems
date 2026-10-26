@@ -46,6 +46,7 @@ class NormBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.batch_norm_with_update_functional
+@pytest.mark.underscore_batch_norm_with_update_functional
 def test__batch_norm_with_update_functional():
     def case_fn(shape, dtype):
         yield base.BenchmarkCasePlan(
@@ -69,7 +70,7 @@ def test__batch_norm_with_update_functional():
     bench = NormBenchmark(
         case_fn=case_fn,
         build_inputs_fn=build_inputs_fn,
-        op_name="batch_norm_with_update_functional",
+        op_name="_batch_norm_with_update_functional",
         torch_op=torch.ops.aten._batch_norm_with_update_functional,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -20,21 +20,39 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-REAL_DTYPES = utils.ALL_FLOAT_DTYPES + [torch.int8, torch.uint8] + utils.ALL_INT_DTYPES + utils.BOOL_TYPES
+REAL_DTYPES = (
+    utils.ALL_FLOAT_DTYPES
+    + [torch.int8, torch.uint8]
+    + utils.ALL_INT_DTYPES
+    + utils.BOOL_TYPES
+)
 
-SIGN_CASES = [(dtype, shape) for dtype in REAL_DTYPES for shape in utils.POINTWISE_SHAPES]
+SIGN_CASES = [
+    (dtype, shape) for dtype in REAL_DTYPES for shape in utils.POINTWISE_SHAPES
+]
+
 
 def _make_input(shape, dtype):
     if dtype == torch.bool:
-        return torch.randint(0, 2, shape, dtype=torch.int32, device=flag_gems.device).bool()
+        return torch.randint(
+            0, 2, shape, dtype=torch.int32, device=flag_gems.device
+        ).bool()
     if dtype == torch.uint8:
         return torch.randint(0, 100, shape, dtype=dtype, device=flag_gems.device)
     if dtype in utils.ALL_INT_DTYPES or dtype == torch.int8:
         return torch.randint(-100, 100, shape, dtype=dtype, device=flag_gems.device)
     return torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
+
 def _to_reference(inp):
+    if (
+        flag_gems.vendor_name in ("ascend", "kunlunxin")
+        and not utils.TO_CPU
+        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
+    ):
+        pytest.skip("backend native sign reference does not support int8/uint8/int16")
     return utils.to_reference(inp, False)
+
 
 def _assert_matches_torch(inp, out=None):
     ref_inp = _to_reference(inp)
@@ -48,6 +66,7 @@ def _assert_matches_torch(inp, out=None):
         assert result is out
     utils.gems_assert_equal(result, ref_out, equal_nan=False)
 
+
 def _assert_inplace_matches_torch(inp):
     ref_inp = _to_reference(inp.clone())
     ref_out = ref_inp.sign_()
@@ -56,31 +75,36 @@ def _assert_inplace_matches_torch(inp):
     utils.gems_assert_equal(result, ref_out, equal_nan=False)
     utils.gems_assert_equal(inp, ref_out, equal_nan=False)
 
+
 @pytest.mark.sign_out
-@pytest.mark.parametrize('dtype,shape', SIGN_CASES)
+@pytest.mark.parametrize("dtype,shape", SIGN_CASES)
 def test_sign_out(dtype, shape):
     inp = _make_input(shape, dtype)
     out = torch.empty_like(inp)
     _assert_matches_torch(inp, out)
 
+
 @pytest.mark.sign_
-@pytest.mark.parametrize('dtype,shape', SIGN_CASES)
+@pytest.mark.parametrize("dtype,shape", SIGN_CASES)
 def test_sign_(dtype, shape):
     inp = _make_input(shape, dtype)
     _assert_inplace_matches_torch(inp)
 
+
 @pytest.mark.sign_
-@pytest.mark.parametrize('dtype', [torch.float32, torch.float16])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 def test_sign__noncontiguous(dtype):
     inp = _make_input((7, 11), dtype).transpose(0, 1)
     _assert_inplace_matches_torch(inp)
 
+
 @pytest.mark.sign_out
-@pytest.mark.parametrize('dtype', [torch.float32, torch.int32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int32])
 def test_sign_out_noncontiguous(dtype):
     inp = _make_input((11, 7), dtype)
     out = torch.empty((7, 11), dtype=dtype, device=flag_gems.device).transpose(0, 1)
     _assert_matches_torch(inp, out)
+
 
 @pytest.mark.sign_out
 def test_sign_out_resizes_empty_tensor():
@@ -88,6 +112,7 @@ def test_sign_out_resizes_empty_tensor():
     out = torch.empty(0, dtype=inp.dtype, device=flag_gems.device)
     _assert_matches_torch(inp, out)
     assert out.shape == inp.shape
+
 
 @pytest.mark.sign_out
 def test_sign_out_rejects_mismatched_dtype():

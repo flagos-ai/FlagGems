@@ -29,6 +29,7 @@ CASES = [
 
 
 @pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.underscore_scaled_dot_product_attention_math
 @pytest.mark.parametrize(
     "batch,heads,q_len,kv_len,head_dim,use_mask,is_causal,scale", CASES
 )
@@ -37,9 +38,15 @@ def test_scaled_dot_product_attention_math(
     batch, heads, q_len, kv_len, head_dim, use_mask, is_causal, scale, dtype
 ):
     torch.manual_seed(0)
-    query = torch.randn(batch, heads, q_len, head_dim, dtype=dtype, device=flag_gems.device)
-    key = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device)
-    value = torch.randn(batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device)
+    query = torch.randn(
+        batch, heads, q_len, head_dim, dtype=dtype, device=flag_gems.device
+    )
+    key = torch.randn(
+        batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device
+    )
+    value = torch.randn(
+        batch, heads, kv_len, head_dim, dtype=dtype, device=flag_gems.device
+    )
     attn_mask = (
         torch.randn(q_len, kv_len, dtype=dtype, device=flag_gems.device)
         if use_mask
@@ -59,15 +66,14 @@ def test_scaled_dot_product_attention_math(
         scale=scale,
     )
 
-    with flag_gems.use_gems():
-        output, weights = SDPA_MATH(
-            query,
-            key,
-            value,
-            attn_mask=attn_mask,
-            is_causal=is_causal,
-            scale=scale,
-        )
+    output, weights = flag_gems._scaled_dot_product_attention_math(
+        query,
+        key,
+        value,
+        attn_mask=attn_mask,
+        is_causal=is_causal,
+        scale=scale,
+    )
 
     assert output.shape == (batch, heads, q_len, head_dim)
     assert weights.shape == (batch, heads, q_len, kv_len)
@@ -76,8 +82,9 @@ def test_scaled_dot_product_attention_math(
 
 
 @pytest.mark.scaled_dot_product_attention_math
+@pytest.mark.underscore_scaled_dot_product_attention_math
 def test_scaled_dot_product_attention_math_rejects_dropout():
     torch.manual_seed(0)
     query = torch.randn(1, 2, 8, 16, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(AssertionError, match="dropout_p"):
-        SDPA_MATH(query, query, query, dropout_p=0.1)
+    with pytest.raises(AssertionError, match="dropout_p"):
+        flag_gems._scaled_dot_product_attention_math(query, query, query, dropout_p=0.1)

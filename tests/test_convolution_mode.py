@@ -80,6 +80,7 @@ def _make_inputs(input_shape, weight_shape, groups, dtype, bias_flag):
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("input_shape, weight_shape, groups", SHAPE_CONV_MODE_2D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
@@ -101,6 +102,7 @@ def test_convolution_mode_2d(
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("input_shape, weight_shape, groups", SHAPE_CONV_MODE_2D)
 @pytest.mark.parametrize("padding", STR_PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -115,6 +117,7 @@ def test_convolution_mode_2d_dilation(
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("input_shape, weight_shape, groups", SHAPE_CONV_MODE_1D)
 @pytest.mark.parametrize("stride", [1, 2])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
@@ -132,6 +135,7 @@ def test_convolution_mode_1d(
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("input_shape, weight_shape, groups", SHAPE_CONV_MODE_3D)
 @pytest.mark.parametrize("padding", STR_PADDINGS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -146,6 +150,7 @@ def test_convolution_mode_3d(input_shape, weight_shape, groups, padding, dtype, 
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_mode_invalid_padding(dtype):
     torch.manual_seed(0)
@@ -156,6 +161,7 @@ def test_convolution_mode_invalid_padding(dtype):
 
 
 @pytest.mark.convolution_mode
+@pytest.mark.underscore_convolution_mode
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_convolution_mode_same_strided_raises(dtype):
     torch.manual_seed(0)
