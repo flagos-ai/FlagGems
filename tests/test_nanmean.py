@@ -165,8 +165,8 @@ def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
 @pytest.mark.nanmean
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend native nanmean does not support complex output dtypes",
+    utils.TO_CPU or flag_gems.vendor_name == "ascend",
+    reason="CPU/Ascend native nanmean does not support complex output dtypes",
 )
 def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
@@ -282,8 +282,8 @@ def test_nanmean_out_rejects_device_mismatch():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("ascend", "mthreads"),
-    reason="Ascend/MUSA native nanmean does not support complex inputs",
+    utils.TO_CPU or flag_gems.vendor_name in ("ascend", "mthreads"),
+    reason="CPU/Ascend/MUSA native nanmean does not support complex inputs",
 )
 def test_nanmean_complex_input():
     inp = torch.tensor(

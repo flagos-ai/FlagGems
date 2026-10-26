@@ -189,6 +189,13 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         pytest.skip(
             "MUSA Poisson NLL reference does not support nonempty complex tensors"
         )
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and case == "empty"
+        and reduction == 1
+    ):
+        pytest.skip("Ascend native empty complex mean does not support this dtype")
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
     factory_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
     inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
