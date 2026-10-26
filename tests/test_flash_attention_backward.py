@@ -116,11 +116,8 @@ def cudnn_attn_forward_native(
     else:
         philox_seed = results[2]
         philox_offset = results[3]
-
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
     lse = lse_4d.squeeze(-1).float()
-    if IS_KUNLUNXIN:
-        return out, lse, lse_4d, philox_seed, philox_offset
     return out, lse, philox_seed, philox_offset
 
 
@@ -137,36 +134,20 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    if IS_KUNLUNXIN:
-        results = torch.ops.aten._efficient_attention_forward(
-            Q,
-            K,
-            V,
-            bias,
-            None,
-            None,
-            None,
-            None,
-            dropout_p=dropout_p,
-            custom_mask_type=1 if is_causal else 0,
-            compute_log_sumexp=True,
-            scale=scale,
-        )
-    else:
-        results = torch.ops.aten._efficient_attention_forward(
-            Q,
-            K,
-            V,
-            bias,
-            None,
-            None,
-            Q.shape[1],
-            K.shape[1],
-            dropout_p=dropout_p,
-            custom_mask_type=1 if is_causal else 0,
-            compute_log_sumexp=True,
-            scale=scale,
-        )
+    results = torch.ops.aten._efficient_attention_forward(
+        Q,
+        K,
+        V,
+        bias,
+        None,
+        None,
+        None if IS_KUNLUNXIN else Q.shape[1],
+        None if IS_KUNLUNXIN else K.shape[1],
+        dropout_p=dropout_p,
+        custom_mask_type=1 if is_causal else 0,
+        compute_log_sumexp=True,
+        scale=scale,
+    )
     out = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]
@@ -387,24 +368,14 @@ def test_scaled_dot_product_cudnn_attention_backward(
             * 0.1
         )
 
-    if IS_KUNLUNXIN:
-        out, lse, lse_4d, philox_seed, philox_offset = cudnn_attn_forward_native(
-            Q,
-            K,
-            V,
-            attn_bias=attn_bias,
-            is_causal=is_causal,
-            softmax_scale=scale,
-        )
-    else:
-        out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
-            Q,
-            K,
-            V,
-            attn_bias=attn_bias,
-            is_causal=is_causal,
-            softmax_scale=scale,
-        )
+    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+        Q,
+        K,
+        V,
+        attn_bias=attn_bias,
+        is_causal=is_causal,
+        softmax_scale=scale,
+    )
 
     Q_bhsd = Q.permute(0, 2, 1, 3).contiguous()
     K_bhsd = K.permute(0, 2, 1, 3).contiguous()
@@ -412,19 +383,19 @@ def test_scaled_dot_product_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
+    # The aten cudnn backward kernel exists only for the CUDA backend, so the
+    # reference inputs stay on the accelerator even under --ref cpu. The cudnn
+    # backward indexes the stats input as a 4D (B, H, S, 1) tensor; a squeezed
+    # 3D view is rejected by cuDNN Frontend with "The dim for input_names::Stats
+    # is invalid" on the first call in a process.
     if IS_KUNLUNXIN:
         ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
         ref_Q_bhsd = utils.to_reference(Q_bhsd)
         ref_K_bhsd = utils.to_reference(K_bhsd)
         ref_V_bhsd = utils.to_reference(V_bhsd)
         ref_out_bhsd = utils.to_reference(out_bhsd)
-        ref_lse = utils.to_reference(lse_4d)
+        ref_lse = utils.to_reference(lse.unsqueeze(-1))
     else:
-        # The aten cudnn backward kernel exists only for the CUDA backend, so the
-        # reference inputs stay on the accelerator even under --ref cpu. The cudnn
-        # backward indexes the stats input as a 4D (B, H, S, 1) tensor; a squeezed
-        # 3D view is rejected by cuDNN Frontend with "The dim for input_names::Stats
-        # is invalid" on the first call in a process.
         ref_dOut_bhsd = dOut_bhsd
         ref_Q_bhsd = Q_bhsd
         ref_K_bhsd = K_bhsd

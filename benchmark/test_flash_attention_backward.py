@@ -177,36 +177,20 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    if IS_KUNLUNXIN:
-        results = torch.ops.aten._efficient_attention_forward(
-            Q_fa,
-            K_fa,
-            V_fa,
-            bias,
-            None,
-            None,
-            None,
-            None,
-            dropout_p=dropout_p,
-            custom_mask_type=1 if is_causal else 0,
-            compute_log_sumexp=True,
-            scale=scale,
-        )
-    else:
-        results = torch.ops.aten._efficient_attention_forward(
-            Q_fa,
-            K_fa,
-            V_fa,
-            bias,
-            None,
-            None,
-            Q.shape[2],
-            K.shape[2],
-            dropout_p=dropout_p,
-            custom_mask_type=1 if is_causal else 0,
-            compute_log_sumexp=True,
-            scale=scale,
-        )
+    results = torch.ops.aten._efficient_attention_forward(
+        Q_fa,
+        K_fa,
+        V_fa,
+        bias,
+        None,
+        None,
+        None if IS_KUNLUNXIN else Q.shape[2],
+        None if IS_KUNLUNXIN else K.shape[2],
+        dropout_p=dropout_p,
+        custom_mask_type=1 if is_causal else 0,
+        compute_log_sumexp=True,
+        scale=scale,
+    )
     out_fa = results[0]
     lse_aligned = results[1]
     philox_seed = results[2]

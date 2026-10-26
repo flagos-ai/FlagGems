@@ -150,9 +150,8 @@ def _attn_fwd_inner(
 
 # NOTE: we assert BLOCK_N <= HEAD_DIM in _attn_fwd, so for small head_dim,
 # we need to generate more configs.
-# [kunlunxin] single-config: on this backend multi-config autotuning adds
-# ~100 ms to the first call for every new (KV_CTX, HEAD_DIM) key. Only BLOCK_M
-# is consumed here (it drives the grid).
+# [kunlunxin] single-config: multi-config autotuning costs a long first call
+# per (KV_CTX, HEAD_DIM) key. Only BLOCK_M is consumed here (it drives the grid).
 configs = [
     triton.Config(
         {"BLOCK_M": 128, "BLOCK_N": 16, "PRE_LOAD_V": 0}, num_stages=2, num_warps=4
@@ -492,6 +491,7 @@ def prob_ds_finalize_kernel(
     D_CHUNKS: tl.constexpr,
     LSE_STRIDE_BH: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
+    CAUSAL_OFF: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     BLOCK_N_: tl.constexpr,
 ):
@@ -520,10 +520,8 @@ def prob_ds_finalize_kernel(
     lse = tl.load(LSE + bh * LSE_STRIDE_BH + q_idx).to(tl.float32)
     valid = n_mask
     if IS_CAUSAL:
-        # The native efficient-attention causal mask is BOTTOM-RIGHT aligned:
-        # when q_len != kv_len, row i attends keys 0 .. i + (KV_LEN - Q_LEN).
-        # For q_len == kv_len the two alignments coincide.
-        valid = valid & (n_offs <= q_idx + (KV_LEN - Q_LEN))
+        # Row i attends keys 0 .. i + CAUSAL_OFF.
+        valid = valid & (n_offs <= q_idx + CAUSAL_OFF)
     p = tl.exp(score * SCALE + bias_val)
     p = tl.where(valid, p, 0.0)
     p_dv = tl.exp2(score * SCALE + bias_val - lse)
@@ -550,9 +548,7 @@ def normalize_prob_ds_kernel(
     offs = (bh * Q_LEN + q_idx) * KV_LEN + n_offs
     p = tl.load(P + offs, mask=mask, other=0.0)
     norm = tl.sum(p, axis=0)
-    # A bottom-right causal row can be entirely masked when q_len > kv_len
-    # (row i < q_len - kv_len attends no key).  Guard the division so such a
-    # row yields zeros instead of 0/0 = NaN; norm is always > 0 otherwise.
+    # A row with no valid key has norm == 0; use 1.0 so it stays all zeros.
     norm = tl.where(norm > 0.0, norm, 1.0)
     p /= norm
     ds = tl.load(DS + offs, mask=mask, other=0.0) / norm
@@ -729,6 +725,19 @@ def grad_finalize_kernel(
         tl.store(OUT + out_base + d_offset, acc, mask=d_idx < D)
 
 
+def _fa_bias_4d(t, batch, heads, q_len, kv_len):
+    """Broadcast a 2D/3D/4D attention bias to (B, H, Q, K)."""
+    if t.dim() == 2:
+        t = t[None, None]
+    elif t.dim() == 3:
+        t = t[:, None]
+    elif t.dim() != 4:
+        raise ValueError(f"attn_mask must be 2D/3D/4D, got {t.dim()}D")
+    if t.shape[-2] != q_len or t.shape[-1] != kv_len:
+        raise ValueError("attn_mask shape must be (Q, K) along the last dims")
+    return t.expand(batch, heads, q_len, kv_len)
+
+
 def scaled_dot_product_attention_forward(
     query,
     key,
@@ -774,29 +783,21 @@ def scaled_dot_product_attention_forward(
     q_in = _fa_pad_d(query, padded_dq) if padded_dq != head_dim else query
     v_in = _fa_pad_d(value, padded_dv) if padded_dv != value_dim else value
 
-    # Build the (B, H, Q, K_PAD) cmask: cm = -bias for allowed cells, +1e30
-    # for masked cells.  n >= K cells are never stored by kernel A (they stay
-    # -1e30 in qk_buf -- prefill only when there is padding -- and are zeroed
-    # by kernel B's (qk' - m) < -12 test).
+    # cmask carries only the 0.0 / 1e30 sentinel; a finite additive bias is
+    # routed through the alibi channel, which kernel A adds to qk.
     cm_vals = None
+    bias_vals = None
     if attn_mask is not None:
         if attn_mask.dtype == torch.bool:
             cm_vals = torch.where(attn_mask, 0.0, 1e30)
         else:
             bias = attn_mask.to(torch.float32)
-            bias = torch.where(
-                bias == float("-inf"), torch.full_like(bias, -1e30), bias
-            )
-            cm_vals = -bias
-        if cm_vals.dim() == 2:  # (Q, K)
-            cm_vals = cm_vals[None, None]
-        elif cm_vals.dim() == 3:  # (B, Q, K)
-            cm_vals = cm_vals[:, None]
-        elif cm_vals.dim() != 4:  # (B, H, Q, K)
-            raise ValueError(f"attn_mask must be 2D/3D/4D, got {cm_vals.dim()}D")
-        if cm_vals.shape[-2] != q_len or cm_vals.shape[-1] != kv_len:
-            raise ValueError("attn_mask shape must be (Q, K) along the last dims")
-        cm_vals = cm_vals.expand(batch, q_head_num, q_len, kv_len)
+            masked = bias == float("-inf")
+            cm_vals = torch.where(masked, 1e30, 0.0)
+            bias_vals = torch.where(masked, 0.0, bias)
+        cm_vals = _fa_bias_4d(cm_vals, batch, q_head_num, q_len, kv_len)
+        if bias_vals is not None:
+            bias_vals = _fa_bias_4d(bias_vals, batch, q_head_num, q_len, kv_len)
 
     use_cmask = cm_vals is not None or is_causal
     if use_cmask:
@@ -808,9 +809,8 @@ def scaled_dot_product_attention_forward(
         else:
             cmask[..., :kv_len] = 0.0
         if is_causal:
-            # Bottom-right alignment: n <= m + (K - Q) (matches torch SDPA).
-            # Build a (Q, K) pattern instead of a 4D broadcast where: the 4D
-            # form materializes a B*H-sized f32 temp just to pick entries.
+            # Causal mask: n <= m + (K - Q); the two bounds coincide when
+            # q_len == kv_len.
             rows = torch.arange(q_len, device=device)[:, None]
             cols = torch.arange(kv_len, device=device)[None, :]
             allowed = cols <= (rows + kv_len - q_len)  # (Q, K)
@@ -818,6 +818,14 @@ def scaled_dot_product_attention_forward(
                 batch, q_head_num, q_len, kv_len
             )
         cmask = cmask.reshape(batch * q_head_num, q_len, k_pad)
+
+    alibi_bias = None
+    if bias_vals is not None:
+        padded_bias = torch.zeros(
+            (batch, q_head_num, q_len, k_pad), dtype=torch.float32, device=device
+        )
+        padded_bias[..., :kv_len] = bias_vals
+        alibi_bias = padded_bias.reshape(batch * q_head_num, q_len, k_pad)
 
     if kv_len % BLOCK_N == 0:
         # Every column is written by kernel A (no n >= KV_CTX padding), so the
@@ -855,10 +863,9 @@ def scaled_dot_product_attention_forward(
             qk_buf,
             m_buf,
             cmask if use_cmask else qk_buf,
-            # This entry point implements neither alibi nor softcap, so both are
-            # passed in their disabled form: ALIBI gets a dummy pointer (it is
-            # only dereferenced when USE_ALIBI is true) and softcap gets 0.0.
-            qk_buf,
+            # This entry point implements neither softcap nor alibi slopes; the
+            # ALIBI channel carries only the additive attn_mask, when present.
+            alibi_bias if alibi_bias is not None else qk_buf,
             softmax_scale,
             0.0,
             q_in.stride(0),
@@ -875,7 +882,7 @@ def scaled_dot_product_attention_forward(
             q_head_num,
             USE_CMASK=use_cmask,
             USE_SOFTCAP=False,
-            USE_ALIBI=False,
+            USE_ALIBI=alibi_bias is not None,
             num_warps=8,
             num_stages=1,
             **common_q,
@@ -919,7 +926,16 @@ def scaled_dot_product_attention_forward(
 
 
 def _staged_attention_backward(
-    do, query, key, value, o, lse, sm_scale, is_causal, attn_bias=None
+    do,
+    query,
+    key,
+    value,
+    o,
+    lse,
+    sm_scale,
+    is_causal,
+    attn_bias=None,
+    causal_top_left=True,
 ):
     batch, query_heads, query_length, head_dim = query.shape
     key_batch, kv_heads, kv_length, key_head_dim = key.shape
@@ -1014,6 +1030,7 @@ def _staged_attention_backward(
         D_CHUNKS=dim_chunks,
         LSE_STRIDE_BH=lse.stride(1),
         IS_CAUSAL=is_causal,
+        CAUSAL_OFF=0 if causal_top_left else kv_length - query_length,
         HAS_BIAS=attn_bias is not None,
         BLOCK_N_=_STAGED_BLOCK_N,
         **launch_options,
@@ -1138,13 +1155,8 @@ def _staged_attention_backward(
     )
     dbias = None
     if attn_bias is not None:
-        # `ds` is dS * sm_scale, and the staged dQ/dK path needs exactly that
-        # form: with the native logits `S = (Q @ K^T) * scale + bias` we have
-        # dQ = dL @ K = (dS * scale) @ K.  The bias gradient is dS itself --
-        # the bias enters the logits unscaled -- so undo the scale here.
-        # Measured on device: finite differences through the native forward
-        # give dOut/dbias = dS (best fit 1.003), and reconstructing dQ/dK from
-        # this analytic dS matches the native gradients to 4e-07.
+        # `ds` is dS * sm_scale; the bias enters the logits unscaled, so the
+        # bias gradient is `ds / sm_scale`.
         dbias = (
             (ds / sm_scale)
             .view(batch, query_heads, query_length, kv_length)
@@ -1232,6 +1244,7 @@ def efficient_attention_backward(
         logsumexp[:, :, :q_len].contiguous(),
         sm_scale,
         is_causal,
+        causal_top_left=False,
     )
     return (
         d_query.permute(0, 2, 1, 3).contiguous(),
@@ -1454,6 +1467,7 @@ def scaled_dot_product_efficient_attention_backward(
         sm_scale,
         is_causal,
         attn_bias=attn_bias,
+        causal_top_left=False,
     )
     dbias = None
     if not need_dq:
@@ -1505,21 +1519,15 @@ def _fa_qk_m_kernel(
     USE_SOFTCAP: tl.constexpr,
     USE_ALIBI: tl.constexpr,
 ):
-    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask`` and ``m = max(rowmax(qk'), 0)``.
+    """Pass 1: ``qk' = (Q @ K^T) * scale - cmask * 1e29`` and ``m = max(qk')``.
 
-    When ``USE_CMASK``, the mask is folded into the stored qk here
-    (``qk' = qk - cm``) from a dense ``(B*H, Q_CTX, K_PAD)`` f32 ``CMASK``:
-    0.0/50.0 for the FA3 causal/window masks, ``-attn_mask`` / ``+1e30`` for
-    SDPA.  Masking must NOT happen in kernel B: the XPU compiler corrupts
-    that kernel's loop-carried ``l_i``/``acc`` when the loop body holds an
-    in-loop load/branch.  ``QK`` is prefilled with -1e30 so cells with
-    ``n >= KV_CTX`` stay at a value whose ``exp2`` underflows to exactly 0.0.
+    ``CMASK`` is a dense ``(B*H, Q_CTX, K_PAD)`` f32 buffer holding 0.0 for
+    kept cells and a large sentinel for masked cells.  ``USE_ALIBI`` adds a
+    dense additive ``(B*H, Q_CTX, K_PAD)`` bias.  ``QK`` is prefilled with
+    -1e30 so cells with ``n >= KV_CTX`` underflow to exactly 0.0.
 
-    ``m`` is computed over the MASK-APPLIED qk' (NOT the raw qk) so that
-    ``m >= max(qk')``: the XPU ``exp2`` saturates at 1.0 for positive
-    arguments, and kernel B's ``(qk' - m)`` must stay ``<= 0`` to avoid the
-    saturation (this matters for positive additive masks, e.g.
-    ``attn_mask = +3``, which raise qk' above rowmax of the raw qk).
+    ``m`` is taken over the mask-applied ``qk'`` so that ``m >= max(qk')``,
+    i.e. ``qk' - m <= 0`` for every cell.
     """
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
@@ -1615,20 +1623,12 @@ def _fa_lout_kernel(
     USE_DROPOUT: tl.constexpr,
     STORE_DBG: tl.constexpr,
 ):
-    """Pass 2: ``p = exp2((qk' - m) * LOG2E) = e^(qk' - m)``, ``out = p @ V / sum``.
+    """Pass 2: ``p = exp2((qk' - m) * LOG2E)``, ``out = p @ V / sum(p)``.
 
-    The mask was already folded into ``qk`` by kernel A (``qk' = qk - cmask``)
-    with ``m >= max(qk')`` (so ``(qk' - m) <= 0`` and the XPU ``exp2`` -- which
-    saturates at 1.0 for positive arguments -- never leaves its exact range),
-    and the ``n >= KV_CTX`` padding stays at ``-1e30``.  There is NO
-    branch/load inside the loop: the XPU compiler corrupts the loop-carried
-    ``l_i``/``acc`` otherwise.  The ``tl.where`` zeroes cells with
-    ``(qk' - m) < -12`` explicitly because the XPU ``exp2``/underflow is
-    inexact for inputs below ~-11.09: such cells would otherwise return
-    ``2^-16`` instead of their true value (``1023 * 2^-16 = 0.016`` would
-    leak into ``l_i`` of short rows).  The threshold is on ``(qk' - m)`` (not
-    ``qk'``) so cells with very negative additive mask biases (e.g.
-    ``attn_mask = -20``) are also zeroed exactly.
+    The mask is already folded into ``qk'`` by kernel A and the
+    ``n >= KV_CTX`` padding stays at ``-1e30``.  Cells with
+    ``(qk' - m) < -12`` are zeroed explicitly, so a fully masked row
+    contributes nothing.
     """
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1) + hz_off
@@ -1725,9 +1725,8 @@ def _fa_dbg_norm_kernel(
     lse = tl.load(Lse + pid_hz * Q_CTX + offs_q, mask=q_mask, other=0.0)
     m = tl.load(M + pid_hz * Q_CTX + offs_q, mask=q_mask, other=0.0)
     l_safe = tl.exp(lse - m)
-    # A row with no valid cell stores lse = -inf and m = 1e30; exp() of that
-    # -inf is unreliable on this backend, so clamp the result rather than
-    # relying on exp(-inf) == 0.
+    # A row with no valid cell stores lse = -inf and m = 1e30; clamp the
+    # result instead of relying on exp(-inf) == 0.
     l_safe = tl.where(l_safe > 0.0, l_safe, 1e-30)
     dbg_base = DBG + pid_hz * Q_CTX * K_PAD
     for start_k in range(0, K_PAD, BLOCK_K):
@@ -1750,22 +1749,10 @@ def _fa_pad_d(t, padded):
 
 
 # ---------------------------------------------------------------------------
-# Fast path: delegate the plain (no softcap / alibi / window / dropout) forward
-# to the backend's tiled flash-attention kernel `_attn_fwd`.
-#
-# The materialising path below (`_fa_qk_m_kernel` + `_fa_lout_kernel`) writes a
-# full fp32 (B*H, Q, K_PAD) score matrix and reads it back, so its cost is
-# O(Q*K) memory traffic: measured 1086 us at (4,8,1024,1024,128) against 309 us
-# for `aten::_scaled_dot_product_flash_attention`.  `_attn_fwd` is a tiled
-# online-softmax kernel (the same one the backend's autograd attention entry
-# and `_scaled_dot_product_fused_attention_overrideable` launch); measured
-# 163 us on the same shape.
-#
-# The launch is sensitive to the runtime-argument layout: the argument order,
-# the 3-element grid callable and the "attn_mask must be None (not a dummy
-# tensor)" rule are all copied verbatim from
-# `_scaled_dot_product_fused_attention_overrideable`, the call pattern that is
-# known to be accepted.
+# Fast path: delegate the plain forward (no softcap / alibi / window / dropout)
+# to the tiled online-softmax kernel `_attn_fwd`; the materialising path below
+# (`_fa_qk_m_kernel` + `_fa_lout_kernel`) writes a full fp32 (B*H, Q, K_PAD)
+# score matrix and reads it back.
 # ---------------------------------------------------------------------------
 _TILED_GRID_CACHE = {}
 
@@ -1815,10 +1802,8 @@ def _flash_forward_tiled(
     else:
         q_in, k_in, v_in = query, key, value
 
-    # `_attn_fwd` indexes (batch, head, seq, dim) and the launch path requires
-    # that layout to be materialised (a transposed stride view is decoded with
-    # the wrong strides and silently produces a wrong result),
-    # so make the BHSD copies explicitly.
+    # `_attn_fwd` indexes (batch, head, seq, dim), so make the BHSD copies
+    # explicitly.
     q_t = q_in.transpose(1, 2).contiguous()
     k_t = k_in.transpose(1, 2).contiguous()
     v_t = v_in.transpose(1, 2).contiguous()
