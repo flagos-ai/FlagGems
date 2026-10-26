@@ -350,11 +350,9 @@ def test_foreach_ops_registration_is_live(key, caplog):
     device = flag_gems.device
     inp = [_sample(s, torch.float32, device) for s in shapes]
     args = _build_args(core, overload, shapes, torch.float32, device)
-    wrapper = ALL_WRAPPERS[key]
     loggers = (
         "flag_gems.ops._foreach_binary",
         "flag_gems.ops._foreach_reduction",
-        wrapper.__module__,
     )
     aten = _aten(key)
 
