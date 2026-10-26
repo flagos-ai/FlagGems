@@ -44,7 +44,7 @@ def test_addmm_(M, N, K, scalar, dtype):
         self = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
         ref_mat1 = utils.to_reference(mat1, True)
         ref_mat2 = utils.to_reference(mat2, True)
-        ref_self = utils.to_reference(self, True)
+        ref_self = utils.to_reference(self, True).clone()
         original_pointer = self.data_ptr()
 
         ref_result = ref_self.addmm_(ref_mat1, ref_mat2, alpha=scalar, beta=scalar)
@@ -68,7 +68,7 @@ def test_addmm_noncontiguous_self_preserves_storage():
     self = backing.t()
     mat1 = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self, True).clone()
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
     pointer = self.data_ptr()

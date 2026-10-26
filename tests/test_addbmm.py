@@ -59,7 +59,10 @@ def test_addbmm(M, N, K, scalar, dtype):
         with flag_gems.use_gems():
             result = torch.addbmm(self, batch1, batch2, alpha=scalar, beta=scalar)
         utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
-        utils.gems_assert_equal(self, original)
+        assert self.device == original.device
+    assert self.dtype == original.dtype
+    assert self.shape == original.shape
+    utils.gems_assert_equal(self.cpu(), original.cpu())
     finally:
         if flag_gems.vendor_name == "mthreads":
             os.environ.pop("MUSA_ENABLE_SQMMA", None)

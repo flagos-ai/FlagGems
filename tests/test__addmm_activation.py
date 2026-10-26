@@ -35,6 +35,7 @@ else:
 
 
 @pytest.mark.addmm_activation
+@pytest.mark.underscore_addmm_activation
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -60,6 +61,7 @@ def test_addmm_activation(M, N, K, scalar, dtype, use_gelu):
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)

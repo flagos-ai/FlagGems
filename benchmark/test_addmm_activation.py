@@ -54,9 +54,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.addmm_activation
+@pytest.mark.underscore_addmm_activation
 def test_addmm_activation():
     BlasCaseBenchmark(
-        op_name="addmm_activation",
+        op_name="_addmm_activation",
         torch_op=torch._addmm_activation,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

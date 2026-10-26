@@ -42,7 +42,7 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     self = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
     ref_batch1 = utils.to_reference(batch1, True)
     ref_batch2 = utils.to_reference(batch2, True)
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self, True).clone()
     pointer = self.data_ptr()
 
     ref_result = ref_self.baddbmm_(ref_batch1, ref_batch2, alpha=scalar, beta=scalar)
@@ -57,12 +57,14 @@ def test_baddbmm_(M, N, K, scalar, dtype):
 
 @pytest.mark.baddbmm_
 def test_baddbmm_noncontiguous_self_preserves_storage():
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
+        pytest.skip("MUSA native baddbmm_ does not write noncontiguous self")
     torch.manual_seed(0)
     dtype = torch.float32
     self = torch.randn((2, 5, 3), dtype=dtype, device=flag_gems.device).transpose(1, 2)
     batch1 = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
     batch2 = torch.randn((2, 4, 5), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self, True).clone()
     pointer = self.data_ptr()
     stride = self.stride()
     ref_result = ref_self.baddbmm_(

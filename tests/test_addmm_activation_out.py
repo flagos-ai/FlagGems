@@ -29,6 +29,7 @@ else:
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -61,6 +62,7 @@ def test_addmm_activation_out(M, N, K, scalar, dtype, use_gelu):
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 def test_addmm_activation_out_resizes_empty_buffer():
     torch.manual_seed(0)
     self = torch.randn((5,), device=flag_gems.device)
@@ -82,6 +84,7 @@ def test_addmm_activation_out_resizes_empty_buffer():
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 def test_addmm_activation_out_noncontiguous_preserves_storage_and_stride():
     torch.manual_seed(0)
     self = torch.randn((5,), device=flag_gems.device)
@@ -106,6 +109,7 @@ def test_addmm_activation_out_noncontiguous_preserves_storage_and_stride():
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 def test_addmm_activation_out_rejects_wrong_dtype():
     torch.manual_seed(0)
     self = torch.randn((5,), device=flag_gems.device)

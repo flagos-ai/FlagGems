@@ -22,12 +22,44 @@ SHAPES = [(4, 4), (16, 1), (33, 16), (64, 64), (100, 40)]
 DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported else [])
 
 
+def _cpu_lu_solve(lu, pivots, rhs, *, left=True, adjoint=False):
+    """CPU ATen first, with a NumPy solve when this Torch has no LAPACK."""
+    assert lu.device.type == pivots.device.type == rhs.device.type == "cpu"
+    try:
+        return torch.linalg.lu_solve(lu, pivots, rhs, left=left, adjoint=adjoint)
+    except RuntimeError as exc:
+        if "requires compiling PyTorch with LAPACK" not in str(exc):
+            raise
+    import numpy as np
+
+    lower = torch.tril(lu, diagonal=-1) + torch.eye(lu.shape[-1], dtype=lu.dtype)
+    matrix = lower @ torch.triu(lu)
+    # LAPACK pivots encode sequential row swaps: undo them to recover A.
+    flat = matrix.reshape(-1, matrix.shape[-2], matrix.shape[-1])
+    pivot_rows = pivots.reshape(-1, pivots.shape[-1])
+    for batch, swaps in zip(flat, pivot_rows):
+        for i in range(swaps.numel() - 1, -1, -1):
+            j = int(swaps[i]) - 1
+            batch[[i, j]] = batch[[j, i]]
+    array = matrix.numpy()
+    if adjoint:
+        array = array.swapaxes(-1, -2).conj()
+    right = rhs.numpy()
+    if left:
+        output = np.linalg.solve(array, right)
+    else:
+        output = np.linalg.solve(array.swapaxes(-1, -2), right.swapaxes(-1, -2)).swapaxes(-1, -2)
+    return torch.from_numpy(np.array(output, copy=True)).to(dtype=rhs.dtype)
+
+
 def _make_inputs(batch_shape, n, k, dtype):
-    matrix = torch.randn(*batch_shape, n, n, dtype=dtype, device=flag_gems.device)
-    matrix = matrix @ matrix.mT + torch.eye(n, dtype=dtype, device=flag_gems.device) * n
-    rhs = torch.randn(*batch_shape, n, k, dtype=dtype, device=flag_gems.device)
+    # PPU device-side lu_factor aborts; factor the same recipe on CPU instead.
+    factory_device = "cpu" if flag_gems.vendor_name == "thead" else flag_gems.device
+    matrix = torch.randn(*batch_shape, n, n, dtype=dtype, device=factory_device)
+    matrix = matrix @ matrix.mT + torch.eye(n, dtype=dtype, device=factory_device) * n
+    rhs = torch.randn(*batch_shape, n, k, dtype=dtype, device=factory_device)
     lu, pivots = torch.linalg.lu_factor(matrix)
-    return lu, pivots, rhs
+    return tuple(value.to(flag_gems.device) for value in (lu, pivots, rhs))
 
 
 @pytest.mark.linalg_lu_solve
@@ -40,9 +72,15 @@ def test_linalg_lu_solve(batch_shape, shape, dtype):
     ref_lu = utils.to_reference(lu, True)
     ref_pivots = utils.to_reference(pivots)
     ref_rhs = utils.to_reference(rhs, True)
-    reference = torch.linalg.lu_solve(ref_lu, ref_pivots, ref_rhs)
-    with flag_gems.use_gems():
-        result = torch.linalg.lu_solve(lu, pivots, rhs)
+    reference = (
+        _cpu_lu_solve(ref_lu, ref_pivots, ref_rhs)
+        if ref_lu.device.type == "cpu"
+        else torch.linalg.lu_solve(ref_lu, ref_pivots, ref_rhs)
+    )
+    result = flag_gems.linalg_lu_solve(lu, pivots, rhs)
+    assert result.device == rhs.device
+    assert result.dtype == rhs.dtype
+    assert result.shape == rhs.shape
     assert result is not lu
     assert result is not rhs
     if result.numel():

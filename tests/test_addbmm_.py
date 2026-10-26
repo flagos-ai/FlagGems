@@ -43,7 +43,7 @@ def test_addbmm_(M, N, K, scalar, dtype):
     batch1 = torch.randn((4, M, K), dtype=dtype, device=flag_gems.device)
     batch2 = torch.randn((4, K, N), dtype=dtype, device=flag_gems.device)
     self = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self, True).clone()
     pointer = self.data_ptr()
     ref_result = ref_self.addbmm_(
         utils.to_reference(batch1, True),
@@ -66,7 +66,7 @@ def test_addbmm_noncontiguous_self_preserves_storage():
     self = torch.randn((5, 3), dtype=dtype, device=flag_gems.device).t()
     batch1 = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
     batch2 = torch.randn((2, 4, 5), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
+    ref_self = utils.to_reference(self, True).clone()
     pointer = self.data_ptr()
     stride = self.stride()
     ref_result = ref_self.addbmm_(utils.to_reference(batch1, True), utils.to_reference(batch2, True))

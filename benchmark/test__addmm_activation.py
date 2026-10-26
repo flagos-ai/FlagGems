@@ -30,9 +30,10 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.addmm_activation
+@pytest.mark.underscore_addmm_activation
 def test_addmm_activation(monkeypatch):
     bench = base.BlasBenchmark(
-        op_name="addmm_activation",
+        op_name="_addmm_activation",
         input_fn=_input_fn,
         torch_op=torch._addmm_activation,
         dtypes=consts.FLOAT_DTYPES,
@@ -54,9 +55,10 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
 
 @pytest.mark.addmm_activation_out
+@pytest.mark.underscore_addmm_activation_out
 def test_addmm_activation_out(monkeypatch):
     bench = base.BlasBenchmark(
-        op_name="addmm_activation_out",
+        op_name="_addmm_activation_out",
         input_fn=_input_fn_out,
         torch_op=torch._addmm_activation,
         dtypes=consts.FLOAT_DTYPES,

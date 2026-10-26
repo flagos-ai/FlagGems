@@ -43,11 +43,12 @@ def _case_fn(shape, dtype):
 def _build_inputs_fn(plan, dtype, device):
     n, k = plan.builder_args
     torch.manual_seed(0)
-    matrix = torch.randn(n, n, dtype=dtype, device=device)
-    matrix = matrix @ matrix.mT + torch.eye(n, dtype=dtype, device=device) * n
+    factory_device = "cpu" if flag_gems.vendor_name == "thead" else device
+    matrix = torch.randn(n, n, dtype=dtype, device=factory_device)
+    matrix = matrix @ matrix.mT + torch.eye(n, dtype=dtype, device=factory_device) * n
     lu, pivots = torch.linalg.lu_factor(matrix)
-    rhs = torch.randn(n, k, dtype=dtype, device=device)
-    return lu, pivots, rhs
+    rhs = torch.randn(n, k, dtype=dtype, device=factory_device)
+    return tuple(value.to(device) for value in (lu, pivots, rhs))
 
 
 @pytest.mark.linalg_lu_solve
