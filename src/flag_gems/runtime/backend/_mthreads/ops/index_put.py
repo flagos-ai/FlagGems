@@ -18,11 +18,21 @@ import os
 from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
-
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
+
+try:
+    import native_index_put_ext as _native_index_put_ext
+except (ImportError, OSError):
+    _native_index_put_ext = None
+
+
+def _mthreads_broadcast_values(values, shape):
+    if tuple(values.shape) == tuple(shape):
+        return values
+    return values.expand(shape)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -286,8 +296,210 @@ class IndexPutFunction:
 _index_put_func = IndexPutFunction()
 
 
+def _try_native_fullrank_update(inp, indices, values, accumulate, inplace):
+    if (
+        os.environ.get("FLAGGEMS_MTHREADS_NATIVE_INDEX_PUT") != "1"
+        or _native_index_put_ext is None
+        or not hasattr(_native_index_put_ext, "try_native_index_put_fullrank_")
+        or not isinstance(indices, (list, tuple))
+        or not torch.is_tensor(values)
+        or inp.requires_grad
+        or values.requires_grad
+        or inp.device.type != "musa"
+        or inp.ndim < 1
+        or inp.ndim > 3
+        or len(indices) != inp.ndim
+        or inp.dtype not in (torch.float16, torch.bfloat16, torch.float32)
+        or not inp.is_contiguous()
+        or not values.is_contiguous()
+        or values.device != inp.device
+        or values.dtype != inp.dtype
+    ):
+        return None
+    if len(indices) != inp.ndim:
+        return None
+    for index in indices:
+        if (
+            not torch.is_tensor(index)
+            or index.device != inp.device
+            or index.dtype != torch.int64
+            or index.ndim < 1
+            or index.ndim > 3
+            or not index.is_contiguous()
+            or index.numel() == 0
+        ):
+            return None
+    # The extension performs the remaining shape, alias, and launch checks in
+    # one C++ entry.  Returning None means the general semantic path owns it.
+    return _native_index_put_ext.try_native_index_put_fullrank_(
+        inp, list(indices), values, inplace, accumulate
+    )
+
+
+def _try_native_bool_update(inp, indices, values, accumulate, inplace):
+    if (
+        os.environ.get("FLAGGEMS_MTHREADS_NATIVE_INDEX_PUT") != "1"
+        or _native_index_put_ext is None
+        or not hasattr(_native_index_put_ext, "try_native_index_put_bool_")
+        or not isinstance(indices, (list, tuple))
+        or len(indices) != 1
+        or not torch.is_tensor(indices[0])
+        or indices[0].dtype != torch.bool
+        or indices[0].shape != inp.shape
+        or not indices[0].is_contiguous()
+        or not torch.is_tensor(values)
+        or values.ndim != 1
+        or not values.is_contiguous()
+        or values.device != inp.device
+        or values.dtype != inp.dtype
+        or inp.device.type != "musa"
+        or inp.ndim < 1
+        or inp.ndim > 3
+        or not inp.is_contiguous()
+        or inp.dtype not in (torch.float16, torch.bfloat16, torch.float32)
+        or inp.requires_grad
+        or values.requires_grad
+        or inp.numel() > (262144 if accumulate else 4096)
+    ):
+        return None
+    return _native_index_put_ext.try_native_index_put_bool_(
+        inp, indices[0], values, inplace, accumulate
+    )
+
+
+def _try_native_accumulate_update(inp, indices, values, accumulate, inplace):
+    if (
+        os.environ.get("FLAGGEMS_MTHREADS_NATIVE_INDEX_PUT") != "1"
+        or _native_index_put_ext is None
+        or not hasattr(_native_index_put_ext, "try_native_index_put_accumulate_")
+        or not accumulate
+        or not isinstance(indices, (list, tuple))
+        or len(indices) != 1
+        or not torch.is_tensor(indices[0])
+        or not torch.is_tensor(values)
+        or inp.requires_grad
+        or values.requires_grad
+        or inp.device.type != "musa"
+        or inp.ndim != 1
+        or inp.dtype not in (torch.float16, torch.float32)
+        or not inp.is_contiguous()
+        or indices[0].device != inp.device
+        or indices[0].dtype != torch.int64
+        or indices[0].ndim != 1
+        or not indices[0].is_contiguous()
+        or values.device != inp.device
+        or values.dtype != inp.dtype
+        or values.ndim != 1
+        or values.numel() != indices[0].numel()
+        or not values.is_contiguous()
+    ):
+        return None
+    return _native_index_put_ext.try_native_index_put_accumulate_(
+        inp, indices[0], values, inplace
+    )
+
+
+def _native_row_update_supported(inp, indices, values, accumulate):
+    if not torch.is_tensor(values):
+        return False
+    if inp.requires_grad or values.requires_grad:
+        return False
+    if len(indices) != 1 or not torch.is_tensor(indices[0]):
+        return False
+    index = indices[0]
+
+    def overlaps(lhs, rhs):
+        try:
+            return bool(torch._C._overlaps(lhs, rhs))
+        except (AttributeError, RuntimeError):
+            # A conservative fallback for older torch_musa builds.  Equal
+            # storage bases are enough to reject the common alias forms.
+            return lhs.untyped_storage().data_ptr() == rhs.untyped_storage().data_ptr()
+
+    return (
+        os.environ.get("FLAGGEMS_MTHREADS_NATIVE_INDEX_PUT") == "1"
+        and not accumulate
+        and _native_index_put_ext is not None
+        and inp.device.type == "musa"
+        and inp.ndim == 2
+        and inp.shape[0] > 0
+        and inp.shape[1] > 0
+        and inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and inp.is_contiguous()
+        and index.device == inp.device
+        and index.dtype == torch.int64
+        and index.ndim >= 1
+        and index.is_contiguous()
+        and index.numel() > 0
+        # The native launcher maps one update row to grid.y.  Keep the
+        # experimental public gate below the common device launch limit;
+        # larger updates use the general implementation.
+        and index.numel() <= 65535
+        and values.device == inp.device
+        and values.dtype == inp.dtype
+        and values.ndim in (1, 2)
+        and (
+            (values.ndim == 1 and values.shape[0] == inp.shape[1])
+            or (
+                values.ndim == 2
+                and index.ndim == 1
+                and values.shape[0] == index.numel()
+                and values.shape[1] == inp.shape[1]
+            )
+        )
+        and values.is_contiguous()
+        and not overlaps(inp, values)
+        and not overlaps(inp, index)
+    )
+
+
+def _native_row_index(index):
+    """Return the 1-D view required by the native row kernel.
+
+    The official benchmark supplies contiguous multidimensional index shapes
+    such as [2, 8] and [4, 64].  Reshape is a view for the contiguous gate and
+    does not materialize an intermediate GPU tensor.
+    """
+    return index if index.ndim == 1 else index.reshape(-1)
+
+
 def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS_MTHREADS INDEX_PUT")
+
+    native_result = _try_native_bool_update(
+        inp, indices, values, accumulate, inplace=False
+    )
+    if native_result is not None:
+        return native_result
+
+    native_result = _try_native_accumulate_update(
+        inp, indices, values, accumulate, inplace=False
+    )
+    if native_result is not None:
+        return native_result
+
+    native_result = _try_native_fullrank_update(
+        inp, indices, values, accumulate, inplace=False
+    )
+    if native_result is not None:
+        return native_result
+
+    if _native_row_update_supported(inp, indices, values, accumulate):
+        if (
+            hasattr(_native_index_put_ext, "try_native_index_put_row_clone_")
+            and 1 <= indices[0].ndim <= 3
+            and indices[0].numel() <= 256
+            and inp.numel() <= 4096
+        ):
+            native_result = _native_index_put_ext.try_native_index_put_row_clone_(
+                inp, indices[0], values
+            )
+            if native_result is not None:
+                return native_result
+        out = inp.clone()
+        return _native_index_put_ext.native_index_put_(
+            out, _native_row_index(indices[0]), values
+        )
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -378,7 +590,7 @@ def index_put(inp, indices, values, accumulate=False):
         before_dims = slice_shape[:num_before]
         after_dims = slice_shape[num_before:]
         natural_shape = before_dims + broadcast_shape + after_dims
-        values = values.broadcast_to(natural_shape)
+        values = _mthreads_broadcast_values(values, natural_shape)
 
         B, T = len(before_dims), len(broadcast_shape)
         val_perm = (
@@ -386,7 +598,7 @@ def index_put(inp, indices, values, accumulate=False):
         )
         values = values.permute(val_perm)
     else:
-        values = values.broadcast_to(target_shape)
+        values = _mthreads_broadcast_values(values, target_shape)
 
     _index_put_func(inp_view, tensors, values, accumulate)
     return out
@@ -394,6 +606,31 @@ def index_put(inp, indices, values, accumulate=False):
 
 def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS_MTHREADS INDEX_PUT_")
+
+    native_result = _try_native_bool_update(
+        inp, indices, values, accumulate, inplace=True
+    )
+    if native_result is not None:
+        return native_result
+
+    native_result = _try_native_accumulate_update(
+        inp, indices, values, accumulate, inplace=True
+    )
+    if native_result is not None:
+        return native_result
+
+    native_result = _try_native_fullrank_update(
+        inp, indices, values, accumulate, inplace=True
+    )
+    if native_result is not None:
+        return native_result
+
+    # The experimental row kernel is restricted to contiguous 2-D updates
+    # along the leading dimension and does not support accumulation.
+    if _native_row_update_supported(inp, indices, values, accumulate):
+        return _native_index_put_ext.native_index_put_(
+            inp, _native_row_index(indices[0]), values
+        )
 
     indices = list(indices)
     if len(indices) == 1 and indices[0].dtype == torch.bool:
@@ -483,7 +720,7 @@ def index_put_(inp, indices, values, accumulate=False):
         before_dims = slice_shape[:num_before]
         after_dims = slice_shape[num_before:]
         natural_shape = before_dims + broadcast_shape + after_dims
-        values = values.broadcast_to(natural_shape)
+        values = _mthreads_broadcast_values(values, natural_shape)
 
         B, T = len(before_dims), len(broadcast_shape)
         val_perm = (
@@ -491,7 +728,7 @@ def index_put_(inp, indices, values, accumulate=False):
         )
         values = values.permute(val_perm)
     else:
-        values = values.broadcast_to(target_shape)
+        values = _mthreads_broadcast_values(values, target_shape)
 
     _index_put_func(inp_view, tensors, values, accumulate)
     return inp
@@ -589,7 +826,7 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
         before_dims = slice_shape[:num_before]
         after_dims = slice_shape[num_before:]
         natural_shape = before_dims + broadcast_shape + after_dims
-        values = values.broadcast_to(natural_shape)
+        values = _mthreads_broadcast_values(values, natural_shape)
 
         B, T = len(before_dims), len(broadcast_shape)
         val_perm = (
@@ -597,7 +834,7 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
         )
         values = values.permute(val_perm)
     else:
-        values = values.broadcast_to(target_shape)
+        values = _mthreads_broadcast_values(values, target_shape)
 
     _index_put_func(inp_view, tensors, values, accumulate)
     return inp
