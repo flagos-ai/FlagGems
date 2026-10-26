@@ -1,8 +1,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -12,13 +10,21 @@ def trapz_input_fn(shape, dtype, device):
     yield inp, {"dx": 1.0, "dim": dim}
 
 
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(shape={"input": shape}, builder_args=(shape,))
+
+
+def _build_inputs(plan, dtype, device):
+    return next(trapz_input_fn(plan.builder_args[0], dtype, device))
+
+
 @pytest.mark.trapz
 def test_trapz():
     bench = base.GenericBenchmark(
         op_name="trapz",
         torch_op=torch.trapezoid,
-        input_fn=trapz_input_fn,
-        gems_op=flag_gems.trapz,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
