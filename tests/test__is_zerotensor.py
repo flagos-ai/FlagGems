@@ -56,6 +56,18 @@ _CONSTRUCTION_SHAPES = tu.selected_cases(
     quick=[(), (1,), (256,), (2, 19, 7)] + _ZERO_EXTENT_SHAPES,
 )
 
+def _dense_zero(shape, dtype, device):
+    # Hygon's Torch 2.4 CPU fill kernel rejects some FP8 shapes. Encoding
+    # positive zero from FP32 preserves the requested dtype and dense marker.
+    if (
+        flag_gems.vendor_name == "hygon"
+        and torch.device(device).type == "cpu"
+        and dtype in (torch.float8_e4m3fn, torch.float8_e5m2)
+    ):
+        return torch.zeros(shape, dtype=torch.float32, device=device).to(dtype)
+    return torch.zeros(shape, dtype=dtype, device=device)
+
+
 # Both operands hold the same (zero) values; only the marker differs.
 _ZERO_CONSTRUCTIONS = [
     (
@@ -67,7 +79,7 @@ _ZERO_CONSTRUCTIONS = [
     ),
     (
         "dense_zero",
-        lambda shape, dtype, device: torch.zeros(shape, dtype=dtype, device=device),
+        _dense_zero,
         False,
     ),
 ]

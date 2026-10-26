@@ -21,6 +21,8 @@ fallback. Core uses the shared ``consts.DEFAULT_SHAPES``; the comprehensive
 level adds the framework extras plus the operator's original shapes.
 """
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -78,6 +80,17 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class _IsZeroTensorBenchmark(base.GenericBenchmark):
+    def _candidate_call(self):
+        override = (
+            base.Config.override_registry.get_override(self.op_name)
+            if base.Config.override_registry is not None
+            else None
+        )
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise TypeError("_is_zerotensor benchmark requires a callable candidate")
+        return candidate, nullcontext(), override is not None
+
     def set_more_shapes(self):
         return super().set_more_shapes() + _MORE_SHAPES
 
@@ -89,7 +102,6 @@ def test__is_zerotensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._is_zerotensor,
-        gems_op=getattr(flag_gems, "_is_zerotensor", None),
         dtypes=_BENCH_DTYPES,
     )
     bench.run()
