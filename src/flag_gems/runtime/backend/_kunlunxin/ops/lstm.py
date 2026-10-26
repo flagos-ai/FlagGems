@@ -45,7 +45,6 @@ __all__ = ["lstm"]
 _BLOCK_G_MAX = 64
 _BLOCK_H_MAX = 32
 _BLOCK_K_MAX = 32
-_BLOCK_K_LIMIT = 128
 
 
 @libentry()
@@ -166,16 +165,15 @@ def _lstm_recur_kernel(
     PAD_K: tl.constexpr,
     GATES: tl.constexpr,
     BLOCK_H: tl.constexpr,
-    BLOCK_K: tl.constexpr,
 ):
     batch_idx = tl.program_id(0)
     pid_h = tl.program_id(1)
     offs_h = pid_h * BLOCK_H + tl.arange(0, BLOCK_H)
     hmask = offs_h < HIDDEN_SIZE
-    # Row offs_h addresses four rows of the (GATES, PAD_K) weight: offs_h,
+    # offs_h addresses four rows of the (GATES, HIDDEN_SIZE) weight: offs_h,
     # HIDDEN_SIZE + offs_h, 2 * HIDDEN_SIZE + offs_h and 3 * HIDDEN_SIZE +
     # offs_h. Only offs_h < HIDDEN_SIZE keeps all four inside the weight.
-    wmask = (offs_h < HIDDEN_SIZE)[:, None]
+    wmask = offs_h < HIDDEN_SIZE
 
     # The projected input gates seed the accumulators before the reduction
     # loop: the XPU backend miscompiles a load of the same index vector that
@@ -186,43 +184,48 @@ def _lstm_recur_kernel(
     g_acc = tl.load(pre_row + 2 * HIDDEN_SIZE + offs_h, mask=hmask, other=0.0)
     o_acc = tl.load(pre_row + 3 * HIDDEN_SIZE + offs_h, mask=hmask, other=0.0)
 
-    for k_block in range(0, tl.cdiv(PAD_K, BLOCK_K)):
-        offs_k = k_block * BLOCK_K + tl.arange(0, BLOCK_K)
-        # h is stored zero-padded to PAD_K, so the columns past HIDDEN_SIZE
-        # contribute nothing and the load needs no mask.
-        h = tl.load(h_prev_ptr + batch_idx * PAD_K + offs_k).to(tl.float32)
-        w_i = tl.load(
-            w_hh_ptr
-            + offs_h[:, None] * w_hh_stride_r
-            + offs_k[None, :] * w_hh_stride_c,
-            mask=wmask,
-            other=0.0,
-        ).to(tl.float32)
-        w_f = tl.load(
-            w_hh_ptr
-            + (HIDDEN_SIZE + offs_h[:, None]) * w_hh_stride_r
-            + offs_k[None, :] * w_hh_stride_c,
-            mask=wmask,
-            other=0.0,
-        ).to(tl.float32)
-        w_g = tl.load(
-            w_hh_ptr
-            + (2 * HIDDEN_SIZE + offs_h[:, None]) * w_hh_stride_r
-            + offs_k[None, :] * w_hh_stride_c,
-            mask=wmask,
-            other=0.0,
-        ).to(tl.float32)
-        w_o = tl.load(
-            w_hh_ptr
-            + (3 * HIDDEN_SIZE + offs_h[:, None]) * w_hh_stride_r
-            + offs_k[None, :] * w_hh_stride_c,
-            mask=wmask,
-            other=0.0,
-        ).to(tl.float32)
-        i_acc += tl.sum(w_i * h[None, :], axis=1)
-        f_acc += tl.sum(w_f * h[None, :], axis=1)
-        g_acc += tl.sum(w_g * h[None, :], axis=1)
-        o_acc += tl.sum(w_o * h[None, :], axis=1)
+    # The recurrent projection is accumulated one column at a time: each step
+    # reads a single h value and the matching W_hh column of the four gates.
+    # The XPU backend miscompiles the cross-lane reduction over a two
+    # dimensional tile, so the gates are never reduced along an axis.
+    for k in range(0, HIDDEN_SIZE):
+        h_k = tl.load(h_prev_ptr + batch_idx * PAD_K + k).to(tl.float32)
+        i_acc += (
+            tl.load(
+                w_hh_ptr + offs_h * w_hh_stride_r + k * w_hh_stride_c,
+                mask=wmask,
+                other=0.0,
+            ).to(tl.float32)
+            * h_k
+        )
+        f_acc += (
+            tl.load(
+                w_hh_ptr + (HIDDEN_SIZE + offs_h) * w_hh_stride_r + k * w_hh_stride_c,
+                mask=wmask,
+                other=0.0,
+            ).to(tl.float32)
+            * h_k
+        )
+        g_acc += (
+            tl.load(
+                w_hh_ptr
+                + (2 * HIDDEN_SIZE + offs_h) * w_hh_stride_r
+                + k * w_hh_stride_c,
+                mask=wmask,
+                other=0.0,
+            ).to(tl.float32)
+            * h_k
+        )
+        o_acc += (
+            tl.load(
+                w_hh_ptr
+                + (3 * HIDDEN_SIZE + offs_h) * w_hh_stride_r
+                + k * w_hh_stride_c,
+                mask=wmask,
+                other=0.0,
+            ).to(tl.float32)
+            * h_k
+        )
 
     # ``tl.exp2`` is not usable here: on XPU it lowers to the natural
     # exponential, so the gate activations are written with ``tl.exp``.
@@ -385,7 +388,6 @@ def _run_direction(
         batch_size,
         triton.cdiv(hidden_size, block_h),
     )
-    recur_k = min(pad_k, _BLOCK_K_LIMIT)
     h_cur, h_other = h_a, h_b
     c_cur, c_other = c_a, c_b
     with torch_device_fn.device(layer_input.device):
@@ -412,7 +414,6 @@ def _run_direction(
                 PAD_K=pad_k,
                 GATES=gates,
                 BLOCK_H=block_h,
-                BLOCK_K=recur_k,
             )
             h_cur, h_other = h_other, h_cur
             c_cur, c_other = c_other, c_cur
