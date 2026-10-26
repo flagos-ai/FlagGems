@@ -11,6 +11,16 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+# The flagtree compiler (older triton fork pinned in the CI image) rejects
+# TRITONXPU_COMPARE_FUSION on wide (131072-lane) native kernels: it fuses the
+# compare into a 32-bit triton_xpu.cmpf result that TritonXPUNormalize refuses
+# (OutOfResources: uni_sram), the same failure le.py/less_equal.py document for
+# their generic path. Detect it once and keep the fusion env only on the newer
+# triton build that legalizes it.
+_IS_FLAGTREE = os.path.exists(
+    os.path.join(os.path.dirname(triton.__file__), "FLAGTREE_BACKEND")
+)
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -34,12 +44,173 @@ def lt_func(x, y):
 
 def lt(A, B):
     logger.debug("GEMS_KUNLUNXIN LT")
-    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    # Fast path for contiguous same-shape float tensor-tensor compares: native
+    # fused compare (x < y) writing bool directly (mirrors less_equal.py's
+    # tensor-tensor path). numel <= 2^18 uses an adaptive one-wave 8-CTA tile;
+    # larger tensors use wide unmasked bulk + small masked tail. The generic
+    # pointwise path (below) emits a >= 65536-lane masked 1-D tile for large
+    # numels, which exhausts uni_sram on the CI (flagtree) compiler.
+    numel = A.numel()
+    if (
+        A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and A.dtype == B.dtype
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and A.shape == B.shape
+        and 0 < numel
+    ):
+        if numel <= _LT_TENSOR_FAST_MAX:
+            return _lt_tensor_native(A, B, numel, _lt_tensor_adaptive_tile(numel))
+        return _lt_tensor_large(A, B, numel)
+    if not _IS_FLAGTREE:
+        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = lt_func(A, B)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
+    if not _IS_FLAGTREE:
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
+
+
+# ---------------------------------------------------------------------------
+# lt tensor-tensor fast path (fp16/fp32/bf16, contiguous, same shape): native
+# fused compare (x < y) writing bool directly, no fp32 buffer and no _copy_from.
+# NaN < y -> False (matches torch, unordered compare). The tile is picked by
+# _lt_tensor_adaptive_tile; _LT_TENSOR_FAST_TILE is the wide bulk tile of the
+# large-tensor path (and the fallback tile value).
+_LT_TENSOR_FAST_TILE = 131072
+# One-wave grid target (== machine CTA count, measured 8 on P800).
+_LT_TENSOR_FAST_GRID = 8
+# Floor on the adaptive tile: below ~4096 lanes a single CTA (grid=1) wins over
+# an 8-way split.
+_LT_TENSOR_FAST_TILE_MIN = 4096
+# Mid/small regime upper bound: numel <= 2^18 uses the adaptive tile; larger
+# tensors use the wide-bulk + tail path.
+_LT_TENSOR_FAST_MAX = 1 << 18
+# Ceiling on *masked* 1-D tiles (the backend mis-lowers masked access at
+# >= 32768 lanes). Unmasked tiles may be wider (131072).
+_LT_TENSOR_MASKED_TILE_MAX = 16384
+_LT_BUFFER_SIZE_LIMIT = 8192
+_LT_FAST_LAUNCH_OPTS = {
+    "buffer_size_limit": _LT_BUFFER_SIZE_LIMIT,
+    "unroll_num": 16,
+    "isCloseMemoryAsync": False,
+}
+# buffer_size_limit is NOT safe on *masked* 1-D kernels (NOC idle timeout).
+_LT_MASKED_LAUNCH_OPTS = {
+    "unroll_num": 16,
+    "isCloseMemoryAsync": False,
+}
+
+
+def _lt_tensor_adaptive_tile(numel):
+    return max(
+        _LT_TENSOR_FAST_TILE_MIN,
+        triton.next_power_of_2(
+            (numel + _LT_TENSOR_FAST_GRID - 1) // _LT_TENSOR_FAST_GRID
+        ),
+    )
+
+
+@triton.jit
+def lt_tensor_native_kernel(out_ptr, x_ptr, y_ptr, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    r = tl.load(x_ptr + tid) < tl.load(y_ptr + tid)
+    tl.store(out_ptr + tid, r.to(tl.int8))
+
+
+@triton.jit
+def lt_tensor_native_masked_kernel(out_ptr, x_ptr, y_ptr, numel, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    mask = tid < numel
+    # Clamp the load addresses: masked loads still issue memory accesses on XPU
+    # and every address must be legal (numel < TILE, e.g. () / (1,)).
+    tid_c = tl.minimum(tid, numel - 1)
+    r = (tl.load(x_ptr + tid_c) < tl.load(y_ptr + tid_c)) & mask
+    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
+
+
+def _lt_tensor_native(A, B, numel, tile=_LT_TENSOR_FAST_TILE):
+    # Native fused compare (x < y, same dtype) writing bool directly.
+    out = torch.empty_like(A, dtype=torch.bool)
+    x = A.reshape(-1)
+    y = B.reshape(-1)
+    masked = numel % tile != 0
+    if masked and tile > _LT_TENSOR_MASKED_TILE_MAX:
+        tile = _LT_TENSOR_MASKED_TILE_MAX
+    grid = (math.ceil(numel / tile),) if masked else (numel // tile,)
+    if not _IS_FLAGTREE:
+        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    launch_opts = {} if _IS_FLAGTREE else _LT_FAST_LAUNCH_OPTS
+    masked_opts = {} if _IS_FLAGTREE else _LT_MASKED_LAUNCH_OPTS
+    try:
+        if masked:
+            lt_tensor_native_masked_kernel[grid](
+                out, x, y, numel, TILE=tile, num_warps=4, **masked_opts
+            )
+        else:
+            lt_tensor_native_kernel[grid](
+                out, x, y, TILE=tile, num_warps=4, **launch_opts
+            )
+    finally:
+        if not _IS_FLAGTREE:
+            del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_FP16_FAST"]
+    return out
+
+
+@triton.jit
+def lt_tensor_native_tail_kernel(
+    out_ptr, x_ptr, y_ptr, tail, offset, TILE: tl.constexpr
+):
+    pid = tl.program_id(0)
+    tid = offset + pid * TILE + tl.arange(0, TILE)
+    mask = tid < offset + tail
+    tid_c = tl.minimum(tid, offset + tail - 1)
+    r = (tl.load(x_ptr + tid_c) < tl.load(y_ptr + tid_c)) & mask
+    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
+
+
+def _lt_tensor_large(A, B, numel):
+    # Large tensors (numel > _LT_TENSOR_FAST_MAX): exact-multiple bulk written
+    # by _LT_TENSOR_FAST_TILE-wide *unmasked* kernels, remainder by a small
+    # masked tail. Avoids the generic pointwise path's huge masked 1-D tile.
+    out = torch.empty_like(A, dtype=torch.bool)
+    x = A.reshape(-1)
+    y = B.reshape(-1)
+    tail = numel % _LT_TENSOR_FAST_TILE
+    bulk = numel - tail
+    if not _IS_FLAGTREE:
+        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    launch_opts = {} if _IS_FLAGTREE else _LT_FAST_LAUNCH_OPTS
+    masked_opts = {} if _IS_FLAGTREE else _LT_MASKED_LAUNCH_OPTS
+    try:
+        if bulk:
+            lt_tensor_native_kernel[(bulk // _LT_TENSOR_FAST_TILE,)](
+                out, x, y, TILE=_LT_TENSOR_FAST_TILE, num_warps=4, **launch_opts
+            )
+        if tail:
+            lt_tensor_native_tail_kernel[
+                (math.ceil(tail / _LT_TENSOR_MASKED_TILE_MAX),)
+            ](
+                out,
+                x,
+                y,
+                tail,
+                bulk,
+                TILE=_LT_TENSOR_MASKED_TILE_MAX,
+                num_warps=4,
+                **masked_opts,
+            )
+    finally:
+        if not _IS_FLAGTREE:
+            del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_FP16_FAST"]
+    return out
 
 
 @pointwise_dynamic(

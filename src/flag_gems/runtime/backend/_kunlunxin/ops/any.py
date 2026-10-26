@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import os
 
 import torch
 import triton
@@ -21,6 +22,24 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
+
+try:
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _HAS_TLE = False
+    tle = None
+    TensorDescriptor = None
+
+# The flagtree compiler (older triton fork pinned in the CI image) cannot
+# legalize `tt.make_range` (from `tl.arange`) when it indexes a TLE local
+# pointer, so the TLE row-reduce fails to compile there. Detect it once and
+# fall back to the non-TLE kernels (same guard as lt.py/less_equal.py).
+_IS_FLAGTREE = os.path.exists(
+    os.path.join(os.path.dirname(triton.__file__), "FLAGTREE_BACKEND")
+)
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +355,15 @@ def _global_any(inp):
     n = inp.numel()
     out = torch.empty_strided((), (), dtype=torch.bool, device=inp.device)
 
+    if n >= _TLE_FLAT_MIN:
+        mid = _tle_any_flat(inp)
+        if mid is not None:
+            with torch_device_fn.device(inp.device):
+                any_mid_neq0_kernel[(1,)](
+                    mid.reshape(1), out.reshape(1), 1, BLOCK=1, buffer_size_limit=2048
+                )
+            return out
+
     if inp.dtype == torch.bool and n % 4 == 0:
         view = inp.reshape(-1).view(torch.int32)
         nw = view.numel()
@@ -432,6 +460,184 @@ def any_mid_neq0_kernel(mid, out, M, BLOCK: tl.constexpr):
     tl.store(out + offs, v != 0, mask=mask)
 
 
+# ---- TLE (cluster DMA) max(|x|) row-reduce -------------------------------
+# Mirrors sum.py's `_tle_sum_row_kernel` (reduce-INSIDE [XBLOCK] accumulator)
+# with `sum` -> `max(|x|)`. `any(row) = (max(|row|) != 0)`. On the
+# [100, 6553600] row-reduce (the (100,65536,100) dim=[0,1] case) the persisted
+# [BLOCK_M, BLOCK_N] pointer tile walks 6.5M columns with grid=2 at ~77GB/s,
+# whereas `tle.gpu.copy` streams the same bytes with the cluster DMA.
+_TLE_CORE_NUM = 64
+_TLE_LM_BYTES_PER_CORE = 4096
+_TLE_XBLOCK = 512
+_TLE_CLUSTERS = 8
+_TLE_WIDE_ROW_BYTES = 32768
+_TLE_NARROW_ROW_BYTES = 2048
+
+_TLE_TL_DTYPE = {
+    torch.float16: tl.float16,
+    torch.float32: tl.float32,
+    torch.bfloat16: tl.bfloat16,
+}
+_TLE_ACC_DTYPE = {
+    torch.float16: tl.float32,
+    torch.float32: tl.float32,
+    torch.bfloat16: tl.float32,
+}
+
+
+def _tle_available():
+    if not _HAS_TLE:
+        return False
+    if _IS_FLAGTREE:
+        return False
+    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+        return False
+    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+
+
+_TLE_AVAILABLE = _tle_available()
+
+
+def _npo2(x):
+    return 1 << (x - 1).bit_length() if x > 1 else 1
+
+
+_TLE_GEOM = {}
+_TLE_MISS = object()
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["a_desc", "c_desc"],
+)
+def _tle_any_row_kernel(
+    a_desc,
+    c_desc,
+    N,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    IN_DTYPE: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    a_lmem = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=IN_DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    c_lmem = tle.gpu.alloc([XBLOCK], dtype=OUT_DTYPE, layout=None, scope=tle.gpu.lmem)
+
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
+    c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
+
+    acc = tl.zeros([XBLOCK], ACC_DTYPE)
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(a_ptrs, tl.zeros([XBLOCK, YBLOCK], IN_DTYPE))
+        tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        acc = tl.maximum(acc, tl.max(tl.abs(tl.load(a_ptrs).to(ACC_DTYPE)), axis=1))
+    tl.store(c_ptrs, acc.to(OUT_DTYPE))
+    tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+
+
+def _tle_any_row_geom(M, N, itemsize):
+    key = (M, N, itemsize)
+    geom = _TLE_GEOM.get(key, _TLE_MISS)
+    if geom is not _TLE_MISS:
+        return geom
+    xblock = min(_TLE_XBLOCK, max(128, _npo2(-(-M // _TLE_CLUSTERS))))
+    row_bytes = N * itemsize
+    if row_bytes >= _TLE_WIDE_ROW_BYTES:
+        xblock = max(_TLE_CORE_NUM, xblock // 4)
+    elif row_bytes <= _TLE_NARROW_ROW_BYTES:
+        xblock = _TLE_XBLOCK if M > _TLE_CORE_NUM else 256
+    tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
+    yblock = max(1, min(_npo2(N), tile_elems // xblock))
+    while yblock > N and yblock > 1:
+        yblock >>= 1
+    geom = (xblock, yblock, -(-M // xblock))
+    _TLE_GEOM[key] = geom
+    return geom
+
+
+def _tle_any_row(inp, mid, M, N):
+    """TLE `max(|x|)` row-reduce of [M, N] into `mid` (float). True on success."""
+    if not _TLE_AVAILABLE:
+        return False
+    if inp.dtype not in _TLE_TL_DTYPE or mid.dtype not in _TLE_TL_DTYPE:
+        return False
+    if N < 2 or not inp.is_contiguous():
+        return False
+    try:
+        xblock, yblock, row_blocks = _tle_any_row_geom(M, N, inp.element_size())
+        a = inp if inp.ndim == 2 and inp.shape[0] == M else inp.view(M, N)
+        c = mid if mid.ndim == 1 else mid.view(M)
+        with torch_device_fn.device(inp.device):
+            _tle_any_row_kernel[(row_blocks,)](
+                TensorDescriptor.from_tensor(a, block_shape=[xblock, yblock]),
+                TensorDescriptor.from_tensor(c, block_shape=[xblock]),
+                N,
+                xblock,
+                yblock,
+                _TLE_TL_DTYPE[inp.dtype],
+                _TLE_ACC_DTYPE[inp.dtype],
+                _TLE_TL_DTYPE[mid.dtype],
+                N % yblock != 0,
+            )
+        return True
+    except Exception:
+        return False
+
+
+_TLE_FLAT_COLS = 4096
+_TLE_FLAT_ONESHOT = 8192
+# Flat TLE only pays off once the [n // COLS, COLS] reshape leaves a wide grid;
+# below this the chunked pointer path is already launch-bound and no slower.
+_TLE_FLAT_MIN = 2 << 20
+
+
+def _tle_any_flat(inp):
+    """Flat max(|x|) reduce -> 0-d fp32 tensor (the max). None if out of reach.
+
+    Mirrors sum.py's `_tle_sum_flat`: reshape to [n // COLS, COLS], row-reduce to
+    partials, feed back until a single program's loop can finish the residue."""
+    if not _TLE_AVAILABLE or inp.dtype not in _TLE_TL_DTYPE:
+        return None
+    cur = inp.reshape(-1) if inp.is_contiguous() else inp.contiguous().view(-1)
+    out = torch.empty((), dtype=torch.float32, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        while cur.numel() > _TLE_FLAT_ONESHOT:
+            n = cur.numel()
+            cols = (
+                _TLE_FLAT_COLS
+                if n >= 2 * _TLE_FLAT_COLS
+                else max(2, _npo2(n) // _TLE_CORE_NUM)
+            )
+            rows = n // cols
+            if rows < 2:
+                break
+            main = rows * cols
+            tail = n - main
+            nxt = torch.empty((rows + tail,), dtype=torch.float32, device=inp.device)
+            if not _tle_any_row(cur[:main].view(rows, cols), nxt[:rows], rows, cols):
+                return None
+            if tail:
+                nxt[rows:].copy_(cur[main:])
+            cur = nxt
+        n = cur.numel()
+        if n < 2:
+            out.copy_(cur.view(-1))
+            return out
+        if not _tle_any_row(cur.view(1, n), out.view(1), 1, n):
+            return None
+    return out
+
+
 def _per_row_any(inp, M, N, out_shape):
     """Reduce a contiguous [M, N] view over its N axis (per row) -> bool tensor.
 
@@ -464,7 +670,10 @@ def _per_row_any(inp, M, N, out_shape):
             mid = torch.empty(M, dtype=mid_dt, device=inp.device)
             out = torch.empty(M, dtype=torch.bool, device=inp.device)
             with torch_device_fn.device(inp.device):
-                any_dim_kernel_f[grid](inp, mid, M, N, ACC=acc, buffer_size_limit=2048)
+                if not _tle_any_row(inp, mid, M, N):
+                    any_dim_kernel_f[grid](
+                        inp, mid, M, N, ACC=acc, buffer_size_limit=2048
+                    )
                 any_mid_neq0_kernel[mid_grid](
                     mid, out, M, BLOCK=2048, buffer_size_limit=2048
                 )
