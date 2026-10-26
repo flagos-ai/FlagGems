@@ -121,6 +121,14 @@ def _reference_lstm(x, h0, c0, layer_refs, num_layers, bidirectional):
     return layer_input, torch.stack(h_final), torch.stack(c_final)
 
 
+def _assert_lstm_close(actual, expected, input, dtype, atol):
+    # Check the target contract before CPU-reference value observation.
+    assert actual.device == input.device
+    assert actual.dtype == dtype
+    assert actual.shape == expected.shape
+    utils.gems_assert_close(actual, expected, dtype, atol=atol)
+
+
 def _tolerance(dtype, seq_len):
     """Tolerance for a recurrence of the given depth.
 
@@ -175,9 +183,9 @@ def test_accuracy_quantized_lstm(shape, dtype):
     )
 
     atol = _tolerance(dtype, seq_len)
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
-    utils.gems_assert_close(res_hn, ref_hn, dtype, atol=atol)
-    utils.gems_assert_close(res_cn, ref_cn, dtype, atol=atol)
+    _assert_lstm_close(res_out, ref_out, inp, dtype, atol)
+    _assert_lstm_close(res_hn, ref_hn, inp, dtype, atol)
+    _assert_lstm_close(res_cn, ref_cn, inp, dtype, atol)
 
 
 @pytest.mark.quantized_lstm
@@ -223,9 +231,9 @@ def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
     )
 
     atol = _tolerance(dtype, seq_len)
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
-    utils.gems_assert_close(res_hn, ref_hn, dtype, atol=atol)
-    utils.gems_assert_close(res_cn, ref_cn, dtype, atol=atol)
+    _assert_lstm_close(res_out, ref_out, inp, dtype, atol)
+    _assert_lstm_close(res_hn, ref_hn, inp, dtype, atol)
+    _assert_lstm_close(res_cn, ref_cn, inp, dtype, atol)
 
 
 @pytest.mark.quantized_lstm
@@ -263,9 +271,9 @@ def test_accuracy_quantized_lstm_no_bias(shape, dtype):
     )
 
     atol = _tolerance(dtype, seq_len)
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
-    utils.gems_assert_close(res_hn, ref_hn, dtype, atol=atol)
-    utils.gems_assert_close(res_cn, ref_cn, dtype, atol=atol)
+    _assert_lstm_close(res_out, ref_out, inp, dtype, atol)
+    _assert_lstm_close(res_hn, ref_hn, inp, dtype, atol)
+    _assert_lstm_close(res_cn, ref_cn, inp, dtype, atol)
 
 
 @pytest.mark.quantized_lstm
@@ -302,9 +310,9 @@ def test_quantized_lstm_multilayer_batch_first(dtype):
     result = flag_gems.quantized_lstm(
         inp, [h0, c0], params, True, num_layers, 0.0, False, False, True
     )
-    utils.gems_assert_close(result[0], ref_out.transpose(0, 1), dtype, atol=_tolerance(dtype, seq_len))
-    utils.gems_assert_close(result[1], ref_hn, dtype, atol=_tolerance(dtype, seq_len))
-    utils.gems_assert_close(result[2], ref_cn, dtype, atol=_tolerance(dtype, seq_len))
+    _assert_lstm_close(result[0], ref_out.transpose(0, 1), inp, dtype, _tolerance(dtype, seq_len))
+    _assert_lstm_close(result[1], ref_hn, inp, dtype, _tolerance(dtype, seq_len))
+    _assert_lstm_close(result[2], ref_cn, inp, dtype, _tolerance(dtype, seq_len))
 
 
 @pytest.mark.quantized_lstm
@@ -333,6 +341,8 @@ def test_quantized_lstm_training_dropout_is_seeded(dtype):
         inp, [h0, c0], params, True, num_layers, 0.25, True, False, False
     )
     for actual, repeated in zip(first, second):
+        assert actual.device == repeated.device == inp.device
+        assert actual.dtype == repeated.dtype == dtype
         utils.gems_assert_equal(actual, repeated)
     assert first[0].shape == (seq_len, batch_size, hidden_size)
     assert first[1].shape == h0.shape
