@@ -141,7 +141,8 @@ def test_nanquantile_out(dtype, q_shape):
         values = torch.linspace(0.1, 0.9, q.numel(), dtype=dtype, device=inp.device)
         q.copy_(values.reshape(q_shape))
     ref_inp, ref_q = _reference_input(inp), _reference_input(q)
-    ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
+    # The CPU reference is upcast, so the out buffer must follow its dtype.
+    ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
     reference = torch.ops.aten.nanquantile.out(
         ref_inp, ref_q, 1, True, interpolation="linear", out=ref_out
     )
@@ -159,7 +160,8 @@ def test_nanquantile_out(dtype, q_shape):
 def test_nanquantile_scalar_out(dtype, interpolation):
     inp = _input((11, 15), dtype)
     ref_inp = _reference_input(inp)
-    ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
+    # The CPU reference is upcast, so the out buffer must follow its dtype.
+    ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
     reference = torch.ops.aten.nanquantile.scalar_out(
         ref_inp, 0.73, 0, False, interpolation=interpolation, out=ref_out
     )
