@@ -366,4 +366,5 @@ def test_nanmean_backward_dim(keepdim):
     reference.backward(utils.to_reference(grad))
 
     utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
-    utils.gems_assert_close(inp.grad, ref_inp.grad, torch.float32)
+    # A randomly all-NaN slice has undefined (NaN) gradients on both sides.
+    utils.gems_assert_close(inp.grad, ref_inp.grad, torch.float32, equal_nan=True)
