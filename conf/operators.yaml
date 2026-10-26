@@ -14927,7 +14927,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: nnpack_spatial_convolution_out
   description: A variant of `nnpack_spatial_convolution` that writes the result into
     the `out` tensor.
