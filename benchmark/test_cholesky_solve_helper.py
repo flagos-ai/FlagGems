@@ -1,10 +1,7 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
-
 
 CHOLESKY_SOLVE_SHAPES = [(4, 1), (8, 2), (16, 4), (32, 4), (64, 8)]
 
@@ -48,5 +45,4 @@ def test_cholesky_solve_helper():
         torch_op=torch.ops.aten._cholesky_solve_helper,
         dtypes=[torch.float32],
     )
-    bench.set_gems(flag_gems._cholesky_solve_helper)
     bench.run()

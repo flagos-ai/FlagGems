@@ -21,10 +21,21 @@ from . import accuracy_utils as utils
 
 
 def _factor(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin target storage converts float64 to float32")
     torch.manual_seed(0)
-    matrix = torch.randn(shape, device=flag_gems.device, dtype=dtype)
-    identity = torch.eye(shape[-1], device=flag_gems.device, dtype=dtype)
-    return torch.linalg.cholesky(matrix @ matrix.mT + 0.5 * identity)
+    device = (
+        "cpu"
+        if flag_gems.vendor_name in ("kunlunxin", "iluvatar")
+        else flag_gems.device
+    )
+    matrix = torch.randn(shape, device=device, dtype=dtype)
+    identity = torch.eye(shape[-1], device=device, dtype=dtype)
+    factor = torch.linalg.cholesky(matrix @ matrix.mT + 0.5 * identity).to(
+        flag_gems.device
+    )
+    assert factor.dtype == dtype
+    return factor
 
 
 # Covers unbatched, batched, multiple-RHS, and both directions of batch
@@ -45,17 +56,37 @@ CHOLESKY_SOLVE_CASES = [
 @pytest.mark.parametrize("upper", [False, True])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
+    if (
+        flag_gems.vendor_name == "iluvatar"
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
+        pytest.skip("Iluvatar native float64 Cholesky solve returns incorrect values")
     factor = _factor(factor_shape, dtype)
     if upper:
         factor = factor.mT.contiguous()
     torch.manual_seed(1)
-    rhs = torch.randn(rhs_shape, device=flag_gems.device, dtype=dtype)
-    ref_rhs = utils.to_reference(rhs, True)
-    ref_factor = utils.to_reference(factor, True)
+    rhs_device = (
+        "cpu"
+        if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64
+        else flag_gems.device
+    )
+    rhs = torch.randn(rhs_shape, device=rhs_device, dtype=dtype).to(flag_gems.device)
+    assert rhs.dtype == dtype
+    ref_rhs = utils.to_reference(rhs, dtype != torch.float64)
+    ref_factor = utils.to_reference(factor, dtype != torch.float64)
+    # The private native helper expects batch broadcasting to be done by its
+    # caller. Keep the original inputs for the candidate's broadcasting checks.
+    batch_shape = torch.broadcast_shapes(ref_rhs.shape[:-2], ref_factor.shape[:-2])
+    ref_rhs = ref_rhs.expand(*batch_shape, *ref_rhs.shape[-2:]).contiguous()
+    ref_factor = ref_factor.expand(*batch_shape, *ref_factor.shape[-2:]).contiguous()
     expected = torch.ops.aten._cholesky_solve_helper(ref_rhs, ref_factor, upper)
 
     actual = flag_gems._cholesky_solve_helper(rhs, factor, upper)
 
+    assert actual.device == rhs.device
+    assert actual.dtype == dtype
+    assert actual.shape == (*batch_shape, *rhs.shape[-2:])
     utils.gems_assert_close(actual, expected, dtype, reduce_dim=rhs_shape[-2])
 
 
@@ -107,14 +138,10 @@ def test_cholesky_solve_helper_device_error():
         ((4, 2), (5, 5)),
     ],
 )
-def test_cholesky_solve_helper_invalid_rank_or_matrix_error(
-    rhs_shape, factor_shape
-):
+def test_cholesky_solve_helper_invalid_rank_or_matrix_error(rhs_shape, factor_shape):
     torch.manual_seed(0)
     rhs = torch.randn(rhs_shape, dtype=torch.float32, device=flag_gems.device)
-    factor = torch.randn(
-        factor_shape, dtype=torch.float32, device=flag_gems.device
-    )
+    factor = torch.randn(factor_shape, dtype=torch.float32, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         flag_gems._cholesky_solve_helper(rhs, factor, False)

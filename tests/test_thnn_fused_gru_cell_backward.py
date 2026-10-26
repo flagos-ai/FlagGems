@@ -86,12 +86,15 @@ def _reference(grad_hy, workspace, has_bias):
     )
 
 
-def _assert_outputs_close(result, reference, dtype, batch_size):
+def _assert_outputs_close(result, reference, dtype, batch_size, device):
     base_atol = 1e-3 if dtype in (torch.float16, torch.bfloat16) else 1e-4
     for index, (actual, expected) in enumerate(zip(result, reference)):
         if expected is None:
             assert actual is None
             continue
+        assert actual.device == device
+        assert actual.dtype == dtype
+        assert actual.shape == expected.shape
         atol = 2e-3 if dtype == torch.bfloat16 and index >= 3 else base_atol
         utils.gems_assert_close(
             actual,
@@ -115,7 +118,7 @@ def test_thnn_fused_gru_cell_backward(dtype, shape, has_bias):
 
     result = flag_gems._thnn_fused_gru_cell_backward(grad_hy, workspace, has_bias)
 
-    _assert_outputs_close(result, reference, dtype, batch_size)
+    _assert_outputs_close(result, reference, dtype, batch_size, grad_hy.device)
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
@@ -139,13 +142,15 @@ def test_thnn_fused_gru_cell_backward_noncontiguous(dtype):
 
     result = flag_gems._thnn_fused_gru_cell_backward(grad_hy, workspace, True)
 
-    _assert_outputs_close(result, reference, dtype, batch_size)
+    _assert_outputs_close(result, reference, dtype, batch_size, grad_hy.device)
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
 @pytest.mark.underscore_thnn_fused_gru_cell_backward
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_thnn_fused_gru_cell_backward_empty(shape):
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip("Kunlunxin native fused GRU backward rejects empty tensors")
     batch_size, hidden_size = shape
     grad_hy = torch.empty(shape, device=flag_gems.device)
     workspace = torch.empty(batch_size, 5 * hidden_size, device=flag_gems.device)
@@ -153,7 +158,7 @@ def test_thnn_fused_gru_cell_backward_empty(shape):
 
     result = flag_gems._thnn_fused_gru_cell_backward(grad_hy, workspace, True)
 
-    _assert_outputs_close(result, reference, torch.float32, batch_size)
+    _assert_outputs_close(result, reference, torch.float32, batch_size, grad_hy.device)
 
 
 @pytest.mark.thnn_fused_gru_cell_backward
@@ -197,7 +202,7 @@ def test_thnn_fused_gru_cell_backward_out(dtype, shape):
     )
 
     assert all(actual is out for actual, out in zip(result, outputs))
-    _assert_outputs_close(result, reference, dtype, batch_size)
+    _assert_outputs_close(result, reference, dtype, batch_size, grad_hy.device)
 
 
 @pytest.mark.thnn_fused_gru_cell_backward_out
