@@ -134,16 +134,24 @@ def test_poisson_nll_loss_mixed_dtype_promotion(
 @pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss_mixed_dtype_exceptions():
     bool_input = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
-    with pytest.raises(RuntimeError):
-        flag_gems.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
-
     float_input = torch.ones((2, 3), device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
-    with pytest.raises(RuntimeError):
-        flag_gems.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
+    for inp, target, full in (
+        (bool_input, bool_input, False),
+        (float_input, bool_input, True),
+    ):
+        # Native backends differ on bool acceptance. Check their actual contract
+        # in both reference modes rather than failing before candidate invocation.
+        try:
+            reference = torch.ops.aten.poisson_nll_loss(
+                utils.to_reference(inp), utils.to_reference(target), True, full, 1e-8, 0
+            )
+        except RuntimeError:
+            with pytest.raises(RuntimeError):
+                flag_gems.poisson_nll_loss(inp, target, True, full, 1e-8, 0)
+        else:
+            result = flag_gems.poisson_nll_loss(inp, target, True, full, 1e-8, 0)
+            assert result.device == inp.device
+            utils.gems_assert_close(result, reference, reference.dtype, equal_nan=True)
 
 
 @pytest.mark.poisson_nll_loss
@@ -177,15 +185,14 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
-    if flag_gems.vendor_name == "ascend":
-        pytest.skip("Ascend randn factory does not support complex tensors")
     if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU and case != "empty":
         pytest.skip(
             "MUSA Poisson NLL reference does not support nonempty complex tensors"
         )
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+    inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
     if case == "broadcast_conjugate":
         inp = inp.T.conj()
         target = target[:1].T.conj()
@@ -203,7 +210,12 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         reduction,
     )
     result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    assert result.device == inp.device
     assert result.dtype == reference.dtype
+    assert result.shape == reference.shape
+    # NPU complex arithmetic works, but its isfinite comparison kernel does not.
+    if flag_gems.vendor_name == "ascend":
+        result, reference = result.cpu(), reference.cpu()
     utils.gems_assert_close(
         result,
         reference,
@@ -214,12 +226,11 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
 
 
 @pytest.mark.poisson_nll_loss
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend ones factory does not support complex tensors",
-)
 def test_poisson_nll_loss_complex_target_full_rejected():
-    inp = torch.ones(3, dtype=torch.complex64, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+    inp = torch.ones(3, dtype=torch.complex64, device=factory_device).to(
+        flag_gems.device
+    )
     with pytest.raises(RuntimeError):
         torch.ops.aten.poisson_nll_loss(
             utils.to_reference(inp), utils.to_reference(inp), True, True, 1e-8, 0

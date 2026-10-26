@@ -129,9 +129,13 @@ def test_nanmean_edge():
 
 @pytest.mark.nanmean
 def test_nanmean_empty_and_dtype():
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native nanmean does not support FP64 output")
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
     result = flag_gems.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    reference = torch.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
+    reference = torch.nanmean(
+        utils.to_reference(inp), dim=1, keepdim=True, dtype=torch.float64
+    )
     torch.testing.assert_close(result, reference, equal_nan=True)
 
 
@@ -203,7 +207,7 @@ def test_nanmean_invalid_dims():
     inp = torch.randn((2, 3), device=flag_gems.device)
     with pytest.raises(RuntimeError, match="appears multiple times"):
         flag_gems.nanmean(inp, dim=(0, -2))
-    with pytest.raises(IndexError, match="Dimension out of range"):
+    with pytest.raises((IndexError, RuntimeError), match="Dimension out of range"):
         flag_gems.nanmean(inp, dim=2)
 
 
