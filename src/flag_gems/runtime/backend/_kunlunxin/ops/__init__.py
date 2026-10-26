@@ -74,6 +74,7 @@ from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
+from ._foreach_log import _foreach_log, _foreach_log_  # noqa: F401
 from ._foreach_math import (
     _foreach_asin,
     _foreach_asin_,
@@ -96,6 +97,13 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_ternary_scalar import (  # noqa: F401
+    _foreach_addcmul_Scalar,
+    _foreach_lerp__Scalar,
+    _foreach_lerp__ScalarList,
+    _foreach_lerp_Scalar,
+    _foreach_lerp_ScalarList,
+)
 from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -871,6 +879,7 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
+    "_foreach_addcmul_Scalar",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
     "_foreach_asin_",
@@ -888,12 +897,18 @@ __all__ = [
     "_foreach_erfc_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_lerp__Scalar",
+    "_foreach_lerp__ScalarList",
+    "_foreach_lerp_Scalar",
+    "_foreach_lerp_ScalarList",
     "_foreach_lgamma",
     "_foreach_lgamma_",
+    "_foreach_log",
     "_foreach_log1p",
     "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
+    "_foreach_log_",
     "_foreach_mul__List",
     "_foreach_neg",
     "_foreach_neg_",
