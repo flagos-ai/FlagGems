@@ -95,6 +95,11 @@ def int_to_float(dtype: torch.dtype) -> torch.dtype:
     return torch.float32
 
 
+def _result_dtype(t: torch.Tensor, other: Any) -> torch.dtype:
+    """ATen's type promotion for one tensor against a tensor or a number."""
+    return torch.result_type(t, other)
+
+
 # ---------------------------------------------------------------------------
 # validation, layout classification, grouping
 # ---------------------------------------------------------------------------
