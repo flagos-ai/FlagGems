@@ -63,6 +63,8 @@ class OrmqrBenchmark(base.Benchmark):
                     ordinal += 1
 
     def build_inputs(self, case):
+        if base.vendor_name == "iluvatar" and case.dtype == torch.float64:
+            pytest.skip("Iluvatar native ormqr does not support float64 reference computation")
         plan = case.builder_args[0]
         shape, left, transpose = plan.builder_args
         torch.manual_seed(0)
