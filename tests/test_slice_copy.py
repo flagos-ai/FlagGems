@@ -70,13 +70,11 @@ def _make_input(shape, dtype, device=None):
         # complex64 to complex32 even though they can transfer/store the dtype.
         real = torch.randn(shape, device="cpu", dtype=torch.float32)
         imag = torch.randn(shape, device="cpu", dtype=torch.float32)
-        result = torch.complex(real, imag).to(dtype).to(device)
-        if (
-            flag_gems.vendor_name == "kunlunxin"
-            and dtype == torch.complex128
-            and result.dtype != dtype
-        ):
-            pytest.skip("Kunlunxin storage converts complex128 to complex64")
+        value = torch.complex(real, imag).to(dtype)
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+            result = value.view(torch.uint8).to(device).view(dtype).reshape(shape)
+        else:
+            result = value.to(device)
         assert result.dtype == dtype
         return result
     if dtype.is_floating_point:
@@ -89,6 +87,22 @@ def _make_input(shape, dtype, device=None):
 
 def _aten_slice_copy(inp, dim=0, start=None, end=None, step=1):
     return torch.ops.aten.slice_copy.Tensor(inp, dim, start, end, step)
+
+
+def _complex_cpu_values(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and inp.dtype == torch.complex128
+        and inp.device.type != "cpu"
+    ):
+        return (
+            inp.contiguous().view(torch.uint8).cpu().view(inp.dtype).reshape(inp.shape)
+        )
+    return inp.cpu()
+
+
+def _complex_reference_input(inp):
+    return _complex_cpu_values(inp) if utils.TO_CPU else inp
 
 
 def _special_slice_reference(inp, dim, start, end, step):
@@ -327,7 +341,7 @@ def test_slice_copy_complex(dtype):
         (2, 1, None, 1),
     ]
     for dim, start, end, step in cases:
-        ref_out = _aten_slice_copy(utils.to_reference(inp), dim, start, end, step)
+        ref_out = _aten_slice_copy(_complex_reference_input(inp), dim, start, end, step)
         res_out = flag_gems.slice_copy(inp, dim, start, end, step)
         assert res_out.device == inp.device
         assert res_out.dtype == dtype
@@ -335,7 +349,8 @@ def test_slice_copy_complex(dtype):
         # Observe complex values on CPU; device-side eq is absent on some
         # backends, and CPU complex32 equality itself requires widening.
         assert torch.equal(
-            res_out.cpu().to(torch.complex128), ref_out.cpu().to(torch.complex128)
+            _complex_cpu_values(res_out).to(torch.complex128),
+            _complex_cpu_values(ref_out).to(torch.complex128),
         )
 
 

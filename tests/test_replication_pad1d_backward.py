@@ -50,14 +50,44 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 ]
 
 
-def _require_input_dtype(inp, dtype):
-    if (
-        flag_gems.vendor_name == "kunlunxin"
-        and inp.dtype != dtype
-        and dtype in (torch.float64, torch.complex128)
+def _to_input_device(value):
+    if flag_gems.vendor_name == "kunlunxin" and value.dtype in (
+        torch.float64,
+        torch.complex128,
     ):
-        pytest.skip("Kunlunxin storage cannot preserve the requested double dtype")
-    assert inp.dtype == dtype
+        return (
+            value.contiguous()
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+    return value.to(flag_gems.device)
+
+
+def _make_input(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        return _to_input_device(torch.randn(shape, dtype=dtype, device="cpu"))
+    return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+
+def _reference_input(value):
+    if (
+        utils.TO_CPU
+        and flag_gems.vendor_name == "kunlunxin"
+        and value.dtype in (torch.float64, torch.complex128)
+    ):
+        return (
+            value.contiguous()
+            .view(torch.uint8)
+            .cpu()
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+    return utils.to_reference(value)
 
 
 def _reference_backward(grad, inp, padding):
@@ -81,7 +111,7 @@ def _reference_backward(grad, inp, padding):
                     and str(error).startswith("[INVALID PARAMETER]: error code= 1(")
                 )
                 or (
-                    inp.dtype == torch.complex64
+                    inp.dtype in (torch.complex64, torch.complex128)
                     and str(error).startswith("[NOT IMPLEMENTED]: error code= 4(")
                 )
             )
@@ -99,18 +129,33 @@ def test_replication_pad1d_backward(shape, padding, dtype):
         pytest.skip("Ascend randn does not support complex input construction")
     if dtype.is_complex and flag_gems.vendor_name == "mthreads":
         pytest.skip("MUSA replication_pad1d input preparation does not support complex")
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    _require_input_dtype(inp, dtype)
-    ref_inp = utils.to_reference(inp)
+    inp = _make_input(shape, dtype)
+    assert inp.dtype == dtype
+    ref_inp = _reference_input(inp)
 
     grad_shape = (*shape[:-1], shape[-1] + sum(padding))
-    grad_output = torch.ones(grad_shape, dtype=inp.dtype, device="cpu").to(inp.device)
-    ref_grad = utils.to_reference(grad_output)
+    grad_output = _to_input_device(
+        torch.ones(grad_shape, dtype=inp.dtype, device="cpu")
+    )
+    ref_grad = _reference_input(grad_output)
 
     ref_out = _reference_backward(ref_grad, ref_inp, padding)
     res_out = flag_gems.replication_pad1d_backward(grad_output, inp, padding)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        assert res_out.device == inp.device
+        assert res_out.dtype == dtype
+        assert res_out.shape == inp.shape
+        result_cpu = (
+            res_out.contiguous()
+            .view(torch.uint8)
+            .cpu()
+            .view(dtype)
+            .reshape(res_out.shape)
+        )
+        flag_gems.testing.assert_close(result_cpu, ref_out, dtype)
+    else:
+        utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.replication_pad1d_backward
@@ -121,8 +166,8 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
     promoting, and its output takes the *input's* options, so silently following
     grad_output would hand back a differently-typed gradient.
     """
-    inp = torch.randn(2, 3, 8, dtype=torch.float64, device=flag_gems.device)
-    _require_input_dtype(inp, torch.float64)
+    inp = _make_input((2, 3, 8), torch.float64)
+    assert inp.dtype == torch.float64
     bad_grad = torch.ones(2, 3, 10, dtype=torch.float32, device=inp.device)
     with pytest.raises(RuntimeError, match="expected scalar type"):
         flag_gems.replication_pad1d_backward(bad_grad, inp, (1, 1))
@@ -132,9 +177,9 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_replication_pad1d_backward_grad_input_takes_input_options(dtype):
     """grad_input has the input's dtype and device, matching at::empty_like(self)."""
-    inp = torch.randn(2, 3, 8, dtype=dtype, device=flag_gems.device)
-    _require_input_dtype(inp, dtype)
-    grad = torch.ones(2, 3, 11, dtype=inp.dtype, device=inp.device)
+    inp = _make_input((2, 3, 8), dtype)
+    assert inp.dtype == dtype
+    grad = _to_input_device(torch.ones(2, 3, 11, dtype=inp.dtype, device="cpu"))
     res = flag_gems.replication_pad1d_backward(grad, inp, (2, 1))
     assert res.dtype == inp.dtype
     assert res.device == inp.device
