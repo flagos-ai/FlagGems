@@ -123,8 +123,18 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
     )
     reference = _ATEN_OP(*reference_inputs, -128, 127, 1.0)
     if (
-        reference[1].data_ptr() == reference_inputs[2].data_ptr()
-        and reference[2].data_ptr() == reference_inputs[3].data_ptr()
+        (
+            (
+                reference[1].data_ptr() == reference_inputs[2].data_ptr()
+                and reference[2].data_ptr() == reference_inputs[3].data_ptr()
+            )
+            or (
+                flag_gems.vendor_name == "ascend"
+                and not utils.TO_CPU
+                and torch.equal(reference[1], reference_inputs[2])
+                and torch.equal(reference[2], reference_inputs[3])
+            )
+        )
         and torch.count_nonzero(reference[1]).item() != 0
     ):
         pytest.skip("Native empty backward returns scale instead of a zero gradient")
