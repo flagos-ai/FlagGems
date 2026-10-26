@@ -59,8 +59,7 @@ def _reference(tensor):
 
 
 def _gems_put(*args, **kwargs):
-    with flag_gems.use_gems():
-        return torch.put(*args, **kwargs)
+    return flag_gems.put(*args, **kwargs)
 
 
 def _gems_put_out(*args, **kwargs):
