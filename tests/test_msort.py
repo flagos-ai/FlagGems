@@ -204,9 +204,13 @@ def test_msort_rejects_complex(shape, dtype):
         else torch.empty(shape, dtype=dtype, device=flag_gems.device)
     )
     assert inp.dtype == dtype
-    with pytest.raises((RuntimeError, ValueError)):
+    with pytest.raises((RuntimeError, ValueError)) as native_error:
         torch.msort(utils.to_reference(inp))
-    with pytest.raises((RuntimeError, ValueError)):
+    if isinstance(native_error.value, ValueError):
+        assert str(native_error.value) == (
+            "Sort currently does not support complex dtypes on CPU."
+        )
+    with pytest.raises(RuntimeError):
         flag_gems.msort(inp)
 
 
