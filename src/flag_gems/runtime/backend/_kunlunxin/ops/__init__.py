@@ -74,6 +74,7 @@ from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
+from ._foreach_log import _foreach_log, _foreach_log_  # noqa: F401
 from ._foreach_math import (
     _foreach_asin,
     _foreach_asin_,
@@ -902,10 +903,12 @@ __all__ = [
     "_foreach_lerp_ScalarList",
     "_foreach_lgamma",
     "_foreach_lgamma_",
+    "_foreach_log",
     "_foreach_log1p",
     "_foreach_log1p_",
     "_foreach_log2",
     "_foreach_log2_",
+    "_foreach_log_",
     "_foreach_mul__List",
     "_foreach_neg",
     "_foreach_neg_",
