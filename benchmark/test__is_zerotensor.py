@@ -79,7 +79,11 @@ def _build_inputs_fn(plan, dtype, device):
             torch.float8_e4m3fn,
             torch.float8_e5m2,
         ):
-            inp = torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype).to(device)
+            inp = (
+                torch.zeros(shape, dtype=torch.float32, device="cpu")
+                .to(dtype)
+                .to(device)
+            )
         else:
             inp = torch.zeros(shape, dtype=dtype, device=device)
     return (inp,)

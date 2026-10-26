@@ -56,6 +56,7 @@ _CONSTRUCTION_SHAPES = tu.selected_cases(
     quick=[(), (1,), (256,), (2, 19, 7)] + _ZERO_EXTENT_SHAPES,
 )
 
+
 def _dense_zero(shape, dtype, device):
     # CPU FP8 fill is incomplete on Hygon; NPU FP8 zero_ is unavailable.
     # Encoding positive zero on CPU preserves dtype, bytes and dense marker.
@@ -64,7 +65,9 @@ def _dense_zero(shape, dtype, device):
         (flag_gems.vendor_name == "hygon" and target.type == "cpu")
         or (flag_gems.vendor_name == "ascend" and target.type == "npu")
     ):
-        return torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype).to(device)
+        return (
+            torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype).to(device)
+        )
     return torch.zeros(shape, dtype=dtype, device=device)
 
 
