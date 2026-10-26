@@ -39,7 +39,6 @@ from flag_gems.ops._foreach_binary import _apply_list, _apply_tensor
 from flag_gems.utils.foreach import (
     _dense,
     _finish_inplace,
-    _result_dtype,
     check_tensor_list,
     has_internal_overlap,
     tl_dtype,
@@ -50,6 +49,10 @@ logger = logging.getLogger(__name__)
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
 LARGE_THRESHOLD = 1_048_576
+
+
+def _result_dtype(t: torch.Tensor, other) -> torch.dtype:
+    return torch.result_type(t, other)
 
 
 _INF = tl.constexpr(float("inf"))
