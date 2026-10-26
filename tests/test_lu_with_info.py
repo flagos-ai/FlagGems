@@ -30,7 +30,7 @@ def _cpu_lu_without_lapack(input, *, pivot=True, check_errors=False):
     assert input.device.type == "cpu" and input.ndim >= 2
     m, n = input.shape[-2:]
     k = min(m, n)
-    lu = input.clone()
+    lu = input.clone(memory_format=torch.contiguous_format)
     pivots = torch.empty((*input.shape[:-2], k), dtype=torch.int32)
     info = torch.zeros(input.shape[:-2], dtype=torch.int32)
     if not input.numel() or not k:
