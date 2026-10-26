@@ -124,7 +124,7 @@ def _cholesky_solve_complex_row_kernel(
     stride_B_col,
     stride_X_row,
     stride_X_col,
-    ROW: tl.constexpr,
+    ROW,
     FORWARD: tl.constexpr,
     upper: tl.constexpr,
     BLOCK_RHS: tl.constexpr,
@@ -303,7 +303,7 @@ def _cholesky_solve_complex_rows(B, L, upper, out):
     X_real = torch.view_as_real(out).reshape(-1, out.shape[-2], out.shape[-1], 2)
     batch_size = B_real.shape[0]
     n, nrhs = B.shape[-2:]
-    block_rhs = triton.next_power_of_2(nrhs)
+    block_rhs = min(triton.next_power_of_2(nrhs), 64)
     grid = (batch_size, triton.cdiv(nrhs, block_rhs))
 
     for row in range(n):
