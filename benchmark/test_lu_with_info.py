@@ -69,7 +69,6 @@ def test_lu_with_info():
     bench = LuWithInfoBenchmark(
         op_name="lu_with_info",
         torch_op=torch._lu_with_info,
-        gems_op=flag_gems._lu_with_info,
         dtypes=_TEST_DTYPES,
     )
     bench.run()

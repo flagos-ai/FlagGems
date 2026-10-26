@@ -36,6 +36,34 @@ QUANT_PARAMS = [
     (-5, 5, 2.0, 0.7),
 ]
 
+_ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward
+
+
+def _reference_backward(reference_inputs, quant_min, quant_max, grad_factor):
+    """Run the native reference, skipping only native bfloat16 rejections."""
+    try:
+        return _ATEN_OP(*reference_inputs, quant_min, quant_max, grad_factor)
+    except (RuntimeError, ValueError) as error:
+        if (
+            reference_inputs[1].dtype == torch.bfloat16
+            and (
+                (
+                    isinstance(error, RuntimeError)
+                    and "Expected X.scalar_type() == ScalarType::Float to be true, but got false."
+                    in str(error)
+                )
+                or (
+                    flag_gems.vendor_name == "kunlunxin"
+                    and reference_inputs[1].device.type == "cuda"
+                    and isinstance(error, ValueError)
+                    and "[NOT IMPLEMENTED]: error code= 4(at " in str(error)
+                    and "generated/CUDANativeFunctions.cpp:409)" in str(error)
+                )
+            )
+        ):
+            pytest.skip("This native fake-quant backward reference rejects bfloat16")
+        raise
+
 
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
@@ -61,8 +89,11 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     ref_scale = utils.to_reference(scale_t)
     ref_zero_point = utils.to_reference(zero_point_t)
 
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
-        ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
+    ref_out = _reference_backward(
+        (ref_grad, ref_self, ref_scale, ref_zero_point),
+        quant_min,
+        quant_max,
+        grad_factor,
     )
     res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
         grad_t,
@@ -112,8 +143,11 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(shape, dtype
     ref_scale = utils.to_reference(scale_t)
     ref_zero_point = utils.to_reference(zero_point_t)
 
-    ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine_backward(
-        ref_grad, ref_self, ref_scale, ref_zero_point, quant_min, quant_max, grad_factor
+    ref_out = _reference_backward(
+        (ref_grad, ref_self, ref_scale, ref_zero_point),
+        quant_min,
+        quant_max,
+        grad_factor,
     )
     res_out = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
         grad_t,
