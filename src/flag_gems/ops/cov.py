@@ -23,11 +23,11 @@ from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
 
-# tf32/tf32x3 are NVIDIA tensor-core precisions; other backends (e.g. AMD) only
-# accept ieee/bf16x3/bf16x6, so fall back to full-precision ieee there.
-_IS_NVIDIA = runtime.device.vendor_name == "nvidia"
-_DOT_PRECISION_HIGH = tl.constexpr("tf32x3" if _IS_NVIDIA else "ieee")
-_DOT_PRECISION = tl.constexpr("tf32" if _IS_NVIDIA else "ieee")
+# The AMD backend rejects tf32/tf32x3 (it only accepts ieee/bf16x3/bf16x6), so
+# fall back to full-precision ieee there; every other backend keeps tf32/tf32x3.
+_IS_AMD = runtime.device.vendor_name == "amd"
+_DOT_PRECISION_HIGH = tl.constexpr("ieee" if _IS_AMD else "tf32x3")
+_DOT_PRECISION = tl.constexpr("ieee" if _IS_AMD else "tf32")
 
 
 @triton.jit

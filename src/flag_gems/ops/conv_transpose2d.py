@@ -31,10 +31,10 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-# tf32x3 is an NVIDIA tensor-core precision; other backends (e.g. AMD) only
-# accept ieee/bf16x3/bf16x6, so fall back to full-precision ieee there.
+# The AMD backend rejects tf32x3 (it only accepts ieee/bf16x3/bf16x6), so fall
+# back to full-precision ieee there; every other backend keeps tf32x3.
 _DOT_PRECISION = tl.constexpr(
-    "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
+    "ieee" if runtime.device.vendor_name == "amd" else "tf32x3"
 )
 
 _TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)

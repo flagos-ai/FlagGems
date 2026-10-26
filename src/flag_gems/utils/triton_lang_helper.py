@@ -1335,12 +1335,47 @@ def _fallback_isfinite(x):
     return (x - x) == 0.0
 
 
+@triton.jit
+def _fallback_ffs(x):
+    # 1-based index of the lowest set bit (0 for x == 0), matching libdevice
+    # ffs/ffsll; used where the backend lacks it (e.g. HIP). Binary search over
+    # the low bits in int64 covers both int32 and int64 inputs.
+    y = x.to(tl.int64)
+    zero = y - y
+    one = zero + 1
+    n = zero
+    m = (one << 32) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 32, n)
+    y = tl.where(s, y >> 32, y)
+    m = (one << 16) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 16, n)
+    y = tl.where(s, y >> 16, y)
+    m = (one << 8) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 8, n)
+    y = tl.where(s, y >> 8, y)
+    m = (one << 4) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 4, n)
+    y = tl.where(s, y >> 4, y)
+    m = (one << 2) - one
+    s = (y & m) == zero
+    n = tl.where(s, n + 2, n)
+    y = tl.where(s, y >> 2, y)
+    s = (y & one) == zero
+    n = tl.where(s, n + 1, n)
+    return tl.where(x == 0, zero, n + 1).to(tl.int32)
+
+
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "asin": _fallback_asin,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
+    "ffs": _fallback_ffs,
     "finitef": _fallback_isfinite,
     "floor": _fallback_floor,
     "isfinited": _fallback_isfinite,
@@ -1409,6 +1444,7 @@ tl_extra_shim = _patch_missing_symbols(
         "fast_erf",
         "fast_gelu",
         "fast_tanh",
+        "ffs",
         "finitef",
         "fmod",
         "floor",
