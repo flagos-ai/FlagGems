@@ -364,7 +364,13 @@ def test_slice_copy_lazy_conj_neg(dtype):
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)
     res_out = flag_gems.slice_copy(lazy, 1, 1, 5, 2)
-    assert bool((res_out == ref_out).all())
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == ref_out.shape
+    assert torch.equal(
+        _complex_cpu_values(res_out).to(torch.complex128),
+        _complex_cpu_values(ref_out).to(torch.complex128),
+    )
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
 
