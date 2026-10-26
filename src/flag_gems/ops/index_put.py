@@ -400,9 +400,8 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
         target_shape = (K,) + inp.shape[len(indices) :]
 
         if values.numel() == 1:
-            values = torch.full(
-                target_shape, values.item(), dtype=inp.dtype, device=inp.device
-            )
+            # Use broadcast_to instead of full to avoid materializing dense tensor
+            values = values.broadcast_to(target_shape)
         elif values.numel() == K:
             values = values.reshape((K,)).expand(target_shape)
 
