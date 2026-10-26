@@ -25,12 +25,6 @@ _KUNLUNXIN_WINDOW_MASK_CACHE = {}
 
 
 def _kunlunxin_window_mask(batch, heads, seq_q, seq_k, wl, wr, device):
-    """Cached additive (B, H, S_q, S_k) mask for the sliding-window shapes.
-
-    The mask depends only on the shape and the window bounds, never on the
-    tensor contents, and the baseline and the candidate are both handed the
-    same cached tensor, so neither side is charged for building it.
-    """
     key = (batch, heads, seq_q, seq_k, wl, wr)
     mask = _KUNLUNXIN_WINDOW_MASK_CACHE.get(key)
     if mask is None:
@@ -50,28 +44,6 @@ def _kunlunxin_window_mask(batch, heads, seq_q, seq_k, wl, wr, device):
 def _kunlunxin_flash_attention_forward_baseline(
     q, k, v, scale, is_causal, dropout_p=0.0, return_debug_mask=False, **extra_kwargs
 ):
-    """Device baseline used when the native flash op cannot run.
-
-    ``aten::_flash_attention_forward`` -- the op this benchmark normally times
-    -- has no executable kernel on this XPU build, so ``latency_base`` could
-    never be assigned.  The same quantity is measured with the nearest native
-    device op instead:
-
-    * plain / causal shapes: ``aten::_scaled_dot_product_flash_attention``, the
-      same-interface native flash-attention op (BSHD in/out, same family).
-      It takes BHSD, so the BSHD inputs are transposed -- the candidate pays
-      the same layout conversion internally.
-    * sliding-window shapes: the flash op does not accept
-      ``window_size_left/right``, so ``F.scaled_dot_product_attention`` with an
-      explicit window mask is used; it is the only device path here that can
-      express a window.  A masked SDPA cannot skip masked blocks, so this
-      baseline is slower than a fused windowed kernel would be -- the bias
-      runs in the candidate's favour and is recorded rather than hidden.
-    * dropout / debug-mask shapes: ``F.scaled_dot_product_attention`` with the
-      same dropout probability.
-
-    Both branches are real device ops; nothing falls back to the CPU.
-    """
     wl = extra_kwargs.get("window_size_left")
     wr = extra_kwargs.get("window_size_right")
     has_window = (wl is not None and wl >= 0) or (wr is not None and wr >= 0)
@@ -90,9 +62,6 @@ def _kunlunxin_flash_attention_forward_baseline(
                 scale=scale,
             )
         except ValueError:
-            # The flash op rejects causal attention when S_q > S_k on this
-            # build ([INVALID PARAMETER] error code 1), so those shapes fall
-            # through to the masked SDPA path below.
             pass
     if has_window or is_causal:
         mask = _kunlunxin_window_mask(
@@ -163,11 +132,6 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         return False
 
     if flag_gems.vendor_name == "kunlunxin":
-        # On this XPU build `aten::_flash_attention_forward` has no executable
-        # kernel at all (its CUDA/XPU dispatch entries are ts_eager_fallback
-        # placeholders), so the native op cannot answer this question and the
-        # alibi shapes have no baseline.  The alibi path is still covered by
-        # tests/test_flash_attention.py::test_flash_attention_forward_gqa_alibi_softcap.
         return False
 
     try:

@@ -138,12 +138,6 @@ def efficient_attn_forward_native(
     )
 
     if IS_KUNLUNXIN:
-        # The native efficient-attention forward on this XPU build rejects an
-        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
-        # yet"), so the sequence lengths are left to be inferred from the tensor
-        # shapes.  Verified on device: the returned (out, lse) match a device
-        # fp32 reference to 3e-05 (one fp16 ULP) and the native backward fed
-        # with this lse matches explicit device-math gradients to 4e-06.
         results = torch.ops.aten._efficient_attention_forward(
             Q,
             K,

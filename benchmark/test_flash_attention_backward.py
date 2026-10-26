@@ -25,10 +25,6 @@ from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
 
-# kunlunxin: this backend's dense efficient-attention kernels cap the
-# sequence length at 1024 (widening the guard hangs the device) and do
-# not implement the attention-bias gradient, so the benchmark roster is
-# restricted to the configurations the backend can actually execute.
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 _KUNLUNXIN_MAX_SEQ = 1024
 
@@ -153,8 +149,12 @@ def cudnn_attn_forward_native(
     )
     out = results[0]
     lse_4d = results[1]
-    philox_seed = results[6]
-    philox_offset = results[7]
+    if IS_KUNLUNXIN:
+        philox_seed = results[6]
+        philox_offset = results[7]
+    else:
+        philox_seed = results[2]
+        philox_offset = results[3]
 
     lse = lse_4d.squeeze(-1).float()
     return out, lse, philox_seed, philox_offset
@@ -178,9 +178,6 @@ def efficient_attn_forward_native(
     )
 
     if IS_KUNLUNXIN:
-        # The native efficient-attention forward on this XPU build rejects an
-        # explicit max_seqlen_q/k ("Check failed, max_seqlen_q not supported
-        # yet"), so the sequence lengths are inferred from the tensor shapes.
         results = torch.ops.aten._efficient_attention_forward(
             Q_fa,
             K_fa,
@@ -714,7 +711,7 @@ def _cudnn_attn_bwd_aten(
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse.unsqueeze(-1),
+        lse.unsqueeze(-1) if IS_KUNLUNXIN else lse,
         philox_seed,
         philox_offset,
         attn_bias,
@@ -950,10 +947,6 @@ def _efficient_attn_bwd_gems(
     lse,
     scale=None,
 ):
-    # kunlunxin registers a backend implementation of this operator, and that
-    # is the implementation the accuracy test exercises.  `flag_gems.ops.*` is
-    # the generic module and resolves to a different, unrelated kernel there, so
-    # on kunlunxin the candidate is taken from the public (registered) name.
     _candidate = (
         flag_gems.efficient_attention_backward
         if IS_KUNLUNXIN

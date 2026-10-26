@@ -28,10 +28,8 @@ from flag_gems.runtime import torch_device_fn
 
 from .flash_api import mha_varlan_fwd
 
-# _fa_lout_kernel deadlocks on this XPU stack when a single launch carries too
-# many programs (measured: 2048 programs OK, 4096 -> device task timeout /
-# KL_XID_KERNEL_EXCEPTION).  Cap the per-launch program count and split the
-# (batch*head) grid dimension instead of launching one huge grid.
+# Cap the per-launch program count and split the (batch*head) grid dimension
+# instead of launching one huge grid.
 _FA_MAX_PROGRAMS = int(os.environ.get("FA_MAX_PROGRAMS", "2048"))
 
 logger = logging.getLogger(__name__)
@@ -524,11 +522,7 @@ def prob_ds_finalize_kernel(
     if IS_CAUSAL:
         # The native efficient-attention causal mask is BOTTOM-RIGHT aligned:
         # when q_len != kv_len, row i attends keys 0 .. i + (KV_LEN - Q_LEN).
-        # Verified on device against the native forward for (1,2,128,256) fp16
-        # causal: bottom-right matches to 1.9e-06 while the top-left form
-        # (`n_offs <= q_idx`) is off by 5.4e-02 and drives dV 99.8% out of
-        # tolerance.  For q_len == kv_len the two forms coincide, so square
-        # shapes are unaffected.
+        # For q_len == kv_len the two alignments coincide.
         valid = valid & (n_offs <= q_idx + (KV_LEN - Q_LEN))
     p = tl.exp(score * SCALE + bias_val)
     p = tl.where(valid, p, 0.0)
@@ -1248,10 +1242,7 @@ def efficient_attention_backward(
 
 
 def _sdpa_attn_fwd_grid(args):
-    # Module-level (stable identity) launch grid for ``_attn_fwd``. A per-call
-    # ``lambda`` grid forces a full recompile on every launch (~160-180 ms/call);
-    # reading the shape from the kernel args keeps the math identical while
-    # making the callable stable.
+    # Module-level (stable identity) launch grid for ``_attn_fwd``.
     return (
         triton.cdiv(args["Q_CTX"], args["BLOCK_M"]),
         args["Z"] * args["q_head_num"],
@@ -1566,24 +1557,10 @@ def _fa_qk_m_kernel(
             # (reference order: scale -> softcap -> mask -> +attn_bias).
             ab = tl.load(ab_base + offs_n[None, :], mask=q_mask[:, None], other=0.0)
             qk = qk + ab
-        # m MUST be taken over the mask-applied qk' (NOT the raw qk): the XPU
-        # exp2 saturates at 1.0 for positive arguments (it implements
-        # min(2^v, 1.0)), so kernel B relies on the invariant (qk' - m) <= 0.
-        # A positive additive mask (attn_mask > 0) makes qk' > rowmax(raw qk),
-        # which would leave those p cells clamped at 1.0 (wrong softmax).
-        # m is the max over VALID cells only: an alibi bias can push every
-        # valid logit hundreds below the masked cells (which carry only a -50
-        # penalty), so a max over ALL cells would hand m to a masked cell and
-        # zero the whole row.  The mask is applied by ARITHMETIC (cm * 1e29)
-        # rather than tl.where, because a tl.where feeding a loop-carried
-        # tl.maximum is miscompiled by this backend (measured: it silently
-        # zeroed every row).  A second tl.max reduction in the same loop is
-        # equally unsafe, which is why there is no all-cells max here.
-        # Masked cells are pushed to a far sentinel rather than the usual
-        # -50: m is the max over VALID cells only, so a masked cell can sit
-        # ABOVE m (an alibi bias lowers the valid cells), and kernel B's
-        # threshold alone would not catch it -- the XPU exp2 saturates at 1.0
-        # for positive arguments, so such a cell would contribute p = 1.
+        # m is the max over valid cells of the mask-applied qk'.  Kernel B
+        # relies on the invariant (qk' - m) <= 0, so m must never be taken
+        # from a masked cell; the mask is applied arithmetically (cm * 1e29)
+        # and no all-cells max is taken here.
         qk_sel = qk - cm * 1e29
         m_i = tl.maximum(m_i, tl.max(qk_sel, 1))
         qk_ptrs = qk_base + offs_m[:, None] * K_PAD + offs_n[None, :]
@@ -1682,12 +1659,7 @@ def _fa_lout_kernel(
             # (1.0 keep / 0.0 drop); p_drop = p * dm / (1 - dropout_p).
             dm = tl.load(dm_base + offs_n[None, :], mask=q_mask[:, None], other=0.0)
             if STORE_DBG:
-                # Emit the debug value HERE, where p is known good.  Computing
-                # it in a second loop from qk_buf was unreliable: a tl.where
-                # feeding arithmetic is miscompiled by this backend and leaked
-                # the raw -5e30 sentinel into the buffer for masked cells,
-                # biasing the dropout ratio upward.  factor = drop_scale when
-                # kept (dm == 1) and -1.0 when dropped, as pure arithmetic.
+                # factor = drop_scale when kept (dm == 1) and -1.0 when dropped.
                 tl.store(
                     DBG
                     + off_hz * Q_CTX * K_PAD
@@ -1724,13 +1696,8 @@ def _fa_lout_kernel(
         lse = m_i + tl.log(l_i)
         lse_ptrs = Lse + off_hz * Q_CTX + offs_m
         tl.store(lse_ptrs, lse, mask=q_mask)
-    # NOTE: the 1/l normalisation of the debug weights is NOT done here.
-    # A second loop in this kernel cannot use ``l_safe``: on this backend the
-    # live value does not survive into a following loop and was measured to
-    # hold the raw -5e30 mask sentinel for the first BLOCK_M rows (dropout
-    # ratio 0.1875 instead of 0.1991, with the upper triangle spuriously
-    # non-zero).  The normalisation is applied by ``_fa_dbg_norm_kernel``
-    # after this kernel, reading lse/m back from memory.
+    # NOTE: the 1/l normalisation of the debug weights is applied by
+    # ``_fa_dbg_norm_kernel`` after this kernel.
 
 
 @triton.jit
@@ -1804,7 +1771,7 @@ _TILED_GRID_CACHE = {}
 
 
 def _tiled_grid_for(seq_q, batch_heads):
-    """Stable grid callable per shape (a per-call callable forces recompiles)."""
+    """Stable grid callable per shape."""
     key = (seq_q, batch_heads)
     fn = _TILED_GRID_CACHE.get(key)
     if fn is None:
@@ -1833,10 +1800,8 @@ def _flash_forward_tiled(
 ):
     """Run the tiled flash kernel; returns (out_bshd, lse_bhq).
 
-    ``mask`` is an optional additive (B, H, S_q, S_k) bias.  It must be a
-    materialised contiguous tensor: a broadcast (stride-0) mask is rejected by
-    the launch path, which silently declines the launch and would leave the
-    kernel body to run and return uninitialised memory.
+    ``mask`` is an optional additive (B, H, S_q, S_k) bias; it must be a
+    materialised contiguous tensor.
     """
     batch, _, q_head_num, _ = query.shape
     kv_head_num = key.shape[2]
@@ -1976,21 +1941,14 @@ def flash_attention_forward(
         and alibi_slopes is None
         and not return_debug_mask
         and head_dim in _TILED_HEAD_DIMS
-        # The masked launch is mis-decoded by the vendor decoder when the
-        # query length is 1 (measured: the mask sentinel leaks into the output
-        # and lse), so that single degenerate case keeps the materialising
-        # path; it is also the only shape where the old path is not the
-        # bottleneck.
         and not (is_causal and q_len != k_len and q_len == 1)
     ):
         # `_attn_fwd`'s own causal mask is top-left aligned (n <= m) while the
         # flash-attention contract is bottom-right aligned (n <= m + k_len -
         # q_len); the two agree only when q_len == k_len.  Where they differ --
         # and for every sliding window, which the kernel does not take at all --
-        # the mask is supplied explicitly.  It must be a materialised
-        # (B, H, S_q, S_k) tensor: the vendor decoder silently declines a
-        # broadcast (stride-0) mask and the kernel's stub body then returns
-        # uninitialised memory.
+        # the mask is supplied explicitly, as a materialised contiguous
+        # (B, H, S_q, S_k) tensor.
         need_mask = has_window or (is_causal and q_len != k_len)
         window_mask = None
         empty_rows = 0

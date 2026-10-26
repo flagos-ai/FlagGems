@@ -119,17 +119,6 @@ def make_input(
 def _flash_fwd_device_ref(
     q, k, v, scale, is_causal, window_size_left=None, window_size_right=None
 ):
-    """Golden reference for flash attention, built with explicit device math.
-
-    ``aten::_flash_attention_forward`` has no executable kernel on the XPU
-    backend, so the native call cannot construct the reference.  This computes
-    the same quantity on the device instead, looping over (batch, head) with
-    2-D matmuls: a 4-D batched fp32 matmul (or bmm) aborts the process on this
-    stack.  Masks follow this file's own ``construct_local_mask`` /
-    ``attention_ref`` semantics.
-    """
-    # ``torch_flash_fwd`` transposes to (B, H, S, D) before dispatching, so the
-    # tensors arriving here are already in that layout.
     B, H, Sq, D = q.shape
     Sk = k.shape[-2]
     Hk = k.shape[1]
@@ -158,9 +147,6 @@ def _flash_fwd_device_ref(
             scores = (qf[b, h] @ kf[b, h].t()) * scale
             scores = scores.masked_fill(~valid, float("-inf"))
             m = scores.max(dim=-1, keepdim=True).values
-            # A fully masked row (possible for a window outside its band) has
-            # m = -inf; floor it so exp() is 0 rather than NaN, then the
-            # clamped denominator yields out = 0 and lse = -inf.
             m_safe = torch.where(torch.isfinite(m), m, torch.zeros_like(m))
             p = torch.exp(scores - m_safe)
             denom = p.sum(dim=-1, keepdim=True)
@@ -198,12 +184,6 @@ def torch_flash_fwd(
             **extra_kwargs,
         )
     except NotImplementedError:
-        # `aten::_flash_attention_forward` has no executable kernel on the XPU
-        # backend (its CUDA/XPU dispatch entries are ts_eager_fallback
-        # placeholders), so the native call cannot build the golden reference.
-        # Fall back to the same quantity computed with explicit device math.
-        # Only this helper is affected; the FlagGems candidate is still the
-        # call under test.
         out, lse = _flash_fwd_device_ref(
             q,
             k,

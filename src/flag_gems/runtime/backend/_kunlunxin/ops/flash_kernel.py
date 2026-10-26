@@ -1371,19 +1371,7 @@ def flash_varlen_fwd_kernel(
     else:
         alibi_slope = 0.0
     row_idx = m_block * BLOCK_M + tl.arange(0, BLOCK_M)
-    # Single fused KV loop.  The upstream body walks the KV range twice: a
-    # "masking steps" loop whose blocks straddle the causal boundary, then a
-    # tail loop over the fully-unmasked blocks.  The two loop bodies are
-    # near-duplicates, and this backend cannot compile that duplicated body.
-    #
-    # Folding them into one loop is numerically identical: n_block_max is
-    # capped by the causal bound and n_masking_steps covers every block that
-    # straddles it, so for the tail blocks the causal predicate
-    # `col_idx > col_rb` is false for every element and the boundary predicate
-    # `col_idx >= k_len` likewise, i.e. the mask is a no-op there.  Likewise
-    # `is_border=True` only differs from `is_border=is_local` for a row whose
-    # running max is still -inf, which cannot happen after the first block
-    # (it always contains the diagonal).
+    # Single fused KV loop over the whole KV range.
     for n_block in tl.range(n_block_max - 1, n_block_min - 1, step=-1):
         col_idx = n_block * BLOCK_N + tl.arange(0, BLOCK_N)
         bK, bV = load_from_kvcache(

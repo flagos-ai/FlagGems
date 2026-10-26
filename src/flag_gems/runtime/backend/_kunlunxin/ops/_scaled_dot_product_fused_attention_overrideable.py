@@ -212,16 +212,14 @@ def _scaled_dot_product_fused_attention_overrideable(
 
     # The launch goes to the current device, so switch to the tensors' device
     # first -- but only when it is not already the current one. The launch is
-    # written out twice on purpose: building the argument list as a tuple and
-    # unpacking it costs more than the duplication.
+    # written out twice on purpose.
     device_index = query.device.index
     if device_index is None or device_index == torch.cuda.current_device():
         kernel[grid](
             query,
             key,
             value,
-            attn_mask,  # must stay None when there is no mask: a placeholder
-            # tensor here changes the launch signature and the backend rejects it.
+            attn_mask,  # must stay None when there is no mask
             sm_scale,
             logsumexp,
             output,  #
