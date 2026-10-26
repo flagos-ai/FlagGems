@@ -147,3 +147,34 @@ as an example.
 如果希望进一步了解细节（例如如何定制调优缓存的路径和配置等），
 可以参阅源码仓库中的 [`examples/pretune.py`](https://github.com/flagos-ai/FlagGems/blob/v4.2.0/examples/pretune.py)
 文件。
+
+## 缓存 ATen 路由与启动计划
+
+对于高频执行的小型 pointwise 算子，shape 路由、dtype promotion、grid 计算和
+Triton 参数展开带来的 CPU 开销有时会超过 GPU kernel 本身。实验性的 ATen plan
+cache 会在预热后保存这些结构化结果；它先使用单态 last-plan 快速路径，再使用有界
+LRU 兼容动态 shape。
+
+该功能默认关闭，需要通过 Python API 或环境变量显式开启：
+
+```python
+import flag_gems
+
+flag_gems.enable_aten_plan_cache(max_size=128)
+```
+
+```bash
+export FLAGGEMS_ATEN_PLAN_CACHE=1
+export FLAGGEMS_ATEN_PLAN_CACHE_SIZE=128
+```
+
+`FLAGGEMS_ATEN_PLAN_CACHE_INCLUDE` 和 `FLAGGEMS_ATEN_PLAN_CACHE_EXCLUDE`
+接受按逗号分隔的 glob pattern，用于匹配 kernel 的完整限定名。`arange_func`
+默认不进入缓存，因为实测其启动准备开销低于一次 plan-cache 查询。可通过
+`flag_gems.aten_plan_cache_stats()` 查看运行时统计。
+
+Cache key 包含 vendor、device、device capability、dtype、shape、stride、broadcast
+pattern、标量值、输出语义和 CodeGenConfig。缓存计划不会持有 Tensor、data pointer、
+stream、event 或 graph；进程 `fork` 后会自动清空，FlagTune 配置变化也会让对应计划
+失效。可使用 `disable_aten_plan_cache()` 做快速 A/B，或使用
+`uninstall_aten_plan_cache()` 完全恢复原 wrapper。

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 # ruff: noqa: F405
+import os
 import warnings
 
 import torch
@@ -2257,11 +2258,51 @@ def all_registered_keys():
     return current_work_registrar.get_all_keys()
 
 
+def enable_aten_plan_cache(**kwargs):
+    """Enable the experimental ATen routing and launch-plan cache."""
+
+    from flag_gems.utils.aten_plan_cache import enable as enable_plan_cache
+
+    return enable_plan_cache(**kwargs)
+
+
+def disable_aten_plan_cache(*, clear=True):
+    """Disable ATen plan-cache lookups while leaving wrappers installed."""
+
+    from flag_gems.utils.aten_plan_cache import disable as disable_plan_cache
+
+    return disable_plan_cache(clear=clear)
+
+
+def uninstall_aten_plan_cache():
+    """Disable the ATen plan cache and restore the original wrappers."""
+
+    from flag_gems.utils.aten_plan_cache import uninstall as uninstall_plan_cache
+
+    return uninstall_plan_cache()
+
+
+def aten_plan_cache_stats():
+    """Return aggregate and per-operator ATen plan-cache statistics."""
+
+    from flag_gems.utils.aten_plan_cache import cache_stats
+
+    return cache_stats()
+
+
 __all__ = [
     "all_registered_keys",
     "all_registered_ops",
+    "aten_plan_cache_stats",
+    "disable_aten_plan_cache",
     "enable",
+    "enable_aten_plan_cache",
     "flagtune",
     "only_enable",
+    "uninstall_aten_plan_cache",
     "use_gems",
 ]
+
+
+if os.getenv("FLAGGEMS_ATEN_PLAN_CACHE", "0").strip().lower() in ("1", "true", "on"):
+    enable_aten_plan_cache()
