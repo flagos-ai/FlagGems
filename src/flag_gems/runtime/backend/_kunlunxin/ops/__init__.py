@@ -28,6 +28,13 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
 )
 from ._euclidean_dist import _euclidean_dist
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_expm1_reciprocal import (  # noqa: F401
+    _foreach_expm1,
+    _foreach_expm1_,
+    _foreach_reciprocal,
+    _foreach_reciprocal_,
+)
+from ._foreach_lerp import _foreach_lerp_List, _foreach_lerp__List  # noqa: F401
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_add_list import _foreach_add_List
 from ._foreach_add_list_ import _foreach_add__List
@@ -862,6 +869,8 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
     "_flash_attention_forward",
+    "_foreach_lerp_List",
+    "_foreach_lerp__List",
     "_foreach_abs_",
     "_foreach_acos",
     "_foreach_acos_",
@@ -882,6 +891,10 @@ __all__ = [
     "_foreach_div__Tensor",
     "_foreach_div_List",
     "_foreach_div_Tensor",
+    "_foreach_expm1",
+    "_foreach_expm1_",
+    "_foreach_reciprocal",
+    "_foreach_reciprocal_",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc",
