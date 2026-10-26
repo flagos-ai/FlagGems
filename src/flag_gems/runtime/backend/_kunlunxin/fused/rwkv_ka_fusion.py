@@ -106,7 +106,7 @@ def _choose_tile_r(M, N):
 def rwkv_ka_fusion(
     k: torch.Tensor, kk: torch.Tensor, a: torch.Tensor, ka: torch.Tensor, H: int, N: int
 ):
-    logger.debug("GEMS_KUNLUNXIN RWKV KA FUSION")
+    logger.debug("GEMS_KUNLUNXIN RWKV_KA_FUSION")
 
     if k.dim() == 1:
         T = 1

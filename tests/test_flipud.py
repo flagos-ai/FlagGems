@@ -32,8 +32,7 @@ def test_accuracy_flipud(shape, dtype):
     original = utils.to_reference(inp.clone(), False)
 
     expected = torch.flipud(ref_inp)
-    with flag_gems.use_gems():
-        result = torch.flipud(inp)
+    result = flag_gems.flipud(inp)
 
     utils.gems_assert_equal(result, expected)
     utils.gems_assert_equal(inp, original)
@@ -52,8 +51,7 @@ def test_accuracy_flipud_non_float(dtype, high):
     inp = torch.randint(0, high, (7, 11), dtype=dtype, device=flag_gems.device)
     expected = torch.flipud(utils.to_reference(inp, False))
 
-    with flag_gems.use_gems():
-        result = torch.flipud(inp)
+    result = flag_gems.flipud(inp)
 
     utils.gems_assert_equal(result, expected)
 
@@ -62,18 +60,14 @@ def test_accuracy_flipud_non_float(dtype, high):
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test_accuracy_flipud_complex(dtype):
     inp = torch.randn((3, 5), dtype=dtype, device=flag_gems.device).T
-    ref_inp = utils.to_reference(inp, False)
-    # CPU has no ComplexHalf flip kernel; flip is a pure permutation, so upcast
-    # the reference, flip, and cast back — exact and dtype-preserving.
-    if ref_inp.dtype == torch.complex32:
-        expected = torch.flipud(ref_inp.to(torch.complex64)).to(torch.complex32)
-    else:
-        expected = torch.flipud(ref_inp)
+    # CPU flip is not implemented for complex32; flip only reorders elements, so
+    # the reference computed after an upcast is exactly equivalent.
+    ref_dtype = torch.complex64 if dtype == torch.complex32 else dtype
+    expected = torch.flipud(utils.to_reference(inp, False).to(ref_dtype))
 
-    with flag_gems.use_gems():
-        result = torch.flipud(inp)
+    result = flag_gems.flipud(inp)
 
-    utils.gems_assert_equal(result, expected)
+    utils.gems_assert_equal(result.to(ref_dtype), expected)
     assert result.stride() == expected.stride()
 
 
@@ -85,8 +79,7 @@ def test_accuracy_flipud_autograd():
     ref_weight = utils.to_reference(weight, False)
 
     (torch.flipud(ref_inp) * ref_weight).sum().backward()
-    with flag_gems.use_gems():
-        (torch.flipud(inp) * weight).sum().backward()
+    (flag_gems.flipud(inp) * weight).sum().backward()
 
     utils.gems_assert_equal(inp.grad, ref_inp.grad)
 
@@ -119,8 +112,7 @@ def test_accuracy_flipud_noncontiguous(make_input, dtype):
     ref_inp = utils.to_reference(inp, False)
     expected = torch.flipud(ref_inp)
 
-    with flag_gems.use_gems():
-        result = torch.flipud(inp)
+    result = flag_gems.flipud(inp)
 
     utils.gems_assert_equal(result, expected)
     assert result.stride() == expected.stride()
@@ -129,8 +121,5 @@ def test_accuracy_flipud_noncontiguous(make_input, dtype):
 @pytest.mark.flipud
 def test_flipud_rejects_zero_dimensional_input():
     inp = torch.empty((), device=flag_gems.device)
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(RuntimeError, match="Input must be >= 1-d"),
-    ):
+    with pytest.raises(RuntimeError, match="Input must be >= 1-d"):
         torch.flipud(inp)

@@ -21,6 +21,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 if QUICK_MODE:
     MNK_SHAPES = [
         (1, 1, 32),
@@ -52,6 +54,10 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "metax",
 )
 _ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax")
+
+if IS_KUNLUNXIN:
+    _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)
+    _ADDMM_BETA_ZERO_VENDORS += ("kunlunxin",)
 
 # Extend this set as vendor implementations gain equivalent layout and bias support.
 _addmm_layout_bias_only = pytest.mark.skipif(

@@ -357,17 +357,19 @@ def feature_dropout_(input, p, train=True):
 # harness shape), otherwise flat index (2D input, spatial == 1).
 #
 # Numerics: kept values must bit-match torch's elementwise multiply
-# x * scale (fp32 product, single RNE rounding to the tensor dtype).  The XPU
-# fp32->bf16 cast rounds midpoint ties differently than torch's RNE, so for
-# bf16 inputs the output is written as raw int16 bit patterns produced by an
-# explicit round-to-nearest-even bit trick (the output tensor is passed as an
-# int16 view); fp16/fp32 use the plain cast path.
+# x * scale (fp32 product, single RNE rounding to the tensor dtype).  The
+# plain fp32->bf16 cast on XPU is verified RNE-correct (bit-exact vs torch on
+# random data including exact midpoint ties), so all dtypes go through the
+# same cast path.  (An earlier variant wrote bf16 as raw int16 patterns via
+# an explicit round-to-nearest-even bit trick; that was removed because the
+# 2048-wide int16 store miscompiles on XPU - a 32-element group's second half
+# is duplicated from the first half, i.e. a 16-element shift.)
 #
 # Kernel form: flat fully-coalesced streaming.  An unmasked aligned kernel
-# (one contiguous 2048-element tile per program) covers the in-bounds prefix;
-# a single masked-store tail kernel covers the remainder (XPU silently drops
-# ALL stores of a program that contains any fully-masked sub-store, so the
-# aligned kernel never carries a store mask).
+# (one contiguous 2048-element tile per program, as two 1024-wide chunks)
+# covers the in-bounds prefix; a single masked-store tail kernel covers the
+# remainder (XPU silently drops ALL stores of a program that contains any
+# fully-masked sub-store, so the aligned kernel never carries a store mask).
 # ---------------------------------------------------------------------------
 
 
@@ -383,23 +385,11 @@ def _kg_uniform(row):
 
 @triton.jit
 def _kg_fd_scale_f32(x, keep, scale):
-    # fp16/fp32 path: torch semantics = fp32 product, single rounding to x.dtype.
+    # torch semantics = fp32 product, single RNE rounding to x.dtype (bf16
+    # cast verified RNE-correct on XPU).
     xf = x.to(tl.float32)
     prod = xf * scale
     return tl.where(keep, prod, 0.0).to(x.dtype)
-
-
-@triton.jit
-def _kg_fd_scale_bits(x, keep, scale):
-    # bf16 path: fp32 product then explicit RNE fp32->bf16 (drop 16 mantissa
-    # bits).  Returns the 16-bit bf16 pattern (0 for dropped lanes).
-    xf = x.to(tl.float32)
-    prod = xf * scale
-    bits = prod.to(tl.int32, bitcast=True)
-    lsb = (bits >> 16) & 1
-    r = bits + 0x7FFF + lsb
-    r16 = ((r >> 16) & 0xFFFF).to(tl.int16)
-    return tl.where(keep, r16, tl.zeros_like(r16))
 
 
 @triton.jit
@@ -410,19 +400,35 @@ def _kg_fd_aligned_kernel(
     scale,
     LOG2S: tl.constexpr,
     BLOCK: tl.constexpr,
-    PATTERN_OUT: tl.constexpr,
+    SPLIT_STORE: tl.constexpr,
 ):
     # Fully in-bounds prefix only: no masks anywhere.  One contiguous BLOCK
-    # tile per program.
+    # tile per program.  The 2048-wide single-store path (fp16/fp32) is the
+    # fastest; bf16 must use the split path (two BLOCK//2 chunks) because a
+    # 2048-wide bf16 load/store miscompiles on XPU (a 32-element group's
+    # second half is duplicated from the first half -> 16-element shift);
+    # 1024-wide bf16 chunks are verified correct.
     pid = tl.program_id(0)
-    off = pid * BLOCK + tl.arange(0, BLOCK)
-    row = off >> LOG2S
-    keep = _kg_uniform(row) > p
-    x = tl.load(X + off)
-    if PATTERN_OUT:
-        sel = _kg_fd_scale_bits(x, keep, scale)
-        tl.store(Y + off, sel)
+    if SPLIT_STORE:
+        base = pid * BLOCK
+        HALF: tl.constexpr = BLOCK // 2
+        off_a = base + tl.arange(0, HALF)
+        off_b = base + HALF + tl.arange(0, HALF)
+        row_a = off_a >> LOG2S
+        row_b = off_b >> LOG2S
+        keep_a = _kg_uniform(row_a) > p
+        keep_b = _kg_uniform(row_b) > p
+        x_a = tl.load(X + off_a)
+        x_b = tl.load(X + off_b)
+        y_a = _kg_fd_scale_f32(x_a, keep_a, scale)
+        y_b = _kg_fd_scale_f32(x_b, keep_b, scale)
+        tl.store(Y + off_a, y_a)
+        tl.store(Y + off_b, y_b)
     else:
+        off = pid * BLOCK + tl.arange(0, BLOCK)
+        row = off >> LOG2S
+        keep = _kg_uniform(row) > p
+        x = tl.load(X + off)
         y = _kg_fd_scale_f32(x, keep, scale)
         tl.store(Y + off, y)
 
@@ -437,7 +443,6 @@ def _kg_fd_tail_kernel(
     scale,
     LOG2S: tl.constexpr,
     BLOCK: tl.constexpr,
-    PATTERN_OUT: tl.constexpr,
 ):
     # Remainder (< BLOCK elements): single masked store per program.
     off = base + tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -445,12 +450,8 @@ def _kg_fd_tail_kernel(
     row = off >> LOG2S
     keep = _kg_uniform(row) > p
     x = tl.load(X + off, mask=ok, other=0.0)
-    if PATTERN_OUT:
-        sel = _kg_fd_scale_bits(x, keep, scale)
-        tl.store(Y + off, sel, mask=ok)
-    else:
-        y = _kg_fd_scale_f32(x, keep, scale)
-        tl.store(Y + off, y, mask=ok)
+    y = _kg_fd_scale_f32(x, keep, scale)
+    tl.store(Y + off, y, mask=ok)
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +526,7 @@ def _kg_log2(v):
     return v.bit_length() - 1
 
 
-def _kg_run_flat(inp, out, p, scale, log2s, pattern):
+def _kg_run_flat(inp, out, p, scale, log2s, split_store):
     numel = inp.numel()
     n_full = (numel // _ALIGN) * _ALIGN
     if n_full > 0:
@@ -537,7 +538,7 @@ def _kg_run_flat(inp, out, p, scale, log2s, pattern):
             LOG2S=log2s,
             BLOCK=_ALIGN,
             num_warps=_WARPS,
-            PATTERN_OUT=pattern,
+            SPLIT_STORE=split_store,
         )
     n_tail = numel - n_full
     if n_tail > 0:
@@ -556,7 +557,6 @@ def _kg_run_flat(inp, out, p, scale, log2s, pattern):
             LOG2S=log2s,
             BLOCK=tblock,
             num_warps=4,
-            PATTERN_OUT=pattern,
         )
 
 
@@ -608,22 +608,26 @@ def feature_dropout(input, p, train=True):
                 spatial *= input.shape[i]
 
         out = torch.empty_like(input)
-        pattern = input.dtype == torch.bfloat16
-        out_store = out.view(torch.int16) if pattern else out
+        split_store = input.dtype == torch.bfloat16
         if _kg_is_pow2(spatial):
             _kg_run_flat(
                 inp=input,
-                out=out_store,
+                out=out,
                 p=p_eff,
                 scale=scale,
                 log2s=_kg_log2(spatial),
-                pattern=pattern,
+                split_store=split_store,
             )
         elif input.ndim >= 2:
             nc = input.shape[0] * input.shape[1]
             _kg_run_channel_fallback(input, out, nc, spatial, p_eff, scale)
         else:
             _kg_run_flat(
-                inp=input, out=out_store, p=p_eff, scale=scale, log2s=0, pattern=pattern
+                inp=input,
+                out=out,
+                p=p_eff,
+                scale=scale,
+                log2s=0,
+                split_store=split_store,
             )
         return out

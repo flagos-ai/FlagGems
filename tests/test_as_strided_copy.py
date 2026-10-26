@@ -71,8 +71,7 @@ def test_accuracy_as_strided_copy(input_shape, size, stride, storage_offset, dty
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.as_strided_copy(ref_inp, size, stride, storage_offset)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(inp, size, stride, storage_offset)
+    res_out = flag_gems.as_strided_copy(inp, size, stride, storage_offset)
 
     assert res_out.is_contiguous()
     utils.gems_assert_equal(res_out, ref_out)
@@ -89,8 +88,7 @@ def test_accuracy_as_strided_copy_default_storage_offset(dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.as_strided_copy(ref_inp, (4,), (2,))
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(inp, (4,), (2,))
+    res_out = flag_gems.as_strided_copy(inp, (4,), (2,))
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -114,10 +112,7 @@ def test_accuracy_as_strided_copy_out_noncontiguous(dtype):
         ref_inp, (2, 3), (1, 6), 0, out=ref_out_buf
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(
-            inp, (2, 3), (1, 6), 0, out=res_out_buf
-        )
+    res_out = flag_gems.as_strided_copy_out(inp, (2, 3), (1, 6), 0, out=res_out_buf)
 
     assert res_out.data_ptr() == res_out_buf.data_ptr()
     assert res_out.stride() == out_stride
@@ -138,10 +133,7 @@ def test_accuracy_as_strided_copy_out_resizes():
         ref_inp, (2, 3), (1, 6), 0, out=ref_out_buf
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(
-            inp, (2, 3), (1, 6), 0, out=res_out_buf
-        )
+    res_out = flag_gems.as_strided_copy_out(inp, (2, 3), (1, 6), 0, out=res_out_buf)
 
     assert tuple(res_out.shape) == (2, 3)
     utils.gems_assert_equal(res_out, ref_out)
@@ -159,8 +151,7 @@ def test_accuracy_as_strided_copy_out_aliases_input():
     res_out_buf = inp[1:5]
     torch.ops.aten.as_strided_copy(ref_base, (4,), (1,), 0, out=ref_out_buf)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.as_strided_copy(inp, (4,), (1,), 0, out=res_out_buf)
+    flag_gems.as_strided_copy_out(inp, (4,), (1,), 0, out=res_out_buf)
 
     utils.gems_assert_equal(inp, ref_base)
 
@@ -173,9 +164,8 @@ def test_accuracy_as_strided_copy_out_dtype_mismatch_raises():
     inp = _make_input((8,), torch.int64, flag_gems.device)
     out = torch.empty((4,), dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
-            torch.ops.aten.as_strided_copy(inp, (4,), (1,), 0, out=out)
+    with pytest.raises(RuntimeError, match="Expected out tensor to have dtype"):
+        flag_gems.as_strided_copy_out(inp, (4,), (1,), 0, out=out)
 
 
 @pytest.mark.as_strided_copy
@@ -193,8 +183,7 @@ def test_accuracy_as_strided_copy_float8_byte_path(dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.as_strided_copy(ref_inp, (2, 3), (1, 6), 0)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(inp, (2, 3), (1, 6), 0)
+    res_out = flag_gems.as_strided_copy(inp, (2, 3), (1, 6), 0)
 
     utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
 
@@ -218,10 +207,7 @@ def test_accuracy_as_strided_copy_out_float8_byte_path(dtype):
         ref_inp, (2, 3), (1, 6), 0, out=ref_out_buf
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.as_strided_copy(
-            inp, (2, 3), (1, 6), 0, out=res_out_buf
-        )
+    res_out = flag_gems.as_strided_copy_out(inp, (2, 3), (1, 6), 0, out=res_out_buf)
 
     assert res_out.data_ptr() == res_out_buf.data_ptr()
     utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))

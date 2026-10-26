@@ -92,7 +92,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     out_dtype = out.dtype
     if out_dtype not in (torch.float16, torch.bfloat16, torch.float32, torch.float64):
@@ -151,7 +151,7 @@ def _launch_hypot_inplace_flat(x: torch.Tensor, y: torch.Tensor):
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     COMPUTE_DTYPE = tl.float64 if x.dtype == torch.float64 else tl.float32
 
@@ -251,7 +251,7 @@ def _launch_hypot_inplace_strided(
         return
 
     BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     COMPUTE_DTYPE = tl.float64 if x.dtype == torch.float64 else tl.float32
     rank = x.dim()

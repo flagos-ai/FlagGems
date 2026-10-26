@@ -324,7 +324,7 @@ class CudnnConvolutionTranspose(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS CUDNN_CONV_TRANSPOSE VJP")
+        logger.debug("GEMS CUDNN_CONV_TRANSPOSE_VJP")
         input, weight = ctx.saved_tensors
 
         stride = ctx.stride

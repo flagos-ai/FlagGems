@@ -30,7 +30,6 @@ def test_unfold(shape, dtype, params):
     step = params["step"]
 
     ref_out = ref_inp.unfold(dimension, size, step)
-    with flag_gems.use_gems():
-        res_out = inp.unfold(dimension, size, step)
+    res_out = flag_gems.unfold(inp, dimension, size, step)
 
     utils.gems_assert_close(utils.to_reference(res_out), ref_out, dtype)

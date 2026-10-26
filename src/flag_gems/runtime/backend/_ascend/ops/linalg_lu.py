@@ -4,6 +4,7 @@ from collections import namedtuple
 import torch
 import triton
 import triton.language as tl
+import triton.runtime.driver as driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -13,6 +14,12 @@ from .linalg_lu_factor import linalg_lu_factor
 logger = logging.getLogger(__name__)
 
 LinalgLUResult = namedtuple("LinalgLUResult", ["P", "L", "U"])
+
+
+def get_npu_properties():
+    device = torch.npu.current_device()
+    return driver.active.utils.get_device_properties(device)
+
 
 # --- Local copies of the lu_unpack kernels from main ops (flag_gems.ops.lu_unpack) ---
 # Defined here rather than imported to ensure fresh Ascend compilation
@@ -115,34 +122,50 @@ def _lu_unpack_l_kernel(
     m,
     n,
     k,
+    NTILES,
+    GRID_M: tl.constexpr,
+    GRID_K: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    TILES_PER_PROG: tl.constexpr,
 ):
     """Extract L (unit lower triangular) from the packed LU factors.
 
     L[i, j] = LU[i, j] for j < i, 1.0 for j == i, 0.0 for j > i.
-    Grid: (cdiv(m, BLOCK_M), cdiv(k, BLOCK_K), batch).
+    The flattened tile space is (batch, grid_m, grid_k); each launched
+    program walks multiple tiles so the launch grid follows the vector core count.
     """
-    pid_m = tl.program_id(0)
-    pid_k = tl.program_id(1)
-    pid_b = tl.program_id(2)
+    pid = tl.program_id(0)
 
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    # Launch one wave of vector-core programs; each program walks its tile range.
+    for idx in tl.range(0, TILES_PER_PROG):
+        tile = pid * TILES_PER_PROG + idx
+        if tile < NTILES:
+            pid_b = tile // (GRID_M * GRID_K)
+            rem = tile - pid_b * (GRID_M * GRID_K)
+            pid_m = rem // GRID_K
+            pid_k = rem - pid_m * GRID_K
 
-    mask = (rows[:, None] < m) & (cols[None, :] < k)
-    vals = tl.load(
-        LU + pid_b * m * n + rows[:, None] * n + cols[None, :],
-        mask=mask,
-        other=0.0,
-    ).to(tl.float32)
+            rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+            cols = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
 
-    out = tl.where(
-        rows[:, None] > cols[None, :],
-        vals,
-        tl.where(rows[:, None] == cols[None, :], 1.0, 0.0),
-    )
-    tl.store(L + pid_b * m * k + rows[:, None] * k + cols[None, :], out, mask=mask)
+            mask = (rows[:, None] < m) & (cols[None, :] < k)
+            vals = tl.load(
+                LU + pid_b * m * n + rows[:, None] * n + cols[None, :],
+                mask=mask,
+                other=0.0,
+            ).to(tl.float32)
+
+            out = tl.where(
+                rows[:, None] > cols[None, :],
+                vals,
+                tl.where(rows[:, None] == cols[None, :], 1.0, 0.0),
+            )
+            tl.store(
+                L + pid_b * m * k + rows[:, None] * k + cols[None, :],
+                out,
+                mask=mask,
+            )
 
 
 @libentry()
@@ -153,30 +176,41 @@ def _lu_unpack_u_kernel(
     m,
     n,
     k,
+    NTILES,
+    GRID_M: tl.constexpr,
+    GRID_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    TILES_PER_PROG: tl.constexpr,
 ):
     """Extract U (upper triangular) from the packed LU factors.
-
     U[i, j] = LU[i, j] for j >= i, 0.0 for j < i.
-    Grid: (cdiv(k, BLOCK_M), cdiv(n, BLOCK_N), batch).
+    The flattened tile space is (batch, grid_m, grid_n); each launched
+    program walks multiple tiles so the launch grid follows the vector core count.
     """
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-    pid_b = tl.program_id(2)
-
-    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-
-    mask = (rows[:, None] < k) & (cols[None, :] < n)
-    vals = tl.load(
-        LU + pid_b * m * n + rows[:, None] * n + cols[None, :],
-        mask=mask,
-        other=0.0,
-    ).to(tl.float32)
-
-    out = tl.where(cols[None, :] >= rows[:, None], vals, 0.0)
-    tl.store(U + pid_b * k * n + rows[:, None] * n + cols[None, :], out, mask=mask)
+    pid = tl.program_id(0)
+    # Launch one wave of vector-core programs; each program walks its tile range.
+    for idx in tl.range(0, TILES_PER_PROG):
+        tile = pid * TILES_PER_PROG + idx
+        if tile < NTILES:
+            pid_b = tile // (GRID_M * GRID_N)
+            rem = tile - pid_b * (GRID_M * GRID_N)
+            pid_m = rem // GRID_N
+            pid_n = rem - pid_m * GRID_N
+            rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+            cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+            mask = (rows[:, None] < k) & (cols[None, :] < n)
+            vals = tl.load(
+                LU + pid_b * m * n + rows[:, None] * n + cols[None, :],
+                mask=mask,
+                other=0.0,
+            ).to(tl.float32)
+            out = tl.where(cols[None, :] >= rows[:, None], vals, 0.0)
+            tl.store(
+                U + pid_b * k * n + rows[:, None] * n + cols[None, :],
+                out,
+                mask=mask,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -208,21 +242,49 @@ def _lu_unpack_into(lu, pivots, P, L, U, pivot):
                 num_warps=4,
             )
 
-        _lu_unpack_l_kernel[
-            (
-                triton.cdiv(m, _LU_UNPACK_TILE_M),
-                triton.cdiv(k, _LU_UNPACK_TILE_K),
-                batch_size,
-            )
-        ](lu, L, m, n, k, _LU_UNPACK_TILE_M, _LU_UNPACK_TILE_K, num_warps=4)
+        core_num = get_npu_properties()["num_vectorcore"]
 
-        _lu_unpack_u_kernel[
-            (
-                triton.cdiv(k, _LU_UNPACK_TILE_M),
-                triton.cdiv(n, _LU_UNPACK_TILE_N),
-                batch_size,
-            )
-        ](lu, U, m, n, k, _LU_UNPACK_TILE_M, _LU_UNPACK_TILE_N, num_warps=4)
+        grid_m = triton.cdiv(m, _LU_UNPACK_TILE_M)
+        grid_k = triton.cdiv(k, _LU_UNPACK_TILE_K)
+        n_tiles = batch_size * grid_m * grid_k
+        tiles_per_prog = triton.cdiv(n_tiles, core_num)
+        grid = (triton.cdiv(n_tiles, tiles_per_prog),)
+
+        _lu_unpack_l_kernel[grid](
+            lu,
+            L,
+            m,
+            n,
+            k,
+            n_tiles,
+            grid_m,
+            grid_k,
+            _LU_UNPACK_TILE_M,
+            _LU_UNPACK_TILE_K,
+            tiles_per_prog,
+            num_warps=4,
+        )
+
+        grid_m = triton.cdiv(k, _LU_UNPACK_TILE_M)
+        grid_n = triton.cdiv(n, _LU_UNPACK_TILE_N)
+        n_tiles = batch_size * grid_m * grid_n
+        tiles_per_prog = triton.cdiv(n_tiles, core_num)
+        grid = (triton.cdiv(n_tiles, tiles_per_prog),)
+
+        _lu_unpack_u_kernel[grid](
+            lu,
+            U,
+            m,
+            n,
+            k,
+            n_tiles,
+            grid_m,
+            grid_n,
+            _LU_UNPACK_TILE_M,
+            _LU_UNPACK_TILE_N,
+            tiles_per_prog,
+            num_warps=4,
+        )
 
 
 # ---------------------------------------------------------------------------

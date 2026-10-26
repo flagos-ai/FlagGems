@@ -93,12 +93,12 @@ def _det_blocked_kernel(
 
 
 def linalg_det(A):
-    logger.debug("GEMS LINALG_DET")
+    logger.debug("GEMS_ASCEND LINALG_DET")
     return _linalg_det_impl(A)
 
 
 def linalg_det_out(A, *, out=None):
-    logger.debug("GEMS LINALG_DET_OUT")
+    logger.debug("GEMS_ASCEND LINALG_DET_OUT")
     if out is None:
         raise TypeError("linalg_det(): out must be provided for out variant")
     if out.dtype != A.dtype:

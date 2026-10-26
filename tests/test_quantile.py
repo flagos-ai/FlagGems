@@ -56,8 +56,7 @@ def test_quantile(shape, dtype, q, interpolation):
     ref_q = utils.to_reference(q)
 
     ref_out = torch.quantile(ref_inp, ref_q, interpolation=interpolation)
-    with flag_gems.use_gems():
-        res_out = torch.quantile(inp, q, interpolation=interpolation)
+    res_out = flag_gems.quantile(inp, q, interpolation=interpolation)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
 
@@ -81,10 +80,9 @@ def test_quantile_dim(shape, dim, keepdim, dtype, q, interpolation):
     ref_out = torch.quantile(
         ref_inp, ref_q, dim=dim, keepdim=keepdim, interpolation=interpolation
     )
-    with flag_gems.use_gems():
-        res_out = torch.quantile(
-            inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
-        )
+    res_out = flag_gems.quantile(
+        inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
+    )
 
     if isinstance(dim, int):
         dim = [dim]

@@ -83,8 +83,7 @@ def test_pad(shape, dtype, pad_mode, contiguous):
     pad_params_list = [int(pad_params[i]) for i in range(pad_params.shape[0])]
 
     ref_out = torch.nn.functional.pad(ref_x, pad_params_list, pad_mode, pad_value)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pad(x, pad_params_list, pad_mode, pad_value)
+    res_out = flag_gems.pad(x, pad_params_list, pad_mode, pad_value)
 
     if ref_out.dtype != res_out.dtype:
         ref_out = ref_out.to(res_out.dtype)

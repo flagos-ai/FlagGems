@@ -307,6 +307,259 @@ _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
 
 _FAST_MODE_ENV = "XMLIR_MATMUL_FAST_MODE"
 
+# ---------------------------------------------------------------------------
+# SYRK fast path for self-transpose pairs: mm(a, a.t()) with b a transpose
+# view of ``a`` (mm_kernel_syrk computes one packed lower-triangular block per
+# program and mirrors it, i.e. half the matrix-engine work of the full GEMM).
+# ---------------------------------------------------------------------------
+
+_SYRK_BLOCK_M = 64
+_SYRK_BLOCK_K = 64
+# Large-shape tier (measured 2026-10-19, XPU 5): the 64-tile has too little
+# matrix-engine work per program on M > 256 (4096^3 fp16: 1.95ms at 64-tile vs
+# 0.43ms at 256-tile); a BK=128 big tier also exists for fp16 but measured
+# slower (0.66ms vs 0.43ms on 4096^3), so the 16-bit dtypes use BK=256.
+_SYRK_BIG_M = 256
+_SYRK_BIG_BLOCK_M = 256
+_SYRK_BIG_BLOCK_K_16 = 256
+_SYRK_BIG_BLOCK_K_F32 = 128
+_SYRK_BIG_NUM_WARPS = 8
+
+
+def _syrk_blocks(M, K, a_dtype):
+    """(BLOCK_M, BLOCK_K, num_warps) for mm_kernel_syrk at shape (M, *).
+
+    Eligible on this backend (measured 2026-10-19): fp16 at all sizes, fp32
+    at the small 64-tile and at tile-aligned big shapes (M % 256 == 0 and
+    K % 128 == 0: no M-wrap and no K-pad, which are the racy cases).  bf16
+    (its trans miscompiles at 128/256-tile width) and the ragged large-M
+    fp32 shapes keep the general (correct) mm path.  Returns None when not
+    eligible.
+
+    1-row/1-column tiles (M < 2 or K < 2) also keep the general path: on the
+    xre 5.37.1 / flagtree (xpu3.6) stack the ``_syrk_guard_kernel`` mask
+    comparison ``(rm < M) & (rk < K)`` with a 1-row/1-col bound lowers to an
+    illegal ``arith.cmpi`` in ``TritonXPULegalize`` ("operands must have the
+    same type", uni_sram OutOfResources at mm.py:393) — the xpu5/KTC tree is
+    unaffected.  M = 1 is covered by the mm_self_transpose test shapes
+    (1, 32)."""
+    if M < 2 or K < 2:
+        return None
+    if M <= _SYRK_BIG_M:
+        return _SYRK_BLOCK_M, _SYRK_BLOCK_K, 4
+    if a_dtype == torch.bfloat16:
+        # bf16's trans miscompiles at 128/256-tile width; keep the general
+        # (correct) mm path.
+        return None
+    if a_dtype == torch.float32:
+        if M % _SYRK_BIG_BLOCK_M == 0 and K % _SYRK_BIG_BLOCK_K_F32 == 0:
+            return _SYRK_BIG_BLOCK_M, _SYRK_BIG_BLOCK_K_F32, _SYRK_BIG_NUM_WARPS
+        return None
+    return _SYRK_BIG_BLOCK_M, _SYRK_BIG_BLOCK_K_16, _SYRK_BIG_NUM_WARPS
+
+
+def is_syrk_transpose_pair(a, b):
+    """True when ``b`` is a transpose view of ``a`` sharing one storage
+    (the ``mm(a, a.t())`` pattern, i.e. b == a.t()); the SYRK kernel then
+    needs only the lower-triangular blocks."""
+    return (
+        a.ndim == 2
+        and b.ndim == 2
+        and a.shape[0] == b.shape[1]
+        and a.shape[1] == b.shape[0]
+        and a.stride(0) == b.stride(1)
+        and a.stride(1) == b.stride(0)
+        and a.storage_offset() == b.storage_offset()
+        and a.data_ptr() == b.data_ptr()
+    )
+
+
+@triton.jit
+def _syrk_guard_kernel(
+    src,
+    dst,
+    M,
+    K,
+    stride_sr,
+    stride_sc,
+    stride_dr,
+    stride_dc,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Generic masked 2D copy used by the SYRK path for two jobs:
+
+    1. K-pad ``a`` into a row-major (M, kp) buffer whose [K, kp) columns stay
+       zero (the caller allocates with ``torch.zeros``) so the dot kernel can
+       load full (BLOCK_M, BLOCK_K) tiles unmasked.
+    2. Copy the (mp, mp) padded result back into the exact (M, M) output.
+
+    Not a dot kernel, so a plain row/col bound mask is safe here (the
+    ``_linear_fused_kernel`` masked variant is the same pattern)."""
+    pid_m = ext.program_id(0)
+    pid_k = ext.program_id(1)
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rk = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    mask = (rm < M)[:, None] & (rk < K)[None, :]
+    x = tl.load(
+        src + rm[:, None] * stride_sr + rk[None, :] * stride_sc,
+        mask=mask,
+        other=0.0,
+    )
+    tl.store(dst + rm[:, None] * stride_dr + rk[None, :] * stride_dc, x, mask=mask)
+
+
+@triton.jit
+def mm_kernel_syrk(
+    A,
+    C,
+    M,
+    K,
+    stride_am,
+    stride_ak,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    """Lower-triangle SYRK kernel: C = A @ A^T for a self-transpose pair.
+
+    Launch domain is the packed lower-triangular index space
+    ``pid = row * (row + 1) / 2 + col`` with ``0 <= col <= row``, so only
+    ``tiles * (tiles + 1) / 2`` programs run (half of a full GEMM).  The
+    off-diagonal block (pid_m, pid_n) is stored twice -- directly at (rm, rn)
+    and transposed at (rn, rm) -- while the diagonal block is already
+    symmetric (A[rm] . A[rn] is symmetric in the block indices) so it needs a
+    single store.  Both loads use the K-contiguous (BM, BK) layout (the
+    ``_linear_fused_kernel`` USE_TRANS pattern) so the dot takes
+    ``a @ trans(b)`` and both GM reads stay coalesced.
+
+    ``A`` is the row-major K-padded (M, kp) buffer (see ``_syrk_prepare_a``);
+    ``C`` is (mp, mp), mp = cdiv(M, BLOCK_M) * BLOCK_M, so both the direct and
+    the mirrored store stay inside the allocation (same in-bounds-by-
+    construction argument as ``mm_kernel``) and no store mask is used; the
+    [M, mp) boundaries hold wrapped-lane garbage and are sliced off by the
+    host.  The mirror writes the transposed value at the transposed position
+    (C[rn, rm] = out^T) -- an in-register ``tl.trans`` paired with the swapped
+    strides; the position-swap and the value-swap must come as a pair (either
+    one alone silently miscompiles on this backend, measured)."""
+    pid = ext.program_id(0)
+
+    # Invert the triangular-number index (float32 sqrt is exact for the
+    # program counts on this path; the +/-1 corrections guard the floor).
+    pid_f = pid.to(tl.float32)
+    pid_m = tl.floor((tl.sqrt(8.0 * pid_f + 1.0) - 1.0) / 2.0).to(tl.int32)
+    tri_start = pid_m * (pid_m + 1) // 2
+    pid_m = tl.where(tri_start > pid, pid_m - 1, pid_m)
+    next_tri_start = (pid_m + 1) * (pid_m + 2) // 2
+    pid_m = tl.where(next_tri_start <= pid, pid_m + 1, pid_m)
+    pid_n = pid - pid_m * (pid_m + 1) // 2
+
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_M + tl.arange(0, BLOCK_M)
+    # %-wrap keeps every load inside A's (M, kp) extent; the wrapped rows only
+    # feed C's [M, mp) boundary which the host slices off.
+    ram = rm % M
+    ran = rn % M
+    rk = tl.arange(0, BLOCK_K)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_M), dtype=tl.float32)
+    a_ptr = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+    b_ptr = A + (ran[:, None] * stride_am + rk[None, :] * stride_ak)
+    for _k in range(0, tl.cdiv(K, BLOCK_K)):
+        a = tl.load(a_ptr)
+        b = tl.load(b_ptr)
+        acc += tl.dot(a, tl.trans(b), out_dtype=tl.float32, allow_tf32=False)
+        a_ptr += BLOCK_K * stride_ak
+        b_ptr += BLOCK_K * stride_ak
+
+    out = acc.to(C.dtype.element_ty)
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_M + tl.arange(0, BLOCK_M)
+    tl.store(C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn), out)
+    if pid_m > pid_n:
+        # Mirror the lower block into the upper triangle: C[rn, rm] = out^T.
+        tl.store(C + (rn[:, None] * stride_cm + rm[None, :] * stride_cn), tl.trans(out))
+
+
+def _syrk_prepare_a(a, b, M, K, blk_k):
+    """Return a row-major K-padded view of ``a`` for the SYRK kernel.
+
+    Returns (ap, kp): ap is (M, kp), kp = cdiv(K, blk_k) * blk_k, with the
+    [K, kp) columns zeroed.  ``a`` is used directly when it already is
+    row-major and K-aligned; a column-major ``a`` (the common test/benchmark
+    layout) is transposed through the vendor ``t_copy`` SDNN pipeline (both
+    GM sides stay block-DMA) into a (M, K) row-major buffer; any remaining
+    ragged K is padded by ``_syrk_guard_kernel``."""
+    kp = triton.cdiv(K, blk_k) * blk_k
+    if (a.stride(0), a.stride(1)) == (K, 1):
+        src, s0, s1 = a, a.stride(0), a.stride(1)
+    elif b.is_contiguous():
+        # b = a.t() is (K, M) contiguous; t_copy materialises (M, K) row-major.
+        from .t_copy import t_copy  # lazy: ops/__init__ imports mm first
+
+        src = t_copy(b)
+        s0, s1 = K, 1
+    else:
+        # rare exotic view: fall back to a strided read in the pad kernel
+        src, s0, s1 = a, a.stride(0), a.stride(1)
+    if kp != K:
+        ap = torch.zeros((M, kp), device=a.device, dtype=a.dtype)
+        _syrk_guard_kernel[(triton.cdiv(M, _SYRK_BLOCK_M), triton.cdiv(K, blk_k))](
+            src, ap, M, K, s0, s1, kp, 1, BLOCK_M=_SYRK_BLOCK_M, BLOCK_K=blk_k
+        )
+        src = ap
+    return src, kp
+
+
+def _syrk_mm(a, b, out, M, K, device):
+    """Run the SYRK path for ``out = a @ a.t()``; ``out`` is (M, M).
+
+    Returns None when the pair is not SYRK-eligible on this backend (bf16);
+    the caller then keeps the general mm path unchanged."""
+    if M == 0 or K == 0:
+        return out
+    blocks = _syrk_blocks(M, K, a.dtype)
+    if blocks is None:
+        return None
+    blk_m, blk_k, num_warps = blocks
+    src, kp = _syrk_prepare_a(a, b, M, K, blk_k)
+    mp = triton.cdiv(M, blk_m) * blk_m
+    c = out if mp == M else torch.empty((mp, mp), device=device, dtype=out.dtype)
+    tiles = triton.cdiv(mp, blk_m)
+    saved = _set_matmul_fast_mode(a.dtype, M, M, K)
+    try:
+        with torch_device_fn.device(device):
+            mm_kernel_syrk[(tiles * (tiles + 1) // 2,)](
+                src,
+                c,
+                M,
+                kp,
+                src.stride(0),
+                src.stride(1),
+                c.stride(0),
+                c.stride(1),
+                BLOCK_M=blk_m,
+                BLOCK_K=blk_k,
+                num_warps=num_warps,
+            )
+    finally:
+        _restore_matmul_fast_mode(saved)
+    if mp != M:
+        _syrk_guard_kernel[(triton.cdiv(M, blk_m), triton.cdiv(M, blk_m))](
+            c,
+            out,
+            M,
+            M,
+            c.stride(0),
+            c.stride(1),
+            out.stride(0),
+            out.stride(1),
+            BLOCK_M=blk_m,
+            BLOCK_K=blk_k,
+        )
+    return out
+
 
 def _set_matmul_fast_mode(a_dtype, M, N, K):
     """XPU probe (2026-08-13, XPU 4): XMLIR_MATMUL_FAST_MODE=1 speeds the
@@ -491,6 +744,14 @@ def _padded_or_direct(a, b, dest, M, K, N, blk_m, blk_n, dot_out_dtype, device):
 def mm(a, b):
     logger.debug("GEMS_KUNLUNXIN MM")
     device = a.device
+    if is_syrk_transpose_pair(a, b):
+        M, K = a.shape
+        c = torch.empty((M, M), device=device, dtype=a.dtype)
+        res = _syrk_mm(a, b, c, M, K, device)
+        if res is not None:
+            return res
+        # bf16 (or other non-SYRK-eligible) pairs fall through to the general
+        # path below, which is the pre-existing correct implementation.
     # NOTE: no ``x.contiguous()`` here.  Inside use_gems()/enable() a strided
     # input (e.g. the column-major self-transpose view) dispatches through the
     # registered ``_to_copy`` override, whose flat-1D kernel mis-handles
@@ -516,6 +777,18 @@ def mm(a, b):
 
 def mm_out(a, b, *, out):
     logger.debug("GEMS_KUNLUNXIN MM_OUT")
+    if is_syrk_transpose_pair(a, b):
+        M, K = a.shape
+        c_dtype = get_higher_dtype(a.dtype, b.dtype)
+        if out.dtype != c_dtype:
+            raise RuntimeError(
+                f"mm.out: expected out of dtype {c_dtype} but got {out.dtype}"
+            )
+        res = _syrk_mm(a, b, out, M, K, out.device)
+        if res is not None:
+            return res
+        # bf16 (or other non-SYRK-eligible) pairs fall through to the general
+        # path below, which is the pre-existing correct implementation.
     # NOTE: no ``x.contiguous()`` here - see the mm() comment (the registered
     # _to_copy override mis-handles strided inputs).
     # checks constraints

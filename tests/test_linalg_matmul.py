@@ -5,6 +5,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_COMPLEX_DTYPES = (
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else []
+)
+
 # Test shapes for linalg_matmul (2D and batched)
 LINALG_MNK_SHAPES = [
     (1, 1, 32),
@@ -131,7 +135,7 @@ def test_linalg_matmul_mixed_dtype(dtype):
         flag_gems.linalg_matmul(mat1, mat2)
 
 
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_linalg_matmul_complex(dtype):
     """Complex inputs raise NotImplementedError (Triton kernels don't support them)"""
     mat1 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)

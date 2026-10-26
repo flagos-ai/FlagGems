@@ -50,8 +50,7 @@ def test_bitwise_left_shift(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_out = torch.bitwise_left_shift(ref_a, ref_b)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_left_shift(res_a, res_b)
+    res_out = flag_gems.bitwise_left_shift(res_a, res_b)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 

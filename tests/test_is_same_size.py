@@ -50,10 +50,12 @@ def test_is_same_size(shape_a, shape_b, dtype, caplog):
     ref_b = utils.to_reference(inp_b)
 
     ref_out = torch.ops.aten.is_same_size(ref_a, ref_b)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.is_same_size"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.is_same_size)):
         res_out = flag_gems.is_same_size(inp_a, inp_b)
 
-    assert "GEMS IS_SAME_SIZE" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
+    )
     assert res_out == ref_out, f"Expected {ref_out}, got {res_out}"
     assert res_out == (shape_a == shape_b)
 
@@ -68,10 +70,12 @@ def test_is_same_size_non_contiguous(caplog):
     ref_inp_t = ref_inp.t()
 
     ref_out = torch.ops.aten.is_same_size(ref_inp, ref_inp_t)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.is_same_size"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.is_same_size)):
         res_out = flag_gems.is_same_size(inp, inp_t)
 
-    assert "GEMS IS_SAME_SIZE" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
+    )
     assert res_out == ref_out
     assert res_out is True
 
@@ -87,11 +91,13 @@ def test_is_same_size_scalar_tensor(caplog):
     ref_b = utils.to_reference(inp_b)
     ref_c = utils.to_reference(inp_c)
 
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.is_same_size"):
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.is_same_size)):
         res_same = flag_gems.is_same_size(inp_a, inp_b)
         res_diff = flag_gems.is_same_size(inp_a, inp_c)
 
-    assert "GEMS IS_SAME_SIZE" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.is_same_size)} IS_SAME_SIZE" in caplog.text
+    )
     assert res_same == torch.ops.aten.is_same_size(ref_a, ref_b)
     assert res_diff == torch.ops.aten.is_same_size(ref_a, ref_c)
     assert res_same is True

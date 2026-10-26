@@ -31,18 +31,24 @@ For fp16/bf16 inputs the accumulate path additionally runs on an fp32 working
 buffer and casts back: fp16/bf16 in-place atomic adds round every addition and
 can drift beyond tolerance from the fp64 reference, while fp32 accumulation
 error stays far below one fp16/bf16 ULP. The non-accumulate path (plain masked
-stores, no atomics) reuses the generic implementation unchanged.
+stores, no atomics) keeps the generic full-grid kernel while its grid fits the
+launch limit, and otherwise falls back to the capped kernel above.
 """
 
 import functools
 import importlib
 import logging
+import math
 from typing import Any, Tuple
 
 import torch
+import triton
 
-from flag_gems.ops.unsafe_index_put import UnsafeIndexPutFunction, generate_imports
-from flag_gems.ops.unsafe_index_put import unsafe_index_put as _generic_unsafe_index_put
+from flag_gems.ops.unsafe_index_put import (
+    UnsafeIndexPutFunction,
+    _unsafe_index_put_func,
+    generate_imports,
+)
 from flag_gems.runtime.backend._ascend.utils import CORE_NUM
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
@@ -295,13 +301,8 @@ _ascend_unsafe_index_put_func = AscendUnsafeIndexPutFunction()
 def unsafe_index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS_ASCEND UNSAFE_INDEX_PUT")
 
-    if not accumulate:
-        # Plain masked stores only: the generic triton kernel is exact on
-        # Ascend for any grid size, keep it for the non-atomic path.
-        return _generic_unsafe_index_put(inp, indices, values, accumulate)
-
     out = inp.clone()
-    if inp.dtype in (torch.float16, torch.bfloat16):
+    if accumulate and inp.dtype in (torch.float16, torch.bfloat16):
         # fp16/bf16 in-place atomic adds round each addition, which can drift
         # beyond tolerance from the fp64 reference. Accumulate in an fp32
         # buffer instead and cast back: fp32 accumulation error is far below
@@ -404,6 +405,16 @@ def unsafe_index_put_impl(inp, indices, values, accumulate=False):
         # direct broadcast
         values = values.broadcast_to(target_shape)
 
-    _ascend_unsafe_index_put_func(inp_view, tensors, values, accumulate)
+    # The generic kernel launches the full uncapped grid: exact for plain
+    # stores at any wave count, but only launchable while the flattened grid
+    # fits the Ascend coreDim limit (65535). Larger non-accumulate grids use
+    # the capped kernel instead; the accumulate path always needs it, since
+    # its atomics are only exact within a single wave.
+    M = tensors[0].numel()
+    N = math.prod(slice_shape)
+    if not accumulate and triton.cdiv(M, 2) * triton.cdiv(N, 2048) <= 65535:
+        _unsafe_index_put_func(inp_view, tensors, values, accumulate)
+    else:
+        _ascend_unsafe_index_put_func(inp_view, tensors, values, accumulate)
 
     return inp

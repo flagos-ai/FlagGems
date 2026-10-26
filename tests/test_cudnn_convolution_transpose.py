@@ -23,6 +23,7 @@ import torch.nn.functional as F
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # FlagGems provides its own Triton transpose-convolution kernel, so this test
 # exercises that kernel directly (flag_gems.ops.cudnn_convolution_transpose) and
@@ -48,6 +49,12 @@ SHAPE_CONV_TRANSPOSE2D = [
 def test_cudnn_convolution_transpose(
     shape, kernel, stride, padding, dtype, dilation, groups
 ):
+    # cudnn_convolution_transpose has no CPU backend in PyTorch, skip under --ref=cpu
+    if TO_CPU:
+        pytest.skip(
+            "cudnn_convolution_transpose has no CPU backend; skip under --ref=cpu"
+        )
+
     if flag_gems.vendor_name == "mthreads" and dtype == torch.float16:
         os.environ["MUSA_ENABLE_SQMMA"] = "1"
 

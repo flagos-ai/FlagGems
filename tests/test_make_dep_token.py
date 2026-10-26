@@ -16,8 +16,7 @@ def test_make_dep_token(dtype):
     instead of comparing tensor values directly.
     """
     ref = utils.to_reference(torch.ops.aten._make_dep_token(dtype=dtype))
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._make_dep_token(dtype=dtype)
+    res_out = flag_gems._make_dep_token(dtype=dtype)
     ref_numel = torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
     res_numel = torch.tensor(res_out.numel(), dtype=torch.int64, device=res_out.device)
     utils.gems_assert_close(res_numel, ref_numel, torch.int64)
@@ -31,8 +30,7 @@ def test_make_dep_token(dtype):
 def test_make_dep_token_default():
     """Test _make_dep_token with default parameters."""
     ref = utils.to_reference(torch.ops.aten._make_dep_token())
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._make_dep_token()
+    res_out = flag_gems._make_dep_token()
     ref_numel = torch.tensor(ref.numel(), dtype=torch.int64, device=res_out.device)
     res_numel = torch.tensor(res_out.numel(), dtype=torch.int64, device=res_out.device)
     utils.gems_assert_close(res_numel, ref_numel, torch.int64)
@@ -47,8 +45,7 @@ def test_make_dep_token_default():
 @pytest.mark.make_dep_token
 def test_make_dep_token_device():
     """Test _make_dep_token returns a CUDA tensor through FlagGems dispatch."""
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._make_dep_token()
+    res_out = flag_gems._make_dep_token()
 
     assert res_out.shape == torch.Size(
         []

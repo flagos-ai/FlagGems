@@ -40,10 +40,9 @@ def test_choose_qparams_optimized(shape, dtype, n_bins, ratio):
         ref_max = ref_max.to(flag_gems.device)
         ref_min = ref_min.to(flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_max, res_min = torch.choose_qparams_optimized(
-            res_inp.view(-1), numel, n_bins, ratio, bit_width
-        )
+    res_max, res_min = flag_gems.choose_qparams_optimized(
+        res_inp.view(-1), numel, n_bins, ratio, bit_width
+    )
 
     utils.gems_assert_close(res_max, ref_max, torch.float32)
     utils.gems_assert_close(res_min, ref_min, torch.float32)
@@ -66,10 +65,9 @@ def test_choose_qparams_optimized_constant_input():
         ref_max = ref_max.to(flag_gems.device)
         ref_min = ref_min.to(flag_gems.device)
 
-    with flag_gems.use_gems():
-        res_max, res_min = torch.choose_qparams_optimized(
-            res_inp, numel, n_bins, ratio, bit_width
-        )
+    res_max, res_min = flag_gems.choose_qparams_optimized(
+        res_inp, numel, n_bins, ratio, bit_width
+    )
 
     utils.gems_assert_close(res_max, ref_max, torch.float32)
     utils.gems_assert_close(res_min, ref_min, torch.float32)

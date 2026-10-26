@@ -20,6 +20,7 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import heuristics_for_num_warps, volume
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -101,25 +102,37 @@ def fill_tensor(input, value):
     return fill_scalar(input, value.item())
 
 
+@triton.jit
+def _fill_tensor_out_kernel(out_ptr, n_elements, value, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(0)
+    offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offs < n_elements
+    tl.store(
+        out_ptr + offs,
+        tl.full([BLOCK_SIZE], value, dtype=out_ptr.dtype.element_ty),
+        mask=mask,
+    )
+
+
 def fill_tensor_out(input, value, *, out=None):
-    # fill.Tensor_out fills `out` from a single 0-dim `value` (equivalent to
-    # fill.Scalar_out). The generic ops/fill.py path (fill_tensor_func
-    # `return value`) reads the 0-dim scalar per element on XPU and breaks
-    # block DMA. This dedicated kernel does not load the input, keeps `tl.full`
-    # vectorized, and takes `value` as a Python scalar so the compiler folds it
-    # into a memset.
     logger.debug("GEMS_KUNLUNXIN FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
     _check_value_0d(value)
-    # NOTE(KUNLUNXIN, 2026-09-19): delegate to `fill_scalar_out`, which addresses
-    # `out` through its real shape/strides (via `pointwise_dynamic`'s `out0`) and
-    # refuses a shape mismatch.  The previous implementation wrote
-    # `volume(input.shape)` elements flat into `out.data_ptr()`: a non-contiguous
-    # `out` silently overwrote its parent tensor (measured: 32 of 64 written
-    # elements fell outside a `parent[:, :8]` view), and an `out` smaller than
-    # `input` wrote past its allocation.  See the same README section 2.3.
-    return fill_scalar_out(input, value.item(), out=out)
+    N = volume(input.shape)
+    grid_fn = (12, 1, 1)
+    block_size = triton.next_power_of_2(triton.cdiv(N, 12))
+    num_warps = heuristics_for_num_warps(block_size)
+    with torch_device_fn.device(input.device):
+        _fill_tensor_out_kernel[grid_fn](
+            out,
+            N,
+            value.item(),
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            isCloseDtypeConvert=True,
+        )
+    return out
 
 
 def fill_tensor_(self, value):

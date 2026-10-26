@@ -33,7 +33,6 @@ def test_hardsigmoid_backward(shape, dtype):
     ref_grad_output = utils.to_reference(grad_output, True)
 
     ref_out = torch.ops.aten.hardsigmoid_backward(ref_grad_output, ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardsigmoid_backward(grad_output, inp)
+    res_out = flag_gems.hardsigmoid_backward(grad_output, inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

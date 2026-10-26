@@ -118,6 +118,59 @@ def _check_input(A):
 
 
 @triton.jit
+def _triu_flat_batched_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    MN,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    CHUNK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # 2D grid (batch, chunks-per-matrix) batch-wrapped variant. `local` always
+    # stays inside one matrix, so row/col recovery is just the constexpr
+    # divide/multiply; the runtime `% MN` of the 1D batched kernel is gone.
+    # Used both for the full batched matrix and for the top band prefix.
+    b = tl.program_id(0)
+    c = tl.program_id(1)
+    local = c * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = local // N
+    cols = local - rows * N
+    keep = cols >= rows + diag
+    base = b * MN
+    if NEED_MASK:
+        m = local < CHUNK
+        x = tl.load(in_ptr + base + local, mask=m, other=0.0)
+        tl.store(out_ptr + base + local, tl.where(keep, x, 0.0), mask=m)
+    else:
+        x = tl.load(in_ptr + base + local)
+        tl.store(out_ptr + base + local, tl.where(keep, x, 0.0))
+
+
+@triton.jit
+def _triu_zero_batched_kernel(
+    out_ptr,
+    MN,
+    band_off,
+    BLOCK_SIZE: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
+    # Store-only zeroing of the entirely-below-diagonal region
+    # [band_off, band_off + CHUNK) of every matrix (2D grid over batch x
+    # chunks). No load, no select. NOTE: an UNMASKED 16-lane-wide (512-bit)
+    # store-only kernel faults this XPU (KL3 status 718), so the masked form is
+    # always used; the mask is a pure column-tail comparison (`local < CHUNK`),
+    # which is the one mask shape this backend compiles correctly.
+    b = tl.program_id(0)
+    c = tl.program_id(1)
+    local = c * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    base = b * MN + band_off
+    m = local < CHUNK
+    tl.store(out_ptr + base + local, 0.0, mask=m)
+
+
+@triton.jit
 def _triu_row_kernel(
     in_ptr,
     out_ptr,
@@ -157,6 +210,39 @@ _BLOCK_SIZE = 8192
 # kernel wins by dropping the per-element div/mod. [1024,1024] flat wins,
 # [4096,4096] row wins, so the crossover sits between them.
 _ROW_N_THRESHOLD = 2048
+
+
+def _launch_flat_batched(inp, out, diagonal, batch, chunk_len, M, N):
+    # 2D-grid batch-wrapped pass over `chunk_len` flat elements of every matrix
+    # (full matrix or top band prefix). Needs batch >= 1; batch == 1 is the
+    # single-matrix case.
+    MN = M * N
+    grid = (batch, triton.cdiv(chunk_len, _BLOCK_SIZE))
+    need_mask = chunk_len % _BLOCK_SIZE != 0
+    with torch_device_fn.device(inp.device):
+        _triu_flat_batched_kernel[grid](
+            inp,
+            out,
+            diagonal,
+            MN,
+            N,
+            _BLOCK_SIZE,
+            chunk_len,
+            need_mask,
+            num_warps=8,
+        )
+
+
+def _launch_zero_batched(out, batch, band_off, chunk_len, M, N):
+    # Store-only zeroing of region [band_off, band_off + chunk_len) of every
+    # matrix (the entirely-below-diagonal part). Always-masked: an unmasked
+    # 16-lane-wide store-only store faults this XPU (verified, status 718).
+    MN = M * N
+    grid = (batch, triton.cdiv(chunk_len, _BLOCK_SIZE))
+    with torch_device_fn.device(out.device):
+        _triu_zero_batched_kernel[grid](
+            out, MN, band_off, _BLOCK_SIZE, chunk_len, num_warps=8
+        )
 
 
 def _launch_flat(input_c, out, diagonal, total=None):
@@ -218,8 +304,10 @@ def _launch_triu_inplace_contiguous(A, diagonal):
     # Rows [band_hi, M) are entirely below the diagonal. When that slice is
     # contiguous (2D / batch == 1) we memset it in bulk (vendor bandwidth) and
     # run the flat kernel only over the contiguous band prefix [0, band_hi*N).
-    # For batched inputs the slice is strided (zero_()/fill_() would miszero a
-    # contiguous block on this XPU), so we fall back to one flat pass over all.
+    # For batched inputs the slice is strided; a strided zero_()/fill_() is
+    # correct on this XPU (verified), so the same band split applies via the
+    # 2D-grid zero + band kernels, provided both regions are wide enough to
+    # fill whole blocks (otherwise a single flat pass wins).
     band_hi = _band_bounds(M, N, diagonal)
     if band_hi < M:
         below = A[..., band_hi:, :]
@@ -227,6 +315,12 @@ def _launch_triu_inplace_contiguous(A, diagonal):
             below.zero_()
             if band_hi > 0:
                 _launch_flat(A, A, diagonal, total=band_hi * N)
+            return
+        if band_hi * N >= _BLOCK_SIZE and (M - band_hi) * N >= _BLOCK_SIZE:
+            batch = A.numel() // (M * N)
+            _launch_zero_batched(A, batch, band_hi * N, (M - band_hi) * N, M, N)
+            if band_hi > 0:
+                _launch_flat_batched(A, A, diagonal, batch, band_hi * N, M, N)
             return
     _launch_flat(A, A, diagonal)
 
@@ -246,9 +340,12 @@ def triu(A, diagonal=0):
     # Symmetric band trick to triu_: rows [band_hi, M) are entirely below the
     # diagonal (all-zero output). When that output slice is contiguous
     # (2D / batch == 1) bulk-memset it and run the flat kernel only over the
-    # top band prefix [0, band_hi*N) instead of the whole matrix. Only worth it
-    # for large matrices: on tiny inputs the extra zero_() launch outweighs the
-    # saved band work.
+    # top band prefix [0, band_hi*N) instead of the whole matrix. For batched
+    # inputs the slice is strided; a strided zero_()/fill_() is correct on this
+    # XPU (verified), so the same split is applied with the 2D-grid zero/band
+    # kernels, provided both regions fill whole blocks (otherwise the single
+    # flat pass wins). Only worth it for large matrices: on tiny inputs the
+    # extra zero_ launch outweighs the saved band work.
     band_hi = _band_bounds(M, N, diagonal)
     if band_hi < M and A.numel() >= (1 << 20):
         below = out[..., band_hi:, :]
@@ -256,6 +353,12 @@ def triu(A, diagonal=0):
             below.zero_()
             if band_hi > 0:
                 _launch_flat(A, out, diagonal, total=band_hi * N)
+            return out
+        if band_hi * N >= _BLOCK_SIZE and (M - band_hi) * N >= _BLOCK_SIZE:
+            batch = A.numel() // (M * N)
+            _launch_zero_batched(out, batch, band_hi * N, (M - band_hi) * N, M, N)
+            if band_hi > 0:
+                _launch_flat_batched(A, out, diagonal, batch, band_hi * N, M, N)
             return out
     _launch_flat(A, out, diagonal)
     return out

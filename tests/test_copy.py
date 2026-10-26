@@ -88,8 +88,7 @@ def test_copy_inplace_same_dtype(shape, dtype):
     res_dst = torch.zeros_like(src)
 
     ref_dst.copy_(ref_src)
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -108,8 +107,7 @@ def test_copy_inplace_broadcast():
     res_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
 
     ref_dst.copy_(ref_src)
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -127,8 +125,7 @@ def test_copy_inplace_dtype_fallback():
     res_dst = torch.zeros(src.shape, dtype=torch.float32, device=flag_gems.device)
 
     ref_dst.copy_(ref_src)
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -211,8 +208,7 @@ def test_copy_inplace_float8_e8m0fnu(shape):
         res_dst = torch.zeros(shape, dtype=torch.float8_e8m0fnu, device=device)
     ref_dst.copy_(ref_src)
 
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -260,8 +256,7 @@ def test_copy_inplace_float8_e8m0fnu_to_float32():
     res_dst = torch.zeros(shape, dtype=torch.float32, device=device)
     ref_dst.copy_(ref_src)
 
-    with flag_gems.use_gems():
-        res_dst.copy_(src)
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -312,9 +307,8 @@ def test_copy_inplace_mixed_dtype_triton(src_dtype, dst_dtype):
     ref_dst = utils.to_reference(dst.clone())
     ref_dst.copy_(ref_src)
 
-    with flag_gems.use_gems():
-        res_dst = dst.clone()
-        res_dst.copy_(src)
+    res_dst = dst.clone()
+    flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
 
@@ -362,8 +356,7 @@ def test_copy_functional_same_dtype(shape, dtype):
     ref_template = utils.to_reference(template)
 
     ref_out = torch.ops.aten.copy(ref_template, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.copy(template, src)
+    res_out = flag_gems.copy(template, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -380,8 +373,7 @@ def test_copy_functional_broadcast():
     ref_template = utils.to_reference(template)
 
     ref_out = torch.ops.aten.copy(ref_template, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.copy(template, src)
+    res_out = flag_gems.copy(template, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 

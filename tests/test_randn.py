@@ -27,8 +27,7 @@ def test_randn(shape, dtype):
     if flag_gems.vendor_name in ["cambricon", "iluvatar"]:
         torch.manual_seed(42)
 
-    with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_out = utils.to_reference(res_out).float()
     mean = torch.mean(ref_out)

@@ -34,8 +34,7 @@ def test_accuracy_t_copy(shape, dtype):
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten.t_copy(ref_x)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.t_copy(x)
+    act_out = flag_gems.t_copy(x)
 
     utils.gems_assert_close(act_out, ref_out, dtype)
 
@@ -51,7 +50,6 @@ def test_accuracy_t_copy_out(shape, dtype):
     act_out_buf = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
     ref_out = torch.ops.aten.t_copy(ref_x, out=ref_out_buf)
 
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.t_copy(x, out=act_out_buf)
+    act_out = flag_gems.t_copy_out(x, act_out_buf)
 
     utils.gems_assert_close(act_out, ref_out, dtype)

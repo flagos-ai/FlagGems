@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 # Payload copy block size (in elements). B=8192 is a fixed value validated on 0.4–0.8MB payloads; no sweep was run.
 _CPO_BLOCK = 8192
@@ -99,7 +99,22 @@ def _nested_view_from_buffer_copy(
         and offsets.numel() >= max(1, num_components)
         and all(s == 1 for s in nested_strides.reshape(-1).tolist())
         and self.numel() * max(1, self.stride(0)) < 2**31
+        # Host metadata (the native contract) takes the fallback below instead:
+        # per-element .item() reads are free on host tensors, and the strided
+        # nested tensor it builds matches the reference layout. This device path
+        # exists for device-resident metadata.
+        and nested_size.device.type != "cpu"
+        and offsets.device.type != "cpu"
     ):
+        # Triton consumes metadata on device; keep the fallback's host metadata intact.
+        nested_size_dev = (
+            nested_size
+            if nested_size.device == self.device
+            else nested_size.to(device=self.device)
+        )
+        offsets_dev = (
+            offsets if offsets.device == self.device else offsets.to(device=self.device)
+        )
         # Payload copied in one go (op copy semantics; the nested tensor is a view of
         # `values`), metadata (offsets padded to num_components+1) from the second launch.
         values = torch.empty_strided(
@@ -113,7 +128,7 @@ def _nested_view_from_buffer_copy(
         )
         if num_components <= _PAD_SCALAR_MAX:
             _pad_offsets_kernel[(1,)](
-                offsets, full_offsets, num_components, offsets.stride(0)
+                offsets_dev, full_offsets, num_components, offsets_dev.stride(0)
             )
         else:
             # Many components: the batch uses the pre-change `copy_` (the scalar loop is
@@ -123,9 +138,9 @@ def _nested_view_from_buffer_copy(
             # (`TensorDescriptor` asserts the last dim has stride==1) and **always throws
             # on a cold run** -- a pre-existing defect on the copy_ side, which this kernel
             # sidesteps by addressing through `stride(0)`.
-            full_offsets[:num_components].copy_(offsets)
+            full_offsets[:num_components].copy_(offsets_dev)
             _pad_offsets_kernel[(1,)](
-                offsets, full_offsets[num_components:], 0, offsets.stride(0)
+                offsets_dev, full_offsets[num_components:], 0, offsets_dev.stride(0)
             )
         # Reuse the project's own `_nested_view_from_jagged` gem: building the
         # jagged view via torch's `nested_view_from_values_offsets_lengths` (or
@@ -137,16 +152,11 @@ def _nested_view_from_buffer_copy(
             values,
             full_offsets,
             values,  # unused dummy kept for ATen signature compatibility
-            lengths=nested_size[:, 0],
+            lengths=nested_size_dev[:, 0],
             ragged_idx=1,
         )
 
-    # Generic fallback: per-component as_strided views of a snapshot copy.
-    snapshot = torch.empty_strided(
-        self.shape, self.stride(), dtype=self.dtype, device=self.device
-    )
-    snapshot.copy_(self)
-
+    # Generic fallback: per-component as_strided views + as_nested_tensor.
     components = []
     for i in range(num_components):
         size_i = int(nested_size[i].item())
@@ -156,7 +166,7 @@ def _nested_view_from_buffer_copy(
             else int(nested_strides[i].item())
         )
         offset_i = int(offsets[i].item())
-        components.append(snapshot.as_strided((size_i,), (stride_i,), offset_i))
+        components.append(self.as_strided((size_i,), (stride_i,), offset_i))
 
     return torch.nested.as_nested_tensor(components)
 
