@@ -173,9 +173,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     quant_min, quant_max = (-128, 127) if symmetric_quant else (0, 255)
     averaging_const = 0.01
 
-    input_tensor = torch.randn(
-        shape, device=flag_gems.device, dtype=torch.float32
-    )
+    input_tensor = torch.randn(shape, device=flag_gems.device, dtype=torch.float32)
     input_before = input_tensor.clone()
     input_storage = input_tensor.untyped_storage().data_ptr()
 
@@ -183,14 +181,14 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     input_ref = utils.to_reference(input_tensor, False)
     ref_device = input_ref.device
     if observer_on and (
-        ref_device.type == "cpu" or flag_gems.vendor_name == "ascend"
+        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
     ):
         pytest.skip(
-            "CPU reference (including Ascend fallback) only supports "
-            "per-row observer updates on ch_axis=0"
+            "Configured native reference only supports per-row observer "
+            "updates on ch_axis=0"
         )
     if (
-        flag_gems.vendor_name == "nvidia"
+        flag_gems.vendor_name in ("nvidia", "iluvatar")
         and ref_device.type == "cuda"
         and fake_quant_on
     ):
@@ -198,9 +196,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
             "CUDA reference per-row fake quant rejects ch_axis=1 "
             "scale/zero-point dimensions"
         )
-    observer_ref = torch.tensor(
-        [int(observer_on)], dtype=torch.long, device=ref_device
-    )
+    observer_ref = torch.tensor([int(observer_on)], dtype=torch.long, device=ref_device)
     fake_quant_ref = torch.tensor(
         [int(fake_quant_on)], dtype=torch.long, device=ref_device
     )
@@ -230,12 +226,8 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     )
 
     device = flag_gems.device
-    observer_tri = torch.tensor(
-        [int(observer_on)], dtype=torch.long, device=device
-    )
-    fake_quant_tri = torch.tensor(
-        [int(fake_quant_on)], dtype=torch.long, device=device
-    )
+    observer_tri = torch.tensor([int(observer_on)], dtype=torch.long, device=device)
+    fake_quant_tri = torch.tensor([int(fake_quant_on)], dtype=torch.long, device=device)
     running_min_tri = torch.tensor(
         [-1.25, -0.75, -0.5, -1.0], dtype=torch.float32, device=device
     )
