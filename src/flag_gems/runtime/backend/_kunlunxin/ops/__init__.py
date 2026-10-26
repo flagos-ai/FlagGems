@@ -211,7 +211,7 @@ from .bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
-from .bitwise_left_shift import bitwise_left_shift
+from .bitwise_left_shift import bitwise_left_shift, bitwise_left_shift_
 from .bitwise_not import bitwise_not, bitwise_not_
 from .bitwise_or import (
     bitwise_or_scalar,
@@ -1045,6 +1045,7 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
+    "bitwise_left_shift_",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
