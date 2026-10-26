@@ -14939,7 +14939,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - NeuralNetwork
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: nnz
   description: 'Returns the number of stored entries of a sparse tensor: the
     number of values in the COO storage, or of entries in the compressed
