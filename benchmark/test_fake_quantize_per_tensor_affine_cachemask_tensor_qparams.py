@@ -33,6 +33,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if base.vendor_name == "hygon" and dtype == torch.bfloat16:
+        pytest.skip("Hygon native fake-quant benchmark reference lacks bfloat16")
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)

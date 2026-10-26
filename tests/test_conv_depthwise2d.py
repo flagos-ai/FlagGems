@@ -35,6 +35,18 @@ SHAPE_DEPTHWISE = [
 ]
 
 
+def _reference_depthwise2d(inp, weight, kernel_size, bias, stride, padding, dilation):
+    if inp.device.type == "cpu":
+        if tuple(weight.shape[-2:]) != tuple(kernel_size):
+            raise RuntimeError("kernel_size must match the weight's spatial dimensions")
+        return torch.nn.functional.conv2d(
+            inp, weight, bias, stride, padding, dilation, groups=inp.shape[1]
+        )
+    return torch.ops.aten._conv_depthwise2d(
+        inp, weight, kernel_size, bias, stride, padding, dilation
+    )
+
+
 @pytest.mark.conv_depthwise2d
 @pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.skipif(
@@ -63,7 +75,7 @@ def test_conv_depthwise2d(
         bias_tensor = None
         ref_bias = None
 
-    ref_out = torch.ops.aten._conv_depthwise2d(
+    ref_out = _reference_depthwise2d(
         ref_inp,
         ref_weight,
         kernel,
@@ -76,6 +88,9 @@ def test_conv_depthwise2d(
     res_out = flag_gems._conv_depthwise2d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
     )
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -87,13 +102,14 @@ def test_conv_depthwise2d_noncontiguous(dtype):
     base = torch.randn((2, 8, 9, 11), dtype=dtype, device=flag_gems.device)
     inp = base[:, ::2, :, :]
     weight = torch.randn((4, 1, 3, 3), dtype=dtype, device=flag_gems.device)
-    ref = torch.ops.aten._conv_depthwise2d(
+    ref = _reference_depthwise2d(
         utils.to_reference(inp, True), utils.to_reference(weight, True),
         [3, 3], None, [2, 2], [1, 1], [1, 1]
     )
     result = flag_gems._conv_depthwise2d(
         inp, weight, [3, 3], None, [2, 2], [1, 1], [1, 1]
     )
+    assert result.device == inp.device
     utils.gems_assert_close(result, ref, dtype, reduce_dim=9)
     assert result.shape == ref.shape
     assert result.dtype == dtype

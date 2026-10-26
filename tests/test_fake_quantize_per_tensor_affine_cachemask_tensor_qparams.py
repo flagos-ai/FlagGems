@@ -54,6 +54,8 @@ def _make_inputs(shape, dtype, enabled=1, noncontiguous=False):
 def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     shape, dtype, enabled
 ):
+    if flag_gems.vendor_name == "hygon" and dtype == torch.bfloat16:
+        pytest.skip("Hygon native GPU and CPU fake-quant references lack bfloat16")
     inp, scale, zero_point, fake_quant_enabled = _make_inputs(
         shape, dtype, enabled
     )
@@ -72,19 +74,25 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
+    assert result[0].device == inp.device
+    assert result[1].device == inp.device
+    assert result[0].shape == inp.shape
+    assert result[0].dtype == inp.dtype
+    assert result[1].shape == inp.shape
+    assert result[1].dtype == torch.bool
     utils.gems_assert_close(result[0], ref_out[0], dtype)
     utils.gems_assert_equal(result[1], ref_out[1])
     for value, snapshot in zip(
         (inp, scale, zero_point, fake_quant_enabled), snapshots
     ):
-        utils.gems_assert_equal(value, snapshot)
-    assert result[0].shape == inp.shape
-    assert result[0].dtype == inp.dtype
-    assert result[1].shape == inp.shape
-    assert result[1].dtype == torch.bool
+        assert value.device == snapshot.device
+        assert value.dtype == snapshot.dtype and value.shape == snapshot.shape
+        utils.gems_assert_equal(value, utils.to_reference(snapshot, False))
     if not enabled:
-        utils.gems_assert_equal(result[0], inp)
-        utils.gems_assert_equal(result[1], torch.ones_like(result[1]))
+        utils.gems_assert_equal(result[0], utils.to_reference(inp, False))
+        utils.gems_assert_equal(
+            result[1], utils.to_reference(torch.ones_like(result[1]), False)
+        )
 
 
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
@@ -107,6 +115,12 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_layout(enabled
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
+    assert result[0].device == inp.device
+    assert result[1].device == inp.device
+    assert result[0].shape == inp.shape
+    assert result[0].dtype == inp.dtype
+    assert result[1].shape == inp.shape
+    assert result[1].dtype == torch.bool
     utils.gems_assert_close(result[0], ref_out[0], torch.float32)
     utils.gems_assert_equal(result[1], ref_out[1])
 
@@ -121,8 +135,10 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_empty():
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
+    assert result[0].device == inp.device
+    assert result[1].device == inp.device
     assert result[0].shape == inp.shape
     assert result[0].dtype == inp.dtype
     assert result[1].shape == inp.shape
     assert result[1].dtype == torch.bool
-    utils.gems_assert_equal(result[0], inp)
+    utils.gems_assert_equal(result[0], utils.to_reference(inp, False))
