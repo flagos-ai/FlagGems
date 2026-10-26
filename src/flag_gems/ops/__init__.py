@@ -592,6 +592,7 @@ from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
 from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
+from flag_gems.ops.choose_qparams_per_tensor import choose_qparams_per_tensor
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -1164,6 +1165,7 @@ from flag_gems.ops.normal_functional import normal_functional
 from flag_gems.ops.not_equal import not_equal, not_equal_scalar
 from flag_gems.ops.not_equal_ import not_equal_, not_equal_scalar_
 from flag_gems.ops.nuclear_norm import nuclear_norm
+from flag_gems.ops.numpy_T import numpy_T
 from flag_gems.ops.one_hot import one_hot
 from flag_gems.ops.ones import ones
 from flag_gems.ops.ones_like import ones_like
@@ -1363,6 +1365,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
 from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
+from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor_with_dims_and_tensors import (
     sparse_coo_tensor_with_dims_and_tensors,
     sparse_coo_tensor_with_dims_and_tensors_out,
@@ -1439,7 +1442,12 @@ from flag_gems.ops.special_modified_bessel_k1 import (
 from flag_gems.ops.special_multigammaln import special_multigammaln
 from flag_gems.ops.special_ndtr import special_ndtr
 from flag_gems.ops.special_ndtri import special_ndtri
+from flag_gems.ops.special_psi import special_psi, special_psi_out
 from flag_gems.ops.special_round import special_round, special_round_out
+from flag_gems.ops.special_scaled_modified_bessel_k0 import (
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
 from flag_gems.ops.special_scaled_modified_bessel_k1 import (
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -1523,6 +1531,7 @@ from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
 from flag_gems.ops.transpose_copy import transpose_copy
+from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
 from flag_gems.ops.triangular_indices import tril_indices, triu_indices
 from flag_gems.ops.triangular_solve import triangular_solve, triangular_solve_out
@@ -2156,6 +2165,7 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "choose_qparams_optimized",
+    "choose_qparams_per_tensor",
     "clamp",
     "clamp_",
     "clamp_max",
@@ -2784,6 +2794,7 @@ __all__ = [
     "not_equal_scalar",
     "not_equal_scalar_",
     "nuclear_norm",
+    "numpy_T",
     "one_hot",
     "ones",
     "ones_like",
@@ -3003,6 +3014,7 @@ __all__ = [
     "sparse_broadcast_to",
     "sparse_bsc_tensor",
     "sparse_bsr_tensor",
+    "sparse_compressed_tensor",
     "sparse_coo_tensor_with_dims_and_tensors",
     "sparse_coo_tensor_with_dims_and_tensors_out",
     "sparse_dim",
@@ -3067,8 +3079,12 @@ __all__ = [
     "special_multigammaln",
     "special_ndtr",
     "special_ndtri",
+    "special_psi",
+    "special_psi_out",
     "special_round",
     "special_round_out",
+    "special_scaled_modified_bessel_k0",
+    "special_scaled_modified_bessel_k0_out",
     "special_scaled_modified_bessel_k1",
     "special_scaled_modified_bessel_k1_out",
     "special_shifted_chebyshev_polynomial_t",
@@ -3157,6 +3173,7 @@ __all__ = [
     "trace_backward",
     "transpose",
     "transpose_copy",
+    "trapezoid_x",
     "trapz",
     "triangular_solve",
     "triangular_solve_out",
