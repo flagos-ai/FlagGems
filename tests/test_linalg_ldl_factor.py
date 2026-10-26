@@ -72,7 +72,8 @@ def test_linalg_ldl_factor(shape, dtype, hermitian):
         pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)
     inp_before = inp.clone()
-    ref_inp = utils.to_reference(inp, True)
+    # An existing FP64 input must not be narrowed by the backend upcast policy.
+    ref_inp = utils.to_reference(inp, dtype != torch.float64)
 
     reference = torch.linalg.ldl_factor(ref_inp, hermitian=hermitian)
     result = flag_gems.ldl_factor(inp, hermitian=hermitian)
@@ -91,7 +92,7 @@ def test_linalg_ldl_factor_batched(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("Not supported float64")
     inp = _make_symmetric_positive_definite(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = utils.to_reference(inp, dtype != torch.float64)
 
     reference = torch.linalg.ldl_factor(ref_inp)
     result = flag_gems.ldl_factor(inp)

@@ -62,6 +62,14 @@ class PadPackedSequenceBenchmark(base.Benchmark):
             [int(sum(1 for length in lengths if length > t)) for t in range(max_len)],
             dtype=torch.int64,
         )
+        if base.vendor_name == "ascend" and (
+            torch.any(batch_sizes != batch_sizes[0]).item()
+            or max_length != batch_sizes.numel()
+        ):
+            pytest.skip(
+                "Ascend native _pad_packed_sequence requires constant batch sizes "
+                "and total_length equal to the packed time dimension"
+            )
         total = int(batch_sizes.sum().item())
         # Fixed feature width of 128 keeps the packed tensor 2D and memory
         # traffic representative of typical RNN hidden sizes.
