@@ -65,7 +65,7 @@ in different contexts.
 
   The *FlagGems* library can be integrated with popular training or inference frameworks like
   [Hugging Face Transformers](https://huggingface.co/docs/transformers/index),
-  [vLLM](https://docs.vllm.ai/en/latest/), [Metatron-LM](https://github.com/NVIDIA/Megatron-LM),
+  [vLLM](https://docs.vllm.ai/en/latest/), [Megatron-LM](https://github.com/NVIDIA/Megatron-LM),
   and so on.
 
 - **[Building your own models](/FlagGems/usage/modules/)**

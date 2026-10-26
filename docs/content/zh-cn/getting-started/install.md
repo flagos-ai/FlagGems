@@ -25,48 +25,17 @@ weight: 20
 -->
 # 安装 FlagGems
 
-<!--
-## 1. Prerequisites
+## 1. 前置环境要求
 
-- You must ensure that the kernel driver and user-space SDK/toolkits for
-  your hardware have been installed and configured properly.
-  This applies to both NVIDIA platforms and other AI accelerator hardware.
--->
-## 1. 环境准备
+- **底层驱动与硬件工具链**：请确保已在宿主机环境中正确安装了对应加速芯片的内核驱动程序与用户态 SDK / Toolkit（包括 NVIDIA CUDA，以及昇腾 CANN、沐曦 MACA、摩尔线程 MUSA、天数智芯等异构硬件工具链）。
+- **上层推理框架依赖**：如需体验 [FlagGems 与 vLLM 的融合加速](/FlagGems/zh-cn/usage/frameworks/#vllm)，请预先安装原生 vLLM 或硬件厂商定制的 vLLM 发行版。
 
-- 你必须确保为自己的硬件正确地安装了内核态的驱动程序和用户空间的 SDK 或工具链，
-  并且均已配置正确，工作正常。无论是 NVIDIA 平台还是其他 AI 加速器硬件，
-  这一点都适用。
-
-<!--
-- If you are trying out [the integration with vLLM](/FlagGems/usage/frameworks/#vllm),
-  you will need to install [vLLM](https://github.com/vllm-project/vllm)
-  or its vendor-customized version if any.
--->
-- 如果你想尝试将 *FlagGems* [与 vLLM 集成](/FlagGems/zh-cn/usage/frameworks/#vllm)，
-  则需要安装 [vLLM](https://github.com/vllm-project/vllm)，或者厂商定制版本
-  （如果有的话）。
-
-<!--
 > [!NOTE]
-> You do **not** need to manually install Python, PyTorch, or Triton.
-> The `setup.sh` script handles all of these automatically based on the
-> backend you choose.
--->
-> [!NOTE]
-> 你**不需要**手动安装 Python、PyTorch 或 Triton。
-> `setup.sh` 脚本会根据你选择的后端自动完成所有这些安装。
+> 你**无需**提前手动安装 Python、PyTorch 或 Triton。FlagGems 提供的 `setup.sh` 脚本会根据你指定的硬件后端自动配置并补全所有兼容的依赖项。
 
-<!--
-## 2. Install from PyPI
-
-*FlagGems* can be installed from [PyPI](https://pypi.org/project/flag-gems/)
-using your favorite Python package manager (e.g. `pip`).
--->
 ## 2. 从 PyPI 安装
 
-你可以使用自己常用的 Python 包管理器（例如 `pip`）从
-[PyPI](https://pypi.org/project/flag-gems/) 安装 *FlagGems*：
+你可以直接使用 Python 包管理器（如 `pip` 或 `uv pip`）从 [PyPI](https://pypi.org/project/flag-gems/) 安装 *FlagGems*：
 
 ```shell
 pip install flag_gems

@@ -26,7 +26,7 @@ weight: 30
 
 *FlagGems* can be installed either as a pure python package
 or a package with C-extensions for better runtime performance.
-See [installation](/FlagGems/getting-started//install/) for some detailed guidance
+See [installation](/FlagGems/getting-started/install/) for some detailed guidance
 on different installation options.
 
 ## 2. Verify the installation
