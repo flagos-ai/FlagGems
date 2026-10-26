@@ -292,9 +292,8 @@ def conv_transpose2d(
     use_cast_ride = orig_dtype == torch.bfloat16 or (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
-    # fp32 reride for the fp16 cases that do not use the cast pipeline;
-    # rounded back to fp16 once.
-    fp32_reride = orig_dtype == torch.float16 and not use_cast_ride
+    # fp32 reride for the fp16 + bias case, rounded back to fp16 once.
+    fp32_reride = orig_dtype == torch.float16 and not use_cast_ride and bias is not None
     scratch_x = scratch_w = None
     if use_cast_ride:
         scratch_x = _scratch_buf(input.shape, input.device)
