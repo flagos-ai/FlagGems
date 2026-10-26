@@ -44,6 +44,7 @@ def _assert_tensor_unchanged(tensor, snapshot, pointer):
     utils.gems_assert_equal(tensor, snapshot)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 @pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (2, 0, 3)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -65,6 +66,7 @@ def test_float_power_tensor_equal_shape_(shape, dtype):
     _assert_tensor_unchanged(exponent, exponent_before, exponent_pointer)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 @pytest.mark.parametrize(
     "self_shape,exponent_shape",
@@ -89,6 +91,7 @@ def test_float_power_tensor_broadcast_(self_shape, exponent_shape, dtype):
     _assert_tensor_unchanged(exponent, exponent_before, exponent_pointer)
 
 
+@pytest.mark.float_power_tensor_scalar_
 @pytest.mark.float_power_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("exponent", [-2.0, 0.5, 2.0, 3.0])
@@ -104,6 +107,7 @@ def test_float_power_scalar_(shape, exponent, dtype):
     _assert_inplace(result, inp, pointer, ref_out, dtype)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_float_power_noncontiguous_(dtype):
@@ -125,6 +129,7 @@ def test_float_power_noncontiguous_(dtype):
     _assert_tensor_unchanged(exponent, exponent_before, exponent_pointer)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_special_values_():
     inp = torch.tensor([0.0, 1.0, float("inf"), float("nan")], dtype=torch.float32, device=flag_gems.device)
@@ -144,6 +149,7 @@ def test_float_power_special_values_():
     _assert_tensor_unchanged(exponent, exponent_before, exponent_pointer)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_backward_():
     leaf = torch.empty((4, 7), dtype=torch.float64, device=flag_gems.device).uniform_(0.5, 2.0).requires_grad_(True)
@@ -160,8 +166,7 @@ def test_float_power_backward_():
     ref_inp = ref_leaf + 0
     ref_out = ref_inp.float_power_(ref_exponent)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power_.Tensor(inp, exponent)
+    result = flag_gems.float_power_tensor_tensor_(inp, exponent)
 
     _assert_tensor_unchanged(
         exponent.detach(), exponent_before, exponent_pointer
@@ -175,6 +180,7 @@ def test_float_power_backward_():
     utils.gems_assert_close(result_grads[1], ref_grads[1], torch.float64)
 
 
+@pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_rejects_nonbroadcastable_shape_():
     inp = torch.ones((2, 3), dtype=torch.float64, device=flag_gems.device)
@@ -183,7 +189,6 @@ def test_float_power_rejects_nonbroadcastable_shape_():
     exponent_pointer = exponent.data_ptr()
 
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            torch.ops.aten.float_power_.Tensor(inp, exponent)
+        flag_gems.float_power_tensor_tensor_(inp, exponent)
 
     _assert_tensor_unchanged(exponent, exponent_before, exponent_pointer)
