@@ -705,13 +705,15 @@ def _cudnn_attn_bwd_aten(
     is_causal,
     scale=None,
 ):
+    if IS_KUNLUNXIN:
+        lse = lse.unsqueeze(-1)
     return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,
         V_bhsd,
         out_bhsd,
-        lse.unsqueeze(-1) if IS_KUNLUNXIN else lse,
+        lse,
         philox_seed,
         philox_offset,
         attn_bias,

@@ -184,6 +184,8 @@ def torch_flash_fwd(
             **extra_kwargs,
         )
     except NotImplementedError:
+        if vendor_name != "kunlunxin":
+            raise
         out, lse = _flash_fwd_device_ref(
             q,
             k,
