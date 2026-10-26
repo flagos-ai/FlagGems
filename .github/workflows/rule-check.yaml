@@ -81,7 +81,9 @@ jobs:
           # instead of being clock-killed. fetch-depth 0 pulls full history, so
           # the throughput-based transfer stage matters most here. Rounds only buy
           # retries across short blips; a full outage fails fast on the probe.
-          rounds: "30"
+          # A handful of rounds covers transient blips; a full outage won't be
+          # waited out, so dozens of rounds buy nothing.
+          rounds: "5"
       - name: Ensure full working tree
         shell: bash
         run: |
