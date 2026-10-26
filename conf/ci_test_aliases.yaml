@@ -215,6 +215,7 @@ searchsorted_scalar: test_searchsorted
 scatter_reduce_: test_scatter_reduce
 scatter_reduce_two: test_scatter_reduce
 scatter_reduce_two_: test_scatter_reduce
+bmm_w8a8: test_bmm
 bmm_w8a8_fp8: test_bmm
 flash_attn_varlen_opt_func: test_flash_attn_varlen_func
 gru_data: test_gru

@@ -13,12 +13,14 @@
 # limitations under the License.
 
 import random
+from itertools import product
 
 import numpy as np
 import pytest
 import torch
 
 import flag_gems
+from benchmark.test_bmm import make_channel_int8_bmm_inputs
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
@@ -255,3 +257,110 @@ def test_bmm_w8a8_fp8(batch, M, N, K):
     res_out = bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
 
     utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)
+
+
+CHANNEL_INT8_BMM_SHAPES = [
+    (1, 1, 1, 1),
+    (2, 33, 65, 129),
+    (4, 64, 128, 256),
+    (2, 129, 17, 257),
+    (1, 1, 1024, 4096),
+]
+CHANNEL_INT8_BMM_CASES = list(
+    product(
+        CHANNEL_INT8_BMM_SHAPES,
+        (torch.bfloat16, torch.float16, torch.float32),
+        (2, 3),
+        (False, True),
+    )
+)
+
+
+requires_channel_int8_bmm = pytest.mark.skipif(
+    "bmm_w8a8_int8" not in vars(flag_gems),
+    reason="backend does not export channel-wise INT8 BMM",
+)
+
+
+@pytest.mark.parametrize("shape,dtype,scale_rank,use_out", CHANNEL_INT8_BMM_CASES)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+def test_channel_int8_bmm(shape, dtype, scale_rank, use_out):
+    batch, rows, columns, reduction = shape
+    activation, weight, activation_scale, weight_scale = make_channel_int8_bmm_inputs(
+        shape, flag_gems.device
+    )
+    reference = torch.bmm(activation.float(), weight.float())
+    reference *= activation_scale[:, :, None]
+    reference *= weight_scale[:, None, :]
+    activation_scale = (
+        activation_scale[:, :, None] if scale_rank == 3 else activation_scale
+    )
+    weight_scale = weight_scale[:, None, :] if scale_rank == 3 else weight_scale
+    output = (
+        torch.empty((batch, rows, columns), device=activation.device, dtype=dtype)
+        if use_out
+        else None
+    )
+    actual = flag_gems.bmm_w8a8_int8(
+        activation, weight, activation_scale, weight_scale, out_dtype=dtype, out=output
+    )
+    utils.gems_assert_close(actual, reference.to(dtype), dtype, reduce_dim=reduction)
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize(
+    "shape", [(0, 5, 7, 32), (2, 0, 7, 32), (2, 5, 0, 32), (2, 5, 7, 0)]
+)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+def test_channel_int8_bmm_empty(shape, use_out):
+    batch, rows, columns, reduction = shape
+    activation = torch.empty(
+        shape[:2] + (reduction,), device=flag_gems.device, dtype=torch.int8
+    )
+    weight = torch.empty(
+        (batch, columns, reduction), device=activation.device, dtype=torch.int8
+    ).transpose(1, 2)
+    activation_scale = torch.ones((batch, rows), device=activation.device)
+    weight_scale = torch.ones((batch, columns), device=activation.device)
+    output = (
+        torch.empty(
+            (batch, rows, columns), device=activation.device, dtype=torch.bfloat16
+        )
+        if use_out
+        else None
+    )
+    actual = flag_gems.bmm_w8a8_int8(
+        activation, weight, activation_scale, weight_scale, out=output
+    )
+    reference = torch.zeros(
+        (batch, rows, columns), device=activation.device, dtype=torch.bfloat16
+    )
+    utils.gems_assert_close(actual, reference, torch.bfloat16)
+
+
+@pytest.mark.parametrize(
+    "invalid_input", ["batch", "weight_layout", "scale_shape", "scale_dtype"]
+)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+def test_channel_int8_bmm_input_contract(invalid_input):
+    activation = torch.empty((2, 8, 16), device=flag_gems.device, dtype=torch.int8)
+    weight = torch.empty(
+        (2, 32, 16), device=activation.device, dtype=torch.int8
+    ).transpose(1, 2)
+    activation_scale = torch.ones((2, 8), device=activation.device)
+    weight_scale = torch.ones((2, 32), device=activation.device)
+    error_type = ValueError
+    if invalid_input == "batch":
+        weight = weight[:1]
+    elif invalid_input == "weight_layout":
+        weight = weight.contiguous()
+    elif invalid_input == "scale_shape":
+        activation_scale = activation_scale[:, :7]
+    else:
+        weight_scale = weight_scale.to(torch.int8)
+        error_type = TypeError
+    with pytest.raises(error_type):
+        flag_gems.bmm_w8a8_int8(activation, weight, activation_scale, weight_scale)

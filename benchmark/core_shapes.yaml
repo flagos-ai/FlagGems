@@ -1246,3 +1246,10 @@ batch_norm_elemt:
     - [128, 256, 32, 32]
     - [4, 32, 8, 8, 8]
   shape_desc: "N, C, *spatial"
+
+bmm_w8a8:
+  shapes:
+    - [1, 33, 65, 129]
+    - [2, 64, 128, 256]
+    - [4, 129, 17, 257]
+  shape_desc: "B, M, N, K"
