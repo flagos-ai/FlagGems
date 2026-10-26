@@ -75,7 +75,13 @@ def _build_inputs_fn(plan, dtype, device):
     else:
         # Same all-zero values as the flagged operand, but an ordinary tensor
         # whose marker is unset.
-        inp = torch.zeros(shape, dtype=dtype, device=device)
+        if flag_gems.vendor_name == "ascend" and dtype in (
+            torch.float8_e4m3fn,
+            torch.float8_e5m2,
+        ):
+            inp = torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype).to(device)
+        else:
+            inp = torch.zeros(shape, dtype=dtype, device=device)
     return (inp,)
 
 
@@ -90,6 +96,18 @@ class _IsZeroTensorBenchmark(base.GenericBenchmark):
         if not callable(candidate):
             raise TypeError("_is_zerotensor benchmark requires a callable candidate")
         return candidate, nullcontext(), override is not None
+
+    def build_inputs(self, case):
+        inputs = super().build_inputs(case)
+        if (
+            flag_gems.vendor_name == "ascend"
+            and torch.device(self.device).type == "npu"
+            and case.params["kind"] == "zerotensor"
+            and "ZeroTensor" not in str(torch._C._dispatch_keys(inputs[0]))
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Ascend _efficientzerotensor loses the ZeroTensor dispatch key")
+        return inputs
 
     def set_more_shapes(self):
         return super().set_more_shapes() + _MORE_SHAPES
