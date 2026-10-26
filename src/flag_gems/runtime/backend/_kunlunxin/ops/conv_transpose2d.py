@@ -286,14 +286,14 @@ def conv_transpose2d(
         )
 
     orig_dtype = input.dtype
-    # bf16 has no vendor transpose instantiation at all; for fp16 the fusion
-    # entry's grouped+strided combination is far slower than the fp32 v2 one.
-    # Both ride the C handler's cast pipeline (cast -> fp32 v2 -> cast back).
-    use_cast_ride = orig_dtype == torch.bfloat16 or (
+    # fp16 grouped+strided keeps the existing cast path; all bf16 and the
+    # fp16 + bias case are cast and computed in fp32.
+    use_cast_ride = (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
-    # fp32 reride for the fp16 + bias case, rounded back to fp16 once.
-    fp32_reride = orig_dtype == torch.float16 and not use_cast_ride and bias is not None
+    fp32_reride = orig_dtype == torch.bfloat16 or (
+        orig_dtype == torch.float16 and not use_cast_ride and bias is not None
+    )
     scratch_x = scratch_w = None
     if use_cast_ride:
         scratch_x = _scratch_buf(input.shape, input.device)
