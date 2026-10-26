@@ -45,11 +45,23 @@ def _reference_backward(inputs, quant_min, quant_max, grad_factor):
     reference_inputs = tuple(_reference(tensor) for tensor in inputs)
     try:
         return _ATEN_OP(*reference_inputs, quant_min, quant_max, grad_factor)
-    except RuntimeError as error:
+    except (RuntimeError, ValueError) as error:
         if (
             reference_inputs[1].dtype == torch.bfloat16
-            and "Expected X.scalar_type() == ScalarType::Float to be true, but got false."
-            in str(error)
+            and (
+                (
+                    isinstance(error, RuntimeError)
+                    and "Expected X.scalar_type() == ScalarType::Float to be true, but got false."
+                    in str(error)
+                )
+                or (
+                    flag_gems.vendor_name == "kunlunxin"
+                    and reference_inputs[1].device.type == "cuda"
+                    and isinstance(error, ValueError)
+                    and "[NOT IMPLEMENTED]: error code= 4(at " in str(error)
+                    and "generated/CUDANativeFunctions.cpp:409)" in str(error)
+                )
+            )
         ):
             pytest.skip("This native fake-quant backward reference rejects bfloat16")
         raise
