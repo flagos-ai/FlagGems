@@ -19,6 +19,9 @@ from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 class BlasCaseBenchmark(base.BlasBenchmark, OperatorBenchmark):
+    __init__ = OperatorBenchmark.__init__
+    get_input_iter = OperatorBenchmark.get_input_iter
+
     def supports_cases(self):
         return True
 

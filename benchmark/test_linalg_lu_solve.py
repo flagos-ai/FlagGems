@@ -26,6 +26,9 @@ DTYPES = [torch.float32] + ([torch.float64] if flag_gems.runtime.device.support_
 class LinalgLuSolveBenchmark(OperatorBenchmark):
     DEFAULT_SHAPES = SHAPES
 
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=SHAPES)
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -54,6 +57,5 @@ def test_linalg_lu_solve():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.linalg_lu_solve,
-        gems_op=getattr(flag_gems, "linalg_lu_solve", None),
         dtypes=DTYPES,
     ).run()
