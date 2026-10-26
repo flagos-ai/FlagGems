@@ -19,83 +19,211 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Up to this rank, dims are passed as constexpr scalars so the coordinate
+# decomposition loop unrolls with compile-time divisors; beyond it, the kernel
+# falls back to loading dim sizes from a shape tensor.
+MAX_CONSTEXPR_DIM = tl.constexpr(8)
+
+# Elements per block in the scatter/count kernels.
+_BLOCK_SIZE = 2048
+# Block count entries processed per iteration of the serial scan kernel.
+_SCAN_BLOCK = 1024
+
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("elementwise_generic"))
 @triton.jit
-def argwhere_kernel(
+def argwhere_count_kernel(
     inp,
-    prefix_sum,
+    block_counts,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Counts non-zero elements in each BLOCK_SIZE-wide chunk of the input."""
+    pid = ext.program_id(0)
+
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offset < n_elements
+
+    inp_vals = tl.load(inp + offset, mask=mask, other=0)
+    nonzero_mask = (inp_vals != 0) & mask
+
+    tl.store(block_counts + pid, tl.sum(nonzero_mask.to(tl.int32), axis=0))
+
+
+@libentry()
+@triton.jit
+def argwhere_scan_kernel(
+    block_counts,
+    block_offsets,
+    total,
+    num_blocks,
+    BLOCK: tl.constexpr,
+):
+    """Serially scans per-block counts into per-block output base offsets.
+
+    Single-program kernel: iterates over the block counts in BLOCK-sized
+    tiles, carrying the running total across tiles. Also writes the grand
+    total non-zero count.
+    """
+    carry = 0
+    for start in range(0, num_blocks, BLOCK):
+        idx = start + tl.arange(0, BLOCK)
+        mask = idx < num_blocks
+        counts = tl.load(block_counts + idx, mask=mask, other=0)
+        tl.store(
+            block_offsets + idx,
+            tl.cumsum(counts, axis=0) - counts + carry,
+            mask=mask,
+        )
+        carry += tl.sum(counts, axis=0)
+    tl.store(total, carry)
+
+
+@libentry()
+@triton.jit
+def argwhere_scatter_kernel(
+    inp,
+    block_offsets,
     out,
     n_elements,
     shape,
+    D0: tl.constexpr,
+    D1: tl.constexpr,
+    D2: tl.constexpr,
+    D3: tl.constexpr,
+    D4: tl.constexpr,
+    D5: tl.constexpr,
+    D6: tl.constexpr,
+    D7: tl.constexpr,
     ndim: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    """Triton kernel that compacts non-zero element indices into output rows.
+    """Compacts non-zero element indices into output rows.
 
-    Each thread block processes BLOCK_SIZE elements. For each non-zero element,
-    decomposes its flat index into multi-dimensional coordinates and writes
-    them to the output at the position given by the prefix-sum.
+    Each program re-derives its chunk's non-zero positions with an in-block
+    cumsum, added to the chunk's base offset from the scan kernel, so rows
+    land in flat-index (row-major) order. The flat index is decomposed into
+    multi-dimensional coordinates and written to the output row.
     """
     pid = ext.program_id(0)
 
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offset < n_elements
 
-    inp_vals = tl.load(inp + offset, mask=mask).to(tl.int1)
-    out_offset = tl.load(prefix_sum + offset, mask=mask) - 1
+    inp_vals = tl.load(inp + offset, mask=mask, other=0)
+    nonzero_mask = (inp_vals != 0) & mask
 
-    nonzero_mask = mask and inp_vals  # noqa
+    nonzero_i32 = nonzero_mask.to(tl.int32)
+    out_offset = tl.cumsum(nonzero_i32, axis=0) - nonzero_i32
+    out_offset += tl.load(block_offsets + pid)
 
-    # Decompose flat index into multi-dimensional coordinates
+    # Decompose flat index into multi-dimensional coordinates.
+    # Fast path: constexpr dim sizes let the loop unroll fully. Note the
+    # loop always runs MAX_CONSTEXPR_DIM iterations; dims >= ndim hold 1 and
+    # are guarded off by `dim >= 0` at compile time.
     idx_flat = offset
-    for dim in range(ndim - 1, -1, -1):
-        dim_size = tl.load(shape + dim)
-        remainder = idx_flat % dim_size
-        idx_flat //= dim_size
-        tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+    if ndim <= MAX_CONSTEXPR_DIM:
+        for i in tl.static_range(0, MAX_CONSTEXPR_DIM):
+            dim = ndim - 1 - i
+            dim_size = D0
+            if dim == 1:
+                dim_size = D1
+            elif dim == 2:
+                dim_size = D2
+            elif dim == 3:
+                dim_size = D3
+            elif dim == 4:
+                dim_size = D4
+            elif dim == 5:
+                dim_size = D5
+            elif dim == 6:
+                dim_size = D6
+            elif dim == 7:
+                dim_size = D7
+            if dim >= 0:
+                remainder = idx_flat % dim_size
+                idx_flat = idx_flat // dim_size
+                tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
+    else:
+        for dim in range(ndim - 1, -1, -1):
+            dim_size = tl.load(shape + dim)
+            remainder = idx_flat % dim_size
+            idx_flat //= dim_size
+            tl.store(out + out_offset * ndim + dim, remainder, mask=nonzero_mask)
 
 
 def argwhere(input):
     """Triton-accelerated implementation of torch.argwhere.
 
     Returns a tensor of shape (num_nonzero, ndim) containing the indices
-    of all non-zero elements. Uses a prefix-sum compaction strategy:
-    1. Flatten input and compute boolean mask of non-zero elements
-    2. Compute cumulative sum (prefix-sum) for scatter positions
-    3. Launch Triton kernel to decompose flat indices and scatter results
+    of all non-zero elements. Runs three Triton kernels:
+    1. Count non-zero elements per block
+    2. Scan block counts into per-block output base offsets (single program)
+    3. Scatter: in-block cumsum + block base gives each element's output row;
+       the flat index is decomposed into multi-dimensional coordinates
+
+    The output is allocated at its exact final size after step 2, so no
+    max-size buffer is needed.
     """
     logger.debug("GEMS ARGWHERE")
 
     inp_ndim = input.ndim
     input = input.contiguous()
     n_elements = input.numel()
+
+    device = input.device
+    if n_elements == 0:
+        return torch.empty((0, inp_ndim), dtype=torch.int64, device=device)
+
     inp_view = input.view(n_elements)
-
-    shape = torch.tensor(input.shape, dtype=torch.int32, device=input.device)
-
+    # Complex inputs cannot be compared inside the kernel (Triton has no
+    # complex support), so they are reduced on the host first; every other
+    # dtype is tested for non-zero directly in the kernels.
     inp_bool = inp_view
-    if inp_view.dtype != torch.bool:
+    if inp_view.is_complex():
         inp_bool = inp_view != 0
 
-    prefix_sum = inp_bool.cumsum(axis=0)
+    n_blocks = triton.cdiv(n_elements, _BLOCK_SIZE)
+    block_counts = torch.empty(n_blocks, dtype=torch.int32, device=device)
+    block_offsets = torch.empty(n_blocks, dtype=torch.int32, device=device)
+    total = torch.empty(1, dtype=torch.int32, device=device)
 
-    # Allocate max-size output; trim after kernel launch
-    out = torch.empty(n_elements, inp_ndim, dtype=torch.int64, device=input.device)
+    with torch_device_fn.device(device):
+        argwhere_count_kernel[(n_blocks,)](
+            inp_bool, block_counts, n_elements, BLOCK_SIZE=_BLOCK_SIZE
+        )
+        argwhere_scan_kernel[(1,)](
+            block_counts, block_offsets, total, n_blocks, BLOCK=_SCAN_BLOCK
+        )
 
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(input.device):
-        argwhere_kernel[grid](inp_bool, prefix_sum, out, n_elements, shape, inp_ndim)
+        num_nonzeros = int(total.item())
 
-    num_nonzeros = prefix_sum[n_elements - 1].item()
-    out = out.narrow(0, 0, num_nonzeros)
+        out = torch.empty((num_nonzeros, inp_ndim), dtype=torch.int64, device=device)
+        if inp_ndim <= MAX_CONSTEXPR_DIM:
+            pad = (1,) * (MAX_CONSTEXPR_DIM - inp_ndim)
+            dims = tuple(input.shape) + pad
+        else:
+            dims = (1,) * MAX_CONSTEXPR_DIM
+        shape = (
+            torch.tensor(input.shape, dtype=torch.int32, device=device)
+            if inp_ndim > MAX_CONSTEXPR_DIM
+            else total
+        )
+        argwhere_scatter_kernel[(n_blocks,)](
+            inp_bool,
+            block_offsets,
+            out,
+            n_elements,
+            shape,
+            *dims,
+            ndim=inp_ndim,
+            BLOCK_SIZE=_BLOCK_SIZE,
+        )
 
     return out
