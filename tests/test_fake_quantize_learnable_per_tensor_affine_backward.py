@@ -114,6 +114,8 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip("Kunlunxin native fake-quant backward rejects empty input")
     self_t = torch.empty((2, 0, 3), device=flag_gems.device)
     grad = torch.empty_like(self_t)
     scale = torch.tensor([0.1], device=flag_gems.device)
