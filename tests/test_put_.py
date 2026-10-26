@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
 
 from . import accuracy_utils as utils
 
@@ -27,6 +28,17 @@ _ACCUMULATE_ATOL = {
     torch.bfloat16: 1e-1,
     torch.float32: 1e-4,
 }
+
+
+def _assert_put_equal(actual, expected, dtype):
+    # Preserve the target contract before observing exact values on CPU.
+    target = torch.device(flag_gems.device)
+    if target.type != "cpu" and target.index is None:
+        target = torch.device(target.type, torch_device_fn.current_device())
+    assert actual.device == target
+    assert actual.dtype == dtype
+    assert actual.shape == expected.shape
+    utils.gems_assert_equal(actual.cpu(), expected.cpu().to(dtype))
 
 
 def accumulate_atol(dtype):
@@ -149,7 +161,7 @@ def test_put__non_contiguous_narrow_accumulate(dtype, layout):
         "row_slice": lambda t: t[::2],
     }[layout](base)
     assert not inp.is_contiguous()
-    ref_inp = utils.to_reference(inp.clone(), True)
+    ref_inp = utils.to_reference(inp.clone(), False)
 
     numel = inp.numel()
     index = torch.randint(
@@ -157,11 +169,11 @@ def test_put__non_contiguous_narrow_accumulate(dtype, layout):
     )
     source = _gen_typed((index.numel(),), dtype, flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True), accumulate=True)
+    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, False), accumulate=True)
     res = flag_gems.put_(inp, index, source, accumulate=True)
 
     assert res is inp
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, dtype)
 
 
 @pytest.mark.put_
@@ -276,7 +288,8 @@ def test_put__dtypes(dtype, accumulate):
     utils.init_seed(0)
     numel = 64
     inp = _gen_typed((numel,), dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone(), True)
+    upcast = dtype.is_floating_point or dtype.is_complex
+    ref_inp = utils.to_reference(inp.clone(), upcast)
 
     # Duplicate indices only when accumulating: with `accumulate=False` a
     # repeated index is last-writer-wins and ATen does not specify the winner.
@@ -290,7 +303,7 @@ def test_put__dtypes(dtype, accumulate):
     source = _gen_typed((count,), dtype, flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source, True)
+    ref_source = utils.to_reference(source, upcast)
 
     ref_inp.put_(ref_index, ref_source, accumulate=accumulate)
     res = flag_gems.put_(inp, index, source, accumulate=accumulate)
@@ -302,7 +315,7 @@ def test_put__dtypes(dtype, accumulate):
     if accumulate and (dtype.is_floating_point or dtype.is_complex):
         utils.gems_assert_close(inp, ref_inp, dtype, atol=accumulate_atol(dtype))
     else:
-        utils.gems_assert_equal(inp, ref_inp)
+        _assert_put_equal(inp, ref_inp, dtype)
 
 
 @pytest.mark.put_
@@ -313,18 +326,18 @@ def test_put__narrow_int_accumulate_wraparound(dtype):
     info = torch.iinfo(dtype)
     for init in [0, info.max - 3, info.min + 3]:
         inp = torch.full((4,), init, dtype=dtype, device=flag_gems.device)
-        ref_inp = utils.to_reference(inp.clone(), True)
+        ref_inp = utils.to_reference(inp.clone(), False)
 
         n = 20
         index = torch.zeros(n, dtype=torch.int64, device=flag_gems.device)
         source = torch.ones(n, dtype=dtype, device=flag_gems.device)
 
         ref_inp.put_(
-            utils.to_reference(index), utils.to_reference(source, True), accumulate=True
+            utils.to_reference(index), utils.to_reference(source, False), accumulate=True
         )
         flag_gems.put_(inp, index, source, accumulate=True)
 
-        utils.gems_assert_equal(inp, ref_inp)
+        _assert_put_equal(inp, ref_inp, dtype)
 
 
 @pytest.mark.put_
@@ -335,17 +348,17 @@ def test_put__bool_accumulate_is_logical_or():
         for k in [1, 2, 3, 257]:
             inp = torch.zeros(2, dtype=torch.bool, device=flag_gems.device)
             inp[0] = init
-            ref_inp = utils.to_reference(inp.clone(), True)
+            ref_inp = utils.to_reference(inp.clone(), False)
 
             index = torch.zeros(k, dtype=torch.int64, device=flag_gems.device)
             source = torch.ones(k, dtype=torch.bool, device=flag_gems.device)
 
             ref_inp.put_(
-                utils.to_reference(index), utils.to_reference(source, True), accumulate=True
+                utils.to_reference(index), utils.to_reference(source, False), accumulate=True
             )
             flag_gems.put_(inp, index, source, accumulate=True)
 
-            utils.gems_assert_equal(inp, ref_inp)
+            _assert_put_equal(inp, ref_inp, torch.bool)
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +386,7 @@ def test_put__high_rank(rank, contiguous):
     res = flag_gems.put_(inp, index, source)
     assert res is inp
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -406,7 +419,7 @@ def test_put__empty_index_is_noop(self_numel):
     res = flag_gems.put_(inp, index, source)
     assert res is inp
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 @pytest.mark.put_
@@ -458,7 +471,7 @@ def test_put__index_boundary_valid(boundary):
     ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True))
     flag_gems.put_(inp, index, source)
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 @pytest.mark.put_
@@ -557,7 +570,7 @@ def test_put__interleaved_views_allowed():
     ref_base[::2].put_(utils.to_reference(index), ref_base[1::2])
     flag_gems.put_(base[::2], index, base[1::2])
 
-    utils.gems_assert_equal(base, ref_base)
+    _assert_put_equal(base, ref_base, torch.float32)
 
 
 @pytest.mark.put_
@@ -570,7 +583,7 @@ def test_put__disjoint_views_same_storage():
     ref_base[0:4].put_(utils.to_reference(index), ref_base[8:12])
     flag_gems.put_(base[0:4], index, base[8:12])
 
-    utils.gems_assert_equal(base, ref_base)
+    _assert_put_equal(base, ref_base, torch.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -593,7 +606,7 @@ def test_put__strided_source(accumulate):
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 @pytest.mark.put_
@@ -617,7 +630,7 @@ def test_put__strided_index(accumulate):
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 @pytest.mark.put_
@@ -638,7 +651,7 @@ def test_put__transposed_index_and_source(accumulate):
     )
     flag_gems.put_(inp, index, source, accumulate=accumulate)
 
-    utils.gems_assert_equal(inp, ref_inp)
+    _assert_put_equal(inp, ref_inp, torch.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -673,7 +686,7 @@ def test_put__view_of_larger_storage(make_view, base_numel, index_vals):
     assert res is view
 
     # Comparing the whole base catches both a wrong offset and a stray write.
-    utils.gems_assert_equal(base, ref_base)
+    _assert_put_equal(base, ref_base, torch.float32)
 
 
 @pytest.mark.put_
