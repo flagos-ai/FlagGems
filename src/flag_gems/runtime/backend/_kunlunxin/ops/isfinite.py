@@ -82,9 +82,7 @@ def _pick_fast_tile(numel: int, dtype: torch.dtype) -> tuple:
 
 
 @triton.jit
-def _isfinite_fast_kernel(
-    x_ptr, o_ptr, TILE: tl.constexpr, NATIVE_F16: tl.constexpr
-):
+def _isfinite_fast_kernel(x_ptr, o_ptr, TILE: tl.constexpr, NATIVE_F16: tl.constexpr):
     pid = tl.program_id(0)
     off = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + off)
