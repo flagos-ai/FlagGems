@@ -10,6 +10,13 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import libentry
 
+from .aminmax import aminmax as _gems_aminmax
+from .sort import (
+    bin_prefix_kernel,
+    count_kernel,
+    init_sort_buffers_kernel,
+    scatter_kernel,
+)
 from .sort import sort_stable as _gems_sort_stable
 
 logger = logging.getLogger(__name__)
@@ -1375,6 +1382,7 @@ def _unique2_boundary_kernel(
     cum_ptr,
     N: int,
     BLOCK: tl.constexpr,
+    WRITE_CUM: tl.constexpr,
 ):
     """Fused boundary flags for _unique2 (see caller comment).
 
@@ -1383,6 +1391,9 @@ def _unique2_boundary_kernel(
     comparison is done on the native dtype (any int/float width) with no
     cast pass and no `others`/`other=` dependence: the prev load for lane 0
     is clamped to lane 0 (its value is unused because the OR forces True).
+
+    `WRITE_CUM=False` skips the int64 store entirely when the caller does not
+    need the inverse indices (`cum_ptr` is then an unused dummy pointer).
     """
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
@@ -1392,7 +1403,8 @@ def _unique2_boundary_kernel(
     b = tl.load(data_ptr + p_offs, mask=mask)
     is_b = (offs == 0) | ((a != b) & (offs > 0))
     tl.store(ne_ptr + offs, is_b, mask=mask)
-    tl.store(cum_ptr + offs, tl.where(offs == 0, 0, is_b.to(tl.int64)), mask=mask)
+    if WRITE_CUM:
+        tl.store(cum_ptr + offs, tl.where(offs == 0, 0, is_b.to(tl.int64)), mask=mask)
 
 
 _SCAN_BLOCK = 2048
@@ -1577,6 +1589,108 @@ def _run_lengths_kernel(
     tl.store(counts_ptr + r, s_next - s, mask=m)
 
 
+_RADIX_K_BITS = 4
+_RADIX_SORTABLE_INTS = (torch.int8, torch.uint8, torch.int16, torch.int32, torch.int64)
+
+
+def _radix_sort_uint_range(arr: torch.Tensor, num_bits: int):
+    """`_kunlunxin.sort.radix_sort_low_mem` restricted to bits [0, num_bits).
+
+    A radix pass over bits that are identical for every element is a stable
+    partition into a single non-empty bin, i.e. the identity permutation, so
+    such passes can be skipped exactly.  Everything else (padded buffers,
+    BLOCK_N choice, kernel sequence, ascending order, k_bits=4) is copied from
+    `radix_sort_low_mem` so the result is identical to running that function
+    and dropping its trailing no-op passes.
+    """
+    original_shape = arr.shape
+    N = arr.shape[-1]
+    arr = arr.reshape(-1, N)
+    M = arr.shape[0]
+    BLOCK_N = min(4096, max(64, triton.next_power_of_2(N)))
+    grid_n = triton.cdiv(N, BLOCK_N)
+    grid = (M * grid_n,)
+    # Head/tail padding keeps masked-off lanes (masked stores are not honored
+    # on this backend) inside the allocation.
+    head_pad, tail_pad = BLOCK_N, 256
+    keepalive = []
+
+    def _padded(dtype):
+        buf = torch.empty(head_pad + M * N + tail_pad, device=arr.device, dtype=dtype)
+        keepalive.append(buf)
+        return buf[head_pad : head_pad + M * N].view(M, N)
+
+    arr_in = _padded(arr.dtype)
+    arr_out = _padded(arr.dtype)
+    idx_in = _padded(torch.int64)
+    idx_out = _padded(torch.int64)
+
+    with torch_device_fn.device(arr.device):
+        init_sort_buffers_kernel[(triton.cdiv(M * N, 256),)](
+            arr, arr_in, idx_in, M * N, N, BLOCK_SIZE=256
+        )
+
+    num_passes = triton.cdiv(num_bits, _RADIX_K_BITS)
+    num_bins = 2**_RADIX_K_BITS
+    r = num_bins * grid_n
+    tile_r = max(64, min(4096, triton.next_power_of_2(r)))
+    r_pad = triton.cdiv(r, tile_r) * tile_r
+
+    with torch_device_fn.device(arr.device):
+        counts = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
+        global_offsets = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
+        for p in range(num_passes):
+            bit_offset = p * _RADIX_K_BITS
+            count_kernel[grid](
+                arr_in,
+                counts,
+                M,
+                N,
+                bit_offset,
+                num_bins,
+                BLOCK_N,
+                False,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
+            )
+            bin_prefix_kernel[(M,)](
+                counts, global_offsets, R=r, R_PAD=r_pad, TILE=tile_r
+            )
+            scatter_kernel[grid](
+                arr_in,
+                arr_out,
+                idx_in,
+                idx_out,
+                global_offsets,
+                M,
+                N,
+                bit_offset,
+                num_bins,
+                BLOCK_N,
+                False,
+                GRID_N=grid_n,
+                R_PAD=r_pad,
+            )
+            arr_in, arr_out = arr_out, arr_in
+            idx_in, idx_out = idx_out, idx_in
+    return arr_in.reshape(original_shape), idx_in.reshape(original_shape)
+
+
+def _unique2_sorted(flat: torch.Tensor):
+    dtype = flat.dtype
+    if dtype in _RADIX_SORTABLE_INTS:
+        bits = dtype.itemsize * 8
+        full_passes = triton.cdiv(bits, _RADIX_K_BITS)
+        if full_passes >= 8 or flat.numel() >= 65536:
+            lo, hi = _gems_aminmax(flat)
+            diff = (int(lo.item()) ^ int(hi.item())) & ((1 << bits) - 1)
+            num_bits = diff.bit_length()
+            saved = full_passes - triton.cdiv(num_bits, _RADIX_K_BITS)
+            if saved > 0:
+                return _radix_sort_uint_range(flat, num_bits)
+    return _gems_sort_stable(flat, stable=True)
+
+
 def _unique2(
     in0: torch.Tensor,
     sorted: bool = True,
@@ -1597,53 +1711,61 @@ def _unique2(
         _gems_copy_(flat_buf, in0)
         flat = flat_buf.view(-1)
     N = flat.numel()
+    device = flat.device
 
+    # aten::_unique2 always returns three tensors; an output that was not
+    # requested comes back as an *empty* int64 tensor (shape (0,)), never None.
+    # A requested inverse keeps the input's shape even for empty inputs.
     if N == 0:
-        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
-        # aten::_unique2 always returns three tensors: unrequested
-        # inverse_indices/counts are empty (0,) int64 tensors, never None.
-        inverse_indices = torch.empty(0, dtype=torch.int64, device=flat.device)
-        if return_inverse:
-            inverse_indices = inverse_indices.view_as(in0)
-        counts = torch.empty(0, dtype=torch.int64, device=flat.device)
-        return (data_out, inverse_indices, counts)
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=device)
+        return (
+            flat.clone(),
+            inverse_indices.view_as(in0) if return_inverse else inverse_indices,
+            torch.empty(0, dtype=torch.int64, device=device),
+        )
 
-    # Use gems' own Triton radix sort by reference (never torch.sort): the
-    # native unstable sort path is miscompiled when the input contains NaN on
-    # this backend, and a direct torch call here would be a fallback.
-    sorted_data, sorted_indices = _gems_sort_stable(flat, stable=True)
-    ne = torch.empty(N, dtype=torch.bool, device=flat.device)
-    cum_input = torch.empty(N, dtype=torch.int64, device=flat.device)
-    with torch_device_fn.device(flat.device):
+    # Stable radix sort.  Stability is required for parity with aten: equal
+    # keys keep their input order so the boundary scan below groups identical
+    # values exactly like aten's stable sort.  It also keeps every NaN slot
+    # (NaN != NaN) contiguous at the end of the sorted array, which an
+    # unstable order can interleave and thereby inflate the unique count.
+    sorted_data, sorted_indices = _unique2_sorted(flat)
+    ne = torch.empty(N, dtype=torch.bool, device=device)
+    cum_input = (
+        torch.empty(N, dtype=torch.int64, device=device) if return_inverse else None
+    )
+    with torch_device_fn.device(device):
         _unique2_boundary_kernel[(triton.cdiv(N, _BOUND_BLOCK),)](
-            sorted_data, ne, cum_input, N, BLOCK=_BOUND_BLOCK, num_warps=8
+            sorted_data,
+            ne,
+            cum_input if cum_input is not None else ne,
+            N,
+            BLOCK=_BOUND_BLOCK,
+            WRITE_CUM=return_inverse,
+            num_warps=8,
         )
 
     data_out = torch.masked_select(sorted_data, ne)
     n_unique = data_out.numel()
     start = torch.nonzero(ne).ravel() if return_counts else None
 
-    inverse_indices = None
-    counts = None
+    inverse_indices = torch.empty(0, dtype=torch.int64, device=device)
+    counts = torch.empty(0, dtype=torch.int64, device=device)
 
     if return_inverse:
         cum = _triton_inclusive_scan(cum_input)
-        inverse_indices = torch.empty(N, dtype=torch.int64, device=flat.device)
+        inverse_indices = torch.empty(N, dtype=torch.int64, device=device)
         inverse_indices.scatter_(0, sorted_indices, cum)
 
     if return_counts:
-        counts = torch.empty(n_unique, dtype=torch.int64, device=flat.device)
+        counts = torch.empty(n_unique, dtype=torch.int64, device=device)
         if n_unique > 0:
             _run_lengths_kernel[(triton.cdiv(n_unique, _SCAN_BLOCK),)](
                 start, counts, N, n_unique, BLOCK=_SCAN_BLOCK
             )
 
-    # aten::_unique2 always returns three tensors: unrequested outputs are
-    # empty (0,) int64 tensors rather than None.
-    if return_inverse:
-        inverse_indices = inverse_indices.view_as(in0)
-    else:
-        inverse_indices = torch.empty(0, dtype=torch.int64, device=flat.device)
-    if counts is None:
-        counts = torch.empty(0, dtype=torch.int64, device=flat.device)
-    return data_out, inverse_indices, counts
+    return (
+        data_out,
+        inverse_indices.view_as(in0) if return_inverse else inverse_indices,
+        counts,
+    )
