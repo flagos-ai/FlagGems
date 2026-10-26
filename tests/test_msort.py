@@ -20,6 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _to_target_wide(value):
+    # KU's ordinary .to() factory narrows Double/ComplexDouble. Transfer the
+    # physical bytes first and recover only the dtype/shape metadata on device.
+    result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(value.dtype).reshape(value.shape)
+    assert result.dtype == value.dtype
+    assert result.shape == value.shape
+    return result
+
+
 @pytest.fixture(autouse=True)
 def _seed_random_inputs():
     torch.manual_seed(0)
@@ -48,17 +57,22 @@ def _seed_random_inputs():
     ],
 )
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
-        pytest.skip("Kunlunxin cannot retain float64 input storage")
-    inp = torch.randn(rows, 3, dtype=dtype, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64 else flag_gems.device
+    inp = torch.randn(rows, 3, dtype=dtype, device=factory_device)
     payloads = torch.tensor(bits, dtype=int_dtype, device=inp.device).view(dtype)
     inp[:4] = payloads[:, None]
     inp[4] = float("inf")
     inp[5] = -float("inf")
+    if factory_device == "cpu":
+        inp = _to_target_wide(inp)
     # Older CUDA radix-sort implementations order negative NaNs before -inf.
     # CPU ATen provides the intended NaNs-last ordering while preserving bits.
     reference = torch.msort(utils.to_reference(inp).cpu())
-    result = flag_gems.msort(inp).cpu()
+    result = flag_gems.msort(inp)
+    assert result.device == inp.device
+    assert result.dtype == dtype
+    assert result.shape == inp.shape
+    result = result.cpu()
     torch.testing.assert_close(result, reference, atol=0, rtol=0, equal_nan=True)
     for col in range(3):
         actual_nan = result[:, col][torch.isnan(result[:, col])].view(int_dtype)
@@ -77,10 +91,8 @@ def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
 @pytest.mark.parametrize("view_alias", [False, True])
 def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
-        pytest.skip("Kunlunxin cannot retain float64 input storage")
-    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64 and not utils.TO_CPU:
-        pytest.skip("MUSA native msort does not support float64")
+    if flag_gems.vendor_name in ("mthreads", "kunlunxin") and dtype == torch.float64 and not utils.TO_CPU:
+        pytest.skip("Backend native msort does not support faithful float64 sorting")
     # Many columns and rows force multiple programs in both sorting paths.
     inp = _make_input((rows, 129), dtype)
     reference_input = utils.to_reference(inp).clone()
@@ -95,6 +107,8 @@ def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
 
 def _make_input(shape, dtype):
     torch.manual_seed(0)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        return _to_target_wide(torch.randn(shape, dtype=dtype, device="cpu"))
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
     if not dtype.is_floating_point:
@@ -161,13 +175,16 @@ def test_msort_noncontiguous_empty_scalar_and_special_values():
 @pytest.mark.parametrize("shape", [(), (0,), (1,), (2, 3)])
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_msort_rejects_complex(shape, dtype):
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
-        pytest.skip("Kunlunxin cannot retain complex128 input storage")
     if flag_gems.vendor_name == "kunlunxin" and shape == (0,) and not utils.TO_CPU:
         pytest.skip("Kunlunxin native msort accepts empty complex tensors")
     if flag_gems.vendor_name == "mthreads" and shape in ((), (0,)) and not utils.TO_CPU:
         pytest.skip("MUSA native msort accepts scalar and empty complex tensors")
-    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    inp = (
+        _to_target_wide(torch.empty(shape, dtype=dtype, device="cpu"))
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128
+        else torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    )
+    assert inp.dtype == dtype
     with pytest.raises((RuntimeError, ValueError)):
         torch.msort(utils.to_reference(inp))
     with pytest.raises((RuntimeError, ValueError)):
