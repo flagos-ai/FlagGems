@@ -137,7 +137,12 @@ def test_kthvalue_invalid_dim(shape, dim):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    with pytest.raises(IndexError, match="Dimension out of range"):
+    native_error = (
+        RuntimeError
+        if flag_gems.vendor_name == "ascend" and not utils.TO_CPU
+        else IndexError
+    )
+    with pytest.raises(native_error, match="Dimension out of range"):
         torch.kthvalue(ref_inp, 1, dim=dim)
     with pytest.raises(IndexError, match="Dimension out of range"):
         flag_gems.kthvalue(inp, 1, dim=dim)
@@ -148,7 +153,12 @@ def test_kthvalue_empty_tensor():
     inp = torch.randn(3, 0, dtype=torch.float32, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
-    with pytest.raises(IndexError, match="Expected reduction dim"):
+    ascend_native = flag_gems.vendor_name == "ascend" and not utils.TO_CPU
+    native_error = RuntimeError if ascend_native else IndexError
+    native_message = (
+        "Selected index k out or range" if ascend_native else "Expected reduction dim"
+    )
+    with pytest.raises(native_error, match=native_message):
         torch.kthvalue(ref_inp, 1, dim=1)
     with pytest.raises(IndexError, match="Expected reduction dim"):
         flag_gems.kthvalue(inp, 1, dim=1)
