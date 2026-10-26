@@ -37,6 +37,18 @@ SHAPE_DEPTHWISE = [
 ]
 
 
+def _reference_depthwise2d(inp, weight, kernel_size, bias, stride, padding, dilation):
+    if inp.device.type == "cpu":
+        if tuple(weight.shape[-2:]) != tuple(kernel_size):
+            raise RuntimeError("kernel_size must match the weight's spatial dimensions")
+        return torch.nn.functional.conv2d(
+            inp, weight, bias, stride, padding, dilation, groups=inp.shape[1]
+        )
+    return torch.ops.aten._conv_depthwise2d(
+        inp, weight, kernel_size, bias, stride, padding, dilation
+    )
+
+
 @pytest.mark.conv_depthwise2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -74,7 +86,7 @@ def test_conv_depthwise2d(
             groups=ref_inp.shape[1],
         ).to(dtype)
     else:
-        ref_out = torch.ops.aten._conv_depthwise2d(
+        ref_out = _reference_depthwise2d(
             ref_inp,
             ref_weight,
             kernel,
@@ -87,4 +99,7 @@ def test_conv_depthwise2d(
     res_out = flag_gems._conv_depthwise2d(
         inp, weight, kernel, bias_tensor, stride, padding, dilation
     )
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)

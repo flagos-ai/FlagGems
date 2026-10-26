@@ -135,6 +135,12 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams(shape, dtype):
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
+    assert res_out[0].device == inp.device
+    assert res_out[1].device == inp.device
+    assert res_out[0].shape == inp.shape
+    assert res_out[0].dtype == inp.dtype
+    assert res_out[1].shape == inp.shape
+    assert res_out[1].dtype == torch.bool
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
     utils.gems_assert_equal(res_out[1], ref_out[1])
 
@@ -165,5 +171,11 @@ def test_fake_quantize_per_tensor_affine_cachemask_tensor_qparams_disabled(
         inp, scale, zero_point, fake_quant_enabled, QUANT_MIN, QUANT_MAX
     )
 
+    assert res_out[0].device == inp.device
+    assert res_out[1].device == inp.device
+    assert res_out[0].shape == inp.shape
+    assert res_out[0].dtype == inp.dtype
+    assert res_out[1].shape == inp.shape
+    assert res_out[1].dtype == torch.bool
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
     utils.gems_assert_equal(res_out[1], ref_out[1])
