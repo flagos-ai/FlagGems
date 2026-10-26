@@ -74,6 +74,7 @@ backends:
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
+      USE_FLAGCX: "OFF"
     deps:
       - flagcx==0.14.0rc2.post2+cuda13.3
       - torch==2.11.0+cu130

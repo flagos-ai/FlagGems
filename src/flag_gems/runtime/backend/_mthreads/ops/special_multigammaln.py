@@ -21,16 +21,12 @@ from flag_gems.ops.special_multigammaln import (
     special_multigammaln as default_special_multigammaln,
 )
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 
 
 LOG_PI = tl.constexpr(1.1447298858494002)
-
-_logger = logging.getLogger("flag_gems.ops.special_multigammaln")
 
 
 @triton.jit
@@ -312,7 +308,7 @@ _DIRECT = {
 
 
 def _specialized_special_multigammaln(self, p):
-    _logger.debug("GEMS_MTHREADS SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_MTHREADS SPECIAL_MULTIGAMMALN")
     p = int(p)
     if self.numel() == 0:
         return torch.empty_like(self)

@@ -160,31 +160,6 @@ FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` �
 压缩包上传到内部 op-monitor 服务，并发送包含结果的飞书通知。
 
 <!--
-## `command.yaml` — on-demand `/test` command
-
-**Trigger:** `issue_comment` created on a PR, matching `/test
-<operator>:<runner>`.
-
-Lets any PR participant with the right permissions request an ad-hoc test
-of a single operator on a specific runner (e.g. `/test
-constant_pad_nd:mthreads`) without waiting for the operator to have a
-`vendor/*` label or for a full CI run. For operators that already have
-history, it runs the test before and after the PR's changes and posts a
-comparison; for brand-new operators, it posts a single-run report. Results
-(and full logs) are attached as a PR comment and an uploaded artifact.
--->
-## `command.yaml` — 按需 `/test` 命令
-
-**触发条件：** PR 下创建的 `issue_comment` 事件，且评论内容匹配
-`/test <算子名>:<runner>` 格式。
-
-允许拥有相应权限的任何 PR 参与者，针对单个算子在指定 runner 上发起临时测试
-（例如 `/test constant_pad_nd:mthreads`），而无需等待该算子被打上 `vendor/*`
-标签或等待完整的 CI 运行。对于已有测试历史的算子，会在 PR 改动前后分别运行
-测试并发布对比结果；对于全新算子，则只发布单次运行的报告。测试结果（及完整
-日志）会以 PR 评论和上传构件的形式提供。
-
-<!--
 ## Manually dispatched utility workflows
 
 These workflows only have a `workflow_dispatch` trigger (`random-test.yaml`,
@@ -259,6 +234,21 @@ gh workflow run review-stats.yaml \
 ```
 
 <!--
+## Comment-triggered PR commands
+
+`command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
+are started by commenting on a pull request rather than by `workflow_dispatch`
+or a schedule, so they are documented in
+[Pull request checks](/FlagGems/zh-cn/cicd/pull-request/) together with the
+checks they complement.
+-->
+## 由评论触发的 PR 命令
+
+`command.yaml`（`/test <算子名>:<runner>`）和 `fix-sort.yaml`（`/fix-sort`）
+是通过在 PR 下评论启动的，而非 `workflow_dispatch` 或定时触发，因此它们与各自
+配合的检查一并记录在[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)中。
+
+<!--
 ## Feishu and monitoring integrations
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
@@ -273,7 +263,12 @@ These are observability workflows; they do not gate merges.
 ## 飞书与监控集成
 
 - `ci-report-feishu.yaml` 会将每一次 `rule-check` 的执行结果上报到飞书
-  多维表格（Bitable），用于跟踪长期的通过/失败趋势。
+  多维表格（Bitable），用于跟踪长期的通过/失败趋势。它由 `workflow_run`
+  （而非 `pull_request`）触发，因此在基础仓库上下文中执行，即使是来自 fork
+  的 PR 也能拿到密钥；该运行本身只需要 `tools/ci_report_feishu.py` 和令牌，
+  所以采用只检出该路径的稀疏检出。由于 GitHub API 可能滞后于已完成的工作流，
+  脚本会先等待 5 秒，再以 10 秒 / 20 秒的退避最多重试 3 次。它在 PR 流程中的
+  作用见[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)。
 - `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于

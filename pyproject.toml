@@ -221,6 +221,7 @@ nvidia-cuda128 = [
 ]
 
 nvidia-cuda133 = [
+    "flagcx==0.14.0rc2.post2+cuda13.3",
     "torch==2.11.0+cu130",
     "torchaudio==2.11.0+cu130",
     "torchvision==0.26.0+cu130",
@@ -242,7 +243,7 @@ sunrise = [
 
 thead = [
     "torch==2.10.0+v0.1.0.ppu2.1.1",
-    "flagtree==0.6.2a2+ppu3.6",
+    "flagtree==0.7.0+ppu3.6",
 ]
 
 tsingmicro = [
@@ -258,7 +259,7 @@ tsingmicro = [
 # Test packages
 test = [
     "distro==1.9.0",
-    "coverage==7.13.5",
+    "coverage==7.15.2",
     "openpyxl==3.1.5",
     "pandas==2.3.3",
     "pytest==9.0.3",
@@ -310,6 +311,7 @@ flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 
 "flag_gems" = ["backends.yaml"]
 "flag_gems.runtime" = ["*/**/*.yaml"]
+"flag_gems.runtime.backend._metax" = ["stft_fft_shim.cpp"]
 "flag_gems.flagtune.inference" = ["manifest.json"]
 "flag_gems.flagtune.offline.contracts" = ["configs/*.yaml"]
 

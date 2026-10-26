@@ -13,31 +13,23 @@
 # limitations under the License.
 
 import logging
-import os
 
 import torch
 import triton
 import triton.language as tl
 import triton.language.extra.xpu.libdevice as xpu
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# The XPU backend has two f32->bf16 store lowerings (TritonXPUToLLVM
-# LoadStoreOpToLLVM.cpp): the default one packs every two 512-bit f32 vectors
-# through a per-lane vand/vadd rounding chain followed by two masked
-# SCATTER_MH ops, which costs ~+150us at n = 16.7M (a 1.35x slowdown of the
-# whole op vs the f32 store). TRITONXPU_BF16_FAST selects the vendor
-# vstore2_lm device call instead (a single hardware-rounded 16->bf16 pack +
-# store per two vectors, ~70us faster at 16.7M, bit-exact RNE on the same
-# outputs; used by the vendor's own sglang kernels, e.g.
-# third_party/xpu/test/sglang/qwen3_next/test_l2norm_fwd_kernel.py). The flag
-# is a compile-time choice read when a kernel is compiled, so it is set here
-# (before any kunlunxin kernel compiles at import time); a later assignment
-# in _launch would not apply if the kernel is JIT-cached. It only changes the
-# f32->bf16 store lowering (bit-exact) and leaves every other op untouched.
-os.environ.setdefault("TRITONXPU_BF16_FAST", "1")
+# bf16 outputs use the fast f32->bf16 store lowering (~70us faster at n=16.7M;
+# see flag_gems.runtime.backend._kunlunxin.utils.bf16_fast_store for what the
+# two lowerings are and how they differ).  It is scoped to the launch rather
+# than set globally at import time: a module-level setdefault here would change
+# the bf16 numerics of every other op in the process, and could not be undone by
+# a caller who never set it.  For fp16/fp32 inputs the scope is a no-op.
 
 # asin(x) = sign(x) * (pi/2 - 2*sqrt(t)*P(t)) with t = (1-|x|)/2 in [0, 0.5]
 # and P(t) = asin(sqrt(t))/sqrt(t).  P is analytic on t in [0, 0.5] (its only
@@ -147,29 +139,30 @@ def _launch(x, out):
     if n_elements == 0:
         return
     block_size, num_warps, masked = _pick_block(n_elements)
-    if masked:
-        grid = (triton.cdiv(n_elements, block_size),)
-        arcsin_kernel[grid](
-            x,
-            out,
-            n_elements,
-            BLOCK_SIZE=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-    else:
-        grid = (n_elements // block_size,)
-        arcsin_kernel_unmasked[grid](
-            x,
-            out,
-            BLOCK_SIZE=block_size,
-            num_warps=num_warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
+    with bf16_fast_store(out.dtype):
+        if masked:
+            grid = (triton.cdiv(n_elements, block_size),)
+            arcsin_kernel[grid](
+                x,
+                out,
+                n_elements,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+                unroll_num=UNROLL_NUM,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
+        else:
+            grid = (n_elements // block_size,)
+            arcsin_kernel_unmasked[grid](
+                x,
+                out,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+                unroll_num=UNROLL_NUM,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
 
 
 def arcsin(x, *, out=None):

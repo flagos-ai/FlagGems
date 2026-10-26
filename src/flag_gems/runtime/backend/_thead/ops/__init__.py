@@ -23,11 +23,13 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
+from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .as_strided_scatter import as_strided_scatter
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
+from .baddbmm import baddbmm, baddbmm_out
+from .baddbmm_ import baddbmm_
+from .bmm import bmm, bmm_out
 from .cholesky_inverse import cholesky_inverse
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cross_attention import cross_attention
@@ -37,6 +39,7 @@ from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .gru import gru
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .lcm import lcm, lcm_
@@ -61,6 +64,7 @@ from .repeat import repeat
 from .replication_pad2d import replication_pad2d
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
+from .router_gemm import router_gemm
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
@@ -97,11 +101,16 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
+    "addmm",
     "addmm_",
+    "addmm_out",
     "addmv_",
     "as_strided_scatter",
-    "broadcast_tensors",
-    "broadcast_to",
+    "baddbmm",
+    "baddbmm_",
+    "baddbmm_out",
+    "bmm",
+    "bmm_out",
     "cholesky_inverse",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
@@ -113,6 +122,7 @@ __all__ = [
     "gcd",
     "gcd_",
     "grid_sampler_3d_backward",
+    "gru",
     "index_copy",
     "index_copy_",
     "index_select_backward",
@@ -147,6 +157,7 @@ __all__ = [
     "replication_pad2d",
     "replication_pad3d_backward",
     "rms_norm_w8a16_fp8",
+    "router_gemm",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",

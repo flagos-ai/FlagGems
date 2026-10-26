@@ -27,7 +27,29 @@ In pull requests, contributors should describe what changed and why. Please also
 
 If you use VS Code and your code runs inside a container, the recommended way to set up your development environment is through the provided Dev Container configurations. See the dedicated [Dev Container](/FlagGems/contribution/devcontainer/) page for setup instructions, including local and SSH remote workflows.
 
-## 2. Operator naming conventions {#operator-naming-conventions}
+## 2. Device isolation and visibility {#device-visibility}
+
+On a node shared by several people, you usually want a test or benchmark run to use only a subset of the available devices. FlagGems does not implement its own device allocation; it relies on each backend's own visibility environment variable to do the isolation.
+
+A visibility variable must be set **before** the process starts, and the name differs from one backend to another:
+
+| Backend | Vendor name | Variable                    |
+| ------- | ----------- | --------------------------- |
+| NVIDIA  | `nvidia`    | `CUDA_VISIBLE_DEVICES`      |
+| Ascend  | `ascend`    | `ASCEND_RT_VISIBLE_DEVICES` |
+| Enflame | `enflame`   | `TOPS_VISIBLE_DEVICES`      |
+
+For example, to run the test suite on GCUs 4 and 6 only:
+
+```shell
+TOPS_VISIBLE_DEVICES=4,6 pytest tests/
+```
+
+Note that the runtime renumbers the devices that survive the filter, so in the command above the two remaining GCUs appear inside the process as `0` and `1`, not as `4` and `6`.
+
+For the common pitfalls around each backend's variable name, the full mapping, and how to verify that a setting took effect, see [Selecting Visible Devices](/FlagGems/contribution/device-visibility/).
+
+## 3. Operator naming conventions {#operator-naming-conventions}
 
 FlagGems primarily provides alternative implementations of the PyTorch ATen operator library, with its operator registry being [native_functions.yaml](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/native_functions.yaml). The FlagGems API naming conventions are:
 
@@ -46,7 +68,7 @@ These conversion rules ensure a one-to-one correspondence between FlagGems opera
 
 > **Note**: If two operators in the repository differ only by a leading underscore, preserve the leading underscore. The corresponding operator's test marker should have an additional `underscore` prefix to bypass pytest's limitations.
 
-## 3. Operator metadata management {#operator-metadata-management}
+## 4. Operator metadata management {#operator-metadata-management}
 
 Starting from v4.2, the FlagGems project introduced an operator inventory which can be found as the `conf/operators.yaml` file. Each operator has a unique ID denoted as the `id` field. The fields are described as follows:
 
@@ -89,7 +111,7 @@ Example yaml file entry:
       - aten
 ```
 
-## 4. Operator deliverables {#operator-deliverables}
+## 5. Operator deliverables {#operator-deliverables}
 
 Before developing a new operator, check the `for` field in `conf/operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
 
@@ -102,13 +124,13 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 
 > **Note**: FlagGems is a Triton operator library. Operators with no direct or indirect device-side calls are not accepted.
 
-## 5. Operator host function conventions {#operator-host-function-conventions}
+## 6. Operator host function conventions {#operator-host-function-conventions}
 
 On the host side, operators may call data initialization functions such as `torch.empty_like()`, `torch.zeros()`, and `torch.randn()`, as well as other FlagGems operators. Calling PyTorch computation operators directly is prohibited.
 
-The first statement in every operator function should emit a DEBUG log. The message must include the vendor prefix (`GEMS` for the generic implementation or `GEMS_<VENDOR>` for a vendor implementation), followed by a space and the operator name in uppercase snake case, for example `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`.
+The first statement in every operator function should emit a DEBUG log. The message must include the vendor prefix (`GEMS` for the generic implementation or `GEMS_<VENDOR>` for a vendor implementation), followed by a space and the operator name in uppercase snake case, for example `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`. The vendor prefix may optionally append a device name, e.g. `GEMS_ENFLAME_GCU300 CONV1D`.
 
-## 6. Code format check {#code-format-check}
+## 7. Code format check {#code-format-check}
 
 Using `pre-commit` git hooks with FlagGems, you can format source Python code and perform basic code pre-checks when calling the `git commit` command.
 
@@ -118,7 +140,7 @@ pre-commit install
 pre-commit
 ```
 
-## 7. Operator unit tests {#operator-unit-tests}
+## 8. Operator unit tests {#operator-unit-tests}
 
 Unit tests check the correctness of operators. When adding new operators, you need to add unit test cases in the corresponding file under the `tests` directory.
 
@@ -155,7 +177,7 @@ Python test coverage checks the unit test coverage on an operator. The `coverage
 
 Test coverage is summarized during unit tests and the daily full unit test job. The unit test coverage data are reported on the FlagGems website.
 
-## 8. Operator performance benchmarking {#operator-performance-benchmarking}
+## 9. Operator performance benchmarking {#operator-performance-benchmarking}
 
 An *operator benchmark* is used to evaluate the performance of operators. If you are adding a new operator or optimizing an existing operator, you need to add performance test cases in the corresponding file under the `benchmark` directory.
 
@@ -163,7 +185,7 @@ When new test cases are added to the `benchmark/` subdirectory, or existing test
 
 For detailed instructions on writing performance test cases, please refer to [Python performance tests](/FlagGems/performance/python/).
 
-## 9. About test case marking {#test-case-marking}
+## 10. About test case marking {#test-case-marking}
 
 The `pytest` tool we use for driving accuracy tests (unit tests) and performance tests (benchmarks) provides a mechanism to annotate test cases with *custom marks*. The FlagGems project uses this facility for testing/benchmarking operators selectively. In the example below, the test case is annotated with `@pytest.mark.abs` to indicate that this test case is for the `abs` operator.
 

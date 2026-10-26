@@ -55,3 +55,42 @@ def test_nll_loss2d(shape, dtype, ignore_index, reduction, weight):
 
     reduce_dim = 1 if reduction == "none" else res_target.numel()
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.nll_loss2d
+@pytest.mark.parametrize("reduction", ["mean", "sum"])
+@pytest.mark.parametrize("weight", [True, False])
+@pytest.mark.parametrize("shape", [(2, 4, 4, 8), (3, 6, 8, 8)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_nll_loss2d_backward(shape, dtype, reduction, weight):
+    N, C, H, W = shape
+    reduction_val = _REDUCTION[reduction]
+
+    res_inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    res_target = torch.randint(0, C, (N, H, W), device=flag_gems.device)
+    res_weight = (
+        torch.randn(C, dtype=dtype, device=flag_gems.device) if weight else None
+    )
+
+    ref_inp = utils.to_reference(res_inp.detach(), True).requires_grad_(True)
+    ref_target = utils.to_reference(res_target)
+    ref_weight = utils.to_reference(res_weight, True) if weight else None
+
+    ref_out = torch.ops.aten.nll_loss2d(
+        ref_inp, ref_target, ref_weight, reduction_val, -100
+    )
+    res_out = flag_gems.nll_loss2d(res_inp, res_target, res_weight, reduction_val, -100)
+
+    if reduction == "none":
+        grad_out = torch.randn_like(res_out)
+    else:
+        grad_out = None
+    (res_in_grad,) = torch.autograd.grad(res_out, [res_inp], grad_out)
+    (ref_in_grad,) = torch.autograd.grad(
+        ref_out, [ref_inp], grad_out.to(ref_out.dtype) if reduction == "none" else None
+    )
+
+    reduce_dim = 1 if reduction == "none" else res_target.numel()
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)

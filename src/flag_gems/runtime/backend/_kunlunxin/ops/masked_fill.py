@@ -23,7 +23,7 @@ from flag_gems.utils import broadcastable_to
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Generic pointwise path (fallback for non-contiguous inputs, broadcastable

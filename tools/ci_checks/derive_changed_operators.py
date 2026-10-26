@@ -26,6 +26,7 @@ Exit codes:
 """
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -76,6 +77,30 @@ def expected_marker(op_id: str, all_op_ids: set) -> str:
     return stripped
 
 
+def declared_markers() -> set[str]:
+    """Return the pytest markers declared by the test files.
+
+    A marker that no test declares selects nothing, so emitting it makes the
+    caller's ``pytest -m`` run deselect everything. Used to drop markers
+    derived from backend helper modules (whose file stem is not an operator id
+    and which no test marks).
+    """
+    declared: set[str] = set()
+    for path in Path(TESTS_DIR).glob("*.py"):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Attribute)
+                and node.value.attr == "mark"
+            ):
+                declared.add(node.attr)
+    return declared
+
+
 def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
     """Get list of changed files introduced by the PR branch.
 
@@ -85,6 +110,26 @@ def get_diff_files(base_sha: str, head_sha: str) -> list[str]:
     on the base branch after the PR was created. This matches the semantics of
     GitHub's "Files changed" view.
     """
+    # Fail early with a clear message if either endpoint isn't a local commit.
+    # Otherwise `git diff base...head` reports the internal "Invalid symmetric
+    # difference expression", which looks like a syntax error but actually means
+    # the SHA's commit object is absent (e.g. robust-checkout didn't fetch the
+    # base). git's own wording misleads whoever reads the CI log.
+    for label, sha in (("base", base_sha), ("head", head_sha)):
+        probe = subprocess.run(
+            ["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+            capture_output=True,
+            text=True,
+        )
+        if probe.returncode != 0:
+            print(
+                f"::error::{label} SHA {sha} is not present in the local repo "
+                f"(its commit object was never fetched), so base...head diffs "
+                f"cannot resolve. Ensure the checkout fetches this ref.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+
     try:
         result = subprocess.run(
             [
@@ -128,6 +173,50 @@ def filename_to_operator_id(filename: str) -> str | None:
     return filename if filename else None
 
 
+def resolve_multi_op_impl(filepath: str, all_operators: dict) -> list[str]:
+    """Resolve the operator ids exported by a shared backend impl module.
+
+    Some backend implementation files implement several operators at once (e.g.
+    ``_kunlunxin/ops/_foreach_binary_scalar.py`` exports every
+    ``_foreach_*.Scalar``/``.ScalarList`` overload), so their file stem is not
+    an operator id.  The ops ``__init__.py`` re-exports each of them as
+    ``from ._module import (name, ...)``, and each ``name`` is an
+    ``operators.yaml`` ``for`` value with ``.`` replaced by ``_``, so names can
+    be resolved back to operator ids.
+
+    Return the resolved ids, or [] when the file is not a multi-op impl (or
+    nothing can be resolved).
+    """
+    init_path = Path(filepath).with_name("__init__.py")
+    if not init_path.exists():
+        return []
+    # Reverse map: "<for value with . -> _>" (the re-export name) -> op id.
+    # Example: _foreach_mul_.Scalar -> _foreach_mul__Scalar -> foreach_mul_scalar_.
+    rev = {}
+    for op in all_operators.values():
+        for f in op.get("for", []) or []:
+            rev[f.replace(".", "_")] = op["id"]
+    try:
+        src = init_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    stem = Path(filepath).stem
+    m = re.search(rf"from \.{re.escape(stem)} import \((.*?)\)", src, re.DOTALL)
+    if m is None:
+        m = re.search(rf"from \.{re.escape(stem)} import ([^\n()]+)", src)
+    if m is None:
+        return []
+    ids = []
+    for token in re.split(r"[,\s()]+", m.group(1)):
+        name = token.split("#")[0].strip()
+        if not name:
+            continue
+        op_id = rev.get(name)
+        if op_id is not None and op_id not in ids:
+            ids.append(op_id)
+    return ids
+
+
 def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]:
     """Given changed files, derive which operator IDs are affected."""
     changed_ops = set()
@@ -153,9 +242,17 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
             if op_id in all_operators:
                 changed_ops.add(op_id)
             else:
-                # Try without trailing underscore (inplace variants)
-                # e.g., ops file might be abs_.py for abs_ operator
-                changed_ops.add(op_id)
+                # The file stem is not an operator id: it may be a shared impl
+                # module exporting several operators (e.g.
+                # _foreach_binary_scalar.py). Resolve the real ids from the
+                # ops/__init__.py re-exports; fall back to the raw stem when
+                # nothing can be resolved so behavior for unknown files is
+                # unchanged.
+                resolved = resolve_multi_op_impl(filepath, all_operators)
+                if resolved:
+                    changed_ops.update(resolved)
+                else:
+                    changed_ops.add(op_id)
             continue
 
         # Case 3: test file changed
@@ -231,9 +328,15 @@ def main():
     if args.ops_only:
         # Machine-readable: just the markers, one per line. Apply the marker
         # convention here so callers select the right tests (a raw id like
-        # _pad_enum would deselect everything).
+        # _pad_enum would deselect everything). Markers that no test declares
+        # are dropped: a backend helper module (e.g.
+        # _kunlunxin/ops/fused_moe_kernel.py) has no marker of its own, and
+        # emitting one would make the caller's pytest run deselect everything.
+        declared = declared_markers()
         for op in changed_ops:
-            print(expected_marker(op, all_op_ids))
+            marker = expected_marker(op, all_op_ids)
+            if op in all_op_ids or marker in declared:
+                print(marker)
         return
 
     if args.base and args.head:

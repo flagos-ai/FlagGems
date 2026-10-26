@@ -121,7 +121,6 @@ linalg_qr:
     - [256, 256]
     - [512, 512]
     - [1024, 1024]
-    - [4096, 4096]
     # tall (m > n): fused, routing-win, TSQR
     - [128, 32]
     - [512, 64]
@@ -147,7 +146,6 @@ linalg_qr_out:
     - [256, 256]
     - [512, 512]
     - [1024, 1024]
-    - [4096, 4096]
     # tall (m > n): fused, routing-win, TSQR
     - [128, 32]
     - [512, 64]
@@ -291,6 +289,14 @@ softmax_backward:
     - [256, 1024, 1024]
 
 softmax_backward_out:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+
+softmax_backward_data:
   shapes:
     - [1048576] # 1024 * 1024
     - [64, 64]
@@ -481,6 +487,16 @@ grouped_mm:
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
 
+sparse_mm_reduce_impl:
+  shapes:
+    - [2, 512, 512, 512]
+    - [8, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [4, 4096, 4096, 4096]
+    - [2, 4096, 1024, 4096]
+    - [8, 4096, 256, 4096]
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
+
 sparse_sampled_addmm:
   shapes:
     - [2, 128, 128, 128]
@@ -562,6 +578,40 @@ EmbeddingBenchmark:
     - [128, 128]
     - [256, 256]
     - [1024, 1024]
+
+
+# Shapes chosen to span the runtime regimes ``embedding_spmdm`` encounters
+# in practice: tiny embed tables, wide embedding dims, large batch sizes
+# and large bag sizes.  ``V`` = vocabulary size, ``D`` = embedding dim,
+# ``B`` = batch size, ``S`` = bag size.
+embedding_spmdm:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+embedding_spmdm_weighted:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
 
 # [N, C, H, W]
 UpsampleBenchmark:
@@ -993,6 +1043,22 @@ MoeAlignBlockSizeBenchmark:
     - [8, 64]
     - [128, 4]
 
+# ``T`` = tokens, ``N_e`` = experts, ``K`` = Top-K.  Covers the small/medium
+# router shapes seen in practice up to the large ``32768 x 128`` case that
+# switches the MUSA kernels to the wider token tile.
+moe_load_balance_loss: &moe_load_balance_loss_shapes
+  shapes:
+    - [256, 8, 2]
+    - [1024, 8, 2]
+    - [4096, 16, 2]
+    - [4096, 64, 4]
+    - [16384, 64, 4]
+    - [32768, 128, 8]
+  shape_desc: "T, N_e, K"
+
+moe_load_balance_loss_mask:
+  <<: *moe_load_balance_loss_shapes
+
 ConcatAndCacheMLABenchmark:
   shapes:
     - [16, 8, 84, 32, 4]
@@ -1075,7 +1141,7 @@ repeat:
     - [64, 512, 512]
     - [512, 512, 512]
 
-topk_w8a16_fp8:
+topk_w8a16:
   shapes:
     - [64, 128, 8]
     - [256, 256, 8]
@@ -1166,3 +1232,17 @@ unique2:
     - [65536]
     - [262144]
   shape_desc: "N"
+
+# batch_norm_elemt normalizes over the (N, C, *) layout, so the spatial extent
+# must be non-degenerate: the default 2D shapes collapse to HW=1 and would
+# launch one program per element. These cover typical CNN activation maps.
+batch_norm_elemt:
+  shapes:
+    - [2, 64, 112, 112]
+    - [8, 128, 56, 56]
+    - [16, 256, 28, 28]
+    - [32, 512, 14, 14]
+    - [64, 1024, 7, 7]
+    - [128, 256, 32, 32]
+    - [4, 32, 8, 8, 8]
+  shape_desc: "N, C, *spatial"

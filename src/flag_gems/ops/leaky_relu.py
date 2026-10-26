@@ -141,9 +141,17 @@ def leaky_relu_(A, negative_slope=0.01):
     n_elements = A.numel()
     if n_elements == 0:
         return A
+    # Autotuning re-runs the kernel on the launch arguments several times, so
+    # launching with A as both source and destination would let an early
+    # benchmark pass overwrite negative elements with scaled values that the
+    # later passes then read, compounding the scaling. Compute into a scratch
+    # buffer first and copy back, keeping the operation in-place from the
+    # caller's perspective.
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, A, n_elements, negative_slope)
+        scratch = torch.empty_like(A)
+        _leaky_relu_kernel[grid](A, scratch, n_elements, negative_slope)
+        A.copy_(scratch)
     return A
 
 

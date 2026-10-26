@@ -43,8 +43,6 @@ from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .block_diag import block_diag
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
 from .conv2d import conv2d
@@ -187,6 +185,7 @@ from .special_shifted_chebyshev_polynomial_v import (
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
@@ -225,8 +224,6 @@ __all__ = [
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
-    "broadcast_tensors",
-    "broadcast_to",
     "cholesky_inverse",
     "conj_physical",
     "conv2d",
@@ -374,6 +371,8 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "true_divide",
     "true_divide_",
     "true_divide_out",

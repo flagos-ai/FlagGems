@@ -18,6 +18,9 @@ import torch
 from . import base, consts
 
 
+# ``or`` is a Python keyword, so @pytest.mark.or is a syntax error; build the
+# aggregate operator-family mark via getattr instead.
+@getattr(pytest.mark, "or")
 @pytest.mark.or_tensor
 def test_or_tensor():
     bench = base.BinaryPointwiseBenchmark(

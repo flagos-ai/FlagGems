@@ -28,12 +28,12 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .cudnn_convolution import cudnn_convolution
@@ -111,6 +111,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
 
@@ -135,12 +136,12 @@ __all__ = [
     "arccosh_",
     "as_strided_scatter",
     "avg_pool3d_backward",
-    "broadcast_tensors",
-    "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
     "concatenate",
     "constant_pad_nd",
+    "conv1d",
+    "conv2d",
     "conv_transpose1d",
     "cudnn_convolution",
     "diagonal_scatter",
@@ -222,6 +223,8 @@ __all__ = [
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
+    "triangular_solve",
+    "triangular_solve_out",
     "var",
     "var_correction",
     "var_dim",

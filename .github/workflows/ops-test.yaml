@@ -62,7 +62,6 @@ jobs:
       date: ${{ steps.get-date.outputs.DATE }}
       checkout_ref: ${{ steps.build-matrix.outputs.checkout_ref }}
       matrix_container: ${{ steps.build-matrix.outputs.matrix_container }}
-      matrix_native: ${{ steps.build-matrix.outputs.matrix_native }}
       api: ${{ steps.build-matrix.outputs.api }}
       ops: ${{ steps.build-matrix.outputs.ops }}
       publish_results: ${{ steps.build-matrix.outputs.publish_results }}
@@ -100,8 +99,10 @@ jobs:
               if v.strip()
           }
 
+          # All backends run inside a container (use_container: true). The
+          # legacy native path has been removed, so every enabled backend is
+          # collected into a single container matrix.
           container_include = []
-          native_include = []
           for name, cfg in main['backends'].items():
               if not cfg.get('enabled'):
                   continue
@@ -110,10 +111,7 @@ jobs:
               if vendors_filter and backend.get('vendor', '').lower() not in vendors_filter:
                   continue
               backend['test_env'] = json.dumps(backend.get('test_env') or {})
-              if backend.get('use_container', True):
-                  container_include.append(backend)
-              else:
-                  native_include.append(backend)
+              container_include.append(backend)
 
           # ops: empty input -> "all" operator stages; otherwise the given ops.
           ops = os.environ.get('OPS_INPUT', '').strip() or 'all'
@@ -123,13 +121,12 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
               out.write(f"checkout_ref={checkout_ref}\n")
               out.write(f"matrix_container={json.dumps({'include': container_include})}\n")
-              out.write(f"matrix_native={json.dumps({'include': native_include})}\n")
               out.write(f"api={main['server']['api']}\n")
               out.write(f"ops={ops}\n")
               out.write(f"publish_results={publish_results}\n")
               out.write(f"send_feishu={send_feishu}\n")
 
-  # Backends that run inside a container (use_container: true)
+  # All backends run inside a container (use_container: true)
   test-container:
     name: test (${{ matrix.name }})
     needs: prepare
@@ -292,6 +289,23 @@ jobs:
             AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
           fi
           echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
+          if [ "${{ matrix.vendor }}" = "KunLunXin" ]; then
+            AVAILABLE_GPUS=$(printf '%s\n' "${AVAILABLE_GPUS}" | awk -F, '
+              {
+                filtered = ""
+                for (i = 1; i <= NF; i++) {
+                  if ($i != "0") {
+                    if (filtered != "") {
+                      filtered = filtered ","
+                    }
+                    filtered = filtered $i
+                  }
+                }
+                print filtered
+              }
+            ')
+            echo "[GPU check] KunLunXin skips GPU 0; using GPUs: ${AVAILABLE_GPUS}"
+          fi
           echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
 
       # Run ops tests.
@@ -388,176 +402,4 @@ jobs:
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
-        run: python3 .github/scripts/notify_feishu.py
-
-  # Backends that run natively on the runner (use_container: false)
-  test-native:
-    name: test (${{ matrix.name }})
-    needs: prepare
-    if: ${{ fromJSON(needs.prepare.outputs.matrix_native).include[0] != null }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix_native) }}
-    concurrency:
-      group: ops-test-${{ matrix.name }}
-      cancel-in-progress: true
-    runs-on: ${{ matrix.runner_labels }}
-    # See test-container: single per-vendor, job-level timeout (Ascend 24h,
-    # others 18h); the "Run ops tests" step has no step-level timeout.
-    timeout-minutes: 1080
-    env:
-      DATE: ${{ needs.prepare.outputs.date }}
-      REPOSITORY_NAME: ${{ github.event.repository.name }}
-      OUTPUT_DIR: ${{ matrix.output_base_dir }}/${{ github.event.repository.name }}/${{ needs.prepare.outputs.date }}/logs_results_${{ needs.prepare.outputs.date }}
-    steps:
-      - id: checkout-attempt-1
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-        continue-on-error: true
-      - id: sleep-1
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        run: sleep 30s
-
-      - id: checkout-attempt-2
-        if: steps.checkout-attempt-1.outcome == 'failure'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-        continue-on-error: true
-      - id: sleep-2
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        run: sleep 30s
-
-      - id: checkout-attempt-3
-        if: steps.checkout-attempt-2.outcome == 'failure'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.checkout_ref }}
-
-      - name: Fix git safe directory
-        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
-
-      - name: Install FlagGems dependencies
-        run: |
-          pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-          pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/ https://mirrors.163.com/pypi/simple/"
-          pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com mirrors.163.com"
-          pip install .[test]
-
-      - name: Check GPU availability
-        shell: bash --login -e -o pipefail {0}
-        run: |
-          echo "[GPU check] Running GPU availability check script: ${{ matrix.gpu_check_script }}"
-          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
-            # Best-effort run: this backend only uses the script output for
-            # logging/inspection, so a non-zero exit here must not fail the job.
-            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }} || true)
-          else
-            GPU_OUTPUT=$(bash ${{ matrix.gpu_check_script }})
-          fi
-          echo "[GPU check] GPU availability check output:"
-          echo "$GPU_OUTPUT"
-          if [ "${{ matrix.force_test_gpus }}" = "true" ]; then
-            # This backend deliberately pins the GPUs under test to the
-            # configured test_gpus list (e.g. only the first N cards on a host
-            # that exposes more). Ignore the gpu_check result and use test_gpus.
-            AVAILABLE_GPUS="${{ matrix.test_gpus }}"
-            echo "[GPU check] force_test_gpus=true -> using configured test_gpus"
-          else
-            AVAILABLE_GPUS=$(echo "$GPU_OUTPUT" | grep "^Available GPUs:" | cut -d: -f2 | tr -d ' ')
-          fi
-          echo "[GPU check] Available GPUs: ${AVAILABLE_GPUS}"
-          echo "AVAILABLE_GPUS=${AVAILABLE_GPUS}" >> $GITHUB_ENV
-
-      # Run ops tests.
-      # OPS is provided by the prepare job: "all" (scheduled runs or an empty
-      # "ops" input) runs every operator stage via --stages all; otherwise it
-      # runs only the selected operators via --ops <list>.
-      - name: Run ops tests
-        env: ${{ fromJSON(matrix.test_env) }}
-        run: |
-          echo "[Run ops tests] Running on backend: ${{ matrix.name }} (vendor: ${{ matrix.vendor }})"
-          echo "[Run ops tests] Test output directory: ${OUTPUT_DIR}"
-          echo "[Run ops tests] Test GPUs: ${AVAILABLE_GPUS}"
-          echo "[Run ops tests] Test date: ${DATE}"
-          echo "[Run ops tests] Test ops: ${{ needs.prepare.outputs.ops }}"
-          mkdir -p "${OUTPUT_DIR}"
-          # remove cache to avoid potential issues with stale files
-          rm -rf ~/.triton/cache && rm -rf ~/.flaggems
-          # run tests with specified GPUs and output directory
-          OPS="${{ needs.prepare.outputs.ops }}"
-          if [ "${OPS}" = "all" ]; then
-            if [ "${{ matrix.vendor }}" = "Enflame" ]; then
-              OP_LIST_FILE="/data/flaggems/ops_list.txt"
-              if [ ! -f "${OP_LIST_FILE}" ]; then
-                echo "[Run ops tests] ERROR: Enflame op list file not found: ${OP_LIST_FILE}"
-                exit 1
-              fi
-              OP_ARGS="--op-list-file ${OP_LIST_FILE}"
-            else
-              OP_ARGS="--stages all"
-            fi
-          else
-            OP_ARGS="--ops ${OPS}"
-          fi
-          # replace ${{ matrix.test_gpus }} with ${AVAILABLE_GPUS}
-          python3 tools/run_tests.py \
-            --gpus "${AVAILABLE_GPUS}" \
-            ${OP_ARGS} \
-            --dump-output \
-            --output "${OUTPUT_DIR}"
-          # process the test results to generate summary files
-          python3 tools/add_labels.py ${OUTPUT_DIR}
-          python3 tools/psum_text  -o  ${OUTPUT_DIR}/result.csv  ${OUTPUT_DIR}
-          python3 tools/psum_html  -o  ${OUTPUT_DIR}/result.html  ${OUTPUT_DIR}
-
-      - name: Package results
-        run: |
-          ARCHIVE="${{ matrix.output_base_dir }}/${REPOSITORY_NAME}/${REPOSITORY_NAME}-${{ matrix.name }}-${DATE}.tar.gz"
-          mkdir -p "${OUTPUT_DIR}" "$(dirname "${ARCHIVE}")"
-          tar -czf "${ARCHIVE}" -C "$(dirname "${OUTPUT_DIR}")" "$(basename "${OUTPUT_DIR}")"
-          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
-
-      # - name: Upload artifact
-      #   uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-      #   with:
-      #     name: ops-test-${{ matrix.name }}-${{ needs.prepare.outputs.date }}
-      #     path: ${{ env.ARCHIVE }}
-
-      - name: Publish results to op-monitor
-        if: needs.prepare.outputs.publish_results == 'true'
-        timeout-minutes: 15
-        continue-on-error: true
-        run: |
-          # get backend name from matrix
-          BACKEND_NAME="${{ matrix.name }}"
-          echo "[Publish results] Uploading results archive to op-monitor server for backend: ${BACKEND_NAME}"
-          echo "[Publish results] Archive path: ${ARCHIVE}"
-          echo "[Publish results] Test date: ${DATE}"
-          # Check if the archive file exists before attempting to upload
-          if [ ! -f "${ARCHIVE}" ]; then
-            echo "[Publish results] ERROR: Archive file not found: ${ARCHIVE}"
-            exit 1
-          fi
-          # Upload the results archive to the op-monitor server.
-          curl -X POST "${{ secrets.OPMON_URL }}api/upload/archive" \
-            -H "Authorization: Bearer ${{ secrets.OPMON_UPLOAD_KEY }}" \
-            -F "file=@${ARCHIVE}" \
-            -F "library_name=FlagGems" \
-            -F "backend_name=${BACKEND_NAME}" \
-            -F "test_date=${DATE}" \
-            --compressed -o - -w "\nHTTP %{http_code}\n"
-
-      - name: Send Feishu notification
-        if: always() && needs.prepare.outputs.send_feishu == 'true'
-        timeout-minutes: 5
-        continue-on-error: true
-        env:
-          CI_STATUS: ${{ job.status }}
-          PLATFORM: ${{ matrix.name }}
-          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
-          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
-          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
-        shell: bash
         run: python3 .github/scripts/notify_feishu.py
