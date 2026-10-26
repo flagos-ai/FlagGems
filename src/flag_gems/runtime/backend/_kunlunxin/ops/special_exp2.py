@@ -21,9 +21,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-# Keep the shared logger name so tests asserting on
-# caplog logger="flag_gems.ops.special_exp2" keep working.
-logger = logging.getLogger("flag_gems.ops.special_exp2")
+logger = logging.getLogger(__name__)
 
 config_single_cta = CodeGenConfig(
     512,
