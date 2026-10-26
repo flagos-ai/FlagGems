@@ -67,6 +67,8 @@ def _assert_reconstruction(inp, lu, pivots, pivot, dtype):
 )
 @pytest.mark.parametrize("pivot", _PIVOT_VALUES)
 def test_lu_with_info(shape, dtype, pivot):
+    if VENDOR == "kunlunxin" and not utils.TO_CPU and not pivot:
+        pytest.skip("Kunlunxin native LU does not support pivot=False")
     inp = _make_input(shape, pivot, dtype)
     ref_lu, ref_pivots, ref_info = torch._lu_with_info(
         utils.to_reference(inp, True), pivot=pivot, check_errors=False
