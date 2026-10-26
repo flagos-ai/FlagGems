@@ -18,7 +18,6 @@ import torch
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
-
 LDL_FACTOR_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32), (64, 64)]
 
 
@@ -40,13 +39,18 @@ def _case_fn(shape, dtype):
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
+    if base.vendor_name == "iluvatar" and dtype == torch.float64:
+        pytest.skip("Iluvatar native ldl_factor does not support float64")
     torch.manual_seed(0)
     n = shape[-1]
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    inp = inp @ inp.transpose(-2, -1) + n * torch.eye(
-        n, dtype=dtype, device=device
+    factory_device = (
+        "cpu" if base.vendor_name == "ascend" and dtype == torch.float64 else device
     )
-    return inp, {"hermitian": False}
+    inp = torch.randn(shape, dtype=dtype, device=factory_device)
+    inp = inp @ inp.transpose(-2, -1) + n * torch.eye(
+        n, dtype=dtype, device=factory_device
+    )
+    return inp.to(device), {"hermitian": False}
 
 
 @pytest.mark.linalg_ldl_factor

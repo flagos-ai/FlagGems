@@ -17,6 +17,15 @@ def _make_batch_sizes(lengths):
     return batch_sizes
 
 
+def _skip_unsupported_native_reference(batch_sizes):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and torch.any(batch_sizes != batch_sizes[0]).item()
+    ):
+        pytest.skip("Ascend native _pad_packed_sequence requires constant batch sizes")
+
+
 @pytest.mark.pad_packed_sequence
 @pytest.mark.underscore_pad_packed_sequence
 @pytest.mark.parametrize("batch_size", [1, 8, 32, 128])
@@ -30,6 +39,7 @@ def test_pad_packed_sequence(batch_size, max_length, batch_first, dtype):
     lengths = sorted(lengths, reverse=True)
 
     batch_sizes = _make_batch_sizes(lengths)
+    _skip_unsupported_native_reference(batch_sizes)
     total = int(batch_sizes.sum().item())
     data = torch.randn(total, 16, dtype=dtype, device=flag_gems.device)
 
@@ -59,6 +69,7 @@ def test_pad_packed_sequence_padding(batch_size, max_length, padding_value):
     lengths = sorted(lengths, reverse=True)
 
     batch_sizes = _make_batch_sizes(lengths)
+    _skip_unsupported_native_reference(batch_sizes)
     total = int(batch_sizes.sum().item())
     data = torch.randn(total, 16, dtype=torch.float32, device=flag_gems.device)
 
