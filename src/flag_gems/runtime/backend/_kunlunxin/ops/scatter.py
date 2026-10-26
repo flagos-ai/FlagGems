@@ -521,22 +521,20 @@ def _tle_scatter_init():
     return _TLE["ok"]
 
 
-def _tle_scatter_src(inp, dim, index, src):
-    """Innermost-dim scatter_src via tle.raw LM staging; None -> defer to codegen.
+def _storage_span(t):
+    st = t.untyped_storage()
+    base = st.data_ptr()
+    return base, base + st.nbytes()
 
-    Allocates its own output so the clone can be skipped.  The payload rewrites
-    every visited output row in full (it loads the row's initial values from
-    `base`, applies the scatter in LM, and writes the whole row back), and the
-    row loop enumerates exactly index's leading dims.  So when the index covers
-    every output row (`index.shape[:-1] == inp.shape[:-1]`) every element of the
-    output is written and a bare `empty_like(inp)` (with `base = inp`) suffices
-    -- no clone.  With partial row coverage the rows the kernel never visits must
-    keep inp's values, so `out = inp.clone()` and `base = out`.
 
-    `base` shares `out`'s leading strides in the payload (one `os[]` array serves
-    both the read and the write row base), which is why the clone-skip branch
-    requires `inp.is_contiguous()`.
-    """
+def _alias(a, b):
+    """True when a and b share any reserved storage (conservative)."""
+    a0, a1 = _storage_span(a)
+    b0, b1 = _storage_span(b)
+    return a0 < b1 and b0 < a1
+
+
+def _tle_scatter_src(inp, dim, index, src, inplace=False):
     try:
         if dim != inp.ndim - 1:
             return None
@@ -567,6 +565,18 @@ def _tle_scatter_src(inp, dim, index, src):
             for d in range(ndim)
         ):
             return None
+        if inplace:
+            # The payload reads a base row and writes it back through the same
+            # stride descriptor, so a non-contiguous or overlapping destination
+            # cannot be rewritten row-wise in place.
+            if not inp.is_contiguous():
+                return None
+            if has_internal_overlapping(inp) == MemOverlap.Yes:
+                return None
+            # Reading src/index while rewriting inp rows is only sound when they
+            # do not alias the destination storage.
+            if _alias(inp, src) or _alias(inp, index):
+                return None
         if not _tle_scatter_init():
             return None
 
@@ -580,20 +590,27 @@ def _tle_scatter_src(inp, dim, index, src):
         if kern is None:
             return None
 
-        # Output allocation (only reached once we are committed to this path).
-        # `full_rows` == the row loop visits every output row.  When it does and
-        # inp is contiguous, `empty_like(inp)` plus `base = inp` is complete and
-        # the clone is skipped; otherwise every unwritten row must keep inp's
-        # values, so clone.
-        full_rows = all(index.size(d) == inp.size(d) for d in range(ndim - 1))
-        if full_rows and inp.is_contiguous():
-            out = torch.empty_like(inp)
+        # Output selection (only reached once we are committed to this path).
+        # `full_rows` == the row loop visits every output row.  Out-of-place:
+        # when it does and inp is contiguous, `empty_like(inp)` plus
+        # `base = inp` is complete and the clone is skipped; otherwise every
+        # unwritten row must keep inp's values, so clone.  In-place: the
+        # destination is the input itself.
+        if inplace:
+            out = inp
             base = inp
         else:
-            out = inp.clone()
-            if has_internal_overlapping(out) == MemOverlap.Yes:
-                out = out.contiguous()
-            base = out
+            full_rows = all(index.size(d) == inp.size(d) for d in range(ndim - 1))
+            # An internally overlapping source cannot be materialized row-wise
+            # here; defer to the codegen kernel instead.
+            if has_internal_overlapping(inp) == MemOverlap.Yes:
+                return None
+            if full_rows and inp.is_contiguous():
+                out = torch.empty_like(inp)
+                base = inp
+            else:
+                out = inp.clone()
+                base = out
         if not out.is_contiguous():
             return None
 
@@ -683,6 +700,16 @@ def scatter_(inp, dim, index, src, reduce=None):
     assert (
         has_internal_overlapping(out) != MemOverlap.Yes
     ), "Unsupported operation: trying to inplace write to an internally overlapping tensor."
+
+    if reduce is None:
+        # Same TLE LM-staging kernel the out-of-place path uses, with the
+        # destination serving as its own base-row source: no output allocation,
+        # no clone, and the codegen kernel's data-dependent (discrete)
+        # per-element GM store is replaced by a contiguous row write-back.
+        # Returns None -> defer to the codegen kernel.
+        res = _tle_scatter_src(inp, dim, index, src, inplace=True)
+        if res is not None:
+            return inp
 
     src_restrided = src.as_strided(index.shape, src.stride())
     inp_restrided = restride_dim(inp, dim, index.shape)
