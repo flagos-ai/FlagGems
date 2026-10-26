@@ -343,7 +343,7 @@ def test_quantized_lstm_training_dropout_is_seeded(dtype):
     for actual, repeated in zip(first, second):
         assert actual.device == repeated.device == inp.device
         assert actual.dtype == repeated.dtype == dtype
-        utils.gems_assert_equal(actual, repeated)
+        utils.gems_assert_equal(actual.cpu(), repeated.cpu())
     assert first[0].shape == (seq_len, batch_size, hidden_size)
     assert first[1].shape == h0.shape
     assert first[2].shape == c0.shape
