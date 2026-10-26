@@ -182,4 +182,4 @@ def test_float_power_out_rejects_non_double_output():
     out = torch.empty_like(base)
 
     with pytest.raises(RuntimeError, match="requires dtype Double"):
-        torch.ops.aten.float_power.Tensor_Scalar_out(base, 2.0, out=out)
+        flag_gems.float_power_tensor_scalar_out(base, 2.0, out=out)
