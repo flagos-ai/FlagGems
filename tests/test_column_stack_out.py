@@ -73,8 +73,7 @@ def test_column_stack_out(shapes, dtype):
     out = torch.empty(reference.shape, dtype=dtype, device=flag_gems.device)
     original_pointer = out.data_ptr()
 
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs, out=out)
+    result = flag_gems.column_stack_out(inputs, out=out)
 
     _assert_out_result(result, out, original_pointer, reference, dtype)
 
@@ -87,8 +86,7 @@ def test_column_stack_out_resizes_empty_buffer(dtype):
     reference = torch.column_stack(_reference_inputs(inputs, dtype))
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs, out=out)
+    result = flag_gems.column_stack_out(inputs, out=out)
 
     assert result is out
     assert result.shape == reference.shape
@@ -114,8 +112,7 @@ def test_column_stack_out_accepts_safe_dtype_cast():
 
     out = torch.empty((5, 2), dtype=torch.float32, device=flag_gems.device)
     original_pointer = out.data_ptr()
-    with flag_gems.use_gems():
-        result = torch.column_stack(inputs, out=out)
+    result = flag_gems.column_stack_out(inputs, out=out)
 
     assert result is out
     assert result.data_ptr() == original_pointer
@@ -126,6 +123,8 @@ def test_column_stack_out_accepts_safe_dtype_cast():
 
 @pytest.mark.column_stack_out
 def test_column_stack_out_rejects_unsafe_dtype_cast():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip("Kunlunxin native column_stack accepts unsafe out dtype casts")
     torch.manual_seed(0)
     inputs = [
         _make_tensor((5,), torch.float32),
@@ -139,5 +138,5 @@ def test_column_stack_out_rejects_unsafe_dtype_cast():
         torch.column_stack(reference_inputs, out=reference_out)
 
     out = torch.empty((5, 2), dtype=torch.int32, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(type(reference_error.value)):
-        torch.column_stack(inputs, out=out)
+    with pytest.raises(type(reference_error.value)):
+        flag_gems.column_stack_out(inputs, out=out)
