@@ -88,6 +88,10 @@ else:
     SWA_HEAD_SIZES = [128, 192]
     SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
 DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
+HYGON_FP32_FLASH_CONFIGS = [
+    (1, 2, 129, 64),
+    (1, 2, 129, 128),
+]
 
 
 def make_input(
@@ -270,6 +274,86 @@ def test__flash_attention_forward(
     assert len(result) == 5
     utils.gems_assert_close(result[0], ref_out, dtype)
     utils.gems_assert_close(result[1], ref_lse, torch.float)
+
+
+@pytest.mark.skipif(vendor_name != "hygon", reason="Hygon-specific FP32 path")
+@pytest.mark.underscore_flash_attention_forward
+@pytest.mark.parametrize("batch,num_head,seq_len,head_size", HYGON_FP32_FLASH_CONFIGS)
+@pytest.mark.parametrize("is_causal", [False, True])
+def test_hygon_fp32_flash_attention_forward(
+    batch, num_head, seq_len, head_size, is_causal, caplog
+):
+    current_device = flag_gems.device
+    shape = (batch, seq_len, num_head, head_size)
+    q = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    k = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    v = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    scale = float(1.0 / np.sqrt(head_size))
+    ref_out, ref_lse = dense_flash_attention_ref(
+        utils.to_reference(q, False),
+        utils.to_reference(k, False),
+        utils.to_reference(v, False),
+        scale,
+        is_causal,
+    )
+
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems._flash_attention_forward)
+    ):
+        result = flag_gems._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            seq_len,
+            seq_len,
+            0.0,
+            is_causal,
+            False,
+            scale=scale,
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} "
+        "_FLASH_ATTENTION_FORWARD" in caplog.text
+    )
+    assert len(result) == 5
+    utils.gems_assert_close(result[0], ref_out, torch.float, atol=3e-4)
+    utils.gems_assert_close(result[1], ref_lse, torch.float, atol=3e-4)
+
+
+@pytest.mark.skipif(vendor_name != "hygon", reason="Hygon-specific FP32 path")
+@pytest.mark.underscore_flash_attention_forward
+def test_hygon_fp32_flash_attention_negative_logit_sentinel():
+    current_device = flag_gems.device
+    seq_len, head_size = 16, 64
+    shape = (1, seq_len, 1, head_size)
+    q = torch.full(shape, 4.0e14, dtype=torch.float32).to(current_device)
+    k = torch.full(shape, -4.0e14, dtype=torch.float32).to(current_device)
+    v = (
+        torch.arange(seq_len * head_size, dtype=torch.float32)
+        .reshape(shape)
+        .to(current_device)
+    )
+    scale = float(1.0 / np.sqrt(head_size))
+
+    result = flag_gems._flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        seq_len,
+        seq_len,
+        0.0,
+        False,
+        False,
+        scale=scale,
+    )
+
+    expected = v.mean(dim=1, keepdim=True).expand_as(v)
+    torch.testing.assert_close(result[0], expected, rtol=1e-5, atol=1e-4)
 
 
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
