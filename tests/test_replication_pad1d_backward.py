@@ -74,6 +74,13 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
     ],
 )
 def test_replication_pad1d_backward(shape, padding, dtype):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.bfloat16
+        and any(p < 0 for p in padding)
+    ):
+        pytest.skip("Ascend native BF16 negative-padding backward fails in PadV3Grad")
     if dtype.is_complex and flag_gems.vendor_name == "ascend":
         pytest.skip("Ascend randn does not support complex input construction")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -89,8 +96,11 @@ def test_replication_pad1d_backward(shape, padding, dtype):
         ref_grad = grad_output.cpu()
     else:
         ref_inp = utils.to_reference(inp)
-        padded_out = torch.ops.aten.replication_pad1d(inp, padding)
-        grad_output = torch.ones_like(padded_out)
+        # The backward input shape is known without running a forward kernel.
+        # Ascend forward with negative padding can poison this process even
+        # though its backward API supports the same padding.
+        grad_shape = (*shape[:-1], shape[-1] + sum(padding))
+        grad_output = torch.ones(grad_shape, dtype=dtype, device=inp.device)
         ref_grad = utils.to_reference(grad_output)
 
     ref_out = torch.ops.aten.replication_pad1d_backward(ref_grad, ref_inp, padding)
@@ -114,6 +124,7 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
     inp = torch.randn(2, 3, 8, dtype=torch.float64, device=flag_gems.device)
     padded = torch.ops.aten.replication_pad1d(inp, (1, 1))
     bad_grad = torch.ones_like(padded, dtype=torch.float32)
+    # Native backends use different messages for the same dtype rejection.
     with pytest.raises(RuntimeError):
         flag_gems.replication_pad1d_backward(bad_grad, inp, (1, 1))
 
