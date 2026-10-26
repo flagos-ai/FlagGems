@@ -436,7 +436,10 @@ def test_put_zero_sized_self(dtype):
         _reference(empty_source),
     )
     res_out = _gems_put(inp, empty_index, empty_source)
-    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.device == inp.device
+    assert res_out.dtype == dtype
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_equal(res_out, ref_out.to(dtype))
 
     with pytest.raises(IndexError):
         _gems_put(
