@@ -12,6 +12,7 @@ def _candidate(name):
 
 
 @pytest.mark.upsample_nearest_exact2d
+@pytest.mark.underscore_upsample_nearest_exact2d
 @pytest.mark.parametrize("shape", utils.UPSAMPLE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("factor", [2, 3])
