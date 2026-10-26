@@ -712,10 +712,19 @@ def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
     for got, expected in zip(state_sums, ref_sums):
         _assert_close(got, expected, dtype)
     for got, expected in zip(grads, before[1]):
-        utils.gems_assert_equal(got, expected)
+        assert got.device == expected.device
+        assert got.dtype == expected.dtype
+        assert got.shape == expected.shape
+        utils.gems_assert_equal(got, utils.to_reference(expected, False))
     for got, expected in zip(state_steps, before[3]):
-        utils.gems_assert_equal(got, expected)
+        assert got.device == expected.device
+        assert got.dtype == expected.dtype
+        assert got.shape == expected.shape
+        utils.gems_assert_equal(got, utils.to_reference(expected, False))
     if found_inf_value == 1.0:
         for values, originals in ((params, before[0]), (state_sums, before[2])):
             for got, expected in zip(values, originals):
-                utils.gems_assert_equal(got, expected)
+                assert got.device == expected.device
+                assert got.dtype == expected.dtype
+                assert got.shape == expected.shape
+                utils.gems_assert_equal(got, utils.to_reference(expected, False))
