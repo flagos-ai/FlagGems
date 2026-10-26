@@ -56,3 +56,34 @@ def test_upsample_bilinear2d(dtype, shape, scale, align_corners):
     # (fp32 ATen shows the same magnitude). reduce_dim=16 keeps ~2x headroom
     # over the observed worst-case diff so the test is not flaky on randn data.
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=16)
+
+
+@pytest.mark.upsample_bilinear2d
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_upsample_bilinear2d_non_contiguous_input(dtype, align_corners):
+    """A strided input must interpolate exactly like the same values held densely.
+
+    The kernel addresses the input as a dense ``(N, C, IH, IW)`` buffer, so a
+    permuted view used to be read at the wrong offsets and silently returned
+    wrong values. Vision transformers hit this when they interpolate a learned
+    ``(H, W, C)`` position table, which is a permuted view of the weights.
+    ATen honours the strides, so both must agree.
+    """
+    E, C = 32, 4
+    table = torch.randn(E, E, C, dtype=dtype, device=flag_gems.device)
+    strided = table.permute(2, 0, 1).unsqueeze(0)  # (1, C, E, E), non-contiguous
+    assert not strided.is_contiguous()
+
+    output_size = (E // 2, E // 2)
+    ref_out = torch._C._nn.upsample_bilinear2d(
+        utils.to_reference(strided, True),
+        output_size=output_size,
+        align_corners=align_corners,
+    )
+    res_out = flag_gems.upsample_bilinear2d(
+        strided, output_size=output_size, align_corners=align_corners
+    )
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=16)
