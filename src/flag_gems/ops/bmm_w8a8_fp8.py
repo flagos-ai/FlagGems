@@ -4,9 +4,15 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+
+try:
+    from triton.tools.tensor_descriptor import TensorDescriptor
+except ImportError:
+    TensorDescriptor = None
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +83,10 @@ def bmm_w8a8_fp8_kernel(
 
     a_ptrs = A + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
     b_ptrs = B + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-    m_block_idx = (pid_m * TILE_M) // BLOCK_M
+    if TILE_M > BLOCK_M:
+        m_block_idx = offs_m // BLOCK_M
+    else:
+        m_block_idx = (pid_m * TILE_M) // BLOCK_M
     n_block_idx = (pid_n * TILE_N) // BLOCK_N
     a_scale_ptr = A_SCALE + m_block_idx * stride_asm
     b_scale_ptr = B_SCALE + n_block_idx * stride_bsn
@@ -85,7 +94,12 @@ def bmm_w8a8_fp8_kernel(
 
     acc = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
     if BLOCK_K == K:
-        a_scale = tl.load(a_scale_ptr).to(tl.float32)
+        if TILE_M > BLOCK_M:
+            a_scale = tl.load(a_scale_ptr, mask=offs_m < M, other=0).to(tl.float32)[
+                :, None
+            ]
+        else:
+            a_scale = tl.load(a_scale_ptr).to(tl.float32)
         b_scale = tl.load(b_scale_ptr).to(tl.float32)
         for k_tile in range(NUM_K_TILES):
             k_offsets = k_tile * TILE_K + offs_k
@@ -106,7 +120,14 @@ def bmm_w8a8_fp8_kernel(
             a = tl.load(a_ptrs, mask=a_mask, other=0.0)
             b = tl.load(b_ptrs, mask=b_mask, other=0.0)
             partial = tl.dot(a, b, allow_tf32=False)
-            a_scale = tl.load(a_scale_ptr + k_block_idx * stride_ask).to(tl.float32)
+            if TILE_M > BLOCK_M:
+                a_scale = tl.load(
+                    a_scale_ptr + k_block_idx * stride_ask,
+                    mask=offs_m < M,
+                    other=0,
+                ).to(tl.float32)[:, None]
+            else:
+                a_scale = tl.load(a_scale_ptr + k_block_idx * stride_ask).to(tl.float32)
             b_scale = tl.load(b_scale_ptr + k_block_idx * stride_bsk).to(tl.float32)
             acc += partial * a_scale * b_scale
             a_ptrs += TILE_K * stride_ak
@@ -134,6 +155,124 @@ def _get_bmm_w8a8_fp8_config(M, N, K, block_k):
     if M >= 512 and N >= 512:
         return 128, 32, 128, 8, 4, 3
     return 64, 16, 128, 2, 4, 2
+
+
+@libentry()
+@triton.jit
+def _bmm_w8a8_fp8_pack_b(B, Packed, K: tl.constexpr, N: tl.constexpr):
+    batch = tl.program_id(2)
+    kk = tl.program_id(0) * 32 + tl.arange(0, 32)
+    nn = tl.program_id(1) * 128 + tl.arange(0, 128)
+    mask = (kk[:, None] < K) & (nn[None, :] < N)
+    values = tl.load(B + batch * K * N + kk[:, None] * N + nn[None, :], mask, 0.0)
+    tl.store(Packed + batch * K * N + nn[None, :] * K + kk[:, None], values, mask)
+
+
+@libentry()
+@triton.jit
+def _bmm_w8a8_fp8_hopper_tma(
+    A,
+    B,
+    A_SCALE,
+    B_SCALE,
+    Out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    STAGES: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    batch = tl.program_id(1)
+    grid_m: tl.constexpr = triton.cdiv(M, TILE_M)
+    grid_n: tl.constexpr = triton.cdiv(N, TILE_N)
+    group = pid // (GROUP_M * grid_n)
+    group_size = tl.minimum(grid_m - group * GROUP_M, GROUP_M)
+    pm = group * GROUP_M + pid % group_size
+    pn = pid % (GROUP_M * grid_n) // group_size
+    acc = tl.zeros((TILE_M, TILE_N), tl.float32)
+    # Tiles stay inside the original 128-row/column scale blocks.
+    for block in tl.range(triton.cdiv(K, 128), num_stages=STAGES):
+        a = A.load([batch, pm * TILE_M, block * 128]).reshape((TILE_M, 128))
+        b = B.load([batch, pn * TILE_N, block * 128]).reshape((TILE_N, 128)).T
+        sa = tl.load(
+            A_SCALE
+            + (batch * triton.cdiv(M, 128) + pm * TILE_M // 128) * triton.cdiv(K, 128)
+            + block
+        )
+        sb = tl.load(
+            B_SCALE
+            + (batch * triton.cdiv(K, 128) + block) * triton.cdiv(N, 128)
+            + pn * TILE_N // 128
+        )
+        partial = tl.dot(a, b, allow_tf32=False)
+        acc += partial * (sa * sb)
+    Out.store(
+        [batch, pm * TILE_M, pn * TILE_N],
+        acc.to(Out.dtype).reshape((1, TILE_M, TILE_N)),
+    )
+
+
+def _get_hopper_bmm_w8a8_fp8_config(batch, M, N, K):
+    if M <= 512:
+        return 64, 128 if batch <= 4 else 64, 8, 4, 2
+    if K >= 4096:
+        return 128, 128, 8, 8 if batch >= 8 else 4, 3
+    if batch >= 8 and M % 128 == 0:
+        return 64, 128, 8, 4, 2
+    return 128, 128, 8, 4, 3
+
+
+def _can_use_hopper_bmm_w8a8_fp8(A, B, A_scale, B_scale, out, block_size):
+    return (
+        TensorDescriptor is not None
+        and runtime.device.vendor_name == "nvidia"
+        and tuple(block_size) == (128, 128, 128)
+        and A.dtype == B.dtype == torch.float8_e4m3fn
+        and A_scale.dtype == B_scale.dtype == torch.float32
+        and out.dtype == torch.bfloat16
+        and A.shape[0] >= 4
+        and A.shape[1] >= 256
+        and B.shape[2] >= 1024
+        and A.shape[2] >= 128
+        and A.shape[2] % 128 == 0
+        and B.shape[2] % 16 == 0
+        and all(t.is_contiguous() for t in (A, B, A_scale, B_scale, out))
+        and all(t.data_ptr() % 16 == 0 for t in (A, B, out))
+        and torch_device_fn.get_device_capability(A.device)[0] == 9
+    )
+
+
+def _launch_hopper_bmm_w8a8_fp8(A, B, A_scale, B_scale, out):
+    batch, M, K = A.shape
+    N = B.shape[2]
+    tm, tn, group, warps, stages = _get_hopper_bmm_w8a8_fp8_config(batch, M, N, K)
+    packed = torch.empty((batch, N, K), dtype=B.dtype, device=B.device)
+    a_desc = TensorDescriptor(A, A.shape, A.stride(), [1, tm, 128])
+    b_desc = TensorDescriptor(packed, packed.shape, packed.stride(), [1, tn, 128])
+    out_desc = TensorDescriptor(out, out.shape, out.stride(), [1, tm, tn])
+    # Repack on every call: never cache mutable tensor contents or change the API layout.
+    _bmm_w8a8_fp8_pack_b[(triton.cdiv(K, 32), triton.cdiv(N, 128), batch)](
+        B, packed, K, N
+    )
+    _bmm_w8a8_fp8_hopper_tma[(triton.cdiv(M, tm) * triton.cdiv(N, tn), batch)](
+        a_desc,
+        b_desc,
+        A_scale,
+        B_scale,
+        out_desc,
+        M,
+        N,
+        K,
+        tm,
+        tn,
+        group,
+        stages,
+        num_warps=warps,
+        num_stages=stages,
+    )
 
 
 def bmm_w8a8_fp8(
@@ -169,6 +308,11 @@ def bmm_w8a8_fp8(
     else:
         assert out.shape == (batch, M, N)
         assert out.dtype == out_dtype and out.device == A.device
+
+    if _can_use_hopper_bmm_w8a8_fp8(A, B, A_scale, B_scale, out, block_size):
+        with torch_device_fn.device(A.device):
+            _launch_hopper_bmm_w8a8_fp8(A, B, A_scale, B_scale, out)
+        return out
 
     def grid_fn(meta):
         return (
