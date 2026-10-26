@@ -181,6 +181,7 @@ foreach_zero: test_foreach_ops
 foreach_zero_: test_foreach_ops
 huber_loss_out: test_huber_loss
 int_mm_out: test_int_mm
+int_repr_out: test_int_repr
 linalg_eigvals_out: test_linalg_eigvals
 lu_unpack_out: test_lu_unpack
 multi_margin_loss_out: test_multi_margin_loss
@@ -228,9 +229,6 @@ special_zeta_tensor_scalar: test_special_zeta
 
 # Operators tested in combined files or with different naming
 lshift_scalar: test_lshift
-tensor_split_sections: test_tensor_split
-tensor_split_indices: test_tensor_split
-tensor_split_tensor_indices_or_sections: test_tensor_split
 lshift_tensor: test_lshift
 rshift_scalar: test_rshift
 rshift_tensor: test_rshift
@@ -267,6 +265,7 @@ _linalg_eigh: test_linalg_eigh
 _linalg_eigvals: test_linalg_eigvals
 _flash_attention_forward: test_flash_attention
 
+convolution_backward_out: test_convolution_backward
 fused_adamw_: test_fused_adamw_
 fused_adamw__tensor_lr: test_fused_adamw_
 

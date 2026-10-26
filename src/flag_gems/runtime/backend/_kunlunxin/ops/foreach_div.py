@@ -32,7 +32,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_binary import _apply_list
+from flag_gems.ops._foreach_binary import _apply_list, _apply_tensor
 from flag_gems.utils.foreach import (
     _dense,
     _finish_inplace,
@@ -242,4 +242,122 @@ def _foreach_div__List(self, other):
     if not (_all_float(self) and _all_float(other)):
         return _apply_list("div", self, other, inplace=True)
     _run(self, other, inplace=True)
+    return None
+
+
+@triton.jit
+def _foreach_div_tensor_meta_kernel(
+    meta,
+    scalar_ptr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    OUT_DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """One launch: list tensors divided by a single device-resident scalar."""
+    t = tl.program_id(0)
+    offset = tl.program_id(1) * BLOCK
+    a_ptr = tl.load(meta + t).to(tl.pointer_type(A_DT))
+    out_ptr = tl.load(meta + NT + t).to(tl.pointer_type(OUT_DT))
+    n = tl.load(meta + 2 * NT + t)
+    s = tl.load(scalar_ptr).to(tl.float32)
+    idx = offset + tl.arange(0, BLOCK)
+    if NEED_MASK:
+        m = idx < n
+        a = tl.load(a_ptr + idx, mask=m, other=0).to(tl.float32)
+        tl.store(out_ptr + idx, (a / s).to(OUT_DT), mask=m)
+    else:
+        a = tl.load(a_ptr + idx).to(tl.float32)
+        tl.store(out_ptr + idx, (a / s).to(OUT_DT))
+
+
+def _run_scalar_tensor(self, other, inplace):
+    """``.Tensor`` overload: one (0-dim) tensor broadcast across the list."""
+    results = []
+    writebacks = []
+    buckets = {}  # (device, a_dt, out_dt) -> (a_list, d_list)
+    for a in self:
+        out_dtype = _result_dtype(a, other)
+        if not out_dtype.is_floating_point:
+            out_dtype = torch.float32
+        src_a = _dense(a)
+        if inplace:
+            if out_dtype != a.dtype:
+                raise RuntimeError(
+                    f"result type {str(out_dtype).replace('torch.', '').capitalize()}"
+                    " can't be cast to the desired output type "
+                    f"{str(a.dtype).replace('torch.', '').capitalize()}"
+                )
+            if has_internal_overlap(a):
+                raise RuntimeError(
+                    "unsupported operation: more than one element of the "
+                    "written-to tensor refers to a single memory location. "
+                    "Please clone() the tensor before performing the operation."
+                )
+            dst = src_a
+            if dst is not a:
+                writebacks.append((a, dst))
+            results.append(a)
+        else:
+            dst = torch.empty_like(src_a, dtype=out_dtype)
+            results.append(dst)
+        key = (a.device, src_a.dtype, dst.dtype)
+        bucket = buckets.setdefault(key, ([], []))
+        bucket[0].append(src_a)
+        bucket[1].append(dst)
+
+    for (device, a_dt, out_dt), (a_list, d_list) in buckets.items():
+        numels = [t.numel() for t in a_list]
+        max_numel = max(numels)
+        if max_numel == 0:
+            continue
+        nt = len(a_list)
+        block, num_warps, bsl = _pick_block(max_numel, d_list[0].element_size())
+        homogeneous = all(n == max_numel for n in numels)
+        need_mask = (not homogeneous) or (max_numel % block != 0)
+        meta = torch.tensor(
+            [t.data_ptr() for t in a_list] + [t.data_ptr() for t in d_list] + numels,
+            dtype=torch.int64,
+        ).to(device, non_blocking=True)
+        grid = (nt, triton.cdiv(max_numel, block))
+        kwargs = dict(
+            num_warps=num_warps,
+            unroll_num=UNROLL_NUM,
+            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+        )
+        if bsl:
+            kwargs["buffer_size_limit"] = bsl
+        _foreach_div_tensor_meta_kernel[grid](
+            meta,
+            other,
+            nt,
+            tl_dtype(a_dt),
+            tl_dtype(out_dt),
+            block,
+            need_mask,
+            **kwargs,
+        )
+    _finish_inplace(results, writebacks)
+    return results
+
+
+def _foreach_div_Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV_TENSOR")
+    self = check_tensor_list(self)
+    if not _all_float(self):
+        return _apply_tensor("div", self, other, inplace=False)
+    if other is None or other.dim() != 0:
+        return _apply_tensor("div", self, other, inplace=False)
+    return _run_scalar_tensor(self, other, inplace=False)
+
+
+def _foreach_div__Tensor(self, other):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_DIV__TENSOR")
+    self = check_tensor_list(self)
+    if not _all_float(self):
+        return _apply_tensor("div", self, other, inplace=True)
+    if other is None or other.dim() != 0:
+        return _apply_tensor("div", self, other, inplace=True)
+    _run_scalar_tensor(self, other, inplace=True)
     return None
