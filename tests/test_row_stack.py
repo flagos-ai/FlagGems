@@ -110,9 +110,9 @@ def test_row_stack_zero_sized_trailing_dims(shape, dtype):
 def test_row_stack_memory_format(shape, memory_format, dtype):
     """The output must keep the inputs' channels-last memory format."""
     inp = [
-        torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
-            memory_format=memory_format
-        )
+        torch.randn(shape, dtype=dtype, device="cpu")
+        .to(memory_format=memory_format)
+        .to(flag_gems.device)
         for _ in range(2)
     ]
     ref_inp = [utils.to_reference(e) for e in inp]
@@ -142,6 +142,14 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     ref_a = utils.to_reference(a)
     ref_b = utils.to_reference(b)
 
+    if (
+        flag_gems.vendor_name == "iluvatar"
+        and ref_a.device.type != "cpu"
+        and dtype == torch.float32
+    ):
+        pytest.skip(
+            "Iluvatar native row_stack float32/float64 promotion computes incorrect values; CPU reference remains covered"
+        )
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 

@@ -118,12 +118,13 @@ def _backward_out_build_inputs(plan, dtype, device):
 
 
 @pytest.mark.log_softmax_backward_data_out
+@pytest.mark.log_softmax_backward_out
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_log_softmax_backward_data_out():
     bench = base.GenericBenchmark2DOnly(
-        op_name="log_softmax_backward_data_out",
+        op_name="log_softmax_backward_out",
         case_fn=_backward_out_case_fn,
         build_inputs_fn=_backward_out_build_inputs,
         torch_op=torch._log_softmax_backward_data,

@@ -42,9 +42,7 @@ class ReplicationPad1dBackwardBenchmark(base.Benchmark):
             B, W = 1, shape[0]
         padding = (1, 2)
         x = torch.randn(B, W, dtype=cur_dtype, device=self.device)
-        # Compute forward to get output size
-        padded = torch.ops.aten.replication_pad1d(x, padding)
-        W_out = padded.shape[-1]
+        W_out = W + sum(padding)
         grad = torch.ones(B, W_out, dtype=cur_dtype, device=self.device)
         yield grad, x, padding
 
