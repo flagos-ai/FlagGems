@@ -3176,6 +3176,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: choose_qparams_per_tensor
+  description: 'Chooses quantization parameters (scale and zero-point) for a tensor
+    by computing its min and max, returning the affine quantization pair as Python
+    scalars.
+
+    '
+  for:
+  - _choose_qparams_per_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: chunk_cat
   description: Triton kernel implementation for _chunk_cat.
   for:
@@ -15237,6 +15252,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: numpy_T
+  description: 'Returns a view of the input with its dimensions reversed, the
+    zero-copy equivalent of ``numpy.ndarray.T``.
+
+    '
+  for:
+  - numpy_T
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: one_hot
   description: 'Takes LongTensor with index values of shape `(*)` and returns a tensor
     of shape `(*, num_classes)`
@@ -18811,6 +18840,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_compressed_tensor
+  description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
+    components: the compressed-axis index vector, the plain-axis index vector and
+    the payload (values), with an explicit logical size or one inferred from the
+    component buffers.
+
+    '
+  for:
+  - sparse_compressed_tensor.comp_plain_value
+  - sparse_compressed_tensor.comp_plain_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_coo_tensor_with_dims
   description: 'Allocates an empty sparse COO tensor descriptor from its dimension
     counts: sparse_dim coordinate dimensions, dense_dim trailing dense dimensions
@@ -19807,6 +19853,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: special_psi
+  description: 'Computes the digamma function (psi) of `input` element-wise, the
+    logarithmic derivative of the gamma function.
+
+    '
+  for:
+  - special_psi
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: special_psi_out
+  description: 'A variant of `special_psi` with output written to provided `out`.
+
+    '
+  for:
+  - special_psi.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_round
   description: 'Rounds a tensor to the nearest integer, with ties rounding to the
     nearest
@@ -19836,6 +19911,36 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: special_scaled_modified_bessel_k0
+  description: 'Computes the scaled modified Bessel function of the second kind
+    of order 0 (scaled K_0(x) = exp(x)*K_0(x)) for each element in the input tensor.
+
+    '
+  for:
+  - special_scaled_modified_bessel_k0
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: special_scaled_modified_bessel_k0_out
+  description: 'A variant of `special_scaled_modified_bessel_k0` with output
+    written to provided `out`.
+
+    '
+  for:
+  - special_scaled_modified_bessel_k0.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_scaled_modified_bessel_k1
   description: 'Computes the scaled modified Bessel function of the first kind
 
@@ -21130,6 +21235,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     - aten
   kind:
     - Tensor
+  stages:
+    - alpha: '5.5'
+- id: trapezoid
+  description: |
+    A variant of trapezoid() that uses a tensor x to specify sample points
+    along the integration dimension.
+  for:
+    - trapezoid.x
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
   stages:
     - alpha: '5.5'
 - id: trapz
