@@ -19,29 +19,32 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .test_linalg_polar import (
+    _assert_output_metadata,
+    _empty_with_dtype,
+    _reference_linalg_polar,
+)
 
-POLAR_SHAPES = [(8, 4)] if cfg.QUICK_MODE else [
-    (3, 2),
-    (8, 4),
-    (16, 8),
-    (2, 8, 4),
-    (8, 16, 8),
-]
+POLAR_SHAPES = (
+    [(8, 4)]
+    if cfg.QUICK_MODE
+    else [
+        (3, 2),
+        (8, 4),
+        (16, 8),
+        (2, 8, 4),
+        (8, 16, 8),
+    ]
+)
 ATOL = 1e-2
 
 
-def _reference_linalg_polar(inp):
-    svd_u, singular_values, vh = torch.linalg.svd(inp, full_matrices=False)
-    polar_u = svd_u @ vh
-    polar_h = vh.mH @ (singular_values.unsqueeze(-1) * vh)
-    return polar_u, 0.5 * (polar_h + polar_h.mH)
-
-
 def _assert_polar_properties(inp, polar_u, polar_h):
+    inp = inp.detach().cpu()
+    polar_u = polar_u.detach().cpu()
+    polar_h = polar_h.detach().cpu()
     utils.gems_assert_close(polar_u @ polar_h, inp, torch.float32, atol=ATOL)
-    utils.gems_assert_close(
-        polar_h, utils.to_reference(polar_h.mT, True), torch.float32, atol=ATOL
-    )
+    utils.gems_assert_close(polar_h, polar_h.mT, torch.float32, atol=ATOL)
 
 
 @pytest.mark.linalg_polar_out
@@ -49,18 +52,19 @@ def _assert_polar_properties(inp, polar_u, polar_h):
 def test_linalg_polar_out_resize(shape):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = inp.detach().cpu().to(torch.float64)
     _, ref_h = _reference_linalg_polar(ref_inp)
     out_u = torch.empty(0, dtype=inp.dtype, device=inp.device)
     out_h = torch.empty(0, dtype=inp.dtype, device=inp.device)
 
     result_u, result_h = flag_gems.linalg_polar_out(inp, U=out_u, H=out_h)
+    _assert_output_metadata(inp, result_u, result_h)
 
     assert result_u is out_u
     assert result_h is out_h
     assert result_u.shape == inp.shape
     assert result_h.shape == (*inp.shape[:-2], inp.shape[-1], inp.shape[-1])
-    utils.gems_assert_close(result_h, ref_h, torch.float32, atol=ATOL)
+    utils.gems_assert_close(result_h.cpu(), ref_h, torch.float32, atol=ATOL)
     _assert_polar_properties(ref_inp, result_u, result_h)
 
 
@@ -68,7 +72,7 @@ def test_linalg_polar_out_resize(shape):
 def test_linalg_polar_out_noncontiguous_buffers():
     torch.manual_seed(0)
     inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = inp.detach().cpu().to(torch.float64)
     out_u = torch.empty((4, 8), device=flag_gems.device).mT
     out_h = torch.empty((4, 4), device=flag_gems.device).mT
     u_stride = out_u.stride()
@@ -77,6 +81,7 @@ def test_linalg_polar_out_noncontiguous_buffers():
     h_pointer = out_h.data_ptr()
 
     result_u, result_h = flag_gems.linalg_polar_out(inp, U=out_u, H=out_h)
+    _assert_output_metadata(inp, result_u, result_h)
 
     assert result_u is out_u
     assert result_h is out_h
@@ -91,7 +96,7 @@ def test_linalg_polar_out_noncontiguous_buffers():
 def test_linalg_polar_out_rejects_wrong_dtype():
     torch.manual_seed(0)
     inp = torch.randn((8, 4), dtype=torch.float32, device=flag_gems.device)
-    out_u = torch.empty_like(inp, dtype=torch.float64)
+    out_u = _empty_with_dtype(inp.shape, torch.float64, inp.device)
     out_h = torch.empty((4, 4), dtype=torch.float32, device=inp.device)
 
     with pytest.raises(RuntimeError, match="dtype"):
@@ -106,5 +111,5 @@ def test_linalg_polar_out_rejects_autograd():
     out_u = torch.empty_like(inp)
     out_h = torch.empty((4, 4), dtype=inp.dtype, device=inp.device)
 
-    with flag_gems.use_gems(), pytest.raises(RuntimeError, match="out="):
-        torch.ops.aten.linalg_polar.out(inp, U=out_u, H=out_h)
+    with pytest.raises(RuntimeError, match="out="):
+        flag_gems.linalg_polar_out(inp, U=out_u, H=out_h)

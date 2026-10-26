@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import base
+from .test_scaled_dot_product_flash_attention import _ExternalH800Baseline
 
 
 class AttentionBenchmark(base.GenericBenchmark):
@@ -27,6 +28,10 @@ class AttentionBenchmark(base.GenericBenchmark):
         return []
 
 
+class _ExternalFlashAttentionBenchmark(_ExternalH800Baseline, AttentionBenchmark):
+    pass
+
+
 def scaled_dot_product_flash_attention_input_fn(shape, dtype, device):
     query = torch.randn(shape, device=device, dtype=dtype)
     key = torch.randn(shape, device=device, dtype=dtype)
@@ -34,11 +39,29 @@ def scaled_dot_product_flash_attention_input_fn(shape, dtype, device):
     yield query, key, value, 0.0, False, False
 
 
+def _flash_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"query": list(dims), "key": list(dims), "value": list(dims)},
+        params={"dropout_p": 0.0, "is_causal": False, "return_debug_mask": False},
+        builder_args=(dims,),
+    )
+
+
+def _flash_build_inputs_fn(plan, dtype, device):
+    return next(
+        scaled_dot_product_flash_attention_input_fn(plan.builder_args[0], dtype, device)
+    )
+
+
 @pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.underscore_scaled_dot_product_flash_attention
 def test_scaled_dot_product_flash_attention():
-    bench = AttentionBenchmark(
-        op_name="scaled_dot_product_flash_attention",
-        input_fn=scaled_dot_product_flash_attention_input_fn,
+    bench = _ExternalFlashAttentionBenchmark(
+        op_name="_scaled_dot_product_flash_attention",
+        case_fn=_flash_case_fn,
+        build_inputs_fn=_flash_build_inputs_fn,
         torch_op=torch.ops.aten._scaled_dot_product_flash_attention.default,
         # FlashAttention supports CUDA float16 and bfloat16 inputs.
         dtypes=[torch.float16, torch.bfloat16],

@@ -15,16 +15,23 @@
 import pytest
 import torch
 
-import flag_gems
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+from .test_linalg_polar import _PolarBaseline, _native_polar
 
 CORE_SHAPES = [(4, 2), (8, 4), (16, 8), (16, 8, 4)]
 COMPREHENSIVE_SHAPES = [(64, 8, 4), (32, 16, 8)]
 
 
-class LinalgPolarOutBenchmark(OperatorBenchmark):
+def _native_polar_out(inp, *, U, H):
+    result_u, result_h = _native_polar(inp)
+    U.copy_(result_u)
+    H.copy_(result_h)
+    return U, H
+
+
+class LinalgPolarOutBenchmark(_PolarBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CORE_SHAPES)
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
@@ -56,8 +63,7 @@ def _build_inputs_fn(plan, dtype, device):
 def test_linalg_polar_out():
     LinalgPolarOutBenchmark(
         op_name="linalg_polar_out",
-        torch_op=torch.ops.aten.linalg_polar.out,
-        gems_op=flag_gems.linalg_polar_out,
+        torch_op=_native_polar_out,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

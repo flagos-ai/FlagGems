@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import base, utils
+from .test__flash_attention_forward import _ExternalH800Baseline
 
 
 def torch_flash_attention_forward(
@@ -86,7 +87,16 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         )
         return True
     except RuntimeError as e:
-        if "does not support alibi" in str(e).lower():
+        missing_api = (
+            flag_gems.vendor_name == "kunlunxin"
+            and isinstance(e, NotImplementedError)
+            and "aten::_flash_attention_forward" in str(e)
+            and "'CPU' backend" in str(e)
+        ) or (
+            flag_gems.vendor_name == "metax"
+            and str(e) == "USE_FLASH_ATTENTION was not enabled for build."
+        )
+        if missing_api or "does not support alibi" in str(e).lower():
             return False
         raise
 
@@ -278,11 +288,57 @@ def _flash_attention_forward_input_fn(config, dtype, device):
         )
 
 
+def _flash_forward_case_fn(config, dtype):
+    del dtype
+    (
+        batch,
+        heads,
+        kv_heads,
+        q_len,
+        kv_len,
+        head_dim,
+        causal,
+        dropout,
+        debug,
+        window_left,
+        window_right,
+        alibi,
+    ) = config
+    yield base.BenchmarkCasePlan(
+        shape={
+            "query": [batch, q_len, heads, head_dim],
+            "key": [batch, kv_len, kv_heads, head_dim],
+            "value": [batch, kv_len, kv_heads, head_dim],
+        },
+        params={
+            "scale": 1.0 / math.sqrt(head_dim),
+            "is_causal": causal,
+            "dropout_p": dropout,
+            "return_debug_mask": debug,
+            "window_size_left": window_left,
+            "window_size_right": window_right,
+            "use_alibi": alibi,
+        },
+        builder_args=(tuple(config),),
+    )
+
+
+def _flash_forward_build_inputs_fn(plan, dtype, device):
+    return next(_flash_attention_forward_input_fn(plan.builder_args[0], dtype, device))
+
+
+class _ExternalFlashForwardBenchmark(
+    _ExternalH800Baseline, FlashAttentionForwardBenchmark
+):
+    pass
+
+
 @pytest.mark.underscore_flash_attention_forward
 def test__flash_attention_forward():
-    bench = FlashAttentionForwardBenchmark(
+    bench = _ExternalFlashForwardBenchmark(
         op_name="_flash_attention_forward",
-        input_fn=_flash_attention_forward_input_fn,
+        case_fn=_flash_forward_case_fn,
+        build_inputs_fn=_flash_forward_build_inputs_fn,
         torch_op=torch.ops.aten._flash_attention_forward.default,
         # FlashAttention supports CUDA float16 and bfloat16 inputs.
         dtypes=[torch.float16, torch.bfloat16],

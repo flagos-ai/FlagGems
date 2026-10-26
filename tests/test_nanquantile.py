@@ -114,17 +114,52 @@ def test_nanquantile_out(dtype, q_shape):
     _assert_close(result, reference, dtype, inp.shape[1])
 
 
+def _scalar_out_target_from_cpu(inp):
+    # Kunlunxin's ordinary Float64 factory/transfer silently narrows storage.
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype == torch.float64:
+        return (
+            inp.contiguous()
+            .reshape(-1)
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(inp.dtype)
+            .reshape(inp.shape)
+        )
+    return inp.to(flag_gems.device)
+
+
+def _scalar_out_input(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        inp = torch.randn(shape, dtype=dtype, device="cpu")
+        inp.reshape(-1)[::5] = float("nan")
+        return _scalar_out_target_from_cpu(inp)
+    return _input(shape, dtype)
+
+
 @pytest.mark.nanquantile_scalar_out
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 def test_nanquantile_scalar_out(dtype, interpolation):
-    inp = _input((11, 15), dtype)
+    if dtype == torch.float64 and not cfg.TO_CPU:
+        if flag_gems.vendor_name == "kunlunxin":
+            pytest.skip(
+                "Kunlunxin native scalar nanquantile creates a mismatched Float64 q tensor"
+            )
+        if flag_gems.vendor_name == "ascend":
+            pytest.skip("Ascend native nanquantile sorting does not support Float64")
+    inp = _scalar_out_input((11, 15), dtype)
+    assert inp.dtype == dtype and inp.device.type == torch.device(flag_gems.device).type
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
     reference = torch.ops.aten.nanquantile.scalar_out(
         ref_inp, 0.73, 0, False, interpolation=interpolation, out=ref_out
     )
-    out = torch.empty((1,), dtype=dtype, device=inp.device)
+    out = (
+        _scalar_out_target_from_cpu(torch.empty((1,), dtype=dtype, device="cpu"))
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64
+        else torch.empty((1,), dtype=dtype, device=inp.device)
+    )
+    assert out.dtype == dtype and out.device == inp.device
     result = flag_gems.nanquantile_scalar_out(
         inp, 0.73, dim=0, interpolation=interpolation, out=out
     )
