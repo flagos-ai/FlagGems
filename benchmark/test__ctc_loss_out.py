@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
 
@@ -57,6 +59,8 @@ def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
     torch.manual_seed(0)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
     targets = torch.randint(1, classes, (batch, max_target), dtype=torch.long, device=device)

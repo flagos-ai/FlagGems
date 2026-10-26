@@ -28,6 +28,23 @@ from . import conftest as cfg
 
 _SHAPES = [(3, 7)] if cfg.QUICK_MODE else [(), (7,), (3, 7), (5, 65)]
 
+def _forward_for_backward(input, target, p, margin, weight, reduction, *, out=None):
+    if flag_gems.vendor_name != "kunlunxin":
+        if out is None:
+            return flag_gems.ops.multi_margin_loss(input, target, p, margin, weight, reduction)
+        return flag_gems.ops.multi_margin_loss_out(input, target, p, margin, weight, reduction, out=out)
+    # This forward only prepares/checks the backward case. KU's native BF16
+    # forward is absent; run the same native formula with float32 opmath.
+    forward_input = input.float() if input.dtype == torch.bfloat16 else input
+    forward_weight = weight.float() if weight is not None and weight.dtype == torch.bfloat16 else weight
+    result = torch.ops.aten.multi_margin_loss(forward_input, target, p, margin, forward_weight, reduction).to(input.dtype)
+    if out is None:
+        return result
+    out.resize_(result.shape)
+    out.copy_(result)
+    return out
+
+
 def _make_case(shape, dtype, use_weight, *, noncontiguous=False):
     if noncontiguous:
         N, C = shape
@@ -61,8 +78,8 @@ def test_multi_margin_loss_out_variants(dtype, p, reduction, use_weight):
     output_shape = (3,) if reduction == 0 else ()
     grad_output = torch.randn(output_shape, dtype=input.dtype, device=input.device)
     grad_input = torch.empty((1,), dtype=input.dtype, device=input.device)
-    result = flag_gems.ops.multi_margin_loss_out(input, target, p, 0.7, weight, reduction, out=out)
-    grad_result = flag_gems.ops.multi_margin_loss_backward_out(grad_output, input, target, p, 0.7, weight, reduction, grad_input=grad_input)
+    result = _forward_for_backward(input, target, p, 0.7, weight, reduction, out=out)
+    grad_result = flag_gems.multi_margin_loss_backward_out(grad_output, input, target, p, 0.7, weight, reduction, grad_input=grad_input)
     ref = _reference(input, target, p, 0.7, weight, reduction)
     ref_grad = torch.ops.aten.multi_margin_loss_backward(utils.to_reference(grad_output, True), utils.to_reference(input, True), utils.to_reference(target), p, 0.7, utils.to_reference(weight, True), reduction)
     assert result is out

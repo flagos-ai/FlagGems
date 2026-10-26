@@ -22,7 +22,9 @@ SHAPES = [(6, 4, 8), (10, 8, 16), (33, 7, 1025), (64, 32, 256)]
 
 
 def _lengths(time_steps, batch_size):
-    values = torch.linspace(time_steps, 1, steps=batch_size, dtype=torch.int64).clamp(min=1)
+    values = torch.linspace(time_steps, 1, steps=batch_size, dtype=torch.int64).clamp(
+        min=1
+    )
     return torch.sort(values, descending=True).values
 
 
@@ -38,16 +40,29 @@ def test_pack_padded_sequence(time_steps, batch_size, features, batch_first, dty
         else (time_steps, batch_size, features)
     )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    # Ascend's native primitive returns unpacked T*N rows for nonuniform
+    # lengths. CPU ATen preserves the exact compact data/host-metadata ABI.
+    ref_inp = (
+        inp.cpu().double()
+        if flag_gems.vendor_name == "ascend"
+        else utils.to_reference(inp, True)
+    )
     ref_data, ref_batch_sizes = torch.ops.aten._pack_padded_sequence(
         ref_inp, lengths, batch_first
     )
-    with flag_gems.use_gems():
-        data, batch_sizes = torch.ops.aten._pack_padded_sequence(
-            inp, lengths, batch_first
-        )
+    data, batch_sizes = flag_gems.pack_padded_sequence(inp, lengths, batch_first)
+    assert data.device == inp.device
+    assert data.dtype == inp.dtype
+    assert data.shape == ref_data.shape
+    assert batch_sizes.device.type == "cpu"
+    assert batch_sizes.dtype == torch.int64
+    assert batch_sizes.shape == ref_batch_sizes.shape
     assert data is not inp
     if data.numel():
         assert data.data_ptr() != inp.data_ptr()
-    utils.gems_assert_close(data, ref_data, dtype)
+    if flag_gems.vendor_name == "ascend":
+        # Target metadata and alias assertions above precede CPU observation.
+        utils.gems_assert_close(data.cpu(), ref_data.cpu(), dtype)
+    else:
+        utils.gems_assert_close(data, ref_data, dtype)
     utils.gems_assert_equal(batch_sizes, ref_batch_sizes)

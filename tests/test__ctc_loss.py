@@ -25,6 +25,37 @@ from .conftest import QUICK_MODE
 CTC_DTYPES = [torch.float32, torch.float64]
 
 
+def _to_target_double(value):
+    result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(torch.float64).reshape(value.shape)
+    assert result.dtype == torch.float64
+    assert result.shape == value.shape
+    return result
+
+
+def _log_probs(raw, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        if not utils.TO_CPU:
+            pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
+        return _to_target_double(raw.log_softmax(-1).cpu().double())
+    return raw.log_softmax(-1).to(dtype)
+
+
+def _reference_probs(value):
+    # Clone on CPU before Double device clone/cast can narrow the input on KU.
+    if flag_gems.vendor_name == "kunlunxin" and value.dtype == torch.float64:
+        return value.cpu().clone().detach()
+    return utils.to_reference(value.clone().detach(), True)
+
+
+def _assert_ctc_result(result, reference, dtype, *, reduce_dim):
+    assert result.device.type == torch.device(flag_gems.device).type
+    assert result.device.index == flag_gems.runtime.torch_device_fn.current_device()
+    assert result.dtype == dtype
+    assert result.shape == reference.shape
+    # Observe values only after checking the target contract.
+    gems_assert_close(result.cpu(), reference.cpu(), dtype, reduce_dim=reduce_dim)
+
+
 def _make_inputs(T, N, S, C, dtype):
     """Build one CTC batch, returning int-list and tensor length forms.
 
@@ -32,12 +63,12 @@ def _make_inputs(T, N, S, C, dtype):
     _ctc_loss.Tensor_out take them as tensors, so both forms are handed back.
     """
     raw = torch.randn(T, N, C, dtype=torch.float32, device=flag_gems.device)
-    log_probs = raw.log_softmax(-1).to(dtype)
+    log_probs = _log_probs(raw, dtype)
     targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)
     input_lengths = [T] * N
     target_lengths = [S] * N
 
-    ref_log_probs = utils.to_reference(log_probs.clone().detach(), True)
+    ref_log_probs = _reference_probs(log_probs)
     ref_targets = utils.to_reference(targets)
 
     gems_args = (log_probs, targets, input_lengths, target_lengths)
@@ -64,8 +95,8 @@ def test__ctc_loss_accuracy(T, N, S, C, dtype):
     # scaling by T * (S + 1) as tests/test_ctc_loss.py does would push the
     # tolerance past 0.1 and stop discriminating.
     reduce_dim = 8
-    gems_assert_close(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.underscore_ctc_loss
@@ -74,13 +105,13 @@ def test__ctc_loss_blank_and_zero_infinity(dtype):
     """A non-zero blank index and an unreachable alignment must both hold up."""
     T, N, S, C = 8, 3, 4, 6
     raw = torch.randn(T, N, C, dtype=torch.float32, device=flag_gems.device)
-    log_probs = raw.log_softmax(-1).to(dtype)
+    log_probs = _log_probs(raw, dtype)
     # keep targets clear of the blank symbol at index C - 1
     targets = torch.randint(0, C - 1, (N, S), dtype=torch.long, device=flag_gems.device)
     input_lengths = [T] * N
     target_lengths = [S] * N
 
-    ref_log_probs = utils.to_reference(log_probs.clone().detach(), True)
+    ref_log_probs = _reference_probs(log_probs)
     ref_targets = utils.to_reference(targets)
 
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(
@@ -91,8 +122,8 @@ def test__ctc_loss_blank_and_zero_infinity(dtype):
     )
 
     reduce_dim = 8
-    gems_assert_close(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.underscore_ctc_loss
@@ -116,8 +147,8 @@ def test__ctc_loss_tensor_overload(dtype):
     )
 
     reduce_dim = 8
-    gems_assert_close(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_nll, ref_nll, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_log_alpha, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.ctc_loss_out
@@ -138,8 +169,8 @@ def test__ctc_loss_out(dtype):
     assert got0.data_ptr() == res_out0.data_ptr()
     assert got1.data_ptr() == res_out1.data_ptr()
     reduce_dim = 8
-    gems_assert_close(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.ctc_loss_out
@@ -158,5 +189,5 @@ def test__ctc_loss_out_resize(dtype):
     assert res_out0.shape == ref_nll.shape
     assert res_out1.shape == ref_log_alpha.shape
     reduce_dim = 8
-    gems_assert_close(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    gems_assert_close(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)

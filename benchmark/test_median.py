@@ -49,3 +49,71 @@ def test_median():
         torch_op=torch.median,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     ).run()
+
+
+# The dim overloads previously had correctness suites but no benchmark entry.
+_MEDIAN_DIM_CASES = [
+    ((9, 7), 0, False),
+    ((9, 7), -1, True),
+    ((384, 7), 0, False),
+    ((5, 9), 1, False),
+]
+
+
+class MedianDimBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(_MEDIAN_DIM_CASES)
+        self.shape_desc = "input shape, reduction dim, keepdim"
+
+
+def _median_dim_case_fn(shape, dtype):
+    del dtype
+    dims, dim, keepdim = shape
+    dims = tuple(dims)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"dim": dim, "keepdim": keepdim},
+        builder_args=(dims,),
+    )
+
+
+def _median_dim_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    return inp, plan.params["dim"], plan.params["keepdim"]
+
+
+def _median_dim_values_build_inputs_fn(plan, dtype, device):
+    inp, dim, keepdim = _median_dim_build_inputs_fn(plan, dtype, device)
+    dim %= inp.ndim
+    out_shape = list(inp.shape)
+    if keepdim:
+        out_shape[dim] = 1
+    else:
+        del out_shape[dim]
+    values = torch.empty(out_shape, dtype=dtype, device=device)
+    indices = torch.empty(out_shape, dtype=torch.int64, device=device)
+    return inp, dim, keepdim, {"values": values, "indices": indices}
+
+
+@pytest.mark.median_dim
+def test_median_dim():
+    MedianDimBenchmark(
+        op_name="median_dim",
+        torch_op=torch.ops.aten.median.dim,
+        case_fn=_median_dim_case_fn,
+        build_inputs_fn=_median_dim_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    ).run()
+
+
+@pytest.mark.median_dim_values
+def test_median_dim_values():
+    MedianDimBenchmark(
+        op_name="median_dim_values",
+        torch_op=torch.ops.aten.median.dim_values,
+        case_fn=_median_dim_case_fn,
+        build_inputs_fn=_median_dim_values_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    ).run()
