@@ -29,6 +29,7 @@ SHAPES = [(4, 8)] if cfg.QUICK_MODE else [(0, 7), (5, 0), (4, 8), (33, 65), (128
 
 
 @pytest.mark.wrapped_linear_prepack
+@pytest.mark.underscore_wrapped_linear_prepack
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("noncontiguous", [False, True])
 def test_wrapped_linear_prepack(shape, noncontiguous):
@@ -43,6 +44,8 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
     scale = torch.tensor(0.03125, dtype=torch.float32, device=flag_gems.device)
     zero_point = torch.tensor(-3, dtype=torch.int64, device=flag_gems.device)
 
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU and weight.numel():
+        pytest.skip("Kunlunxin native quantize_per_tensor rejects nonempty qint8 input")
     ref_weight = utils.to_reference(weight)
     ref_bias = utils.to_reference(bias)
     ref_quantized = torch.quantize_per_tensor(
@@ -50,6 +53,7 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
     ).int_repr()
 
     packed = flag_gems._wrapped_linear_prepack(weight, scale, zero_point, bias)
+    assert packed.device == weight.device
     actual_weight, metadata, actual_bias = unpack_linear_weight(packed, N, K)
 
     utils.gems_assert_equal(actual_weight, ref_quantized)
@@ -61,7 +65,10 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
 
 
 @pytest.mark.wrapped_linear_prepack
+@pytest.mark.underscore_wrapped_linear_prepack
 def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native quantize_per_tensor rounds after adding zero_point")
     weight = torch.tensor(
         [[-100.0, -1.25, -0.75, -0.25, 0.25, 0.75, 1.25, 100.0]],
         device=flag_gems.device,
@@ -70,7 +77,10 @@ def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
     scale = torch.tensor(0.5, device=flag_gems.device)
     zero_point = torch.tensor(-3, device=flag_gems.device)
 
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip("Kunlunxin native quantize_per_tensor rejects nonempty qint8 input")
     packed = flag_gems._wrapped_linear_prepack(weight, scale, zero_point, bias)
+    assert packed.device == weight.device
     actual_weight, _, _ = unpack_linear_weight(packed, 1)
     ref_weight = torch.quantize_per_tensor(
         utils.to_reference(weight), 0.5, -3, torch.qint8
@@ -80,6 +90,7 @@ def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
 
 
 @pytest.mark.wrapped_linear_prepack
+@pytest.mark.underscore_wrapped_linear_prepack
 def test_wrapped_linear_prepack_rejects_invalid_shapes():
     torch.manual_seed(0)
     weight = torch.randn((4, 8), device=flag_gems.device)

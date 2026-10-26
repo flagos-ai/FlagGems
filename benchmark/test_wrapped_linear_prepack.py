@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -75,11 +73,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.wrapped_linear_prepack
+@pytest.mark.underscore_wrapped_linear_prepack
 def test_wrapped_linear_prepack_benchmark():
     WrappedLinearPrepackBenchmark(
-        op_name="wrapped_linear_prepack",
+        op_name="_wrapped_linear_prepack",
         torch_op=_torch_reference,
-        gems_op=flag_gems._wrapped_linear_prepack,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

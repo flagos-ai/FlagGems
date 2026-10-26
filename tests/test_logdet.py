@@ -201,11 +201,20 @@ def test_logdet_empty(dtype):
 )
 def test_logdet_rejects_complex(dtype):
     real_dtype = torch.float32 if dtype == torch.complex64 else torch.float64
-    real = torch.randn((2, 4, 4), dtype=real_dtype, device=flag_gems.device)
+    real = torch.randn((2, 4, 4), dtype=real_dtype, device="cpu")
     imag = torch.randn_like(real)
-    inp = torch.complex(real, imag) + 4 * torch.eye(
-        4, dtype=dtype, device=flag_gems.device
-    )
+    inp = torch.complex(real, imag) + 4 * torch.eye(4, dtype=dtype, device="cpu")
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        inp = (
+            inp.contiguous()
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(dtype)
+            .reshape(inp.shape)
+        )
+    else:
+        inp = inp.to(flag_gems.device)
+    assert inp.dtype == dtype
     with pytest.raises(RuntimeError, match="complex inputs are not supported"):
         flag_gems.logdet(inp)
 

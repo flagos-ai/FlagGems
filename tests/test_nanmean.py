@@ -16,6 +16,37 @@ else:
     KEEPDIM = [True, False]
 
 
+def _reference_nanmean(inp, *args, **kwargs):
+    try:
+        return torch.nanmean(inp, *args, **kwargs)
+    except (RuntimeError, NotImplementedError) as error:
+        message = str(error)
+        complex_case = inp.is_complex() or kwargs.get("dtype") in (
+            torch.complex64,
+            torch.complex128,
+        )
+        cpu_complex_missing = (
+            inp.device.type == "cpu" or flag_gems.vendor_name == "kunlunxin"
+        ) and (
+            ("nansum_cpu" in message and "not implemented for 'Complex" in message)
+            or message
+            in (
+                "nansum does not support complex inputs",
+                "nansum on CPU does not support complex inputs",
+            )
+        )
+        kunlun_complex_missing = (
+            flag_gems.vendor_name == "kunlunxin"
+            and inp.device.type != "cpu"
+            and message.startswith("[NOT IMPLEMENTED]: error code= 4(")
+        )
+        if complex_case and (cpu_complex_missing or kunlun_complex_missing):
+            pytest.skip(
+                "Native nanmean does not support this complex input/output dtype"
+            )
+        raise
+
+
 def _nan_input(shape, dtype, device, nan_ratio=0.3):
     x = torch.randn(shape, dtype=dtype, device=device) * 10
     mask = torch.rand(shape, device=device) < nan_ratio
@@ -130,9 +161,26 @@ def test_nanmean_edge():
 @pytest.mark.nanmean
 def test_nanmean_empty_and_dtype():
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip(
+            "Kunlunxin native empty nanmean returns float32 for an explicit float64 dtype; CPU reference remains covered"
+        )
+    reference = torch.nanmean(
+        utils.to_reference(inp), dim=1, keepdim=True, dtype=torch.float64
+    )
     result = flag_gems.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    reference = torch.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
-    torch.testing.assert_close(result, reference, equal_nan=True)
+    assert result.device == inp.device
+    assert result.dtype == torch.float64
+    assert result.shape == reference.shape
+    observed = (
+        result.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .cpu()
+        .view(result.dtype)
+        .reshape(result.shape)
+    )
+    torch.testing.assert_close(observed, reference.cpu(), equal_nan=True)
 
 
 @pytest.mark.nanmean
@@ -165,7 +213,7 @@ def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((7, 11), torch.float32, flag_gems.device)
-    reference = torch.nanmean(inp.clone(), dim=1, dtype=dtype)
+    reference = _reference_nanmean(utils.to_reference(inp.clone()), dim=1, dtype=dtype)
 
     result = flag_gems.nanmean(inp, dim=1, dtype=dtype)
 
@@ -284,9 +332,9 @@ def test_nanmean_complex_input():
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    torch.testing.assert_close(
-        flag_gems.nanmean(inp), torch.nanmean(inp), equal_nan=True
-    )
+    reference = _reference_nanmean(utils.to_reference(inp))
+    result = flag_gems.nanmean(inp)
+    utils.gems_assert_equal(result, reference, equal_nan=True)
 
 
 @pytest.mark.nanmean
@@ -341,7 +389,7 @@ def test_nanmean_complex_input_real_dtype(dtype):
         dtype=torch.complex64,
         device=flag_gems.device,
     )
-    reference = torch.nanmean(utils.to_reference(inp), dtype=dtype)
+    reference = _reference_nanmean(utils.to_reference(inp), dtype=dtype)
     result = flag_gems.nanmean(inp, dtype=dtype)
     utils.gems_assert_close(result, reference, dtype, equal_nan=True)
 

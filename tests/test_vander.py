@@ -16,9 +16,74 @@ else:
 BOOL_DTYPES = [torch.bool]
 
 
+def _vander_copy(value, device):
+    if flag_gems.vendor_name == "kunlunxin" and value.dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        return (
+            value.contiguous()
+            .reshape(-1)
+            .view(torch.uint8)
+            .to(device)
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+    return value.to(device)
+
+
+def _vander_random(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        return _vander_copy(
+            torch.randn(shape, dtype=dtype, device="cpu"), flag_gems.device
+        )
+    return torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+
+def _vander_reference_input(value, upcast=False):
+    if (
+        utils.TO_CPU
+        and flag_gems.vendor_name == "kunlunxin"
+        and value.dtype == torch.float64
+    ):
+        return _vander_copy(value, "cpu")
+    return utils.to_reference(value, upcast)
+
+
+def _vander_reference(value, N=None, increasing=False):
+    if flag_gems.vendor_name == "kunlunxin" and value.device.type != "cpu":
+        if value.dtype in (torch.float64, torch.int16, torch.int32, torch.bool):
+            pytest.skip(
+                "Kunlunxin native vander computes incorrect double or narrow-integer values; CPU reference remains covered"
+            )
+        if (
+            value.numel() == 1 and N is not None and N > 2
+        ) or not value.is_contiguous():
+            pytest.skip(
+                "Kunlunxin native vander computes incorrect singleton-rectangular or strided values; CPU reference remains covered"
+            )
+    return torch.vander(value, N=N, increasing=increasing)
+
+
+def _vander_assert_close(result, reference, dtype, device):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex64,
+        torch.complex128,
+    ):
+        assert result.dtype == dtype
+        assert result.device == device
+        assert result.shape == reference.shape
+        result, reference = _vander_copy(result, "cpu"), _vander_copy(reference, "cpu")
+    utils.gems_assert_close(result, reference, dtype)
+
+
 def _make_input(M, dtype):
     if dtype.is_floating_point:
-        return torch.randn(M, dtype=dtype, device=flag_gems.device)
+        return _vander_random(M, dtype)
     if dtype is torch.bool:
         return torch.randint(0, 2, (M,), device=flag_gems.device).to(torch.bool)
     return torch.randint(-4, 5, (M,), dtype=dtype, device=flag_gems.device)
@@ -30,13 +95,13 @@ def _make_input(M, dtype):
 @pytest.mark.parametrize("increasing", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_vander(M, N, increasing, dtype):
-    res_inp = torch.randn(M, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(res_inp, upcast=True)
+    res_inp = _vander_random(M, dtype)
+    ref_inp = _vander_reference_input(res_inp, upcast=True)
 
-    ref_out = torch.vander(ref_inp, N=N, increasing=increasing)
+    ref_out = _vander_reference(ref_inp, N=N, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=N, increasing=increasing)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _vander_assert_close(res_out, ref_out, dtype, res_inp.device)
 
 
 @pytest.mark.vander
@@ -47,12 +112,12 @@ def test_vander_non_contiguous(increasing, dtype):
     # a contiguous 1-D layout.
     base = torch.randn(2 * 64, dtype=dtype, device=flag_gems.device)
     res_inp = base[::2]
-    ref_inp = utils.to_reference(res_inp, upcast=True)
+    ref_inp = _vander_reference_input(res_inp, upcast=True)
 
-    ref_out = torch.vander(ref_inp, N=8, increasing=increasing)
+    ref_out = _vander_reference(ref_inp, N=8, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=8, increasing=increasing)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _vander_assert_close(res_out, ref_out, dtype, res_inp.device)
 
 
 @pytest.mark.vander
@@ -61,9 +126,9 @@ def test_vander_non_contiguous(increasing, dtype):
 def test_vander_int(increasing, dtype):
     M = 8
     res_inp = _make_input(M, dtype)
-    ref_inp = utils.to_reference(res_inp, upcast=False)
+    ref_inp = _vander_reference_input(res_inp, upcast=False)
 
-    ref_out = torch.vander(ref_inp, N=5, increasing=increasing)
+    ref_out = _vander_reference(ref_inp, N=5, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=5, increasing=increasing)
 
     # bool and narrow integer inputs promote to int64, matching ATen.
@@ -81,9 +146,9 @@ def test_vander_int64_large(increasing):
         dtype=torch.int64,
         device=flag_gems.device,
     )
-    ref_inp = utils.to_reference(res_inp, upcast=False)
+    ref_inp = _vander_reference_input(res_inp, upcast=False)
 
-    ref_out = torch.vander(ref_inp, N=5, increasing=increasing)
+    ref_out = _vander_reference(ref_inp, N=5, increasing=increasing)
     res_out = flag_gems.vander(res_inp, N=5, increasing=increasing)
 
     assert res_out.dtype == torch.int64
@@ -95,9 +160,9 @@ def test_vander_int64_large(increasing):
 def test_vander_negative_values(dtype):
     # Negative bases with higher powers must produce the correct alternating sign.
     res_inp = torch.tensor([-2, -3, 2, -1], dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(res_inp, upcast=dtype.is_floating_point)
+    ref_inp = _vander_reference_input(res_inp, upcast=dtype.is_floating_point)
 
-    ref_out = torch.vander(ref_inp, N=6, increasing=True)
+    ref_out = _vander_reference(ref_inp, N=6, increasing=True)
     res_out = flag_gems.vander(res_inp, N=6, increasing=True)
 
     check_dtype = dtype if dtype.is_floating_point else torch.int64
@@ -111,13 +176,13 @@ def test_vander_negative_values(dtype):
 )
 def test_vander_fp64():
     # FP64 precision must be preserved end-to-end (no fp32 downcast in the kernel).
-    res_inp = torch.randn(32, dtype=torch.float64, device=flag_gems.device)
-    ref_inp = utils.to_reference(res_inp, upcast=False)
+    res_inp = _vander_random(32, torch.float64)
+    ref_inp = _vander_reference_input(res_inp, upcast=False)
 
-    ref_out = torch.vander(ref_inp, N=16)
+    ref_out = _vander_reference(ref_inp, N=16)
     res_out = flag_gems.vander(res_inp, N=16)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float64)
+    _vander_assert_close(res_out, ref_out, torch.float64, res_inp.device)
 
 
 @pytest.mark.vander
@@ -130,14 +195,16 @@ def test_vander_fp64():
 def test_vander_complex(dtype, increasing):
     # Complex inputs are computed via a dedicated real/imag power kernel and must
     # match ATen's complex-capable implementation.
-    x = torch.randn(6, dtype=dtype, device=flag_gems.device)
-    ref_inp = x.cpu()
+    x = _vander_random(6, dtype)
+    ref_inp = _vander_copy(x, "cpu")
 
-    ref_out = torch.vander(ref_inp, N=5, increasing=increasing).to(x.device)
+    ref_out = _vander_reference(ref_inp, N=5, increasing=increasing)
     res_out = flag_gems.vander(x, N=5, increasing=increasing)
 
     assert res_out.dtype == dtype
-    torch.testing.assert_close(res_out, ref_out)
+    assert res_out.device == x.device
+    assert res_out.shape == ref_out.shape
+    torch.testing.assert_close(_vander_copy(res_out, "cpu"), ref_out)
 
 
 @pytest.mark.vander
