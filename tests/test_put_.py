@@ -420,6 +420,7 @@ def test_put__index_out_of_range(bad):
     code = textwrap.dedent(f"""
         import torch
         import flag_gems
+        from flag_gems.runtime import torch_device_fn
 
         inp = torch.zeros(4, dtype=torch.float32, device=flag_gems.device)
         index = torch.tensor([{bad}], dtype=torch.int64, device=flag_gems.device)
@@ -428,7 +429,7 @@ def test_put__index_out_of_range(bad):
         # A valid index must not synchronize on the success path.
         inp.put_(index[:0].new_zeros(0), source[:0])
         inp.put_(index, source)
-        torch.cuda.synchronize()
+        torch_device_fn.synchronize()
         print("NO_ERROR")
         """)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
