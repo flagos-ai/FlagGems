@@ -77,6 +77,8 @@ def _manual_reference(grad_hy, workspace, has_bias):
 
 
 def _reference(grad_hy, workspace, has_bias):
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU and not has_bias:
+        pytest.skip("Kunlunxin native GRU backward returns biases when has_bias=False")
     ref_grad_hy = utils.to_reference(grad_hy)
     ref_workspace = utils.to_reference(workspace)
     if ref_grad_hy.device.type == "cpu":

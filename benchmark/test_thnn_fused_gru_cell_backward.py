@@ -69,6 +69,10 @@ class FusedGRUCellBackwardBenchmark(base.Benchmark):
 
     def build_inputs(self, case):
         batch_size, hidden_size, has_bias = case.builder_args[0].builder_args
+        if flag_gems.vendor_name == "kunlunxin" and not has_bias:
+            pytest.skip(
+                "Kunlunxin native GRU backward returns biases when has_bias=False"
+            )
         cur_dtype = case.dtype
         workspace = _make_workspace(batch_size, hidden_size, cur_dtype, self.device)
         grad_hy = torch.randn(
