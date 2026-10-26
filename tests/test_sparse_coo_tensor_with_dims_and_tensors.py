@@ -163,6 +163,21 @@ def test_sparse_coo_tensor_with_dims_and_tensors_out(dtype):
 
 
 @pytest.mark.sparse_coo_tensor_with_dims_and_tensors
+def test_sparse_coo_tensor_with_dims_and_tensors_registration_names():
+    implementations = (
+        flag_gems.sparse_coo_tensor_with_dims_and_tensors,
+        flag_gems.sparse_coo_tensor_with_dims_and_tensors_out,
+    )
+    names = [
+        entry[0] for entry in flag_gems._FULL_CONFIG if entry[1] in implementations
+    ]
+    assert names == [
+        "_sparse_coo_tensor_with_dims_and_tensors",
+        "_sparse_coo_tensor_with_dims_and_tensors.out",
+    ]
+
+
+@pytest.mark.sparse_coo_tensor_with_dims_and_tensors
 def test_sparse_coo_tensor_with_dims_and_tensors_rejects_bad_layout():
     """A non-COO layout request is rejected before assembling anything."""
     indices, values = _payload([4, 4], 2, torch.float32, flag_gems.device)
