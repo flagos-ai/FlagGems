@@ -23,15 +23,26 @@ from . import accuracy_utils as utils
 @pytest.mark.divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_divide(shape, dtype, caplog):
+def test_divide(shape, dtype, caplog, request):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.ops.aten.divide.Tensor(ref_inp1, ref_inp2)
+    original = [(x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in (inp1, inp2)]
+    saved = [x.clone() for x in (inp1, inp2)]
     with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.divide)):
         res_out = flag_gems.divide(inp1, inp2)
 
-    assert f"{utils.gems_log_prefix(flag_gems.divide)} DIVIDE" in caplog.text
+    registry = getattr(request.config, "_override_registry", None)
+    if registry is None or registry.get_override("divide") is None:
+        assert f"{utils.gems_log_prefix(flag_gems.divide)} DIVIDE" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+    for value, snapshot, metadata in zip((inp1, inp2), saved, original):
+        assert (value.device, value.dtype, tuple(value.shape), value.stride(), value.data_ptr()) == metadata
+        assert torch.equal(
+            value.detach().cpu().reshape(-1).view(torch.uint8),
+            snapshot.detach().cpu().reshape(-1).view(torch.uint8),
+        )
