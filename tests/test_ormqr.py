@@ -62,6 +62,7 @@ def test_ormqr(shape, dtype, left, transpose):
 
     result = flag_gems.ormqr(inp, tau, other, left=left, transpose=transpose)
 
+    assert result.device == other.device
     assert result.shape == ref_out.shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype, reduce_dim=min(shape[-2:]))

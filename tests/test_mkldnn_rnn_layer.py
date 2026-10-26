@@ -144,6 +144,11 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
         False,
     )
 
+    for result, reference in zip((res_out, res_hy, res_cy), (ref_out, ref_hy, ref_cy)):
+        assert result.device == input_tensor.device
+        assert result.dtype == dtype
+        assert result.shape == reference.shape
+
     # fp16 LSTM accumulation over a sequence disagrees with oneDNN at the
     # ~1-ULP level; use FlagGems' RNN-level fp16 tolerance (5e-3).
     atol = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
@@ -208,6 +213,11 @@ def test_mkldnn_rnn_layer_direct_wrapper(
         reverse,
     )
 
+    for result, reference in zip((out, hy, cy), (ref_out, ref_hy, ref_cy)):
+        assert result.device == input_tensor.device
+        assert result.dtype == dtype
+        assert result.shape == reference.shape
+
     atol = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
     utils.gems_assert_close(out, ref_out, dtype, atol=atol)
     utils.gems_assert_close(hy, ref_hy, dtype, atol=atol)
@@ -262,6 +272,12 @@ def test_mkldnn_rnn_layer_direct_backward():
         _BATCH_FIRST,
         True,
     )
+    for result in (out_g, hy_g, cy_g):
+        assert result.device == inp_g.device
+        assert result.dtype == dtype
+    assert out_g.shape == (seq, batch, hidden_size)
+    assert hy_g.shape == hx_g.shape
+    assert cy_g.shape == cx_g.shape
     (out_g.sum() + hy_g.sum() + cy_g.sum()).backward()
 
     # Side 2: native PyTorch LSTM recompute (same as backward internals)

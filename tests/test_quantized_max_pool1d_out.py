@@ -99,6 +99,7 @@ def test_quantized_max_pool1d_out(
         ceil_mode=ceil_mode,
         out=res_out,
     )
+    assert got.device == res_inp.device
 
     # The .out variant must return the same tensor that was passed in.
     assert got is res_out
@@ -131,6 +132,7 @@ def test_quantized_max_pool1d_out_non_contiguous(in_dtype):
     untouched_before = _integer_values(buffer)[..., 1::2].to("cpu").clone()
 
     got = flag_gems.quantized_max_pool1d_out(res_inp, 3, stride=2, padding=1, out=out)
+    assert got.device == res_inp.device
 
     assert got is out
     assert got.data_ptr() == pointer_before
@@ -157,6 +159,7 @@ def test_quantized_max_pool1d_out_storage_offset(in_dtype):
     before = _integer_values(buffer).to("cpu").clone()
 
     got = flag_gems.quantized_max_pool1d_out(res_inp, 3, stride=2, padding=1, out=out)
+    assert got.device == res_inp.device
 
     assert got is out
     assert got.data_ptr() == pointer_before
@@ -182,6 +185,7 @@ def test_quantized_max_pool1d_out_resizes_and_adopts_quant_params(in_dtype):
     ).to(flag_gems.device)
 
     got = flag_gems.quantized_max_pool1d_out(res_inp, 3, stride=2, padding=1, out=out)
+    assert got.device == res_inp.device
 
     assert tuple(got.shape) == tuple(ref_out.shape)
     assert got.q_scale() == ref_out.q_scale()
@@ -229,6 +233,7 @@ def test_quantized_max_pool1d_out_is_input(
         dilation=dilation,
         out=res_inp,
     )
+    assert got.device == res_inp.device
 
     # The result is written through the tensor that was passed in.
     assert got.data_ptr() == res_inp.data_ptr()

@@ -108,6 +108,13 @@ def test_lstm(
         batch_first,
     )
 
+    for result in (res_out, res_hn, res_cn):
+        assert result.device == input.device
+        assert result.dtype == dtype
+    assert res_out.shape == (*input_shape[:-1], hidden_size * num_directions)
+    assert res_hn.shape == state_shape
+    assert res_cn.shape == state_shape
+
     atol = 3e-2 if dtype is torch.bfloat16 else 2e-2 if dtype is torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
     utils.gems_assert_close(res_hn, ref_hn, dtype, atol=atol)
