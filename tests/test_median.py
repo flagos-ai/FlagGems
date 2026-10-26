@@ -454,8 +454,13 @@ def test_median_extra_no_dim_dtypes(dtype):
 
 @pytest.mark.median
 def test_median_bool_no_dim():
-    if torch.device(flag_gems.device).type != "cuda":
-        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+    if (
+        torch.device(flag_gems.device).type != "cuda"
+        or flag_gems.vendor_name == "kunlunxin"
+    ):
+        pytest.skip(
+            "configured native backend does not support bool median without a dimension"
+        )
 
     inp = torch.tensor([True, False, True], device=flag_gems.device)
     ref_out = torch.median(inp)
@@ -468,8 +473,13 @@ def test_median_bool_no_dim():
 
 @pytest.mark.median
 def test_median_bool_no_dim_full_registration():
-    if torch.device(flag_gems.device).type != "cuda":
-        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+    if (
+        torch.device(flag_gems.device).type != "cuda"
+        or flag_gems.vendor_name == "kunlunxin"
+    ):
+        pytest.skip(
+            "configured native backend does not support bool median without a dimension"
+        )
 
     inp = torch.tensor([True, False, True, False, True], device=flag_gems.device)
     ref_out = torch.median(inp)
@@ -483,8 +493,13 @@ def test_median_bool_no_dim_full_registration():
 @pytest.mark.median
 @pytest.mark.parametrize("width", [257, 1025, 8193])
 def test_median_bool_no_dim_large(width):
-    if torch.device(flag_gems.device).type != "cuda":
-        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+    if (
+        torch.device(flag_gems.device).type != "cuda"
+        or flag_gems.vendor_name == "kunlunxin"
+    ):
+        pytest.skip(
+            "configured native backend does not support bool median without a dimension"
+        )
 
     vals = torch.arange(width, device=flag_gems.device)
     inp = (vals * 37) % 5 < 3
@@ -498,8 +513,13 @@ def test_median_bool_no_dim_large(width):
 
 @pytest.mark.median
 def test_median_bool_no_dim_beyond_old_flat_limit():
-    if torch.device(flag_gems.device).type != "cuda":
-        pytest.skip("bool median no-dim is CUDA-specific in native PyTorch")
+    if (
+        torch.device(flag_gems.device).type != "cuda"
+        or flag_gems.vendor_name == "kunlunxin"
+    ):
+        pytest.skip(
+            "configured native backend does not support bool median without a dimension"
+        )
 
     width = 1024 * 1024 + 1
     vals = torch.arange(width, device=flag_gems.device)
