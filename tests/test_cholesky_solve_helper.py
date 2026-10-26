@@ -26,7 +26,7 @@ def _factor(shape, dtype):
     torch.manual_seed(0)
     device = (
         "cpu"
-        if flag_gems.vendor_name in ("kunlunxin", "iluvatar", "ascend")
+        if flag_gems.vendor_name in ("kunlunxin", "iluvatar", "ascend", "thead")
         else flag_gems.device
     )
     matrix = torch.randn(shape, device=device, dtype=dtype)
@@ -68,7 +68,8 @@ def test_cholesky_solve_helper(rhs_shape, factor_shape, upper, dtype):
     torch.manual_seed(1)
     rhs_device = (
         "cpu"
-        if flag_gems.vendor_name in ("iluvatar", "ascend") and dtype == torch.float64
+        if flag_gems.vendor_name in ("iluvatar", "ascend", "thead")
+        and dtype == torch.float64
         else flag_gems.device
     )
     rhs = torch.randn(rhs_shape, device=rhs_device, dtype=dtype).to(flag_gems.device)
