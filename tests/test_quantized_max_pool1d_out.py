@@ -48,6 +48,20 @@ def _make_quantized(shape, scale, zero_point, dtype, device):
         fp, scale=scale, zero_point=zero_point, dtype=dtype
     ).to(device)
 
+def _integer_values(value):
+    # Observe the original quantized storage through an integer view. This also
+    # handles strided outputs without requiring backend quantized copy kernels.
+    integer_dtype = {
+        torch.quint8: torch.uint8,
+        torch.qint8: torch.int8,
+        torch.qint32: torch.int32,
+    }[value.dtype]
+    view = torch.empty(0, dtype=integer_dtype, device=value.device).set_(
+        value.untyped_storage(), value.storage_offset(), value.shape, value.stride()
+    )
+    return view.to("cpu")
+
+
 @pytest.mark.quantized_max_pool1d_out
 @pytest.mark.parametrize("shape", POOL_SHAPES)
 @pytest.mark.parametrize(
@@ -114,7 +128,7 @@ def test_quantized_max_pool1d_out_non_contiguous(in_dtype):
     pointer_before = out.data_ptr()
     stride_before = out.stride()
     offset_before = out.storage_offset()
-    untouched_before = buffer.int_repr()[..., 1::2].to("cpu").clone()
+    untouched_before = _integer_values(buffer)[..., 1::2].to("cpu").clone()
 
     got = flag_gems.quantized_max_pool1d_out(res_inp, 3, stride=2, padding=1, out=out)
 
@@ -122,8 +136,8 @@ def test_quantized_max_pool1d_out_non_contiguous(in_dtype):
     assert got.data_ptr() == pointer_before
     assert got.stride() == stride_before
     assert got.storage_offset() == offset_before
-    assert torch.equal(out.int_repr().to("cpu"), ref_out.int_repr())
-    assert torch.equal(buffer.int_repr()[..., 1::2].to("cpu"), untouched_before)
+    assert torch.equal(_integer_values(out).to("cpu"), _integer_values(ref_out))
+    assert torch.equal(_integer_values(buffer)[..., 1::2].to("cpu"), untouched_before)
 
 @pytest.mark.quantized_max_pool1d_out
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
@@ -140,7 +154,7 @@ def test_quantized_max_pool1d_out_storage_offset(in_dtype):
     pointer_before = out.data_ptr()
     stride_before = out.stride()
     offset_before = out.storage_offset()
-    before = buffer.int_repr().to("cpu").clone()
+    before = _integer_values(buffer).to("cpu").clone()
 
     got = flag_gems.quantized_max_pool1d_out(res_inp, 3, stride=2, padding=1, out=out)
 
@@ -148,10 +162,10 @@ def test_quantized_max_pool1d_out_storage_offset(in_dtype):
     assert got.data_ptr() == pointer_before
     assert got.stride() == stride_before
     assert got.storage_offset() == offset_before
-    assert torch.equal(out.int_repr().to("cpu"), ref_out.int_repr())
-    assert torch.equal(buffer.int_repr()[..., :head].to("cpu"), before[..., :head])
+    assert torch.equal(_integer_values(out).to("cpu"), _integer_values(ref_out))
+    assert torch.equal(_integer_values(buffer)[..., :head].to("cpu"), before[..., :head])
     assert torch.equal(
-        buffer.int_repr()[..., head + out_len :].to("cpu"),
+        _integer_values(buffer)[..., head + out_len :].to("cpu"),
         before[..., head + out_len :],
     )
 
@@ -172,7 +186,7 @@ def test_quantized_max_pool1d_out_resizes_and_adopts_quant_params(in_dtype):
     assert tuple(got.shape) == tuple(ref_out.shape)
     assert got.q_scale() == ref_out.q_scale()
     assert got.q_zero_point() == ref_out.q_zero_point()
-    assert torch.equal(got.int_repr().to("cpu"), ref_out.int_repr())
+    assert torch.equal(_integer_values(got).to("cpu"), _integer_values(ref_out))
 
 @pytest.mark.quantized_max_pool1d_out
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
@@ -222,7 +236,7 @@ def test_quantized_max_pool1d_out_is_input(
     assert got.q_scale() == ref_out.q_scale()
     assert got.q_zero_point() == ref_out.q_zero_point()
     # Integer equality: a truncated or zeroed input cannot pass this.
-    assert torch.equal(got.int_repr().to("cpu"), ref_out.int_repr())
+    assert torch.equal(_integer_values(got).to("cpu"), _integer_values(ref_out))
 
 @pytest.mark.quantized_max_pool1d_out
 def test_quantized_max_pool1d_out_rejects_mismatched_out():
@@ -262,4 +276,4 @@ def _aten_unit_length_int_repr(out):
     """
     n, c = out.shape[0], out.shape[1]
     out_l = out.shape[-1]
-    return out.int_repr().reshape(n, out_l, c).permute(0, 2, 1).contiguous()
+    return _integer_values(out).reshape(n, out_l, c).permute(0, 2, 1).contiguous()
