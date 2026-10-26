@@ -56,13 +56,12 @@ def test_addbmm(M, N, K, scalar, dtype):
             alpha=scalar,
             beta=scalar,
         )
-        with flag_gems.use_gems():
-            result = torch.addbmm(self, batch1, batch2, alpha=scalar, beta=scalar)
+        result = flag_gems.addbmm(self, batch1, batch2, alpha=scalar, beta=scalar)
         utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
         assert self.device == original.device
-    assert self.dtype == original.dtype
-    assert self.shape == original.shape
-    utils.gems_assert_equal(self.cpu(), original.cpu())
+        assert self.dtype == original.dtype
+        assert self.shape == original.shape
+        utils.gems_assert_equal(self.cpu(), original.cpu())
     finally:
         if flag_gems.vendor_name == "mthreads":
             os.environ.pop("MUSA_ENABLE_SQMMA", None)
@@ -73,14 +72,22 @@ def test_addbmm_autograd():
     torch.manual_seed(0)
     dtype = torch.float32
     self = torch.randn((3, 5), dtype=dtype, device=flag_gems.device, requires_grad=True)
-    batch1 = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device, requires_grad=True)
-    batch2 = torch.randn((2, 4, 5), dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inputs = tuple(utils.to_reference(value, True).requires_grad_(True) for value in (self, batch1, batch2))
+    batch1 = torch.randn(
+        (2, 3, 4), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    batch2 = torch.randn(
+        (2, 4, 5), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_inputs = tuple(
+        utils.to_reference(value, True).requires_grad_(True)
+        for value in (self, batch1, batch2)
+    )
     ref_result = torch.addbmm(*ref_inputs)
-    with flag_gems.use_gems():
-        result = torch.addbmm(self, batch1, batch2)
+    result = flag_gems.addbmm(self, batch1, batch2)
     grad = torch.randn_like(result)
-    ref_grads = torch.autograd.grad(ref_result, ref_inputs, utils.to_reference(grad, True))
+    ref_grads = torch.autograd.grad(
+        ref_result, ref_inputs, utils.to_reference(grad, True)
+    )
     grads = torch.autograd.grad(result, (self, batch1, batch2), grad)
     for actual, expected in zip(grads, ref_grads):
         utils.gems_assert_close(actual, expected, dtype, reduce_dim=4)
@@ -92,5 +99,5 @@ def test_addbmm_rejects_incompatible_shapes():
     self = torch.randn((3, 5), device=flag_gems.device)
     batch1 = torch.randn((2, 3, 4), device=flag_gems.device)
     batch2 = torch.randn((2, 6, 5), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.addbmm(self, batch1, batch2)
+    with pytest.raises(RuntimeError):
+        flag_gems.addbmm(self, batch1, batch2)

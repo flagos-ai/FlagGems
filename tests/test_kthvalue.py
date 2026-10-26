@@ -25,6 +25,33 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
+def _assert_kth_indices(
+    inp, values, indices, reference_values, reference_indices, dim, keepdim
+):
+    assert indices.device == inp.device
+    assert indices.dtype == torch.int64
+    assert indices.shape == reference_indices.shape
+    if flag_gems.vendor_name != "mthreads":
+        utils.gems_assert_equal(indices, reference_indices)
+        return
+    # Native MUSA kthvalue may choose different valid positions for equal
+    # values on repeated calls. Keep exact indices away from those ties.
+    source = inp.cpu()
+    actual_indices = indices.cpu()
+    expected_indices = reference_indices.cpu()
+    expected_values = reference_values.cpu().to(inp.dtype)
+    gather_indices = actual_indices if keepdim else actual_indices.unsqueeze(dim)
+    observed = source.gather(dim, gather_indices)
+    if not keepdim:
+        observed = observed.squeeze(dim)
+    utils.gems_assert_equal(observed, expected_values)
+    mismatch = actual_indices != expected_indices
+    reference_at_dim = expected_values if keepdim else expected_values.unsqueeze(dim)
+    ties = (source == reference_at_dim).sum(dim, keepdim=keepdim)
+    assert bool((ties[mismatch] > 1).all())
+    utils.gems_assert_equal(actual_indices[~mismatch], expected_indices[~mismatch])
+
+
 # kthvalue tests
 KTHVALUE_K_VALUES = [1, 2, 4]
 
@@ -43,9 +70,15 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
 
     dim_size = shape[dim]
     if k < 1 or k > dim_size:
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
+        with pytest.raises(
+            RuntimeError,
+            match="selected number k out of range|Selected index k out or range",
+        ):
             torch.kthvalue(ref_inp, k, dim=dim, keepdim=keepdim)
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
+        with pytest.raises(
+            RuntimeError,
+            match="selected number k out of range|Selected index k out or range",
+        ):
             flag_gems.kthvalue(inp, k, dim=dim, keepdim=keepdim)
         return
 
@@ -53,7 +86,9 @@ def test_kthvalue(shape, k, dim, keepdim, dtype):
     res_values, res_indices = flag_gems.kthvalue(inp, k, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_close(res_values, ref_values, dtype)
-    utils.gems_assert_equal(res_indices, ref_indices)
+    _assert_kth_indices(
+        inp, res_values, res_indices, ref_values, ref_indices, dim, keepdim
+    )
 
 
 @pytest.mark.kthvalue
@@ -68,9 +103,15 @@ def test_kthvalue_default_dim(shape, k, dtype):
 
     dim_size = shape[-1]
     if k < 1 or k > dim_size:
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
+        with pytest.raises(
+            RuntimeError,
+            match="selected number k out of range|Selected index k out or range",
+        ):
             torch.kthvalue(ref_inp, k)
-        with pytest.raises(RuntimeError, match="selected number k out of range"):
+        with pytest.raises(
+            RuntimeError,
+            match="selected number k out of range|Selected index k out or range",
+        ):
             flag_gems.kthvalue(inp, k)
         return
 
@@ -78,7 +119,9 @@ def test_kthvalue_default_dim(shape, k, dtype):
     res_values, res_indices = flag_gems.kthvalue(inp, k)
 
     utils.gems_assert_close(res_values, ref_values, dtype)
-    utils.gems_assert_equal(res_indices, ref_indices)
+    _assert_kth_indices(
+        inp, res_values, res_indices, ref_values, ref_indices, -1, False
+    )
 
 
 @pytest.mark.kthvalue

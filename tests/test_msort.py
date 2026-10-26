@@ -23,7 +23,14 @@ from . import accuracy_utils as utils
 def _to_target_wide(value):
     # KU's ordinary .to() factory narrows Double/ComplexDouble. Transfer the
     # physical bytes first and recover only the dtype/shape metadata on device.
-    result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(value.dtype).reshape(value.shape)
+    result = (
+        value.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .to(flag_gems.device)
+        .view(value.dtype)
+        .reshape(value.shape)
+    )
     assert result.dtype == value.dtype
     assert result.shape == value.shape
     return result
@@ -57,7 +64,11 @@ def _seed_random_inputs():
     ],
 )
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
-    factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64 else flag_gems.device
+    factory_device = (
+        "cpu"
+        if flag_gems.vendor_name in ("kunlunxin", "iluvatar") and dtype == torch.float64
+        else flag_gems.device
+    )
     inp = torch.randn(rows, 3, dtype=dtype, device=factory_device)
     payloads = torch.tensor(bits, dtype=int_dtype, device=inp.device).view(dtype)
     inp[:4] = payloads[:, None]
@@ -91,7 +102,11 @@ def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
 @pytest.mark.parametrize("view_alias", [False, True])
 def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin") and dtype == torch.float64 and not utils.TO_CPU:
+    if (
+        flag_gems.vendor_name in ("mthreads", "kunlunxin", "ascend")
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
         pytest.skip("Backend native msort does not support faithful float64 sorting")
     # Many columns and rows force multiple programs in both sorting paths.
     inp = _make_input((rows, 129), dtype)
@@ -122,7 +137,11 @@ def _make_input(shape, dtype):
     "dtype", utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [torch.bool]
 )
 def test_msort(shape, dtype):
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin") and dtype == torch.bool and not utils.TO_CPU:
+    if (
+        flag_gems.vendor_name in ("mthreads", "kunlunxin")
+        and dtype == torch.bool
+        and not utils.TO_CPU
+    ):
         pytest.skip("Backend native msort does not support bool")
     inp = _make_input(shape, dtype)
     ref_inp = utils.to_reference(inp)

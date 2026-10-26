@@ -23,7 +23,14 @@ from . import accuracy_utils as utils
 def _to_target_wide(value):
     # KU's ordinary .to() factory narrows Double/ComplexDouble. Transfer the
     # physical bytes first and recover only the dtype/shape metadata on device.
-    result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(value.dtype).reshape(value.shape)
+    result = (
+        value.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .to(flag_gems.device)
+        .view(value.dtype)
+        .reshape(value.shape)
+    )
     assert result.dtype == value.dtype
     assert result.shape == value.shape
     return result
@@ -59,7 +66,11 @@ def test_msort_out_content_identity_and_storage(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.int64])
 @pytest.mark.parametrize("view_alias", [False, True])
 def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
-    if flag_gems.vendor_name in ("mthreads", "kunlunxin") and dtype == torch.float64 and not utils.TO_CPU:
+    if (
+        flag_gems.vendor_name in ("mthreads", "kunlunxin", "ascend")
+        and dtype == torch.float64
+        and not utils.TO_CPU
+    ):
         pytest.skip("Backend native msort does not support faithful float64 sorting")
     inp = _make_input((rows, 129), dtype)
     reference_input = utils.to_reference(inp).clone()
