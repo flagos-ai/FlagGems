@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_BLOCK_SIZE = 1024
 CUDA_SMALL_SCAN_LIMIT = 1024 * 4
 ASCEND_SCAN_LIMIT = 1024
+# Chunk width of the tail-aware large-N path (see _chunked_row_scan_into).
+_LARGE_SCAN_BLOCK = 1024
 
 
 @tl.constexpr
@@ -314,20 +316,25 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
         ASCEND_SCAN_LIMIT if runtime_device.vendor_name == "ascend" else 16384
     )
     if N <= persistent_limit:
-        TILE_SIZE = triton.next_power_of_2(N)
-        num_warps = 8 if TILE_SIZE > 2048 else 4
-        reduce_then_scan_root_scan_kernel_row[(M, 1, 1)](
-            x, out, N, TILE_SIZE, num_warps=num_warps
-        )
-        return out
+        return _row_scan_into(x, out, M, N)
 
     # N > persistent_limit: per-row chunked online scan. The scan runs in
     # ACC_DTYPE and is cast back to the output pointee type in-kernel (the
     # store value type then matches the pointer type, so no torch-level
-    # convert + `_copy_from` pass is needed).
+    # convert + `_copy_from` pass is needed).  BN is kept at 8192 lanes: at
+    # 16384/32768 lanes TritonXPUVectorize fails to legalize the carry vector
+    # for float dtypes (scf.for iter_arg type mismatch) and the widest tiles
+    # also mis-compute, while smaller chunks keep the M-program grid that
+    # makes this path ~5x cheaper than the three-pass fan-out.
     acc_tl = _TL_SCAN_DTYPES.get(compute_dtype, tl.float32)
-    BN = 32768 if compute_dtype == torch.float32 else 16384
-    need_tail = 1 if N % BN else 0
+    BN = 8192
+    if N % BN:
+        # A partial chunk makes the masked scan+reduce in this kernel
+        # mis-compile (silent wrong values in the tail and in an unrelated
+        # earlier chunk), so non-multiples take the tail-aware chunked path.
+        _chunked_row_scan_into(x, out, M, N, compute_dtype)
+        return out
+    need_tail = 0
     grid = (M,)
     with torch_device_fn.device(x.device):
         cumprod_row_scan_chunk_kernel[grid](
@@ -338,6 +345,220 @@ def reduce_then_scan_row(x, out, M, N, compute_dtype):
             BN=BN,
             NEED_TAIL=need_tail,
             num_warps=8,
+            buffer_size_limit=2048,
+        )
+    return out
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "CHUNKS"])
+def cumprod_chunk_scan_kernel(
+    inp_ptr,
+    out_ptr,
+    partial_ptr,
+    N,
+    CHUNKS,
+    BLOCK: tl.constexpr,
+):
+    """Full, unmasked cumprod of one BLOCK-wide chunk of one row plus that
+    chunk's product.  Unmasked on purpose: a partial chunk here mis-compiles on
+    this backend (see the tail kernel for the remainder)."""
+    pid = ext.program_id(0)
+    row = pid // CHUNKS
+    c = pid % CHUNKS
+    acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
+    offs = c * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(inp_ptr + row * N + offs).to(acc_dtype)
+    tl.store(out_ptr + row * N + offs, tl.cumprod(x, 0).to(out_ptr.type.element_ty))
+    tl.store(partial_ptr + pid, tl.reduce(x, axis=0, combine_fn=reduce_mul))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "CHUNKS"])
+def cumprod_chunk_base_kernel(
+    out_ptr,
+    prefix_ptr,
+    N,
+    CHUNKS,
+    BLOCK: tl.constexpr,
+):
+    """Multiply full chunk c > 0 by the inclusive prefix of the chunk products
+    before it (``prefix_ptr`` is the row-wise scan of ``partial_ptr``)."""
+    pid = ext.program_id(0)
+    row = pid // CHUNKS
+    c = pid % CHUNKS
+    if c > 0:
+        acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
+        base = tl.load(prefix_ptr + pid - 1).to(acc_dtype)
+        offs = c * BLOCK + tl.arange(0, BLOCK)
+        x = tl.load(out_ptr + row * N + offs).to(acc_dtype)
+        tl.store(out_ptr + row * N + offs, (x * base).to(out_ptr.type.element_ty))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "N1", "R", "CHUNKS"])
+def cumprod_tail_kernel(
+    inp_ptr,
+    out_ptr,
+    prefix_ptr,
+    N,
+    N1,
+    R,
+    CHUNKS,
+    TILE: tl.constexpr,
+):
+    """Masked single-shot scan of the R < BLOCK leftover lanes of one row,
+    scaled by the product of every full chunk before it.  No reduction and no
+    carry vector, so only the well-tested masked row-scan construct is used."""
+    row = ext.program_id(0)
+    offs = tl.arange(0, TILE)
+    mask = offs < R
+    acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
+    x = tl.load(inp_ptr + row * N + N1 + offs, mask=mask, other=1).to(acc_dtype)
+    base = tl.load(prefix_ptr + row * CHUNKS + (CHUNKS - 1)).to(acc_dtype)
+    r = tl.cumprod(x, 0) * base
+    tl.store(out_ptr + row * N + N1 + offs, r.to(out_ptr.type.element_ty), mask=mask)
+
+
+def _chunked_row_scan_into(x, out, M, N, compute_dtype):
+    """K == 1, N > persistent_limit and N not a multiple of the per-row chunk
+    width: full chunks -> per-row prefix of the chunk products -> scale each
+    chunk -> masked scan of the leftover tail.  Every kernel is launched over
+    ``M * CHUNKS`` programs and uses no runtime loop around a scan."""
+    BLOCK = _LARGE_SCAN_BLOCK
+    chunks = N // BLOCK
+    tail = N - chunks * BLOCK
+    partial = torch.empty(M * chunks, dtype=compute_dtype, device=x.device)
+    prefix = torch.empty_like(partial)
+    grid = (M * chunks,)
+    with torch_device_fn.device(x.device):
+        cumprod_chunk_scan_kernel[grid](
+            x,
+            out,
+            partial,
+            N,
+            chunks,
+            BLOCK=BLOCK,
+            num_warps=8,
+            buffer_size_limit=2048,
+        )
+        # Prefix of the chunk products per row.  `chunks` is normally tiny (64
+        # for a 65536-long row), but a row longer than 1024 * 16384 would push
+        # the row kernel past its supported tile, so recurse instead.
+        if chunks <= 16384:
+            _row_scan_into(partial.view(M, chunks), prefix.view(M, chunks), M, chunks)
+        else:
+            _chunked_row_scan_into(
+                partial.view(M, chunks),
+                prefix.view(M, chunks),
+                M,
+                chunks,
+                compute_dtype,
+            )
+        cumprod_chunk_base_kernel[grid](
+            out,
+            prefix,
+            N,
+            chunks,
+            BLOCK=BLOCK,
+            num_warps=8,
+            buffer_size_limit=2048,
+        )
+        if tail:
+            TILE = triton.next_power_of_2(tail)
+            cumprod_tail_kernel[(M,)](
+                x,
+                out,
+                prefix,
+                N,
+                chunks * BLOCK,
+                tail,
+                chunks,
+                TILE=TILE,
+                num_warps=4,
+                buffer_size_limit=2048,
+            )
+    return out
+
+
+@libentry()
+@triton.jit
+def cumprod_identity_kernel(inp_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+    """N == 1: an inclusive prefix product over an axis of length 1 is the
+    elementwise identity.  The out dtype may differ (int -> int64, bool ->
+    int64), so a plain elementwise kernel does the (possibly converting) copy
+    in one launch instead of one program per row."""
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n_elements
+    x = tl.load(inp_ptr + offs, mask=mask)
+    tl.store(out_ptr + offs, x.to(out_ptr.type.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def cumprod_rows_kernel(
+    inp_ptr,
+    out_ptr,
+    N,
+    TILE_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """One row per program: a single-shot 1D inclusive scan.
+
+    Measured against the alternatives on this backend: batching several rows
+    per program (a ``tl.static_range`` loop of scans, or a [BM, N] 2D tile
+    scanned along axis 1) only serializes the scans and is 2-8x slower on the
+    many-row / short-N corner, so the one-row-per-program shape is kept."""
+    pid = ext.program_id(0)
+    row_off = pid * N
+    n_offsets = tl.arange(0, TILE_N)
+    acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
+    if NEED_MASK:
+        mask = n_offsets < N
+        x = tl.load(inp_ptr + row_off + n_offsets, mask=mask, other=1).to(acc_dtype)
+        r = tl.cumprod(x, 0)
+        tl.store(
+            out_ptr + row_off + n_offsets, r.to(out_ptr.type.element_ty), mask=mask
+        )
+    else:
+        x = tl.load(inp_ptr + row_off + n_offsets).to(acc_dtype)
+        r = tl.cumprod(x, 0)
+        tl.store(out_ptr + row_off + n_offsets, r.to(out_ptr.type.element_ty))
+
+
+def _row_scan_into(inp, out, M, N):
+    """K == 1 contiguous row scan: identity for N == 1, else one single-shot
+    row scan per program."""
+    if N == 1:
+        n_elements = inp.numel()
+        BLOCK = 1024
+        grid = (triton.cdiv(n_elements, BLOCK), 1, 1)
+        with torch_device_fn.device(inp.device):
+            cumprod_identity_kernel[grid](
+                inp,
+                out,
+                n_elements,
+                BLOCK=BLOCK,
+                num_warps=4,
+                buffer_size_limit=2048,
+            )
+        return out
+
+    TILE_N = triton.next_power_of_2(N)
+    # `tl.arange(0, TILE_N)` is silently widened to a multiple of 64 lanes on
+    # this backend, so a narrow tile must be masked or the extra lanes read and
+    # write past the row (same defect/fix as _kunlunxin/ops/logcumsumexp.py).
+    need_mask = 1 if (TILE_N != N or TILE_N < 64) else 0
+    num_warps = 8 if TILE_N > 2048 else 4
+    with torch_device_fn.device(inp.device):
+        cumprod_rows_kernel[(M,)](
+            inp,
+            out,
+            N,
+            TILE_N=TILE_N,
+            NEED_MASK=need_mask,
+            num_warps=num_warps,
             buffer_size_limit=2048,
         )
     return out
@@ -525,3 +746,10 @@ def cumprod_(inp, dim, *, dtype=None):
 
     cumprod_wrapper(inp, dim, inp.dtype, out=inp)
     return inp
+
+
+import sys as _sys  # noqa: E402
+
+_generic_ops_module = _sys.modules.get("flag_gems.ops")
+if _generic_ops_module is not None:
+    _generic_ops_module.cumprod = cumprod
