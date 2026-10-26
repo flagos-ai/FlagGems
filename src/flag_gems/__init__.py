@@ -1539,8 +1539,8 @@ _FULL_CONFIG = (
     ("randn", randn),
     ("randn_like", randn_like),
     ("randperm", randperm),
-    ("ravel", ravel),
     ("range", range),
+    ("ravel", ravel),
     (
         "real",
         real,
