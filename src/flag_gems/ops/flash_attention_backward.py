@@ -51,10 +51,7 @@ def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
     if min(seqlen_q, seqlen_k) >= 16:
         yield
         return
-    previous = getattr(_autotuning_knobs, "adjust_block_size", None)
-    if previous is None:
-        yield
-        return
+    previous = _autotuning_knobs.adjust_block_size
     _autotuning_knobs.adjust_block_size = False
     try:
         yield
