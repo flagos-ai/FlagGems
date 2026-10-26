@@ -13,6 +13,17 @@ SHAPES = [(4, 32, 256, 256), (4, 64, 512, 512), (8, 64, 256, 256)]
 
 
 class QuantizedLstmBenchmark(OperatorBenchmark):
+    def _candidate_call(self):
+        op, dispatch, overridden = super()._candidate_call()
+        if overridden:
+            # deq belongs only to the native floating-point reference. The
+            # injected quantized_lstm keeps its packed-parameter public ABI.
+            def candidate(value, hx, params, deq, *args, **kwargs):
+                return op(value, hx, params, *args, **kwargs)
+
+            return candidate, dispatch, overridden
+        return op, dispatch, overridden
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "seq,batch,input,hidden"
