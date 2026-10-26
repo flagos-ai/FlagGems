@@ -15,10 +15,9 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -46,7 +45,6 @@ def test_true_divide_():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.true_divide_.Tensor,
-        gems_op=getattr(flag_gems, "true_divide_tensor_", None),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,
