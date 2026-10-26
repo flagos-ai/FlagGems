@@ -83,9 +83,9 @@ def _assert_matches_torch(inp, out=None):
         out is not None
         and flag_gems.vendor_name == "ascend"
         and not utils.TO_CPU
-        and inp.dtype == torch.int8
+        and inp.dtype in (torch.int8, torch.uint8, torch.int16)
     ):
-        pytest.skip("Ascend native sgn out reference does not support int8")
+        pytest.skip("Ascend native sgn out reference does not support int8/uint8/int16")
     if (
         out is not None
         and flag_gems.vendor_name == "kunlunxin"
