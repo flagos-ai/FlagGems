@@ -66,23 +66,32 @@ def _make_input(shape, dtype, device=None):
         raw = (torch.arange(numel, device=device) % 256).to(torch.uint8)
         return raw.reshape(shape).view(dtype)
     if dtype.is_complex:
-        # Construct complex payloads on CPU: some accelerators cannot cast
-        # complex64 to complex32 even though they can transfer/store the dtype.
-        real = torch.randn(shape, device="cpu", dtype=torch.float32)
-        imag = torch.randn(shape, device="cpu", dtype=torch.float32)
-        value = torch.complex(real, imag).to(dtype)
-        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
-            result = value.view(torch.uint8).to(device).view(dtype).reshape(shape)
-        else:
-            result = value.to(device)
-        assert result.dtype == dtype
-        return result
+        real = torch.randn(shape, device=device, dtype=torch.float32)
+        imag = torch.randn(shape, device=device, dtype=torch.float32)
+        return torch.complex(real, imag).to(dtype)
     if dtype.is_floating_point:
         return torch.randn(shape, device=device, dtype=torch.float32).to(dtype)
     iinfo = torch.iinfo(dtype)
     lo = max(iinfo.min, -100)
     hi = min(iinfo.max, 100)
     return torch.randint(lo, hi, shape, device=device, dtype=dtype)
+
+
+def _slice_input(shape, dtype, device=None):
+    if not dtype.is_complex:
+        return _make_input(shape, dtype, device)
+    device = device or flag_gems.device
+    # Construct complex payloads on CPU: some accelerators cannot cast
+    # complex64 to complex32 even though they can transfer/store the dtype.
+    real = torch.randn(shape, device="cpu", dtype=torch.float32)
+    imag = torch.randn(shape, device="cpu", dtype=torch.float32)
+    value = torch.complex(real, imag).to(dtype)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        result = value.view(torch.uint8).to(device).view(dtype).reshape(shape)
+    else:
+        result = value.to(device)
+    assert result.dtype == dtype
+    return result
 
 
 def _aten_slice_copy(inp, dim=0, start=None, end=None, step=1):
@@ -304,7 +313,7 @@ def test_slice_copy_int_dtype(dtype):
 def test_slice_copy_all_dtypes(dtype):
     # Compare against aten::slice_copy.Tensor for every natively supported
     # non-complex dtype, including fp64, bool and the 1-byte integer types.
-    inp = _make_input((5, 9), dtype)
+    inp = _slice_input((5, 9), dtype)
     ref_inp = utils.to_reference(inp)
 
     for dim, start, end, step in [
@@ -326,7 +335,7 @@ def test_slice_copy_all_dtypes(dtype):
 def test_slice_copy_float8_bitwise(dtype):
     # Triton has no fp8 scalar type; the kernel copies through uint8. Sweep all
     # 256 byte patterns (incl. NaN encodings) and require a bit-exact copy.
-    inp = _make_input((256,), dtype)
+    inp = _slice_input((256,), dtype)
     ref_inp = utils.to_reference(inp)
     ref_out = _special_slice_reference(ref_inp, 0, 0, 256, 3)
     res_out = flag_gems.slice_copy(inp, 0, 0, 256, 3)
@@ -341,7 +350,7 @@ def test_slice_copy_float8_bitwise(dtype):
 def test_slice_copy_complex(dtype):
     # Triton exposes no complex scalar type, so the kernel copies complex data
     # through view_as_real; check against ATen on every kernel path.
-    inp = _make_input((4, 6, 5), dtype)
+    inp = _slice_input((4, 6, 5), dtype)
 
     cases = [
         (0, 1, 4, 1),  # step1 path, inner > 1
@@ -371,7 +380,7 @@ def test_slice_copy_lazy_conj_neg(dtype):
     # A conj/neg view carries the flag lazily: the raw bytes are un-negated, so
     # a plain bit copy would return the wrong values. ATen resolves them and
     # returns a tensor with the flag cleared.
-    inp = _make_input((4, 6), dtype)
+    inp = _slice_input((4, 6), dtype)
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)
     res_out = flag_gems.slice_copy(lazy, 1, 1, 5, 2)
