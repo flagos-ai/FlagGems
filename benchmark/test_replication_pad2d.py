@@ -87,6 +87,24 @@ class ReplicationPad2dOutBenchmark(base.Benchmark):
         for config in self.shapes:
             yield from _input_fn_out(config, cur_dtype, self.device)
 
+    def get_case_iter(self, dtype):
+        for ordinal, config in enumerate(self.shapes):
+            shape, padding = config
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": list(shape)},
+                    params={"padding": list(padding)},
+                    builder_args=(config,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        return next(
+            _input_fn_out(case.builder_args[0].builder_args[0], case.dtype, self.device)
+        )
+
 
 @pytest.mark.replication_pad2d
 def test_replication_pad2d():

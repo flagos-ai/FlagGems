@@ -103,6 +103,20 @@ def log_softmax_backward_data_out_input_fn(shape, dtype, device):
     yield grad_output, log_sm, -1, dtype, {"out": out}
 
 
+def _backward_out_case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(shape), "output": list(shape), "out": list(shape)},
+        params={"dim": -1},
+        builder_args=(shape,),
+    )
+
+
+def _backward_out_build_inputs(plan, dtype, device):
+    return next(
+        log_softmax_backward_data_out_input_fn(plan.builder_args[0], dtype, device)
+    )
+
+
 @pytest.mark.log_softmax_backward_data_out
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -110,7 +124,8 @@ def log_softmax_backward_data_out_input_fn(shape, dtype, device):
 def test_log_softmax_backward_data_out():
     bench = base.GenericBenchmark2DOnly(
         op_name="log_softmax_backward_data_out",
-        input_fn=log_softmax_backward_data_out_input_fn,
+        case_fn=_backward_out_case_fn,
+        build_inputs_fn=_backward_out_build_inputs,
         torch_op=torch._log_softmax_backward_data,
         dtypes=consts.FLOAT_DTYPES,
     )
