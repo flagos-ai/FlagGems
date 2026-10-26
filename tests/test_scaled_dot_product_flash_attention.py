@@ -154,8 +154,10 @@ def _assert_metadata(actual, expected, query):
     assert len(actual) == len(expected) == 9
     assert actual[0].device == query.device
     assert actual[0].dtype == query.dtype
+    assert actual[0].shape == expected[0].shape
     assert actual[1].device == query.device
     assert actual[1].dtype == torch.float32
+    assert actual[1].shape == expected[1].shape
     assert len(actual) == len(expected) == 9
     assert actual[2] is None and expected[2] is None
     assert actual[3] is None and expected[3] is None
