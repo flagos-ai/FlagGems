@@ -288,14 +288,23 @@ def conv_transpose2d(
     orig_dtype = input.dtype
     # bf16 has no vendor transpose instantiation at all; for fp16 the fusion
     # entry's grouped+strided combination is far slower than the fp32 v2 one.
-    # Both ride the C handler's cast pipeline (cast -> fp32 v2 -> cast back).
-    use_cast_ride = orig_dtype == torch.bfloat16 or (
+    # Both ride the cast pipeline (cast -> fp32 -> cast back).
+    use_cast_ride = (
         orig_dtype == torch.float16 and groups > 1 and (stride_h > 1 or stride_w > 1)
     )
+    # fp16 accumulation differs from the reference; widen these cases to fp32
+    # and round once on the way out.
+    fp32_ride = (
+        orig_dtype in (torch.float16, torch.bfloat16)
+        and not use_cast_ride
+        and (
+            orig_dtype == torch.bfloat16
+            or bias is not None
+            or dilation_h != 1
+            or dilation_w != 1
+        )
+    )
     scratch_x = scratch_w = None
-    if use_cast_ride:
-        scratch_x = _scratch_buf(input.shape, input.device)
-        scratch_w = _scratch_buf(weight.shape, weight.device)
 
     if bias is None:
         # a None argument would drop its slot from the launcher parameter
@@ -316,6 +325,14 @@ def conv_transpose2d(
         # is mathematically exact and lets us pass dilation=(1, 1).
         weight = _fold_dilation(weight, dilation_h, dilation_w)
         dilation_h, dilation_w = 1, 1
+
+    if use_cast_ride:
+        scratch_x = _scratch_buf(input.shape, input.device)
+        # size from the (possibly folded) weight shape.
+        scratch_w = _scratch_buf(weight.shape, weight.device)
+    if fp32_ride:
+        input = _fast_cast(input, torch.float32)
+        weight = _fast_cast(weight, torch.float32)
 
     # output_padding identity: conv_transpose(s, p, op) equals
     #   conv_transpose(s, p - op, 0)[op : op + out]
@@ -362,6 +379,12 @@ def conv_transpose2d(
             (n, out_c, alloc_h, alloc_w), device=input.device, dtype=orig_dtype
         )
         sx, sw = scratch_x, scratch_w
+    elif fp32_ride:
+        out = torch.empty(
+            (n, out_c, alloc_h, alloc_w), device=input.device, dtype=torch.float32
+        )
+        out_final = out
+        sx = sw = out
     else:
         out = torch.empty(
             (n, out_c, alloc_h, alloc_w), device=input.device, dtype=input.dtype
@@ -428,6 +451,8 @@ def conv_transpose2d(
             out = out + b
         else:
             out = _fast_cast(_fast_cast(out, torch.float32) + b, out.dtype)
+    if fp32_ride:
+        out = _fast_cast(out, orig_dtype)
     if input_was_unbatched:
         out = out.squeeze(0)
     return out
