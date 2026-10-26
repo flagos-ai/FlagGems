@@ -55,6 +55,13 @@ def test_divide_equal_shape(shape, dtype, caplog, request):
     assert res_out.shape == ref_out.shape
     assert res_out.dtype == dtype
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    assert inp.device == inp_before.device
+    assert inp.dtype == inp_before.dtype and inp.shape == inp_before.shape
+    assert other.device == other_before.device
+    assert other.dtype == other_before.dtype and other.shape == other_before.shape
+    if utils.TO_CPU:
+        inp_before = inp_before.cpu()
+        other_before = other_before.cpu()
     utils.gems_assert_equal(inp, inp_before)
     utils.gems_assert_equal(other, other_before)
 
