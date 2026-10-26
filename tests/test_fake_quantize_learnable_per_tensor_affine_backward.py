@@ -41,6 +41,20 @@ def _reference(tensor):
     return utils.to_reference(tensor, True).to(tensor.dtype)
 
 
+def _reference_backward(inputs, quant_min, quant_max, grad_factor):
+    reference_inputs = tuple(_reference(tensor) for tensor in inputs)
+    try:
+        return _ATEN_OP(*reference_inputs, quant_min, quant_max, grad_factor)
+    except RuntimeError as error:
+        if (
+            reference_inputs[1].dtype == torch.bfloat16
+            and "Expected X.scalar_type() == ScalarType::Float to be true, but got false."
+            in str(error)
+        ):
+            pytest.skip("This native fake-quant backward reference rejects bfloat16")
+        raise
+
+
 @pytest.mark.fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -49,10 +63,6 @@ def _reference(tensor):
 def test_fake_quantize_learnable_per_tensor_affine_backward(
     shape, dtype, quant_min, quant_max, zero_point, grad_factor
 ):
-    if dtype != torch.float32:
-        pytest.skip(
-            "Native learnable per-tensor fake-quant backward requires float32 input"
-        )
     _seed()
     self_t = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     grad = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
@@ -60,12 +70,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
     zero_point_t = torch.tensor([zero_point], dtype=dtype, device=flag_gems.device)
     inputs = grad, self_t, scale, zero_point_t
     snapshots = tuple(tensor.clone() for tensor in inputs)
-    ref_out = _ATEN_OP(
-        *(_reference(tensor) for tensor in inputs),
-        quant_min,
-        quant_max,
-        grad_factor,
-    )
+    ref_out = _reference_backward(inputs, quant_min, quant_max, grad_factor)
     result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
         *inputs, quant_min, quant_max, grad_factor
     )
@@ -91,17 +96,13 @@ def test_fake_quantize_learnable_per_tensor_affine_backward(
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine_backward
 @pytest.mark.parametrize("dtype", BACKWARD_DTYPES)
 def test_fake_quantize_learnable_per_tensor_affine_backward_clamped(dtype):
-    if dtype != torch.float32:
-        pytest.skip(
-            "Native learnable per-tensor fake-quant backward requires float32 input"
-        )
     _seed()
     self_t = torch.randn((8, 16), dtype=dtype, device=flag_gems.device) * 100.0
     grad = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
     scale = torch.tensor([0.01], dtype=dtype, device=flag_gems.device)
     zero_point = torch.tensor([0.0], dtype=dtype, device=flag_gems.device)
     inputs = grad, self_t, scale, zero_point
-    ref_out = _ATEN_OP(*(_reference(tensor) for tensor in inputs), -3, 3, 1.0)
+    ref_out = _reference_backward(inputs, -3, 3, 1.0)
     result = flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
         *inputs, -3, 3, 1.0
     )
