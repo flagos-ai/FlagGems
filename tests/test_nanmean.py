@@ -136,7 +136,10 @@ def test_nanmean_empty_and_dtype():
     reference = torch.nanmean(
         utils.to_reference(inp), dim=1, keepdim=True, dtype=torch.float64
     )
-    torch.testing.assert_close(result, reference, equal_nan=True)
+    assert result.device == inp.device
+    assert result.dtype == reference.dtype == torch.float64
+    assert result.shape == reference.shape
+    torch.testing.assert_close(result.cpu(), reference.cpu(), equal_nan=True)
 
 
 @pytest.mark.nanmean

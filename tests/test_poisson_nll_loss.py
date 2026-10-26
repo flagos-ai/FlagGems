@@ -90,8 +90,8 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
     )
     target = torch.tensor([1.0, 0.0, 2.0, 0.0, 1.0], dtype=dtype, device=input.device)
     ref = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(input),
-        utils.to_reference(target),
+        utils.to_reference(input, upcast=True),
+        utils.to_reference(target, upcast=True),
         False,
         True,
         1e-8,

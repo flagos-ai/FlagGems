@@ -550,7 +550,7 @@ def _complex_observation(result, reference, inp):
     assert result.device == inp.device
     assert result.dtype == inp.dtype
     assert result.shape == reference.shape
-    if flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "ascend" or utils.TO_CPU:
         return result.cpu(), reference.cpu()
     return result, reference.to(result.device)
 
