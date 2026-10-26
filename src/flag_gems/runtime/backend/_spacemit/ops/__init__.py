@@ -1,63 +1,149 @@
-# from .addmm import addmm
-from .argmax import argmax
-from .argmin import argmin
-from .bmm import bmm, bmm_out
-
-# from .conv1d import conv1d
-# from .conv2d import conv2d
-# from .thnn_conv2d import thnn_conv2d
-# from .conv_depthwise2d import _conv_depthwise2d
-# from .flash_attention import flash_attention, scaled_dot_product_attention
-from .gelu import gelu, gelu_, gelu_backward
-from .layernorm import layer_norm
-from .mean import global_avg_pool, mean_dim
-from .mm import mm, mm_out
-from .mv import mv
-from .pow import (
-    pow_scalar,
-    pow_tensor_scalar,
-    pow_tensor_scalar_,
-    pow_tensor_tensor,
-    pow_tensor_tensor_,
+from .abs import abs, abs_
+from .add import add, add_
+from .addmm import addmm
+from .all import all, all_dim, all_dims
+from .amax import amax
+from .bitwise_and import (
+    bitwise_and_scalar,
+    bitwise_and_scalar_,
+    bitwise_and_scalar_tensor,
+    bitwise_and_tensor,
+    bitwise_and_tensor_,
 )
+from .bitwise_not import bitwise_not, bitwise_not_
+from .bitwise_or import (
+    bitwise_or_scalar,
+    bitwise_or_scalar_,
+    bitwise_or_scalar_tensor,
+    bitwise_or_tensor,
+    bitwise_or_tensor_,
+)
+from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .cos import cos, cos_
+from .div import true_divide, true_divide_
+from .eq import eq, eq_scalar
+from .erf import erf, erf_
+from .exp import exp, exp_
+# flash_attention (and its attn_vfwmacc dependency) and mm require the
+# smt_rvisa eDSL, which only exists on newer spine-triton builds; keep this
+# backend importable on the older stack, where those ops fall back to the
+# general implementations instead of breaking the whole vendor registration
+try:
+    from .flash_attention import (
+        flash_attention,
+        scaled_dot_product_attention,
+        scaled_dot_product_flash_attention_for_cpu,
+    )
+except ImportError:
+    pass
+from .gelu import gelu
+from .ge import ge, ge_scalar
+from .gt import gt, gt_scalar
+from .isinf import isinf
+from .isnan import isnan
+from .le import le, le_scalar
+from .log_softmax import log_softmax
+from .lt import lt, lt_scalar
+from .max import max, max_dim
+from .mean import mean, mean_dim
+from .min import min, min_dim
+try:
+    from .mm import mm, mm_out
+except ImportError:
+    pass
+from .mul import mul, mul_
+from .mv import mv
+from .relu import relu, relu_
 from .rsqrt import rsqrt
 from .sigmoid import sigmoid
 from .silu import silu
-from .softmax import softmax
-from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .sin import sin, sin_
+from .softmax import softmax, softmax_out
+from .sub import sub, sub_
+from .sum import sum as sum
+from .sum import sum_dim, sum_dim_out
+from .tanh import tanh, tanh_
+from .triu import triu
 
 __all__ = [
-    # "addmm",
-    "argmax",
-    "argmin",
-    "bmm",
-    "bmm_out",
-    # "conv1d",
-    # "conv2d",
-    # "_conv_depthwise2d",
-    # "flash_attention",
+    "abs",
+    "abs_",
+    "add",
+    "add_",
+    "addmm",
+    "all",
+    "all_dim",
+    "all_dims",
+    "amax",
+    "bitwise_and_scalar",
+    "bitwise_and_scalar_",
+    "bitwise_and_scalar_tensor",
+    "bitwise_and_tensor",
+    "bitwise_and_tensor_",
+    "bitwise_not",
+    "bitwise_not_",
+    "bitwise_or_scalar",
+    "bitwise_or_scalar_",
+    "bitwise_or_scalar_tensor",
+    "bitwise_or_tensor",
+    "bitwise_or_tensor_",
+    "clamp",
+    "clamp_",
+    "clamp_tensor",
+    "clamp_tensor_",
+    "cos",
+    "cos_",
+    "eq",
+    "eq_scalar",
+    "erf",
+    "erf_",
+    "exp",
+    "exp_",
+    "flash_attention",
     "gelu",
-    "gelu_",
-    "gelu_backward",
-    "global_avg_pool",
-    "layer_norm",
+    "ge",
+    "ge_scalar",
+    "gt",
+    "gt_scalar",
+    "isinf",
+    "isnan",
+    "le",
+    "le_scalar",
+    "log_softmax",
+    "lt",
+    "lt_scalar",
+    "max",
+    "max_dim",
+    "mean",
     "mean_dim",
+    "min",
+    "min_dim",
     "mm",
     "mm_out",
+    "mul",
+    "mul_",
     "mv",
-    "pow_scalar",
-    "pow_tensor_scalar",
-    "pow_tensor_scalar_",
-    "pow_tensor_tensor",
-    "pow_tensor_tensor_",
+    "relu",
+    "relu_",
     "rsqrt",
-    # "scaled_dot_product_attention",
     "sigmoid",
     "silu",
+    "sin",
+    "sin_",
     "softmax",
-    # "thnn_conv2d",
-    "where_scalar_other",
-    "where_scalar_self",
-    "where_self",
-    "where_self_out",
+    "softmax_out",
+    "sub",
+    "sub_",
+    "sum",
+    "sum_dim",
+    "sum_dim_out",
+    "tanh",
+    "tanh_",
+    "triu",
+    "scaled_dot_product_attention",
+    "scaled_dot_product_flash_attention_for_cpu",
 ]
+
+# drop entries whose module was unavailable on this stack (see the
+# try/except guards above) so __all__ never names an undefined symbol
+__all__ = [name for name in __all__ if name in globals()]
