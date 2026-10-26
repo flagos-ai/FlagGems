@@ -21,11 +21,25 @@ from . import base, consts
 def _input_fn(shape, dtype, device):
     input = torch.randn(shape, dtype=dtype, device=device)
     target = torch.randint(0, 5, shape, device=device).to(dtype)
-    yield input, target
+    yield input, target, True, False, 1e-8, 1
 
 
-def _torch_poisson_nll_loss(input, target):
-    return torch.ops.aten.poisson_nll_loss(input, target, True, False, 1e-8, 1)
+def _torch_poisson_nll_loss(input, target, log_input, full, eps, reduction):
+    return torch.ops.aten.poisson_nll_loss(
+        input, target, log_input, full, eps, reduction
+    )
+
+
+def _case_fn(shape, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": shape, "target": shape},
+        params={"log_input": True, "full": False, "eps": 1e-8, "reduction": 1},
+        builder_args=(shape,),
+    )
+
+
+def _build_inputs(plan, dtype, device):
+    return next(_input_fn(plan.builder_args[0], dtype, device))
 
 
 class PoissonNllLossBenchmark(base.GenericBenchmark):
@@ -43,7 +57,8 @@ class PoissonNllLossBenchmark(base.GenericBenchmark):
 @pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss():
     bench = PoissonNllLossBenchmark(
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs,
         op_name="poisson_nll_loss",
         torch_op=_torch_poisson_nll_loss,
         dtypes=consts.FLOAT_DTYPES,
