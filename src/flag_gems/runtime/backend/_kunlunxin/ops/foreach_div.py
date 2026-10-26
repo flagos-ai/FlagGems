@@ -42,7 +42,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
