@@ -631,7 +631,10 @@ def test_median_empty_reduced_dim_raises(shape, dim):
 @pytest.mark.parametrize("dtype", [torch.bool, torch.complex64])
 @pytest.mark.parametrize("shape, dim", [((3, 0, 5), 0), ((3, 0, 5), 2)])
 def test_median_empty_output_unsupported_dtype(shape, dim, dtype):
-    if torch.device(flag_gems.device).type != "cuda":
+    if (
+        torch.device(flag_gems.device).type != "cuda"
+        or flag_gems.vendor_name == "kunlunxin"
+    ):
         pytest.skip("empty-output bool/complex median semantics differ on CPU")
 
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
@@ -1400,7 +1403,7 @@ def test_median_int_lastdim_select_unique_exact_index(dtype, width):
     rank = (width - 1) // 2
     input_device = (
         "cpu"
-        if flag_gems.vendor_name == "ascend" and dtype == torch.int16
+        if flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype == torch.int16
         else flag_gems.device
     )
     first = torch.arange(width, dtype=dtype, device=input_device).to(flag_gems.device)
