@@ -93,7 +93,6 @@ def test_debug_has_internal_overlap():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._debug_has_internal_overlap,
-        gems_op=flag_gems._debug_has_internal_overlap,
         dtypes=(
             consts.FLOAT_DTYPES
             + consts.INT_DTYPES
