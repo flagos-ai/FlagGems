@@ -31,10 +31,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_binary import (
-    _foreach_lerp_List as _generic_lerp_list,
-    _foreach_lerp__List as _generic_lerp__list,
-)
+from flag_gems.ops._foreach_binary import _foreach_lerp__List as _generic_lerp__list
+from flag_gems.ops._foreach_binary import _foreach_lerp_List as _generic_lerp_list
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
 from ._foreach_direct import _pick_block, _select_ptr
@@ -47,18 +45,86 @@ _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 @triton.jit
 def _foreach_lerp_list_kernel(
-    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
-    b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15,
-    w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15,
-    o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    b0,
+    b1,
+    b2,
+    b3,
+    b4,
+    b5,
+    b6,
+    b7,
+    b8,
+    b9,
+    b10,
+    b11,
+    b12,
+    b13,
+    b14,
+    b15,
+    w0,
+    w1,
+    w2,
+    w3,
+    w4,
+    w5,
+    w6,
+    w7,
+    w8,
+    w9,
+    w10,
+    w11,
+    w12,
+    w13,
+    w14,
+    w15,
+    o0,
+    o1,
+    o2,
+    o3,
+    o4,
+    o5,
+    o6,
+    o7,
+    o8,
+    o9,
+    o10,
+    o11,
+    o12,
+    o13,
+    o14,
+    o15,
     t,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    a = _select_ptr(t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)
-    b = _select_ptr(t, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15)
-    w = _select_ptr(t, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15)
-    o = _select_ptr(t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15)
+    a = _select_ptr(
+        t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
+    )
+    b = _select_ptr(
+        t, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15
+    )
+    w = _select_ptr(
+        t, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15
+    )
+    o = _select_ptr(
+        t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15
+    )
     a = a.to(tl.pointer_type(DT))
     b = b.to(tl.pointer_type(DT))
     w = w.to(tl.pointer_type(DT))
@@ -109,7 +175,13 @@ def _try_direct(self, other, weight, inplace):
 
     grid = (nt, n // block)
     _foreach_lerp_list_kernel[grid](
-        *a_ptrs, *b_ptrs, *w_ptrs, *o_ptrs, nt, tl_dtype(dtype), block,
+        *a_ptrs,
+        *b_ptrs,
+        *w_ptrs,
+        *o_ptrs,
+        nt,
+        tl_dtype(dtype),
+        block,
         num_warps=num_warps,
         unroll_num=16,
         buffer_size_limit=8192,

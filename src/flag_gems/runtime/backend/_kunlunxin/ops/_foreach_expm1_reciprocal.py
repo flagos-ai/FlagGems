@@ -49,16 +49,50 @@ _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 @triton.jit
 def _foreach_unary_direct_kernel(
-    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
-    o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    o0,
+    o1,
+    o2,
+    o3,
+    o4,
+    o5,
+    o6,
+    o7,
+    o8,
+    o9,
+    o10,
+    o11,
+    o12,
+    o13,
+    o14,
+    o15,
     t,
     DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     BLOCK: tl.constexpr,
     OP: tl.constexpr,
 ):
-    a = _select_ptr(t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15)
-    o = _select_ptr(t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15)
+    a = _select_ptr(
+        t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
+    )
+    o = _select_ptr(
+        t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15
+    )
     a = a.to(tl.pointer_type(DT))
     o = o.to(tl.pointer_type(OUT_DT))
     chunk = tl.program_id(1)
@@ -99,7 +133,13 @@ def _try_direct(tensors, op):
 
     grid = (nt, n // block)
     _foreach_unary_direct_kernel[grid](
-        *a_ptrs, *o_ptrs, nt, tl_dtype(dtype), tl_dtype(dtype), block, op,
+        *a_ptrs,
+        *o_ptrs,
+        nt,
+        tl_dtype(dtype),
+        tl_dtype(dtype),
+        block,
+        op,
         num_warps=num_warps,
         unroll_num=16,
         buffer_size_limit=8192,
@@ -186,7 +226,13 @@ def _launch_inplace(tensors, op):
     ptrs = [t.data_ptr() for t in tensors] + pad
     grid = (nt, n // block)
     _foreach_unary_direct_kernel[grid](
-        *ptrs, *ptrs, nt, tl_dtype(first.dtype), tl_dtype(first.dtype), block, op,
+        *ptrs,
+        *ptrs,
+        nt,
+        tl_dtype(first.dtype),
+        tl_dtype(first.dtype),
+        block,
+        op,
         num_warps=num_warps,
         unroll_num=16,
         buffer_size_limit=8192,
