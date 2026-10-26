@@ -114,10 +114,12 @@ def masked_fill_fast_kernel(
 ):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
-    xi = tl.load(x_ptr + tid)
-    m = tl.load(mask_ptr + tid).to(xi.dtype)
-    r = xi + (V - xi) * m
-    tl.store(out_ptr + tid, r)
+    x = tl.load(x_ptr + tid).to(tl.float32)
+    m = tl.load(mask_ptr + tid).to(tl.float32)
+    vv = tl.full((), V, tl.float32)
+    one = tl.full((), 1.0, tl.float32)
+    r = x * (one - m) + vv * m
+    tl.store(out_ptr + tid, r.to(out_ptr.dtype.element_ty))
 
 
 @triton.jit
@@ -127,24 +129,19 @@ def masked_fill_fast_masked_kernel(
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     m0 = tid < numel
-    xi = tl.load(x_ptr + tid, mask=m0)
-    m = tl.load(mask_ptr + tid, mask=m0).to(xi.dtype)
-    r = xi + (V - xi) * m
-    tl.store(out_ptr + tid, r, mask=m0)
-
-
-def _fast_bits(value, dtype):
-    iview = torch.int16 if dtype in (torch.float16, torch.bfloat16) else torch.int32
-    return int(torch.tensor([value], dtype=dtype).view(iview).item())
+    x = tl.load(x_ptr + tid, mask=m0).to(tl.float32)
+    m = tl.load(mask_ptr + tid, mask=m0).to(tl.float32)
+    vv = tl.full((), V, tl.float32)
+    one = tl.full((), 1.0, tl.float32)
+    r = x * (one - m) + vv * m
+    tl.store(out_ptr + tid, r.to(out_ptr.dtype.element_ty), mask=m0)
 
 
 def _masked_fill_fast(inp, mask, value, out):
     n = inp.numel()
-    bits = _fast_bits(value, inp.dtype)
-    xi = inp.view(
-        torch.int16 if inp.dtype in (torch.float16, torch.bfloat16) else torch.int32
-    )
-    oi = out.view(xi.dtype)
+    # Round the fill value to the tensor dtype first, then to f32 (exact), so
+    # `x*(1-m) + V*m` reproduces masked_fill's cast semantics bit-exactly.
+    v = float(torch.tensor(value, dtype=inp.dtype).item())
     mask8 = mask.view(torch.int8)
     launch = dict(
         num_warps=4,
@@ -154,11 +151,11 @@ def _masked_fill_fast(inp, mask, value, out):
     )
     if n % _FAST_TILE == 0:
         masked_fill_fast_kernel[(n // _FAST_TILE,)](
-            oi, xi, mask8, V=bits, TILE=_FAST_TILE, **launch
+            out, inp, mask8, V=v, TILE=_FAST_TILE, **launch
         )
     else:
         masked_fill_fast_masked_kernel[(math.ceil(n / _FAST_TILE),)](
-            oi, xi, mask8, n, V=bits, TILE=_FAST_TILE, **launch
+            out, inp, mask8, n, V=v, TILE=_FAST_TILE, **launch
         )
     return out
 
