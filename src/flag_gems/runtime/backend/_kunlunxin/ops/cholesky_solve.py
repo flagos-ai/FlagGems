@@ -849,6 +849,8 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
         X.shape != B.shape
         or X.dtype != B.dtype
         or X.device != B.device
+        or X.is_conj()
+        or X.is_neg()
         or torch._C._is_alias_of(X, B)
         or torch._C._is_alias_of(X, L)
     ):
@@ -856,6 +858,11 @@ def cholesky_solve(B, L, upper=False, *, _out=None):
         return _generic._copy_cholesky_solve_out(result, X)
 
     if B.dtype == torch.complex64:
+        # The complex kernels read raw storage, so a pending conjugate or
+        # negative flag has to be materialised before dispatch.
+        if B.is_conj() or B.is_neg() or L.is_conj() or L.is_neg():
+            B = B.resolve_conj().resolve_neg()
+            L = L.resolve_conj().resolve_neg()
         if _can_use_complex_row_kernel(B, L):
             if X.shape == B.shape and X.dtype == B.dtype and X.device == B.device:
                 return _cholesky_solve_complex_rows(B, L, upper, X)
