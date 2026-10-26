@@ -29,14 +29,14 @@ def test_linalg_cholesky(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
     if (
-        flag_gems.vendor_name == "ascend"
+        flag_gems.vendor_name in ("ascend", "iluvatar")
         and dtype == torch.float64
         and not utils.TO_CPU
     ):
-        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+        pytest.skip("backend native linalg_cholesky reference does not support float64")
     factory_device = (
         "cpu"
-        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        if flag_gems.vendor_name in ("ascend", "iluvatar") and dtype == torch.float64
         else flag_gems.device
     )
     n = shape[-1]
@@ -64,14 +64,14 @@ def test_linalg_cholesky_upper(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
     if (
-        flag_gems.vendor_name == "ascend"
+        flag_gems.vendor_name in ("ascend", "iluvatar")
         and dtype == torch.float64
         and not utils.TO_CPU
     ):
-        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+        pytest.skip("backend native linalg_cholesky reference does not support float64")
     factory_device = (
         "cpu"
-        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        if flag_gems.vendor_name in ("ascend", "iluvatar") and dtype == torch.float64
         else flag_gems.device
     )
     n = shape[-1]
@@ -99,14 +99,14 @@ def test_linalg_cholesky_batch(shape, dtype):
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
     if (
-        flag_gems.vendor_name == "ascend"
+        flag_gems.vendor_name in ("ascend", "iluvatar")
         and dtype == torch.float64
         and not utils.TO_CPU
     ):
-        pytest.skip("Ascend native linalg_cholesky reference does not support float64")
+        pytest.skip("backend native linalg_cholesky reference does not support float64")
     factory_device = (
         "cpu"
-        if flag_gems.vendor_name == "ascend" and dtype == torch.float64
+        if flag_gems.vendor_name in ("ascend", "iluvatar") and dtype == torch.float64
         else flag_gems.device
     )
     n = shape[-1]
