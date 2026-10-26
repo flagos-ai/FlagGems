@@ -432,6 +432,12 @@ def avg_pool3d(
 
     input = input.contiguous()
 
+    # ATen also accepts an unbatched ``(C, D, H, W)`` input and returns the
+    # same rank. Promote it to a batch of one and squeeze the result back.
+    unbatched = input.ndim == 4
+    if unbatched:
+        input = input.unsqueeze(0)
+
     (
         kernel_d,
         kernel_h,
@@ -462,7 +468,7 @@ def avg_pool3d(
     )
 
     if output.numel() == 0:
-        return output
+        return output.squeeze(0) if unbatched else output
 
     grid = lambda meta: (
         in_n * in_c,
@@ -502,7 +508,7 @@ def avg_pool3d(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return output
+    return output.squeeze(0) if unbatched else output
 
 
 def avg_pool3d_backward(
@@ -537,6 +543,13 @@ def avg_pool3d_backward(
 
     grad_output = grad_output.contiguous()
 
+    # ATen pairs a 4-D input with a 4-D grad_output and returns a 4-D gradient;
+    # promote both so the kernel keeps seeing the batched layout.
+    unbatched = input.ndim == 4
+    if unbatched:
+        input = input.unsqueeze(0)
+        grad_output = grad_output.unsqueeze(0)
+
     (
         kernel_d,
         kernel_h,
@@ -559,7 +572,8 @@ def avg_pool3d_backward(
     grad_input = torch.empty_like(input)
 
     if grad_output.numel() == 0:
-        return grad_input.zero_()
+        grad_input = grad_input.zero_()
+        return grad_input.squeeze(0) if unbatched else grad_input
 
     # Input-centric grid: iterate over input positions
     grid = lambda meta: (
@@ -600,4 +614,4 @@ def avg_pool3d_backward(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return grad_input
+    return grad_input.squeeze(0) if unbatched else grad_input
