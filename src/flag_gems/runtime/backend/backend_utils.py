@@ -35,6 +35,8 @@ class VendorDescriptor:
     fp64_enabled: bool = True
     bf16_enabled: bool = True
     int64_enabled: bool = True
+    fp8_enabled: bool = True
+    complex_enabled: bool = True
     tle_enabled: bool = False
 
 

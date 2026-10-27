@@ -8,7 +8,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
+from .linalg_lu_factor import _lu_scale_col, linalg_lu_factor, linalg_lu_factor_out
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +133,7 @@ def _linalg_lu_factor_ex_kernel(
         )
 
         col_vals = tl.sum(work * pivot_col_mask, axis=1)
-        multipliers = tl.where(rows > j_ind, col_vals / pivot, col_vals)
+        multipliers = _lu_scale_col(col_vals, pivot, rows > j_ind)
         work = tl.where(
             (rows[:, None] > j_ind) & (cols[None, :] == j_ind),
             multipliers[:, None],

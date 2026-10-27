@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def silu_and_mul_kernel(x, y):
     x_fp32 = x.to(tl.float32)
-    x_silu = tl.fdiv(x_fp32, (1.0 + tl.exp(-x_fp32)))
+    x_silu = x_fp32 * (1.0 / (1.0 + tl.exp(-x_fp32)))
     return x_silu * y
 
 

@@ -37,3 +37,13 @@ def sym_stride(A):
     # sym_stride returns tensor metadata (stride), not a computed tensor
     # For FlagGems integration, we return the actual stride
     return A.stride()
+
+
+def sym_stride_int(A, dim):
+    """Returns the stride of one dimension of the input tensor.
+
+    Matches the ``aten::sym_stride.int`` overload
+    (``Tensor self, int dim`` -> ``SymInt``).
+    """
+    logger.debug("GEMS SYM_STRIDE_INT")
+    return A.stride(dim)

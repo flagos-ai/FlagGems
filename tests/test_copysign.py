@@ -32,8 +32,7 @@ def test_copysign(shape, dtype):
     ref_other = utils.to_reference(other)
     ref_out = torch.copysign(ref_input, ref_other)
 
-    with flag_gems.use_gems():
-        res_out = torch.copysign(input, other)
+    res_out = flag_gems.copysign(input, other)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,7 +50,6 @@ def test_copysign_out(shape, dtype):
     ref_out = torch.empty_like(ref_input)
 
     torch.copysign(ref_input, ref_other, out=ref_out)
-    with flag_gems.use_gems():
-        torch.copysign(input, other, out=out)
+    flag_gems.copysign_out(input, other, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)

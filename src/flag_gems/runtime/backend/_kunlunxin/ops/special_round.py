@@ -3,7 +3,7 @@ import logging
 from .round import round as _round
 from .round import round_out as _round_out
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 def special_round(input, *, decimals=0):

@@ -15,8 +15,7 @@ def test_upsample_nearest_exact2d(shape, dtype, factor):
     ref_x = utils.to_reference(x)
     out_size = [shape[2] * factor, shape[3] * factor]
     ref_out = torch.ops.aten._upsample_nearest_exact2d(ref_x, out_size, None, None)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._upsample_nearest_exact2d(x, out_size, None, None)
+    res_out = flag_gems._upsample_nearest_exact2d(x, out_size, None, None)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -35,10 +34,7 @@ def test_upsample_nearest_exact2d_out(shape, dtype, factor):
     torch.ops.aten._upsample_nearest_exact2d.out(
         ref_x, out_size, None, None, out=ref_out
     )
-    with flag_gems.use_gems():
-        out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
-        res_out = torch.ops.aten._upsample_nearest_exact2d.out(
-            x, out_size, None, None, out=out
-        )
+    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems._upsample_nearest_exact2d_out(x, out_size, None, None, out=out)
     assert res_out.data_ptr() == out.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -49,7 +49,7 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS EQ SCALAR")
+    logger.debug("GEMS EQ_SCALAR")
     return eq_func_scalar(A, B)
 
 

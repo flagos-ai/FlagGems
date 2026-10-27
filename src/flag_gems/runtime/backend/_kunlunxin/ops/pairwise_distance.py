@@ -10,6 +10,7 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 exp2 = tl_extra_shim.exp2
 log2 = tl_extra_shim.log2
+pow = tl_extra_shim.pow
 logger = logging.getLogger(__name__)
 
 _BLOCK_D = 2048
@@ -30,7 +31,8 @@ def _pd_mode_reduce(diff, p_scalar, MODE: tl.constexpr):
     elif MODE == 4:
         return tl.min(diff)
     else:
-        return tl.sum(exp2(p_scalar * log2(diff)))
+        p_const = tl.full(diff.shape, p_scalar, diff.dtype)
+        return tl.sum(pow(diff, p_const))
 
 
 @triton.jit
@@ -393,27 +395,60 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
     p_scalar = float(p) if mode == 5 else 1.0
 
     with torch_device_fn.device(x1.device):
-        if D <= _BLOCK_D:
-            PS, PNP, PNSC = _piece_args(D)
-            _pd_small_kernel[(N,)](
+        if D == 1:
+            # Single-lane rows: one flat elementwise pass (grid N // _D1_BLOCK)
+            # instead of N per-row reduction programs (row-serial latency,
+            # measured ~90x slower for this shape class).
+            _pd_d1_kernel[(triton.cdiv(N, _D1_BLOCK),)](
                 x1,
                 x2,
                 out,
                 N,
-                D,
                 eps,
-                p_scalar,
                 MODE=mode,
-                S=PS,
-                NP=PNP,
-                NSCALAR=PNSC,
+                BLOCK=_D1_BLOCK,
             )
+        elif D <= _BLOCK_D:
+            PS, PNP, PNSC = _piece_args(D)
+            if N >= _MULTI_MIN_N:
+                # Launch-bound regime (many small-D rows): _ROWS independent
+                # rows per program cut the program count by _ROWS.
+                _pd_small_multi_kernel[(triton.cdiv(N, _ROWS),)](
+                    x1,
+                    x2,
+                    out,
+                    N,
+                    D,
+                    eps,
+                    p_scalar,
+                    MODE=mode,
+                    S=PS,
+                    NP=PNP,
+                    NSCALAR=PNSC,
+                    ROWS=_ROWS,
+                )
+            else:
+                _pd_small_kernel[(N,)](
+                    x1,
+                    x2,
+                    out,
+                    N,
+                    D,
+                    eps,
+                    p_scalar,
+                    MODE=mode,
+                    S=PS,
+                    NP=PNP,
+                    NSCALAR=PNSC,
+                )
         else:
-            MID = D // _BLOCK_D
-            T = D - MID * _BLOCK_D
-            if mode in (3, 4):
-                MID = D // 4096
-                T = D - MID * 4096
+            # All modes use 4096-lane chunks when D >= 4096 (halves the chunk
+            # program count vs 2048 and is numerically safe: tl.sum is complete
+            # for BLOCK <= 8192). D in (2048, 4096) keeps 2048-lane chunks so
+            # the remainder stays short; the small path handles D <= 2048.
+            chunk_block = 4096 if (mode in (3, 4) or D >= 2 * _BLOCK_D) else _BLOCK_D
+            MID = D // chunk_block
+            T = D - MID * chunk_block
             P = MID + (1 if T > 0 else 0)
             if mode == 3:
                 pad = -float("inf")
@@ -422,10 +457,11 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
             else:
                 pad = 0.0
             stride = triton.next_power_of_2(P)
+            if stride < 2:
+                stride = 2
             if stride > _MID_BLOCK:
                 stride = triton.cdiv(P, _MID_BLOCK) * _MID_BLOCK
             mid = torch.full((N * stride,), pad, device=x1.device, dtype=torch.float32)
-            chunk_block = 4096 if mode in (3, 4) else _BLOCK_D
             _pd_chunk_kernel[(N, MID)](
                 x1,
                 x2,

@@ -1176,7 +1176,7 @@ def multi_margin_loss_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS OUT")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_OUT")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:
@@ -1336,7 +1336,7 @@ def multi_margin_loss_backward(
     weight=None,
     reduction=1,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS BACKWARD")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_BACKWARD")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:
@@ -1369,7 +1369,7 @@ def multi_margin_loss_backward_out(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS MULTI_MARGIN_LOSS BACKWARD OUT")
+    logger.debug("GEMS MULTI_MARGIN_LOSS_BACKWARD_OUT")
     p = _normalize_p(p)
     reduction = _normalize_reduction(reduction)
     try:

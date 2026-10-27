@@ -2,8 +2,9 @@ import logging
 
 import triton
 import triton.language as tl
-import triton.language.extra.xpu.libdevice as xpu
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+
+from flag_gems.utils import tl_extra_shim
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -17,14 +18,17 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=True,
-    kunlunAutoGrid=True,
+    kunlunAutoGrid=False,
     unroll_num=8,
 )
 
 
 @triton.jit
 def _fmod(x, y):
-    return xpu.fmod(x, y)
+    # xpu libdevice fmod(f32) is exactly-rounded (IEEE-754), avoiding both the
+    # slow f64 software-emulation path and the fcmp-select truncation (known
+    # slow/miscompile family on this backend).
+    return tl_extra_shim.fmod(x, y)
 
 
 @pointwise_dynamic(

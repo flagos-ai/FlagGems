@@ -51,8 +51,6 @@ def test_affine_grid_generator(shape, dtype, align_corners):
     ref_theta = utils.to_reference(theta)
 
     ref_out = torch.affine_grid_generator(ref_theta, size, align_corners)
-    # with flag_gems.use_gems():
-    #     res_out = torch.affine_grid_generator(theta, size, align_corners)
     res_out = flag_gems.affine_grid_generator(theta, size, align_corners)
 
     # PyTorch CUDA's affine_grid_generator has known float32 precision issues

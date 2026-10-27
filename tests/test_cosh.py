@@ -28,8 +28,7 @@ def test_cosh(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cosh(inp)
+    res_out = flag_gems.cosh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,8 +41,7 @@ def test_cosh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.cosh_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cosh_(inp)
+    res_out = flag_gems.cosh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -57,9 +55,8 @@ def test_cosh_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.cosh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.cosh(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.cosh_out(inp, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -75,8 +72,7 @@ def test_cosh_special_values(dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cosh(inp)
+    res_out = flag_gems.cosh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -89,8 +85,7 @@ def test_cosh_empty(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cosh(inp)
+    res_out = flag_gems.cosh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -101,9 +96,8 @@ def test_cosh_empty(shape, dtype):
 def test_cosh_even_property(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        pos = torch.cosh(inp)
-        neg = torch.cosh(-inp)
+    pos = flag_gems.cosh(inp)
+    neg = flag_gems.cosh(-inp)
 
     ref_pos = utils.to_reference(pos, True)
     utils.gems_assert_close(neg, ref_pos, dtype)
@@ -118,7 +112,6 @@ def test_cosh_noncontiguous(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cosh(inp)
+    res_out = flag_gems.cosh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

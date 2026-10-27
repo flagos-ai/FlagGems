@@ -203,21 +203,66 @@ runs the vendor's GPU-availability check, sets up the environment via the
 `setup-flaggems` composite action, then runs `tools/test-op.sh` (or an
 alternate `test_script` for `alpha-ops`) scoped to the PR's changed files.
 
+Five vendors (Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin) only have their
+driver/runtime available inside a vendor container, so those jobs run inside
+that container. The container image, `docker run` options, volume mounts, and
+runner labels all come from the `container` block of each backend's entry in
+`.github/backends.json`: `unittest.yaml` reads them into the test matrix and
+passes them through to `backend-test.yaml` as `workflow_call` inputs. This
+keeps the container configuration in a single source of truth
+(`.github/backends.json`) shared with the on-demand `command.yaml` workflow
+below.
+
 Because these jobs are skipped when the corresponding label is absent, a
 `unittest-required` gate job aggregates `preprocess`, `cpp-op`, `python-op`,
 `examples`, `backend-tests`, and `alpha-ops` with `if: always()`, so branch
 protection can require a single, always-present check instead of the
 individual label-gated jobs.
+
+The `python-op` and `examples` jobs in `unittest.yaml`, plus the jobs in
+`cpp-op-test.yaml` and `backend-test.yaml`, first run an independent
+`actions/checkout` with `continue-on-error`, then call `checkout-retry`.
+The composite action makes at most three attempts (one initial attempt and
+two retries, waiting 30s before each retry), so these PR test jobs can make
+up to four checkout attempts in total. `rule-check.yaml` and `linter.yml`
+instead use `robust-checkout` with `rounds: 30` (the action defaults to 3).
+Each round tries SSH when a key is available, then HTTPS, and stops after a
+successful fetch. Each link has a 10s connection probe and a 180s hard fetch
+timeout. HTTP fetch also aborts after 20s below 20 KiB/s; SSH uses keepalives
+every 5s and aborts after two unanswered probes. There is no fixed wait
+between rounds. The 30-round setting counts link-rotation cycles, not checkout
+retries; the four-attempt limit above does not apply to these workflows.
 -->
 `backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会检出 PR 代码、
 运行对应厂商的 GPU 可用性检查、通过 `setup-flaggems` 组合动作搭建环境，
 然后针对 PR 变更的文件运行 `tools/test-op.sh`（`alpha-ops` 场景下使用
 另一个 `test_script`）。
 
+其中五个厂商（Hygon、MetaX、MooreThreads、Iluvatar、Kunlunxin）的驱动/运行时
+只在厂商容器内可用，因此这些作业需在对应容器中运行。容器镜像、`docker run`
+选项、卷挂载以及 runner 标签，全部来自 `.github/backends.json` 中各后端条目下的
+`container` 配置块：`unittest.yaml` 将其读入测试矩阵，并作为 `workflow_call`
+入参透传给 `backend-test.yaml`。这样容器配置就保存在单一数据源
+（`.github/backends.json`）中，并与下文的按需工作流 `command.yaml` 共用。
+
 由于这些作业在对应标签缺失时会被跳过，`unittest-required` 汇总作业会以
 `if: always()` 聚合 `preprocess`、`cpp-op`、`python-op`、`examples`、
 `backend-tests`、`alpha-ops` 的结果，使分支保护规则可以要求这一个始终存在
 的检查，而不必逐个要求那些按标签门控的作业。
+
+`unittest.yaml` 的 `python-op`、`examples`，以及 `cpp-op-test.yaml`、
+`backend-test.yaml` 中的作业，会先独立执行一次允许失败的
+`actions/checkout`，再调用 `checkout-retry`。该组合动作内部最多尝试检出
+3 次（首次检出加最多 2 次重试，每次重试前等待 30 秒），因此这类 PR 测试
+作业合计最多可尝试检出 4 次。
+
+`rule-check.yaml` 和 `linter.yml` 均将 `robust-checkout` 的 `rounds`
+设为 30（动作默认值为 3）。每轮先尝试 SSH（有密钥时），再尝试 HTTPS；
+任一链路成功就结束，密钥为空时跳过 SSH。每条链路的连接探测最多 10 秒，
+fetch 的硬超时为 180 秒。HTTP fetch 若连续 20 秒低于 20 KiB/s 也会中止；
+SSH 每隔 5 秒发送 keepalive，连续 2 次无响应则中止。
+轮次之间没有固定等待。“30 轮”指链路轮转次数，并非重试检出 30 次；
+上述 4 次检出上限不适用于这两个工作流。
 
 <!--
 ## 5. On-demand and comment-triggered workflows
@@ -232,6 +277,23 @@ can trigger them by commenting:
 - **`fix-sort.yaml`** (`/fix-sort`) — runs `tools/ci_checks/sort_exports.py
   --fix` from the trusted `master` copy against the PR branch, commits and
   pushes the fix if anything changed, and comments the outcome.
+
+`command.yaml` has one generic job plus one job per containerized vendor
+(Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin). Because the workflow is
+triggered by `issue_comment` rather than `pull_request`, the default checkout
+doesn't land on the PR branch, so each job checks it out explicitly via the
+`gh pr checkout` in the `checkout-pr` composite action. The per-vendor jobs
+resolve their container image, options, and runner labels from the same
+`container` block in `.github/backends.json` (looked up in `preprocess`), so
+the container configuration is not duplicated between `command.yaml` and
+`backend-test.yaml`. The shared step logic lives in composite actions under
+`.github/actions/`:
+
+| Composite action | Used for |
+|---|---|
+| `checkout-pr` | Install the `gh` CLI if missing (picking the binary matching the runner's CPU arch), then `gh pr checkout` the PR branch |
+| `setup-flaggems` | Run `setup.sh` for the backend and the GPU-availability check |
+| `ondemand-test` | Run the single-operator accuracy/perf comparison, upload the result artifact, and post the PR comment |
 -->
 ## 5. 按需触发与评论触发的工作流
 
@@ -245,6 +307,21 @@ can trigger them by commenting:
 - **`fix-sort.yaml`**（`/fix-sort`） —— 使用来自可信 `master` 分支的
   `tools/ci_checks/sort_exports.py --fix` 脚本对 PR 分支执行修复，
   如有变更则自动提交并推送，同时评论说明处理结果。
+
+`command.yaml` 包含一个通用作业，外加每个容器化厂商各一个作业（Hygon、MetaX、
+MooreThreads、Iluvatar、Kunlunxin）。由于该工作流由 `issue_comment` 而非
+`pull_request` 触发，默认的检出不会落在 PR 分支上，因此每个作业都通过
+`checkout-pr` 组合动作里的 `gh pr checkout` 显式检出 PR 分支。各厂商作业从
+`.github/backends.json` 中相同的 `container` 配置块解析容器镜像、选项和 runner
+标签（在 `preprocess` 中查表），因而容器配置不会在 `command.yaml` 和
+`backend-test.yaml` 之间重复。共享的步骤逻辑放在 `.github/actions/` 下的组合
+动作中：
+
+| 组合动作 | 用途 |
+|---|---|
+| `checkout-pr` | 若缺失则安装 `gh` CLI（按 runner 的 CPU 架构选择对应二进制），再 `gh pr checkout` 检出 PR 分支 |
+| `setup-flaggems` | 针对该后端运行 `setup.sh` 及 GPU 可用性检查 |
+| `ondemand-test` | 运行单算子精度/性能对比、上传结果产物并发布 PR 评论 |
 
 <!--
 ## Setting required status checks

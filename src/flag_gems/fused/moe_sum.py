@@ -71,7 +71,7 @@ def moe_sum(
     input: torch.Tensor,
     output: torch.Tensor,
 ):
-    logger.debug("GEMS MOE SUM")
+    logger.debug("GEMS MOE_SUM")
     num_tokens, topk, hidden_size = input.shape
     input_strides = input.stride()
     output_strides = output.stride()

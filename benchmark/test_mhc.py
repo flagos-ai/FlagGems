@@ -16,7 +16,10 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.fused.mhc.hc_head_fused_kernel import hc_head_fused_kernel
+from flag_gems.fused.mhc.hc_head_fused_kernel import (
+    hc_head_fused_kernel,
+    hc_head_fused_kernel_ref,
+)
 
 try:
     from vllm.model_executor.layers.mhc import (
@@ -295,11 +298,18 @@ def _hc_head_fused_kernel_ref(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-@pytest.mark.skipif(not HAS_VLLM, reason="vLLM not available")
+@pytest.mark.skipif(
+    not HAS_VLLM and flag_gems.vendor_name != "kunlunxin",
+    reason="vLLM not available",
+)
 def test_hc_head_fused_kernel():
+    if flag_gems.vendor_name == "kunlunxin":
+        torch_op = hc_head_fused_kernel_ref
+    else:
+        torch_op = _hc_head_fused_kernel_ref
     bench = HCHeadFusedBenchmark(
         op_name="hc_head_fused_kernel",
-        torch_op=_hc_head_fused_kernel_ref,
+        torch_op=torch_op,
         gems_op=hc_head_fused_kernel,
         dtypes=[torch.bfloat16],
     )

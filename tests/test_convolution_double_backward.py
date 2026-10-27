@@ -191,22 +191,21 @@ def test_convolution_double_backward(
     )
 
     # GEMS computation on GPU.
-    with flag_gems.use_gems():
-        res = torch.ops.aten._convolution_double_backward(
-            ggI,
-            ggW,
-            ggb,
-            gO,
-            w,
-            x,
-            list(stride),
-            list(padding),
-            list(dilation),
-            transposed,
-            list(output_padding),
-            groups,
-            output_mask,
-        )
+    res = flag_gems._convolution_double_backward(
+        ggI,
+        ggW,
+        ggb,
+        gO,
+        w,
+        x,
+        list(stride),
+        list(padding),
+        list(dilation),
+        transposed,
+        list(output_padding),
+        groups,
+        output_mask,
+    )
 
     # fp32 keeps the default 1e-4 atol; fp16 accumulates across several summed
     # convolution contributions in grad_ggO, so loosen the absolute tolerance.

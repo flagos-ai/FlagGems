@@ -30,7 +30,10 @@ def _chebyshev_polynomial_u_tensor_n_kernel(
         n_f32 = tl.load(n_ptr + offs).to(tl.float32)
     x_f32 = x.to(tl.float32)
 
-    ukm2 = x_f32 * 0.0 + 1.0
+    # U_0 is the constant polynomial 1.0 for every x, including +-inf and NaN.
+    # Building it as `x * 0.0 + 1.0` would poison it (inf * 0.0 = NaN),
+    # so the constant tensor is materialised directly.
+    ukm2 = tl.full(x_f32.shape, 1.0, tl.float32)
     ukm1 = 2.0 * x_f32
     result = tl.where(n_f32 < 0.5, ukm2, ukm1)
 
@@ -64,7 +67,8 @@ def _chebyshev_polynomial_u_scalar_n_kernel(
     x_f32 = x.to(tl.float32)
 
     if n_idx == 0:
-        result = x_f32 * 0.0 + 1.0
+        # U_0 == 1.0 for every x, including +-inf and NaN (see tensor-n kernel).
+        result = tl.full(x_f32.shape, 1.0, tl.float32)
     elif n_idx == 1:
         result = 2.0 * x_f32
     elif n_idx == 2:
@@ -130,6 +134,12 @@ def special_chebyshev_polynomial_u(x, n):
         n = n.to(device=x.device, dtype=torch.int32)
     else:
         n_min = n_max = int(n)
+        # ATen's Scalar overload truncates a non-integer n toward zero (that is
+        # also what the generic implementation does via `torch.tensor(int(n))`).
+        # The kernel selects its branch with exact `n_idx == k` comparisons, so
+        # the raw float would fall through to the final `else` (U_5) instead of
+        # the truncated order.  Normalise before handing it over as a constexpr.
+        n = n_min
 
     if n_max > 5 or n_min < 0:
         raise ValueError(

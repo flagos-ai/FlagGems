@@ -87,6 +87,198 @@ def isin_empty_func(x, invert):
     return invert
 
 
+# ---------------------------------------------------------------------------
+# Raw 1D fast path for `isin(elements, python_scalar)` (aten::isin.Tensor_Scalar
+# with a non-tensor `test_elements`).
+#
+# Why a raw kernel instead of the pointwise_dynamic wrappers above:
+# the pw wrapper is host-bound for the whole official matrix -- on XPU 6 the
+# device kernel of `isin_scalar_eq_func` is ~7.6 us (XPURT_PROF: 50 calls /
+# 0.381 ms, harness/perf_ir/kernel_time_isin_tensor_scalar_pre.log) while the
+# end-to-end call costs ~0.156-0.195 ms.  The wrapper overhead is ~92 us even
+# for `torch.neg` (native launch is ~10 us), plus ~30-60 us of extra host work
+# that only this op pays: `torch.full((), v, device=...)` (an extra device
+# launch, itself dispatching through the gems `full` wrapper) followed by a
+# blocking `in1.ravel()[0].item()` device->host sync.  Both are avoidable
+# because the scalar is already a host-side Python object.
+#
+# Semantics reproduced (verified against the torch CPU reference used by the
+# harness, `--ref cpu`): `isin(x, s)` is exactly `x == s` under ATen's
+# "wrapped number" scalar promotion, i.e. the Python scalar is folded into the
+# *tensor's* dtype for integral tensors and for float tensors, while a Python
+# float next to an integral tensor compares in the default float dtype
+# (`torch.result_type(int32, 0.5) == torch.float32`).  Evidence (CPU, this
+# torch build): `isin(uint8_255, -1) -> True`, `isin(int8_-1, 255) -> True`,
+# `isin(int32_0, 2**40) -> True`, `isin(int16_5, 70000) -> False`,
+# `isin(fp16_inf, 1e30) -> True` -- all identical to `x == s`.  The pw kernels
+# compare in Triton's own promotion domain, which differs from ATen: the
+# pre-change matrix probe (harness/results/isin_tensor_scalar/probe_matrix_pre.log)
+# reports 30 mismatches, e.g. uint8 vs -1 / int32 vs 2**40 / int32 vs 2**63-1
+# / fp16 + bf16 vs 1e30 -- because the non-specialized `val0` arg also freezes
+# its element type at the first call of the process (same trap as multiply_).
+# Folding the scalar on the *host* into the comparison domain and passing it as
+# a `tl.constexpr` removes both problems at once.
+# ---------------------------------------------------------------------------
+_ISIN_SCALAR_MAX_BLOCK = 131072
+_ISIN_SCALAR_UNROLL_NUM = 16
+_ISIN_SCALAR_BUFFER_SIZE_LIMIT = 8192
+_ISIN_SCALAR_MEMORY_ASYNC = False
+
+
+def _isin_scalar_pick_block(n_elements):
+    # Same bucketing as the other flat XPU pointwise kernels (special_erfcx):
+    # unmasked when the length divides the tile exactly (the masked memory path
+    # costs ~2x on this backend), masked fallback otherwise.
+    if n_elements >= 1_048_576 and n_elements % _ISIN_SCALAR_MAX_BLOCK == 0:
+        return _ISIN_SCALAR_MAX_BLOCK, 32, False
+    if n_elements >= 262_144 and n_elements % 32768 == 0:
+        return 32768, 8, False
+    if n_elements >= 16384 and n_elements % 16384 == 0:
+        return 16384, 8, False
+    if n_elements <= 65536:
+        return 2048, 4, True
+    return 16384, 8, True
+
+
+_ISIN_INT_WRAP = {
+    torch.int8: (8, True),
+    torch.uint8: (8, False),
+    torch.int16: (16, True),
+    torch.int32: (32, True),
+    torch.int64: (64, True),
+}
+# float dtypes handled by the fast path (float8/exotic kinds keep the generic
+# pointwise_dynamic route)
+_ISIN_SCALAR_FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+def _isin_scalar_wrap(scalar, dtype):
+    """Fold a Python scalar into `dtype` exactly like ATen's wrapped-number
+    scalar promotion does (integral wrap-around included), host-side only."""
+    if isinstance(scalar, bool):
+        scalar = int(scalar)
+    if dtype.is_floating_point:
+        # single rounding Python-float -> dtype (fp64 on the host is exact
+        # enough to avoid the fp64->fp32->fp16 double-rounding trap)
+        return float(torch.tensor(float(scalar), dtype=torch.float64).to(dtype).item())
+    bits, signed = _ISIN_INT_WRAP[dtype]
+    value = int(scalar) & ((1 << bits) - 1)
+    if signed and value >= (1 << (bits - 1)):
+        value -= 1 << bits
+    return value
+
+
+@triton.jit
+def _isin_scalar_cmp_kernel(
+    in0_ptr,
+    out_ptr,
+    n_elements,
+    S: tl.constexpr,
+    INVERT: tl.constexpr,
+    FP_CAST: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offset < n_elements
+    x = tl.load(in0_ptr + offset, mask=mask, other=0)
+    if FP_CAST:
+        x = x.to(tl.float32)
+    if INVERT:
+        result = x != S
+    else:
+        result = x == S
+    tl.store(out_ptr + offset, result, mask=mask)
+
+
+@triton.jit
+def _isin_scalar_cmp_kernel_unmasked(
+    in0_ptr,
+    out_ptr,
+    S: tl.constexpr,
+    INVERT: tl.constexpr,
+    FP_CAST: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset = pid * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(in0_ptr + offset)
+    if FP_CAST:
+        x = x.to(tl.float32)
+    if INVERT:
+        result = x != S
+    else:
+        result = x == S
+    tl.store(out_ptr + offset, result)
+
+
+def _isin_scalar_raw(in0, scalar, invert):
+    """isin(in0, python_scalar) via a flat compare kernel.
+
+    Returns None when the input layout / dtype is outside the fast path (empty,
+    bool, non-contiguous) so the caller keeps the generic pointwise_dynamic
+    path unchanged.
+    """
+    if not isinstance(scalar, (bool, int, float)):
+        # complex / exotic Scalar kinds keep the generic fallback behaviour
+        return None
+    if not torch.is_tensor(in0) or in0.dtype == torch.bool:
+        return None
+    n_elements = in0.numel()
+    if n_elements == 0 or not in0.is_contiguous():
+        return None
+    if in0.is_floating_point():
+        if in0.dtype not in _ISIN_SCALAR_FLOAT_DTYPES:
+            return None  # float8 / exotic float kinds keep the generic route
+        cmp_dtype = in0.dtype
+        fp_cast = False
+    elif in0.dtype in _ISIN_INT_WRAP:
+        if isinstance(scalar, float):
+            # ATen: python float next to an integral tensor -> default fp32
+            cmp_dtype = torch.float32
+            fp_cast = True
+        else:
+            cmp_dtype = in0.dtype
+            fp_cast = False
+    else:
+        return None
+    value = _isin_scalar_wrap(scalar, cmp_dtype)
+    out = torch.empty(in0.shape, dtype=torch.bool, device=in0.device)
+    block_size, num_warps, masked = _isin_scalar_pick_block(n_elements)
+    grid = (
+        triton.cdiv(n_elements, block_size) if masked else n_elements // block_size,
+    )
+    with torch_device_fn.device(in0.device.index):
+        if masked:
+            _isin_scalar_cmp_kernel[grid](
+                in0,
+                out,
+                n_elements,
+                S=value,
+                INVERT=invert,
+                FP_CAST=fp_cast,
+                BLOCK=block_size,
+                num_warps=num_warps,
+                unroll_num=_ISIN_SCALAR_UNROLL_NUM,
+                buffer_size_limit=_ISIN_SCALAR_BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=_ISIN_SCALAR_MEMORY_ASYNC,
+            )
+        else:
+            _isin_scalar_cmp_kernel_unmasked[grid](
+                in0,
+                out,
+                S=value,
+                INVERT=invert,
+                FP_CAST=fp_cast,
+                BLOCK=block_size,
+                num_warps=num_warps,
+                unroll_num=_ISIN_SCALAR_UNROLL_NUM,
+                buffer_size_limit=_ISIN_SCALAR_BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=_ISIN_SCALAR_MEMORY_ASYNC,
+            )
+    return out
+
+
 def launch_arg(BLOCK_M, BLOCK_N, N, num_warps):
     return BLOCK_M, min(BLOCK_N, triton.next_power_of_2(N)), num_warps
 
@@ -434,6 +626,14 @@ def isin(
         return tensor_any(isin_scalar_eq_func(in1, in0))
     elif not torch.is_tensor(in1):
         assert torch.is_tensor(in0)
+        # aten::isin.Tensor_Scalar: the Python scalar stays on the host, so a
+        # flat compare kernel can be launched directly (no `torch.full` device
+        # round-trip, no blocking `.item()`).  Returns None for layouts/dtypes
+        # outside the fast path (empty, bool, non-contiguous, complex scalars),
+        # which keep the pointwise_dynamic route below unchanged.
+        fast_out = _isin_scalar_raw(in0, in1, invert)
+        if fast_out is not None:
+            return fast_out
         in1 = torch.full((), in1, device=in0.device)
     if in0.numel() == 0:
         return torch.empty_like(in0, dtype=torch.bool)

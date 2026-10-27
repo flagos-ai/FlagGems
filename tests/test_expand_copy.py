@@ -63,8 +63,7 @@ def test_expand_copy(shape, dtype):
         target_shape = tuple(target_shape)
 
     ref_out = torch.ops.aten.expand_copy(ref_inp, target_shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.expand_copy(inp, target_shape)
+    res_out = flag_gems.expand_copy(inp, target_shape)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -78,7 +77,6 @@ def test_expand_copy_same_shape(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.expand_copy(ref_inp, shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.expand_copy(inp, shape)
+    res_out = flag_gems.expand_copy(inp, shape)
 
     utils.gems_assert_equal(res_out, ref_out)

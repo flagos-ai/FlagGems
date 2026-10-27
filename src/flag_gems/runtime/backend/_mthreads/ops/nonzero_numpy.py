@@ -22,9 +22,7 @@ from flag_gems.ops.nonzero_numpy import nonzero_numpy as default_nonzero_numpy
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 # Threshold for single-block vs two-pass strategy. A block-local cumsum is cheap
 # up to a few thousand lanes; past that the two-pass count + fill avoids the

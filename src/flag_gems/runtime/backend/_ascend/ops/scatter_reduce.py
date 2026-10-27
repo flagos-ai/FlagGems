@@ -269,7 +269,7 @@ def _scatter_reduce_with_segments(inp, dim, index, src, reduce, include_self):
             reduce,
             include_self=include_self,
         )
-    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES
+    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES or inp.numel() > 65535
     if reduce in ("sum", "mean") or (reduce == "prod" and source_product):
         return _scatter_reduce_sorted_segments(
             inp,
@@ -297,7 +297,7 @@ def _scatter_reduce_with_claims(inp, dim, index, src, reduce, include_self):
     CANN 9 can also replay below the product performance boundary. Claim every
     non-idempotent source program instead of using tensor size as a safety gate.
     """
-    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES
+    source_product = index.numel() >= _SOURCE_PRODUCT_MIN_INDICES or inp.numel() > 65535
     if reduce == "prod" and not source_product:
         return _scatter_reduce_prod(inp, dim, index, src, include_self)
     replay_sensitive = reduce in ("sum", "prod", "mean")
