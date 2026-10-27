@@ -271,8 +271,20 @@ jobs:
           # existing runtime image: reconcile reinstalls only the mismatches
           # from the vendor's own index (pypi_base/mirror), leaving matching
           # packages in place. Backends without a key keep trusting the image.
+          #
+          # Caveat this handles: the runtime image bakes the compiler (flagtree)
+          # OUTSIDE the venv (e.g. /opt/flagtree) and ahead of the venv on
+          # sys.path. pip reinstalls the pin INTO the venv but cannot uninstall
+          # the baked copy ("Not uninstalling flagtree at /opt/..."), so
+          # `import flagtree` still resolves to the stale baked version. To make
+          # backends.yaml authoritative, after reconcile we delete the shadowing
+          # copy whenever the imported version doesn't match the pin, then
+          # hard-verify the importable version — failing the job rather than
+          # silently testing the wrong compiler build.
           if [ -n "${{ matrix.backend }}" ]; then
             python3 tools/reconcile_backend_deps.py "${{ matrix.backend }}"
+            BACKEND="${{ matrix.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+              python3 tools/enforce_pinned_compiler.py "${{ matrix.backend }}"
           fi
           pip install .[test]
 
