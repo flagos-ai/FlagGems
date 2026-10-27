@@ -46,15 +46,18 @@ def _affine_grid_generator_backward_2d_kernel(
     Strategy: iterate over h, for each h tile over w with BLOCK_W.
     This gives better numerical stability since we accumulate along W first.
     """
+    acc_dtype = (
+        tl.float64 if grad_output_ptr.type.element_ty == tl.float64 else tl.float32
+    )
     batch_id = tl.program_id(0)
 
     # Accumulators for all 6 output elements
-    acc_00 = 0.0  # grad[...,0] * x
-    acc_01 = 0.0  # grad[...,0] * y
-    acc_02 = 0.0  # grad[...,0] * 1
-    acc_10 = 0.0  # grad[...,1] * x
-    acc_11 = 0.0  # grad[...,1] * y
-    acc_12 = 0.0  # grad[...,1] * 1
+    acc_00 = tl.zeros((), dtype=acc_dtype)  # grad[...,0] * x
+    acc_01 = tl.zeros((), dtype=acc_dtype)  # grad[...,0] * y
+    acc_02 = tl.zeros((), dtype=acc_dtype)  # grad[...,0] * 1
+    acc_10 = tl.zeros((), dtype=acc_dtype)  # grad[...,1] * x
+    acc_11 = tl.zeros((), dtype=acc_dtype)  # grad[...,1] * y
+    acc_12 = tl.zeros((), dtype=acc_dtype)  # grad[...,1] * 1
 
     # Base offset for this batch
     batch_offset = batch_id * H * W * 2
@@ -65,19 +68,22 @@ def _affine_grid_generator_backward_2d_kernel(
 
     for h in range(H):
         # y coordinate for this row
+        h_f = h.to(acc_dtype)
         if align_corners:
-            y_val = 2.0 * h / (H - 1) - 1.0 if H > 1 else 0.0
+            y_val = (
+                2.0 * h_f / (H - 1) - 1.0 if H > 1 else tl.zeros((), dtype=acc_dtype)
+            )
         else:
-            y_val = (2.0 * h + 1.0) / H - 1.0
+            y_val = (2.0 * h_f + 1.0) / H - 1.0
 
         # Row base offset
         row_offset = batch_offset + h * W * 2
 
         # Accumulate along W in tiles
-        row_sum_g0 = tl.zeros([BLOCK_W], dtype=tl.float32)
-        row_sum_g1 = tl.zeros([BLOCK_W], dtype=tl.float32)
-        row_sum_g0x = tl.zeros([BLOCK_W], dtype=tl.float32)
-        row_sum_g1x = tl.zeros([BLOCK_W], dtype=tl.float32)
+        row_sum_g0 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_sum_g1 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_sum_g0x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+        row_sum_g1x = tl.zeros([BLOCK_W], dtype=acc_dtype)
 
         for w_tile in range(num_w_tiles):
             w_offs = w_tile * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -86,19 +92,19 @@ def _affine_grid_generator_backward_2d_kernel(
             # x coordinates
             if align_corners:
                 x_coords = (
-                    2.0 * w_offs.to(tl.float32) / (W - 1) - 1.0
+                    2.0 * w_offs.to(acc_dtype) / (W - 1) - 1.0
                     if W > 1
-                    else tl.zeros([BLOCK_W], dtype=tl.float32)
+                    else tl.zeros([BLOCK_W], dtype=acc_dtype)
                 )
             else:
-                x_coords = (2.0 * w_offs.to(tl.float32) + 1.0) / W - 1.0
+                x_coords = (2.0 * w_offs.to(acc_dtype) + 1.0) / W - 1.0
 
             # Load grad_output[n, h, w, 0] and grad_output[n, h, w, 1]
             ptrs_0 = grad_output_ptr + row_offset + w_offs * 2
             ptrs_1 = grad_output_ptr + row_offset + w_offs * 2 + 1
 
-            g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(tl.float32)
-            g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(tl.float32)
+            g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(acc_dtype)
+            g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(acc_dtype)
 
             row_sum_g0 += g0
             row_sum_g1 += g1
@@ -143,6 +149,9 @@ def _affine_grid_backward_2d_per_elem_kernel(
     Per-element kernel: grid=(N*6,), each program computes one grad_theta element.
     Better parallelism for small N with large H*W.
     """
+    acc_dtype = (
+        tl.float64 if grad_output_ptr.type.element_ty == tl.float64 else tl.float32
+    )
     pid = tl.program_id(0)
     batch_id = pid // 6
     elem_id = pid % 6
@@ -152,18 +161,21 @@ def _affine_grid_backward_2d_per_elem_kernel(
     batch_offset = batch_id * H * W * 2
     num_w_tiles = tl.cdiv(W, BLOCK_W)
 
-    acc = 0.0
+    acc = tl.zeros((), dtype=acc_dtype)
 
     for h in range(H):
         # Always compute y_val
+        h_f = h.to(acc_dtype)
         if align_corners:
-            y_val = 2.0 * h / (H - 1) - 1.0 if H > 1 else 0.0
+            y_val = (
+                2.0 * h_f / (H - 1) - 1.0 if H > 1 else tl.zeros((), dtype=acc_dtype)
+            )
         else:
-            y_val = (2.0 * h + 1.0) / H - 1.0
+            y_val = (2.0 * h_f + 1.0) / H - 1.0
 
         row_offset = batch_offset + h * W * 2
 
-        row_acc = tl.zeros([BLOCK_W], dtype=tl.float32)
+        row_acc = tl.zeros([BLOCK_W], dtype=acc_dtype)
 
         for w_tile in range(num_w_tiles):
             w_offs = w_tile * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -171,17 +183,17 @@ def _affine_grid_backward_2d_per_elem_kernel(
 
             # Load grad_output[n, h, w, i]
             ptrs = grad_output_ptr + row_offset + w_offs * 2 + i
-            g = tl.load(ptrs, mask=w_mask, other=0.0).to(tl.float32)
+            g = tl.load(ptrs, mask=w_mask, other=0.0).to(acc_dtype)
 
             # x coordinates
             if align_corners:
                 x_coords = (
-                    2.0 * w_offs.to(tl.float32) / (W - 1) - 1.0
+                    2.0 * w_offs.to(acc_dtype) / (W - 1) - 1.0
                     if W > 1
-                    else tl.zeros([BLOCK_W], dtype=tl.float32)
+                    else tl.zeros([BLOCK_W], dtype=acc_dtype)
                 )
             else:
-                x_coords = (2.0 * w_offs.to(tl.float32) + 1.0) / W - 1.0
+                x_coords = (2.0 * w_offs.to(acc_dtype) + 1.0) / W - 1.0
 
             # Select: j==0 -> g*x, j==1 -> g (multiply by y later), j==2 -> g
             # We compute g*x when j==0, otherwise just g
@@ -214,45 +226,56 @@ def _affine_grid_generator_backward_3d_kernel(
     Each program computes all 12 elements for one batch.
     coords: (x->w, y->h, z->d, 1)
     """
+    acc_dtype = (
+        tl.float64 if grad_output_ptr.type.element_ty == tl.float64 else tl.float32
+    )
     batch_id = tl.program_id(0)
 
     # 12 accumulators: grad_theta[i, j] for i in [0,1,2], j in [0,1,2,3]
-    acc_00 = 0.0  # g[...,0] * x
-    acc_01 = 0.0  # g[...,0] * y
-    acc_02 = 0.0  # g[...,0] * z
-    acc_03 = 0.0  # g[...,0] * 1
-    acc_10 = 0.0  # g[...,1] * x
-    acc_11 = 0.0  # g[...,1] * y
-    acc_12 = 0.0  # g[...,1] * z
-    acc_13 = 0.0  # g[...,1] * 1
-    acc_20 = 0.0  # g[...,2] * x
-    acc_21 = 0.0  # g[...,2] * y
-    acc_22 = 0.0  # g[...,2] * z
-    acc_23 = 0.0  # g[...,2] * 1
+    acc_00 = tl.zeros((), dtype=acc_dtype)  # g[...,0] * x
+    acc_01 = tl.zeros((), dtype=acc_dtype)  # g[...,0] * y
+    acc_02 = tl.zeros((), dtype=acc_dtype)  # g[...,0] * z
+    acc_03 = tl.zeros((), dtype=acc_dtype)  # g[...,0] * 1
+    acc_10 = tl.zeros((), dtype=acc_dtype)  # g[...,1] * x
+    acc_11 = tl.zeros((), dtype=acc_dtype)  # g[...,1] * y
+    acc_12 = tl.zeros((), dtype=acc_dtype)  # g[...,1] * z
+    acc_13 = tl.zeros((), dtype=acc_dtype)  # g[...,1] * 1
+    acc_20 = tl.zeros((), dtype=acc_dtype)  # g[...,2] * x
+    acc_21 = tl.zeros((), dtype=acc_dtype)  # g[...,2] * y
+    acc_22 = tl.zeros((), dtype=acc_dtype)  # g[...,2] * z
+    acc_23 = tl.zeros((), dtype=acc_dtype)  # g[...,2] * 1
 
     batch_offset = batch_id * D * H * W * 3
     num_w_tiles = tl.cdiv(W, BLOCK_W)
 
     for d in range(D):
+        d_f = d.to(acc_dtype)
         if align_corners:
-            z_val = 2.0 * d / (D - 1) - 1.0 if D > 1 else 0.0
+            z_val = (
+                2.0 * d_f / (D - 1) - 1.0 if D > 1 else tl.zeros((), dtype=acc_dtype)
+            )
         else:
-            z_val = (2.0 * d + 1.0) / D - 1.0
+            z_val = (2.0 * d_f + 1.0) / D - 1.0
 
         for h in range(H):
+            h_f = h.to(acc_dtype)
             if align_corners:
-                y_val = 2.0 * h / (H - 1) - 1.0 if H > 1 else 0.0
+                y_val = (
+                    2.0 * h_f / (H - 1) - 1.0
+                    if H > 1
+                    else tl.zeros((), dtype=acc_dtype)
+                )
             else:
-                y_val = (2.0 * h + 1.0) / H - 1.0
+                y_val = (2.0 * h_f + 1.0) / H - 1.0
 
             row_offset = batch_offset + (d * H * W + h * W) * 3
 
-            row_g0 = tl.zeros([BLOCK_W], dtype=tl.float32)
-            row_g1 = tl.zeros([BLOCK_W], dtype=tl.float32)
-            row_g2 = tl.zeros([BLOCK_W], dtype=tl.float32)
-            row_g0x = tl.zeros([BLOCK_W], dtype=tl.float32)
-            row_g1x = tl.zeros([BLOCK_W], dtype=tl.float32)
-            row_g2x = tl.zeros([BLOCK_W], dtype=tl.float32)
+            row_g0 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            row_g1 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            row_g2 = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            row_g0x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            row_g1x = tl.zeros([BLOCK_W], dtype=acc_dtype)
+            row_g2x = tl.zeros([BLOCK_W], dtype=acc_dtype)
 
             for w_tile in range(num_w_tiles):
                 w_offs = w_tile * BLOCK_W + tl.arange(0, BLOCK_W)
@@ -260,20 +283,20 @@ def _affine_grid_generator_backward_3d_kernel(
 
                 if align_corners:
                     x_coords = (
-                        2.0 * w_offs.to(tl.float32) / (W - 1) - 1.0
+                        2.0 * w_offs.to(acc_dtype) / (W - 1) - 1.0
                         if W > 1
-                        else tl.zeros([BLOCK_W], dtype=tl.float32)
+                        else tl.zeros([BLOCK_W], dtype=acc_dtype)
                     )
                 else:
-                    x_coords = (2.0 * w_offs.to(tl.float32) + 1.0) / W - 1.0
+                    x_coords = (2.0 * w_offs.to(acc_dtype) + 1.0) / W - 1.0
 
                 ptrs_0 = grad_output_ptr + row_offset + w_offs * 3
                 ptrs_1 = grad_output_ptr + row_offset + w_offs * 3 + 1
                 ptrs_2 = grad_output_ptr + row_offset + w_offs * 3 + 2
 
-                g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(tl.float32)
-                g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(tl.float32)
-                g2 = tl.load(ptrs_2, mask=w_mask, other=0.0).to(tl.float32)
+                g0 = tl.load(ptrs_0, mask=w_mask, other=0.0).to(acc_dtype)
+                g1 = tl.load(ptrs_1, mask=w_mask, other=0.0).to(acc_dtype)
+                g2 = tl.load(ptrs_2, mask=w_mask, other=0.0).to(acc_dtype)
 
                 row_g0 += g0
                 row_g1 += g1
@@ -329,7 +352,8 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
         align_corners: Whether to align corners.
 
     Note: Only floating-point dtypes are supported (float16, bfloat16, float32, float64).
-          Internal accumulation is always done in float32 for numerical stability.
+          Accumulation follows the input dtype: float64 inputs accumulate in float64,
+          others accumulate in float32 for numerical stability.
 
     Returns:
         grad_theta: Gradient w.r.t. theta.

@@ -18,7 +18,9 @@ from typing import Generator
 import pytest
 import torch
 
-from . import base
+import flag_gems
+
+from . import base, consts
 
 # Hardcoded shapes: affine_grid_generator_backward requires
 # grad_output [N,H,W,2] + size [N,C,H,W]; CI --level core overrides
@@ -32,6 +34,11 @@ AFFINE_GRID_BACKWARD_SHAPES = [
     (32, 32, 32),
     (2, 512, 512),
 ]
+
+# float64 excluded on devices without fp64 support
+AFFINE_GRID_BACKWARD_DTYPES = list(consts.FLOAT_DTYPES)
+if flag_gems.runtime.device.support_fp64:
+    AFFINE_GRID_BACKWARD_DTYPES.append(torch.float64)
 
 
 class AffineGridBackwardBenchmark(base.Benchmark):
@@ -53,7 +60,7 @@ def test_affine_grid_generator_backward():
     bench = AffineGridBackwardBenchmark(
         op_name="affine_grid_generator_backward",
         torch_op=torch.ops.aten.affine_grid_generator_backward,
-        # float32 only: kernel uses float32 accumulation internally
-        dtypes=[torch.float32],
+        # accumulation follows input dtype (float64 in / float64 out)
+        dtypes=AFFINE_GRID_BACKWARD_DTYPES,
     )
     bench.run()
