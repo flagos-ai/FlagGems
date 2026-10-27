@@ -127,7 +127,8 @@ def test_linalg_cross_conjugated_view(dtype):
     ref_other = utils.to_reference(other)
 
     ref_out = torch.linalg.cross(ref_input, ref_other, dim=1)
-    with flag_gems.use_gems(include=["linalg_cross"]):
-        result = torch.linalg.cross(input, other, dim=1)
+    # Direct GEMS call: the dispatcher materialises a lazy conjugate view before
+    # invoking the kernel, so resolve it here to match the dispatcher path.
+    result = flag_gems.linalg_cross(input.resolve_conj(), other, dim=1)
 
     _assert_cross_close(result, ref_out, dtype)
