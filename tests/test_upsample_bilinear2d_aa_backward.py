@@ -92,14 +92,27 @@ def test_upsample_bilinear2d_aa_backward(
         align_corners,
     ).to(dtype)
 
-    with flag_gems.use_gems():
-        res_out = upsample_bilinear2d_aa_backward_call(
-            res_grad.to(dtype),
-            shape,
-            align_corners,
-        )
+    candidate_grad = res_grad.to(dtype)
+    expected_device = candidate_grad.device
+    expected_dtype = dtype
+    expected_shape = tuple(shape)
+    # The Definition/override name lacks the leading underscore used by the
+    # bundled implementation. Resolve the explicit override before that export.
+    candidate = getattr(flag_gems, "upsample_bilinear2d_aa_backward", None)
+    if candidate is None:
+        candidate = flag_gems._upsample_bilinear2d_aa_backward
+    res_out = candidate(
+        candidate_grad,
+        [H_out, W_out],
+        list(shape),
+        align_corners,
+        None,
+        None,
+    )
 
-    assert res_out.shape == shape
+    assert res_out.shape == expected_shape
+    assert res_out.dtype == expected_dtype
+    assert res_out.device == expected_device
 
     # dtype-specific tolerance: bilinear AA backward accumulates a small filter
     # window, so half precision needs a looser absolute tolerance.
