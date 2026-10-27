@@ -597,6 +597,23 @@ def _parallel_device_label():
     return flag_gems.device.upper()
 
 
+def _described_tensor_strides(value):
+    """Extract strides in argument order for stable parallel report labels."""
+    if isinstance(value, dict):
+        if "shape" in value and "dtype" in value:
+            return [value.get("stride")]
+        return [
+            stride
+            for child in value.values()
+            for stride in _described_tensor_strides(child)
+        ]
+    if isinstance(value, (tuple, list)):
+        return [
+            stride for child in value for stride in _described_tensor_strides(child)
+        ]
+    return []
+
+
 class ParallelBenchmarkMixin:
     SHAPE_CONFIG_KEYS = ()
 
@@ -717,6 +734,10 @@ class ParallelBenchmarkMixin:
                         context = (Config.base_data, None, None)
                 metric = self._build_metric_from_input(input_item)
                 if context is not None:
+                    if context[1] is not None:
+                        metric.base_input_strides = _described_tensor_strides(
+                            context[1]
+                        )
                     self._apply_external_baseline(metric, dtype, context)
             except Exception as e:
                 metric.error_msg = str(e)

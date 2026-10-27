@@ -46,9 +46,14 @@ def _case_record(result, default=None):
     return record
 
 
-def _benchmark_shape_key(shape, source):
-    """Keep legacy shape keys stable and label newly reported benchmarks."""
-    return f"{shape} ({source})" if source else shape
+def _benchmark_shape_key(shape, source, strides):
+    """Keep legacy keys stable; distinguish parallel input layouts."""
+    if not source:
+        return shape
+    if strides is None:
+        return f"{shape} ({source})"
+    stride_key = json.dumps(strides, separators=(",", ":"))
+    return f"{shape} ({source}, strides={stride_key})"
 
 
 def parse_perf_data(op, result_file):
@@ -94,7 +99,9 @@ def parse_perf_data(op, result_file):
             )
             for res in item.get("result", []):
                 shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-                key = _benchmark_shape_key(shape, item.get("benchmark_source"))
+                key = _benchmark_shape_key(
+                    shape, item.get("benchmark_source"), res.get("base_input_strides")
+                )
                 record = _case_record(res, default=0.0)
                 dtype_result["details"][key] = record
                 totals[dtype] = totals.get(dtype, 0.0) + record["speedup"]
@@ -131,7 +138,9 @@ def parse_perf_data(op, result_file):
         details = dtype_result["details"]
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-            key = _benchmark_shape_key(shape, item.get("benchmark_source"))
+            key = _benchmark_shape_key(
+                shape, item.get("benchmark_source"), res.get("base_input_strides")
+            )
             record = _case_record(res)
             details[key] = record
             speedup = record["speedup"]

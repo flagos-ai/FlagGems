@@ -127,6 +127,7 @@ class BenchmarkMetrics:
     base_latency_ms: Optional[float] = None
     base_scaling_factor: Optional[float] = None
     base_miss_reason: Optional[str] = None
+    base_input_strides: Optional[List[Optional[List[int]]]] = None
     # Error message
     error_msg: Optional[str] = None
 
@@ -142,6 +143,7 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "base_latency_ms",
     "base_scaling_factor",
     "base_miss_reason",
+    "base_input_strides",
 }
 
 DEFAULT_METRICS = [

@@ -431,6 +431,19 @@ def test_blas_paired_inputs_match_native_abi_before_timing(monkeypatch, tmp_path
     assert metric.compared_speedup == 4
 
 
+def test_blas_input_strides_are_preserved_for_parallel_report(monkeypatch, tmp_path):
+    _, _, bench, _ = _parallel_blas_fixture(monkeypatch, tmp_path, True)
+    lhs = torch.ones(2, 3)
+    rhs_contiguous = torch.ones(3, 4)
+    rhs_transposed = torch.ones(4, 3).t()
+    metrics = bench._run_inputs(
+        [(lhs, rhs_contiguous), (lhs, rhs_transposed)], dtype=torch.float32
+    )
+    assert metrics[0].shape_detail == metrics[1].shape_detail
+    assert metrics[0].base_input_strides == [[3, 1], [4, 1]]
+    assert metrics[1].base_input_strides == [[3, 1], [1, 3]]
+
+
 def test_blas_external_miss_retains_native_result(monkeypatch, tmp_path):
     _, config, bench, _ = _parallel_blas_fixture(monkeypatch, tmp_path, True)
     config.base_data.data["mm"]["shapes"]["case"]["torch.float32"]["config"]["inputs"][
