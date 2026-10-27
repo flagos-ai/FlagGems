@@ -37,11 +37,11 @@ It aims to provide a suite of kernel functions to accelerate LLM training and in
 
 ## 探索指南
 
-- 阅读[功能特性概览](/FlagGems/zh-cn/overview/features/)
-- 了解[支持的硬件平台](/FlagGems/zh-cn/overview/platforms/)
-- 快速[开始使用 FlagGems](/FlagGems/zh-cn/getting-started/)
-- 查看版本[变更历史](/FlagGems/zh-cn/references/changelog/)
-- 查阅已支持的[算子清单](/FlagGems/zh-cn/references/operators/)
+- 阅读[功能特性概览](overview/features.md)
+- 了解[支持的硬件平台](overview/platforms.md)
+- 快速[开始使用 FlagGems](getting-started/_index.md)
+- 查看版本[变更历史](references/changelog.md)
+- 查阅已支持的[算子清单](references/operators.md)
 
 ## 支持的模型
 
@@ -51,7 +51,7 @@ It aims to provide a suite of kernel functions to accelerate LLM training and in
 
 ## 参与贡献
 
-如果您对 *FlagGems* 感兴趣并希望参与社区共建，请参阅[贡献指南](/FlagGems/zh-cn/contribution/)。我们由衷欢迎并感谢任何形式的贡献！
+如果您对 *FlagGems* 感兴趣并希望参与社区共建，请参阅[贡献指南](contribution/_index.md)。我们由衷欢迎并感谢任何形式的贡献！
 
 ## 联系我们
 

@@ -28,7 +28,7 @@ weight: 20
 ## 1. 前置环境要求
 
 - **底层驱动与硬件工具链**：请确保已在宿主机环境中正确安装了对应加速芯片的内核驱动程序与用户态 SDK / Toolkit（包括 NVIDIA CUDA，以及昇腾 CANN、沐曦 MACA、摩尔线程 MUSA、天数智芯等异构硬件工具链）。
-- **上层推理框架依赖**：如需体验 [FlagGems 与 vLLM 的融合加速](/FlagGems/zh-cn/usage/frameworks/#vllm)，请预先安装原生 vLLM 或硬件厂商定制的 vLLM 发行版。
+- **上层推理框架依赖**：如需体验 [FlagGems 与 vLLM 的融合加速](../usage/frameworks.md#vllm)，请预先安装原生 vLLM 或硬件厂商定制的 vLLM 发行版。
 
 > [!NOTE]
 > 您**无需**提前手动安装 Python、PyTorch 或 Triton。FlagGems 提供的 `setup.sh` 脚本会根据您指定的硬件后端自动配置并补全所有兼容的依赖项。
@@ -174,7 +174,7 @@ flaggems-setup nvidia-cuda128 --compiler triton
 COMPILER=triton flaggems-setup nvidia-cuda128
 ```
 
-`COMPILER` 的完整行为参见[环境变量速查](#env-vars)与[构建与配置选项参考](/FlagGems/zh-cn/getting-started/build-options/#env-vars)。
+`COMPILER` 的完整行为参见[环境变量速查](#env-vars)与[构建与配置选项参考](build-options.md#env-vars)。
 
 <!--
 ## 3. Build and install from source {#install-from-source}
@@ -354,7 +354,7 @@ CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA" \
 <!--
 For manual control over CMake options, see the CMake options reference.
 -->
-如需手动控制 CMake 选项，请参阅 [CMake 选项参考](/FlagGems/zh-cn/getting-started/build-options/#cmake-options)。
+如需手动控制 CMake 选项，请参阅 [CMake 选项参考](build-options.md#cmake-options)。
 
 #### 运行时：通过 `USE_C_EXTENSION` 启用
 
@@ -366,7 +366,7 @@ export USE_C_EXTENSION=1
 
 如果不设置该变量，只有 `torch.ops.flag_gems.*` 及 `c_operators` pybind
 模块生效；ATen 替换和 `flag_gems.enable()` 的 C++ 分支仍需此变量。
-详见 [C++ 使用指南](/FlagGems/zh-cn/usage/cpp/)。
+详见 [C++ 使用指南](../usage/cpp.md)。
 
 ## 4. 常用环境变量速查 {#env-vars}
 
@@ -382,7 +382,7 @@ export USE_C_EXTENSION=1
 
 为保持安装指南的专注度，更详尽的底层编译配置与多硬件支持字典已独立整理至专门的参考文档中：
 
-- **[完整加速器后端清单与映射表](/FlagGems/zh-cn/getting-started/build-options/#1-支持的加速器后端清单)**：查看所有受支持的芯片平台标识符（如 `nvidia-cuda128`、`ascend-cann900`、`hygon`、`metax-maca3810`、`mthreads-musa520` 等）及依赖说明。
-- **[CMake 编译选项参考](/FlagGems/zh-cn/getting-started/build-options/#cmake-options)** {#cmake-options}：查看 `FLAGGEMS_BUILD_C_EXTENSIONS`、`FLAGGEMS_BACKEND`、`FLAGGEMS_BUILD_CTESTS` 等 CMake 构建选项定义与 `CMAKE_ARGS` 传参范例。
-- **[`scikit-build-core` 构建参数](/FlagGems/zh-cn/getting-started/build-options/#scikit-build-core-options)** {#scikit-build-core-options}：查看用于 C++ 扩展打包的构建后端参数（`SKBUILD_CMAKE_BUILD_TYPE`、`SKBUILD_BUILD_DIR` 等）。
-- **[外部 `libtriton_jit` 库集成](/FlagGems/zh-cn/getting-started/build-options/#libtriton-jit)** {#libtriton-jit}：查看如何自定义编译并链接独立的 TritonJIT 依赖库。
+- **[完整加速器后端清单与映射表](build-options.md#1-支持的加速器后端清单)**：查看所有受支持的芯片平台标识符（如 `nvidia-cuda128`、`ascend-cann900`、`hygon`、`metax-maca3810`、`mthreads-musa520` 等）及依赖说明。
+- **[CMake 编译选项参考](build-options.md#cmake-options)** {#cmake-options}：查看 `FLAGGEMS_BUILD_C_EXTENSIONS`、`FLAGGEMS_BACKEND`、`FLAGGEMS_BUILD_CTESTS` 等 CMake 构建选项定义与 `CMAKE_ARGS` 传参范例。
+- **[`scikit-build-core` 构建参数](build-options.md#scikit-build-core-options)** {#scikit-build-core-options}：查看用于 C++ 扩展打包的构建后端参数（`SKBUILD_CMAKE_BUILD_TYPE`、`SKBUILD_BUILD_DIR` 等）。
+- **[外部 `libtriton_jit` 库集成](build-options.md#libtriton-jit)** {#libtriton-jit}：查看如何自定义编译并链接独立的 TritonJIT 依赖库。

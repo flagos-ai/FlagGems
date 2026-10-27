@@ -161,4 +161,4 @@ def train_step(forward_step_func, data_iterator, model, optimizer, lr_scheduler)
 > Megatron-LM 社区更新迭代活跃，各衍生分支（如 Megatron-Core、各类定制流水线）在架构上可能存在差异，集成时请确认所处分支的执行时序。
 
 若需要将加速扩展至优化器（Optimizer Step）或张量通信预处理等更广泛的环节，可在训练启动脚本中尝试使用全局 `flag_gems.enable()`，建议在正式大规模训练前完成单步数值一致性校验。
-非常欢迎大家向 [FlagGems 贡献更多框架集成方案](/FlagGems/zh-cn/contribution/overview/)！
+非常欢迎大家向 [FlagGems 贡献更多框架集成方案](../contribution/overview.md)！

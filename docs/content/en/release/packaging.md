@@ -23,7 +23,7 @@ weight: 20
 # Packaging
 
 Creating a source or binary distribution is similar to
-[building and installing from source](/FlagGems/getting-started/install/#install-from-source).
+[building and installing from source](../getting-started/install.md#install-from-source).
 It involves invoking a build frontend (such as `pip` or `build`) and passing the command
 to the build backend (`setuptools` for the main `flag-gems` package;
 `scikit-build-core` for the `cpp/` C++ extension package).
@@ -57,7 +57,7 @@ pip wheel --no-build-isolation --no-deps -w dist .
 ```
 
 The environment variables used to configure `setuptools` work in the same way
-as described in the [installation guide](/FlagGems/getting-started/install/).
+as described in the [installation guide](../getting-started/install.md).
 
 After the binary distribution (wheel) is built, you can use `pip` to install it.
 
@@ -90,5 +90,5 @@ This produces a platform-specific wheel (e.g.
 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`) in `cpp/dist/`.
 
 The environment variables used to configure `scikit-build-core` (see the
-[installation guide](/FlagGems/getting-started/install/#scikit-build-core-options))
+[installation guide](../getting-started/install.md#scikit-build-core-options))
 apply when building from `cpp/`.

@@ -131,7 +131,7 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
      使用外部预装的 `libtriton_jit`。
 
    完整的各后端示例与 `libtriton_jit` 细节，参见
-   [安装指南](../../getting-started/install/#install-from-source)。
+   [安装指南](../getting-started/install.md#install-from-source)。
 
 1. **运行时：`export USE_C_EXTENSION=1`**
 
@@ -315,7 +315,7 @@ at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 > [!NOTE]
 > 标注为 *pointwise dynamic C++* 的算子仅在启用 CMake 选项
 > `-DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON` 时才会被编译；
-> 详情参阅[安装指南](../../getting-started/install/#install-from-source)。
+> 详情参阅[安装指南](../getting-started/install.md#install-from-source)。
 
 <!--
 We are actively expanding this list as part of our ongoing performance optimization work.

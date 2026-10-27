@@ -26,8 +26,8 @@ weight: 10
 ## Rich Collection of Operators
 
 FlagGems features a large collection of PyTorch compatible operators.
-Refer to [operator supported](/FlagGems/references/operators/) and
-[experimental operators](/FlagGems/references/experiental/)
+Refer to [operator supported](../references/operators.md) and
+[experimental operators](../references/experimental.md)
 for list of formally supported operators and experimental operators.
 -->
 # 功能特性概览
@@ -35,13 +35,13 @@ for list of formally supported operators and experimental operators.
 ## 丰富的算子生态
 
 *FlagGems* 提供了涵盖大模型训练与推理主流场景的丰富 PyTorch 兼容算子库。
-详情请参阅[正式支持算子清单](/FlagGems/zh-cn/references/operators/)与[实验性算子清单](/FlagGems/zh-cn/references/experimental/)。
+详情请参阅[正式支持算子清单](../references/operators.md)与[实验性算子清单](../references/experimental.md)。
 
 ## 关键算子的手工极致优化
 
 下图展示了在 Eager 模式下，*FlagGems* 算子相比 PyTorch ATen 原生算子实现的加速比。数据通过对不同典型 Tensor Shape 的加速比取平均计算得出，直观反映了算子的端到端综合性能优势：
 
-![算子加速比](/FlagGems/images/speedup-20251225.png)
+![算子加速比](../../../assets/speedup-20251225.png)
 
 ## 原生 Eager 模式支持，脱离 `torch.compile` 依赖
 
@@ -50,7 +50,7 @@ for list of formally supported operators and experimental operators.
 ## 算子自动代码生成
 
 *FlagGems* 提供了强大的算子代码自动生成机制，帮助开发者低门槛生成高质量的逐点（Pointwise）算子和融合（Fused）算子。自动生成系统全面支持标准逐元素计算、混合标量/非张量参数、动态输出类型推断等多样化需求。
-更多详情请参阅[逐点动态算子](/FlagGems/zh-cn/overview/pointwise-dynamic/)文档。
+更多详情请参阅[逐点动态算子](pointwise-dynamic.md)文档。
 
 ## 函数级 Kernel 分发调度
 
@@ -61,7 +61,7 @@ for list of formally supported operators and experimental operators.
 ## 广泛的多硬件平台支持
 
 *FlagGems* 已支持超过 10 种主流 AI 加速芯片及硬件后端，并在多种硬件架构及异构集群中完成了深入的精度与性能验证。
-有关各厂商芯片的适配程度与数据类型支持情况，请参阅[硬件平台支持](/FlagGems/zh-cn/overview/platforms/)。
+有关各厂商芯片的适配程度与数据类型支持情况，请参阅[硬件平台支持](platforms.md)。
 
 ## C++ 扩展与轻量级分发
 

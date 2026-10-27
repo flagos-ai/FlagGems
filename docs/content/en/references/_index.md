@@ -27,5 +27,5 @@ This section provides technical references, operator inventories, and project sp
 - **[Supported Operators](operators.md)**: Explore the catalogue of stable mathematical, reduction, linear algebra, and fused operators.
 - **[Experimental Operators](experimental.md)**: Explore operators currently incubating under the experimental stage.
 - **[Project Structure](project_structure.md)**: Overview of repository layout and modular organization.
-- **[Build and Configuration Options Reference](/FlagGems/getting-started/build-options/)**: Detailed specifications for hardware backends, environment variables, CMake options, and build tools.
+- **[Build and Configuration Options Reference](../getting-started/build-options.md)**: Detailed specifications for hardware backends, environment variables, CMake options, and build tools.
 - **[Changelog](changelog.md)**: Version release notes and migration history.

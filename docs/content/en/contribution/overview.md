@@ -25,7 +25,7 @@ In pull requests, contributors should describe what changed and why. Please also
 
 ## 1. Dev Container (Recommended) {#dev-container}
 
-If you use VS Code and your code runs inside a container, the recommended way to set up your development environment is through the provided Dev Container configurations. See the dedicated [Dev Container](/FlagGems/contribution/devcontainer/) page for setup instructions, including local and SSH remote workflows.
+If you use VS Code and your code runs inside a container, the recommended way to set up your development environment is through the provided Dev Container configurations. See the dedicated [Dev Container](devcontainer.md) page for setup instructions, including local and SSH remote workflows.
 
 ## 2. Device isolation and visibility {#device-visibility}
 
@@ -47,7 +47,7 @@ TOPS_VISIBLE_DEVICES=4,6 pytest tests/
 
 Note that the runtime renumbers the devices that survive the filter, so in the command above the two remaining GCUs appear inside the process as `0` and `1`, not as `4` and `6`.
 
-For the common pitfalls around each backend's variable name, the full mapping, and how to verify that a setting took effect, see [Selecting Visible Devices](/FlagGems/contribution/device-visibility/).
+For the common pitfalls around each backend's variable name, the full mapping, and how to verify that a setting took effect, see [Selecting Visible Devices](device-visibility.md).
 
 ## 3. Operator naming conventions {#operator-naming-conventions}
 
@@ -161,7 +161,7 @@ When adding new test files, decorate test functions with `@pytest.mark.{OP_ID}` 
 
 > **Note**: The unit test mark name must match the operator's API name. If the API name has a leading underscore, add an additional `underscore` prefix to bypass pytest's limitations.
 
-If you are adding a C++ wrapped operator, you should add a corresponding *ctest* as well. See [Add a C++ wrapper](https://github.com/flagos-ai/FlagGems/blob/gh-pages/FlagGems/contribution/cpp-wrapper) for more details.
+If you are adding a C++ wrapped operator, you should add a corresponding *ctest* as well. See [Add a C++ wrapper](cpp-wrapper.md) for more details.
 
 ### Testing operator logs {#testing-operator-logs}
 
@@ -239,7 +239,7 @@ An *operator benchmark* is used to evaluate the performance of operators. If you
 
 When new test cases are added to the `benchmark/` subdirectory, or existing test cases are modified, the CI pipeline can automatically detect these changes and trigger a benchmark operation.
 
-For detailed instructions on writing performance test cases, please refer to [Python performance tests](/FlagGems/performance/python/).
+For detailed instructions on writing performance test cases, please refer to [Python performance tests](../performance/benchmark.md).
 
 ## 10. About test case marking {#test-case-marking}
 

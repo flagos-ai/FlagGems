@@ -29,7 +29,7 @@ weight: 30
 
 ## 1. 安装 FlagGems {#install-flaggems}
 
-*FlagGems* 支持作为纯 Python 包开箱使用，也支持编译构建 C++ 原生扩展以获取最佳的运行时调度性能。详细的安装步骤与编译选项请参阅[安装指南](/FlagGems/zh-cn/getting-started/install/)。
+*FlagGems* 支持作为纯 Python 包开箱使用，也支持编译构建 C++ 原生扩展以获取最佳的运行时调度性能。详细的安装步骤与编译选项请参阅[安装指南](install.md)。
 
 ## 2. 验证安装环境
 
@@ -43,7 +43,7 @@ weight: 30
 python -c "import torch; print(torch.__version__)"
 ```
 
-如果您使用的是[非 NVIDIA 硬件平台](/FlagGems/zh-cn/usage/non-nvidia/)，通常需要安装硬件厂商配套的 PyTorch 硬件加速插件。例如在摩尔线程（Moore Threads）GPU 平台上，可运行：
+如果您使用的是[非 NVIDIA 硬件平台](../usage/non-nvidia.md)，通常需要安装硬件厂商配套的 PyTorch 硬件加速插件。例如在摩尔线程（Moore Threads）GPU 平台上，可运行：
 
 ```shell
 python -c "import torch_musa; print(torch_musa.__version__)"
@@ -137,4 +137,4 @@ sorted_ids, expert_ids, num_tokens_post_pad = (
 )
 ```
 
-更多精细控制选项（如白名单筛选、日志追踪、多卡分布式适配等），请继续阅读[使用指南](/FlagGems/zh-cn/usage/)。
+更多精细控制选项（如白名单筛选、日志追踪、多卡分布式适配等），请继续阅读[使用指南](../usage/_index.md)。

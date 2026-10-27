@@ -207,7 +207,7 @@ benchmark drivers can restrict devices correctly:
 - Add an entry to the `vendor_env_map` dictionary in
   [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484),
   keyed by the vendor name used by the backend's `VendorDescriptor` (see
-  [Adding a new backend](/FlagGems/contribution/backend/)). Do not edit the fallback
+  [Adding a new backend](backend.md)). Do not edit the fallback
   branch instead — `vendor_env_map` is the single place a new backend is registered.
 - If the runtime accepts several aliases, list them all, most authoritative first.
   `get_env` sets every name in the list to the same value, so the aliases stay consistent
@@ -216,6 +216,6 @@ benchmark drivers can restrict devices correctly:
   honors it. Falling back to `CUDA_VISIBLE_DEVICES` on a non-CUDA backend, for example,
   produces a setting that is accepted but has no effect.
 -->
-- 在 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484) 的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名（参见[添加一种新的后端](/FlagGems/zh-cn/contribution/backend/)）。请勿改为修改兜底分支——`vendor_env_map` 才是登记新后端的唯一位置。
+- 在 [`tools/run_tests.py`](https://github.com/flagos-ai/FlagGems/blob/master/tools/run_tests.py#L472-L484) 的 `vendor_env_map` 字典中新增一项，键名使用后端 `VendorDescriptor` 里声明的厂商名（参见[添加一种新的后端](backend.md)）。请勿改为修改兜底分支——`vendor_env_map` 才是登记新后端的唯一位置。
 - 如果运行时接受多个别名，请把它们全部列出，并把最权威的放在最前面。`get_env` 会把列表中的每个名字都设置为同一个值，因此各别名之间保持一致，已有启动脚本无论使用哪个名字都能继续正常工作。
 - 除非运行时确实读取，否则不要把其他厂商的变量当作兜底。例如在非 CUDA 后端上回退到 `CUDA_VISIBLE_DEVICES`，最终只会得到一个被接受但毫无效果的环境变量。

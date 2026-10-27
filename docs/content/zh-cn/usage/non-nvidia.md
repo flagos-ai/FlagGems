@@ -25,7 +25,7 @@ weight: 50
 
 ## 1. 支持的硬件平台
 
-*FlagGems* 现已支持包括昇腾（Ascend）、摩尔线程（Mthreads）、海光（Hygon）、沐曦（MetaX）、天数智芯（Iluvatar）、昆仑芯（Kunlunxin）等在内的 10 余种加速芯片后端。各厂商的详细支持程度及数据类型支持清单请参阅[硬件平台支持](/FlagGems/zh-cn/overview/platforms/)。
+*FlagGems* 现已支持包括昇腾（Ascend）、摩尔线程（Mthreads）、海光（Hygon）、沐曦（MetaX）、天数智芯（Iluvatar）、昆仑芯（Kunlunxin）等在内的 10 余种加速芯片后端。各厂商的详细支持程度及数据类型支持清单请参阅[硬件平台支持](../overview/platforms.md)。
 
 ## 2. 统一简洁的使用体验
 
@@ -59,7 +59,7 @@ flag_gems.enable()
 export GEMS_VENDOR=<vendor_name>
 ```
 
-合法的 `vendor_name` 取值（如 `ascend`、`hygon`、`metax`、`mthreads` 等）请查阅[硬件平台支持](/FlagGems/zh-cn/overview/platforms/)。
+合法的 `vendor_name` 取值（如 `ascend`、`hygon`、`metax`、`mthreads` 等）请查阅[硬件平台支持](../overview/platforms.md)。
 
 在 Python 运行时中，可通过 `flag_gems.vendor_name` 确认当前生效的后端名称：
 

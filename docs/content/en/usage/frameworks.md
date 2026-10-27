@@ -194,6 +194,6 @@ you may try enabling `flag_gems` globally with `flag_gems.enable()`.
 However, this approach is not thoroughly tested and may require additional validation
 based on your Megatron-LM version.
 
-We encourage community [contributions](/FlagGems/contribution/overview/) —
+We encourage community [contributions](../contribution/overview.md) —
 please consider open an issue or submit a PR to help us achieve a broader
 Megatron-LM integration.

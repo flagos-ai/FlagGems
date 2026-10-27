@@ -168,7 +168,7 @@ gh workflow run review-stats.yaml \
 `command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
 are started by commenting on a pull request rather than by `workflow_dispatch`
 or a schedule, so they are documented in
-[Pull request checks](/FlagGems/cicd/pull-request/) together with the checks
+[Pull request checks](pull-request.md) together with the checks
 they complement.
 
 ## Feishu and monitoring integrations
@@ -181,7 +181,7 @@ they complement.
   that single path. Because the GitHub API can lag behind a finished run, the
   script sleeps 5s and then retries up to 3 times with 10s/20s backoff. Its
   per-PR role is described under `rule-check` in
-  [Pull request checks](/FlagGems/cicd/pull-request/).
+  [Pull request checks](pull-request.md).
 - `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
   notifications via `.github/scripts/notify_feishu.py`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP

@@ -237,14 +237,14 @@ gh workflow run review-stats.yaml \
 `command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
 are started by commenting on a pull request rather than by `workflow_dispatch`
 or a schedule, so they are documented in
-[Pull request checks](/FlagGems/zh-cn/cicd/pull-request/) together with the
+[Pull request checks](pull-request.md) together with the
 checks they complement.
 -->
 ## 由评论触发的 PR 命令
 
 `command.yaml`（`/test <算子名>:<runner>`）和 `fix-sort.yaml`（`/fix-sort`）
 是通过在 PR 下评论启动的，而非 `workflow_dispatch` 或定时触发，因此它们与各自
-配合的检查一并记录在[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)中。
+配合的检查一并记录在[拉取请求检查](pull-request.md)中。
 
 <!--
 ## Feishu and monitoring integrations
@@ -266,7 +266,7 @@ These are observability workflows; they do not gate merges.
   的 PR 也能拿到密钥；该运行本身只需要 `tools/ci_report_feishu.py` 和令牌，
   所以采用只检出该路径的稀疏检出。由于 GitHub API 可能滞后于已完成的工作流，
   脚本会先等待 5 秒，再以 10 秒 / 20 秒的退避最多重试 3 次。它在 PR 流程中的
-  作用见[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)。
+  作用见[拉取请求检查](pull-request.md)。
 - `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于

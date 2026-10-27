@@ -23,13 +23,13 @@ weight: 20
 # Add a C++ Wrapped Operator
 
 To add a C++ wrapped operator, you need to first build FlagGems with C++ extensions enabled.
-Please refer to [installation](/FlagGems/getting-started/installation/) section
+Please refer to [installation](../getting-started/install.md) section
 for detailed instructions on setting up `flag_gems` with C++ extensions enabled.
 -->
 # 添加 C++ 封装的算子
 
 要添加一个 C++ 封装的算子，您需要首先在安装 FlagGems 时启用 C++ 扩展能力特性。
-请参阅[FlagGems 安装](/FlagGems/zh-cn/getting-started/installation/)文档，
+请参阅[FlagGems 安装](../getting-started/install.md)文档，
 了解如何在安装 `flag_gems` 时启用 C++ 扩展的详细步骤。
 
 <!--
@@ -66,7 +66,7 @@ FlagGems uses `ctest` and `googletest` for C++ unit tests.
 After having finished the C++ wrapper, a corresponding C++ test case should be added.
 Add your unit test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`.
 Finally, build your test source and run it with
-[C++ Tests](/FlagGems/testing/ctests/).
+[C++ Tests](../testing/unittest.md).
 -->
 ## 2. 编写测试用例  {#write-test-cases}
 
@@ -74,7 +74,7 @@ FlagGems 使用 `ctest` 和 `googletest` 来执行 C++ 代码的单元测试。
 在完成 C++ 封装的算子实现之后，您需要为其添加对应的 C++ 测试用例。
 您的测试用例应该添加到 `ctests/test_triton_<xxx>.cpp` 文件中，
 并且在 `ctests/CMakeLists.txt` 中列出测试用例文件。
-最后，构建您的测试代码并使用 [C++ 测试](/FlagGems/zh-cn/testing/ctests/)文档中所给方法来执行测试。
+最后，构建您的测试代码并使用 [C++ 测试](../testing/unittest.md)文档中所给方法来执行测试。
 
 <!--
 ## 3. Running the C++ test cases

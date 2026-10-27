@@ -38,13 +38,13 @@ Currently, continuous integration checks include three jobs.
 ## 1. Dev Container (Recommended)
 If you use VS Code and your code runs inside a container, the recommended way to set up
 your development environment is through the provided Dev Container configurations.
-See the dedicated [Dev Container](/FlagGems/contribution/devcontainer/) page for setup
+See the dedicated [Dev Container](devcontainer.md) page for setup
 instructions, including local and SSH remote workflows.
 -->
 
 ## 1. 开发容器（推荐） {#dev-container}
 
-如果您使用 VS Code 进行开发，且程序运行在容器中，推荐参考项目提供的 Dev Container 配置来搭建开发环境。详细的环境搭建步骤（包括本地和 SSH 远端两种使用场景）请参阅独立页面[开发容器](/FlagGems/zh-cn/contribution/devcontainer/)。
+如果您使用 VS Code 进行开发，且程序运行在容器中，推荐参考项目提供的 Dev Container 配置来搭建开发环境。详细的环境搭建步骤（包括本地和 SSH 远端两种使用场景）请参阅独立页面[开发容器](devcontainer.md)。
 
 <!--
 ## 2. Device isolation and visibility
@@ -73,7 +73,7 @@ above the two remaining GCUs appear inside the process as `0` and `1`, not as `4
 
 For the common pitfalls around each backend's variable name, the full mapping, and how to
 verify that a setting took effect, see
-[Selecting Visible Devices](/FlagGems/contribution/device-visibility/).
+[Selecting Visible Devices](device-visibility.md).
 -->
 
 ## 2. 设备隔离与可见性 {#device-visibility}
@@ -96,7 +96,7 @@ TOPS_VISIBLE_DEVICES=4,6 pytest tests/
 
 需要注意，运行时会为过滤后保留下来的设备重新编号，因此上面这条命令中剩余的两张 GCU 在进程内看到的编号是 `0` 和 `1`，而不是 `4` 和 `6`。
 
-关于各后端变量名的常见陷阱、完整对应关系以及验证设置是否生效的方法，请参阅[设置设备可见性](/FlagGems/zh-cn/contribution/device-visibility/)。
+关于各后端变量名的常见陷阱、完整对应关系以及验证设置是否生效的方法，请参阅[设置设备可见性](device-visibility.md)。
 
 ## 3. 算子命名规范 {#operator-naming-conventions}
 
@@ -226,7 +226,7 @@ under the `tests` directory.
 
 > **注意**：单元测试的 mark 名需与算子的 API 名保持一致。若 API 名带有下划线前缀，则额外添加 `underscore` 前缀以规避 pytest 的限制。
 
-当添加新的 C++ 封装算子时，需同时添加对应的 *ctest*。详见[添加 C++ 封装的算子](https://github.com/flagos-ai/FlagGems/blob/gh-pages/FlagGems/zh-cn/contribution/cpp-wrapper)。
+当添加新的 C++ 封装算子时，需同时添加对应的 *ctest*。详见[添加 C++ 封装的算子](cpp-wrapper.md)。
 
 ### 测试算子日志 {#testing-operator-logs}
 
@@ -339,10 +339,10 @@ and trigger a benchmark operation.
 
 <!--
 For detailed instructions on writing performance test case, please refer to
-[Python performance tests](/FlagGems/performance/python/).
+[Python performance tests](../performance/benchmark.md).
 -->
 
-关于如何编写性能测试用例的详细说明，请参阅 [Python 性能测试](/FlagGems/zh-cn/performance/benchmark/) 一节。
+关于如何编写性能测试用例的详细说明，请参阅 [Python 性能测试](../performance/benchmark.md) 一节。
 
 <!--
 ## 6. About test case marking

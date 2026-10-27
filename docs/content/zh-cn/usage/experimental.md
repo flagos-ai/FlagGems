@@ -45,4 +45,4 @@ with flag_gems.use_gems():
     result = flag_gems.experimental_ops.rmsnorm(*args)
 ```
 
-当前所有处于实验阶段的算子列表可参阅[实验性算子清单](/FlagGems/zh-cn/references/experimental/)。
+当前所有处于实验阶段的算子列表可参阅[实验性算子清单](../references/experimental.md)。

@@ -89,4 +89,4 @@ coverage run -m pytest -s tests/test_foo.py \
 coverage html
 ```
 
-更多覆盖率指标与门禁配置，请参阅[单元测试覆盖率](../coverage)。
+更多覆盖率指标与门禁配置，请参阅[单元测试覆盖率](coverage.md)。

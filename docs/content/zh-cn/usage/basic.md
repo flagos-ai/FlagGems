@@ -186,26 +186,26 @@ This is useful for debugging or verifying which operators are active.
 
 For advanced usage scenarios, check the following related documentation:
 
-- [Selective enablement](/FlagGems/usage/selective/)
-- [Using experimental operators](/FlagGems/usage/experimental/)
-- [Enabling logging](/FlagGems/usage/debugging/) for debugging
-- [Using FlagGems on non-NVIDIA hardware](/FlagGems/usage/non-nvidia/)
-- [Using FlagGems in a multi-GPU or distributed environment](/FlagGems/usage/distributed/)
-- [Integrating FlagGems with a popular framework](/FlagGems/usage/frameworks/)
-- [Building your own models using FlagGems modules](/FlagGems/usage/modules/)
-- [Enable pre-tuning for better performance](/FlagGems/usage/tuning/)
-- [Using C++ wrapped operators for optimal performance](/FlagGems/usage/cpp/)
+- [Selective enablement](selective.md)
+- [Using experimental operators](experimental.md)
+- [Enabling logging](debugging.md) for debugging
+- [Using FlagGems on non-NVIDIA hardware](non-nvidia.md)
+- [Using FlagGems in a multi-GPU or distributed environment](distributed.md)
+- [Integrating FlagGems with a popular framework](frameworks.md)
+- [Building your own models using FlagGems modules](modules.md)
+- [Enable pre-tuning for better performance](tuning.md)
+- [Using C++ wrapped operators for optimal performance](cpp.md)
 -->
 ## 5. 进阶用法
 
 您可以阅读以下相关文档，了解一些高级的使用场景：
 
-- [选择性地启用算子](/FlagGems/zh-cn/usage/selective/)
-- [使用实验性质的算子](/FlagGems/zh-cn/usage/experimental/)
-- [启用日志输出](/FlagGems/zh-cn/usage/debugging/)以方便调试
-- [在非 NVIDIA 平台上使用 FlagGems](/FlagGems/zh-cn/usage/non-nvidia/)
-- [在多 GPU 或分布式环境中使用 FlagGems](/FlagGems/zh-cn/usage/distributed/)
-- [将 FlagGems 与某个常用框架集成](/FlagGems/zh-cn/usage/frameworks/)
-- [使用 FlagGems 模块来构造自己的模型](/FlagGems/zh-cn/usage/modules/)
-- [启用预调优获得更佳性能](/FlagGems/zh-cn/usage/tuning/)
-- [使用 C++ 封装的算子获得更好性能](/FlagGems/zh-cn/usage/cpp/)
+- [选择性地启用算子](selective.md)
+- [使用实验性质的算子](experimental.md)
+- [启用日志输出](debugging.md)以方便调试
+- [在非 NVIDIA 平台上使用 FlagGems](non-nvidia.md)
+- [在多 GPU 或分布式环境中使用 FlagGems](distributed.md)
+- [将 FlagGems 与某个常用框架集成](frameworks.md)
+- [使用 FlagGems 模块来构造自己的模型](modules.md)
+- [启用预调优获得更佳性能](tuning.md)
+- [使用 C++ 封装的算子获得更好性能](cpp.md)

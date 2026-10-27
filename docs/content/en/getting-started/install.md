@@ -27,7 +27,7 @@ weight: 20
   your hardware have been installed and configured properly.
   This applies to both NVIDIA platforms and other AI accelerator hardware.
 
-- If you are trying out [the integration with vLLM](/FlagGems/usage/frameworks/#vllm),
+- If you are trying out [the integration with vLLM](../usage/frameworks.md#vllm),
   you will need to install [vLLM](https://github.com/vllm-project/vllm)
   or its vendor-customized version if any.
 
@@ -121,7 +121,7 @@ flaggems-setup nvidia-cuda128 --compiler triton
 COMPILER=triton flaggems-setup nvidia-cuda128
 ```
 
-See [Environment variables](#env-vars) and the [Build and Configuration Options Reference](/FlagGems/getting-started/build-options/#env-vars) for the full `COMPILER` behavior.
+See [Environment variables](#env-vars) and the [Build and Configuration Options Reference](build-options.md#env-vars) for the full `COMPILER` behavior.
 
 ## 3. Build and install from source {#install-from-source}
 
@@ -239,7 +239,7 @@ CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA" \
   uv pip install --no-build-isolation ./cpp
 ```
 
-For manual control over CMake options, see the [CMake options reference](/FlagGems/getting-started/build-options/#cmake-options).
+For manual control over CMake options, see the [CMake options reference](build-options.md#cmake-options).
 
 #### Runtime: enable with `USE_C_EXTENSION`
 
@@ -251,7 +251,7 @@ export USE_C_EXTENSION=1
 
 Without this, only `torch.ops.flag_gems.*` and the `c_operators` pybind module
 are active; the ATen replacement and `flag_gems.enable()` C++ branches require
-it. See the [C++ usage guide](/FlagGems/usage/cpp/) for details.
+it. See the [C++ usage guide](../usage/cpp.md) for details.
 
 ## 4. Core Environment Variables Quick Reference {#env-vars}
 
@@ -267,7 +267,7 @@ The following environment variables are essential during installation, build, an
 
 For detailed specifications and advanced build parameters, please refer to the dedicated reference document:
 
-- **[Full Accelerator Backends Matrix](/FlagGems/getting-started/build-options/#1-supported-accelerator-backends)**: View all supported hardware platform identifiers (`nvidia-cuda128`, `ascend-cann900`, `hygon`, `metax-maca3810`, `mthreads-musa520`, etc.) and dependencies.
-- **[CMake Options Reference](/FlagGems/getting-started/build-options/#cmake-options)** {#cmake-options}: Definitions for `FLAGGEMS_BUILD_C_EXTENSIONS`, `FLAGGEMS_BACKEND`, `FLAGGEMS_BUILD_CTESTS`, and `CMAKE_ARGS` usage.
-- **[`scikit-build-core` Configuration](/FlagGems/getting-started/build-options/#scikit-build-core-options)** {#scikit-build-core-options}: Build backend settings for packaging C++ extensions (`SKBUILD_CMAKE_BUILD_TYPE`, `SKBUILD_BUILD_DIR`).
-- **[External `libtriton_jit` Integration](/FlagGems/getting-started/build-options/#libtriton-jit)** {#libtriton-jit}: Instructions for linking custom-built TritonJIT libraries.
+- **[Full Accelerator Backends Matrix](build-options.md#1-supported-accelerator-backends)**: View all supported hardware platform identifiers (`nvidia-cuda128`, `ascend-cann900`, `hygon`, `metax-maca3810`, `mthreads-musa520`, etc.) and dependencies.
+- **[CMake Options Reference](build-options.md#cmake-options)** {#cmake-options}: Definitions for `FLAGGEMS_BUILD_C_EXTENSIONS`, `FLAGGEMS_BACKEND`, `FLAGGEMS_BUILD_CTESTS`, and `CMAKE_ARGS` usage.
+- **[`scikit-build-core` Configuration](build-options.md#scikit-build-core-options)** {#scikit-build-core-options}: Build backend settings for packaging C++ extensions (`SKBUILD_CMAKE_BUILD_TYPE`, `SKBUILD_BUILD_DIR`).
+- **[External `libtriton_jit` Integration](build-options.md#libtriton-jit)** {#libtriton-jit}: Instructions for linking custom-built TritonJIT libraries.

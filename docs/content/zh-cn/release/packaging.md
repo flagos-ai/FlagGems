@@ -21,7 +21,7 @@ weight: 20
 
 # 源码与二进制包打包构建
 
-创建 *FlagGems* 的源码包（sdist）或二进制包（wheel）的过程与[从源码构建安装](/FlagGems/zh-cn/getting-started/install/#install-from-source)类似。打包流程通过构建前端（如 `build` 或 `pip`）调用对应的构建后端执行（主包 `flag-gems` 使用 `setuptools`；`cpp/` 目录下的 C++ 扩展包使用 `scikit-build-core`）。
+创建 *FlagGems* 的源码包（sdist）或二进制包（wheel）的过程与[从源码构建安装](../getting-started/install.md#install-from-source)类似。打包流程通过构建前端（如 `build` 或 `pip`）调用对应的构建后端执行（主包 `flag-gems` 使用 `setuptools`；`cpp/` 目录下的 C++ 扩展包使用 `scikit-build-core`）。
 
 ## 1. 使用 `build` 工具打包 Python 主包（推荐）
 
@@ -71,4 +71,4 @@ cd cpp/
 CMAKE_ARGS="-DFLAGGEMS_BACKEND=CUDA" python -m build --no-isolation --wheel .
 ```
 
-构建生成的特定平台 Wheel（如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）将位于 `cpp/dist/` 目录下。相关 CMake 构建配置选项请参阅[构建与配置选项参考](/FlagGems/zh-cn/getting-started/build-options/#cmake-options)。
+构建生成的特定平台 Wheel（如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）将位于 `cpp/dist/` 目录下。相关 CMake 构建配置选项请参阅[构建与配置选项参考](../getting-started/build-options.md#cmake-options)。
