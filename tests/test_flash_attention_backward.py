@@ -59,7 +59,7 @@ def flash_attn_forward_native(
     if window_size_right >= 0:
         kwargs["window_size_right"] = window_size_right
 
-    output, lse, rng_state, _, _ = torch.ops.aten._flash_attention_forward(
+    output, lse, rng_state, rng_offset, _ = torch.ops.aten._flash_attention_forward(
         Q,
         K,
         V,
@@ -72,8 +72,12 @@ def flash_attn_forward_native(
         False,
         **kwargs,
     )
-    philox_seed = rng_state[0]
-    philox_offset = rng_state[1]
+    if rng_state.dim() == 0:
+        # ROCm (AOTriton) returns philox seed and offset as two 0-dim tensors.
+        philox_seed, philox_offset = rng_state, rng_offset
+    else:
+        philox_seed = rng_state[0]
+        philox_offset = rng_state[1]
 
     return output.contiguous(), lse.float(), philox_seed, philox_offset
 
