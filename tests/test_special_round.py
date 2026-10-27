@@ -6,10 +6,6 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
-)
 @pytest.mark.special_round
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -18,8 +14,7 @@ def test_special_round(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp)
+    res_out = flag_gems.special_round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -46,10 +41,6 @@ def test_special_round_out(shape, dtype):
 
 # Round-half-to-even midpoint tests: verify that ties round to the nearest
 # even integer (banker's rounding), matching torch.round behavior.
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
-)
 @pytest.mark.special_round
 def test_special_round_midpoints():
     # Test values: inputs and expected outputs for round-half-to-even
@@ -81,8 +72,7 @@ def test_special_round_midpoints():
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp)
+    res_out = flag_gems.special_round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -93,10 +83,6 @@ def test_special_round_midpoints():
     utils.gems_assert_equal(res_out, utils.to_reference(expected_tensor))
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
-)
 @pytest.mark.special_round
 @pytest.mark.parametrize("decimals", [0, 1, 2, 3, -1, -2])
 def test_special_round_decimals(decimals):
@@ -108,8 +94,7 @@ def test_special_round_decimals(decimals):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.special.round(ref_inp, decimals=decimals)
-    with flag_gems.use_gems():
-        res_out = torch.special.round(inp, decimals=decimals)
+    res_out = flag_gems.special_round(inp, decimals=decimals)
 
     utils.gems_assert_equal(res_out, ref_out)
 
