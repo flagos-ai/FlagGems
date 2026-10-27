@@ -72,31 +72,24 @@ def parse_perf_data(op, result_file):
     bench_res = {}
     records = data.get("details", [])
     if not any(item.get("native_baseline_skip_reason") for item in records):
+        totals = {}
+        counts = {}
         for item in records:
             dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
-            details = {}
-            total = 0.0
-            count = 0
+            dtype_result = bench_res.setdefault(
+                dtype, {"result": "Unknown", "details": {}, "speedup": 0}
+            )
             for res in item.get("result", []):
                 shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
                 record = _case_record(res, default=0.0)
-                details[shape] = record
-                speedup = record["speedup"]
-                count += 1
-                total += speedup
+                dtype_result["details"][shape] = record
+                totals[dtype] = totals.get(dtype, 0.0) + record["speedup"]
+                counts[dtype] = counts.get(dtype, 0) + 1
+            if dtype_result["details"]:
+                dtype_result["result"] = "OK"
 
-            if details:
-                bench_res[dtype] = {
-                    "result": "OK",
-                    "details": details,
-                    "speedup": total / count,
-                }
-            else:
-                bench_res[dtype] = {
-                    "result": "Unknown",
-                    "details": {},
-                    "speedup": 0,
-                }
+        for dtype, count in counts.items():
+            bench_res[dtype]["speedup"] = totals[dtype] / count
 
         return {
             "status": result.title(),
