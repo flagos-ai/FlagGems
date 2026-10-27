@@ -14,13 +14,15 @@
 
 """Kunlunxin (XPU) override for ``aten::_foreach_div.List`` / ``_foreach_div_.List``.
 
-Metadata-indirect pointers defeat block-DMA, so large tensors each get a
-direct-argument kernel while small lists share one fused metadata launch;
-``NEED_MASK`` keeps divisible lists mask-free.
+Pointers read back from a metadata table produce narrow accesses, so small
+homogeneous lists are launched as one kernel whose pointers are all direct
+arguments, while large tensors each get a direct-argument kernel.
 
-Math is ``a / b`` in fp32: no reciprocal-multiply alternative is faster or
-bit-identical, and a Newton-Raphson reciprocal would break
-div-by-zero / inf / nan / subnormal semantics.
+The default ``x / y`` is slower than the round-to-nearest operation on this
+backend, so fp32 uses the latter (bit-identical to ``x / y``) and
+half-precision outputs use a reciprocal-square-root refinement, whose fp32
+error is below one half-precision ulp; zero and infinity keep their IEEE
+results.
 
 Non-floating inputs are delegated to the generic executor for its INT_TO_FLOAT
 promotion.
@@ -31,6 +33,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.xpu.libdevice as xpu
 
 from flag_gems.ops._foreach_binary import _apply_list, _apply_tensor
 from flag_gems.utils.foreach import (
@@ -47,6 +50,58 @@ logger = logging.getLogger(__name__)
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
 LARGE_THRESHOLD = 1_048_576
+
+
+_INF = tl.constexpr(float("inf"))
+
+
+@triton.jit
+def _nr_div(x, y):
+    # 1/y from the reciprocal square root, refined once by Newton.
+    ay = tl.abs(y)
+    inv = xpu.rsqrt(ay)
+    inv = inv * inv
+    inv = inv * (2.0 - y * inv)
+    # Refinement is undefined at 0 and inf; restore the IEEE results.
+    inv = tl.where(ay == 0.0, tl.where(y < 0.0, -_INF, _INF), inv)
+    inv = tl.where(ay == _INF, 0.0, inv)
+    return x * inv
+
+
+@triton.jit
+def _fdiv(x, y, OT: tl.constexpr):
+    """``x / y`` in fp32 through the fastest exact-enough sequence."""
+    if OT == tl.float16:
+        return _nr_div(x, y)
+    if OT == tl.bfloat16:
+        return x / y
+    return xpu.div_rn(x, y)
+
+
+@triton.jit
+def _div_store_plain(
+    a_ptr, b_ptr, o_ptr, idx, m, OT: tl.constexpr, NEED_MASK: tl.constexpr
+):
+    if NEED_MASK:
+        a = tl.load(a_ptr + idx, mask=m, other=0).to(tl.float32)
+        b = tl.load(b_ptr + idx, mask=m, other=1).to(tl.float32)
+        tl.store(o_ptr + idx, (a / b).to(OT), mask=m)
+    else:
+        a = tl.load(a_ptr + idx).to(tl.float32)
+        b = tl.load(b_ptr + idx).to(tl.float32)
+        tl.store(o_ptr + idx, (a / b).to(OT))
+
+
+@triton.jit
+def _div_store(a_ptr, b_ptr, o_ptr, idx, m, OT: tl.constexpr, NEED_MASK: tl.constexpr):
+    if NEED_MASK:
+        a = tl.load(a_ptr + idx, mask=m, other=0).to(tl.float32)
+        b = tl.load(b_ptr + idx, mask=m, other=1).to(tl.float32)
+        tl.store(o_ptr + idx, _fdiv(a, b, OT).to(OT), mask=m)
+    else:
+        a = tl.load(a_ptr + idx).to(tl.float32)
+        b = tl.load(b_ptr + idx).to(tl.float32)
+        tl.store(o_ptr + idx, _fdiv(a, b, OT).to(OT))
 
 
 def _pick_block(max_numel, elem_bytes):
@@ -71,17 +126,12 @@ def _foreach_div_direct_kernel(
     BLOCK: tl.constexpr,
     NEED_MASK: tl.constexpr,
 ):
-    # Pointers passed as direct kernel args enable wide block-DMA.
+    # Pointers passed as direct kernel args give wide contiguous accesses.
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     if NEED_MASK:
-        mask = idx < n_elements
-        a = tl.load(a_ptr + idx, mask=mask, other=0).to(tl.float32)
-        b = tl.load(b_ptr + idx, mask=mask, other=1).to(tl.float32)
-        tl.store(out_ptr + idx, (a / b).to(OUT_DT), mask=mask)
+        _div_store(a_ptr, b_ptr, out_ptr, idx, idx < n_elements, OUT_DT, True)
     else:
-        a = tl.load(a_ptr + idx).to(tl.float32)
-        b = tl.load(b_ptr + idx).to(tl.float32)
-        tl.store(out_ptr + idx, (a / b).to(OUT_DT))
+        _div_store(a_ptr, b_ptr, out_ptr, idx, idx, OUT_DT, False)
 
 
 @triton.jit
@@ -104,14 +154,9 @@ def _foreach_div_list_kernel(
 
     idx = offset + tl.arange(0, BLOCK)
     if NEED_MASK:
-        mask = idx < n_elements
-        a = tl.load(a_ptr + idx, mask=mask, other=0).to(tl.float32)
-        b = tl.load(b_ptr + idx, mask=mask, other=1).to(tl.float32)
-        tl.store(out_ptr + idx, (a / b).to(OUT_DT), mask=mask)
+        _div_store(a_ptr, b_ptr, out_ptr, idx, idx < n_elements, OUT_DT, True)
     else:
-        a = tl.load(a_ptr + idx).to(tl.float32)
-        b = tl.load(b_ptr + idx).to(tl.float32)
-        tl.store(out_ptr + idx, (a / b).to(OUT_DT))
+        _div_store(a_ptr, b_ptr, out_ptr, idx, idx, OUT_DT, False)
 
 
 def _launch_direct(a, b, d, out_dt):
@@ -126,6 +171,8 @@ def _launch_direct(a, b, d, out_dt):
     )
     if bsl:
         kwargs["buffer_size_limit"] = bsl
+    if out_dt == torch.bfloat16:
+        kwargs["isCloseVectorization"] = True
     _foreach_div_direct_kernel[grid](
         a, b, d, n, tl_dtype(out_dt), block, need_mask, **kwargs
     )
@@ -137,6 +184,8 @@ def _launch_group(a_list, b_list, d_list, a_dt, b_dt, out_dt, device):
     if max_numel == 0:
         return
 
+    homogeneous = all(n == max_numel for n in numels)
+
     if max_numel >= LARGE_THRESHOLD:
         for a, b, d in zip(a_list, b_list, d_list):
             if a.numel():
@@ -145,7 +194,6 @@ def _launch_group(a_list, b_list, d_list, a_dt, b_dt, out_dt, device):
 
     nt = len(a_list)
     block, num_warps, bsl = _pick_block(max_numel, d_list[0].element_size())
-    homogeneous = all(n == max_numel for n in numels)
     need_mask = (not homogeneous) or (max_numel % block != 0)
 
     meta = torch.tensor(
@@ -204,7 +252,7 @@ def _run(self, other, inplace):
                 raise RuntimeError(
                     "unsupported operation: more than one element of the "
                     "written-to tensor refers to a single memory location. "
-                    "Please clone() the tensor before performing the operation."
+                    "Please clone the tensor before performing the operation."
                 )
             dst = src_a
             if dst is not a:
