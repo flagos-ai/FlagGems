@@ -34,9 +34,6 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# 反向调度配置与阈值常量
-# ---------------------------------------------------------------------------
 _NUM_MPC = 60
 _NON_INNER_TARGET_CTAS = _NUM_MPC * 8
 
@@ -80,9 +77,6 @@ def _next_pow2(n):
     return 1 << (n - 1).bit_length()
 
 
-# ===========================================================================
-# 前向部分：完全保持原始逻辑与格式，不做任何修改
-# ===========================================================================
 @libentry()
 @triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
 @triton.jit
@@ -285,12 +279,8 @@ def softmax(self, dim, half_to_float=False):
     return softmax_out(self, dim, half_to_float, out=out)
 
 
-# ===========================================================================
-# 反向算子内核 (Softmax Backward)
-# ===========================================================================
 @triton.jit
 def _load_val(ptr, mask, is_aligned: tl.constexpr, eviction_policy: tl.constexpr):
-    """编译期折叠生成最优加载指令：对齐则突发加载，非对齐则谓词加载"""
     if is_aligned:
         if HAS_TLE:
             return tle.load(ptr, is_async=True, eviction_policy=eviction_policy).to(tl.float32)
@@ -487,7 +477,6 @@ def softmax_backward_inner_large_n_tle_kernel(
     scale = tl.zeros([TILE_N], dtype=tl.float32)
     elem_offsets = tl.arange(0, TILE_N)
 
-    # Pass 1: 计算 scale = sum(out * out_grad)
     for start_n in range(0, N, TILE_N):
         mask = (start_n + elem_offsets) < N
         out_tile = _load_val(curr_out + elem_offsets, mask, IS_ALIGNED, "evict_last")
@@ -499,7 +488,6 @@ def softmax_backward_inner_large_n_tle_kernel(
 
     scale_sum = tl.sum(scale, axis=0)
 
-    # Pass 2: 计算 in_grad 并写回
     curr_out = out_ptr + base
     curr_out_g = out_grad_ptr + base
 
@@ -918,7 +906,6 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
             if M == 1 and N >= 65536:
                 return softmax_backward_1d_fast(grad_output, output, grad_input)
 
-            # N <= 8192 走 resident 单 pass 快速路径
             if _use_inner_fused_path(N):
                 tile_n = _next_pow2(N)
                 num_warps, num_stages = _inner_fused_launch(tile_n)
@@ -934,7 +921,6 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 )
                 return grad_input
 
-            # N > 8192 (如 65536, 1048576)
             if N > _INNER_FUSED_MAX_N:
                 tile_n = 4096
                 softmax_backward_inner_large_n_tle_kernel[(M, 1, 1)](

@@ -105,10 +105,6 @@ def normal_(self, mean=0, std=1, *, generator=None):
     return self
 
 
-# ===========================================================================
-# OPTIMIZED: normal_tensor_float (Fused + TLE Prefetch + Adaptive Tile)
-# ===========================================================================
-
 _DTYPE_MAP = {
     torch.float32: tl.float32,
     torch.float16: tl.float16,
@@ -147,7 +143,6 @@ def _normal_tensor_float_fused_kernel(
     mask_2 = off_2 < N
     mask_3 = off_3 < N
 
-    # 1. 消除向量乘法，优先发射异步全局访存 (TLE is_async=True)
     if IS_BCAST:
         m_val = tl.load(mean_ptr)
         m0 = m_val
@@ -160,7 +155,6 @@ def _normal_tensor_float_fused_kernel(
         m2 = tle.load(mean_ptr + off_2, mask=mask_2, other=0.0, is_async=True)
         m3 = tle.load(mean_ptr + off_3, mask=mask_3, other=0.0, is_async=True)
 
-    # 2. Philox 伪随机数生成（计算掩盖访存）
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
     c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
@@ -174,11 +168,9 @@ def _normal_tensor_float_fused_kernel(
     r2 = uint_to_uniform_float(r2)
     r3 = uint_to_uniform_float(r3)
 
-    # 3. Box-Muller 变换
     n0, n1 = _pair_uniform_to_normal_fast(r0, r1)
     n2, n3 = _pair_uniform_to_normal_fast(r2, r3)
 
-    # 4. 融合仿射变换并写回
     r0f = n0 * std_val + m0.to(tl.float32)
     r1f = n1 * std_val + m1.to(tl.float32)
     r2f = n2 * std_val + m2.to(tl.float32)
@@ -205,7 +197,6 @@ def normal_tensor_float(mean, std, *, generator=None):
             mean = mean.contiguous()
         is_bcast = False
 
-    # 小规模张量自适应减小 Block，激活更多 MPC 并消除尾块闲置
     if N <= 16384:
         cur_block = 256
     else:

@@ -26,9 +26,6 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# 1. 前向 Kernel 与函数（完全还原原始实现，一字不改）
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def embedding_kernel(
@@ -69,9 +66,6 @@ def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=
     return output
 
 
-# ---------------------------------------------------------------------------
-# 2. 频次统计 Kernel
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit
 def indice_freq_kernel(
@@ -88,9 +82,6 @@ def indice_freq_kernel(
     tl.atomic_add(indices_freq + index_element, 1, mask=mask, sem="relaxed")
 
 
-# ---------------------------------------------------------------------------
-# 3. 前 9 个用例保持不动的高性能 2D 反向 Kernel
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit(do_not_specialize=["padding_idx"])
 def embedding_backward_kernel_2d(
@@ -129,9 +120,6 @@ def embedding_backward_kernel_2d(
     tl.atomic_add(grad_in_p, embedding_grad, mask=mask, sem="relaxed")
 
 
-# ---------------------------------------------------------------------------
-# 4. 极致 4 路指令流水反向 Kernel（专攻 [1024, 1024]，纯 Triton + TLE）
-# ---------------------------------------------------------------------------
 @libentry()
 @triton.jit(do_not_specialize=["padding_idx"])
 def embedding_backward_kernel_large_4x(
@@ -160,7 +148,6 @@ def embedding_backward_kernel_large_4x(
 
     cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    # 4 路宽向量异步连续进入 LSU 读流水线
     grad0 = tle.load(
         grad_out_ptr + pid_m0 * N + cols,
         cache_modifier=".cg",
@@ -195,7 +182,6 @@ def embedding_backward_kernel_large_4x(
         freq3 = tl.load(indice_freq_ptr + row3).to(tl.float32)
         grad3 = grad3 * tl.where(freq3 > 1.0, 1.0 / freq3, 1.0)
 
-    # 4 路原子指令无等待并发吞吐
     if HAS_PADDING_IDX:
         if row0 != padding_idx:
             tl.atomic_add(grad_in_ptr + row0 * N + cols, grad0, sem="relaxed")
@@ -212,9 +198,6 @@ def embedding_backward_kernel_large_4x(
         tl.atomic_add(grad_in_ptr + row3 * N + cols, grad3, sem="relaxed")
 
 
-# ---------------------------------------------------------------------------
-# 5. 反向主入口
-# ---------------------------------------------------------------------------
 def embedding_backward(
     grad_outputs,
     indices,
@@ -252,7 +235,6 @@ def embedding_backward(
 
     HAS_PADDING_IDX = padding_idx is not None and padding_idx >= 0
 
-    # 针对超大尺寸 [1024, 1024]：启用 4 路指令级展开流水 Kernel
     if M >= 1048576 and N >= 1024 and (M % 4 == 0):
         BLOCK_N = 256
         grid = (M // 4, triton.cdiv(N, BLOCK_N))
@@ -273,7 +255,6 @@ def embedding_backward(
             )
         return grad_inputs
 
-    # 前 9 个用例完全保持 benchmark_v14 的原始最优配置（0.9x ~ 18.0x）
     BLOCK_N = min(triton.next_power_of_2(N), 128)
     grid = (M, triton.cdiv(N, BLOCK_N))
     num_warps = 4 if BLOCK_N >= 128 else (2 if BLOCK_N >= 64 else 1)

@@ -46,9 +46,6 @@ def _philox_u32(philox_seed, philox_offset, idx):
     return r0
 
 
-# =====================================================================
-# 路径 1: n <= 512 极轻量单 CTA Bitonic Argsort (针对 64, 100 等极小规模)
-# =====================================================================
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "philox_seed", "philox_offset"])
 def ultra_slim_bitonic_kernel(
@@ -70,9 +67,6 @@ def ultra_slim_bitonic_kernel(
     tl.store(out_ptr + cols, sorted_indices.to(out_ptr.dtype.element_ty), mask=mask)
 
 
-# =====================================================================
-# 路径 2: 512 < n <= 10000 均匀分桶快速排序 (含 1024 / 2048 / 4096 / 10000)
-# =====================================================================
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "philox_seed", "philox_offset"])
 def bucket_scatter_kernel(
@@ -96,7 +90,6 @@ def bucket_scatter_kernel(
     slot = tl.atomic_add(bucket_counts_ptr + bucket_id, 1, mask=mask)
 
     dest = bucket_id * 1024 + slot
-    # 随机打散写入采用 .cg 绕过 L1，保护高频缓存行
     tl.store(bucket_keys_ptr + dest, key, mask=mask, cache_modifier=".cg")
     tl.store(bucket_vals_ptr + dest, idx.to(tl.int32), mask=mask, cache_modifier=".cg")
 
@@ -153,9 +146,6 @@ def _launch_uniform_bucket_sort(out, n, generator):
         )
 
 
-# =====================================================================
-# 路径 3: 10000 < n <= 65536 快速 Radix 排序 (加入 .cg 写入优化)
-# =====================================================================
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "bit_offset"])
 def tile_digit_hist_kernel(key_ptr, hist_ptr, n_elements, bit_offset, NUM_BINS: tl.constexpr, BLOCK: tl.constexpr):
@@ -228,7 +218,6 @@ def radix_scatter_kernel(
         m = (digit == b) & mask
         rank = tl.cumsum(m.to(tl.int32)) - 1
         dest = tl.load(base + b) + rank.to(tl.int64)
-        # .cg 写入优化：全局离散写回绕过 L1，显著降低 Cache Thrashing
         tl.store(key_out_ptr + dest, key, mask=m, cache_modifier=".cg")
         tl.store(val_out_ptr + dest, val.to(val_out_ptr.dtype.element_ty), mask=m, cache_modifier=".cg")
 
@@ -284,9 +273,6 @@ def _launch_fast_radix_mid(out, n, generator):
             k_in, k_out = k_out, k_in
 
 
-# =====================================================================
-# 路径 4: 大 n (n > 65536) 跨块前缀和 Radix (加入 .cg 写入优化)
-# =====================================================================
 @libentry()
 @triton.jit(do_not_specialize=["tiles"])
 def scan_reduce_16_kernel(
@@ -411,9 +397,6 @@ def _launch_fast_radix_large(out, n, generator):
             k_in, k_out = k_out, k_in
 
 
-# =====================================================================
-# 主入口
-# =====================================================================
 def randperm(
     n,
     *,
@@ -437,7 +420,6 @@ def randperm(
     if out is None:
         out = torch.empty(n, dtype=dtype, device=device)
 
-    # 1. 极小规模 (n <= 512): 单 CTA 全展开 bitonic argsort (64, 100 保持 4x~5x 极速)
     if n <= 512:
         block_size = triton.next_power_of_2(n)
         seed, offset = philox_backend_seed_offset(n, generator=generator)
@@ -448,18 +430,14 @@ def randperm(
             )
         return out
 
-    # 2. 中小规模 (512 < n <= 10000): 
-    # 将 1024 纳入桶排序，彻底消除 1024 单 block 展开指令臃肿的问题（预计从 0.78x 升至 1.1x+）
     if n <= 10000:
         _launch_uniform_bucket_sort(out, n, generator)
         return out
 
-    # 3. 中等规模 (10000 < n <= 65536): 保持 v17 稳定 Radix + .cg 写缓存优化
     if n <= 65536:
         _launch_fast_radix_mid(out, n, generator)
         return out
 
-    # 4. 大规模 (n > 65536): 保持 v17 稳定分块 Radix + .cg 写缓存优化
     if n < (1 << 31):
         _launch_fast_radix_large(out, n, generator)
         return out

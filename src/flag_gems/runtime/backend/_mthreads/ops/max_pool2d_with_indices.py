@@ -43,15 +43,9 @@ def max_pool2d_output_size(
     return output_size
 
 
-# Channel-packed forward kernel: each program computes a (BLOCK_C, BLOCK_HW)
-# tile of outputs, packing multiple channels into one program.
-# The grid is 2-D (channel blocks x hw blocks) so that mid-size spatial
-# outputs (out_hw ~ 100-2000) still launch enough programs to fill the GPU.
 @libentry()
 @triton.autotune(
     configs=[
-        # Small tiles: best for tiny spatial outputs (out_hw <= ~100) where
-        # many small programs beat few fat ones (verified on MTT S5000).
         triton.Config({"BLOCK_C": 2, "BLOCK_HW": 16}, num_stages=2, num_warps=2),
         triton.Config({"BLOCK_C": 4, "BLOCK_HW": 16}, num_stages=2, num_warps=2),
         triton.Config({"BLOCK_C": 8, "BLOCK_HW": 16}, num_stages=2, num_warps=2),
@@ -59,8 +53,6 @@ def max_pool2d_output_size(
         triton.Config({"BLOCK_C": 4, "BLOCK_HW": 32}, num_stages=2, num_warps=2),
         triton.Config({"BLOCK_C": 8, "BLOCK_HW": 32}, num_stages=2, num_warps=2),
         triton.Config({"BLOCK_C": 16, "BLOCK_HW": 32}, num_stages=2, num_warps=4),
-        # Mid/large tiles: best for mid-size spatial outputs (out_hw ~ 200-800)
-        # where a 1-D grid cannot fill the GPU without splitting HW.
         triton.Config({"BLOCK_C": 2, "BLOCK_HW": 64}, num_stages=2, num_warps=2),
         triton.Config({"BLOCK_C": 4, "BLOCK_HW": 64}, num_stages=2, num_warps=4),
         triton.Config({"BLOCK_C": 2, "BLOCK_HW": 128}, num_stages=2, num_warps=4),
@@ -69,9 +61,6 @@ def max_pool2d_output_size(
         triton.Config({"BLOCK_C": 32, "BLOCK_HW": 64}, num_stages=2, num_warps=8),
         triton.Config({"BLOCK_C": 4, "BLOCK_HW": 128}, num_stages=2, num_warps=4),
         triton.Config({"BLOCK_C": 8, "BLOCK_HW": 128}, num_stages=2, num_warps=4),
-        # Tile area is capped at 16 x 128 lanes: larger tiles (e.g.
-        # BLOCK_C=32 x BLOCK_HW=256) spill badly in fp32 and were observed to
-        # trip an illegal-memory-access in the codegen on MTT S5000.
         triton.Config({"BLOCK_C": 16, "BLOCK_HW": 128}, num_stages=2, num_warps=8),
     ],
     key=[
@@ -120,20 +109,12 @@ def max_pool2d_channel_packed_kernel(
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
     max_val_acc = tl.full((BLOCK_C, BLOCK_HW), min_val, dtype=tl.float32)
-    # Only the winning window position (a small constexpr constant per step)
-    # is tracked inside the loop; the flat input index is reconstructed once
-    # after the loop. This removes one multiply + add + int32 cast per window
-    # step per lane.
     best_k = tl.full((BLOCK_C, BLOCK_HW), -1, dtype=tl.int32)
 
     in_hw_size = in_h * in_w
-    # Clamp channels into range so loads stay fully unmasked (better
-    # vectorization); lanes from clamped channels are garbage but never
-    # stored (store is masked with c_mask).
     c_safe = tl.minimum(c_offsets, total_channels - 1)
     c_base_offset = c_safe[:, None] * in_hw_size
 
-    # Loop-invariant parts of the window coordinates.
     h_base = h_out * stride_h - padding_h
     w_base = w_out * stride_w - padding_w
 
@@ -150,18 +131,12 @@ def max_pool2d_channel_packed_kernel(
 
             raw_val_f32 = tl.load(input_ptr + input_offset).to(tl.float32)
 
-            # Padding is folded into the comparison predicate instead of
-            # materialising an -inf value: an out-of-bounds lane simply never
-            # wins, which is equivalent and saves one select per window step.
             valid_spatial = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
 
             is_new_max = (raw_val_f32 > max_val_acc) & valid_spatial[None, :]
             max_val_acc = tl.where(is_new_max, raw_val_f32, max_val_acc)
             best_k = tl.where(is_new_max, kh * kernel_w + kw, best_k)
 
-    # Rebuild the flat input index from the winning window position. Lanes
-    # that never won (best_k == -1, i.e. windows fully inside the padding)
-    # keep the -1 sentinel.
     kh_best = best_k // kernel_w
     kw_best = best_k % kernel_w
     best_h_in = h_base[None, :] + kh_best * dilation_h
@@ -269,9 +244,6 @@ def max_pool2d_forward_kernel(
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
     max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=tl.float32)
-    # Track the winning window position only; the flat input index is
-    # reconstructed once after the loop (saves an extra index computation
-    # per window step per lane).
     best_k = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int32)
 
     input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
@@ -290,8 +262,6 @@ def max_pool2d_forward_kernel(
 
             raw_val_f32 = tl.load(input_base_ptr + safe_offset).to(tl.float32)
 
-            # Padding folded into the comparison predicate: an out-of-bounds
-            # lane never wins, so no -inf value has to be materialised.
             in_mask = (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
 
             is_new_max = (raw_val_f32 > max_val_acc) & in_mask
@@ -503,14 +473,9 @@ def max_pool2d_with_indices(
     out_hw = out_h * out_w
     total_channels = in_n * in_c
 
-    # Channel-packed path: pack multiple channels per program so each program
-    # does enough work. Best for mid-size spatial outputs where the per-channel
-    # tiled kernel launches too many tiny programs, and for small outputs where
-    # 1-D parallelism alone cannot fill the GPU.
     use_packed = (
         out_hw <= 2048
         and total_channels >= 512
-        # int32 offsets inside the packed kernel
         and total_channels * in_h * in_w < 2147483647
     )
 

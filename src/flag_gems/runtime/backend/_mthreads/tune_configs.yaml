@@ -283,14 +283,6 @@ softmax_non_inner:
       TILE_K: 1024
 softmax_inner:
   - META:
-      TILE_N: 32
-  - META:
-      TILE_N: 64
-  - META:
-      TILE_N: 128
-  - META:
-      TILE_N: 256
-  - META:
       TILE_N: 1024
 addmm:
   - META:

@@ -30,21 +30,12 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
 
-# ---------------------------------------------------------------------------
-# 1. 极致优化的 1D 连续内存快速复制内核
-#    - 消除任何高维 pid 解除和 sdiv 开销
-#    - 支持 num_stages=2~3 软件流水线隐藏读写延迟
-#    - 针对不同数据量自适应 BLOCK_SIZE 与 num_warps，解决小尺寸欠载
-# ---------------------------------------------------------------------------
 @triton.autotune(
     configs=[
-        # 小尺寸 (如 64x64=4K elements): 减小 BLOCK_SIZE，提高 Grid 数量填满 SM/CU
         triton.Config({"BLOCK_SIZE": 256}, num_warps=2, num_stages=2),
         triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=2),
-        # 中等尺寸
         triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2),
         triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=3),
-        # 超大尺寸 (如 1024^3): 超大 Block + 8 warps + 3 stages 最大化吞吐
         triton.Config({"BLOCK_SIZE": 4096}, num_warps=8, num_stages=3),
         triton.Config({"BLOCK_SIZE": 8192}, num_warps=8, num_stages=3),
     ],
@@ -62,11 +53,9 @@ def _copy_1d_contiguous_kernel(
     mask = offsets < n_elements
 
     val = tl.load(src_ptr + offsets, mask=mask)
-    # 支持类型转换 (如 f16 -> f32)，若类型相同编译器会自动消除 cast
     tl.store(dst_ptr + offsets, val.to(dst_ptr.dtype.element_ty), mask=mask)
 
 
-# 针对非连续 / 广播场景的原生动态 Kernel
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def _copy_kernel(src):
@@ -81,7 +70,6 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
     if dst.is_quantized or src.is_quantized:
         return False
     if src.is_complex() or dst.is_complex():
-        # Preserve PyTorch's behaviour of warning when casting complex to real
         return False
     if _FLOAT8_E8M0FNU is not None and (
         src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
@@ -91,7 +79,6 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
 
 
 def _can_use_contiguous_fastpath(dst: torch.Tensor, src: torch.Tensor) -> bool:
-    """判断是否能将高维数据无损展平成 1D，走最速连续复制流水线"""
     return (
         dst.is_contiguous()
         and src.is_contiguous()
@@ -164,7 +151,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             _FALLBACK_KEYSET, dst, src, non_blocking
         )
 
-    # 广播形状校验
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
     except RuntimeError as exc:
@@ -175,9 +161,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
             f"The broadcast shape {broadcast_shape} does not match destination shape {tuple(dst.shape)}"
         )
 
-    # -----------------------------------------------------------------------
-    # 核心优化路径：Contiguous 1D Fast-Path
-    # -----------------------------------------------------------------------
     if _can_use_contiguous_fastpath(dst, src):
         logger.debug("GEMS COPY_ (1D contiguous fast-path)")
         n_elements = dst.numel()
@@ -185,9 +168,6 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         _copy_1d_contiguous_kernel[grid](dst, src, n_elements)
         return dst
 
-    # -----------------------------------------------------------------------
-    # 兜底路径：非连续跨步 / 广播张量走通用 pointwise_dynamic
-    # -----------------------------------------------------------------------
     logger.debug("GEMS COPY_ (strided / broadcast fallback)")
     expanded_src = _expand_like(src, dst.shape)
     overload = _copy_kernel.instantiate(expanded_src.ndim)
