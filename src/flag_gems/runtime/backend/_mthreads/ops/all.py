@@ -12,200 +12,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""MTHREADS boolean AND-reductions (all / all_dim / all_dims).
+
+Thin wrapper over the shared ``_boolean_reduction`` core (single codegen,
+``IS_ALL=True`` polarity); see that module for the execution
+architecture.
+"""
+
 import logging
-import math
-from typing import Sequence
+import operator
+import os
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.runtime.backend._mthreads.ops import _boolean_reduction as _boolean
 
-shortname = __name__.split(".")[-1]
 logger = logging.getLogger(__name__)
 
-NAIVE_REDUCTION_CONFIGS = [
-    triton.Config({"BLOCK_M": 4, "BLOCK_N": 1024}, num_warps=4),
-    triton.Config({"BLOCK_M": 8, "BLOCK_N": 1024}, num_warps=4),
-    triton.Config({"BLOCK_M": 16, "BLOCK_N": 1024}, num_warps=8),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 512}, num_warps=8),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 256}, num_warps=4),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 128}, num_warps=4),
-    triton.Config({"BLOCK_M": 32, "BLOCK_N": 64}, num_warps=4),
-    triton.Config({"BLOCK_M": 16, "BLOCK_N": 256}, num_warps=4),
-    triton.Config({"BLOCK_M": 16, "BLOCK_N": 128}, num_warps=4),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 256}, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 128}, num_warps=4),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=4),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 64}, num_warps=8),
-    triton.Config({"BLOCK_M": 64, "BLOCK_N": 32}, num_warps=4),
-    triton.Config({"BLOCK_M": 128, "BLOCK_N": 256}, num_warps=8),
-    triton.Config({"BLOCK_M": 256, "BLOCK_N": 256}, num_warps=8),
-]
+# Split-K merge strategy for the fused reduction kernel (ablation knob):
+#   "partials" - int8 partials workspace + AND-merge kernel (default)
+#   "atomic"   - int32 zero-found flags merged via atomic_max
+#   "none"     - force splits=1 (single kernel, degenerate for M=1)
+_strategy = os.environ.get("FLAGGEMS_ALL_SPLIT_STRATEGY", "partials").lower()
+if _strategy not in ("partials", "atomic", "none"):
+    _strategy = "partials"
+_MERGE_STRATEGY = {
+    "partials": "partial",
+    "atomic": "atomic",
+    "none": "none",
+}[_strategy]
 
 
-@triton.jit
-def reduce_all(a, b):
-    return a and b
+def _out_dtype(inp: torch.Tensor) -> torch.dtype:
+    # ATen keeps uint8 for all/any (legacy bool storage); everything else -> bool.
+    return torch.uint8 if inp.dtype == torch.uint8 else torch.bool
 
 
-@triton.autotune(configs=NAIVE_REDUCTION_CONFIGS, key=["M", "N"])
-@triton.jit
-def all_kernel_dim_strided(
-    inp,
-    out,
-    M,
-    N,
-    INNER,
-    STRIDE_OUTER,
-    STRIDE_REDUCE,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
-    rows = rows.to(tl.int64)
-    row_mask = rows < M
-
-    outer_idx = rows // INNER
-    inner_idx = rows % INNER
-    base_ptr = inp + outer_idx * STRIDE_OUTER + inner_idx
-
-    acc = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)
-        cols = cols.to(tl.int64)
-        col_mask = cols < N
-        mask = row_mask[:, None] and col_mask[None, :]
-        vals = tl.load(
-            base_ptr[:, None] + cols[None, :] * STRIDE_REDUCE, mask, other=1.0
-        )
-        acc = acc and (vals != 0)
-    all_val = tl.reduce(acc, axis=1, combine_fn=reduce_all)
-    tl.store(out + rows, all_val, mask=row_mask)
-
-
-def _flatten_dim(shape: Sequence[int], dim: int):
-    dim = dim % len(shape)
-    n = shape[dim]
-    inner = math.prod(shape[dim + 1 :]) if dim + 1 < len(shape) else 1
-    outer = math.prod(shape[:dim]) if dim > 0 else 1
-    return dim, n, inner, outer
-
-
-def triton_all_dim_strided(
-    inp: torch.Tensor, dim: int, keepdim: bool = False
-) -> torch.Tensor:
-    dim = dim % inp.ndim
-    shape = list(inp.shape)
-    dim, n, inner, outer = _flatten_dim(shape, dim)
-    m = outer * inner
-
-    stride = inp.stride()
-    stride_reduce = stride[dim]
-    stride_outer = stride_reduce * n
-
-    out_flat = torch.empty((m,), dtype=torch.bool, device=inp.device)
-    grid = lambda meta: (triton.cdiv(m, meta["BLOCK_M"]),)
-    all_kernel_dim_strided[grid](
-        inp,
-        out_flat,
-        m,
-        n,
-        inner,
-        stride_outer,
-        stride_reduce,
+def _all_dims_impl(inp, reduce_dims, keepdim):
+    """Single-launch fused multi-dim AND over `reduce_dims` (normalized)."""
+    return _boolean.boolean_dims_impl(
+        inp, reduce_dims, keepdim, is_all=True, merge_strategy=_MERGE_STRATEGY
     )
 
-    shape[dim] = 1
-    out = out_flat.view(shape)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
 
-
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("naive_reduction"),
-    key=["M", "N"],
-)
-@triton.jit
-def all_kernel_dim(
-    inp,
-    out,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
-    inp = inp + rows * N
-    out = out + rows
-    row_mask = rows < M
-
-    _all = tl.full([BLOCK_M, BLOCK_N], value=1, dtype=tl.int1)
-    for off in range(0, N, BLOCK_N):
-        cols = off + tl.arange(0, BLOCK_N)[None, :]
-        col_mask = cols < N
-        mask = row_mask and col_mask
-
-        a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
-    all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
-    tl.store(out, all[:, None], row_mask)
-
-
-@libentry()
-@triton.jit
-def all_kernel_1(
-    inp,
-    mid,
-    n_elements,
-    mid_size,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < n_elements
-    inp_val = tl.load(inp_ptrs, mask=mask, other=1.0)
-    all_val = tl.reduce(inp_val != 0, axis=0, combine_fn=reduce_all)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, all_val)
-
-
-@libentry()
-@triton.jit
-def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
-    offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < MID_SIZE
-    mid_val = tl.load(mid_ptrs, mask=mask, other=1).to(tl.int1)
-    all_val = tl.reduce(mid_val, axis=0, combine_fn=reduce_all)
-    tl.store(out, all_val)
-
-
+# ---------------------------------------------------------------------------
+# public API
+# ---------------------------------------------------------------------------
 def all(inp):
     logger.debug("GEMS_MTHREADS ALL")
     n_elements = inp.numel()
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
-    block_size = min(block_size * 2, 4096, triton.next_power_of_2(n_elements))
-    mid_size = triton.cdiv(n_elements, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=inp.device)
-    out = torch.empty([], dtype=torch.bool, device=inp.device)
+    if n_elements == 0:
+        # all() over an empty domain is vacuously True; never launch kernels.
+        return torch.ones([], dtype=_out_dtype(inp), device=inp.device)
 
-    with torch_device_fn.device(inp.device):
-        all_kernel_1[(mid_size, 1)](inp, mid, n_elements, mid_size, block_size)
-        all_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
+    if not torch.ops.aten.is_non_overlapping_and_dense(inp):
+        # Gapped (slice/pad) or broadcast (stride-0) storage: linear addressing
+        # would read the wrong element set. Use the stride-aware fused path.
+        return _all_dims_impl(inp, tuple(range(inp.ndim)), False)
 
-    return out
+    # Dense non-overlapping layout: the addressed offsets are exactly
+    # {0 .. n_elements-1}, so the two-kernel linear reduction is valid.
+    return _boolean.boolean_whole_impl(inp, is_all=True)
 
 
 def all_dim(inp, dim=None, keepdim=False):
@@ -216,11 +84,20 @@ def all_dim(inp, dim=None, keepdim=False):
             out = torch.reshape(out, [1] * inp.ndim)
         return out
 
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-    dim = dim % inp.ndim
-
-    with torch_device_fn.device(inp.device):
-        return triton_all_dim_strided(inp, dim=dim, keepdim=keepdim)
+    dim = operator.index(dim)
+    ndim = inp.ndim
+    if ndim == 0:
+        # 0-dim tensors accept dim 0 / -1 (ATen semantics): result = bool(x).
+        if dim == 0 or dim == -1:
+            return (inp != 0).to(_out_dtype(inp))
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [-1, 0], but got {dim})"
+        )
+    if not (-ndim <= dim < ndim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of [{-ndim}, {ndim - 1}], but got {dim})"
+        )
+    return _all_dims_impl(inp, (dim % ndim,), keepdim)
 
 
 def all_dims(inp, dim=None, keepdim=False):
@@ -228,25 +105,37 @@ def all_dims(inp, dim=None, keepdim=False):
 
     if dim is None or isinstance(dim, int):
         return all_dim(inp, dim=dim, keepdim=keepdim)
-    assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
 
-    shape = list(inp.shape)
-    dim = [d % inp.ndim for d in dim]
-    inp = dim_compress(inp, dim)
-    N = 1
-    for i in dim:
-        N *= shape[i]
-        shape[i] = 1
-    M = inp.numel() // N
+    dims = [operator.index(d) for d in dim]
+    ndim = inp.ndim
+    if ndim == 0:
+        seen = set()
+        for d in dims:
+            if d not in (0, -1):
+                raise IndexError(
+                    f"Dimension out of range (expected to be in range of [-1, 0], but got {d})"
+                )
+            if 0 in seen:
+                raise RuntimeError("dim 0 appears multiple times in the reduction")
+            seen.add(0)
+        return (inp != 0).to(_out_dtype(inp))
 
-    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    seen = set()
+    for d in dims:
+        if not (-ndim <= d < ndim):
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of [{-ndim}, {ndim - 1}], but got {d})"
+            )
+        d = d % ndim
+        if d in seen:
+            raise RuntimeError(f"dim {d} appears multiple times in the reduction")
+        seen.add(d)
 
-    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-    with torch_device_fn.device(inp.device):
-        all_kernel_dim[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
+    if not seen:
+        # dim=[] reduces nothing: elementwise bool conversion (CPU-native rule).
+        return (inp != 0).to(_out_dtype(inp))
+
+    return _all_dims_impl(inp, tuple(sorted(seen)), keepdim)
 
 
 __all__ = ["all", "all_dim", "all_dims"]
