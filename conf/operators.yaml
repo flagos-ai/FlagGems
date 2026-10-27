@@ -5491,6 +5491,22 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: empty_per_channel_affine_quantized
+  description: 'Tensor factory operator — allocates an uninitialized per-channel
+    affine quantized tensor carrying the supplied scales, zero points and channel
+    axis.
+
+    '
+  for:
+  - _empty_per_channel_affine_quantized
+  labels:
+  - aten
+  - KernelGen
+  - skip_precision_check
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: empty_permuted
   description: 'Tensor factory operator — allocates an uninitialized tensor whose
     memory

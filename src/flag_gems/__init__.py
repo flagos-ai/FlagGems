@@ -185,6 +185,12 @@ _FULL_CONFIG = (
         _embedding_bag_per_sample_weights_backward,
     ),
     ("_embedding_bag_sparse_backward", _embedding_bag_sparse_backward),
+    (
+        "_empty_per_channel_affine_quantized",
+        _empty_per_channel_affine_quantized,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
     ("_euclidean_dist", _euclidean_dist),
     (
         "_fake_quantize_learnable_per_channel_affine",
