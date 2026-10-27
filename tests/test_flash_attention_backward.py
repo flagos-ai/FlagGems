@@ -259,19 +259,15 @@ def test_flash_attention_backward(
         extra_bwd["window_size_left"] = window_size_left
     if window_size_right is not None:
         extra_bwd["window_size_right"] = window_size_right
-    ref_dOut = utils.to_reference(dOut)
-    ref_Q = utils.to_reference(Q)
-    ref_K = utils.to_reference(K)
-    ref_V = utils.to_reference(V)
-    ref_out = utils.to_reference(out)
-    ref_lse = utils.to_reference(lse)
-    ref_dQ, ref_dK, ref_dV = torch.ops.aten._flash_attention_backward(
-        ref_dOut,
-        ref_Q,
-        ref_K,
-        ref_V,
-        ref_out,
-        ref_lse,
+    # aten._flash_attention_backward has no CPU kernel, so the reference runs
+    # on device even with --ref cpu; only its outputs move to the ref device.
+    ref_grads = torch.ops.aten._flash_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        out,
+        lse,
         None,
         None,
         q_seq_len,
@@ -283,6 +279,7 @@ def test_flash_attention_backward(
         scale=scale,
         **extra_bwd,
     )
+    ref_dQ, ref_dK, ref_dV = (utils.to_reference(g) for g in ref_grads)
 
     dQ, dK, dV = flag_gems.flash_attention_backward(
         dOut,
