@@ -14657,6 +14657,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_from_padded_and_nested_example
+  description: |
+    Constructs a (strided-layout) nested tensor from a padded tensor, using
+    the metadata of an example nested tensor to describe the output structure.
+  for:
+  - _nested_from_padded_and_nested_example
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
