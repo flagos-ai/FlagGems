@@ -36,7 +36,7 @@ class CrowIndicesBenchmark(base.Benchmark):
             ccol = torch.randint(
                 0, shape[1], (nnz,), dtype=torch.int64, device=self.device
             )
-            values = utils.base.generate_tensor_input((nnz,), cur_dtype, self.device)
+            values = utils.generate_tensor_input((nnz,), cur_dtype, self.device)
             sparse = torch.sparse_csr_tensor(crow, ccol, values, shape)
             yield (sparse,)
 

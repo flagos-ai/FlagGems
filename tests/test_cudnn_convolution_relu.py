@@ -123,11 +123,13 @@ def _reference_output(inp, weight, bias, stride, padding, dilation, groups):
     """Reference for one case.
 
     The aten operator is CUDA-only, so the device reference is the aten op
-    itself at the operator's dtype -- except for 1D inputs, which cuDNN's
-    fused engine rejects outright (measured: "xDesc.getNbDims() !=
-    bDesc.getNbDims()"), so those references are rebuilt from
-    torch.nn.functional.conv1d + relu on-device. Under --ref cpu the
-    reference is the same conv*d + relu built on the fp64-upcast CPU copy.
+    itself at the operator's dtype -- except for 1D/3D inputs, which need a
+    rebuilt reference: cuDNN's fused engine rejects 1D outright (measured:
+    "xDesc.getNbDims() != bDesc.getNbDims()") and its 3D fp32 engine may run
+    with TF32 tensor cores, whose extra rounding neither the fp32 conv
+    accumulator nor the Triton kernel (both closer to the fp64 truth) can
+    match at the 1e-4 tolerance. Under --ref cpu the reference is the same
+    conv*d + relu built on the fp64-upcast CPU copy.
     """
     ndim = inp.ndim - 2
     if utils.TO_CPU or ndim == 1:
@@ -152,6 +154,26 @@ def _reference_output(inp, weight, bias, stride, padding, dilation, groups):
         ref_out = _CONV_REF_FN[ndim](
             ref_inp, ref_weight, ref_bias, stride, padding, dilation, groups
         )
+        return torch.relu(ref_out)
+    if ndim == 3 and inp.dtype == torch.float32:
+        # The fused 3D fp32 engine may dispatch to TF32 tensor cores; the
+        # reference is rebuilt from F.conv3d with TF32 disabled so it tracks
+        # the fp32 conv accumulator, matching both the aten fp64 error and
+        # the Triton kernel.
+        prev_tf32 = torch.backends.cudnn.allow_tf32
+        torch.backends.cudnn.allow_tf32 = False
+        try:
+            ref_out = torch.nn.functional.conv3d(
+                inp,
+                weight,
+                bias.reshape(-1) if bias is not None else None,
+                stride=_as_list(stride, ndim),
+                padding=_as_list(padding, ndim),
+                dilation=_as_list(dilation, ndim),
+                groups=groups,
+            )
+        finally:
+            torch.backends.cudnn.allow_tf32 = prev_tf32
         return torch.relu(ref_out)
     return aten(
         inp,

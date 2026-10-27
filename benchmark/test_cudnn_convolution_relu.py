@@ -21,8 +21,8 @@ def cudnn_convolution_relu_no_bias_input_fn(case, dtype, device):
     ndim = len(in_shape) - 2
     k = 3
     weight_shape = (out_c, in_shape[1] // groups, *([k] * ndim))
-    inp = utils.base.generate_tensor_input(in_shape, dtype, device)
-    weight = utils.base.generate_tensor_input(weight_shape, dtype, device)
+    inp = utils.generate_tensor_input(in_shape, dtype, device)
+    weight = utils.generate_tensor_input(weight_shape, dtype, device)
     yield (
         inp,
         weight,
@@ -44,8 +44,8 @@ def cudnn_convolution_relu_out_input_fn(case, dtype, device):
     in_shape, out_c, k, padding = case
     ndim = len(in_shape) - 2
     weight_shape = (out_c, in_shape[1], *([k] * ndim))
-    inp = utils.base.generate_tensor_input(in_shape, dtype, device)
-    weight = utils.base.generate_tensor_input(weight_shape, dtype, device)
+    inp = utils.generate_tensor_input(in_shape, dtype, device)
+    weight = utils.generate_tensor_input(weight_shape, dtype, device)
     bias = torch.randn(out_c, dtype=dtype, device=device)
     out = torch.empty(
         _conv_output_shape(in_shape, out_c, k, padding, 1, ndim),
@@ -157,8 +157,8 @@ def cudnn_convolution_relu_input_fn(case, dtype, device):
     k = 3
     weight_shape = (out_c, in_shape[1] // groups, *([k] * ndim))
 
-    inp = utils.base.generate_tensor_input(in_shape, dtype, device)
-    weight = utils.base.generate_tensor_input(weight_shape, dtype, device)
+    inp = utils.generate_tensor_input(in_shape, dtype, device)
+    weight = utils.generate_tensor_input(weight_shape, dtype, device)
     bias = torch.randn(out_c, dtype=dtype, device=device)
 
     yield (
