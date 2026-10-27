@@ -159,18 +159,63 @@ If you are adding a C++ wrapped operator, you should add a corresponding *ctest*
 
 ### Testing operator logs {#testing-operator-logs}
 
-Operator unit tests may verify that the expected implementation was dispatched by checking its debug log. Enable DEBUG logging only for the logger belonging to the resolved implementation, rather than for the root logger:
+In operator unit tests, beyond validating numerical accuracy (`gems_assert_close` / `gems_assert_equal`), you must also verify that runtime execution is dispatched to FlagGems' Triton implementation rather than silently falling back to PyTorch native ATen operators.
+
+According to FlagGems operator conventions, the first statement in every operator function emits a formatted DEBUG log. Unit tests capture and assert this log using pytest's `caplog` fixture to verify the dispatch path and operator liveness.
+
+#### Core testing utilities
+
+The test helper module `tests.accuracy_utils` (conventionally imported as `utils`) provides dedicated helpers for log verification:
+
+1. **`caplog` (pytest fixture)**: Captures log messages during test execution. Test functions must explicitly declare `caplog` as a parameter (e.g. `def test_add(shape, dtype, caplog):`). If performing multiple assertions within the same test, call `caplog.clear()` between them.
+2. **`utils.gems_log_logger(fn)`**: Returns the logger name used by the resolved operator implementation (namely `fn.__module__`). Operator source files configure their logger via `logger = logging.getLogger(__name__)`. This helper scopes DEBUG capture strictly to the target operator's module (such as generic `flag_gems.ops.add` or vendor override `_kunlunxin.ops.add`), preventing noise from root loggers or unrelated external libraries.
+3. **`utils.gems_log_prefix(fn)`**: Automatically derives the expected log prefix from the resolved function's module path. If a vendor override is executed (its module path contains `_{flag_gems.vendor_name}`), it returns `GEMS_<VENDOR>` (e.g., `GEMS_NVIDIA`, `GEMS_ASCEND`, `GEMS_HYGON`); for generic implementations, it returns `GEMS`. This ensures unit tests run unchanged across diverse hardware backends.
+
+#### Standard test patterns
+
+The standard idiom wraps operator invocation in a `caplog.at_level` context and asserts the expected log message with the dynamic prefix and uppercase operator name:
 
 ```python
-with caplog.at_level(
-    "DEBUG", logger=utils.gems_log_logger(flag_gems.add)
-):
-    result = flag_gems.add(inp, other)
+# 1. Standard operator test (e.g., flag_gems.true_divide)
+ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
+    res_out = flag_gems.true_divide(inp1, inp2)
 
-assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
+# Verify dispatch log: dynamic prefix + uppercase snake_case operator name
+assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+# Verify accuracy
+utils.gems_assert_close(res_out, ref_out, dtype)
 ```
 
-`gems_log_logger()` derives the logger name from the resolved function, so the check also works when a backend-specific implementation is selected. `gems_log_prefix()` returns `GEMS` for the generic implementation and `GEMS_<VENDOR>` for a vendor implementation. Keep log assertions specific to the operator under test so unrelated DEBUG messages cannot make a test pass accidentally.
+For in-place, out-variant, or private forward operators, ensure the asserted name matches the operator function's log statement:
+
+```python
+# 2. In-place operator test (e.g., flag_gems.true_divide_)
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_)):
+    res_out = flag_gems.true_divide_(inp1, inp2)
+assert f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
+
+# 3. Out-variant operator test (e.g., flag_gems.special_i1e_out)
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_i1e_out)):
+    res_out = flag_gems.special_i1e_out(inp, out)
+assert f"{utils.gems_log_prefix(flag_gems.special_i1e_out)} SPECIAL_I1E_OUT" in caplog.text
+```
+
+When explicitly testing PyTorch ATen operator interception via `flag_gems.use_gems()`:
+
+```python
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
+assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+```
+
+#### Best practices and caveats
+
+- **Never hardcode prefixes**: Avoid writing literal strings like `"GEMS ADD"` or `"GEMS_NVIDIA ADD"`. Always use `f"{utils.gems_log_prefix(...)} <OP_NAME>"` so tests run seamlessly on all backends (NVIDIA, Ascend, Kunlunxin, Hygon, Cambricon, etc.).
+- **Scope loggers strictly**: Do not enable DEBUG logging globally across the root logger (i.e. avoid `caplog.at_level("DEBUG")` without specifying `logger`), as unrelated debug logs from PyTorch or compilers can introduce flakiness or false positives.
+- **Match operator names exactly**: The operator name in the assertion must be in uppercase snake_case and match the string in the host function's `logger.debug(...)` (including trailing or leading underscores, such as `ADD_` or `_FLASH_ATTENTION_FORWARD`).
+- **Static CI rule validation**: Before submitting a PR, run `python tools/ci_checks/check_api_logs.py --operators '["<op_id>"]'` to verify that your operator implementation follows the API logging conventions.
 
 ### Model test {#model-test}
 

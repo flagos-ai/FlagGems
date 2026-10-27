@@ -231,18 +231,63 @@ under the `tests` directory.
 
 ### 测试算子日志 {#testing-operator-logs}
 
-算子单元测试可以通过检查 DEBUG 日志，确认实际派发的是预期实现。应只为被解析出的实现函数启用 DEBUG 日志，不要直接启用 root logger：
+在算子单元测试中，除了验证计算结果的数值精度（`gems_assert_close` / `gems_assert_equal`）外，还需验证运行时是否确实派发（dispatch）到了 FlagGems 的 Triton 实现，而不是静默回退（silent fallback）到 PyTorch 原生 ATen 算子。
+
+根据 FlagGems 算子规范，每个算子函数的第一条语句都输出带有规范前缀的 DEBUG 日志。单元测试通过 pytest 的 `caplog` fixture 捕获并断言该日志，以验证派发路径与算子存活性（liveness）。
+
+#### 核心辅助工具
+
+测试辅助模块 `tests.accuracy_utils`（通常简写为 `utils`）提供了针对日志验证的专用工具：
+
+1. **`caplog` (pytest fixture)**：用于捕获测试用例执行期间的日志信息。测试用例入参需显式声明 `caplog`（例如 `def test_add(shape, dtype, caplog):`）。如需在同一测试函数中进行多轮验证，可调用 `caplog.clear()` 清空此前捕获的日志。
+2. **`utils.gems_log_logger(fn)`**：返回被测算子实现函数所使用的 logger 名称（即 `fn.__module__`）。算子源文件中统一通过 `logger = logging.getLogger(__name__)` 初始化 logger。使用该辅助函数可将 DEBUG 捕获范围严格限定在当前算子所在的模块（例如通用实现 `flag_gems.ops.add`，或厂商特化模块 `_kunlunxin.ops.add`），避免无差别捕获 root logger 或全局其他模块的调试日志造成干扰。
+3. **`utils.gems_log_prefix(fn)`**：根据最终解析出的算子实现函数自动推导期望的日志前缀。若运行时命中了厂商特化实现（模块路径中包含 `_{flag_gems.vendor_name}`），则返回 `GEMS_<VENDOR>`（如 `GEMS_NVIDIA`、`GEMS_ASCEND`、`GEMS_HYGON` 等）；若使用的是通用实现，则返回 `GEMS`。这使得测试用例无需修改即可在不同硬件后端上保持通用性。
+
+#### 标准测试代码范例
+
+在编写单元测试时，标准做法是将算子调用放置在 `caplog.at_level` 上下文管理器中，并在调用后断言包含动态前缀与大写算子名称的日志：
 
 ```python
-with caplog.at_level(
-    "DEBUG", logger=utils.gems_log_logger(flag_gems.add)
-):
-    result = flag_gems.add(inp, other)
+# 1. 基础算子测试（如 flag_gems.true_divide）
+ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
+    res_out = flag_gems.true_divide(inp1, inp2)
 
-assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
+# 验证派发日志：动态前缀 + 大写 snake_case 算子名
+assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+# 验证计算精度
+utils.gems_assert_close(res_out, ref_out, dtype)
 ```
 
-`gems_log_logger()` 根据最终解析出的函数获取 logger 名称，因此在选择 backend 特化实现时也能正常工作。`gems_log_prefix()` 对通用实现返回 `GEMS`，对 vendor 实现返回 `GEMS_<VENDOR>`。日志断言应限定在当前测试的算子范围内，避免其他 DEBUG 日志导致测试误通过。
+针对原地（In-place）算子、指定输出（Out-variant）算子或私有算子，日志名称须与算子函数中的输出严格对应：
+
+```python
+# 2. 原地（In-place）算子测试（如 flag_gems.true_divide_）
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_)):
+    res_out = flag_gems.true_divide_(inp1, inp2)
+assert f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
+
+# 3. 指定输出（Out-variant）算子测试（如 flag_gems.special_i1e_out）
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_i1e_out)):
+    res_out = flag_gems.special_i1e_out(inp, out)
+assert f"{utils.gems_log_prefix(flag_gems.special_i1e_out)} SPECIAL_I1E_OUT" in caplog.text
+```
+
+若测试重点是验证通过 `flag_gems.use_gems()` 上下文对 PyTorch ATen 算子的拦截派发，同样可以使用该模式：
+
+```python
+with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
+assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+```
+
+#### 规范与避坑要点
+
+- **禁止硬编码前缀**：严禁在断言中直接书写 `"GEMS ADD"` 或 `"GEMS_NVIDIA ADD"` 等固定字符串，必须使用 `f"{utils.gems_log_prefix(...)} <OP_NAME>"`，以保证测试用例在全硬件后端（NVIDIA、Ascend、Kunlunxin、Hygon、Cambricon 等）的兼容性。
+- **严格限定 Logger 作用域**：切勿直接在不指定 `logger` 的情况下对 root logger 启用 DEBUG（如 `caplog.at_level("DEBUG")`），否则可能捕获到 PyTorch 内部或编译器的海量日志，甚至引起误判。
+- **算子名称格式严格匹配**：日志断言中的算子名称须为大写 snake_case 格式，并严格与 Host 函数中 `logger.debug(...)` 输出保持一致（包括下划线后缀，如 `ADD_` 或 `_FLASH_ATTENTION_FORWARD`）。
+- **静态 CI 规则检查**：提交 PR 前，可运行 `python tools/ci_checks/check_api_logs.py --operators '["<op_id>"]'` 验证算子源文件中的日志定义是否符合规范。
 
 <!--
 ### Model test
