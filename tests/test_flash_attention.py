@@ -217,6 +217,7 @@ def test__flash_attention_forward(
     ref_v = utils.to_reference(v, False)
     if cfg.TO_CPU or flag_gems.vendor_name in {
         "ascend",
+        "enflame",
         "kunlunxin",
         "metax",
         "mthreads",
@@ -251,6 +252,10 @@ def test__flash_attention_forward(
             scale=scale,
         )
     ref_out, ref_lse = ref_result[:2]
+    from .test__flash_attention_forward import _freeze_flash_abi
+
+    expected_abi = _freeze_flash_abi(q, k)
+    q_device, q_dtype = q.device, q.dtype
     with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
         result = flag_gems._flash_attention_forward(
             q,
@@ -272,16 +277,20 @@ def test__flash_attention_forward(
             f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} _FLASH_ATTENTION_FORWARD"
             in caplog.text
         )
+    assert q.device == q_device and q.dtype == q_dtype
     assert len(result) == 5
-    assert result[0].device == q.device and result[0].dtype == q.dtype
+    for output, (shape, dtype_expected, device_expected) in zip(result, expected_abi):
+        assert tuple(output.shape) == shape
+        assert output.dtype == dtype_expected and output.device == device_expected
+    assert result[0].device == q_device and result[0].dtype == q_dtype
     assert result[0].shape == ref_out.shape
-    assert result[1].device == q.device and result[1].dtype == torch.float32
+    assert result[1].device == q_device and result[1].dtype == torch.float32
     assert result[1].shape == ref_lse.shape
     for index in (2, 3, 4):
         expected_device = (
-            q.device
+            q_device
             if cfg.TO_CPU
-            or flag_gems.vendor_name in {"ascend", "kunlunxin", "metax", "mthreads"}
+            or flag_gems.vendor_name in {"ascend", "enflame", "kunlunxin", "metax", "mthreads"}
             else ref_result[index].device
         )
         assert result[index].device == expected_device

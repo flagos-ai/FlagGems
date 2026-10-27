@@ -195,6 +195,7 @@ def _call(
 ):
     if cfg.TO_CPU or flag_gems.vendor_name in {
         "ascend",
+        "enflame",
         "kunlunxin",
         "metax",
         "mthreads",
@@ -245,17 +246,47 @@ def _reference_args(query, key, value, cum_seq_q=None, cum_seq_k=None):
     )
 
 
-def _assert_all_outputs(actual, expected, dtype, query):
+def _freeze_flash_abi(query, key, return_debug_mask=False):
+    """Freeze the trusted five-output native/CPU-oracle profile before candidate entry."""
+    shape = tuple(query.shape)
+    if len(shape) == 4:
+        batch, q_len, heads, _ = shape
+        lse_shape = (batch, heads, q_len)
+        debug_shape = (
+            batch, heads, math.ceil(q_len / 128) * 128,
+            math.ceil(key.shape[1] / 128) * 128,
+        ) if return_debug_mask else (0,)
+    else:
+        assert len(shape) == 3 and not return_debug_mask
+        lse_shape = (shape[1], shape[0])
+        debug_shape = (0,)
+    device, dtype = query.device, query.dtype
+    return (
+        (shape, dtype, device),
+        (lse_shape, torch.float32, device),
+        ((2,), torch.uint64, device),
+        ((), torch.uint64, device),
+        (debug_shape, dtype, device),
+    )
+
+
+def _assert_all_outputs(actual, expected, dtype, query_abi, query):
     assert len(actual) == len(expected) == 5
-    assert actual[0].device == query.device and actual[0].dtype == query.dtype
+    query_device = query_abi[0][2]
+    query_dtype = query_abi[0][1]
+    assert query.device == query_device and query.dtype == query_dtype
+    for value, (shape, expected_dtype, expected_device) in zip(actual, query_abi):
+        assert tuple(value.shape) == shape
+        assert value.dtype == expected_dtype and value.device == expected_device
+    assert actual[0].device == query_device and actual[0].dtype == query_dtype
     assert actual[0].shape == expected[0].shape
-    assert actual[1].device == query.device and actual[1].dtype == torch.float32
+    assert actual[1].device == query_device and actual[1].dtype == torch.float32
     assert actual[1].shape == expected[1].shape
     for index in (2, 3, 4):
         expected_device = (
-            query.device
+            query_device
             if cfg.TO_CPU
-            or flag_gems.vendor_name in {"ascend", "kunlunxin", "metax", "mthreads"}
+            or flag_gems.vendor_name in {"ascend", "enflame", "kunlunxin", "metax", "mthreads"}
             else expected[index].device
         )
         assert actual[index].device == expected_device
@@ -291,6 +322,8 @@ def test__flash_attention_forward(dtype, shape, is_causal, scale_mode):
         False,
         scale=scale,
     )
+    query_abi = _freeze_flash_abi(query, key)
+    query_pointer = query.untyped_storage().data_ptr()
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -305,9 +338,9 @@ def test__flash_attention_forward(dtype, shape, is_causal, scale_mode):
         scale=scale,
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
     assert actual[0].shape == query.shape
-    assert actual[0].untyped_storage().data_ptr() != query.untyped_storage().data_ptr()
+    assert actual[0].untyped_storage().data_ptr() != query_pointer
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -331,11 +364,12 @@ def test__flash_attention_forward_windowed(window_size_left, window_size_right):
     expected = _call(
         ref_query, ref_key, ref_value, None, None, 17, 31, 0.0, False, False, **kwargs
     )
+    query_abi = _freeze_flash_abi(query, key)
     actual = flag_gems._flash_attention_forward(
         query, key, value, None, None, 17, 31, 0.0, False, False, **kwargs
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -367,6 +401,7 @@ def test__flash_attention_forward_gqa_alibi(is_causal):
         scale=None,
         alibi_slopes=ref_alibi,
     )
+    query_abi = _freeze_flash_abi(query, key)
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -382,7 +417,7 @@ def test__flash_attention_forward_gqa_alibi(is_causal):
         alibi_slopes=alibi_slopes,
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -420,6 +455,7 @@ def test__flash_attention_forward_noncontiguous_bshd(dtype):
         False,
         scale=None,
     )
+    query_abi = _freeze_flash_abi(query, key)
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -434,7 +470,7 @@ def test__flash_attention_forward_noncontiguous_bshd(dtype):
         scale=None,
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -459,6 +495,7 @@ def test__flash_attention_forward_seqused_k_metadata():
         scale=None,
         seqused_k=ref_seqused_k,
     )
+    query_abi = _freeze_flash_abi(query, key)
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -474,7 +511,7 @@ def test__flash_attention_forward_seqused_k_metadata():
         seqused_k=seqused_k,
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -507,6 +544,7 @@ def test__flash_attention_forward_varlen(dtype):
         False,
         scale=None,
     )
+    query_abi = _freeze_flash_abi(query, key)
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -521,7 +559,7 @@ def test__flash_attention_forward_varlen(dtype):
         scale=None,
     )
 
-    _assert_all_outputs(actual, expected, dtype, query)
+    _assert_all_outputs(actual, expected, dtype, query_abi, query)
 
 
 @pytest.mark.underscore_flash_attention_forward
@@ -536,6 +574,7 @@ def test__flash_attention_forward_dropout_debug_mask(dropout_p):
     query, key, value = _make_qkv(1, 2, 2, 128, 128, 32, dtype)
 
     _set_seed()
+    query_abi = _freeze_flash_abi(query, key, return_debug_mask=True)
     actual = flag_gems._flash_attention_forward(
         query,
         key,
@@ -564,11 +603,14 @@ def test__flash_attention_forward_dropout_debug_mask(dropout_p):
         scale=None,
     )
 
-    _assert_all_outputs(actual, replay, dtype, query)
+    _assert_all_outputs(actual, replay, dtype, query_abi, query)
     assert len(actual) == len(replay) == 5
     utils.gems_assert_equal(actual[0].cpu(), replay[0].cpu())
     utils.gems_assert_equal(actual[1].cpu(), replay[1].cpu())
-    for result, repeated in zip(actual[2:], replay[2:]):
+    # Native output 3 is an unused scalar with unspecified payload. Its ABI
+    # is checked above; replay equality applies to RNG state and debug mask.
+    for index in (2, 4):
+        result, repeated = actual[index], replay[index]
         assert result.shape == repeated.shape
         assert result.dtype == repeated.dtype
         if result.numel():

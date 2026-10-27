@@ -88,7 +88,7 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         return True
     except RuntimeError as e:
         missing_api = (
-            flag_gems.vendor_name == "kunlunxin"
+            flag_gems.vendor_name in {"kunlunxin", "enflame"}
             and isinstance(e, NotImplementedError)
             and "aten::_flash_attention_forward" in str(e)
             and "'CPU' backend" in str(e)
