@@ -79,6 +79,7 @@ def _index_add_contiguous_suffix_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROW_BLOCKS_PER_PROGRAM: tl.constexpr,
+    FULL_COLUMNS: tl.constexpr,
     ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_row_group = tle.program_id(axis=0)
@@ -108,7 +109,13 @@ def _index_add_contiguous_suffix_kernel(
             valid = row_mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
             src_offsets = row * suffix_size + cols
-            out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+            # Keep the base scalar so complete columns retain vector stores.
+            # Masked atomics may still issue zero updates after Ascend lowering.
+            out_row = tl.where(valid, prefix_idx * out_dim + dst_dim_idx, 0)
+            safe_cols = cols
+            if not FULL_COLUMNS:
+                safe_cols = tl.minimum(cols, suffix_size - 1)
+            out_offsets = out_row * suffix_size + safe_cols
             values = tl.load(src + src_offsets, mask=row_mask & col_mask, other=0.0)
             if ACCUMULATE_FP32:
                 values = values.to(tl.float32)
@@ -127,7 +134,7 @@ def _index_add_contiguous_suffix_flat_kernel(
     index,
     src,
     total_count,
-    index_len,
+    index_len: tl.constexpr,
     out_dim,
     suffix_size,
     alpha,
@@ -137,7 +144,7 @@ def _index_add_contiguous_suffix_flat_kernel(
 ):
     pid_group = tle.program_id(axis=0)
 
-    # A 1D layout is safer for leading-dim and tiny-suffix updates.  Program 0
+    # A 1D layout handles tiny-suffix updates.  Program 0
     # is a no-op for the same reason as the row-tiled kernel above.
     active_group = pid_group > 0
     for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
@@ -145,19 +152,71 @@ def _index_add_contiguous_suffix_flat_kernel(
         offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = active_group & (offsets < total_count)
 
-        cols = offsets % suffix_size
-        rows = offsets // suffix_size
+        # A neutral atomic update still needs a valid address. Sanitize the
+        # logical coordinate before decoding rows and columns, including pid 0.
+        safe_offsets = tl.where(mask, offsets, 0)
+        cols = safe_offsets % suffix_size
+        rows = safe_offsets // suffix_size
         src_dim_idx = rows % index_len
         prefix_idx = rows // index_len
         dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
         valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
         src_offsets = rows * suffix_size + cols
-        out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+        safe_dst_dim_idx = tl.minimum(tl.maximum(dst_dim_idx, 0), out_dim - 1)
+        out_offsets = (prefix_idx * out_dim + safe_dst_dim_idx) * suffix_size + cols
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
         if ACCUMULATE_FP32:
             values = values.to(tl.float32)
         tl.atomic_add(out + out_offsets, values * alpha, mask=valid, sem="relaxed")
+
+
+@libentry()
+@triton.jit
+def _index_add_short_kernel(
+    out,
+    index,
+    src,
+    count,
+    out_dim,
+    alpha,
+    INDEX_LEN: tl.constexpr,
+    SUFFIX: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Each program owns disjoint [prefix, suffix] coordinates. Resolve the
+    # duplicate-index case before storing, so no atomic operation is needed.
+    pid = tle.program_id(0)
+    index0 = tl.load(index).to(tl.int64)
+    valid0 = (index0 >= 0) & (index0 < out_dim)
+    if INDEX_LEN == 2:
+        index1 = tl.load(index + 1).to(tl.int64)
+        valid1 = (index1 >= 0) & (index1 < out_dim)
+        duplicate = index0 == index1
+    output_dtype = out.dtype.element_ty
+    for start in range(
+        ((pid - 1) * BLOCK).to(tl.int64),
+        count,
+        (tl.num_programs(0) - 1) * BLOCK,
+    ):
+        offsets = start + tl.arange(0, BLOCK)
+        mask = (pid > 0) & (offsets < count)
+        prefix = offsets // SUFFIX
+        col = offsets % SUFFIX
+        src0 = (prefix * INDEX_LEN) * SUFFIX + col
+        dst0 = (prefix * out_dim + index0) * SUFFIX + col
+        value0 = tl.load(src + src0, mask, other=0).to(output_dtype)
+        old0 = tl.load(out + dst0, mask & valid0, other=0)
+        result0 = (old0 + value0 * alpha).to(output_dtype)
+        if INDEX_LEN == 2:
+            value1 = tl.load(src + src0 + SUFFIX, mask, other=0).to(output_dtype)
+            dst1 = (prefix * out_dim + index1) * SUFFIX + col
+            old1 = tl.load(out + dst1, mask & valid1 & ~duplicate, other=0)
+            result1 = (old1 + value1 * alpha).to(output_dtype)
+            combined = (result0 + value1 * alpha).to(output_dtype)
+            result0 = tl.where(duplicate, combined, result0)
+            tl.store(out + dst1, result1, mask & valid1 & ~duplicate)
+        tl.store(out + dst0, result0, mask & valid0)
 
 
 def _get_block_config(M, N):
@@ -174,7 +233,13 @@ def _volume(shape):
 
 
 def _assert_index_in_bounds(index, upper_bound):
-    # Validate before scatter so an in-place call leaves its input unchanged on error.
+    # Capture cannot synchronize device values back to Python. The suffix kernels
+    # mask every index on each execution, including replays with new indices.
+    # Keep eager validation before scatter to preserve the input on failure.
+    if index.device.type != "cpu":
+        with torch_device_fn.device(index.device):
+            if torch_device_fn.is_current_stream_capturing():
+                return
     lower, upper = torch.ops.aten.aminmax.default.redispatch(
         _FALLBACK_KEYSET, index, dim=None, keepdim=False
     )
@@ -198,11 +263,13 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
         and all(inp.size(i) == src.size(i) for i in range(inp.ndim) if i != dim)
     ):
         return False
-    return _volume(src.shape[dim + 1 :]) > 1
+    # A unit suffix includes 1-D counters and final-dimension updates. They also
+    # require atomic accumulation when an index occurs more than once.
+    return _volume(src.shape[dim + 1 :]) >= 1
 
 
 def _flat_contiguous_suffix_block_config(total_count):
-    block_size = 128
+    block_size = min(128, triton.next_power_of_2(total_count))
     blocks = triton.cdiv(total_count, block_size)
     blocks_per_program = 1
     if blocks > 65535:
@@ -243,7 +310,7 @@ def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
 
 def _contiguous_suffix_block_config(row_count, suffix_size):
     block_m = 16
-    block_n = 64 if suffix_size <= 64 else 512
+    block_n = min(512, triton.next_power_of_2(suffix_size))
     if triton.cdiv(suffix_size, block_n) > 65535:
         return None
 
@@ -258,7 +325,25 @@ def _contiguous_suffix_block_config(row_count, suffix_size):
 
 def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     suffix_size = _volume(src.shape[dim + 1 :])
-    if dim == 0 or suffix_size < 16:
+    if index.numel() <= 2:
+        count = _volume(src.shape[:dim]) * suffix_size
+        block = 256
+        grid = (min(triton.cdiv(count, block), 65534) + 1,)
+        with torch_device_fn.device(out.device):
+            _index_add_short_kernel[grid](
+                out,
+                index,
+                src,
+                count,
+                out.size(dim),
+                alpha,
+                INDEX_LEN=index.numel(),
+                SUFFIX=suffix_size,
+                BLOCK=block,
+                enable_fp_fusion=False,
+            )
+        return True
+    if suffix_size < 16:
         return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
 
     row_count = _volume(src.shape[:dim]) * index.numel()
@@ -285,6 +370,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             ROW_BLOCKS_PER_PROGRAM=row_blocks_per_program,
+            FULL_COLUMNS=(suffix_size % block_n == 0),
             ACCUMULATE_FP32=(
                 out.dtype == torch.float32 and src.dtype == torch.bfloat16
             ),
@@ -302,6 +388,10 @@ def index_add(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return torch.ops.aten.index_add.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim
@@ -356,6 +446,10 @@ def index_add_(inp, dim, index, src, alpha=1):
     dim = dim % inp.ndim
     inp_len = inp.size(dim)
     N = index.numel()
+    if N == 0:
+        return torch.ops.aten.index_add_.default.redispatch(
+            _FALLBACK_KEYSET, inp, dim, index, src, alpha=alpha
+        )
     M = src.numel() // N
 
     normalized_dim = dim % inp.ndim if -inp.ndim <= dim < inp.ndim else dim

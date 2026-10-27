@@ -40,3 +40,50 @@ def test_lift_fresh(shape, dtype):
     res_out = flag_gems.lift_fresh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lift_fresh
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend alias semantics")
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float64,
+        torch.bfloat16,
+        torch.int64,
+        torch.bool,
+        torch.complex64,
+    ],
+)
+@pytest.mark.parametrize("layout", ["contiguous", "strided", "empty", "scalar"])
+def test_ascend_lift_fresh_alias(dtype, layout):
+    cpu = torch.arange(24).reshape(4, 6).to(dtype)
+    inp = cpu.to(flag_gems.device)
+    if layout == "strided":
+        inp = inp[1:, 1::2].transpose(0, 1)
+    elif layout == "empty":
+        inp = inp[1:1, 1::2]
+    elif layout == "scalar":
+        inp = inp[1, 2]
+    expected = inp.cpu().clone()
+
+    actual = flag_gems.lift_fresh(self=inp)
+
+    assert torch._C._is_alias_of(actual, inp)
+    assert actual.shape == inp.shape
+    assert actual.stride() == inp.stride()
+    assert actual.storage_offset() == inp.storage_offset()
+    utils.gems_assert_equal(actual.cpu(), expected)
+    if inp.numel():
+        inp.fill_(1)
+        utils.gems_assert_equal(actual.cpu(), torch.ones_like(expected))
+
+
+@pytest.mark.lift_fresh
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend launch limit")
+def test_ascend_lift_fresh_large_alias():
+    # A copying kernel with BLOCK=1024 would exceed the 65535-program limit.
+    inp = torch.empty(80_000_000, dtype=torch.float32, device=flag_gems.device)
+    actual = flag_gems.lift_fresh(inp)
+    assert torch._C._is_alias_of(actual, inp)
+    assert actual.shape == inp.shape

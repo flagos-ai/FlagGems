@@ -37,6 +37,8 @@ from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
+from .conv3d import conv3d
+from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -58,6 +60,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -69,10 +72,13 @@ from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
+from .index_put import index_put, index_put_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
+from .is_same_size import is_same_size
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
+from .lift_fresh import lift_fresh, lift_fresh_copy, lift_fresh_copy_out
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
@@ -111,7 +117,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_, multiply, multiply_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -119,6 +125,7 @@ from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
+from .pad import constant_pad_nd, pad
 from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .polar import polar
@@ -174,7 +181,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -209,6 +216,10 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "concat",
+    "constant_pad_nd",
+    "conv3d",
+    "copy",
+    "copy_",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
@@ -236,6 +247,9 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "gelu",
+    "gelu_",
+    "gelu_backward",
     "geometric",
     "geometric_",
     "group_norm",
@@ -254,12 +268,18 @@ __all__ = [
     "index_copy_",
     "index_fill",
     "index_fill_",
+    "index_put",
+    "index_put_",
     "index_reduce",
     "index_reduce_",
     "index_reduce_out",
     "index_select",
+    "is_same_size",
     "isin",
     "layer_norm",
+    "lift_fresh",
+    "lift_fresh_copy",
+    "lift_fresh_copy_out",
     "linalg_cross",
     "linalg_cross_out",
     "linalg_det",
@@ -313,7 +333,10 @@ __all__ = [
     "mm_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
+    "multiply",
+    "multiply_",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
@@ -327,6 +350,7 @@ __all__ = [
     "ones",
     "ones_like",
     "outer",
+    "pad",
     "pad_sequence",
     "pairwise_distance",
     "polar",
@@ -394,6 +418,7 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]

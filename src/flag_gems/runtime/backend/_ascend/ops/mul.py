@@ -87,6 +87,7 @@ def mul_broadcast_get_configs():
     prune_configs_by={"early_config_prune": _prune_mul_flat_configs},
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["output_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -102,12 +103,17 @@ def mul_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    y = tl.load(y_ptr + offsets, mask=mask)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out, mask=mask)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -116,6 +122,7 @@ def mul_kernel(
     key=["n_elements", "dtype"],
     strategy=["default", "default"],
     prune_configs_by={"early_config_prune": _prune_mul_full_configs},
+    restore_value=["output_ptr"],
     warmup=5,
     rep=5,
 )
@@ -129,11 +136,16 @@ def mul_contiguous_full_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    x = tl.load(x_ptr + offsets)
-    y = tl.load(y_ptr + offsets)
-    out = x & y if IS_BOOL else x * y
-    tl.store(output_ptr + offsets, out)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        x = tl.load(x_ptr + offsets)
+        y = tl.load(y_ptr + offsets)
+        out = x & y if IS_BOOL else x * y
+        tl.store(output_ptr + offsets, out)
 
 
 @libentry()
@@ -171,6 +183,7 @@ def mul_contiguous_chunked_kernel(
     prune_configs_by={"early_config_prune": _prune_mul_flat_configs},
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["output_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -189,11 +202,16 @@ def mul_scalar_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask)
-    out = x & scalar if IS_BOOL else x * scalar
-    tl.store(output_ptr + offsets, out, mask=mask)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        out = x & scalar if IS_BOOL else x * scalar
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -201,6 +219,7 @@ def mul_scalar_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "n_cols", "dtype"],
     strategy=["align32", "default", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -226,14 +245,19 @@ def mul_broadcast_2d_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    row = offsets // n_cols
-    col = offsets - row * n_cols
-    a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
-    b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        row = offsets // n_cols
+        col = offsets - row * n_cols
+        a = tl.load(a_ptr + row * a_s0 + col * a_s1, mask=mask)
+        b = tl.load(b_ptr + row * b_s0 + col * b_s1, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + row * out_s0 + col * out_s1, out, mask=mask)
 
 
 @libentry()
@@ -241,6 +265,7 @@ def mul_broadcast_2d_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -261,24 +286,29 @@ def mul_generic_nd_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        a_offsets += idx * A_STRIDE[dim]
-        b_offsets += idx * B_STRIDE[dim]
-        out_offsets += idx * OUT_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            a_offsets += idx * A_STRIDE[dim]
+            b_offsets += idx * B_STRIDE[dim]
+            out_offsets += idx * OUT_STRIDE[dim]
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask)
+        b = tl.load(b_ptr + b_offsets, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -286,6 +316,7 @@ def mul_generic_nd_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -303,28 +334,33 @@ def mul_generic_nd_runtime_meta_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        a_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        b_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        a_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        a_offsets += idx * a_stride_dim
-        b_offsets += idx * b_stride_dim
-        out_offsets += idx * out_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            a_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            b_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            out_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            a_offsets += idx * a_stride_dim
+            b_offsets += idx * b_stride_dim
+            out_offsets += idx * out_stride_dim
 
-    a = tl.load(a_ptr + a_offsets, mask=mask)
-    b = tl.load(b_ptr + b_offsets, mask=mask)
-    out = a & b if IS_BOOL else a * b
-    tl.store(out_ptr + out_offsets, out, mask=mask)
+        a = tl.load(a_ptr + a_offsets, mask=mask)
+        b = tl.load(b_ptr + b_offsets, mask=mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + out_offsets, out, mask=mask)
 
 
 @libentry()
@@ -332,6 +368,7 @@ def mul_generic_nd_runtime_meta_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_r_ptr", "out_i_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -357,35 +394,40 @@ def mul_complex_generic_nd_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        idx = linear % SHAPE[dim]
-        linear = linear // SHAPE[dim]
-        ar_offsets += idx * AR_STRIDE[dim]
-        ai_offsets += idx * AI_STRIDE[dim]
-        br_offsets += idx * BR_STRIDE[dim]
-        bi_offsets += idx * BI_STRIDE[dim]
-        out_r_offsets += idx * OUT_R_STRIDE[dim]
-        out_i_offsets += idx * OUT_I_STRIDE[dim]
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            idx = linear % SHAPE[dim]
+            linear = linear // SHAPE[dim]
+            ar_offsets += idx * AR_STRIDE[dim]
+            ai_offsets += idx * AI_STRIDE[dim]
+            br_offsets += idx * BR_STRIDE[dim]
+            bi_offsets += idx * BI_STRIDE[dim]
+            out_r_offsets += idx * OUT_R_STRIDE[dim]
+            out_i_offsets += idx * OUT_I_STRIDE[dim]
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        out_r = ar * br - ai * bi
+        out_i = ar * bi + ai * br
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 @libentry()
@@ -393,6 +435,7 @@ def mul_complex_generic_nd_kernel(
     configs=mul_broadcast_get_configs(),
     key=["n_elements", "dtype"],
     strategy=["align32", "default"],
+    restore_value=["out_r_ptr", "out_i_ptr"],
     warmup=5,
     rep=5,
     flagtune_op_name="mul",
@@ -412,42 +455,47 @@ def mul_complex_generic_nd_runtime_meta_kernel(
     dtype: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    linear = offsets
-    ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
-    out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    for base in range(
+        tl.program_id(0) * BLOCK_SIZE,
+        n_elements,
+        tl.num_programs(0) * BLOCK_SIZE,
+    ):
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        linear = offsets
+        ar_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        ai_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        br_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        bi_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_r_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+        out_i_offsets = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
 
-    for dim in tl.static_range(NDIM - 1, -1, -1):
-        shape_dim = tl.load(meta_ptr + dim)
-        ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
-        ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
-        br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
-        bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
-        out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
-        out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
-        idx = linear % shape_dim
-        linear = linear // shape_dim
-        ar_offsets += idx * ar_stride_dim
-        ai_offsets += idx * ai_stride_dim
-        br_offsets += idx * br_stride_dim
-        bi_offsets += idx * bi_stride_dim
-        out_r_offsets += idx * out_r_stride_dim
-        out_i_offsets += idx * out_i_stride_dim
+        for dim in tl.static_range(NDIM - 1, -1, -1):
+            shape_dim = tl.load(meta_ptr + dim)
+            ar_stride_dim = tl.load(meta_ptr + NDIM + dim)
+            ai_stride_dim = tl.load(meta_ptr + 2 * NDIM + dim)
+            br_stride_dim = tl.load(meta_ptr + 3 * NDIM + dim)
+            bi_stride_dim = tl.load(meta_ptr + 4 * NDIM + dim)
+            out_r_stride_dim = tl.load(meta_ptr + 5 * NDIM + dim)
+            out_i_stride_dim = tl.load(meta_ptr + 6 * NDIM + dim)
+            idx = linear % shape_dim
+            linear = linear // shape_dim
+            ar_offsets += idx * ar_stride_dim
+            ai_offsets += idx * ai_stride_dim
+            br_offsets += idx * br_stride_dim
+            bi_offsets += idx * bi_stride_dim
+            out_r_offsets += idx * out_r_stride_dim
+            out_i_offsets += idx * out_i_stride_dim
 
-    ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
-    ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
-    br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
-    bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
+        ar = tl.load(ar_ptr + ar_offsets, mask=mask, other=0.0)
+        ai = tl.load(ai_ptr + ai_offsets, mask=mask, other=0.0)
+        br = tl.load(br_ptr + br_offsets, mask=mask, other=0.0)
+        bi = tl.load(bi_ptr + bi_offsets, mask=mask, other=0.0)
 
-    out_r = ar * br - ai * bi
-    out_i = ar * bi + ai * br
-    tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
-    tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
+        out_r = ar * br - ai * bi
+        out_i = ar * bi + ai * br
+        tl.store(out_r_ptr + out_r_offsets, out_r, mask=mask)
+        tl.store(out_i_ptr + out_i_offsets, out_i, mask=mask)
 
 
 def _is_tensor_or_number(value) -> bool:
@@ -530,7 +578,7 @@ def _real_output(a_t, b_t, out=None):
         raise RuntimeError(
             f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
         )
-    if out.dtype != a_t.dtype:
+    if not torch.can_cast(a_t.dtype, out.dtype):
         raise RuntimeError(
             f"output dtype {out.dtype} does not match result dtype {a_t.dtype}"
         )
@@ -589,7 +637,7 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
                 )
             return output
 
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+        grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
 
         with torch_device_fn.device(output.device):
             mul_contiguous_full_kernel[grid](
@@ -601,7 +649,7 @@ def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
                 IS_BOOL=_is_bool_dtype(dtype),
             )
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     with torch_device_fn.device(output.device):
         mul_kernel[grid](
             a_t,
@@ -618,7 +666,7 @@ def _launch_scalar(tensor, scalar, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     with torch_device_fn.device(output.device):
         mul_scalar_kernel[grid](
             tensor,
@@ -708,41 +756,43 @@ def mul_broadcast_tiled_kernel(
     BLOCK_N: tl.constexpr,
 ):
     col_tiles = tl.cdiv(N, BLOCK_N)
-    pid = tl.program_id(0)
-    rows = (pid // col_tiles) * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = (pid % col_tiles) * BLOCK_N + tl.arange(0, BLOCK_N)
-    valid = (rows[:, None] < M) & (cols[None, :] < N)
+    for pid in range(
+        tl.program_id(0), tl.cdiv(M, BLOCK_M) * col_tiles, tl.num_programs(0)
+    ):
+        rows = (pid // col_tiles) * BLOCK_M + tl.arange(0, BLOCK_M)
+        cols = (pid % col_tiles) * BLOCK_N + tl.arange(0, BLOCK_N)
+        valid = (rows[:, None] < M) & (cols[None, :] < N)
 
-    if a_s0 == 0 and a_s1 == 0:
-        a_scalar = tl.load(a_ptr)
-        a_value = tl.broadcast_to(a_scalar, (BLOCK_M, BLOCK_N))
-    elif a_s1 == 0:
-        a_rows = tl.load(a_ptr + rows * a_s0, mask=rows < M, other=0)
-        a_value = tl.broadcast_to(a_rows[:, None], (BLOCK_M, BLOCK_N))
-    elif a_s0 == 0:
-        a_cols = tl.load(a_ptr + cols * a_s1, mask=cols < N, other=0)
-        a_value = tl.broadcast_to(a_cols[None, :], (BLOCK_M, BLOCK_N))
-    else:
-        a_value = tl.load(
-            a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1, mask=valid, other=0
-        )
+        if a_s0 == 0 and a_s1 == 0:
+            a_scalar = tl.load(a_ptr)
+            a_value = tl.broadcast_to(a_scalar, (BLOCK_M, BLOCK_N))
+        elif a_s1 == 0:
+            a_rows = tl.load(a_ptr + rows * a_s0, mask=rows < M, other=0)
+            a_value = tl.broadcast_to(a_rows[:, None], (BLOCK_M, BLOCK_N))
+        elif a_s0 == 0:
+            a_cols = tl.load(a_ptr + cols * a_s1, mask=cols < N, other=0)
+            a_value = tl.broadcast_to(a_cols[None, :], (BLOCK_M, BLOCK_N))
+        else:
+            a_value = tl.load(
+                a_ptr + rows[:, None] * a_s0 + cols[None, :] * a_s1, mask=valid, other=0
+            )
 
-    if b_s0 == 0 and b_s1 == 0:
-        b_scalar = tl.load(b_ptr)
-        b_value = tl.broadcast_to(b_scalar, (BLOCK_M, BLOCK_N))
-    elif b_s1 == 0:
-        b_rows = tl.load(b_ptr + rows * b_s0, mask=rows < M, other=0)
-        b_value = tl.broadcast_to(b_rows[:, None], (BLOCK_M, BLOCK_N))
-    elif b_s0 == 0:
-        b_cols = tl.load(b_ptr + cols * b_s1, mask=cols < N, other=0)
-        b_value = tl.broadcast_to(b_cols[None, :], (BLOCK_M, BLOCK_N))
-    else:
-        b_value = tl.load(
-            b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1, mask=valid, other=0
-        )
+        if b_s0 == 0 and b_s1 == 0:
+            b_scalar = tl.load(b_ptr)
+            b_value = tl.broadcast_to(b_scalar, (BLOCK_M, BLOCK_N))
+        elif b_s1 == 0:
+            b_rows = tl.load(b_ptr + rows * b_s0, mask=rows < M, other=0)
+            b_value = tl.broadcast_to(b_rows[:, None], (BLOCK_M, BLOCK_N))
+        elif b_s0 == 0:
+            b_cols = tl.load(b_ptr + cols * b_s1, mask=cols < N, other=0)
+            b_value = tl.broadcast_to(b_cols[None, :], (BLOCK_M, BLOCK_N))
+        else:
+            b_value = tl.load(
+                b_ptr + rows[:, None] * b_s0 + cols[None, :] * b_s1, mask=valid, other=0
+            )
 
-    result = a_value * b_value
-    tl.store(out_ptr + rows[:, None] * N + cols[None, :], result, mask=valid)
+        result = a_value * b_value
+        tl.store(out_ptr + rows[:, None] * N + cols[None, :], result, mask=valid)
 
 
 def _launch_2d_broadcast(
@@ -761,8 +811,11 @@ def _launch_2d_broadcast(
         and output.untyped_storage().data_ptr() != b_t.untyped_storage().data_ptr()
     ):
         grid = lambda meta: (
-            triton.cdiv(out_shape[0], meta["BLOCK_M"])
-            * triton.cdiv(out_shape[1], meta["BLOCK_N"]),
+            min(
+                triton.cdiv(out_shape[0], meta["BLOCK_M"])
+                * triton.cdiv(out_shape[1], meta["BLOCK_N"]),
+                65535,
+            ),
         )
         with torch_device_fn.device(output.device):
             mul_broadcast_tiled_kernel[grid](
@@ -778,7 +831,7 @@ def _launch_2d_broadcast(
                 dtype=_dtype_name(dtype),
             )
         return output
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     with torch_device_fn.device(output.device):
         mul_broadcast_2d_kernel[grid](
             a_t,
@@ -807,7 +860,7 @@ def _launch_generic(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride,
     a_stride = a_stride or (0,)
     b_stride = b_stride or (0,)
     out_stride = out_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape + a_stride + b_stride + out_stride,
@@ -907,7 +960,7 @@ def _complex_output(out_shape, *, device, dtype, out=None):
         raise RuntimeError(
             f"output with shape {tuple(out.shape)} cannot be broadcast to {out_shape}"
         )
-    if out.dtype != dtype:
+    if not torch.can_cast(dtype, out.dtype):
         raise RuntimeError(
             f"output dtype {out.dtype} does not match result dtype {dtype}"
         )
@@ -942,7 +995,7 @@ def _launch_complex_generic(
     strides = [stride or (0,) for stride in strides]
     out_r_stride = out_r_stride or (0,)
     out_i_stride = out_i_stride or (0,)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (min(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 65535),)
     if _needs_runtime_meta_for_constexpr_tuple():
         meta = torch.tensor(
             shape
@@ -1019,6 +1072,19 @@ def mul_complex_broadcast_func(a, b, out=None):
 
 def mul(A, B, *, out=None):
     logger.debug("GEMS_ASCEND MUL")
+    if out is not None:
+        dtype = _result_dtype(A, B)
+        if not torch.can_cast(dtype, out.dtype):
+            raise RuntimeError(
+                f"result type {dtype} cannot be cast to output dtype {out.dtype}"
+            )
+        if out.dtype != dtype:
+            # Multiply in the promoted input dtype before converting the result.
+            # This preserves integer overflow and low precision rounding semantics.
+            result = mul(A, B)
+            _real_output(result, result.new_empty(()), out=out)
+            out.copy_(result)
+            return out
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -1036,14 +1102,16 @@ def mul_(A, B):
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)
-    if dtype != A.dtype:
+    if not torch.can_cast(dtype, A.dtype):
         raise RuntimeError(
             f"result type {dtype} cannot be cast to inplace dtype {A.dtype}"
         )
-    if (
-        A.is_complex()
-        or (isinstance(B, torch.Tensor) and B.is_complex())
-        or isinstance(B, complex)
-    ):
-        return mul_complex_broadcast_func(A, B, out=A)
-    return mul_broadcast_func(A, B, out=A)
+    return mul(A, B, out=A)
+
+
+def multiply(A, B, *, out=None):
+    return mul(A, B, out=out)
+
+
+def multiply_(A, B):
+    return mul_(A, B)

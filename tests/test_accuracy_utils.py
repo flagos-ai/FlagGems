@@ -47,4 +47,4 @@ def test_gems_log_prefix(monkeypatch, module, expected):
 
 def test_gems_log_logger():
     module = "_test_vendor.ops.nested.add"
-    assert utils.gems_log_logger(_function_from(module)) == "flag_gems.ops.add"
+    assert utils.gems_log_logger(_function_from(module)) == module

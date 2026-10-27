@@ -40,6 +40,7 @@ def test_where_self(shape, dtype):
 
 
 @pytest.mark.where_self
+@pytest.mark.where_scalar_self
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -59,6 +60,7 @@ def test_where_self_scalar(shape, scalar, dtype):
 
 
 @pytest.mark.where_self
+@pytest.mark.where_scalar_other
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -133,3 +135,131 @@ def test_where_self_out_cross_device(shape, dtype):
         res_out = flag_gems.where_self(c, a, b)
 
         utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.where_self
+@pytest.mark.where_self_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend uniform condition"
+)
+@pytest.mark.parametrize("width", [128, 512])
+@pytest.mark.parametrize("expanded", [False, True])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32, torch.bool]
+)
+@pytest.mark.parametrize("registered", [False, True])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_ascend_where_uniform_condition_graph(
+    width, expanded, dtype, registered, use_out
+):
+    left_cpu = (torch.arange(2 * width).reshape(2, width) % 7).to(dtype)
+    right_cpu = ((torch.arange(2 * width).reshape(2, width) + 1) % 5).to(dtype)
+    left = left_cpu.to(flag_gems.device)[1]
+    right = right_cpu.to(flag_gems.device)[1]
+    condition_storage = torch.tensor([False, True], device=left.device)
+    condition = condition_storage[1]
+    if expanded:
+        condition = condition.expand(width)
+    backing = torch.full((width, 2), 1, dtype=dtype, device=left.device)
+    output = backing[:, 1]
+    lib = None
+    previous_registrar = flag_gems.current_work_registrar
+    try:
+        if registered:
+            lib = torch.library.Library("aten", "IMPL")
+            flag_gems.only_enable(lib=lib, include=["where_self", "where_self_out"])
+
+        def invoke():
+            if registered:
+                return (
+                    torch.where(condition, left, right, out=output)
+                    if use_out
+                    else torch.where(condition, left, right)
+                )
+            if use_out:
+                return flag_gems.where_self_out(condition, left, right, out=output)
+            return flag_gems.where_self(condition, left, right)
+
+        actual = invoke()
+        torch.npu.synchronize()
+        utils.gems_assert_equal(actual.cpu(), left_cpu[1])
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = invoke()
+        for value in (False, True):
+            condition_storage[1].fill_(value)
+            graph.replay()
+            torch.npu.synchronize()
+            expected = left_cpu[1] if value else right_cpu[1]
+            utils.gems_assert_equal(actual.cpu(), expected)
+            if use_out:
+                assert actual is output
+                utils.gems_assert_equal(
+                    backing[:, 0].cpu(), torch.ones(width, dtype=dtype)
+                )
+    finally:
+        if lib is not None:
+            lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+
+@pytest.mark.where_self
+@pytest.mark.where_self_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend uniform condition"
+)
+@pytest.mark.parametrize("value", [False, True])
+def test_ascend_where_uniform_condition_strided_broadcast(value):
+    left_cpu = torch.tensor([[1], [2]], dtype=torch.int32)
+    right_cpu = torch.tensor([[0.5, 1.5, 2.5]], dtype=torch.float32)
+    condition = torch.tensor(value, device=flag_gems.device).expand(2, 3)
+    left, right = left_cpu.to(flag_gems.device), right_cpu.to(flag_gems.device)
+    output = torch.empty((3, 2), device=left.device).t()
+    actual = flag_gems.where_self_out(condition, left, right, out=output)
+    expected = torch.where(torch.tensor(value), left_cpu, right_cpu)
+    assert actual is output
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.where_scalar_self
+@pytest.mark.where_scalar_other
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend uniform condition"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.int32])
+@pytest.mark.parametrize("scalar_first", [False, True])
+def test_ascend_where_uniform_condition_scalar(dtype, scalar_first):
+    values_cpu = torch.arange(21).reshape(3, 7).t().to(dtype)
+    values = values_cpu.to(flag_gems.device)
+    for value in (False, True):
+        condition = torch.tensor([[value]], device=values.device)
+        if scalar_first:
+            actual = flag_gems.where_scalar_self(condition, 1.25, values)
+            expected = torch.where(torch.tensor([[value]]), 1.25, values_cpu)
+        else:
+            actual = flag_gems.where_scalar_other(condition, values, 1.25)
+            expected = torch.where(torch.tensor([[value]]), values_cpu, 1.25)
+        assert actual.dtype == expected.dtype
+        utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.where_self
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend uniform condition"
+)
+@pytest.mark.parametrize("shape", [(), (0, 3), (65537,)])
+def test_ascend_where_uniform_condition_boundaries(shape):
+    left_cpu = torch.ones(shape, dtype=torch.bfloat16)
+    right_cpu = torch.zeros(shape, dtype=torch.bfloat16)
+    left, right = left_cpu.to(flag_gems.device), right_cpu.to(flag_gems.device)
+    condition = torch.tensor(True, device=left.device)
+    actual = flag_gems.where_self(condition, left, right)
+    utils.gems_assert_equal(actual.cpu(), left_cpu)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.where_self(condition, left, right)
+    condition.fill_(False)
+    graph.replay()
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), right_cpu)
