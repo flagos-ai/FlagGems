@@ -28,6 +28,33 @@ if cfg.QUICK_MODE:
 GRAD_MODES = [(True, True), (True, False), (False, True), (False, False)]
 
 
+def lstm_forward(input_gates, hidden_gates, cx, input_bias=None, hidden_bias=None):
+    dtype = cx.dtype
+    compute = torch.float64 if dtype == torch.float64 else torch.float32
+    x = input_gates.detach().cpu().to(compute) + hidden_gates.detach().cpu().to(compute)
+    if input_bias is not None:
+        x = (
+            x
+            + input_bias.detach().cpu().to(compute)
+            + hidden_bias.detach().cpu().to(compute)
+        )
+    i, f, g, o = x.chunk(4, 1)
+    i, f, g, o = i.sigmoid(), f.sigmoid(), g.tanh(), o.sigmoid()
+    c = f * cx.detach().cpu().to(compute) + i * g
+    h = o * c.tanh()
+    return h.to(dtype), c.to(dtype), torch.cat((i, f, g, o), 1).to(dtype)
+
+
+def _forward_workspace(*args):
+    # PyTorch CUDA RNN.cu stores activated gates in the original scalar dtype.
+    # Enflame has no fused-cell CPU kernel behind its native fallback. Preserve
+    # target RNG construction, then prepare the dense packet on CPU explicitly.
+    if flag_gems.vendor_name != "enflame":
+        return torch.ops.aten._thnn_fused_lstm_cell(*args)
+    values = lstm_forward(*args)
+    return tuple(value.to(args[0].device) for value in values)
+
+
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize(
@@ -70,7 +97,7 @@ def _make_args(
         torch.randn(4 * hidden_size, dtype=dtype, device=device) if has_bias else None
     )
     with torch.no_grad():
-        hy, cy, workspace = torch.ops.aten._thnn_fused_lstm_cell(
+        hy, cy, workspace = _forward_workspace(
             input_gates, hidden_gates, cx, bias, bias
         )
     grad_hy = torch.randn_like(hy) if has_grad_hy else None
@@ -88,6 +115,44 @@ def _make_args(
         workspace = make_noncontiguous(workspace)
 
     return grad_hy, grad_cy, cx, cy, workspace, has_bias
+
+
+def lstm_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias, legacy=False):
+    if grad_hy is None and grad_cy is None:
+        return (None,) * (5 if legacy else 3)
+    dtype = cx.dtype
+    compute = torch.float64 if dtype == torch.float64 else torch.float32
+    b, h = cx.shape
+    cv = lambda t: t.detach().cpu().to(compute)
+    i, f, g, o = cv(workspace).reshape(b, 4 * h).chunk(4, 1)
+    c, old = cv(cy), cv(cx)
+    gh = 0 if grad_hy is None else cv(grad_hy)
+    gc = 0 if grad_cy is None else cv(grad_cy)
+    t = c.tanh()
+    gog = gh * t
+    cell = gh * o * (1 - t * t) + gc
+    gates = (
+        torch.cat(
+            (
+                (cell * g) * (1 - i) * i,
+                (cell * old) * (1 - f) * f,
+                (cell * i) * (1 - g * g),
+                gog * (1 - o) * o,
+            ),
+            1,
+        )
+        .to(dtype)
+        .reshape(workspace.shape)
+    )
+    prev = (cell * f).to(dtype).contiguous()
+    bias = gates.to(compute).sum(0).to(dtype) if has_bias else None
+    return (gates, gates, prev, bias, bias) if legacy else (gates, prev, bias)
+
+
+def _backward_reference(*args):
+    if cfg.TO_CPU or flag_gems.vendor_name == "enflame":
+        return lstm_backward(*args, legacy=True)
+    return torch.ops.aten._thnn_fused_lstm_cell_backward(*args)
 
 
 def _reference_args(args):
@@ -114,10 +179,11 @@ def _assert_outputs(result, reference, dtype, batch_size):
         assert actual is not None
         assert actual.shape == expected.shape
         assert actual.dtype == expected.dtype
+        assert actual.device == torch.empty(0, device=flag_gems.device).device
         assert actual.is_contiguous()
         utils.gems_assert_close(
-            actual,
-            expected,
+            actual.cpu(),
+            expected.cpu(),
             dtype,
             equal_nan=True,
             reduce_dim=max(batch_size, 1),
@@ -125,7 +191,6 @@ def _assert_outputs(result, reference, dtype, batch_size):
         )
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -134,14 +199,11 @@ def _assert_outputs(result, reference, dtype, batch_size):
 def test_thnn_fused_lstm_cell_backward(dtype, shape, has_bias):
     args = _make_args(*shape, dtype, has_bias=has_bias)
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, dtype, shape[0])
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -155,14 +217,11 @@ def test_thnn_fused_lstm_cell_backward_optional_grads(dtype, has_grad_hy, has_gr
         has_grad_cy=has_grad_cy,
     )
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, dtype, 5)
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -174,14 +233,11 @@ def test_thnn_fused_lstm_cell_backward_noncontiguous(dtype):
         if isinstance(value, torch.Tensor)
     )
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, dtype, 5)
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -203,7 +259,7 @@ def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
     )
 
     with torch.no_grad():
-        ref_hy, ref_cy, _ = torch.ops.aten._thnn_fused_lstm_cell(
+        ref_hy, ref_cy, _ = _forward_workspace(
             input_gates, hidden_gates, cx, bias, bias
         )
         hy, cy, workspace = flag_gems._thnn_fused_lstm_cell(
@@ -211,19 +267,20 @@ def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
         )
         grad_hy = torch.randn_like(hy)
         grad_cy = torch.randn_like(cy)
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            grad_hy, grad_cy, cx, cy, workspace, has_bias
-        )
+        reference = _backward_reference(grad_hy, grad_cy, cx, cy, workspace, has_bias)
         result = flag_gems._thnn_fused_lstm_cell_backward(
             grad_hy, grad_cy, cx, cy, workspace, has_bias
         )
 
-    utils.gems_assert_close(hy, ref_hy, dtype, reduce_dim=batch_size)
-    utils.gems_assert_close(cy, ref_cy, dtype, reduce_dim=batch_size)
+    utils.gems_assert_close(
+        hy, utils.to_reference(ref_hy), dtype, reduce_dim=batch_size
+    )
+    utils.gems_assert_close(
+        cy, utils.to_reference(ref_cy), dtype, reduce_dim=batch_size
+    )
     _assert_outputs(result, reference, dtype, batch_size)
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("workspace_shape", [(1, 80), (10, 8), (20, 4)])
@@ -231,9 +288,7 @@ def test_thnn_fused_lstm_cell_backward_reshaped_workspace(workspace_shape):
     args = list(_make_args(5, 4, torch.float32))
     args[4] = args[4].reshape(workspace_shape)
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
 
     assert result[0].shape == workspace_shape
@@ -241,21 +296,17 @@ def test_thnn_fused_lstm_cell_backward_reshaped_workspace(workspace_shape):
     _assert_outputs(result, reference, torch.float32, 5)
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_thnn_fused_lstm_cell_backward_empty(shape):
     args = _make_args(*shape, torch.float32)
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, torch.float32, shape[0])
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 def test_thnn_fused_lstm_cell_backward_special_values():
@@ -288,20 +339,18 @@ def test_thnn_fused_lstm_cell_backward_special_values():
     args = grad_hy, grad_cy, cx, cy, workspace, True
 
     with torch.no_grad():
-        reference = torch.ops.aten._thnn_fused_lstm_cell_backward(
-            *_reference_args(args)
-        )
+        reference = _backward_reference(*_reference_args(args))
         result = flag_gems._thnn_fused_lstm_cell_backward(*args)
     _assert_outputs(result, reference, torch.float32, 1)
 
     for actual, expected in zip(result, reference):
+        actual, expected = actual.cpu(), expected.cpu()
         valid = ~torch.isnan(expected)
         utils.gems_assert_equal(
             torch.signbit(actual)[valid], torch.signbit(expected)[valid]
         )
 
 
-@pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.underscore_thnn_fused_lstm_cell_backward
 def test_thnn_fused_lstm_cell_backward_requires_no_grad():

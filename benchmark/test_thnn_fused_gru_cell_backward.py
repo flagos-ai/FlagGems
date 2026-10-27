@@ -19,6 +19,7 @@ import flag_gems
 
 from . import base, consts
 from .conftest import Config
+from .test_thnn_fused_lstm_cell_backward import _FusedCellStaticBaseline
 
 CORE_SHAPES = [
     (1, 32, False),
@@ -38,18 +39,44 @@ if flag_gems.runtime.device.support_fp64:
     DTYPES.append(torch.float64)
 
 
+def gru_forward(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None):
+    dtype = hx.dtype
+    compute = torch.float64 if dtype == torch.float64 else torch.float32
+    ir, ii, inn = input_gates.detach().cpu().to(compute).chunk(3, 1)
+    hr, hi, hn = hidden_gates.detach().cpu().to(compute).chunk(3, 1)
+    if input_bias is None:
+        b1r = b1i = b1n = b2r = b2i = b2n = 0
+    else:
+        b1r, b1i, b1n = input_bias.detach().cpu().to(compute).chunk(3)
+        b2r, b2i, b2n = hidden_bias.detach().cpu().to(compute).chunk(3)
+    r = (ir + hr + b1r + b2r).sigmoid()
+    i = (ii + hi + b1i + b2i).sigmoid()
+    hidden_new = hn + b2n
+    n = (inn + b1n + r * hidden_new).tanh()
+    h = hx.detach().cpu().to(compute)
+    return (n + i * (h - n)).to(dtype), torch.cat((r, i, n, h, hidden_new), 1).to(dtype)
+
+
+def _forward_workspace(*args):
+    # PyTorch CUDA RNN.cu stores activated gates in the original scalar dtype.
+    # Enflame has no fused-cell CPU kernel behind its native fallback. Preserve
+    # target RNG construction, then prepare the dense packet on CPU explicitly.
+    if flag_gems.vendor_name != "enflame":
+        return torch.ops.aten._thnn_fused_gru_cell(*args)
+    values = gru_forward(*args)
+    return tuple(value.to(args[0].device) for value in values)
+
+
 def _make_workspace(batch_size, hidden_size, dtype, device):
     input_gates = torch.randn(batch_size, 3 * hidden_size, dtype=dtype, device=device)
     hidden_gates = torch.randn_like(input_gates)
     hx = torch.randn(batch_size, hidden_size, dtype=dtype, device=device)
     input_bias = torch.randn(3 * hidden_size, dtype=dtype, device=device)
     hidden_bias = torch.randn_like(input_bias)
-    return torch.ops.aten._thnn_fused_gru_cell(
-        input_gates, hidden_gates, hx, input_bias, hidden_bias
-    )[1]
+    return _forward_workspace(input_gates, hidden_gates, hx, input_bias, hidden_bias)[1]
 
 
-class FusedGRUCellBackwardBenchmark(base.Benchmark):
+class FusedGRUCellBackwardBenchmark(_FusedCellStaticBaseline, base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CORE_SHAPES)
         if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:

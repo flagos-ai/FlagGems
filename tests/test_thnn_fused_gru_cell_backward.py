@@ -26,6 +26,34 @@ if QUICK_MODE:
     SHAPES = [(2, 17)]
 
 
+def gru_forward(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None):
+    dtype = hx.dtype
+    compute = torch.float64 if dtype == torch.float64 else torch.float32
+    ir, ii, inn = input_gates.detach().cpu().to(compute).chunk(3, 1)
+    hr, hi, hn = hidden_gates.detach().cpu().to(compute).chunk(3, 1)
+    if input_bias is None:
+        b1r = b1i = b1n = b2r = b2i = b2n = 0
+    else:
+        b1r, b1i, b1n = input_bias.detach().cpu().to(compute).chunk(3)
+        b2r, b2i, b2n = hidden_bias.detach().cpu().to(compute).chunk(3)
+    r = (ir + hr + b1r + b2r).sigmoid()
+    i = (ii + hi + b1i + b2i).sigmoid()
+    hidden_new = hn + b2n
+    n = (inn + b1n + r * hidden_new).tanh()
+    h = hx.detach().cpu().to(compute)
+    return (n + i * (h - n)).to(dtype), torch.cat((r, i, n, h, hidden_new), 1).to(dtype)
+
+
+def _forward_workspace(*args):
+    # PyTorch CUDA RNN.cu stores activated gates in the original scalar dtype.
+    # Enflame has no fused-cell CPU kernel behind its native fallback. Preserve
+    # target RNG construction, then prepare the dense packet on CPU explicitly.
+    if flag_gems.vendor_name != "enflame":
+        return torch.ops.aten._thnn_fused_gru_cell(*args)
+    values = gru_forward(*args)
+    return tuple(value.to(args[0].device) for value in values)
+
+
 def _make_workspace(batch_size, hidden_size, dtype):
     input_gates = torch.randn(
         batch_size, 3 * hidden_size, device=flag_gems.device, dtype=dtype
@@ -34,9 +62,7 @@ def _make_workspace(batch_size, hidden_size, dtype):
     hx = torch.randn(batch_size, hidden_size, device=flag_gems.device, dtype=dtype)
     input_bias = torch.randn(3 * hidden_size, device=flag_gems.device, dtype=dtype)
     hidden_bias = torch.randn_like(input_bias)
-    return torch.ops.aten._thnn_fused_gru_cell(
-        input_gates, hidden_gates, hx, input_bias, hidden_bias
-    )[1]
+    return _forward_workspace(input_gates, hidden_gates, hx, input_bias, hidden_bias)[1]
 
 
 def _manual_reference(grad_hy, workspace, has_bias):
@@ -62,7 +88,7 @@ def _manual_reference(grad_hy, workspace, has_bias):
     grad_hidden_gates = torch.cat(
         (grad_reset, grad_input_gate, grad_hidden_new), dim=1
     ).to(dtype)
-    grad_hx = grad_hx.to(dtype)
+    grad_hx = grad_hx.to(dtype).contiguous()
     if not has_bias:
         return grad_input_gates, grad_hidden_gates, grad_hx, None, None
     grad_input_bias = grad_input_gates.to(compute_dtype).sum(dim=0).to(dtype)
@@ -81,8 +107,8 @@ def _reference(grad_hy, workspace, has_bias):
         pytest.skip("Kunlunxin native GRU backward returns biases when has_bias=False")
     ref_grad_hy = utils.to_reference(grad_hy)
     ref_workspace = utils.to_reference(workspace)
-    if ref_grad_hy.device.type == "cpu":
-        return _manual_reference(ref_grad_hy, ref_workspace, has_bias)
+    if ref_grad_hy.device.type == "cpu" or flag_gems.vendor_name == "enflame":
+        return _manual_reference(ref_grad_hy.cpu(), ref_workspace.cpu(), has_bias)
     return torch.ops.aten._thnn_fused_gru_cell_backward(
         ref_grad_hy, ref_workspace, has_bias
     )
@@ -99,8 +125,8 @@ def _assert_outputs_close(result, reference, dtype, batch_size, device):
         assert actual.shape == expected.shape
         atol = 2e-3 if dtype == torch.bfloat16 and index >= 3 else base_atol
         utils.gems_assert_close(
-            actual,
-            expected,
+            actual.cpu(),
+            expected.cpu(),
             dtype,
             reduce_dim=max(batch_size, 1) if index >= 3 else 1,
             atol=atol,
