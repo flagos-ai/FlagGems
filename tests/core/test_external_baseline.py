@@ -263,6 +263,7 @@ def test_summary_keeps_multiple_benchmark_results_for_the_same_dtype(
         "dtype": DTYPE,
         "result": [{"shape_detail": [8], "latency": 1, "speedup": 3}],
     }
+    first["benchmark_source"] = "parallel_blas"
     if skip_native:
         first["native_baseline_skip_reason"] = "native unavailable"
     path = tmp_path / "result.json"
@@ -270,8 +271,8 @@ def test_summary_keeps_multiple_benchmark_results_for_the_same_dtype(
         json.dumps({"mm": {"result": "passed", "details": [first, second]}})
     )
     summary = parse_perf_data("mm", path)["data"]["fp32"]
-    assert set(summary["details"]) == {"[4]", "[8]"}
-    assert summary["details"]["[4]"]["compared_speedup"] == 4
+    assert set(summary["details"]) == {"[4] (parallel_blas)", "[8]"}
+    assert summary["details"]["[4] (parallel_blas)"]["compared_speedup"] == 4
     assert summary["details"]["[8]"]["speedup"] == 3
     assert summary["speedup"] == 3.5
 
@@ -313,6 +314,22 @@ def test_summary_keeps_same_shape_from_distinct_benchmarks(
         == "baseline.json"
     )
     assert summary["details"]["[4]"]["base_miss_reason"] == "shape_missing"
+
+
+def test_summary_retains_last_legacy_benchmark_for_same_dtype(tmp_path):
+    first = {
+        "dtype": DTYPE,
+        "result": [{"shape_detail": [4], "speedup": 2, "compared_speedup": 4}],
+    }
+    second = {"dtype": DTYPE, "result": [{"shape_detail": [4], "speedup": 2}]}
+    path = tmp_path / "result.json"
+    path.write_text(
+        json.dumps({"mm": {"result": "passed", "details": [first, second]}})
+    )
+    summary = parse_perf_data("mm", path)["data"]["fp32"]
+    assert summary["speedup"] == 2
+    assert summary["details"]["[4]"]["speedup"] == 2
+    assert "compared_speedup" not in summary["details"]["[4]"]
 
 
 @pytest.mark.parametrize("config", [[], "invalid", {"inputs": []}, {"inputs": None}])

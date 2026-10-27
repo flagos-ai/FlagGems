@@ -79,8 +79,16 @@ def parse_perf_data(op, result_file):
     if not any(item.get("native_baseline_skip_reason") for item in records):
         totals = {}
         counts = {}
-        for item in records:
+        # Preserve the legacy last-record behavior for unlabelled benchmarks.
+        last_legacy = {
+            DTYPE_MAP.get(item["dtype"], item["dtype"]): index
+            for index, item in enumerate(records)
+            if not item.get("benchmark_source")
+        }
+        for index, item in enumerate(records):
             dtype = DTYPE_MAP.get(item["dtype"], item["dtype"])
+            if not item.get("benchmark_source") and last_legacy[dtype] != index:
+                continue
             dtype_result = bench_res.setdefault(
                 dtype, {"result": "Unknown", "details": {}, "speedup": 0}
             )
