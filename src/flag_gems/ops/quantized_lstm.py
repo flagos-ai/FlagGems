@@ -21,14 +21,20 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
+from flag_gems.utils.device_info import is_amd_radeon
 
 logger = logging.getLogger(__name__)
 
-# The AMD backend rejects tf32x3 (it only accepts ieee/bf16x3/bf16x6), so fall
-# back to full-precision ieee there; every other backend keeps tf32x3.
-_DOT_PRECISION = tl.constexpr(
-    "ieee" if runtime.device.vendor_name == "amd" else "tf32x3"
-)
+# The AMD backend rejects tf32x3 (it only accepts ieee/bf16x3/bf16x6). Radeon
+# has no fp32 matrix instruction, so "ieee" unrolls into scalar FMAs that take
+# up to hours to compile; bf16x6 runs on WMMA at fp32-level accuracy. Other AMD
+# GPUs use ieee and every other backend keeps tf32x3.
+if is_amd_radeon():
+    _DOT_PRECISION = tl.constexpr("bf16x6")
+else:
+    _DOT_PRECISION = tl.constexpr(
+        "ieee" if runtime.device.vendor_name == "amd" else "tf32x3"
+    )
 
 # Dequantized weights keyed by (params object, device, dtype). The weights are
 # constant, so unpacking them once per params object keeps the host copy out of
