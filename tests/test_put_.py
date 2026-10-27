@@ -213,7 +213,7 @@ def test_put__index_source_diff_shapes(shape, dtype):
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
 def test_put__integer(dtype):
     inp = torch.zeros(100, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp.clone(), True)
+    ref_inp = utils.to_reference(inp.clone())
 
     import numpy as np
 
@@ -223,7 +223,7 @@ def test_put__integer(dtype):
     source = torch.randint(0, 1000, (50,), dtype=dtype, device=flag_gems.device)
 
     ref_index = utils.to_reference(index)
-    ref_source = utils.to_reference(source, True)
+    ref_source = utils.to_reference(source)
     ref_inp.put_(ref_index, ref_source)
     flag_gems.put_(inp, index, source)
 
@@ -275,6 +275,8 @@ def _gen_typed(shape, dtype, device):
     if dtype.is_complex:
         if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
             pytest.skip("Kunlunxin target storage does not retain complex128 dtype")
+        if flag_gems.vendor_name == "enflame" and dtype == torch.complex128:
+            pytest.skip("Enflame target storage loses complex128 component precision")
         factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" else device
         real = torch.randn(shape, device=factory_device)
         imag = torch.randn(shape, device=factory_device)
@@ -385,14 +387,23 @@ def test_put__high_rank(rank, contiguous):
         # A fully reversed permutation is the worst case for dim collapsing:
         # no two dimensions are memory-adjacent, so the rank survives intact.
         inp = inp.permute(*reversed(range(rank)))
-    ref_inp = utils.to_reference(inp.clone(), True)
+    if flag_gems.vendor_name == "enflame" and not contiguous and rank > 8:
+        # Native put_ and target-to-CPU transfer support this input, but the
+        # vendor's target clone/copy kernel rejects a noncontiguous rank nine.
+        # Snapshot only the reference on CPU; keep the actual target view.
+        ref_inp = utils.to_reference(inp.cpu().clone(), True)
+    else:
+        ref_inp = utils.to_reference(inp.clone(), True)
 
     numel = inp.numel()
     count = max(1, numel // 3)
     index = torch.randperm(numel, device=flag_gems.device)[:count].to(torch.int64)
     source = torch.randn(count, dtype=torch.float32, device=flag_gems.device)
 
-    ref_inp.put_(utils.to_reference(index), utils.to_reference(source, True))
+    ref_inp.put_(
+        utils.to_reference(index).to(ref_inp.device),
+        utils.to_reference(source, True).to(ref_inp.device),
+    )
     res = flag_gems.put_(inp, index, source)
     assert res is inp
 
@@ -437,6 +448,8 @@ def test_put__empty_index_is_noop(self_numel):
 def test_put__index_out_of_range(bad, request):
     if flag_gems.vendor_name == "mthreads":
         pytest.skip("MUSA native put_ does not enforce device-side index bounds")
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip("Enflame native put_ raises host IndexError without a device-context trap")
 
     # A real valid-boundary control also exercises the currently injected root
     # in this process. The isolated negative call below must use that same root.
@@ -680,6 +693,8 @@ def test_put__device_mismatch_raises():
 
 @pytest.mark.put_
 def test_put__index_dtype_and_numel_raise():
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip("This negative fixture requires genuine target float64 storage")
     inp = torch.zeros(4, dtype=torch.float32, device=flag_gems.device)
     source = torch.ones(1, dtype=torch.float32, device=flag_gems.device)
 

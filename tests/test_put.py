@@ -166,6 +166,8 @@ def test_put(shape, dtype, accumulate):
 def test_put_dtypes(shape, dtype, accumulate):
     # ATen accepts integer, floating-point, bool and complex `put`; check parity
     # for all of them under both accumulate modes.
+    if flag_gems.vendor_name == "enflame" and dtype == torch.complex128:
+        pytest.skip("Enflame target storage loses complex128 component precision")
     inp = gen_input(shape, dtype, flag_gems.device)
     ref_inp = _reference(inp)
 
@@ -480,6 +482,10 @@ def _assert_put_bounds_failure(proc, report):
 
 @pytest.mark.put
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="Enflame native put raises host IndexError without a device-context trap",
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "mthreads",
     reason="MUSA native put has no target-device trap for invalid indices",
 )
@@ -701,6 +707,8 @@ def test_put_device_mismatch():
 
 @pytest.mark.put
 def test_put_invalid_dtypes():
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip("This negative fixture requires genuine target float64 storage")
     inp = gen_input((16,), torch.float32, flag_gems.device)
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
 
