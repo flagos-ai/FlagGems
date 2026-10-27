@@ -111,9 +111,7 @@ if is_amd_radeon():
     _CONFIGS = [
         c
         for c in _CONFIGS
-        if c.kwargs["BLOCK_M"] <= 64
-        and c.kwargs["BLOCK_K"] <= 64
-        and c.num_stages <= 4
+        if c.kwargs["BLOCK_M"] <= 64 and c.kwargs["BLOCK_K"] <= 64 and c.num_stages <= 4
     ]
 
 
