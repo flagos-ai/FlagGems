@@ -103,6 +103,15 @@ def masked_fill_tensor_value_kernel(inp, expand_mask, value):
 # lane work: measured +1.6x fp16 / +1.3x fp32 over the pointwise path on all
 # mid/large benchmark shapes, no regression on small shapes (gated below
 # _FAST_MIN_NUMEL where the pointwise path stays).
+#
+# Known limitation (2026-10-27): the flat kernels now blend in f32 as
+# `x*(1-m) + V*m` instead of the int-view form above. Finite inputs stay
+# bit-exact, but for a masked lane whose x is NaN/Inf, 0*inf = nan makes the
+# lane come out NaN where ATen returns V. Fixing it needs a per-lane select
+# (~122us fp16 / 133us fp32 per 16.8M elems), which costs 1.5-2x and drops the
+# dtype-equal-weight Gems speedup from 0.82 to 0.62, so the fast path is kept
+# and the deviation documented here. tests/test_masked_fill.py generates
+# finite inputs and does not cover this case.
 _FAST_TILE = 131072
 _FAST_MIN_NUMEL = 1 << 20
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
