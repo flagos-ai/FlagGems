@@ -6336,6 +6336,20 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: flatten_dense_tensors
+  description: 'Concatenates the flattened views of every tensor in a list into one
+    dense 1-D tensor, in list order.
+
+    '
+  for:
+  - flatten_dense_tensors
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: flip
   description: Reverse the order of an n-D tensor along given axis in dims.
   for:

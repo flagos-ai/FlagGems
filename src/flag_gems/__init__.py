@@ -1082,6 +1082,7 @@ _FULL_CONFIG = (
     ("fix", fix),
     ("fix_", fix_),
     ("flatten.using_ints", flatten),
+    ("flatten_dense_tensors", flatten_dense_tensors),
     ("flip", flip),
     ("fliplr", fliplr),
     ("flipud", flipud),
