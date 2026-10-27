@@ -30,6 +30,7 @@ def get_triton_extra_name():
         return "ascend"
 
 
+# FP8/FNUZ capability probes belong to selected scaled_mm tests, not backend import.
 vendor_info = VendorDescriptor(
     vendor_name="ascend",
     device_name="npu",
