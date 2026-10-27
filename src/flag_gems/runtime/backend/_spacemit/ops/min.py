@@ -1,5 +1,6 @@
-import logging
 import builtins
+import logging
+import os
 from collections import namedtuple
 
 import torch
@@ -11,8 +12,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
-
-import os
 
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
@@ -191,11 +190,23 @@ def min(inp):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+        if (
+            alloc_mbarrier is not None
+            and release_mbarrier is not None
+            and mid_size <= 32767
+        ):
             bar = alloc_mbarrier(mid_size)
             try:
                 min_kernel_barrier[(mid_size,)](
-                    inp, mid, out, bar, M, num_blocks, block_size, block_inner, block_mid
+                    inp,
+                    mid,
+                    out,
+                    bar,
+                    M,
+                    num_blocks,
+                    block_size,
+                    block_inner,
+                    block_mid,
                 )
             finally:
                 release_mbarrier(bar)

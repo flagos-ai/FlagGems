@@ -1,5 +1,6 @@
-import logging
 import builtins
+import logging
+import os
 
 import torch
 import triton
@@ -10,8 +11,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
-
-import os
 
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
@@ -184,16 +183,30 @@ def amax(inp, dim=None, keepdim=False):
                 shape[i] = 1
             out = torch.empty(shape, dtype=dtype, device=inp.device)
         with torch_device_fn.device(inp.device):
-            if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+            if (
+                alloc_mbarrier is not None
+                and release_mbarrier is not None
+                and mid_size <= 32767
+            ):
                 bar = alloc_mbarrier(mid_size)
                 try:
                     amax_kernel_barrier[(mid_size,)](
-                        inp, mid, out, bar, M, num_blocks, block_size, block_inner, block_mid
+                        inp,
+                        mid,
+                        out,
+                        bar,
+                        M,
+                        num_blocks,
+                        block_size,
+                        block_inner,
+                        block_mid,
                     )
                 finally:
                     release_mbarrier(bar)
             else:
-                amax_kernel_1[(mid_size,)](inp, mid, M, num_blocks, block_size, block_inner)
+                amax_kernel_1[(mid_size,)](
+                    inp, mid, M, num_blocks, block_size, block_inner
+                )
                 amax_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
         return out
     else:

@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils import libtuner
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +214,11 @@ def floor_divide(A, B):
     elif isinstance(B, torch.Tensor):
         out_dtype = B.dtype
     else:
-        out_dtype = torch.float32 if isinstance(A, float) or isinstance(B, float) else torch.int64
+        out_dtype = (
+            torch.float32
+            if isinstance(A, float) or isinstance(B, float)
+            else torch.int64
+        )
     return result.floor_().to(out_dtype)
 
 
@@ -227,7 +230,11 @@ def trunc_divide(A, B):
     elif isinstance(B, torch.Tensor):
         out_dtype = B.dtype
     else:
-        out_dtype = torch.float32 if isinstance(A, float) or isinstance(B, float) else torch.int64
+        out_dtype = (
+            torch.float32
+            if isinstance(A, float) or isinstance(B, float)
+            else torch.int64
+        )
     return result.trunc_().to(out_dtype)
 
 

@@ -1,5 +1,6 @@
-import logging
 import builtins
+import logging
+import os
 from collections import namedtuple
 
 import torch
@@ -12,10 +13,14 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_min
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32, smt_rvisa_enabled
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
-
-import os
 
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
@@ -169,7 +174,9 @@ def max_kernel(
         result_value = tl.where(update_mask, max_value, result_value)
         result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
-    tl.store(out_value + m_offset, result_value.to(out_value.type.element_ty), mask=mask1)
+    tl.store(
+        out_value + m_offset, result_value.to(out_value.type.element_ty), mask=mask1
+    )
     tl.store(out_index + m_offset, result_index, mask=mask1)
 
 
@@ -191,11 +198,23 @@ def max(inp):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+        if (
+            alloc_mbarrier is not None
+            and release_mbarrier is not None
+            and mid_size <= 32767
+        ):
             bar = alloc_mbarrier(mid_size)
             try:
                 max_kernel_barrier[(mid_size,)](
-                    inp, mid, out, bar, M, num_blocks, block_size, block_inner, block_mid
+                    inp,
+                    mid,
+                    out,
+                    bar,
+                    M,
+                    num_blocks,
+                    block_size,
+                    block_inner,
+                    block_mid,
                 )
             finally:
                 release_mbarrier(bar)
@@ -206,7 +225,6 @@ def max(inp):
 
 
 if HAS_SMT_RVISA:
-
     # sentinel for "not the argmax lane" in the f32 index scratch; any value
     # larger than any real index works (real indices are < 2**24, exact in f32)
     _RVISA_INF_IDX = 1.0e30
@@ -295,14 +313,24 @@ if HAS_SMT_RVISA:
             srv.sstore(idxs, row, argmax)
 
     @triton.jit(do_not_specialize=["M", "N"])
-    def _max_dim1_rvisa_host(X, vals, idxs, M, N, BLOCK: tl.constexpr, F16: tl.constexpr):
+    def _max_dim1_rvisa_host(
+        X, vals, idxs, M, N, BLOCK: tl.constexpr, F16: tl.constexpr
+    ):
         pid = tl.program_id(0)
         row_base = pid * BLOCK
         row_end = min(row_base + BLOCK, M)
         if F16:
-            _sr_call(_max_dim1_rvisa_f16, outputs=[], inputs=[X, vals, idxs, N, row_base, row_end])
+            _sr_call(
+                _max_dim1_rvisa_f16,
+                outputs=[],
+                inputs=[X, vals, idxs, N, row_base, row_end],
+            )
         else:
-            _sr_call(_max_dim1_rvisa_f32, outputs=[], inputs=[X, vals, idxs, N, row_base, row_end])
+            _sr_call(
+                _max_dim1_rvisa_f32,
+                outputs=[],
+                inputs=[X, vals, idxs, N, row_base, row_end],
+            )
 
 
 def max_dim(inp, dim=None, keepdim=False):

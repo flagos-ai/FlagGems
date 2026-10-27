@@ -4,13 +4,18 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
 from flag_gems.ops.softmax import softmax as general_softmax
 from flag_gems.ops.softmax import softmax_out as general_softmax_out
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32, smt_rvisa_enabled
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
 
 logger = logging.getLogger(__name__)
@@ -29,7 +34,9 @@ exp = tl_extra_shim.exp
         # (~100x wall time at n_cols=2048)
         "ROW_SIZE": lambda args: max(1, triton.cdiv(args["n_rows"], 512)),
         "COL_SIZE": lambda args: min(triton.next_power_of_2(args["n_cols"]), 8192),
-        "ONE_TILE_PER_ROW": lambda args: min(triton.next_power_of_2(args["n_cols"]), 8192)
+        "ONE_TILE_PER_ROW": lambda args: min(
+            triton.next_power_of_2(args["n_cols"]), 8192
+        )
         >= args["n_cols"],
     }
 )
@@ -141,7 +148,6 @@ def _spacemit_softmax_lastdim(inp, out):
 
 
 if HAS_SMT_RVISA:
-
     # three-pass in-register softmax (max -> exp-sum -> normalize), ported from
     # spine-triton python/tests/raw/test_raw_softmax.py with the mv svector
     # row-block host; 2.2-7.6x over softmax_kernel_spacemit, whose two-pass
@@ -183,11 +189,15 @@ if HAS_SMT_RVISA:
             inv_denom = 1.0 / denom
             for i in srv.range(0, Nfloor, nvl):
                 vc = srv.cast(srv.vload(X, base + i), f32)
-                srv.vstore(out, base + i, srv.cast(srv.vexp(vc - xmax) * inv_denom, f16))
+                srv.vstore(
+                    out, base + i, srv.cast(srv.vexp(vc - xmax) * inv_denom, f16)
+                )
             for i in srv.range(Nfloor, N, nvl):
                 srv.vconfig(N - i, 1)
                 tc = srv.cast(srv.vload(X, base + i), f32)
-                srv.vstore(out, base + i, srv.cast(srv.vexp(tc - xmax) * inv_denom, f16))
+                srv.vstore(
+                    out, base + i, srv.cast(srv.vexp(tc - xmax) * inv_denom, f16)
+                )
 
     @srv.raw_kernel
     def _softmax_rvisa_f16o32(
@@ -269,16 +279,30 @@ if HAS_SMT_RVISA:
                 srv.vstore(out, base + i, srv.vexp(tc - xmax) * inv_denom)
 
     @triton.jit(do_not_specialize=["n_rows", "n_cols"])
-    def _softmax_rvisa_host(X, out, n_rows, n_cols, BLOCK: tl.constexpr, VARIANT: tl.constexpr):
+    def _softmax_rvisa_host(
+        X, out, n_rows, n_cols, BLOCK: tl.constexpr, VARIANT: tl.constexpr
+    ):
         pid = tl.program_id(0)
         row_base = pid * BLOCK
         row_end = min(row_base + BLOCK, n_rows)
         if VARIANT == 0:
-            _sr_call(_softmax_rvisa_f16o16, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _softmax_rvisa_f16o16,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
         elif VARIANT == 1:
-            _sr_call(_softmax_rvisa_f16o32, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _softmax_rvisa_f16o32,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
         else:
-            _sr_call(_softmax_rvisa_f32o32, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _softmax_rvisa_f32o32,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
 
     def _softmax_rvisa_lastdim(inp, out):
         n_rows, n_cols = inp.shape

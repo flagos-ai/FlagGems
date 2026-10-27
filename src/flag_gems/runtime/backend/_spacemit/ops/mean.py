@@ -8,7 +8,13 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32, smt_rvisa_enabled
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
 
 
@@ -69,6 +75,7 @@ def mean(inp, *, dtype=None):
     # Use gems' standard two-stage design: many programs * BLOCK_SIZE each
     # Gems baseline strategy: block_size = sqrt(M), mid_size programs
     import math
+
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
     mid_size = triton.cdiv(M, block_size)
     # this stack's runtime silently drops programs beyond a 512-program grid
@@ -102,16 +109,15 @@ def mean(inp, *, dtype=None):
         # stack's runtime dispatches multi-thousand-program grids fine, and
         # the per-row shape benchmarked faster than wide [BLOCK_M, BLOCK_N]
         # tiles)
-        "BLOCK_M": lambda args: max(1, triton.next_power_of_2(triton.cdiv(args["M"], 4096))),
+        "BLOCK_M": lambda args: max(
+            1, triton.next_power_of_2(triton.cdiv(args["M"], 4096))
+        ),
         "BLOCK_N": lambda args: min(triton.next_power_of_2(args["N"]), 8192),
     }
 )
 @triton.jit
 def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     row_start = tl.program_id(0) * BLOCK_M
-    row_offset = tl.arange(0, BLOCK_M)
-    row_idx = row_start + row_offset
-    row_mask = row_idx < M
 
     _mean_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
     num_pid_n = tl.cdiv(N, BLOCK_N)
@@ -202,9 +208,13 @@ if HAS_SMT_RVISA:
         row_base = pid * BLOCK
         row_end = min(row_base + BLOCK, M)
         if F16:
-            _sr_call(_mean_dim1_rvisa_f16, outputs=[], inputs=[X, out, N, row_base, row_end])
+            _sr_call(
+                _mean_dim1_rvisa_f16, outputs=[], inputs=[X, out, N, row_base, row_end]
+            )
         else:
-            _sr_call(_mean_dim1_rvisa_f32, outputs=[], inputs=[X, out, N, row_base, row_end])
+            _sr_call(
+                _mean_dim1_rvisa_f32, outputs=[], inputs=[X, out, N, row_base, row_end]
+            )
 
     def _mean_dim_rvisa(x, out, M, N):
         x = x.contiguous()
@@ -255,5 +265,13 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     return out
 
 
-def avg_pool2d(x, kernel_size=None, stride=None, padding=0, ceil_mode=False, count_include_pad=True, divisor_override=None):
+def avg_pool2d(
+    x,
+    kernel_size=None,
+    stride=None,
+    padding=0,
+    ceil_mode=False,
+    count_include_pad=True,
+    divisor_override=None,
+):
     return mean_dim(x, dim=[2, 3], keepdim=True)

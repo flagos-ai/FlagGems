@@ -4,12 +4,17 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
 from flag_gems.ops.log_softmax import log_softmax as common_log_softmax
-from flag_gems.utils import libentry
-from flag_gems.utils import tl_extra_shim
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, tl_extra_shim
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32, smt_rvisa_enabled
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
 
 logger = logging.getLogger(__name__)
@@ -29,7 +34,9 @@ log = tl_extra_shim.log
         # scratch traffic (~100x wall time at n_cols=2048)
         "ROW_SIZE": lambda args: max(1, triton.cdiv(args["n_rows"], 512)),
         "COL_SIZE": lambda args: min(triton.next_power_of_2(args["n_cols"]), 8192),
-        "ONE_TILE_PER_ROW": lambda args: min(triton.next_power_of_2(args["n_cols"]), 8192)
+        "ONE_TILE_PER_ROW": lambda args: min(
+            triton.next_power_of_2(args["n_cols"]), 8192
+        )
         >= args["n_cols"],
     }
 )
@@ -77,7 +84,9 @@ def log_softmax_kernel_spacemit(
                 # a scalar (0-d) log lowers to the slow unstructured path on
                 # this stack; broadcast to a 32-lane vector and average the
                 # identical lanes (exact: d*32 and /32 are power-of-2 ops)
-                log_denom = tl.sum(log(denominator + tl.zeros([32], tl.float32)), axis=0) / 32
+                log_denom = (
+                    tl.sum(log(denominator + tl.zeros([32], tl.float32)), axis=0) / 32
+                )
                 result = (row - row_max - log_denom).to(element_ty)
                 tl.store(output_block_ptr, result, boundary_check=(0,))
             else:
@@ -144,7 +153,6 @@ def _spacemit_log_softmax_lastdim(inp, out):
 
 
 if HAS_SMT_RVISA:
-
     # three-pass in-register log_softmax: (x - max) - log(sum(exp(x - max))),
     # ported from spine-triton python/tests/raw/test_raw_log_softmax.py with
     # the mv svector row-block host; 2.2-7.2x over log_softmax_kernel_spacemit,
@@ -273,16 +281,30 @@ if HAS_SMT_RVISA:
                 srv.vstore(out, base + i, (tc - xmax) - log_denom)
 
     @triton.jit(do_not_specialize=["n_rows", "n_cols"])
-    def _log_softmax_rvisa_host(X, out, n_rows, n_cols, BLOCK: tl.constexpr, VARIANT: tl.constexpr):
+    def _log_softmax_rvisa_host(
+        X, out, n_rows, n_cols, BLOCK: tl.constexpr, VARIANT: tl.constexpr
+    ):
         pid = tl.program_id(0)
         row_base = pid * BLOCK
         row_end = min(row_base + BLOCK, n_rows)
         if VARIANT == 0:
-            _sr_call(_log_softmax_rvisa_f16o16, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _log_softmax_rvisa_f16o16,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
         elif VARIANT == 1:
-            _sr_call(_log_softmax_rvisa_f16o32, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _log_softmax_rvisa_f16o32,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
         else:
-            _sr_call(_log_softmax_rvisa_f32o32, outputs=[], inputs=[X, out, n_cols, row_base, row_end])
+            _sr_call(
+                _log_softmax_rvisa_f32o32,
+                outputs=[],
+                inputs=[X, out, n_cols, row_base, row_end],
+            )
 
     def _log_softmax_rvisa_lastdim(inp, out):
         n_rows, n_cols = inp.shape

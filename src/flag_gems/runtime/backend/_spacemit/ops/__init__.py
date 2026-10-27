@@ -1,69 +1,71 @@
-from .abs import abs, abs_
-from .add import add, add_
-from .addmm import addmm
-from .all import all, all_dim, all_dims
-from .amax import amax
-from .bitwise_and import (
+from .abs import abs, abs_  # noqa: F401
+from .add import add, add_  # noqa: F401
+from .addmm import addmm  # noqa: F401
+from .all import all, all_dim, all_dims  # noqa: F401
+from .amax import amax  # noqa: F401
+from .bitwise_and import (  # noqa: F401
     bitwise_and_scalar,
     bitwise_and_scalar_,
     bitwise_and_scalar_tensor,
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
-from .bitwise_not import bitwise_not, bitwise_not_
-from .bitwise_or import (
+from .bitwise_not import bitwise_not, bitwise_not_  # noqa: F401
+from .bitwise_or import (  # noqa: F401
     bitwise_or_scalar,
     bitwise_or_scalar_,
     bitwise_or_scalar_tensor,
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
-from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
-from .cos import cos, cos_
-from .div import true_divide, true_divide_
-from .eq import eq, eq_scalar
-from .erf import erf, erf_
-from .exp import exp, exp_
+from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_  # noqa: F401
+from .cos import cos, cos_  # noqa: F401
+from .div import true_divide, true_divide_  # noqa: F401
+from .eq import eq, eq_scalar  # noqa: F401
+from .erf import erf, erf_  # noqa: F401
+from .exp import exp, exp_  # noqa: F401
+
 # flash_attention (and its attn_vfwmacc dependency) and mm require the
 # smt_rvisa eDSL, which only exists on newer spine-triton builds; keep this
 # backend importable on the older stack, where those ops fall back to the
 # general implementations instead of breaking the whole vendor registration
 try:
-    from .flash_attention import (
+    from .flash_attention import (  # noqa: F401
         flash_attention,
         scaled_dot_product_attention,
         scaled_dot_product_flash_attention_for_cpu,
     )
 except ImportError:
     pass
-from .gelu import gelu
-from .ge import ge, ge_scalar
-from .gt import gt, gt_scalar
-from .isinf import isinf
-from .isnan import isnan
-from .le import le, le_scalar
-from .log_softmax import log_softmax
-from .lt import lt, lt_scalar
-from .max import max, max_dim
-from .mean import mean, mean_dim
-from .min import min, min_dim
+from .ge import ge, ge_scalar  # noqa: F401
+from .gelu import gelu  # noqa: F401
+from .gt import gt, gt_scalar  # noqa: F401
+from .isinf import isinf  # noqa: F401
+from .isnan import isnan  # noqa: F401
+from .le import le, le_scalar  # noqa: F401
+from .log_softmax import log_softmax  # noqa: F401
+from .lt import lt, lt_scalar  # noqa: F401
+from .max import max, max_dim  # noqa: F401
+from .mean import mean, mean_dim  # noqa: F401
+from .min import min, min_dim  # noqa: F401
+
 try:
-    from .mm import mm, mm_out
+    from .mm import mm, mm_out  # noqa: F401
 except ImportError:
     pass
-from .mul import mul, mul_
-from .mv import mv
-from .relu import relu, relu_
-from .rsqrt import rsqrt
-from .sigmoid import sigmoid
-from .silu import silu
-from .sin import sin, sin_
-from .softmax import softmax, softmax_out
-from .sub import sub, sub_
-from .sum import sum as sum
-from .sum import sum_dim, sum_dim_out
-from .tanh import tanh, tanh_
-from .triu import triu
+from .mul import mul, mul_  # noqa: F401
+from .mv import mv  # noqa: F401
+from .relu import relu, relu_  # noqa: F401
+from .rsqrt import rsqrt  # noqa: F401
+from .sigmoid import sigmoid  # noqa: F401
+from .silu import silu  # noqa: F401
+from .sin import sin, sin_  # noqa: F401
+from .softmax import softmax, softmax_out  # noqa: F401
+from .sub import sub, sub_  # noqa: F401
+from .sum import sum as sum  # noqa: F401
+from .sum import sum_dim, sum_dim_out  # noqa: F401
+from .tanh import tanh, tanh_  # noqa: F401
+from .triu import triu  # noqa: F401
 
 __all__ = [
     "abs",

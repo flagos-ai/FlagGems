@@ -6,8 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 exp_func = tl_extra_shim.exp
@@ -130,7 +129,9 @@ def sigmoid_backward(grad_output, output):
     grad_input = torch.empty_like(grad_output)
     n_elements = grad_output.numel()
     with torch_device_fn.device(grad_output.device):
-        sigmoid_backward_kernel[(NUM_CTAS,)](grad_output, output, grad_input, n_elements)
+        sigmoid_backward_kernel[(NUM_CTAS,)](
+            grad_output, output, grad_input, n_elements
+        )
     return grad_input
 
 

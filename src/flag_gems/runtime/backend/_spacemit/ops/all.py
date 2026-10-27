@@ -1,5 +1,5 @@
 import logging
-import math
+import os
 
 import torch
 import triton
@@ -8,9 +8,6 @@ import triton.language.extra.smt as smt
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
-from flag_gems.utils import triton_lang_extension as tle
-
-import os
 
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
@@ -46,7 +43,9 @@ def reduce_count(a, b):
         # a whole row so the N-loop collapses to one iteration -- a
         # loop-carried accumulator feeding the next iteration lowers to
         # per-iteration DDR scratch traffic (~100x wall time at N=2048)
-        "BLOCK_M": lambda args: max(2, triton.next_power_of_2(triton.cdiv(args["M"], 512))),
+        "BLOCK_M": lambda args: max(
+            2, triton.next_power_of_2(triton.cdiv(args["M"], 512))
+        ),
         "BLOCK_N": lambda args: min(triton.next_power_of_2(args["N"]), 8192),
     }
 )
@@ -69,9 +68,11 @@ def all_kernel_dim(
             cols = off + tl.arange(0, BLOCK_N)
             mask = cols < N
             a = tl.load(row_inp + cols, mask, other=1.0)
-            has_zero_block = (a == 0)
-            has_zero_scalar = has_zero_scalar | tl.reduce(has_zero_block, axis=0, combine_fn=reduce_all)
-        all_val = (has_zero_scalar == 0)
+            has_zero_block = a == 0
+            has_zero_scalar = has_zero_scalar | tl.reduce(
+                has_zero_block, axis=0, combine_fn=reduce_all
+            )
+        all_val = has_zero_scalar == 0
         tl.store(row_out, all_val.to(tl.int8))
 
 
@@ -107,7 +108,6 @@ def all_kernel_1(
     # cannot parse; write through a lane-0 masked vector store instead
     lanes = tl.arange(0, 32)
     tl.store(mid + pid + lanes, count, mask=lanes < 1)
-
 
 
 @libentry()
@@ -190,16 +190,31 @@ def all(inp):
     out = torch.empty([], dtype=torch.int32, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+        if (
+            alloc_mbarrier is not None
+            and release_mbarrier is not None
+            and mid_size <= 32767
+        ):
             bar = alloc_mbarrier(mid_size)
             try:
                 all_kernel_barrier[(mid_size,)](
-                    inp, mid, out, bar, n_elements, num_blocks, mid_size, block_size, block_inner, block_mid
+                    inp,
+                    mid,
+                    out,
+                    bar,
+                    n_elements,
+                    num_blocks,
+                    mid_size,
+                    block_size,
+                    block_inner,
+                    block_mid,
                 )
             finally:
                 release_mbarrier(bar)
         else:
-            all_kernel_1[(mid_size,)](inp, mid, n_elements, num_blocks, block_size, block_inner)
+            all_kernel_1[(mid_size,)](
+                inp, mid, n_elements, num_blocks, block_size, block_inner
+            )
             all_kernel_2[(1, 1)](mid, out, mid_size, n_elements, block_mid)
     # out.to(torch.bool) under full use_gems() registration dispatches to the
     # general copy kernel, whose 0-d path is the scalar-store/ptr.to_ptr

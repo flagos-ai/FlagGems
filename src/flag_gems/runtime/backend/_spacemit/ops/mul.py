@@ -5,8 +5,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.utils import libentry
-from flag_gems.utils import libtuner
+from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +37,28 @@ def mul_kernel_tt(
         block_start = task_idx * BLOCK_SIZE
 
         a_blk = tl.make_block_ptr(
-            base=A_ptr, shape=(n_elements,), strides=(1,),
-            offsets=(block_start,), block_shape=(BLOCK_SIZE,), order=(0,),
+            base=A_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
         )
         b_blk = tl.make_block_ptr(
-            base=B_ptr, shape=(n_elements,), strides=(1,),
-            offsets=(block_start,), block_shape=(BLOCK_SIZE,), order=(0,),
+            base=B_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
         )
         out_blk = tl.make_block_ptr(
-            base=Out_ptr, shape=(n_elements,), strides=(1,),
-            offsets=(block_start,), block_shape=(BLOCK_SIZE,), order=(0,),
+            base=Out_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
         )
 
         a = tl.load(a_blk, boundary_check=(0,))
@@ -80,12 +91,20 @@ def mul_kernel_ts(
         block_start = task_idx * BLOCK_SIZE
 
         a_blk = tl.make_block_ptr(
-            base=A_ptr, shape=(n_elements,), strides=(1,),
-            offsets=(block_start,), block_shape=(BLOCK_SIZE,), order=(0,),
+            base=A_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
         )
         out_blk = tl.make_block_ptr(
-            base=Out_ptr, shape=(n_elements,), strides=(1,),
-            offsets=(block_start,), block_shape=(BLOCK_SIZE,), order=(0,),
+            base=Out_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
         )
 
         a = tl.load(a_blk, boundary_check=(0,))

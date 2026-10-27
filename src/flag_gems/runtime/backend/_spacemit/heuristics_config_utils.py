@@ -124,7 +124,6 @@ def gather_heur_block_n(args):
     return min(2048, triton.next_power_of_2(args["N"]))
 
 
-
 def mm_heur_even_k(args):
     return args["K"] % args["BLOCK_SIZE_K"] == 0
 

@@ -6,8 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 erf = tl_extra_shim.erf

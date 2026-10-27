@@ -54,7 +54,11 @@ def triu_kernel(
             x = tl.load(x_block_ptr, boundary_check=(0, 1))
             tl.store(y_block_ptr, x, boundary_check=(0, 1))
         elif block_row_min + diagonal > block_col_max:
-            zeros = tl.full((M_BLOCK_SIZE, N_BLOCK_SIZE), 0, tl.load(x_block_ptr, boundary_check=(0, 1)).dtype)
+            zeros = tl.full(
+                (M_BLOCK_SIZE, N_BLOCK_SIZE),
+                0,
+                tl.load(x_block_ptr, boundary_check=(0, 1)).dtype,
+            )
             tl.store(y_block_ptr, zeros, boundary_check=(0, 1))
         else:
             x = tl.load(x_block_ptr, boundary_check=(0, 1))
@@ -108,7 +112,9 @@ def triu_batch_kernel(
     batch_mask = batch_offsets < batch
     row_mask = row_offsets < M
     col_mask = col_offsets < N
-    valid_mask = batch_mask[:, None, None] & row_mask[None, :, None] & col_mask[None, None, :]
+    valid_mask = (
+        batch_mask[:, None, None] & row_mask[None, :, None] & col_mask[None, None, :]
+    )
 
     if block_row_max + diagonal <= block_col_min:
         x = tl.load(X + offsets, mask=valid_mask, other=0.0)

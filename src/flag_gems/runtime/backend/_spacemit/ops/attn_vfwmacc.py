@@ -13,7 +13,7 @@ import triton
 import triton.language as tl
 import triton.language.extra.smt_rvisa as tle
 from triton.language.extra.smt_rvisa import call as _sr_call
-from triton.language.extra.smt_rvisa import mem, index, f16, f32
+from triton.language.extra.smt_rvisa import f16, f32, index, mem
 
 
 # ── Fused M=1: QKT + softmax + AV in one kernel (decode-only) ───────────────
@@ -23,11 +23,19 @@ from triton.language.extra.smt_rvisa import mem, index, f16, f32
 # 2-phase softmax: dots→scratch (Hq,Mk) f32 → vreduce_max → vexp → normalize → AV.
 # D=128 = 2× 64-chunk (Qwen3 head_dim). f16 input → f32 acc → f16 output.
 @tle.raw_kernel
-def attn_m1_fused_raw(Q_ptr: mem(f16), K_ptr: mem(f16), V_ptr: mem(f16),
-                      Scratch_ptr: mem(f32), Scale_ptr: mem(f32),
-                      O_ptr: mem(f16, out=True),
-                      Mk: index, D: index, hq: index, hk: index):
-    nvl = tle.vconfig(-1, 1)  # VL=64 (f16/f32 element count, lmul=1)
+def attn_m1_fused_raw(
+    Q_ptr: mem(f16),
+    K_ptr: mem(f16),
+    V_ptr: mem(f16),
+    Scratch_ptr: mem(f32),
+    Scale_ptr: mem(f32),
+    O_ptr: mem(f16, out=True),
+    Mk: index,
+    D: index,
+    hq: index,
+    hk: index,
+):
+    tle.vconfig(-1, 1)  # VL=64 (f16/f32 element count, lmul=1)
 
     scale = tle.sload(Scale_ptr, 0, dtype=f32)
 
@@ -113,8 +121,13 @@ def attn_m1_fused_raw(Q_ptr: mem(f16), K_ptr: mem(f16), V_ptr: mem(f16),
 
 
 @triton.jit(do_not_specialize=["Mk", "D"])
-def _attn_m1_fused_host(Q, K, V, Scratch, Scale, O, Mk, D, Nrep: tl.constexpr, Hq: tl.constexpr):
+def _attn_m1_fused_host(
+    Q, K, V, Scratch, Scale, Out, Mk, D, Nrep: tl.constexpr, Hq: tl.constexpr
+):
     hq = tl.program_id(0)
     hk = hq // Nrep
-    _sr_call(attn_m1_fused_raw, outputs=[], inputs=[Q, K, V, Scratch, Scale, O, Mk, D, hq, hk])
-
+    _sr_call(
+        attn_m1_fused_raw,
+        outputs=[],
+        inputs=[Q, K, V, Scratch, Scale, Out, Mk, D, hq, hk],
+    )

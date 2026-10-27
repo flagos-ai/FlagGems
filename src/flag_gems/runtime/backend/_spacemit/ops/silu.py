@@ -6,8 +6,7 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import tl_extra_shim
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 div_rn = tl_extra_shim.div_rn
@@ -137,9 +136,7 @@ class Silu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         n_elements = inp.numel()
         with torch_device_fn.device(inp.device):
-            silu_backward_kernel[(NUM_CTAS,)](
-                inp, out_grad, in_grad, n_elements
-            )
+            silu_backward_kernel[(NUM_CTAS,)](inp, out_grad, in_grad, n_elements)
         return in_grad
 
 
@@ -170,9 +167,7 @@ class InplaceSilu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         n_elements = inp.numel()
         with torch_device_fn.device(inp.device):
-            silu_backward_kernel[(NUM_CTAS,)](
-                inp, out_grad, in_grad, n_elements
-            )
+            silu_backward_kernel[(NUM_CTAS,)](inp, out_grad, in_grad, n_elements)
         return in_grad
 
 

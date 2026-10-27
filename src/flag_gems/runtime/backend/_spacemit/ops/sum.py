@@ -1,5 +1,6 @@
-import logging
 import builtins
+import logging
+import os
 from functools import reduce
 
 import torch
@@ -12,10 +13,14 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32, smt_rvisa_enabled
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
-
-import os
 
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
@@ -170,11 +175,23 @@ def sum(inp, *, dtype=None):
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+        if (
+            alloc_mbarrier is not None
+            and release_mbarrier is not None
+            and mid_size <= 32767
+        ):
             bar = alloc_mbarrier(mid_size)
             try:
                 sum_kernel_barrier[(mid_size,)](
-                    inp, mid, out, bar, M, num_blocks, block_size, block_inner, block_mid
+                    inp,
+                    mid,
+                    out,
+                    bar,
+                    M,
+                    num_blocks,
+                    block_size,
+                    block_inner,
+                    block_mid,
                 )
             finally:
                 release_mbarrier(bar)
@@ -203,11 +220,23 @@ def sum_out(inp, *, dtype=None, out):
     mid_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
     mid = torch.empty((mid_size,), dtype=mid_dtype, device=inp.device)
     with torch_device_fn.device(inp.device):
-        if alloc_mbarrier is not None and release_mbarrier is not None and mid_size <= 32767:
+        if (
+            alloc_mbarrier is not None
+            and release_mbarrier is not None
+            and mid_size <= 32767
+        ):
             bar = alloc_mbarrier(mid_size)
             try:
                 sum_kernel_barrier[(mid_size,)](
-                    inp, mid, out, bar, M, num_blocks, block_size, block_inner, block_mid
+                    inp,
+                    mid,
+                    out,
+                    bar,
+                    M,
+                    num_blocks,
+                    block_size,
+                    block_inner,
+                    block_mid,
                 )
             finally:
                 release_mbarrier(bar)
@@ -311,7 +340,9 @@ def sum_dim_kernel_inner(
         # a whole row so the N-loop collapses to one iteration -- a
         # loop-carried accumulator feeding the next iteration lowers to
         # per-iteration DDR scratch traffic (~100x wall time at N=2048)
-        "BLOCK_M": lambda args: max(2, triton.next_power_of_2(triton.cdiv(args["M"], 512))),
+        "BLOCK_M": lambda args: max(
+            2, triton.next_power_of_2(triton.cdiv(args["M"], 512))
+        ),
         "BLOCK_N": lambda args: min(triton.next_power_of_2(args["N"]), 8192),
     }
 )
@@ -516,9 +547,13 @@ if HAS_SMT_RVISA:
         row_base = pid * BLOCK
         row_end = min(row_base + BLOCK, M)
         if F16:
-            _sr_call(_sum_dim1_rvisa_f16, outputs=[], inputs=[X, out, N, row_base, row_end])
+            _sr_call(
+                _sum_dim1_rvisa_f16, outputs=[], inputs=[X, out, N, row_base, row_end]
+            )
         else:
-            _sr_call(_sum_dim1_rvisa_f32, outputs=[], inputs=[X, out, N, row_base, row_end])
+            _sr_call(
+                _sum_dim1_rvisa_f32, outputs=[], inputs=[X, out, N, row_base, row_end]
+            )
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):

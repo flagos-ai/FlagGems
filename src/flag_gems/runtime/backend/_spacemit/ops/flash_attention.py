@@ -278,9 +278,7 @@ def _attn_fwd(
         m_acc_4d = tl.zeros(
             [num_m_tiles, BLOCK_N // MICRO_N, MICRO_M, MICRO_N], dtype=tl.float32
         ) - float("inf")
-        l_acc_4d = tl.zeros(
-            [num_m_tiles, 1, MICRO_M, MICRO_N], dtype=tl.float32
-        )
+        l_acc_4d = tl.zeros([num_m_tiles, 1, MICRO_M, MICRO_N], dtype=tl.float32)
         acc_4d = tl.zeros(
             [num_m_tiles, num_k_tiles, MICRO_M, MICRO_N], dtype=tl.float32
         )
@@ -533,9 +531,16 @@ def _sdpa_m1_fused(q, k, v, scale, is_causal):
     scratch = torch.empty((Hq, Mk), dtype=torch.float32, device=q.device)
     scale_t = torch.tensor([scale], dtype=torch.float32, device=q.device)
     _attn_m1_fused_host[(Hq,)](
-        q.view(Hq, D), k.view(Hkv, Mk, D), v.view(Hkv, Mk, D),
-        scratch.view(Hq * Mk), scale_t, out.view(Hq, D),
-        Mk, D, n_rep, Hq,
+        q.view(Hq, D),
+        k.view(Hkv, Mk, D),
+        v.view(Hkv, Mk, D),
+        scratch.view(Hq * Mk),
+        scale_t,
+        out.view(Hq, D),
+        Mk,
+        D,
+        n_rep,
+        Hq,
     )
     return out
 
@@ -553,9 +558,7 @@ def _sdpa_python_fallback(query, key, value, attn_mask, dropout_p, is_causal, sc
     if Hq != Hkv:
         n_rep = Hq // Hkv
         key = key.unsqueeze(2).expand(B, Hkv, n_rep, Mk, D).reshape(B, Hq, Mk, D)
-        value = value.unsqueeze(2).expand(B, Hkv, n_rep, Mk, D).reshape(
-            B, Hq, Mk, D
-        )
+        value = value.unsqueeze(2).expand(B, Hkv, n_rep, Mk, D).reshape(B, Hq, Mk, D)
     attn = query.float() @ key.float().transpose(-1, -2) * scale
     if is_causal:
         q_idx = torch.arange(Mq, device=query.device).unsqueeze(-1)
@@ -581,15 +584,17 @@ def scaled_dot_product_attention(
     # Fast path: K3 attention kernels (f16, B=1, GQA; smt.dot flash for Mq>1)
     B, Hq, Mq, D = query.shape
     _, Hkv, Mk, _ = key.shape
-    if (query.dtype == torch.float16
-            and D in (64, 128)
-            and B == 1
-            and Hq % Hkv == 0
-            and query.is_contiguous()
-            and key.is_contiguous()
-            and value.is_contiguous()
-            and attn_mask is None
-            and dropout_p == 0.0):
+    if (
+        query.dtype == torch.float16
+        and D in (64, 128)
+        and B == 1
+        and Hq % Hkv == 0
+        and query.is_contiguous()
+        and key.is_contiguous()
+        and value.is_contiguous()
+        and attn_mask is None
+        and dropout_p == 0.0
+    ):
         sc = scale if scale is not None else (1.0 / math.sqrt(D))
         if Mq == 1 and D == 128:
             return _sdpa_m1_fused(query, key, value, sc, is_causal)
@@ -597,9 +602,7 @@ def scaled_dot_product_attention(
             query, key, value, is_causal=is_causal, scale=sc, enable_gqa=enable_gqa
         )
     sc = scale if scale is not None else (1.0 / math.sqrt(D))
-    return _sdpa_python_fallback(
-        query, key, value, attn_mask, dropout_p, is_causal, sc
-    )
+    return _sdpa_python_fallback(query, key, value, attn_mask, dropout_p, is_causal, sc)
 
 
 def scaled_dot_product_flash_attention_for_cpu(
@@ -628,10 +631,12 @@ def scaled_dot_product_flash_attention_for_cpu(
     """
     Mq = query.shape[2]
     if attn_mask is not None:
-        is_causal = (Mq > 1)
+        is_causal = Mq > 1
         attn_mask = None
     out = scaled_dot_product_attention(
-        query, key, value,
+        query,
+        key,
+        value,
         attn_mask=attn_mask,
         dropout_p=dropout_p,
         is_causal=is_causal,
