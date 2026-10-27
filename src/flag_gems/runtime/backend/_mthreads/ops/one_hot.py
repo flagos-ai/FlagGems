@@ -40,14 +40,6 @@ _DENSE_MAX_OUTPUT_ELEMENTS = 67_108_864
 # positions becomes cheaper than computing every element.
 _DENSE_MAX_CLASSES = 8192
 
-# Single-CTA direct verdict kernels replace the codes+reduce pair below this
-# many elements (saves one ~9-26 us launch; the whole input fits one
-# 8192-wide tile loop of a single CTA).  Crossover re-measured on S5000 with
-# num_warps=16 direct kernels: the explicit direct kernel wins through 16384
-# elements (24576+ the codes pair wins again), the two-launch pair is also
-# bimodal (~53 us GPU-bound vs ~85-95 us host-bound, phase-dependent), so the
-# single-launch direct path is preferred wherever it is not slower.
-_DIRECT_MAX_ELEMENTS = 16_384
 # Inferred min/max: the single-CTA direct kernel wins through 10240 elements
 # (the official 10000-element shapes land inside); above that the
 # minmax+reduce pair takes over.
@@ -257,31 +249,6 @@ def one_hot_validate_codes_kernel(
 
 @libentry()
 @triton.jit
-def one_hot_validate_direct_kernel(
-    input_ptr,
-    out_ptr,
-    num_elements,
-    num_classes,
-    BLOCK: tl.constexpr,
-):
-    """Single-CTA validation: whole-input error code -> out_ptr[0].
-
-    Small inputs only: one launch replaces the codes + reduce pair.
-    """
-    code = tl.full((), 0, tl.int32)
-    for start in range(0, num_elements, BLOCK):
-        offs = start + tl.arange(0, BLOCK)
-        mask = offs < num_elements
-        indices = tl.load(input_ptr + offs, mask=mask, other=0)
-        negative = indices < 0
-        too_large = indices >= num_classes
-        c = tl.where(mask, tl.where(negative, 2, tl.where(too_large, 1, 0)), 0)
-        code = tl.maximum(code, tl.max(c, axis=0))
-    tl.store(out_ptr, code)
-
-
-@libentry()
-@triton.jit
 def one_hot_status_partial_reduce_kernel(
     status_ptr,
     partial_ptr,
@@ -468,22 +435,14 @@ def _host_max(values: torch.Tensor) -> int:
 
 
 def _launch_validate_kernels(flat_input, num_elements, num_classes, target):
-    """Enqueue the explicit-path validation writing the error code to target."""
-    if num_elements <= _DIRECT_MAX_ELEMENTS:
-        # num_warps=16 measured 30% faster than 8 on S5000 (the 8192-wide
-        # single-CTA loop is latency-bound on issue width, not occupancy).
-        # BLOCK=16384 keeps 8192 < n <= 16384 in a single loop iteration
-        # (P12: one fewer serialized load round trip).
-        block = 16384 if num_elements > 8192 else 8192
-        one_hot_validate_direct_kernel[(1,)](
-            flat_input,
-            target,
-            num_elements,
-            num_classes,
-            BLOCK=block,
-            num_warps=16,
-        )
-        return
+    """Enqueue the explicit-path validation writing the error code to target.
+
+    The parallel per-block codes kernel plus the 1-CTA (or two-level) reduce
+    wins across the whole size range: the single-CTA alternative saves one
+    enqueue but its serial 8192-wide loop costs more GPU time than the
+    enqueue it saves (S5000 ablation: the direct variant measured 2-7 us
+    slower per call across four interleaved official rounds).
+    """
     rows, _class_block, _num_warps = _dense_config(num_elements, num_classes)
     num_blocks = triton.cdiv(num_elements, rows)
     status = torch.empty(num_blocks, device=flat_input.device, dtype=torch.int32)
