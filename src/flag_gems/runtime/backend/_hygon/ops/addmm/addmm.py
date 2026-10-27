@@ -16,11 +16,11 @@ import logging
 from numbers import Number
 
 import torch
-import triton
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to
 
+from .dense import get_dense_metadata, launch_dense
 from .kernels import (
     _transpose_addmm_b,
     addmm_column_kernel,
@@ -36,13 +36,19 @@ logger = logging.getLogger(__name__)
 
 
 def _scalar_eq(value, target):
+    if isinstance(value, (int, float)):
+        return value == target
     return isinstance(value, Number) and value == target
 
 
 def _validate_addmm_shapes(bias, mat1, mat2):
-    assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
-    output_shape = (mat1.shape[0], mat2.shape[1])
-    assert broadcastable_to(bias.shape, output_shape), "Incompatible input shape"
+    m, k = mat1.shape
+    k2, n = mat2.shape
+    assert k == k2, "Incompatible dimensions"
+    output_shape = (m, n)
+    if bias.shape != output_shape:
+        assert broadcastable_to(bias.shape, output_shape), "Incompatible input shape"
+    return m, n, k
 
 
 def _is_col_major(tensor):
@@ -77,16 +83,17 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
     if K == 0 or _scalar_eq(alpha, 0):
         return _finish_bias_only(out, bias, beta)
 
-    logger.debug(
-        "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
-        "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
-        M,
-        N,
-        K,
-        mat1.stride(0) == 1,
-        _is_col_major(mat2),
-        _is_col_major(bias),
-    )
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "GEMS ADDMM, [shape info]: [-, %s, %s, %s](batch, M, N, K), "
+            "[A column-major]: %s, [B column-major]: %s, [bias column-major]: %s",
+            M,
+            N,
+            K,
+            mat1.stride(0) == 1,
+            _is_col_major(mat2),
+            _is_col_major(bias),
+        )
 
     kernel = _select_addmm_kernel(bias, mat1, mat2)
     mat1 = mat1.contiguous()
@@ -95,7 +102,8 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
     bias_row = False
     bias_col = False
     if not beta_zero:
-        bias = bias.broadcast_to(out.shape)
+        if bias.shape != out.shape:
+            bias = bias.broadcast_to(out.shape)
         stride_im = bias.stride(0)
         stride_in = bias.stride(1)
         bias_scalar = stride_im == 0 and stride_in == 0
@@ -106,13 +114,14 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
         stride_in = 0
 
     grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+        ((M + META["BLOCK_SIZE_M"] - 1) // META["BLOCK_SIZE_M"])
+        * ((N + META["BLOCK_SIZE_N"] - 1) // META["BLOCK_SIZE_N"]),
     )
     with torch_device_fn.device(mat1.device):
         if kernel is addmm_rowmajor_kernel or kernel is addmm_column_kernel:
             # Materialize on every call: inputs may be mutated between launches.
             transposed_b = torch.empty((N, K), device=mat2.device, dtype=mat2.dtype)
-            _transpose_addmm_b[(triton.cdiv(K, 64), triton.cdiv(N, 64))](
+            _transpose_addmm_b[((K + 63) // 64, (N + 63) // 64)](
                 mat2, transposed_b, K, N, num_warps=4
             )
             mat2 = transposed_b.t()
@@ -146,22 +155,30 @@ def _launch_addmm_generic(bias, mat1, mat2, out, *, beta=1, alpha=1):
 
 
 def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
-    _validate_addmm_shapes(bias, mat1, mat2)
-    M = mat1.shape[0]
-    N = mat2.shape[1]
+    M, N, K = _validate_addmm_shapes(bias, mat1, mat2)
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    return _launch_addmm(bias, mat1, mat2, out, beta=beta, alpha=alpha)
+    return _launch_addmm(
+        bias, mat1, mat2, out, beta=beta, alpha=alpha, fresh_out=True, shape=(M, N, K)
+    )
 
 
 def addmm_out(bias, mat1, mat2, *, beta=1, alpha=1, out=None):
-    _validate_addmm_shapes(bias, mat1, mat2)
-    M = mat1.shape[0]
-    N = mat2.shape[1]
+    M, N, K = _validate_addmm_shapes(bias, mat1, mat2)
+    fresh_out = out is None
     if out is None:
         out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
     else:
         assert out.shape == (M, N), "Incompatible output shape"
-    return _launch_addmm(bias, mat1, mat2, out, beta=beta, alpha=alpha)
+    return _launch_addmm(
+        bias,
+        mat1,
+        mat2,
+        out,
+        beta=beta,
+        alpha=alpha,
+        fresh_out=fresh_out,
+        shape=(M, N, K),
+    )
 
 
 def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
@@ -235,9 +252,13 @@ def _use_ring_addmm(bias, mat1, mat2, out):
     """Use the gfx936 ring for supported dense row-major GEMMs."""
     m, k = mat1.shape
     n = mat2.shape[1]
+    if mat1.dtype not in (torch.float16, torch.bfloat16):
+        return False
+    gm, gn = (m + 255) // 256, (n + 255) // 256
+    if gm * gn < 24 or 2 * m * n < gm * gn * 256**2:
+        return False
     if (
-        mat1.dtype not in (torch.float16, torch.bfloat16)
-        or mat2.dtype != mat1.dtype
+        mat2.dtype != mat1.dtype
         or out.dtype not in (mat1.dtype, torch.float32)
         or bias.ndim != 2
         or bias.shape != (m, n)
@@ -252,22 +273,27 @@ def _use_ring_addmm(bias, mat1, mat2, out):
         or n % 8
     ):
         return False
-    gm, gn = triton.cdiv(m, 256), triton.cdiv(n, 256)
-    if gm * gn < 24 or 2 * m * n < gm * gn * 256**2:
-        return False
     if max(m * k, k * n, gm * 256 * n) * 2 >= 2**31:
         return False
     arch = getattr(torch.cuda.get_device_properties(mat1.device), "gcnArchName", "")
     return arch.split(":", 1)[0] == "gfx936"
 
 
-def _launch_addmm(bias, mat1, mat2, out, *, beta=1, alpha=1):
+def _launch_addmm(
+    bias, mat1, mat2, out, *, beta=1, alpha=1, fresh_out=False, shape=None
+):
+    if _scalar_eq(alpha, 1) and _scalar_eq(beta, 1):
+        metadata = get_dense_metadata(bias, mat1, mat2, out, fresh_out, shape)
+        if metadata is not None:
+            result = launch_dense(bias, mat1, mat2, out, metadata, _use_ring_addmm)
+            if result is not None:
+                return result
     if _scalar_eq(alpha, 0) or not _use_ring_addmm(bias, mat1, mat2, out):
         return _launch_addmm_generic(bias, mat1, mat2, out, beta=beta, alpha=alpha)
     m, k = mat1.shape
     n = mat2.shape[1]
     with torch_device_fn.device(mat1.device):
-        addmm_ring_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
+        addmm_ring_kernel[(((m + 255) // 256) * ((n + 255) // 256),)](
             mat1,
             mat2,
             out,
