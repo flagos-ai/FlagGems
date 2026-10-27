@@ -549,12 +549,14 @@ def test_disabled_baseline_does_not_unpack_custom_measurement(monkeypatch):
     assert result.latency == 2.0
 
 
-def test_parallel_blas_records_external_comparison_in_json(monkeypatch):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_parallel_blas_records_external_comparison_in_json(monkeypatch, enabled):
     from benchmark import test_blas_perf_parallel as blas
     from benchmark.consts import BenchmarkMetrics
 
     config = conftest.BenchConfig()
     config.record_json = True
+    config.base_data = BaselineData({}, "synthetic.json") if enabled else None
     config.parallel = 0
     monkeypatch.setattr(base, "Config", config)
     monkeypatch.setattr(blas, "Config", config)
@@ -574,6 +576,9 @@ def test_parallel_blas_records_external_comparison_in_json(monkeypatch):
         lambda inputs, dtype: [BenchmarkMetrics(latency=2.0, compared_speedup=4.0)],
     )
     bench.run()
+    if not enabled:
+        assert conftest.TEST_RESULTS == {}
+        return
     benchmark = conftest.TEST_RESULTS["mm"]["details"][0]
     assert benchmark["benchmark_source"] == "parallel_blas"
     record = benchmark["result"][0]

@@ -513,7 +513,7 @@ class Benchmark:
             cases=self._collect_cases(),
         )
 
-    def _emit_result(self, dtype, metrics, benchmark_source=None):
+    def _emit_result(self, dtype, metrics, benchmark_source=None, record_result=True):
         result = BenchmarkResult(
             level=Config.bench_level.value,
             op_name=self.op_name,
@@ -531,7 +531,8 @@ class Benchmark:
             result_dict["native_baseline_skip_reason"] = (
                 Config.native_baseline_skip_reason
             )
-        update_result(self.op_name, result_dict)
+        if record_result:
+            update_result(self.op_name, result_dict)
         emit_record_logger(result.to_json())
         return result
 

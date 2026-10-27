@@ -1046,6 +1046,7 @@ class ParallelBenchmarkMixin:
                 dtype,
                 metrics,
                 benchmark_source=Config.current_nodeid or "parallel_blas",
+                record_result=getattr(Config, "base_data", None) is not None,
             )
             if os.environ.get(PARALLEL_RESULT_FILE_ENV):
                 with open(os.environ[PARALLEL_RESULT_FILE_ENV], "wb") as result_file:
