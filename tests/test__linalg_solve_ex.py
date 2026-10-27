@@ -77,9 +77,13 @@ def _conditioned_pair(dtype, shape, value_range, left=True):
     sign = torch.sign(diag.real if dtype.is_complex else diag)
     sign = torch.where(sign == 0, torch.ones_like(sign), sign)
     conditioned = a / scale
-    torch.diagonal(conditioned, dim1=-2, dim2=-1).copy_(
-        sign * (high * 0.5) * (1.0 + magnitude * 0.5)
-    )
+    diagonal_values = sign * (high * 0.5) * (1.0 + magnitude * 0.5)
+    if flag_gems.vendor_name == "enflame" and dtype.is_complex:
+        # GCU aborts in implicit real-to-complex copy conversion. Keep the
+        # original values, explicitly cast on CPU, then copy genuine same-dtype
+        # target Complex tensors; do not replace target storage or the solver.
+        diagonal_values = diagonal_values.cpu().to(dtype).to(a.device)
+    torch.diagonal(conditioned, dim1=-2, dim2=-1).copy_(diagonal_values)
     return conditioned, b / scale
 
 
@@ -177,7 +181,14 @@ def _assert_outputs(res_out, ref_out, *, a=None, b=None, left=True):
     denominator = norm(matrix) * norm(solution) + norm(rhs)
     solve_error = norm(error) / denominator.clamp_min(torch.finfo(torch.float64).tiny)
 
-    target = matrix.mT if a.is_contiguous() and not a.is_complex() else matrix
+    # Measured GCU LU reconstructs A for both layouts; CUDA contiguous real LU
+    # reconstructs A.T. Preserve the original rule outside this measured backend.
+    transpose_lu = (
+        a.is_contiguous()
+        and not a.is_complex()
+        and flag_gems.vendor_name != "enflame"
+    )
+    target = matrix.mT if transpose_lu else matrix
     permutation, lower, upper = torch.lu_unpack(lu, pivots)
     row_indices = permutation.real.argmax(dim=-2)
     target = target.gather(-2, row_indices.unsqueeze(-1).expand_as(target))
@@ -371,10 +382,17 @@ _SPECIAL_CASES = tu.selected_cases(
 )
 
 
+def _special_payload(dtype, scenario):
+    if flag_gems.vendor_name == "enflame" and dtype.is_complex:
+        # Preserve the shared real payload, casting before the same-dtype transfer.
+        return tu.make_special_input(torch.float32, scenario).cpu().to(dtype).to(flag_gems.device)
+    return tu.make_special_input(dtype, scenario)
+
+
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _special_payload(dtype, scenario)
     n = payload.numel()
     a = tu.make_input(dtype, (n, n), ["-1", "1"])
     torch.diagonal(a).copy_(payload)
@@ -388,7 +406,7 @@ def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_rhs_column(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _special_payload(dtype, scenario)
     n = 4
     a = tu.make_input(dtype, (n, n), ["-1", "1"])
     a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 5
@@ -417,7 +435,7 @@ _RHS_POISON_SLOTS = {
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _special_payload(dtype, scenario)
     n = 4
     a = tu.make_input(dtype, (n, n), ["-1", "1"])
     a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 5
@@ -435,7 +453,7 @@ def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_isolated_batch_lane(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _special_payload(dtype, scenario)
     n = payload.numel()
     a = tu.make_input(dtype, (2, n, n), ["-1", "1"])
     torch.diagonal(a, dim1=-2, dim2=-1)[1].copy_(payload)
