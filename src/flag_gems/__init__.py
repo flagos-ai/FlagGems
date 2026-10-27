@@ -16,7 +16,7 @@
 import warnings
 
 import torch
-from packaging import version
+from packaging.version import parse as _parse_version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
@@ -77,7 +77,7 @@ QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
 
 def torch_ge(v):
-    return version.parse(torch.__version__) >= version.parse(v)
+    return _parse_version(torch.__version__) >= _parse_version(v)
 
 
 def torch_has_aten_overload(operator, overload):
@@ -136,6 +136,7 @@ _FULL_CONFIG = (
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
+    ("_choose_qparams_per_tensor", choose_qparams_per_tensor),
     ("_chunk_cat", _chunk_cat),
     ("_coalesce", _coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_coalesce.out", _coalesce_out, None, (AUTOGRAD_DISPATCH_KEY,)),
@@ -148,6 +149,8 @@ _FULL_CONFIG = (
     ("_conj_physical", _conj_physical),
     ("_conj_physical.out", _conj_physical_out),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_convert_indices_from_coo_to_csr", _convert_indices_from_coo_to_csr),
+    ("_convert_indices_from_coo_to_csr.out", _convert_indices_from_coo_to_csr_out),
     ("_convert_indices_from_csr_to_coo", _convert_indices_from_csr_to_coo),
     ("_convert_indices_from_csr_to_coo.out", _convert_indices_from_csr_to_coo_out),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
@@ -420,6 +423,8 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),
+    ("_make_per_tensor_quantized_tensor.out", _make_per_tensor_quantized_tensor_out),
     ("_masked_scale", _masked_scale),
     ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
@@ -442,6 +447,10 @@ _FULL_CONFIG = (
     ("_native_multi_head_attention", _native_multi_head_attention),
     ("_neg_view_copy", _neg_view_copy),
     ("_neg_view_copy.out", _neg_view_copy_out),
+    (
+        "_nested_compute_contiguous_strides_offsets",
+        nested_compute_contiguous_strides_offsets,
+    ),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
@@ -583,7 +592,7 @@ _FULL_CONFIG = (
     (
         "_to_copy",
         to_copy,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
@@ -637,6 +646,7 @@ _FULL_CONFIG = (
     ),
     ("_values_copy", _values_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_values_copy.out", _values_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_version", version, None, ["CompositeImplicitAutograd"]),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
@@ -901,7 +911,7 @@ _FULL_CONFIG = (
     (
         "copy_",
         copy_,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
@@ -1527,6 +1537,8 @@ _FULL_CONFIG = (
     ),
     ("new_full", new_full),
     ("new_ones", new_ones),
+    ("new_zeros", new_zeros),
+    ("new_zeros.out", new_zeros_out),
     ("nextafter", nextafter),
     ("nextafter.out", nextafter),
     ("nextafter_", nextafter_),
@@ -1554,6 +1566,7 @@ _FULL_CONFIG = (
     ("not_equal.Scalar", not_equal_scalar),
     ("not_equal.Tensor", not_equal),
     ("nuclear_norm", nuclear_norm),
+    ("numpy_T", numpy_T),
     ("one_hot", one_hot),
     ("ones", ones),
     ("ones_like", ones_like),
@@ -1656,6 +1669,7 @@ _FULL_CONFIG = (
     ("randn_like", randn_like),
     ("randperm", randperm),
     ("range", range),
+    ("ravel", ravel),
     (
         "real",
         real,
@@ -1806,6 +1820,8 @@ _FULL_CONFIG = (
     ("sparse_bsc_tensor.ccol_row_value_size", sparse_bsc_tensor),
     ("sparse_bsr_tensor.crow_col_value", sparse_bsr_tensor),
     ("sparse_bsr_tensor.crow_col_value_size", sparse_bsr_tensor),
+    ("sparse_compressed_tensor.comp_plain_value", sparse_compressed_tensor),
+    ("sparse_compressed_tensor.comp_plain_value_size", sparse_compressed_tensor),
     (
         "sparse_dim",
         sparse_dim,
@@ -1890,8 +1906,12 @@ _FULL_CONFIG = (
     ("special_multigammaln", special_multigammaln),
     ("special_ndtr", special_ndtr),
     ("special_ndtri", special_ndtri),
+    ("special_psi", special_psi),
+    ("special_psi.out", special_psi_out),
     ("special_round", special_round),
     ("special_round.out", special_round_out),
+    ("special_scaled_modified_bessel_k0", special_scaled_modified_bessel_k0),
+    ("special_scaled_modified_bessel_k0.out", special_scaled_modified_bessel_k0_out),
     ("special_scaled_modified_bessel_k1", special_scaled_modified_bessel_k1),
     ("special_scaled_modified_bessel_k1.out", special_scaled_modified_bessel_k1_out),
     ("special_shifted_chebyshev_polynomial_t", special_shifted_chebyshev_polynomial_t),
@@ -1998,6 +2018,7 @@ _FULL_CONFIG = (
     ("transpose.int", transpose),
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
+    ("trapezoid.x", trapezoid_x),
     ("trapz.dx", trapz),
     ("triangular_solve", triangular_solve),
     ("triangular_solve.X", triangular_solve_out),
