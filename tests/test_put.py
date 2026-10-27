@@ -12,10 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
+import inspect
+import json
 import os
+import signal
 import subprocess
 import sys
+import tempfile
 import textwrap
+from pathlib import Path
 
 import pytest
 import torch
@@ -65,6 +71,7 @@ def _gems_put(*args, **kwargs):
 def _gems_put_out(*args, **kwargs):
     with flag_gems.use_gems():
         return torch.ops.aten.put.out(*args, **kwargs)
+
 
 # Accumulating many low-precision values via reordered atomic adds accumulates
 # rounding error; use a looser tolerance than the default `1e-4` for these cases.
@@ -250,50 +257,261 @@ def test_put_index_bounds(numel, index_at, accumulate):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+def _put_child_override(request):
+    # Match the public CLI precedence: config first, then command-line overrides.
+    # Only forward this operator; unrelated overrides must not be marked unused.
+    from flag_gems.cli_override import load_override_config, parse_override_spec
+
+    options = request.config.option
+    overrides = {}
+    config_file = getattr(options, "override_config", None)
+    if config_file:
+        overrides.update(load_override_config(config_file))
+    for spec in getattr(options, "override", None) or ():
+        name, filename, function = parse_override_spec(spec)
+        overrides[name] = (filename, function)
+    selected = overrides.get("put")
+    if selected is None:
+        return None
+    filename, function = selected
+    return {"file": str(Path(filename).resolve()), "function": function}
+
+
+def _put_callable_binding(function):
+    function = inspect.unwrap(function)
+    code = getattr(function, "__code__", None)
+    filename = getattr(code, "co_filename", None)
+    source = Path(filename) if filename else None
+    return {
+        "module": getattr(function, "__module__", None),
+        "qualname": getattr(function, "__qualname__", None),
+        "code_file": filename,
+        "first_line": getattr(code, "co_firstlineno", None),
+        "source_sha256": (
+            hashlib.sha256(source.read_bytes()).hexdigest()
+            if source is not None and source.is_file()
+            else None
+        ),
+    }
+
+
+def _run_put_bounds_child(numel, bad, accumulate, override, ref_cpu=False):
+    # A device fault poisons its process. Recreate the *same* injected callable
+    # in a fresh interpreter instead of accidentally running the original Gems
+    # kernel, and keep failure phase separate from compiler/setup errors.
+    code = textwrap.dedent("""
+        import hashlib
+        import inspect
+        import json
+        import sys
+        from pathlib import Path
+
+        import torch
+        import flag_gems
+        from flag_gems.dynamic_registry import DynamicOpOverride
+        from flag_gems.runtime import torch_device_fn
+
+        args = json.loads(sys.argv[1])
+        report = {
+            "phase": "setup", "override": args["override"],
+            "numel": args["numel"], "bad": args["bad"],
+            "accumulate": args["accumulate"], "valid_completed": False,
+        }
+        from tests import conftest as test_config
+        test_config.TO_CPU = args["ref_cpu"]
+        from tests import accuracy_utils
+        accuracy_utils.TO_CPU = args["ref_cpu"]
+        registry = None
+        try:
+            if args["override"] is not None:
+                registry = DynamicOpOverride()
+                selected = args["override"]
+                if not registry.override_from_file(
+                    "put", selected["file"], selected["function"]
+                ):
+                    raise RuntimeError("Could not recreate the put override")
+            actual = inspect.unwrap(flag_gems.put)
+            actual_code = getattr(actual, "__code__", None)
+            filename = getattr(actual_code, "co_filename", None)
+            source_file = Path(filename) if filename else None
+            report["binding"] = {
+                "module": getattr(actual, "__module__", None),
+                "qualname": getattr(actual, "__qualname__", None),
+                "code_file": filename,
+                "first_line": getattr(actual_code, "co_firstlineno", None),
+                "source_sha256": (
+                    hashlib.sha256(source_file.read_bytes()).hexdigest()
+                    if source_file is not None and source_file.is_file() else None
+                ),
+            }
+            if report["binding"] != args["binding"]:
+                raise RuntimeError("The put child did not load its parent's callable")
+            report["ref_cpu"] = test_config.TO_CPU
+            inp = torch.randn(
+                args["numel"], dtype=torch.float32, device=flag_gems.device
+            )
+            index = torch.tensor(
+                [0, args["bad"]], dtype=torch.int64, device=flag_gems.device
+            )
+            source = torch.randn(2, dtype=torch.float32, device=flag_gems.device)
+
+            report["phase"] = "valid"
+            original_sync = torch_device_fn.synchronize
+            def unexpected_sync(*unused_args, **unused_kwargs):
+                raise AssertionError("A valid put candidate must not synchronize")
+            torch_device_fn.synchronize = unexpected_sync
+            try:
+                flag_gems.put(inp, index[:1], source[:1], accumulate=args["accumulate"])
+            finally:
+                torch_device_fn.synchronize = original_sync
+            # This is the test helper's synchronization, after the candidate's
+            # no-sync monitor has ended. An asynchronous valid-call fault must
+            # not be mistaken for an expected out-of-range failure below.
+            original_sync()
+            report["valid_completed"] = True
+            report["phase"] = "invalid"
+            flag_gems.put(inp, index, source, accumulate=args["accumulate"])
+            torch_device_fn.synchronize()
+            report["status"] = "NO_ERROR"
+        except BaseException as error:
+            report.update(
+                status="ERROR", error_type=type(error).__name__, message=str(error),
+                runtime_error=isinstance(error, RuntimeError),
+            )
+            if report["phase"] == "invalid":
+                try:
+                    probe = torch.ones(1, device=flag_gems.device) + 1
+                    torch_device_fn.synchronize()
+                    report["context_failed"] = False
+                except RuntimeError as context_error:
+                    report.update(context_failed=True, context_error=str(context_error))
+            if registry is not None:
+                report["calls"] = registry.call_counts()
+            Path(args["report"]).write_text(json.dumps(report))
+            raise
+        else:
+            if registry is not None:
+                report["calls"] = registry.call_counts()
+            Path(args["report"]).write_text(json.dumps(report))
+        """)
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    with tempfile.TemporaryDirectory(prefix="put-bounds-") as directory:
+        report_file = Path(directory) / "result.json"
+        payload = dict(
+            numel=numel,
+            bad=bad,
+            accumulate=accumulate,
+            override=override,
+            report=str(report_file),
+            ref_cpu=ref_cpu,
+            binding=_put_callable_binding(flag_gems.put),
+        )
+        child = subprocess.Popen(
+            [sys.executable, "-c", code, json.dumps(payload)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+
+        def interrupt_wait(_signum, _frame):
+            raise KeyboardInterrupt("put bounds child wait terminated")
+
+        previous_sigterm = signal.signal(signal.SIGTERM, interrupt_wait)
+        try:
+            stdout, stderr = child.communicate(timeout=120)
+        except BaseException:
+            # This process group belongs only to this child and its compiler
+            # descendants; never terminate the parent pytest process group.
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.communicate()
+            raise
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm)
+        proc = subprocess.CompletedProcess(child.args, child.returncode, stdout, stderr)
+        report = json.loads(report_file.read_text()) if report_file.exists() else {}
+    return proc, report
+
+
+def _put_device_fault(message):
+    # CUDA appends a generic DSA hint to unrelated runtime errors. Inspect only
+    # the actual first error line, not that footer or a compiler traceback.
+    first_line = message.splitlines()[0].lower() if message else ""
+    return first_line in {
+        f"{backend} error: {fault}"
+        for backend in ("cuda", "hip")
+        for fault in (
+            "device-side assert triggered",
+            "unspecified launch failure",
+            "an illegal instruction was encountered",
+        )
+    }
+
+
+def _assert_put_bounds_failure(proc, report):
+    assert proc.returncode != 0, (
+        "an out-of-range index was silently accepted; "
+        f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
+    )
+    assert (
+        report.get("phase") == "invalid" and report.get("status") == "ERROR"
+    ), "the put child failed before its out-of-range call: " + repr(report)
+    assert (
+        report.get("context_failed") is True
+    ), "expected a target-device fault, not a host/compiler exception: " + repr(report)
+    assert _put_device_fault(report.get("context_error", ""))
+    assert (
+        report["message"].splitlines()[0].lower()
+        == report["context_error"].splitlines()[0].lower()
+    )
+    assert _put_device_fault(report.get("message", "")), (
+        "expected a device-side failure, got: " + proc.stderr[-300:]
+    )
+    if report.get("override") is not None:
+        assert report.get("calls", {}).get("flag_gems.put") == 2
+
+
 @pytest.mark.put
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="MUSA native put has no target-device trap for invalid indices",
+)
 @pytest.mark.parametrize("numel", [1, 8, 1000])
 @pytest.mark.parametrize("bad_offset", [0, 5])
 @pytest.mark.parametrize("negative", [False, True])
 @pytest.mark.parametrize("accumulate", [False, True])
-def test_put_index_out_of_range(numel, bad_offset, negative, accumulate):
-    # ATen rejects any index outside [-numel, numel): the CUDA op trips
-    # `cuda_take_put_kernel() index out of bounds` as a *device-side* assert.
-    # The bounds failure must stay on the device -- on the success path there is
-    # no host round trip -- so this runs in a subprocess (a tripped device
-    # assertion poisons the CUDA context for the rest of the process) and
-    # asserts both the failure and the absence of a host-side sync.
+def test_put_index_out_of_range(numel, bad_offset, negative, accumulate, request):
+    # --ref cpu changes value comparison, not the target-device trap contract.
     bad = -numel - 1 - bad_offset if negative else numel + bad_offset
-    code = textwrap.dedent(f"""
-        import torch
-        import flag_gems
-
-        def _gems_put(*args, **kwargs):
-            with flag_gems.use_gems():
-                return torch.put(*args, **kwargs)
-
-        numel, bad, accumulate = {numel}, {bad}, {accumulate}
-        inp = torch.randn(numel, dtype=torch.float32, device=flag_gems.device)
-        index = torch.tensor([0, bad], dtype=torch.int64, device=flag_gems.device)
-        source = torch.randn(2, dtype=torch.float32, device=flag_gems.device)
-
-        # Success path must not synchronize (no host round trip on a valid call).
-        _gems_put(inp, index[:1], source[:1], accumulate=accumulate)
-
-        out = _gems_put(inp, index, source, accumulate=accumulate)
-        torch.cuda.synchronize()
-        print("NO_ERROR")
-        """)
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
-    proc = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, env=env
+    inp = gen_input((numel,), torch.float32, flag_gems.device)
+    original = inp.clone()
+    index = torch.zeros(1, dtype=torch.int64, device=inp.device)
+    source = gen_source(1, inp.dtype, inp.device)
+    reference = torch.put(
+        _reference(inp),
+        utils.to_reference(index, False),
+        _reference(source),
+        accumulate=accumulate,
     )
-    assert "NO_ERROR" not in proc.stdout, (
-        "an out-of-range index was silently accepted; "
-        f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
+    result = _gems_put(inp, index, source, accumulate=accumulate)
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
+    assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+    utils.gems_assert_close(result, reference, inp.dtype)
+    torch.testing.assert_close(inp, original, rtol=0, atol=0)
+
+    proc, report = _run_put_bounds_child(
+        numel, bad, accumulate, _put_child_override(request), utils.TO_CPU
     )
-    assert "device-side assert" in proc.stderr or "trap" in proc.stderr.lower(), (
-        "expected a device-side failure, got: " + proc.stderr[-300:]
+    request.node.user_properties.append(
+        ("put_bounds_child", json.dumps(report, sort_keys=True))
     )
+    _assert_put_bounds_failure(proc, report)
 
 
 @pytest.mark.put
@@ -558,9 +776,7 @@ def test_put_out(shape, dtype, accumulate):
     assert_put_close(out, ref_out, dtype, accumulate)
 
     resized_out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
-    resized_result = _gems_put_out(
-        inp, index, source, accumulate, out=resized_out
-    )
+    resized_result = _gems_put_out(inp, index, source, accumulate, out=resized_out)
     assert resized_result is resized_out
     assert resized_out.shape == inp.shape
     assert resized_out.dtype == inp.dtype
@@ -667,9 +883,13 @@ def test_put_complex32_rejected():
     # raises; the two must agree on the exception type and message.
     # MUSA stores ComplexHalf, but its device fill kernel does not support it.
     factory_device = "cpu" if flag_gems.vendor_name == "mthreads" else flag_gems.device
-    inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(flag_gems.device)
+    inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
-    source = torch.ones(1, dtype=torch.complex32, device=factory_device).to(flag_gems.device)
+    source = torch.ones(1, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
 
     # Compare against the native call on the same device so the message and the
     # exception type are checked against the CUDA kernel, not the CPU fallback.

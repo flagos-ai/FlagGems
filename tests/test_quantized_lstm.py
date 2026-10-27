@@ -156,9 +156,17 @@ def test_accuracy_quantized_lstm(shape, dtype):
     torch_device_fn.manual_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device)
-    h0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
-    c0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     cell_params, layer_ref = _make_cell_params(
         input_size, hidden_size, True, flag_gems.device, dtype
@@ -198,9 +206,17 @@ def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
     torch_device_fn.manual_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device)
-    h0 = torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
-    c0 = torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(2, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     params = []
     layer_refs = []
@@ -246,9 +262,17 @@ def test_accuracy_quantized_lstm_no_bias(shape, dtype):
     torch_device_fn.manual_seed(42)
     torch.backends.quantized.engine = "fbgemm"
 
-    inp = torch.randn(seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device)
-    h0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
-    c0 = torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device) * 0.1
+    inp = torch.randn(
+        seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
+    )
+    h0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
+    c0 = (
+        torch.randn(1, batch_size, hidden_size, dtype=dtype, device=flag_gems.device)
+        * 0.1
+    )
 
     cell_params, layer_ref = _make_cell_params(
         input_size, hidden_size, False, flag_gems.device, dtype
@@ -286,7 +310,10 @@ def test_quantized_lstm_multilayer_batch_first(dtype):
     batch_size, seq_len, input_size, hidden_size, num_layers = 3, 5, 8, 12, 2
     device = flag_gems.device
     inp = torch.randn(batch_size, seq_len, input_size, dtype=dtype, device=device)
-    h0 = torch.randn(num_layers, batch_size, hidden_size, dtype=dtype, device=device) * 0.1
+    h0 = (
+        torch.randn(num_layers, batch_size, hidden_size, dtype=dtype, device=device)
+        * 0.1
+    )
     c0 = torch.randn_like(h0) * 0.1
     params, layer_refs = [], []
     for layer in range(num_layers):
@@ -295,10 +322,12 @@ def test_quantized_lstm_multilayer_batch_first(dtype):
             layer_input_size, hidden_size, True, device, dtype
         )
         params.append(cell_params)
-        layer_refs.append({
-            key: utils.to_reference(value, True) if value is not None else None
-            for key, value in layer_ref.items()
-        })
+        layer_refs.append(
+            {
+                key: utils.to_reference(value, True) if value is not None else None
+                for key, value in layer_ref.items()
+            }
+        )
     ref_out, ref_hn, ref_cn = _reference_lstm(
         utils.to_reference(inp.transpose(0, 1), True),
         utils.to_reference(h0, True),
@@ -310,7 +339,9 @@ def test_quantized_lstm_multilayer_batch_first(dtype):
     result = flag_gems.quantized_lstm(
         inp, [h0, c0], params, True, num_layers, 0.0, False, False, True
     )
-    _assert_lstm_close(result[0], ref_out.transpose(0, 1), inp, dtype, _tolerance(dtype, seq_len))
+    _assert_lstm_close(
+        result[0], ref_out.transpose(0, 1), inp, dtype, _tolerance(dtype, seq_len)
+    )
     _assert_lstm_close(result[1], ref_hn, inp, dtype, _tolerance(dtype, seq_len))
     _assert_lstm_close(result[2], ref_cn, inp, dtype, _tolerance(dtype, seq_len))
 
@@ -330,7 +361,9 @@ def test_quantized_lstm_training_dropout_is_seeded(dtype):
     params = []
     for layer in range(num_layers):
         layer_input_size = input_size if layer == 0 else hidden_size
-        cell_params, _ = _make_cell_params(layer_input_size, hidden_size, True, device, dtype)
+        cell_params, _ = _make_cell_params(
+            layer_input_size, hidden_size, True, device, dtype
+        )
         params.append(cell_params)
     torch.manual_seed(7)
     first = flag_gems.quantized_lstm(
@@ -340,10 +373,12 @@ def test_quantized_lstm_training_dropout_is_seeded(dtype):
     second = flag_gems.quantized_lstm(
         inp, [h0, c0], params, True, num_layers, 0.25, True, False, False
     )
+    assert len(first) == len(second) == 3
+    expected_shapes = ((seq_len, batch_size, hidden_size), h0.shape, c0.shape)
+    for outputs in (first, second):
+        for actual, expected_shape in zip(outputs, expected_shapes):
+            assert actual.device == inp.device
+            assert actual.dtype == dtype
+            assert actual.shape == expected_shape
     for actual, repeated in zip(first, second):
-        assert actual.device == repeated.device == inp.device
-        assert actual.dtype == repeated.dtype == dtype
         utils.gems_assert_equal(actual.cpu(), repeated.cpu())
-    assert first[0].shape == (seq_len, batch_size, hidden_size)
-    assert first[1].shape == h0.shape
-    assert first[2].shape == c0.shape
