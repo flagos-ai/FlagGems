@@ -92,14 +92,14 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
    `setup.sh` 从 `backends.yaml` 读取后端配置，设置对应的 CMake 参数，
    向 `cpp/pyproject.toml` 注入 vendor 标识，并从 `cpp/` 子目录构建 C++ 扩展。
 
-   **备选方式 — 安装预构建 wheel（如果你的硬件平台支持）：**
+   **备选方式 — 安装预构建 wheel（如果您的硬件平台支持）：**
 
    ```shell
    pip install "flag-gems[cpp-cuda]"
    ```
 
    该命令从 flagOS PyPI 仓库拉取预构建的 `flag-gems-cpp-cuda` wheel。
-   请将 `cpp-cuda` 替换为你的硬件对应的扩展：
+   请将 `cpp-cuda` 替换为您的硬件对应的扩展：
    `cpp-musa`、`cpp-npu`、`cpp-gcu` 或 `cpp-ix`。
 
    **手动构建 — 从 `cpp/` 子目录：**
@@ -209,7 +209,7 @@ C++ 扩展构建完成之后，同一份底层 C++ 封装算子实际上可以�
 
 所有 C++ 封装算子都会在 `src/flag_gems/csrc/cstub.cpp` 中通过
 `TORCH_LIBRARY(flag_gems, m)` 注册为 PyTorch 的**自定义算子（custom op）**，
-归入 `flag_gems` 名字空间。你可以在 Python 中显式地调用它们，
+归入 `flag_gems` 名字空间。您可以在 Python 中显式地调用它们，
 从而绕过所有 patch 逻辑与 Python 侧的回退路径：
 
 ```python
@@ -267,7 +267,7 @@ at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 ```
 
 仓库中 `cpp/ctests/` 下的 GTest 用例（例如 `cpp/ctests/test_triton_mm.cpp`）正是以这种方式调用 FlagGems 的算子的。
-当你希望把 FlagGems 嵌入到一个非 Python 的 C++ 应用中，或者需要写 C++ 单元测试时，这就是合适的路径。
+当您希望把 FlagGems 嵌入到一个非 Python 的 C++ 应用中，或者需要写 C++ 单元测试时，这就是合适的路径。
 
 ### 小结
 

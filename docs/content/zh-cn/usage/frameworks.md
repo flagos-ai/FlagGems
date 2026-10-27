@@ -63,7 +63,7 @@ with flag_gems.use_gems():
 > **重要迁移通知与开发者贡献指引**
 >
 > 原 `src/flag_gems/fused` 下的 vLLM 专有算子已正式迁移至独立的 [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) 仓库进行专门维护与演进。
-> 如果你需要对 vLLM 相关的算子进行特性增强、性能调优或提交 Bug 修复，**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 Pull Request**。本仓库（FlagGems）将聚焦于通用 ATen 算子库及基础神经网络组件。
+> 如果您需要对 vLLM 相关的算子进行特性增强、性能调优或提交 Bug 修复，**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 Pull Request**。本仓库（FlagGems）将聚焦于通用 ATen 算子库及基础神经网络组件。
 
 *FlagGems* 可以深度集成至 vLLM 中，既支持替换标准的 PyTorch ATen 算子，也支持接管 vLLM 内部的定制 Kernel：
 

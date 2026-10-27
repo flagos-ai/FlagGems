@@ -43,7 +43,7 @@ weight: 30
 python -c "import torch; print(torch.__version__)"
 ```
 
-如果你使用的是[非 NVIDIA 硬件平台](/FlagGems/zh-cn/usage/non-nvidia/)，通常需要安装硬件厂商配套的 PyTorch 硬件加速插件。例如在摩尔线程（Moore Threads）GPU 平台上，可运行：
+如果您使用的是[非 NVIDIA 硬件平台](/FlagGems/zh-cn/usage/non-nvidia/)，通常需要安装硬件厂商配套的 PyTorch 硬件加速插件。例如在摩尔线程（Moore Threads）GPU 平台上，可运行：
 
 ```shell
 python -c "import torch_musa; print(torch_musa.__version__)"
@@ -107,7 +107,7 @@ with flag_gems.use_gems():
 
 ### 3.3 直接显式调用
 
-你也可以绕过 PyTorch 的 ATen 分发链路，直接调用 `flag_gems.ops` 或 `flag_gems.fused` 下的高性能算子实现：
+您也可以绕过 PyTorch 的 ATen 分发链路，直接调用 `flag_gems.ops` 或 `flag_gems.fused` 下的高性能算子实现：
 
 ```python
 import flag_gems

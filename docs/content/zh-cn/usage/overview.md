@@ -25,7 +25,7 @@ weight: 5
 -->
 # 使用指南概览
 
-*FlagGems* 提供了丰富而灵活的使用模式。不同模式之间互不排斥，你可以根据具体的业务需求、调优目标或部署上下文自由组合使用：
+*FlagGems* 提供了丰富而灵活的使用模式。不同模式之间互不排斥，您可以根据具体的业务需求、调优目标或部署上下文自由组合使用：
 
 - **[基础用法与启用](/FlagGems/zh-cn/usage/basic/)**
   
@@ -45,11 +45,11 @@ weight: 5
 
 - **[在非 NVIDIA 异构平台上使用](/FlagGems/zh-cn/usage/non-nvidia/)**
 
-  *FlagGems* 致力于消除不同 AI 芯片之间的移植壁垒。你可以了解针对昇腾、摩尔线程、沐曦、天数智芯等国产/异构硬件的适配指南。
+  *FlagGems* 致力于消除不同 AI 芯片之间的移植壁垒。您可以了解针对昇腾、摩尔线程、沐曦、天数智芯等国产/异构硬件的适配指南。
 
 - **[在多 GPU 及分布式环境中运行](/FlagGems/zh-cn/usage/distributed/)**
 
-  在多卡并行训练（如 Megatron-LM）或分布式大模型推理框架（如 vLLM）中，指导你正确完成进程与设备绑定，平稳启用 *FlagGems*。
+  在多卡并行训练（如 Megatron-LM）或分布式大模型推理框架（如 vLLM）中，指导您正确完成进程与设备绑定，平稳启用 *FlagGems*。
 
 - **[与主流框架无缝集成](/FlagGems/zh-cn/usage/frameworks/)**
 

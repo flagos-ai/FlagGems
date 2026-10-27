@@ -32,7 +32,7 @@ pip install -U build
 python -m build --no-isolation --no-deps .
 ```
 
-默认情况下，该命令会依次生成源码分发包（sdist）与二进制 wheel 包。你可以按需指定参数过滤输出：
+默认情况下，该命令会依次生成源码分发包（sdist）与二进制 wheel 包。您可以按需指定参数过滤输出：
 
 - `--sdist`：仅生成源码包（`dist/*.tar.gz`）；
 - `--wheel`：仅生成二进制 Wheel 包（`dist/*.whl`）。
@@ -71,4 +71,4 @@ cd cpp/
 CMAKE_ARGS="-DFLAGGEMS_BACKEND=CUDA" python -m build --no-isolation --wheel .
 ```
 
-构建生成的特定平台 Wheel（如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）将位于 `cpp/dist/` 目录下。相关 CMake 构建配置选项请参阅[安装指南](/FlagGems/zh-cn/getting-started/install/#cmake-options)。
+构建生成的特定平台 Wheel（如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）将位于 `cpp/dist/` 目录下。相关 CMake 构建配置选项请参阅[构建与配置选项参考](/FlagGems/zh-cn/getting-started/build-options/#cmake-options)。

@@ -175,7 +175,7 @@ yaml 文件示例如下：
 > [!IMPORTANT]
 > **关于 vLLM 算子贡献的特别说明**：
 > 原 `src/flag_gems/fused` 下的 vLLM 专有算子及相关热补丁已正式迁移至独立仓库 [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm)。
-> 若你的优化工作或新增代码涉及 vLLM 算子（如 PagedAttention、FlashMLA、FusedMoE 等在 vLLM 中的特化实现），**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 PR**。FlagGems 主仓库聚焦于通用的 PyTorch ATen 算子及基础核心组件。
+> 若您的优化工作或新增代码涉及 vLLM 算子（如 PagedAttention、FlashMLA、FusedMoE 等在 vLLM 中的特化实现），**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 PR**。FlagGems 主仓库聚焦于通用的 PyTorch ATen 算子及基础核心组件。
 
 - 在 `conf/operators.yaml` 中填写算子元信息；
 - 在 `src/flag_gems/ops`、`src/flag_gems/fused` 或 `src/flag_gems/experimental_ops` 目录下添加 Triton 算子实现；

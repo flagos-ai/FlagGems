@@ -51,7 +51,7 @@ It aims to provide a suite of kernel functions to accelerate LLM training and in
 
 ## 参与贡献
 
-如果你对 *FlagGems* 感兴趣并希望参与社区共建，请参阅[贡献指南](/FlagGems/zh-cn/contribution/)。我们由衷欢迎并感谢任何形式的贡献！
+如果您对 *FlagGems* 感兴趣并希望参与社区共建，请参阅[贡献指南](/FlagGems/zh-cn/contribution/)。我们由衷欢迎并感谢任何形式的贡献！
 
 ## 联系我们
 
