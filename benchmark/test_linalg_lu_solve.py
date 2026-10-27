@@ -48,12 +48,15 @@ if fp64_is_supported:
 
 
 def _make_lu_inputs(n, k, dtype, device):
-    A = torch.randn(n, n, dtype=dtype, device=device)
+    # PPU device-side lu_factor aborts; factor the same recipe on CPU instead.
+    factory_device = "cpu" if flag_gems.vendor_name == "thead" else device
+    A = torch.randn(n, n, dtype=dtype, device=factory_device)
     # Make A well-conditioned by adding n * I
-    A = A @ A.mT + torch.eye(n, dtype=dtype, device=device) * n
+    A = A @ A.mT + torch.eye(n, dtype=dtype, device=factory_device) * n
     LU, pivots = torch.linalg.lu_factor(A)
-    B = torch.randn(n, k, dtype=dtype, device=device)
-    return LU, pivots, B
+    B = torch.randn(n, k, dtype=dtype, device=factory_device)
+    return tuple(value.to(device) for value in (LU, pivots, B))
+
 
 
 class LinalgLuSolveBenchmark(base.Benchmark):
