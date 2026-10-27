@@ -69,6 +69,8 @@ def _make_inputs(T, N, S, C, dtype):
     _ctc_loss and _ctc_loss.out take int[] lengths, while _ctc_loss.Tensor and
     _ctc_loss.Tensor_out take them as tensors, so both forms are handed back.
     """
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
     raw = torch.randn(T, N, C, dtype=torch.float32, device=flag_gems.device)
     log_probs = _log_probs(raw, dtype)
     targets = torch.randint(1, C, (N, S), dtype=torch.long, device=flag_gems.device)

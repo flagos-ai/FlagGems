@@ -59,6 +59,8 @@ def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
     torch.manual_seed(0)
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)

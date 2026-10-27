@@ -25,6 +25,11 @@ from .conftest import QUICK_MODE
 CTC_DTYPES = [torch.float32, torch.float64]
 
 
+def _skip_unfaithful_enflame_double(dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
+
+
 def _to_target_double(value):
     result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(torch.float64).reshape(value.shape)
     assert result.dtype == torch.float64
@@ -83,6 +88,7 @@ def _make_inputs(T, N, S, C, dtype):
 @pytest.mark.parametrize("C", [20] if QUICK_MODE else [20, 40])
 @pytest.mark.parametrize("dtype", CTC_DTYPES)
 def test__ctc_loss_accuracy(T, N, S, C, dtype):
+    _skip_unfaithful_enflame_double(dtype)
     gems_args, ref_args = _make_inputs(T, N, S, C, dtype)
 
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(*ref_args, 0, False)
@@ -103,6 +109,7 @@ def test__ctc_loss_accuracy(T, N, S, C, dtype):
 @pytest.mark.parametrize("dtype", CTC_DTYPES)
 def test__ctc_loss_blank_and_zero_infinity(dtype):
     """A non-zero blank index and an unreachable alignment must both hold up."""
+    _skip_unfaithful_enflame_double(dtype)
     T, N, S, C = 8, 3, 4, 6
     raw = torch.randn(T, N, C, dtype=torch.float32, device=flag_gems.device)
     log_probs = _log_probs(raw, dtype)
@@ -130,6 +137,7 @@ def test__ctc_loss_blank_and_zero_infinity(dtype):
 @pytest.mark.parametrize("dtype", CTC_DTYPES)
 def test__ctc_loss_tensor_overload(dtype):
     """The .Tensor overload takes the lengths as tensors instead of int lists."""
+    _skip_unfaithful_enflame_double(dtype)
     T, N, S, C = 20, 4, 8, 10
     gems_args, ref_args = _make_inputs(T, N, S, C, dtype)
 
