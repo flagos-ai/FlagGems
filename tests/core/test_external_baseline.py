@@ -356,6 +356,41 @@ def test_parallel_report_distinguishes_strides_for_same_shape(tmp_path, skip_nat
     )
 
 
+@pytest.mark.parametrize("skip_native", [False, True])
+def test_parallel_report_keeps_identical_layout_repeated_measurements(
+    tmp_path, skip_native
+):
+    item = {
+        "dtype": DTYPE,
+        "benchmark_source": "parallel_baddbmm",
+        "result": [
+            {
+                "shape_detail": [4, 4],
+                "base_input_strides": [[4, 1]],
+                "speedup": 2,
+                "compared_speedup": 4,
+            },
+            {
+                "shape_detail": [4, 4],
+                "base_input_strides": [[4, 1]],
+                "speedup": 3,
+                "base_miss_reason": "shape_missing",
+            },
+        ],
+    }
+    if skip_native:
+        item["native_baseline_skip_reason"] = "native unavailable"
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps({"baddbmm": {"result": "passed", "details": [item]}}))
+    summary = parse_perf_data("baddbmm", path)["data"]["fp32"]
+    key = "[4,4] (parallel_baddbmm, strides=[[4,1]])"
+    assert summary["speedup"] == 3.5
+    assert summary["details"][key]["compared_speedup"] == 4
+    assert (
+        summary["details"][key + " (repeat 2)"]["base_miss_reason"] == "shape_missing"
+    )
+
+
 def test_summary_retains_last_legacy_benchmark_for_same_dtype(tmp_path):
     first = {
         "dtype": DTYPE,

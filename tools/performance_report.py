@@ -56,6 +56,17 @@ def _benchmark_shape_key(shape, source, strides):
     return f"{shape} ({source}, strides={stride_key})"
 
 
+def _unique_parallel_key(details, key, source):
+    if not source:
+        return key
+    candidate = key
+    ordinal = 2
+    while candidate in details:
+        candidate = f"{key} (repeat {ordinal})"
+        ordinal += 1
+    return candidate
+
+
 def parse_perf_data(op, result_file):
     raw_data = {}
     try:
@@ -102,6 +113,9 @@ def parse_perf_data(op, result_file):
                 key = _benchmark_shape_key(
                     shape, item.get("benchmark_source"), res.get("base_input_strides")
                 )
+                key = _unique_parallel_key(
+                    dtype_result["details"], key, item.get("benchmark_source")
+                )
                 record = _case_record(res, default=0.0)
                 dtype_result["details"][key] = record
                 totals[dtype] = totals.get(dtype, 0.0) + record["speedup"]
@@ -141,6 +155,7 @@ def parse_perf_data(op, result_file):
             key = _benchmark_shape_key(
                 shape, item.get("benchmark_source"), res.get("base_input_strides")
             )
+            key = _unique_parallel_key(details, key, item.get("benchmark_source"))
             record = _case_record(res)
             details[key] = record
             speedup = record["speedup"]
