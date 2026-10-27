@@ -40,7 +40,6 @@ from .consts import (
     FLOAT_DTYPES,
     BenchLevel,
     BenchmarkMetrics,
-    BenchmarkResult,
     OperationAttribute,
     model_shapes,
 )
@@ -1043,15 +1042,7 @@ class ParallelBenchmarkMixin:
             else:
                 metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
 
-            result = BenchmarkResult(
-                level=Config.bench_level.value,
-                op_name=self.op_name,
-                dtype=str(dtype),
-                mode=Config.mode.value,
-                result=metrics,
-            )
-            print(result)
-            emit_record_logger(result.to_json())
+            result = self._emit_result(dtype, metrics)
             if os.environ.get(PARALLEL_RESULT_FILE_ENV):
                 with open(os.environ[PARALLEL_RESULT_FILE_ENV], "wb") as result_file:
                     pickle.dump(result, result_file)

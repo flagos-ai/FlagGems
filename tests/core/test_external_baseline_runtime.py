@@ -331,6 +331,7 @@ def _parallel_blas_fixture(monkeypatch, tmp_path, enabled):
     (tmp_path / "shapes.yaml").write_text("mm:\n  shapes: [[2, 3, 4]]\n")
     monkeypatch.setattr(base, "Config", config)
     monkeypatch.setattr(blas, "Config", config)
+    monkeypatch.setattr(conftest, "Config", config)
     native, candidate = lambda *a: None, lambda *a: None
     bench = blas.ParallelBlasBenchmark(
         "mm", torch_op=native, gems_op=candidate, input_fn=lambda *a: iter(())
@@ -546,6 +547,36 @@ def test_disabled_baseline_does_not_unpack_custom_measurement(monkeypatch):
     bench = LegacyBenchmark("example", torch_op=lambda value: value)
     result = bench._measure_with_external_baseline((object(),), torch.float32)
     assert result.latency == 2.0
+
+
+def test_parallel_blas_records_external_comparison_in_json(monkeypatch):
+    from benchmark import test_blas_perf_parallel as blas
+    from benchmark.consts import BenchmarkMetrics
+
+    config = conftest.BenchConfig()
+    config.record_json = True
+    config.parallel = 0
+    monkeypatch.setattr(base, "Config", config)
+    monkeypatch.setattr(blas, "Config", config)
+    monkeypatch.setattr(conftest, "Config", config)
+    monkeypatch.setattr(conftest, "TEST_RESULTS", {})
+    monkeypatch.delenv(blas.PARALLEL_WORKER_ENV, raising=False)
+    monkeypatch.delenv(blas.PARALLEL_RESULT_FILE_ENV, raising=False)
+    bench = blas.ParallelBlasBenchmark(
+        "mm", torch_op=torch.mm, input_fn=lambda *a: iter(())
+    )
+    bench.to_bench_dtypes = [torch.float32]
+    monkeypatch.setattr(bench, "init_user_config", lambda: None)
+    monkeypatch.setattr(bench, "get_input_iter", lambda dtype: iter(()))
+    monkeypatch.setattr(
+        bench,
+        "_run_inputs",
+        lambda inputs, dtype: [BenchmarkMetrics(latency=2.0, compared_speedup=4.0)],
+    )
+    bench.run()
+    record = conftest.TEST_RESULTS["mm"]["details"][0]["result"][0]
+    assert record["compared_speedup"] == 4.0
+    assert record["latency"] == 2.0
 
 
 @pytest.mark.parametrize(
