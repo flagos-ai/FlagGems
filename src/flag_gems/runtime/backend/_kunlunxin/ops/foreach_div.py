@@ -42,10 +42,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# Use the generic foreach logger name so the registration-liveness test
-# (watching ``flag_gems.ops._foreach_binary``) still passes when this override
-# is the live implementation.
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
