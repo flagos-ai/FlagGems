@@ -14,7 +14,6 @@
 
 import functools
 import logging
-import threading
 
 import torch
 import triton
@@ -41,23 +40,6 @@ _DENSE_MAX_OUTPUT_ELEMENTS = 67_108_864
 # positions becomes cheaper than computing every element.
 _DENSE_MAX_CLASSES = 8192
 
-
-# ── fast-path fill dispatch thresholds (S5000 crossover measurements) ────────
-#
-# The fast path picks between three dense fill kernels:
-#   * zeros-fixup  (C <= 16 power of two, numel >= 2M, numel % 128 == 0):
-#     constant-zero wide stores + in-kernel L2 fixup of the "1" positions.
-#     Fill-rate stores beat per-element where() ALU by 7-9% on C=16 outputs.
-#   * persistent   (numel >= 1M, other C in the dense budget): each CTA owns
-#     one contiguous output span (DRAM page locality) and loops over row
-#     tiles; removes both store masks when the tiling is exact.  6-10% over
-#     the block-per-CTA kernel on C=64/256 outputs.
-#   * block-tiled  (smaller shapes): launch-latency-bound, the persistent
-#     grid underutilizes the GPU below ~1M elements.
-_V7_MIN_NUM_ELEMENTS = 2_000_000
-_V7_TILE_ROWS = 128
-_V3P_MIN_NUM_ELEMENTS = 1_048_576
-
 # Single-CTA direct verdict kernels replace the codes+reduce pair below this
 # many elements (saves one ~9-26 us launch; the whole input fits one
 # 8192-wide tile loop of a single CTA).  Crossover re-measured on S5000 with
@@ -67,12 +49,9 @@ _V3P_MIN_NUM_ELEMENTS = 1_048_576
 # single-launch direct path is preferred wherever it is not slower.
 _DIRECT_MAX_ELEMENTS = 16_384
 # Inferred min/max: the single-CTA direct kernel wins through 10240 elements
-# (the official 10000-element shapes land inside); between 10240 and 65536
-# the last-block kernel below wins (single launch, full parallelism), and
-# above 65536 the minmax+reduce pair wins again.
+# (the official 10000-element shapes land inside); above that the
+# minmax+reduce pair takes over.
 _MINMAX_DIRECT_MAX_ELEMENTS = 10_240
-_MINMAX_LB_MAX_ELEMENTS = 65_536
-_MINMAX_LB_BLOCK = 512
 
 # Cross-block reduce stays a single 1-CTA kernel up to this many blocks
 # (1-CTA wins <=8192 blocks; the extra launch of the two-level scheme wins
@@ -236,100 +215,6 @@ def one_hot_validate_set_one_kernel(
 # ── fast-path fill kernels ────────────────────────────────────────────────────
 
 
-@libentry()
-@triton.jit
-def one_hot_persistent_dense_kernel(
-    input_ptr,
-    output_ptr,
-    num_elements,
-    num_classes,
-    chunk_rows,  # runtime: rows per CTA (multiple of TILE_ROWS)
-    TILE_ROWS: tl.constexpr,
-    CLASS_BLOCK: tl.constexpr,
-    EVEN: tl.constexpr,  # tiles always full + C % CLASS_BLOCK == 0
-    CMP32: tl.constexpr,  # i32 compare + direct eq->int64 cast
-    NS: tl.constexpr,  # num_stages for the row loop
-):
-    """Persistent-contiguous dense fill for large outputs (>= 1M rows).
-
-    Each CTA owns one contiguous span of output rows (DRAM page locality)
-    and loops over row tiles inside it.  EVEN removes both store masks when
-    the class count tiles exactly and every row tile is full; the masked
-    branch is the general-correctness fallback for any numel/C.
-    32-bit offset math is safe: dense paths are guarded to outputs below
-    2**31 elements.
-    """
-    pid = tl.program_id(0)
-    base = pid * chunk_rows
-    n = tl.minimum(chunk_rows, num_elements - base)
-    cols = tl.arange(0, CLASS_BLOCK)
-    for r0 in tl.range(0, n, TILE_ROWS, num_stages=NS):
-        rows = base + r0 + tl.arange(0, TILE_ROWS)
-        if EVEN:
-            indices = tl.load(input_ptr + rows)
-        else:
-            indices = tl.load(input_ptr + rows, mask=rows < num_elements, other=0)
-        if CMP32:
-            idxv = indices.to(tl.int32)
-        else:
-            idxv = indices
-        for cs in range(0, num_classes, CLASS_BLOCK):
-            class_offsets = cs + cols
-            if CMP32:
-                values = (idxv[:, None] == class_offsets[None, :]).to(tl.int64)
-            else:
-                values = tl.where(idxv[:, None] == class_offsets[None, :], 1, 0)
-                values = values.to(tl.int64)
-            out_offsets = rows[:, None] * num_classes + class_offsets[None, :]
-            if EVEN:
-                tl.store(output_ptr + out_offsets, values)
-            else:
-                tl.store(
-                    output_ptr + out_offsets,
-                    values,
-                    mask=(rows < num_elements)[:, None]
-                    & (class_offsets < num_classes)[None, :],
-                )
-
-
-@libentry()
-@triton.jit
-def one_hot_zeros_fixup_kernel(
-    input_ptr,
-    output_ptr,
-    num_elements,
-    num_classes,
-    chunk_rows,
-    TILE_ROWS: tl.constexpr,
-    CLASS_BLOCK: tl.constexpr,
-):
-    """Zeros + in-kernel L2 fixup fill for large low-class-count outputs.
-
-    Per row tile: (1) store constant zeros for the full row span (fill-rate
-    stores, no per-element ALU), (2) CTA barrier, (3) scattered 8B stores of
-    the "1"s.  The fixups hit lines this CTA just wrote, so they merge in L2
-    instead of costing DRAM read-modify-write.  Requires CLASS_BLOCK == C
-    (single class tile) and numel % TILE_ROWS == 0 (unmasked loads/stores).
-    """
-    pid = tl.program_id(0)
-    base = pid * chunk_rows
-    n = tl.minimum(chunk_rows, num_elements - base)
-    cols = tl.arange(0, CLASS_BLOCK)
-    for r0 in tl.range(0, n, TILE_ROWS):
-        rows = base + r0 + tl.arange(0, TILE_ROWS)
-        idx = tl.load(input_ptr + rows)
-        for cs in range(0, num_classes, CLASS_BLOCK):
-            off = rows[:, None] * num_classes + (cs + cols)[None, :]
-            tl.store(output_ptr + off, tl.zeros((TILE_ROWS, CLASS_BLOCK), tl.int64))
-        tl.debug_barrier()
-        # The fill is speculative (the verdict readback raises on invalid
-        # indices), so clamp the fixup target into the row exactly like the
-        # scatter kernels: an unclamped out-of-range index would store past
-        # the output and poison the context before the verdict is read.
-        safe_idx = tl.minimum(tl.maximum(idx, 0), num_classes - 1)
-        tl.store(output_ptr + rows * num_classes + safe_idx, 1)
-
-
 # ── fast-path verdict kernels ─────────────────────────────────────────────────
 #
 # The fast path splits validation from generation: the verdict kernels read
@@ -483,67 +368,6 @@ def one_hot_minmax_partial_reduce_kernel(
     tl.store(stat2_ptr + out_blocks + pid, tl.max(hi, axis=0))
 
 
-@libentry()
-@triton.jit
-def one_hot_minmax_lastblock_kernel(
-    input_ptr,
-    stat_ptr,
-    out_ptr,
-    cnt_ptr,
-    num_elements,
-    num_blocks,
-    BLOCK: tl.constexpr,
-    RB: tl.constexpr,
-):
-    """Single-launch min/max with a device-side last-block reduction.
-
-    Every CTA reduces its BLOCK-wide slice to one (min, max) pair in the
-    per-call stat buffer, then bumps the arrival counter with an
-    acquire-release atomic.  The LAST CTA to arrive re-reduces the per-block
-    stat and publishes [min, max].  Replaces the two-launch minmax+reduce
-    pair in the 10240-65536 element band (one launch saved; the pair's
-    second enqueue is otherwise exposed in the inferred serial chain).
-
-    Plain (non-atomic) int64 stat stores are deliberate: the int64
-    atomic_min/max paths return wrong values on this backend, so visibility
-    is provided by the acq_rel arrival counter instead (release of the stat
-    stores -> RMW chain -> acquire in the last CTA), which measured clean
-    across 24000 stress launches.
-
-    Buffer contract (see _lb_buffers): the counter buffer is zero at launch
-    and the last CTA resets it after publishing, so steady-state reuse needs
-    no re-initialization.  The verdict readback (a blocking .item()) is
-    stream-ordered behind the kernel, so the reset has retired before the
-    buffers can be reused.  Buffers are tagged with the launching stream:
-    same-stream reuse is ordered by the GPU stream, and a stream switch
-    reallocates to rule out overlap with a still-running tail (e.g. two
-    host threads dispatching on different streams concurrently).
-    """
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < num_elements
-    indices = tl.load(input_ptr + offs, mask=mask, other=0)
-    bmin = tl.min(tl.where(mask, indices, 1 << 62), axis=0)
-    bmax = tl.max(tl.where(mask, indices, -(1 << 62)), axis=0)
-    tl.store(stat_ptr + pid, bmin)
-    tl.store(stat_ptr + num_blocks + pid, bmax)
-    tl.debug_barrier()
-    arrived = tl.atomic_add(cnt_ptr, 1, sem="acq_rel")
-    if arrived == num_blocks - 1:
-        vmin = tl.full((), 1 << 62, tl.int64)
-        vmax = tl.full((), -(1 << 62), tl.int64)
-        for start in range(0, num_blocks, RB):
-            o = start + tl.arange(0, RB)
-            m = o < num_blocks
-            lo = tl.load(stat_ptr + o, mask=m, other=1 << 62)
-            hi = tl.load(stat_ptr + num_blocks + o, mask=m, other=-(1 << 62))
-            vmin = tl.minimum(vmin, tl.min(lo, axis=0))
-            vmax = tl.maximum(vmax, tl.max(hi, axis=0))
-        tl.store(out_ptr, vmin)
-        tl.store(out_ptr + 1, vmax)
-        tl.store(cnt_ptr, 0)
-
-
 # ── launch configuration helpers ──────────────────────────────────────────────
 
 
@@ -557,11 +381,7 @@ def _dense_config(num_elements: int, num_classes: int):
     The per-program tile is capped at 4096 int64 values (32 KiB): S5000
     crossover measurements show wide row blocks (256 rows at 16 classes)
     writing larger contiguous spans beat smaller tiles by ~7% on
-    bandwidth-bound outputs.  Row blocks are additionally sized so the
-    per-block status buffer lands in a fast pageable-DtoH band: either tiny
-    (<= 128 B) for small inputs, or 2 KiB and above for larger ones — S5000
-    pageable copies in the 256 B-1 KiB range run through serialized
-    ~512 B staging chunks and cost ~20 us.
+    bandwidth-bound outputs.
     """
     class_block = min(max(_next_pow2(num_classes), 16), 256)
     hi = max(4, min(256, 4096 // class_block))
@@ -576,8 +396,9 @@ def _dense_config(num_elements: int, num_classes: int):
 def _minmax_block_size(num_elements: int):
     """Pick a BLOCK_SIZE for the fused min/max kernel.
 
-    The status buffer holds 16 bytes per block; steer its total size away
-    from the slow 256 B-1 KiB pageable-DtoH band (see ``_dense_config``).
+    The per-block stat slots (16 bytes each) are reduced on the device by
+    a 1-CTA follow-up kernel, so the block count only needs to stay at or
+    below ``_ONE_CTA_MAX_BLOCKS`` for the direct reduce.
     """
     for block in (1024, 2048, 4096, 8192):
         size = 16 * triton.cdiv(num_elements, block)
@@ -596,123 +417,32 @@ def _scatter_block_size(num_elements: int) -> int:
         return 1024
 
 
-def _is_pow2(n: int) -> bool:
-    return n > 0 and (n & (n - 1)) == 0
-
-
-def _persistent_chunk(num_elements: int, ncta: int, tile_rows: int):
-    """CTA count / rows-per-CTA for the persistent-contiguous kernels."""
-    chunk = ((num_elements + ncta - 1) // ncta + tile_rows - 1) // tile_rows * tile_rows
-    grid = triton.cdiv(num_elements, chunk)
-    return grid, chunk
-
-
 def _fill_plan(num_elements: int, num_classes: int):
-    """Choose the fast-path dense fill kernel + launch parameters.
-
-    Dispatch (S5000 crossover measurements):
-      * C <= 16 power of two, numel >= 2M, numel % 128 == 0  ->  zeros-fixup
-      * numel >= 1M (any other C in the dense budget)        ->  persistent
-      * smaller shapes                                       ->  block-tiled
-    """
-    if (
-        num_classes <= 16
-        and _is_pow2(num_classes)
-        and num_classes >= 4
-        and num_elements >= _V7_MIN_NUM_ELEMENTS
-        and num_elements % _V7_TILE_ROWS == 0
-    ):
-        grid, chunk = _persistent_chunk(num_elements, 240, _V7_TILE_ROWS)
-        return ("fixup", grid, chunk, _V7_TILE_ROWS, num_classes, 4, 1, True)
-
-    if num_elements >= _V3P_MIN_NUM_ELEMENTS:
-        if num_classes <= 64:
-            ncta, tile_rows, num_warps, ns = 960, 128, 4, 1
-        else:
-            ncta, tile_rows, num_warps, ns = 240, 256, 8, 2
-        class_block = 64
-        for cand in (64, 32, 16, 8):
-            if num_classes % cand == 0:
-                class_block = cand
-                break
-        else:
-            class_block = min(max(_next_pow2(num_classes), 8), 64)
-        even = num_classes % class_block == 0 and num_elements % tile_rows == 0
-        grid, chunk = _persistent_chunk(num_elements, ncta, tile_rows)
-        return ("persistent", grid, chunk, tile_rows, class_block, num_warps, ns, even)
-
-    if num_classes >= 128 and num_elements <= 65536:
-        # P12: small-shape high-class fills are write-throughput bound and
-        # the wide class tile thrashes; narrow 64-wide tiles with 8-row
-        # blocks measured 1990 GB/s vs 1573 GB/s at (10000, 256) --
-        # matching torch native's fill bandwidth.
-        return ("block", triton.cdiv(num_elements, 8), 8, 0, 64, 4, 0, False)
-
+    """Launch parameters for the block-tiled dense fill kernel."""
     rows, class_block, num_warps = _dense_config(num_elements, num_classes)
     grid = triton.cdiv(num_elements, rows)
-    return ("block", grid, rows, 0, class_block, num_warps, 0, False)
+    return grid, rows, class_block, num_warps
 
 
 @functools.lru_cache(maxsize=4096)
 def _fill_plan_cached(num_elements: int, num_classes: int):
     # _fill_plan is a pure function of (num_elements, num_classes); the
-    # explicit hot path pays a cache hit (~0.3 us) instead of a recompute.
+    # hot path pays a cache hit (~0.3 us) instead of a recompute.
     return _fill_plan(num_elements, num_classes)
 
 
-def _fill_plan_candidates(num_elements):
-    """Power-of-two class counts within the dense budget, ascending.
-
-    The inferred path precomputes fill plans for these while the min/max
-    reduction runs; real class counts are powers of two in the
-    overwhelming majority of workloads, and any miss recomputes on the
-    spot with no correctness impact.
-    """
-    max_c = min(_DENSE_MAX_CLASSES, _DENSE_MAX_OUTPUT_ELEMENTS // num_elements)
-    c = 1
-    while c <= max_c:
-        yield c
-        c *= 2
-
-
 def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
-    """Enqueue the planned fill kernel on the current stream."""
-    kind, grid, x, tile_rows, class_block, num_warps, ns, even = plan
-    if kind == "fixup":
-        one_hot_zeros_fixup_kernel[(grid,)](
-            flat_input,
-            out,
-            num_elements,
-            num_classes,
-            x,  # chunk_rows
-            TILE_ROWS=tile_rows,
-            CLASS_BLOCK=class_block,
-            num_warps=num_warps,
-        )
-    elif kind == "persistent":
-        one_hot_persistent_dense_kernel[(grid,)](
-            flat_input,
-            out,
-            num_elements,
-            num_classes,
-            x,  # chunk_rows
-            TILE_ROWS=tile_rows,
-            CLASS_BLOCK=class_block,
-            EVEN=even,
-            CMP32=1,
-            NS=ns,
-            num_warps=num_warps,
-        )
-    else:
-        one_hot_dense_kernel[(grid,)](
-            flat_input,
-            out,
-            num_elements,
-            num_classes,
-            BLOCK_SIZE=x,  # rows per block
-            CLASS_BLOCK=class_block,
-            num_warps=num_warps,
-        )
+    """Enqueue the dense fill kernel on the current stream."""
+    grid, rows, class_block, num_warps = plan
+    one_hot_dense_kernel[(grid,)](
+        flat_input,
+        out,
+        num_elements,
+        num_classes,
+        BLOCK_SIZE=rows,
+        CLASS_BLOCK=class_block,
+        num_warps=num_warps,
+    )
 
 
 # Torch CPU reductions fork an OpenMP team above this grain size, which costs
@@ -732,35 +462,6 @@ def _host_max(values: torch.Tensor) -> int:
         if result is None or chunk > result:
             result = chunk
     return result
-
-
-# ── last-block min/max buffers ────────────────────────────────────────────────
-#
-# stat needs no initialization (every slot is written before the last CTA
-# reads it, ordered by the arrival counter); cnt must be zero at launch and
-# the kernel self-resets it.  Buffers are cached per device AND tagged with
-# the current stream handle they were last used on: reuse across a stream
-# switch would let a new kernel race the previous kernel's tail, so a
-# switch reallocates.
-
-_LB_LOCK = threading.Lock()
-_LB_STATE = {}  # device index -> [stat, cnt, capacity, stream handle]
-
-
-def _lb_buffers(device, num_blocks):
-    idx = device.index if device.index is not None else 0
-    stream = torch_device_fn.current_stream(idx).musa_stream
-    st = _LB_STATE.get(idx)
-    if st is not None and st[2] >= num_blocks and st[3] == stream:
-        return st[0], st[1]
-    with _LB_LOCK:
-        st = _LB_STATE.get(idx)
-        if st is None or st[2] < num_blocks or st[3] != stream:
-            stat = torch.empty(2 * num_blocks, device=device, dtype=torch.int64)
-            cnt = torch.zeros(1, device=device, dtype=torch.int32)
-            _LB_STATE[idx] = [stat, cnt, num_blocks, stream]
-            return stat, cnt
-        return st[0], st[1]
 
 
 # ── fast-path verdict launch helpers ──────────────────────────────────────────
@@ -815,24 +516,6 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
             num_warps=16,
         )
         return
-    if num_elements <= _MINMAX_LB_MAX_ELEMENTS:
-        # Single-launch last-block reduction beats both the single-CTA
-        # direct kernel (serial 8192-wide loop) and the two-launch pair in
-        # this band (one fewer enqueue in the inferred serial chain).
-        num_blocks = triton.cdiv(num_elements, _MINMAX_LB_BLOCK)
-        stat, cnt = _lb_buffers(flat_input.device, num_blocks)
-        one_hot_minmax_lastblock_kernel[(num_blocks,)](
-            flat_input,
-            stat,
-            target,
-            cnt,
-            num_elements,
-            num_blocks,
-            BLOCK=_MINMAX_LB_BLOCK,
-            RB=1024,
-            num_warps=4,
-        )
-        return
     BLOCK_SIZE = _minmax_block_size(num_elements)
     num_warps = max(4, min(8, BLOCK_SIZE // 1024))
     num_blocks = triton.cdiv(num_elements, BLOCK_SIZE)
@@ -882,16 +565,11 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
 
     if inferred_num_classes:
         # One fused reduction all the way to [min, max] + one blocking
-        # readback replaces aminmax + blocking copy_ + host folds.  Fill
-        # plans for the power-of-two candidate class counts within the
-        # dense budget are warmed in the shared LRU cache while the
-        # reduction runs; a miss (e.g. C=17) simply recomputes on the spot.
-        # A single tolist() readback fetches both values with one
-        # device-to-host copy + one synchronization.
+        # readback replaces aminmax + blocking copy_ + host folds.  A single
+        # tolist() readback fetches both values with one device-to-host
+        # copy + one synchronization.
         verdict = torch.empty(2, device=tensor.device, dtype=torch.int64)
         _launch_minmax_kernels(flat_input, num_elements, verdict)
-        for cand in _fill_plan_candidates(num_elements):
-            _fill_plan_cached(num_elements, cand)
         min_val, max_val = verdict.tolist()
         if min_val < 0:
             raise RuntimeError("Class values must be non-negative.")
