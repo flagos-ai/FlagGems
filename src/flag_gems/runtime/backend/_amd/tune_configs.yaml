@@ -137,6 +137,45 @@ log_softmax:
       BLOCK_M: 32
       BLOCK_N: 512
     num_warps: 8
+scaled_grouped_mm:
+  # Small-LDS configs so fp32 still fits RDNA's 64KB shared memory; the rest
+  # are the generic defaults from ops/scaled_grouped_mm.py.
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 32
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+      BLOCK_K: 32
+    num_stages: 2
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 128
+      BLOCK_K: 64
+    num_stages: 3
+    num_warps: 4
 mm:
   # Small-LDS configs so mm still fits gfx1100/RDNA (64KB shared memory) for
   # fp32/large shapes where the deeper-pipelined configs below exceed the limit.
