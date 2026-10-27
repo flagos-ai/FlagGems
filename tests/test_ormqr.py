@@ -51,3 +51,35 @@ def test_ormqr(M, N, dtype, left, transpose):
     res_out = flag_gems.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+# The blocked compact-WY path (left=True, transpose=False, fp32, M >= 512) is
+# not reachable from ORMQR_SHAPES above, and it splits the reflectors into
+# blocks of 32: k % 32 != 0 exercises the short tail block, whose leading
+# dimension is k % 32 rather than the full block width.
+ORMQR_BLOCKED_SHAPES = [
+    (512, 100),  # k = 100, k % 32 = 4
+    (544, 544),  # k = 544, k % 32 = 0 (whole blocks only)
+]
+
+
+@pytest.mark.ormqr
+@pytest.mark.parametrize("M, N", ORMQR_BLOCKED_SHAPES)
+def test_ormqr_blocked_left(M, N):
+    dtype = torch.float32
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Skipping fp32 ormqr test on tsingmicro platform")
+
+    k = min(M, N)
+    a = torch.randn((M, k), dtype=dtype, device=flag_gems.device)
+    input_tensor, tau = torch.geqrf(a)
+    other = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
+
+    ref_input = utils.to_reference(input_tensor, True)
+    ref_tau = utils.to_reference(tau, True)
+    ref_other = utils.to_reference(other, True)
+
+    ref_out = torch.ormqr(ref_input, ref_tau, ref_other, left=True, transpose=False)
+    res_out = flag_gems.ormqr(input_tensor, tau, other, left=True, transpose=False)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
