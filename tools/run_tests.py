@@ -122,11 +122,15 @@ from importlib import metadata
 from multiprocessing import Process, Queue
 from pathlib import Path
 
-import consts
 import distro
 import yaml
 
 import flag_gems
+
+if __package__:
+    from .performance_report import parse_perf_data
+else:
+    from performance_report import parse_perf_data
 
 getcontext().prec = 18
 RED = "\033[31m"
@@ -612,116 +616,6 @@ def parse_accuracy_data(result_file):
     return result
 
 
-def parse_perf_data(op, result_file):
-    raw_data = {}
-    try:
-        with result_file.open("r") as f:
-            raw_data = json.load(f)
-    except (json.JSONDecodeError, ValueError):
-        return {
-            "status": "Error",
-            "reason": f"Invalid JSON in {result_file}",
-        }
-
-    data = raw_data.get(op, {})
-    if not data:
-        return {"status": "NotFound"}
-
-    result = data.get("result", "NotFound")
-    if result in ["failed", "skipped"]:
-        return {
-            "status": result.title(),
-            "reason": data.get("reason", "Unknown"),
-            "test_case": data.get("test_case", "Unknown"),
-        }
-
-    bench_res = {}
-    records = data.get("details", [])
-    if not any(item.get("native_baseline_skip_reason") for item in records):
-        for item in records:
-            dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-            details = {}
-            total = 0.0
-            count = 0
-            for res in item.get("result", []):
-                shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-                details.setdefault(shape, {})
-                details[shape]["base"] = res.get("latency_base", 0.0)
-                details[shape]["gems"] = res.get("latency", 0.0)
-                speedup = res.get("speedup", 0.0)
-                details[shape]["speedup"] = speedup
-                count += 1
-                total += speedup
-
-            if details:
-                bench_res[dtype] = {
-                    "result": "OK",
-                    "details": details,
-                    "speedup": total / count,
-                }
-            else:
-                bench_res[dtype] = {
-                    "result": "Unknown",
-                    "details": {},
-                    "speedup": 0,
-                }
-
-        return {
-            "status": result.title(),
-            "data": bench_res,
-            "test_case": data.get("test_case", "Unknown"),
-        }
-
-    native_baseline_skip_reasons = []
-    speedup_totals = {}
-    speedup_counts = {}
-
-    for item in records:
-        dtype = consts.DTYPE_MAP.get(item["dtype"], item["dtype"])
-        skip_reason = item.get("native_baseline_skip_reason")
-        if skip_reason and skip_reason not in native_baseline_skip_reasons:
-            native_baseline_skip_reasons.append(skip_reason)
-        dtype_result = bench_res.setdefault(
-            dtype,
-            {
-                "result": "Unknown",
-                "details": {},
-                "speedup": None,
-            },
-        )
-        details = dtype_result["details"]
-        for res in item.get("result", []):
-            shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-            details.setdefault(shape, {})
-            details[shape]["base"] = res.get("latency_base")
-            details[shape]["gems"] = res.get("latency")
-            speedup = res.get("speedup")
-            details[shape]["speedup"] = speedup
-            if isinstance(speedup, (int, float)):
-                speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
-                speedup_totals[dtype] = speedup_totals.get(dtype, 0.0) + speedup
-
-        if details:
-            dtype_result["result"] = "OK"
-
-    for dtype, dtype_result in bench_res.items():
-        count = speedup_counts.get(dtype, 0)
-        dtype_result["speedup"] = (
-            speedup_totals.get(dtype, 0.0) / count if count else None
-        )
-
-    parsed_result = {
-        "status": result.title(),
-        "data": bench_res,
-        "test_case": data.get("test_case", "Unknown"),
-    }
-    if native_baseline_skip_reasons:
-        parsed_result["native_baseline_skip_reason"] = "; ".join(
-            native_baseline_skip_reasons
-        )
-    return parsed_result
-
-
 def op_marker(op):
     """Return the pytest marker name for an operator id.
 
@@ -824,6 +718,8 @@ def run_benchmark_q(gpu_id, op):
         f'pytest -m "{marker}" --level core --record json '
         f"--output benchmark_{op}.json --continue-on-collection-errors"
     )
+    if getattr(CFG, "base_data", None):
+        cmd += f" --base-data={shlex.quote(CFG.base_data)}"
     code = run_cmd(op, cmd, cwd=benchmark_dir, env=env, flavor="performance")
     dur = time.time() - dur
 
@@ -1356,7 +1252,14 @@ def main():
         default="auto",
         help="ANSI color output mode: auto (TTY only), always, never. Default: auto",
     )
+    parser.add_argument(
+        "--base-data",
+        metavar="FILE",
+        default=None,
+        help="Optional ops-baseline JSON; matched external speedup wins in summaries.",
+    )
     OPTS = parser.parse_args()
+    CFG.base_data = str(Path(OPTS.base_data).resolve()) if OPTS.base_data else None
     CFG.dump_output = OPTS.dump_output
     CFG.quick = OPTS.quick
     CFG.start = OPTS.start

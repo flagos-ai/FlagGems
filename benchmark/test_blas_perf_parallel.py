@@ -21,6 +21,7 @@ import pickle
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from typing import Generator
 
 import pytest
@@ -676,24 +677,10 @@ class ParallelBenchmarkMixin:
         if "latency_base" in self.to_bench_metrics:
             metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
         if "latency" in self.to_bench_metrics:
-            if self.gems_op:
-                metric.latency = self.get_latency(self.gems_op, *args, **kwargs)
-            else:
-                if self.op_name == "zero_":
-                    with flag_gems.use_gems():
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
-                elif self.op_name in ("mm", "mm_out"):
-                    with flag_gems.use_gems(include=[self.op_name]):
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
-                else:
-                    with flag_gems.use_gems(exclude=["zero_"]):
-                        metric.latency = self.get_latency(
-                            self.torch_op, *args, **kwargs
-                        )
+            candidate = self.gems_op or getattr(flag_gems, self.op_name, None)
+            if candidate is None:
+                raise RuntimeError(f"No FlagGems entry point for {self.op_name}")
+            metric.latency = self.get_latency(candidate, *args, **kwargs)
         if "speedup" in self.to_bench_metrics:
             metric.speedup = metric.latency_base / metric.latency
         if "gbps" in self.to_bench_metrics:
@@ -708,14 +695,27 @@ class ParallelBenchmarkMixin:
             )
         return metric
 
-    def _run_inputs(self, input_items):
+    def _baseline_input(self, input_item):
+        """The external record describes the native callable's input ABI."""
+        return input_item
+
+    def _run_inputs(self, input_items, dtype=None):
         metrics = []
         expected_shapes = self._iter_expected_shapes()
         for input_item in input_items:
             current_shape = next(expected_shapes, None)
             metric = BenchmarkMetrics()
             try:
+                context = None
+                if getattr(Config, "base_data", None) is not None:
+                    args, kwargs = self.unpack_to_args_kwargs(
+                        self._baseline_input(input_item)
+                    )
+                    context = self._capture_external_baseline(args, kwargs)
+                    del args, kwargs
                 metric = self._build_metric_from_input(input_item)
+                if context is not None:
+                    self._apply_external_baseline(metric, dtype, context)
             except Exception as e:
                 metric.error_msg = str(e)
                 self._record_failed_shape(current_shape)
@@ -900,6 +900,8 @@ class ParallelBenchmarkMixin:
             "--shape_file",
             tmp_shape_path,
         ]
+        if getattr(Config, "base_data", None) is not None:
+            cmd.extend(["--base-data", str(Path(Config.base_data.source).resolve())])
         if self.should_forward_parallel_dtype(dtype_name):
             cmd.extend(["--dtypes", dtype_name])
         if Config.user_desired_metrics:
@@ -946,7 +948,7 @@ class ParallelBenchmarkMixin:
     def _run_parallel_dtype(self, dtype):
         required_gpus = int(Config.parallel)
         if required_gpus <= 0:
-            return self._run_inputs(self.get_input_iter(dtype))
+            return self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
         if not _parallel_device_is_available():
             pytest.skip(f"--parallel N requires {_parallel_device_label()}.")
         device_ids = _parallel_device_ids()
@@ -1036,7 +1038,7 @@ class ParallelBenchmarkMixin:
             if Config.parallel > 0 and not os.environ.get(PARALLEL_WORKER_ENV):
                 metrics = self._run_parallel_dtype(dtype)
             else:
-                metrics = self._run_inputs(self.get_input_iter(dtype))
+                metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
 
             result = BenchmarkResult(
                 level=Config.bench_level.value,
@@ -1394,6 +1396,10 @@ class ParallelW8A8BlockFP8DeepGemmBenchmark(ParallelW8A8BlockFP8MatmulBenchmark)
                 self.block_size[:],
                 self.output_dtype,
             )
+
+    def _baseline_input(self, input_item):
+        dg_input, _ = input_item
+        return dg_input
 
     def _build_metric_from_input(self, input_item):
         dg_input, gems_input = input_item
