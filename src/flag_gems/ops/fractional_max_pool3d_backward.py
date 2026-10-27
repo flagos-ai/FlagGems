@@ -21,8 +21,14 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
+from flag_gems.utils.device_info import get_device_capability
 
 logger = logging.getLogger(__name__)
+
+
+# Native-precision atomics require hardware support (CUDA semantics):
+# fp16 atomic_add needs sm_70+, bf16 atomic_add needs sm_90+.
+_NATIVE_ATOMIC_MIN_CAP = {torch.float16: (7, 0), torch.bfloat16: (9, 0)}
 
 
 BACKWARD_CONFIGS = [
@@ -37,7 +43,7 @@ BACKWARD_CONFIGS = [
 @libentry()
 @triton.autotune(
     configs=BACKWARD_CONFIGS,
-    key=["out_d", "out_h", "out_w"],
+    key=["out_d", "out_h", "out_w", "IS_FP32_ACC"],
     reset_to_zero=["grad_input_ptr"],
 )
 @triton.jit
@@ -62,6 +68,8 @@ def fractional_max_pool3d_backward_kernel(
     # Tiling meta-parameters
     BLOCK_H: tl.constexpr,
     BLOCK_W: tl.constexpr,
+    # fp32 accumulation: required on fallback path (e.g. no native fp16/bf16 atomic)
+    IS_FP32_ACC: tl.constexpr,
 ):
     """Backward kernel for fractional max pool 3d.
 
@@ -104,9 +112,14 @@ def fractional_max_pool3d_backward_kernel(
     in_offsets = in_nc_offset + idx_vals
 
     valid_mask = out_mask & (idx_vals >= 0)
-    tl.atomic_add(
-        grad_input_ptr + in_offsets, grad_vals.to(tl.float32), mask=valid_mask
-    )
+    if IS_FP32_ACC:
+        # Fallback path: accumulate in fp32, result is cast back by the caller.
+        acc = grad_vals.to(tl.float32)
+    else:
+        # Fast path: keep the native dtype so Triton emits native fp16/bf16
+        # atomic adds on hardware that supports them.
+        acc = grad_vals
+    tl.atomic_add(grad_input_ptr + in_offsets, acc, mask=valid_mask)
 
 
 def fractional_max_pool3d_backward(
@@ -136,7 +149,18 @@ def fractional_max_pool3d_backward(
     grad_output = grad_output.contiguous()
     indices = indices.contiguous()
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    # Use native-precision atomics only on CUDA devices whose hardware supports
+    # them; every other backend keeps the fp32 accumulation path.
+    dtype = grad_output.dtype
+    min_cap = _NATIVE_ATOMIC_MIN_CAP.get(dtype)
+    native_atomic = (
+        min_cap is not None
+        and grad_output.is_cuda
+        and get_device_capability() >= min_cap
+    )
+    acc_dtype = dtype if native_atomic else torch.float32
+
+    grad_input = torch.zeros_like(input, dtype=acc_dtype)
 
     if grad_input.numel() == 0:
         return grad_input.to(grad_output.dtype)
@@ -169,6 +193,9 @@ def fractional_max_pool3d_backward(
         out_stride_d,
         out_stride_h,
         out_stride_w,
+        IS_FP32_ACC=not native_atomic,
     )
 
+    if native_atomic:
+        return grad_input
     return grad_input.to(grad_output.dtype)
