@@ -1545,6 +1545,23 @@ class LibEntry(triton.KernelInterface):
         return tuple(spec_key + dns_key + const_key)
 
     def _first_run(self, *args, **kwargs):
+        try:
+            return self._first_run_once(*args, **kwargs)
+        except _TritonOutOfResources:
+            # A fixed-config kernel has no tuner to fall back on when it exceeds
+            # shared memory (e.g. RDNA's 64KB LDS). num_stages only sets the
+            # software-pipelining depth, not the result, so retry shallower.
+            if not isinstance(self.fn, triton.runtime.JITFunction):
+                raise
+            stages = kwargs.get("num_stages") or 2
+            for s in range(stages - 1, 0, -1):
+                try:
+                    return self._first_run_once(*args, **{**kwargs, "num_stages": s})
+                except _TritonOutOfResources:
+                    continue
+            raise
+
+    def _first_run_once(self, *args, **kwargs):
         """Run the tuner once for a fresh entry key, with AABS disabled when
         the caller passes constexpr values as keyword arguments, or when the
         kernel opted out with ``libtuner(disable_aabs=True)``.
