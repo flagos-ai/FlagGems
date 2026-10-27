@@ -31,6 +31,10 @@ else:
 
 INDEX_PUT_SHAPE_ACC_FALSE = (
     ((2**28,), ((2**16,),), (2**16,), False),
+    # grid.x = M / BLOCK_SIZE0 must stay within the launch limit, which is
+    # 65535 on some backends (e.g. enflame GCU300). M = 2**18 = 262144 exceeds
+    # it, so a kernel that chunks grid.x is required here.
+    ((2**19,), ((2**18,),), (2**18,), False),
     ((32, 32), ((8,), (8,)), (8,), False),
     ((32, 32), ((8,), (2, 8)), (8,), False),
     ((32, 32), ((2, 8),), (32,), False),
@@ -331,13 +335,23 @@ def test_index_put_mixed_none_and_tensor(input_shape, indices_config, dtype):
             ref_indices.append(unique_pool.cpu())
 
     ref_inp = utils.to_reference(inp)
+    # Kunlunxin native advanced indexing is incorrect when multiple tensor
+    # indices are mixed with slices; when the reference runs on-device, compute
+    # it on CPU and move the result back for comparison.
+    use_cpu_ref = flag_gems.vendor_name == "kunlunxin" and ref_inp.device.type != "cpu"
+    if use_cpu_ref:
+        ref_inp = ref_inp.cpu()
     target_shape = ref_inp[tuple(ref_indices)].shape
 
     values = torch.randn(target_shape, dtype=dtype, device=flag_gems.device)
     ref_values = utils.to_reference(values)
+    if use_cpu_ref:
+        ref_values = ref_values.cpu()
 
     ref_out = ref_inp.clone()
     ref_out[tuple(ref_indices)] = ref_values
+    if use_cpu_ref:
+        ref_out = ref_out.to(flag_gems.device)
 
     out = flag_gems.index_put(inp, indices, values, accumulate)
     utils.gems_assert_close(out, ref_out, dtype)

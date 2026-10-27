@@ -42,8 +42,7 @@ def test_pow_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.pow(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_tensor_tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -68,8 +67,7 @@ def test_pow_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.pow_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.pow_(inp2)
+    res_out = flag_gems.pow_tensor_tensor_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -106,8 +104,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.pow(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_tensor_scalar(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -140,8 +137,7 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.pow_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.pow_(inp2)
+    res_out = flag_gems.pow_tensor_scalar_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -165,7 +161,6 @@ def test_pow_scalar(scalar, shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.pow(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_scalar(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

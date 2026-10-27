@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 import os
@@ -39,10 +53,15 @@ def le_func(x, y):
 
 def le(A, B):
     logger.debug("GEMS_KUNLUNXIN LE")
-    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    # NOTE: do not enable TRITONXPU_COMPARE_FUSION here. The flagtree compiler
+    # on the CI runner lowers the generic pointwise bool store as
+    # cmpf(i1) + extui(i8) + store and then fuses it into a 32-bit
+    # triton_xpu.cmpf result (tensor<65536xui32>), which the op verifier
+    # rejects and blows uni_sram (OutOfResources) on the fp16 1024x1024 case.
+    # TRITONXPU_FP16_FAST is kept: it only strips the .to(fp32) so the compare
+    # runs as a native fp16 vcmpf (32-lane) instead of widening to fp32.
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = le_func(A, B)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
 
@@ -66,11 +85,19 @@ def le_scalar(A, B):
         and dtype in (torch.float16, torch.float32, torch.bfloat16)
         and float(B) == float(torch.tensor(float(B), dtype=dtype).item())
     ):
-        s = float(B)
         if numel >= _LE_SCALAR_FAST_TILE and numel % _LE_SCALAR_FAST_TILE == 0:
-            return _le_scalar_fast(A, s, (numel // _LE_SCALAR_FAST_TILE,))
+            return _le_scalar_native(A, float(B), numel, masked=False)
         if numel >= _LE_SCALAR_MASKED_MIN and numel % _LE_SCALAR_FAST_TILE != 0:
-            return _le_scalar_fast_masked(A, s, numel)
+            return _le_scalar_native(A, float(B), numel, masked=True)
+        # Small / thin shapes (numel < FAST_TILE): route to the native fused
+        # kernel with an adaptive small TILE instead of the ~10x-slower generic
+        # pointwise path. Tile hugs numel (next_pow2, floor 1024) so we don't
+        # launch a 131072-lane program for a few-K-element tensor.
+        if 0 < numel < _LE_SCALAR_FAST_TILE:
+            tile = min(_LE_SCALAR_FAST_TILE, max(1024, triton.next_power_of_2(numel)))
+            return _le_scalar_native(
+                A, float(B), numel, masked=(numel % tile != 0), tile=tile
+            )
     res = le_func_scalar(A, B)
     return res
 
@@ -78,66 +105,85 @@ def le_scalar(A, B):
 _LE_SCALAR_FAST_TILE = 131072
 _LE_SCALAR_MASKED_MIN = 1 << 20
 
+# ---------------------------------------------------------------------------
+# bf16 note: xpu3 has no native bf16 compare, so bf16 widens to fp32 (16-lane)
+# and large shapes stay compiler-bound (~0.56); fp16/fp32 reach the fused path.
+
 
 @triton.jit
-def le_scalar_fast_kernel(out_ptr, x_ptr, scalar, TILE: tl.constexpr):
+def le_scalar_native_kernel(
+    out_ptr, x_ptr, scalar, TILE: tl.constexpr, DTYPE: tl.constexpr
+):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    t = (x - scalar) * 1.0e38
-    t = tl.maximum(0.0, t)
-    t = tl.minimum(1.0, t)
-    tl.store(out_ptr + tid, 1.0 - t)
-
-
-def _le_scalar_fast(A, scalar, grid):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    le_scalar_fast_kernel[grid](
-        out32,
-        A,
-        scalar,
-        TILE=_LE_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
-    out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
-    return out
+    x = tl.load(x_ptr + tid)
+    r = x <= scalar.to(DTYPE)
+    tl.store(out_ptr + tid, r.to(tl.int8))
 
 
 @triton.jit
-def le_scalar_fast_masked_kernel(out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr):
+def le_scalar_native_masked_kernel(
+    out_ptr, x_ptr, scalar, numel, TILE: tl.constexpr, DTYPE: tl.constexpr
+):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
-    x = tl.load(x_ptr + tid, mask=mask).to(tl.float32)
-    t = (x - scalar) * 1.0e38
-    t = tl.maximum(0.0, t)
-    t = tl.minimum(1.0, t)
-    tl.store(out_ptr + tid, 1.0 - t, mask=mask)
+    x = tl.load(x_ptr + tid, mask=mask)
+    r = x <= scalar.to(DTYPE)
+    tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
 
 
-def _le_scalar_fast_masked(A, scalar, numel):
-    out32 = torch.empty_like(A, dtype=torch.float32)
-    grid = (math.ceil(numel / _LE_SCALAR_FAST_TILE),)
-    le_scalar_fast_masked_kernel[grid](
-        out32,
-        A,
-        scalar,
-        numel,
-        TILE=_LE_SCALAR_FAST_TILE,
-        num_warps=4,
-        buffer_size_limit=8192,
-        unroll_num=16,
-        isCloseMemoryAsync=False,
-    )
+def _le_scalar_native(A, scalar, numel, masked, tile=_LE_SCALAR_FAST_TILE):
+    # Single-kernel native compare: writes the bool result directly, so the
+    # fp32 intermediate buffer and _copy_from pass of the saturating recipe
+    # are gone. Env must be set before the (first) launch so the fusion pass
+    # sees it at compile time (same set/del pattern as le above).
     out = torch.empty_like(A, dtype=torch.bool)
-    torch.ops.aten._copy_from(out32, out, False)
+    x = A.reshape(-1)
+    grid = (math.ceil(numel / tile),) if masked else (numel // tile,)
+    DTYPE = {
+        torch.float16: tl.float16,
+        torch.bfloat16: tl.bfloat16,
+        torch.float32: tl.float32,
+    }[A.dtype]
+    os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+    os.environ["TRITONXPU_FP16_FAST"] = "1"
+    try:
+        if masked:
+            le_scalar_native_masked_kernel[grid](
+                out,
+                x,
+                scalar,
+                numel,
+                TILE=tile,
+                DTYPE=DTYPE,
+                num_warps=4,
+                buffer_size_limit=8192,
+                unroll_num=16,
+                isCloseMemoryAsync=False,
+            )
+        else:
+            le_scalar_native_kernel[grid](
+                out,
+                x,
+                scalar,
+                TILE=tile,
+                DTYPE=DTYPE,
+                num_warps=4,
+                buffer_size_limit=8192,
+                unroll_num=16,
+                isCloseMemoryAsync=False,
+            )
+    finally:
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_FP16_FAST"]
     return out
 
 
+# ---------------------------------------------------------------------------
+# le_ (in-place x.le_(y)): saturating fp32 le = 1 - min(1,max(0,(x-y)*1e64))
+# written back into x, no i1. In-place-safe config (DEFAULT isCloseMemoryAsync)
+# avoids the noc-idle-timeout deadlock async-copy has under aliasing.
 config_inplace_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -160,7 +206,7 @@ def le_func_tensor_inplace(x, y):
 
 
 def le_(A, B):
-    logger.debug("GEMS_KUNLUNXIN LE_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN LE__TENSOR")
     if A.device != B.device:
         if A.device.type == device:
             B = B.to(A.device)
@@ -176,12 +222,19 @@ def le_(A, B):
             and numel >= _LE_TENSOR_INPLACE_FAST_TILE * _LE_TENSOR_INPLACE_MIN_GRID
             and numel % _LE_TENSOR_INPLACE_FAST_TILE == 0
         ):
+            # exact-multiple flat tiles: no mask at all; grid fixed.
             return _le_tensor_inplace_fast(A, B, numel)
         le_func_tensor_inplace(A, B, out0=A)
         return A
+    # Everything else (non-float dtype, non-contiguous, ...) keeps the
+    # original generic in-place path, behavior unchanged.
     return _generic_le_(A, B)
 
 
+# in-place alias safety: the fast kernel writes into the SAME tensor it
+# reads, so it must keep the DEFAULT isCloseMemoryAsync (True = async copy
+# closed); passing False with in-place aliasing is the documented "noc idle
+# timeout" deadlock, same as gt.py's in-place fast path note.
 _LE_TENSOR_INPLACE_FAST_TILE = 131072
 _LE_TENSOR_INPLACE_MIN_GRID = 128
 
@@ -205,6 +258,79 @@ def _le_tensor_inplace_fast(A, B, numel):
         A,
         B,
         TILE=_LE_TENSOR_INPLACE_FAST_TILE,
+        num_warps=4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=True,
+    )
+    return A
+
+
+# ---------------------------------------------------------------------------
+# le_scalar_ (in-place x.le_(scalar)): saturating fp32 recipe le = 1 - min(1,
+# max(0, (x-s)*1e64)) written back into x, no i1. In-place-safe config (DEFAULT
+# isCloseMemoryAsync) avoids the noc-idle-timeout deadlock that async-copy has
+# under aliasing. Mirrors less_equal_scalar_ (same x <= s semantics).
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_inplace_,
+)
+@triton.jit
+def le_func_scalar_inplace(x, y):
+    t = (x.to(tl.float32) - y) * 1.0e32
+    t = t * 1.0e32
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    return 1.0 - t
+
+
+def le_scalar_(A, B):
+    logger.debug("GEMS_KUNLUNXIN LE_SCALAR_")
+    numel = A.numel()
+    if (
+        A.is_contiguous()
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and float(B) == float(torch.tensor(float(B), dtype=A.dtype).item())
+    ):
+        if (
+            A.dtype in (torch.float16, torch.float32)
+            and numel >= _LE_SCALAR_INPLACE_FAST_TILE * _LE_SCALAR_INPLACE_MIN_GRID
+            and numel % _LE_SCALAR_INPLACE_FAST_TILE == 0
+        ):
+            # exact-multiple flat tiles: no mask at all; grid fixed.
+            return _le_scalar_inplace_fast(A, float(B))
+        le_func_scalar_inplace(A, B, out0=A)
+        return A
+    return le_func_scalar(A, B, out0=A)
+
+
+# in-place alias safety: the fast kernel writes into the SAME tensor it reads,
+# so it must keep the DEFAULT isCloseMemoryAsync (True = async copy closed);
+# passing False with in-place aliasing is the documented noc idle timeout
+# deadlock, same as the le_ / gt_ in-place fast path note.
+_LE_SCALAR_INPLACE_FAST_TILE = 131072
+_LE_SCALAR_INPLACE_MIN_GRID = 128
+
+
+@triton.jit
+def le_scalar_inplace_fast_kernel(x_ptr, scalar, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    tid = pid * TILE + tl.arange(0, TILE)
+    x = tl.load(x_ptr + tid)
+    t = (x.to(tl.float32) - scalar) * 1.0e32
+    t = t * 1.0e32
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    tl.store(x_ptr + tid, 1.0 - t)
+
+
+def _le_scalar_inplace_fast(A, scalar):
+    grid = (A.numel() // _LE_SCALAR_INPLACE_FAST_TILE,)
+    le_scalar_inplace_fast_kernel[grid](
+        A,
+        scalar,
+        TILE=_LE_SCALAR_INPLACE_FAST_TILE,
         num_warps=4,
         buffer_size_limit=8192,
         unroll_num=16,

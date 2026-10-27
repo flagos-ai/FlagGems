@@ -70,7 +70,9 @@ def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
 
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize(
-    "dtype", [torch.bool, torch.int32, torch.float64, torch.complex64]
+    "dtype",
+    [torch.bool, torch.int32, torch.float64]
+    + ([torch.complex64] if utils.complex_is_supported else []),
 )
 def test_accuracy_masked_select_backward_extended_dtypes(dtype):
     shape = (73, 71)
@@ -184,10 +186,19 @@ def test_masked_select_backward_errors():
 
 @pytest.mark.masked_select_backward
 @pytest.mark.parametrize("size", [17, 65537, 262145])
-@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.int32] + ([torch.int64] if utils.int64_is_supported else []),
+)
 def test_masked_select_backward_large_integer_values(size, dtype):
     inp = torch.zeros(size, dtype=dtype, device=flag_gems.device)
-    mask = torch.arange(size, device=inp.device) % 3 != 0
+    # int32 indices: torch.arange defaults to int64, and comparing an int64
+    # tensor aborts the process on backends without int64 support.
+    mask = (
+        torch.arange(size, dtype=torch.int32, device=inp.device) % 3 != 0
+        if not utils.int64_is_supported
+        else torch.arange(size, device=inp.device) % 3 != 0
+    )
     count = int(mask.sum())
     base = 2**25 + 1 if dtype == torch.int32 else 2**60 + 1
     grad = torch.arange(count, dtype=dtype, device=inp.device) + base
@@ -196,7 +207,10 @@ def test_masked_select_backward_large_integer_values(size, dtype):
 
 
 @pytest.mark.masked_select_backward
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.complex64, torch.complex128] if utils.complex_is_supported else [],
+)
 def test_masked_select_backward_conjugated_grad(dtype):
     inp = torch.randn(73, dtype=dtype, device=flag_gems.device)
     mask = torch.arange(73, device=inp.device) % 2 == 0

@@ -21,6 +21,13 @@ import flag_gems
 
 from . import base
 
+VENDOR = flag_gems.vendor_name
+
+# On ascend the general KERNEL-mode do_bench_npu is unreliable; use operator
+# (end-to-end) timing mode (same as det/lu_factor/linalg_solve_triangular).
+# nonzero_static additionally spans several kernels per call, which the
+# KERNEL-mode profiler averages per kernel instead of summing.
+
 BENCH_DTYPES = [  # The Ascend performance report is scoped to FP16 and BF16.
     torch.float16,
     torch.bfloat16,
@@ -120,6 +127,35 @@ def test_perf_nonzero_static():
         torch_op=baseline_nonzero_static,
         gems_op=flag_gems.nonzero_static,
         input_fn=_input_fn,
+        dtypes=BENCH_DTYPES,
+    )
+    bench.run()
+
+
+def _input_fn_out(case, dtype, device):
+    shape, nnz_ratio, size, fill_value = case
+    inp = _make_input(shape, dtype, nnz_ratio, device)
+    out = torch.empty((size, inp.dim()), dtype=torch.int64, device=device)
+    yield inp, {"size": size, "fill_value": fill_value, "out": out}
+
+
+@pytest.mark.nonzero_static_out
+def test_perf_nonzero_static_out():
+    baseline_nonzero_static = _get_baseline_nonzero_static()
+
+    def baseline_out(input, *, size, fill_value=-1, out=None):
+        # The aten baseline has no out overload; write into the caller's out.
+        result = baseline_nonzero_static(input, size=size, fill_value=fill_value)
+        if out is not None:
+            out.copy_(result)
+            return out
+        return result
+
+    bench = NonzeroStaticBenchmark(
+        op_name="nonzero_static_out",
+        torch_op=baseline_out,
+        gems_op=flag_gems.nonzero_static_out,
+        input_fn=_input_fn_out,
         dtypes=BENCH_DTYPES,
     )
     bench.run()

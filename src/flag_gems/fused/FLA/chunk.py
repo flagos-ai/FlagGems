@@ -55,7 +55,7 @@ def chunk_gated_delta_rule_fwd(
     output_final_state: bool,
     cu_seqlens: torch.LongTensor | None = None,
 ):
-    logger.debug("GEMS CHUNK GATED DELTA RULE FWD")
+    logger.debug("GEMS CHUNK_GATED_DELTA_RULE_FWD")
     q_contiguous = q.is_contiguous()
     k_contiguous = k.is_contiguous()
     v_contiguous = v.is_contiguous()

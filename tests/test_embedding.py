@@ -57,13 +57,12 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     ref_out = torch.nn.functional.embedding(
         ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.embedding(
-            res_indices,
-            res_embedding,
-            padding_idx,
-            scale_grad_by_freq=scale_grad_by_freq,
-        )
+    res_out = flag_gems.embedding(
+        res_embedding,
+        res_indices,
+        padding_idx,
+        scale_grad_by_freq=scale_grad_by_freq,
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -97,10 +96,9 @@ def test_embedding_backward(
     ref_in_grad = torch.ops.aten.embedding_backward(
         ref_grad, ref_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.embedding_backward(
-            res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
-        )
+    res_in_grad = flag_gems.embedding_backward(
+        res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -145,10 +143,9 @@ def test_embedding_dense_backward(
         scale_grad_by_freq,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.embedding_dense_backward(
-            grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
-        )
+    res_out = flag_gems.embedding_dense_backward(
+        grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
+    )
     # res_out = torch.ops.aten.embedding_dense_backward(
     # grad_output, indices, num_weights, padding_idx, scale_grad_by_freq)
 

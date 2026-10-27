@@ -30,8 +30,7 @@ def test_ge(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.ge(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.ge(inp1, inp2)
+    res_out = flag_gems.ge(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -45,7 +44,6 @@ def test_ge_scalar(shape, dtype):
     ref_inp1 = utils.to_reference(inp1)
 
     ref_out = torch.ge(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.ge(inp1, inp2)
+    res_out = flag_gems.ge_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

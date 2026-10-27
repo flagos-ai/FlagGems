@@ -115,8 +115,13 @@ def _fractional_max_pool2d_backward_scatter_kernel(
     """
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < n_out
-    idx = tl.load(indices_ptr + offsets).to(tl.int32)
-    val = tl.load(grad_output_ptr + offsets).to(tl.float32)
+    # ``n_out`` is not always a multiple of ``BLOCK`` (the (2, 4, 20, 20) shape of
+    # tests/test_fractional_max_pool2d.py gives n_out = 800 with BLOCK = 256), and the
+    # tail lanes used to be masked on the store only: the two loads below then read up
+    # to BLOCK-1 elements past the end of ``grad_output``/``indices``.  Out-of-bounds
+    # accesses are a device-wedge hazard on this backend, so predicate the loads too.
+    idx = tl.load(indices_ptr + offsets, mask=mask, other=0).to(tl.int32)
+    val = tl.load(grad_output_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
     nc = offsets // out_per_nc
     tl.store(
         grad_input_ptr + nc * in_hw + idx,

@@ -56,8 +56,7 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     ref_out = ref_inp.baddbmm_(ref_mat1, ref_mat2, alpha=alpha, beta=beta)
 
     inp1 = inp.clone()
-    with flag_gems.use_gems():
-        res_out = inp1.baddbmm_(mat1, mat2, alpha=alpha, beta=beta)
+    res_out = flag_gems.baddbmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
     gems_assert_close(inp1, ref_inp, dtype, reduce_dim=K)

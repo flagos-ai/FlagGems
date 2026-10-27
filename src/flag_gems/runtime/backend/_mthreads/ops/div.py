@@ -92,7 +92,7 @@ def true_divide(A, B):
 
 
 def true_divide_out(A, B, out):
-    logger.debug("GEMS_MTHREADS TRUE_DIVIDE OUT")
+    logger.debug("GEMS_MTHREADS TRUE_DIVIDE_OUT")
     if _is_complex_real_div(A, B):
         result = _complex_div_real(A, B)
         out.copy_(result)

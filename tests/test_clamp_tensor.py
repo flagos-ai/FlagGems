@@ -37,8 +37,7 @@ def test_clamp_tensor(shape, isnone, dtype):
     ref_mini = utils.to_reference(mini)
 
     ref_out = torch.clamp(ref_inp, min=ref_mini, max=ref_maxi)
-    with flag_gems.use_gems():
-        res_out = torch.clamp(inp, min=mini, max=maxi)
+    res_out = flag_gems.clamp_tensor(inp, mini=mini, maxi=maxi)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -60,7 +59,6 @@ def test_clamp_tensor_(shape, isnone, dtype):
     ref_mini = utils.to_reference(mini)
 
     ref_out = torch.clamp_(ref_inp, min=ref_mini, max=ref_maxi)
-    with flag_gems.use_gems():
-        res_out = torch.clamp_(inp, min=mini, max=maxi)
+    res_out = flag_gems.clamp_tensor_(inp, mini=mini, maxi=maxi)
 
     utils.gems_assert_equal(res_out, ref_out)

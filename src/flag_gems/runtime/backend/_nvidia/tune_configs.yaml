@@ -32,6 +32,26 @@ _conj_copy:
       BLOCK_SIZE: 4096
     num_warps: 8
 
+_conj_physical:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 8
+
 _adaptive_avg_pool3d_backward:
   - META:
       BLOCK_SIZE: 512
@@ -933,6 +953,60 @@ linear:
       BLOCK_SIZE_K: 32
     num_stages: 5
     num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 64
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 64
+    num_stages: 6
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 64
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 128
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 256
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 64
+    num_stages: 4
+    num_warps: 4
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
@@ -2563,6 +2637,32 @@ fp8_paged_mqa_logits:
   - META: {BLOCK_KV: 128, BLOCK_D: 64, NUM_D_TILES: 1, BLOCK_H: 16}
     num_warps: 8
     num_stages: 2
+conv_tbc:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 32
+      - 64
+      - 128
+    block_n:
+      - 32
+      - 64
+      - 128
+    block_k:
+      - 16
+      - 32
+      - 64
+    warps:
+      - 4
+      - 8
+    stages:
+      - 2
 conv_transpose1d:
   - META:
       BLOCK_N_OW: 32
@@ -3450,3 +3550,56 @@ quantized_max_pool3d:
       BLOCK_W: 64
     num_warps: 8
     num_stages: 2
+
+max_pool1d_with_indices:
+  - META:
+      BLOCK_L: 128
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_L: 256
+    num_stages: 3
+    num_warps: 4
+  - META:
+      BLOCK_L: 512
+    num_stages: 3
+    num_warps: 8
+  - META:
+      BLOCK_L: 1024
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_L: 64
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_L: 32
+    num_stages: 5
+    num_warps: 2
+
+matrix_power_bmm:
+  - META:
+      TILE_M: 64
+      TILE_N: 64
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 128
+      TILE_N: 64
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 64
+      TILE_N: 128
+      TILE_K: 32
+    num_warps: 4
+  - META:
+      TILE_M: 128
+      TILE_N: 128
+      TILE_K: 32
+    num_warps: 8
+  - META:
+      TILE_M: 32
+      TILE_N: 32
+      TILE_K: 32
+    num_warps: 2

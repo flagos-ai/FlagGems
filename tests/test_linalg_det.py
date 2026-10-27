@@ -84,8 +84,10 @@ def _small_ops_det(A):
 def _ref_det(A):
     if A.device.type == "npu":
         return _small_ops_det(A)
+    # MKL's threaded LAPACK path hits a SLASWP parameter error and hangs on
+    # batched det in this environment; single-threaded MKL is correct and fast.
     prev = torch.get_num_threads()
-    torch.set_num_threads(min(prev, 64))
+    torch.set_num_threads(1)
     try:
         batch = math.prod(A.shape[:-2])
         if A.dim() > 2 and batch > 0 and A.shape[-1] > 0:
@@ -109,8 +111,7 @@ def test_linalg_det_random(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -125,8 +126,7 @@ def test_linalg_det_random_batch(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -143,8 +143,7 @@ def test_linalg_det_positive_definite(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -162,8 +161,7 @@ def test_linalg_det_negative_determinant(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -182,8 +180,7 @@ def test_linalg_det_diagonal(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -198,8 +195,7 @@ def test_linalg_det_singular(shape, dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -213,14 +209,12 @@ def test_linalg_det_empty(dtype):
         ref_A = utils.to_reference(A)
         ref_out = _ref_det(ref_A)
 
-        with flag_gems.use_gems():
-            res_out = torch.linalg.det(A)
+        res_out = flag_gems.linalg_det(A)
 
         utils.gems_assert_close(res_out, ref_out, dtype)
 
     A = torch.empty((0, 3, 3), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
     assert res_out.shape == (0,)
     assert res_out.dtype == dtype
 
@@ -236,20 +230,18 @@ def test_linalg_det_non_contiguous(dtype):
     ref_A = utils.to_reference(A)
     ref_out = _ref_det(ref_A)
 
-    with flag_gems.use_gems():
-        res_out = torch.linalg.det(A)
+    res_out = flag_gems.linalg_det(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
 
 @pytest.mark.linalg_det
 def test_linalg_det_errors():
-    with flag_gems.use_gems():
-        with pytest.raises((RuntimeError, ValueError)):
-            torch.linalg.det(torch.randn(3, 4, device=flag_gems.device))
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.linalg_det(torch.randn(3, 4, device=flag_gems.device))
 
-        with pytest.raises((RuntimeError, ValueError)):
-            torch.linalg.det(torch.randn(3, device=flag_gems.device))
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.linalg_det(torch.randn(3, device=flag_gems.device))
 
 
 @pytest.mark.linalg_det_out

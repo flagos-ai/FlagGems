@@ -21,10 +21,7 @@ def test_chunk_cat_1d(dtype):
             ref_out = torch.ops.aten._chunk_cat.default(
                 [ref_inp], dim=0, num_chunks=num_chunks
             )
-            with flag_gems.use_gems():
-                res_out = torch.ops.aten._chunk_cat.default(
-                    [inp], dim=0, num_chunks=num_chunks
-                )
+            res_out = flag_gems._chunk_cat([inp], dim=0, num_chunks=num_chunks)
 
             utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -44,10 +41,7 @@ def test_chunk_cat_2d_dim0(dtype):
             ref_out = torch.ops.aten._chunk_cat.default(
                 [ref_inp], dim=0, num_chunks=num_chunks
             )
-            with flag_gems.use_gems():
-                res_out = torch.ops.aten._chunk_cat.default(
-                    [inp], dim=0, num_chunks=num_chunks
-                )
+            res_out = flag_gems._chunk_cat([inp], dim=0, num_chunks=num_chunks)
 
             utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -67,10 +61,7 @@ def test_chunk_cat_2d_dim1(dtype):
             ref_out = torch.ops.aten._chunk_cat.default(
                 [ref_inp], dim=1, num_chunks=num_chunks
             )
-            with flag_gems.use_gems():
-                res_out = torch.ops.aten._chunk_cat.default(
-                    [inp], dim=1, num_chunks=num_chunks
-                )
+            res_out = flag_gems._chunk_cat([inp], dim=1, num_chunks=num_chunks)
 
             utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -90,9 +81,6 @@ def test_chunk_cat_multiple_tensors(dtype):
     ref_out = torch.ops.aten._chunk_cat.default(
         [ref_inp1, ref_inp2], dim=0, num_chunks=num_chunks
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._chunk_cat.default(
-            [inp1, inp2], dim=0, num_chunks=num_chunks
-        )
+    res_out = flag_gems._chunk_cat([inp1, inp2], dim=0, num_chunks=num_chunks)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

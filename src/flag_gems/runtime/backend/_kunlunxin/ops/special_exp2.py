@@ -18,7 +18,7 @@ from .exp2 import exp2
 
 # Keep the shared logger name so tests asserting on
 # caplog logger="flag_gems.ops.special_exp2" keep working.
-logger = logging.getLogger("flag_gems.ops.special_exp2")
+logger = logging.getLogger(__name__)
 
 
 def special_exp2(x):

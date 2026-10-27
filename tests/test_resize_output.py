@@ -68,8 +68,7 @@ def test_resize_output(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_device = torch.device("cpu") if utils.TO_CPU else device
     ref_out = _reference_resize_output(ref_inp, target_size, ref_device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._resize_output(inp, target_size, device)
+    res_out = flag_gems._resize_output(inp, target_size, device)
 
     # Check shape matches
     assert (

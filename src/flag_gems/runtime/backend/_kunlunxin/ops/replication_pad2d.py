@@ -201,9 +201,14 @@ def launch_replication_pad2d(input: torch.Tensor, padding, out: torch.Tensor = N
         raise ValueError(
             "Input height and width must be greater than 0 for replication padding"
         )
-    if H_out <= 0 or W_out <= 0:
+    # Only a *negative* output extent is an error: CPU ATen and the generic
+    # implementation both return a zero-element tensor when a crop padding
+    # exactly cancels a spatial dimension (e.g. (-4, 0, 0, 0) on W_in == 4 ->
+    # shape (..., 4, 0)), and the `total_out == 0` early-out below already
+    # handles that. Raising here rejected a legal input.
+    if H_out < 0 or W_out < 0:
         raise RuntimeError(
-            f"replication_pad2d: output spatial dimension is non-positive: "
+            f"replication_pad2d: output spatial dimension is negative: "
             f"output size {H_out}x{W_out}"
         )
 

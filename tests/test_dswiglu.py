@@ -60,10 +60,12 @@ def test_dswiglu(shape: tuple[int, ...], dtype: torch.dtype):
     grad_shape[-1] = grad_shape[-1] // 2
     grad_output = generate_input(tuple(grad_shape), dtype, device)
 
-    te_grad_input = TE_OP(grad_output, input_tensor, quantizer=None).to(device)
+    if flag_gems.vendor_name == "kunlunxin":
+        te_grad_input = TE_OP(grad_output, input_tensor).to(device)
+    else:
+        te_grad_input = TE_OP(grad_output, input_tensor, quantizer=None).to(device)
     te_grad_input = utils.to_reference(te_grad_input)
 
-    with flag_gems.use_gems():
-        fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
+    fg_grad_input = flag_gems.dswiglu(grad_output, input_tensor, quantizer=None)
 
     utils.gems_assert_close(fg_grad_input, te_grad_input, dtype)

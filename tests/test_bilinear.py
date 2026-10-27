@@ -48,8 +48,7 @@ def test_bilinear(batch_dims, in1, in2, out, with_bias, dtype):
     ref_bias = utils.to_reference(bias, True)
 
     ref_out = torch.nn.functional.bilinear(ref_input1, ref_input2, ref_weight, ref_bias)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.bilinear(input1, input2, weight, bias)
+    res_out = flag_gems.bilinear(input1, input2, weight, bias)
 
     # Output reduces over in1 * in2 elements.
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=in1 * in2)

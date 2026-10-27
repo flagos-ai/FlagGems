@@ -462,7 +462,7 @@ _tile_func = TileFunction()
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
-    logger.debug("GEMS TILE")
+    logger.debug("GEMS_TSINGMICRO TILE")
 
     out = _tile_func(inp, dims)
     return out

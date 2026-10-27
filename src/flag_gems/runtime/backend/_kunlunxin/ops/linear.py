@@ -169,8 +169,21 @@ def _fused_blocks(M, N, K):
     dtype-balanced 0.847).  A BM=256 tier was tried to help the M=256 large-N/
     large-K shapes but could not be certified -- its benchmark runs never
     completed cleanly (crashed on host/device env contention while cards were
-    re-taken mid-run), so the proven BM=128 config ships.  BK deepens with K so
-    the large-K skinny shapes accumulate in few, wide steps; BN widens with N.
+    re-taken mid-run), so the proven BM=128 config ships.
+
+    BK: a deep BK=256 is the right accumulation depth for *everything* except the
+    tiniest K.  The old ladder (64 for K<=1024, 128 for K<=2048, 256 above) was
+    far too shallow in the K in (512, 2048] band and left large speedups on the
+    table -- a shallow BK=64 forces many short K-loop iterations, each paying the
+    matrix-engine pipeline fill.  Measured on XPU (block sweep + BK-ladder guard,
+    harness/perf_ir/linear_{1024_blocksweep,bk_guard,bk_smallM_guard}.py): moving
+    K in (512, 2048] from 64/128 to 256 lifts the balanced 1024^3 fused shape
+    fp16 0.63->1.09, bf16 0.70->0.92, fp32 0.94->1.05, and the small-/skinny-M
+    K~1024 shapes uniformly (e.g. (1,4096,1024) fp16 0.48->0.84, (8,1024,1024)
+    0.94->1.46, (32,1024,640) 1.12->1.61) with only two minor fp32 regressions
+    that stay well above 1.0 ((16,2048,1024) 1.54->1.44, (128,512,1024) 1.44->
+    1.38).  K<=512 stays at BK=64 (deepening there regresses bf16/fp32 on the
+    K=512 shapes, e.g. (256,512,512) fp32 1.72->1.58).  BN widens with N.
     """
     if M <= 16:
         BM = 16
@@ -178,12 +191,7 @@ def _fused_blocks(M, N, K):
         BM = 64
     else:
         BM = 128
-    if K <= 1024:
-        BK = 64
-    elif K <= 2048:
-        BK = 128
-    else:
-        BK = 256
+    BK = 64 if K <= 512 else 256
     BN = 256 if N >= 1024 else 128
     return BM, BN, BK
 
@@ -209,6 +217,18 @@ def _fused_linear(input_flat, weight, bias):
     M, K = input_flat.shape
     N = weight.shape[0]
     BM, BN, BK = _fused_blocks(M, N, K)
+    # XPU miscompiles the fused bias epilogue for fp32 when the dot's rhs tile is
+    # (BK=256, BN=256): the bias broadcast add is dropped entirely (the output is
+    # bit-for-bit the pure matmul, regardless of the bias values).  Verified
+    # deterministically on device; fp16/bf16 at the same tile are exact, and
+    # fp32 without bias is exact.  Cap BK for that one combination only.
+    if (
+        input_flat.dtype == torch.float32
+        and bias is not None
+        and BN >= 256
+        and BK >= 256
+    ):
+        BK = 128
     nk_divisible = (N % BN == 0) and (K % BK == 0)
     b_arg = bias if bias is not None else input_flat
     has_bias = bias is not None
