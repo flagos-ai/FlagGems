@@ -339,3 +339,52 @@ def test_ascend_index_add_short_suffix(shape, dim, tokens, dtype, duplicate):
     )
     assert actual is inp
     utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend masked atomics")
+@pytest.mark.parametrize("tokens", [3, 10, 127, 128, 129, 512])
+@pytest.mark.parametrize(
+    "shape,dim", [((91840,), 0), ((91840, 128), 0), ((2, 257, 7), 1), ((2, 257, 17), 1)]
+)
+@pytest.mark.parametrize("dtype", [torch.int32, torch.float32])
+@pytest.mark.parametrize("inplace", [False, True])
+def test_ascend_index_add_atomic_tail(shape, dim, tokens, dtype, inplace):
+    base = (torch.arange(math.prod(shape)) % 8).reshape(shape)
+    src_shape = list(shape)
+    src_shape[dim] = tokens
+    source = (torch.arange(math.prod(src_shape)) % 7 - 3).reshape(src_shape)
+    if dtype.is_floating_point:
+        base, source = base / 8, source / 8
+    base, source = base.to(dtype), source.to(dtype)
+    initial_index = (torch.arange(tokens) + min(8192, shape[dim] // 2)) % shape[dim]
+    inp = base.to(flag_gems.device)
+    base_device = inp.clone()
+    src = source.to(inp.device)
+    index = initial_index.to(inp.device)
+
+    def invoke():
+        inp.copy_(base_device)
+        if inplace:
+            return flag_gems.index_add_(inp, dim, index, src, alpha=2)
+        return flag_gems.index_add(inp, dim, index, src, alpha=2)
+
+    actual = invoke()
+    torch.npu.synchronize()
+    utils.gems_assert_equal(
+        actual.cpu(), base.index_add(dim, initial_index, source, alpha=2)
+    )
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = invoke()
+    for cpu_index in (
+        (shape[dim] - 1 - torch.arange(tokens)) % shape[dim],
+        torch.zeros(tokens, dtype=torch.int64),
+    ):
+        index.copy_(cpu_index)
+        graph.replay()
+        torch.npu.synchronize()
+        expected = base.index_add(dim, cpu_index, source, alpha=2)
+        utils.gems_assert_equal(actual.cpu(), expected)
+        assert torch._C._is_alias_of(actual, inp) == inplace

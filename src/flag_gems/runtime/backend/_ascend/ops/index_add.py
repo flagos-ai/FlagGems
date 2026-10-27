@@ -79,6 +79,7 @@ def _index_add_contiguous_suffix_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     ROW_BLOCKS_PER_PROGRAM: tl.constexpr,
+    FULL_COLUMNS: tl.constexpr,
     ACCUMULATE_FP32: tl.constexpr,
 ):
     pid_row_group = tle.program_id(axis=0)
@@ -108,7 +109,13 @@ def _index_add_contiguous_suffix_kernel(
             valid = row_mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
             src_offsets = row * suffix_size + cols
-            out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+            # Keep the base scalar so complete columns retain vector stores.
+            # Masked atomics may still issue zero updates after Ascend lowering.
+            out_row = tl.where(valid, prefix_idx * out_dim + dst_dim_idx, 0)
+            safe_cols = cols
+            if not FULL_COLUMNS:
+                safe_cols = tl.minimum(cols, suffix_size - 1)
+            out_offsets = out_row * suffix_size + safe_cols
             values = tl.load(src + src_offsets, mask=row_mask & col_mask, other=0.0)
             if ACCUMULATE_FP32:
                 values = values.to(tl.float32)
@@ -127,7 +134,7 @@ def _index_add_contiguous_suffix_flat_kernel(
     index,
     src,
     total_count,
-    index_len,
+    index_len: tl.constexpr,
     out_dim,
     suffix_size,
     alpha,
@@ -137,7 +144,7 @@ def _index_add_contiguous_suffix_flat_kernel(
 ):
     pid_group = tle.program_id(axis=0)
 
-    # A 1D layout is safer for leading-dim and tiny-suffix updates.  Program 0
+    # A 1D layout handles tiny-suffix updates.  Program 0
     # is a no-op for the same reason as the row-tiled kernel above.
     active_group = pid_group > 0
     for block_offset in tl.static_range(0, BLOCKS_PER_PROGRAM):
@@ -145,15 +152,19 @@ def _index_add_contiguous_suffix_flat_kernel(
         offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = active_group & (offsets < total_count)
 
-        cols = offsets % suffix_size
-        rows = offsets // suffix_size
+        # A neutral atomic update still needs a valid address. Sanitize the
+        # logical coordinate before decoding rows and columns, including pid 0.
+        safe_offsets = tl.where(mask, offsets, 0)
+        cols = safe_offsets % suffix_size
+        rows = safe_offsets // suffix_size
         src_dim_idx = rows % index_len
         prefix_idx = rows // index_len
         dst_dim_idx = tl.load(index + src_dim_idx, mask=mask, other=0).to(tl.int64)
         valid = mask & (dst_dim_idx >= 0) & (dst_dim_idx < out_dim)
 
         src_offsets = rows * suffix_size + cols
-        out_offsets = (prefix_idx * out_dim + dst_dim_idx) * suffix_size + cols
+        safe_dst_dim_idx = tl.minimum(tl.maximum(dst_dim_idx, 0), out_dim - 1)
+        out_offsets = (prefix_idx * out_dim + safe_dst_dim_idx) * suffix_size + cols
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
         if ACCUMULATE_FP32:
             values = values.to(tl.float32)
@@ -258,7 +269,7 @@ def _can_use_contiguous_suffix_path(inp, dim, index, src):
 
 
 def _flat_contiguous_suffix_block_config(total_count):
-    block_size = 128
+    block_size = min(128, triton.next_power_of_2(total_count))
     blocks = triton.cdiv(total_count, block_size)
     blocks_per_program = 1
     if blocks > 65535:
@@ -299,7 +310,7 @@ def _run_contiguous_suffix_flat_path(out, dim, index, src, alpha):
 
 def _contiguous_suffix_block_config(row_count, suffix_size):
     block_m = 16
-    block_n = 64 if suffix_size <= 64 else 512
+    block_n = min(512, triton.next_power_of_2(suffix_size))
     if triton.cdiv(suffix_size, block_n) > 65535:
         return None
 
@@ -332,7 +343,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
                 enable_fp_fusion=False,
             )
         return True
-    if dim == 0 or suffix_size < 16:
+    if suffix_size < 16:
         return _run_contiguous_suffix_flat_path(out, dim, index, src, alpha)
 
     row_count = _volume(src.shape[:dim]) * index.numel()
@@ -359,6 +370,7 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
             BLOCK_M=block_m,
             BLOCK_N=block_n,
             ROW_BLOCKS_PER_PROGRAM=row_blocks_per_program,
+            FULL_COLUMNS=(suffix_size % block_n == 0),
             ACCUMULATE_FP32=(
                 out.dtype == torch.float32 and src.dtype == torch.bfloat16
             ),
