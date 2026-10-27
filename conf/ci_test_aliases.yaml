@@ -265,6 +265,7 @@ _linalg_eigh: test_linalg_eigh
 _linalg_eigvals: test_linalg_eigvals
 _flash_attention_forward: test_flash_attention
 
+convolution_backward_out: test_convolution_backward
 fused_adamw_: test_fused_adamw_
 fused_adamw__tensor_lr: test_fused_adamw_
 
