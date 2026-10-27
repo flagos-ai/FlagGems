@@ -1,4 +1,5 @@
 import logging
+import os
 
 import torch
 import triton
@@ -622,8 +623,102 @@ def _scan_mid_into(inp, out, M, N, K):
         )
 
 
+# ---- tle.raw payload: one core per row, LM chunk scan + int64 carry --------
+# The Triton int path pays an int32 scan plus an int32->int64 widening store
+# (~668GB/s), and reads the input twice (group sum + group add). The payload
+# keeps one int64 carry per row, scans chunks in LM, and writes int64 directly.
+_CS_PAYLOAD_MIN = 65_536
+_CS_PAYLOAD_GRID = 12
+_CS_PAYLOAD = {"init": False, "ok": False, "kern": {}}
+_CS_META_CACHE = {}
+
+
+def _cs_payload_init():
+    if _CS_PAYLOAD["init"]:
+        return _CS_PAYLOAD["ok"]
+    _CS_PAYLOAD["init"] = True
+    try:
+        import triton as _triton
+        import triton.experimental.tle as _tle
+
+        obj = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "payload",
+            "obj",
+            "cumsum_scan.o",
+        )
+        for sym in ("cumsum_row_16", "cumsum_row_32"):
+            ns = {"_tle": _tle, "_OBJ": obj}
+            exec(
+                "@_tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
+                f"def {sym}(meta, inp, out):\n"
+                "    ...\n",
+                ns,
+            )
+            callee = ns[sym]
+
+            def _mk(callee=callee):
+                @_triton.jit
+                def _k(M_, I, O):
+                    _tle.raw.call(callee, (M_, I, O))
+
+                return _k
+
+            _CS_PAYLOAD["kern"][sym] = _mk()
+        _CS_PAYLOAD["ok"] = True
+    except Exception as _e:  # pragma: no cover - keep backend importable
+        logger.debug("GEMS_KUNLUNXIN CUMSUM payload init failed: %r", _e)
+        _CS_PAYLOAD["ok"] = False
+    return _CS_PAYLOAD["ok"]
+
+
+def _cs_payload_launch(inp, out, m, n):
+    if not _cs_payload_init():
+        return False
+    key = (m, n, inp.device.index)
+    meta = _CS_META_CACHE.get(key)
+    if meta is None:
+        meta = torch.tensor([m, n], dtype=torch.int32, device=inp.device)
+        if len(_CS_META_CACHE) >= 64:
+            _CS_META_CACHE.clear()
+        _CS_META_CACHE[key] = meta
+    kern = _CS_PAYLOAD["kern"][
+        "cumsum_row_16" if inp.dtype == torch.int16 else "cumsum_row_32"
+    ]
+    with torch_device_fn.device(inp.device):
+        kern[(_CS_PAYLOAD_GRID,)](meta, inp.view(-1), out.view(-1))
+    return True
+
+
+def _cs_native_impl(inp, dim, dtype=None):
+    """Call the vendor-native aten::cumsum captured before the FlagGems
+    override, or return None when no such override is active.
+
+    The native xdnn/Triton kernel is still the fastest choice for float
+    dtypes on P800 (the Triton scan is ~1.5x slower on large rows), so the
+    FlagGems registration only replaces the integer path; floats are handed
+    back to the kernel that was registered before ``use_gems``.
+    """
+    import sys
+
+    fg = sys.modules.get("flag_gems")
+    reg = getattr(fg, "current_work_registrar", None) if fg is not None else None
+    kern = getattr(reg, "torch_ops_map", {}).get("aten::cumsum") if reg else None
+    if kern is None:
+        return None
+    try:
+        keyset = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+        return kern.call_boxed(keyset, inp, dim, dtype=dtype)
+    except Exception:  # pragma: no cover - fall back to the Triton path
+        return None
+
+
 def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if out is None and inp.dtype not in (torch.int16, torch.int32):
+        native = _cs_native_impl(inp, dim % inp.ndim, dtype)
+        if native is not None:
+            return native
     shape = inp.shape
     dim = dim % inp.ndim
     M = 1
@@ -639,6 +734,20 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
             dtype = torch.int64
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
+
+    if (
+        K == 1
+        and inp.dtype in (torch.int16, torch.int32)
+        and out.dtype == torch.int64
+        and inp.is_contiguous()
+        and out.is_contiguous()
+        and inp.numel() >= _CS_PAYLOAD_MIN
+    ):
+        try:
+            if _cs_payload_launch(inp, out, M, N):
+                return out
+        except Exception as exc:  # pragma: no cover - fall back on failure
+            logger.debug("cumsum payload failed: %s", exc)
 
     if K == 1:
         with torch_device_fn.device(inp.device):

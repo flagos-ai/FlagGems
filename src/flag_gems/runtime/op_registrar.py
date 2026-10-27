@@ -17,6 +17,16 @@ import warnings
 from . import backend, common, error
 from .backend.device_finder import DeviceDetector
 
+# Ops whose vendor-native kernel (registered by the torch build itself, e.g.
+# torch_xmlir) must be replaced by the FlagGems implementation. A plain
+# ``Library.impl`` cannot replace an existing registration, so these keys opt
+# into ``allow_override=True`` on the matching vendor. Keep the set explicit:
+# overriding a native kernel changes the operator for every user of
+# ``use_gems`` and has to be validated per operator.
+_ALLOW_OVERRIDE_OPS = {
+    common.vendors.KUNLUNXIN: frozenset({"cumsum"}),
+}
+
 
 class GeneralOpRegistrar:
     def __init__(
@@ -38,10 +48,14 @@ class GeneralOpRegistrar:
         self.reg_key = self.device.dispatch_key
         self.all_ops = []
         self.all_keys = []
+        # Kernels captured before an ``allow_override`` replacement, keyed by
+        # "aten::<op>". A vendor override can hand selected dtypes back to the
+        # original kernel (see cumsum on kunlunxin).
+        self.torch_ops_map = {}
         if self.device.vendor == common.vendors.CAMBRICON:
             # TODO: Cambricon specific, to avoid op deadlock question in libtuner.
             # Should remove this in the future.
-            self.torch_ops_map = {}
+            pass
 
         # optional mapping func_name -> list of config entries
         self.full_config_by_func = full_config_by_func
@@ -240,6 +254,20 @@ class GeneralOpRegistrar:
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
         if self.device.vendor == common.vendors.CAMBRICON:
+            import torch
+
+            try:
+                self.torch_ops_map["aten::" + key] = torch.library.get_kernel(
+                    "aten::" + key, device_key
+                )
+            except Exception:
+                pass
+            try:
+                self.lib.impl(key, device_fn, device_key, allow_override=True)
+            except TypeError:
+                # Older torch versions don't support allow_override
+                self.lib.impl(key, device_fn, device_key)
+        elif key in _ALLOW_OVERRIDE_OPS.get(self.device.vendor, ()):
             import torch
 
             try:
