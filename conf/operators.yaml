@@ -3450,6 +3450,18 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: combinations
+  description: Returns a tensor of all combinations of r elements from the input
+    1-D tensor.
+  for:
+  - combinations
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: combine_topk_swa_indices
   description: 'Combines compressed top-k sparse attention indices with sliding-window
     attention indices

@@ -882,6 +882,7 @@ _FULL_CONFIG = (
     ("col_indices_copy.out", col_indices_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("column_stack", column_stack),
     ("column_stack.out", column_stack_out),
+    ("combinations", combinations),
     ("concat", concat),
     ("concatenate", concatenate),
     ("conj", conj),
