@@ -238,7 +238,9 @@ def test_flash_attention_backward(
         # ROCm's native (AOTriton) sliding-window flash attention is wrong
         # (e.g. window_size_right=0 is treated as unbounded), so it cannot
         # serve as the reference here.
-        pytest.skip("ROCm native sliding-window flash attention is not a valid reference")
+        pytest.skip(
+            "ROCm native sliding-window flash attention is not a valid reference"
+        )
     scale = float(1.0 / math.sqrt(head_size))
 
     Q, K, V = make_qkv(
