@@ -425,3 +425,103 @@ def test_ascend_index_scalar_plain_tile():
     ]
     expected = x.cpu()[indices[0].cpu(), indices[1].cpu()]
     assert torch.equal(flag_gems.index(x, indices).cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index payloads")
+@pytest.mark.parametrize("count", [65535, 65536, 81920])
+@pytest.mark.parametrize("width", [1, 128])
+@pytest.mark.parametrize("dtype", [torch.int8, torch.bfloat16])
+@pytest.mark.parametrize("strided_negative", [False, True])
+def test_ascend_index_large_payload_graph(count, width, dtype, strided_negative):
+    storage_width = width * 2 if strided_negative else width
+    storage_cpu = (
+        (torch.arange(65 * 32 * storage_width) % 255 - 127)
+        .reshape(65, 32, storage_width)
+        .to(dtype)
+    )
+    storage = storage_cpu.to(flag_gems.device)
+    inp_cpu = storage_cpu[..., ::2] if strided_negative else storage_cpu
+    inp = storage[..., ::2] if strided_negative else storage
+    linear = torch.arange(count)
+    pages_cpu = ((linear % 8192) // 32 + 1).clamp(max=65) % 65
+    offsets_cpu = linear % 32
+    if strided_negative:
+        pages_cpu = pages_cpu - 65
+        offsets_cpu = offsets_cpu - 32
+
+    def device_index(values):
+        if strided_negative:
+            holder = torch.full((2 * count,), -999, dtype=torch.int64)
+            holder[1::2] = values
+            result = holder.to(inp.device)[1::2]
+        else:
+            result = values.to(inp.device)
+        return result.reshape(10, 8192) if count == 81920 else result
+
+    pages, offsets = device_index(pages_cpu), device_index(offsets_cpu)
+    shape = tuple(pages.shape)
+    expected = inp_cpu[pages_cpu.reshape(shape), offsets_cpu.reshape(shape)]
+    actual = flag_gems.index(inp, [pages, offsets])
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), expected)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [pages, offsets])
+    new_pages_cpu = (pages_cpu + 1) % 65
+    pages.copy_(new_pages_cpu.reshape(shape))
+    graph.replay()
+    torch.npu.synchronize()
+    expected = inp_cpu[new_pages_cpu.reshape(shape), offsets_cpu.reshape(shape)]
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index addressing")
+@pytest.mark.parametrize(
+    "count,width,row_stride,scalar_expected",
+    [
+        (65535, 1, 1, True),
+        (65536, 1, 1, False),
+        (81920, 128, 128, True),
+        (2**24 - 1, 128, 128, True),
+        (2**24, 128, 128, False),
+        (81920, 128, 2**31 - 128, True),
+        (81920, 128, 2**31 - 127, False),
+    ],
+)
+def test_ascend_index_scalar_offset_bounds(count, width, row_stride, scalar_expected):
+    from flag_gems.runtime.backend._ascend.ops.index import _gather_function
+
+    # Exercise the generated address-width choice without allocating multi-GB
+    # inputs or outputs. A rejected scalar path retains int64 vector offsets.
+    _, index_tiles = _gather_function(
+        (2, width),
+        (row_stride, 1),
+        (0,),
+        ((1,),),
+        (count,),
+        (count, width),
+        ((1, 1),),
+        (0,),
+    )
+    assert (index_tiles is not None) == scalar_expected
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index payloads")
+def test_ascend_index_large_nonleading_payload():
+    inp_cpu = torch.arange(2 * 7 * 128).reshape(2, 7, 128).to(torch.bfloat16)
+    index_cpu = torch.arange(65536) % 7
+    inp = inp_cpu.to(flag_gems.device)
+    index = index_cpu.to(inp.device)
+    expected = inp_cpu[:, index_cpu, :]
+    actual = flag_gems.index(inp, [None, index, None])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [None, index, None])
+    index.copy_(-1 - index_cpu)
+    graph.replay()
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), inp_cpu[:, -1 - index_cpu, :])
