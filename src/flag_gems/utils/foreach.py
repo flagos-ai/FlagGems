@@ -1833,6 +1833,17 @@ def _check_same_length(a: Sequence[torch.Tensor], b: Sequence[Any], what: str) -
         )
 
 
+def _result_dtype(t: torch.Tensor, other: Any) -> torch.dtype:
+    """ATen's type promotion for one tensor against a tensor or a number.
+
+    Delegating to ``torch.result_type`` rather than reimplementing the lattice
+    is deliberate: it is the same routine ATen consults, so an int64 list plus a
+    float scalar promotes to float32 here exactly as ``torch._foreach_add``
+    does.
+    """
+    return torch.result_type(t, other)
+
+
 # Promotion is a pure function of the operand dtypes (plus whether an operand is
 # zero-dimensional, which ATen treats as a weak scalar), so the answer is
 # memoised: a 16-tensor list asks the same question 16 times.
