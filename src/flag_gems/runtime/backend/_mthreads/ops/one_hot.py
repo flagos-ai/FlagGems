@@ -661,8 +661,12 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         return out
 
     # Device fast path: fused validate+fill launch and a standard blocking
-    # verdict readback.  reshape(-1) folds the contiguous() + view(-1) pair
-    # into one call (identical semantics: a view when already contiguous,
-    # a copy otherwise).
+    # verdict readback.  reshape(-1) returns a view for contiguous inputs
+    # but a strided slice (e.g. t[:, ::2]) also flattens to a *strided
+    # view* -- the kernels below index the flat buffer linearly, so the
+    # logical order must be materialized in that case (reshape only copies
+    # when no affine 1-D view exists, e.g. for transposed inputs).
     flat_input = tensor.reshape(-1)
+    if not flat_input.is_contiguous():
+        flat_input = flat_input.contiguous()
     return _one_hot_fast(tensor, flat_input, flat_input.numel(), num_classes)
