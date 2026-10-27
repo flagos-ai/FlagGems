@@ -154,8 +154,14 @@ def _gather_function(
     span = sum((extent - 1) * stride for extent, stride in zip(shape, strides))
     # A program owns a broadcast index and one small plain-data tile. Index
     # loads and int64 normalization are scalar, amortized across that tile.
+    # Wide payloads also benefit beyond 65535 indices; narrow payloads retain
+    # their existing traversal. Both source and output offsets are narrowed below.
     scalar_indices = (
-        1 < broadcast_numel <= 65535 and plain_numel <= 1024 and span < 2**31
+        1 < broadcast_numel
+        and plain_numel <= 1024
+        and (broadcast_numel <= 65535 or plain_numel >= 128)
+        and span < 2**31
+        and broadcast_numel * plain_numel < 2**31
     )
     if scalar_indices:
         out_strides = [1] * len(output_shape)
