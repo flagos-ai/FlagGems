@@ -55,6 +55,22 @@ def _input_fn(shape, dtype, device):
         yield inp, dim, start, end, step
 
 
+def _case_fn(shape, dtype):
+    for dim in _BENCH_DIMS:
+        start, end, step = _slice_params(shape, dim)
+        yield base.BenchmarkCasePlan(
+            shape={"input": list(shape)},
+            params={"dim": dim, "start": start, "end": end, "step": step},
+            builder_args=(shape, dim),
+        )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, dim = plan.builder_args
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    return inp, dim, *_slice_params(shape, dim)
+
+
 def _slice_numel(inp, dim, start, end, step):
     slice_len = max(0, (end - start + step - 1) // step)
     numel = slice_len
@@ -80,7 +96,8 @@ def test_slice_copy():
     bench = SliceCopyBenchmark(
         op_name="slice_copy",
         torch_op=torch.slice_copy,
-        input_fn=_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
     )
