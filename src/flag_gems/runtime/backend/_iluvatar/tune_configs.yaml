@@ -1631,3 +1631,733 @@ gru:
       BLOCK_K: 64
     num_warps: 8
     num_stages: 2
+
+# BI-V150 candidate configurations imported with the operator implementations.
+iluvatar_ctc_loss_candidate_0:
+- META: {}
+  num_warps: 8
+- META: {}
+  num_warps: 4
+- META: {}
+  num_warps: 2
+- META: {}
+  num_warps: 1
+iluvatar_avg_pool1d_candidate_0:
+- META:
+    BLOCK: 256
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 256
+  num_warps: 8
+- META:
+    BLOCK: 512
+  num_warps: 8
+- META:
+    BLOCK: 1024
+  num_warps: 8
+- META:
+    BLOCK: 2048
+  num_warps: 4
+- META:
+    BLOCK: 4096
+  num_warps: 8
+iluvatar_conv_tbc_candidate_0:
+- META:
+    BLOCK_M: 16
+    BLOCK_CO: 32
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 2
+  num_stages: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_CO: 32
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_CO: 64
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK_M: 64
+    BLOCK_CO: 64
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 64
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 128
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 128
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 256
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 256
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 64
+    BLOCK_CO: 256
+    BLOCK_CIN: 32
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 64
+    BLOCK_CO: 256
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 8
+  num_stages: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_CO: 128
+    BLOCK_CIN: 64
+    UNROLL: true
+  num_warps: 4
+  num_stages: 1
+- META:
+    BLOCK_M: 32
+    BLOCK_CO: 32
+    BLOCK_CIN: 32
+    UNROLL: false
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_CO: 64
+    BLOCK_CIN: 32
+    UNROLL: false
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_CO: 128
+    BLOCK_CIN: 64
+    UNROLL: false
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_CO: 128
+    BLOCK_CIN: 64
+    UNROLL: false
+  num_warps: 8
+  num_stages: 2
+iluvatar_conv_transpose3d_candidate_0:
+- META:
+    BLOCK_M: 16
+  num_warps: 2
+  num_stages: 2
+- META:
+    BLOCK_M: 16
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+  num_warps: 4
+  num_stages: 2
+iluvatar_conv_transpose3d_candidate_1:
+- META:
+    BLOCK_QH: 1
+  num_warps: 2
+  num_stages: 2
+- META:
+    BLOCK_QH: 2
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_QH: 4
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_QH: 8
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_QH: 4
+  num_warps: 8
+  num_stages: 2
+iluvatar_convolution_double_backward_candidate_0:
+- META:
+    BM: 64
+    BN: 64
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 64
+    BN: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BM: 64
+    BN: 64
+  num_warps: 4
+  num_stages: 2
+- META:
+    BM: 32
+    BN: 64
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 64
+    BN: 32
+  num_warps: 4
+  num_stages: 3
+- META:
+    BM: 32
+    BN: 32
+  num_warps: 4
+  num_stages: 3
+iluvatar_einsum_candidate_0:
+- META: {}
+  num_warps: 4
+  num_stages: 2
+- META: {}
+  num_warps: 4
+  num_stages: 3
+- META: {}
+  num_warps: 4
+  num_stages: 4
+- META: {}
+  num_warps: 8
+  num_stages: 3
+iluvatar_float_power_tensor_scalar_candidate_0:
+- META:
+    BLOCK: 256
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 8
+- META:
+    BLOCK: 2048
+  num_warps: 4
+- META:
+    BLOCK: 2048
+  num_warps: 8
+- META:
+    BLOCK: 4096
+  num_warps: 8
+- META:
+    BLOCK: 8192
+  num_warps: 8
+iluvatar_float_power_tensor_tensor_candidate_0:
+- META:
+    BLOCK: 32
+  num_warps: 1
+- META:
+    BLOCK: 64
+  num_warps: 1
+- META:
+    BLOCK: 128
+  num_warps: 1
+- META:
+    BLOCK: 256
+  num_warps: 1
+- META:
+    BLOCK: 256
+  num_warps: 2
+- META:
+    BLOCK: 512
+  num_warps: 1
+- META:
+    BLOCK: 512
+  num_warps: 2
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 2048
+  num_warps: 4
+- META:
+    BLOCK: 2048
+  num_warps: 8
+iluvatar_igamma__candidate_0:
+- META:
+    BLOCK: 64
+  num_warps: 1
+- META:
+    BLOCK: 128
+  num_warps: 1
+- META:
+    BLOCK: 128
+  num_warps: 2
+- META:
+    BLOCK: 128
+  num_warps: 4
+- META:
+    BLOCK: 256
+  num_warps: 2
+- META:
+    BLOCK: 256
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 8
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 8
+- META:
+    BLOCK: 1024
+  num_warps: 16
+- META:
+    BLOCK: 2048
+  num_warps: 8
+iluvatar_index_reduce_out_candidate_0:
+- META:
+    BC: 128
+  num_warps: 1
+- META:
+    BC: 128
+  num_warps: 2
+- META:
+    BC: 256
+  num_warps: 1
+- META:
+    BC: 256
+  num_warps: 2
+- META:
+    BC: 256
+  num_warps: 4
+- META:
+    BC: 512
+  num_warps: 2
+- META:
+    BC: 512
+  num_warps: 4
+iluvatar_index_reduce_out_candidate_1:
+- META:
+    BT: 256
+    CI: 1
+  num_warps: 1
+- META:
+    BT: 256
+    CI: 1
+  num_warps: 2
+- META:
+    BT: 256
+    CI: 2
+  num_warps: 2
+- META:
+    BT: 256
+    CI: 4
+  num_warps: 2
+- META:
+    BT: 512
+    CI: 1
+  num_warps: 2
+- META:
+    BT: 512
+    CI: 2
+  num_warps: 4
+- META:
+    BT: 512
+    CI: 4
+  num_warps: 4
+- META:
+    BT: 128
+    CI: 4
+  num_warps: 2
+- META:
+    BT: 128
+    CI: 4
+  num_warps: 1
+- META:
+    BT: 256
+    CI: 2
+  num_warps: 1
+- META:
+    BT: 256
+    CI: 4
+  num_warps: 1
+- META:
+    BT: 512
+    CI: 1
+  num_warps: 1
+- META:
+    BT: 512
+    CI: 2
+  num_warps: 1
+- META:
+    BT: 512
+    CI: 4
+  num_warps: 2
+iluvatar_matmuladd_candidate_0:
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 16
+  num_stages: 3
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_warps: 16
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 256
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 64
+    BLOCK_K: 64
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 64
+  num_warps: 4
+  num_stages: 4
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 64
+    BLOCK_K: 64
+  num_warps: 4
+  num_stages: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 64
+  num_warps: 4
+  num_stages: 3
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 4
+- META:
+    BLOCK_M: 32
+    BLOCK_N: 32
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 128
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 4
+- META:
+    BLOCK_M: 64
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 64
+    BLOCK_K: 32
+  num_warps: 4
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 32
+  num_warps: 8
+  num_stages: 3
+iluvatar_matmuladd_candidate_1:
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 2
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 256
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 3
+- META:
+    BLOCK_M: 256
+    BLOCK_N: 128
+    BLOCK_K: 16
+  num_warps: 8
+  num_stages: 3
+iluvatar_not_equal_candidate_0:
+- META:
+    BLOCK: 512
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 2048
+  num_warps: 4
+- META:
+    BLOCK: 4096
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 8
+- META:
+    BLOCK: 2048
+  num_warps: 8
+- META:
+    BLOCK: 4096
+  num_warps: 8
+- META:
+    BLOCK: 8192
+  num_warps: 8
+- META:
+    BLOCK: 2048
+  num_warps: 16
+- META:
+    BLOCK: 4096
+  num_warps: 16
+- META:
+    BLOCK: 16384
+  num_warps: 8
+- META:
+    BLOCK: 256
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 8
+- META:
+    BLOCK: 1024
+  num_warps: 16
+iluvatar_quantized_max_pool1d_out_candidate_0:
+- META:
+    BLOCK: 32
+  num_warps: 1
+- META:
+    BLOCK: 64
+  num_warps: 1
+- META:
+    BLOCK: 128
+  num_warps: 2
+- META:
+    BLOCK: 128
+  num_warps: 4
+- META:
+    BLOCK: 256
+  num_warps: 1
+- META:
+    BLOCK: 256
+  num_warps: 2
+- META:
+    BLOCK: 256
+  num_warps: 4
+- META:
+    BLOCK: 512
+  num_warps: 1
+- META:
+    BLOCK: 512
+  num_warps: 4
+- META:
+    BLOCK: 1024
+  num_warps: 1
+- META:
+    BLOCK: 1024
+  num_warps: 2
+- META:
+    BLOCK: 1024
+  num_warps: 4
+- META:
+    BLOCK: 2048
+  num_warps: 1
+- META:
+    BLOCK: 2048
+  num_warps: 2
+- META:
+    BLOCK: 2048
+  num_warps: 8
+- META:
+    BLOCK: 4096
+  num_warps: 2
+- META:
+    BLOCK: 4096
+  num_warps: 8
+iluvatar_triplet_margin_loss_candidate_0:
+- META:
+    BLOCK_C: 1024
+  num_warps: 4
+- META:
+    BLOCK_C: 2048
+  num_warps: 4
+- META:
+    BLOCK_C: 2048
+  num_warps: 8
+- META:
+    BLOCK_C: 4096
+  num_warps: 8
+iluvatar_triplet_margin_loss_candidate_1:
+- META:
+    BLOCK_C: 4
+  num_warps: 4
+- META:
+    BLOCK_C: 4
+  num_warps: 2
+- META:
+    BLOCK_C: 8
+  num_warps: 4
+- META:
+    BLOCK_C: 8
+  num_warps: 2
+- META:
+    BLOCK_C: 16
+  num_warps: 4
+iluvatar_xlogy_tensor_scalar_candidate_0:
+- META:
+    BLOCK: 1024
+  num_warps: 8
+- META:
+    BLOCK: 1024
+  num_warps: 16
+- META:
+    BLOCK: 2048
+  num_warps: 4
+- META:
+    BLOCK: 4096
+  num_warps: 4
+- META:
+    BLOCK: 4096
+  num_warps: 32
+- META:
+    BLOCK: 8192
+  num_warps: 32

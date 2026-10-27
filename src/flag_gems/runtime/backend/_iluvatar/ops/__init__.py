@@ -15,6 +15,7 @@
 import importlib
 
 from ..utils.pointwise_dynamic import ModuleGenerator
+from ._ctc_loss import _ctc_loss
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .acos_ import acos_
@@ -26,29 +27,47 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
-from .avg_pool3d import avg_pool3d_backward
+from .avg_pool1d import avg_pool1d
+from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
+from .batch_norm_with_update_functional import _batch_norm_with_update_functional
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .column_stack_out import column_stack_out
+from .compute_linear_combination import _compute_linear_combination
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc
+from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d
+from .conv_transpose3d import conv_transpose3d
+from .convolution_double_backward import _convolution_double_backward
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
+from .einsum import einsum
+from .expand_copy import expand_copy
+from .float_power_scalar_tensor import float_power_scalar_tensor
+from .float_power_tensor_scalar import float_power_tensor_scalar
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
+from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
+from .igamma import igamma
 from .igamma_ import igamma_
 from .index_copy_ import index_copy_
-from .index_reduce import index_reduce, index_reduce_, index_reduce_out
+from .index_reduce import index_reduce, index_reduce_
+from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_householder_product import run as linalg_householder_product
@@ -63,12 +82,14 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from .linalg_svdvals import linalg_svdvals
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .log10_ import log10_
 from .log_normal import log_normal
 from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .median import median
 from .mm import mm, mm_out
@@ -76,14 +97,18 @@ from .mvlgamma import run as mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
+from .quantized_lstm import quantized_lstm
+from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
 from .resolve_neg import resolve_neg
 from .scatter_add import scatter_add_
+from .smm import smm
 from .softplus import softplus_backward
 from .sort import sort, sort_stable
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
@@ -112,8 +137,11 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .triplet_margin_loss import triplet_margin_loss
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
+from .xlogy_tensor_scalar import xlogy_tensor_scalar
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
@@ -121,8 +149,12 @@ _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cholesky_solve_helper",
+    "_compute_linear_combination",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
+    "_ctc_loss",
     "_dyn_quant_matmul_4bit",
     "_native_batch_norm_legit_functional",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -135,24 +167,37 @@ __all__ = [
     "arccos_",
     "arccosh_",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "cholesky_solve",
     "cholesky_solve_out",
+    "column_stack_out",
     "concatenate",
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
+    "conv_tbc_backward",
     "conv_transpose1d",
+    "conv_transpose3d",
     "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "einsum",
+    "expand_copy",
+    "float_power_scalar_tensor",
+    "float_power_tensor_scalar",
+    "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
+    "greater_",
+    "grid_sampler_3d",
     "gru",
     "gru_data",
     "hadamard_transform",
     "histc",
+    "igamma",
     "igamma_",
     "index_copy_",
     "index_reduce",
@@ -161,6 +206,7 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
+    "lift_fresh",
     "lift_out",
     "linalg_cholesky",
     "linalg_householder_product",
@@ -175,12 +221,14 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linalg_tensorinv",
     "linear",
     "log10_",
     "log_normal",
     "log_normal_",
     "matmul_bf16",
     "matmul_int8",
+    "max_pool2d_with_indices_backward",
     "max_pool3d_with_indices_backward",
     "median",
     "mm",
@@ -192,8 +240,11 @@ __all__ = [
     "nanmedian_out",
     "narrow_copy",
     "nonzero_numpy",
+    "not_equal",
     "pad_sequence",
     "permute_copy",
+    "quantized_lstm",
+    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
@@ -201,6 +252,7 @@ __all__ = [
     "resolve_neg",
     "run",
     "scatter_add_",
+    "smm",
     "softplus_backward",
     "sort",
     "sort_stable",
@@ -225,7 +277,10 @@ __all__ = [
     "tile",
     "triangular_solve",
     "triangular_solve_out",
+    "triplet_margin_loss",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",
+    "xlogy_tensor_scalar",
 ]
