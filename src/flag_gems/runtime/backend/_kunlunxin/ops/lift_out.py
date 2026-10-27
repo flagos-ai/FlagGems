@@ -21,7 +21,7 @@ from flag_gems.ops.as_strided_copy import _launch_as_strided_copy
 from ..utils.tle_copy import tle_copy
 from .expand_copy import _launch_bcast
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # The flat gather kernel behind `_launch_bcast` addresses 6 dimensions; a
 # deeper layout takes the rank-general strided copy instead.

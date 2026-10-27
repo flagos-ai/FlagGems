@@ -48,7 +48,6 @@ def test_ormqr(M, N, dtype, left, transpose):
     ref_other = utils.to_reference(other, True)
 
     ref_out = torch.ormqr(ref_input, ref_tau, ref_other, left=left, transpose=transpose)
-    with flag_gems.use_gems():
-        res_out = torch.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
+    res_out = flag_gems.ormqr(input_tensor, tau, other, left=left, transpose=transpose)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

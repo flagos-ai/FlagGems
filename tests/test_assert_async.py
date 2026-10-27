@@ -33,15 +33,13 @@ def test_assert_async(shape, value, expected_err, match_str):
     inp_pt = torch.full(shape, value, device=flag_gems.device)
     inp_triton = inp_pt.clone()
     if expected_err:
-        with flag_gems.use_gems():
-            with pytest.raises(expected_err, match=match_str):
-                flag_gems._assert_async(inp_triton, msg)
-                if value == 0:
-                    torch_device_fn.synchronize()
-    else:
-        with flag_gems.use_gems():
+        with pytest.raises(expected_err, match=match_str):
             flag_gems._assert_async(inp_triton, msg)
-            torch_device_fn.synchronize()
+            if value == 0:
+                torch_device_fn.synchronize()
+    else:
+        flag_gems._assert_async(inp_triton, msg)
+        torch_device_fn.synchronize()
 
     if flag_gems.device == "cuda":
         if expected_err:

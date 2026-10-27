@@ -20,11 +20,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
-
-pytestmark = pytest.mark.skipif(
-    cfg.TO_CPU, reason="CUDA-only op; no CPU reference implementation"
-)
 
 # The aten op is registered under the name `_native_multi_head_attention`, which
 # starts with an underscore.  pytest >= 8.0 rejects marker names that start with
@@ -81,17 +76,24 @@ def _run(
     mask_type=None,
 ):
     ref_query = utils.to_reference(query)
+    ref_key = utils.to_reference(key)
+    ref_value = utils.to_reference(value)
+    ref_qkv_weight = utils.to_reference(qkv_weight)
+    ref_qkv_bias = utils.to_reference(qkv_bias)
+    ref_proj_weight = utils.to_reference(proj_weight)
+    ref_proj_bias = utils.to_reference(proj_bias)
+    ref_mask = utils.to_reference(mask)
     ref = torch.ops.aten._native_multi_head_attention(
         ref_query,
-        key,
-        value,
+        ref_key,
+        ref_value,
         D,
         NH,
-        qkv_weight,
-        qkv_bias,
-        proj_weight,
-        proj_bias,
-        mask,
+        ref_qkv_weight,
+        ref_qkv_bias,
+        ref_proj_weight,
+        ref_proj_bias,
+        ref_mask,
         need_weights,
         average_attn_weights,
         mask_type,

@@ -15,8 +15,7 @@ def test_view_as_complex_accuracy(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.view_as_complex(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.view_as_complex(inp)
+    res_out = flag_gems.view_as_complex(inp)
     # Pass output dtype for complex tensors, not input dtype
     output_dtype = res_out.dtype
     gems_assert_close(res_out, ref_out, output_dtype)
@@ -30,8 +29,7 @@ def test_view_as_complex_2d_accuracy(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.view_as_complex(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.view_as_complex(inp)
+    res_out = flag_gems.view_as_complex(inp)
     output_dtype = res_out.dtype
     gems_assert_close(res_out, ref_out, output_dtype)
 
@@ -44,7 +42,6 @@ def test_view_as_complex_3d_accuracy(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.view_as_complex(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.view_as_complex(inp)
+    res_out = flag_gems.view_as_complex(inp)
     output_dtype = res_out.dtype
     gems_assert_close(res_out, ref_out, output_dtype)

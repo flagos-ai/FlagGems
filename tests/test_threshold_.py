@@ -30,8 +30,7 @@ def test_threshold_(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.threshold_(ref_inp, threshold_val, value_val)
-    with flag_gems.use_gems():
-        res_out = torch.threshold_(inp, threshold_val, value_val)
+    res_out = flag_gems.threshold_(inp, threshold_val, value_val)
 
     # Compare return values
     utils.gems_assert_close(res_out, ref_out, dtype)

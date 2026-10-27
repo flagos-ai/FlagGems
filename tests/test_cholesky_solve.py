@@ -10,7 +10,7 @@ from . import accuracy_utils as utils
 VENDOR_NAME = getattr(flag_gems, "vendor_name", "")
 IS_ASCEND = VENDOR_NAME == "ascend"
 IS_ILUVATAR = VENDOR_NAME == "iluvatar"
-IS_THEAD = VENDOR_NAME == "thead"
+IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
 
@@ -96,7 +96,12 @@ CHOLESKY_SOLVE_COMPLEX_BLOCKED_SHAPES = [
 
 
 def _use_cpu_complex_path(dtype):
-    return IS_THEAD and dtype in (torch.complex64, torch.complex128)
+    # MUSA and T-Head cannot reliably build Hermitian complex inputs with the
+    # vendor torch stack, so assemble them on CPU and move them to the device.
+    return VENDOR_NAME in ("thead", "mthreads") and dtype in (
+        torch.complex64,
+        torch.complex128,
+    )
 
 
 def _use_cpu_complex_validation(dtype):
@@ -208,8 +213,8 @@ def _assert_cholesky_solve_close(result, reference, dtype):
 
 def _assert_backward_error(A, X, rhs, dtype):
     if IS_ASCEND or _use_cpu_complex_path(dtype) or _use_cpu_complex_validation(dtype):
-        # Ascend falls back to CPU during input construction, while T-Head does
-        # not support the complex GEMM used by the residual calculation. CoreX
+        # Ascend falls back to CPU during input construction, while T-Head and
+        # MUSA lack a reliable complex GEMM for the residual calculation. CoreX
         # cannot compile every complex validation kernel used here either.
         A = A.detach().contiguous().cpu()
         X = X.detach().contiguous().cpu()
@@ -240,6 +245,8 @@ _COMPLEX_DTYPES = (
     if IS_ASCEND
     else [torch.complex64] + ([torch.complex128] if SUPPORT_FP64 else [])
 )
+if IS_KUNLUNXIN:
+    _COMPLEX_DTYPES = []
 
 
 @pytest.mark.cholesky_solve
@@ -479,6 +486,7 @@ def test_cholesky_solve_direct(shape, dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("shape", CHOLESKY_SOLVE_COMPLEX_SHAPES)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
@@ -491,6 +499,7 @@ def test_cholesky_solve_complex(shape, dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_noncontiguous(dtype, upper):
@@ -504,6 +513,7 @@ def test_cholesky_solve_complex_noncontiguous(dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_broadcast(dtype, upper):
@@ -522,6 +532,7 @@ def test_cholesky_solve_complex_broadcast(dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_small_gather_conditioned(dtype, upper):
@@ -533,6 +544,7 @@ def test_cholesky_solve_complex_small_gather_conditioned(dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("shape", CHOLESKY_SOLVE_COMPLEX_BLOCKED_SHAPES)
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
@@ -545,6 +557,7 @@ def test_cholesky_solve_complex_blocked(shape, dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 @pytest.mark.parametrize("upper", [False, True])
 def test_cholesky_solve_complex_blocked_conditioned(dtype, upper):
@@ -556,6 +569,7 @@ def test_cholesky_solve_complex_blocked_conditioned(dtype, upper):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("shape", [(16, 5), (64, 4), (128, 1), (256, 16)])
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
@@ -568,6 +582,7 @@ def test_cholesky_solve_complex_lazy_conjugate_upper(shape, dtype):
 
 @pytest.mark.cholesky_solve
 @pytest.mark.skipif(IS_ASCEND, reason="complex not supported on Ascend")
+@pytest.mark.skipif(IS_KUNLUNXIN, reason="complex not supported on kunlunxin")
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
     A, L, rhs = _make_cholesky_solve_inputs((64, 4), dtype)
@@ -575,8 +590,7 @@ def test_cholesky_solve_complex_lazy_conjugate_with_all_gems(dtype):
     assert factor.is_conj()
 
     ref_out = _reference_cholesky_solve(rhs, factor, upper=True)
-    with flag_gems.use_gems(exclude=["zero_"]):
-        res_out = torch.cholesky_solve(rhs, factor, upper=True)
+    res_out = flag_gems.cholesky_solve(rhs, factor, upper=True)
 
     _assert_cholesky_solve_close(res_out, ref_out, dtype)
     _assert_backward_error(A, res_out, rhs, dtype)

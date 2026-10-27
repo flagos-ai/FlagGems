@@ -17,6 +17,7 @@ import pytest
 from . import base, consts
 
 
+@pytest.mark.gt_
 @pytest.mark.gt_tensor_
 def test_gt_tensor_():
     bench = base.BinaryPointwiseBenchmark(

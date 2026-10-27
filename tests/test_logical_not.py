@@ -38,8 +38,7 @@ def test_logical_not(shape, dtype):
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.logical_not(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.logical_not(inp)
+    res_out = flag_gems.logical_not(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -61,8 +60,7 @@ def test_logical_not_(shape, dtype):
 
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.logical_not_()
-    with flag_gems.use_gems():
-        res_out = inp.logical_not_()
+    res_out = flag_gems.logical_not_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)

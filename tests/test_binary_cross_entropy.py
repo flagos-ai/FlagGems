@@ -97,6 +97,7 @@ _REDUCTION_ENUM = {"none": 0, "mean": 1, "sum": 2}
 
 
 @pytest.mark.binary_cross_entropy
+@pytest.mark.binary_cross_entropy_out
 @pytest.mark.parametrize("with_weight", [False, True])
 @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
 @pytest.mark.parametrize("shape", utils.REDUCTION_SHAPES)

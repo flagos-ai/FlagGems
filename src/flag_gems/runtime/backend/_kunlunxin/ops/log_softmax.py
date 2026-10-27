@@ -700,9 +700,9 @@ def _pow2_tail_pieces(n, cap=FWD_TAIL_PIECE):
 
 
 def _fwd_chunk_split(out, inp, M, N):
-    # the wide-chunk path keeps the int-key max for fp16/fp32 (measured 1.42x)
-    # but not for bf16, where it is numerically wrong (FWD_KEY_MAX_N above).
-    use_key = inp.dtype != torch.bfloat16
+    # int-key max for all dtypes: the bf16 -> fp32 bitcast is exact, so the
+    # monotonic uint32 order still holds (probed numerically correct on XPU).
+    use_key = True
     c_full = N // FWD_CHUNK_BN
     taillen = N - c_full * FWD_CHUNK_BN
     pieces, rrem = _pow2_tail_pieces(taillen) if taillen else ([], 0)
@@ -1123,7 +1123,11 @@ def log_softmax(self, dim, half_to_float=False):
     K = inp.numel() // M // N
 
     with torch_device_fn.device(inp.device):
-        if K > 1:
+        if N == 1:
+            # Degenerate reduction axis: one flat pointwise pass (x - x).
+            # Layout-independent, so it also covers K > 1 without a transpose.
+            _fwd_n1_flat(out, inp)
+        elif K > 1:
             # reduction over an interior dim: transpose to make N contiguous,
             # merge (M, K) -> M' so the fast per-row inner kernel applies.
             inp_view = inp.view(M, N, K).transpose(1, 2).contiguous()

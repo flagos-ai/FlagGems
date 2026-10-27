@@ -17,6 +17,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from triton.runtime import driver
 
@@ -223,7 +224,14 @@ def where_self_out(condition, self, other, out=None):
         assert (
             out.dtype == result_type
         ), f"Expected out type to be {result_type}, but got {out.dtype}."
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(result_type):
+        return _where_self_out_impl(condition, self, other, out, result_type)
 
+
+def _where_self_out_impl(condition, self, other, out, result_type):
     c, a, b = condition, self, other
 
     if a.dtype != result_type:

@@ -56,8 +56,7 @@ def test_topk(batch_size, hiddensize, topk, largest, dtype):
             ref_value = ref_value.cpu()
             ref_index = ref_index.cpu()
 
-    with flag_gems.use_gems():
-        res_value, res_index = torch.topk(x, topk, largest=largest)
+    res_value, res_index = flag_gems.topk(x, topk, largest=largest)
 
     utils.gems_assert_close(res_value, ref_value, dtype)
     utils.gems_assert_equal(res_index, ref_index)
@@ -89,8 +88,7 @@ def test_topk_3d_lastdim(shape, topk, dtype):
     ref_x = utils.to_reference(x)
     ref_value, ref_index = torch.topk(ref_x, topk, dim=-1, largest=True, sorted=True)
 
-    with flag_gems.use_gems():
-        res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
+    res_value, res_index = flag_gems.topk(x, topk, dim=-1, largest=True, sorted=True)
 
     utils.gems_assert_close(res_value, ref_value, dtype)
     utils.gems_assert_equal(res_index, ref_index)
@@ -144,8 +142,7 @@ def test_topk_radix_tle_large_fp32_k256_correctness():
         utils.to_reference(x), topk, dim=-1, largest=True, sorted=True
     )
 
-    with flag_gems.use_gems():
-        res_value, res_index = torch.topk(x, topk, dim=-1, largest=True, sorted=True)
+    res_value, res_index = flag_gems.topk(x, topk, dim=-1, largest=True, sorted=True)
 
     utils.gems_assert_close(res_value, ref_value, torch.float32)
     utils.gems_assert_equal(res_index, ref_index)

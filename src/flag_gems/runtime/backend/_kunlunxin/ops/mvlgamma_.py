@@ -20,6 +20,8 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from .copy import copy_ as gems_copy_
+
 logger = logging.getLogger(__name__)
 
 
@@ -112,7 +114,7 @@ def mvlgamma_(*args, **kwargs):
         grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
         with torch_device_fn.device(y.device):
             mvlgamma_kernel_xpu[grid](y, n_elements, p_tensor, BLOCK_SIZE=512)
-        x.copy_(y)
+        gems_copy_(x, y)
         return x
 
     n_elements = x.numel()

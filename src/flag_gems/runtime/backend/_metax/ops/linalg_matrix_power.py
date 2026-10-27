@@ -7,10 +7,14 @@ Every kernel that performs an fp64 tl.dot therefore lives here in a private
 fp64-fixed copy (_metax_fix_fp64_rows un-scrambles the rows); fp64 host-side
 matmuls use the private _metax_fp64_mm tiled kernel.  The shared hosts
 (linalg_lu_solve / _inverse / _newton_refine) are hooked to the private TRSM
-and matmul below, and the dispatch mirrors the generic NV entry.
+and matmul below, and the dispatch mirrors the generic NV entry.  Every matmul
+this operator issues runs on its own fixed-tile kernel (``_mp_mm``) — never the
+backend's autotuned mm/bmm — see the note above that helper.
 """
 
+import contextlib
 import importlib
+import os
 
 import torch
 import triton
@@ -351,6 +355,7 @@ def _metax_fp64_mm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     G: tl.constexpr,
+    ACC_FP64: tl.constexpr = True,
 ):
     """Tiled fp64 C = A @ B for MetaX, grid (tiles, batch).
 
@@ -360,6 +365,12 @@ def _metax_fp64_mm_kernel(
     self-contained kernel instead.  Each program computes one BLOCK_M x BLOCK_N
     output tile; the fp64 dot result's rows are un-scrambled with
     ``_metax_fix_fp64_rows`` before the store.
+
+    ``ACC_FP64`` selects the accumulation dtype — fp64 for fp64 inputs (with
+    MetaX's fp64-MMA row permutation un-scrambled), fp32 for fp32 inputs, which
+    matches the generic mm kernel's ``IS_FP64`` policy.  Nothing else changes,
+    so the fp32 tile is a plain fp32 dot that needs no row fix (MetaX scrambles
+    rows only on the fp64 MMA path).
     """
     pid = tl.program_id(0)
     pid_b = tl.program_id(1)
@@ -375,7 +386,7 @@ def _metax_fp64_mm_kernel(
     b_base = B + pid_b * stride_bb
     c_base = C + pid_b * stride_cb
 
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64 if ACC_FP64 else tl.float32)
     for k0 in range(0, tl.cdiv(K, BLOCK_K)):
         kr = k0 * BLOCK_K + rk
         a = tl.load(
@@ -388,8 +399,12 @@ def _metax_fp64_mm_kernel(
             mask=(kr[:, None] < K) & (rn[None, :] < N),
             other=0.0,
         )
-        acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
-    acc = _metax_fix_fp64_rows(acc, BLOCK_M, BLOCK_N, G)
+        if ACC_FP64:
+            acc += tl.dot(a.to(tl.float64), b.to(tl.float64), allow_tf32=False)
+        else:
+            acc += tl.dot(a.to(tl.float32), b.to(tl.float32), allow_tf32=False)
+    if ACC_FP64:
+        acc = _metax_fix_fp64_rows(acc, BLOCK_M, BLOCK_N, G)
     cmask = (rm[:, None] < M) & (rn[None, :] < N)
     tl.store(
         c_base + rm[:, None] * stride_cm + rn[None, :] * stride_cn,
@@ -435,6 +450,121 @@ def _metax_fp64_mm(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
         num_stages=1,
     )
     return C.reshape(A.shape[:-2] + (M, N))
+
+
+# ===========================================================================
+# This operator's matmuls always run on its own fixed-tile kernel.
+#
+# The backend mm/bmm families autotune a fixed table of tile configs, and that
+# table is sized for the 2-byte dtypes: under fp32 (and, on other backends,
+# under fp64) entries of it need far more staged shared memory than the device
+# has per block.  Such a config can only fail, and the failure is not always
+# contained: Triton's ``_bench`` swallows ``OutOfResources`` (the operator just
+# pays a failed compile per benchmark key), but a backend runtime that instead
+# *faults* on the illegal launch poisons the context — after that every later
+# launch/sync blocks, so the case sits on its first ``flag_gems.mm`` call for
+# tens of minutes with no output.  Auto-tuning also costs a cluster of compiles
+# at the first call of every benchmark key, which is what makes a hang look like
+# one stuck test rather than a slow suite.
+#
+# This operator already carries a legal fixed tile for every dtype it computes
+# (``_metax_fp64_mm`` for fp64, the fp32 twin below), and one 64x64x32 stage
+# fits the smallest shared memory these parts ship, so it simply always uses
+# them: no autotuner in the path, no dependence on which tiles the backend
+# ships, and the accumulation policy matches the generic mm kernel (fp32 in ->
+# fp32 accumulator, fp64 -> fp64).
+#
+# FLAG_GEMS_MP_AABS_OFF=1 optionally holds FlagTree AABS off around the dispatch:
+# it rewrites block sizes at launch time, and a mis-paired shrink can leave a
+# tile below the backend's dot floor and abort the launch.
+# ===========================================================================
+
+_MP_AABS_ENV = "FLAG_GEMS_MP_AABS_OFF"
+_MP_UNSET = object()
+
+
+def _mp_mm(A, B):
+    """The operator's matmul: its own fixed-tile kernel (see the note above).
+
+    fp64 reuses ``_metax_fp64_mm`` (fixed 64x64x32, ``num_stages=1``, rows
+    un-scrambled after the fp64 MMA); fp32 launches the same geometry with an
+    fp32 accumulator.  One 64x64x32 stage stages 16 KiB of operands, so a single
+    stage fits every MetaX part this operator supports, and a batched call rides
+    the same kernel through its batch-stride argument.
+    """
+    if A.dtype == torch.float64:
+        return _metax_fp64_mm(A, B)
+    *_, M, K = A.shape
+    *_, k_b, N = B.shape
+    assert K == k_b, "incompatible dimensions"
+    A2 = A.reshape(-1, M, K)
+    B2 = B.reshape(-1, k_b, N)
+    C = torch.empty(A2.shape[0], M, N, dtype=A.dtype, device=A.device)
+    BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N), A2.shape[0])
+    _metax_fp64_mm_kernel[grid](
+        A2,
+        B2,
+        C,
+        M,
+        N,
+        K,
+        A2.stride(0),
+        A2.stride(1),
+        A2.stride(2),
+        B2.stride(0),
+        B2.stride(1),
+        B2.stride(2),
+        C.stride(0),
+        C.stride(1),
+        C.stride(2),
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+        G=BLOCK_M // 16,
+        ACC_FP64=False,
+        num_warps=4,
+        num_stages=1,
+    )
+    return C.reshape(A.shape[:-2] + (M, N))
+
+
+try:
+    # Triton < 3.6 has no ``triton.knobs``; vanilla Triton >= 3.6 ships the
+    # module but no AABS, so this probe is False there too.
+    from triton.knobs import autotuning as _mp_autotuning_knobs
+except (ImportError, ModuleNotFoundError):
+    _mp_autotuning_knobs = None
+
+_MP_AABS_PRESENT = _mp_autotuning_knobs is not None and hasattr(
+    _mp_autotuning_knobs, "adjust_block_size"
+)
+
+
+@contextlib.contextmanager
+def _mp_aabs_off():
+    """Optionally hold FlagTree AABS off for the duration of the dispatch.
+
+    AABS rewrites block sizes at launch time by pairing ``tl.cdiv(extent,
+    BLOCK)`` to kernel argument names; a mis-paired shrink can leave a tile
+    below the backend's dot floor and abort the launch (see the same guard in
+    ``flag_gems/ops/cudnn_convolution.py``).  Opt-in here: this operator's own
+    kernels use fixed tiles that are already legal, so the guard is only worth
+    its global-knob write when a tile-shrinking backend pass is suspected.
+    """
+    if not (_MP_AABS_PRESENT and os.environ.get(_MP_AABS_ENV) == "1"):
+        yield
+        return
+    state = _mp_autotuning_knobs.__dict__
+    previous = state.get("adjust_block_size", _MP_UNSET)
+    state["adjust_block_size"] = False
+    try:
+        yield
+    finally:
+        if previous is _MP_UNSET:
+            state.pop("adjust_block_size", None)
+        else:
+            state["adjust_block_size"] = previous
 
 
 @triton.jit
@@ -679,27 +809,6 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
     return B
 
 
-def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Matmul via the flag_gems Triton kernels (mm for 2D, bmm for batched).
-
-    Looked up on the flag_gems namespace at call time so backend-specialized
-    kernels are used when a backend overrides them: iluvatar's mm kernel
-    accepts a SPLIT_K tune config that the general mm kernel does not, so the
-    general ``flag_gems.ops.mm`` import would fail there with a KeyError.
-
-    On MetaX the backend mm kernels cannot lower fp64 tl.dot at all (fp32-only
-    accumulator, and the fp64 MMA needs every dimension >= 16), so fp64 matmuls
-    use the self-contained tiled kernel above.
-    """
-    from flag_gems import bmm, mm
-
-    if True and A.dtype == torch.float64:
-        return _metax_fp64_mm(A, B)
-    if A.dim() == 2:
-        return mm(A, B)
-    return bmm(A, B)
-
-
 # ===========================================================================
 # Triangular solves.  The scalar substitution kernels below are the legacy
 # (batch, n)-grid row loops kept for the df64 route (linalg_lu_solve); the
@@ -708,17 +817,34 @@ def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
 # ===========================================================================
 
 
+def _mp_generic_matmul(A, B):
+    """``_generic._matmul`` shim: the generic hosts (inverse / Newton / large-M
+    df64) go through the operator's own fixed-tile matmul (``_mp_mm``)."""
+    return _mp_mm(A, B)
+
+
 # Hook the shared hosts so every solve/matmul inside the generic hosts runs
 # the metax-fixed kernels (one backend per process - safe).  The large-M LU
 # factorisation (_lu_factor_parallel, generic) resolves _lu_trailing_update_par
 # from its module globals at call time, so swapping it here redirects the
 # fp64 Schur-update dot through the row-un-scrambling kernel above.
 _generic._trsm_solve_2d = _trsm_solve_2d
-_generic._matmul = _matmul
+_generic._matmul = _mp_generic_matmul
 _generic._lu_trailing_update_par = _lu_trailing_update_par
 
 
 def linalg_matrix_power(
+    A: torch.Tensor,
+    n: int,
+    *,
+    out: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Public entry — the dispatch below plus the operator-local safety layer."""
+    with _mp_aabs_off():
+        return _linalg_matrix_power(A, n, out=out)
+
+
+def _linalg_matrix_power(
     A: torch.Tensor,
     n: int,
     *,
@@ -785,7 +911,7 @@ def linalg_matrix_power(
 
     # ---- n == 2, 3: fast paths for large M ----
     if n == 2 and m > TRITON_THRESHOLD:
-        r = _matmul(A, A)
+        r = _mp_mm(A, A)
         if upcast:
             r = r.float()
         if out is not None:
@@ -793,7 +919,7 @@ def linalg_matrix_power(
             return out
         return r
     if n == 3 and m > TRITON_THRESHOLD:
-        r = _matmul(_matmul(A, A), A)
+        r = _mp_mm(_mp_mm(A, A), A)
         if upcast:
             r = r.float()
         if out is not None:
@@ -887,10 +1013,10 @@ def linalg_matrix_power(
         n_remaining = n
         while n_remaining > 0:
             if n_remaining & 1:
-                result = z if result is None else _matmul(result, z)
+                result = z if result is None else _mp_mm(result, z)
             n_remaining >>= 1
             if n_remaining > 0:
-                z = _matmul(z, z)
+                z = _mp_mm(z, z)
         if is_batched:
             out_flat.copy_(result)
         else:

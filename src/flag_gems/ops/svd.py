@@ -2391,14 +2391,16 @@ def _cyclic_jacobi_svd(input):
                 BLOCK_R=triton.next_power_of_2(projected_rows),
                 num_warps=1,
             )
-            if batch > 1 and k <= 16:
-                _thin_reorthogonalize_kernel[(batch,)](
-                    projected,
-                    ROWS=projected_rows,
-                    K=k,
-                    BLOCK_R=triton.next_power_of_2(projected_rows),
-                    num_warps=1,
-                )
+            # The projected factor is recomputed as A @ basis / s; for small
+            # singular values this loses orthogonality in fp32, so always
+            # reorthogonalize it before returning.
+            _thin_reorthogonalize_kernel[(batch,)](
+                projected,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),
@@ -3452,9 +3454,15 @@ def _singular_values_only(input):
     largest = max(m, n)
     if k == 2 and largest <= _RANK2_BLOCK_R_MAX:
         return _rank2_singular_values(input)
-    if k <= 16 and largest <= 1024:
+    # The small Jacobi kernel fully unrolls its SWEEPS * K * (K-1) / 2
+    # rotations, and Triton's ttgir pass takes minutes on the resulting IR for
+    # even modest k (measured cold-cache compile: k=4 5s, k=8 72s, k=15 997s,
+    # k=16 1273s). Route k >= 8 through the blocked implementation, which
+    # drives the same Jacobi sweep from Python-side runtime loops and compiles
+    # in well under a second. This mirrors the k=16 reroute in svd().
+    if k <= 4 and largest <= 1024:
         return _small_jacobi_singular_values(input)
-    if 16 < k <= 512 and largest <= 1024:
+    if 4 < k <= 512 and largest <= 1024:
         return _blocked_jacobi_singular_values(input)
     return _unsupported_svd(input, True, False)
 

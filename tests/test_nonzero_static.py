@@ -129,12 +129,11 @@ def assert_nonzero_static_matches(input, size, fill_value):
             fill_value=fill_value,
         )
 
-    with flag_gems.use_gems(include=["nonzero_static"]):
-        actual = torch.nonzero_static(
-            input,
-            size=size,
-            fill_value=fill_value,
-        )
+    actual = flag_gems.nonzero_static(
+        input,
+        size=size,
+        fill_value=fill_value,
+    )
 
     assert actual.dtype == torch.int64
     assert tuple(actual.shape) == (size, input.dim())

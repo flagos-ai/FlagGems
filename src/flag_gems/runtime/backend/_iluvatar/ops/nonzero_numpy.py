@@ -254,7 +254,7 @@ def nonzero_numpy(inp):
     cumsum, scatter).  The combined launch overhead dominates on small
     shapes, causing speedup to regress to ~0.2–0.4x.
     """
-    logger.debug("GEMS ILUVATAR NONZERO_NUMPY")
+    logger.debug("GEMS_ILUVATAR NONZERO_NUMPY")
 
     inp = inp.contiguous()
     n_elements = inp.numel()

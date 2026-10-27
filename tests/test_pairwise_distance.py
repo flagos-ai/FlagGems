@@ -78,10 +78,7 @@ def test_pairwise_distance_accuracy(shape, p, keepdim, dtype):
     ref_x2 = utils.to_reference(x2, True)
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pairwise_distance(
-            x1, x2, p=p, eps=1e-6, keepdim=keepdim
-        )
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6, keepdim=keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -107,8 +104,7 @@ def test_pairwise_distance_broadcast(x1_shape, x2_shape, p, dtype):
     ref_x2 = utils.to_reference(x2, True)
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=1e-6)
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -134,8 +130,7 @@ def test_pairwise_distance_ndim3plus(shape, p, dtype):
     ref_x2 = utils.to_reference(x2, True)
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=1e-6)
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -161,8 +156,7 @@ def test_pairwise_distance_broadcast_ndim3plus(x1_shape, x2_shape, p, dtype):
     ref_x2 = utils.to_reference(x2, True)
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=1e-6)
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -187,7 +181,6 @@ def test_pairwise_distance_fp64(shape, p):
     ref_x2 = utils.to_reference(x2, True)
 
     ref_out = _ref_pairwise_distance(ref_x1, ref_x2, p=p, eps=1e-6)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.pairwise_distance(x1, x2, p=p, eps=1e-6)
+    res_out = flag_gems.pairwise_distance(x1, x2, p=p, eps=1e-6)
 
     utils.gems_assert_close(res_out, ref_out, torch.float64)
