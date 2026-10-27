@@ -21,31 +21,36 @@ runtime image. Those images bake the compiler (flagtree, or triton when
 flagtree is absent) OUTSIDE the venv — e.g. /opt/flagtree — and ahead of the
 venv on sys.path. reconcile reinstalls the backends.yaml pin INTO the venv but
 pip cannot uninstall the baked copy ("Not uninstalling flagtree at /opt/..."),
-so `import flagtree` still resolves to the stale baked version and the test run
-silently uses the wrong compiler build.
+so the test run still resolves the stale baked version and silently uses the
+wrong compiler build (confirmed in ops-test run 40473319476: reconcile installed
+flagtree 0.7.1a1 into /flagos but `import` still reported 0.7.0 from /opt).
 
-This script closes that gap:
+This script closes that gap, working entirely off installed *distribution
+metadata* rather than importing anything:
 
-  1. Read the compiler pin from backends.yaml (same source as reconcile).
-  2. Import the compiler and find the version actually resolved + its on-disk
-     location.
-  3. If that version doesn't match the pin AND the resolving copy lives outside
-     the venv, remove the shadowing copy (the package dir and any dist-info /
-     .pth / egg-link that points at it), then re-resolve in a fresh interpreter.
-  4. Hard-verify: the importable version must equal the pin's base version, or
-     exit non-zero so the job fails instead of testing a stale build.
+  1. Read the compiler pin (flagtree, else triton) from backends.yaml — same
+     source reconcile acted on.
+  2. Enumerate every install of that distribution via importlib.metadata.
+     More than one means a shadow: typically the venv copy (the pin, from
+     reconcile) plus the image's baked copy outside the venv.
+  3. Delete each copy whose version != the pin AND whose files live outside the
+     venv (the baked shadow), using the distribution's own RECORD so we remove
+     exactly what it installed — never touching the venv copy or other packages.
+  4. Hard-verify: after cleanup, exactly the pinned version must remain
+     resolvable, or exit non-zero so the job fails instead of testing a stale
+     build.
 
-Only the declared compiler is touched; flagtree and triton share a namespace
-and are mutually exclusive, so we never remove the one we're keeping. Nothing
-here runs unless a mismatch is detected, so an image already carrying the
-pinned build is left untouched.
+We never import the compiler (importing triton on Ascend prints warnings to
+stdout and, more importantly, triton and flagtree are *separate* distributions
+here with different versions — importing would conflate them). Metadata lookup
+is side-effect free and reports each distribution's real on-disk version.
 
 Usage:
     python3 tools/enforce_pinned_compiler.py <backend>
 
 Env:
-    VIRTUAL_ENV  venv prefix; a copy resolving under here is considered the
-                 pip-installed one and is never deleted. Falls back to
+    VIRTUAL_ENV  venv prefix; a copy whose files live under here is the
+                 pip-installed pin and is never deleted. Falls back to
                  sys.prefix when unset.
 """
 
@@ -53,8 +58,8 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 import sys
+from importlib import metadata
 from pathlib import Path
 
 # Reuse the exact config-loading + version-compare logic reconcile uses, so the
@@ -62,8 +67,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import reconcile_backend_deps as rc  # noqa: E402
 
-# Requirement spec like "flagtree==0.7.1a1+ascend3.5"; we only enforce exact
-# pins (same contract as reconcile — a range can't be compared to an import).
 PIN_RE = rc.PIN_RE
 
 
@@ -87,37 +90,78 @@ def compiler_pin(cfg: dict) -> tuple[str, str] | None:
     return m.group(1), rc.normalize(m.group(2))
 
 
-# The import name can differ from the distribution name. flagtree installs into
-# the `triton` namespace, so for both compilers the module to import is triton;
-# its __version__ / distribution metadata still carries the flagtree version.
-def _probe_module(mod_name: str) -> tuple[str | None, str | None]:
-    """Return (version, file-path) as resolved by a FRESH interpreter.
+def _norm(name: str) -> str:
+    return name.replace("_", "-").lower()
 
-    A fresh process is used so a just-deleted path can't linger in an already
-    imported module cache.
+
+def find_installs(dist_name: str) -> list[metadata.Distribution]:
+    """All installed distributions matching dist_name (separator-insensitive).
+
+    importlib.metadata returns one Distribution per install location, so a
+    package present both in the venv and baked outside it shows up twice.
     """
-    code = (
-        "import importlib,importlib.metadata as m\n"
-        f"mod=importlib.import_module({mod_name!r})\n"
-        "v=getattr(mod,'__version__',None)\n"
-        "if v is None:\n"
-        "    try: v=m.version('flagtree')\n"
-        "    except Exception:\n"
-        "        try: v=m.version('triton')\n"
-        "        except Exception: v=None\n"
-        "print(v or '')\n"
-        "print(getattr(mod,'__file__','') or '')\n"
-    )
-    out = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True
-    )
-    if out.returncode != 0:
-        log(f"could not import {mod_name}: {out.stderr.strip()}")
-        return None, None
-    lines = out.stdout.splitlines()
-    version = lines[0].strip() if lines else ""
-    path = lines[1].strip() if len(lines) > 1 else ""
-    return (version or None), (path or None)
+    target = _norm(dist_name)
+    found = []
+    for dist in metadata.distributions():
+        name = dist.metadata["Name"]
+        if name and _norm(name) == target:
+            found.append(dist)
+    return found
+
+
+def _dist_root(dist: metadata.Distribution) -> Path:
+    """Directory on sys.path that holds this distribution (its *-info parent)."""
+    # dist._path points at the .dist-info/.egg-info dir; its parent is the
+    # site dir. _path is private but stable across supported CPythons; fall
+    # back to locating a file if it's ever absent.
+    p = getattr(dist, "_path", None)
+    if p is not None:
+        return Path(p).parent
+    located = dist.locate_file("")
+    return Path(str(located))
+
+
+def _dist_version(dist: metadata.Distribution) -> str:
+    return rc.normalize(dist.metadata["Version"] or "")
+
+
+def remove_dist(dist: metadata.Distribution) -> None:
+    """Delete everything a distribution installed, via its RECORD, then prune.
+
+    RECORD lists every installed file (package modules + the *-info metadata),
+    so removing those removes exactly this install and nothing else.
+    """
+    root = _dist_root(dist)
+    paths: list[Path] = []
+    files = dist.files or []
+    for rel in files:
+        try:
+            paths.append(Path(dist.locate_file(rel)).resolve())
+        except Exception:
+            continue
+    # Remove files first, then any now-empty dirs (deepest first).
+    dirs: set[Path] = set()
+    for f in paths:
+        try:
+            if f.is_file() or f.is_symlink():
+                f.unlink(missing_ok=True)
+            dirs.add(f.parent)
+        except OSError as e:
+            log(f"  could not remove {f}: {e}")
+    if not files:
+        # No RECORD (rare): fall back to removing the *-info dir only, so we at
+        # least stop metadata from reporting the stale version.
+        info = getattr(dist, "_path", None)
+        if info:
+            shutil.rmtree(info, ignore_errors=True)
+            log(f"  removed metadata dir (no RECORD): {info}")
+    for d in sorted(dirs, key=lambda p: len(p.parts), reverse=True):
+        try:
+            if d.is_dir() and not any(d.iterdir()) and d != root:
+                d.rmdir()
+        except OSError:
+            pass
+    log(f"  removed {len(paths)} file(s) under {root}")
 
 
 def _venv_prefix() -> Path:
@@ -132,39 +176,27 @@ def _under(path: Path, prefix: Path) -> bool:
         return False
 
 
-def _remove_shadow(mod_file: Path, dist_name: str) -> bool:
-    """Delete the package dir resolving the import + its metadata/path hooks.
+def resolved_version(dist_name: str) -> tuple[str | None, Path | None]:
+    """Version + root of the install that WINS on the current sys.path.
 
-    Returns True if anything was removed. Scoped to the shadowing location only;
-    the venv copy is never the one passed here (caller checks _under first).
-
-    Removing just the resolved package directory is sufficient to flip
-    resolution: a fresh interpreter re-imports with the shadow dir gone, and
-    even if a .pth still prepends the shadow's parent to sys.path, that entry no
-    longer contains the package, so the import falls through to the venv copy.
-    Python silently ignores a non-existent/empty sys.path entry, so we do NOT
-    touch .pth files (they may inject unrelated paths too) — we only delete the
-    package dir and its sibling dist-info/egg-info metadata.
+    When a name is installed in several locations, the one earliest on sys.path
+    is what `import` gets. We mirror that: pick the matching distribution whose
+    root appears first in sys.path order.
     """
-    removed = False
-    # mod_file is .../<site_dir>/triton/__init__.py -> package dir is its parent.
-    pkg_dir = mod_file.parent
-    site_dir = pkg_dir.parent  # the directory on sys.path holding the package
-    if pkg_dir.is_dir():
-        log(f"removing shadowing package dir: {pkg_dir}")
-        shutil.rmtree(pkg_dir, ignore_errors=True)
-        removed = True
-    # Sibling metadata for either namespace name, so importlib.metadata no
-    # longer reports the stale version from this location.
-    for name in {dist_name, "flagtree", "triton"}:
-        for pat in (f"{name}-*.dist-info", f"{name}-*.egg-info"):
-            for p in site_dir.glob(pat):
-                log(f"removing stale metadata: {p}")
-                shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(
-                    missing_ok=True
-                )
-                removed = True
-    return removed
+    installs = find_installs(dist_name)
+    if not installs:
+        return None, None
+    order = [Path(p).resolve() for p in sys.path if p]
+
+    def rank(dist: metadata.Distribution) -> int:
+        root = _dist_root(dist).resolve()
+        for i, entry in enumerate(order):
+            if entry == root:
+                return i
+        return len(order)  # not on sys.path -> lowest priority
+
+    winner = min(installs, key=rank)
+    return _dist_version(winner), _dist_root(winner)
 
 
 def main() -> None:
@@ -179,48 +211,51 @@ def main() -> None:
         log("no enforceable compiler pin for this backend; nothing to do")
         return
     dist_name, want = pin
-    want_base = rc.base_version(want)
-    # flagtree lives in the triton namespace; triton backends import triton too.
-    mod_name = "triton"
-    log(f"enforcing compiler pin {dist_name}=={want} (import '{mod_name}')")
+    log(f"enforcing compiler pin {dist_name}=={want}")
 
-    have, path = _probe_module(mod_name)
-    if have is None or not path:
-        log(f"compiler not importable yet (version={have!r}, path={path!r})")
-        # Not fatal here: `pip install .[test]` runs next and may finish the
-        # install. The post-install verify below is the real gate.
-    else:
-        log(f"resolved {mod_name} {have} from {path}")
-        if rc.versions_match(want, have):
-            log("resolved version already matches the pin; no shadow to clear")
-        else:
-            venv = _venv_prefix()
-            mod_file = Path(path)
-            if _under(mod_file, venv):
-                log(
-                    f"resolved copy is inside the venv ({venv}) but version "
-                    f"{have} != pin {want}; reconcile should have fixed this"
-                )
-            else:
-                log(
-                    f"stale compiler {have} shadowing the venv from {mod_file} "
-                    f"(outside {venv}); removing it so the pinned build wins"
-                )
-                if not _remove_shadow(mod_file, dist_name):
-                    log("found nothing to remove; shadow may be unreachable")
-
-    # Hard gate: re-resolve in a fresh interpreter and require the pin.
-    have2, path2 = _probe_module(mod_name)
-    if have2 is None:
-        log("::error::compiler still not importable after enforcement")
-        sys.exit(1)
-    if not rc.versions_match(want, have2):
+    venv = _venv_prefix()
+    installs = find_installs(dist_name)
+    if not installs:
         log(
-            f"::error::compiler version {have2} (from {path2}) does not match "
-            f"pinned {want}; backends.yaml is the source of truth"
+            f"::error::{dist_name} not installed at all after reconcile; "
+            f"expected {want}"
         )
         sys.exit(1)
-    log(f"OK: compiler resolves to {have2} (base {want_base}) from {path2}")
+
+    log(f"found {len(installs)} install(s) of {dist_name}:")
+    for dist in installs:
+        root = _dist_root(dist)
+        log(f"  - {_dist_version(dist)} at {root} (in venv: {_under(root, venv)})")
+
+    # Remove every copy that is both stale (version != pin) and outside the venv
+    # — i.e. the image's baked shadow. A matching copy, or anything inside the
+    # venv, is left alone.
+    for dist in installs:
+        ver = _dist_version(dist)
+        root = _dist_root(dist)
+        if rc.versions_match(want, ver):
+            continue
+        if _under(root, venv):
+            log(
+                f"stale {dist_name} {ver} is inside the venv ({venv}); leaving "
+                f"it for reconcile/pip to manage, not deleting"
+            )
+            continue
+        log(f"removing stale shadow {dist_name} {ver} at {root}")
+        remove_dist(dist)
+
+    # Hard gate: what resolves now must be the pin.
+    have, root = resolved_version(dist_name)
+    if have is None:
+        log(f"::error::{dist_name} no longer resolvable after cleanup")
+        sys.exit(1)
+    if not rc.versions_match(want, have):
+        log(
+            f"::error::{dist_name} resolves to {have} (from {root}), not pinned "
+            f"{want}; backends.yaml is the source of truth"
+        )
+        sys.exit(1)
+    log(f"OK: {dist_name} resolves to {have} from {root}")
 
 
 if __name__ == "__main__":

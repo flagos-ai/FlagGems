@@ -275,12 +275,11 @@ jobs:
           # Caveat this handles: the runtime image bakes the compiler (flagtree)
           # OUTSIDE the venv (e.g. /opt/flagtree) and ahead of the venv on
           # sys.path. pip reinstalls the pin INTO the venv but cannot uninstall
-          # the baked copy ("Not uninstalling flagtree at /opt/..."), so
-          # `import flagtree` still resolves to the stale baked version. To make
-          # backends.yaml authoritative, after reconcile we delete the shadowing
-          # copy whenever the imported version doesn't match the pin, then
-          # hard-verify the importable version — failing the job rather than
-          # silently testing the wrong compiler build.
+          # the baked copy ("Not uninstalling flagtree at /opt/..."), so the
+          # stale baked version still wins at runtime. enforce_pinned_compiler
+          # then deletes any copy that is both stale (!= pin) and outside the
+          # venv, and hard-verifies the pinned version is what resolves — failing
+          # the job rather than silently testing the wrong compiler build.
           if [ -n "${{ matrix.backend }}" ]; then
             python3 tools/reconcile_backend_deps.py "${{ matrix.backend }}"
             BACKEND="${{ matrix.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
