@@ -350,3 +350,29 @@ def div_mode_(A, B, rounding_mode=None):
     else:
         msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
         raise ValueError(msg)
+
+
+def div_tensor_mode(A, B, rounding_mode=None):
+    logger.debug("GEMS DIV_TENSOR_MODE")
+    if rounding_mode is None:
+        return true_divide(A, B)
+    elif rounding_mode == "trunc":
+        return trunc_divide(A, B)
+    elif rounding_mode == "floor":
+        return floor_divide(A, B)
+    else:
+        msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
+        raise ValueError(msg)
+
+
+def div_tensor_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS DIV_TENSOR_MODE_")
+    if rounding_mode is None:
+        return true_divide_(A, B)
+    elif rounding_mode == "trunc":
+        return trunc_divide_(A, B)
+    elif rounding_mode == "floor":
+        return floor_divide_(A, B)
+    else:
+        msg = f"div expected rounding_mode to be one of None, 'trunc', or 'floor' but found {rounding_mode}."
+        raise ValueError(msg)

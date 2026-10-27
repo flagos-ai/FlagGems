@@ -694,6 +694,8 @@ from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
+    div_tensor_mode,
+    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     true_divide_out,
@@ -1052,7 +1054,7 @@ from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lstm_cell import lstm_cell
-from flag_gems.ops.lt import lt, lt_scalar
+from flag_gems.ops.lt import less_scalar, less_tensor, lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.make_per_tensor_quantized_tensor import (
@@ -2282,6 +2284,8 @@ __all__ = [
     "dist",
     "div_mode",
     "div_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "divide",
     "dot",
     "dropout",
@@ -2561,7 +2565,9 @@ __all__ = [
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
+    "less_scalar",
     "less_scalar_",
+    "less_tensor",
     "lgamma",
     "lgamma_",
     "lift",
