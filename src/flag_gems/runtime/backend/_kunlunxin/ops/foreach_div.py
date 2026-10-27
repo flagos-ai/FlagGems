@@ -39,11 +39,20 @@ from flag_gems.ops._foreach_binary import _apply_list, _apply_tensor
 from flag_gems.utils.foreach import (
     _dense,
     _finish_inplace,
-    _result_dtype,
     check_tensor_list,
     has_internal_overlap,
     tl_dtype,
 )
+
+
+def _result_dtype(t, other):
+    """ATen's type promotion for one tensor against a tensor or a number.
+
+    Upstream #7561 removed this helper from ``flag_gems.utils.foreach``; keep
+    the same ``torch.result_type`` semantics locally.
+    """
+    return torch.result_type(t, other)
+
 
 logger = logging.getLogger(__name__)
 
