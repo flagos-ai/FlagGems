@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 HAS_VMT4D = hasattr(smt, "vmt4d")
 
 _VMT4D_BK = 128
-_VMT4D_BN = 256
+_VMT4D_BN = 32
 
 # Cache wt (= inp.T materialized, the [K, N] n-contiguous layout the vmt4d
 # kernel reads) by weight identity. Weights are stable across forward passes
@@ -46,13 +46,18 @@ def _get_wt(inp):
 # linalg.matmul which spine-mlir's DirectMVPattern (PackMatmul pass,
 # main >= cd8e72ff) rewrites to spestruct.vmt4d -> llvm.riscv.smt.vfwmadot,
 # using the matrix engine for f16 inputs. Ported from spine-triton
-# python/examples/test_smt_mv_vmt4d.py; BK=128 x BN=256 is the bench-best
-# config (mv_bench 2026-10-22: 1.78-3.28x vs the general mv).
-#   - uniform f16 only: the intended f16-in/f32-acc config hits a spine-mlir
-#     pad-dtype bug (mv_bench/spine-mlir-handoff bug 1), so acc is f16;
+# python/examples/test_smt_mv_vmt4d.py.
+#   - f32 acc (engine widening): ~1e-6 rel error; needs spine-mlir with the
+#     VMT4D init-pad dtype fix (MR 68, 6f472365);
 #   - wt must be a contiguous [K, N] pre-transposed matrix: strided [K, N]
 #     views of a [N, K] tensor miscompile (handoff bug 2), the transpose is
 #     cached per weight (see _get_wt);
+#   - BK=128 x BN=32 is the bench-best tile (mv_bench bench7, 2026-10-27:
+#     the [128, 32] f16 tile is 8KB and stays in registers, no stack
+#     round-trip for the pack products; [128, 256] = 64KB always spills).
+#     Best-vs-best vs the svector arm: 1.11x @ (32768, 512), par @
+#     (16384, 256), 0.31x @ (4096, 4096) -- the vmt4d arm only wins small-N
+#     large-K (see the dispatch guard);
 #   - K % BK == 0 and N % BN == 0 (no tail masking), grid = N / BN <= 512
 #     (see the dispatch guard).
 # ---------------------------------------------------------------------------
@@ -71,7 +76,7 @@ def _mv_vmt4d_kernel(
     r = tl.arange(0, 1)
     ks = tl.arange(0, BK)
     ns = n0 + tl.arange(0, BN)
-    acc = tl.zeros((1, BN), dtype=tl.float16)
+    acc = tl.zeros((1, BN), dtype=tl.float32)
     for k0 in range(0, K, BK):
         a = tl.load(x_ptr + r[:, None] * K + (k0 + ks)[None, :])  # [1, BK]
         b = tl.load(wt_ptr + (k0 + ks)[:, None] * N + ns[None, :])  # [BK, BN]
@@ -148,27 +153,32 @@ def mv(inp, vec):
 
     # vmt4d engine path: f16 operands on tile-aligned shapes with a
     # vmt4d-capable triton; the [K, N] transposed weight is cached so the
-    # layout cost is paid once per weight. The grid guard keeps programs
-    # within 512 like the svector arm (the runtime silently drops programs
-    # beyond that on stacks without the grid-chunked dispatch fix).
+    # layout cost is paid once per weight. Small-N large-K only (bench7
+    # best-vs-best: 1.11x over the svector arm @ (32768, 512), par @
+    # (16384, 256), 0.31x @ (4096, 4096) -- N > 512 goes to the svector
+    # arm). The grid guard keeps programs within 512 like the svector arm
+    # (the runtime silently drops programs beyond that on stacks without
+    # the grid-chunked dispatch fix).
     if (
         HAS_VMT4D
         and inp.dtype == torch.float16
         and vec.dtype == torch.float16
         and K > 0
         and N > 0
+        and N <= 512
+        and K >= 16384
         and K % _VMT4D_BK == 0
         and N % _VMT4D_BN == 0
         and N // _VMT4D_BN <= 512
     ):
         wt = _get_wt(inp)
         vec_c = vec if vec.is_contiguous() else vec.contiguous()
-        y = torch.empty((1, N), dtype=inp.dtype, device=inp.device)
+        y = torch.empty((1, N), dtype=torch.float32, device=inp.device)
         with torch_device_fn.device(inp.device):
             _mv_vmt4d_kernel[(N // _VMT4D_BN,)](
                 vec_c.view(1, K), wt, y, K=K, N=N, BK=_VMT4D_BK, BN=_VMT4D_BN
             )
-        return y.view(N)
+        return y.view(N).to(inp.dtype)
 
     # svector path constraints: f16 operands, N % 4 == 0 (the 4-row unroll
     # must not read past the last row) and a <=512-program grid (the runtime
