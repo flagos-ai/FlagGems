@@ -797,6 +797,9 @@ class Benchmark:
         if context is None:
             return
         base_data, call, named_call = context
+        if call is None:
+            metric.base_miss_reason = "input_metadata_unavailable"
+            return
         try:
             chip = torch_device_fn.get_device_name()
         except (AttributeError, RuntimeError, TypeError):
@@ -816,9 +819,13 @@ class Benchmark:
         """Apply an optional baseline around the existing measurement override."""
         context = None
         if getattr(Config, "base_data", None) is not None:
-            args, kwargs = self.unpack_to_args_kwargs(input)
-            context = self._capture_external_baseline(args, kwargs)
-            del args, kwargs
+            try:
+                args, kwargs = self.unpack_to_args_kwargs(input)
+                context = self._capture_external_baseline(args, kwargs)
+                del args, kwargs
+            except Exception:
+                # Optional metadata must not prevent the benchmark from running.
+                context = (Config.base_data, None, None)
         if case_id is None:
             metric = self._measure_input(input)
         else:

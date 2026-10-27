@@ -708,11 +708,14 @@ class ParallelBenchmarkMixin:
             try:
                 context = None
                 if getattr(Config, "base_data", None) is not None:
-                    args, kwargs = self.unpack_to_args_kwargs(
-                        self._baseline_input(input_item)
-                    )
-                    context = self._capture_external_baseline(args, kwargs)
-                    del args, kwargs
+                    try:
+                        args, kwargs = self.unpack_to_args_kwargs(
+                            self._baseline_input(input_item)
+                        )
+                        context = self._capture_external_baseline(args, kwargs)
+                        del args, kwargs
+                    except Exception:
+                        context = (Config.base_data, None, None)
                 metric = self._build_metric_from_input(input_item)
                 if context is not None:
                     self._apply_external_baseline(metric, dtype, context)

@@ -510,6 +510,26 @@ def test_legacy_measure_override_keeps_signature_and_matches_pre_mutation_input(
     assert metric.speedup == 3.0
 
 
+def test_nested_tensor_metadata_miss_does_not_prevent_measurement(monkeypatch):
+    from benchmark.consts import BenchmarkMetrics
+
+    config = conftest.BenchConfig()
+    config.base_data = BaselineData({}, "synthetic.json")
+    monkeypatch.setattr(base, "Config", config)
+
+    class LegacyBenchmark(base.Benchmark):
+        def _measure_input(self, input, case_id=None):
+            return BenchmarkMetrics(case_id=case_id, latency=2.0, speedup=3.0)
+
+    nested = torch.nested.nested_tensor([torch.ones(2, 3), torch.ones(4, 3)])
+    bench = LegacyBenchmark("example", torch_op=lambda value: value)
+    metric = bench._measure_with_external_baseline((nested,), torch.float32)
+    assert metric.latency == 2.0
+    assert metric.speedup == 3.0
+    assert metric.compared_speedup is None
+    assert metric.base_miss_reason == "input_metadata_unavailable"
+
+
 def test_disabled_baseline_does_not_unpack_custom_measurement(monkeypatch):
     from benchmark.consts import BenchmarkMetrics
 
