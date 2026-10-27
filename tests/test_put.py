@@ -460,6 +460,9 @@ def _assert_put_bounds_failure(proc, report):
     assert (
         report.get("phase") == "invalid" and report.get("status") == "ERROR"
     ), "the put child failed before its out-of-range call: " + repr(report)
+    assert report.get("runtime_error") is True, (
+        "expected the target-device RuntimeError, got: " + repr(report)
+    )
     assert (
         report.get("context_failed") is True
     ), "expected a target-device fault, not a host/compiler exception: " + repr(report)
