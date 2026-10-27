@@ -243,7 +243,7 @@ class _InplaceBaseline:
         return latency_ms
 
     def get_latency(self, op, *args, **kwargs):
-        external = flag_gems.vendor_name == "thead" and bool(
+        external = flag_gems.vendor_name in {"thead", "enflame"} and bool(
             os.environ.get("FLAGGEMS_NV_BASELINE")
         )
         if external and (
@@ -256,15 +256,15 @@ class _InplaceBaseline:
                 )
             self._native_measurement_pending = False
             return self._import_nvidia_latency(args, kwargs)
-        if flag_gems.vendor_name == "thead" and op is self.torch_op and not external:
+        if flag_gems.vendor_name in {"thead", "enflame"} and op is self.torch_op and not external:
             raise ValueError(
-                "PPU native inplace BLAS is unavailable; set FLAGGEMS_NV_BASELINE to the H800 artifact"
+                "Native inplace BLAS baseline is unavailable or numerically unreliable on this backend; set FLAGGEMS_NV_BASELINE to the H800 artifact"
             )
         return super().get_latency(op, *args, **kwargs)
 
     def _measure_input(self, input, case_id=None):
         self._imported_baseline = None
-        external = flag_gems.vendor_name == "thead" and bool(
+        external = flag_gems.vendor_name in {"thead", "enflame"} and bool(
             os.environ.get("FLAGGEMS_NV_BASELINE")
         )
         if external and (
@@ -305,7 +305,7 @@ class _InplaceBaseline:
     def _run_reference_cases(self, case_ids):
         first_record = len(base.Config.reference_records)
         if (
-            flag_gems.vendor_name == "thead"
+            flag_gems.vendor_name in {"thead", "enflame"}
             and os.environ.get("FLAGGEMS_NV_BASELINE")
             and base.Config.skip_native
         ):

@@ -29,10 +29,10 @@ else:
 
 
 def _reference_input(value):
-    # PPU has no native inplace BLAS implementation. CPU ATen supplies the
-    # same reference semantics; cloning prevents in-place reference mutation
-    # from changing the original candidate input on same-device references.
-    if flag_gems.vendor_name == "thead":
+    # PPU lacks native inplace BLAS, and Enflame native baddbmm_ can return
+    # incorrect values. CPU ATen supplies an independent numerical oracle;
+    # cloning keeps reference mutation separate from candidate inputs.
+    if flag_gems.vendor_name in {"thead", "enflame"}:
         return value.cpu().double().clone()
     reference = utils.to_reference(value, True)
     # This is an independent value reference, so its output need not share
