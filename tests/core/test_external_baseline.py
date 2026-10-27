@@ -276,6 +276,39 @@ def test_summary_keeps_multiple_benchmark_results_for_the_same_dtype(
     assert summary["speedup"] == 3.5
 
 
+@pytest.mark.parametrize("skip_native", [False, True])
+def test_summary_keeps_same_shape_from_distinct_benchmarks(tmp_path, skip_native):
+    first = {
+        "dtype": DTYPE,
+        "result": [
+            {
+                "shape_detail": [4],
+                "speedup": 2,
+                "compared_speedup": 4,
+                "base_data_source": "baseline.json",
+            }
+        ],
+    }
+    second = {
+        "dtype": DTYPE,
+        "result": [
+            {"shape_detail": [4], "speedup": 2, "base_miss_reason": "shape_missing"}
+        ],
+    }
+    if skip_native:
+        first["native_baseline_skip_reason"] = "native unavailable"
+    path = tmp_path / "result.json"
+    path.write_text(
+        json.dumps({"mm": {"result": "passed", "details": [first, second]}})
+    )
+    summary = parse_perf_data("mm", path)["data"]["fp32"]
+    assert summary["speedup"] == 3
+    assert summary["details"]["[4]"]["base_data_source"] == "baseline.json"
+    assert (
+        summary["details"]["[4] (benchmark 2)"]["base_miss_reason"] == "shape_missing"
+    )
+
+
 @pytest.mark.parametrize("config", [[], "invalid", {"inputs": []}, {"inputs": None}])
 def test_malformed_metadata_does_not_fall_through_to_legacy_shape(config):
     data = baseline({"latency_ms": 4, "config": config}, key="[4, 8]")

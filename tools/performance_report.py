@@ -46,6 +46,18 @@ def _case_record(result, default=None):
     return record
 
 
+def _benchmark_shape_key(details, current_shapes, shape):
+    """Distinguish benchmarks while preserving their existing per-shape behavior."""
+    if shape not in current_shapes:
+        key = shape
+        ordinal = 2
+        while key in details:
+            key = f"{shape} (benchmark {ordinal})"
+            ordinal += 1
+        current_shapes[shape] = key
+    return current_shapes[shape]
+
+
 def parse_perf_data(op, result_file):
     raw_data = {}
     try:
@@ -79,10 +91,14 @@ def parse_perf_data(op, result_file):
             dtype_result = bench_res.setdefault(
                 dtype, {"result": "Unknown", "details": {}, "speedup": 0}
             )
+            current_shapes = {}
             for res in item.get("result", []):
                 shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+                key = _benchmark_shape_key(
+                    dtype_result["details"], current_shapes, shape
+                )
                 record = _case_record(res, default=0.0)
-                dtype_result["details"][shape] = record
+                dtype_result["details"][key] = record
                 totals[dtype] = totals.get(dtype, 0.0) + record["speedup"]
                 counts[dtype] = counts.get(dtype, 0) + 1
             if dtype_result["details"]:
@@ -115,10 +131,12 @@ def parse_perf_data(op, result_file):
             },
         )
         details = dtype_result["details"]
+        current_shapes = {}
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
+            key = _benchmark_shape_key(details, current_shapes, shape)
             record = _case_record(res)
-            details[shape] = record
+            details[key] = record
             speedup = record["speedup"]
             if isinstance(speedup, (int, float)):
                 speedup_counts[dtype] = speedup_counts.get(dtype, 0) + 1
