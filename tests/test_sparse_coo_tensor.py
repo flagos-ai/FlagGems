@@ -207,13 +207,62 @@ def test_sparse_coo_tensor_autograd(dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("pin_memory", [None, False, True])
-def test_sparse_coo_tensor_pin_memory(pin_memory):
+@pytest.mark.parametrize("coalesced", [None, False, True])
+@pytest.mark.parametrize("dispatched", [False, True])
+def test_sparse_coo_tensor_pin_memory(pin_memory, coalesced, dispatched):
+    indices = torch.tensor([[0, 1, 2]], device=flag_gems.device)
+    values = torch.ones(3, device=flag_gems.device)
+    kwargs = dict(pin_memory=pin_memory, is_coalesced=coalesced)
+    error = None
+    try:
+        ref = torch.ops.aten.sparse_coo_tensor.indices(indices, values, **kwargs)
+    except RuntimeError as exc:
+        assert pin_memory is True
+        assert "pin" in str(exc).lower()
+        error = str(exc)
+    previous = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        if dispatched:
+            flag_gems.only_enable(lib=lib, include=["sparse_coo_tensor"])
+        op = (
+            torch.ops.aten.sparse_coo_tensor.indices
+            if dispatched
+            else flag_gems.sparse_coo_tensor
+        )
+        if error is not None:
+            with pytest.raises(RuntimeError) as actual_error:
+                op(indices, values, **kwargs)
+            assert str(actual_error.value) == error
+        else:
+            res = op(indices, values, **kwargs)
+            _assert_components(res, ref)
+            assert res.is_pinned() == ref.is_pinned()
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous
+
+
+@pytest.mark.sparse_coo_tensor
+@pytest.mark.parametrize("coalesced", [None, False, True])
+def test_sparse_coo_tensor_pin_memory_rejection(coalesced):
     indices, values = _components()
-    kwargs = dict(pin_memory=pin_memory)
-    ref = torch.ops.aten.sparse_coo_tensor.indices(indices, values, **kwargs)
-    res = flag_gems.sparse_coo_tensor(indices, values, **kwargs)
-    _assert_components(res, ref)
-    assert res.is_pinned() == ref.is_pinned()
+    module = importlib.import_module("flag_gems.ops.sparse_coo_tensor")
+    message = "cannot pin device tensors"
+    with (
+        patch.object(
+            torch, "sparse_coo_tensor", side_effect=RuntimeError(message)
+        ) as factory,
+        patch.object(module, "_infer_size") as infer,
+    ):
+        with pytest.raises(RuntimeError, match=message):
+            flag_gems.sparse_coo_tensor(
+                indices, values, pin_memory=True, is_coalesced=coalesced
+            )
+        factory.assert_called_once_with(
+            indices, values, dtype=None, device=values.device, pin_memory=True
+        )
+        infer.assert_not_called()
 
 
 @pytest.mark.sparse_coo_tensor

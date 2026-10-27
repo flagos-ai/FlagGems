@@ -163,6 +163,24 @@ def sparse_coo_tensor(
         raise NotImplementedError("Triton COO size inference requires a device tensor")
     if target.index is None:
         target = torch.device(target.type, torch_device_fn.current_device())
+    if size is None and pin_memory:
+        # Inferred-constructor pinning differs between PyTorch builds. Preserve
+        # the installed public factory's behavior rather than suppressing True.
+        result = torch.sparse_coo_tensor(
+            indices, values, dtype=dtype, device=target, pin_memory=True
+        )
+        if is_coalesced is None:
+            return result
+        # Older public inferred bindings do not accept is_coalesced. Assemble
+        # from the original values to preserve their autograd connection.
+        return torch.sparse_coo_tensor(
+            indices,
+            values,
+            result.shape,
+            dtype=dtype,
+            device=target,
+            is_coalesced=is_coalesced,
+        )
     if indices.dtype != torch.int64 or indices.device != target:
         with torch_device_fn.device(target):
             indices = to_copy(indices, dtype=torch.int64, device=target)
@@ -186,8 +204,7 @@ def sparse_coo_tensor(
         size,
         dtype=dtype,
         device=target,
-        # Native inferred construction ignores pinning on device tensors; the
-        # explicit-size overload must retain the public factory pinning checks.
-        pin_memory=False if inferred else bool(pin_memory),
+        # Inferred pin_memory=True is handled above by the public factory.
+        pin_memory=bool(pin_memory),
         is_coalesced=is_coalesced,
     )
