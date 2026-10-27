@@ -26,24 +26,24 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
-def heur_block_size(args):
-    return triton.next_power_of_2(
-        triton.cdiv(args["max_tile_elems"], 12)
-    )  # cluster_num
+def _pick_vstack_block(n_elements: int) -> int:
+    """Bounded-tile block size (same graduation as copy.py::_pick_flat_block).
+
+    The previous next_pow2(numel/12) tile yielded only ~8-16 programs per
+    tensor on large shapes, far too few CTAs to saturate the memory system.
+    """
+    if n_elements >= 2**19:
+        return 65536
+    if n_elements >= 2**16:
+        return 32768
+    if n_elements >= 2**13:
+        return 8192
+    if n_elements >= 2**10:
+        return 4096
+    return 1024
 
 
 @libentry()
-# @triton.autotune(
-#     configs=runtime.get_tuned_config("vstack"),
-#     key=[
-#         "max_tile_elems",
-#     ],
-# )
-@triton.heuristics(
-    values={
-        "BLOCK_SIZE": heur_block_size,
-    },
-)
 @triton.jit
 def vstack_kernel(
     itensor_ptr0,
@@ -78,14 +78,19 @@ def vstack_kernel(
     local_row = tl.where(tensor_idx == 2, local_row2, local_row)
     local_row = tl.where(tensor_idx == 3, local_row3, local_row)
 
-    end_idx = local_row * row_stride.to(tl.int64)
-    idx = (pid_x * BLOCK_SIZE + col_idx).to(tl.int64)
+    end_idx = local_row * row_stride
+    block_start = pid_x * BLOCK_SIZE
+    idx = block_start + col_idx
     offset_mask = idx < end_idx
-    in_offset = intensor_ptr + idx
+    in_offset = intensor_ptr + idx.to(tl.int64)
     row_stride_offset = (total_row_offset + base_exc_row_idx) * row_stride.to(tl.int64)
-    out_offset = output_ptr + row_stride_offset + idx
-    out = tl.load(in_offset, mask=offset_mask)
-    tl.store(out_offset, out, mask=offset_mask)
+    out_offset = output_ptr + row_stride_offset + idx.to(tl.int64)
+    if block_start + BLOCK_SIZE <= end_idx:
+        # Full block: unmasked block-DMA. The always-true masked-memory path
+        # costs ~2x on XPU, so only the tail block of each tensor is masked.
+        tl.store(out_offset, tl.load(in_offset))
+    elif block_start < end_idx:
+        tl.store(out_offset, tl.load(in_offset, mask=offset_mask), mask=offset_mask)
 
 
 def vstack(tensors: list):
@@ -139,10 +144,8 @@ def vstack(tensors: list):
                 local_row.append(local_row[-1])
                 exclusive_row.append(exclusive_row[-1])
         max_tile_elems = max_rows * row_stride
-        grid = lambda META: (
-            triton.cdiv(max_tile_elems, META["BLOCK_SIZE"]),
-            scheduled_num_tensors,
-        )
+        block_size = _pick_vstack_block(max_tile_elems)
+        grid = (triton.cdiv(max_tile_elems, block_size), scheduled_num_tensors)
         # Launch the kernel
         with torch_device_fn.device(c_tensors[0].device):
             vstack_kernel[grid](
@@ -162,6 +165,10 @@ def vstack(tensors: list):
                 total_row_offset,
                 row_stride,
                 max_tile_elems,
+                BLOCK_SIZE=block_size,
+                num_warps=32,
+                unroll_num=8,
+                buffer_size_limit=1024,
             )
             total_row_offset += array_row_offset
     return output
