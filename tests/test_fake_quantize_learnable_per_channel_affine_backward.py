@@ -128,8 +128,19 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
     for i, s in enumerate(shape):
         if i != axis:
             reduce_size *= s
+    # An exact fp32 .5 tie in x * (1 / scale) rounds half-to-even in a float32
+    # kernel, but a reference that keeps more precision may land on the other
+    # side; at the clamp boundary that flips dX between grad and 0. Those
+    # elements are ambiguous, so leave them out of the dX comparison.
+    view = [1] * len(shape)
+    view[axis] = -1
+    scaled = self_t * (1.0 / scale).view(view)
+    unambiguous = (scaled - torch.floor(scaled)) != 0.5
     for name, res, ref in zip(("dX", "dScale", "dZeroPoint"), res_out, ref_out):
         rdim = 1 if name == "dX" else reduce_size
+        if name == "dX":
+            res = res[unambiguous]
+            ref = ref[utils.to_reference(unambiguous)]
         utils.gems_assert_close(res, ref, torch.float32, reduce_dim=rdim)
 
 
