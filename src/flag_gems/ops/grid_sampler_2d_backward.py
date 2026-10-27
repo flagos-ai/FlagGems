@@ -27,6 +27,26 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _reflect_coord(coord, n, align_corners: tl.constexpr):
+    # Reflect a continuous (pixel-space) coordinate into the valid range:
+    # align_corners=True reflects over [0, n-1], False over [-0.5, n-0.5].
+    # The coordinate is folded onto the positive domain with fabs before the
+    # modulo, so the modulo always runs on small magnitudes.
+    if align_corners:
+        min = 0.0
+        span = n - 1.0
+    else:
+        min = -0.5
+        span = n * 1.0
+    in_abs = tl.abs(coord - min)
+    extra = in_abs % span
+    flips = tl.floor(in_abs / span)
+    ref = tl.where(flips % 2 == 0, extra, span - extra) + min
+    ref = tl.where(span == 0, 0.0, ref)
+    return tl.minimum(tl.maximum(ref, 0.0), n - 1)
+
+
 @libentry()
 @triton.jit
 def _grid_sampler_2d_backward_kernel(
@@ -98,6 +118,58 @@ def _grid_sampler_2d_backward_kernel(
         x = (gx + 1) * 0.5 * W - 0.5
         y = (gy + 1) * 0.5 * H - 0.5
 
+    # Gradient multiplier of the coordinate transform (grid -> pixel space)
+    # for grad_grid, bilinear + reflection only. The transform folds the
+    # coordinate over [-0.5, n-0.5] (align_corners=False) or [0, n-1] (True)
+    # and then clips to [0, n-1]; its gradient is the fold derivative times
+    # an indicator that the folded coordinate lands strictly inside
+    # (0, n-1), with the exact boundaries counted as saturated.
+    if compute_grad_grid and padding_mode == 2 and interpolation_mode == 0:
+        if align_corners:
+            min_x = 0.0
+            span_x = W - 1.0
+        else:
+            min_x = -0.5
+            span_x = W * 1.0
+        ax = tl.abs(x - min_x)
+        extra_x = ax % span_x
+        flips_x = tl.floor(ax / span_x)
+        fold_x = tl.where(flips_x % 2 == 0, extra_x, span_x - extra_x) + min_x
+        # Derivative of the triangle wave: the fold slope alternates with each
+        # span crossed, and the abs folding contributes sign(u).
+        ux = x if align_corners else x + 0.5
+        sign_x = tl.where(ux >= 0, 1.0, -1.0)
+        reflect_x_grad = tl.where(flips_x % 2 == 0, 1.0, -1.0) * sign_x
+        clip_x_grad = tl.where((fold_x > 0.0) & (fold_x < W - 1.0), 1.0, 0.0)
+        pad_mult_x = tl.where(span_x == 0, 0.0, reflect_x_grad * clip_x_grad)
+
+        if align_corners:
+            min_y = 0.0
+            span_y = H - 1.0
+        else:
+            min_y = -0.5
+            span_y = H * 1.0
+        ay = tl.abs(y - min_y)
+        extra_y = ay % span_y
+        flips_y = tl.floor(ay / span_y)
+        fold_y = tl.where(flips_y % 2 == 0, extra_y, span_y - extra_y) + min_y
+        uy = y if align_corners else y + 0.5
+        sign_y = tl.where(uy >= 0, 1.0, -1.0)
+        reflect_y_grad = tl.where(flips_y % 2 == 0, 1.0, -1.0) * sign_y
+        clip_y_grad = tl.where((fold_y > 0.0) & (fold_y < H - 1.0), 1.0, 0.0)
+        pad_mult_y = tl.where(span_y == 0, 0.0, reflect_y_grad * clip_y_grad)
+
+    if interpolation_mode == 1 and padding_mode == 2:
+        # Nearest + reflection: fold the coordinates into the valid range
+        # before rounding.
+        x = _reflect_coord(x, W, align_corners)
+        y = _reflect_coord(y, H, align_corners)
+    elif interpolation_mode == 0 and padding_mode == 2:
+        # Bilinear + reflection: fold the continuous coordinates into the
+        # valid range before the bilinear corner decomposition.
+        x = _reflect_coord(x, W, align_corners)
+        y = _reflect_coord(y, H, align_corners)
+
     # Compute integer indices
     x0 = tl.floor(x).to(tl.int32)
     y0 = tl.floor(y).to(tl.int32)
@@ -157,9 +229,9 @@ def _grid_sampler_2d_backward_kernel(
         if compute_grad_input:
             grad_input_base = pid_n * stride_input_n + pid_c * stride_input_c
 
-            # Accumulate in float32 (grad_input buffer is float32). This keeps
-            # precision for half inputs and lets atomic_add work for bf16, which
-            # Triton does not support as an atomic element type.
+            # Accumulate in float32 and cast to the output element type for
+            # the atomic; bf16 is not a supported atomic element type, so its
+            # wrapper stages in fp32 instead.
             weight_00 = x1_f * y1_f * grad_out
             weight_10 = x0_f * y1_f * grad_out
             weight_01 = x1_f * y0_f * grad_out
@@ -168,22 +240,38 @@ def _grid_sampler_2d_backward_kernel(
             # Corner (x0, y0): grad_out * x1_f * y1_f
             mask_00 = mask_x0 & mask_y0 & mask_ow
             addr_00 = grad_input_base + y0 * stride_input_h + x0 * stride_input_w
-            tl.atomic_add(grad_input_ptr + addr_00, weight_00, mask=mask_00)
+            tl.atomic_add(
+                grad_input_ptr + addr_00,
+                weight_00.to(grad_input_ptr.dtype.element_ty),
+                mask=mask_00,
+            )
 
             # Corner (x1, y0): grad_out * x0_f * y1_f
             mask_10 = mask_x1 & mask_y0 & mask_ow
             addr_10 = grad_input_base + y0 * stride_input_h + x1 * stride_input_w
-            tl.atomic_add(grad_input_ptr + addr_10, weight_10, mask=mask_10)
+            tl.atomic_add(
+                grad_input_ptr + addr_10,
+                weight_10.to(grad_input_ptr.dtype.element_ty),
+                mask=mask_10,
+            )
 
             # Corner (x0, y1): grad_out * x1_f * y0_f
             mask_01 = mask_x0 & mask_y1 & mask_ow
             addr_01 = grad_input_base + y1 * stride_input_h + x0 * stride_input_w
-            tl.atomic_add(grad_input_ptr + addr_01, weight_01, mask=mask_01)
+            tl.atomic_add(
+                grad_input_ptr + addr_01,
+                weight_01.to(grad_input_ptr.dtype.element_ty),
+                mask=mask_01,
+            )
 
             # Corner (x1, y1): grad_out * x0_f * y0_f
             mask_11 = mask_x1 & mask_y1 & mask_ow
             addr_11 = grad_input_base + y1 * stride_input_h + x1 * stride_input_w
-            tl.atomic_add(grad_input_ptr + addr_11, weight_11, mask=mask_11)
+            tl.atomic_add(
+                grad_input_ptr + addr_11,
+                weight_11.to(grad_input_ptr.dtype.element_ty),
+                mask=mask_11,
+            )
 
         if compute_grad_grid:
             # Need to load input values to compute grad_grid
@@ -216,26 +304,75 @@ def _grid_sampler_2d_backward_kernel(
                 tl.float32
             )
 
-            # Compute grad_grid contributions for this channel
+            # Compute grad_grid contributions for this channel. For reflection
+            # the coordinate transform (fold + clip) has derivative pad_mult,
+            # which is +/-1 inside the valid range and 0 in the clip
+            # saturation zones.
             diff_x0 = input_10 - input_00
             diff_x1 = input_11 - input_01
             grad_grid_x_contrib = grad_out * scale_x * (diff_x0 * y1_f + diff_x1 * y0_f)
+            if padding_mode == 2:
+                grad_grid_x_contrib = grad_grid_x_contrib * pad_mult_x
 
             diff_y0 = input_01 - input_00
             diff_y1 = input_11 - input_10
             grad_grid_y_contrib = grad_out * scale_y * (diff_y0 * x1_f + diff_y1 * x0_f)
+            if padding_mode == 2:
+                grad_grid_y_contrib = grad_grid_y_contrib * pad_mult_y
 
-            # Use atomic add to accumulate across channels (convert to output dtype)
+            # Use atomic add to accumulate across channels in the output
+            # element type; bf16 goes through the fp32 staging buffer in the
+            # wrapper.
             grad_grid_base = pid_n * stride_grid_n + pid_oh * stride_grid_oh
             grad_grid_x_ptrs = grad_grid_ptr + grad_grid_base + offs_ow * stride_grid_ow
             grad_grid_y_ptrs = (
                 grad_grid_ptr + grad_grid_base + offs_ow * stride_grid_ow + 1
             )
+            gg_ty = grad_grid_ptr.dtype.element_ty
+            tl.atomic_add(grad_grid_x_ptrs, grad_grid_x_contrib.to(gg_ty), mask=mask_ow)
+            tl.atomic_add(grad_grid_y_ptrs, grad_grid_y_contrib.to(gg_ty), mask=mask_ow)
 
-            # Accumulate in float32 (grad_grid buffer is float32); cast back to
-            # the requested dtype happens once, after the kernel.
-            tl.atomic_add(grad_grid_x_ptrs, grad_grid_x_contrib, mask=mask_ow)
-            tl.atomic_add(grad_grid_y_ptrs, grad_grid_y_contrib, mask=mask_ow)
+    elif interpolation_mode == 1:  # Nearest
+        # Round to nearest, half to even: the half check is exact (frac ==
+        # 0.5), and the non-half branch rounds from the fractional part
+        # instead of floor(x + 0.5), whose fp32 addition can carry into the
+        # next integer.
+        x_floor = tl.floor(x)
+        y_floor = tl.floor(y)
+        x_frac = x - x_floor
+        y_frac = y - y_floor
+        x_floor_int = x_floor.to(tl.int32)
+        y_floor_int = y_floor.to(tl.int32)
+        x_up = (x_frac > 0.5) | ((x_frac == 0.5) & ((x_floor_int & 1) == 1))
+        y_up = (y_frac > 0.5) | ((y_frac == 0.5) & ((y_floor_int & 1) == 1))
+        x_nearest = x_floor_int + x_up.to(tl.int32)
+        y_nearest = y_floor_int + y_up.to(tl.int32)
+
+        if padding_mode == 0:  # zeros: out-of-range nearest pixel contributes 0
+            mask_px = (x_nearest >= 0) & (x_nearest < W)
+            mask_py = (y_nearest >= 0) & (y_nearest < H)
+            x_nearest = tl.where(mask_px, x_nearest, 0)
+            y_nearest = tl.where(mask_py, y_nearest, 0)
+            in_bounds = mask_px & mask_py & mask_ow
+        else:  # border: the reflected/clamped coordinate is always in range
+            x_nearest = tl.minimum(tl.maximum(x_nearest, 0), W - 1)
+            y_nearest = tl.minimum(tl.maximum(y_nearest, 0), H - 1)
+            in_bounds = mask_ow
+
+        if compute_grad_input:
+            # The gradient lands on the single nearest pixel.
+            addr = (
+                pid_n * stride_input_n
+                + pid_c * stride_input_c
+                + y_nearest * stride_input_h
+                + x_nearest
+            )
+            contrib = grad_out.to(grad_input_ptr.dtype.element_ty)
+            tl.atomic_add(grad_input_ptr + addr, contrib, mask=in_bounds)
+
+        # compute_grad_grid: the nearest-sample output is piecewise constant
+        # in the sampling coordinates, so d(out)/d(grid) is 0 and grad_grid
+        # stays as the zeroed accumulator the wrapper allocated.
 
 
 def grid_sampler_2d_backward(
@@ -264,6 +401,16 @@ def grid_sampler_2d_backward(
     """
     logger.debug("GEMS grid_sampler_2d_backward")
 
+    if interpolation_mode == 2:
+        raise NotImplementedError(
+            "grid_sampler_2d_backward: bicubic interpolation is not supported yet"
+        )
+    if interpolation_mode not in (0, 1) or padding_mode not in (0, 1, 2):
+        raise ValueError(
+            f"grid_sampler_2d_backward: invalid interpolation_mode "
+            f"{interpolation_mode} or padding_mode {padding_mode}"
+        )
+
     N, C, H, W = input.shape
     OH, OW = grid.shape[1:3]
 
@@ -272,9 +419,10 @@ def grid_sampler_2d_backward(
     grad_input = None
     grad_grid = None
 
-    # Accumulate in float32 regardless of the input dtype: atomic_add needs it
-    # for bf16 (unsupported as an atomic element type) and it preserves
-    # precision for half. Results are cast back to the input dtype below.
+    # Atomic accumulation needs a zeroed buffer. Both accumulate in float32
+    # for every dtype: half precision loses too much when rounding each
+    # atomic contribution, and bf16 is not a supported atomic element type.
+    # Results are cast back to the requested dtype once, after the kernel.
     grad_input_acc = None
     grad_grid_acc = None
     if compute_grad_input:
@@ -282,7 +430,10 @@ def grid_sampler_2d_backward(
     if compute_grad_grid:
         grad_grid_acc = torch.zeros_like(grid, dtype=torch.float32)
 
-    BLOCK_N = 64
+    # Atomics from a block land on scattered grad_input pixels, so a small
+    # BLOCK_N keeps the per-block cache footprint and contention low, which
+    # matters most for large tensors.
+    BLOCK_N = 16 if (N * C * OH * OW) >= (1 << 20) else 64
 
     grid_launch = (
         N,
@@ -315,9 +466,13 @@ def grid_sampler_2d_backward(
             BLOCK_N=BLOCK_N,
         )
 
-    if compute_grad_input:
+    if compute_grad_input and grad_input_acc.dtype != input.dtype:
         grad_input = grad_input_acc.to(input.dtype)
-    if compute_grad_grid:
+    else:
+        grad_input = grad_input_acc
+    if compute_grad_grid and grad_grid_acc.dtype != grid.dtype:
         grad_grid = grad_grid_acc.to(grid.dtype)
+    else:
+        grad_grid = grad_grid_acc
 
     return (grad_input, grad_grid)

@@ -17,11 +17,23 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 GRID_SAMPLER_2D_BACKWARD_SHAPES = [
     (2, 3, 8, 8, 4, 4),
     (4, 16, 32, 32, 16, 16),
+]
+
+# (interpolation_mode, padding_mode, align_corners) pairs both backends support.
+GRID_SAMPLER_2D_BACKWARD_MODES = [
+    (0, 0, False),  # bilinear, zeros
+    (0, 1, False),  # bilinear, border
+    (0, 2, True),  # bilinear, reflection
+    (1, 0, False),  # nearest, zeros
+    (1, 1, False),  # nearest, border
+    (1, 2, True),  # nearest, reflection
 ]
 
 
@@ -33,11 +45,24 @@ class GridSampler2DBackwardBenchmark(base.Benchmark):
         for shape in self.shapes:
             N, C, H, W, OH, OW = shape
             input = torch.randn(N, C, H, W, dtype=cur_dtype, device=self.device)
-            grid = torch.randn(N, OH, OW, 2, dtype=cur_dtype, device=self.device)
+            grid = torch.rand(N, OH, OW, 2, dtype=cur_dtype, device=self.device) * 2 - 1
             grad_output = torch.randn(N, C, OH, OW, dtype=cur_dtype, device=self.device)
-            # grid_sampler_2d_backward(grad_output, input, grid,
-            #   interpolation_mode, padding_mode, align_corners, output_mask)
-            yield grad_output, input, grid, 0, 0, False, (True, True)
+            for (
+                interp_mode,
+                padding_mode,
+                align_corners,
+            ) in GRID_SAMPLER_2D_BACKWARD_MODES:
+                # grid_sampler_2d_backward(grad_output, input, grid,
+                #   interpolation_mode, padding_mode, align_corners, output_mask)
+                yield (
+                    grad_output,
+                    input,
+                    grid,
+                    interp_mode,
+                    padding_mode,
+                    align_corners,
+                    (True, True),
+                )
 
 
 @pytest.mark.grid_sampler_2d_backward
@@ -45,7 +70,9 @@ def test_grid_sampler_2d_backward():
     bench = GridSampler2DBackwardBenchmark(
         op_name="grid_sampler_2d_backward",
         torch_op=torch.ops.aten.grid_sampler_2d_backward,
-        # PyTorch's grid_sampler_2d_backward CUDA kernel supports fp16/bf16/fp32.
+        # gems_op calls the FlagGems implementation directly so the benchmark
+        # measures this kernel rather than the aten dispatch layer.
+        gems_op=flag_gems.grid_sampler_2d_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
