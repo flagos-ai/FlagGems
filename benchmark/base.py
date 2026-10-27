@@ -513,7 +513,7 @@ class Benchmark:
             cases=self._collect_cases(),
         )
 
-    def _emit_result(self, dtype, metrics):
+    def _emit_result(self, dtype, metrics, benchmark_source=None):
         result = BenchmarkResult(
             level=Config.bench_level.value,
             op_name=self.op_name,
@@ -525,6 +525,8 @@ class Benchmark:
             result.native_baseline_skip_reason = Config.native_baseline_skip_reason
         print(result)
         result_dict = asdict(result)
+        if benchmark_source is not None:
+            result_dict["benchmark_source"] = benchmark_source
         if Config.native_baseline_skip_reason:
             result_dict["native_baseline_skip_reason"] = (
                 Config.native_baseline_skip_reason

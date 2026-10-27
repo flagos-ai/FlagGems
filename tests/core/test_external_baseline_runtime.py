@@ -574,7 +574,9 @@ def test_parallel_blas_records_external_comparison_in_json(monkeypatch):
         lambda inputs, dtype: [BenchmarkMetrics(latency=2.0, compared_speedup=4.0)],
     )
     bench.run()
-    record = conftest.TEST_RESULTS["mm"]["details"][0]["result"][0]
+    benchmark = conftest.TEST_RESULTS["mm"]["details"][0]
+    assert benchmark["benchmark_source"] == "parallel_blas"
+    record = benchmark["result"][0]
     assert record["compared_speedup"] == 4.0
     assert record["latency"] == 2.0
 

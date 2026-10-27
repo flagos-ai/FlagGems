@@ -1042,7 +1042,11 @@ class ParallelBenchmarkMixin:
             else:
                 metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
 
-            result = self._emit_result(dtype, metrics)
+            result = self._emit_result(
+                dtype,
+                metrics,
+                benchmark_source=Config.current_nodeid or "parallel_blas",
+            )
             if os.environ.get(PARALLEL_RESULT_FILE_ENV):
                 with open(os.environ[PARALLEL_RESULT_FILE_ENV], "wb") as result_file:
                     pickle.dump(result, result_file)

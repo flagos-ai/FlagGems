@@ -277,7 +277,10 @@ def test_summary_keeps_multiple_benchmark_results_for_the_same_dtype(
 
 
 @pytest.mark.parametrize("skip_native", [False, True])
-def test_summary_keeps_same_shape_from_distinct_benchmarks(tmp_path, skip_native):
+@pytest.mark.parametrize("reverse", [False, True])
+def test_summary_keeps_same_shape_from_distinct_benchmarks(
+    tmp_path, skip_native, reverse
+):
     first = {
         "dtype": DTYPE,
         "result": [
@@ -295,18 +298,21 @@ def test_summary_keeps_same_shape_from_distinct_benchmarks(tmp_path, skip_native
             {"shape_detail": [4], "speedup": 2, "base_miss_reason": "shape_missing"}
         ],
     }
+    first["benchmark_source"] = "benchmark/test_blas_perf_parallel.py::test_mm"
     if skip_native:
         first["native_baseline_skip_reason"] = "native unavailable"
     path = tmp_path / "result.json"
-    path.write_text(
-        json.dumps({"mm": {"result": "passed", "details": [first, second]}})
-    )
+    records = [second, first] if reverse else [first, second]
+    path.write_text(json.dumps({"mm": {"result": "passed", "details": records}}))
     summary = parse_perf_data("mm", path)["data"]["fp32"]
     assert summary["speedup"] == 3
-    assert summary["details"]["[4]"]["base_data_source"] == "baseline.json"
     assert (
-        summary["details"]["[4] (benchmark 2)"]["base_miss_reason"] == "shape_missing"
+        summary["details"]["[4] (benchmark/test_blas_perf_parallel.py::test_mm)"][
+            "base_data_source"
+        ]
+        == "baseline.json"
     )
+    assert summary["details"]["[4]"]["base_miss_reason"] == "shape_missing"
 
 
 @pytest.mark.parametrize("config", [[], "invalid", {"inputs": []}, {"inputs": None}])

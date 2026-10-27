@@ -46,16 +46,9 @@ def _case_record(result, default=None):
     return record
 
 
-def _benchmark_shape_key(details, current_shapes, shape):
-    """Distinguish benchmarks while preserving their existing per-shape behavior."""
-    if shape not in current_shapes:
-        key = shape
-        ordinal = 2
-        while key in details:
-            key = f"{shape} (benchmark {ordinal})"
-            ordinal += 1
-        current_shapes[shape] = key
-    return current_shapes[shape]
+def _benchmark_shape_key(shape, source):
+    """Keep legacy shape keys stable and label newly reported benchmarks."""
+    return f"{shape} ({source})" if source else shape
 
 
 def parse_perf_data(op, result_file):
@@ -91,12 +84,9 @@ def parse_perf_data(op, result_file):
             dtype_result = bench_res.setdefault(
                 dtype, {"result": "Unknown", "details": {}, "speedup": 0}
             )
-            current_shapes = {}
             for res in item.get("result", []):
                 shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-                key = _benchmark_shape_key(
-                    dtype_result["details"], current_shapes, shape
-                )
+                key = _benchmark_shape_key(shape, item.get("benchmark_source"))
                 record = _case_record(res, default=0.0)
                 dtype_result["details"][key] = record
                 totals[dtype] = totals.get(dtype, 0.0) + record["speedup"]
@@ -131,10 +121,9 @@ def parse_perf_data(op, result_file):
             },
         )
         details = dtype_result["details"]
-        current_shapes = {}
         for res in item.get("result", []):
             shape = str(res.get("shape_detail", "Unknown")).replace(" ", "")
-            key = _benchmark_shape_key(details, current_shapes, shape)
+            key = _benchmark_shape_key(shape, item.get("benchmark_source"))
             record = _case_record(res)
             details[key] = record
             speedup = record["speedup"]
