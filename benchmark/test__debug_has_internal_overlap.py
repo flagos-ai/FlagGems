@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import nullcontext
+
 import pytest
 import torch
 
@@ -64,6 +66,19 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class DebugHasInternalOverlapBenchmark(base.GenericBenchmark):
+    def _candidate_call(self):
+        override = (
+            base.Config.override_registry.get_override(self.op_name)
+            if base.Config.override_registry is not None
+            else None
+        )
+        candidate = override if override is not None else self.gems_op
+        if not callable(candidate):
+            raise TypeError(
+                "_debug_has_internal_overlap benchmark requires a callable candidate"
+            )
+        return candidate, nullcontext(), override is not None
+
     def set_more_shapes(self):
         # Additive only: the shared core shape grid stays the default shape set
         # and a caller-supplied --shape-file still wins; these layout shapes are
@@ -78,7 +93,6 @@ def test_debug_has_internal_overlap():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._debug_has_internal_overlap,
-        gems_op=getattr(flag_gems, "_debug_has_internal_overlap", None),
         dtypes=(
             consts.FLOAT_DTYPES
             + consts.INT_DTYPES

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 
@@ -31,6 +32,23 @@ def _prod(dims):
     for d in dims:
         out *= d
     return out
+
+
+def _tensorinv_out_reference(inp, ind):
+    # This MUSA image omits CPU LAPACK; NumPy still provides a CPU inverse.
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        try:
+            result = np.linalg.tensorinv(inp.detach().numpy(), ind=ind)
+        except (ValueError, TypeError, np.linalg.LinAlgError) as exc:
+            raise RuntimeError(str(exc)) from exc
+        reference = torch.from_numpy(result)
+        assert reference.dtype == inp.dtype
+        return reference
+    return torch.linalg.tensorinv(inp, ind=ind)
 
 
 @pytest.mark.linalg_tensorinv
@@ -295,9 +313,9 @@ def test_linalg_tensorinv_out(shape, dtype):
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
         ref_A_fp32 = ref_A.to(torch.float32)
-        ref_out = torch.linalg.tensorinv(ref_A_fp32, ind=ind).to(torch.float16)
+        ref_out = _tensorinv_out_reference(ref_A_fp32, ind=ind).to(torch.float16)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_out_reference(ref_A, ind=ind)
 
     out = torch.empty(
         A.shape[ind:] + A.shape[:ind], dtype=dtype, device=flag_gems.device
@@ -473,9 +491,9 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
 
     ref_A = utils.to_reference(A)
     if dtype == torch.float16:
-        ref_out = torch.linalg.tensorinv(ref_A.to(torch.float32), ind=ind).to(dtype)
+        ref_out = _tensorinv_out_reference(ref_A.to(torch.float32), ind=ind).to(dtype)
     else:
-        ref_out = torch.linalg.tensorinv(ref_A, ind=ind)
+        ref_out = _tensorinv_out_reference(ref_A, ind=ind)
 
     # Pre-fill with values that would be obviously wrong if left in place.
     out = torch.full((m, m), float("nan"), dtype=dtype, device=flag_gems.device)
@@ -491,11 +509,11 @@ def test_linalg_tensorinv_out_overwrites_and_non_contiguous(dtype):
     out2 = torch.empty_like(A)
     ref_view_A = utils.to_reference(A_view)
     if dtype == torch.float16:
-        ref_view = torch.linalg.tensorinv(ref_view_A.to(torch.float32), ind=ind).to(
+        ref_view = _tensorinv_out_reference(ref_view_A.to(torch.float32), ind=ind).to(
             dtype
         )
     else:
-        ref_view = torch.linalg.tensorinv(ref_view_A, ind=ind)
+        ref_view = _tensorinv_out_reference(ref_view_A, ind=ind)
     res_view = flag_gems.linalg_tensorinv_out(A_view, ind=ind, out=out2)
 
     assert res_view is out2

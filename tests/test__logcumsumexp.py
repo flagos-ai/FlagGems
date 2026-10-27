@@ -35,7 +35,6 @@ LOGCUMSUMEXP_SHAPES = (
 EMPTY_SHAPES = [(0,), (2, 0), (0, 3), (3, 0), (2, 0, 4), (2, 4, 0)]
 
 
-
 def _complex_scan_observations(result, reference, inp):
     assert result.device == inp.device
     assert result.dtype == inp.dtype
@@ -294,7 +293,7 @@ def test__logcumsumexp_complex_special_values(data):
     res_out = flag_gems._logcumsumexp(inp, 0)
 
     observed, expected = _complex_scan_observations(res_out, ref_out, inp)
-    utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
+    utils.gems_assert_close(observed, expected, torch.complex64, equal_nan=True)
     assert torch.isnan(observed).equal(torch.isnan(expected))
     assert torch.isinf(observed.real).equal(torch.isinf(expected.real))
     assert torch.isinf(observed.imag).equal(torch.isinf(expected.imag))

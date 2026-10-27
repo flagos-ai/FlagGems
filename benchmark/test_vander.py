@@ -22,9 +22,26 @@ class VanderBenchmark(base.Benchmark):
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:
-            # Generate 1D input
-            inp = base.generate_tensor_input(shape, dtype, flag_gems.device)
-            yield inp, None, False  # (x, N=None, increasing=False)
+            yield from self._inputs_for_shape(shape, dtype)
+
+    def _inputs_for_shape(self, shape, dtype):
+        inp = base.generate_tensor_input(shape, dtype, flag_gems.device)
+        yield inp, None, False  # (x, N=None, increasing=False)
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
+            )
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return next(self._inputs_for_shape(shape, case.dtype))
 
     def unpack_to_args_kwargs(self, input):
         x, N, increasing = input

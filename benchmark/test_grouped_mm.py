@@ -15,11 +15,8 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
-
 
 GROUPED_MM_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
@@ -80,7 +77,6 @@ def test_grouped_mm():
     GroupedMMBenchmark(
         op_name="group_mm",
         torch_op=torch._grouped_mm,
-        gems_op=flag_gems.group_mm,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.bfloat16],

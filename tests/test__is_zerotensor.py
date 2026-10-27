@@ -56,18 +56,43 @@ _CONSTRUCTION_SHAPES = tu.selected_cases(
     quick=[(), (1,), (256,), (2, 19, 7)] + _ZERO_EXTENT_SHAPES,
 )
 
+
+def _dense_zero(shape, dtype, device):
+    # CPU FP8 fill is incomplete on Hygon; NPU FP8 zero_ is unavailable.
+    # Encoding positive zero on CPU preserves dtype, bytes and dense marker.
+    target = torch.device(device)
+    if dtype in (torch.float8_e4m3fn, torch.float8_e5m2) and (
+        (flag_gems.vendor_name == "hygon" and target.type == "cpu")
+        or (flag_gems.vendor_name == "ascend" and target.type == "npu")
+    ):
+        return (
+            torch.zeros(shape, dtype=torch.float32, device="cpu").to(dtype).to(device)
+        )
+    return torch.zeros(shape, dtype=dtype, device=device)
+
+
+def _zerotensor(shape, dtype, device):
+    """Construct each flagged operand independently: it has no copyable storage."""
+    inp = torch.ops.aten._efficientzerotensor(shape, dtype=dtype, device=device)
+    if (
+        flag_gems.vendor_name == "ascend"
+        and torch.device(device).type == "npu"
+        and "ZeroTensor" not in str(torch._C._dispatch_keys(inp))
+    ):
+        pytest.skip("Ascend _efficientzerotensor loses the ZeroTensor dispatch key")
+    return inp
+
+
 # Both operands hold the same (zero) values; only the marker differs.
 _ZERO_CONSTRUCTIONS = [
     (
         "zerotensor",
-        lambda shape, dtype, device: torch.ops.aten._efficientzerotensor(
-            shape, dtype=dtype, device=device
-        ),
+        _zerotensor,
         True,
     ),
     (
         "dense_zero",
-        lambda shape, dtype, device: torch.zeros(shape, dtype=dtype, device=device),
+        _dense_zero,
         False,
     ),
 ]
@@ -117,20 +142,93 @@ def _reference_device():
     return "cpu" if utils.TO_CPU else flag_gems.device
 
 
-def _zerotensor(shape, dtype, device):
-    """Build a flagged operand natively.
+def _make_input(dtype, shape, value_range):
+    if flag_gems.vendor_name != "ascend" or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_input(dtype, shape, value_range)
+    # NPU can store FP8, but the shared factory's device-side cast cannot
+    # encode it. Keep the original dtype/range recipe and transfer its bytes.
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        result = torch.full(shape, low, dtype=dtype, device="cpu")
+    else:
+        result = torch.testing.make_tensor(
+            shape, dtype=dtype, device="cpu", low=low, high=high
+        )
+    return result.to(flag_gems.device)
 
-    ``_efficientzerotensor`` is the only public ZeroTensor constructor, and such
-    an operand has no storage for ``tu.to_reference`` to copy, so each side of
-    the comparison is built independently.
-    """
-    return torch.ops.aten._efficientzerotensor(shape, dtype=dtype, device=device)
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name != "ascend" or dtype not in (
+        torch.float8_e4m3fn,
+        torch.float8_e5m2,
+    ):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+    }
+    return (
+        torch.tensor(payloads[scenario], dtype=torch.float32, device="cpu")
+        .to(dtype)
+        .to(flag_gems.device)
+    )
 
 
 def _assert_flag(res, ref):
     """The predicate contract is a Python ``bool``, not a 0-dim tensor."""
     assert type(res) is bool
     assert res == ref
+
+
+def _input_metadata(inp):
+    flagged = torch.ops.aten._is_zerotensor(inp)
+    metadata = (
+        inp.device,
+        inp.dtype,
+        inp.layout,
+        inp.size(),
+        inp.stride(),
+        inp.storage_offset(),
+        inp.requires_grad,
+        inp.is_leaf,
+        inp.is_conj(),
+        inp.is_neg(),
+        inp._version,
+        flagged,
+    )
+    # A genuine ZeroTensor has no materialized storage. Observe only metadata.
+    if flagged:
+        return metadata
+    storage = inp.untyped_storage()
+    return metadata + (inp.data_ptr(), storage._cdata, storage.nbytes())
+
+
+def _storage_bytes(inp):
+    storage = inp.untyped_storage().cpu()
+    return (
+        torch.empty(0, dtype=torch.uint8, device="cpu")
+        .set_(storage, 0, (storage.nbytes(),), (1,))
+        .clone()
+    )
+
+
+def _checked_candidate(inp):
+    before = _input_metadata(inp)
+    flagged = torch.ops.aten._is_zerotensor(inp)
+    # Retain dense storage identity, including for empty tensors. CPU byte
+    # snapshots must be independent; FP8 NaNs and signed zero compare as bytes.
+    storage = None if flagged else inp.untyped_storage()
+    payload = None if flagged else _storage_bytes(inp)
+    result = flag_gems._is_zerotensor(inp)
+    assert _input_metadata(inp) == before, "query changed input metadata or storage"
+    if not flagged:
+        assert torch.equal(_storage_bytes(inp), payload), "query changed storage bytes"
+        assert storage is not None
+    return result
 
 
 # Bool input generation ignores value_range; keep one sample per workload.
@@ -150,10 +248,10 @@ _DTYPE_RANGE_CASES = [
 @pytest.mark.parametrize("shape", tu.selected_shapes())
 @pytest.mark.parametrize("dtype,value_range", _DTYPE_RANGE_CASES)
 def test__is_zerotensor_dense_input(shape, value_range, dtype):
-    inp = tu.make_input(dtype, shape, value_range)
+    inp = _make_input(dtype, shape, value_range)
     ref_inp = tu.to_reference(inp)
 
-    res = flag_gems._is_zerotensor(inp)
+    res = _checked_candidate(inp)
     # A dense operand is never flagged, whatever its values or shape.
     assert res is False
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
@@ -171,7 +269,7 @@ def test__is_zerotensor_marker_vs_dense_zero(shape, dtype, expected_flag, constr
     inp = construction(shape, dtype, flag_gems.device)
     ref_inp = construction(shape, dtype, _reference_device())
 
-    res = flag_gems._is_zerotensor(inp)
+    res = _checked_candidate(inp)
     assert res is expected_flag
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
 
@@ -187,7 +285,7 @@ def test__is_zerotensor_marker_through_view(transform, expected_flag, dtype):
     inp = _zerotensor(_FLAG_SHAPE, dtype, flag_gems.device)
     ref_inp = _zerotensor(_FLAG_SHAPE, dtype, _reference_device())
 
-    res = flag_gems._is_zerotensor(transform(inp))
+    res = _checked_candidate(transform(inp))
     assert res is expected_flag
     _assert_flag(res, torch.ops.aten._is_zerotensor(transform(ref_inp)))
 
@@ -204,7 +302,7 @@ def test__is_zerotensor_keeps_input_state(expected_flag, construction, dtype):
     shape, stride = tuple(inp.shape), inp.stride()
     offset, device = inp.storage_offset(), inp.device
 
-    flag_gems._is_zerotensor(inp)
+    _checked_candidate(inp)
 
     # The query must not materialize, detach or otherwise rewrite its operand.
     assert tuple(inp.shape) == shape
@@ -226,10 +324,10 @@ def test__is_zerotensor_keeps_input_state(expected_flag, construction, dtype):
     ),
 )
 def test__is_zerotensor_special_values(dtype, scenario):
-    inp = tu.make_special_input(dtype, scenario)
+    inp = _make_special_input(dtype, scenario)
     ref_inp = tu.to_reference(inp)
 
-    res = flag_gems._is_zerotensor(inp)
+    res = _checked_candidate(inp)
     # nan/inf/-0.0 payloads are dense values, so the marker stays unset.
     assert res is False
     _assert_flag(res, torch.ops.aten._is_zerotensor(ref_inp))
@@ -244,7 +342,7 @@ def test__is_zerotensor_differentiable_input(dtype):
     inp = _zerotensor(_FLAG_SHAPE, dtype, flag_gems.device).requires_grad_(True)
     ref_inp = _zerotensor(_FLAG_SHAPE, dtype, _reference_device()).requires_grad_(True)
 
-    _assert_flag(flag_gems._is_zerotensor(inp), torch.ops.aten._is_zerotensor(ref_inp))
+    _assert_flag(_checked_candidate(inp), torch.ops.aten._is_zerotensor(ref_inp))
     assert inp.requires_grad is True
 
 
