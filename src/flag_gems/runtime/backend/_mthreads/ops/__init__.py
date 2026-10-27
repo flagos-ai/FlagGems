@@ -39,6 +39,14 @@ from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
 from .atan2_ import atan2_
+from .attention import (
+    ScaleDotProductAttention,
+    flash_attention_forward,
+    flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
+    scaled_dot_product_attention,
+    scaled_dot_product_attention_backward,
+)
 from .avg_pool2d import avg_pool2d_backward
 from .batch_norm import batch_norm, batch_norm_backward
 from .bucketize import bucketize
@@ -223,6 +231,9 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fix",
+    "flash_attention_forward",
+    "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "floor_divide",
     "floor_divide_",
@@ -316,7 +327,10 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
+    "scaled_dot_product_attention",
+    "scaled_dot_product_attention_backward",
     "scaled_grouped_mm",
+    "ScaleDotProductAttention",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
