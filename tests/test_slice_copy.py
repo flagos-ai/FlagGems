@@ -77,8 +77,70 @@ def _make_input(shape, dtype, device=None):
     return torch.randint(lo, hi, shape, device=device, dtype=dtype)
 
 
+def _slice_input(shape, dtype, device=None):
+    if not dtype.is_complex:
+        return _make_input(shape, dtype, device)
+    device = device or flag_gems.device
+    # Construct complex payloads on CPU: some accelerators cannot cast
+    # complex64 to complex32 even though they can transfer/store the dtype.
+    real = torch.randn(shape, device="cpu", dtype=torch.float32)
+    imag = torch.randn(shape, device="cpu", dtype=torch.float32)
+    value = torch.complex(real, imag).to(dtype)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+        result = value.view(torch.uint8).to(device).view(dtype).reshape(shape)
+    else:
+        result = value.to(device)
+    assert result.dtype == dtype
+    return result
+
+
 def _aten_slice_copy(inp, dim=0, start=None, end=None, step=1):
     return torch.ops.aten.slice_copy.Tensor(inp, dim, start, end, step)
+
+
+def _complex_cpu_values(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and inp.dtype == torch.complex128
+        and inp.device.type != "cpu"
+    ):
+        return (
+            inp.contiguous().view(torch.uint8).cpu().view(inp.dtype).reshape(inp.shape)
+        )
+    return inp.cpu()
+
+
+def _complex_reference_input(inp):
+    return _complex_cpu_values(inp) if utils.TO_CPU else inp
+
+
+def _special_slice_reference(inp, dim, start, end, step):
+    try:
+        return _aten_slice_copy(inp, dim, start, end, step)
+    except (RuntimeError, ValueError) as error:
+        if (
+            flag_gems.vendor_name == "ascend"
+            and inp.device.type != "cpu"
+            and inp.dtype == torch.complex32
+            and "Tensor self not implemented for DT_COMPLEX32" in str(error)
+        ):
+            pytest.skip(
+                "Ascend native complex32 slice_copy is unsupported; CPU reference remains covered"
+            )
+        if inp.device.type != "cpu" and inp.dtype in _FLOAT8_DTYPES:
+            message = str(error)
+            if (
+                flag_gems.vendor_name == "kunlunxin"
+                and isinstance(error, ValueError)
+                and message.startswith("[NOT IMPLEMENTED]: error code= 4(")
+            ) or (
+                flag_gems.vendor_name == "ascend"
+                and "ViewCopy on aicpu do not support dtype: DT_FLOAT8_" in message
+            ):
+                pytest.skip(
+                    "Backend native float8 slice_copy is unsupported; CPU reference remains covered"
+                )
+        raise
 
 
 def _aten_slice_copy_out(inp, dim, start, end, step, out):
@@ -251,7 +313,7 @@ def test_slice_copy_int_dtype(dtype):
 def test_slice_copy_all_dtypes(dtype):
     # Compare against aten::slice_copy.Tensor for every natively supported
     # non-complex dtype, including fp64, bool and the 1-byte integer types.
-    inp = _make_input((5, 9), dtype)
+    inp = _slice_input((5, 9), dtype)
     ref_inp = utils.to_reference(inp)
 
     for dim, start, end, step in [
@@ -273,10 +335,14 @@ def test_slice_copy_all_dtypes(dtype):
 def test_slice_copy_float8_bitwise(dtype):
     # Triton has no fp8 scalar type; the kernel copies through uint8. Sweep all
     # 256 byte patterns (incl. NaN encodings) and require a bit-exact copy.
-    inp = _make_input((256,), dtype)
-    ref_out = _aten_slice_copy(inp, 0, 0, 256, 3)
+    inp = _slice_input((256,), dtype)
+    ref_inp = utils.to_reference(inp)
+    ref_out = _special_slice_reference(ref_inp, 0, 0, 256, 3)
     res_out = flag_gems.slice_copy(inp, 0, 0, 256, 3)
-    assert bool((res_out.view(torch.uint8) == ref_out.view(torch.uint8)).all())
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == ref_out.shape
+    assert torch.equal(res_out.view(torch.uint8).cpu(), ref_out.view(torch.uint8).cpu())
 
 
 @pytest.mark.slice_copy
@@ -284,7 +350,7 @@ def test_slice_copy_float8_bitwise(dtype):
 def test_slice_copy_complex(dtype):
     # Triton exposes no complex scalar type, so the kernel copies complex data
     # through view_as_real; check against ATen on every kernel path.
-    inp = _make_input((4, 6, 5), dtype)
+    inp = _slice_input((4, 6, 5), dtype)
 
     cases = [
         (0, 1, 4, 1),  # step1 path, inner > 1
@@ -293,10 +359,19 @@ def test_slice_copy_complex(dtype):
         (2, 1, None, 1),
     ]
     for dim, start, end, step in cases:
-        ref_out = _aten_slice_copy(inp, dim, start, end, step)
+        ref_out = _special_slice_reference(
+            _complex_reference_input(inp), dim, start, end, step
+        )
         res_out = flag_gems.slice_copy(inp, dim, start, end, step)
+        assert res_out.device == inp.device
         assert res_out.dtype == dtype
-        assert bool((res_out == ref_out).all())
+        assert res_out.shape == ref_out.shape
+        # Observe complex values on CPU; device-side eq is absent on some
+        # backends, and CPU complex32 equality itself requires widening.
+        assert torch.equal(
+            _complex_cpu_values(res_out).to(torch.complex128),
+            _complex_cpu_values(ref_out).to(torch.complex128),
+        )
 
 
 @pytest.mark.slice_copy
@@ -305,11 +380,17 @@ def test_slice_copy_lazy_conj_neg(dtype):
     # A conj/neg view carries the flag lazily: the raw bytes are un-negated, so
     # a plain bit copy would return the wrong values. ATen resolves them and
     # returns a tensor with the flag cleared.
-    inp = _make_input((4, 6), dtype)
+    inp = _slice_input((4, 6), dtype)
     lazy = inp.conj() if dtype.is_complex else torch.ops.aten._neg_view(inp)
     ref_out = _aten_slice_copy(lazy, 1, 1, 5, 2)
     res_out = flag_gems.slice_copy(lazy, 1, 1, 5, 2)
-    assert bool((res_out == ref_out).all())
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == ref_out.shape
+    assert torch.equal(
+        _complex_cpu_values(res_out).to(torch.complex128),
+        _complex_cpu_values(ref_out).to(torch.complex128),
+    )
     assert res_out.is_conj() == ref_out.is_conj()
     assert res_out.is_neg() == ref_out.is_neg()
 

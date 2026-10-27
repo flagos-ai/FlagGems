@@ -28,6 +28,27 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
+def _reference_input(value):
+    # PPU has no native inplace BLAS implementation. CPU ATen supplies the
+    # same reference semantics; cloning prevents in-place reference mutation
+    # from changing the original candidate input on same-device references.
+    if flag_gems.vendor_name == "thead":
+        return value.cpu().double().clone()
+    reference = utils.to_reference(value, True)
+    # This is an independent value reference, so its output need not share
+    # the candidate's strided layout. muDNN requires a contiguous output.
+    if flag_gems.vendor_name == "mthreads":
+        return reference.clone(memory_format=torch.contiguous_format)
+    return reference.clone()
+
+
+def _assert_values(result, reference, expected_device, dtype, reduce_dim):
+    assert result.device == expected_device
+    assert result.dtype == dtype
+    assert result.shape == reference.shape
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype, reduce_dim=reduce_dim)
+
+
 @pytest.mark.baddbmm_
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
@@ -40,19 +61,19 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     batch1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     batch2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
     self = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
-    ref_batch1 = utils.to_reference(batch1, True)
-    ref_batch2 = utils.to_reference(batch2, True)
-    ref_self = utils.to_reference(self, True)
+    ref_batch1 = _reference_input(batch1)
+    ref_batch2 = _reference_input(batch2)
+    ref_self = _reference_input(self)
+    expected_device = self.device
     pointer = self.data_ptr()
 
     ref_result = ref_self.baddbmm_(ref_batch1, ref_batch2, alpha=scalar, beta=scalar)
-    with flag_gems.use_gems():
-        result = self.baddbmm_(batch1, batch2, alpha=scalar, beta=scalar)
+    result = flag_gems.baddbmm_(self, batch1, batch2, alpha=scalar, beta=scalar)
 
     assert result is self
     assert self.data_ptr() == pointer
-    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
-    utils.gems_assert_close(self, ref_self, dtype, reduce_dim=K)
+    _assert_values(result, ref_result, expected_device, dtype, reduce_dim=K)
+    _assert_values(self, ref_self, expected_device, dtype, reduce_dim=K)
 
 
 @pytest.mark.baddbmm_
@@ -62,18 +83,16 @@ def test_baddbmm_noncontiguous_self_preserves_storage():
     self = torch.randn((2, 5, 3), dtype=dtype, device=flag_gems.device).transpose(1, 2)
     batch1 = torch.randn((2, 3, 4), dtype=dtype, device=flag_gems.device)
     batch2 = torch.randn((2, 4, 5), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
+    ref_self = _reference_input(self)
+    expected_device = self.device
     pointer = self.data_ptr()
     stride = self.stride()
-    ref_result = ref_self.baddbmm_(
-        utils.to_reference(batch1, True), utils.to_reference(batch2, True)
-    )
-    with flag_gems.use_gems():
-        result = self.baddbmm_(batch1, batch2)
+    ref_result = ref_self.baddbmm_(_reference_input(batch1), _reference_input(batch2))
+    result = flag_gems.baddbmm_(self, batch1, batch2)
     assert result is self
     assert self.data_ptr() == pointer
     assert self.stride() == stride
-    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=4)
+    _assert_values(result, ref_result, expected_device, dtype, reduce_dim=4)
 
 
 @pytest.mark.baddbmm_
@@ -82,5 +101,5 @@ def test_baddbmm_rejects_batch_mismatch():
     self = torch.randn((2, 3, 5), device=flag_gems.device)
     batch1 = torch.randn((2, 3, 4), device=flag_gems.device)
     batch2 = torch.randn((3, 4, 5), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        self.baddbmm_(batch1, batch2)
+    with pytest.raises(RuntimeError):
+        flag_gems.baddbmm_(self, batch1, batch2)

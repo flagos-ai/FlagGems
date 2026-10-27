@@ -21,24 +21,111 @@ def make_reflectors(shape, dtype):
     return torch.geqrf(matrix)
 
 
+def _copy_reflector(value, device):
+    if flag_gems.vendor_name == "kunlunxin" and value.dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        # Preserve column-major QR storage as well as every double payload bit.
+        transposed = value.ndim >= 2 and value.mT.is_contiguous()
+        source = value.mT if transposed else value.contiguous()
+        result = (
+            source.reshape(-1)
+            .view(torch.uint8)
+            .to(device)
+            .view(value.dtype)
+            .reshape(source.shape)
+        )
+        return result.mT if transposed else result
+    return value.to(device)
+
+
+def _make_orgqr_reflectors(shape, dtype):
+    if (
+        dtype == torch.float64
+        and flag_gems.vendor_name in ("kunlunxin", "iluvatar", "thead")
+    ) or (
+        dtype.is_complex
+        and flag_gems.vendor_name in ("kunlunxin", "iluvatar", "ascend", "thead")
+    ):
+        matrix = torch.randn(shape, dtype=dtype, device="cpu")
+        input, tau = torch.geqrf(matrix)
+        input, tau = _copy_reflector(input, flag_gems.device), _copy_reflector(
+            tau, flag_gems.device
+        )
+        assert input.dtype == tau.dtype == dtype
+        return input, tau
+    return make_reflectors(shape, dtype)
+
+
+def _reference_reflector(value):
+    if (
+        utils.TO_CPU
+        and flag_gems.vendor_name == "kunlunxin"
+        and value.dtype in (torch.float64, torch.complex128)
+    ):
+        return _copy_reflector(value, "cpu")
+    return utils.to_reference(value)
+
+
+def _reference_orgqr(input, tau):
+    if input.device.type != "cpu":
+        if (
+            flag_gems.vendor_name == "thead"
+            and input.dtype
+            in (
+                torch.float64,
+                torch.complex64,
+                torch.complex128,
+            )
+            and input.numel() != 0
+        ):
+            pytest.skip(
+                "PPU native orgqr aborts for float64 and lacks complex solver entry points; CPU reference remains covered"
+            )
+        if flag_gems.vendor_name == "kunlunxin" and input.dtype in (
+            torch.float64,
+            torch.complex128,
+        ):
+            pytest.skip(
+                "Kunlunxin native orgqr returns single precision for double inputs; CPU reference remains covered"
+            )
+        if flag_gems.vendor_name == "iluvatar" and input.dtype == torch.complex128:
+            pytest.skip(
+                "Iluvatar native orgqr lacks the complex128 solver entry point; CPU reference remains covered"
+            )
+    return torch.orgqr(input, tau)
+
+
+def _assert_orgqr_close(result, reference, input, dtype):
+    assert result.device == input.device
+    assert result.dtype == dtype
+    assert result.shape == input.shape
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        result = _copy_reflector(result, "cpu")
+        flag_gems.testing.assert_close(result, reference, dtype)
+    else:
+        utils.gems_assert_close(result, reference, dtype)
+
+
 @pytest.mark.orgqr
 @pytest.mark.parametrize("shape", ORGQR_SHAPES + ORGQR_BATCH_SHAPES)
 @pytest.mark.parametrize("dtype", ORGQR_DTYPES)
 def test_accuracy_orgqr(shape, dtype):
-    input, tau = make_reflectors(shape, dtype)
-    ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+    input, tau = _make_orgqr_reflectors(shape, dtype)
+    ref = _reference_orgqr(_reference_reflector(input), _reference_reflector(tau))
     result = flag_gems.orgqr(input, tau)
-    utils.gems_assert_close(result, ref, dtype)
+    _assert_orgqr_close(result, ref, input, dtype)
 
 
 @pytest.mark.orgqr
 @pytest.mark.parametrize("k", [0, 2, 5])
 def test_orgqr_k_cases(k):
-    input, tau = make_reflectors((7, 5), torch.float32)
+    input, tau = _make_orgqr_reflectors((7, 5), torch.float32)
     tau = tau[:k]
-    ref = torch.orgqr(utils.to_reference(input), utils.to_reference(tau))
+    ref = _reference_orgqr(_reference_reflector(input), _reference_reflector(tau))
     result = flag_gems.orgqr(input, tau)
-    utils.gems_assert_close(result, ref, torch.float32)
+    _assert_orgqr_close(result, ref, input, torch.float32)
 
 
 @pytest.mark.orgqr
@@ -58,8 +145,11 @@ def test_orgqr_invalid_shapes():
 @pytest.mark.orgqr
 @pytest.mark.parametrize("dtype", _COMPLEX_DTYPES)
 def test_orgqr_complex_is_explicitly_unsupported(dtype):
-    input, tau = make_reflectors((4, 3), dtype)
-    assert torch.orgqr(input, tau).dtype == dtype
+    input, tau = _make_orgqr_reflectors((4, 3), dtype)
+    assert (
+        _reference_orgqr(_reference_reflector(input), _reference_reflector(tau)).dtype
+        == dtype
+    )
     with pytest.raises(RuntimeError, match="complex dtypes are not supported"):
         flag_gems.orgqr(input, tau)
 

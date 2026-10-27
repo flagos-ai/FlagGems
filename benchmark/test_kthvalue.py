@@ -18,7 +18,7 @@ import torch
 from . import base
 
 
-class KthvalueBenchmark(base.GenericBenchmarkExcluse1D):
+class KthvalueBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (1024, 256),

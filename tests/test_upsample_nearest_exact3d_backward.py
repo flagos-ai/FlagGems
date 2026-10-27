@@ -35,6 +35,9 @@ CASES = [
 def test_upsample_nearest_exact3d_backward(input_size, output_size, scales, dtype):
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin cannot preserve float64 input storage")
+    if flag_gems.vendor_name == "mthreads" and dtype == torch.float64:
+        if not utils.TO_CPU or scales == (1.5, 2.5, 0.75):
+            pytest.skip("MUSA native nearest-exact3d backward does not support float64")
     if flag_gems.vendor_name == "ascend":
         uses_device_reference = not utils.TO_CPU or scales == (1.5, 2.5, 0.75)
         if dtype == torch.float64 and uses_device_reference:

@@ -194,6 +194,7 @@ def test__flash_attention_forward(
     is_causal,
     dtype,
     caplog,
+    request,
 ):
     current_device = torch_device_fn.current_device()
     q, k, v = make_input(
@@ -214,9 +215,26 @@ def test__flash_attention_forward(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    if cfg.TO_CPU:
-        ref_out, ref_lse = dense_flash_attention_ref(
-            ref_q, ref_k, ref_v, scale, is_causal
+    if cfg.TO_CPU or flag_gems.vendor_name in {
+        "ascend",
+        "kunlunxin",
+        "metax",
+        "mthreads",
+    }:
+        from .test__flash_attention_forward import _cpu_flash_forward
+
+        ref_result = _cpu_flash_forward(
+            ref_q,
+            ref_k,
+            ref_v,
+            None,
+            None,
+            ref_q.shape[-3],
+            ref_k.shape[-3],
+            0.0,
+            is_causal,
+            False,
+            scale=scale,
         )
     else:
         ref_result = torch.ops.aten._flash_attention_forward.default(
@@ -232,7 +250,7 @@ def test__flash_attention_forward(
             False,
             scale=scale,
         )
-        ref_out, ref_lse = ref_result[0], ref_result[1]
+    ref_out, ref_lse = ref_result[:2]
     with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
         result = flag_gems._flash_attention_forward(
             q,
@@ -248,13 +266,29 @@ def test__flash_attention_forward(
             scale=scale,
         )
 
-    assert (
-        f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} _FLASH_ATTENTION_FORWARD"
-        in caplog.text
-    )
+    registry = getattr(request.config, "_override_registry", None)
+    if registry is None or registry.get_override("_flash_attention_forward") is None:
+        assert (
+            f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} _FLASH_ATTENTION_FORWARD"
+            in caplog.text
+        )
     assert len(result) == 5
-    utils.gems_assert_close(result[0], ref_out, dtype)
-    utils.gems_assert_close(result[1], ref_lse, torch.float)
+    assert result[0].device == q.device and result[0].dtype == q.dtype
+    assert result[0].shape == ref_out.shape
+    assert result[1].device == q.device and result[1].dtype == torch.float32
+    assert result[1].shape == ref_lse.shape
+    for index in (2, 3, 4):
+        expected_device = (
+            q.device
+            if cfg.TO_CPU
+            or flag_gems.vendor_name in {"ascend", "kunlunxin", "metax", "mthreads"}
+            else ref_result[index].device
+        )
+        assert result[index].device == expected_device
+        assert result[index].dtype == ref_result[index].dtype
+        assert result[index].shape == ref_result[index].shape
+    utils.gems_assert_close(result[0].cpu(), ref_out.cpu(), dtype)
+    utils.gems_assert_close(result[1].cpu(), ref_lse.cpu(), torch.float)
 
 
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):

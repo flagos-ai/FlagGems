@@ -30,6 +30,22 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
+def _reference_input(value):
+    # PPU has no native inplace BLAS implementation. CPU ATen supplies the
+    # same reference semantics; cloning prevents in-place reference mutation
+    # from changing the original candidate input on same-device references.
+    if flag_gems.vendor_name == "thead":
+        return value.cpu().double().clone()
+    return utils.to_reference(value, True).clone()
+
+
+def _assert_values(result, reference, expected_device, dtype, reduce_dim):
+    assert result.device == expected_device
+    assert result.dtype == dtype
+    assert result.shape == reference.shape
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype, reduce_dim=reduce_dim)
+
+
 @pytest.mark.addmm_
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
@@ -42,19 +58,19 @@ def test_addmm_(M, N, K, scalar, dtype):
         mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
         mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
         self = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
-        ref_mat1 = utils.to_reference(mat1, True)
-        ref_mat2 = utils.to_reference(mat2, True)
-        ref_self = utils.to_reference(self, True)
+        ref_mat1 = _reference_input(mat1)
+        ref_mat2 = _reference_input(mat2)
+        ref_self = _reference_input(self)
+        expected_device = self.device
         original_pointer = self.data_ptr()
 
         ref_result = ref_self.addmm_(ref_mat1, ref_mat2, alpha=scalar, beta=scalar)
-        with flag_gems.use_gems():
-            result = self.addmm_(mat1, mat2, alpha=scalar, beta=scalar)
+        result = flag_gems.addmm_(self, mat1, mat2, alpha=scalar, beta=scalar)
 
         assert result is self
         assert result.data_ptr() == original_pointer
-        utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
-        utils.gems_assert_close(self, ref_self, dtype, reduce_dim=K)
+        _assert_values(result, ref_result, expected_device, dtype, reduce_dim=K)
+        _assert_values(self, ref_self, expected_device, dtype, reduce_dim=K)
     finally:
         if flag_gems.vendor_name == "mthreads":
             os.environ.pop("MUSA_ENABLE_SQMMA", None)
@@ -68,20 +84,20 @@ def test_addmm_noncontiguous_self_preserves_storage():
     self = backing.t()
     mat1 = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((4, 5), dtype=dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
+    ref_self = _reference_input(self)
+    ref_mat1 = _reference_input(mat1)
+    ref_mat2 = _reference_input(mat2)
+    expected_device = self.device
     pointer = self.data_ptr()
     stride = self.stride()
 
     ref_result = ref_self.addmm_(ref_mat1, ref_mat2)
-    with flag_gems.use_gems():
-        result = self.addmm_(mat1, mat2)
+    result = flag_gems.addmm_(self, mat1, mat2)
 
     assert result is self
     assert self.data_ptr() == pointer
     assert self.stride() == stride
-    utils.gems_assert_close(result, ref_result, dtype, reduce_dim=4)
+    _assert_values(result, ref_result, expected_device, dtype, reduce_dim=4)
 
 
 @pytest.mark.addmm_
@@ -90,5 +106,5 @@ def test_addmm_rejects_incompatible_shapes():
     self = torch.randn((2, 3), device=flag_gems.device)
     mat1 = torch.randn((2, 4), device=flag_gems.device)
     mat2 = torch.randn((5, 3), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        self.addmm_(mat1, mat2)
+    with pytest.raises(RuntimeError):
+        flag_gems.addmm_(self, mat1, mat2)

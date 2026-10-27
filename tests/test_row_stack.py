@@ -109,13 +109,25 @@ def test_row_stack_zero_sized_trailing_dims(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_row_stack_memory_format(shape, memory_format, dtype):
     """The output must keep the inputs' channels-last memory format."""
-    inp = [
-        torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
-            memory_format=memory_format
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and memory_format != torch.contiguous_format
+    ):
+        pytest.skip(
+            "Ascend native row_stack loses channels-last output layout; CPU reference remains covered"
         )
+    inp = [
+        torch.randn(shape, dtype=dtype, device="cpu")
+        .to(memory_format=memory_format)
+        .to(flag_gems.device)
         for _ in range(2)
     ]
     ref_inp = [utils.to_reference(e) for e in inp]
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU:
+        # NPU-to-CPU transfer makes a contiguous copy. Restore the recorded
+        # input geometry before using CPU row_stack as the layout reference.
+        ref_inp = [e.to(memory_format=memory_format) for e in ref_inp]
 
     ref_out = torch.row_stack(ref_inp)
     res_out = flag_gems.row_stack(inp)
@@ -142,6 +154,14 @@ def test_row_stack_mixed_dtype_promotion(dtype):
     ref_a = utils.to_reference(a)
     ref_b = utils.to_reference(b)
 
+    if (
+        flag_gems.vendor_name == "iluvatar"
+        and ref_a.device.type != "cpu"
+        and dtype == torch.float32
+    ):
+        pytest.skip(
+            "Iluvatar native row_stack float32/float64 promotion computes incorrect values; CPU reference remains covered"
+        )
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 
@@ -266,6 +286,10 @@ def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
+    if flag_gems.vendor_name == "iluvatar" and ref_inp[0].device.type != "cpu":
+        pytest.skip(
+            "Iluvatar native row_stack out float32-to-float64 cast computes incorrect values; CPU reference remains covered"
+        )
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
 
@@ -279,11 +303,11 @@ def test_row_stack_out_dtype_cast():
 
 @pytest.mark.row_stack_out
 def test_row_stack_out_non_castable_dtype_raises():
-    """Matching ATen, an impossible cast raises TypeError."""
+    """An impossible cast is rejected (exception class varies by backend)."""
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     out = torch.empty((4, 3), dtype=torch.int32, device=flag_gems.device)
 
-    with pytest.raises(TypeError):
+    with pytest.raises((TypeError, RuntimeError)):
         flag_gems.row_stack_out(inp, out=out)
 
 

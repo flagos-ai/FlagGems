@@ -52,11 +52,33 @@ HIST_BINS = [
 ]
 
 
+def _target_from_cpu(inp):
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype == torch.float64:
+        # Transfer physical Double storage without the backend's narrowing cast.
+        raw = inp.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device)
+        return raw.view(inp.dtype).reshape(inp.shape)
+    return inp.to(flag_gems.device)
+
+
+def _input_tensor(data, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        return _target_from_cpu(torch.tensor(data, dtype=dtype, device="cpu"))
+    return torch.tensor(data, dtype=dtype, device=flag_gems.device)
+
+
+def _random_weight(shape, dtype, factor):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        return _target_from_cpu(torch.rand(shape, dtype=dtype, device="cpu") * factor)
+    return torch.rand(shape, dtype=dtype, device=flag_gems.device) * factor
+
+
 def _make_input(shape, dtype, device):
     """Generate deterministic points in a known range so both CPU and CUDA paths
     see the same data and bin boundaries are exercised."""
     torch.manual_seed(0)
     # Values roughly in [-3, 3) for each coordinate.
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        return _target_from_cpu(torch.randn(shape, dtype=dtype, device="cpu") * 3)
     inp = torch.randn(shape, dtype=dtype, device=device) * 3
     return inp
 
@@ -83,22 +105,30 @@ def _to_cpu_ref(inp):
     in PyTorch, so the reference must always run on CPU even when TO_CPU is
     False (mirroring ``tests/test_histogramdd_bin_edges.py``).
     """
-    return (
-        utils.to_reference(inp, True).to("cpu")
-        if not utils.TO_CPU
-        else utils.to_reference(inp, True)
-    )
+    # The native API is CPU-only. Widen after transfer so a target backend's
+    # lack of float64 arithmetic cannot narrow the input before CPU reference.
+    return inp.to("cpu").to(torch.float64)
+
+
+def _assert_hist_metadata(res, ref, dtype):
+    from flag_gems.runtime import torch_device_fn
+
+    target = torch.device(flag_gems.device)
+    if target.type != "cpu" and target.index is None:
+        target = torch.device(target.type, torch_device_fn.current_device())
+    assert res.device == target
+    assert res.dtype == dtype
+    assert res.shape == ref.shape
 
 
 def _assert_close(res, ref, dtype, equal_nan=False):
-    """Compare a CUDA result against a CPU reference.
+    _assert_hist_metadata(res, ref, dtype)
+    utils.gems_assert_close(res.cpu(), ref.cpu(), dtype, equal_nan=equal_nan)
 
-    The reference lives on CPU (the op is CPU-only in PyTorch); move the result
-    onto the reference device so ``gems_assert_close`` sees matching devices.
-    """
-    if res.device.type != ref.device.type:
-        res = res.to(ref.device)
-    utils.gems_assert_close(res, ref, dtype, equal_nan=equal_nan)
+
+def _assert_equal(res, ref, dtype):
+    _assert_hist_metadata(res, ref, dtype)
+    utils.gems_assert_equal(res.cpu(), ref.cpu().to(dtype))
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +137,7 @@ def _assert_close(res, ref, dtype, equal_nan=False):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("shape", HIST_SHAPES)
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_basic(shape, dtype):
@@ -120,6 +151,7 @@ def test_histogramdd_from_bin_cts_basic(shape, dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("shape", HIST_SHAPES)
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_with_range(shape, dtype):
@@ -134,6 +166,7 @@ def test_histogramdd_from_bin_cts_with_range(shape, dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("shape", HIST_SHAPES)
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_with_weight(shape, dtype):
@@ -142,7 +175,7 @@ def test_histogramdd_from_bin_cts_with_weight(shape, dtype):
     # weight shape matches input shape excluding the innermost dimension.
     weight_shape = tuple(shape[:-1])
     inp = _make_input(shape, dtype, flag_gems.device)
-    weight = torch.rand(weight_shape, dtype=dtype, device=flag_gems.device) * 5
+    weight = _random_weight(weight_shape, dtype, 5)
     ref_inp = _to_cpu_ref(inp)
     ref_weight = _to_cpu_ref(weight)
 
@@ -156,6 +189,7 @@ def test_histogramdd_from_bin_cts_with_weight(shape, dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("shape", HIST_SHAPES)
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_density(shape, dtype):
@@ -174,6 +208,7 @@ def test_histogramdd_from_bin_cts_density(shape, dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_boundary_and_outliers():
     """Exact bin-boundary placement and out-of-range / NaN / inf exclusion."""
     inp = torch.tensor(
@@ -203,6 +238,7 @@ def test_histogramdd_from_bin_cts_boundary_and_outliers():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_auto_range_constant_dim():
     """A dimension whose min == max is expanded to (min - 0.5, max + 0.5)."""
     inp = torch.tensor(
@@ -218,6 +254,7 @@ def test_histogramdd_from_bin_cts_auto_range_constant_dim():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_empty_input():
     inp = torch.empty(0, 2, dtype=torch.float32, device=flag_gems.device)
     ref_inp = _to_cpu_ref(inp)
@@ -232,6 +269,7 @@ def test_histogramdd_from_bin_cts_empty_input():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize(
     "range_",
     [
@@ -261,6 +299,7 @@ def test_histogramdd_from_bin_cts_rejects_inverted_range(range_):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_range_bound_formatting():
     """Bounds are printed with ATen's ``%g`` formatting (six significant digits)."""
     inp = torch.randn(8, 2, dtype=torch.float32, device=flag_gems.device)
@@ -277,6 +316,7 @@ def test_histogramdd_from_bin_cts_range_bound_formatting():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
 @pytest.mark.parametrize("row", [0, 150, 299])
 def test_histogramdd_from_bin_cts_auto_range_must_be_finite(bad, row):
@@ -303,6 +343,7 @@ def test_histogramdd_from_bin_cts_auto_range_must_be_finite(bad, row):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_finite_auto_range_unchanged():
     """The finiteness check must not reject ordinary finite data."""
     inp = torch.randn(300, 3, dtype=torch.float32, device=flag_gems.device)
@@ -314,6 +355,7 @@ def test_histogramdd_from_bin_cts_finite_auto_range_unchanged():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
 @pytest.mark.parametrize("col", [0, 1, 2])
 def test_histogramdd_from_bin_cts_auto_range_reports_lowest_dimension(bad, col):
@@ -339,6 +381,7 @@ def test_histogramdd_from_bin_cts_auto_range_reports_lowest_dimension(bad, col):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("nbins", [1, 2, 3, 4, 5, 7, 10])
 def test_histogramdd_from_bin_cts_zero_width_explicit_range(nbins):
     """An explicit zero-width range is widened, not folded into the last bin.
@@ -359,12 +402,13 @@ def test_histogramdd_from_bin_cts_zero_width_explicit_range(nbins):
     res_out = flag_gems._histogramdd_from_bin_cts(pts, [nbins], range=[1.0, 1.0])
 
     # Counts are integers, so this must agree exactly, not approximately.
-    utils.gems_assert_equal(res_out.to(ref_out.device), ref_out)
+    _assert_equal(res_out, ref_out, torch.float32)
     assert res_out.sum().item() == 2.0, "the out-of-range point must stay uncounted"
     assert res_out[nbins // 2].item() == 2.0, "the points at 1.0 share the middle bin"
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize(
     "range_,dim",
     [
@@ -397,6 +441,7 @@ def test_histogramdd_from_bin_cts_rejects_non_finite_explicit_range(range_, dim)
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_finite_check_precedes_min_max():
     """The finiteness error wins over the inverted-range error, as in ATen."""
     inp = torch.randn(8, dtype=torch.float32, device=flag_gems.device).reshape(-1, 1)
@@ -414,6 +459,7 @@ def test_histogramdd_from_bin_cts_finite_check_precedes_min_max():
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("nbins", [4, 5, 7])
 def test_histogramdd_from_bin_cts_zero_width_explicit_range_2d(nbins):
     """One degenerate dimension must not disturb the other dimension's binning."""
@@ -427,10 +473,11 @@ def test_histogramdd_from_bin_cts_zero_width_explicit_range_2d(nbins):
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, [nbins, 4], range=range_)
     res_out = flag_gems._histogramdd_from_bin_cts(pts, [nbins, 4], range=range_)
-    utils.gems_assert_equal(res_out.to(ref_out.device), ref_out)
+    _assert_equal(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts_zero_width_edges_match_linspace():
     """The widened edges themselves must match ATen's ``linspace(lo-.5, hi+.5)``.
 
@@ -448,7 +495,7 @@ def test_histogramdd_from_bin_cts_zero_width_edges_match_linspace():
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, [nbins], range=[1.0, 1.0])
     res_out = flag_gems._histogramdd_from_bin_cts(pts, [nbins], range=[1.0, 1.0])
-    utils.gems_assert_equal(res_out.to(ref_out.device), ref_out)
+    _assert_equal(res_out, ref_out, torch.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -457,6 +504,7 @@ def test_histogramdd_from_bin_cts_zero_width_edges_match_linspace():
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 @pytest.mark.parametrize("shape", HIST_SHAPES)
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_out(shape, dtype):
@@ -482,15 +530,15 @@ def test_histogramdd_from_bin_cts_out(shape, dtype):
     _assert_close(out, ref_out, dtype)
 
 
-@pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_out_weighted_density(dtype):
     # Exercise the .out path with weight + density: the returned tensor and the
-    # in-place ``out`` buffer must both match the CPU reference. Grouped under
-    # the base mark since the strict per-function mark check keys the expected
-    # mark off the trailing test-name token.
+    # in-place ``out`` buffer must both match the CPU reference. Its independent
+    # out marker prevents functional injection from running an unoverridden kernel.
     inp = _make_input((100, 2), dtype, flag_gems.device)
-    weight = torch.rand(100, dtype=dtype, device=flag_gems.device) * 4
+    weight = _random_weight(100, dtype, 4)
     rng = _range_for(2)
     ref_inp = _to_cpu_ref(inp)
     ref_weight = _to_cpu_ref(weight)
@@ -516,6 +564,7 @@ def test_histogramdd_from_bin_cts_out_weighted_density(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_bin_boundary_precision(dtype):
     """Points sitting exactly on a bin edge, and one ulp either side of it.
@@ -538,16 +587,17 @@ def test_histogramdd_from_bin_cts_bin_boundary_precision(dtype):
             torch.nextafter(t, torch.tensor(-1.0, dtype=dtype)).item(),
             torch.nextafter(t, torch.tensor(2.0, dtype=dtype)).item(),
         ]
-    inp = torch.tensor(probes, dtype=dtype, device=flag_gems.device).reshape(-1, 1)
+    inp = _input_tensor(probes, dtype).reshape(-1, 1)
     ref_inp = _to_cpu_ref(inp)
 
     ref_out = torch._histogramdd_from_bin_cts(ref_inp, [nbins], range=rng)
     res_out = flag_gems._histogramdd_from_bin_cts(inp, [nbins], range=rng)
     # Counts are integers, so this must agree exactly, not approximately.
-    utils.gems_assert_equal(res_out.to(ref_out.device), ref_out)
+    _assert_equal(res_out, ref_out, dtype)
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_density_zero_total(dtype):
     """density with a zero total count must not be forced to zero.
@@ -558,7 +608,7 @@ def test_histogramdd_from_bin_cts_density_zero_total(dtype):
     rng = [0.0, 1.0, 0.0, 1.0]
 
     # All points outside the explicit range.
-    inp = torch.tensor([[5.0, 5.0], [6.0, 6.0]], dtype=dtype, device=flag_gems.device)
+    inp = _input_tensor([[5.0, 5.0], [6.0, 6.0]], dtype)
     ref_out = torch._histogramdd_from_bin_cts(
         _to_cpu_ref(inp), [2, 2], range=rng, density=True
     )
@@ -567,7 +617,7 @@ def test_histogramdd_from_bin_cts_density_zero_total(dtype):
     _assert_close(res_out, ref_out, dtype, equal_nan=True)
 
     # Empty input: same reasoning, zero points and therefore a zero total.
-    empty = torch.zeros(0, 2, dtype=dtype, device=flag_gems.device)
+    empty = _input_tensor([], dtype).reshape(0, 2)
     ref_empty = torch._histogramdd_from_bin_cts(
         _to_cpu_ref(empty), [2, 2], range=rng, density=True
     )
@@ -578,14 +628,13 @@ def test_histogramdd_from_bin_cts_density_zero_total(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_density_cancelling_weights(dtype):
     """Weights that cancel to zero give infinities, with the signs preserved."""
     rng = [0.0, 1.0, 0.0, 1.0]
-    inp = torch.tensor(
-        [[0.25, 0.25], [0.75, 0.75]], dtype=dtype, device=flag_gems.device
-    )
-    weight = torch.tensor([1.0, -1.0], dtype=dtype, device=flag_gems.device)
+    inp = _input_tensor([[0.25, 0.25], [0.75, 0.75]], dtype)
+    weight = _input_tensor([1.0, -1.0], dtype)
 
     ref_out = torch._histogramdd_from_bin_cts(
         _to_cpu_ref(inp),
@@ -602,6 +651,7 @@ def test_histogramdd_from_bin_cts_density_cancelling_weights(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_out_resize(dtype):
     """A mis-shaped out is resized in place and the caller's object is returned."""
@@ -619,6 +669,7 @@ def test_histogramdd_from_bin_cts_out_resize(dtype):
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 def test_histogramdd_from_bin_cts_out_dtype_mismatch():
     """A dtype mismatch raises rather than being silently cast or re-bound."""
     inp = _make_input((64, 2), torch.float32, flag_gems.device)
@@ -630,6 +681,7 @@ def test_histogramdd_from_bin_cts_out_dtype_mismatch():
 
 
 @pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 @pytest.mark.parametrize("dtype", HIST_DTYPES)
 def test_histogramdd_from_bin_cts_out_non_contiguous(dtype):
     """A non-contiguous out of the right shape is accepted, as in ATen."""

@@ -18,7 +18,7 @@ import torch
 from . import base, consts, utils
 
 
-class MsortOutBenchmark(base.GenericBenchmark):
+class MsortOutBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (8, 1024),

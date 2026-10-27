@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "log_softmax_backward_data_out",
+  "name": "log_softmax_backward_out",
   "requires_triton_kernel": true,
   "description": "A variant of `log_softmax_backward_data()` that writes the gradient into the\n`out` tensor.",
   "parameters": [

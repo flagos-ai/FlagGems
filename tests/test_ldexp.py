@@ -118,3 +118,50 @@ def test_ldexp_autograd():
 
     utils.gems_assert_close(result, ref_out, result.dtype)
     utils.gems_assert_close(input_grad, ref_input_grad, input_grad.dtype)
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("shape", [*utils.POINTWISE_SHAPES, (2, 0, 3)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_out(shape, dtype):
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    exponent = torch.randint(-8, 9, shape, dtype=torch.int32, device=inp.device)
+    inp_before, exponent_before = inp.clone(), exponent.clone()
+    reference = torch.ops.aten.ldexp.Tensor(
+        utils.to_reference(inp, True), utils.to_reference(exponent, False)
+    )
+    out = torch.empty_like(inp)
+    pointer = out.data_ptr()
+    result = flag_gems.ldexp_out(inp, exponent, out=out)
+    assert result is out and result.data_ptr() == pointer
+    assert result.device == inp.device and result.dtype == dtype
+    assert result.shape == reference.shape
+    utils.gems_assert_close(result, reference, dtype)
+    assert inp.device == inp_before.device and inp.dtype == inp_before.dtype
+    assert (
+        exponent.device == exponent_before.device
+        and exponent.dtype == exponent_before.dtype
+    )
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before, False))
+    utils.gems_assert_equal(exponent, utils.to_reference(exponent_before, False))
+
+
+@pytest.mark.ldexp_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ldexp_out_broadcast_noncontiguous(dtype):
+    torch.manual_seed(0)
+    inp = torch.randn((19, 7), dtype=dtype, device=flag_gems.device).T
+    exponent = torch.randint(-4, 5, (19,), dtype=torch.int64, device=inp.device)
+    reference = torch.ops.aten.ldexp.Tensor(
+        utils.to_reference(inp, True), utils.to_reference(exponent, False)
+    )
+    backing = torch.full((7, 38), 123, dtype=dtype, device=inp.device)
+    out = backing[:, ::2]
+    pointer, stride = out.data_ptr(), out.stride()
+    result = flag_gems.ldexp_out(inp, exponent, out=out)
+    assert result is out and result.data_ptr() == pointer and result.stride() == stride
+    assert result.device == inp.device and result.dtype == dtype
+    assert result.shape == reference.shape
+    utils.gems_assert_close(result, reference, dtype)
+    assert torch.equal(backing[:, 1::2].cpu(), torch.full((7, 19), 123, dtype=dtype))

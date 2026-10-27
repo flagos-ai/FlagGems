@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -56,11 +54,11 @@ class PadCircularBenchmark(base.Benchmark):
 
 
 @pytest.mark.pad_circular
+@pytest.mark.underscore_pad_circular
 def test_pad_circular():
     bench = PadCircularBenchmark(
-        op_name="pad_circular",
+        op_name="_pad_circular",
         torch_op=torch.ops.aten._pad_circular,
-        gems_op=flag_gems._pad_circular,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

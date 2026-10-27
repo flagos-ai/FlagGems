@@ -14,8 +14,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -28,6 +26,9 @@ SHAPES = [
 
 class ConvBackwardBenchmark(OperatorBenchmark):
     DEFAULT_SHAPES = SHAPES
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=SHAPES)
 
 
 def _case_fn(shape, dtype):
@@ -65,13 +66,22 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
+def _native_backward(grad_output, inp, weight, stride, padding, dilation,
+                     transposed, output_padding, groups, output_mask):
+    # The overrideable extension hook has no CPU/CUDA native kernel. This is
+    # the same ATen reference used by the operator's correctness suite.
+    return torch.ops.aten.convolution_backward(
+        grad_output, inp, weight, [grad_output.shape[1]], stride, padding,
+        dilation, transposed, output_padding, groups, output_mask,
+    )
+
+
 @pytest.mark.convolution_backward_overrideable
 def test_convolution_backward_overrideable():
     ConvBackwardBenchmark(
         op_name="convolution_backward_overrideable",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        torch_op=torch.ops.aten.convolution_backward_overrideable,
-        gems_op=getattr(flag_gems, "convolution_backward_overrideable", None),
+        torch_op=_native_backward,
         dtypes=[torch.float16, torch.float32],
     ).run()

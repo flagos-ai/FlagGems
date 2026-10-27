@@ -76,6 +76,34 @@ class MultiMarginLossOutBenchmark(MultiMarginLossBenchmark):
 
 
 class MultiMarginLossBackwardBenchmark(MultiMarginLossBenchmark):
+    def supports_cases(self):
+        return True
+
+    def get_case_iter(self, dtype):
+        for ordinal, (n, classes) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": [n, classes], "target": [n]},
+                    params={"p": self.p, "weighted": self.weighted, "reduction": self.reduction},
+                    builder_args=(n, classes),
+                ),
+            )
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        n, classes = plan.builder_args
+        dtype = case.dtype
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
+            pytest.skip("Kunlunxin native multi_margin_loss backward does not support bfloat16")
+        inp = torch.randn((n, classes), dtype=dtype, device=self.device)
+        target = torch.randint(0, classes, (n,), dtype=torch.int64, device=self.device)
+        weight = torch.randn((classes,), dtype=dtype, device=self.device) if self.weighted else None
+        grad_shape = (n,) if self.reduction == 0 else ()
+        grad_output = torch.randn(grad_shape, dtype=dtype, device=self.device)
+        return grad_output, inp, target, self.p, 1.0, weight, self.reduction
+
     def get_input_iter(self, dtype):
         for args in super().get_input_iter(dtype):
             input = args[0]
@@ -89,6 +117,10 @@ class MultiMarginLossBackwardBenchmark(MultiMarginLossBenchmark):
 
 
 class MultiMarginLossBackwardOutBenchmark(MultiMarginLossBackwardBenchmark):
+    def build_inputs(self, case):
+        args = super().build_inputs(case)
+        return (*args, {"grad_input": torch.empty_like(args[1])})
+
     def get_input_iter(self, dtype):
         for args in super().get_input_iter(dtype):
             grad_input = torch.empty_like(args[1])
@@ -153,7 +185,6 @@ def test_multi_margin_loss_backward(p, weighted, reduction):
         reduction=reduction,
         op_name="multi_margin_loss_backward",
         torch_op=torch.ops.aten.multi_margin_loss_backward,
-        gems_op=flag_gems.multi_margin_loss_backward,
         dtypes=_DTYPES,
     )
     benchmark.run()
@@ -171,7 +202,6 @@ def test_multi_margin_loss_backward_out(p, weighted, reduction):
         reduction=reduction,
         op_name="multi_margin_loss_backward_out",
         torch_op=torch.ops.aten.multi_margin_loss_backward.grad_input,
-        gems_op=flag_gems.multi_margin_loss_backward_out,
         dtypes=_DTYPES,
     )
     benchmark.run()

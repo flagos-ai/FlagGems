@@ -33,6 +33,8 @@ else:
     REPLICATION_PAD2D_SHAPES = [(2, 3, 8, 8), (4, 8, 128, 256), (2, 4, 512, 512)]
     # Paddings: zero (identity), uniform, and asymmetric left/top-only.
     REPLICATION_PAD2D_PADDINGS = [(0, 0, 0, 0), (1, 1, 2, 2), (3, 0, 0, 3)]
+
+
 @pytest.mark.replication_pad2d_out
 @pytest.mark.parametrize("shape", REPLICATION_PAD2D_SHAPES)
 @pytest.mark.parametrize("padding", REPLICATION_PAD2D_PADDINGS)
@@ -51,8 +53,7 @@ def test_replication_pad2d_out(shape, padding, dtype):
 
     torch.ops.aten.replication_pad2d.out(ref_inp, padding, out=ref_out)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.replication_pad2d.out(inp, padding, out=out)
+    flag_gems.replication_pad2d_out(inp, padding, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
 
@@ -66,8 +67,7 @@ def test_replication_pad2d_out_identity_storage_and_stride():
     pointer = out.untyped_storage().data_ptr()
     stride = out.stride()
 
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.replication_pad2d.out(inp, (1, 1, 1, 1), out=out)
+    returned = flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)
 
     assert returned is out
     assert out.untyped_storage().data_ptr() == pointer
@@ -79,8 +79,7 @@ def test_replication_pad2d_out_resizes_empty_buffer():
     torch.manual_seed(0)
     inp = torch.randn((2, 3, 8, 8), device=flag_gems.device)
     out = torch.empty((0,), dtype=inp.dtype, device=inp.device)
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.replication_pad2d.out(inp, (1, 2, 3, 4), out=out)
+    returned = flag_gems.replication_pad2d_out(inp, (1, 2, 3, 4), out=out)
     assert returned is out
     assert out.shape == (2, 3, 15, 11)
 
@@ -90,8 +89,7 @@ def test_replication_pad2d_out_resizes_wrong_shape():
     torch.manual_seed(0)
     inp = torch.randn((2, 3, 8, 8), device=flag_gems.device)
     out = torch.empty((1, 1), dtype=inp.dtype, device=inp.device)
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.replication_pad2d.out(inp, (1, 1, 1, 1), out=out)
+    returned = flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)
     assert returned is out
     assert out.shape == (2, 3, 10, 10)
 
@@ -101,8 +99,8 @@ def test_replication_pad2d_out_rejects_dtype_mismatch():
     torch.manual_seed(0)
     inp = torch.randn((2, 3, 8, 8), dtype=torch.float32, device=flag_gems.device)
     out = torch.empty((2, 3, 10, 10), dtype=torch.int32, device=inp.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.replication_pad2d.out(inp, (1, 1, 1, 1), out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)
 
 
 @pytest.mark.replication_pad2d_out
@@ -112,5 +110,5 @@ def test_replication_pad2d_out_rejects_device_mismatch():
         pytest.skip(reason="device mismatch requires an accelerator target")
     inp = torch.randn((2, 3, 8, 8), device=flag_gems.device)
     out = torch.empty((2, 3, 10, 10), dtype=inp.dtype, device="cpu")
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.replication_pad2d.out(inp, (1, 1, 1, 1), out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)

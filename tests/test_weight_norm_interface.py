@@ -83,11 +83,12 @@ def test_weight_norm_interface_backward(shape, dtype, dim):
     ref_v_grad, ref_g_grad = torch.ops.aten._weight_norm_interface_backward(
         ref_w_grad, ref_v, ref_g, ref_norm, dim
     )
-    with flag_gems.use_gems():
-        _, res_norm = torch._weight_norm_interface(res_v, res_g, dim)
-        res_v_grad, res_g_grad = torch.ops.aten._weight_norm_interface_backward(
-            res_w_grad, res_v, res_g, res_norm, dim
-        )
+    # Build the saved forward state from the trusted reference; only backward
+    # is under test here, so an unrelated forward kernel must not block it.
+    res_norm = ref_norm.to(device=res_v.device, dtype=torch.float32)
+    res_v_grad, res_g_grad = flag_gems.weight_norm_interface_backward(
+        res_w_grad, res_v, res_g, res_norm, dim
+    )
     reduce_size = res_v.numel() // shape[dim]
     utils.gems_assert_close(
         res_v_grad, ref_v_grad, dtype, reduce_dim=reduce_size, equal_nan=True

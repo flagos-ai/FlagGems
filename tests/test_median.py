@@ -82,6 +82,12 @@ def _has_unique_median_indices(inp, dim, values, keepdim):
 
 
 def _assert_indices_select_values(inp, dim, values, indices, *, keepdim, equal_nan):
+    assert values.device == inp.device and values.dtype == inp.dtype
+    assert indices.device == inp.device and indices.dtype == torch.int64
+    assert values.shape == indices.shape
+    # Observe on CPU after the original contract checks: Kunlunxin's gather
+    # does not support int16 input with int64 indices.
+    inp, values, indices = inp.cpu(), values.cpu(), indices.cpu()
     if inp.ndim == 0:
         flag_gems.testing.assert_equal(indices, torch.zeros_like(indices))
         return
@@ -106,6 +112,11 @@ def _assert_median_dim_equal(
 ):
     res_values, res_indices = res
     ref_values, ref_indices = ref
+    if inp is not None:
+        assert res_values.device == inp.device and res_values.dtype == inp.dtype
+        assert res_indices.device == inp.device and res_indices.dtype == torch.int64
+    assert res_values.shape == ref_values.shape
+    assert res_indices.shape == ref_indices.shape
     if exact_indices is None:
         exact_indices = res_indices.device == ref_indices.device
     if exact_indices and inp is not None and dim is not None:
@@ -1292,7 +1303,7 @@ def test_median_strided_nonlast_large_reduction_semantics(dtype, keepdim):
         assert observed_indices[2, 1].item() == width - 1
         assert torch.isnan(observed_values[0, 0]).item()
         assert torch.isnan(observed_values[2, 1]).item()
-        assert torch.signbit(observed_values[1, 3]).item()
+        assert torch.signbit(observed_values[1, 3].cpu()).item()
 
 
 @pytest.mark.median_dim_values

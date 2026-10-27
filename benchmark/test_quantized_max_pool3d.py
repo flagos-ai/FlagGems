@@ -17,8 +17,6 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # quantized_max_pool3d operates on per-tensor quint8 tensors. PyTorch ships no
@@ -64,7 +62,7 @@ def quantized_max_pool3d_input_fn(shape, dtype, device):
     # The CPU baseline needs a CPU copy of the input. Take it once here, outside
     # the timed region, so the reported baseline latency is the CPU kernel alone
     # and not a device-to-host transfer (which dominates the smaller shapes).
-    qx._cpu_twin = qx.to("cpu") if qx.device.type != "cpu" else qx
+    qx._cpu_twin = _cpu_input(qx)
     yield qx, {
         "kernel_size": 3,
         "stride": 2,
@@ -96,7 +94,17 @@ def _cpu_input(qx):
     """Return the CPU copy of ``qx`` prepared by the input function."""
     twin = getattr(qx, "_cpu_twin", None)
     if twin is None:
-        twin = qx.to("cpu") if qx.device.type != "cpu" else qx
+        int_dtype = {
+            torch.quint8: torch.uint8,
+            torch.qint8: torch.int8,
+            torch.qint32: torch.int32,
+        }[qx.dtype]
+        bits = torch.empty(0, dtype=int_dtype).set_(
+            qx.untyped_storage().cpu(), qx.storage_offset(), qx.shape, qx.stride()
+        )
+        twin = torch._make_per_tensor_quantized_tensor(
+            bits, qx.q_scale(), qx.q_zero_point()
+        )
     return twin
 
 
@@ -111,6 +119,43 @@ def _torch_op(qx, **kwargs):
 
 
 class QuantizedMaxPool3dBenchmark(base.GenericBenchmark):
+    def get_case_iter(self, dtype):
+        ordinal = 0
+        for shape in QUANTIZED_MAX_POOL3D_SHAPES:
+            configs = [(3, 2, 1, 1, False)]
+            if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+                if all(size > 5 for size in shape[-3:]):
+                    configs.append(((2, 3, 3), (1, 2, 2), (0, 1, 1), 1, False))
+                configs.append((3, 2, 1, 1, True))
+            for index, config in enumerate(configs):
+                kernel, stride, padding, dilation, ceil_mode = config
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": list(shape)},
+                        params={
+                            "kernel_size": kernel,
+                            "stride": stride,
+                            "padding": padding,
+                            "dilation": dilation,
+                            "ceil_mode": ceil_mode,
+                            "scale": SCALE,
+                            "zero_point": ZERO_POINT,
+                        },
+                        builder_args=(tuple(shape), index),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        shape, index = case.builder_args[0].builder_args
+        return next(
+            args
+            for i, args in enumerate(self.input_fn(shape, case.dtype, self.device))
+            if i == index
+        )
+
     def get_input_iter(self, dtype) -> Generator:
         for shape in QUANTIZED_MAX_POOL3D_SHAPES:
             yield from self.input_fn(shape, dtype, self.device)
@@ -122,7 +167,6 @@ def test_quantized_max_pool3d():
         input_fn=quantized_max_pool3d_input_fn,
         op_name="quantized_max_pool3d",
         torch_op=_torch_op,
-        gems_op=flag_gems.quantized_max_pool3d,
         dtypes=[QDTYPE],
     )
     bench.run()
@@ -153,21 +197,17 @@ def test_quantized_max_pool3d_out():
             )
             # ``unpack_to_args_kwargs`` places the two tensors positionally and
             # expands the params dict into kwargs.
-            yield qx, out_q, params
+            yield qx, {**params, "out": out_q}
 
     def torch_out_op(qx, out, **kwargs):
         return torch.ops.aten.quantized_max_pool3d.out(
             _cpu_input(qx), out=_cpu_input(out), **kwargs
         )
 
-    def gems_out_op(qx, out, **kwargs):
-        return flag_gems.quantized_max_pool3d_out(qx, out=out, **kwargs)
-
     bench = QuantizedMaxPool3dBenchmark(
         input_fn=out_input_fn,
         op_name="quantized_max_pool3d_out",
         torch_op=torch_out_op,
-        gems_op=gems_out_op,
         dtypes=[QDTYPE],
     )
     bench.run()

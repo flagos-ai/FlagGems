@@ -108,7 +108,7 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
     if is_causal:
         q_index = torch.arange(q.shape[-2], device=q.device)[:, None]
         k_index = torch.arange(k.shape[-2], device=k.device)
-        causal_mask = k_index > q_index
+        causal_mask = k_index > q_index + k.shape[-2] - q.shape[-2]
         scores.masked_fill_(causal_mask, float("-inf"))
     logsumexp = torch.logsumexp(scores, dim=-1)
     output = torch.matmul(torch.softmax(scores, dim=-1), v.float())
@@ -116,6 +116,7 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
 
 
 @pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.underscore_scaled_dot_product_flash_attention
 @pytest.mark.parametrize(
     "batch,num_head,q_seq_len,kv_seq_len,head_size",
     SCALED_DOT_PRODUCT_FLASH_ATTENTION_SHAPES,
@@ -148,7 +149,13 @@ def test_scaled_dot_product_flash_attention(
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
     # Use CPU reference when explicitly requested
-    if cfg.TO_CPU:
+    if cfg.TO_CPU or flag_gems.vendor_name in {
+        "ascend",
+        "mthreads",
+        "kunlunxin",
+        "iluvatar",
+    }:
+        ref_q, ref_k, ref_v = (x.cpu() for x in (ref_q, ref_k, ref_v))
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -157,13 +164,17 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
-    result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+    result = flag_gems._scaled_dot_product_flash_attention(
         q, k, v, 0.0, is_causal, False, scale=scale
     )
 
     assert len(result) == 9
-    utils.gems_assert_close(result[0], ref_out, dtype)
-    utils.gems_assert_close(result[1], ref_lse, torch.float)
+    assert result[0].device == q.device and result[0].dtype == q.dtype
+    assert result[0].shape == q.shape
+    assert result[1].device == q.device and result[1].dtype == torch.float32
+    assert result[1].shape == q.shape[:-1]
+    utils.gems_assert_close(result[0].cpu(), ref_out.cpu(), dtype)
+    utils.gems_assert_close(result[1].cpu(), ref_lse.cpu(), torch.float)
     assert result[2] is None
     assert result[3] is None
     assert result[4:6] == (q_seq_len, kv_seq_len)

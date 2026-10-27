@@ -29,6 +29,7 @@ else:
 
 
 @pytest.mark.addmm_activation
+@pytest.mark.underscore_addmm_activation
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -47,19 +48,22 @@ def test_addmm_activation(M, N, K, scalar, dtype, use_gelu):
         beta=scalar,
         use_gelu=use_gelu,
     )
-    with flag_gems.use_gems():
-        result = torch._addmm_activation(
-            self, mat1, mat2, alpha=scalar, beta=scalar, use_gelu=use_gelu
-        )
+    result = flag_gems._addmm_activation(
+        self, mat1, mat2, alpha=scalar, beta=scalar, use_gelu=use_gelu
+    )
     utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
-    utils.gems_assert_equal(self, original)
+    assert self.device == original.device
+    assert self.dtype == original.dtype
+    assert self.shape == original.shape
+    utils.gems_assert_equal(self.cpu(), original.cpu())
 
 
 @pytest.mark.addmm_activation
+@pytest.mark.underscore_addmm_activation
 def test_addmm_activation_rejects_incompatible_shapes():
     torch.manual_seed(0)
     self = torch.randn((5,), device=flag_gems.device)
     mat1 = torch.randn((3, 4), device=flag_gems.device)
     mat2 = torch.randn((6, 5), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch._addmm_activation(self, mat1, mat2)
+    with pytest.raises(RuntimeError):
+        flag_gems._addmm_activation(self, mat1, mat2)

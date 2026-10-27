@@ -26,6 +26,9 @@ DTYPES = consts.FLOAT_DTYPES + ([torch.float64] if flag_gems.runtime.device.supp
 
 class MultiMarginBackwardBenchmark(OperatorBenchmark):
     DEFAULT_SHAPES = SHAPES
+
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path, default_shapes=SHAPES)
     DEFAULT_SHAPE_DESC = "N, C"
 
 
@@ -43,6 +46,8 @@ def _case_fn_factory(p, weighted, reduction):
 
 def _build_inputs(plan, dtype, device):
     (n, classes), p, weighted, reduction = plan.builder_args
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
+        pytest.skip("Kunlunxin native multi_margin_loss backward does not support bfloat16")
     torch.manual_seed(0)
     inp = torch.randn((n, classes), dtype=dtype, device=device)
     target = torch.randint(0, classes, (n,), dtype=torch.int64, device=device)
@@ -61,6 +66,5 @@ def test_multi_margin_loss_backward(p, weighted, reduction):
         case_fn=_case_fn_factory(p, weighted, reduction),
         build_inputs_fn=_build_inputs,
         torch_op=torch.ops.aten.multi_margin_loss_backward,
-        gems_op=flag_gems.multi_margin_loss_backward,
         dtypes=DTYPES,
     ).run()

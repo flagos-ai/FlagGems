@@ -1,8 +1,8 @@
 {
   "api_version": "v6.0",
-  "name": "addmm_activation_out",
+  "name": "_addmm_activation",
   "requires_triton_kernel": true,
-  "description": "Representative ATen schema: aten::_addmm_activation.out(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, bool use_gelu=False, Tensor(a!) out) -> Tensor(a!). Preserves legacy matrix shapes, floating dtypes, scalar alpha/beta coverage, and column-major benchmark cases. Tests verify out-buffer content, return identity, resize behavior, noncontiguous storage/stride preservation, and invalid dtype rejection.",
+  "description": "Representative ATen schema: aten::_addmm_activation(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar alpha=1, bool use_gelu=False) -> Tensor. Preserves legacy matrix shapes, floating dtypes, scalar alpha/beta coverage, and column-major benchmark cases.",
   "parameters": [
     {
       "name": "self",
@@ -42,23 +42,13 @@
       "required": false,
       "default": false,
       "type_hint": "bool"
-    },
-    {
-      "name": "out",
-      "kind": "keyword_only",
-      "required": true,
-      "type_hint": "Tensor"
     }
   ],
   "outputs": [
     "out"
   ],
   "effects": {
-    "mutates": [
-      "out"
-    ],
-    "returns_alias_of": {
-      "out": "out"
-    }
+    "mutates": [],
+    "returns_alias_of": {}
   }
 }

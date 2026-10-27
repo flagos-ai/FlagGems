@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 
 def _input_fn(shape, cur_dtype, device):
@@ -24,13 +25,30 @@ def test_unsqueeze():
     bench.run()
 
 
+def _inplace_case_fn(shape, dtype):
+    if not shape:
+        return
+    dim = 0 if len(shape) == 1 else 1
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(shape)},
+        params={"dim": dim},
+        builder_args=(shape,),
+    )
+
+
+def _inplace_build_inputs(plan, dtype, device):
+    return next(_input_fn(plan.builder_args[0], dtype, device))
+
+
 @pytest.mark.unsqueeze_
 def test_unsqueeze_():
-    bench = base.GenericBenchmark(
+    bench = OperatorBenchmark(
         op_name="unsqueeze_",
-        input_fn=_input_fn,
+        case_fn=_inplace_case_fn,
+        build_inputs_fn=_inplace_build_inputs,
         torch_op=torch.Tensor.unsqueeze_,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
+        fresh_inputs=True,
     )
     bench.run()

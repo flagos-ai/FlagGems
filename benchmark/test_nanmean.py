@@ -24,6 +24,33 @@ class _NanmeanBenchmark(base.UnaryReductionBenchmark):
             if ndim >= 3:
                 yield x, 1
 
+    def get_case_iter(self, dtype):
+        ordinal = 0
+        for shape in self.shapes:
+            dims = [None]
+            if len(shape) >= 2:
+                dims.extend([-1, 0])
+            if len(shape) >= 3:
+                dims.append(1)
+            for dim in dims:
+                yield self._case_from_plan(
+                    dtype,
+                    ordinal,
+                    base.BenchmarkCasePlan(
+                        shape={"input": shape},
+                        params={"dim": dim},
+                        builder_args=(shape, dim),
+                    ),
+                )
+                ordinal += 1
+
+    def build_inputs(self, case):
+        shape, dim = case.builder_args[0].builder_args
+        x = torch.randn(shape, dtype=case.dtype, device=self.device) * 10
+        mask = torch.rand(shape, device=self.device) > 0.7
+        x[mask] = float("nan")
+        return (x,) if dim is None else (x, dim)
+
 
 class _NanmeanOutBenchmark(base.UnaryReductionBenchmark):
     def get_input_iter(self, cur_dtype):
@@ -52,7 +79,6 @@ def test_benchmark_nanmean():
         torch_op=torch.nanmean,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.nanmean)
     bench.run()
 
 

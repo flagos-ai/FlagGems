@@ -144,6 +144,49 @@ def _is_pytest_mark(node: ast.expr, marker_name: str) -> bool:
     return False
 
 
+def build_marker_index(tests_dir: Path) -> dict[str, list[str]]:
+    """Scan every tests/test_*.py and map each pytest marker name to the files
+    that use it: {marker_name: [file, ...]}.
+
+    This is the single source of truth for "does a test for this operator
+    exist", matching how tools/test-op.sh actually selects tests (pytest -m
+    <marker>) rather than guessing a file name from the operator id. It lets an
+    operator whose test lives in a differently-named file (e.g.
+    native_group_norm tested in tests/test_group_norm.py via
+    @pytest.mark.native_group_norm) be found without a filename alias.
+    """
+    index: dict[str, list[str]] = {}
+    for filepath in sorted(tests_dir.glob("test_*.py")):
+        try:
+            tree = ast.parse(filepath.read_text())
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                name = _pytest_mark_name(decorator)
+                if name:
+                    index.setdefault(name, [])
+                    if str(filepath) not in index[name]:
+                        index[name].append(str(filepath))
+    return index
+
+
+def _pytest_mark_name(node: ast.expr) -> str | None:
+    """Return the marker name of a @pytest.mark.<name> decorator, else None.
+
+    Handles both @pytest.mark.<name> and @pytest.mark.<name>(...).
+    """
+    if isinstance(node, ast.Call):
+        return _pytest_mark_name(node.func)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute):
+        if node.value.attr == "mark" and isinstance(node.value.value, ast.Name):
+            if node.value.value.id == "pytest":
+                return node.attr
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check operator test coverage and markers"
@@ -174,6 +217,18 @@ def main():
     if aliases:
         print(f"Loaded {len(aliases)} test aliases")
 
+    # Single source of truth: scan every test file's pytest markers, so an
+    # operator is "covered" iff some test carries its marker — exactly how
+    # tools/test-op.sh selects tests (pytest -m <marker>). This replaces the
+    # old "guess tests/test_<id>.py from the name" lookup, which false-failed
+    # when the test lived in a differently-named file (e.g. native_group_norm
+    # tested in tests/test_group_norm.py).
+    marker_index = build_marker_index(TESTS_DIR)
+    print(f"Indexed {len(marker_index)} pytest markers across test files")
+
+    def marker_present(name: str) -> bool:
+        return name in marker_index
+
     # Only check operators that exist in the registry
     ops_to_check = [op_id for op_id in op_ids if op_id in all_operators]
     if not ops_to_check:
@@ -189,32 +244,29 @@ def main():
 
         # Skip fused operators that don't have aten label - they may have different test patterns
         if "aten" not in labels and "fused" in labels:
-            print(f"  {op_id}: fused operator, skipping test file check")
+            print(f"  {op_id}: fused operator, skipping test marker check")
             continue
 
-        # Rule 1: Test file must exist
-        test_file = find_test_file(op_id, aliases)
-        if test_file is None:
-            errors.append(
-                f"Operator '{op_id}': no test file found (expected tests/test_{op_id}.py)"
-            )
-            continue
-
-        # Rule 2: Test file must have the operator marker.
-        # For underscore ops the marker follows the naming convention
-        # (see expected_marker), e.g. _stack -> underscore_stack.
+        # The marker name follows the #6359 convention (e.g. _stack ->
+        # underscore_stack); see expected_marker.
         marker = expected_marker(op_id, all_op_ids)
-        has_marker = check_marker_in_file(test_file, marker)
+        has_marker = marker_present(marker)
+
+        # Inplace variants (e.g. abs_) may share the base operator's marker.
+        if not has_marker and op_id.endswith("_"):
+            has_marker = marker_present(op_id[:-1])
+
+        # Fallback: honor an explicit filename alias (ci_test_aliases.yaml) in
+        # case a test uses a non-conventional marker but a known test file.
         if not has_marker:
-            # For inplace variants (e.g., abs_), also accept base marker
-            if op_id.endswith("_"):
-                base_id = op_id[:-1]
-                has_marker = check_marker_in_file(test_file, base_id)
+            test_file = find_test_file(op_id, aliases)
+            if test_file is not None and check_marker_in_file(test_file, marker):
+                has_marker = True
 
         if not has_marker:
             errors.append(
-                f"Operator '{op_id}': test file {test_file} has no "
-                f"@pytest.mark.{marker} decorator"
+                f"Operator '{op_id}': no test found with @pytest.mark.{marker} "
+                f"(searched all tests/test_*.py)"
             )
 
     if errors:

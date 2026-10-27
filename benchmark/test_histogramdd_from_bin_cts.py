@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -110,11 +108,11 @@ def _cpu_out_reference(
 
 
 @pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.underscore_histogramdd_from_bin_cts
 def test_histogramdd_from_bin_cts():
     bench = HistogramddFromBinCtsBenchmark(
-        op_name="histogramdd_from_bin_cts",
+        op_name="_histogramdd_from_bin_cts",
         torch_op=_cpu_reference,
-        gems_op=flag_gems._histogramdd_from_bin_cts,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
@@ -122,12 +120,12 @@ def test_histogramdd_from_bin_cts():
     bench.run()
 
 
-@pytest.mark.histogramdd_from_bin_cts
+@pytest.mark.histogramdd_from_bin_cts_out
+@pytest.mark.underscore_histogramdd_from_bin_cts_out
 def test_histogramdd_from_bin_cts_out():
     bench = HistogramddFromBinCtsBenchmark(
-        op_name="histogramdd_from_bin_cts_out",
+        op_name="_histogramdd_from_bin_cts_out",
         torch_op=_cpu_out_reference,
-        gems_op=flag_gems._histogramdd_from_bin_cts_out,
         case_fn=_out_case_fn,
         build_inputs_fn=_out_build_inputs_fn,
         dtypes=[torch.float32],

@@ -64,3 +64,35 @@ def test_nanquantile():
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
     ).run()
+
+
+def _scalar_out_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims), "out": list(dims[:-1])},
+        params={"q": 0.73, "dim": -1, "keepdim": False, "interpolation": "linear"},
+        builder_args=(dims,),
+    )
+
+
+def _scalar_out_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    inp.reshape(-1)[::5] = float("nan")
+    out = torch.empty(shape[:-1], dtype=dtype, device=device)
+    return inp, 0.73, -1, False, {"interpolation": "linear", "out": out}
+
+
+@pytest.mark.nanquantile_scalar_out
+def test_nanquantile_scalar_out():
+    NanquantileBenchmark(
+        op_name="nanquantile_scalar_out",
+        torch_op=torch.ops.aten.nanquantile.scalar_out,
+        case_fn=_scalar_out_case_fn,
+        build_inputs_fn=_scalar_out_build_inputs_fn,
+        dtypes=[torch.float32],
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()

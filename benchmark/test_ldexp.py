@@ -55,3 +55,21 @@ def test_ldexp():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _out_build_inputs_fn(plan, dtype, device):
+    inp, exponent = _build_inputs_fn(plan, dtype, device)
+    out = torch.empty_like(inp)
+    return inp, exponent, {"out": out}
+
+
+@pytest.mark.ldexp_out
+def test_ldexp_out():
+    LdexpBenchmark(
+        op_name="ldexp_out",
+        torch_op=torch.ops.aten.ldexp.out,
+        case_fn=_case_fn,
+        build_inputs_fn=_out_build_inputs_fn,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    ).run()
