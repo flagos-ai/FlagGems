@@ -269,6 +269,7 @@ from .clip import clip, clip_
 from .col2im import col2im
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
+from .conj import conj  # noqa: F401
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
 from .contiguous import contiguous
@@ -1104,6 +1105,7 @@ __all__ = [
     "column_stack",
     "column_stack_out",
     "concatenate",
+    "conj",
     "conj_physical",
     "constant_pad_nd",
     "contiguous",

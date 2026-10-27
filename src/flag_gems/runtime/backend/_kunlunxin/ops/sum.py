@@ -101,7 +101,19 @@ _TLE_FLAT_COLS = 4096
 # cores idle, so it is only worth it when staging would cost more than it saves: below
 # this, a stage plus its partial buffer plus a second launch is the slower half of a
 # reduce that is already launch-bound.
-_TLE_FLAT_ONESHOT = 8192
+#
+# The staging half of that trade is worse than "one extra launch": a flat size that is
+# not a multiple of COLS also drags a `copy_` of the residue into the budget, and on a
+# 2-byte dtype that copy is dispatched to the vendor `_tle_dsa_row_copy_kernel`, whose
+# host setup alone was measured at 30-70us (10000 elements: 88us end to end against
+# 17.5us for the same size in f32, i.e. the residue carry was the whole cost). So the
+# crossover sits where one program's loop actually stops being cheap rather than at
+# the first size above the last tile: 16384 covers every size whose residue carry
+# would have cost more than the extra tile steps.
+_TLE_FLAT_ONESHOT = 16384
+# Pipeline depth for the row loop; see `_tle_row_plan`. `num_stages=3` is the same
+# depth the fold below settled on -- 2 does not rotate the buffer at all.
+_TLE_ROW_STAGES = 3
 
 # Only dtypes verified to survive an LM round trip on KL3.
 #
@@ -198,6 +210,7 @@ def _tle_sum_row_kernel(
     OUT_DTYPE: tl.constexpr,
     NEED_ZERO: tl.constexpr,
     SCALE: tl.constexpr = 1.0,
+    NUM_STAGES: tl.constexpr = 1,
 ):
     """Sum a [XBLOCK, YBLOCK]-tiled slice of a [M, N] input along axis=1.
 
@@ -233,7 +246,7 @@ def _tle_sum_row_kernel(
     c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
 
     acc = tl.zeros([XBLOCK], ACC_DTYPE)
-    for coff in tl.range(0, N, YBLOCK):
+    for coff in tl.range(0, N, YBLOCK, num_stages=NUM_STAGES):
         # Only the last step can be short, and only then is the buffer worth clearing:
         # every other step overwrites it whole.
         if NEED_ZERO:
@@ -286,6 +299,8 @@ def _tle_row_geom(M, N, itemsize):
         xblock = max(_TLE_CORE_NUM, xblock // 4)
     elif row_bytes <= _TLE_NARROW_ROW_BYTES:
         xblock = _TLE_XBLOCK if M > _TLE_CORE_NUM else 256
+    if M <= _TLE_CORE_NUM // 2:
+        xblock = _TLE_CORE_NUM
     tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
     yblock = max(1, min(_npo2(N), tile_elems // xblock))
     while yblock > N and yblock > 1:
@@ -313,6 +328,10 @@ def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom, scale=1.0):
     if plan is not None:
         return plan
     xblock, yblock, row_blocks = geom
+    num_stages = 1
+    if _TLE_PIPELINE and N % yblock == 0 and yblock >= 256 and N > yblock:
+        num_stages = _TLE_ROW_STAGES
+        yblock = max(1, yblock // 2)
     consts = (
         xblock,
         yblock,
@@ -321,6 +340,7 @@ def _tle_row_plan(M, N, row_stride, in_dtype, out_dtype, geom, scale=1.0):
         _TLE_TL_DTYPE[out_dtype],
         N % yblock != 0,
         scale,
+        num_stages,
     )
     key = (M, N, row_stride, row_blocks, in_dtype, out_dtype) + consts[:2] + consts[5:]
     # The last element is the launch's operand list minus the two pointers. Building it
