@@ -327,7 +327,8 @@ def _run_contiguous_suffix_path(out, dim, index, src, alpha):
     suffix_size = _volume(src.shape[dim + 1 :])
     if index.numel() <= 2:
         count = _volume(src.shape[:dim]) * suffix_size
-        block = 256
+        # A scalar update needs no masked vector lanes. Keep existing row tiles.
+        block = 1 if count == 1 else 256
         grid = (min(triton.cdiv(count, block), 65534) + 1,)
         with torch_device_fn.device(out.device):
             _index_add_short_kernel[grid](

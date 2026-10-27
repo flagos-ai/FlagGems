@@ -263,3 +263,70 @@ def test_ascend_where_uniform_condition_boundaries(shape):
     graph.replay()
     torch.npu.synchronize()
     utils.gems_assert_equal(actual.cpu(), right_cpu)
+
+
+@pytest.mark.where_self
+@pytest.mark.where_self_out
+@pytest.mark.where_scalar_other
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend row masks")
+@pytest.mark.parametrize(
+    "shape", [(2, 17, 128), (2, 17, 257), (1, 3, 1024), (2, 0, 128)]
+)
+@pytest.mark.parametrize("mode", ["python", "tensor", "out"])
+@pytest.mark.parametrize("registered", [False, True])
+def test_ascend_where_row_scalar_graph(shape, mode, registered):
+    numel = shape[0] * shape[1] * shape[2]
+    values_cpu = ((torch.arange(numel) % 256) - 128).to(torch.int8).reshape(shape)
+    storage = torch.empty(numel + 1, dtype=torch.int8, device=flag_gems.device)
+    storage[0] = 37
+    values = storage[1:].view(shape)
+    values.copy_(values_cpu)
+    rows = shape[0] * shape[1]
+    condition_storage = torch.zeros(rows + 1, dtype=torch.bool, device=values.device)
+    condition = condition_storage[1:].view(*shape[:-1], 1)
+    scalar = torch.tensor(0, dtype=torch.int8, device=values.device)
+    backing = torch.full((numel + 1,), 33, dtype=torch.int8, device=values.device)
+    output = backing[1:].view(shape) if mode == "out" else None
+    other = 0 if mode == "python" else scalar
+    previous_registrar = flag_gems.current_work_registrar
+    lib = None
+    try:
+        if registered:
+            lib = torch.library.Library("aten", "IMPL")
+            flag_gems.only_enable(lib=lib, include=["where_self", "where_self_out"])
+
+        def invoke():
+            if registered:
+                if output is not None:
+                    return torch.where(condition, values, other, out=output)
+                return torch.where(condition, values, other)
+            return flag_gems.where_self_out(condition, values, other, out=output)
+
+        first, second = invoke(), invoke()
+        if numel and output is None:
+            assert first.data_ptr() != second.data_ptr()
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = invoke()
+        for value, fill in [(False, -128), (True, 127)]:
+            condition.fill_(value)
+            scalar.fill_(fill)
+            graph.replay()
+            torch.npu.synchronize()
+            expected = (
+                values_cpu
+                if value
+                else torch.full_like(values_cpu, 0 if mode == "python" else fill)
+            )
+            utils.gems_assert_equal(actual.cpu(), expected)
+            if output is not None:
+                assert actual is output
+                utils.gems_assert_equal(
+                    backing[:1].cpu(), torch.tensor([33], dtype=torch.int8)
+                )
+        utils.gems_assert_equal(storage[:1].cpu(), torch.tensor([37], dtype=torch.int8))
+        utils.gems_assert_equal(values.cpu(), values_cpu)
+    finally:
+        if lib is not None:
+            lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
