@@ -29,12 +29,15 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops._foreach_unary import UNARY_OPS
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
     check_tensor_list,
     foreach_unary,
     is_flat_addressable,
     tl_dtype,
 )
+
+from ._foreach_direct import _select_ptr
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +94,72 @@ def _foreach_floor_native_kernel(
     x = tl.load(in_ptr + idx).to(tl.float32)
     y = tl.floor(x)
     tl.store(out_ptr + idx, y.to(DT))
+
+
+@triton.jit
+def _foreach_floor_direct_kernel(
+    i0, i1, i2, i3, i4, i5, i6, i7,
+    i8, i9, i10, i11, i12, i13, i14, i15,
+    o0, o1, o2, o3, o4, o5, o6, o7,
+    o8, o9, o10, o11, o12, o13, o14, o15,
+    DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NATIVE: tl.constexpr,
+):
+    """Direct-pointer unary launch (in/out selected from 16 scalar slots).
+
+    The meta-pointer variant reloads the address with `tl.load(meta_ptr + t)`,
+    which is a runtime global-memory load: the backend cannot apply block-DMA
+    to `tl.load(ptr + idx)` even though the address is dense and aligned
+    (~840 GB/s vs ~1780 GB/s for a direct pointer). The `tl.where` chain stays
+    scalar and analysable.
+    """
+    t = tl.program_id(0)
+    chunk = tl.program_id(1)
+    in_ptr = _select_ptr(
+        t, i0, i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, i13, i14, i15
+    ).to(tl.pointer_type(DT))
+    out_ptr = _select_ptr(
+        t, o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15
+    ).to(tl.pointer_type(DT))
+    idx = chunk * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(in_ptr + idx)
+    if NATIVE:
+        y = tl.floor(x.to(tl.float32)).to(DT)
+    else:
+        y = _floor_math(x).to(DT)
+    tl.store(out_ptr + idx, y)
+
+
+_MAX_DIRECT = 16
+
+
+def _launch_direct(tensors, dtype, device):
+    if len(tensors) > _MAX_DIRECT:
+        return None
+    n_elements = tensors[0].numel()
+    block, num_warps = _pick_block(n_elements, dtype)
+    if n_elements % block != 0:
+        return None
+    outs = [torch.empty_like(t) for t in tensors]
+    in_ptrs = [t.data_ptr() for t in tensors]
+    in_ptrs += [in_ptrs[0]] * (_MAX_DIRECT - len(in_ptrs))
+    out_ptrs = [o.data_ptr() for o in outs]
+    out_ptrs += [out_ptrs[0]] * (_MAX_DIRECT - len(out_ptrs))
+    grid = (len(tensors), n_elements // block)
+    with torch_device_fn.device(device):
+        _foreach_floor_direct_kernel[grid](
+            *in_ptrs,
+            *out_ptrs,
+            tl_dtype(dtype),
+            block,
+            dtype == torch.bfloat16,
+            num_warps=num_warps,
+            unroll_num=16,
+            buffer_size_limit=8192,
+            isCloseMemoryAsync=False,
+        )
+    return outs
 
 
 def _pick_block(n_elements, dtype):
@@ -157,6 +226,9 @@ def _try_fast(tensors):
             return None
         if not is_flat_addressable(t):
             return None
+    outs = _launch_direct(tensors, dtype, device)
+    if outs is not None:
+        return outs
     return _launch_fast(tensors, dtype, device)
 
 
