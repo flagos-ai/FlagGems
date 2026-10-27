@@ -267,6 +267,7 @@ def test__logcumsumexp_complex_special_values(data):
 
     ref_out = torch.ops.aten._logcumsumexp(ref_inp, 0)
     res_out = flag_gems._logcumsumexp(inp, 0)
+    res_out, ref_out = _complex_observation(res_out, ref_out, inp)
 
     utils.gems_assert_close(res_out, ref_out, torch.complex64, equal_nan=True)
     # Compare the branch structure on one device: under --ref=cpu the reference
@@ -545,6 +546,15 @@ def test__logcumsumexp_long_row_fp64():
 # ---------------------------------------------------------------------------
 
 
+def _complex_observation(result, reference, inp):
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == reference.shape
+    if flag_gems.vendor_name == "ascend" or utils.TO_CPU:
+        return result.cpu(), reference.cpu()
+    return result, reference.to(result.device)
+
+
 def _wrap_to_pi(delta):
     """Map an angular difference into (-pi, pi].
 
@@ -658,6 +668,7 @@ def test__logcumsumexp_long_complex_rows_special_values(data):
 
     ref_out = torch.ops.aten._logcumsumexp(ref_x, 0)
     res_out = flag_gems._logcumsumexp(x, 0)
+    res_out, ref_out = _complex_observation(res_out, ref_out, x)
     ref_on_dev = ref_out.to(res_out.device)
 
     # The branch structure is compared exactly; finite prefixes only need fp32

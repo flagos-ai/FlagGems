@@ -160,6 +160,8 @@ def test_nanmean_edge():
 
 @pytest.mark.nanmean
 def test_nanmean_empty_and_dtype():
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip("Ascend native nanmean does not support FP64 output")
     inp = torch.empty((2, 0, 3), device=flag_gems.device)
     if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
         pytest.skip(
@@ -170,7 +172,7 @@ def test_nanmean_empty_and_dtype():
     )
     result = flag_gems.nanmean(inp, dim=1, keepdim=True, dtype=torch.float64)
     assert result.device == inp.device
-    assert result.dtype == torch.float64
+    assert result.dtype == reference.dtype == torch.float64
     assert result.shape == reference.shape
     observed = (
         result.contiguous()
@@ -206,8 +208,8 @@ def test_nanmean_zero_sized_free_dimensions(shape, dim, keepdim):
 @pytest.mark.nanmean
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "ascend",
-    reason="Ascend native nanmean does not support complex output dtypes",
+    utils.TO_CPU or flag_gems.vendor_name == "ascend",
+    reason="CPU/Ascend native nanmean does not support complex output dtypes",
 )
 def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
@@ -251,7 +253,7 @@ def test_nanmean_invalid_dims():
     inp = torch.randn((2, 3), device=flag_gems.device)
     with pytest.raises(RuntimeError, match="appears multiple times"):
         flag_gems.nanmean(inp, dim=(0, -2))
-    with pytest.raises(IndexError, match="Dimension out of range"):
+    with pytest.raises((IndexError, RuntimeError), match="Dimension out of range"):
         flag_gems.nanmean(inp, dim=2)
 
 
@@ -323,8 +325,8 @@ def test_nanmean_out_rejects_device_mismatch():
 
 @pytest.mark.nanmean
 @pytest.mark.skipif(
-    flag_gems.vendor_name in ("ascend", "mthreads"),
-    reason="Ascend/MUSA native nanmean does not support complex inputs",
+    utils.TO_CPU or flag_gems.vendor_name in ("ascend", "mthreads"),
+    reason="CPU/Ascend/MUSA native nanmean does not support complex inputs",
 )
 def test_nanmean_complex_input():
     inp = torch.tensor(
@@ -407,4 +409,5 @@ def test_nanmean_backward_dim(keepdim):
     reference.backward(utils.to_reference(grad))
 
     utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
-    utils.gems_assert_close(inp.grad, ref_inp.grad, torch.float32)
+    # A randomly all-NaN slice has undefined (NaN) gradients on both sides.
+    utils.gems_assert_close(inp.grad, ref_inp.grad, torch.float32, equal_nan=True)

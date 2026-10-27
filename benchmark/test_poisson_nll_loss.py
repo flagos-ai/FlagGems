@@ -21,7 +21,7 @@ from . import base, consts
 def _input_fn(shape, dtype, device):
     input = torch.randn(shape, dtype=dtype, device=device)
     target = torch.randint(0, 5, shape, device=device).to(dtype)
-    yield input, target
+    yield input, target, True, False, 1e-8, 1
 
 
 def _case_fn(shape, dtype):
@@ -33,8 +33,7 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs(plan, dtype, device):
-    input, target = next(_input_fn(plan.builder_args[0], dtype, device))
-    return input, target, True, False, 1e-8, 1
+    return next(_input_fn(plan.builder_args[0], dtype, device))
 
 
 class PoissonNllLossBenchmark(base.GenericBenchmark):

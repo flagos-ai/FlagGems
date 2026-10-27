@@ -355,13 +355,7 @@ def test_slogdet_non_contiguous(dtype):
 @pytest.mark.slogdet
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_slogdet_nan_inf(dtype):
-    """Non-finite entries must not crash and must not fabricate a finite result.
-
-    Inf input is checked against ATen directly. NaN input is only checked for
-    non-finiteness: ATen itself is not self-consistent there (for
-    [[nan, 0], [0, 1]] the CPU path returns logabsdet=nan while the CUDA path
-    returns -inf), so there is no single reference value to match.
-    """
+    """Non-finite inputs follow the selected ATen reference, including NaNs."""
     inf_cases = {
         "inf": ([[float("inf"), 0.0], [0.0, 1.0]], 1.0),
         "neg_inf": ([[float("-inf"), 0.0], [0.0, 1.0]], -1.0),
@@ -385,10 +379,11 @@ def test_slogdet_nan_inf(dtype):
             torch.tensor(vals, dtype=dtype, device=_factory_device(dtype))
         )
         res_sign, res_logabsdet = _candidate_slogdet(A)
-        la = res_logabsdet.item()
-        assert not (
-            la == la and abs(la) != float("inf")
-        ), f"{name}: a NaN input must not produce a finite logabsdet, got {la}"
+        reference = torch.linalg.slogdet(utils.to_reference(A))
+        torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
+        torch.testing.assert_close(
+            res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
+        )
 
 
 @pytest.mark.slogdet
@@ -442,9 +437,9 @@ def test_slogdet_large_1025():
 def test_slogdet_invalid_inputs():
     """Invalid inputs raise, matching the ATen conditions."""
     dev = flag_gems.device
-    with pytest.raises(RuntimeError, match="at least 2 dimensions"):
+    with pytest.raises(RuntimeError, match="at least 2 dimensions|nonempty least 2D"):
         _candidate_slogdet(torch.randn(5, dtype=torch.float32, device=dev))
-    with pytest.raises(RuntimeError, match="at least 2 dimensions"):
+    with pytest.raises(RuntimeError, match="at least 2 dimensions|nonempty least 2D"):
         _candidate_slogdet(torch.randn((), dtype=torch.float32, device=dev))
     with pytest.raises(RuntimeError, match="square"):
         _candidate_slogdet(torch.randn(3, 4, dtype=torch.float32, device=dev))

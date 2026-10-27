@@ -137,8 +137,8 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
     )
     target = torch.tensor([1.0, 0.0, 2.0, 0.0, 1.0], dtype=dtype, device=input.device)
     ref = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(input),
-        utils.to_reference(target),
+        utils.to_reference(input, upcast=True),
+        utils.to_reference(target, upcast=True),
         False,
         True,
         1e-8,
@@ -201,16 +201,24 @@ def test_poisson_nll_loss_mixed_dtype_promotion(
 @pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss_mixed_dtype_exceptions():
     bool_input = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
-    with pytest.raises(RuntimeError):
-        flag_gems.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
-
     float_input = torch.ones((2, 3), device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        torch.ops.aten.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
-    with pytest.raises(RuntimeError):
-        flag_gems.poisson_nll_loss(float_input, bool_input, True, True, 1e-8, 0)
+    for inp, target, full in (
+        (bool_input, bool_input, False),
+        (float_input, bool_input, True),
+    ):
+        # Native backends differ on bool acceptance. Check their actual contract
+        # in both reference modes rather than failing before candidate invocation.
+        try:
+            reference = torch.ops.aten.poisson_nll_loss(
+                utils.to_reference(inp), utils.to_reference(target), True, full, 1e-8, 0
+            )
+        except RuntimeError:
+            with pytest.raises(RuntimeError):
+                flag_gems.poisson_nll_loss(inp, target, True, full, 1e-8, 0)
+        else:
+            result = flag_gems.poisson_nll_loss(inp, target, True, full, 1e-8, 0)
+            assert result.device == inp.device
+            utils.gems_assert_close(result, reference, reference.dtype, equal_nan=True)
 
 
 @pytest.mark.poisson_nll_loss
@@ -248,9 +256,17 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         pytest.skip(
             "MUSA Poisson NLL reference does not support nonempty complex tensors"
         )
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and case == "empty"
+        and reduction == 1
+    ):
+        pytest.skip("Ascend native empty complex mean does not support this dtype")
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+    inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
     if case == "broadcast_conjugate":
         inp = inp.T.conj()
         target = target[:1].T.conj()
@@ -268,10 +284,12 @@ def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
         reduction,
     )
     result = flag_gems.poisson_nll_loss(inp, target, log_input, full, 1e-8, reduction)
+    assert result.device == inp.device
     assert result.dtype == reference.dtype
-    if flag_gems.vendor_name == "kunlunxin" and result.is_complex():
-        assert result.device == inp.device
-        assert result.shape == reference.shape
+    assert result.shape == reference.shape
+    if flag_gems.vendor_name == "ascend" or (
+        flag_gems.vendor_name == "kunlunxin" and result.is_complex()
+    ):
         result, reference = result.cpu(), reference.cpu()
     utils.gems_assert_close(
         result,

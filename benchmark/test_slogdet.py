@@ -15,7 +15,6 @@
 import pytest
 import torch
 
-
 from . import base
 
 # Square-matrix shapes: a batched small case covers the (*, n, n) interface,

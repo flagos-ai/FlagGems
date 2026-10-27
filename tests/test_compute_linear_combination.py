@@ -34,7 +34,10 @@ HIGHER_RANK_SHAPES = [
 
 
 def _assert_inputs_unchanged(actual, expected):
-    utils.gems_assert_equal(actual, expected)
+    assert actual.device == expected.device
+    assert actual.dtype == expected.dtype
+    assert actual.shape == expected.shape
+    utils.gems_assert_equal(actual, utils.to_reference(expected, False))
 
 
 @pytest.mark.compute_linear_combination
