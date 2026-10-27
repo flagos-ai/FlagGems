@@ -103,15 +103,18 @@ def test_argwhere_special_inputs():
 
     # all-non-zero
     inp = torch.ones(64, 32, dtype=torch.float32, device=flag_gems.device)
+    ref_out = torch.argwhere(utils.to_reference(inp, False))
     res_out = flag_gems.argwhere(inp)
-    utils.gems_assert_equal(res_out, torch.argwhere(inp.cpu()).to(flag_gems.device))
+    utils.gems_assert_equal(res_out, ref_out)
 
     # NaN / inf are non-zero
     inp = torch.tensor([float("nan"), float("inf"), 0.0, -0.0], device=flag_gems.device)
+    ref_out = torch.argwhere(utils.to_reference(inp, False))
     res_out = flag_gems.argwhere(inp)
-    assert res_out.cpu().flatten().tolist() == [0, 1]
+    utils.gems_assert_equal(res_out, ref_out)
 
     # non-contiguous input must match the contiguous reference
     inp = torch.randn(8, 8, device=flag_gems.device)[::2, ::3]
+    ref_out = torch.argwhere(utils.to_reference(inp, False))
     res_out = flag_gems.argwhere(inp)
-    utils.gems_assert_equal(res_out, torch.argwhere(inp.cpu()).to(flag_gems.device))
+    utils.gems_assert_equal(res_out, ref_out)
