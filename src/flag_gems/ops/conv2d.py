@@ -345,7 +345,9 @@ def conv2d_backward_kernel_weight(
                 )
 
                 curr_input = tl.load(curr_input_pointer, mask=input_mask)
-                accum += tl.dot(curr_input, curr_out_grad, input_precision=_DOT_PRECISION)
+                accum += tl.dot(
+                    curr_input, curr_out_grad, input_precision=_DOT_PRECISION
+                )
 
     weight_mask = (
         (ci_point_value < input_c)[:, None]

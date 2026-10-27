@@ -196,7 +196,9 @@ def conv_transpose1d_forward_kernel(
 
         # Accumulate: input_block is [BLOCK_N_OW, BLOCK_IC], weight_block is [BLOCK_IC, BLOCK_OC]
         accum += tl.dot(
-            input_block.to(tl.float32), weight_block.to(tl.float32), input_precision=_DOT_PRECISION
+            input_block.to(tl.float32),
+            weight_block.to(tl.float32),
+            input_precision=_DOT_PRECISION,
         )
 
     # Add bias if present
