@@ -1055,6 +1055,9 @@ from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
+from flag_gems.ops.make_per_channel_quantized_tensor import (
+    _make_per_channel_quantized_tensor,
+)
 from flag_gems.ops.make_per_tensor_quantized_tensor import (
     _make_per_tensor_quantized_tensor,
     _make_per_tensor_quantized_tensor_out,
@@ -1897,6 +1900,7 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_per_channel_quantized_tensor",
     "_make_per_tensor_quantized_tensor",
     "_make_per_tensor_quantized_tensor_out",
     "_masked_scale",

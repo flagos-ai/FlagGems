@@ -423,6 +423,7 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    ("_make_per_channel_quantized_tensor", _make_per_channel_quantized_tensor),
     ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),
     ("_make_per_tensor_quantized_tensor.out", _make_per_tensor_quantized_tensor_out),
     ("_masked_scale", _masked_scale),
