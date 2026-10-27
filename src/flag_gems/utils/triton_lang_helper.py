@@ -1326,6 +1326,30 @@ def _fallback_rcp_rn(x):
 
 
 @triton.jit
+def _fallback_div_rn(x, y):
+    # IEEE round-to-nearest division for backends whose libdevice lacks div_rn
+    # (e.g. HIP); tl.math.div_rn is the core precise-division builtin.
+    return tl.math.div_rn(x, y)
+
+
+@triton.jit
+def _fallback_div_rz(x, y):
+    # Round-toward-zero division built from div_rn: the exact remainder
+    # r = x - q*y (via fma) tells whether |q| overshot |x/y|; if so, step q one
+    # ulp toward zero (bits - 1 shrinks the magnitude for either sign).
+    q = tl.math.div_rn(x, y)
+    r = tl.math.fma(-q, y, x)
+    overshoot = (r != 0) & (((r < 0) ^ (y < 0)) != (q < 0))
+    overflow = (tl.abs(q) == float("inf")) & (tl.abs(x) != float("inf")) & (y != 0)
+    step = (q != 0) & (overshoot | overflow)
+    if q.dtype == tl.float64:
+        prev = (q.to(tl.int64, bitcast=True) - 1).to(tl.float64, bitcast=True)
+    else:
+        prev = (q.to(tl.int32, bitcast=True) - 1).to(tl.float32, bitcast=True)
+    return tl.where(step, prev, q)
+
+
+@triton.jit
 def _fallback_isfinite(x):
     # IEEE identity: x-x is exactly 0 for any finite x and NaN for +-inf/NaN
     # lanes, so (x - x) == 0.0 is isfinite.  Uses only core triton operators,
@@ -1372,6 +1396,8 @@ def _fallback_ffs(x):
 _FALLBACK_SYMBOLS = {
     "pow": _fallback_pow,
     "asin": _fallback_asin,
+    "div_rn": _fallback_div_rn,
+    "div_rz": _fallback_div_rz,
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
