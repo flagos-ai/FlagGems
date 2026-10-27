@@ -460,9 +460,9 @@ def _assert_put_bounds_failure(proc, report):
     assert (
         report.get("phase") == "invalid" and report.get("status") == "ERROR"
     ), "the put child failed before its out-of-range call: " + repr(report)
-    assert report.get("runtime_error") is True, (
-        "expected the target-device RuntimeError, got: " + repr(report)
-    )
+    assert (
+        report.get("runtime_error") is True
+    ), "expected the target-device RuntimeError, got: " + repr(report)
     assert (
         report.get("context_failed") is True
     ), "expected a target-device fault, not a host/compiler exception: " + repr(report)
@@ -894,11 +894,11 @@ def test_put_complex32_rejected():
         flag_gems.device
     )
 
-    # Compare against the native call on the same device so the message and the
-    # exception type are checked against the CUDA kernel, not the CPU fallback.
-    with pytest.raises(NotImplementedError) as ref_err:
+    # Backends/PyTorch versions use RuntimeError or its NotImplementedError
+    # subclass. Keep the native rejection family and exact message.
+    with pytest.raises(RuntimeError, match="not implemented.*ComplexHalf") as ref_err:
         torch.put(inp.clone(), index, source)
-    with pytest.raises(NotImplementedError) as res_err:
+    with pytest.raises(type(ref_err.value)) as res_err:
         _gems_put(inp, index, source)
 
     assert str(ref_err.value) == str(res_err.value)

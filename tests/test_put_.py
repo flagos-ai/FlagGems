@@ -903,9 +903,11 @@ def test_put__complex32_rejected():
         flag_gems.device
     )
 
-    with pytest.raises(NotImplementedError) as ref_err:
+    # RuntimeError vs. NotImplementedError varies with the backend/PyTorch
+    # version; the candidate must retain the native family and exact message.
+    with pytest.raises(RuntimeError, match="not implemented.*ComplexHalf") as ref_err:
         inp.clone().put_(index, source)
-    with pytest.raises(NotImplementedError) as res_err:
+    with pytest.raises(type(ref_err.value)) as res_err:
         flag_gems.put_(inp, index, source)
 
     assert str(ref_err.value) == str(res_err.value)
