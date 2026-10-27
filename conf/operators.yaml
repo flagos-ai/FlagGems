@@ -19013,6 +19013,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_resize_and_clear_
+  description: |
+    Drop every stored element of a sparse COO tensor (nnz becomes 0) and resize it in place to the requested size and sparse/dense dimension counts.
+  for:
+    - sparse_resize_and_clear_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
