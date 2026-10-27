@@ -464,6 +464,7 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_nested_view_from_buffer", _nested_view_from_buffer),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),

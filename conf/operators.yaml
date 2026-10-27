@@ -14788,6 +14788,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_view_from_buffer
+  description: |
+    Creates a strided nested tensor viewing a flat buffer, using component sizes, strides and offsets.
+  for:
+  - _nested_view_from_buffer
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
