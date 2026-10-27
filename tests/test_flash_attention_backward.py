@@ -318,6 +318,10 @@ def test_flash_attention_backward(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+@pytest.mark.skipif(
+    torch.version.hip is not None,
+    reason="ROCm torch has no cuDNN SDPA reference",
+)
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     [
@@ -530,25 +534,20 @@ def test_efficient_attention_backward(
         softmax_scale=scale,
     )
 
-    ref_dOut = utils.to_reference(dOut)
-    ref_Q = utils.to_reference(Q)
-    ref_K = utils.to_reference(K)
-    ref_V = utils.to_reference(V)
-    ref_bias = utils.to_reference(bias)
-    ref_out = utils.to_reference(out)
-    ref_lse_aligned = utils.to_reference(lse_aligned)
-    ref_dQ, ref_dK, ref_dV, ref_dBias = torch.ops.aten._efficient_attention_backward(
-        ref_dOut,
-        ref_Q,
-        ref_K,
-        ref_V,
-        ref_bias,
-        ref_out,
+    # aten._efficient_attention_backward has no CPU kernel, so the reference
+    # runs on device even with --ref cpu; only its outputs move to the ref device.
+    ref_grads = torch.ops.aten._efficient_attention_backward(
+        dOut,
+        Q,
+        K,
+        V,
+        bias,
+        out,
         None,
         None,
         q_seq_len,
         kv_seq_len,
-        ref_lse_aligned,
+        lse_aligned,
         0.0,
         philox_seed,
         philox_offset,
@@ -557,6 +556,7 @@ def test_efficient_attention_backward(
         scale=scale,
         num_splits_key=None,
     )
+    ref_dQ, ref_dK, ref_dV, ref_dBias = (utils.to_reference(g) for g in ref_grads)
 
     dQ, dK, dV, dBias_gems = flag_gems.efficient_attention_backward(
         dOut,
@@ -680,32 +680,25 @@ def test_scaled_dot_product_efficient_attention_backward(
     )
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
-    ref_Q_bhsd = utils.to_reference(Q_bhsd)
-    ref_K_bhsd = utils.to_reference(K_bhsd)
-    ref_V_bhsd = utils.to_reference(V_bhsd)
-    ref_bias = utils.to_reference(attn_bias)
-    ref_out_bhsd = utils.to_reference(out_bhsd)
-    ref_lse = utils.to_reference(lse)
-    (
-        ref_dQ_bhsd,
-        ref_dK_bhsd,
-        ref_dV_bhsd,
-        ref_dBias,
-    ) = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
-        ref_dOut_bhsd,
-        ref_Q_bhsd,
-        ref_K_bhsd,
-        ref_V_bhsd,
-        ref_bias,
-        ref_out_bhsd,
-        ref_lse,
+    # No CPU kernel for this aten op either: run the reference on device and
+    # move only its outputs to the reference device.
+    ref_grads = torch.ops.aten._scaled_dot_product_efficient_attention_backward(
+        dOut_bhsd,
+        Q_bhsd,
+        K_bhsd,
+        V_bhsd,
+        attn_bias,
+        out_bhsd,
+        lse,
         philox_seed,
         philox_offset,
         0.0,
         grad_input_mask,
         is_causal,
         scale=scale,
+    )
+    ref_dQ_bhsd, ref_dK_bhsd, ref_dV_bhsd, ref_dBias = (
+        utils.to_reference(g) for g in ref_grads
     )
     ref_dQ = ref_dQ_bhsd.permute(0, 2, 1, 3).contiguous()
     ref_dK = ref_dK_bhsd.permute(0, 2, 1, 3).contiguous()
