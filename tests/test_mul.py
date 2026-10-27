@@ -620,3 +620,62 @@ def test_ascend_mul_complex_fixed_cpu_reference(case):
         utils.gems_assert_equal(inp.cpu(), a)
     # All component products are exact dyadic fractions in this witness.
     utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend broadcast layout")
+@pytest.mark.parametrize("shape", [(2, 17, 128), (2, 3, 17, 257)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_ascend_mul_dense_prefix_graph(shape, dtype, reverse):
+    a_cpu = (torch.arange(np.prod(shape)).reshape(shape) % 17 - 8).to(dtype) / 8
+    b_cpu = (torch.arange(np.prod(shape[:-1])).reshape(*shape[:-1], 1) % 7 - 3).to(
+        dtype
+    ) / 4
+    a, b = a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device)
+
+    def invoke():
+        return flag_gems.mul(b, a) if reverse else flag_gems.mul(a, b)
+
+    actual = invoke()
+    utils.gems_assert_equal(actual.cpu(), a_cpu * b_cpu)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = invoke()
+    b.copy_(-b_cpu)
+    graph.replay()
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), a_cpu * -b_cpu)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend broadcast layout")
+@pytest.mark.parametrize("case", ["prefix_broadcast", "strided_output", "alias"])
+def test_ascend_mul_prefix_layout_fallbacks(case):
+    a_cpu = torch.arange(2 * 3 * 17, dtype=torch.float32).reshape(2, 3, 17) / 8
+    b_cpu = torch.ones((1, 3, 1), dtype=torch.float32) / 4
+    a, b = a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device)
+    if case == "strided_output":
+        output = torch.empty((2, 3, 17, 2), device=a.device)[..., 1]
+    elif case == "alias":
+        b_cpu = torch.ones((2, 3, 1), dtype=torch.float32) / 4
+        b = b_cpu.to(a.device)
+        output = a
+    else:
+        output = None
+    actual = flag_gems.mul(a, b, out=output)
+    if output is not None:
+        assert actual is output
+    utils.gems_assert_equal(actual.cpu(), a_cpu * b_cpu)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend broadcast layout")
+def test_ascend_mul_prefix_offset_limit():
+    module = _ascend_mul_module()
+    # Metadata checks cover the 32-bit boundary without allocating huge tensors.
+    shape = (2, 1024, 128)
+    dense = (131072, 128, 1)
+    assert module._collapse_broadcast_prefix(shape, dense) is not None
+    assert module._collapse_broadcast_prefix(shape, (2**31, 2**21, 1)) is None
+    assert module._collapse_broadcast_prefix((2, 2**23, 128), (2**30, 128, 1)) is None

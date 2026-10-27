@@ -613,6 +613,23 @@ def _can_use_2d_broadcast(out_shape):
     return len(out_shape) == 2
 
 
+def _collapse_broadcast_prefix(shape, *strides):
+    # Reinterpret metadata only when every operand has the same dense (or fully
+    # broadcast) prefix. No reshape, materialization or arithmetic is performed.
+    if len(shape) <= 2 or not 0 < volume(shape) < 2**31:
+        return None
+    for stride in strides:
+        if any(s < 0 for s in stride):
+            return None
+        if sum((size - 1) * s for size, s in zip(shape, stride)) >= 2**31:
+            return None
+        if any(
+            stride[i] != shape[i + 1] * stride[i + 1] for i in range(len(shape) - 2)
+        ):
+            return None
+    return (volume(shape[:-1]), shape[-1]), tuple(s[-2:] for s in strides)
+
+
 def _launch_contiguous_tensor_tensor(a_t, b_t, output, dtype):
     n_elements = output.numel()
     if n_elements == 0:
@@ -938,6 +955,21 @@ def mul_broadcast_func(a, b, out=None):
 
     out_shape = tuple(output.shape)
     a_stride, b_stride, out_stride = _real_layout(out_shape, a_t, b_t, output)
+    if (
+        len(out_shape) > 2
+        and output.is_contiguous()
+        and dtype
+        in (
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+        )
+    ):
+        collapsed = _collapse_broadcast_prefix(
+            out_shape, a_stride, b_stride, out_stride
+        )
+        if collapsed is not None:
+            out_shape, (a_stride, b_stride, out_stride) = collapsed
     if _can_use_2d_broadcast(out_shape):
         return _launch_2d_broadcast(
             a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype

@@ -317,7 +317,8 @@ def test_ascend_index_add_padding_graph(tokens, registered):
 @pytest.mark.index_add_
 @pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend short indices")
 @pytest.mark.parametrize(
-    "shape,dim,tokens", [((3, 5), 1, 2), ((3, 5, 7), 1, 1), ((2, 5, 513), 1, 2)]
+    "shape,dim,tokens",
+    [((5,), 0, 1), ((3, 5), 1, 2), ((3, 5, 7), 1, 1), ((2, 5, 513), 1, 2)],
 )
 @pytest.mark.parametrize(
     "dtype", [torch.float32, torch.float16, torch.bfloat16, torch.int32]
