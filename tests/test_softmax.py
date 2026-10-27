@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -36,8 +50,7 @@ def test_softmax(shape, dtype, dim, neg_inf):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.nn.functional.softmax(ref_inp, dim=dim)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.softmax(inp, dim=dim)
+    res_out = flag_gems.softmax(inp, dim)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -45,9 +58,11 @@ def test_softmax(shape, dtype, dim, neg_inf):
 @pytest.mark.softmax_out
 @pytest.mark.parametrize(
     "shape",
-    [(1, 256)]
-    if cfg.QUICK_MODE
-    else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)],
+    (
+        [(1, 256)]
+        if cfg.QUICK_MODE
+        else [(1, 256), (4096, 256), (200, 2560, 3), (1, 0, 128, 512)]
+    ),
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
@@ -62,8 +77,7 @@ def test_softmax_out(shape, dtype, dim, neg_inf):
     torch.ops.aten._softmax.out(ref_inp, dim, False, out=ref_out)
 
     res_out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._softmax.out(inp, dim, False, out=res_out)
+    flag_gems.softmax_out(inp, dim, False, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -95,28 +109,21 @@ def test_softmax_backward_out(shape, dtype, dim, neg_inf):
     )
 
     res_in_grad = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten._softmax_backward_data.out(
-            res_grad, res_out, dim, dtype, grad_input=res_in_grad
-        )
+    flag_gems.softmax_backward_out(
+        res_grad, res_out, dim, dtype, grad_input=res_in_grad
+    )
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True
     )
 
 
 @pytest.mark.softmax_backward
+@pytest.mark.softmax_backward_data
 @pytest.mark.parametrize("shape", BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("dim", DIM_LIST)
 @pytest.mark.parametrize("neg_inf", [True, False])
 def test_softmax_backward(shape, dtype, dim, neg_inf):
-    if shape[dim] == 1 and flag_gems.vendor_name == "kunlunxin":
-        pytest.skip(
-            "Issue #2851: XPU _softmax_backward_data short-circuits to zero when reduction dim "
-            "is 1, while the Triton kernel computes normally with synthetic inputs, "
-            "causing a mismatch that does not reflect a real correctness issue."
-        )
-
     res_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     if neg_inf:
         res_grad = torch.where(res_grad < 0.0, float("-inf"), res_grad)
@@ -128,10 +135,7 @@ def test_softmax_backward(shape, dtype, dim, neg_inf):
     ref_in_grad = torch.ops.aten._softmax_backward_data(
         ref_grad, ref_out, dim, ref_grad.dtype
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten._softmax_backward_data(
-            res_grad, res_out, dim, dtype
-        )
+    res_in_grad = flag_gems.softmax_backward(res_grad, res_out, dim, dtype)
 
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True

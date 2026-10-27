@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -21,13 +35,7 @@ def test_glu(shape, dtype):
             continue
 
         ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            if flag_gems.vendor_name == "tsingmicro":
-                res_out = torch.nn.functional.glu(
-                    res_inp.to(device=flag_gems.device), dim=dim
-                )
-            else:
-                res_out = torch.nn.functional.glu(res_inp, dim=dim)
+        res_out = flag_gems.glu(res_inp, dim=dim)
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -47,7 +55,6 @@ def test_glu_backward(shape, dtype):
         ref_out = utils.to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
+        res_in_grad = flag_gems.glu_backward(res_out, res_inp, dim=dim)
 
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

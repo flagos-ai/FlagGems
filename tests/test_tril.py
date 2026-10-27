@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 
 import pytest
@@ -46,8 +60,7 @@ def _assert_tril_inplace_matches_reference(inp, diagonal):
     original_stride = inp.stride()
     original_data_ptr = inp.data_ptr()
 
-    with flag_gems.use_gems():
-        res = inp.tril_(diagonal)
+    res = flag_gems.tril_(inp, diagonal)
 
     utils.gems_assert_equal(inp, ref_inp)
     assert res is inp
@@ -64,8 +77,7 @@ def test_tril(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.tril(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.tril(inp, diagonal)
+    res_out = flag_gems.tril(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous()
@@ -74,14 +86,16 @@ def test_tril(shape, diagonal, dtype):
 @pytest.mark.tril
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_noncontiguous(shape, diagonal, dtype):
     inp = _make_tril_input(shape, dtype).transpose(-2, -1)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.tril(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.tril(inp, diagonal)
+    res_out = flag_gems.tril(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous()
@@ -95,6 +109,9 @@ def test_tril_noncontiguous(shape, diagonal, dtype):
         ((512, 2048), -3, torch.int32),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
     tril_mod = importlib.import_module("flag_gems.ops.tril")
     batch = 1
@@ -106,8 +123,7 @@ def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.tril(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.tril(inp, diagonal)
+    res_out = flag_gems.tril(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous()
@@ -122,6 +138,9 @@ def test_tril_wide_exact_row_dispatch(shape, diagonal, dtype):
         ((128, 64, 64), False),
         ((4, 16, 16), False),
     ],
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
 )
 def test_tril_tiny_batched_tile_dispatch(shape, expected):
     tril_mod = importlib.import_module("flag_gems.ops.tril")
@@ -141,6 +160,9 @@ def test_tril_tiny_batched_tile_dispatch(shape, expected):
         ((256, 16, 16), 1, torch.bool),
     ],
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
     tril_mod = importlib.import_module("flag_gems.ops.tril")
     batch = 1
@@ -152,8 +174,7 @@ def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.tril(ref_inp, diagonal)
 
-    with flag_gems.use_gems():
-        res_out = torch.tril(inp, diagonal)
+    res_out = flag_gems.tril(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.is_contiguous()
@@ -162,6 +183,9 @@ def test_tril_tiny_batched_tile_correctness(shape, diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out(shape, diagonal, dtype):
     inp = _make_tril_input(shape, dtype)
     out = torch.empty_like(inp)
@@ -170,8 +194,7 @@ def test_tril_out(shape, diagonal, dtype):
     ref_out = torch.empty_like(ref_inp)
     torch.tril(ref_inp, diagonal, out=ref_out)
 
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=out)
+    res = flag_gems.tril_out(inp, diagonal, out=out)
 
     utils.gems_assert_equal(out, ref_out)
     assert res.data_ptr() == out.data_ptr()
@@ -180,6 +203,9 @@ def test_tril_out(shape, diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL[:3])
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_resizes(shape, diagonal, dtype):
     inp = _make_tril_input(shape, dtype)
     out = torch.empty(0, dtype=dtype, device=flag_gems.device)
@@ -188,8 +214,7 @@ def test_tril_out_resizes(shape, diagonal, dtype):
     ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
     torch.tril(ref_inp, diagonal, out=ref_out)
 
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=out)
+    res = flag_gems.tril_out(inp, diagonal, out=out)
 
     utils.gems_assert_equal(out, ref_out)
     assert out.shape == inp.shape
@@ -199,6 +224,9 @@ def test_tril_out_resizes(shape, diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_aliases_input(diagonal, dtype):
     if dtype is torch.int64 and not utils.int64_is_supported:
         # int64 is not supported on this device
@@ -213,8 +241,7 @@ def test_tril_out_aliases_input(diagonal, dtype):
         pytest.skip(f"PyTorch rejects tril out=input alias: {exc}")
 
     original_data_ptr = inp.data_ptr()
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=inp)
+    res = flag_gems.tril_out(inp, diagonal, out=inp)
 
     utils.gems_assert_equal(inp, ref)
     assert inp.data_ptr() == original_data_ptr
@@ -224,6 +251,9 @@ def test_tril_out_aliases_input(diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_noncontiguous_out(diagonal, dtype):
     if dtype is torch.int64 and not utils.int64_is_supported:
         # int64 is not supported on this device
@@ -241,8 +271,7 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
 
     original_data_ptr = out.data_ptr()
     original_stride = out.stride()
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=out)
+    res = flag_gems.tril_out(inp, diagonal, out=out)
 
     utils.gems_assert_equal(out, ref_out)
     assert out.data_ptr() == original_data_ptr
@@ -253,6 +282,9 @@ def test_tril_out_noncontiguous_out(diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-2, 0, 3])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
     if dtype is torch.int64 and not utils.int64_is_supported:
         # int64 is not supported on this device
@@ -270,8 +302,7 @@ def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
 
     original_data_ptr = out.data_ptr()
     original_stride = out.stride()
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=out)
+    res = flag_gems.tril_out(inp, diagonal, out=out)
 
     utils.gems_assert_equal(out, ref_out)
     assert out.data_ptr() == original_data_ptr
@@ -282,6 +313,9 @@ def test_tril_out_sliced_leading_batch_out(diagonal, dtype):
 @pytest.mark.tril_out
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", TRIL_OUT_EDGE_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
     if dtype is torch.int64 and not utils.int64_is_supported:
         # int64 is not supported on this device
@@ -298,8 +332,7 @@ def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
 
     original_data_ptr = out.data_ptr()
     original_stride = out.stride()
-    with flag_gems.use_gems():
-        res = torch.tril(inp, diagonal, out=out)
+    res = flag_gems.tril_out(inp, diagonal, out=out)
 
     utils.gems_assert_equal(out, ref_out)
     assert out.data_ptr() == original_data_ptr
@@ -308,6 +341,9 @@ def test_tril_out_extreme_diagonal_noncontiguous_out(diagonal, dtype):
 
 
 @pytest.mark.tril_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_out_strided_dispatch_guards():
     tril_mod = importlib.import_module("flag_gems.ops.tril")
     inp = torch.empty((2, 5, 7), dtype=torch.float32, device=flag_gems.device)
@@ -334,6 +370,9 @@ def test_tril_out_strided_dispatch_guards():
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace(shape, diagonal, dtype):
     inp = _make_tril_input(shape, dtype)
     _assert_tril_inplace_matches_reference(inp, diagonal)
@@ -342,6 +381,9 @@ def test_tril_inplace(shape, diagonal, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape, diagonal", SHAPE_DIAGONAL)
 @pytest.mark.parametrize("dtype", TRIL_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_noncontiguous(shape, diagonal, dtype):
     inp = _make_tril_input(shape, dtype).transpose(-2, -1)
     _assert_tril_inplace_matches_reference(inp, diagonal)
@@ -350,6 +392,9 @@ def test_tril_inplace_noncontiguous(shape, diagonal, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 2])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_strided_batched_view(diagonal, dtype):
     base = _make_sequence((2, 8, 10), dtype)
     inp = base[:, ::2, 1::2]
@@ -359,6 +404,9 @@ def test_tril_inplace_strided_batched_view(diagonal, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_expanded_view(diagonal, dtype):
     base = _make_sequence((1, 4), dtype)
     ref_base = utils.to_reference(base.clone())
@@ -370,8 +418,7 @@ def test_tril_inplace_expanded_view(diagonal, dtype):
 
     original_stride = inp.stride()
     original_data_ptr = inp.data_ptr()
-    with flag_gems.use_gems():
-        res = inp.tril_(diagonal)
+    res = flag_gems.tril_(inp, diagonal)
 
     utils.gems_assert_equal(inp, ref)
     assert res is inp
@@ -382,6 +429,9 @@ def test_tril_inplace_expanded_view(diagonal, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-1, 0, 1])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_overlapping_as_strided_view(diagonal, dtype):
     base = _make_sequence((8,), dtype)
     ref_base = utils.to_reference(base.clone())
@@ -393,8 +443,7 @@ def test_tril_inplace_overlapping_as_strided_view(diagonal, dtype):
 
     original_stride = inp.stride()
     original_data_ptr = inp.data_ptr()
-    with flag_gems.use_gems():
-        res = inp.tril_(diagonal)
+    res = flag_gems.tril_(inp, diagonal)
 
     utils.gems_assert_equal(inp, ref)
     assert res is inp
@@ -405,14 +454,16 @@ def test_tril_inplace_overlapping_as_strided_view(diagonal, dtype):
 @pytest.mark.tril
 @pytest.mark.parametrize("shape", [(0, 0), (0, 7), (5, 0), (2, 0, 7), (2, 5, 0)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_empty(shape, dtype):
     inp = _make_tril_input(shape, dtype)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.tril(ref_inp, -1)
 
-    with flag_gems.use_gems():
-        res_out = torch.tril(inp, -1)
+    res_out = flag_gems.tril(inp, -1)
 
     utils.gems_assert_equal(res_out, ref_out)
     assert res_out.shape == inp.shape
@@ -421,6 +472,9 @@ def test_tril_empty(shape, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("shape", [(0, 0), (0, 7), (5, 0), (2, 0, 7), (2, 5, 0)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_empty(shape, dtype):
     inp = _make_tril_input(shape, dtype)
     _assert_tril_inplace_matches_reference(inp, -1)
@@ -429,32 +483,35 @@ def test_tril_inplace_empty(shape, dtype):
 @pytest.mark.tril_
 @pytest.mark.parametrize("diagonal", [-99, 99])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.bool])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_extreme_diagonal(diagonal, dtype):
     inp = _make_tril_input((2, 5, 7), dtype)
     _assert_tril_inplace_matches_reference(inp, diagonal)
 
 
 @pytest.mark.tril
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_invalid_rank():
     inp = torch.tensor(1.0, device=flag_gems.device)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(
-            RuntimeError, match="tril: input tensor must have at least 2 dimensions"
-        ),
+    with pytest.raises(
+        RuntimeError, match="tril: input tensor must have at least 2 dimensions"
     ):
-        torch.tril(inp)
+        flag_gems.tril(inp)
 
 
 @pytest.mark.tril_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #3796: not working"
+)
 def test_tril_inplace_invalid_rank():
     inp = torch.tensor(1.0, device=flag_gems.device)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(
-            RuntimeError, match="tril: input tensor must have at least 2 dimensions"
-        ),
+    with pytest.raises(
+        RuntimeError, match="tril: input tensor must have at least 2 dimensions"
     ):
-        inp.tril_()
+        flag_gems.tril_(inp)

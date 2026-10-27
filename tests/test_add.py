@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -20,8 +34,7 @@ def test_add(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.add(ref_inp1, ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -30,6 +43,10 @@ def test_add(shape, alpha, dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
@@ -62,8 +79,7 @@ def test_add_complex(shape, complex_dtype, other_type):
     )
 
     ref_out = torch.add(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.add(inp1, inp2)
+    res_out = flag_gems.add(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
@@ -79,8 +95,7 @@ def test_add_(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.add_(ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = inp1.add_(inp2, alpha=alpha)
+    res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -96,8 +111,7 @@ def test_add_tensor_scalar(shape, scalar, alpha, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.add(ref_inp1, inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -113,8 +127,7 @@ def test_add_tensor_scalar_(shape, scalar, alpha, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.add_(inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = inp1.add_(inp2, alpha=alpha)
+    res_out = flag_gems.add_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -130,8 +143,7 @@ def test_add_scalar_tensor(shape, scalar, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.add(inp1, ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -149,8 +161,7 @@ def test_add_scalar_scalar(dtype):
         alpha = random.randint(0, 100)
 
     ref_out = torch.add(inp1, inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.add(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.add(inp1, inp2, alpha=alpha)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)

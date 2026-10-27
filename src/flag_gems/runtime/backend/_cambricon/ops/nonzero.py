@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -10,16 +24,16 @@ from flag_gems.utils import libentry
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("nonzero"),
     key=[
         "n_elements",
     ],
 )
+@libentry()
 @triton.jit
 def nonzero_kernel(
     inp,
@@ -39,7 +53,7 @@ def nonzero_kernel(
         mask = offset < n_elements
 
         inp_vals = tl.load(inp + offset, mask=mask, other=0.0).to(tl.int1)
-        nonzero_mask = mask and inp_vals
+        nonzero_mask = mask & inp_vals
         out_row_offset = tl.load(prefix_sum + offset, mask=nonzero_mask) - 1
         out_col_offset = tl.arange(0, ndim)
         out_offsets = out_row_offset[:, None] * ndim + out_col_offset[None, :]

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 from functools import reduce
@@ -96,7 +110,7 @@ def sum_kernel_dim0(
 
 
 def sum(inp, *, dtype=None):
-    logger.debug("GEMS SUM")
+    logger.debug("GEMS_SUNRISE SUM")
     inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
@@ -118,7 +132,7 @@ def sum(inp, *, dtype=None):
 
 
 def sum_out(inp, *, dtype=None, out):
-    logger.debug("GEMS SUM_OUT")
+    logger.debug("GEMS_SUNRISE SUM_OUT")
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
@@ -404,7 +418,7 @@ def sum_dim0(inp, dim, keepdim, dtype, out=None):
 
 
 def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS SUM_DIM")
+    logger.debug("GEMS_SUNRISE SUM_DIM")
     # support dim = 0, which are consistent with PyTorch
     if inp.numel() == 0:
         if dtype is None:
@@ -442,5 +456,5 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def sum_dim_out(inp, dim=None, keepdim=False, *, dtype=None, out):
-    logger.debug("GEMS SUM_DIM_OUT")
+    logger.debug("GEMS_SUNRISE SUM_DIM_OUT")
     return sum_dim_comm(inp, dim, keepdim, dtype=dtype, out=out)

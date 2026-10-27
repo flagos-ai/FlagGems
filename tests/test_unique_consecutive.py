@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -20,14 +34,18 @@ def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts
 
     ref_inp = utils.to_reference(inp, False)
 
+    # flag_gems.unique_consecutive always returns a (output, inverse, counts)
+    # tuple, with the unrequested entries set to None; torch.unique_consecutive
+    # instead varies the number of return values. Unpack the gems result as the
+    # full triple and pick the fields the current flags request.
+    res_out, res_inverse, res_counts = flag_gems.unique_consecutive(
+        inp,
+        return_inverse=return_inverse,
+        return_counts=return_counts,
+    )
+
     if return_counts:
         if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_inverse, res_counts = torch.unique_consecutive(
-                    inp,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
             ref_out, ref_inverse, ref_counts = torch.unique_consecutive(
                 ref_inp,
                 return_inverse=return_inverse,
@@ -37,13 +55,6 @@ def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts
             utils.gems_assert_equal(res_inverse, ref_inverse)
 
         else:
-            with flag_gems.use_gems():
-                res_out, res_counts = torch.unique_consecutive(
-                    inp,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
-
             ref_out, ref_counts = torch.unique_consecutive(
                 ref_inp,
                 return_inverse=return_inverse,
@@ -54,12 +65,6 @@ def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts
 
     else:
         if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_inverse = torch.unique_consecutive(
-                    inp,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
             ref_out, ref_inverse = torch.unique_consecutive(
                 ref_inp,
                 return_inverse=return_inverse,
@@ -69,12 +74,6 @@ def test_accuracy_unique_consecutive(shape, dtype, return_inverse, return_counts
             utils.gems_assert_equal(res_inverse, ref_inverse)
 
         else:
-            with flag_gems.use_gems():
-                res_out = torch.unique_consecutive(
-                    inp,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
             ref_out = torch.unique_consecutive(
                 ref_inp,
                 return_inverse=return_inverse,

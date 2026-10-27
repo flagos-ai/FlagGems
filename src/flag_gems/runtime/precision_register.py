@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Precision-checking register – loaded only when precision checking is enabled.
 
 This module is NOT imported on the normal execution path.  It is lazily
@@ -190,10 +204,23 @@ class PrecisionCheckRegister(GeneralOpRegistrar):
             raise ValueError("Library instance is not provided.")
 
         wrapped_fn = _wrap_op_with_precision_check(key, fn)
+        wrapped_dispatch_keys = []
+        for dispatch_spec in extra_dispatch_keys:
+            if isinstance(dispatch_spec, tuple) and len(dispatch_spec) == 2:
+                dispatch_key, dispatch_fn = dispatch_spec
+                if dispatch_fn is not torch.library.fallthrough_kernel:
+                    dispatch_fn = _wrap_op_with_precision_check(key, dispatch_fn)
+                wrapped_dispatch_keys.append((dispatch_key, dispatch_fn))
+            else:
+                wrapped_dispatch_keys.append(dispatch_spec)
+
+        device_fn, dispatch_impls = self._resolve_dispatch_impls(
+            wrapped_fn, wrapped_dispatch_keys
+        )
 
         device_key = self.reg_key
         self.all_ops.append(fn.__name__)
         self.all_keys.append(key)
-        self.lib.impl(key, wrapped_fn, device_key)
-        for dispatch_key in extra_dispatch_keys:
-            self.lib.impl(key, wrapped_fn, dispatch_key)
+        self.lib.impl(key, device_fn, device_key)
+        for dispatch_key, dispatch_fn in dispatch_impls:
+            self.lib.impl(key, dispatch_fn, dispatch_key)

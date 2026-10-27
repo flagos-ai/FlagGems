@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 
 import flag_gems
@@ -11,17 +25,23 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_OP = getattr(tex, "dswiglu")
+    TE_OP = getattr(tex, "dswiglu", None)
 except ImportError:
     TE_OP = None
 
 
+def _te_dswiglu(grad_output, inp, quantizer=None):
+    if flag_gems.vendor_name == "kunlunxin":
+        return TE_OP(grad_output, inp)
+    return TE_OP(grad_output, inp, quantizer)
+
+
 @pytest.mark.dswiglu
-@pytest.mark.skipif(TE_OP is None, reason="TransformerEngine not installed")
+@pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 def test_dswiglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
-        torch_op=TE_OP,
+        torch_op=_te_dswiglu,
         gems_op=flag_gems.dswiglu,
         dtypes=consts.FLOAT_DTYPES,
     )

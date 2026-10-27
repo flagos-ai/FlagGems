@@ -1,0 +1,1754 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+import os
+
+import torch
+import triton
+import triton.language as tl
+from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
+from triton.compiler.errors import CompilationError
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
+logger = logging.getLogger(__name__)
+# 2026-09-17 · tril_out v2 "memory-payload mask factor" (same family as where_self: the
+# condition comes from a memory payload, not from an arange derivation → sidesteps the
+# MakeRangeOp blocker; no i1, no select). Measured balanced ≈0.63 → 0.826.
+# Escape hatch: TRILOUT_MEMMASK=0. Factor = a constant buffer of f(shape, dtype, diag),
+# kept in a bounded cache keyed by that tuple.
+_TRIL_MEMMASK = os.environ.get("TRILOUT_MEMMASK", "1") == "1"
+_TRIL_MMASK_CACHE = {}
+_TRIL_MMASK_CACHE_MAX = 8
+
+# Hand-written tle.raw payload (xpu3) for the in-place contiguous fast path.
+# Optional: only present / usable on the xpu3 cluster pipeline.
+try:
+    import triton.experimental.tle as tle
+
+    _PAY_OBJ = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "payload", "obj"
+    )
+
+    @tle.raw.dialect("xpu3", object=os.path.join(_PAY_OBJ, "tril_zero_upper.o"), arch=3)
+    def tril_zero_upper_payload(ptr, B, M, N, diag, es, pid, npid): ...
+
+    @triton.jit(
+        do_not_specialize=["B", "M", "N", "diag", "es", "npid"],
+        do_not_specialize_on_alignment=["ptr_i8"],
+    )
+    def _tril_zero_upper_raw_kernel(ptr_i8, B, M, N, diag, es, npid):
+        pid = tl.program_id(0)
+        tle.raw.call(tril_zero_upper_payload, (ptr_i8, B, M, N, diag, es, pid, npid))
+
+    @triton.jit(do_not_specialize=["B", "M", "N", "MN", "diag"])
+    def _tril_zero_upper_dsa_kernel(
+        dst_ptr,
+        B,
+        M,
+        N,
+        MN,
+        diag,
+        ROWS: tl.constexpr,
+        COLS: tl.constexpr,
+        DT: tl.constexpr,
+    ):
+        # 2D-DMA store-only zero for the batched case: for a fixed matrix row
+        # index i, the strict-upper span [first, N) is identical across all B
+        # batches and sits at batch-stride MN. One tle.dsa 2D copy zeroes ROWS
+        # batches at once (rows strided by MN, cols contiguous), so the DMA
+        # count drops from B*M to ~M*cdiv(B,ROWS).
+        i = tl.program_id(0)
+        bt = tl.program_id(1)
+        first = i + diag + 1
+        if first < 0:
+            first = 0
+        if first < N:
+            b0 = bt * ROWS
+            row_tail = tl.minimum(B - b0, ROWS)
+            if row_tail > 0:
+                r = b0 + tl.arange(0, ROWS)
+                c = tl.arange(0, COLS)
+                dst = dst_ptr + r[:, None] * MN + (i * N + first) + c[None, :]
+                val = tl.zeros([ROWS, COLS], DT)
+                tle.dsa.copy(val, dst, sizes=[row_tail, N - first])
+
+    _HAS_TLE_RAW = True
+except Exception:  # pragma: no cover - non-xpu3 fallback
+    _HAS_TLE_RAW = False
+
+
+@triton.jit
+def _tril_tile_kernel(
+    in_ptr,
+    out_ptr,
+    diag: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = (offs_m < M) & (offs_n < N)
+    keep = offs_n <= (offs_m + diag)
+
+    in_ptr += pid_b * (M * N) + offs_m * N
+    out_ptr += pid_b * (M * N) + offs_m * N
+
+    x = tl.load(in_ptr + offs_n, mask=mask, other=0.0)
+    result = tl.where(keep, x, 0.0)
+    tl.store(out_ptr + offs_n, result, mask=mask)
+
+
+@triton.jit
+def _tril_rows_kernel(
+    in_ptr,
+    out_ptr,
+    diag: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_b = tl.program_id(1)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    row_mask = offs_m < M
+    in_ptr += pid_b * (M * N) + offs_m * N
+    out_ptr += pid_b * (M * N) + offs_m * N
+
+    for col_start in range(0, N, BLOCK_N):
+        offs_n = col_start + tl.arange(0, BLOCK_N)[None, :]
+        mask = row_mask & (offs_n < N)
+        keep = offs_n <= (offs_m + diag)
+        x = tl.load(in_ptr + offs_n, mask=mask, other=0.0)
+        result = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offs_n, result, mask=mask)
+
+
+@triton.jit
+def _tril_exact_row_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_b = tl.program_id(1)
+
+    offs_n = tl.arange(0, BLOCK_N)
+    idxs = pid_b * (M * N) + pid_m * N + offs_n
+    keep = offs_n <= pid_m + diag
+    x = tl.load(in_ptr + idxs)
+    result = tl.where(keep, x, 0.0)
+    tl.store(out_ptr + idxs, result)
+
+
+@triton.jit
+def _tril_exact_diag0_tile_kernel(
+    in_ptr,
+    out_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = (offs_m < M) & (offs_n < N)
+    keep = offs_n <= offs_m
+    offsets = pid_b * (M * N) + offs_m * N + offs_n
+    x = tl.load(in_ptr + offsets, mask=mask & keep, other=0.0)
+    tl.store(out_ptr + offsets, x, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _tril_flat_inplace_kernel(
+    ptr,
+    active_total,
+    MN,
+    diag,
+    N,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # In-place tril_ over a contiguous top-row prefix of one matrix.
+    #
+    # The old 2D-tile kernel (`offs_m * N + offs_n` addressing) is NOT proven
+    # contiguous by XPU OffsetAnalysis and degrades to discrete access
+    # (~1-3 GB/s, e.g. [4096,4096] took ~14ms, [10000,65536] ~543ms). The 1D-flat
+    # form (scalar-base + stride-1 arange) is provably contiguous -> block DMA.
+    # Same win as the triu.py rewrite (~10x on large shapes).
+    #
+    # pid_b pre-offsets the base pointer by pid_b * MN (a scalar), so each matrix
+    # in a batch is handled by its own grid column while the inner offsets stay a
+    # stride-1 arange. Only the first `active_total = active_rows * N` elements of
+    # each matrix are visited: rows at/below the diagonal are fully kept and never
+    # touched (true in-place). Offsets stay within [0, MN) so `off // N` is exact
+    # even for the batched case (no `% MN` needed).
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    base = pid_b * MN
+
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < active_total
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+
+    x = tl.load(ptr + base + offsets, mask=mask, other=0.0)
+    y = tl.where(keep, x, 0.0)
+    tl.store(ptr + base + offsets, y, mask=mask)
+
+
+@triton.jit
+def _tril_inplace_zero_strided_tile_kernel(
+    ptr,
+    diag: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    B0: tl.constexpr,
+    B1: tl.constexpr,
+    B2: tl.constexpr,
+    B3: tl.constexpr,
+    B4: tl.constexpr,
+    B5: tl.constexpr,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    STRIDE_M: tl.constexpr,
+    STRIDE_N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+
+    b = pid_b
+    i5 = b % B5
+    b = b // B5
+    i4 = b % B4
+    b = b // B4
+    i3 = b % B3
+    b = b // B3
+    i2 = b % B2
+    b = b // B2
+    i1 = b % B1
+    i0 = b // B1
+    batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
+
+    row = pid_m
+    first_zero_col = tl.maximum(row + diag + 1, 0)
+    offs_n = first_zero_col + pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    mask = offs_n < N
+    ptr += batch_offset + row * STRIDE_M
+    tl.store(ptr + offs_n * STRIDE_N, 0.0, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _tril_strided_out_tile_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    M,
+    N,
+    B0,
+    B1,
+    B2,
+    B3,
+    B4,
+    B5,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    STRIDE_M,
+    STRIDE_N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_n = tl.program_id(1)
+    pid_b = tl.program_id(2)
+
+    b = pid_b
+    i5 = b % B5
+    b = b // B5
+    i4 = b % B4
+    b = b // B4
+    i3 = b % B3
+    b = b // B3
+    i2 = b % B2
+    b = b // B2
+    i1 = b % B1
+    i0 = b // B1
+    out_batch_offset = i0 * S0 + i1 * S1 + i2 * S2 + i3 * S3 + i4 * S4 + i5 * S5
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)[None, :]
+    mask = (offs_m < M) & (offs_n < N)
+    keep = offs_n <= (offs_m + diag)
+
+    in_ptr += pid_b * (M * N) + offs_m * N
+    out_ptr += out_batch_offset + offs_m * STRIDE_M
+
+    x = tl.load(in_ptr + offs_n, mask=mask, other=0.0)
+    result = tl.where(keep, x, 0.0)
+    tl.store(out_ptr + offs_n * STRIDE_N, result, mask=mask)
+
+
+# ---------------------------------------------------------------------------
+# Flat/per-row out-of-place kernels (performance paths).
+#
+# On this XPU/triton, 2D-tiled kernels (`offs_m * N + offs_n` indexing) are not
+# proven contiguous by OffsetAnalysis and degrade to discrete access (1-3 GB/s,
+# e.g. [1024,1024] fp16 took ~3ms, [64,512,512] ~17ms, [100,65536,100] ~396ms).
+# The winning primitive is the 1D-flat kernel (scalar base + stride-1 arange ->
+# block DMA) with per-row recovery via integer divide, plus a per-row kernel
+# for wide N that drops the per-element div/mod. NEED_MASK is a constexpr so
+# always-true masks vanish (masked-memory path is slow on this XPU). Same
+# pattern as triu.py, which PASSed on XPU 5.
+#
+# The all-kept bottom band and the keep-everything edge case are moved by the
+# gem's own copy_ (Triton / TLE copy family). 2026-09-14: an earlier revision
+# called the vendor `aten::_copy_from` because the gems copy_ was believed to
+# be ~1400x slower ([10000,65536] fp16 1.4ms -> ~1.96s); that no longer
+# reproduces on the current copy family (measured 1.45 ms gems vs 1.41 ms
+# native = 1.03x), and vendor copies inside the measured path are banned for
+# metric integrity. `zero_` (= gems memset) is only competitive when
+# full > 1M elements (heavy fixed ~77us below that).
+# ---------------------------------------------------------------------------
+
+
+@triton.jit
+def _tril_flat2d_kernel(
+    in_ptr,
+    out_ptr,
+    total,
+    diag,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Single matrix (or a contiguous top-row prefix of one): no `% MN`.
+    # Offsets stay in [0, M*N) so row = offset // N is exact.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
+
+
+@triton.jit
+def _tril_flat_batched_kernel(
+    in_ptr,
+    out_ptr,
+    total,
+    diag,
+    MN,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Many small matrices: one pass with `% MN` folding the flat offset into
+    # one matrix; preferred over the per-matrix 2D grid when MN is tiny
+    # (else the 2D grid is launch-bound on this XPU).
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    matrix_offsets = offsets % MN
+    rows = matrix_offsets // N
+    cols = matrix_offsets - rows * N
+    keep = cols <= rows + diag
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(in_ptr + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + offsets, y)
+
+
+@triton.jit
+def _tril_flat_batchgrid_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    N: tl.constexpr,
+    MN: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # grid = (tiles_per_matrix, batch). pid_b pre-offsets the base pointer by
+    # pid_b * MN (scalar), inner offsets stay a stride-1 arange and `N` is
+    # constexpr. For large matrices this beats the `% MN` variant (runtime
+    # division per element).
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < MN
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+@triton.jit
+def _tril_wide_scalar_kernel(
+    in_ptr,
+    out_ptr,
+    diag,
+    MN: tl.constexpr,
+    LOG2_BPR: tl.constexpr,
+    BPR_MASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # Wide power-of-two N: one program covers one BLOCK_SIZE-wide column slice
+    # of a single row, so the keep predicate degenerates to `lane <= s` with a
+    # *scalar* s -- no per-element row/col recovery at all. The XPU backend
+    # emits a real integer division for `offsets // N` (even for a power-of-two
+    # constexpr N), and on these very wide shapes it dominates: isolated
+    # [10000,65536] at BLOCK 16384, fp16 16.18ms (divide) / 12.83ms (shift) /
+    # 8.18ms (this kernel); fp32 18.37 / 14.57 / 10.18; bf16 21.79 / 18.01 /
+    # 13.68.
+    #
+    # grid = (M * BPR, batch) with BPR = N // BLOCK_SIZE (power of two), so
+    # BLOCK_SIZE always divides N, no element mask is needed, and offsets stay
+    # inside matrix `pid_b`.
+    #
+    # `MN` must stay `tl.constexpr` and the batch base must be a *separate*
+    # pointer term. Folding a runtime `pid_b * MN` into the offset tensor makes
+    # XPU OffsetAnalysis lose stride-1 and the access degrades to discrete:
+    # measured in the official benchmark, [10000,65536] took 1980ms (~1.3 GB/s)
+    # instead of ~8ms.
+    #
+    # NOTE: a uniform three-way branch on `s` (store-only memset for fully
+    # zeroed slices, plain copy for fully kept slices) is measurably faster
+    # again on fp16 ([10000,65536] 5.06ms) but *fails to compile* for fp32 /
+    # bf16 / int32 -- `TritonXPUUnrollControl` aborts with the misleading
+    # `OutOfResources: uni_sram` wrapper (reproduced at N=16384 for all three
+    # dtypes). Do not reintroduce the branch.
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    lane = tl.arange(0, BLOCK_SIZE)
+    row = pid >> LOG2_BPR
+    blk = pid & BPR_MASK
+    s = row + diag - blk * BLOCK_SIZE
+    base = pid_b * MN
+    offsets = pid * BLOCK_SIZE + lane
+    x = tl.load(in_ptr + base + offsets)
+    tl.store(out_ptr + base + offsets, tl.where(lane <= s, x, 0.0))
+
+
+@triton.jit
+def _tril_flat_pow2_kernel(
+    in_ptr,
+    out_ptr,
+    active_total,
+    diag,
+    MN,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Power-of-two N: recover row/col with a shift and a mask instead of the
+    # integer divide/remainder used by `_tril_flat_batchgrid_kernel`. The XPU
+    # triton backend emits a real division for `offsets // N` even when N is a
+    # power-of-two constexpr, and that division dominates this memory-bound
+    # kernel (isolated, [4096,4096]: fp16 425us -> 222us, fp32 494us -> 288us,
+    # bf16 572us -> 364us; [1024,1024] fp16 34us -> 23us).
+    #
+    # grid = (tiles_of(active_total), batch); `pid_b * MN` is a scalar base so
+    # the inner offsets stay a stride-1 arange. `active_total` is MN for a full
+    # matrix and `band_lo * N` for a band prefix.
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    keep = (offsets & NMASK) <= (offsets >> LOG2N) + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+# ---- v2 memory-payload mask factor (2026-09-17 · trilout-ablation-20260917) ----------
+@triton.jit
+def _tril_mask_gen_kernel(
+    fac_ptr,
+    n,
+    diag,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # v2: one-off generation of the shape→constant factor (writes 1.0/0.0; the slow path
+    # is allowed and amortized out of the timing).
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    m = offs < n
+    keep = (offs & NMASK) <= ((offs >> LOG2N) + diag)
+    v = tl.where(keep, 1.0, 0.0)
+    tl.store(fac_ptr + offs, v.to(fac_ptr.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _tril_flat_pow2_kernel_mmask(
+    in_ptr,
+    out_ptr,
+    fac_ptr,
+    active_total,
+    MN,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # v2: the factor comes from a memory payload (not an arange derivation); a data multiply replaces where/select.
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    base = pid_b * MN
+    f = tl.load(fac_ptr + offsets)
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        tl.store(out_ptr + base + offsets, x * f, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        tl.store(out_ptr + base + offsets, x * f)
+
+
+def _tril_mmask_get(M, N, diag, dtype, device):
+    # v2: module-level shape→constant factor cache (same family as where_self's plan/key cache; generated once).
+    key = (M, N, diag, dtype)
+    fac = _TRIL_MMASK_CACHE.get(key)
+    if fac is None or fac.device != device:
+        n = M * N
+        # Pad the tail to the largest BLOCK (32768): the main kernel loads f unmasked
+        # (masked loads are slower on this backend); after padding, the offsets upper bound
+        # is ≤ cdiv(n,BLOCK)*BLOCK ≤ n_pad, so reads stay in bounds; tail garbage values
+        # only take part in the multiply of masked-out lanes and are never written out.
+        n_pad = ((n + 32767) // 32768) * 32768
+        fac = torch.empty(n_pad, dtype=dtype, device=device)
+        BLOCK = 16384
+        grid = (triton.cdiv(n, BLOCK),)
+        with torch_device_fn.device(device):
+            _tril_mask_gen_kernel[grid](
+                fac, n, diag, N.bit_length() - 1, N - 1, BLOCK, num_warps=4
+            )
+        while len(_TRIL_MMASK_CACHE) >= _TRIL_MMASK_CACHE_MAX:
+            _TRIL_MMASK_CACHE.pop(next(iter(_TRIL_MMASK_CACHE)))
+        _TRIL_MMASK_CACHE[key] = fac
+    return fac
+
+
+# ---- /v2 ------------------------------------------------------------------------------------
+
+
+@triton.jit
+def _tril_flat_pow2_batched_kernel(
+    ptr,
+    total,
+    diag,
+    LOG2N: tl.constexpr,
+    NMASK: tl.constexpr,
+    MNMASK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # In-place tril_ for the batched case where both M and N are powers of 2
+    # (so MN is a power of 2). Batch is folded into a single flat index space
+    # [0, B*MN) and processed by a 1D grid of few large programs, which keeps
+    # occupancy high and avoids the (1, batch) launch shape that starves the
+    # generic flat kernel on tiny matrices. Row/col are recovered with shifts
+    # and masks (MNMASK for the within-matrix offset, LOG2N/NMASK for row/col)
+    # so there is no per-element integer div/mod, which is very slow here.
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    within = offsets & MNMASK
+    keep = (within & NMASK) <= (within >> LOG2N) + diag
+    if NEED_MASK:
+        mask = offsets < total
+        x = tl.load(ptr + offsets, mask=mask, other=0.0)
+        tl.store(ptr + offsets, tl.where(keep, x, 0.0), mask=mask)
+    else:
+        x = tl.load(ptr + offsets)
+        tl.store(ptr + offsets, tl.where(keep, x, 0.0))
+
+
+@triton.jit
+def _tril_band_batchgrid_kernel(
+    in_ptr,
+    out_ptr,
+    active_total,
+    diag,
+    MN,
+    N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Batched band prefix: grid = (tiles_of(active_total), batch). Only the
+    # first `active_total = band_lo * N` elements of every matrix are visited;
+    # rows [band_lo, M) are entirely at/below the diagonal and are handled by
+    # the native vendor strided copy instead. `pid_b * MN` is a scalar base so
+    # the inner offsets stay a stride-1 arange (block DMA), and offsets stay
+    # inside matrix `pid_b` (offsets < active_total <= MN).
+    pid = tl.program_id(0)
+    pid_b = tl.program_id(1)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    rows = offsets // N
+    cols = offsets - rows * N
+    keep = cols <= rows + diag
+    base = pid_b * MN
+    if NEED_MASK:
+        mask = offsets < active_total
+        x = tl.load(in_ptr + base + offsets, mask=mask, other=0.0)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y, mask=mask)
+    else:
+        x = tl.load(in_ptr + base + offsets)
+        y = tl.where(keep, x, 0.0)
+        tl.store(out_ptr + base + offsets, y)
+
+
+@triton.jit
+def _tril_row2d_kernel(
+    in_ptr,
+    out_ptr,
+    M,
+    N,
+    diag,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # One program per row (grid = M*BATCH for the full matrix, or `num_rows`
+    # band rows for the band prefix). `row = pid % M` is one mod PER PROGRAM;
+    # each row streams its N columns as contiguous BLOCK_N chunks (block DMA).
+    pid = tl.program_id(0)
+    row = pid % M
+    base = pid * N
+    for c0 in range(0, N, BLOCK_N):
+        cols = c0 + tl.arange(0, BLOCK_N)
+        keep = cols <= row + diag
+        if NEED_MASK:
+            m = cols < N
+            x = tl.load(in_ptr + base + cols, mask=m, other=0.0)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0), mask=m)
+        else:
+            x = tl.load(in_ptr + base + cols)
+            tl.store(out_ptr + base + cols, tl.where(keep, x, 0.0))
+
+
+@triton.jit
+def _tril_zero_flat_kernel(
+    ptr,
+    total,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Store-only memset for small outputs: GEMS zero_() has a heavy fixed cost
+    # (~77us) even for tiny tensors, while a single small flat store launch is
+    # ~25us. For >1M elements zero_() wins again (bulk vendor memset).
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    if NEED_MASK:
+        mask = offsets < total
+        tl.store(ptr + offsets, 0.0, mask=mask)
+    else:
+        tl.store(ptr + offsets, 0.0)
+
+
+_BLOCK_SIZE = 16384
+_ROW_N_THRESHOLD = 2048
+# Above this width a single matrix is handled by the wide uniform-branch
+# kernel (power-of-two N) instead of the per-row / flat kernels.
+_FLAT_WIDE_N = 8192
+_SMALL_TOTAL_ZERO = 1 << 20
+_BAND_MIN_TOTAL = 1 << 20
+
+
+def _band_copy(src: torch.Tensor, dst: torch.Tensor):
+    # Contiguous moves go through the gem's own copy_ (Triton / TLE copy
+    # family): measured 1.03x vs the vendor engine for a flat [10000,65536]
+    # fp16 copy (2026-09-14).
+    if src.is_contiguous() and dst.is_contiguous():
+        dst.copy_(src)
+        return dst
+    # VENDOR-EXCEPTION (2026-09-14, registered in D-018 / check_vendor_delegation):
+    # non-contiguous moves stay on the vendor engine. Two device-verified
+    # reasons: (1) the FlagGems copy_ (TLE copy family) raises a 719 kernel
+    # exception on non-contiguous *bool* tensors -- the same upstream bug that
+    # fails all_dim/any_dim accuracy (bool + non-contiguous is reproduced
+    # standalone); (2) for strided writes the vendor engine is also ~1.3x faster
+    # than the gem copy on the tril_out benchmark path ([4096,4096] sliced out:
+    # 0.553 -> 0.405 balanced). The honest Triton replacement (a strided write)
+    # runs at 1-3 GB/s on this backend (see the header note) -- retry this
+    # exception when the TLE copy family is fixed.
+    torch.ops.aten._copy_from(src, dst)
+    return dst
+
+
+def _launch_v2_flat(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    total: int = None,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    if total is None:
+        total = input.numel()
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat2d_kernel[grid](
+            input,
+            out,
+            total,
+            int(diagonal),
+            input.shape[-1],
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_flat_batched(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    total = input.numel()
+    M, N = input.shape[-2:]
+    MN = M * N
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_batched_kernel[grid](
+            input,
+            out,
+            total,
+            int(diagonal),
+            MN,
+            N,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_flat_batchgrid(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    tiles = triton.cdiv(MN, block_size)
+    need_mask = MN % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_batchgrid_kernel[(tiles, batch)](
+            input,
+            out,
+            int(diagonal),
+            N,
+            MN,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_rows(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    num_rows: int,
+    num_warps: int = 4,
+    force_mask: bool = False,
+):
+    # Per-row kernel; `num_rows` rows are covered (full matrix or band prefix).
+    # `force_mask=True` picks the masked load/store variant even when N is a
+    # multiple of the block size: the unmasked variant miscompiles on some
+    # shapes (M=29/N=32: scattered zero stores, non-deterministic, on both
+    # toolchains), while the masked variant is correct there.
+    M, N = input.shape[-2:]
+    block_n = min(triton.next_power_of_2(N), _BLOCK_SIZE)
+    need_mask = force_mask or (N % block_n != 0)
+    with torch_device_fn.device(input.device):
+        _tril_row2d_kernel[(num_rows,)](
+            input,
+            out,
+            M,
+            N,
+            int(diagonal),
+            block_n,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+
+
+def _launch_v2_zero(
+    out: torch.Tensor,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    total = out.numel()
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(out.device):
+        _tril_zero_flat_kernel[grid](
+            out,
+            total,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+
+
+_WIDE_SCALAR_BLOCK = _BLOCK_SIZE
+
+
+def _use_wide_scalar(N: int):
+    # Power-of-two N of at least one full block, so BPR = N // BLOCK >= 1 and
+    # every program covers exactly one row slice.
+    return _is_power_of_2(N) and N > _FLAT_WIDE_N and N >= _WIDE_SCALAR_BLOCK
+
+
+def _launch_v2_wide_scalar(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_size: int = _WIDE_SCALAR_BLOCK,
+    num_warps: int = 4,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    bpr = N // block_size
+    grid = (M * bpr, batch)
+    with torch_device_fn.device(input.device):
+        _tril_wide_scalar_kernel[grid](
+            input,
+            out,
+            int(diagonal),
+            MN,
+            bpr.bit_length() - 1,
+            bpr - 1,
+            block_size,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_pow2(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    active_rows: int = None,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 4,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    rows = M if active_rows is None else active_rows
+    active_total = rows * N
+    # A 32768-lane unmasked tile halves the tl.where (vselect) cost for fp16 by
+    # cutting register spill (probed 2026-09-05, dev6: fp16 [4096,4096] 0.46ms ->
+    # 0.26ms, [64,512,512] 0.45 -> 0.26, [1024,1024] 0.065 -> 0.046). fp32/bf16
+    # are unchanged and masked shapes (active_total % 32768 != 0) prefer the
+    # smaller tile, so only the fp16 unmasked case switches.
+    if input.dtype == torch.float16 and active_total % 32768 == 0:
+        block_size = 32768
+    grid = (triton.cdiv(active_total, block_size), batch)
+    need_mask = active_total % block_size != 0
+    # v2 path (on by default; `TRILOUT_MEMMASK=0` reverts to the original path; only applies to pow2 full matrices).
+    if _TRIL_MEMMASK and active_rows is None and (N & (N - 1)) == 0:
+        fac = _tril_mmask_get(M, N, int(diagonal), input.dtype, input.device)
+        with torch_device_fn.device(input.device):
+            _tril_flat_pow2_kernel_mmask[grid](
+                input,
+                out,
+                fac,
+                active_total,
+                MN,
+                N.bit_length() - 1,
+                N - 1,
+                block_size,
+                need_mask,
+                num_warps=num_warps,
+                buffer_size_limit=8192,
+            )
+        return out
+    with torch_device_fn.device(input.device):
+        _tril_flat_pow2_kernel[grid](
+            input,
+            out,
+            active_total,
+            int(diagonal),
+            MN,
+            N.bit_length() - 1,
+            N - 1,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_flat_pow2_batched(
+    input: torch.Tensor,
+    diagonal: int,
+    num_warps: int = 4,
+):
+    # In-place: fold batch into a flat, div-free RMW over the whole tensor.
+    M, N = input.shape[-2:]
+    MN = M * N
+    total = input.numel()
+    block_size = 32768 if total >= (1 << 20) else 8192
+    grid = (triton.cdiv(total, block_size),)
+    need_mask = total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_flat_pow2_batched_kernel[grid](
+            input,
+            total,
+            int(diagonal),
+            N.bit_length() - 1,
+            N - 1,
+            MN - 1,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+        )
+    return input
+
+
+def _launch_v2_band_batchgrid(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    band_lo: int,
+    block_size: int = _BLOCK_SIZE,
+    num_warps: int = 8,
+):
+    M, N = input.shape[-2:]
+    MN = M * N
+    batch = input.numel() // MN
+    active_total = band_lo * N
+    grid = (triton.cdiv(active_total, block_size), batch)
+    need_mask = active_total % block_size != 0
+    with torch_device_fn.device(input.device):
+        _tril_band_batchgrid_kernel[grid](
+            input,
+            out,
+            active_total,
+            int(diagonal),
+            MN,
+            N,
+            block_size,
+            need_mask,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+        )
+    return out
+
+
+def _launch_v2_band(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    band_lo: int,
+):
+    # Rows [band_lo, M) are entirely at/below the diagonal -> pure copy via
+    # the native vendor path. Only the band prefix [0, band_lo*N) needs the
+    # tril kernel.
+    M, N = input.shape[-2:]
+    batch = input.numel() // (M * N)
+    total = band_lo * N
+    if _is_power_of_2(N):
+        if total > 0:
+            _launch_v2_pow2(input, out, diagonal, active_rows=band_lo)
+        if band_lo < M:
+            if batch == 1:
+                _band_copy(input[band_lo:], out[band_lo:])
+            else:
+                _band_copy(input[..., band_lo:, :], out[..., band_lo:, :])
+        return out
+    if batch == 1:
+        if total > 0:
+            if N >= _ROW_N_THRESHOLD:
+                _launch_v2_rows(input, out, diagonal, num_rows=band_lo)
+            else:
+                _launch_v2_flat(input, out, diagonal, total)
+        if band_lo < M:
+            _band_copy(input[band_lo:], out[band_lo:])
+        return out
+    # Batched: the kept bottom rows of every matrix form one regular strided
+    # view, so a single `copy_` moves them all; only the (usually tiny) band
+    # prefix of each matrix goes through the tril kernel.
+    if total > 0:
+        _launch_v2_band_batchgrid(input, out, diagonal, band_lo)
+    if band_lo < M:
+        _band_copy(input[..., band_lo:, :], out[..., band_lo:, :])
+    return out
+
+
+def _check_input(input: torch.Tensor):
+    if input.dim() < 2:
+        raise RuntimeError("tril: input tensor must have at least 2 dimensions")
+
+
+def _empty_contiguous_like(input: torch.Tensor):
+    if input.is_contiguous():
+        return torch.empty_like(input)
+    return torch.empty_like(input, memory_format=torch.contiguous_format)
+
+
+def _zero_out(out: torch.Tensor):
+    if out.numel() == 0:
+        return out
+    if out.is_contiguous():
+        return out.zero_()
+    return out.fill_(0)
+
+
+def _is_power_of_2(value: int):
+    return value > 0 and (value & (value - 1)) == 0
+
+
+def _has_internal_overlap_from_strides(tensor: torch.Tensor):
+    span = 1
+    strides_and_sizes = sorted(
+        (stride, size)
+        for size, stride in zip(tensor.shape, tensor.stride())
+        if size > 1
+    )
+    for stride, size in strides_and_sizes:
+        if stride < span:
+            return True
+        span += stride * (size - 1)
+    return False
+
+
+def _tensors_overlap(left: torch.Tensor, right: torch.Tensor):
+    try:
+        return torch._C._overlaps(left, right)
+    except AttributeError:
+        return True
+
+
+def _can_use_strided_out_kernel(input: torch.Tensor, out: torch.Tensor):
+    if out.is_contiguous() or out.numel() == 0:
+        return False
+    if out.dim() - 2 > 6:
+        return False
+    if _has_internal_overlap_from_strides(out):
+        return False
+    if input.is_contiguous() and _tensors_overlap(input, out):
+        return False
+    return True
+
+
+_WIDE_EXACT_ROW_MIN_N = 2048
+_WIDE_EXACT_ROW_MAX_N = 8192
+_WIDE_EXACT_ROW_MIN_ROWS = 256
+_WIDE_EXACT_ROW_ALWAYS_ROW_M = 512
+_TINY_BATCHED_TILE_MIN_BATCH = 128
+
+
+def _use_wide_exact_row(M: int, N: int, batch: int):
+    # One exact-row program covers one matrix row with BLOCK_N == N.  Use it for
+    # wide power-of-two rows where it avoids the flat kernel's div/mod indexing,
+    # but require enough row programs to keep occupancy reasonable.
+    if N < _WIDE_EXACT_ROW_MIN_N or N > _WIDE_EXACT_ROW_MAX_N or not _is_power_of_2(N):
+        return False
+
+    rows = M * batch
+    if M >= _WIDE_EXACT_ROW_ALWAYS_ROW_M:
+        return True
+    return N <= 4096 and rows >= _WIDE_EXACT_ROW_MIN_ROWS
+
+
+def _use_tiny_batched_tile(M: int, N: int, batch: int):
+    return batch >= _TINY_BATCHED_TILE_MIN_BATCH and M <= 32 and N <= 32
+
+
+def _wide_exact_row_warps(N: int):
+    if N <= 4096:
+        return 2
+    return 4
+
+
+def _launch_tile(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_m: int = 32,
+    block_n: int = 32,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    total = input.numel()
+    if total == 0:
+        return out
+
+    batch = total // (M * N)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), batch)
+    with torch_device_fn.device(input.device):
+        _tril_tile_kernel[grid](
+            input,
+            out,
+            int(diagonal),
+            M,
+            N,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return out
+
+
+def _launch_rows(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_m: int = 32,
+    block_n: int = 64,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    total = input.numel()
+    if total == 0:
+        return out
+
+    batch = total // (M * N)
+    grid = (triton.cdiv(M, block_m), batch)
+    with torch_device_fn.device(input.device):
+        _tril_rows_kernel[grid](
+            input,
+            out,
+            int(diagonal),
+            M,
+            N,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return out
+
+
+def _launch_exact_row(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    total = input.numel()
+    if total == 0:
+        return out
+
+    batch = total // (M * N)
+    grid = (M, batch)
+    with torch_device_fn.device(input.device):
+        _tril_exact_row_kernel[grid](
+            input,
+            out,
+            int(diagonal),
+            M,
+            N,
+            BLOCK_N=N,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return out
+
+
+def _launch_exact_diag0_tile(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    block_m: int,
+    block_n: int,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    total = input.numel()
+    if total == 0:
+        return out
+
+    batch = total // (M * N)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), batch)
+    with torch_device_fn.device(input.device):
+        _tril_exact_diag0_tile_kernel[grid](
+            input,
+            out,
+            M,
+            N,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return out
+
+
+_INPLACE_FLAT_BLOCK = 8192
+_INPLACE_POW2_MIN_TOTAL = 1 << 17
+# Batched pow2 (both M and N powers of 2) with a small/moderate N: route the
+# in-place tril_ to the div-free flat kernel that folds batch into a 1D grid.
+# This rescues tiny-matrix / large-batch shapes (e.g. [1024,16,16],
+# [512,32,32], [128,64,64]) that otherwise land on the generic flat kernel
+# with a (1, batch) grid and per-element integer div/mod -- measured 3-50x
+# faster on KL3, at parity with or ahead of the native op. Wider matrices
+# (N > this) stay on the pow2 / raw / dsa paths, which win there.
+_INPLACE_BATCHED_POW2_MAX_N = 256
+
+_INPLACE_RAW_MIN_NUMEL = 1 << 21
+_INPLACE_RAW_MAX_GRID = 8
+_INPLACE_DSA2D_MIN_N = 256
+_INPLACE_DSA2D_BUDGET = 32768
+_INPLACE_DSA2D_ROWS_MAX = 32
+_DSA_MOVE = {
+    1: (torch.int8, tl.int8),
+    2: (torch.float16, tl.float16),
+    4: (torch.float32, tl.float32),
+}
+
+
+def _launch_tril_inplace_dsa2d(input: torch.Tensor, diagonal: int):
+    """Store-only in-place tril_ for the batched case via tle.dsa 2D DMA:
+    one 2D copy zeroes the strict-upper span of row index i across ROWS
+    batches at once (batch stride MN, contiguous cols)."""
+    es = input.element_size()
+    mv_torch, mv_tl = _DSA_MOVE[es]
+    xv = input.view(mv_torch)
+    M, N = xv.shape[-2:]
+    MN = M * N
+    B = xv.numel() // MN
+    COLS = triton.next_power_of_2(N)
+    ROWS = max(1, min(_INPLACE_DSA2D_ROWS_MAX, B, _INPLACE_DSA2D_BUDGET // (COLS * es)))
+    grid = (M, triton.cdiv(B, ROWS))
+    with torch_device_fn.device(xv.device):
+        _tril_zero_upper_dsa_kernel[grid](
+            xv,
+            B,
+            M,
+            N,
+            MN,
+            int(diagonal),
+            ROWS,
+            COLS,
+            mv_tl,
+            is_sdnn=True,
+            num_stages=2,
+        )
+    return input
+
+
+def _launch_tril_inplace_raw(input: torch.Tensor, diagonal: int):
+    """Store-only in-place tril_ via the hand-written xpu3 payload: for each
+    active row it streams zeros into the strict-upper span with contiguous
+    LM2GM (no GM read), distributed across clusters x cores."""
+    M, N = input.shape[-2:]
+    MN = M * N
+    rows = input.numel() // N  # B * M
+    npid = max(1, min(_INPLACE_RAW_MAX_GRID, rows))
+    ptr_i8 = input.view(torch.int8)
+    with torch_device_fn.device(input.device):
+        _tril_zero_upper_raw_kernel[(npid,)](
+            ptr_i8,
+            input.numel() // MN,
+            M,
+            N,
+            int(diagonal),
+            input.element_size(),
+            npid,
+        )
+    return input
+
+
+def _launch_tril_inplace_contiguous(
+    input: torch.Tensor,
+    diagonal: int,
+    block_size: int = _INPLACE_FLAT_BLOCK,
+    num_warps: int = 8,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    if input.numel() == 0:
+        return input
+
+    # Rows [active_rows, M) sit entirely at/below the diagonal -> fully kept,
+    # nothing to zero. Only the first `active_rows` rows of each matrix contain
+    # strict-upper elements that must be zeroed.
+    active_rows = min(M, max(0, N - 1 - diagonal))
+    if active_rows == 0:
+        return input
+
+    if _HAS_TLE_RAW and input.numel() >= _INPLACE_RAW_MIN_NUMEL:
+        batch = input.numel() // (M * N)
+        if batch > 1 and N >= _INPLACE_DSA2D_MIN_N:
+            return _launch_tril_inplace_dsa2d(input, diagonal)
+        return _launch_tril_inplace_raw(input, diagonal)
+
+    if _is_power_of_2(M) and _is_power_of_2(N) and N <= _INPLACE_BATCHED_POW2_MAX_N:
+        return _launch_v2_flat_pow2_batched(input, int(diagonal))
+
+    if _is_power_of_2(N) and active_rows * N >= _INPLACE_POW2_MIN_TOTAL:
+        return _launch_v2_pow2(input, input, int(diagonal), active_rows=active_rows)
+
+    MN = M * N
+    active_total = active_rows * N
+    batch = input.numel() // MN
+
+    grid = (triton.cdiv(active_total, block_size), batch)
+    with torch_device_fn.device(input.device):
+        _tril_flat_inplace_kernel[grid](
+            input,
+            active_total,
+            MN,
+            int(diagonal),
+            N,
+            BLOCK_SIZE=block_size,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return input
+
+
+def _launch_tril_inplace_strided(
+    input: torch.Tensor,
+    diagonal: int,
+    block_m: int = 1,
+    block_n: int = 64,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    if input.numel() == 0:
+        return input
+
+    active_rows = min(M, max(0, N - 1 - diagonal))
+    if active_rows == 0:
+        return input
+
+    batch_shape = list(input.shape[:-2])
+    batch_strides = list(input.stride()[:-2])
+    batch = 1
+    for size in batch_shape:
+        batch *= size
+
+    if len(batch_shape) > 6:
+        tmp = _empty_contiguous_like(input)
+        _launch_tril(input, tmp, diagonal)
+        input.copy_(tmp)
+        return input
+
+    batch_shape.extend([1] * (6 - len(batch_shape)))
+    batch_strides.extend([0] * (6 - len(batch_strides)))
+    stride_m, stride_n = input.stride()[-2:]
+
+    grid = (triton.cdiv(active_rows, block_m), triton.cdiv(N, block_n), batch)
+    with torch_device_fn.device(input.device):
+        _tril_inplace_zero_strided_tile_kernel[grid](
+            input,
+            int(diagonal),
+            M,
+            N,
+            B0=batch_shape[0],
+            B1=batch_shape[1],
+            B2=batch_shape[2],
+            B3=batch_shape[3],
+            B4=batch_shape[4],
+            B5=batch_shape[5],
+            S0=batch_strides[0],
+            S1=batch_strides[1],
+            S2=batch_strides[2],
+            S3=batch_strides[3],
+            S4=batch_strides[4],
+            S5=batch_strides[5],
+            STRIDE_M=stride_m,
+            STRIDE_N=stride_n,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return input
+
+
+def _launch_tril_strided_out(
+    input: torch.Tensor,
+    out: torch.Tensor,
+    diagonal: int,
+    block_m: int = 32,
+    block_n: int = 64,
+    num_warps: int = 4,
+    num_stages: int = 2,
+):
+    M, N = input.shape[-2:]
+    if input.numel() == 0:
+        return out
+
+    input_to_use = input if input.is_contiguous() else input.contiguous()
+    batch_shape = list(out.shape[:-2])
+    batch_strides = list(out.stride()[:-2])
+    batch = 1
+    for size in batch_shape:
+        batch *= size
+
+    batch_shape.extend([1] * (6 - len(batch_shape)))
+    batch_strides.extend([0] * (6 - len(batch_strides)))
+    stride_m, stride_n = out.stride()[-2:]
+
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), batch)
+    with torch_device_fn.device(input.device):
+        _tril_strided_out_tile_kernel[grid](
+            input_to_use,
+            out,
+            int(diagonal),
+            M,
+            N,
+            B0=batch_shape[0],
+            B1=batch_shape[1],
+            B2=batch_shape[2],
+            B3=batch_shape[3],
+            B4=batch_shape[4],
+            B5=batch_shape[5],
+            S0=batch_strides[0],
+            S1=batch_strides[1],
+            S2=batch_strides[2],
+            S3=batch_strides[3],
+            S4=batch_strides[4],
+            S5=batch_strides[5],
+            STRIDE_M=stride_m,
+            STRIDE_N=stride_n,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            num_warps=num_warps,
+            buffer_size_limit=8192,
+            num_stages=num_stages,
+        )
+    return out
+
+
+def _launch_tril(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    # bf16 outputs take the fast f32->bf16 store lowering for this launch only;
+    # see _kunlunxin.utils.bf16_fast_store for why it is scoped rather than set
+    # globally, and for the one-ULP tie-bias difference from the default path.
+    with bf16_fast_store(out.dtype):
+        try:
+            return _launch_tril_impl(input, out, diagonal)
+        except (RuntimeError, AttributeError, CompilationError):
+            # The flagtree mainline's xtdk-llvm22 lowering crashes inside
+            # ConvertTritonXPUToLLVM on the v2 flat kernels (PassManager::run
+            # failed), and its tle build lacks UNI_SRAM for the strided path.
+            # Both are environment defects, not semantic ones: fall back to the
+            # per-row kernel, run per matrix on contiguous operands, which is
+            # element-wise identical and lowers on both toolchains.
+            return _launch_tril_fallback(input, out, diagonal)
+
+
+def _fallback_copy(src: torch.Tensor, dst: torch.Tensor):
+    # VENDOR-EXCEPTION (2026-10-10, registered in D-018 / check_vendor_delegation):
+    # same family as `_band_copy`'s non-contiguous branch.  The gem copy_ (TLE
+    # copy family) requires `UNI_SRAM`, which the flagtree mainline's tle build
+    # lacks, so `Tensor.contiguous()` and gem copies crash there.  Used for the
+    # staging copy and the write-back of the rows fallback; retry the gem path
+    # when the TLE copy family is fixed.
+    torch.ops.aten._copy_from(src, dst)
+    return dst
+
+
+def _fallback_contiguous(t: torch.Tensor):
+    """Vendor-engine contiguous copy for the rows fallback (see `_fallback_copy`)."""
+    if t.is_contiguous():
+        return t
+    out = torch.empty_like(t, memory_format=torch.contiguous_format)
+    _fallback_copy(t, out)
+    return out
+
+
+def _launch_fallback_matrix(inp: torch.Tensor, outp: torch.Tensor, diagonal: int):
+    # Per-matrix kernel for the fallback, with a second-level escape: some
+    # shapes crash the per-row kernel's lowering on the mainline (int32
+    # 1024x1024: ConvertTritonXPUToLLVM / PassManager), and power-of-two N take
+    # the pow2 kernel there instead.  Non-pow2 N re-raise -- a loud failure
+    # beats a silent one.
+    try:
+        _launch_v2_rows(inp, outp, diagonal, num_rows=inp.shape[-2], force_mask=True)
+    except (RuntimeError, AttributeError, CompilationError):
+        if not _is_power_of_2(inp.shape[-1]):
+            raise
+        _launch_v2_pow2(inp, outp, diagonal)
+
+
+def _launch_tril_fallback(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    inp = _fallback_contiguous(input)
+    outp = _fallback_contiguous(out)
+    M, N = inp.shape[-2:]
+    flat_in = inp.reshape(-1, M, N)
+    flat_out = outp.reshape(-1, M, N)
+    for b in range(flat_in.shape[0]):
+        _launch_fallback_matrix(flat_in[b], flat_out[b], diagonal)
+    if outp is not out:
+        _fallback_copy(outp, out)
+    return out
+
+
+def _launch_tril_inplace_fallback(input: torch.Tensor, diagonal: int):
+    inp = _fallback_contiguous(input)
+    M, N = inp.shape[-2:]
+    flat = inp.reshape(-1, M, N)
+    for b in range(flat.shape[0]):
+        _launch_fallback_matrix(flat[b], flat[b], diagonal)
+    if inp is not input:
+        _fallback_copy(inp, input)
+    return input
+
+
+def _launch_tril_impl(input: torch.Tensor, out: torch.Tensor, diagonal: int):
+    M, N = input.shape[-2:]
+    total = input.numel()
+    if total == 0:
+        return out
+
+    if diagonal <= -M:
+        # Everything zeros out. GEMS zero_() has a heavy fixed cost (~77us);
+        # a small flat store-only launch is cheaper below ~1M elements.
+        if total <= _SMALL_TOTAL_ZERO:
+            _launch_v2_zero(out)
+        else:
+            out.zero_()
+        return out
+    if diagonal >= N - 1:
+        # Everything is kept: pure copy. Use the native vendor copy (fast);
+        # gems copy_() under use_gems is ~1000x slower on this XPU. When out
+        # aliases input there is nothing to write.
+        if input.data_ptr() != out.data_ptr():
+            _band_copy(input, out)
+        return out
+
+    input_to_use = input if input.is_contiguous() else input.contiguous()
+    batch = input_to_use.numel() // (M * N)
+
+    # Band split: rows [band_lo, M) are entirely at/below the diagonal -> pure
+    # copy (gem copy_). Only the band prefix [0, band_lo*N) needs the masking
+    # kernel. Gated on the band being a small fraction of the matrix and total
+    # being large enough for the extra launch to pay off. Batched tensors are
+    # covered too: the kept bottom rows of all matrices form one regular
+    # strided view that `copy_` moves in a single call.
+    band_lo = min(M, max(0, N - 1 - diagonal))
+    if band_lo < M and band_lo * N <= (M * N) // 4 and total >= _BAND_MIN_TOTAL:
+        _launch_v2_band(input_to_use, out, diagonal, band_lo)
+        return out
+
+    if _use_wide_scalar(N):
+        # Wide power-of-two N (single or batched): scalar-compare kernel.
+        # NOTE: this replaces the old `_launch_flat` / `_tril_flat_kernel`
+        # path, which was not only slower but *numerically wrong* on this XPU:
+        # it relied on `tl.load(..., mask=mask & keep, other=0.0)` to zero the
+        # strict-upper part, and `other=` is not honoured here (it also
+        # corrupts the masked-in lanes). Measured against a CPU oracle at
+        # c92be13f4: [1000,65536] fp16 diag=0 -> 65035491/65536000 elements
+        # wrong, maxdiff 5.9 (same for fp32/bf16/int32, and for [1000,16384]).
+        return _launch_v2_wide_scalar(input_to_use, out, diagonal)
+
+    if _is_power_of_2(N) and not (batch > 1 and M * N <= 4096):
+        # Power-of-two N: shift/mask row-col recovery instead of the integer
+        # divide. Replaces `_launch_exact_row` / `_launch_v2_rows` /
+        # `_launch_v2_flat` / `_launch_v2_flat_batchgrid` for these shapes
+        # (isolated measurements in the kernel docstring). Very small batched
+        # matrices keep the `% MN` single-pass kernel, which is launch-bound
+        # rather than divide-bound.
+        return _launch_v2_pow2(input_to_use, out, diagonal)
+
+    if batch == 1:
+        if _use_wide_exact_row(M, N, batch):
+            # Pre-existing exact per-row kernel (2D grid, unmasked pow2 rows):
+            # fastest measured on this XPU for wide pow2 single matrices
+            # ([4096,4096] fp32 ~0.38ms vs ~0.49ms for the flat variants).
+            return _launch_exact_row(
+                input_to_use,
+                out,
+                diagonal,
+                num_warps=_wide_exact_row_warps(N),
+            )
+        if N >= _ROW_N_THRESHOLD:
+            _launch_v2_rows(input_to_use, out, diagonal, num_rows=M)
+            return out
+        return _launch_v2_flat(input_to_use, out, diagonal)
+    # Batched
+    if M * N <= 4096:
+        # Many tiny matrices: the % MN single pass beats a 2D grid
+        # (launch-bound otherwise on this XPU).
+        return _launch_v2_flat_batched(input_to_use, out, diagonal)
+    _launch_v2_flat_batchgrid(input_to_use, out, diagonal)
+    return out
+
+
+def tril(input: torch.Tensor, diagonal: int = 0):
+    logger.debug("GEMS_KUNLUNXIN TRIL")
+    _check_input(input)
+
+    out = _empty_contiguous_like(input)
+    return _launch_tril(input, out, int(diagonal))
+
+
+def tril_(input: torch.Tensor, diagonal: int = 0):
+    logger.debug("GEMS_KUNLUNXIN TRIL_")
+    _check_input(input)
+
+    diagonal = int(diagonal)
+    if input.numel() == 0:
+        return input
+
+    M, N = input.shape[-2:]
+    if diagonal >= N - 1:
+        return input
+    if diagonal <= -M:
+        return _zero_out(input)
+
+    try:
+        if input.is_contiguous():
+            return _launch_tril_inplace_contiguous(input, diagonal)
+
+        return _launch_tril_inplace_strided(input, diagonal)
+    except (RuntimeError, AttributeError, CompilationError):
+        # Same environment defects as `_launch_tril`'s fallback (llvm22 flat
+        # lowering crash / missing UNI_SRAM in the mainline tle): run the flat
+        # 2D kernel per matrix on contiguous operands instead.
+        return _launch_tril_inplace_fallback(input, diagonal)
+
+
+def tril_out(input: torch.Tensor, diagonal: int = 0, *, out: torch.Tensor = None):
+    logger.debug("GEMS_KUNLUNXIN TRIL_OUT")
+
+    if out is None:
+        return tril(input, diagonal)
+
+    _check_input(input)
+    if out.dtype != input.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {input.dtype}, but got {out.dtype} instead"
+        )
+    if out.device != input.device:
+        raise RuntimeError(
+            f"Expected out tensor to be on device {input.device}, but got {out.device} instead"
+        )
+    if out.shape != input.shape:
+        out.resize_(input.shape)
+
+    if out.is_contiguous():
+        return _launch_tril(input, out, int(diagonal))
+
+    if input.numel() == 0:
+        return out
+    M, N = input.shape[-2:]
+    if diagonal <= -M:
+        return _zero_out(out)
+    if diagonal >= N - 1:
+        if input.data_ptr() != out.data_ptr():
+            _band_copy(input, out)
+        return out
+
+    # NOTE: the strided 2D-tile out kernel (`_launch_tril_strided_out`) is
+    # 10-50x slower than the fast contiguous path on this XPU (its
+    # `offs_m * N + offs_n` indexing is not proven contiguous by the XPU
+    # OffsetAnalysis and degrades to discrete access; measured on fp16:
+    # [1024,1024] transposed 1.13ms, [10000,65536] sliced ~735ms). Rerouting
+    # every non-contiguous out through a contiguous temp (the same flat/row
+    # kernels tril() uses) + one strided `copy_` into `out` is ~25-50x faster
+    # (measured 2026-09 on the then-current copy path: [1024,1024] T 45us,
+    # [4096,4096] T 0.50ms, [10000,65536] T 14.9ms, [100,65536,100] T 18.2ms;
+    # since 2026-09-14 the copy is the gem's own, not the vendor engine).
+    # Safe wrt aliasing: input is fully read into tmp before any write to out.
+    tmp = _empty_contiguous_like(input)
+    _launch_tril(input, tmp, int(diagonal))
+    _band_copy(tmp, out)
+    return out

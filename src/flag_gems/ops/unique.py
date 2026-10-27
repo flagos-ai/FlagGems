@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -777,6 +791,19 @@ def _unique2(
     return_counts: bool = False,
 ):
     logger.debug("GEMS _UNIQUE2")
+    # Zero-size guard: the flat kernels build tile_size = next_power_of_2(numel)
+    # and would launch tl.arange(0, 0) for an empty input. aten::_unique2 on an
+    # empty tensor yields empty outputs, so short-circuit before touching Triton.
+    if in0.numel() == 0:
+        data_out = torch.empty(0, dtype=in0.dtype, device=in0.device)
+        # ATen view_as's inverse_indices even for empty input, so apply it
+        # unconditionally here: identical for 1-D (both (0,)), and matches
+        # ATen's (0, d1, ...) for empty N-D inputs.
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device).view_as(
+            in0
+        )
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+        return data_out, inverse_indices, counts
     if in0.numel() <= 8192:
         sorted_data, sorted_indices = torch.sort(in0.ravel())
         data_out, inverse_indices, counts = simple_unique_flat(
@@ -792,8 +819,14 @@ def _unique2(
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )
-    return (
-        data_out,
-        inverse_indices if inverse_indices is None else inverse_indices.view_as(in0),
-        counts,
-    )
+    # aten::_unique2 always returns three tensors: when return_inverse /
+    # return_counts are False the corresponding output is an empty (0,) int64
+    # tensor rather than None. Mirror that contract so callers can rely on the
+    # shapes matching ATen regardless of the requested flags.
+    if inverse_indices is None:
+        inverse_indices = torch.empty(0, dtype=torch.int64, device=in0.device)
+    else:
+        inverse_indices = inverse_indices.view_as(in0)
+    if counts is None:
+        counts = torch.empty(0, dtype=torch.int64, device=in0.device)
+    return data_out, inverse_indices, counts

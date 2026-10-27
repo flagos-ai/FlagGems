@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """vfwmacc GQA attention kernel for SpacemiT K3 (arch 0xA064, vlen=1024).
 
 Fused M=1 decode kernel (attn_m1_fused_raw): QKT dots + 2-phase softmax +
@@ -9,6 +23,7 @@ llvm.intr.exp/maxnum).
 Prefill (Mq>1) lives in flash_attention.py (_attn_fwd, smt.dot flash).
 Validated on Qwen3-0.6B (K3): decode Mk=4096 2.99ms vs native 96.4ms.
 """
+
 import triton
 import triton.language as tl
 import triton.language.extra.smt_rvisa as tle

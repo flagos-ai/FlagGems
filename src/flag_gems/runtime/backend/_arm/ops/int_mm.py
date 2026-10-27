@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 FlagGems ARM backend: Triton-CPU INT8 matmul for aten::_int_mm.
 
@@ -220,7 +234,9 @@ def _triton_int_mm(self: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
 
     # Fallback for non-BN-aligned N (uncommon in practice)
     if N % BN != 0:
-        logger.debug("FlagGems _int_mm: N=%d not %%64, using int32 fallback", N)
+        logger.debug(
+            "GEMS_ARM FlagGems _int_mm: N=%d not %%64, using int32 fallback", N
+        )
         return a.to(torch.int32) @ b.to(torch.int32)
 
     # ------------------------------------------------------------------
@@ -345,6 +361,10 @@ def register():
             "CPU",
             allow_override=True,
         )
-        logger.debug("FlagGems ARM: registered Triton-CPU i8mm for aten::_int_mm")
+        logger.debug(
+            "GEMS_ARM FlagGems ARM: registered Triton-CPU i8mm for aten::_int_mm"
+        )
     except Exception as e:
-        logger.warning("FlagGems ARM: failed to register aten::_int_mm override: %s", e)
+        logger.warning(
+            "GEMS_ARM FlagGems ARM: failed to register aten::_int_mm override: %s", e
+        )

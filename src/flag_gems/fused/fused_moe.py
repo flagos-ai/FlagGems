@@ -157,6 +157,12 @@ def _get_device_name() -> str:
     return name
 
 
+@functools.lru_cache(maxsize=1)
+def _is_h20() -> bool:
+    """Whether the current device is an NVIDIA H20 (gates the FP8 MoE swap_ab default)."""
+    return "H20" in _get_device_name().split("_")
+
+
 def get_moe_configs(
     E: int,
     N: int,
@@ -174,7 +180,7 @@ def get_moe_configs(
     embedded_configs, _ = get_embedded_moe_configs()
     device_table = embedded_configs.get(device_name)
     if device_table is None:
-        logger.warning(
+        logger.debug(
             "No embedded MoE configs for device %s. Will use default config.",
             device_name,
         )
@@ -185,9 +191,11 @@ def get_moe_configs(
     key = f"{E},{N},{dtype},{_block_n},{_block_k}"
     configs = device_table.get(key)
     if configs is not None:
-        logger.info("Using embedded MoE config for device=%s, key=%s", device_name, key)
+        logger.debug(
+            "Using embedded MoE config for device=%s, key=%s", device_name, key
+        )
         return configs
-    logger.warning(
+    logger.debug(
         "No embedded MoE config for device=%s, key=%s. Will use default config.",
         device_name,
         key,
@@ -364,7 +372,10 @@ def get_default_config(
             "GROUP_SIZE_M": 8 if (is_large_m and avg_tokens_per_expert > 16) else 1,
             "num_warps": 8 if (is_large_m and block_m > 32) else 4,
             "num_stages": 4 if M >= 1024 else 3,
-            "SWAP_AB": False,
+            # H20: swap_ab puts the larger N dim on the wgmma M-axis, a measured
+            # win on H20 for small token tiles (block_m<=32) but a regression for
+            # large tiles (e.g. 16k/32k-token prefill), so gate on both.
+            "SWAP_AB": _is_h20() and block_m <= 32,
         }
     elif dtype in _PLAIN_HALF_CONFIG_DTYPES:
         # Routed rows per expert drives block_m.  Each token contributes topk
@@ -500,10 +511,15 @@ def _get_config_dtype_str(
     use_int8_w8a16: bool = False,
     use_int4_w4a16: bool = False,
     ocp_mx_scheme: str | None = None,
+    use_int8_w8a8: bool = False,
 ) -> str | None:
     """Return dtype string for kernel config lookup."""
     if use_fp8_w8a8:
         return "fp8_w8a8"
+    elif use_int8_w8a8:
+        # Floating input activations are quantized inside fused_experts_impl.
+        # Do not select plain-half GEMM paths, which do not apply INT8 scales.
+        return "int8_w8a8"
     elif use_fp8_w8a16:
         return "fp8_w8a16"
     elif use_int8_w8a16:
@@ -1834,7 +1850,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS FUSED MOE")
+    logger.debug("GEMS FUSED_MOE")
     assert (
         activation == "silu"
     ), f"Only 'silu' activation is supported, got {activation}"
@@ -1879,6 +1895,7 @@ def fused_experts_impl(
 
     config_dtype = _get_config_dtype_str(
         use_fp8_w8a8=use_fp8_w8a8,
+        use_int8_w8a8=use_int8_w8a8,
         use_int8_w8a16=use_int8_w8a16,
         use_int4_w4a16=use_int4_w4a16,
         ocp_mx_scheme=ocp_mx_scheme,
@@ -2125,6 +2142,10 @@ def fused_experts_impl(
             not is_embedded_config
             and direct_sum_supported
             and tokens_in_chunk >= MOE_DIRECT_SUM_MIN_TOKENS
+            # Multiple experts would atomically accumulate into the output
+            # dtype in an unspecified order. Keep the fixed-order FP32
+            # moe_sum reduction for top-k > 1, including large prefills.
+            and top_k_num == 1
             and expert_map is None
             and not apply_router_weight_on_input
         )

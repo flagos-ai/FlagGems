@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import logging
 import math
@@ -11,7 +25,7 @@ from flag_gems.utils import libentry, libtuner
 
 from ..utils import MAX_GRID_SIZE_Y, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device = device.name
 
 # FIXME(cambricon): double 8192 when JIRA:1488 is fixed
@@ -122,7 +136,6 @@ def config_prune(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(
@@ -149,15 +162,18 @@ def config_prune(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
+@libentry()
 @triton.jit
 def cumsum_blelloch(
     inp,
@@ -179,7 +195,7 @@ def cumsum_blelloch(
         n_offset = col_offset + tl.arange(0, BLOCK_N)
         # Pointers to the start of the row
         offsets = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         x_ptrs = inp + offsets
         y_ptrs = out + offsets
 
@@ -245,7 +261,6 @@ def config_prune_mid(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @libtuner(
     configs=[
         triton.Config(
@@ -273,15 +288,18 @@ def config_prune_mid(configs, named_args, **kwargs):
 )
 @triton.heuristics(
     values={
-        "TILE_NUM": lambda args: args["BLOCK_N"] // args["TILE_N"]
-        if args["BLOCK_N"] % args["TILE_N"] == 0
-        and args["BLOCK_N"] // args["TILE_N"] >= 1
-        else 1,
-        "TILE_N": lambda args: args["BLOCK_N"]
-        if args["TILE_NUM"] == 1
-        else args["TILE_N"],
+        "TILE_NUM": lambda args: (
+            args["BLOCK_N"] // args["TILE_N"]
+            if args["BLOCK_N"] % args["TILE_N"] == 0
+            and args["BLOCK_N"] // args["TILE_N"] >= 1
+            else 1
+        ),
+        "TILE_N": lambda args: (
+            args["BLOCK_N"] if args["TILE_NUM"] == 1 else args["TILE_N"]
+        ),
     },
 )
+@libentry()
 @triton.jit
 def cumsum_kernel_mid(
     inp,
@@ -314,9 +332,11 @@ def cumsum_kernel_mid(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (
+        (m_offset[:, None, None] < M)
+        & (n_offset[None, :, None] < N)
+        & (k_offset[None, None, :] < K)
+    )
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
@@ -330,12 +350,28 @@ def cumsum_kernel_mid(
     prefix_sum_offsets = (
         m_offset[:, None] * num_jobs_n * K + pid_n * K + k_offset[None, :]
     )
-    prefix_sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+    prefix_sum_mask = (m_offset[:, None] < M) & (k_offset[None, :] < K)
     prefix_sum_ptrs = prefix_sum + prefix_sum_offsets
     tl.store(prefix_sum_ptrs, x_block[:, BLOCK_N - 1, :], prefix_sum_mask)
 
 
-@libentry()
+def config_prune_result(configs, named_args, **kwargs):
+    M = named_args["M"]
+    K = named_args["K"]
+    BLOCK_N = named_args["BLOCK_N"]
+    pruned_configs = []
+    for config in configs:
+        kw = config.kwargs
+        BLOCK_M = kw["BLOCK_M"]
+        BLOCK_K = kw["BLOCK_K"]
+        if BLOCK_M > M or BLOCK_K > K:
+            continue
+        if BLOCK_N * BLOCK_K * BLOCK_M > MAX_C_MLU_SPILT_CUMSUM:
+            continue
+        pruned_configs.append(config)
+    return pruned_configs
+
+
 @libtuner(
     configs=[
         triton.Config(
@@ -357,7 +393,9 @@ def cumsum_kernel_mid(
         "BLOCK_N",
     ],
     strategy=["log", "log", "log", "log"],
+    prune_configs_by={"early_config_prune": config_prune_result},
 )
+@libentry()
 @triton.jit
 def cumsum_kernel_result(
     inp,
@@ -389,9 +427,11 @@ def cumsum_kernel_result(
         * K
         + k_offset[None, None, :]
     )
-    mask = (m_offset[:, None, None] < M and n_offset[None, :, None] < N) and k_offset[
-        None, None, :
-    ] < K
+    mask = (
+        (m_offset[:, None, None] < M)
+        & (n_offset[None, :, None] < N)
+        & (k_offset[None, None, :] < K)
+    )
     x_ptrs = inp + offsets
     y_ptrs = out + offsets
 
@@ -402,7 +442,7 @@ def cumsum_kernel_result(
         sum_offsets = (
             m_offset[:, None] * num_jobs_n * K + (pid_n - 1) * K + k_offset[None, :]
         )
-        sum_mask = m_offset[:, None] < M and k_offset[None, :] < K
+        sum_mask = (m_offset[:, None] < M) & (k_offset[None, :] < K)
         sum_ptrs = prefix_sum + sum_offsets
         sum_block = tl.load(sum_ptrs, mask=sum_mask, other=0.0).to(tl.dtype(DTYPE))
         x_block += sum_block[:, None, :]
@@ -674,7 +714,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

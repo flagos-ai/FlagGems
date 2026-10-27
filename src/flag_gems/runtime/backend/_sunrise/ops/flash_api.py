@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -92,6 +106,7 @@ class fwd_params:
         "page_table_ptr",
         "page_table_batch_stride",
         "block_size",
+        "k_page_stride",
     )
 
     def __init__(
@@ -160,6 +175,7 @@ class fwd_params:
         page_table_ptr,
         page_table_batch_stride,
         block_size,
+        k_page_stride,
     ):
         self.q_ptr = q_ptr
         self.k_ptr = k_ptr
@@ -225,6 +241,7 @@ class fwd_params:
         self.page_table_ptr = page_table_ptr
         self.page_table_batch_stride = page_table_batch_stride
         self.block_size = block_size
+        self.k_page_stride = k_page_stride
 
     def args(self):
         return tuple(getattr(self, k) for k in self.__slots__)
@@ -311,10 +328,13 @@ def mha_varlan_fwd(
     if is_causal:
         window_size_right = 0
 
-    # check disable swa
-    if window_size_left >= max_seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against max_seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= max_seqlen_k) and (
+        window_size_right < 0 or window_size_right >= max_seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
     is_local = window_size_left >= 0
@@ -330,7 +350,7 @@ def mha_varlan_fwd(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        logger.debug("Swapping query groups and sequence dimensions")
+        logger.debug("GEMS_SUNRISE Swapping query groups and sequence dimensions")
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
             .transpose(1, 2)
@@ -513,12 +533,13 @@ def mha_varlan_fwd(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_SUNRISE kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -554,10 +575,13 @@ def mha_varlan_fwd(
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            # [sunrise fix] Multistage paged loads are nondeterministic on PTPU.
+            "num_stages": 1,
         }
 
-        logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
+        logger.debug(
+            "GEMS_SUNRISE Running flash_varlen_fwd_kernel with config: %s", cfg_params
+        )
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
@@ -658,10 +682,13 @@ def mha_varlan_fwd_opt(
     if is_causal:
         window_size_right = 0
 
-    # check disable swa
-    if window_size_left >= max_seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against max_seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= max_seqlen_k) and (
+        window_size_right < 0 or window_size_right >= max_seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= max_seqlen_k:
         window_size_right = -1
 
     is_local = window_size_left >= 0
@@ -677,7 +704,7 @@ def mha_varlan_fwd_opt(
     )
     q_groups = num_heads // num_heads_k
     if seqlenq_ngroups_swapped:
-        logger.debug("Swapping query groups and sequence dimensions")
+        logger.debug("GEMS_SUNRISE Swapping query groups and sequence dimensions")
         q = (
             q.reshape((batch_size, num_heads_k, q_groups, head_size))
             .transpose(1, 2)
@@ -862,12 +889,13 @@ def mha_varlan_fwd_opt(
             page_table,  # page_table_ptr,
             page_table_batch_stride,  # page_table_batch_stride,
             block_size,  # block_size,
+            k.stride(0) if is_paged else 0,  # k_page_stride,
         )
 
         if flag_gems.vendor_name == "iluvatar":
             params.k_ptr = k.view(k.shape[0], k.shape[1], -1)
             params.v_ptr = v.view(v.shape[0], v.shape[1], -1)
-        logger.debug("kernel: flash_varlen_fwd")
+        logger.debug("GEMS_SUNRISE kernel: flash_varlen_fwd")
         grid = lambda args: (
             triton.cdiv(max_seqlen_q, args["BLOCK_M"]),
             batch_size,
@@ -903,10 +931,13 @@ def mha_varlan_fwd_opt(
             "BLOCK_N": cfg["BLOCK_N"](args),
             "BLOCK_K": triton.next_power_of_2(head_size),
             "num_warps": cfg["num_warps"](args),
-            "num_stages": 1 if not is_paged else cfg["num_stages"](args),
+            # [sunrise fix] Multistage paged loads are nondeterministic on PTPU.
+            "num_stages": 1,
         }
 
-        logger.debug("Running flash_varlen_fwd_kernel with config: %s", cfg_params)
+        logger.debug(
+            "GEMS_SUNRISE Running flash_varlen_fwd_kernel with config: %s", cfg_params
+        )
         kernel(*args, **cfg_params)
 
         if seqlenq_ngroups_swapped:
@@ -969,9 +1000,13 @@ def mha_fwd(
     assert (
         num_heads % num_heads_k == 0
     ), "Number of heads in key/value must divide number of heads in query"
-    if window_size_left >= seqlen_k:
+    # Disable SWA only when neither side can mask any key.  In bottom-right
+    # aligned attention the right window is measured against the query length,
+    # so normalizing each side against seqlen_k breaks q_len > kv_len.
+    if (window_size_left < 0 or window_size_left >= seqlen_k) and (
+        window_size_right < 0 or window_size_right >= seqlen_q
+    ):
         window_size_left = -1
-    if window_size_right >= seqlen_k:
         window_size_right = -1
     if seqlen_q == 1 and alibi_slopes is None:
         is_causal = False
@@ -992,7 +1027,7 @@ def mha_fwd(
     q_groups = num_heads // num_heads_k
 
     if seqlenq_ngroups_swapped:
-        logger.debug("q_kg swapped.")
+        logger.debug("GEMS_SUNRISE q_kg swapped.")
         q = q.reshape(batch_size, num_heads_k, q_groups, head_size).transpose(1, 2)
         seqlen_q = q_groups
         num_heads = num_heads_k
@@ -1115,7 +1150,7 @@ def mha_fwd(
                 n_splits = splits_heuristic(n_tasks, num_sms, n_blocks)
 
                 if n_splits > 1:
-                    logger.debug("kernel: flash_fwd_splitkv")
+                    logger.debug("GEMS_SUNRISE kernel: flash_fwd_splitkv")
                     lse_splits = torch.empty(
                         (n_splits, B, H, Q), dtype=torch.float, device=q_device
                     )
@@ -1163,7 +1198,7 @@ def mha_fwd(
                     return kernel
 
             # Last option: flash_fwd
-            logger.debug("kernel: flash_fwd")
+            logger.debug("GEMS_SUNRISE kernel: flash_fwd")
             grid = lambda args: (
                 triton.cdiv(Q, args["BLOCK_M"]),
                 H * B,
@@ -1245,6 +1280,7 @@ def mha_fwd(
             None,  # page_table_ptr,
             0,  # page_table_batch_stride,
             0,  # block_size,
+            0,  # k_page_stride,
         )
 
         # Move TxD to last dims for correct stride in Triton tt.load

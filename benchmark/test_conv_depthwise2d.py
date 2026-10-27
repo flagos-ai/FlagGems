@@ -1,9 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base, consts
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 class ConvDepthwise2DBenchmark(base.GenericBenchmark):
@@ -44,6 +60,14 @@ def _input_fn(shape, dtype, device):
     )
 
 
+def _conv_depthwise2d_torch_op(
+    input, weight, kernel_size, bias, stride, padding, dilation
+):
+    return torch.nn.functional.conv2d(
+        input, weight, bias, stride, padding, dilation, groups=input.shape[1]
+    )
+
+
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False
@@ -51,7 +75,11 @@ def test_conv_depthwise2d():
     bench = ConvDepthwise2DBenchmark(
         op_name="conv_depthwise2d",
         input_fn=_input_fn,
-        torch_op=torch.ops.aten._conv_depthwise2d,
+        torch_op=(
+            _conv_depthwise2d_torch_op
+            if IS_KUNLUNXIN
+            else torch.ops.aten._conv_depthwise2d
+        ),
         gems_op=flag_gems._conv_depthwise2d,
         dtypes=consts.FLOAT_DTYPES,
     )

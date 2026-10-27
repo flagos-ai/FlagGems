@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -15,12 +29,16 @@ device = flag_gems.device
 
 
 @pytest.mark.embedding
-@pytest.mark.parametrize("EmbeddingSize", [1024] if cfg.TO_CPU else [4096])
-@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU else [2, 4])
-@pytest.mark.parametrize("M", [4] if cfg.TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if cfg.TO_CPU else [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [None, -1, 1, 2])
-@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize(
+    "EmbeddingSize", [1024] if cfg.TO_CPU or cfg.QUICK_MODE else [4096]
+)
+@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU or cfg.QUICK_MODE else [2, 4])
+@pytest.mark.parametrize("M", [4] if cfg.TO_CPU or cfg.QUICK_MODE else [4, 8])
+@pytest.mark.parametrize("N", [8] if cfg.TO_CPU or cfg.QUICK_MODE else [128, 256, 4096])
+@pytest.mark.parametrize("padding_idx", [None] if cfg.QUICK_MODE else [None, -1, 1, 2])
+@pytest.mark.parametrize(
+    "scale_grad_by_freq", [False] if cfg.QUICK_MODE else [True, False]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype):
     if flag_gems.vendor_name == "kunlunxin":
@@ -39,23 +57,26 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
     ref_out = torch.nn.functional.embedding(
         ref_indices, ref_embedding, padding_idx, scale_grad_by_freq=scale_grad_by_freq
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.embedding(
-            res_indices,
-            res_embedding,
-            padding_idx,
-            scale_grad_by_freq=scale_grad_by_freq,
-        )
+    res_out = flag_gems.embedding(
+        res_embedding,
+        res_indices,
+        padding_idx,
+        scale_grad_by_freq=scale_grad_by_freq,
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.embedding_backward
-@pytest.mark.parametrize("EmbeddingSize", [1024] if cfg.TO_CPU else [4096])
-@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU else [2, 4])
-@pytest.mark.parametrize("M", [4] if cfg.TO_CPU else [4, 8])
-@pytest.mark.parametrize("N", [8] if cfg.TO_CPU else [128, 256, 4096])
-@pytest.mark.parametrize("padding_idx", [-1, 1, 2])
-@pytest.mark.parametrize("scale_grad_by_freq", [True, False])
+@pytest.mark.parametrize(
+    "EmbeddingSize", [1024] if cfg.TO_CPU or cfg.QUICK_MODE else [4096]
+)
+@pytest.mark.parametrize("Batch", [2] if cfg.TO_CPU or cfg.QUICK_MODE else [2, 4])
+@pytest.mark.parametrize("M", [4] if cfg.TO_CPU or cfg.QUICK_MODE else [4, 8])
+@pytest.mark.parametrize("N", [8] if cfg.TO_CPU or cfg.QUICK_MODE else [128, 256, 4096])
+@pytest.mark.parametrize("padding_idx", [-1] if cfg.QUICK_MODE else [-1, 1, 2])
+@pytest.mark.parametrize(
+    "scale_grad_by_freq", [False] if cfg.QUICK_MODE else [True, False]
+)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_embedding_backward(
     EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, dtype
@@ -75,10 +96,9 @@ def test_embedding_backward(
     ref_in_grad = torch.ops.aten.embedding_backward(
         ref_grad, ref_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.embedding_backward(
-            res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
-        )
+    res_in_grad = flag_gems.embedding_backward(
+        res_grad, res_indices, num_weights, padding_idx, scale_grad_by_freq, sparse
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -123,10 +143,9 @@ def test_embedding_dense_backward(
         scale_grad_by_freq,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.embedding_dense_backward(
-            grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
-        )
+    res_out = flag_gems.embedding_dense_backward(
+        grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
+    )
     # res_out = torch.ops.aten.embedding_dense_backward(
     # grad_output, indices, num_weights, padding_idx, scale_grad_by_freq)
 

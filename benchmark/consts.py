@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import itertools
 from dataclasses import asdict, dataclass, fields
 from enum import Enum
@@ -7,11 +21,19 @@ import torch
 
 import flag_gems
 
+# Re-export the case types alongside the existing benchmark report types.
+from .cases import BenchmarkCaseList, BenchmarkCasePlan, BenchmarkCaseSpec  # noqa: F401
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
-EXTRA_INT_DTYPES = [torch.int8, torch.uint8, torch.int64]
+# int64 is gated on the backend: on targets that only emulate it (gcu300, where
+# the topsaten path aborts the process rather than raising) generating int64
+# cases would kill the whole benchmark run.
+EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
+if flag_gems.runtime.device.support_int64:
+    EXTRA_INT_DTYPES.append(torch.int64)
 
 
 def get_fp8_dtype():
@@ -31,8 +53,8 @@ def get_fp8_dtype():
 
 FP8_DTYPES = [get_fp8_dtype()]
 
-DEFAULT_WARMUP_COUNT = 1000
-DEFAULT_ITER_COUNT = 100
+DEFAULT_WARMUP_TIME = 1000
+DEFAULT_ITER_TIME = 100
 
 # LEGACY_SHAPES are maintained for legacy benchmark SIZE settings and may be removed in the future.
 # Do not reference this elsewhere.
@@ -78,6 +100,8 @@ def model_shapes():
 
 @dataclass
 class BenchmarkMetrics:
+    case_id: Optional[str] = None
+    candidate_source: Optional[str] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
     legacy_shape: Optional[int] = None
@@ -99,13 +123,28 @@ class BenchmarkMetrics:
     utilization: Optional[float] = None
     # Speedup compared to base data
     compared_speedup: Optional[float] = None
+    # External comparison provenance; native latency/speedup remain unchanged.
+    base_raw_speedup: Optional[float] = None
+    base_data_source: Optional[str] = None
+    base_shape_key: Optional[str] = None
+    base_latency_ms: Optional[float] = None
+    base_scaling_factor: Optional[float] = None
+    base_miss_reason: Optional[str] = None
     # Error message
     error_msg: Optional[str] = None
 
 
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
+    "case_id",
+    "candidate_source",
     "legacy_shape",
     "shape_detail",
+    "base_raw_speedup",
+    "base_data_source",
+    "base_shape_key",
+    "base_latency_ms",
+    "base_scaling_factor",
+    "base_miss_reason",
 }
 
 DEFAULT_METRICS = [
@@ -163,6 +202,7 @@ class BenchMode(Enum):
     KERNEL = "kernel"
     OPERATOR = "operator"
     WRAPPER = "wrapper"
+    CUDAGRAPH = "cudagraph"
 
 
 class BenchLevel(Enum):
@@ -210,12 +250,18 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            header_title += f"Native baseline: N/A ({native_baseline_skip_reason})\n"
         col_names = [
             f"{'Status':<10}",
             f"{'Torch Latency (ms)':>20}",
             f"{'Gems Latency (ms)':>20}",
             f"{'Gems Speedup':>20}",
         ]
+        show_base = any(metric.compared_speedup is not None for metric in self.result)
+        if show_base:
+            col_names.append(f"{'vs Base':>20}")
         if self.result[0].tflops and self.result[0].tflops != 0.0:
             col_names.append(f"{'TFLOPS':>20}")
         if self.result[0].gbps is not None:
@@ -226,10 +272,12 @@ class BenchmarkResult:
         header_break = "-" * len(header_col_names) + "\n"
         header = header_title + header_col_names + header_break
 
-        metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
+        metrics_lines = "".join(
+            self._format_metrics(ele, show_base) for ele in self.result
+        )
         return header + metrics_lines
 
-    def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
+    def _format_metrics(self, metrics: BenchmarkMetrics, show_base=False) -> str:
         # self.gen_legacy_shape(metrics)
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
@@ -257,6 +305,13 @@ class BenchmarkResult:
             f"{latency_str:>20}"
             f"{speedup_str:>20}"
         )
+        if show_base:
+            compared = (
+                f"{metrics.compared_speedup:.3f}"
+                if metrics.compared_speedup is not None
+                else "N/A"
+            )
+            data_line += f"{compared:>20}"
         if metrics.tflops and metrics.tflops != 0.0:
             data_line += f"{tflops_str:>20}"
         if metrics.gbps is not None:
@@ -289,6 +344,9 @@ class BenchmarkResult:
 
         # Convert to dict and handle tuple serialization for shape_detail
         result_dict = asdict(self)
+        native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
+        if native_baseline_skip_reason:
+            result_dict["native_baseline_skip_reason"] = native_baseline_skip_reason
         return json.dumps(result_dict, default=custom_json_encoder)
 
     def to_dict(self) -> dict:

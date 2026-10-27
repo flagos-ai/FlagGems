@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 测试脚本：验证 unique.py 中 int32 类型是否导致结果偏差
 
@@ -106,7 +120,9 @@ def verify_unique_result(
                     f"  triton counts 总和 {triton_sum} != 输入元素数 {expected_sum}"
                 )
             if torch_sum != expected_sum:
-                errors.append(f"  torch counts 总和 {torch_sum} != 输入元素数 {expected_sum}")
+                errors.append(
+                    f"  torch counts 总和 {torch_sum} != 输入元素数 {expected_sum}"
+                )
 
     return errors
 

@@ -1,9 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 SHAPE_DEPTHWISE = [
     ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
@@ -21,8 +37,10 @@ SHAPE_DEPTHWISE = [
 ]
 
 
-@pytest.mark.skip(reason="Issue #3021: This operator currently fails the test.")
 @pytest.mark.conv_depthwise2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
+)
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [[1, 1], [2, 2]])
 @pytest.mark.parametrize("padding", [[0, 0], [1, 1]])
@@ -45,18 +63,28 @@ def test_conv_depthwise2d(
         bias_tensor = None
         ref_bias = None
 
-    ref_out = torch.ops.aten._conv_depthwise2d(
-        ref_inp,
-        ref_weight,
-        kernel,
-        ref_bias,
-        stride,
-        padding,
-        dilation,
-    )
-
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._conv_depthwise2d(
-            inp, weight, kernel, bias_tensor, stride, padding, dilation
+    if IS_KUNLUNXIN:
+        ref_out = torch.nn.functional.conv2d(
+            ref_inp.float(),
+            ref_weight.float(),
+            None if ref_bias is None else ref_bias.float(),
+            stride,
+            padding,
+            dilation,
+            groups=ref_inp.shape[1],
+        ).to(dtype)
+    else:
+        ref_out = torch.ops.aten._conv_depthwise2d(
+            ref_inp,
+            ref_weight,
+            kernel,
+            ref_bias,
+            stride,
+            padding,
+            dilation,
         )
+
+    res_out = flag_gems._conv_depthwise2d(
+        inp, weight, kernel, bias_tensor, stride, padding, dilation
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)

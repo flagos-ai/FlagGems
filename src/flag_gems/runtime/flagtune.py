@@ -1,13 +1,53 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import warnings
 from dataclasses import dataclass
+from enum import Enum
 from types import MappingProxyType
 
 USE_FLAGTUNE_ENV = "USE_FLAGTUNE"
+USE_FLAGTUNE_COST_MODEL_ENV = "USE_FLAGTUNE_COST_MODEL"
 FLAGTUNE_INCLUDE_ENV = "FLAGTUNE_INCLUDE"
 
 _flagtune_op_registry = {}
 _include_ops = None
+
+
+class TuningMode(str, Enum):
+    """Runtime configuration-selection path for one LibTuner operator."""
+
+    DEFAULT = "default"
+    EXPANDED = "expanded"
+    COST_MODEL = "cost_model"
+
+
+class CostModelIntent(str, Enum):
+    DISABLED = "disabled"
+    AUTO = "auto"
+    REQUIRED = "required"
+
+
+def resolve_cost_model_intent(*, supports_cost_model=False):
+    """Parse user intent without importing or probing the model runtime."""
+    if _use_flagtune_setting_from_env() is False or not supports_cost_model:
+        return CostModelIntent.DISABLED
+    setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
+    if setting is False:
+        return CostModelIntent.DISABLED
+    return CostModelIntent.REQUIRED if setting else CostModelIntent.AUTO
 
 
 @dataclass(frozen=True)
@@ -94,14 +134,30 @@ def _normalize_include(include):
     return ops
 
 
+def _optional_binary_environment(name):
+    """Return an optional 0/1 environment setting with strict validation."""
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    value = value.strip()
+    if value not in {"0", "1"}:
+        raise ValueError(f"{name} must be 0 or 1 when set")
+    return value == "1"
+
+
+def _use_flagtune_setting_from_env():
+    """Return whether FlagTune is explicitly disabled or enabled."""
+    return _optional_binary_environment(USE_FLAGTUNE_ENV)
+
+
 def flagtune(include=None):
     """Enable runtime FlagTune for selected operators.
 
     Passing include=None enables the registry's default operators. Passing a
-    string or iterable selects the registered operators that should use
-    expanded tuning spaces when their LibTuner runs. This API only updates the
-    explicit include list; setting USE_FLAGTUNE=1 remains the legacy opt-in for
-    enabling every registered FlagTune operator.
+    string or iterable selects registered operators for capability-appropriate
+    tuning: Expanded for an unadapted operator and Cost Model for an adapted
+    operator. This API only updates the explicit include list; setting
+    ``USE_FLAGTUNE=1`` enables every registered FlagTune operator.
     """
     global _include_ops
     _include_ops = _normalize_include(include)
@@ -115,7 +171,7 @@ def _include_from_env():
     try:
         return _normalize_include(include)
     except (TypeError, ValueError) as err:
-        warnings.warn(f"Invalid {FLAGTUNE_INCLUDE_ENV}: {err}")
+        warnings.warn(f"Invalid FlagGems FlagTune include list: {err}")
         return frozenset()
 
 
@@ -125,26 +181,65 @@ def get_flagtune_include():
     return _include_from_env()
 
 
-def flagtune_enabled(op_name):
+def resolve_tuning_mode(op_name, *, supports_cost_model=False):
+    """Resolve Default, Expanded, or Cost Model tuning for one operator.
+
+    ``USE_FLAGTUNE=0`` selects the default config space. ``USE_FLAGTUNE=1``
+    enables Expanded tuning for an unadapted operator and Cost Model tuning for
+    an adapted operator. With neither switch set, unadapted operators default to
+    Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
+    applies the same capability-based selection to individual operators. An
+    adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
+    a model cannot be loaded, the policy handles AUTO fallback. Mode resolution
+    is deliberately independent of device discovery and model availability.
+    """
     try:
-        op_name = _normalize_op_name(op_name)
+        name = _normalize_op_name(op_name)
     except (TypeError, ValueError):
-        return False
+        return TuningMode.DEFAULT
+
+    use_flagtune_setting = _use_flagtune_setting_from_env()
+    if use_flagtune_setting is False:
+        return TuningMode.DEFAULT
+
+    if supports_cost_model:
+        intent = resolve_cost_model_intent(supports_cost_model=True)
+        if intent is CostModelIntent.DISABLED:
+            return TuningMode.EXPANDED
+        return TuningMode.COST_MODEL
+    if use_flagtune_setting is True or name in get_flagtune_include():
+        return TuningMode.EXPANDED
+    return TuningMode.DEFAULT
+
+
+def flagtune_enabled(op_name):
     if op_name not in get_supported_flagtune_ops():
         return False
-    return os.environ.get(USE_FLAGTUNE_ENV) == "1" or op_name in get_flagtune_include()
-
-
-def __getattr__(name):
-    if name == "SUPPORTED_FLAGTUNE_OPS":
-        return get_supported_flagtune_ops()
-    if name == "DEFAULT_FLAGTUNE_INCLUDE":
-        return get_default_flagtune_include()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return (
+        resolve_tuning_mode(op_name, supports_cost_model=False) is TuningMode.EXPANDED
+    )
 
 
 register_flagtune_op("mm", default=False, description="matrix multiplication")
+register_flagtune_op(
+    "mm_w8a8_fp8", default=False, description="FP8 W8A8 matrix multiplication"
+)
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
+register_flagtune_op(
+    "mv_row",
+    default=False,
+    description="matrix-vector multiplication over a row-major matrix",
+)
+register_flagtune_op(
+    "mv_column",
+    default=False,
+    description="matrix-vector multiplication over a column-major matrix",
+)
+register_flagtune_op(
+    "mv_reduce",
+    default=False,
+    description="split-K partial reduction for matrix-vector multiplication",
+)
 register_flagtune_op(
     "addmm",
     default=False,
@@ -161,17 +256,51 @@ register_flagtune_op(
     description="matrix-vector multiplication",
 )
 register_flagtune_op(
+    "fused_marlin_moe_w4a16_int4",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_int4_gemm_silu",
+    default=False,
+    description="W4A16 INT4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_mxfp4",
+    default=False,
+    description="MXFP4 fused Marlin MoE GEMM",
+)
+register_flagtune_op(
+    "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
+    default=False,
+    description="MXFP4 fused Marlin MoE GEMM with SiLU",
+)
+register_flagtune_op(
+    "mul",
+    default=False,
+    description="elementwise multiplication",
+)
+register_flagtune_op(
+    "compute_global_topk_indices_and_lens",
+    default=False,
+    description="DeepSeekV4 global top-k index conversion and length computation",
+)
+register_flagtune_op(
     "w8a8_block_fp8_matmul",
     default=False,
     description="W8A8 block FP8 matrix multiplication",
 )
+register_flagtune_op(
+    "w8a8_block_fp8_bmm",
+    default=False,
+    description="W8A8 block FP8 batched matrix multiplication",
+)
 
-# DEFAULT_FLAGTUNE_INCLUDE and SUPPORTED_FLAGTUNE_OPS are provided by __getattr__.
-__all__ = [  # noqa: F822
-    "DEFAULT_FLAGTUNE_INCLUDE",
+__all__ = [
     "FLAGTUNE_INCLUDE_ENV",
     "FlagTuneOpSpec",
-    "SUPPORTED_FLAGTUNE_OPS",
+    "TuningMode",
+    "USE_FLAGTUNE_COST_MODEL_ENV",
     "USE_FLAGTUNE_ENV",
     "flagtune",
     "flagtune_enabled",
@@ -180,4 +309,5 @@ __all__ = [  # noqa: F822
     "get_flagtune_registry",
     "get_supported_flagtune_ops",
     "register_flagtune_op",
+    "resolve_tuning_mode",
 ]

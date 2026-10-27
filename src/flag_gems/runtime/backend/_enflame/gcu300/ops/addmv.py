@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -58,7 +72,7 @@ def addmv_kernel(
 
 
 def addmv(self, mat, vec, *, beta=1, alpha=1):
-    logger.debug("GEMS ADDMV")
+    logger.debug("GEMS_ENFLAME ADDMV")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
@@ -85,7 +99,7 @@ def addmv(self, mat, vec, *, beta=1, alpha=1):
 
 
 def addmv_out(self, mat, vec, *, beta=1, alpha=1, out=None):
-    logger.debug("GEMS ADDMV OUT")
+    logger.debug("GEMS_ENFLAME ADDMV_OUT")
     assert mat.shape[1] == vec.shape[0], "incompatible dimensions"
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape

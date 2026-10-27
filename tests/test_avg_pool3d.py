@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -19,8 +33,21 @@ AVGPOOL3D_CONFIGS = [
     ((4, 8, 12, 16, 20), (2, 3, 4), (1, 2, 2), (0, 1, 1), False, True, None),
     # ceil_mode
     ((2, 4, 15, 15, 15), 3, 2, 1, True, True, None),
-    # divisor_override
-    ((1, 1, 7, 7, 7), 2, 1, 0, False, True, 1),
+    # divisor_override: unsupported by torch_xmlir XPU native avg_pool3d, so the
+    # aten reference call raises INVALID PARAMETER on kunlunxin; skip there.
+    pytest.param(
+        (1, 1, 7, 7, 7),
+        2,
+        1,
+        0,
+        False,
+        True,
+        1,
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "kunlunxin",
+            reason="torch_xmlir XPU native avg_pool3d does not support divisor_override",
+        ),
+    ),
     # Typical CNN shapes
     ((1, 64, 16, 56, 56), 3, 2, 1, False, True, None),
     # No padding
@@ -40,6 +67,9 @@ AVGPOOL3D_CONFIGS = [
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool3d(
     shape,
     kernel_size,
@@ -63,16 +93,15 @@ def test_avg_pool3d(
         divisor_override=divisor_override,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.avg_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            ceil_mode=ceil_mode,
-            count_include_pad=count_include_pad,
-            divisor_override=divisor_override,
-        )
+    res_out = flag_gems.avg_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -83,6 +112,9 @@ def test_avg_pool3d(
     AVGPOOL3D_CONFIGS,
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_avg_pool3d_backward(
     shape,
     kernel_size,
@@ -93,6 +125,10 @@ def test_avg_pool3d_backward(
     divisor_override,
     dtype,
 ):
+    if flag_gems.vendor_name == "kunlunxin" and ceil_mode:
+        pytest.skip(
+            "torch_xmlir XPU native avg_pool3d_backward does not support ceil_mode"
+        )
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = to_reference(inp, True)
 
@@ -118,17 +154,16 @@ def test_avg_pool3d_backward(
         divisor_override,
     )
 
-    with flag_gems.use_gems():
-        res_inp_grad = torch.ops.aten.avg_pool3d_backward(
-            out_grad,
-            inp,
-            kernel_size,
-            stride,
-            padding,
-            ceil_mode,
-            count_include_pad,
-            divisor_override,
-        )
+    res_inp_grad = flag_gems.avg_pool3d_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        ceil_mode,
+        count_include_pad,
+        divisor_override,
+    )
     # 3D backward accumulates over kernel_d * kernel_h * kernel_w elements per
     # input position. With stride < kernel, each input can receive gradient
     # contributions from many overlapping output windows, amplifying fp error.

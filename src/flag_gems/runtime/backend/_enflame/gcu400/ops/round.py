@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -116,12 +130,12 @@ def round_func(input, decimals=0):
 
 
 def round(input, decimals=0):
-    logger.debug("GEMS ROUND GCU400")
+    logger.debug("GEMS_ENFLAME ROUND")
     return round_func(input, decimals=decimals)
 
 
 def round_out(input, *, decimals=0, out=None):
-    logger.debug("GEMS ROUND_OUT GCU400")
+    logger.debug("GEMS_ENFLAME ROUND_OUT")
     if out is None:
         return round_func(input, decimals=decimals)
     if not isinstance(input, torch.Tensor):
@@ -140,7 +154,7 @@ def round_out(input, *, decimals=0, out=None):
 
 
 def round_(input, *, decimals=0):
-    logger.debug("GEMS ROUND_ GCU400")
+    logger.debug("GEMS_ENFLAME ROUND_")
     if not isinstance(input, torch.Tensor):
         raise TypeError("round expects a torch.Tensor.")
     if input.is_complex():

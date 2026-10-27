@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -118,7 +132,7 @@ def silu_backward_kernel(
 class Silu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS_SPACEMIT SILU_FORWARD")
+        logger.debug("GEMS_SPACEMIT SILU_FORWARD")
         A = A.contiguous()
         out = torch.empty_like(A)
         n_elements = A.numel()
@@ -129,7 +143,7 @@ class Silu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_SPACEMIT SILU_BACKWARD")
+        logger.debug("GEMS_SPACEMIT SILU_BACKWARD")
         (inp,) = ctx.saved_tensors
         inp = inp.contiguous()
         out_grad = out_grad.contiguous()
@@ -147,7 +161,7 @@ def silu(A):
 class InplaceSilu(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A):
-        logging.debug("GEMS_SPACEMIT SILU__FORWARD")
+        logger.debug("GEMS_SPACEMIT SILU__FORWARD")
         ctx.save_for_backward(A.clone())
         ctx.mark_dirty(A)
         A_contig = A.contiguous()
@@ -160,7 +174,7 @@ class InplaceSilu(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logging.debug("GEMS_SPACEMIT SILU__BACKWARD")
+        logger.debug("GEMS_SPACEMIT SILU__BACKWARD")
         (inp,) = ctx.saved_tensors
         inp = inp.contiguous()
         out_grad = out_grad.contiguous()

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -49,16 +63,26 @@ def test_nll_loss2d_backward(shape, dtype, ignore_index, reduction, weight):
     ref_out = torch.nn.functional.nll_loss(
         ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.nll_loss(
-            inp, target, weight, reduction=reduction, ignore_index=ignore_index
-        )
+    res_out, total_weight = flag_gems.nll_loss2d_forward(
+        inp,
+        target,
+        weight,
+        {"none": 0, "mean": 1, "sum": 2}[reduction],
+        ignore_index,
+    )
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_in_grad = flag_gems.nll_loss2d_backward(
+        out_grad,
+        inp,
+        target,
+        weight,
+        {"none": 0, "mean": 1, "sum": 2}[reduction],
+        ignore_index,
+        total_weight,
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])

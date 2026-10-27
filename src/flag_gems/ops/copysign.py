@@ -1,5 +1,20 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -24,7 +39,7 @@ def _get_sign_bit_mask(num_bits):
     return 1 << (num_bits - 1)
 
 
-@pointwise_dynamic(is_tensor=[True, True], promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def copysign_func(input, other):
     # Magnitude of input, sign of other
@@ -38,14 +53,28 @@ def copysign_func(input, other):
     return tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
 
 
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def copysign_func_scalar(input, other):
+    # Scalar `other` specializes the sign branch at trace time.
+    abs_val = tl.abs(input)
+    num_bits: tl.constexpr = input.dtype.primitive_bitwidth
+    uint_dtype = _get_uint_dtype(num_bits)
+    sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
+    other_u = other.to(uint_dtype, bitcast=True)
+    return tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
+
+
 def copysign(input, other, *, out=None):
     logger.debug("GEMS COPYSIGN")
-    return copysign_func(input, other)
+    func = copysign_func if isinstance(other, torch.Tensor) else copysign_func_scalar
+    return func(input, other)
 
 
 def copysign_out(input, other, *, out=None):
     logger.debug("GEMS COPYSIGN_OUT")
+    func = copysign_func if isinstance(other, torch.Tensor) else copysign_func_scalar
     if out is None:
-        return copysign_func(input, other)
-    copysign_func(input, other, out0=out)
+        return func(input, other)
+    func(input, other, out0=out)
     return out

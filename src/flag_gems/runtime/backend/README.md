@@ -19,9 +19,9 @@ Create the necessary files, including but not limited to `__init__.py`, `heurist
 
 ##### step 2.1  `__init__.py`
 
-You can copy `FlagGems/src/flag_gems/runtime/backend/_nvidia/__init__.py` and the  ***only change***  you need to make is to configure the `VendorInfoBase` class
+You can copy `FlagGems/src/flag_gems/runtime/backend/_nvidia/__init__.py` and the  ***only change***  you need to make is to configure the `VendorDescriptor` class
 ```
-VendorInfoBase(
+VendorDescriptor(
     vendor_name="xxx", device_name="xxx", device_query_cmd="xxx"
 )
 ```

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -32,8 +46,7 @@ def test_roll_single_dim(shape, dtype, shifts_dims):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -62,8 +75,7 @@ def test_roll_multi_dims(shape, dtype, shifts_dims):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -81,8 +93,7 @@ def test_roll_flatten(shape, dtype, shifts):
 
     # Roll without specifying dims (flatten case)
     ref_out = torch.roll(ref_inp, shifts)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts)
+    res_out = flag_gems.roll(inp, shifts)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -103,7 +114,6 @@ def test_roll_with_non_dense_input(shape, dtype):
     dims = 0
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)

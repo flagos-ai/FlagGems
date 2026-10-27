@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
@@ -5,6 +19,8 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+from . import conftest as cfg
 from .accuracy_utils import gems_assert_close
 
 try:
@@ -19,6 +35,14 @@ try:
     VLLM_AVAILABLE = True
 except ImportError:
     VLLM_AVAILABLE = False
+
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
 
 
 def is_hopper_available() -> bool:
@@ -45,6 +69,14 @@ def has_deep_gemm() -> bool:
 DEEPGEMM_AVAILABLE = has_deep_gemm()
 
 device = flag_gems.device
+
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    MN_SHAPES = [(32, 2048)]
+    HD_SHAPES = [(32, 128)]
+else:
+    MN_SHAPES = [(32, 2048), (32, 4096), (32, 1024)]
+    HD_SHAPES = [(32, 128)]
 
 
 @pytest.mark.fp8_mqa_logits
@@ -84,15 +116,14 @@ def test_fp8_mqa_logits(clean_logits: bool):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1
@@ -108,8 +139,8 @@ def test_fp8_mqa_logits(clean_logits: bool):
     not (VLLM_AVAILABLE and DEEPGEMM_AVAILABLE),
     reason="requires vLLM with DeepGEMM support",
 )
-@pytest.mark.parametrize("M, N", [(32, 2048), (32, 4096), (32, 1024)])
-@pytest.mark.parametrize("H, D", [(32, 128)])
+@pytest.mark.parametrize("M, N", MN_SHAPES)
+@pytest.mark.parametrize("H, D", HD_SHAPES)
 def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
     torch.manual_seed(0)
     random.seed(0)
@@ -134,15 +165,14 @@ def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1

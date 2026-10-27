@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -25,8 +39,7 @@ def test_index_copy(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_index = to_reference(index)
     ref_out = torch.index_copy(ref_inp, dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.index_copy(inp, dim, index, src)
+    res_out = flag_gems.index_copy(inp, dim, index, src)
     gems_assert_close(res_out, ref_out, dtype=dtype, reduce_dim=dim)
 
 
@@ -45,6 +58,5 @@ def test_index_copy_(shape, dim, dtype):
     ref_src = to_reference(src)
     ref_index = to_reference(index)
     ref_inp.index_copy_(dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        inp.index_copy_(dim, index, src)
+    flag_gems.index_copy_(inp, dim, index, src)
     gems_assert_close(inp, ref_inp, dtype=dtype, reduce_dim=dim)

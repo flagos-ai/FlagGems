@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -36,6 +50,27 @@ def input_fn(shape, dtype, device):
         running_mean = torch.randn((C,), dtype=dtype, device=device)
         running_var = torch.randn((C,), dtype=dtype, device=device)
         yield inp, weight, bias, running_mean, running_var, training, momentum, eps, cudnn_enabled
+
+
+def native_batch_norm_input_fn(shape, dtype, device):
+    channel_count = shape[1]
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    weight = torch.randn(channel_count, dtype=dtype, device=device)
+    bias = torch.randn(channel_count, dtype=dtype, device=device)
+    running_mean = torch.zeros(channel_count, dtype=dtype, device=device)
+    running_var = torch.ones(channel_count, dtype=dtype, device=device)
+    yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
+
+
+@pytest.mark.native_batch_norm
+def test_native_batch_norm():
+    bench = NormBenchmark(
+        op_name="native_batch_norm",
+        input_fn=native_batch_norm_input_fn,
+        torch_op=torch.ops.aten.native_batch_norm.default,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
 
 
 @pytest.mark.batch_norm

@@ -3,12 +3,11 @@ import torch
 
 import flag_gems
 
-from .accuracy_utils import FLOAT_DTYPES, gems_assert_close, to_reference
-from .conftest import QUICK_MODE
+from . import accuracy_utils as utils
 
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else FLOAT_DTYPES
-
-
+# Representative 5-D pooling configs: (shape, kernel_size, stride, padding,
+# dilation, ceil_mode). Chosen to cover cubic/non-cubic kernels, strides,
+# symmetric/asymmetric padding, dilation, ceil_mode and a typical 3D-CNN shape.
 MAXPOOL3D_CONFIGS = [
     # Classic 3x3x3 kernel, stride 2, padding 1
     ((4, 3, 16, 16, 16), 3, 2, 1, 1, False),
@@ -31,19 +30,16 @@ MAXPOOL3D_CONFIGS = [
 ]
 
 
-@pytest.mark.max_pool3d_with_indices
-@pytest.mark.skip(reason="Issue #2865: this test always fail.")
+@pytest.mark.max_pool3d
 @pytest.mark.parametrize(
     "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
 )
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool3d_with_indices(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, True)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_pool3d(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
 
-    ref_out = torch.nn.functional.max_pool3d(
+    ref_out = torch.max_pool3d(
         ref_inp,
         kernel_size=kernel_size,
         stride=stride,
@@ -52,33 +48,8 @@ def test_max_pool3d_with_indices(
         ceil_mode=ceil_mode,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.max_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-        )
-
-    gems_assert_close(res_out, ref_out, dtype)
-
-
-@pytest.mark.max_pool3d_backward
-@pytest.mark.skip(reason="Issue #2865: this test always fail.")
-@pytest.mark.parametrize(
-    "shape, kernel_size, stride, padding, dilation, ceil_mode", MAXPOOL3D_CONFIGS
-)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_max_pool3d_backward(
-    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
-):
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
-    ref_inp = to_reference(inp, upcast=True)
-
-    ref_out = torch.nn.functional.max_pool3d(
-        ref_inp,
+    res_out = flag_gems.max_pool3d(
+        inp,
         kernel_size=kernel_size,
         stride=stride,
         padding=padding,
@@ -86,21 +57,41 @@ def test_max_pool3d_backward(
         ceil_mode=ceil_mode,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.max_pool3d(
-            inp,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-        )
+    utils.gems_assert_close(res_out, ref_out, dtype)
 
-    out_grad = torch.randn_like(res_out, device=flag_gems.device)
-    ref_grad = to_reference(out_grad, upcast=True)
 
+# End-to-end gradient parity for max_pool3d's autograd path, covering both a
+# contiguous and a channels_last_3d input. The channels_last_3d case pins the
+# backward wrapper's layout handling: the scatter kernel assumes NCDHW
+# contiguous storage, so a gradient allocated in NDHWC order would silently
+# scatter to wrong addresses.
+@pytest.mark.max_pool3d
+@pytest.mark.parametrize(
+    "memory_format", [torch.contiguous_format, torch.channels_last_3d]
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_max_pool3d_autograd(dtype, memory_format):
+    shape = (2, 8, 8, 16, 16)
+    kernel_size, stride, padding = 3, 2, 1
+
+    inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    ).to(memory_format=memory_format)
+    inp.requires_grad_(True)
+    ref_inp = utils.to_reference(inp, True).contiguous()
+
+    res_out = flag_gems.max_pool3d(
+        inp, kernel_size=kernel_size, stride=stride, padding=padding
+    )
+    ref_out = torch.max_pool3d(
+        ref_inp, kernel_size=kernel_size, stride=stride, padding=padding
+    )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = utils.to_reference(out_grad, True)
+
+    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
 
-    gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

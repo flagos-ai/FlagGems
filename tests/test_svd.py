@@ -1,9 +1,33 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
+
+if cfg.QUICK_MODE:
+    SVD_RANK2_BOUNDARY_SHAPES = [(1025, 2)]
+    SVD_COMPLEX64_SHAPES = [(3, 3)]
+    SVD_SOME_FALSE_SHAPES = [(3, 5)]
+else:
+    SVD_RANK2_BOUNDARY_SHAPES = [(1025, 2), (2, 1025)]
+    SVD_COMPLEX64_SHAPES = [(3, 3), (2, 3, 3)]
+    SVD_SOME_FALSE_SHAPES = [(3, 5), (5, 3), (4, 4)]
 
 
 def _make_spectrum_input(shape, singular_values, seed=0):
@@ -68,8 +92,7 @@ def test_accuracy_svd_fast_float32(shape):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -88,8 +111,7 @@ def test_accuracy_svd_rank1_float32(shape):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -104,8 +126,7 @@ def test_accuracy_svd_rank1_float32(shape):
 def test_accuracy_svd_rank1_zero_basis(shape):
     inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     expected_s = utils.to_reference(torch.zeros_like(res_s), False)
     utils.gems_assert_equal(res_s, expected_s)
@@ -128,8 +149,7 @@ def test_accuracy_svd_gram_ill_conditioned_orthonormal(shape):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -151,8 +171,7 @@ def test_accuracy_svd_gram_zero_and_repeated_singular_values(case):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -190,8 +209,7 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_finite(res_u, res_s, res_v)
     _assert_same_shape(res_u, ref_u)
@@ -203,7 +221,7 @@ def test_accuracy_svd_tiny_rank_degenerate_inputs(case):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(1025, 2), (2, 1025)])
+@pytest.mark.parametrize("shape", SVD_RANK2_BOUNDARY_SHAPES)
 @pytest.mark.parametrize("case", ["zero", "rankdef", "scaled"])
 def test_accuracy_svd_rank2_boundary_degenerate_inputs(shape, case):
     if case == "zero":
@@ -224,8 +242,7 @@ def test_accuracy_svd_rank2_boundary_degenerate_inputs(shape, case):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_finite(res_u, res_s, res_v)
     _assert_same_shape(res_u, ref_u)
@@ -246,8 +263,7 @@ def test_accuracy_svd_fallback_modes(shape, some):
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=some, compute_uv=False)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=some, compute_uv=False)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=some, compute_uv=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -255,6 +271,10 @@ def test_accuracy_svd_fallback_modes(shape, some):
     utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=5e-4)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issue #3856:sunrise does not support complex dtype",
+)
 @pytest.mark.svd
 def test_accuracy_svd_non_contiguous_empty_and_complex():
     inputs = [
@@ -267,8 +287,7 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
     for inp in inputs:
         ref_inp = utils.to_reference(inp, False)
         ref_u, ref_s, ref_v = torch.svd(ref_inp)
-        with flag_gems.use_gems(include=["svd"]):
-            res_u, res_s, res_v = torch.svd(inp)
+        res_u, res_s, res_v = flag_gems.svd(inp)
 
         _assert_same_shape(res_u, ref_u)
         _assert_same_shape(res_s, ref_s)
@@ -276,15 +295,18 @@ def test_accuracy_svd_non_contiguous_empty_and_complex():
         utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=2e-3)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "sunrise",
+    reason="Issue #3856:sunrise does not support complex dtype",
+)
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(3, 3), (2, 3, 3)])
+@pytest.mark.parametrize("shape", SVD_COMPLEX64_SHAPES)
 def test_accuracy_svd_complex64_reconstruction(shape):
     inp = _make_input(shape, torch.complex64)
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -304,8 +326,7 @@ def test_accuracy_svd_low_precision_float32_route(dtype):
     ref_inp = utils.to_reference(inp.to(torch.float32), False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=True, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=True, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=True, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -323,14 +344,13 @@ def test_accuracy_svd_low_precision_float32_route(dtype):
 
 
 @pytest.mark.svd
-@pytest.mark.parametrize("shape", [(3, 5), (5, 3), (4, 4)])
+@pytest.mark.parametrize("shape", SVD_SOME_FALSE_SHAPES)
 def test_accuracy_svd_some_false_reconstruction(shape):
     inp = _make_input(shape, torch.float32)
     ref_inp = utils.to_reference(inp, False)
     ref_u, ref_s, ref_v = torch.svd(ref_inp, some=False, compute_uv=True)
 
-    with flag_gems.use_gems(include=["svd"]):
-        res_u, res_s, res_v = torch.svd(inp, some=False, compute_uv=True)
+    res_u, res_s, res_v = flag_gems.svd(inp, some=False, compute_uv=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)

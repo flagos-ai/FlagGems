@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -37,7 +51,7 @@ def weight_norm_kernel_last(
     v_block = tl.zeros([BLOCK_COL_SIZE, BLOCK_ROW_SIZE], dtype=tl.float32)
     for base in range(0, M, BLOCK_ROW_SIZE):
         row_offset = base + ty
-        mask = row_offset < M and col_mask
+        mask = (row_offset < M) & col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_block += v_value * v_value
 
@@ -47,7 +61,7 @@ def weight_norm_kernel_last(
 
     for base in range(0, M, BLOCK_ROW_SIZE):
         row_offset = base + ty
-        mask = row_offset < M and col_mask
+        mask = (row_offset < M) & col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_vec = v_value / normalized[:, None]
         out = v_vec * g_value
@@ -79,7 +93,7 @@ def weight_norm_kernel_first(
     v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for base in range(0, N, BLOCK_COL_SIZE):
         col_offset = base + tx
-        mask = col_offset < N and row_mask
+        mask = (col_offset < N) & row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_block += v_value * v_value
 
@@ -89,7 +103,7 @@ def weight_norm_kernel_first(
 
     for base in range(0, N, BLOCK_COL_SIZE):
         col_offset = base + tx
-        mask = col_offset < N and row_mask
+        mask = (col_offset < N) & row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_vec = v_value / normalized[:, None]
         out = v_vec * g_value
@@ -129,7 +143,7 @@ def weight_norm_bwd_kernel_last(
     vw_block = tl.zeros([BLOCK_COL_SIZE, BLOCK_ROW_SIZE], dtype=tl.float32)
     for base in range(0, M, BLOCK_ROW_SIZE):
         row_offset = base + ty
-        mask = row_offset < M and col_mask
+        mask = (row_offset < M) & col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         vw_block += v_value * w_value
@@ -137,7 +151,7 @@ def weight_norm_bwd_kernel_last(
 
     for base in range(0, M, BLOCK_ROW_SIZE):
         row_offset = base + ty
-        mask = row_offset < M and col_mask
+        mask = (row_offset < M) & col_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
@@ -180,7 +194,7 @@ def weight_norm_bwd_kernel_first(
     v_block = tl.zeros([BLOCK_ROW_SIZE, BLOCK_COL_SIZE], dtype=tl.float32)
     for base in range(0, N, BLOCK_COL_SIZE):
         col_offset = base + tx
-        mask = col_offset < N and row_mask
+        mask = (col_offset < N) & row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_block += v_value * w_value
@@ -188,7 +202,7 @@ def weight_norm_bwd_kernel_first(
 
     for base in range(0, N, BLOCK_COL_SIZE):
         col_offset = base + tx
-        mask = col_offset < N and row_mask
+        mask = (col_offset < N) & row_mask
         v_value = tl.load(v + row_offset * N + col_offset, mask=mask).to(tl.float32)
         w_value = tl.load(w + row_offset * N + col_offset, mask=mask).to(tl.float32)
         v_grad_value = g_value * (w_value * norm_1 - v_value * norm_3 * vw_sum)
@@ -199,7 +213,7 @@ def weight_norm_bwd_kernel_first(
 
 
 def weight_norm_interface(v, g, dim=0):
-    logger.debug("GEMS WEIGHT NORM INTERFACE FORWARD")
+    logger.debug("GEMS_ENFLAME WEIGHT_NORM_INTERFACE")
     v = v.contiguous()
     g = g.contiguous()
     output = torch.empty_like(v)
@@ -224,7 +238,7 @@ def weight_norm_interface(v, g, dim=0):
 
 
 def weight_norm_interface_backward(w_grad, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS WEIGHT NORM INTERFACE BACKWARD")
+    logger.debug("GEMS_ENFLAME WEIGHT_NORM_INTERFACE_BACKWARD")
     w_grad = w_grad.contiguous()
     saved_v = saved_v.contiguous()
     saved_g = saved_g.contiguous()

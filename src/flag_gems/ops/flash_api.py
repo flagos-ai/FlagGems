@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -1155,7 +1169,9 @@ def mha_fwd(
                         "lse_split_stride": lse_splits.stride(0),
                         "out_b_stride": out.stride(0),
                         "out_s_stride": out.stride(-3),
-                        "out_h_stride": out.stride(-1),
+                        # Head stride is the second-to-last dim of the BSHD view;
+                        # stride(-1) is the contiguous head-size stride.
+                        "out_h_stride": out.stride(-2),
                         "out_splits_ptr": out_splits,
                         "lse_splits_ptr": lse_splits,
                         "n_splits": n_splits,
@@ -1163,6 +1179,8 @@ def mha_fwd(
                         "BLOCK_K": BLOCK_K,
                         "q_total": B * H * Q,
                         "MAX_N_SPLITS": triton.next_power_of_2(n_splits),
+                        "num_heads": H,
+                        "seqlen_q": Q,
                     }
                     combine_kernel(**combine_args)
                     return kernel

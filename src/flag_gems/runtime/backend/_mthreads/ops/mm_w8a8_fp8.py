@@ -1,0 +1,1358 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from collections import OrderedDict
+from copy import deepcopy
+from pathlib import Path
+
+import torch
+import triton
+import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
+
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.triton_version_utils import HAS_TLE
+
+_HAS_WS = False
+_HAS_WS_SCHEDULER_CONTROL = False
+if HAS_TLE:
+    import triton.experimental.tle.language as tle
+
+    # Released FlagTree builds may provide TLE without the SQMMA/WS API.
+    _HAS_WS = hasattr(tle, "pipe") and all(
+        hasattr(tle.gpu, name)
+        for name in ("alloc", "smem", "copy", "warp_specialize", "wgmma", "wgmma_wait")
+    )
+    _HAS_WS_SCHEDULER_CONTROL = (
+        getattr(
+            getattr(tle.gpu, "mthreads", None),
+            "MTHREADS_TLE_DISABLE_MAX_ILP_SCHEDULER_VERSION",
+            0,
+        )
+        >= 1
+    )
+
+_CONFIG_YAML = str(Path(__file__).resolve().parent.parent / "tune_configs.yaml")
+_TUNE_KEY = [
+    "M",
+    "N",
+    "K",
+    "AM",
+    "AK",
+    "BK_STRIDE",
+    "BN_STRIDE",
+    "DESCRIPTOR",
+    "SPLIT_K",
+]
+if _HAS_WS:
+    # Multi-consumer SQMMA requires the MUSA compiler fixes in FlagTree #1267.
+
+    def _set_blocks(args):
+        args["A"].block_shape = [args["BM"], args["BK"]]
+        args["B"].block_shape = [args["BN"], args["BK"]]
+
+    def _prune_ws_configs(configs, named_args, **kwargs):
+        args = {**named_args, **kwargs}
+        m, n, k = args["M"], args["N"], args["K"]
+        result = []
+        for config in configs:
+            p = config.kwargs
+            bm, bn, bk = p["BM"], p["BN"], p["BK"]
+            if bm > m or bn * p["NC"] > n:
+                continue
+            # Avoid fine-grained long-K grids after MP31 repeated-launch failures.
+            if k >= 2048 and bm * bn < 16384:
+                continue
+            # Large-M multi-consumer tiles hit read/write barrier errors at long K.
+            if k >= 4096 and bm >= 512 and p["NC"] > 1:
+                continue
+            if p["NC"] > 1 and bm * bn > 64 * p["CW"] * 32:
+                continue
+            if p["NC"] > 1 and n % (bn * p["NC"]):
+                continue
+            steps = triton.cdiv(k, bk)
+            if p["STAGES"] > steps + 1:
+                continue
+            # Avoid single-slot producer/consumer reuse when K spans multiple tiles.
+            if steps > 1 and p["STAGES"] == 1:
+                continue
+            result.append(deepcopy(config))
+        return result
+
+    @triton.jit
+    def _tile_index(
+        tile,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        GM: tl.constexpr,
+    ):
+        grid_m = tl.cdiv(M, BM)
+        grid_n = tl.cdiv(N, BN)
+        group = tile // (GM * grid_n)
+        group_m = tl.minimum(GM, grid_m - group * GM)
+        pm = group * GM + tile % group_m
+        pn = tile % (GM * grid_n) // group_m
+        return pm, pn
+
+    @triton.jit
+    def _produce(
+        writer,
+        A,
+        B,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        NC: tl.constexpr,
+        GM: tl.constexpr,
+    ):
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, BN * NC, GM)
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            slot = writer.acquire(block)
+            tle.gpu.copy(A, slot.a, (BM, BK), (pm * BM, block * BK))
+            tle.gpu.copy(B, slot.b0, (BN, BK), (pn * BN * NC, block * BK))
+            if NC >= 2:
+                tle.gpu.copy(B, slot.b1, (BN, BK), (pn * BN * NC + BN, block * BK))
+            if NC >= 3:
+                tle.gpu.copy(B, slot.b2, (BN, BK), (pn * BN * NC + 2 * BN, block * BK))
+            if NC >= 4:
+                tle.gpu.copy(B, slot.b3, (BN, BK), (pn * BN * NC + 3 * BN, block * BK))
+            writer.commit(block)
+
+    @triton.jit
+    def _consume(
+        reader,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        NC: tl.constexpr,
+        GM: tl.constexpr,
+        ROLE: tl.constexpr,
+    ):
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, BN * NC, GM)
+        acc = tl.zeros((BM, BN), tl.float32)
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            ready = reader.wait(block)
+            if ROLE == 0:
+                bb = ready.slot.b0
+            elif ROLE == 1:
+                bb = ready.slot.b1
+            elif ROLE == 2:
+                bb = ready.slot.b2
+            else:
+                bb = ready.slot.b3
+            acc = tle.gpu.wgmma(ready.slot.a, bb, acc, trans_b=True)
+            acc = tle.gpu.wgmma_wait(0, acc)
+            reader.release(block)
+        rm = pm * BM + tl.arange(0, BM)
+        rn = pn * BN * NC + ROLE * BN + tl.arange(0, BN)
+        acc *= tl.load(SA)
+        acc *= tl.load(SB)
+        tl.store(
+            C + rm[:, None].to(tl.int64) * N + rn[None, :],
+            acc,
+            (rm[:, None] < M) & (rn[None, :] < N),
+        )
+
+    @libentry()
+    @libtuner(
+        configs=runtime.ops_get_configs(
+            "mm_w8a8_fp8_musa_ws_default", yaml_path=_CONFIG_YAML, pre_hook=_set_blocks
+        ),
+        key=["M", "N", "K"],
+        strategy=["default"] * 3,
+        warmup=5,
+        rep=10,
+        prune_configs_by={"early_config_prune": _prune_ws_configs},
+        flagtune_op_name="mm_w8a8_fp8",
+        flagtune_expand_op_name="mm_w8a8_fp8_musa_ws",
+        flagtune_yaml_path=_CONFIG_YAML,
+        flagtune_pre_hook=_set_blocks,
+    )
+    @triton.jit
+    def ws_multi_kernel(
+        A,
+        B,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        NC: tl.constexpr,
+        CW: tl.constexpr,
+        PW: tl.constexpr,
+        STAGES: tl.constexpr,
+        GM: tl.constexpr,
+    ):
+        aa = tle.gpu.alloc(
+            (STAGES, BM, BK), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+        )
+        b0 = tle.gpu.alloc(
+            (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+        )
+        if NC >= 2:
+            b1 = tle.gpu.alloc(
+                (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+            )
+        if NC >= 3:
+            b2 = tle.gpu.alloc(
+                (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+            )
+        if NC >= 4:
+            b3 = tle.gpu.alloc(
+                (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+            )
+        if NC == 1:
+            pipe = tle.pipe(
+                capacity=STAGES, scope="cta", name="ab", readers=("r0",), a=aa, b0=b0
+            )
+        elif NC == 2:
+            pipe = tle.pipe(
+                capacity=STAGES,
+                scope="cta",
+                name="ab",
+                readers=("r0", "r1"),
+                a=aa,
+                b0=b0,
+                b1=b1,
+            )
+        elif NC == 3:
+            pipe = tle.pipe(
+                capacity=STAGES,
+                scope="cta",
+                name="ab",
+                readers=("r0", "r1", "r2"),
+                a=aa,
+                b0=b0,
+                b1=b1,
+                b2=b2,
+            )
+        else:
+            pipe = tle.pipe(
+                capacity=STAGES,
+                scope="cta",
+                name="ab",
+                readers=("r0", "r1", "r2", "r3"),
+                a=aa,
+                b0=b0,
+                b1=b1,
+                b2=b2,
+                b3=b3,
+            )
+        if NC == 1:
+            tle.gpu.warp_specialize(
+                [
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r0", fields=("a", "b0")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            0,
+                        ),
+                    ),
+                    (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
+                ],
+                worker_num_warps=[PW],
+                worker_num_regs=[24],
+            )
+        elif NC == 2:
+            tle.gpu.warp_specialize(
+                [
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r0", fields=("a", "b0")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            0,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r1", fields=("a", "b1")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            1,
+                        ),
+                    ),
+                    (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
+                ],
+                worker_num_warps=[CW, PW],
+                worker_num_regs=[128, 24],
+            )
+        elif NC == 3:
+            tle.gpu.warp_specialize(
+                [
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r0", fields=("a", "b0")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            0,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r1", fields=("a", "b1")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            1,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r2", fields=("a", "b2")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            2,
+                        ),
+                    ),
+                    (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
+                ],
+                worker_num_warps=[CW, CW, PW],
+                worker_num_regs=[128, 128, 24],
+            )
+        else:
+            tle.gpu.warp_specialize(
+                [
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r0", fields=("a", "b0")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            0,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r1", fields=("a", "b1")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            1,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r2", fields=("a", "b2")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            2,
+                        ),
+                    ),
+                    (
+                        _consume,
+                        (
+                            pipe.reader("r3", fields=("a", "b3")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            NC,
+                            GM,
+                            3,
+                        ),
+                    ),
+                    (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
+                ],
+                worker_num_warps=[CW, CW, CW, PW],
+                worker_num_regs=[128, 128, 128, 24],
+            )
+
+    @triton.jit
+    def _produce_fragmented(
+        writer,
+        A,
+        B,
+        Bsmall,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        GM: tl.constexpr,
+    ):
+        TN: tl.constexpr = BN + BN // 4
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
+        for block in range(tl.cdiv(K, BK)):
+            slot = writer.acquire(block)
+            tle.gpu.copy(A, slot.a, (BM, BK), (pm * BM, block * BK))
+            tle.gpu.copy(B, slot.b0, (BN, BK), (pn * TN, block * BK))
+            tle.gpu.copy(Bsmall, slot.b1, (BN // 4, BK), (pn * TN + BN, block * BK))
+            writer.commit(block)
+
+    @triton.jit
+    def _consume_fragmented(
+        reader,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        GM: tl.constexpr,
+        ROLE: tl.constexpr,
+    ):
+        TN: tl.constexpr = BN + BN // 4
+        CN: tl.constexpr = BN if ROLE == 0 else BN // 4
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
+        acc = tl.zeros((BM, CN), tl.float32)
+        for block in range(tl.cdiv(K, BK)):
+            ready = reader.wait(block)
+            if ROLE == 0:
+                b = ready.slot.b0
+            else:
+                b = ready.slot.b1
+            acc = tle.gpu.wgmma(ready.slot.a, b, acc, trans_b=True)
+            acc = tle.gpu.wgmma_wait(0, acc)
+            reader.release(block)
+        rm = pm * BM + tl.arange(0, BM)
+        rn = pn * TN + ROLE * BN + tl.arange(0, CN)
+        tl.store(
+            C + rm[:, None] * N + rn[None, :],
+            acc * tl.load(SA) * tl.load(SB),
+            (rm[:, None] < M) & (rn[None, :] < N),
+        )
+
+    _BASE_WS_JIT = ws_multi_kernel.fn.fn
+
+    def _set_fragmented_blocks(args):
+        _set_blocks(args)
+        args["Bsmall"].block_shape = [max(32, args["BN"] // 4), args["BK"]]
+
+    def _prune_fragmented_configs(configs, named_args, **kwargs):
+        args = {**named_args, **kwargs}
+        m, n, k = args["M"], args["N"], args["K"]
+        result = []
+        for config in configs:
+            p = config.kwargs
+            if p["FRAGMENTED"]:
+                if p["BM"] > m or p["BN"] + p["BN"] // 4 > n:
+                    continue
+                if p["STAGES"] > triton.cdiv(k, p["BK"]) + 1:
+                    continue
+                result.append(deepcopy(config))
+            else:
+                result.extend(_prune_ws_configs([config], args))
+        return result
+
+    @libentry()
+    @libtuner(
+        configs=runtime.ops_get_configs(
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+            yaml_path=_CONFIG_YAML,
+            pre_hook=_set_fragmented_blocks,
+        ),
+        key=["M", "N", "K"],
+        strategy=["default"] * 3,
+        warmup=5,
+        rep=10,
+        prune_configs_by={"early_config_prune": _prune_fragmented_configs},
+        flagtune_op_name="mm_w8a8_fp8",
+        flagtune_expand_op_name="mm_w8a8_fp8_musa_ws_fragmented",
+        flagtune_yaml_path=_CONFIG_YAML,
+        flagtune_pre_hook=_set_fragmented_blocks,
+    )
+    @triton.jit
+    def fragmented_kernel(
+        A,
+        B,
+        Bsmall,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BM: tl.constexpr,
+        BN: tl.constexpr,
+        BK: tl.constexpr,
+        NC: tl.constexpr,
+        CW: tl.constexpr,
+        PW: tl.constexpr,
+        STAGES: tl.constexpr,
+        GM: tl.constexpr,
+        FRAGMENTED: tl.constexpr,
+    ):
+        if not FRAGMENTED:
+            _BASE_WS_JIT(A, B, C, SA, SB, M, N, K, BM, BN, BK, NC, CW, PW, STAGES, GM)
+        else:
+            aa = tle.gpu.alloc(
+                (STAGES, BM, BK), A.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+            )
+            b0 = tle.gpu.alloc(
+                (STAGES, BN, BK), B.dtype, scope=tle.gpu.smem, nv_mma_shared_layout=True
+            )
+            b1 = tle.gpu.alloc(
+                (STAGES, BN // 4, BK),
+                B.dtype,
+                scope=tle.gpu.smem,
+                nv_mma_shared_layout=True,
+            )
+            pipe = tle.pipe(
+                capacity=STAGES,
+                scope="cta",
+                name="ab",
+                readers=("r0", "r1"),
+                a=aa,
+                b0=b0,
+                b1=b1,
+            )
+            tle.gpu.warp_specialize(
+                [
+                    (
+                        _consume_fragmented,
+                        (
+                            pipe.reader("r0", fields=("a", "b0")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            GM,
+                            0,
+                        ),
+                    ),
+                    (
+                        _consume_fragmented,
+                        (
+                            pipe.reader("r1", fields=("a", "b1")),
+                            C,
+                            SA,
+                            SB,
+                            M,
+                            N,
+                            K,
+                            BM,
+                            BN,
+                            BK,
+                            GM,
+                            1,
+                        ),
+                    ),
+                    (
+                        _produce_fragmented,
+                        (pipe.writer(), A, B, Bsmall, M, N, K, BM, BN, BK, GM),
+                    ),
+                ],
+                worker_num_warps=[CW, PW],
+                worker_num_regs=[128, 24],
+            )
+
+
+_WS_LAUNCH_CACHE = OrderedDict()
+
+
+def _launch_ws_tuned(kernel, grid, args):
+    """Cache compiled launch metadata, while keeping tuning and tensor data live."""
+    a, b = args[0], args[1]
+    out, sa, sb, m, n, k = args[-6:]
+    options = {"enable_backend_opt": True}
+    if _HAS_WS_SCHEDULER_CONTROL and min(m, n) >= 3072 and k >= 2048:
+        # Wider tiles benefit from SQMMA scheduling without max-ILP expansion.
+        # Older wheels retain their supported compiler options unchanged.
+        options["disable_max_ilp_scheduler"] = True
+    tuner = kernel.fn
+    if getattr(tuner._run_mode, "value", "normal") != "normal":
+        _WS_LAUNCH_CACHE.clear()
+        return kernel[grid](*args, **options)
+    kernel._apply_flagtune()
+    # The caller validates aligned E4M3 descriptors, scalar FP32 scales and a
+    # contiguous BF16 output. Only runtime layout and pointer specialization vary.
+    key = (
+        kernel,
+        tuner._flagtune_selection_token,
+        id(tuner.configs),
+        tuner.configs_hash,
+        tuner._benchmark_protocol,
+        tuple(options.items()),
+        a.base.device,
+        m,
+        n,
+        k,
+        tuple(a.strides),
+        tuple(b.strides),
+        out.data_ptr() % 16,
+        sa.data_ptr() % 16,
+        sb.data_ptr() % 16,
+    )
+    cached = _WS_LAUNCH_CACHE.get(key)
+    if cached is None:
+        compiled, meta = kernel[grid](*args, **options)
+        tail = tuple(
+            meta[name] for name in tuple(kernel.signature.parameters)[len(args) :]
+        )
+        launch_grid = (tuple(grid(meta)) + (1, 1))[:3]
+        cached = (meta, tail, compiled[launch_grid])
+        _WS_LAUNCH_CACHE[key] = cached
+        if len(_WS_LAUNCH_CACHE) > 128:
+            _WS_LAUNCH_CACHE.popitem(last=False)
+    else:
+        _WS_LAUNCH_CACHE.move_to_end(key)
+        meta, tail, launch = cached
+        args[0].block_shape = [meta["BM"], meta["BK"]]
+        args[1].block_shape = [meta["BN"], meta["BK"]]
+        if "FRAGMENTED" in meta:
+            args[2].block_shape = [max(32, meta["BN"] // 4), meta["BK"]]
+        launch(*args, *tail)
+
+
+def _set_descriptor_blocks(args):
+    if args["DESCRIPTOR"]:
+        args["A"].block_shape = [args["BLOCK_M"], args["BLOCK_K"]]
+        args["B"].block_shape = [args["BLOCK_N"], args["BLOCK_K"]]
+
+
+def _prune_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    candidates = []
+    for config in configs:
+        meta = config.kwargs
+        bm, bn, bk = (meta[x] for x in ("BLOCK_M", "BLOCK_N", "BLOCK_K"))
+        if bm > max(16, triton.next_power_of_2(m)) or bn > max(
+            64, triton.next_power_of_2(n)
+        ):
+            continue
+        if bk > max(32, triton.next_power_of_2(k)):
+            continue
+        if min(m, n) >= 128 and k >= 256 and bm < 32:
+            continue
+        if not args["DESCRIPTOR"]:
+            # Large TME tiles do not help the masked-load path. Keep its
+            # established geometry and tune K blocking and pipeline depth.
+            load_m = min(64, max(16, triton.next_power_of_2(m)))
+            load_n = min(128, max(64, triton.next_power_of_2(n)))
+            if k <= 128 or m <= 32 or n < 64:
+                load_n = 64
+            if k >= 2048 and m <= 128 and n <= 512:
+                load_m, load_n = (16 if m <= 64 else 32), 64
+            if (bm, bn, config.num_warps) != (load_m, load_n, 4):
+                continue
+            # Deep pipelines on unaligned K pitches cause pathological
+            # compilation in this backend; retain its bounded two-stage path.
+            if k % 16 and (
+                bk != max(32, min(256, triton.next_power_of_2(k)))
+                or config.num_stages > 2
+            ):
+                continue
+        if k <= 128 and (
+            config.num_stages != 1 or bk != max(32, triton.next_power_of_2(k))
+        ):
+            continue
+        if config.num_stages > triton.cdiv(k, bk * args["SPLIT_K"]) + 1:
+            continue
+        if meta["PERSISTENT"] and (
+            not args["DESCRIPTOR"]
+            or args["SPLIT_K"] != 1
+            or bm * bn < 65536
+            or triton.cdiv(m, bm) * triton.cdiv(n, bn) < 2 * args["NUM_SMS"]
+        ):
+            continue
+        # FlagTree's automatic block adjustment mutates candidate Configs.
+        # Keep the YAML space intact for subsequent, differently sized inputs.
+        candidates.append(deepcopy(config))
+    return candidates
+
+
+_DEFAULT_CONFIGS = runtime.ops_get_configs(
+    "mm_w8a8_fp8_musa_default", yaml_path=_CONFIG_YAML, pre_hook=_set_descriptor_blocks
+)
+
+
+@libentry()
+@libtuner(
+    configs=_DEFAULT_CONFIGS,
+    key=_TUNE_KEY,
+    strategy=["default"] * len(_TUNE_KEY),
+    warmup=5,
+    rep=10,
+    prune_configs_by={"early_config_prune": _prune_configs},
+    flagtune_op_name="mm_w8a8_fp8",
+    flagtune_expand_op_name="mm_w8a8_fp8_musa",
+    flagtune_yaml_path=_CONFIG_YAML,
+    flagtune_pre_hook=_set_descriptor_blocks,
+)
+@triton.jit
+def mm_w8a8_fp8_kernel(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    Bias,
+    SR,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK_STRIDE: tl.constexpr,
+    BN_STRIDE: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    NUM_SMS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    DESCRIPTOR: tl.constexpr,
+    SA_STRIDE: tl.constexpr,
+    SB_STRIDE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    PERSISTENT: tl.constexpr,
+):
+    # Keep physical FP8 instruction tiles when FlagTree shrinks logical blocks.
+    # This also lets masked loads cover sub-tile M/N and short K natively.
+    BM: tl.constexpr = BLOCK_M if DESCRIPTOR else max(16, BLOCK_M)
+    BN: tl.constexpr = BLOCK_N if DESCRIPTOR else max(64, BLOCK_N)
+    BK: tl.constexpr = BLOCK_K if DESCRIPTOR else max(32, BLOCK_K)
+    grid_m = tl.cdiv(M, BM)
+    grid_n = tl.cdiv(N, BN)
+    first = tl.program_id(0)
+    count = tl.cdiv(grid_m * grid_n - first, NUM_SMS) if PERSISTENT else 1
+    for tile in range(count):
+        pid = first + tile * NUM_SMS
+        group = pid // (GROUP_M * grid_n)
+        group_m = tl.minimum(GROUP_M, grid_m - group * GROUP_M)
+        pm = group * GROUP_M + pid % group_m
+        pn = pid % (GROUP_M * grid_n) // group_m
+        rm = pm * BM + tl.arange(0, BM)
+        rn = pn * BN + tl.arange(0, BN)
+        rk = tl.arange(0, BK)
+        split = tl.program_id(1) if SPLIT_K > 1 else 0
+        acc = tl.zeros((BM, BN), tl.float32)
+        for block in tl.range(split, tl.cdiv(K, BK), SPLIT_K):
+            if DESCRIPTOR:
+                a = tl.load_tensor_descriptor(A, [pm * BM, block * BK])
+                bt = tl.load_tensor_descriptor(B, [pn * BN, block * BK])
+            else:
+                k = block * BK + rk
+                a = tl.load(
+                    A + rm[:, None].to(tl.int64) * AM + k[None, :].to(tl.int64) * AK,
+                    (rm[:, None] < M) & (k[None, :] < K),
+                    0.0,
+                )
+                bt = tl.load(
+                    B
+                    + rn[:, None].to(tl.int64) * BN_STRIDE
+                    + k[None, :].to(tl.int64) * BK_STRIDE,
+                    (rn[:, None] < N) & (k[None, :] < K),
+                    0.0,
+                )
+            acc = tl.dot(a, tl.trans(bt), acc)
+        if SA_STRIDE == 0:
+            acc *= tl.load(SA)
+        else:
+            acc *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)[:, None]
+        if SB_STRIDE == 0:
+            acc *= tl.load(SB)
+        else:
+            acc *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)[None, :]
+        if SPLIT_K > 1:
+            ptr = C + split * M * N + rm[:, None] * N + rn[None, :]
+            tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
+        else:
+            if HAS_BIAS:
+                acc += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0)[None, :].to(
+                    tl.float32
+                )
+            if HAS_SR:
+                if SR_STRIDE == 0:
+                    acc /= tl.load(SR)
+                else:
+                    acc /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)[:, None]
+            if CM >= 0 and CN >= 0 and (M - 1) * CM + (N - 1) * CN < 2147483648:
+                ptr = C + rm[:, None] * CM + rn[None, :] * CN
+            else:
+                ptr = C + rm[:, None].to(tl.int64) * CM + rn[None, :].to(tl.int64) * CN
+            tl.store(ptr, acc, (rm[:, None] < M) & (rn[None, :] < N))
+
+
+@libentry()
+@triton.jit
+def _gemv_fp8(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    Bias,
+    SR,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    BN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    SA_STRIDE: tl.constexpr,
+    SB_STRIDE: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
+    TRANSPOSE: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+):
+    v = tl.program_id(0) * BLOCK_V + tl.arange(0, BLOCK_V)
+    outer = tl.program_id(1)
+    split = tl.program_id(2)
+    rk = tl.arange(0, BLOCK_K)
+    acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
+    for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+        kk = (block * SPLIT_K + split) * BLOCK_K + rk
+        if TRANSPOSE:
+            aa = tl.load(
+                A + v[:, None].to(tl.int64) * AM + kk[None, :],
+                (v[:, None] < M) & (kk[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(tl.float32)
+            acc += aa * bb[None, :]
+        else:
+            aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(tl.float32)
+            bb = tl.load(
+                B + v[:, None].to(tl.int64) * BN + kk[None, :],
+                (v[:, None] < N) & (kk[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            acc += aa[None, :] * bb
+    rm = v if TRANSPOSE else outer
+    rn = outer if TRANSPOSE else v
+    mask = (rm < M) & (rn < N)
+    value = tl.sum(acc, axis=1)
+    value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
+    value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
+    if SPLIT_K > 1:
+        ptr = C + split * M * N + rm.to(tl.int64) * N + rn
+    else:
+        if HAS_BIAS:
+            value += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0).to(tl.float32)
+        if HAS_SR:
+            value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
+        ptr = C + rm.to(tl.int64) * CM + rn.to(tl.int64) * CN
+    tl.store(ptr, value, mask)
+
+
+@libentry()
+@triton.jit
+def _reduce_split_k(
+    P,
+    C,
+    Bias,
+    SR,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    BLOCK: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BIAS_STRIDE: tl.constexpr,
+    HAS_SR: tl.constexpr,
+    SR_STRIDE: tl.constexpr,
+):
+    x = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    acc = tl.full((BLOCK,), 0, tl.float32)
+    for s in range(SPLIT_K):
+        acc += tl.load(P + s * M * N + x, x < M * N, 0.0)
+    if HAS_BIAS:
+        acc += tl.load(Bias + (x % N) * BIAS_STRIDE, x < M * N, 0.0).to(tl.float32)
+    if HAS_SR:
+        if SR_STRIDE == 0:
+            acc /= tl.load(SR)
+        else:
+            acc /= tl.load(SR + (x // N) * SR_STRIDE, x < M * N, 1.0)
+    tl.store(C + (x // N).to(tl.int64) * CM + (x % N).to(tl.int64) * CN, acc, x < M * N)
+
+
+def _select_split_k(m, n, k, descriptor):
+    if descriptor and 32 <= m < 128 and 512 < n <= 2048 and 4096 <= k < 8192:
+        # Two K partitions shorten long TME loops without large reductions.
+        return 2
+    if k >= 2048 and m <= 128 and n <= 512:
+        # Increase CTA count only for skinny grids. Partial sums stay in FP32.
+        bm = 16 if m <= 64 else 32
+        tiles = triton.cdiv(m, bm) * triton.cdiv(n, 64)
+        return min(
+            32,
+            triton.next_power_of_2(triton.cdiv(120, tiles)),
+            triton.next_power_of_2(triton.cdiv(k, 256)),
+        )
+    if descriptor and k >= 8192 and m <= 512 and m * n <= 512 * 1024:
+        # Bound workspace/reduction traffic while filling underoccupied TME
+        # grids. Wider M tiles amortize loads when a full tile is available.
+        bm = min(64 if n <= 512 else 128, max(32, triton.next_power_of_2(m)))
+        bn = 64 if m <= 64 else 128
+        tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        target_ctas = 128 if m <= 64 else 64
+        return min(16, triton.next_power_of_2(triton.cdiv(target_ctas, tiles)))
+    if not descriptor and m < 16 and k >= 2048 and n <= 8192:
+        tiles = triton.cdiv(n, 64)
+        return min(
+            8,
+            triton.next_power_of_2(triton.cdiv(128, tiles)),
+            max(1, k // 256),
+        )
+    return 1
+
+
+def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
+    m, k = a.shape
+    n = b.shape[1]
+    if (
+        (n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
+        and k >= 256
+        and a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == b.stride(0) == 1
+    ):
+        # Avoid padded MMA work for vector-shaped outputs.
+        # Very small output grids split K to expose independent CTAs.
+        split = 1
+        if m * n <= 128:
+            bv, bk = 1, 1024 if k >= 8192 else 512
+            split = min(16, max(1, triton.cdiv(k, bk)))
+        elif n == 1:
+            bv, bk = (8, 512) if k <= 2048 else (4, 1024)
+        elif k >= 2048 and n <= 512:
+            bv, bk = 4, 256
+            split = min(16, triton.cdiv(k, 1024))
+        elif k >= 2048:
+            bv, bk = 2, 1024
+        else:
+            bv, bk = 8, min(256, triton.next_power_of_2(k))
+        partial = (
+            torch.empty((split, m, n), device=a.device, dtype=torch.float32)
+            if split > 1
+            else out
+        )
+        epilogue = dict(
+            HAS_BIAS=bias is not None,
+            BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+            HAS_SR=sr is not None,
+            SR_STRIDE=sr_stride,
+        )
+        transpose = n <= 4
+        _gemv_fp8[
+            (triton.cdiv(m if transpose else n, bv), n if transpose else m, split)
+        ](
+            a,
+            b,
+            partial,
+            sa,
+            sb,
+            bias,
+            sr,
+            m,
+            n,
+            k,
+            a.stride(0),
+            b.stride(1),
+            out.stride(0),
+            out.stride(1),
+            sa_stride,
+            sb_stride,
+            **epilogue,
+            TRANSPOSE=transpose,
+            BLOCK_V=bv,
+            BLOCK_K=bk,
+            SPLIT_K=split,
+            num_warps=4,
+            num_stages=1,
+        )
+        if split > 1:
+            _reduce_split_k[(triton.cdiv(m * n, 512),)](
+                partial,
+                out,
+                bias,
+                sr,
+                m,
+                n,
+                out.stride(0),
+                out.stride(1),
+                SPLIT_K=split,
+                BLOCK=512,
+                **epilogue,
+                num_warps=4,
+            )
+        return out
+    # E5M2 descriptor loads fail S5000 accuracy checks. Masked FP8 loads also
+    # cover unaligned and non-contiguous inputs without BF16 dequantization.
+    descriptor = (
+        a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == 1
+        and b.stride(0) == 1
+        and a.stride(0) > 0
+        and b.stride(1) > 0
+        and a.stride(0) % 16 == 0
+        and b.stride(1) % 16 == 0
+        and a.data_ptr() % 16 == 0
+        and b.data_ptr() % 16 == 0
+        and min(m, n) >= 16
+        and k >= 16
+    )
+    split = _select_split_k(m, n, k, descriptor)
+    if (
+        _HAS_WS
+        and descriptor
+        and split == 1
+        and min(m, n, k) >= 64
+        and (k < 2048 or (m >= 128 and n >= 256))
+        and sa_stride == sb_stride == 0
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        aa = TensorDescriptor(a, [m, k], list(a.stride()), [64, 64])
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [64, 64])
+
+        # Medium dense tiles can avoid a third CTA wave with an N=128+32 split.
+        # FlagTune compares this geometry with the original equal-width layout.
+        if 1536 <= min(m, n) and max(m, n) <= 3072 and 1024 <= k <= 2048:
+            bsmall = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [32, 64])
+
+            def fragmented_grid(meta):
+                tn = (
+                    meta["BN"] + meta["BN"] // 4
+                    if meta["FRAGMENTED"]
+                    else meta["BN"] * meta["NC"]
+                )
+                return (triton.cdiv(m, meta["BM"]) * triton.cdiv(n, tn),)
+
+            _launch_ws_tuned(
+                fragmented_kernel,
+                fragmented_grid,
+                (aa, bb, bsmall, out, sa, sb, m, n, k),
+            )
+            return out
+
+        def ws_grid(meta):
+            return (
+                triton.cdiv(m, meta["BM"]) * triton.cdiv(n, meta["BN"] * meta["NC"]),
+            )
+
+        _launch_ws_tuned(ws_multi_kernel, ws_grid, (aa, bb, out, sa, sb, m, n, k))
+        return out
+    if descriptor:
+        # The config pre-hook installs the actual tile before every launch.
+        aa = TensorDescriptor(a, [m, k], list(a.stride()), [16, 32])
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), b.stride(0)], [64, 32])
+    else:
+        aa, bb = a, b
+    partial = (
+        torch.empty((split, m, n), device=a.device, dtype=torch.float32)
+        if split > 1
+        else out
+    )
+    epilogue = dict(
+        HAS_BIAS=bias is not None,
+        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+        HAS_SR=sr is not None,
+        SR_STRIDE=sr_stride,
+    )
+    # SQMMA instruction scheduling improves dense TME tiles on S5000.
+    compiler_options = {"enable_backend_opt": True} if descriptor else {}
+    num_sms = torch_device_fn.get_device_properties(a.device).multi_processor_count
+
+    def grid(meta):
+        bm = meta["BLOCK_M"] if descriptor else max(16, meta["BLOCK_M"])
+        bn = meta["BLOCK_N"] if descriptor else max(64, meta["BLOCK_N"])
+        tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        return (min(num_sms, tiles) if meta["PERSISTENT"] else tiles, split)
+
+    kernel = mm_w8a8_fp8_kernel
+    if k == 0:
+        # There is only an epilogue to execute. Bypass the autotuner, whose
+        # automatic block adjustment would otherwise shrink BLOCK_K to zero.
+        kernel = kernel.fn.fn
+        compiler_options.update(_DEFAULT_CONFIGS[0].all_kwargs())
+
+    kernel[grid](
+        aa,
+        bb,
+        partial,
+        sa,
+        sb,
+        bias,
+        sr,
+        m,
+        n,
+        k,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        num_sms,
+        SPLIT_K=split,
+        DESCRIPTOR=descriptor,
+        SA_STRIDE=sa_stride,
+        SB_STRIDE=sb_stride,
+        **epilogue,
+        **compiler_options,
+    )
+    if split > 1:
+        _reduce_split_k[(triton.cdiv(m * n, 512),)](
+            partial,
+            out,
+            bias,
+            sr,
+            m,
+            n,
+            out.stride(0),
+            out.stride(1),
+            SPLIT_K=split,
+            BLOCK=512,
+            **epilogue,
+            num_warps=4,
+        )
+    return out
+
+
+def _scale_stride(scale, x, axis, name):
+    if not isinstance(scale, torch.Tensor) or scale.dtype != torch.float32:
+        raise TypeError(f"{name} must be a float32 tensor")
+    if scale.device != x.device:
+        raise ValueError(f"{name} must be on the same device as the inputs")
+    if scale.numel() == 1 and scale.ndim <= 2:
+        return 0
+    size = x.shape[axis]
+    shape = (size, 1) if axis == 0 else (1, size)
+    if scale.shape == (size,):
+        return scale.stride(0)
+    if scale.shape == shape:
+        return scale.stride(axis)
+    raise ValueError(f"{name} must be a scalar, ({size},), or {shape}")
+
+
+def mm_w8a8_fp8(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out=None,
+):
+    """FP8 matmul with the torch._scaled_mm interface on MThreads.
+
+    scale_a is scalar, (M,), or (M, 1); scale_b is scalar, (N,), or (1, N).
+    Scales must be float32 tensors on the input device. Following torch_musa,
+    scale_result divides the scaled product plus bias, for all output dtypes;
+    it can be scalar, (M,), or (M, 1). Output defaults to input.dtype.
+    Both use_fast_accum settings use FP32 accumulation, as in torch_musa.
+    BF16/FP16 inputs and K-block scales are not supported.
+    """
+    a, b = input, mat2
+    if a.ndim != 2 or b.ndim != 2:
+        raise ValueError("mm_w8a8_fp8 expects two-dimensional inputs")
+    if out is None:
+        dtype = a.dtype if out_dtype is None else out_dtype
+        out = torch.empty((a.shape[0], b.shape[1]), device=a.device, dtype=dtype)
+    return mm_w8a8_fp8_out(
+        a, b, scale_a, scale_b, bias, scale_result, out_dtype, use_fast_accum, out=out
+    )
+
+
+def mm_w8a8_fp8_out(
+    input,
+    mat2,
+    scale_a,
+    scale_b,
+    bias=None,
+    scale_result=None,
+    out_dtype=None,
+    use_fast_accum=False,
+    *,
+    out,
+):
+    """torch._scaled_mm.out-compatible variant with a reusable output."""
+    a, b = input, mat2
+    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+        raise ValueError("mm_w8a8_fp8 expects compatible two-dimensional inputs")
+    if a.device != b.device or a.device != out.device:
+        raise ValueError("inputs and out must be on the same device")
+    fp8_dtypes = (torch.float8_e4m3fn, torch.float8_e5m2)
+    if a.dtype not in fp8_dtypes or b.dtype not in fp8_dtypes:
+        raise TypeError("mm_w8a8_fp8 requires FP8 inputs")
+    if out.dtype not in (*fp8_dtypes, torch.float16, torch.bfloat16, torch.float32):
+        raise TypeError("unsupported output dtype")
+    if out_dtype is not None and out_dtype != out.dtype:
+        raise ValueError("out_dtype must match out.dtype")
+    if not isinstance(use_fast_accum, bool):
+        raise TypeError("use_fast_accum must be a bool")
+    sa_stride = _scale_stride(scale_a, a, 0, "scale_a")
+    sb_stride = _scale_stride(scale_b, b, 1, "scale_b")
+    sr_stride = (
+        _scale_stride(scale_result, a, 0, "scale_result")
+        if scale_result is not None
+        else 0
+    )
+    if bias is not None:
+        bias_dtypes = (
+            (torch.float32,)
+            if out.dtype == torch.float32
+            else (torch.float16, torch.bfloat16)
+        )
+        if not isinstance(bias, torch.Tensor) or bias.dtype not in bias_dtypes:
+            raise TypeError("bias has an unsupported dtype for the output")
+        if bias.device != a.device or bias.numel() != b.shape[1]:
+            raise ValueError("bias must contain N elements on the input device")
+        bias = bias.reshape(-1)
+    if tuple(out.shape) != (a.shape[0], b.shape[1]):
+        out.resize_(a.shape[0], b.shape[1])
+    if out.numel() == 0:
+        return out
+    with torch_device_fn.device(a.device):
+        return _launch(
+            a,
+            b,
+            out,
+            scale_a,
+            scale_b,
+            sa_stride,
+            sb_stride,
+            bias,
+            scale_result,
+            sr_stride,
+        )

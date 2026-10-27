@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
@@ -49,7 +63,7 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", [0])
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if vendor_name == "mthreads" else CUDA_DEVICES,
+    [flag_gems.device] if vendor_name in ["mthreads", "sunrise"] else CUDA_DEVICES,
 )
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @torch.inference_mode()
@@ -98,10 +112,9 @@ def test_concat_and_cache_mla(
             convert_fp8(ref_kv_cache, ref_temp, scale.item(), kv_dtype=kv_cache_dtype)
         else:
             ref_kv_cache = utils.to_reference(ref_temp)
-        with flag_gems.use_gems():
-            flag_gems.concat_and_cache_mla(
-                kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
-            )
+        flag_gems.concat_and_cache_mla(
+            kv_c, k_pe, kv_cache, slot_mapping, kv_cache_dtype, scale
+        )
 
         if kv_cache_dtype == "fp8":
             result_temp = torch.empty_like(kv_cache, dtype=torch.uint8)

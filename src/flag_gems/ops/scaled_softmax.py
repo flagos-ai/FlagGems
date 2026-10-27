@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -123,7 +137,7 @@ def scaled_softmax_forward_kernel(
 
 
 def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
-    logger.debug("GEMS SCALED SOFTMAX FORWARD")
+    logger.debug("GEMS SCALED_SOFTMAX_FORWARD")
     assert input_t.dim() == 4, "expected 4D tensor"
     batch_size, attn_heads, query_seq_len, key_seq_len = input_t.shape
     assert input_t.dtype in [
@@ -243,7 +257,7 @@ def scaled_softmax_backward_kernel(
 def scaled_softmax_backward(
     grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float
 ):
-    logger.debug("GEMS SCALED SOFTMAX BACKWARD")
+    logger.debug("GEMS SCALED_SOFTMAX_BACKWARD")
     assert grad_output.dim() == 4, "expected 4D tensor"
     assert softmax_results.dim() == 4, "expected 4D tensor"
     assert grad_output.dtype in [

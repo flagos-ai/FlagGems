@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -50,10 +64,9 @@ def test_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed, scale
     ref_out, ref_scale = native_per_token_group_quant_fp8(
         ref_x, group_size, scale_ue8m0=scale_ue8m0
     )
-    with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(
-            x, group_size, scale_ue8m0=scale_ue8m0
-        )
+    out, scale = flag_gems.per_token_group_quant_fp8(
+        x, group_size, scale_ue8m0=scale_ue8m0
+    )
 
     utils.gems_assert_close(scale, ref_scale, dtype=torch.float32)
 

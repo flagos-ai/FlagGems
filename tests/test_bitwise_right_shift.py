@@ -1,19 +1,40 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
-BITWISE_SHAPES = [
-    ((512, 1024), (512, 1024)),
-    ((256, 512), (1, 512)),
-    ((256, 512), (256, 1)),
-    ((1, 512), (256, 512)),
-    ((256, 1), (256, 512)),
-    ((1024,), ()),
-    ((), (1024,)),
-]
+if cfg.QUICK_MODE:
+    BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+        ((1024,), ()),
+    ]
+else:
+    BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+        ((256, 512), (1, 512)),
+        ((256, 512), (256, 1)),
+        ((1, 512), (256, 512)),
+        ((256, 1), (256, 512)),
+        ((1024,), ()),
+        ((), (1024,)),
+    ]
 
 
 @pytest.mark.bitwise_right_shift
@@ -29,17 +50,21 @@ def test_bitwise_right_shift(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_out = torch.bitwise_right_shift(ref_a, ref_b)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_right_shift(res_a, res_b)
+    res_out = flag_gems.bitwise_right_shift(res_a, res_b)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-INPLACE_BITWISE_SHAPES = [
-    ((512, 1024), (512, 1024)),
-    ((256, 512), (1, 512)),
-    ((256, 512), (256, 1)),
-    ((1024,), ()),
-]
+if cfg.QUICK_MODE:
+    INPLACE_BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+    ]
+else:
+    INPLACE_BITWISE_SHAPES = [
+        ((512, 1024), (512, 1024)),
+        ((256, 512), (1, 512)),
+        ((256, 512), (256, 1)),
+        ((1024,), ()),
+    ]
 
 
 @pytest.mark.bitwise_right_shift
@@ -55,7 +80,6 @@ def test_bitwise_right_shift_(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.bitwise_right_shift_(ref_b)
-    with flag_gems.use_gems():
-        res_a.bitwise_right_shift_(res_b)
+    flag_gems.bitwise_right_shift_(res_a, res_b)
 
     utils.gems_assert_close(res_a, ref_a, dtype)

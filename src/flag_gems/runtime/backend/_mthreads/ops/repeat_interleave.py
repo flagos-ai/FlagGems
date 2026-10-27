@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -11,9 +25,19 @@ from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-logger = logging.getLogger(
-    f"flag_gems.runtime.backend._mthreads.ops.{__name__.split('.')[-1]}"
-)
+logger = logging.getLogger(__name__)
+
+
+def _resolve_lazy_view(tensor):
+    # repeat_interleave is a fallthrough for PyTorch's Conjugate/Negative
+    # dispatch keys, so the backend owns resolving lazy conjugate/negative
+    # views. The kernels below read raw storage and would otherwise use the
+    # un-resolved physical values, so materialise the logical ones here.
+    if tensor.is_neg():
+        return torch.neg(torch._neg_view(tensor))
+    if tensor.is_conj():
+        return tensor.resolve_conj()
+    return tensor
 
 
 @pointwise_dynamic(num_inputs=1, promotion_methods=[(0, "DEFAULT")])
@@ -23,6 +47,7 @@ def copy_func(x):
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
+    inp = _resolve_lazy_view(inp)
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_INT")
     if dim is None:
         inp = inp.flatten()
@@ -435,6 +460,9 @@ def fused_repeat_interleave_dim0(inp, repeats, dim):
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
+    inp = _resolve_lazy_view(inp)
+    if isinstance(repeats, torch.Tensor):
+        repeats = _resolve_lazy_view(repeats)
     logger.debug("GEMS_MTHREADS REPEAT_INTERLEAVE_SELF_TENSOR")
 
     if repeats.numel() == 0:

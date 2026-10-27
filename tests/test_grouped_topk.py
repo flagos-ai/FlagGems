@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -101,17 +115,16 @@ def test_grouped_topk(
     ref_topk_weights = utils.to_reference(ref_topk_weights)
     ref_topk_ids = utils.to_reference(ref_topk_ids)
 
-    with flag_gems.use_gems():
-        res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
-            scores.clone(),
-            n_group,
-            topk_group,
-            topk,
-            renormalize,
-            routed_scaling_factor,
-            bias,
-            scoring_func,
-        )
+    res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
+        scores.clone(),
+        n_group,
+        topk_group,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        bias,
+        scoring_func,
+    )
 
     utils.gems_assert_equal(res_topk_ids, ref_topk_ids)
 
@@ -163,17 +176,16 @@ def test_grouped_topk_large_scale(
     ref_topk_weights = utils.to_reference(ref_topk_weights)
     ref_topk_ids = utils.to_reference(ref_topk_ids)
 
-    with flag_gems.use_gems():
-        res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
-            scores.clone(),
-            n_group,
-            topk_group,
-            topk,
-            renormalize,
-            routed_scaling_factor,
-            bias,
-            scoring_func,
-        )
+    res_topk_weights, res_topk_ids = flag_gems.grouped_topk(
+        scores.clone(),
+        n_group,
+        topk_group,
+        topk,
+        renormalize,
+        routed_scaling_factor,
+        bias,
+        scoring_func,
+    )
 
     utils.gems_assert_equal(res_topk_ids, ref_topk_ids)
 
@@ -203,10 +215,9 @@ def test_grouped_topk_scaling_factor(routed_scaling_factor, renormalize):
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
 
-    with flag_gems.use_gems():
-        res_weights, res_ids = flag_gems.grouped_topk(
-            scores.clone(), 4, 2, 2, renormalize, routed_scaling_factor, bias, 0
-        )
+    res_weights, res_ids = flag_gems.grouped_topk(
+        scores.clone(), 4, 2, 2, renormalize, routed_scaling_factor, bias, 0
+    )
 
     utils.gems_assert_equal(res_ids, ref_ids)
 
@@ -236,10 +247,9 @@ def test_grouped_topk_single_token(renormalize, scoring_func):
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
 
-    with flag_gems.use_gems():
-        res_weights, res_ids = flag_gems.grouped_topk(
-            scores.clone(), 4, 2, 2, renormalize, 1.0, bias, scoring_func
-        )
+    res_weights, res_ids = flag_gems.grouped_topk(
+        scores.clone(), 4, 2, 2, renormalize, 1.0, bias, scoring_func
+    )
 
     utils.gems_assert_equal(res_ids, ref_ids)
 
@@ -267,10 +277,9 @@ def test_grouped_topk_sigmoid(renormalize):
     ref_weights = utils.to_reference(ref_weights)
     ref_ids = utils.to_reference(ref_ids)
 
-    with flag_gems.use_gems():
-        res_weights, res_ids = flag_gems.grouped_topk(
-            scores.clone(), 4, 2, 2, renormalize, 1.0, bias, 1
-        )
+    res_weights, res_ids = flag_gems.grouped_topk(
+        scores.clone(), 4, 2, 2, renormalize, 1.0, bias, 1
+    )
 
     utils.gems_assert_equal(res_ids, ref_ids)
 

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
@@ -8,9 +22,13 @@ import flag_gems
 
 from . import base
 
-# The Gluon fp8_einsum kernel requires Triton >= 3.6.0.
+# The Gluon fp8_einsum kernel requires Triton >= 3.6.0 and specific TLE features.
+fp8_einsum = None
 if triton.__version__ >= "3.6.0":
-    from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
+    try:
+        from flag_gems.runtime.backend._nvidia.hopper.ops.fp8_einsum import fp8_einsum
+    except (AttributeError, ImportError):
+        pass
 
 DEFAULT_BLOCK_SHAPE = [128, 128]
 
@@ -165,8 +183,10 @@ def _gems_fp8_einsum_wrapper(x_data, x_scale, y_data, y_scale):
 
 @pytest.mark.fp8_einsum
 @pytest.mark.skipif(
-    not (HAS_DEEPGEMM and CUDA_AVAILABLE and TRITON_VERSION_OK),
-    reason="requires DeepGEMM, NVIDIA Hopper architecture and Triton >= 3.6.0",
+    not (
+        HAS_DEEPGEMM and CUDA_AVAILABLE and TRITON_VERSION_OK and fp8_einsum is not None
+    ),
+    reason="requires DeepGEMM, Hopper GPU, Triton >= 3.6.0 with TLE support",
 )
 def test_perf_fp8_einsum_gems_vs_deepgemm():
     """Benchmark FlagGems vs DeepGEMM on block-wise FP8 ``bhr,hdr->bhd`` einsum."""

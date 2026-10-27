@@ -265,9 +265,11 @@ async def async_request_openai_completions(
         trust_env=True, timeout=AIOHTTP_TIMEOUT
     ) as session:
         payload = {
-            "model": request_func_input.model_name
-            if request_func_input.model_name
-            else request_func_input.model,
+            "model": (
+                request_func_input.model_name
+                if request_func_input.model_name
+                else request_func_input.model
+            ),
             "prompt": request_func_input.prompt,
             "temperature": 0.0,
             "repetition_penalty": 1.0,
@@ -366,9 +368,11 @@ async def async_request_openai_chat_completions(
         if request_func_input.multi_modal_content:
             content.append(request_func_input.multi_modal_content)
         payload = {
-            "model": request_func_input.model_name
-            if request_func_input.model_name
-            else request_func_input.model,
+            "model": (
+                request_func_input.model_name
+                if request_func_input.model_name
+                else request_func_input.model
+            ),
             "messages": [
                 {"role": "user", "content": content},
             ],
@@ -467,9 +471,11 @@ async def async_request_openai_audio(
     ) as session:
         content = [{"type": "text", "text": request_func_input.prompt}]
         payload = {
-            "model": request_func_input.model_name
-            if request_func_input.model_name
-            else request_func_input.model,
+            "model": (
+                request_func_input.model_name
+                if request_func_input.model_name
+                else request_func_input.model
+            ),
             "temperature": 0.0,
             "max_completion_tokens": request_func_input.output_len,
             "stream": True,

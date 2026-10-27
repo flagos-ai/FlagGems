@@ -1,3 +1,19 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import itertools
+
 import pytest
 import torch
 
@@ -20,8 +36,7 @@ def test_to_dtype(shape, dtype):
     x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = ref_x.to(dtype)
-    with flag_gems.use_gems():
-        out = x.to(dtype)
+    out = flag_gems.to_copy(x, dtype=dtype)
     utils.gems_assert_equal(out, ref_out)
 
 
@@ -37,8 +52,7 @@ def test_to_copy_dtype_cast(shape, target_dtype):
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=target_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=target_dtype)
+    res_out = flag_gems.to_copy(x, dtype=target_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -56,12 +70,11 @@ def test_to_copy_preserve_strides(memory_format):
         dtype=ref_x.dtype,
         memory_format=memory_format,
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(
-            x,
-            dtype=x.dtype,
-            memory_format=memory_format,
-        )
+    res_out = flag_gems.to_copy(
+        x,
+        dtype=x.dtype,
+        memory_format=memory_format,
+    )
     utils.gems_assert_equal(res_out, ref_out)
     if memory_format is torch.preserve_format:
         assert res_out.stride() == ref_out.stride()
@@ -69,13 +82,18 @@ def test_to_copy_preserve_strides(memory_format):
         assert res_out.is_contiguous()
 
 
+# Generate (src, dst) pairs excluding same-dtype conversions
+_FLOAT_TO_FLOAT_PAIRS = [
+    (s, d)
+    for s, d in itertools.product(utils.FLOAT_DTYPES, utils.ALL_FLOAT_DTYPES)
+    if s != d
+]
+
+
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("src_dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.parametrize("src_dtype,dst_dtype", _FLOAT_TO_FLOAT_PAIRS)
 def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
-    if src_dtype == dst_dtype:
-        pytest.skip("Skip same dtype conversion")
     if flag_gems.vendor_name == "ascend" and (
         src_dtype == torch.bfloat16 or dst_dtype == torch.bfloat16
     ):
@@ -83,8 +101,7 @@ def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -92,14 +109,16 @@ def test_to_copy_float_to_float(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("src_dtype", utils.ALL_FLOAT_DTYPES)
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
     if flag_gems.vendor_name == "ascend" and src_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
     x = torch.randn(shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -107,67 +126,100 @@ def test_to_copy_float_to_int(shape, src_dtype, dst_dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("src_dtype", [torch.int8, torch.int16, torch.int32])
 @pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy_int_to_float(shape, src_dtype, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
-    x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
+
+
+# Generate (src, dst) int pairs excluding same-dtype conversions
+_INT_DTYPES = [torch.int8, torch.int16, torch.int32]
+_INT_TO_INT_PAIRS = list(itertools.permutations(_INT_DTYPES, 2))
 
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
-@pytest.mark.parametrize("src_dtype", [torch.int8, torch.int16, torch.int32])
-@pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
+@pytest.mark.parametrize("src_dtype,dst_dtype", _INT_TO_INT_PAIRS)
 def test_to_copy_int_to_int(shape, src_dtype, dst_dtype):
-    if src_dtype == dst_dtype:
-        pytest.skip("Skip same dtype conversion")
-    x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(-100, 100, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("src_dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy_float_to_uint8(shape, src_dtype):
     if flag_gems.vendor_name == "ascend" and src_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
     x = torch.randint(0, 255, shape, dtype=src_dtype, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=torch.uint8)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=torch.uint8)
+    res_out = flag_gems.to_copy(x, dtype=torch.uint8)
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dst_dtype", utils.ALL_FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy_uint8_to_float(shape, dst_dtype):
     if flag_gems.vendor_name == "ascend" and dst_dtype == torch.bfloat16:
         pytest.skip("Ascend NPU may have issues with bfloat16")
-    x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)
 
 
 @pytest.mark.to_copy
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dst_dtype", [torch.int8, torch.int16, torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_to_copy_uint8_to_int(shape, dst_dtype):
-    x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
+    if flag_gems.vendor_name == "cambricon":
+        # Cambricon torch.randint currently does not support int8/int16 generation.
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device="cpu").to(
+            flag_gems.device
+        )
+    else:
+        x = torch.randint(0, 255, shape, dtype=torch.uint8, device=flag_gems.device)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten._to_copy(ref_x, dtype=dst_dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._to_copy(x, dtype=dst_dtype)
+    res_out = flag_gems.to_copy(x, dtype=dst_dtype)
     utils.gems_assert_equal(res_out, ref_out)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -27,16 +41,14 @@ def test_eye(shape, dtype):
     n, m = shape
 
     # test eye(n, m) without dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, m, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,
@@ -44,16 +56,14 @@ def test_eye(shape, dtype):
     )
 
     # test eye(n)
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, device=flag_gems.device)
+    res_out = flag_gems.eye(n, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye(n, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,
@@ -79,16 +89,14 @@ def test_eye_m(shape, dtype):
     n, m = shape
 
     # test eye(n, m) without dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, m, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,

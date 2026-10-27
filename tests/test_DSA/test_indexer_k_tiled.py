@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -149,9 +163,6 @@ def reference_lighting_indexer_implementation(q, kv, weights, ks, ke):
     )
 
 
-@pytest.mark.skip(
-    "#2353: RuntimeError: Cannot call @triton.jit'd outside of the scope of a kernel"
-)
 @pytest.mark.triton_lighting_indexer_k_tiled_interface
 @pytest.mark.parametrize("seq_len_q", [1024, 2048, 4096])
 @pytest.mark.parametrize("seq_len_kv", [2048, 4096, 8192])

@@ -1,57 +1,229 @@
 import logging
 import math
+import os
 
 import torch
 import triton
+import triton.experimental.tle as tle
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.tle_copy import (
+    _DSA_BUF_DTYPE,
+    _DSA_MOVE_DTYPE,
+    _tle_dsa_row_copy_kernel,
+    tle_copy,
+    tle_dma_available,
+)
+
 logger = logging.getLogger(__name__)
+
+# Grid used for the hand-written reflected-edge payload. Saturates the DMA
+# engines from ~32 clusters onward on XPU3 for the giant-shape edge work.
+_EDGE_GRID = 32
+
+
+def _tle_interior_copy(x: torch.Tensor, out: torch.Tensor, pad_left: int, W_in: int):
+    """Bulk-copy the interior in[b, :] -> out[b, pad_left : pad_left+W_in) on the
+    tle.dsa SDNN path, with a tile tuned for this contiguous-src/strided-row-dst
+    shape.
+
+    `tle_copy`'s generic `_dsa_tile` picks the widest row that fits the on-chip
+    budget (2-byte dtypes -> 2048-col x 8-row). On this giant reflection-pad
+    shape a narrower row with more rows per tile (1024-col x 16-row) moves the
+    same bytes ~15% faster (fp16/bf16 31.5us -> 27.7us on [32,64,2048]); 4-byte
+    already sits at its optimum (1024-col x 8-row), so only the tile shape moves.
+    Returns True on success, False to let the caller keep its own fallback.
+    """
+    if not tle_dma_available():
+        return False
+    es = x.element_size()
+    move = _DSA_MOVE_DTYPE.get(es)
+    if move is None:
+        return False
+    W_out = out.shape[-1]
+    B = int(math.prod(x.shape[:-1])) if x.dim() > 1 else 1
+    try:
+        src_v = x.reshape(B, W_in).view(move)
+        dst_v = out.view(B, W_out).view(move).narrow(1, pad_left, W_in)
+    except RuntimeError:
+        return False
+    styp = _DSA_BUF_DTYPE[move]
+    rows_block, cols_block = (16, 1024) if es == 2 else (8, 1024)
+    cols_block = min(cols_block, triton.next_power_of_2(W_in))
+    row_blocks = triton.cdiv(B, rows_block)
+    grid = (row_blocks, triton.cdiv(W_in, cols_block))
+    _tle_dsa_row_copy_kernel[grid](
+        src_v,
+        dst_v,
+        B,
+        W_in,
+        src_v.stride(0),
+        dst_v.stride(0),
+        1,
+        row_blocks,
+        1,
+        1,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        rows_block,
+        cols_block,
+        False,
+        styp,
+        styp,
+        False,
+        False,
+        is_sdnn=True,
+        num_stages=2,
+    )
+    return True
+
+
+_PAYLOAD_OBJ = os.path.join(
+    os.path.dirname(__file__), "..", "payload", "obj", "reflection_pad1d.o"
+)
+
+# The hand-written reflected-edge payload is loaded via tle.raw's object= loader,
+# which only exists on newer tle builds.  On older environments the decorator
+# raises at import time (e.g. "RawJITFunction.__init__() got an unexpected
+# keyword argument 'object'").  Guard the whole declaration so an unsupported
+# tle leaves _HAS_RAW_EDGES False and the pure-Triton edge kernels below run
+# instead -- a failure here must never crash the vendor-lib import.
+_HAS_RAW_EDGES = False
+try:
+
+    @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
+    def pad_edges3(out, inp, B, W_in, W_out, pad_left, pad_right, es, pid, npid): ...
+
+    @triton.jit(
+        do_not_specialize=[
+            "B",
+            "W_in",
+            "W_out",
+            "pad_left",
+            "pad_right",
+            "es",
+            "npid",
+        ]
+    )
+    def pad1d_raw_edges_kernel(
+        out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, npid
+    ):
+        pid = tl.program_id(axis=0)
+        tle.raw.call(
+            pad_edges3,
+            (out_i8, in_i8, B, W_in, W_out, pad_left, pad_right, es, pid, npid),
+        )
+
+    _HAS_RAW_EDGES = True
+except Exception:  # pragma: no cover - environment without tle.raw object= support
+    _HAS_RAW_EDGES = False
 
 
 @triton.jit
 def reflection_pad1d_kernel(
-    in_ptr, out_ptr, B, W_in, pad_left, W_out, BLOCK_W: tl.constexpr
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    W_out,
+    total_out,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr = True,
 ):
-    pid_b = tl.program_id(axis=0)
-    pid_w = tl.program_id(axis=1)
+    pid = tl.program_id(axis=0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
 
-    # Use modulo wrap to keep all store indices in [0, W_out).
-    # On KunlunXin, masked tl.store does not suppress writes for masked-out
-    # threads without TRITONXPU_STORE_MASK_SIM=1, causing corruption of
-    # adjacent batch row data.  The modulo wrap means tail-block threads simply
-    # re-write already-computed values to valid positions — harmless.
-    offs_w = (pid_w * BLOCK_W + tl.arange(0, BLOCK_W)) % W_out
+    b = o // W_out
+    w_idx = o - b * W_out
 
-    base_in = pid_b * W_in
-    base_out = pid_b * W_out
-
-    # Compute reflected indices
-    x = offs_w.to(tl.int32) - pad_left  # shift by left pad
-    Wm1 = W_in - 1
-    p = 2 * Wm1  # period for reflection; guaranteed > 0 when this kernel is used
-
+    x = w_idx.to(tl.int32) - pad_left
+    pW = 2 * (W_in - 1)
     t = tl.abs(x)
-    m = t % p
-    iw = tl.where(m < W_in, m, p - m)
+    iw = tl.where(t < W_in, t, pW - t)
 
-    # No mask needed: offs_w is in [0, W_out) and iw is in [0, W_in)
-    vals = tl.load(in_ptr + base_in + iw)
-    tl.store(out_ptr + base_out + offs_w, vals)
+    in_offs = b * W_in + iw
+    if NEED_MASK:
+        mask = o < total_out
+        vals = tl.load(in_ptr + in_offs, mask=mask)
+        tl.store(out_ptr + o, vals, mask=mask)
+    else:
+        vals = tl.load(in_ptr + in_offs)
+        tl.store(out_ptr + o, vals)
 
 
 @triton.jit
-def _copy_rows_kernel(in_ptr, out_ptr, B, W, BLOCK_W: tl.constexpr):
-    pid_b = tl.program_id(axis=0)
-    pid_w = tl.program_id(axis=1)
+def copy_tensor_kernel(in_ptr, out_ptr, total, BLOCK: tl.constexpr):
+    pid = tl.program_id(axis=0)
+    o = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = o < total
+    vals = tl.load(in_ptr + o, mask=mask)
+    tl.store(out_ptr + o, vals, mask=mask)
 
-    # Use modulo wrap to avoid masked stores (same KunlunXin workaround).
-    offs_w = (pid_w * BLOCK_W + tl.arange(0, BLOCK_W)) % W
 
-    base = pid_b * W
-    vals = tl.load(in_ptr + base + offs_w)
-    tl.store(out_ptr + base + offs_w, vals)
+@triton.jit
+def pad1d_side_kernel(
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    W_out,
+    total_side,
+    PAD: tl.constexpr,
+    SIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    idx = pid * BLOCK + tl.arange(0, BLOCK)
+    idx_c = tl.minimum(idx, total_side - 1)
+    m = idx < total_side
+    b = idx_c // PAD
+    j = idx_c - b * PAD
+    if SIDE == 0:
+        src = pad_left - j
+        dst = b * W_out + j
+    else:
+        src = W_in - 2 - j
+        dst = b * W_out + W_in + pad_left + j
+    v = tl.load(in_ptr + b * W_in + src)
+    tl.store(out_ptr + dst, v, mask=m)
+
+
+@triton.jit
+def pad1d_both_sides_kernel(
+    in_ptr,
+    out_ptr,
+    W_in,
+    pad_left,
+    pad_right,
+    W_out,
+    pad_sum,
+    total_pad,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    idx = pid * BLOCK + tl.arange(0, BLOCK)
+    m = idx < total_pad
+    idx_c = tl.minimum(idx, total_pad - 1)
+    b = idx_c // pad_sum
+    r = idx_c - b * pad_sum
+    is_left = r < pad_left
+    j_right = r - pad_left
+    src = tl.where(is_left, pad_left - r, W_in - 2 - j_right)
+    dst = tl.where(
+        is_left,
+        b * W_out + r,
+        b * W_out + W_in + pad_left + j_right,
+    )
+    v = tl.load(in_ptr + b * W_in + src)
+    tl.store(out_ptr + dst, v, mask=m)
 
 
 def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = None):
@@ -90,18 +262,15 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
             raise ValueError("out must be on the same device as input")
         out = out.contiguous()
 
-    # No padding: just copy
+    BLOCK = 1024
+
     if pad_left == 0 and pad_right == 0:
-        if W_out != W_in:
-            raise RuntimeError(
-                "Internal error: W_out should equal W_in when no padding"
-            )
-        grid = (B, triton.cdiv(W_in, 256))
+        total = B * W_in
+        grid = (triton.cdiv(total, BLOCK),)
         with torch_device_fn.device(x.device):
-            _copy_rows_kernel[grid](x, out, B, W_in, BLOCK_W=256)
+            copy_tensor_kernel[grid](x, out, total, BLOCK=BLOCK)
         return out
 
-    # Validate reflection padding constraints
     if W_in < 2:
         raise ValueError(
             "input width must be at least 2 for reflection padding when padding > 0"
@@ -111,9 +280,80 @@ def _launch_reflection_pad1d(input: torch.Tensor, padding, out: torch.Tensor = N
             "padding values must be less than the input width for reflection padding"
         )
 
-    grid = (B, triton.cdiv(W_out, 256))
+    total_out = B * W_out
+    if total_out >= 262144:
+        # Fast path: on-chip DMA interior copy (tle.dsa / tle.gpu) + reflected
+        # edges.  These rely on tle features that older/other tle builds may not
+        # expose (e.g. dsa.UNI_SRAM, the raw object= loader); such a mismatch
+        # raises at Triton compile time instead of returning False.  Guard the
+        # whole attempt so any failure cleanly falls through to the generic
+        # pure-Triton reflection kernel below (a full recompute of `out`, so a
+        # partial fast-path write is harmless).
+        try:
+            with torch_device_fn.device(x.device):
+                # `mid` is a pure strided view (no data movement, no launch).
+                mid = out.narrow(-1, pad_left, W_in)
+                if _tle_interior_copy(x, out, pad_left, W_in) or tle_copy(x, mid):
+                    pad_sum = pad_left + pad_right
+                    if pad_sum > 0:
+                        es = x.element_size()
+                        npid = min(_EDGE_GRID, B) if B > 0 else 1
+                        _edges_done = False
+                        if _HAS_RAW_EDGES:
+                            try:
+                                in_i8 = x.view(torch.int8)
+                                out_i8 = out.view(torch.int8)
+                                pad1d_raw_edges_kernel[(npid,)](
+                                    out_i8,
+                                    in_i8,
+                                    B,
+                                    W_in,
+                                    W_out,
+                                    pad_left,
+                                    pad_right,
+                                    es,
+                                    npid,
+                                )
+                                _edges_done = True
+                            except Exception:  # pragma: no cover - Triton edges
+                                _edges_done = False
+                        if not _edges_done:
+                            total_pad = B * pad_sum
+                            edge_grid = (triton.cdiv(total_pad, BLOCK),)
+                            pad1d_both_sides_kernel[edge_grid](
+                                x,
+                                out,
+                                W_in,
+                                pad_left,
+                                pad_right,
+                                W_out,
+                                pad_sum,
+                                total_pad,
+                                BLOCK=BLOCK,
+                            )
+                    return out
+        except Exception:  # pragma: no cover - fall through to generic kernel
+            pass
+
+    # Tiny shapes are launch-bound. On XPU3 the 2-byte (fp16/bf16) load/store
+    # path carries a fixed per-kernel penalty at BLOCK=256 that the 4-byte
+    # (fp32) path does not; widening to BLOCK=512 lets the codegen emit wider
+    # aligned vector ops and erases it (measured fp16/bf16 (3,33)/(2,4,64):
+    # ~0.77-0.91x -> ~0.99-1.12x, fp32 unchanged ~1.07x). Mid shapes keep 1024.
+    BLOCK = 512 if total_out <= 1024 else 1024
+    need_mask = (total_out % BLOCK) != 0
+    grid = (triton.cdiv(total_out, BLOCK),)
     with torch_device_fn.device(x.device):
-        reflection_pad1d_kernel[grid](x, out, B, W_in, pad_left, W_out, BLOCK_W=256)
+        reflection_pad1d_kernel[grid](
+            x,
+            out,
+            W_in,
+            pad_left,
+            W_out,
+            total_out,
+            BLOCK=BLOCK,
+            NEED_MASK=need_mask,
+        )
     return out
 
 

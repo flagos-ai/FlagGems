@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import triton
@@ -5,7 +19,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(
@@ -29,7 +43,7 @@ def clamp_func_max_tensor(x, maxi, inplace):
 
 
 def clamp_tensor(A, mini=None, maxi=None):
-    logger.debug("GEMS_CAMBRICON CLAMP TENSOR")
+    logger.debug("GEMS_CAMBRICON CLAMP_TENSOR")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -41,7 +55,7 @@ def clamp_tensor(A, mini=None, maxi=None):
 
 
 def clamp_tensor_(A, mini=None, maxi=None):
-    logger.debug("GEMS_CAMBRICON CLAMP_ TENSOR")
+    logger.debug("GEMS_CAMBRICON CLAMP_TENSOR_")
     if mini is None and maxi is None:
         raise ValueError("At least one of mini or maxi must not be None")
     elif mini is None:
@@ -77,14 +91,14 @@ def clamp_func_max(x, maxi, inplace):
 
 
 def clamp_min(A, mini):
-    logger.debug("GEMS_CAMBRICON CLAMP MIN")
+    logger.debug("GEMS_CAMBRICON CLAMP_MIN")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini, False)
 
 
 def clamp_min_(A, mini):
-    logger.debug("GEMS_CAMBRICON CLAMP_ MIN")
+    logger.debug("GEMS_CAMBRICON CLAMP_MIN_")
     if mini is None:
         raise ValueError("Mini must not be None")
     return clamp_func_min(A, mini, True, out0=A)

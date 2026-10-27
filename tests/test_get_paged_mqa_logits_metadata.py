@@ -1,9 +1,25 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import pytest
 import torch
 
 import flag_gems
+
+from . import conftest as cfg
 
 random.seed(42)
 
@@ -16,10 +32,16 @@ try:
 except Exception:
     DEEPGEMM_AVAILABLE = False
 
+# Shape configs for QUICK_MODE
+if cfg.QUICK_MODE:
+    BATCH_NEXTN_SHAPES = [(4, 1)]
+else:
+    BATCH_NEXTN_SHAPES = [(4, 1), (2, 2)]
+
 
 @pytest.mark.get_paged_mqa_logits_metadata
 @pytest.mark.skipif(not DEEPGEMM_AVAILABLE, reason="vllm with deep_gemm is required.")
-@pytest.mark.parametrize("batch_size, next_n", [(4, 1), (2, 2)])
+@pytest.mark.parametrize("batch_size, next_n", BATCH_NEXTN_SHAPES)
 @pytest.mark.parametrize("avg_ctx_len", [1024, 2048])
 def test_get_paged_mqa_logits_metadata(batch_size, next_n, avg_ctx_len):
     context_lens_2d = (

@@ -1,35 +1,58 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
 
-autotune_configs = [
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 256}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 512}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 1024}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 1, "BLOCK_K": 2048}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 2, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 64}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 4, "BLOCK_K": 128}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 8, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 8, "BLOCK_K": 64}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 16, "BLOCK_K": 32}, num_warps=4, num_stages=2),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 256}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 32, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 256}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 64, "BLOCK_K": 1024}, num_warps=8, num_stages=4),
-    triton.Config({"BLOCK_Q": 128, "BLOCK_K": 512}, num_warps=8, num_stages=4),
-]
+logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(configs=autotune_configs, key=["query_seq_len", "key_seq_len"])
+@triton.jit
+def scaled_softmax_forward_rows_kernel(
+    output_ptr,
+    input_ptr,
+    scale_factor,
+    KK: tl.constexpr,
+    ROWS: tl.constexpr,
+):
+    """Whole-row softmax tile: ROWS complete (query, key) rows per program.
+
+    A straight-line ``[ROWS, KK]`` block with no dynamic loop is the only
+    structure the XPU backend lowers efficiently here: a row-carried vector in
+    a ``maxnumf``/``subf`` loop trips the "requires the same encoding" codegen
+    failure, while a ``[1, BLOCK_K]`` streaming tile collapses to ~1 GB/s.
+    Grouping several rows into a single tile also makes the compiler reduce all
+    of them across the core group in one shot, amortizing the cross-core
+    reduction over ROWS rows.
+    """
+    rows = tl.program_id(0) * ROWS + tl.arange(0, ROWS)
+    cols = tl.arange(0, KK)
+    offs = rows[:, None] * KK + cols[None, :]
+    vals = tl.load(input_ptr + offs).to(tl.float32) * scale_factor
+    row_max = tl.max(vals, axis=1)
+    exps = tl.exp(vals - row_max[:, None])
+    row_sum = tl.sum(exps, axis=1)
+    tl.store(output_ptr + offs, exps * (1.0 / row_sum)[:, None])
+
+
+@libentry()
 @triton.jit
 def scaled_softmax_forward_kernel(
     output_ptr,
@@ -117,7 +140,30 @@ def scaled_softmax_forward_kernel(
         tl.store(block_ptr_out, p_block, mask=mask, cache_modifier=".cs")
 
 
+def _rows_per_program(key_seq_len: int, n_rows: int) -> int:
+    """Pick how many whole rows one program should own.
+
+    Tuned on XPU3: the best tile is roughly 8-16K elements, and the optimum
+    shifts for very long rows (where register pressure caps the tile).
+    Always returns a positive divisor of ``n_rows``.
+    """
+    if key_seq_len <= 128:
+        rows = 64
+    elif key_seq_len <= 1024:
+        rows = 8192 // key_seq_len
+    elif key_seq_len <= 2048:
+        rows = 16
+    elif key_seq_len <= 4096:
+        rows = 4
+    else:
+        rows = 2
+    while rows > 1 and n_rows % rows:
+        rows //= 2
+    return rows if rows > 0 and n_rows % rows == 0 else 0
+
+
 def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
+    logger.debug("GEMS_KUNLUNXIN SCALED_SOFTMAX_FORWARD")
     assert input_t.dim() == 4, "expected 4D tensor"
     batch_size, attn_heads, query_seq_len, key_seq_len = input_t.shape
     assert input_t.dtype in [
@@ -128,17 +174,38 @@ def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
     assert key_seq_len % 8 == 0, "Key sequence length must be divisible by 8"
     assert query_seq_len > 1, "Query sequence length must be greater than 1"
 
-    def grid(meta):
-        BLOCK_Q = meta["BLOCK_Q"]
-        query_seq_tile_len = triton.cdiv(query_seq_len, BLOCK_Q)
-        return (query_seq_tile_len, attn_heads, batch_size)
-
     output_t = torch.empty_like(input_t)
 
     stride_b = input_t.stride(0)
     stride_h = input_t.stride(1)
     stride_q = input_t.stride(2)
 
+    # Fast path: a contiguous tensor can be treated as
+    # (batch_size * attn_heads * query_seq_len) independent softmax rows.
+    # It needs a power-of-two key length (for tl.arange) and a row count that
+    # divides evenly so the tile stays unmasked.
+    rows_per_program = 0
+    n_rows = batch_size * attn_heads * query_seq_len
+    if input_t.is_contiguous() and (key_seq_len & (key_seq_len - 1)) == 0:
+        rows_per_program = _rows_per_program(key_seq_len, n_rows)
+
+    if rows_per_program:
+        grid = (n_rows // rows_per_program,)
+        scaled_softmax_forward_rows_kernel[grid](
+            output_t,
+            input_t,
+            scale_factor,
+            KK=key_seq_len,
+            ROWS=rows_per_program,
+            num_warps=4,
+            num_stages=2,
+        )
+        return output_t
+
+    # General path: streaming tile with masks, for non-contiguous / odd sizes.
+    # The grid is a plain tuple (not a callable): a callable grid participates
+    # in the compilation cache key on this backend.
+    grid = (query_seq_len, attn_heads, batch_size)
     scaled_softmax_forward_kernel[grid](
         output_t,
         input_t,
@@ -148,12 +215,15 @@ def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
         stride_b,
         stride_h,
         stride_q,
+        BLOCK_Q=1,
+        BLOCK_K=128,
+        num_warps=4,
+        num_stages=2,
     )
     return output_t
 
 
 @libentry()
-@triton.autotune(configs=autotune_configs, key=["query_seq_len", "key_seq_len"])
 @triton.jit
 def scaled_softmax_backward_kernel(
     grad_input_ptr,
@@ -234,9 +304,70 @@ def scaled_softmax_backward_kernel(
         tl.store(ptr_dS, dS_block, mask=mask, cache_modifier=".cs")
 
 
+def _backward_rows_per_program(key_seq_len: int, n_rows: int) -> int:
+    """Pick how many whole rows one backward program should own.
+
+    Measured separately from the forward policy: backward touches three
+    streams (P, dP, dGrad) per element, and its optimum sits at a larger tile
+    than forward's (roughly 16-32K elements).  Always returns a positive
+    divisor of ``n_rows``.
+    """
+    if key_seq_len <= 256:
+        rows = 64
+    elif key_seq_len <= 2048:
+        rows = 32
+    elif key_seq_len <= 4096:
+        rows = 8
+    else:
+        rows = 2
+    while rows > 1 and n_rows % rows:
+        rows //= 2
+    return rows if rows > 0 and n_rows % rows == 0 else 0
+
+
+@libentry()
+@triton.jit
+def scaled_softmax_backward_rows_kernel(
+    grad_input_ptr,
+    grad_output_ptr,
+    output_ptr,
+    scale_factor,
+    KK: tl.constexpr,
+    ROWS: tl.constexpr,
+    F32_MATH: tl.constexpr,
+):
+    """Whole-row softmax backward: ROWS complete (query, key) rows per program.
+
+    Same straight-line ``[ROWS, KK]`` structure as the forward fast path: one
+    reduction for ``D = sum(P * dP)`` over the row, then the elementwise
+    ``P * (dP - D) * scale`` store.  A streaming ``[1, BLOCK_K]`` tile with a
+    dynamic two-pass loop over the keys collapses to ~1 GB/s on this backend.
+
+    ``F32_MATH`` is a dtype-gated body choice.  fp16 arithmetic is 13-16%
+    faster (the reference computation is fp16 as well, so results stay within
+    one ulp); bf16 gets no benefit from the low-precision body, so it keeps the
+    fp32 one.
+    """
+    rows = tl.program_id(0) * ROWS + tl.arange(0, ROWS)
+    cols = tl.arange(0, KK)
+    offs = rows[:, None] * KK + cols[None, :]
+    if F32_MATH:
+        P = tl.load(output_ptr + offs).to(tl.float32)
+        dP = tl.load(grad_output_ptr + offs).to(tl.float32)
+        D = tl.sum(P * dP, axis=1)
+        dS = P * (dP - D[:, None])
+    else:
+        P = tl.load(output_ptr + offs)
+        dP = tl.load(grad_output_ptr + offs)
+        D = tl.sum(P * dP, axis=1)
+        dS = P * (dP - D[:, None])
+    tl.store(grad_input_ptr + offs, dS * scale_factor)
+
+
 def scaled_softmax_backward(
     grad_output: torch.Tensor, softmax_results: torch.Tensor, scale_factor: float
 ):
+    logger.debug("GEMS_KUNLUNXIN SCALED_SOFTMAX_BACKWARD")
     assert grad_output.dim() == 4, "expected 4D tensor"
     assert softmax_results.dim() == 4, "expected 4D tensor"
     assert grad_output.dtype in [
@@ -248,15 +379,47 @@ def scaled_softmax_backward(
         torch.bfloat16,
     ], "Only fp16 and bf16 are supported"
 
+    batch_size, attn_heads, query_seq_len, key_seq_len = softmax_results.shape
+    n_rows = batch_size * attn_heads * query_seq_len
+
+    # Fast path: both operands are contiguous and share one layout, so the
+    # tensor is just n_rows independent rows of length key_seq_len.  It needs a
+    # power-of-two key length (for tl.arange) and a row count that divides
+    # evenly so the tile stays unmasked.  The output buffer is contiguous, so
+    # the returned grad_input has the same layout as the (contiguous) input.
+    rows_per_program = 0
+    if (
+        grad_output.shape == softmax_results.shape
+        and grad_output.dtype == softmax_results.dtype
+        and grad_output.is_contiguous()
+        and softmax_results.is_contiguous()
+        and (key_seq_len & (key_seq_len - 1)) == 0
+    ):
+        rows_per_program = _backward_rows_per_program(key_seq_len, n_rows)
+
+    if rows_per_program:
+        grad_input = torch.empty_like(grad_output)
+        grid = (n_rows // rows_per_program,)
+        scaled_softmax_backward_rows_kernel[grid](
+            grad_input,
+            grad_output,
+            softmax_results,
+            scale_factor,
+            KK=key_seq_len,
+            ROWS=rows_per_program,
+            F32_MATH=grad_output.dtype != torch.float16,
+            num_warps=4,
+            num_stages=2,
+        )
+        return grad_input
+
+    # General path: non-contiguous / odd sizes keep the original masked
+    # two-pass kernel.  Both operands are made contiguous first (a plain
+    # strided copy, not a CPU/native numerical fallback), which also fixes the
+    # strides used below.  The grid is a plain tuple (not a callable): a
+    # callable grid participates in the compilation cache key on this backend.
     grad_output = grad_output.contiguous()
     softmax_results = softmax_results.contiguous()
-
-    batch_size, attn_heads, query_seq_len, key_seq_len = softmax_results.shape
-
-    def grid(meta):
-        BLOCK_Q = meta["BLOCK_Q"]
-        query_seq_tile_len = triton.cdiv(query_seq_len, BLOCK_Q)
-        return (query_seq_tile_len, attn_heads, batch_size)
 
     grad_input = torch.empty_like(grad_output)
 
@@ -264,6 +427,7 @@ def scaled_softmax_backward(
     stride_h = softmax_results.stride(1)
     stride_q = softmax_results.stride(2)
 
+    grid = (query_seq_len, attn_heads, batch_size)
     scaled_softmax_backward_kernel[grid](
         grad_input,
         grad_output,
@@ -274,6 +438,10 @@ def scaled_softmax_backward(
         stride_b,
         stride_h,
         stride_q,
+        BLOCK_Q=1,
+        BLOCK_K=128,
+        num_warps=4,
+        num_stages=2,
     )
 
     return grad_input

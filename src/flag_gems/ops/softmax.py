@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -36,11 +50,13 @@ def softmax_kernel_non_inner(
         offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
         mask = (n_offsets[:, None] < N) & (k_offsets < K)
         input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf"))
+        # Reduce in fp32: some triton backends (e.g. Cambricon MLU) reject
+        # fp16/bf16 in tl.exp, and fp32 accumulation is more accurate anyway.
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m[None, :])
         z = tl.sum(e, 0)
-        out = e / z
+        out = (e / z).to(output_ptr.dtype.element_ty)
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:
@@ -102,13 +118,13 @@ def softmax_kernel_inner(
         offset = pid_m * N + n_offsets
         input_ptrs = input_ptr + offset
         mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(
-            output_ptr.dtype.element_ty
-        )
+        # Reduce in fp32: some triton backends (e.g. Cambricon MLU) reject
+        # fp16/bf16 in tl.exp, and fp32 accumulation is more accurate anyway.
+        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
         m = tl.max(inp, 0)
         e = tl.exp(inp - m)
         z = tl.sum(e, 0)
-        out = e / z
+        out = (e / z).to(output_ptr.dtype.element_ty)
         output_ptrs = output_ptr + offset
         tl.store(output_ptrs, out, mask=mask)
     else:

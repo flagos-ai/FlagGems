@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -19,6 +33,9 @@ device = flag_gems.device
 @pytest.mark.parametrize("sorted", [True])
 @pytest.mark.parametrize("return_inverse", [True, False])
 @pytest.mark.parametrize("return_counts", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
 def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
@@ -33,13 +50,12 @@ def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
 
     if return_counts:
         if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_unique_order, res_counts = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
+            res_out, res_unique_order, res_counts = flag_gems._unique2(
+                inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
             ref_out, ref_unique_order, ref_counts = torch.unique(
                 ref_inp,
                 sorted=sorted,
@@ -51,13 +67,12 @@ def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
 
             utils.gems_assert_equal(res_unique_order, ref_unique_order)
         else:
-            with flag_gems.use_gems():
-                res_out, res_counts = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
+            res_out, _, res_counts = flag_gems._unique2(
+                inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
             ref_out, ref_counts = torch.unique(
                 ref_inp,
                 sorted=sorted,
@@ -70,13 +85,12 @@ def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
         utils.gems_assert_equal(res_counts, ref_counts)
     else:
         if return_inverse:
-            with flag_gems.use_gems():
-                res_out, res_unique_order = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
+            res_out, res_unique_order, _ = flag_gems._unique2(
+                inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
             ref_out, ref_unique_order = torch.unique(
                 ref_inp,
                 sorted=sorted,
@@ -88,13 +102,12 @@ def test_unique2(shape, dtype, sorted, return_inverse, return_counts):
 
             utils.gems_assert_equal(res_unique_order, ref_unique_order)
         else:
-            with flag_gems.use_gems():
-                res_out = torch.unique(
-                    inp,
-                    sorted=sorted,
-                    return_inverse=return_inverse,
-                    return_counts=return_counts,
-                )
+            res_out, _, _ = flag_gems._unique2(
+                inp,
+                sorted=sorted,
+                return_inverse=return_inverse,
+                return_counts=return_counts,
+            )
             ref_out = torch.unique(
                 ref_inp,
                 sorted=sorted,

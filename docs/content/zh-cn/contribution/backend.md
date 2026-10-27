@@ -4,6 +4,23 @@ weight: 40
 ---
 
 <!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+
+<!--
 # Adding a New Backend
 
 ## 1. Introduction
@@ -68,17 +85,17 @@ The expected directory layout is shown in the following example:
 An easy way to to create this file is to copy one from existing vendors
 (say `src/flag_gems/runtime/backend/_nvidia/__init__.py`).
 After having created your `__init__.py` file, the **only change** you need to make is
-to configure the properties for the `VendorInfoBase` class:
+to configure the properties for the `VendorDescriptor` class:
 -->
 ### 3.1 关于 `__init__.py` 文件
 
 创建 `__init__.py` 文件的一种简单方式是从现有的厂商目录下复制一份
 （比如 `src/flag_gems/runtime/backend/_nvidia/__init__.py`）。
 创建了 `__init__.py` 文件之后，你所需要执行的**唯一更改**是配置
-`VendorInfoBase` 类的属性。
+`VendorDescriptor` 类的属性。
 
 ```python
-vendor_info = VendorInfoBase(
+vendor_info = VendorDescriptor(
     vendor_name="<你要使用的厂商名称>",
     device_name="<设备名称>",
     device_query_cmd="<用来查询硬件信息的命令>"
@@ -86,7 +103,7 @@ vendor_info = VendorInfoBase(
 ```
 
 <!--
-The important properties for `VendorInfoBase` are:
+The important properties for `VendorDescriptor` are:
 
 - `vendor_name`: the vendor name at your choice, e.g. `nvidia`;
 - `device_name`: the name for your acclerator device, e.g. `cuda`;
@@ -95,7 +112,7 @@ The important properties for `VendorInfoBase` are:
 - `dispatch_key`: an optional property for registering operators to `torch.library.Library`
   in PyTorch, e.g. `PrivateUse1`.
 -->
-`VendorInfoBase` 类的主要属性如下：
+`VendorDescriptor` 类的主要属性如下：
 
 - `vendor_name`：按自己需要选择的厂商名字，例如 `nvidia`；
 - `device_name`：你的加速器设备的名称，例如 `cuda`；

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import Optional, Tuple
 
@@ -10,7 +24,7 @@ from flag_gems.runtime import device, torch_device_fn
 
 from ..utils import MAX_GRID_SIZE_X, TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 device = device.name
 
 
@@ -166,7 +180,7 @@ def upsample_nearest2d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_CAMBRICON UPSAMPLE NEAREST2D")
+    logger.debug("GEMS_CAMBRICON UPSAMPLE_NEAREST2D")
     assert input.device.type == device
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"

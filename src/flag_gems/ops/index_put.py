@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import logging
 import os
@@ -80,14 +94,25 @@ def generate_index_put_kernel(
     with code.indent():
         code.writeline("pid0 = ext.program_id(axis=0)")
         code.writeline("pid1 = ext.program_id(axis=1)")
+        # Address arithmetic must stay in int64. With int32 indices,
+        # `index * input_stride` can exceed 2**31 on large strided tensors and
+        # wrap before it reaches the store, silently redirecting the write to a
+        # wrapped address. Casting only the final pointer offset is too late,
+        # so the program offsets are widened before the coordinates derived
+        # from them. See Issue #6411.
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "offset0 = pid0.to(tl.int64) * BLOCK_SIZE0 + "
+            "tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
         )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
+            code.writeline(
+                "offset1 = pid1.to(tl.int64) * 1 + "
+                "tl.arange(0, 1).to(tl.int64)[None, :]"
+            )
         else:
             code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + "
+                "tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
             )
         code.newline()
         code.writeline("cur_idx = offset0")
@@ -103,8 +128,12 @@ def generate_index_put_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            # The index tensor may be int32; widen the loaded index before it is
+            # multiplied by input_stride so the product cannot wrap.
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.load("
+                f"indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0"
+                ").to(tl.int64)"
             )
         code.newline()
         index_mask = [
@@ -264,14 +293,14 @@ _index_put_func = IndexPutFunction()
 
 
 def index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT")
+    logger.debug("GEMS INDEX_PUT")
 
     out = inp.clone()
     return index_put_(out, indices, values, accumulate)
 
 
 def index_put_(inp, indices, values, accumulate=False):
-    logger.debug("GEMS INDEX PUT_")
+    logger.debug("GEMS INDEX_PUT_")
 
     indices = list(indices)
 
@@ -279,9 +308,11 @@ def index_put_(inp, indices, values, accumulate=False):
         raise ValueError("At least one index tensor is required")
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
     # step 1: index preprocessing
@@ -391,9 +422,11 @@ def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
             values = values.reshape((K,)).expand(target_shape)
 
     indices = [
-        index.to(inp.device)
-        if index is not None and index.device != inp.device
-        else index
+        (
+            index.to(inp.device)
+            if index is not None and index.device != inp.device
+            else index
+        )
         for index in indices
     ]
 

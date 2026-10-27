@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import math
 
 import pytest
@@ -11,7 +25,6 @@ device = flag_gems.device
 
 
 @pytest.mark.new_full
-@pytest.mark.skip(reason="Issue #2624: This test fails on line 50.")
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize(
     "dtype", utils.BOOL_TYPES + utils.ALL_INT_DTYPES + utils.ALL_FLOAT_DTYPES
@@ -35,8 +48,7 @@ def test_new_full(shape, dtype, xdtype, fill_value):
             return
 
     ref_out = ref_inp.new_full(shape, fill_value)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value)
+    res_out = flag_gems.new_full(inp, shape, fill_value)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
 
@@ -49,7 +61,6 @@ def test_new_full(shape, dtype, xdtype, fill_value):
             return
 
     ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
+    res_out = flag_gems.new_full(inp, shape, fill_value, dtype=xdtype)
 
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)

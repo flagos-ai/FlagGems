@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Monkey-patch Qwen3_5GatedDeltaNet.recurrent_gated_delta_rule with a
 TLE-CPU fused decode kernel.
 
@@ -191,7 +205,9 @@ def patch_qwen3_5_gated_delta(model) -> int:
     """
     gdn_classes = _get_qwen3_5_gated_delta_classes()
     if not gdn_classes:
-        logger.debug("No Qwen GDN classes found in transformers, skipping patch")
+        logger.debug(
+            "GEMS_ARM No Qwen GDN classes found in transformers, skipping patch"
+        )
         return 0
 
     n = 0
@@ -205,7 +221,7 @@ def patch_qwen3_5_gated_delta(model) -> int:
     if n > 0:
         cls_names = ", ".join(c.__name__ for c in gdn_classes)
         logger.info(
-            "Patched %d GDN modules (classes: %s) with TLE gated_delta_decode",
+            "GEMS_ARM Patched %d GDN modules (classes: %s) with TLE gated_delta_decode",
             n,
             cls_names,
         )

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -16,8 +30,7 @@ def test_silu_and_mul(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
-    with flag_gems.use_gems():
-        res_out = flag_gems.silu_and_mul(inp1, inp2)
+    res_out = flag_gems.silu_and_mul(inp1, inp2)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
@@ -45,8 +58,7 @@ def test_silu_and_mul_out(shape, dtype):
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
 
     out = torch.empty_like(inp1)
-    with flag_gems.use_gems():
-        ret = flag_gems.silu_and_mul_out(inp1, inp2, out)
+    ret = flag_gems.silu_and_mul_out(inp1, inp2, out)
 
     assert ret is out
     utils.gems_assert_close(out, ref_out, dtype)

@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Fast Hadamard Transform in Triton.
 
 Drop-in replacement for Dao-AILab/fast-hadamard-transform with identical interface:
@@ -11,12 +25,15 @@ Drop-in replacement for Dao-AILab/fast-hadamard-transform with identical interfa
 Reference: https://github.com/Dao-AILab/fast-hadamard-transform
 """
 
+import logging
 import math
 
 import torch
 import torch.nn.functional as F
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # Triton kernel — v43: remove evict_first from loads + warps=2 for dim=256
@@ -836,11 +853,13 @@ def _launch_kernel(
 class HadamardTransformFn(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale=1.0):
+        logger.debug("GEMS HADAMARD_TRANSFORM_FORWARD")
         ctx._hadamard_transform_scale = scale
         return _hadamard_transform_fwd(x, scale)
 
     @staticmethod
     def backward(ctx, dout):
+        logger.debug("GEMS HADAMARD_TRANSFORM_BACKWARD")
         # Hadamard matrix is symmetric: backward = forward with same scale
         return _hadamard_transform_fwd(dout, ctx._hadamard_transform_scale), None
 

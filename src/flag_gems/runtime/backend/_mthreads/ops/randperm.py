@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -11,9 +25,7 @@ from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
 device_ = device
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _MIN_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).min)
 _MAX_INT8_VAL = tl.constexpr(torch.iinfo(torch.int8).max)
@@ -99,16 +111,16 @@ def bitonic_sortbykey_kernel(
 def radix_type_convert(k):
     ik = k.to(tl.int64)
     if tl.constexpr(k.dtype == tl.int8):
-        mask = (ik >> 7) & 0x1
+        mask = ((ik >> 7) & 0x1) != 0
         o = tl.where(mask, ik & 0x7F, ik | 0x80)
     elif tl.constexpr(k.dtype == tl.int16):
-        mask = (ik >> 15) & 0x1
+        mask = ((ik >> 15) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFF, ik | 0x8000)
     elif tl.constexpr(k.dtype == tl.int32):
-        mask = (ik >> 31) & 0x1
+        mask = ((ik >> 31) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFF, ik | 0x80000000)
     elif tl.constexpr(k.dtype == tl.int64):
-        mask = (ik >> 63) & 0x1
+        mask = ((ik >> 63) & 0x1) != 0
         o = tl.where(mask, ik & 0x7FFFFFFFFFFFFFFF, ik | 0x8000000000000000)
     else:
         o = k

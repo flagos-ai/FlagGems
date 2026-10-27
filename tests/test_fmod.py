@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -12,6 +26,7 @@ from .accuracy_utils import (
 )
 
 
+@pytest.mark.fmod
 @pytest.mark.fmod_tensor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -22,11 +37,11 @@ def test_fmod_tensor(shape, dtype):
     ref_inp1 = to_reference(inp1, True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = torch.fmod(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmod(inp1, inp2)
+    res_out = flag_gems.fmod_tensor(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
 
+@pytest.mark.fmod
 @pytest.mark.fmod_scalar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -36,8 +51,7 @@ def test_fmod_scalar(shape, scalar, dtype):
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1, True)
     ref_out = torch.fmod(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmod(inp1, inp2)
+    res_out = flag_gems.fmod_scalar(inp1, inp2)
     atol = 1e-3 if abs(scalar) < 0.01 else 1e-4
     gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
@@ -52,8 +66,7 @@ def test_fmod_tensor_inplace(shape, dtype):
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_inp2 = to_reference(inp2, True)
     ref_out = ref_inp1.fmod_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.fmod_(inp2)
+    res_out = flag_gems.fmod_tensor_(inp1, inp2)
     gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -66,7 +79,6 @@ def test_fmod_scalar_inplace(shape, scalar, dtype):
     inp2 = scalar if scalar != 0 else 1.0
     ref_inp1 = to_reference(inp1.clone(), True)
     ref_out = ref_inp1.fmod_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.fmod_(inp2)
+    res_out = flag_gems.fmod_scalar_(inp1, inp2)
     atol = 1e-3 if abs(scalar) < 0.01 else 1e-4
     gems_assert_close(res_out, ref_out, dtype, atol=atol)

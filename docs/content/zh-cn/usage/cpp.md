@@ -4,6 +4,23 @@ weight: 90
 ---
 
 <!--
+ Copyright 2026 FlagOS Contributors
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ -->
+
+
+<!--
 # Using C++-Based Operators for Optimal Performance
 
 Another advanced optimization path with *FlagGems* is the use of *C++ wrapped operators*
@@ -46,7 +63,7 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
 - `libtriton_jit` 负责 JIT 特化、内核缓存以及特定后端的 kernel 发射，
   目前已支持 **NVIDIA（CUDA）**、**摩尔线程（MUSA）**、**华为昇腾（NPU）**
   与**天数智芯（IX）** 四种后端；
-- *FlagGems* 的 C++ 封装算子（位于 `lib/` 目录下，例如 `rms_norm.cpp`、`mm.cpp`）
+- *FlagGems* 的 C++ 封装算子（位于 `cpp/lib/` 目录下，例如 `rms_norm.cpp`、`mm.cpp`）
   以 C++ 实现张量元数据处理、形状/类型提升以及参数准备，最后通过
   `libtriton_jit::TritonJITFunction` 调用 Triton 内核；
 - 在封装算子之上，*FlagGems* 还提供两个面向 Python 的扩展模块
@@ -79,26 +96,49 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
 
 1. **编译安装时：打开 C++ 扩展并以 Release 构建**
 
-   从源码安装，至少传入 `-DFLAGGEMS_BUILD_C_EXTENSIONS=ON` 与
+   **推荐方式 — 通过 `setup.sh` 从源码构建：**
+
+   ```shell
+   ENABLE_CPP=1 ./setup.sh nvidia-cuda128
+   ```
+
+   `setup.sh` 从 `backends.yaml` 读取后端配置，设置对应的 CMake 参数，
+   向 `cpp/pyproject.toml` 注入 vendor 标识，并从 `cpp/` 子目录构建 C++ 扩展。
+
+   **备选方式 — 安装预构建 wheel（如果你的硬件平台支持）：**
+
+   ```shell
+   pip install "flag-gems[cpp-cuda]"
+   ```
+
+   该命令从 flagOS PyPI 仓库拉取预构建的 `flag-gems-cpp-cuda` wheel。
+   请将 `cpp-cuda` 替换为你的硬件对应的扩展：
+   `cpp-musa`、`cpp-npu`、`cpp-gcu` 或 `cpp-ix`。
+
+   **手动构建 — 从 `cpp/` 子目录：**
+
+   C++ 源码和 CMake 构建系统位于 `cpp/` 子目录下。
+   构建时至少需要传入 `-DFLAGGEMS_BUILD_C_EXTENSIONS=ON` 与
    `-DCMAKE_BUILD_TYPE=Release`（后者保证 FlagGems 与随同构建的
    `libtriton_jit` 都按目标平台开启优化，否则 wrapper 会明显变慢）：
 
    ```shell
+   tools/set_cpp_vendor.sh cuda
    CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DCMAKE_BUILD_TYPE=Release" \
-   pip install -v -e .
+   uv pip install --no-build-isolation ./cpp
    ```
 
    > [!NOTE]
-   > 如果上述命令构建失败，可以尝试加上 `--no-build-isolation`，
-   > 让 pip 复用当前环境中已安装的 PyTorch 以及
-   > `requirements_<backend>.txt` 预装的构建依赖。
+   > C++ 扩展必须指定目标硬件 (`-DFLAGGEMS_BACKEND=<...>`)。
+   > `tools/set_cpp_vendor.sh` 会将 vendor 标识写入 `cpp/pyproject.toml`，
+   > 确保构建出的 wheel 具有正确的包名。
 
    其他可选参数：
 
    - `-DFLAGGEMS_BACKEND=<CUDA|IX|MUSA|NPU>`：选择目标后端（默认 `CUDA`）；
    - `-DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON`：编译 `add`/`div`/`fill`
      这几个 pointwise dynamic 算子；
-   - `-DFLAGGEMS_BUILD_CTESTS=ON`：编译 `ctests/` 下的 GTest 用例
+   - `-DFLAGGEMS_BUILD_CTESTS=ON`：编译 `cpp/ctests/` 下的 GTest 用例
      （验证 §3.4 原生 C++ API 的唯一手段）；
    - `-DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<path>`：
      使用外部预装的 `libtriton_jit`。
@@ -146,7 +186,7 @@ Triton JIT 运行时逻辑（参数特化、内核缓存和发射），
    `-DFLAGGEMS_BUILD_CTESTS=ON`，然后运行 `ctest`：
 
    ```shell
-   BUILD_DIR=$(ls -d build/*/ | head -n 1)
+   BUILD_DIR=$(ls -d cpp/build/*/ | head -n 1)
    ctest --test-dir "${BUILD_DIR}" --output-on-failure
    ```
 
@@ -239,7 +279,7 @@ at::Tensor c = flag_gems::mm_tensor(a, b);
 at::Tensor y = flag_gems::rms_norm(x, weight, eps);
 ```
 
-仓库中 `ctests/` 下的 GTest 用例（例如 `ctests/test_triton_mm.cpp`）正是以这种方式调用 FlagGems 的算子的。
+仓库中 `cpp/ctests/` 下的 GTest 用例（例如 `cpp/ctests/test_triton_mm.cpp`）正是以这种方式调用 FlagGems 的算子的。
 当你希望把 FlagGems 嵌入到一个非 Python 的 C++ 应用中，或者需要写 C++ 单元测试时，这就是合适的路径。
 
 ### 小结

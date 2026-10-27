@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -5,7 +19,7 @@ import triton
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
@@ -33,7 +47,7 @@ def mul_complex_kernel(ar, ai, br, bi):
 
 
 def mul(A, B):
-    logger.debug("GEMS MUL")
+    logger.debug("GEMS_KUNLUNXIN MUL")
     A_is_complex = isinstance(A, torch.Tensor) and A.is_complex()
     B_is_complex = isinstance(B, torch.Tensor) and B.is_complex()
 
@@ -84,7 +98,7 @@ def mul(A, B):
 
 
 def mul_(A, B):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS_KUNLUNXIN MUL_")
     if isinstance(B, torch.Tensor):
         return mul_func(A, B, out0=A)
     else:

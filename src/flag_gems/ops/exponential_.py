@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -16,17 +30,29 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def safe_fast_log_f32(x):
-    min_normal = (x * 0.0 + 1.17549435e-38).to(tl.float32)
+    # FLT_MIN does not round-trip through float32, so Triton keeps the bare
+    # literal at float64 and the whole expression is promoted with it. Backends
+    # without double support reject that outright (Cambricon MLU: "MLU
+    # unsupported floating-point type fp64"), hence the explicit fp32 constant.
+    min_normal = (x * 0.0 + tl.full((), 1.17549435e-38, tl.float32)).to(tl.float32)
     max_u = x * 0.0 + 0.99999994
     x = tl.minimum(tl.maximum(x, min_normal), max_u)
     bits = x.to(tl.int32, bitcast=True)
     exponent = (bits >> 23) - 127
     mantissa = (bits & 0x7FFFFF).to(tl.float32) * (1.0 / 8388608.0) + 1.0
-    m1 = mantissa - 1.0
-    return (
-        m1 * (1.0 + m1 * (-0.5 + m1 * (0.3333333333 - m1 * 0.25)))
-        + exponent.to(tl.float32) * 0.6931471805599453
-    )
+    t = mantissa - 1.0
+    # Degree-5 minimax polynomial for ln(1+t) on [0, 1)
+    p = 3.0102415366e-02
+    p = p * t - 1.3011859043e-01
+    p = p * t + 2.8330324636e-01
+    p = p * t - 4.8915625549e-01
+    p = p * t + 9.9901031459e-01
+    # No constant term: the fit used to carry +2.2125781657e-05, so p(0) != 0 and
+    # ln(1) was off by that offset (which also made y slightly negative for u
+    # just below 1). Multiplying the whole polynomial by `t` restores p(0) == 0.
+    # See Issue #7040.
+    p = p * t
+    return p + exponent.to(tl.float32) * 0.6931471805599453
 
 
 @triton.jit
@@ -60,8 +86,14 @@ def transform_exponential_f32_precise(u, inv_lambd, eps_minus):
 
 @triton.jit
 def transform_exponential_f32_fast(u, inv_lambd, eps_minus):
+    # The guard may only special-case the u == 1 endpoint, like the precise
+    # variant. It used to be `u >= 1.0 - 1e-4`, which pinned the whole
+    # 1e-4-probability band next to 1 to `y == 0.5 * eps` (5.96e-8 for float32).
+    # That single atom carried ~100x the true probability mass below 1e-5 and
+    # broke exponential-race / Gumbel-max sampling. The wide band existed to
+    # hide the polynomial's non-zero constant term, which is now removed in
+    # `safe_fast_log_f32`. See Issue #7040.
     log = tl.where(u >= 1.0 + eps_minus, eps_minus, safe_fast_log_f32(u))
-    # log = tl.log(tl.maximum(u, 1e-38))
     return -inv_lambd * log
 
 
@@ -97,7 +129,7 @@ def fused_exponential_kernel_f32_unroll8(
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
 
     pid = tl.program_id(0)
-    block_start = pid * BLOCK
+    block_start = pid * BLOCK * 2
     offsets = block_start + tl.arange(0, BLOCK)
 
     c0_first = c0 + offsets * 4

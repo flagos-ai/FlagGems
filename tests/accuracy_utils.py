@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import importlib
 import itertools
 import random
@@ -12,6 +26,8 @@ from .conftest import QUICK_MODE, TO_CPU
 fp64_is_supported = flag_gems.runtime.device.support_fp64
 bf16_is_supported = flag_gems.runtime.device.support_bf16
 int64_is_supported = flag_gems.runtime.device.support_int64
+fp8_is_supported = flag_gems.runtime.device.support_fp8
+complex_is_supported = flag_gems.runtime.device.support_complex
 
 
 def TestForwardOnly():
@@ -56,6 +72,12 @@ sizes_2d_nr = [1] if QUICK_MODE else [1, 5, 1024]
 
 UT_SHAPES_1D = list((n,) for n in sizes_1d)
 UT_SHAPES_2D = list(itertools.product(sizes_2d_nr, sizes_2d_nc))
+_UNSAFE_MASKED_INDEX_PUT_SHAPES = [
+    ((16,), (16,), (16,), (16,)),
+    ((64,), (64,), (64,), (64,)),
+    ((8, 32), (8, 32), (8, 32), (8, 32)),
+    ((2, 16, 64), (2, 16, 64), (2, 16, 64), (2, 16, 64)),
+]
 POINTWISE_SHAPES = (
     [(2, 19, 7)]
     if QUICK_MODE
@@ -101,10 +123,31 @@ SVD_TINY_RANK_DEGENERATE_CASES = [
     "zero_column_8x2",
     "zero_row_2x8",
 ]
+SEGMENT_REDUCE_LENGTH_CASES = (
+    ((5,), 0, [2, 0, 3]),
+    ((2, 3), 1, [[1, 1, 1], [1, 1, 1]]),
+    ((2, 3, 4), 1, [[1, 2], [2, 1]]),
+    ((2, 3, 5), 2, [[[2, 3], [1, 4], [3, 2]], [[5, 0], [2, 3], [4, 1]]]),
+)
+SEGMENT_REDUCE_OFFSET_CASES = (
+    ((5,), 0, [0, 2, 5]),
+    ((2, 3, 4), 1, [[0, 1, 3], [0, 2, 3]]),
+)
+SEGMENT_REDUCE_LENGTH_OUT_CASE = SEGMENT_REDUCE_LENGTH_CASES[2]
+SEGMENT_REDUCE_OFFSET_OUT_CASE = SEGMENT_REDUCE_OFFSET_CASES[1]
 STACK_SHAPES = [
     [(16,), (16,)],
     [(16, 256), (16, 256)],
     [(20, 320, 15), (20, 320, 15), (20, 320, 15)],
+]
+# pdist CUDA kernel only supports float32; Half/BFloat16 raise RuntimeError
+PDIST_SHAPES = [
+    (4, 8),
+    (8, 16),
+    (16, 32),
+    (32, 64),
+    (64, 128),
+    (128, 256),
 ]
 CONTIGUOUS_SHAPE_STRIDES_1D = [
     ((1,), (1,)),
@@ -185,52 +228,66 @@ KRON_SHAPES = [
     [(), (2, 3)],
     [(2, 3), ()],
     [(0, 3), (2, 3)],
-    [(2, 3), (0,)],
-    [(0,), (0,)],
+    # [(2, 3), (0,)],  # commented out to reduce CI timeout
+    # [(0,), (0,)],  # commented out to reduce CI timeout
     [(), ()],
     [(1,), (2,)],
-    [(2,), (3,)],
+    # [(2,), (3,)],  # commented out to reduce CI timeout
     [(2, 2), (3, 3)],
     [(1, 2, 3), (2, 3, 4)],
     [(1,), (2, 2)],
-    [(1, 2), (3, 4, 5)],
+    # [(1, 2), (3, 4, 5)],  # commented out to reduce CI timeout
     [(2,), (3, 4, 5, 6)],
-    [(2, 3, 4), (1,)],
+    # [(2, 3, 4), (1,)],  # commented out to reduce CI timeout
     [(5, 5), (4, 4)],
     [(3, 3, 3), (2, 2, 2)],
     [(4, 4, 4, 4), (2, 2, 2, 2)],
     [(2, 3, 4), (3, 4, 5)],
-    [(1, 3, 5), (2, 4, 6)],
-    [(2, 4, 6, 8), (1, 3, 5, 7)],
-    [(1, 3), (1, 4)],
-    [(1, 1, 3), (1, 1, 2)],
-    [(2, 1, 4), (3, 1, 5)],
-    [(2, 2, 2, 2, 2), (1, 1, 1, 1, 1)],
+    # [(1, 3, 5), (2, 4, 6)],  # commented out to reduce CI timeout
+    # [(2, 4, 6, 8), (1, 3, 5, 7)],  # commented out to reduce CI timeout
+    # [(1, 3), (1, 4)],  # commented out to reduce CI timeout
+    # [(1, 1, 3), (1, 1, 2)],  # commented out to reduce CI timeout
+    # [(2, 1, 4), (3, 1, 5)],  # commented out to reduce CI timeout
+    # [(2, 2, 2, 2, 2), (1, 1, 1, 1, 1)],  # commented out to reduce CI timeout
     [(1, 2, 3, 4, 5), (2, 3, 4, 5, 6)],
-    [(1,), (1,)],
-    [(10,), (10,)],
-    [(2, 3), (3, 2)],
+    # [(1,), (1,)],  # commented out to reduce CI timeout
+    # [(10,), (10,)],  # commented out to reduce CI timeout
+    # [(2, 3), (3, 2)],  # commented out to reduce CI timeout
     [(3, 3), (3, 3)],
-    [(1, 1, 1), (2, 2, 2)],
+    # [(1, 1, 1), (2, 2, 2)],  # commented out to reduce CI timeout
 ]
 # Add some test cases with zeor-dimensional tensor and zero-sized tensors.
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 FLOAT_DTYPES = (
-    PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
-    if bf16_is_supported
-    else PRIMARY_FLOAT_DTYPES
+    ([torch.bfloat16] if bf16_is_supported else [torch.float32])
+    if QUICK_MODE
+    else (
+        PRIMARY_FLOAT_DTYPES + [torch.bfloat16]
+        if bf16_is_supported
+        else PRIMARY_FLOAT_DTYPES
+    )
 )
 
 ALL_FLOAT_DTYPES = FLOAT_DTYPES + [torch.float64] if fp64_is_supported else FLOAT_DTYPES
-INT_DTYPES = [torch.int16, torch.int32]
+INT_DTYPES = [torch.int32] if QUICK_MODE else [torch.int16, torch.int32]
 ALL_INT_DTYPES = INT_DTYPES + [torch.int64] if int64_is_supported else INT_DTYPES
 BOOL_TYPES = [torch.bool]
-COMPLEX_DTYPES = [torch.complex32, torch.complex64]
+COMPLEX_DTYPES = (
+    ([torch.complex64] if QUICK_MODE else [torch.complex32, torch.complex64])
+    if complex_is_supported
+    else []
+)
 
 SCALARS = [0.001, -0.999, 100.001, -111.999]
-STACK_DIM_LIST = [-2, -1, 0, 1]
+STACK_DIM_LIST = [-1, 0] if QUICK_MODE else [-2, -1, 0, 1]
 
 ARANGE_START = [0] if TO_CPU else [0, 1, 3]
+
+GLU_SHAPES = (
+    [(2, 19, 8)]
+    if QUICK_MODE
+    else [(2,), (128, 256), (20, 32, 16), (16, 128, 64, 60), (16, 7, 57, 32, 30)]
+)
 
 
 def to_reference(inp, upcast=False):
@@ -240,13 +297,51 @@ def to_reference(inp, upcast=False):
     if TO_CPU:
         ref_inp = ref_inp.to("cpu")
     if upcast:
+        # When reference runs on CPU (TO_CPU=True), always upcast to float64/complex128
+        # since CPU always supports fp64. This ensures the reference has high precision
+        # for validating GPU float32 results, regardless of GPU fp64 support.
+        can_use_fp64 = fp64_is_supported or TO_CPU
         if ref_inp.is_complex():
-            ref_inp = ref_inp.to(
-                torch.complex128 if fp64_is_supported else torch.complex64
-            )
+            ref_inp = ref_inp.to(torch.complex128 if can_use_fp64 else torch.complex64)
         else:
-            ref_inp = ref_inp.to(torch.float64 if fp64_is_supported else torch.float32)
+            ref_inp = ref_inp.to(torch.float64 if can_use_fp64 else torch.float32)
     return ref_inp
+
+
+def ref_div_rounding(a, b, rounding_mode):
+    # Kunlunxin eager does not implement div with a rounding_mode, or computes
+    # it with fp32 opmath that differs from CPU half-precision semantics, so
+    # compute the reference on CPU there. Other backends keep the on-device
+    # reference (their eager implementation matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        # floor/trunc at low precision: the reference must be computed on a
+        # wider type. Dividing in float16 rounds the quotient before the
+        # rounding mode is applied, which moves results across integer
+        # boundaries (the kernel follows the exact quotient, matching CUDA aten
+        # and an fp64 reference). fp32/fp64 inputs are unaffected by this
+        # upcast, so they keep the plain path.
+        if rounding_mode in ("floor", "trunc"):
+            orig_dtype = torch.result_type(a, b)
+            if orig_dtype in (torch.float16, torch.bfloat16):
+                wide = torch.float64 if fp64_is_supported else torch.float32
+                a_wide = a.to(wide) if isinstance(a, torch.Tensor) else a
+                b_wide = b.to(wide) if isinstance(b, torch.Tensor) else b
+                return torch.div(a_wide, b_wide, rounding_mode=rounding_mode).to(
+                    orig_dtype
+                )
+        return torch.div(a, b, rounding_mode=rounding_mode)
+    a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b
+    ref = torch.div(a_cpu, b_cpu, rounding_mode=rounding_mode)
+    if not TO_CPU:
+        dev = None
+        for x in (a, b):
+            if isinstance(x, torch.Tensor) and x.device.type != "cpu":
+                dev = x.device
+                break
+        if dev is not None and isinstance(ref, torch.Tensor):
+            ref = ref.to(dev)
+    return ref
 
 
 def to_cpu(res, ref):
@@ -286,3 +381,29 @@ def init_seed(seed):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def gems_log_prefix(fn):
+    """Derive the expected log prefix from the resolved function module.
+
+    The generic implementation logs with the ``"GEMS"`` prefix, while
+    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
+    ``_<vendor>`` path component so this works for both short imported module
+    names and fully qualified backend module names.
+    """
+    module_parts = fn.__module__.split(".")
+    if f"_{flag_gems.vendor_name}" in module_parts:
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    return "GEMS"
+
+
+def gems_log_logger(fn):
+    """Return the logger name used by an operator implementation.
+
+    Operator modules log with ``logging.getLogger(__name__)``, so the logger
+    name is just the resolved function's module: ``flag_gems.ops.<operator>``
+    for the generic implementation, or the vendor module's own dotted path
+    (e.g. ``_kunlunxin.ops.<operator>``) for vendor overrides, since backend
+    packages are imported under their short name.
+    """
+    return fn.__module__

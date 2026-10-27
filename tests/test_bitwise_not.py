@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -21,8 +35,7 @@ def test_bitwise_not(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_not(inp)
+    res_out = flag_gems.bitwise_not(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -40,7 +53,6 @@ def test_bitwise_not_(shape, dtype):
     ref_inp = utils.to_reference(res_inp.clone())
 
     ref_out = ref_inp.bitwise_not_()  # NOTE: there is no torch.bitwse_not_
-    with flag_gems.use_gems():
-        res_out = res_inp.bitwise_not_()
+    res_out = flag_gems.bitwise_not_(res_inp)
 
     utils.gems_assert_equal(res_out, ref_out)

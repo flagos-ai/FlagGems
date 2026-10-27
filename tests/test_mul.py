@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 
 import numpy as np
@@ -19,8 +33,7 @@ def test_mul_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -35,8 +48,7 @@ def test_mul_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.mul(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,8 +63,7 @@ def test_mul_scalar_tensor(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -68,13 +79,77 @@ def test_mul_scalar_scalar(dtype):
         inp2 = random.randint(0, 100)
 
     ref_out = torch.mul(inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int(shape, dtype):
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 3
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.INT_DTYPES)
+def test_mul_tensor_scalar_int_float_scalar(shape, dtype):
+    # int tensor x float scalar promotes to the default float dtype
+    inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
+        flag_gems.device
+    )
+    inp2 = 0.001
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("scalar", [True, False, 2.0])
+def test_mul_tensor_scalar_bool(shape, scalar):
+    inp1 = torch.randint(0, 2, shape, dtype=torch.bool, device="cpu").to(
+        flag_gems.device
+    )
+    ref_inp1 = utils.to_reference(inp1, False)
+
+    ref_out = torch.mul(ref_inp1, scalar)
+    res_out = flag_gems.mul(inp1, scalar)
+
+    if isinstance(scalar, bool):
+        utils.gems_assert_equal(res_out, ref_out)
+    else:
+        # bool tensor x float scalar promotes to float32
+        utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+@pytest.mark.mul
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+def test_mul_scalar_scalar_float(shape):
+    inp1 = float(np.float32(random.random()))
+    inp2 = float(np.float32(random.random()))
+
+    ref_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
+
+    # scalar x scalar falls back to torch.tensor(A * B), which yields float32
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.mul_
@@ -87,8 +162,7 @@ def test_mul_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.mul_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -103,8 +177,7 @@ def test_mul_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.mul_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.mul_(inp2)
+    res_out = flag_gems.mul_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -127,8 +200,7 @@ def test_mul_broadcast_shape(shape_a, shape_b, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     assert res_out.shape == ref_out.shape, (
         f"Shape mismatch: FlagGems produced {res_out.shape}, "
@@ -142,9 +214,15 @@ def test_mul_broadcast_shape(shape_a, shape_b, dtype):
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_complex(shape, complex_dtype):
+    if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
+        pytest.skip("mthreads does not support complex32 dtype")
     # inp1: complex tensor
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
@@ -153,10 +231,16 @@ def test_mul_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
-    utils.gems_assert_close(res_out, ref_out, complex_dtype)
+    if flag_gems.vendor_name == "cambricon" and complex_dtype == torch.complex32:
+        from .accuracy_utils import to_cpu
+
+        res_out = to_cpu(res_out, ref_out)
+        ref_out = ref_out.to(complex_dtype)
+        torch.testing.assert_close(res_out, ref_out, atol=5e-3, rtol=2e-3)
+    else:
+        utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
 @pytest.mark.mul
@@ -164,9 +248,15 @@ def test_mul_complex_complex(shape, complex_dtype):
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_float_tensor(shape, complex_dtype):
+    if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
+        pytest.skip("mthreads does not support complex32 dtype")
     # inp1: complex tensor
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
 
@@ -179,13 +269,20 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
 
     inp2 = torch.randn(shape, dtype=float_dtype, device=flag_gems.device)
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    # mthreads torch.mul unsupport complex x float.
+    if flag_gems.vendor_name == "mthreads":
+        ref_inp1 = inp1.to("cpu")
+        ref_inp2 = inp2.to("cpu")
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
+    if flag_gems.vendor_name == "mthreads":
+        res_out = res_out.to("cpu")
+        ref_out = ref_out.to(complex_dtype)
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
@@ -193,21 +290,34 @@ def test_mul_complex_float_tensor(shape, complex_dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
 )
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_int_tensor(shape, complex_dtype):
+    if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
+        pytest.skip("mthreads does not support complex32 dtype")
     # inp1: complex tensor
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = torch.randint(10, 20, shape, device=flag_gems.device)
 
-    ref_inp1 = utils.to_reference(inp1, True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    # mthreads torch.mul unsupport complex x int.
+    if flag_gems.vendor_name == "mthreads":
+        ref_inp1 = inp1.to("cpu")
+        ref_inp2 = inp2.to("cpu")
+    else:
+        ref_inp1 = utils.to_reference(inp1, True)
+        ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
+    if flag_gems.vendor_name == "mthreads":
+        res_out = res_out.to("cpu")
+        ref_out = ref_out.to(complex_dtype)
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
@@ -216,9 +326,15 @@ def test_mul_complex_int_tensor(shape, complex_dtype):
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3897: TX81 does not support complex32 dtype",
+)
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 def test_mul_complex_int_scalar(shape, complex_dtype):
+    if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
+        pytest.skip("mthreads does not support complex32 dtype")
     # inp1: complex tensor
     inp1 = torch.randn(shape, dtype=complex_dtype, device=flag_gems.device)
     inp2 = 3
@@ -227,7 +343,6 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     ref_inp2 = inp2
 
     ref_out = torch.mul(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.mul(inp1, inp2)
+    res_out = flag_gems.mul(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)

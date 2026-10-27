@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -8,9 +22,9 @@ from . import accuracy_utils as utils
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
-    TE_AVAILABLE = True
+    TE_OP = getattr(tex, "swiglu", None)
 except ImportError:
-    TE_AVAILABLE = False
+    TE_OP = None
 
 
 def generate_input(
@@ -33,19 +47,39 @@ VALID_POINTWISE_SHAPES = filter_valid_shapes(utils.SWIGLU_SPECIAL_SHAPES)
 
 
 @pytest.mark.swiglu
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "mthreads",
+    reason="swiglu rejects MUSA tensors on mthreads",
+)
 @pytest.mark.parametrize("shape", VALID_POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.skipif(not TE_AVAILABLE, reason="transformer engine is not available")
 def test_swiglu(shape: tuple[int, ...], dtype: torch.dtype):
     torch.manual_seed(42)
     device = flag_gems.device
 
     input_tensor = generate_input(shape, dtype, device)
 
-    te_forward = tex.swiglu(input_tensor, quantizer=None).to(device)
-    te_forward = utils.to_reference(te_forward)
+    if TE_OP is not None:
+        if flag_gems.vendor_name == "kunlunxin":
+            otype = {
+                torch.float16: tex.DType.kFloat16,
+                torch.bfloat16: tex.DType.kBFloat16,
+                torch.float32: tex.DType.kFloat32,
+            }[dtype]
+            ref_out = TE_OP(input_tensor, None, otype=otype)
+            # TE's swiglu flattens leading dims to 2D; restore the original shape.
+            ref_out = ref_out.view(
+                *input_tensor.shape[:-1], input_tensor.shape[-1] // 2
+            )
+        else:
+            ref_out = TE_OP(input_tensor, quantizer=None)
+        ref_out = utils.to_reference(ref_out.to(device))
+    else:
+        # TransformerEngine is unavailable (e.g. on Ascend), so the golden is
+        # the torch reference: silu on the first half times the second half.
+        x1, x2 = input_tensor.float().chunk(2, dim=-1)
+        ref_out = utils.to_reference(torch.nn.functional.silu(x1) * x2)
 
-    with flag_gems.use_gems():
-        fg_forward = flag_gems.swiglu(input_tensor, quantizer=None)
+    res_out = flag_gems.swiglu(input_tensor, quantizer=None)
 
-    utils.gems_assert_close(fg_forward, te_forward, dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype)

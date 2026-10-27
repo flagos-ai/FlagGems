@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -119,16 +133,15 @@ def test_topk_softplus_sqrt(
     res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
     res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
 
-    with flag_gems.use_gems():
-        flag_gems.topk_softplus_sqrt(
-            res_weights,
-            res_ids,
-            res_tei,
-            gating_output,
-            renormalize,
-            routed_scaling_factor,
-            correction_bias=correction_bias,
-        )
+    flag_gems.topk_softplus_sqrt(
+        res_weights,
+        res_ids,
+        res_tei,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        correction_bias=correction_bias,
+    )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
 
@@ -171,17 +184,16 @@ def test_topk_softplus_sqrt_hash(
     res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
     res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
 
-    with flag_gems.use_gems():
-        flag_gems.topk_softplus_sqrt(
-            res_weights,
-            res_ids,
-            res_tei,
-            gating_output,
-            renormalize,
-            routed_scaling_factor,
-            input_ids=input_ids,
-            tid2eid=tid2eid,
-        )
+    flag_gems.topk_softplus_sqrt(
+        res_weights,
+        res_ids,
+        res_tei,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        input_ids=input_ids,
+        tid2eid=tid2eid,
+    )
 
     _check_topk_results(res_weights, res_ids, ref_weights, ref_ids)
 
@@ -225,15 +237,14 @@ def test_topk_softplus_sqrt_vs_vllm(num_tokens, num_experts, topk, renormalize):
     res_ids = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
     res_tei = torch.empty((num_tokens, topk), dtype=torch.int32, device=device)
 
-    with flag_gems.use_gems():
-        flag_gems.topk_softplus_sqrt(
-            res_weights,
-            res_ids,
-            res_tei,
-            gating_output,
-            renormalize,
-            routed_scaling_factor,
-            correction_bias=correction_bias,
-        )
+    flag_gems.topk_softplus_sqrt(
+        res_weights,
+        res_ids,
+        res_tei,
+        gating_output,
+        renormalize,
+        routed_scaling_factor,
+        correction_bias=correction_bias,
+    )
 
     _check_topk_results(res_weights, res_ids, vllm_weights, vllm_ids)

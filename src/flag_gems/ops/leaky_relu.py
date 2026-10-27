@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -77,6 +91,47 @@ def leaky_relu(A, negative_slope=0.01):
     return output
 
 
+@libentry()
+@triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
+@triton.jit(do_not_specialize=["negative_slope"])
+def _leaky_relu_backward_kernel(
+    grad_output_ptr,
+    input_ptr,
+    grad_input_ptr,
+    n_elements,
+    negative_slope,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+
+    grad_output = tl.load(grad_output_ptr + offsets, mask=mask)
+    x = tl.load(input_ptr + offsets, mask=mask)
+    # aten leaky_relu_backward uses a strict `> 0` boundary: at x == 0 the
+    # gradient is scaled by negative_slope (verified against torch.ops.aten).
+    grad_input = tl.where(x > 0, grad_output, grad_output * negative_slope)
+    tl.store(grad_input_ptr + offsets, grad_input, mask=mask)
+
+
+def leaky_relu_backward(grad_output, self, negative_slope=0.01, self_is_result=False):
+    logger.debug("GEMS LEAKY_RELU_BACKWARD")
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+    if not self.is_contiguous():
+        self = self.contiguous()
+    grad_input = torch.empty_like(self)
+    n_elements = self.numel()
+    if n_elements == 0:
+        return grad_input
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(self.device.index):
+        _leaky_relu_backward_kernel[grid](
+            grad_output, self, grad_input, n_elements, negative_slope
+        )
+    return grad_input
+
+
 def leaky_relu_(A, negative_slope=0.01):
     logger.debug("GEMS LEAKY_RELU_")
     if not A.is_contiguous():
@@ -86,9 +141,17 @@ def leaky_relu_(A, negative_slope=0.01):
     n_elements = A.numel()
     if n_elements == 0:
         return A
+    # Autotuning re-runs the kernel on the launch arguments several times, so
+    # launching with A as both source and destination would let an early
+    # benchmark pass overwrite negative elements with scaled values that the
+    # later passes then read, compounding the scaling. Compute into a scratch
+    # buffer first and copy back, keeping the operation in-place from the
+    # caller's perspective.
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(A.device.index):
-        _leaky_relu_kernel[grid](A, A, n_elements, negative_slope)
+        scratch = torch.empty_like(A)
+        _leaky_relu_kernel[grid](A, scratch, n_elements, negative_slope)
+        A.copy_(scratch)
     return A
 
 

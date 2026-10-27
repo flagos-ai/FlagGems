@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """
 FlagGems ARM backend: Triton-CPU INT8 GEMM for quantized::linear_dynamic.
 
@@ -243,8 +257,7 @@ def _get_weight(W_prepack):
     else:
         weight_tiled = None
         logger.debug(
-            "FlagGems ARM: K=%d N=%d not divisible by BK=%d BN=%d; "
-            "tiled layout disabled for this layer",
+            "GEMS_ARM FlagGems ARM: K=%d N=%d not divisible by BK=%d BN=%d; tiled layout disabled for this layer",
             K,
             N,
             BK,
@@ -509,9 +522,9 @@ def register():
             allow_override=True,
         )
         logger.debug(
-            "FlagGems ARM: registered Triton-CPU i8mm (fused+tiled) for quantized::linear_dynamic"
+            "GEMS_ARM FlagGems ARM: registered Triton-CPU i8mm (fused+tiled) for quantized::linear_dynamic"
         )
     except Exception as e:
         logger.warning(
-            f"FlagGems ARM: failed to register quantized::linear_dynamic override: {e}"
+            f"GEMS_ARM failed to register quantized::linear_dynamic override: {e}"
         )

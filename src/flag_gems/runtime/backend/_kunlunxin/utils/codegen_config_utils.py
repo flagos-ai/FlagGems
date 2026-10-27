@@ -38,8 +38,6 @@ class CodeGenConfig:
 
     prefer_block_pointer: bool
     prefer_1d_tile: bool
-    # gen_configs: -> configs
-    # prune_config: (as jit function, ) cofigs -> configs
     is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
@@ -49,6 +47,7 @@ class CodeGenConfig:
     kunlunAutoGrid: bool = False
     buffer_size_limit: int = 0
     unroll_num: int = 0
+    num_ctas_1d: int = 0
 
     def __post_init__(self):
         if self.prefer_1d_tile:
@@ -63,15 +62,17 @@ CODEGEN_COFIGS = {
         True,
         prefer_1d_tile=int(triton.__version__[0]) < 3,
     ),
-    vendors.CAMBRICON: CodeGenConfig(
-        8192,
-        tuple([_state.vendor_module.TOTAL_CORE_NUM, 1, 1]),
-        32,
-        False,
-        prefer_1d_tile=int(triton.__version__[0]) < 3,
-    )
-    if _state.vendor_module.vendor_info.vendor_name == "cambricon"
-    else None,
+    vendors.CAMBRICON: (
+        CodeGenConfig(
+            8192,
+            tuple([_state.vendor_module.TOTAL_CORE_NUM, 1, 1]),
+            32,
+            False,
+            prefer_1d_tile=int(triton.__version__[0]) < 3,
+        )
+        if _state.vendor_module.vendor_info.vendor_name == "cambricon"
+        else None
+    ),
     vendors.METAX: CodeGenConfig(
         2048,
         (65536, 65536, 65536),

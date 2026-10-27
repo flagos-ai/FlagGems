@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 import math
 
@@ -12,16 +26,16 @@ from flag_gems.utils.type_utils import get_accumulator_dtype
 
 from ..utils import TOTAL_CORE_NUM
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 MAX_C_MLU_LAYERNORM_FORWARD = 8192
 MAX_C_MLU_LAYERNORM_BACKWARD = 5120
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("layer_norm_persistent"),
     key=["M", "N"],
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_middle_n(
     X,
@@ -99,12 +113,12 @@ def cfggen():
     return configs
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen(),
     key=["M", "N"],
     prune_configs_by={"early_config_prune": config_prune},
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_non_inner(
     X,
@@ -134,7 +148,7 @@ def layer_norm_kernel_non_inner(
     # for off in range(0, N, BLOCK_COL_SIZE):
     cols = tl.arange(0, BLOCK_COL_SIZE)[None, :]
     col_mask = cols < N
-    mask = row_mask and col_mask
+    mask = row_mask & col_mask
     a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
     _mean += a
     _var += a * a
@@ -164,12 +178,12 @@ def layer_norm_kernel_non_inner(
     tl.store(Y + cols, y, mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("layer_norm_loop"),
     key=["M", "N"],
     prune_configs_by={"early_config_prune": config_prune},
 )
+@libentry()
 @triton.jit(do_not_specialize=["eps"])
 def layer_norm_kernel_inner(
     X,
@@ -199,7 +213,7 @@ def layer_norm_kernel_inner(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + block_col_size
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
         _mean += a
         _var += a * a
@@ -218,7 +232,7 @@ def layer_norm_kernel_inner(
     for off in range(0, N, BLOCK_COL_SIZE):
         cols = off + block_col_size
         col_mask = cols < N
-        mask = row_mask and col_mask
+        mask = row_mask & col_mask
         if W is None:
             w = 1
         else:
@@ -246,12 +260,12 @@ def prune_in_wb_config(configs, named_args, **kwargs):
     return pruned_configs
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_bias_backward"),
     prune_configs_by={"early_config_prune": prune_in_wb_config},
     key=["M", "N"],
 )
+@libentry()
 @triton.jit
 def input_backward_kernel(
     dY,
@@ -292,7 +306,7 @@ def input_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + cols[None, :], mask, other=0.0).to(tl.float32)
             x_hat = (x - mean) * rstd
@@ -312,7 +326,7 @@ def input_backward_kernel(
         for off in range(0, N, BLOCK_COL_SIZE):
             cols = off + tl.arange(0, BLOCK_COL_SIZE)
             col_mask = cols[None, :] < N
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + cols[None, :], mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + cols[None, :], mask, other=0.0).to(tl.float32)
             if W is None:
@@ -325,12 +339,12 @@ def input_backward_kernel(
             tl.store(new_DX + cols, dx.to(x.dtype), mask=mask)
 
 
-@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("weight_bias_backward"),
     prune_configs_by={"early_config_prune": prune_in_wb_config},
     key=["M", "N"],
 )
+@libentry()
 @triton.jit
 def weight_bias_backward_kernel(
     dY,
@@ -365,7 +379,7 @@ def weight_bias_backward_kernel(
         for off in range(0, M, BLOCK_ROW_SIZE):
             rows = off + tl.arange(0, BLOCK_ROW_SIZE)
             row_mask = rows[:, None] < M
-            mask = row_mask and col_mask
+            mask = row_mask & col_mask
             dy = tl.load(new_dY + rows[:, None] * N, mask, other=0.0).to(tl.float32)
             x = tl.load(new_X + rows[:, None] * N, mask, other=0.0).to(tl.float32)
             mean = tl.load(Mean + rows, mask=rows < M, other=0.0)[:, None].to(
@@ -410,12 +424,12 @@ def pre_hook(args, reset_only=True):
             args[i].zero_()
 
 
-@libentry()
 @triton.autotune(
     configs=cfggen_bw_middle_n(),
     key=["M", "N"],
     pre_hook=pre_hook,
 )
+@libentry()
 @triton.jit
 def layer_norm_backward_kernel_middle_n(
     DX,  # pointer to the input gradient
@@ -489,7 +503,7 @@ def layer_norm_backward_kernel_middle_n(
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
-    logger.debug("GEMS_CAMBRICON LAYERNORM FORWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM")
     # dim = x.ndim - len(normalized_shape)
     # M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -528,7 +542,7 @@ def layer_norm_backward(
     bias=None,
     output_mask=None,
 ):
-    logger.debug("GEMS_CAMBRICON LAYERNORM BACKWARD")
+    logger.debug("GEMS_CAMBRICON LAYER_NORM_BACKWARD")
     grad_out = grad_out.contiguous()
     input = input.contiguous()
     mean = mean.contiguous()

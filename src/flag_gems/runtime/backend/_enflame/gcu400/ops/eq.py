@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -28,7 +42,7 @@ def eq(A, B):
             B = B.to(A.device)
         else:
             A = A.to(B.device)
-    logger.debug("GEMS EQ")
+    logger.debug("GEMS_ENFLAME EQ")
     return eq_func(A, B)
 
 
@@ -39,7 +53,7 @@ def eq_func_scalar(x, y):
 
 
 def eq_scalar(A, B):
-    logger.debug("GEMS EQ SCALAR")
+    logger.debug("GEMS_ENFLAME EQ_SCALAR")
     return eq_func_scalar(A, B)
 
 
@@ -94,7 +108,7 @@ def _reduce_min_k(in_ptr, out_ptr, N: tl.constexpr):
 
 
 def equal(x: torch.Tensor, y: torch.Tensor) -> bool:
-    logger.debug("GEMS EQUAL")
+    logger.debug("GEMS_ENFLAME EQUAL")
     if x.shape != y.shape:
         return False
     if x.numel() == 0:

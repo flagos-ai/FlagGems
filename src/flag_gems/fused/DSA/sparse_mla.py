@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -201,7 +215,8 @@ if HAS_TLE:
         is_causal: tl.constexpr,
     ):
         i_b, i_sq, i_gbh = tl.program_id(0), tl.program_id(1), tl.program_id(2)
-        i_g, i_bh = i_gbh // G, i_gbh % G
+        NH = tl.cdiv(G, BH)
+        i_g, i_bh = i_gbh // NH, i_gbh % NH
         q_base = q + i_b * stride_qb + i_sq * stride_qm + i_gbh * (BH * stride_qh)
         tq_base = q_base + D * stride_qd
         kv_base = kv + i_b * stride_kvb + i_g * stride_kvg

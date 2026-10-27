@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -92,7 +106,7 @@ def _launch_tt(inp_a, inp_b, out, N, dtype):
 
 
 def remainder(A, B):
-    logger.debug("GEMS REMAINDER GCU400")
+    logger.debug("GEMS_ENFLAME REMAINDER")
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         inp_a = A if A.is_contiguous() else A.contiguous()
         inp_b = B if B.is_contiguous() else B.contiguous()
@@ -141,7 +155,7 @@ def remainder(A, B):
 
 
 def remainder_(A, B):
-    logger.debug("GEMS REMAINDER_ GCU400")
+    logger.debug("GEMS_ENFLAME REMAINDER_")
     inp_a = A if A.is_contiguous() else A.contiguous()
     N = inp_a.numel()
     if isinstance(B, torch.Tensor):

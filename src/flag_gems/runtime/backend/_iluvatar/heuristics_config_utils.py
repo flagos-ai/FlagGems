@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import torch
 import triton
 
@@ -20,6 +34,18 @@ def argmin_heur_block_m(args):
 
 def argmin_heur_block_n(args):
     return min(4096, triton.next_power_of_2(args["N"]))
+
+
+def cauchy_heur_block(args):
+    return 1024
+
+
+def cauchy_heur_num_warps(args):
+    return 16 if args["N"] <= 4096 else 4
+
+
+def cauchy_heur_num_stages(args):
+    return 1
 
 
 def dropout_heur_block(args):
@@ -72,7 +98,12 @@ def index_select_heur_block_n(args):
 
 
 def mm_heur_even_k(args):
-    return args["K"] % (args["BLOCK_K"] * args["SPLIT_K"]) == 0
+    split_k = args.get("SPLIT_K", 1)
+    return args["K"] % (args["BLOCK_K"] * split_k) == 0
+
+
+def linear_heur_even_k(args):
+    return mm_heur_even_k(args)
 
 
 def rand_heur_block(args):
@@ -227,6 +258,11 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": argmin_heur_block_m,
         "BLOCK_N": argmin_heur_block_n,
     },
+    "cauchy": {
+        "BLOCK": cauchy_heur_block,
+        "num_warps": cauchy_heur_num_warps,
+        "num_stages": cauchy_heur_num_stages,
+    },
     "dropout": {
         "BLOCK": dropout_heur_block,
         "num_warps": dropout_heur_num_warps,
@@ -245,6 +281,9 @@ HEURISTICS_CONFIGS = {
     },
     "mm": {
         "EVEN_K": mm_heur_even_k,
+    },
+    "linear": {
+        "EVEN_K": linear_heur_even_k,
     },
     "rand": {
         "BLOCK": rand_heur_block,

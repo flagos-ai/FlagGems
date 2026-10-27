@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 from typing import Optional
 
@@ -7,7 +21,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +58,7 @@ def apply_rotary_pos_emb_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    s_id = ext.program_id(0)
+    s_id = tl.program_id(0).to(tl.int64)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len
@@ -126,7 +139,7 @@ def apply_rotary_pos_emb_inplace_kernel(
     ROTARY_INTERLEAVED: tl.constexpr,
     MAX_POSITION_EMBEDDINGS: tl.constexpr,
 ):
-    s_id = ext.program_id(0)
+    s_id = tl.program_id(0).to(tl.int64)
 
     if pos_ptr is None:
         pos_id = s_id % seq_len

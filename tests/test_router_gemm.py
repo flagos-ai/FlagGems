@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -37,8 +51,7 @@ def test_router_gemm_accuracy(M, N, K, in_dtype):
     ref_weight = utils.to_reference(weight, True)
     ref_out = torch.mm(ref_x, ref_weight.t())
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.router_gemm(x, weight)
+    res_out = flag_gems.router_gemm(x, weight)
 
     assert res_out.shape == (M, N)
     assert res_out.dtype == torch.float32
@@ -52,6 +65,5 @@ def test_router_gemm_output_dtype(M, N, K):
     x = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
     weight = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        out_fp32 = flag_gems.router_gemm(x, weight)
-        assert out_fp32.dtype == torch.float32
+    out_fp32 = flag_gems.router_gemm(x, weight)
+    assert out_fp32.dtype == torch.float32

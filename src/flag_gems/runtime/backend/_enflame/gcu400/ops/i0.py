@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import logging
 
 import torch
@@ -92,7 +106,7 @@ def _launch_i0(out: torch.Tensor, x: torch.Tensor):
 
 
 def i0(x: torch.Tensor):
-    logger.debug("GEMS I0 GCU400")
+    logger.debug("GEMS_ENFLAME I0")
     if x.device.type != flag_gems.device:
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
     out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
@@ -102,7 +116,7 @@ def i0(x: torch.Tensor):
 
 
 def i0_out(x: torch.Tensor, out: torch.Tensor):
-    logger.debug("GEMS I0_OUT GCU400")
+    logger.debug("GEMS_ENFLAME I0_OUT")
     if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
         raise ValueError(
             f"i0_out: input and output tensors must be on {flag_gems.device} device"
@@ -167,7 +181,7 @@ def i0_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
 
 
 def i0_(*args, **kwargs):
-    logger.debug("GEMS I0_ GCU400")
+    logger.debug("GEMS_ENFLAME I0_")
     x = args[0] if args else kwargs.get("self", kwargs.get("input", None))
     if x is None:
         raise ValueError(

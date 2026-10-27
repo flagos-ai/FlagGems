@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 attention:
   - gen: true
     param_map:
@@ -39,7 +53,203 @@ log_softmax:
       BLOCK_M: 32
       BLOCK_N: 512
     num_warps: 8
+# FP8 operands, FP32 accumulation; shared-memory sizes are in FP8 bytes.
+# Default and expanded spaces use the same loader and descriptor pre-hook.
+mm_w8a8_fp8_musa_ws_default:
+  - &ws_small_default
+    param_map: &ws_parameters
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        NC: nc
+        CW: cw
+        PW: pw
+        STAGES: stages
+        GM: gm
+      num_stages: compiler_stages
+      num_warps: cw
+    bm: [64]
+    bn: [64]
+    bk: [128, 512]
+    nc: [1]
+    cw: [8]
+    pw: [4]
+    stages: [1, 3]
+    gm: [1]
+    compiler_stages: [1]
+  - &ws_large_default
+    <<: *ws_small_default
+    bm: [128]
+    bn: [256]
+    bk: [128]
+    cw: [16]
+    stages: [3, 4]
+    gm: [4]
+  - <<: *ws_large_default
+    bm: [256]
+    bk: [64]
+    stages: [4]
+
+# Explicit pipe slots are independent of compiler num_stages (kept at 1).
+# All combinations surviving resource/layout pruning are measured, not sampled.
+mm_w8a8_fp8_musa_ws:
+  - &ws_expanded
+    <<: *ws_small_default
+    bm: [32, 64, 128, 256, 512]
+    bn: [32, 64, 128, 256, 512]
+    bk: [64, 128, 256, 512]
+    nc: [1, 2, 3, 4]
+    cw: [4, 8, 16]
+    pw: [4, 8]
+    stages: [1, 2, 3, 4, 5, 6]
+    gm: [1, 2, 4, 8]
+
+mm_w8a8_fp8_musa_ws_fragmented_default:
+  - &fragmented_control
+    <<: *ws_small_default
+    param_map:
+      <<: *ws_parameters
+      META:
+        BM: bm
+        BN: bn
+        BK: bk
+        NC: nc
+        CW: cw
+        PW: pw
+        STAGES: stages
+        GM: gm
+        FRAGMENTED: fragmented
+    bm: [128]
+    bn: [128]
+    bk: [128]
+    nc: [2]
+    cw: [8]
+    pw: [8]
+    stages: [4]
+    gm: [4]
+    fragmented: [false]
+  - &fragmented_default
+    <<: *fragmented_control
+    bm: [256]
+    bk: [64]
+    stages: [4, 5]
+    gm: [1, 2]
+    fragmented: [true]
+
+mm_w8a8_fp8_musa_ws_fragmented:
+  - *fragmented_control
+  - <<: *fragmented_default
+    stages: [4, 5, 6, 7]
+    gm: [1, 2, 4, 8]
+
+mm_w8a8_fp8_musa_default:
+  - &small
+    param_map: &parameters
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        BLOCK_K: block_k
+        GROUP_M: group_m
+        PERSISTENT: persistent
+      num_stages: stages
+      num_warps: warps
+    block_m: [16, 32, 64]
+    block_n: [64]
+    block_k: [32, 64, 128]
+    group_m: [8]
+    persistent: [false]
+    stages: [1]
+    warps: [4]
+  - &skinny
+    param_map: *parameters
+    block_m: [16, 32]
+    block_n: [64]
+    block_k: [128, 256]
+    group_m: [8]
+    persistent: [false]
+    stages: [2, 3]
+    warps: [4]
+  - &medium
+    param_map: *parameters
+    block_m: [32, 64, 128]
+    block_n: [64, 128]
+    block_k: [128, 256]
+    group_m: [8]
+    persistent: [false]
+    stages: [3]
+    warps: [4]
+  - &masked
+    param_map: *parameters
+    block_m: [64]
+    block_n: [64, 128]
+    block_k: [256]
+    group_m: [8]
+    persistent: [false]
+    stages: [1, 2]
+    warps: [4]
+  - &large
+    param_map: *parameters
+    block_m: [128]
+    block_n: [256]
+    block_k: [128]
+    group_m: [8]
+    persistent: [false]
+    stages: [3]
+    warps: [8]
+  - &wide
+    param_map: *parameters
+    block_m: [256]
+    block_n: [256]
+    block_k: [128]
+    group_m: [8]
+    persistent: [false, true]
+    stages: [3]
+    warps: [16]
+  - &short_k_tile
+    param_map: *parameters
+    block_m: [128]
+    block_n: [128]
+    block_k: [64]
+    group_m: [8]
+    persistent: [false]
+    stages: [4]
+    warps: [4]
+
+mm_w8a8_fp8_musa:
+  - *small
+  - *skinny
+  - *masked
+  - <<: *medium
+    block_k: [64, 128, 256]
+    group_m: [1, 8]
+    stages: [2, 3, 4]
+  - <<: *large
+    block_k: [64, 128, 256]
+    group_m: [1, 8]
+    stages: [2, 3, 4]
+  - <<: *large
+    block_m: [256]
+    block_n: [128]
+    block_k: [64, 128, 256]
+    group_m: [1, 8]
+    stages: [2, 3, 4]
+  - <<: *wide
+    group_m: [1, 8]
+    stages: [2, 3]
+  - *short_k_tile
+
 mm:
+  # FP32 on MTT S5000 needs the wider warp configuration.  The existing
+  # four-warp entries leave the scalar FMA path severely under-filled;
+  # retaining them lets autotune keep the better choice for other dtypes and
+  # smaller or irregular shapes.
+  - META:
+      BLOCK_M: 64
+      BLOCK_N: 64
+      BLOCK_K: 64
+    num_stages: 1
+    num_warps: 8
   - META:
       BLOCK_M: 64
       BLOCK_N: 64
@@ -89,6 +299,59 @@ addmm:
       BLOCK_SIZE_K: 32
     num_stages: 1
     num_warps: 4
+linear:
+  # The NVIDIA default's first config (BLOCK_SIZE 128x256x64, num_stages=3) fails to
+  # compile for fp32 on MUSA (Triton Error [MUSA]: invalid argument during autotune).
+  # num_stages=2 keeps the tile size but fits the MUSA fp32 pipeline; the remaining
+  # configs are unchanged from the NVIDIA default and safe across all dtypes.
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 64
+    num_stages: 2
+    num_warps: 8
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 128
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 4
+    num_warps: 4
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 32
+    num_stages: 5
+    num_warps: 2
 cross_entropy_loss:
   - META:
       BLOCK_C: 256
@@ -342,6 +605,32 @@ conj_physical:
       BLOCK_SIZE: 2048
     num_warps: 8
 
+_conj:
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 512
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 1024
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 2048
+    num_warps: 8
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 4
+  - META:
+      BLOCK_SIZE: 4096
+    num_warps: 8
+
 upsample_nearest2d:
   - gen: true
     param_map:
@@ -564,8 +853,32 @@ var_mean:
 
 conv2d_forward:
   - META:
+      BLOCK_NI_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
       BLOCK_NI_HO_WO: 32
       BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 16
       BLOCK_CI: 32
     num_warps: 4
     num_stages: 1
@@ -579,8 +892,126 @@ conv2d_backward_weight:
     num_stages: 1
 
 conv3d_forward:
+  # Large tile: maximize throughput for big inputs
+  - META:
+      BLOCK_NI_DO_HO_WO: 512
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  # Mid-large tiles: balance occupancy and throughput
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 2
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 256
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  # Mid tiles: good coverage for typical workloads
   - META:
       BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 2
+    num_stages: 4
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 16
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 128
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 3
+  # Small tiles: higher occupancy for small inputs
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 16
+      BLOCK_CI: 16
+    num_warps: 8
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
+      BLOCK_CO: 16
+      BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 1
+  - META:
+      BLOCK_NI_DO_HO_WO: 32
       BLOCK_CO: 32
       BLOCK_CI: 32
     num_warps: 4
@@ -769,6 +1200,31 @@ grid_sample_2d_nearest_tiled:
       BLOCK_W: 16
     num_warps: 4
     num_stages: 4
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 64
+      BLOCK_W: 64
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 128
+      BLOCK_W: 128
+    num_warps: 16
+    num_stages: 2
+  - META:
+      BLOCK_H: 32
+      BLOCK_W: 16
+    num_warps: 16
+    num_stages: 3
+  - META:
+      BLOCK_H: 16
+      BLOCK_W: 32
+    num_warps: 16
+    num_stages: 3
 grid_sample_2d_bilinear_tiled:
   - META:
       BLOCK_H: 4

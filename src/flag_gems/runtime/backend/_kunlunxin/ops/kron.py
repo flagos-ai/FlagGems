@@ -1,3 +1,18 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import logging
 import math
 
 import torch
@@ -7,6 +22,8 @@ import triton.language as tl
 # from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 
 def prepare_tensor_for_kron(tensor_a, tensor_b):
@@ -60,89 +77,105 @@ def calculate_indices(batch_idx, shape_a, shape_b):
     return a_idx, b_idx
 
 
-def heur_block_n(args):
-    import builtins
+# --- XPU kron kernel (performance rewrite 2026-08-17) -----------------------
+# One program owns R consecutive output rows; each output row is written as a
+# flat stride-1 contiguous run in BLOCK_N chunks:
+#   C[row, col] = A[i1, j1] * B[i2, j2] with i1 = row//M2, i2 = row%M2 and
+#   j1 = col//N2, j2 = col%N2 recovered from the flat column index.
+#
+# Why this shape is fast on XPU vs the previous implementation:
+#   * N2 is a tl.constexpr: the per-lane 64-bit col//N2, col%N2 compile into
+#     magic-multiply sequences (~3 cyc) instead of runtime 64-bit divisions
+#     (30-60 cyc each). The previous kernel passed N2 as a runtime i64 and this
+#     single detail accounted for ~10-50x of the runtime on 16x16..256x256.
+#   * The store is a flat contiguous 1-D run (BLOCK_N lanes) per chunk, which
+#     is the only store pattern that gets near-copy bandwidth on P800 (2-D
+#     tile stores measure 3-13x slower; a [BJ,BN2] tile + tl.reshape is
+#     UNSUPPORTED on this backend -- inferReshapeOpEncoding is an UNREACHABLE
+#     TODO, verified by CompilationError; a scalar-a outer-product variant was
+#     ~1.3-2x slower than this flat layout).
+#   * NEED_MASK: when N % BLOCK_N == 0 the loads/stores are unmasked entirely.
+BLOCK_N_CAP = 8192
 
-    return builtins.min(args["N"], 8192)
 
-
-def heur_block_m(args):
-    return triton.next_power_of_2(triton.cdiv(args["M"], 12))
-
-
-# @triton.autotune(configs=runtime.get_tuned_config("kron"), key=["M", "N"])
-@triton.heuristics(
-    {
-        "BLOCK_M": heur_block_m,
-        "BLOCK_N": heur_block_n,
-    }
-)
 @triton.jit
 def kron_kernel(
     a_ptr,
     b_ptr,
     c_ptr,
-    map_ptr,
-    batch_size: tl.int64,
-    M: tl.int64,
-    N: tl.int64,
-    M1: tl.int64,
-    M2: tl.int64,
-    N1: tl.int64,
-    N2: tl.int64,
-    a_stride_0: tl.int64,
-    a_stride_1: tl.int64,
-    b_stride_0: tl.int64,
-    b_stride_1: tl.int64,
-    c_stride_0: tl.int64,
-    c_stride_1: tl.int64,
-    a_batch_stride: tl.int64,
-    b_batch_stride: tl.int64,
-    c_batch_stride: tl.int64,
-    BLOCK_M: tl.constexpr,
+    M,
+    N1,
+    M2,
+    N,
+    BATCH: tl.constexpr,
+    a1: tl.int64,
+    b0: tl.int64,
+    b1: tl.int64,
+    a_stride: tl.int64,
+    N2: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    R: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    num_blocks_n = tl.cdiv(N, BLOCK_N)
-    num_blocks_m = tl.cdiv(M, BLOCK_M)
-    num_blocks_per_batch = num_blocks_m * num_blocks_n
+    nrb = (M + R - 1) // R
+    if BATCH:
+        bt = pid // nrb
+        rb = pid % nrb
+        ob1 = bt % (a1 * b1)
+        ob0 = bt // (a1 * b1)
+        aj = (ob0 // b0) * a1 + (ob1 // b1)
+        bj = (ob0 % b0) * b1 + (ob1 % b1)
+        a_off = aj * a_stride
+        b_off = bj * (M2 * N2)
+        c_b = bt * (M * N)
+    else:
+        rb = pid
+        a_off = 0
+        b_off = 0
+        c_b = 0
+    r0 = rb * R
+    for r in tl.static_range(R):
+        row = r0 + r
+        i1 = row // M2
+        i2 = row % M2
+        a_base = a_off + i1 * N1
+        b_base = b_off + i2 * N2
+        c_base = c_b + row * N
+        for off in range(0, N, BLOCK_N):
+            col = off + tl.arange(0, BLOCK_N)
+            j1 = col // N2
+            j2 = col % N2
+            if NEED_MASK:
+                mask = col < N
+                a = tl.load(a_ptr + a_base + j1, mask=mask, other=0.0).to(tl.float32)
+                b = tl.load(b_ptr + b_base + j2, mask=mask, other=0.0).to(tl.float32)
+                out = (a * b).to(c_ptr.dtype.element_ty)
+                tl.store(c_ptr + c_base + col, out, mask=mask)
+            else:
+                a = tl.load(a_ptr + a_base + j1).to(tl.float32)
+                b = tl.load(b_ptr + b_base + j2).to(tl.float32)
+                out = (a * b).to(c_ptr.dtype.element_ty)
+                tl.store(c_ptr + c_base + col, out)
 
-    batch_id = pid // num_blocks_per_batch
-    local_pid = pid % num_blocks_per_batch
-    block_m = local_pid // num_blocks_n
-    block_n = local_pid % num_blocks_n
 
-    offs_m = block_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = block_n * BLOCK_N + tl.arange(0, BLOCK_N)
+def _pick_block_n(N):
+    # Measured sweet spots on P800 XPU: N<=4096 -> next_pow2(N) (a 4096 block is
+    # best for N == 4096); N >= 8192 -> 8192 (best for N == 16384 / 65536).
+    return min(triton.next_power_of_2(N), BLOCK_N_CAP)
 
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N) & (batch_id < batch_size)
 
-    offset = batch_id * 2
-    is_valid = batch_id < batch_size
-    a_batch_idx = tl.load(map_ptr + offset, mask=is_valid)
-    b_batch_idx = tl.load(map_ptr + offset + 1, mask=is_valid)
-
-    a_row = offs_m[:, None] // M2
-    a_col = offs_n[None, :] // N2
-    b_row = offs_m[:, None] % M2
-    b_col = offs_n[None, :] % N2
-
-    a_idx = a_batch_idx * a_batch_stride + a_row * a_stride_0 + a_col * a_stride_1
-    b_idx = b_batch_idx * b_batch_stride + b_row * b_stride_0 + b_col * b_stride_1
-
-    a = tl.load(a_ptr + a_idx, mask=mask)
-    b = tl.load(b_ptr + b_idx, mask=mask)
-    c = a * b
-
-    c_idx = (
-        batch_id * c_batch_stride
-        + offs_m[:, None] * c_stride_0
-        + offs_n[None, :] * c_stride_1
-    )
-    tl.store(c_ptr + c_idx, c, mask=mask)
+def _pick_rows(M):
+    # R must divide M (the kernel has no tail guard). Larger R amortizes launch
+    # for the tiny-row batched case; R = 1 is used for the 2-D case (grid = M).
+    for r in (64, 32, 16, 8, 4, 2, 1):
+        if M % r == 0:
+            return r
+    return 1
 
 
 def kron(A, B):
+    logger.debug("GEMS_KUNLUNXIN KRON")
     if A.dim() == 0 and B.dim() == 0:
         return A * B
 
@@ -175,44 +208,78 @@ def kron(A, B):
     if not B_view.is_contiguous():
         B_view = B_view.contiguous()
 
-    batch_indices = torch.empty(batch_size * 2, device=A.device, dtype=torch.int64)
-    for i in range(batch_size):
-        a_idx, b_idx = calculate_indices(i, A_prepared.shape, B_prepared.shape)
-        batch_indices[i * 2] = a_idx
-        batch_indices[i * 2 + 1] = b_idx
+    block_n = _pick_block_n(N)
+    # XPU codegen quirk: unmasked loads/stores are incorrect for BLOCK_N <= 32
+    # (silent miscompile, verified on 8/16/32-lane tiles); mask them.
+    need_mask = (N % block_n) != 0 or block_n <= 32
 
-    a_batch_stride = M1 * N1
-    b_batch_stride = M2 * N2
-    c_batch_stride = M * N
     with torch_device_fn.device(A.device):
-        grid = lambda meta: (
-            batch_size
-            * triton.cdiv(M, meta["BLOCK_M"])
-            * triton.cdiv(N, meta["BLOCK_N"]),
-        )
-
-        kron_kernel[grid](
-            A_view,
-            B_view,
-            C_reshaped,
-            batch_indices,
-            batch_size,
-            M,
-            N,
-            M1,
-            M2,
-            N1,
-            N2,
-            A_view.stride(1),
-            A_view.stride(2),
-            B_view.stride(1),
-            B_view.stride(2),
-            C_reshaped.stride(1),
-            C_reshaped.stride(2),
-            a_batch_stride,
-            b_batch_stride,
-            c_batch_stride,
-        )
+        if batch_size == 1:
+            kron_kernel[(M,)](
+                A_view[0],
+                B_view[0],
+                C_reshaped[0],
+                M,
+                N1,
+                M2,
+                N,
+                False,
+                1,
+                1,
+                1,
+                M1 * N1,
+                N2,
+                block_n,
+                need_mask,
+                1,
+            )
+        elif A_prepared.dim() == 4 and B_prepared.dim() == 4:
+            # Generic 2-D batch decompose; both inputs are 4-D after padding.
+            a0, a1, _, _ = A_prepared.shape
+            b0, b1, _, _ = B_prepared.shape
+            R = _pick_rows(M)
+            grid = ((batch_size * M) // R,)
+            kron_kernel[grid](
+                A_view,
+                B_view,
+                C_reshaped,
+                M,
+                N1,
+                M2,
+                N,
+                True,
+                a1,
+                b0,
+                b1,
+                M1 * N1,
+                N2,
+                block_n,
+                need_mask,
+                R,
+            )
+        else:
+            # Odd batch layouts (3-D inputs, rank-5+): per-batch host loop.
+            grid = (M,)
+            for bt in range(batch_size):
+                a_idx, b_idx = calculate_indices(bt, A_prepared.shape, B_prepared.shape)
+                kron_kernel[grid](
+                    A_view[a_idx],
+                    B_view[b_idx],
+                    C_reshaped[bt],
+                    M,
+                    N1,
+                    M2,
+                    N,
+                    False,
+                    1,
+                    1,
+                    1,
+                    M1 * N1,
+                    N2,
+                    block_n,
+                    need_mask,
+                    1,
+                )
 
     if A.dim() <= 1 and B.dim() <= 1:
         return C.reshape(-1)

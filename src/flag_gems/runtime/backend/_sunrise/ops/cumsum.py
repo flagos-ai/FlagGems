@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import functools
 import logging
 import math
@@ -218,7 +232,6 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
     for i in range(dim):
         M *= shape[i]
     inp = inp.contiguous()
-    K = inp.numel() // M // N
 
     if dtype is None:
         dtype = inp.dtype
@@ -226,6 +239,14 @@ def cumsum_wrapper(inp, dim=1, dtype=None, out=None):
             dtype = torch.int64
     if out is None:
         out = torch.empty_like(inp, dtype=dtype)
+
+    # An empty input has nothing to scan, and `N` is 0 whenever the scanned
+    # dimension is empty -- computing K first would divide by zero. Same guard
+    # as the generic cumsum (#4541), which this vendor copy never received.
+    if inp.numel() == 0:
+        return out
+
+    K = inp.numel() // M // N
 
     compute_dtype = out.dtype
     if inp.dtype == torch.float16 or inp.dtype == torch.bfloat16:
@@ -366,12 +387,12 @@ def reduce_then_scan_block_scan_kernel_row(
 
 
 def cumsum(inp, dim=1, *, dtype=None):
-    logger.debug("GEMS CUMSUM")
+    logger.debug("GEMS_SUNRISE CUMSUM")
     return cumsum_wrapper(inp, dim, dtype)
 
 
 def cumsum_out(inp, dim=1, *, dtype=None, out):
-    logger.debug("GEMS CUMSUM_OUT")
+    logger.debug("GEMS_SUNRISE CUMSUM_OUT")
     return cumsum_wrapper(inp, dim, dtype, out)
 
 
@@ -519,7 +540,7 @@ GRID_Y_LIMIT = 65535
 
 
 def normed_cumsum(inp, dim=-1):
-    logger.debug("GEMS NORMED_CUMSUM")
+    logger.debug("GEMS_SUNRISE NORMED_CUMSUM")
     assert inp.dtype in (torch.float16, torch.bfloat16, torch.float32, torch.float64)
     dim = dim % inp.ndim
     N = inp.numel()
@@ -573,7 +594,7 @@ def normed_cumsum(inp, dim=-1):
 
         if inp.dtype != torch.float64:
             acc_dtype = torch.float32
-        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device.name)
+        sums = torch.empty((n_rows, n_chunks), dtype=acc_dtype, device=device)
         cumsums = torch.empty_like(sums)
         block_cumsum_kernel[grid](
             inp,

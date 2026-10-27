@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import pytest
 import torch
 
@@ -26,7 +40,9 @@ def test_amax(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.amax(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.amax(inp, dim=dim, keepdim=keepdim)
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList, so normalise
+    # it here to match amax's own contract.
+    dims = dim if isinstance(dim, (list, tuple)) else [dim]
+    res_out = flag_gems.amax(inp, dim=dims, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)

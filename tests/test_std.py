@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import random
 import time
 
@@ -30,6 +44,13 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("correction", CORRECTION)
 @pytest.mark.parametrize("keepdim", KEEP_DIM)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten not working with int64 in shape(200, 40999, 3)",
+)
 def test_std(shape, dim, correction, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -58,8 +79,7 @@ def test_std(shape, dim, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.std(inp, dim=dim, correction=correction, keepdim=keepdim)
 
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 

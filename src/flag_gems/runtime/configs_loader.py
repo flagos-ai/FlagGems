@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import copy
 import inspect
 import os
@@ -6,7 +20,7 @@ import warnings
 import triton
 
 from . import backend, common
-from .backend.device import DeviceDetector
+from .backend.device_finder import DeviceDetector
 
 
 class TunedConfigLoader(object):
@@ -44,6 +58,7 @@ class TunedConfigLoader(object):
                 "num_stages": 2,
                 "num_warps": 4,
                 "num_ctas": 1,
+                "maxnreg": None,
             }
             if self.device.vendor_name == "hygon":
                 self.triton_config_default["num_ldmatrixes"] = 0
@@ -76,6 +91,7 @@ class TunedConfigLoader(object):
             "num_warps": current_config["num_warps"],
             "num_stages": current_config["num_stages"],
             "num_ctas": current_config["num_ctas"],
+            "maxnreg": current_config["maxnreg"],
         }
         if (
             self.device.vendor_name == "hygon"
@@ -101,6 +117,19 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mv_reduce":
+            return [
+                triton.Config(
+                    {"BLOCK": block},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -144,7 +173,26 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mv":
+        if op_name == "mv_hygon":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_N": block_n,
+                        "BLOCK_M": block_m,
+                        "LOOP_STAGES": loop_stages,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_n in ranges["BLOCK_N"]
+                for block_m in ranges["BLOCK_M"]
+                for loop_stages in ranges["LOOP_STAGES"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("mv", "mv_row", "mv_column"):
             return [
                 triton.Config(
                     {
@@ -161,7 +209,7 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_general_tma":
+        if op_name in ("mm_general_tma", "mm_sqmma"):
             group_m_values = ranges.get("GROUP_M", [8])
             return [
                 triton.Config(
@@ -183,7 +231,32 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("mm", "mm_sqmma"):
+        if op_name == "mm_tma_transposed_direct":
+            shared_mem_limit = 220 * 1024
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "N_MAJOR": n_major,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for n_major in ranges["N_MAJOR"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if (block_m * block_k + block_k * block_n) * 2 * s + 1024
+                <= shared_mem_limit
+            ]
+
+        if op_name == "mm_warp_specialized_tma":
+            shared_mem_limit = 220 * 1024
             return [
                 triton.Config(
                     {
@@ -198,6 +271,253 @@ class TunedConfigLoader(object):
                 for block_m in ranges["BLOCK_M"]
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if (block_m * block_k + block_k * block_n) * 2 * s + 8192
+                <= shared_mem_limit
+            ]
+
+        if op_name in ("mm", "mm_w8a8_fp8_skinny"):
+            has_pipeline = "PIPELINE" in ranges
+            has_scenario = "SCENARIO" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
+            scenarios = ranges.get("SCENARIO", [None])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
+                        **({"scenario": scenario} if has_scenario else {}),
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in pipelines
+                for scenario in scenarios
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in ("mm_ppu", "bmm_ppu", "bmm_ppu_narrow_n"):
+            # PPU num_stages controls both Triton's software-pipeline option
+            # and the explicit tl.range PIPE_STAGES constexpr.  Generate them
+            # from the same loop variable instead of taking an accidental
+            # Cartesian product of two nominally identical stage axes.
+            configs = []
+            element_bytes = 2  # PPU mm accepts FP16/BF16 only.
+            shared_memory_budget = 240 * 1024
+            max_accumulators_per_thread = 128
+            for block_m in ranges["BLOCK_M"]:
+                for block_n in ranges["BLOCK_N"]:
+                    for block_k in ranges["BLOCK_K"]:
+                        for group_m in ranges["GROUP_M"]:
+                            for load_mode in ranges["LOAD_MODE"]:
+                                for stages in ranges["s"]:
+                                    pipeline_buffers = max(stages - 1, 1)
+                                    shared_memory = (
+                                        (block_m + block_n)
+                                        * block_k
+                                        * element_bytes
+                                        * pipeline_buffers
+                                    )
+                                    if shared_memory > shared_memory_budget:
+                                        continue
+                                    for warps in ranges["w"]:
+                                        accumulators_per_thread = (
+                                            block_m * block_n // (warps * 32)
+                                        )
+                                        if (
+                                            accumulators_per_thread
+                                            > max_accumulators_per_thread
+                                        ):
+                                            continue
+                                        configs.append(
+                                            triton.Config(
+                                                {
+                                                    "BLOCK_M": block_m,
+                                                    "BLOCK_N": block_n,
+                                                    "BLOCK_K": block_k,
+                                                    "GROUP_M": group_m,
+                                                    "LOAD_MODE": load_mode,
+                                                    "PIPE_STAGES": stages,
+                                                },
+                                                num_stages=stages,
+                                                num_warps=warps,
+                                                pre_hook=pre_hook,
+                                            )
+                                        )
+            return configs
+
+        if op_name == "mm_ppu_narrow_n":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "LOAD_MODE": load_mode,
+                        "PIPE_STAGES": stages,
+                    },
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for load_mode in ranges["LOAD_MODE"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
+        if op_name == "mm_ppu_grouped_row_gemv":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_K": block_k,
+                        "ROWS_PER_PROGRAM": rows_per_program,
+                        "PIPE_STAGES": stages,
+                    },
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_k in ranges["BLOCK_K"]
+                for rows_per_program in ranges["ROWS_PER_PROGRAM"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
+        if op_name == "bmm_gemv_ppu":
+            return [
+                triton.Config(
+                    {"BLOCK_M": block_m, "BLOCK_K": block_k},
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_k in ranges["BLOCK_K"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
+        if op_name in ("mm_ppu_small_m", "mm_ppu_mid_m", "bmm_ppu_small_m"):
+            configs = []
+            element_bytes = 2
+            shared_memory_budget = 240 * 1024
+            fixed_block_m = 16
+            include_block_m = op_name == "mm_ppu_mid_m"
+            if include_block_m:
+                fixed_block_m = 32
+            for block_n in ranges["BLOCK_N"]:
+                for block_k in ranges["BLOCK_K"]:
+                    for load_mode in ranges["LOAD_MODE"]:
+                        for stages in ranges["s"]:
+                            pipeline_buffers = max(stages - 1, 1)
+                            shared_memory = (
+                                (fixed_block_m + block_n)
+                                * block_k
+                                * element_bytes
+                                * pipeline_buffers
+                            )
+                            if shared_memory > shared_memory_budget:
+                                continue
+                            for warps in ranges["w"]:
+                                configs.append(
+                                    triton.Config(
+                                        {
+                                            **(
+                                                {"BLOCK_M": fixed_block_m}
+                                                if include_block_m
+                                                else {}
+                                            ),
+                                            "BLOCK_N": block_n,
+                                            "BLOCK_K": block_k,
+                                            "LOAD_MODE": load_mode,
+                                            "PIPE_STAGES": stages,
+                                        },
+                                        num_stages=stages,
+                                        num_warps=warps,
+                                        pre_hook=pre_hook,
+                                    )
+                                )
+            return configs
+
+        if op_name in ("mm_ppu_split_k", "bmm_ppu_split_k"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "SPLIT_K": split_k,
+                        "LOAD_MODE": load_mode,
+                        "INTERLEAVED": interleaved,
+                        "PIPE_STAGES": stages,
+                    },
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for split_k in ranges["SPLIT_K"]
+                for load_mode in ranges["LOAD_MODE"]
+                for interleaved in ranges["INTERLEAVED"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+                if split_k > 0
+            ]
+
+        if op_name in ("mm_ppu_split_k_reduce", "bmm_ppu_split_k_reduce"):
+            return [
+                triton.Config(
+                    {"BLOCK": block, "VEC": vec},
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
+                for vec in ranges["VEC"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
+        if op_name in ("mm_nn", "mm_nt"):
+            # "scenario" is optional so older expand yamls stay loadable, but
+            # once present it must be set on every generated config: the tuner's
+            # SQL config cache builds its schema from the first config it stores
+            # and marks the columns NOT NULL, so a key that appears on only some
+            # configs makes lookups for the others raise KeyError.
+            scenarios = ranges.get("SCENARIO", [""])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        "pipeline": pipeline,
+                        "scenario": scenario,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in ranges["PIPELINE"]
+                for scenario in scenarios
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -221,16 +541,59 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "gemv":
+        if op_name in (
+            "gemv",
+            "gemv_ppu",
+            "mm_ppu_multi_row_gemv",
+            "mm_ppu_narrow_columns",
+            "bmm_ppu_multi_row_gemv",
+            "bmm_ppu_narrow_columns",
+            "gemv_k_parallel",
+            "mm_w8a8_fp8_gemv",
+        ):
+            ppu_gemv = op_name in (
+                "gemv_ppu",
+                "mm_ppu_multi_row_gemv",
+                "mm_ppu_narrow_columns",
+                "bmm_ppu_multi_row_gemv",
+                "bmm_ppu_narrow_columns",
+            )
             return [
                 triton.Config(
-                    {"BLOCK_M": block_m, "BLOCK_K": block_k},
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_K": block_k,
+                        **({"PIPE_STAGES": s} if ppu_gemv else {}),
+                    },
                     num_stages=s,
                     num_warps=w,
                     pre_hook=pre_hook,
                 )
                 for block_m in ranges["BLOCK_M"]
                 for block_k in ranges["BLOCK_K"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "mm_splitk_two_step":
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": block_m,
+                        "BLOCK_N": block_n,
+                        "BLOCK_K": block_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_m in ranges["BLOCK_M"]
+                for block_n in ranges["BLOCK_N"]
+                for block_k in ranges["BLOCK_K"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -248,7 +611,67 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "w8a8_block_fp8_general":
+        if op_name in (
+            "fused_marlin_moe_w4a16_int4",
+            "fused_marlin_moe_w4a16_int4_gemm_silu",
+            "fused_marlin_moe_w4a16_mxfp4",
+            "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
+        ):
+            maxnreg_values = ranges.get("maxnreg", [None])
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_SIZE_N": block_size_n,
+                        "GROUP_SIZE_M": group_size_m,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    maxnreg=maxnreg,
+                    pre_hook=pre_hook,
+                )
+                for block_size_n in ranges["BLOCK_SIZE_N"]
+                for group_size_m in ranges["GROUP_SIZE_M"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                for maxnreg in maxnreg_values
+            ]
+
+        if op_name == "w8a8_block_fp8_bmm":
+            return [
+                triton.Config(
+                    {"TILE_ORDER": tile_order},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for tile_order in ranges["TILE_ORDER"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name == "compute_global_topk_indices_and_lens":
+            return [
+                triton.Config(
+                    {
+                        "BLOCK": block,
+                        "TPP": tpp,
+                    },
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block in ranges["BLOCK"]
+                for tpp in ranges["TPP"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+                if block * tpp <= 1024
+            ]
+
+        if op_name in (
+            "w8a8_block_fp8_general",
+            "w8a8_block_fp8_bmm_general",
+            "mm_w8a8_fp8_block_scaled",
+        ):
             return [
                 triton.Config(
                     {
@@ -269,7 +692,72 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "w8a8_block_fp8_general_tma":
+        if op_name in (
+            "mm_w8a8_fp8_musa_ws",
+            "mm_w8a8_fp8_musa_ws_default",
+            "mm_w8a8_fp8_musa_ws_fragmented",
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+        ):
+            return [
+                triton.Config(
+                    dict(
+                        BM=bm,
+                        BN=bn,
+                        BK=bk,
+                        NC=nc,
+                        CW=cw,
+                        PW=pw,
+                        STAGES=stages,
+                        GM=gm,
+                        **(
+                            {"FRAGMENTED": fragmented} if fragmented is not None else {}
+                        ),
+                    ),
+                    num_warps=cw,
+                    num_stages=1,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BM"]
+                for bn in ranges["BN"]
+                for bk in ranges["BK"]
+                for nc in ranges["NC"]
+                for cw in ranges["CW"]
+                for pw in ranges["PW"]
+                for stages in ranges["STAGES"]
+                for gm in ranges["GM"]
+                for fragmented in ranges.get("FRAGMENTED", [None])
+                if nc * cw + pw <= 32
+                and (not fragmented or nc == 2)
+                and (bm + (bn + bn // 4 if fragmented else nc * bn)) * bk * stages
+                <= 192 * 1024
+                and 16 <= bm * bn // (cw * 32) <= 128
+            ]
+
+        if op_name in ("mm_w8a8_fp8_musa", "mm_w8a8_fp8_musa_default"):
+            return [
+                triton.Config(
+                    {
+                        "BLOCK_M": bm,
+                        "BLOCK_N": bn,
+                        "BLOCK_K": bk,
+                        "GROUP_M": gm,
+                        "PERSISTENT": persistent,
+                    },
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for bm in ranges["BLOCK_M"]
+                for bn in ranges["BLOCK_N"]
+                for bk in ranges["BLOCK_K"]
+                for gm in ranges["GROUP_M"]
+                for persistent in ranges["PERSISTENT"]
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+                if (bm + bn) * bk * stages <= 192 * 1024 and bm * bn <= 128 * warps * 32
+            ]
+
+        if op_name in ("w8a8_block_fp8_general_tma", "mm_w8a8_fp8_general_tma"):
             group_m_values = ranges.get("GROUP_M", [None])
             return [
                 triton.Config(
@@ -293,7 +781,24 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "w8a8_block_fp8_general_splitk":
+        if op_name in ("mul", "mul_broadcast_2d"):
+            return [
+                triton.Config(
+                    {"BLOCK_SIZE": block_size},
+                    num_stages=s,
+                    num_warps=w,
+                    pre_hook=pre_hook,
+                )
+                for block_size in ranges["BLOCK_SIZE"]
+                for s in ranges["s"]
+                for w in ranges["w"]
+            ]
+
+        if op_name in (
+            "w8a8_block_fp8_general_splitk",
+            "w8a8_block_fp8_bmm_splitk",
+            "mm_w8a8_fp8_block_scaled_splitk",
+        ):
             return [
                 triton.Config(
                     {
@@ -314,7 +819,9 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name == "mm_splitk":
+        if op_name in ("mm_splitk", "mm_w8a8_fp8_splitk"):
+            has_pipeline = "PIPELINE" in ranges
+            pipelines = ranges.get("PIPELINE", [None])
             return [
                 triton.Config(
                     {
@@ -322,6 +829,7 @@ class TunedConfigLoader(object):
                         "BLOCK_N": block_n,
                         "BLOCK_K": block_k,
                         "SPLIT_K": split_k,
+                        **({"pipeline": pipeline} if has_pipeline else {}),
                     },
                     num_stages=s,
                     num_warps=w,
@@ -331,6 +839,7 @@ class TunedConfigLoader(object):
                 for block_n in ranges["BLOCK_N"]
                 for block_k in ranges["BLOCK_K"]
                 for split_k in ranges["SPLIT_K"]
+                for pipeline in pipelines
                 for s in ranges["s"]
                 for w in ranges["w"]
             ]
@@ -398,7 +907,42 @@ class TunedConfigLoader(object):
         return None
 
     def _build_expand_registry(self):
+        musa_yaml = os.path.join(
+            os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
+        )
         return {
+            **{
+                name: {
+                    "yaml_op_name": name,
+                    "key": [
+                        "M",
+                        "N",
+                        "K",
+                        "AM",
+                        "AK",
+                        "BK_STRIDE",
+                        "BN_STRIDE",
+                        "DESCRIPTOR",
+                        "SPLIT_K",
+                    ],
+                    "default_strategy": ["default"] * 9,
+                    "expand_yaml_path": musa_yaml,
+                }
+                for name in ("mm_w8a8_fp8_musa", "mm_w8a8_fp8_musa_default")
+            },
+            **{
+                name: {
+                    "key": ["M", "N", "K"],
+                    "default_strategy": ["default"] * 3,
+                    "expand_yaml_path": musa_yaml,
+                }
+                for name in (
+                    "mm_w8a8_fp8_musa_ws",
+                    "mm_w8a8_fp8_musa_ws_default",
+                    "mm_w8a8_fp8_musa_ws_fragmented",
+                    "mm_w8a8_fp8_musa_ws_fragmented_default",
+                )
+            },
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
             ),
@@ -409,14 +953,280 @@ class TunedConfigLoader(object):
             "bmm": self._build_single_expand_spec(
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
+            "bmm_ppu": {
+                "yaml_op_name": "bmm_ppu",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "batch",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 8,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_narrow_n": {
+                "yaml_op_name": "bmm_ppu_narrow_n",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "batch",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 8,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_multi_row_gemv": {
+                "yaml_op_name": "bmm_ppu_multi_row_gemv",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "batch",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_narrow_columns": {
+                "yaml_op_name": "bmm_ppu_narrow_columns",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "batch",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_split_k": {
+                "yaml_op_name": "bmm_ppu_split_k",
+                "key": ["B_TRANSPOSED", "aiu_load_mask", "batch", "M", "N", "K"],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_small_m": {
+                "yaml_op_name": "bmm_ppu_small_m",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "batch",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 8,
+                "expand_yaml_path": None,
+            },
+            "bmm_gemv_ppu": {
+                "yaml_op_name": "bmm_gemv_ppu",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "ROW_VECTOR",
+                    "batch",
+                    "OUT_SIZE",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "bmm_ppu_split_k_reduce": {
+                "yaml_op_name": "bmm_ppu_split_k_reduce",
+                "key": [
+                    "FUSE_BIAS",
+                    "READ_BIAS",
+                    "M",
+                    "N",
+                    "total_elements",
+                    "SPLIT_K",
+                ],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
             "bmm_sqmma": self._build_single_expand_spec("bmm_sqmma"),
+            "fused_marlin_moe_w4a16_int4": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_int4"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_int4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_int4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_int4_gemm_silu"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_mxfp4": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_mxfp4",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_mxfp4"
+                ),
+            ),
+            "fused_marlin_moe_w4a16_mxfp4_gemm_silu": self._build_single_expand_spec(
+                "fused_marlin_moe_w4a16_mxfp4_gemm_silu",
+                expand_yaml_path=self._get_expand_config_path(
+                    "fused_marlin_moe_w4a16_mxfp4_gemm_silu"
+                ),
+            ),
             "gemv": self._build_single_expand_spec("gemv"),
+            "gemv_ppu": {
+                "yaml_op_name": "gemv_ppu",
+                "key": [
+                    "FUSE_ADDMM",
+                    "READ_BIAS",
+                    "TRANSPOSED",
+                    "B_TRANSPOSED",
+                    "M",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_multi_row_gemv": {
+                "yaml_op_name": "mm_ppu_multi_row_gemv",
+                "key": ["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_narrow_columns": {
+                "yaml_op_name": "mm_ppu_narrow_columns",
+                "key": ["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
+            "gemv_k_parallel": self._build_single_expand_spec(
+                "gemv", yaml_op_name="gemv_k_parallel"
+            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
             ),
+            "mm_ppu": {
+                "yaml_op_name": "mm_ppu",
+                "key": [
+                    "FUSE_ADDMM",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_narrow_n": {
+                "yaml_op_name": "mm_ppu_narrow_n",
+                "key": [
+                    "FUSE_ADDMM",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_small_m": {
+                "yaml_op_name": "mm_ppu_small_m",
+                "key": [
+                    "FUSE_ADDMM",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "aiu_load_mask",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 7,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_grouped_row_gemv": {
+                "yaml_op_name": "mm_ppu_grouped_row_gemv",
+                "key": ["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
+                "default_strategy": ["default"] * 6,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_mid_m": {
+                "yaml_op_name": "mm_ppu_mid_m",
+                "key": [
+                    "FUSE_ADDMM",
+                    "READ_BIAS",
+                    "B_TRANSPOSED",
+                    "GROUPED_ROWS",
+                    "aiu_load_mask",
+                    "M",
+                    "N",
+                    "K",
+                ],
+                "default_strategy": ["default"] * 8,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_split_k": {
+                "yaml_op_name": "mm_ppu_split_k",
+                "key": ["B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
+                "default_strategy": ["default"] * 5,
+                "expand_yaml_path": None,
+            },
+            "mm_ppu_split_k_reduce": {
+                "yaml_op_name": "mm_ppu_split_k_reduce",
+                "key": ["FUSE_ADDMM", "READ_BIAS", "n_elements", "SPLIT_K"],
+                "default_strategy": ["default"] * 4,
+                "expand_yaml_path": None,
+            },
+            "mm_nn": self._build_single_expand_spec("mm_nn"),
+            "mm_nt": self._build_single_expand_spec("mm_nt"),
+            "mm_splitk_two_step": self._build_single_expand_spec(
+                "mm", yaml_op_name="mm_splitk_two_step"
+            ),
+            "mm_sqmma": self._build_single_expand_spec(
+                "mm_sqmma", yaml_op_name="mm_general_tma"
+            ),
             "mm_general_tma": self._build_single_expand_spec("mm_general_tma"),
+            "mm_tma_transposed_direct": self._build_single_expand_spec(
+                "mm_tma_transposed_direct"
+            ),
+            "mm_warp_specialized_tma": self._build_single_expand_spec(
+                "mm_warp_specialized_tma"
+            ),
             "mv": self._build_single_expand_spec(
                 "mv", expand_yaml_path=self._get_expand_config_path("mv")
+            ),
+            "mv_row": self._build_single_expand_spec("mv_row"),
+            "mv_column": self._build_single_expand_spec("mv_column"),
+            "mv_reduce": self._build_single_expand_spec("mv_reduce"),
+            # Hygon's MV tuner includes the three input strides in its cache
+            # key. Use a separate expand contract so generic MV backends keep
+            # their existing two-key FlagTune schema.
+            "mv_hygon": self._build_single_expand_spec(
+                "mv_hygon",
+                yaml_op_name="mv",
+                expand_yaml_path=self._get_expand_config_path("mv"),
+            ),
+            "mul": self._build_single_expand_spec(
+                "mul", expand_yaml_path=self._get_expand_config_path("mul")
+            ),
+            "mul_broadcast_2d": self._build_single_expand_spec(
+                "mul_broadcast_2d",
+                expand_yaml_path=self._get_expand_config_path("mul"),
+                yaml_op_name="mul",
             ),
             "w8a8_block_fp8_general": self._build_single_expand_spec(
                 "w8a8_block_fp8_general"
@@ -427,8 +1237,42 @@ class TunedConfigLoader(object):
             "w8a8_block_fp8_general_tma": self._build_single_expand_spec(
                 "w8a8_block_fp8_general_tma"
             ),
+            "w8a8_block_fp8_bmm": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm",
+                expand_yaml_path=self._get_expand_config_path("w8a8_block_fp8_bmm"),
+            ),
+            "w8a8_block_fp8_bmm_general": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_general",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_general"
+                ),
+            ),
+            "w8a8_block_fp8_bmm_splitk": self._build_single_expand_spec(
+                "w8a8_block_fp8_bmm_splitk",
+                expand_yaml_path=self._get_expand_config_path(
+                    "w8a8_block_fp8_bmm_splitk"
+                ),
+            ),
             "mm_splitk": self._build_single_expand_spec("mm_splitk"),
+            "mm_w8a8_fp8_general_tma": self._build_single_expand_spec(
+                "mm_w8a8_fp8_general_tma"
+            ),
+            "mm_w8a8_fp8_splitk": self._build_single_expand_spec("mm_w8a8_fp8_splitk"),
+            "mm_w8a8_fp8_block_scaled": self._build_single_expand_spec(
+                "mm_w8a8_fp8_block_scaled"
+            ),
+            "mm_w8a8_fp8_block_scaled_splitk": self._build_single_expand_spec(
+                "mm_w8a8_fp8_block_scaled_splitk"
+            ),
+            "mm_w8a8_fp8_gemv": self._build_single_expand_spec("mm_w8a8_fp8_gemv"),
+            "mm_w8a8_fp8_skinny": self._build_single_expand_spec("mm_w8a8_fp8_skinny"),
             "sparse_attention": self._build_single_expand_spec("sparse_attention"),
+            "compute_global_topk_indices_and_lens": self._build_single_expand_spec(
+                "compute_global_topk_indices_and_lens",
+                expand_yaml_path=self._get_expand_config_path(
+                    "compute_global_topk_indices_and_lens"
+                ),
+            ),
         }
 
     def load_all(self):
@@ -488,6 +1332,7 @@ class TunedConfigLoader(object):
                         num_warps=cur_config["num_warps"],
                         num_stages=cur_config["num_stages"],
                         num_ctas=cur_config["num_ctas"],
+                        maxnreg=cur_config["maxnreg"],
                     )
                 )
             else:
@@ -562,17 +1407,17 @@ class TunedConfigLoader(object):
             if not isinstance(expand_configs, list):
                 return -1
 
-            gen_config = None
+            gen_configs = []
             strategy_config = None
             for single_config in expand_configs:
                 if isinstance(single_config, dict) and "param_map" in single_config:
-                    gen_config = single_config
+                    gen_configs.append(single_config)
 
                 if isinstance(single_config, dict) and "strategy" in single_config:
                     strategy_config = single_config.get("strategy")
 
-            param_map = gen_config.get("param_map")
-            meta_map = param_map.get("META")
+            if not gen_configs:
+                return -1
 
             strategy = default_strategy
             if isinstance(strategy_config, dict):
@@ -581,16 +1426,27 @@ class TunedConfigLoader(object):
                     for idx, k in enumerate(key)
                 ]
 
-            ranges = {}
-
-            for mapped_key in meta_map.values():
-                ranges[mapped_key.upper()] = gen_config[mapped_key]
-            ranges["s"] = gen_config[param_map.get("num_stages")]
-            ranges["w"] = gen_config[param_map.get("num_warps")]
+            config_spaces = []
+            for gen_config in gen_configs:
+                param_map = gen_config.get("param_map")
+                meta_map = param_map.get("META")
+                ranges = {}
+                for mapped_key in meta_map.values():
+                    ranges[mapped_key.upper()] = gen_config[mapped_key]
+                ranges["s"] = gen_config[param_map.get("num_stages")]
+                ranges["w"] = gen_config[param_map.get("num_warps")]
+                if "maxnreg" in param_map:
+                    ranges["maxnreg"] = gen_config[param_map["maxnreg"]]
+                config_spaces.append(ranges)
 
             return {
-                "ranges": ranges,
+                "ranges": config_spaces[0],
+                "config_spaces": config_spaces,
                 "strategy": strategy,
+                "include_default_configs": any(
+                    bool(config.get("include_default_configs", False))
+                    for config in gen_configs
+                ),
             }
         except Exception:
             return -1
@@ -599,8 +1455,40 @@ class TunedConfigLoader(object):
         expand_config = self.get_expand_config(op_name, yaml_path=yaml_path)
         if expand_config == -1:
             return []
-        ranges = expand_config["ranges"]
-        return self._build_configs_by_op(op_name, ranges, pre_hook=pre_hook)
+
+        def config_key(config):
+            return (
+                tuple(
+                    sorted((key, repr(value)) for key, value in config.kwargs.items())
+                ),
+                getattr(config, "num_warps", None),
+                getattr(config, "num_ctas", None),
+                getattr(config, "num_stages", None),
+                getattr(config, "maxnreg", None),
+                repr(getattr(config, "ir_override", None)),
+            )
+
+        configs = []
+        seen = set()
+        for ranges in expand_config.get("config_spaces", [expand_config["ranges"]]):
+            for config in self._build_configs_by_op(op_name, ranges, pre_hook=pre_hook):
+                key = config_key(config)
+                if key in seen:
+                    continue
+                configs.append(config)
+                seen.add(key)
+        if not expand_config["include_default_configs"]:
+            return configs
+
+        for default_config in self.get_tuned_config(op_name):
+            key = config_key(default_config)
+            if key in seen:
+                continue
+            config = copy.deepcopy(default_config)
+            config.pre_hook = pre_hook
+            configs.append(config)
+            seen.add(key)
+        return configs
 
     def get_tuned_config(self, op_name):
         if op_name in self.loaded_triton_config:
@@ -609,6 +1497,18 @@ class TunedConfigLoader(object):
         current_op_configs = self._get_op_configs(op_name)
         if not current_op_configs:
             return []
+
+        if self.device.vendor_name == "mthreads" and op_name in (
+            "mm_w8a8_fp8_musa",
+            "mm_w8a8_fp8_musa_default",
+            "mm_w8a8_fp8_musa_ws",
+            "mm_w8a8_fp8_musa_ws_default",
+            "mm_w8a8_fp8_musa_ws_fragmented",
+            "mm_w8a8_fp8_musa_ws_fragmented_default",
+        ):
+            # These spaces share tune_configs.yaml but require the resource
+            # pruning in their builders, not an unbounded Cartesian product.
+            return self.ops_get_configs(op_name)
 
         configs = []
 
