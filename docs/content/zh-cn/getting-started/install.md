@@ -42,9 +42,7 @@ pip install flag_gems
 ```
 
 <!--
-> [!INFO]
-> **Info**
->
+> [!NOTE]
 > This installs the pure-Python operators from *FlagGems*.
 >
 > To use the C++ wrapped operators (which reduce dispatch overhead for
@@ -62,9 +60,7 @@ pip install flag_gems
 > If a prebuilt wheel is not available for your platform, see
 > [Build and install from source](#install-from-source).
 >-->
-> [!INFO]
-> **提示**
->
+> [!NOTE]
 > 上述命令仅安装 *FlagGems* 中纯 Python 实现的算子。
 >
 > 如需使用 C++ 封装的算子（可减少性能关键路径上的 dispatch 开销），

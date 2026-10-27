@@ -45,9 +45,7 @@ using your favorite Python package manager (e.g. `pip`).
 pip install flag_gems
 ```
 
-> [!INFO]
-> **Info**
->
+> [!NOTE]
 > This installs the pure-Python operators from *FlagGems*.
 >
 > To use the C++ wrapped operators (which reduce dispatch overhead for

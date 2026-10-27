@@ -38,7 +38,7 @@ The speedup is calculated by averaging the speedup on each shape, representing t
 
 ## Eager-mode ready, independent of `torch.compile`
 
-> TODO: contents
+*FlagGems* operators register directly with ATen and execute seamlessly in native eager mode without requiring compilation and trace workflows via `torch.compile`, significantly simplifying debugging and deployment for plug-and-play acceleration.
 
 ## Automatic Code Generation
 

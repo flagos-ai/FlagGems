@@ -32,11 +32,13 @@ owned by the active backend.
 FlagGems 可以运行在多种加速器后端上，而每一种硬件都通过自己的一套环境变量来控制进程可见的设备。这些变量**没有统一的跨厂商名称**，FlagGems 也不去自创一个名字，而是直接读取当前生效的后端所对应的环境变量。
 
 <!--
-> **Warning** — every backend uses a *different* variable name. A name that works on one
+> [!WARNING]
+> Every backend uses a *different* variable name. A name that works on one
 > backend is silently ignored on another. Do not assume the variable you know from one
 > vendor applies to the backend you are currently targeting.
 -->
-> **警告**：每个后端使用的变量名**各不相同**。在某个后端上生效的变量名，换到另一个
+> [!WARNING]
+> 每个后端使用的变量名**各不相同**。在某个后端上生效的变量名，换到另一个
 > 后端上会被直接忽略。请不要想当然地认为您在某个厂商那里熟悉的变量名同样适用于
 > 您当前所使用的后端。
 

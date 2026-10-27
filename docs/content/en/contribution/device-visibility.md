@@ -26,7 +26,8 @@ devices through its own environment variable. There is **no vendor-neutral name*
 this variable, and FlagGems deliberately does not invent one: it reads the variable
 owned by the active backend.
 
-> **Warning** — every backend uses a *different* variable name. A name that works on one
+> [!WARNING]
+> Every backend uses a *different* variable name. A name that works on one
 > backend is silently ignored on another. Do not assume the variable you know from one
 > vendor applies to the backend you are currently targeting.
 
