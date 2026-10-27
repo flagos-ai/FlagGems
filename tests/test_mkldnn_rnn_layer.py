@@ -18,7 +18,6 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
 
 MKLDNN_RNN_HIDDEN_SIZES = [8, 16]
 
@@ -29,6 +28,17 @@ _BIDIRECTIONAL = False
 _BATCH_FIRST = False
 
 pytestmark = pytest.mark.mkldnn_rnn_layer
+
+
+def _require_kernel_or_override(request):
+    registry = getattr(request.config, "_override_registry", None)
+    override = (
+        registry.get_override("mkldnn_rnn_layer") if registry is not None else None
+    )
+    if (
+        flag_gems.device != "cuda" or not torch.cuda.is_available()
+    ) and override is None:
+        pytest.skip("Triton kernel is CUDA-only without an injected candidate")
 
 
 def _make_lstm_params(input_size, hidden_size, dtype, device):
@@ -83,10 +93,6 @@ def _reference_mkldnn_rnn_layer(
     )
 
 
-@pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
-)
 @pytest.mark.mkldnn_rnn_layer
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("input_size", [8, 16])
@@ -94,8 +100,11 @@ def _reference_mkldnn_rnn_layer(
 @pytest.mark.parametrize("batch_size", [2, 4])
 @pytest.mark.parametrize("seq_len", [4, 8])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, reverse):
+def test_mkldnn_rnn_layer(
+    seq_len, batch_size, input_size, hidden_size, dtype, reverse, request
+):
     """Test mkldnn_rnn_layer accuracy against the oneDNN reference (dispatch)."""
+    _require_kernel_or_override(request)
     input_tensor = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
     )
@@ -153,10 +162,6 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
     utils.gems_assert_close(res_cy, ref_cy, dtype, atol=atol)
 
 
-@pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
-)
 @pytest.mark.mkldnn_rnn_layer
 @pytest.mark.parametrize("reverse", [False, True])
 @pytest.mark.parametrize("input_size", [8, 16])
@@ -165,10 +170,11 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
 @pytest.mark.parametrize("seq_len", [4, 8])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_mkldnn_rnn_layer_direct_wrapper(
-    seq_len, batch_size, input_size, hidden_size, dtype, reverse
+    seq_len, batch_size, input_size, hidden_size, dtype, reverse, request
 ):
     """Direct wrapper smoke test: call the gems wrapper directly and compare
     against the oneDNN reference."""
+    _require_kernel_or_override(request)
     gems_op = flag_gems.mkldnn_rnn_layer
 
     input_tensor = torch.randn(
@@ -217,14 +223,11 @@ def test_mkldnn_rnn_layer_direct_wrapper(
     utils.gems_assert_close(cy, ref_cy, dtype, atol=atol)
 
 
-@pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
-    reason="Triton kernel is CUDA-only",
-)
 @pytest.mark.mkldnn_rnn_layer
-def test_mkldnn_rnn_layer_direct_backward():
+def test_mkldnn_rnn_layer_direct_backward(request):
     """Direct wrapper backward: compare gradients against a native PyTorch
     LSTM recomputation (matching the backward internals)."""
+    _require_kernel_or_override(request)
     gems_op = flag_gems.mkldnn_rnn_layer
 
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
