@@ -178,17 +178,18 @@ def test_max_pool2d_with_indices_backward(
         ref_indices,
     )
 
-    # FlagGems backward
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.max_pool2d_with_indices_backward(
-            out_grad,
-            inp,
-            kernel_size,
-            stride,
-            padding,
-            dilation,
-            ceil_mode,
-            res_indices,
-        )
+    # Preserve the required output ABI before candidate execution.
+    expected_abi = (inp.device, inp.dtype, inp.shape)
+    res_in_grad = flag_gems.max_pool2d_with_indices_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        res_indices,
+    )
 
+    assert (res_in_grad.device, res_in_grad.dtype, res_in_grad.shape) == expected_abi
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
