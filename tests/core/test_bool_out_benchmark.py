@@ -56,6 +56,7 @@ def test_reference_only_uses_bool_out(monkeypatch, native):
     config.reference_only = True
     config.current_nodeid = "benchmark/test_example.py::test_example"
     monkeypatch.setattr(base, "Config", config)
+    monkeypatch.setattr(base.torch_device_fn, "synchronize", lambda: None)
     bench = base.BoolUnaryPointwiseOutBenchmark(
         "example", native, dtypes=[torch.float32]
     )
