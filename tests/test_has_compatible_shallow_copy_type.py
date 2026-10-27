@@ -48,7 +48,6 @@ def _tensor_kinds():
         ),
         "dense_requires_grad": torch.randn(4, 4, requires_grad=True),
         "meta": torch.randn(4, 4, device="meta"),
-        "mkldnn": base.to_mkldnn(),
         "nested": torch.nested.nested_tensor([torch.randn(2, 3), torch.randn(3, 3)]),
         "quantized": torch.quantize_per_tensor(base, 0.1, 0, torch.quint8),
         "sparse_coo": base.to_sparse(),
@@ -58,6 +57,8 @@ def _tensor_kinds():
         "sparse_bsr": base.to_sparse_bsr((2, 2)),
         "sparse_bsc": base.to_sparse_bsc((2, 2)),
     }
+    if torch.backends.mkldnn.is_available():
+        kinds["mkldnn"] = base.to_mkldnn()
     if _CUDA:
         dev = flag_gems.device
         kinds["dense_cuda"] = base.to(dev)
@@ -132,7 +133,21 @@ def test_accuracy_has_compatible_shallow_copy_type_sparse_family(family):
 
 
 @pytest.mark.has_compatible_shallow_copy_type
-@pytest.mark.parametrize("self_name", ["meta", "mkldnn", "nested", "quantized"])
+@pytest.mark.parametrize(
+    "self_name",
+    [
+        "meta",
+        pytest.param(
+            "mkldnn",
+            marks=pytest.mark.skipif(
+                not torch.backends.mkldnn.is_available(),
+                reason="PyTorch was built without MKL-DNN support",
+            ),
+        ),
+        "nested",
+        "quantized",
+    ],
+)
 def test_accuracy_has_compatible_shallow_copy_type_opaque(self_name):
     # Opaque impls live on their own backends and are only compatible with a
     # tensor carrying an identical key set. They must not be treated as dense,

@@ -74,7 +74,7 @@ def _launch_fix_kernel(x: torch.Tensor, out: torch.Tensor, block_size: int = 102
 
 
 def fix(self: torch.Tensor):
-    logger.debug("GEMS FIX")
+    logger.debug("GEMS_SUNRISE FIX")
     """
     Wrapper for ATen operator: ('fix', <Autograd.disable: False>)
     Rounds elements toward zero (like trunc) for floating tensors.

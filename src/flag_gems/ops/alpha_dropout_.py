@@ -110,7 +110,7 @@ def alpha_dropout_(input, p=0.5, train=True):
     a separate output buffer.
     """
     UNROLL = 4
-    logger.debug("GEMS ALPHA_DROPOUT_ INPLACE FORWARD")
+    logger.debug("GEMS ALPHA_DROPOUT__INPLACE_FORWARD")
 
     if not train or p == 0:
         return input

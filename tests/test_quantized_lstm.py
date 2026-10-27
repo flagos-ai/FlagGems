@@ -160,10 +160,9 @@ def test_accuracy_quantized_lstm(shape, dtype):
         ref_inp, ref_h0, ref_c0, [ref_layer], 1, False
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = flag_gems.quantized_lstm(
-            inp, [h0, c0], [cell_params], True, 1, 0.0, False, False, False
-        )
+    res_out, res_hn, res_cn = flag_gems.quantized_lstm(
+        inp, [h0, c0], [cell_params], True, 1, 0.0, False, False, False
+    )
 
     atol = _tolerance(dtype, seq_len)
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
@@ -209,10 +208,9 @@ def test_accuracy_quantized_lstm_bidirectional(shape, dtype):
         ref_inp, ref_h0, ref_c0, ref_layers, 1, True
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = flag_gems.quantized_lstm(
-            inp, [h0, c0], params, True, 1, 0.0, False, True, False
-        )
+    res_out, res_hn, res_cn = flag_gems.quantized_lstm(
+        inp, [h0, c0], params, True, 1, 0.0, False, True, False
+    )
 
     atol = _tolerance(dtype, seq_len)
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
@@ -250,10 +248,9 @@ def test_accuracy_quantized_lstm_no_bias(shape, dtype):
         ref_inp, ref_h0, ref_c0, [ref_layer], 1, False
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = flag_gems.quantized_lstm(
-            inp, [h0, c0], [cell_params], False, 1, 0.0, False, False, False
-        )
+    res_out, res_hn, res_cn = flag_gems.quantized_lstm(
+        inp, [h0, c0], [cell_params], False, 1, 0.0, False, False, False
+    )
 
     atol = _tolerance(dtype, seq_len)
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)

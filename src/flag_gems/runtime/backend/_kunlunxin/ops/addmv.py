@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 )
 @triton.jit
 def _addmv_combine_kernel(mv_res, bias, alpha, beta):
-    return mv_res.to(tl.float32) * alpha + bias.to(tl.float32) * beta
+    bias_term = tl.where(beta == 0, 0.0, bias.to(tl.float32) * beta)
+    return mv_res.to(tl.float32) * alpha + bias_term
 
 
 # NOTE (kunlunxin/XPU perf fix):
@@ -73,7 +74,29 @@ def heur_block_m(args):
     import builtins
 
     M = args.get("M", 0)
-    return builtins.min(triton.next_power_of_2(M), 4096)
+    return builtins.max(1, builtins.min(triton.next_power_of_2(M), 4096))
+
+
+@libentry()
+@triton.heuristics({"BLOCK_N": heur_block_n})
+@triton.jit(do_not_specialize=["beta"])
+def addmv_empty_kernel(
+    Inp,
+    Out,
+    N: tl.constexpr,
+    beta,
+    stride_in: tl.constexpr,
+    stride_outn: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    pid = ext.program_id(0)
+    offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)
+    n_mask = offset_n < N
+    Inp_ptrs = Inp + offset_n * stride_in
+    Out_ptrs = Out + offset_n * stride_outn
+    inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(tl.float32)
+    bias_term = tl.where(beta == 0, 0.0, inp * beta)
+    tl.store(Out_ptrs, bias_term, mask=n_mask)
 
 
 @libentry()
@@ -120,7 +143,15 @@ def addmv_kernel(
     Inp_ptrs = Inp + offset_n * stride_in
     inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(tl.float32)
     Out_ptrs = Out + offset_n * stride_outn
-    out_block = acc * alpha + inp * beta
+    # Beta zero must ignore NaN/Inf bias, matching aten::addmv.
+    bias_term = tl.where(beta == 0, 0.0, inp * beta)
+    # M is constexpr. Keep alpha out of the generated expression for an empty
+    # reduction so NaN/Inf alpha cannot leak through 0 * alpha.
+    if M == 0:
+        matvec_term = tl.zeros((BLOCK_N, 1), dtype=tl.float32)
+    else:
+        matvec_term = acc * alpha
+    out_block = matvec_term + bias_term
     tl.store(Out_ptrs, out_block, mask=n_mask)
 
 
@@ -144,14 +175,27 @@ def _addmv_addmm(self, mat, vec, beta, alpha, out, N, M):
 
 def _addmv_mv(self, mat, vec, beta, alpha, out, N):
     mv_res = mv(mat, vec).reshape(N)
-    bias = torch.zeros_like(mv_res) if beta == 0 else self.broadcast_to((N,))
+    bias = self.broadcast_to((N,))
     _addmv_combine_kernel(mv_res, bias, alpha, beta, out0=out)
     return out
 
 
+def _addmv_empty(self, beta, out, N):
+    self = self.broadcast_to((N,))
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+    with torch_device_fn.device(out.device):
+        addmv_empty_kernel[grid](
+            self,
+            out,
+            N,
+            beta,
+            self.stride(0),
+            out.stride(0),
+        )
+    return out
+
+
 def _addmv_triton(self, mat, vec, beta, alpha, out, N, M):
-    if beta == 0:
-        self = torch.zeros_like(self)
     self = self.broadcast_to((N,))
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(mat.device):
@@ -178,25 +222,24 @@ def _addmv_impl(self, mat, vec, beta, alpha, out):
     assert broadcastable_to(self.shape, (mat.shape[0],)), "Incompatible self shape"
     N, M = mat.shape
     if out is None:
-        out = torch.empty(N, device=mat.device, dtype=mat.dtype)
+        out = torch.empty((N,), device=mat.device, dtype=mat.dtype)
     else:
         assert out.shape == (N,), "Incompatible output shape"
 
-    if M == 0:
-        if beta == 0:
-            out.zero_()
-        else:
-            out.copy_(self.broadcast_to((N,)).mul(beta))
+    # Empty output has no launch and must preserve out validation/allocation.
+    if N == 0:
         return out
+    # Empty reduction is mathematically zero; use a dedicated Triton kernel
+    # whose signature omits alpha, so NaN/Inf alpha is never evaluated.
+    if M == 0:
+        return _addmv_empty(self, beta, out, N)
 
     if M >= _MV_DELEGATE_M:
-        if (
-            beta != 0
-            and tuple(self.shape) == (N,)
-            and self.is_contiguous()
-            and out.is_contiguous()
-        ):
-            return _addmv_addmm(self, mat, vec, beta, alpha, out, N, M)
+        if beta != 0 and out.is_contiguous():
+            bias = self
+            if tuple(bias.shape) != (N,) or not bias.is_contiguous():
+                bias = bias.broadcast_to((N,)).contiguous()
+            return _addmv_addmm(bias, mat, vec, beta, alpha, out, N, M)
         return _addmv_mv(self, mat, vec, beta, alpha, out, N)
     return _addmv_triton(self, mat, vec, beta, alpha, out, N, M)
 

@@ -378,7 +378,7 @@ def eq_func_tensor_inplace(x, y):
 
 
 def eq_(A, B):
-    logger.debug("GEMS_KUNLUNXIN EQ_ TENSOR")
+    logger.debug("GEMS_KUNLUNXIN EQ__TENSOR")
     if A.device != B.device:
         B = B.to(A.device)
     if A.is_contiguous() and A.dtype in (torch.float16, torch.float32, torch.bfloat16):
@@ -442,7 +442,7 @@ def eq_func_scalar_inplace(x, y):
 
 
 def eq_scalar_(A, B):
-    logger.debug("GEMS_KUNLUNXIN EQ_ SCALAR")
+    logger.debug("GEMS_KUNLUNXIN EQ__SCALAR")
     numel = A.numel()
     dtype = A.dtype
     if (

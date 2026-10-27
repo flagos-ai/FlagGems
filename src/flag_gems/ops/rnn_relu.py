@@ -238,7 +238,7 @@ def rnn_relu_kernel_forward(
     batch_first,
 ):
     """Launch the Triton RNN ReLU kernel after validating config."""
-    logger.debug("GEMS RNN_RELU FORWARD KERNEL LAUNCH")
+    logger.debug("GEMS RNN_RELU_FORWARD_KERNEL_LAUNCH")
 
     if num_layers > 1 or bidirectional:
         raise NotImplementedError(
@@ -334,7 +334,7 @@ class RnnReluFunction(torch.autograd.Function):
         bidirectional,
         batch_first,
     ):
-        logger.debug("GEMS RNN_RELU FUNCTION FORWARD")
+        logger.debug("GEMS RNN_RELU_FUNCTION_FORWARD")
 
         if num_layers > 1 or bidirectional or (dropout > 0 and train):
             raise NotImplementedError(
@@ -362,7 +362,7 @@ class RnnReluFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output, grad_hidden):
-        logger.debug("GEMS RNN_RELU FUNCTION BACKWARD")
+        logger.debug("GEMS RNN_RELU_FUNCTION_BACKWARD")
 
         input, hx = ctx.saved_tensors
         params = ctx.params

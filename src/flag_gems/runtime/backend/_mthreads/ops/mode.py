@@ -19,9 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.topk import _get_iinfo_val
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 
 from .sort import sort as gems_sort
 
@@ -29,110 +29,98 @@ logger = logging.getLogger(__name__)
 
 ModeOut = namedtuple("mode", ["values", "indices"])
 
-MODE_BLOCK_M = 16
-MODE_BLOCK_N = 128
-MODE_NUM_WARPS = 4
-MODE_NUM_STAGES = 1
+
+@libentry()
+@triton.jit
+def _mode_fused(X, V, out_indices, N: tl.constexpr, B: tl.constexpr):
+    row = tl.program_id(0)
+    c = tl.arange(0, B)
+    if X.dtype.element_ty.is_floating():
+        limit = float("inf")
+    else:
+        limit = _get_iinfo_val(X.dtype.element_ty, return_max=True)
+    x = tl.load(X + row * N + c, c < N, other=limit)
+    if x.dtype == tl.float16 or x.dtype == tl.bfloat16:
+        x = x.to(tl.float32)
+    ordered = tl.sort(x, descending=False)
+    ones = tl.full((B,), 1, tl.int32)
+    _, count, _ = tl.associative_scan((ordered, ones, ones), 0, _run_count)
+    count = tl.where(c < N, count, 0)
+    most = tl.max(count, 0)
+    at = tl.min(tl.where(count == most, c, B), 0)
+    value = tl.sum(tl.where(c == at, ordered, 0), 0)
+    index = tl.min(
+        tl.where((c < N) & ((x == value) | ((x != x) & (value != value))), c, B), 0
+    )
+    tl.store(V + row, value)
+    tl.store(out_indices + row, index)
+
+
+@triton.jit
+def _run_count(av, ac, al, bv, bc, bl):
+    # A concatenation extends the left run only if the right segment is uniform.
+    count = tl.where((bc == bl) & (av == bv), ac + bc, bc)
+    return bv, count, al + bl
+
+
+@triton.jit
+def _maximum(a, b):
+    return tl.maximum(a, b)
 
 
 @libentry()
 @triton.jit
-def mode_kernel(
-    sorted_inp,
-    sorted_indices,
-    out_value,
-    out_index,
-    M,
-    N,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    rows = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
-    row_mask = rows < M
-
-    first_offset = rows * N
-    cur_value = tl.load(sorted_inp + first_offset, mask=row_mask, other=0.0)
-    cur_index = tl.load(sorted_indices + first_offset, mask=row_mask, other=0)
-    cur_count = tl.full([BLOCK_M], 1, dtype=tl.int32)
-    best_value = cur_value
-    best_index = cur_index
-    best_count = tl.full([BLOCK_M], 1, dtype=tl.int32)
-
-    for start_n in range(1, N, BLOCK_N):
-        for n_delta in tl.static_range(0, BLOCK_N):
-            n_offset = start_n + n_delta
-            valid = row_mask & (n_offset < N)
-            offset = rows * N + n_offset
-            value = tl.load(sorted_inp + offset, mask=valid, other=0.0)
-            index = tl.load(sorted_indices + offset, mask=valid, other=0)
-
-            same = valid & (value == cur_value)
-            next_count = tl.where(same, cur_count + 1, 1)
-            new_run = valid & ~same
-
-            cur_value = tl.where(new_run, value, cur_value)
-            cur_index = tl.where(valid, index, cur_index)
-            cur_count = tl.where(valid, next_count, cur_count)
-
-            better = valid & (next_count > best_count)
-            best_value = tl.where(better, cur_value, best_value)
-            best_index = tl.where(better, cur_index, best_index)
-            best_count = tl.where(better, next_count, best_count)
-
-    tl.store(out_value + rows, best_value, mask=row_mask)
-    tl.store(out_index + rows, best_index, mask=row_mask)
+def _mode_sorted(X, IX, V, out_indices, N: tl.constexpr, B: tl.constexpr):
+    row = tl.program_id(0)
+    c = tl.arange(0, B)
+    carry = 0
+    best_count = 0
+    best_pos = 0
+    for base in range(tl.cdiv(N, B)):
+        p = base * B + c
+        x = tl.load(X + row * N + p, p < N, other=0)
+        prev = tl.load(X + row * N + p - 1, (p > 0) & (p < N), other=0)
+        starts = tl.where((p == 0) | (x != prev), p, carry)
+        starts = tl.associative_scan(starts, 0, _maximum)
+        count = tl.where(p < N, p - starts + 1, 0)
+        most = tl.max(count, 0)
+        at = tl.min(tl.where(count == most, p, N), 0)
+        better = most > best_count
+        best_pos = tl.where(better, at, best_pos)
+        best_count = tl.maximum(best_count, most)
+        carry = tl.max(tl.where(p < N, starts, 0), 0)
+    value = tl.load(X + row * N + best_pos)
+    index = tl.load(IX + row * N + best_pos)
+    tl.store(V + row, value)
+    tl.store(out_indices + row, index)
 
 
 def mode(inp, dim=-1, keepdim=False):
     logger.debug("GEMS_MTHREADS MODE")
+    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
     if inp.dtype in (torch.int8, torch.uint8) and inp.shape[dim] > 0:
         from flag_gems.ops.mode import _mode_byte
 
         return _mode_byte(inp, dim, keepdim)
-    assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-
-    shape = list(inp.shape)
-    dim = dim % inp.ndim
-    N = shape[dim]
-    M = inp.numel() // N
-
-    sorted_inp, sorted_indices = gems_sort(inp, dim=dim)
-
-    sorted_inp = torch.movedim(sorted_inp, dim, -1).contiguous()
-    sorted_indices = torch.movedim(sorted_indices, dim, -1).contiguous()
-
-    sorted_flat = sorted_inp.reshape(M, N)
-    indices_flat = sorted_indices.reshape(M, N)
-
-    out_value = torch.empty(M, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(M, dtype=torch.int64, device=inp.device)
-
-    grid = (triton.cdiv(M, MODE_BLOCK_M),)
-    with torch_device_fn.device(inp.device):
-        mode_kernel[grid](
-            sorted_flat,
-            indices_flat,
-            out_value,
-            out_index,
-            M,
-            N,
-            MODE_BLOCK_M,
-            MODE_BLOCK_N,
-            num_warps=MODE_NUM_WARPS,
-            num_stages=MODE_NUM_STAGES,
-        )
-
-    out_shape = shape.copy()
-    out_shape[dim] = 1
-    out_value = out_value.reshape(out_shape)
-    out_index = out_index.reshape(out_shape)
-
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
-
-    return ModeOut(values=out_value, indices=out_index)
+    dim %= inp.ndim
+    x = inp.movedim(dim, -1).contiguous()
+    n = x.shape[-1]
+    rows = x.numel() // n
+    values = torch.empty(x.shape[:-1], dtype=inp.dtype, device=inp.device)
+    indices = torch.empty(x.shape[:-1], dtype=torch.int64, device=inp.device)
+    if rows:
+        with torch_device_fn.device(inp.device):
+            if n <= 4096:
+                _mode_fused[(rows,)](x, values, indices, n, triton.next_power_of_2(n))
+            else:
+                sorted_values, sorted_indices = gems_sort(x, dim=-1)
+                _mode_sorted[(rows,)](
+                    sorted_values, sorted_indices, values, indices, n, 1024
+                )
+    if keepdim:
+        values = values.unsqueeze(dim)
+        indices = indices.unsqueeze(dim)
+    return ModeOut(values, indices)
 
 
 __all__ = ["mode"]

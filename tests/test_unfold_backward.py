@@ -46,7 +46,6 @@ def test_unfold_backward(input_sizes, dim, size, step, dtype):
     ref_grad = utils.to_reference(grad_in, True)
     ref_out = torch.ops.aten.unfold_backward(ref_grad, input_sizes, dim, size, step)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
+    res_out = flag_gems.unfold_backward(grad_in, input_sizes, dim, size, step)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=size)

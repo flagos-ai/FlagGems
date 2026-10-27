@@ -388,7 +388,7 @@ def logsumexp(inp, dim, keepdim=False):
 
     with torch_device_fn.device(inp.device):
         if K > 1:
-            logger.debug("GEMS_CAMBRICON LOGSUMEXP USE NON INNER")
+            logger.debug("GEMS_CAMBRICON LOGSUMEXP_USE_NON_INNER")
             grid = lambda meta: (M, max(TOTAL_CORE_NUM // M, 1), 1)
             logsumexp_kernel_non_inner[grid](
                 out,
@@ -398,7 +398,7 @@ def logsumexp(inp, dim, keepdim=False):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON LOGSUMEXP USE INNER")
+            logger.debug("GEMS_CAMBRICON LOGSUMEXP_USE_INNER")
             logsumexp_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                 out,
                 inp,

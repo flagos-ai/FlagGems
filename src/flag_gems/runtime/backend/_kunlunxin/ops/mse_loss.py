@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import os
 from enum import Enum
 
 import torch
@@ -138,13 +137,26 @@ class Reduction(Enum):
 
 
 # Unmasked stage-1 tile: the largest tl.sum tile that is exact on this XPU
-# with buffer_size_limit=2048 (see kunlunxin reduction notes), and the only
-# tile whose unmasked instruction path was validated across the full
-# benchmark grid (256..20000 programs on [4096,4096]..[10000,65536]).
-_FULL_BLOCK = 32768
+# with buffer_size_limit=2048 (verified against the CPU reference on
+# [4096,4096]..[1024,65536] for f16/f32/bf16; 32768/65536/131072/262144-lane
+# single-tile sums are all exact). Measured on the 2-load + reduce pattern of
+# this operator the 131072-lane tile runs at ~600-1000 GB/s vs ~430-850 GB/s
+# for the 32768-lane tile (+27..36% on the big shapes, see
+# harness/solution/mse_loss/README.md), so fully divisible tensors get it.
+_FULL_BLOCK = 131072
+# Secondary exact tile: 2 programs of 32768 lanes beat 1 program of 65536
+# lanes on the 65536-element shapes (cluster scheduling), so tensors that are
+# only 32768-aligned keep the legacy-size tile.
+_V2_BLOCK = 32768
+# Legacy full-block size for the non-divisible big shapes: 65536 was the
+# fastest of {8192..131072} for the remainder pattern (e.g. [200,40999,3]).
+_LEGACY_BLOCK = 65536
 # Stage-2 must stay inside the 32768-lane tl.sum ceiling; grow stage-1 blocks
 # if the grid would exceed it (legacy MAX_MID rule).
 _MAX_MID = 32768
+# buffer_size_limit for every kernel launch: the largest exact tl.sum tile
+# ceiling on this backend (see the block-size notes above).
+_BUFFER_SIZE_LIMIT = 2048
 
 
 def mse_loss(inp, target, reduction=Reduction.MEAN.value):
@@ -160,11 +172,12 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     block_size = get_block_size_1d(M, inp.element_size() * 2)
 
     if (M > _FULL_BLOCK) and (M % _FULL_BLOCK == 0):
-        # Fully divisible by the 32768-lane tile: the unmasked stage-1 path
-        # skips the masked-memory penalty entirely (3-4x on the large shapes).
-        # Non-divisible tensors take the legacy path below, which reduces
-        # full blocks unmasked and handles the remainder with a single
-        # in-bounds window program (kernel_1_tail).
+        # Fully divisible by the largest exact tl.sum tile: the unmasked
+        # stage-1 path skips the masked-memory penalty entirely (masked
+        # stage-1 tiles at BLOCK >= 32768 run at a fraction of the unmasked
+        # bandwidth on XPU). Non-divisible tensors take the legacy path
+        # below, which reduces full blocks unmasked and handles the
+        # remainder with a single in-bounds window program (kernel_1_tail).
         mid_size = M // _FULL_BLOCK
         if mid_size <= _MAX_MID:
             block_mid = triton.next_power_of_2(mid_size)
@@ -174,7 +187,6 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
             # and drops the padding lanes by value (mid_size is not
             # necessarily a power of two, e.g. [10000, 65536] -> 20000 ->
             # BLOCK_MID 32768).
-            os.environ["TRITONXPU_OTHER_SIM"] = "1"
             with torch_device_fn.device(inp.device):
                 kernel_1_unmasked_v2[(mid_size,)](
                     inp,
@@ -183,21 +195,45 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
                     M,
                     _FULL_BLOCK,
                     reduction,
-                    buffer_size_limit=2048,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
                 )
                 kernel_2[(1, 1, 1)](
-                    mid, out, mid_size, block_mid, buffer_size_limit=2048
+                    mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
                 )
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
             return out
         # mid grid would exceed the stage-2 ceiling; fall through to the
         # legacy path, which grows stage-1 blocks to keep mid_size <= 32768.
 
-    # Legacy path: stage-1 blocks sized by get_block_size_1d, fp32 mid
+    if (M > _V2_BLOCK) and (M % _V2_BLOCK == 0):
+        # Divisible by 32768 but not by 131072 (e.g. 65536 = 2 tiles): keep
+        # the smaller unmasked tile, which beats one 65536-lane program.
+        mid_size = M // _V2_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=inp.device)
+            out = torch.empty([], dtype=dtype, device=inp.device)
+            with torch_device_fn.device(inp.device):
+                kernel_1_unmasked_v2[(mid_size,)](
+                    inp,
+                    target,
+                    mid,
+                    M,
+                    _V2_BLOCK,
+                    reduction,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                kernel_2[(1, 1, 1)](
+                    mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
+                )
+            return out
+
+    # Legacy path: stage-1 blocks sized by get_block_size_1d (or the measured
+    # 65536-lane optimum for the big non-divisible shapes), fp32 mid
     # accumulation. Stage 1 is fully unmasked: full blocks via kernel_1 and
     # one in-bounds window program for the remainder (kernel_1_tail); the
     # mid padding lanes are dropped by value in kernel_2.
+    if M > _LEGACY_BLOCK:
+        block_size = _LEGACY_BLOCK
     mid_size = triton.cdiv(M, block_size)
     if mid_size > _MAX_MID:
         block_size = triton.next_power_of_2(triton.cdiv(M, _MAX_MID))
@@ -212,11 +248,15 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
     mid = torch.empty((block_mid,), dtype=torch.float32, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
-
     with torch_device_fn.device(inp.device):
         kernel_1[(n_full, 1, 1)](
-            inp, target, mid, M, block_size, reduction, buffer_size_limit=2048
+            inp,
+            target,
+            mid,
+            M,
+            block_size,
+            reduction,
+            buffer_size_limit=_BUFFER_SIZE_LIMIT,
         )
         if rem:
             kernel_1_tail[(1, 1, 1)](
@@ -229,15 +269,12 @@ def mse_loss(inp, target, reduction=Reduction.MEAN.value):
                 n_full,
                 block_size,
                 reduction,
-                buffer_size_limit=2048,
+                buffer_size_limit=_BUFFER_SIZE_LIMIT,
             )
         if mid_size == 1:
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
             return mid.reshape([]).to(dtype)
-        kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
-
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
+        kernel_2[(1, 1, 1)](
+            mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
+        )
 
     return out

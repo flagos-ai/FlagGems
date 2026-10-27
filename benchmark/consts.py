@@ -28,7 +28,12 @@ FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
-EXTRA_INT_DTYPES = [torch.int8, torch.uint8, torch.int64]
+# int64 is gated on the backend: on targets that only emulate it (gcu300, where
+# the topsaten path aborts the process rather than raising) generating int64
+# cases would kill the whole benchmark run.
+EXTRA_INT_DTYPES = [torch.int8, torch.uint8]
+if flag_gems.runtime.device.support_int64:
+    EXTRA_INT_DTYPES.append(torch.int64)
 
 
 def get_fp8_dtype():
@@ -118,6 +123,13 @@ class BenchmarkMetrics:
     utilization: Optional[float] = None
     # Speedup compared to base data
     compared_speedup: Optional[float] = None
+    # External comparison provenance; native latency/speedup remain unchanged.
+    base_raw_speedup: Optional[float] = None
+    base_data_source: Optional[str] = None
+    base_shape_key: Optional[str] = None
+    base_latency_ms: Optional[float] = None
+    base_scaling_factor: Optional[float] = None
+    base_miss_reason: Optional[str] = None
     # Error message
     error_msg: Optional[str] = None
 
@@ -127,6 +139,12 @@ ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "candidate_source",
     "legacy_shape",
     "shape_detail",
+    "base_raw_speedup",
+    "base_data_source",
+    "base_shape_key",
+    "base_latency_ms",
+    "base_scaling_factor",
+    "base_miss_reason",
 }
 
 DEFAULT_METRICS = [
@@ -241,6 +259,9 @@ class BenchmarkResult:
             f"{'Gems Latency (ms)':>20}",
             f"{'Gems Speedup':>20}",
         ]
+        show_base = any(metric.compared_speedup is not None for metric in self.result)
+        if show_base:
+            col_names.append(f"{'vs Base':>20}")
         if self.result[0].tflops and self.result[0].tflops != 0.0:
             col_names.append(f"{'TFLOPS':>20}")
         if self.result[0].gbps is not None:
@@ -251,10 +272,12 @@ class BenchmarkResult:
         header_break = "-" * len(header_col_names) + "\n"
         header = header_title + header_col_names + header_break
 
-        metrics_lines = "".join(self._format_metrics(ele) for ele in self.result)
+        metrics_lines = "".join(
+            self._format_metrics(ele, show_base) for ele in self.result
+        )
         return header + metrics_lines
 
-    def _format_metrics(self, metrics: BenchmarkMetrics) -> str:
+    def _format_metrics(self, metrics: BenchmarkMetrics, show_base=False) -> str:
         # self.gen_legacy_shape(metrics)
         # legacy_shape_str = (
         #     metrics.legacy_shape if metrics.legacy_shape is not None else "N/A"
@@ -282,6 +305,13 @@ class BenchmarkResult:
             f"{latency_str:>20}"
             f"{speedup_str:>20}"
         )
+        if show_base:
+            compared = (
+                f"{metrics.compared_speedup:.3f}"
+                if metrics.compared_speedup is not None
+                else "N/A"
+            )
+            data_line += f"{compared:>20}"
         if metrics.tflops and metrics.tflops != 0.0:
             data_line += f"{tflops_str:>20}"
         if metrics.gbps is not None:

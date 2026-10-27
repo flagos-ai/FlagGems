@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gc
+import inspect
 import math
 import os
 import time
@@ -29,6 +30,7 @@ import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import consts
+from .baseline import describe_call
 from .conftest import Config, emit_record_logger, update_case_list, update_result
 from .consts import (
     BenchmarkCaseList,
@@ -525,7 +527,7 @@ class Benchmark:
                         f"dtype={dtype} err=<<<{e}>>>"
                     )
                     pytest.fail(str(e))
-                metrics.append(self._measure_input(input))
+                metrics.append(self._measure_input(input, dtype=dtype))
             results.append(self._emit_result(dtype, metrics))
         return results
 
@@ -554,7 +556,9 @@ class Benchmark:
                         f"case_id={case.case_id} err=<<<{e}>>>"
                     )
                     pytest.fail(str(e))
-                metrics.append(self._measure_input(input, case_id=case.case_id))
+                metrics.append(
+                    self._measure_input(input, case_id=case.case_id, dtype=dtype)
+                )
                 executed.append(case.case_id)
             if metrics:
                 results.append(self._emit_result(dtype, metrics))
@@ -745,11 +749,47 @@ class Benchmark:
         Config.executed_case_ids.update(executed)
         return executed
 
-    def _measure_input(self, input, case_id=None):
+    def _capture_external_baseline(self, args, kwargs):
+        """Capture reference inputs before timing can mutate them."""
+        base_data = getattr(Config, "base_data", None)
+        if base_data is None:
+            return None
+        call = describe_call(args, kwargs)
+        named_call = None
+        try:
+            bound = inspect.signature(self.torch_op).bind(*args, **kwargs)
+            bound.apply_defaults()
+            named_call = describe_call((), bound.arguments)["kwargs"]
+        except (TypeError, ValueError):
+            pass
+        return base_data, call, named_call
+
+    def _apply_external_baseline(self, metric, dtype, context):
+        """Share comparison semantics with benchmark suites using custom timers."""
+        if context is None:
+            return
+        base_data, call, named_call = context
+        try:
+            chip = torch_device_fn.get_device_name()
+        except (AttributeError, RuntimeError, TypeError):
+            chip = ""
+        base_data.apply(
+            metric,
+            self.op_name,
+            dtype,
+            call,
+            named_call,
+            vendor_name,
+            chip,
+            target_device=self.device,
+        )
+
+    def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
+            baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
             if "latency" in self.to_bench_metrics:
@@ -775,6 +815,8 @@ class Benchmark:
                     metric.speedup = (metric.latency_base + self.EPS) / (
                         metric.latency + self.EPS
                     )
+
+            self._apply_external_baseline(metric, dtype, baseline_context)
 
             if "gbps" in self.to_bench_metrics:
                 if Config.skip_native:
@@ -1429,6 +1471,20 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
         inp = generate_tensor_input(shape, case.dtype, self.device)
         out = torch.empty_like(inp)
         return inp, {"out": out}
+
+
+class BoolUnaryPointwiseOutBenchmark(UnaryPointwiseOutBenchmark):
+    """Unary pointwise op whose out argument must be bool.
+
+    Predicates like isneginf/signbit reject non-boolean out tensors, so the
+    output is allocated with torch.bool instead of the input dtype.
+    """
+
+    def get_input_iter(self, cur_dtype) -> Generator:
+        for shape in self.shapes:
+            inp = generate_tensor_input(shape, cur_dtype, self.device)
+            out = torch.empty(inp.shape, dtype=torch.bool, device=self.device)
+            yield inp, {"out": out}
 
 
 class MarginRankingLossBenchmark(GenericBenchmark):

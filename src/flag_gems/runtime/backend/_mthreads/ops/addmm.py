@@ -24,7 +24,37 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+# Reuse the warp-specialized mm building blocks.  addmm is a single GEMM with
+# a bias epilogue, so it shares the tuned 256x256x64 tile pipeline, the
+# column-panel rasterization and the TLE producer with mm; only the consumer
+# gains the extra beta * bias term before the store.
+from .mm import (  # noqa: E402
+    _WS_BLOCK_K,
+    _WS_BLOCK_M,
+    _WS_BLOCK_N,
+    _WS_NUM_WARPS,
+    _WS_PANEL_WIDTH,
+    _WS_STAGES,
+    TLE_WS_ON,
+    _ws_mm_producer,
+    _ws_rasterization_2d_column,
+)
+
+try:
+    import triton.experimental.tle.language as tle
+except ImportError:  # pragma: no cover - depends on the installed Triton build
+    tle = None
+
 logger = logging.getLogger(__name__)
+
+# A full 2-D bias tile needs one block_m x block_n epilogue staging buffer in
+# shared memory, which does not fit next to mm's 3-stage 256x256x64 TME ring on
+# a 192 KiB part.  This narrower, deeper-K ring measured fastest while keeping
+# the epilogue fused; broadcast biases still use the mm ring unchanged.
+_WS_BIAS_BLOCK_M = 256
+_WS_BIAS_BLOCK_N = 128
+_WS_BIAS_BLOCK_K = 32
+_WS_BIAS_STAGES = 5
 
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -369,6 +399,247 @@ def addmm_sqmma(mat1, mat2, bias, elem_type, alpha, beta, M, N, K, out=None):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Warp-specialized SQMMA for addmm.  A producer warp group drives TME copies
+# into a pipelined shared-memory ring while a consumer warp group runs SQMMA,
+# so the next K tile is already in flight during the MMA.  The alpha/beta bias
+# epilogue is folded into the consumer, so the extra bias pass costs no second
+# launch.  This is what closes most of the gap to the vendor addmm.
+# ---------------------------------------------------------------------------
+
+
+@triton.jit
+def _ws_addmm_consumer(
+    a_reader,
+    b_reader,
+    c_ptr,
+    bias_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    alpha,
+    beta,
+    stride_im,
+    stride_in,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
+    BIAS_IS_SCALAR: tl.constexpr,
+):
+    offset_m = pid_m * block_m + tl.arange(0, block_m)
+    offset_n = pid_n * block_n + tl.arange(0, block_n)
+    mask = (offset_m[:, None] < M) & (offset_n[None, :] < N)
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    acc = tl.zeros((block_m, block_n), dtype=tl.float32)
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        a_wait = a_reader.wait(k_iter)
+        b_wait = b_reader.wait(k_iter)
+        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc)
+        acc = tle.gpu.wgmma_wait(0, acc)
+        a_reader.release(k_iter)
+        b_reader.release(k_iter)
+
+    if BIAS_IS_VECTOR:
+        bias = tl.load(
+            bias_ptr + offset_n * stride_in,
+            mask=offset_n < N,
+            other=0.0,
+        )[None, :]
+    elif BIAS_IS_SCALAR:
+        bias = tl.load(bias_ptr)
+    else:
+        bias_ptrs = (
+            bias_ptr + offset_m[:, None] * stride_im + offset_n[None, :] * stride_in
+        )
+        bias = tl.load(bias_ptrs, mask=mask, other=0.0)
+
+    result = (alpha * acc + beta * bias).to(c_ptr.dtype.element_ty)
+    c_block_ptr = c_ptr + N * offset_m[:, None] + offset_n[None, :]
+    tl.store(c_block_ptr, result, mask=mask)
+
+
+@triton.jit
+def addmm_sqmma_ws_kernel(
+    a_desc,
+    b_desc,
+    c_ptr,
+    bias_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    alpha,
+    beta,
+    stride_im,
+    stride_in,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    panel_width: tl.constexpr,
+    pipeline_stages: tl.constexpr,
+    full_panel: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
+    BIAS_IS_SCALAR: tl.constexpr,
+):
+    raw_bx = tl.program_id(axis=0)
+    raw_by = tl.program_id(axis=1)
+    grid_x = tl.num_programs(axis=0)
+    grid_y = tl.num_programs(axis=1)
+    block_idx = raw_bx + raw_by * grid_x
+    pid_n, pid_m = _ws_rasterization_2d_column(
+        block_idx,
+        grid_x,
+        grid_y,
+        panel_width,
+        full_panel,
+    )
+
+    a_smem = tle.gpu.alloc(
+        (pipeline_stages, block_m, block_k),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    b_smem = tle.gpu.alloc(
+        (pipeline_stages, block_k, block_n),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    a_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="addmm_a", a=a_smem)
+    b_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="addmm_b", b=b_smem)
+
+    tle.gpu.warp_specialize(
+        [
+            (
+                _ws_addmm_consumer,
+                (
+                    a_pipe.reader(),
+                    b_pipe.reader(),
+                    c_ptr,
+                    bias_ptr,
+                    M,
+                    N,
+                    K,
+                    alpha,
+                    beta,
+                    stride_im,
+                    stride_in,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                    BIAS_IS_VECTOR,
+                    BIAS_IS_SCALAR,
+                ),
+            ),
+            (
+                _ws_mm_producer,
+                (
+                    a_pipe.writer(),
+                    b_pipe.writer(),
+                    a_desc,
+                    b_desc,
+                    K,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                ),
+            ),
+        ],
+        worker_num_warps=[4],
+        worker_num_regs=[24],
+    )
+
+
+def is_addmm_ws_compatible(mat1, mat2, out_dtype, M, N, K):
+    """Warp-specialized SQMMA for addmm needs the TLE frontend, half-tile
+    shapes and a row-major fp16/bf16 output that matches the operand dtype."""
+    return (
+        TLE_WS_ON
+        and out_dtype in (torch.float16, torch.bfloat16)
+        and M >= _WS_BLOCK_M // 2
+        and N >= _WS_BLOCK_N // 2
+        and is_sqmma_compatible(mat1, mat2, N, K)
+    )
+
+
+def addmm_sqmma_ws(mat1, mat2, bias, alpha, beta, M, N, K, out=None):
+    logger.debug("GEMS_MTHREADS ADDMM_SQMMA_WS")
+    device = mat1.device
+    assert broadcastable_to(bias.shape, (M, N)), "Incompatible input shape"
+    if not mat1.is_contiguous():
+        mat1 = mat1.contiguous()
+    if not mat2.is_contiguous():
+        mat2 = mat2.contiguous()
+    assert mat1.dtype == mat2.dtype, "Mat A and Mat B should have the same dtype"
+    if out is None:
+        out = torch.empty((M, N), dtype=mat1.dtype, device=device)
+    bias, stride_im, stride_in, bias_is_vector, bias_is_scalar = _prepare_bias(
+        bias, out
+    )
+    # A full 2-D bias tile forces an epilogue layout conversion that needs one
+    # block_m x block_n staging buffer on top of the TME ring.  mm's 3-stage
+    # 256x256x64 ring already fills the 192 KiB part, so a broadcast bias keeps
+    # that tile while a full bias switches to a narrower, deeper-K ring that
+    # leaves room for the epilogue.
+    if bias_is_vector or bias_is_scalar:
+        block_m, block_n, block_k, stages = (
+            _WS_BLOCK_M,
+            _WS_BLOCK_N,
+            _WS_BLOCK_K,
+            _WS_STAGES,
+        )
+    else:
+        block_m, block_n, block_k, stages = (
+            _WS_BIAS_BLOCK_M,
+            _WS_BIAS_BLOCK_N,
+            _WS_BIAS_BLOCK_K,
+            _WS_BIAS_STAGES,
+        )
+    # The SQMMA consumer stores straight into a row-major buffer of the operand
+    # dtype, so `out` must already match the operands; callers gate on that.
+    desc_a = TensorDescriptor.from_tensor(mat1, [block_m, block_k])
+    desc_b = TensorDescriptor.from_tensor(mat2, [block_k, block_n])
+    grid = (triton.cdiv(N, block_n), triton.cdiv(M, block_m), 1)
+    with torch_device_fn.device(mat1.device):
+        addmm_sqmma_ws_kernel[grid](
+            desc_a,
+            desc_b,
+            out,
+            bias,
+            M,
+            N,
+            K,
+            alpha,
+            beta,
+            stride_im,
+            stride_in,
+            block_m,
+            block_n,
+            block_k,
+            _WS_PANEL_WIDTH,
+            stages,
+            grid[0] % _WS_PANEL_WIDTH == 0,
+            bias_is_vector,
+            bias_is_scalar,
+            num_warps=_WS_NUM_WARPS,
+            num_stages=stages,
+        )
+    return out
+
+
 def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
@@ -380,6 +651,25 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     if out is not None:
         assert out.shape == (M, N), "Incompatible output shape"
 
+    # The warp-specialized SQMMA path stores straight into a row-major buffer
+    # of the operand dtype, so it needs a contiguous fp16/bf16 `out` (or no
+    # `out` at all) before it can be used.
+    if (
+        bias.dtype == a_dtype
+        and (out is None or (out.is_contiguous() and out.dtype == a_dtype))
+        and is_addmm_ws_compatible(mat1, mat2, a_dtype, M, N, K)
+    ):
+        return addmm_sqmma_ws(
+            mat1,
+            mat2,
+            bias,
+            alpha,
+            beta,
+            M,
+            N,
+            K,
+            out=out,
+        )
     if (
         is_sqmma_compatible(mat1, mat2, N, K)
         and bias.dtype == a_dtype

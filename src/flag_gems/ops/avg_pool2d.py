@@ -308,7 +308,7 @@ def avg_pool2d(
     count_include_pad=True,
     divisor_override=None,
 ):
-    logger.debug("GEMS AVG_POOL2D FORWARD")
+    logger.debug("GEMS AVG_POOL2D_FORWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
@@ -378,7 +378,7 @@ def avg_pool2d_backward(
     count_include_pad,
     divisor_override,
 ):
-    logger.debug("GEMS AVG_POOL2D BACKWARD")
+    logger.debug("GEMS AVG_POOL2D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

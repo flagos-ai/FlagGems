@@ -81,10 +81,7 @@ def test_max_unpool2d(shape, pool_cfg, dtype):
         ref_pooled, ref_indices.to(torch.int64), output_size
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.max_unpool2d(
-            pooled, indices.to(torch.int64), output_size
-        )
+    res_out = flag_gems.max_unpool2d(pooled, indices.to(torch.int64), output_size)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -113,9 +110,8 @@ def test_max_unpool2d_non_contiguous(dtype):
         ref_pooled, ref_indices.to(torch.int64), output_size
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.max_unpool2d(
-            pooled_noncontig, indices_noncontig.to(torch.int64), output_size
-        )
+    res_out = flag_gems.max_unpool2d(
+        pooled_noncontig, indices_noncontig.to(torch.int64), output_size
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

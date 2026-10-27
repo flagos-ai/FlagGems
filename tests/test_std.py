@@ -47,6 +47,10 @@ random.seed(time.time() // 100)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten not working with int64 in shape(200, 40999, 3)",
+)
 def test_std(shape, dim, correction, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
@@ -75,8 +79,7 @@ def test_std(shape, dim, correction, keepdim, dtype):
 
     ref_inp = utils.to_reference(inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.std(inp, dim=dim, correction=correction, keepdim=keepdim)
+    res_out = flag_gems.std(inp, dim=dim, correction=correction, keepdim=keepdim)
 
     ref_out = torch.std(ref_inp, dim=dim, correction=correction, keepdim=keepdim)
 

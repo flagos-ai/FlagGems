@@ -441,7 +441,7 @@ def cross_attention(query, key, value, attn_mask=None, scale=None):
     GQA, and MQA are supported. Non-zero bool/uint8 mask entries are blocked.
     Fully masked rows produce exact zeros. This API currently has no backward.
     """
-    logger.debug("GEMS CROSS ATTENTION")
+    logger.debug("GEMS CROSS_ATTENTION")
     if not HAS_TLE:
         raise RuntimeError(
             "cross_attention is unavailable: requires triton.experimental.tle."

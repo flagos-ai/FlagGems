@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.inplace
+@pytest.mark.gt_
 @pytest.mark.gt_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

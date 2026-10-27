@@ -13,7 +13,7 @@ def multiply_(A, B):
 
     This is an alias for mul_ that follows the PyTorch multiply_ API.
     """
-    logger.debug("GEMS MULTIPLY_")
+    logger.debug("GEMS_SUNRISE MULTIPLY_")
     if not isinstance(A, torch.Tensor):
         raise ValueError("Unreachable.")
     return mul_(A, B)

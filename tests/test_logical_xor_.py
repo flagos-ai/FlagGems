@@ -49,8 +49,7 @@ def test_logical_xor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.logical_xor_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.logical_xor_(inp2)
+    res_out = flag_gems.logical_xor_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp1, ref_inp1)
@@ -66,8 +65,7 @@ def test_logical_xor_bool_scalar():
     ref_inp = utils.to_reference(inp.clone())
     ref_scalar = utils.to_reference(scalar)
     ref_out = ref_inp.logical_xor_(ref_scalar)
-    with flag_gems.use_gems():
-        res_out = inp.logical_xor_(scalar)
+    res_out = flag_gems.logical_xor_(inp, scalar)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)
@@ -84,8 +82,7 @@ def test_logical_xor_broadcast():
     ref_inp = utils.to_reference(inp.clone())
     ref_other = utils.to_reference(other)
     ref_out = ref_inp.logical_xor_(ref_other)
-    with flag_gems.use_gems():
-        res_out = inp.logical_xor_(other)
+    res_out = flag_gems.logical_xor_(inp, other)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)
@@ -103,8 +100,7 @@ def test_logical_xor_noncontiguous():
 
     ref_inp = utils.to_reference(inp_t.clone())
     ref_out = ref_inp.logical_xor_(utils.to_reference(other_t))
-    with flag_gems.use_gems():
-        res_out = inp_t.logical_xor_(other_t)
+    res_out = flag_gems.logical_xor_(inp_t, other_t)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp_t, ref_inp)

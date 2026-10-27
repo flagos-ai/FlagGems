@@ -23,9 +23,7 @@ from flag_gems.ops.mish import mish as default_mish
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 

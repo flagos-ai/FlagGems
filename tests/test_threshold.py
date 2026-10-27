@@ -30,8 +30,7 @@ def test_threshold(shape, dtype):
     value = 100
 
     ref_out = torch.nn.functional.threshold(ref_inp, threshold, value)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.threshold(res_inp, threshold, value)
+    res_out = flag_gems.threshold(res_inp, threshold, value)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -48,7 +47,6 @@ def test_threshold_backward(shape, dtype):
     ref_grad = utils.to_reference(res_grad, True)
 
     ref_in_grad = torch.ops.aten.threshold_backward(ref_grad, ref_inp, threshold)
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.threshold_backward(res_grad, res_inp, threshold)
+    res_in_grad = flag_gems.threshold_backward(res_grad, res_inp, threshold)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

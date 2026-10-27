@@ -160,7 +160,7 @@ def log_normal_(self, mean=1.0, std=2.0, *, generator=None):
     single kernel launch, eliminating the temporary float32 buffer and
     halving the number of kernel invocations compared to the generic path.
     """
-    logger.debug("GEMS LOG_NORMAL_ (Iluvatar)")
+    logger.debug("GEMS_ILUVATAR LOG_NORMAL_ (Iluvatar)")
     shape = self.shape
     device = self.device
     N = volume(shape)
