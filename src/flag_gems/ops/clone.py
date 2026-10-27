@@ -58,9 +58,16 @@ def _allocate_preserve_format(inp: torch.Tensor) -> torch.Tensor:
 
 def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
     n_elements = src.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Constant-tuple grid: on the XPU backend a `lambda meta: ...` grid object is
+    # part of the compilation cache key for a bare `@triton.jit` kernel, so every
+    # call triggers a full recompile (measured ~105ms/call for a 4KB copy).
+    if n_elements >= 16384:
+        block = 16384
+    else:
+        block = min(16384, max(64, triton.next_power_of_2(n_elements)))
+    grid = (triton.cdiv(n_elements, block),)
     with torch_device_fn.device(src.device):
-        _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=1024)
+        _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=block)
 
 
 def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
