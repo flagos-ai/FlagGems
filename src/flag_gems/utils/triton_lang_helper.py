@@ -1501,6 +1501,140 @@ tl_extra_shim = _patch_missing_symbols(
 )
 
 
+# Accurate fp32 pow for AMD Radeon. HIP's __ocml_pow_f32 as linked by Triton
+# loses accuracy as |y*log2(x)| grows (up to ~120 ULP for |y| ~ 100, ~170 ULP
+# on random inputs), well past the ~11 ULP fp32 test tolerance. This version
+# keeps log2(x) and y*log2(x) as fp32 double-floats (max ~1 ULP measured on
+# gfx1201) and defers every special case (x <= 0 without an integral y, 0,
+# inf, nan, y == 0) to the native pow.
+@triton.jit
+def _ff_opaque(x):
+    # Empty asm tied to its input keeps a rounded product from being contracted
+    # into a later add, which would break the error-free transformations.
+    return tl.inline_asm_elementwise(
+        asm="", constraints="=v,0", args=[x], dtype=tl.float32, is_pure=True, pack=1
+    )
+
+
+@triton.jit
+def _ff_two_sum(a, b):
+    s = a + b
+    bb = s - a
+    return s, (a - (s - bb)) + (b - bb)
+
+
+@triton.jit
+def _ff_two_prod(a, b):
+    p = _ff_opaque(a * b)
+    return p, tl.math.fma(a, b, -p)
+
+
+@triton.jit
+def _ff_log2(x):
+    # log2(x) = hi + lo for finite x > 0, via ln(m) = 2 atanh((m - 1) / (m + 1)).
+    sub = x < 1.1754943508222875e-38
+    xs = tl.where(sub, x * 16777216.0, x)
+    bits = xs.to(tl.int32, bitcast=True)
+    e = ((bits >> 23) & 0xFF) - 127
+    m = ((bits & 0x7FFFFF) | 0x3F800000).to(tl.float32, bitcast=True)
+    big = m > 1.41421356
+    m = tl.where(big, m * 0.5, m)
+    e = e + big.to(tl.int32) - sub.to(tl.int32) * 24
+    num = m - 1.0
+    dh, dl = _ff_two_sum(m, 1.0)
+    th = num / dh
+    tlo = (tl.math.fma(-th, dh, num) - th * dl) / dh
+    t2h, t2l = _ff_two_prod(th, th)
+    t3h, t3l = _ff_two_prod(t2h, th)
+    t3l = t3l + t2l * th + 3.0 * t2h * tlo
+    qh, ql = _ff_two_prod(t3h, 0.6666666865348816)
+    ql = ql + t3h * -1.9868215517249155e-08 + t3l * 0.6666666865348816
+    t2 = t2h
+    rest = (
+        th
+        * t2
+        * t2
+        * (
+            0.4
+            + t2
+            * (
+                0.2857142857
+                + t2
+                * (0.2222222222 + t2 * (0.1818181818 + t2 * (0.1538461538 + t2 * 0.1333333333)))
+            )
+        )
+    )
+    sh, sl = _ff_two_sum(2.0 * th, qh)
+    sl = sl + 2.0 * tlo + ql + rest
+    lnh = sh + sl
+    lnl = sl - (lnh - sh)
+    l2h, l2l = _ff_two_prod(lnh, 1.4426950216293335)
+    l2l = l2l + lnh * 1.925963033500011e-08 + lnl * 1.4426950216293335
+    rh, rl = _ff_two_sum(e.to(tl.float32), l2h)
+    rl = rl + l2l
+    hi = rh + rl
+    return hi, rl - (hi - rh)
+
+
+@triton.jit
+def _ff_pow2i(k):
+    # 2**k for an integer k in [-126, 127], exact.
+    return ((k + 127) << 23).to(tl.float32, bitcast=True)
+
+
+@triton.jit
+def _accurate_powf(x, y):
+    ax = tl.abs(x)
+    y_int = y == tl.floor(y)
+    yh2 = y * 0.5
+    y_odd = y_int & (tl.floor(yh2) != yh2)
+    normal = (
+        (ax > 0.0)
+        & (ax < float("inf"))
+        & (tl.abs(y) < float("inf"))
+        & (y != 0.0)
+        & ((x > 0.0) | y_int)
+    )
+    lh, ll = _ff_log2(tl.where(normal, ax, 1.0))
+    ph, pl = _ff_two_prod(y, lh)
+    pl = pl + y * ll
+    over = ph > 129.0
+    under = ph < -151.0
+    ph = tl.minimum(tl.maximum(ph, -151.0), 129.0)
+    pl = tl.where(over | under, 0.0, pl)
+    n = tl.math.floor(ph + 0.5)
+    r = tl.math.exp2((ph - n) + pl)
+    ni = n.to(tl.int32)
+    k1 = ni >> 1
+    k2 = ni - k1
+    r = r * _ff_pow2i(tl.minimum(tl.maximum(k1, -126), 127))
+    r = r * _ff_pow2i(tl.minimum(tl.maximum(k2, -126), 127))
+    r = tl.where(over, float("inf"), tl.where(under, 0.0, r))
+    r = tl.where((x < 0.0) & y_odd, -r, r)
+    return tl.where(normal, r, _NATIVE_POW(x, y))
+
+
+@triton.jit
+def _radeon_pow(x, y):
+    if x.dtype == tl.float32 and y.dtype == tl.float32:
+        return _accurate_powf(x, y)
+    else:
+        return _NATIVE_POW(x, y)
+
+
+def _use_radeon_pow():
+    if getattr(device, "vendor_name", None) != "amd":
+        return False
+    from flag_gems.utils.device_info import is_amd_radeon
+
+    return is_amd_radeon() and hasattr(tl_extra_shim, "pow")
+
+
+if _use_radeon_pow():
+    _NATIVE_POW = tl_extra_shim.pow
+    tl_extra_shim.pow = _radeon_pow
+
+
 def use_backend(module):
     """using backend module impl"""
 
