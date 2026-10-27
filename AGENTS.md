@@ -53,6 +53,7 @@ When adding a new operator or modifying existing operators, complete all steps i
 - Place standard operators in `src/flag_gems/ops/<op_name>.py`.
 - Place fused operators in `src/flag_gems/fused/<op_name>.py`.
 - Place incubating operators in `src/flag_gems/experimental_ops/<op_name>.py`.
+- **vLLM Operators Notice**: vLLM-specific fused operators have migrated to the [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) repository. Developers and agents should submit all vLLM optimization and kernel code directly to FlagGems-vllm rather than `src/flag_gems/fused/`.
 - Follow operator naming conventions: `snake_case`, lowercase, no leading underscore, no dots (`.`).
 
 ### Step 2: Register in `_FULL_CONFIG` and Export API

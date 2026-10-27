@@ -69,6 +69,12 @@ files:
 designed for serving large language models efficiently.
 It supports features like paged attention, continuous batching, and optimized memory management.
 
+> [!IMPORTANT]
+> **Repository Migration & Contribution Notice**
+>
+> The vLLM-specific fused operators formerly in `src/flag_gems/fused/` have migrated to the dedicated [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) repository.
+> Developers looking to optimize vLLM operators, introduce new vLLM custom kernels, or submit fixes are requested to **submit PRs and issues directly to [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm)**. FlagGems core repository focuses on universal ATen operators and standard neural network building blocks.
+
 *FlagGems* can be integrated into vLLM to replace both standard PyTorch (`aten`) operators
 and vLLM's internal custom kernels.
 

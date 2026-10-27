@@ -59,6 +59,12 @@ with flag_gems.use_gems():
 
 [vLLM](https://github.com/vllm-project/vllm) 是业界广泛采用的高吞吐 LLM 服务推理引擎，核心特性包括 PagedAttention（分页注意力机制）、Continuous Batching（连续批处理）等。
 
+> [!IMPORTANT]
+> **重要迁移通知与开发者贡献指引**
+>
+> 原 `src/flag_gems/fused` 下的 vLLM 专有算子已正式迁移至独立的 [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) 仓库进行专门维护与演进。
+> 如果你需要对 vLLM 相关的算子进行特性增强、性能调优或提交 Bug 修复，**请直接向 [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) 仓库提交 Issue 与 Pull Request**。本仓库（FlagGems）将聚焦于通用 ATen 算子库及基础神经网络组件。
+
 *FlagGems* 可以深度集成至 vLLM 中，既支持替换标准的 PyTorch ATen 算子，也支持接管 vLLM 内部的定制 Kernel：
 
 ### 2.1 替换 vLLM 中的标准 PyTorch 算子

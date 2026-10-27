@@ -115,6 +115,11 @@ Example yaml file entry:
 
 Before developing a new operator, check the `for` field in `conf/operators.yaml` to avoid duplicating an existing operator. New operators must include the following:
 
+> [!IMPORTANT]
+> **Notice on vLLM Operator Contributions**:
+> The vLLM-specific fused operators formerly residing in `src/flag_gems/fused/` have migrated to the dedicated [**FlagGems-vllm**](https://github.com/flagos-ai/FlagGems-vllm) repository.
+> If your work involves optimizing or adding vLLM-specialized kernels (e.g., PagedAttention, FlashMLA, FusedMoE in vLLM), **please submit your PRs and code directly to [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm)**. The FlagGems core repository is dedicated to universal PyTorch ATen operators and standard neural network building blocks.
+
 - Fill in operator metadata in `conf/operators.yaml`;
 - Add the Triton operator implementation in `src/flag_gems/ops`, `src/flag_gems/fused`, or `src/flag_gems/experimental_ops`;
 - Export the API in the corresponding `__init__.py` file;
