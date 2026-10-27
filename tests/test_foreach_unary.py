@@ -50,6 +50,37 @@ FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 INT_DTYPES = [torch.int16, torch.int32, torch.int64]
 
 
+def _op_params(names, suffixes=("",)):
+    """``parametrize`` entries carrying each operator's own pytest marker.
+
+    ``-m foreach_<op>`` is how CI narrows a run to the operators a change
+    touches, and a marker on the test function cannot do that: it applies to
+    every case the function generates, so every operator would select the
+    identical set.  ``suffixes`` is ``("_",)`` for the in-place operators and
+    ``("", "_")`` for a test parameterized over both.
+    """
+    return [
+        pytest.param(
+            name, marks=[getattr(pytest.mark, f"foreach_{name}{s}") for s in suffixes]
+        )
+        for name in names
+    ]
+
+
+def _mark_all_unary(test):
+    """Stack every unary marker on a family-wide invariant test.
+
+    A test that takes no ``name`` parameter cannot carry a per-operator marker,
+    yet a change to the shared executor behind it still has to run it.  Markers
+    are labels rather than filters, so the test still runs once however many of
+    them match.
+    """
+    for name in UNARY_NAMES:
+        test = getattr(pytest.mark, f"foreach_{name}")(test)
+        test = getattr(pytest.mark, f"foreach_{name}_")(test)
+    return test
+
+
 def _torch_op(name, inplace=False):
     return getattr(torch, f"_foreach_{name}_" if inplace else f"_foreach_{name}")
 
@@ -117,8 +148,8 @@ def _assert_lists_close(res, ref, name):
 # They deliberately do NOT sit on the parametrized test: a marker applied to
 # the function applies to every case it generates, so stacking all of them
 # there made `pytest -m foreach_mul_tensor` and `pytest -m foreach_add_list`
-# select the identical set of cases. The per-parameter markers on the
-# parametrize list are what give `-m <id>` its one-operator selectivity.
+# select the identical set of cases. The per-parameter markers built by
+# ``_op_params`` are what give ``-m <id>`` its one-operator selectivity.
 # ---------------------------------------------------------------------------
 @pytest.mark.foreach_abs
 @pytest.mark.foreach_abs_
@@ -185,7 +216,7 @@ def test_operator_markers_are_declared():
     """Placeholder carrying the marker set for static discovery."""
 
 
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_foreach_unary_float(name, dtype):
     if not _supports(name, dtype):
@@ -200,7 +231,7 @@ def test_accuracy_foreach_unary_float(name, dtype):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES))
 @pytest.mark.parametrize("dtype", INT_DTYPES)
 def test_accuracy_foreach_unary_int(name, dtype):
     if not _supports(name, dtype):
@@ -218,7 +249,7 @@ def test_accuracy_foreach_unary_int(name, dtype):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES))
 def test_accuracy_foreach_unary_bool(name):
     if not _supports(name, torch.bool):
         return
@@ -238,7 +269,7 @@ def test_accuracy_foreach_unary_bool(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES))
 @pytest.mark.parametrize("dtype", [torch.complex64])
 def test_accuracy_foreach_unary_complex(name, dtype):
     if not _supports(name, dtype) or UNARY_OPS[name].complex_fn is None:
@@ -253,7 +284,7 @@ def test_accuracy_foreach_unary_complex(name, dtype):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES))
 def test_accuracy_foreach_unary_rejects_unsupported_dtype(name):
     """Refusals must match ATen's, not be broader or narrower."""
     allowed = UNARY_OPS[name].allowed
@@ -268,7 +299,7 @@ def test_accuracy_foreach_unary_rejects_unsupported_dtype(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 @pytest.mark.parametrize("length", TENSOR_LIST_LENGTHS)
 def test_accuracy_foreach_unary_list_lengths(name, length):
     inp = [_sample((16, 8), torch.float32, flag_gems.device) for _ in range(length)]
@@ -281,7 +312,7 @@ def test_accuracy_foreach_unary_list_lengths(name, length):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_mixed_shapes(name):
     inp = [_sample(s, torch.float32, flag_gems.device) for s in MIXED_SHAPES]
     ref_inp = [to_reference(t) for t in inp]
@@ -295,7 +326,7 @@ def test_accuracy_foreach_unary_mixed_shapes(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_empty_and_zero_dim(name):
     inp = [
         torch.empty(0, dtype=torch.float32, device=flag_gems.device),
@@ -311,7 +342,7 @@ def test_accuracy_foreach_unary_empty_and_zero_dim(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_mixed_dtypes(name):
     """One call spanning several dtypes must be grouped, not rejected."""
     inp = [
@@ -331,7 +362,7 @@ def test_accuracy_foreach_unary_mixed_dtypes(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_layouts(name):
     """Layouts that flat addressing must either handle or stage through a copy.
 
@@ -360,7 +391,7 @@ def test_accuracy_foreach_unary_layouts(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES, suffixes=("_",)))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_accuracy_foreach_unary_inplace(name, dtype):
     if not _supports(name, dtype):
@@ -387,7 +418,7 @@ def test_accuracy_foreach_unary_inplace(name, dtype):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE, suffixes=("_",)))
 def test_accuracy_foreach_unary_inplace_writes_through_views(name):
     """In-place on a non-flat view must land in the original storage."""
     storage = _sample((8, 16), torch.float32, flag_gems.device, name)
@@ -409,7 +440,7 @@ def test_accuracy_foreach_unary_inplace_rejects_overlap():
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", ["sin", "exp", "log", "sigmoid"])
+@pytest.mark.parametrize("name", _op_params(["sin", "exp", "log", "sigmoid"], ("_",)))
 def test_accuracy_foreach_unary_inplace_rejects_promotion(name):
     """A promoting operator may not narrow its result back into an int input."""
     inp = [torch.randint(1, 5, (8,), dtype=torch.int64, device=flag_gems.device)]
@@ -418,7 +449,7 @@ def test_accuracy_foreach_unary_inplace_rejects_promotion(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_error_parity(name):
     """Empty list and non-tensor entries must fail the way ATen fails."""
     with pytest.raises(RuntimeError):
@@ -428,7 +459,7 @@ def test_accuracy_foreach_unary_error_parity(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", REPRESENTATIVE)
+@pytest.mark.parametrize("name", _op_params(REPRESENTATIVE))
 def test_accuracy_foreach_unary_out_overload(name):
     """``.out`` is Composite and is deliberately not registered.
 
@@ -446,7 +477,7 @@ def test_accuracy_foreach_unary_out_overload(name):
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", UNARY_NAMES)
+@pytest.mark.parametrize("name", _op_params(UNARY_NAMES, ("", "_")))
 @pytest.mark.parametrize("inplace", [False, True])
 def test_foreach_unary_registration_is_live(name, inplace, caplog):
     """Falsifiable liveness: the negative control must stay silent.
@@ -487,6 +518,7 @@ def _cuda_kernel_count(fn):
     )
 
 
+@_mark_all_unary
 @pytest.mark.foreach_unary
 def test_foreach_unary_launch_count_is_independent_of_list_length():
     """The pointwise bound is O(number of groups), never O(number of tensors).
@@ -511,6 +543,7 @@ def test_foreach_unary_launch_count_is_independent_of_list_length():
         )
 
 
+@_mark_all_unary
 @pytest.mark.foreach_unary
 def test_foreach_unary_launch_count_scales_with_dtype_groups():
     """Launches track ``(device, dtype)`` groups, which is the real bound."""
@@ -534,6 +567,7 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
         assert stats["executor_launches"] == len(dtypes)
 
 
+@_mark_all_unary
 @pytest.mark.foreach_unary
 def test_foreach_unary_launch_count_with_heterogeneous_numel():
     """Wildly different element counts still collapse into one launch."""
@@ -568,7 +602,7 @@ MODULUS_OPS = ["abs", "log", "log1p", "log2", "log10", "sqrt", "rsqrt"]
 
 
 @pytest.mark.foreach_unary
-@pytest.mark.parametrize("name", MODULUS_OPS)
+@pytest.mark.parametrize("name", _op_params(MODULUS_OPS))
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_accuracy_foreach_unary_complex_large(name, dtype):
     """A large finite complex input must not overflow the modulus."""
@@ -585,6 +619,7 @@ def test_accuracy_foreach_unary_complex_large(name, dtype):
     _assert_lists_close(res_out, ref_out, name)
 
 
+@pytest.mark.foreach_abs
 @pytest.mark.foreach_unary
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_accuracy_foreach_abs_complex_large(dtype):

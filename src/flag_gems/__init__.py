@@ -16,7 +16,7 @@
 import warnings
 
 import torch
-from packaging import version
+from packaging.version import parse as _parse_version
 
 from flag_gems import testing  # noqa: F401
 from flag_gems import runtime
@@ -77,7 +77,7 @@ QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
 
 
 def torch_ge(v):
-    return version.parse(torch.__version__) >= version.parse(v)
+    return _parse_version(torch.__version__) >= _parse_version(v)
 
 
 def torch_has_aten_overload(operator, overload):
@@ -149,6 +149,8 @@ _FULL_CONFIG = (
     ("_conj_physical", _conj_physical),
     ("_conj_physical.out", _conj_physical_out),
     ("_conv_depthwise2d", _conv_depthwise2d),
+    ("_convert_indices_from_coo_to_csr", _convert_indices_from_coo_to_csr),
+    ("_convert_indices_from_coo_to_csr.out", _convert_indices_from_coo_to_csr_out),
     ("_convert_indices_from_csr_to_coo", _convert_indices_from_csr_to_coo),
     ("_convert_indices_from_csr_to_coo.out", _convert_indices_from_csr_to_coo_out),
     ("_convert_weight_to_int4pack", _convert_weight_to_int4pack),
@@ -421,6 +423,8 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),
+    ("_make_per_tensor_quantized_tensor.out", _make_per_tensor_quantized_tensor_out),
     ("_masked_scale", _masked_scale),
     ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
@@ -443,6 +447,10 @@ _FULL_CONFIG = (
     ("_native_multi_head_attention", _native_multi_head_attention),
     ("_neg_view_copy", _neg_view_copy),
     ("_neg_view_copy.out", _neg_view_copy_out),
+    (
+        "_nested_compute_contiguous_strides_offsets",
+        nested_compute_contiguous_strides_offsets,
+    ),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
@@ -602,7 +610,7 @@ _FULL_CONFIG = (
     (
         "_to_copy",
         to_copy,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
@@ -656,6 +664,7 @@ _FULL_CONFIG = (
     ),
     ("_values_copy", _values_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_values_copy.out", _values_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_version", version, None, ["CompositeImplicitAutograd"]),
     ("_weight_int4pack_mm", weight_int4pack_mm),
     (
         "_weight_int4pack_mm_with_scales_and_zeros",
@@ -920,7 +929,7 @@ _FULL_CONFIG = (
     (
         "copy_",
         copy_,
-        lambda: version.parse(torch.__version__) >= version.parse("2.4"),
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
     ("copysign.out", copysign_out),
@@ -1546,6 +1555,8 @@ _FULL_CONFIG = (
     ),
     ("new_full", new_full),
     ("new_ones", new_ones),
+    ("new_zeros", new_zeros),
+    ("new_zeros.out", new_zeros_out),
     ("nextafter", nextafter),
     ("nextafter.out", nextafter),
     ("nextafter_", nextafter_),
@@ -1676,6 +1687,7 @@ _FULL_CONFIG = (
     ("randn_like", randn_like),
     ("randperm", randperm),
     ("range", range),
+    ("ravel", ravel),
     (
         "real",
         real,
