@@ -4,7 +4,6 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems import logdet
 
 from . import base, consts
 from .conftest import Config
@@ -35,13 +34,31 @@ class LogdetBenchmark(base.Benchmark):
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
-            n = shape[-1]
-            matrix = torch.randn(shape, dtype=cur_dtype, device=self.device)
-            matrix /= math.sqrt(n)
-            inp = matrix @ matrix.transpose(-2, -1) + torch.eye(
-                n, dtype=cur_dtype, device=self.device
+            yield from self._inputs_for_shape(shape, cur_dtype)
+
+    def _inputs_for_shape(self, shape, cur_dtype):
+        n = shape[-1]
+        matrix = torch.randn(shape, dtype=cur_dtype, device=self.device)
+        matrix /= math.sqrt(n)
+        inp = matrix @ matrix.transpose(-2, -1) + torch.eye(
+            n, dtype=cur_dtype, device=self.device
+        )
+        yield (inp,)
+
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={"input": shape},
+                    builder_args=(shape,),
+                ),
             )
-            yield (inp,)
+
+    def build_inputs(self, case):
+        shape = case.builder_args[0].builder_args[0]
+        return next(self._inputs_for_shape(shape, case.dtype))
 
 
 @pytest.mark.logdet
@@ -51,5 +68,4 @@ def test_logdet():
         torch_op=torch.logdet,
         dtypes=LOGDET_DTYPES,
     )
-    bench.set_gems(logdet)
     bench.run()

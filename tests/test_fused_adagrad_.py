@@ -72,9 +72,10 @@ def _native_reference(params, grads, state_sums, steps, **kwargs):
 
 def _assert_close(got, expected, dtype):
     atol = TOLS[dtype]
-    utils.gems_assert_close(
-        utils.to_reference(got, True), utils.to_reference(expected, True), dtype, atol=atol
-    )
+    assert got.device == expected.device
+    assert got.dtype == expected.dtype == dtype
+    assert got.shape == expected.shape
+    utils.gems_assert_close(got, utils.to_reference(expected, False), dtype, atol=atol)
 
 
 def _assert_grads_unchanged(grads, originals):
@@ -653,7 +654,10 @@ def test_fused_adagrad__internal_overlap_rejected():
 
 
 def _layout_snapshot(tensors):
-    return [(tensor, tensor.data_ptr(), tensor.stride(), tensor.storage_offset()) for tensor in tensors]
+    return [
+        (tensor, tensor.data_ptr(), tensor.stride(), tensor.storage_offset())
+        for tensor in tensors
+    ]
 
 
 def _assert_layout_preserved(tensors, snapshots):
@@ -675,7 +679,9 @@ def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
     shapes = [(19,), (4, 7), (0,)]
     params = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
     grads = [torch.randn(shape, dtype=dtype, device=device) for shape in shapes]
-    state_sums = [torch.rand(shape, dtype=dtype, device=device) + 0.25 for shape in shapes]
+    state_sums = [
+        torch.rand(shape, dtype=dtype, device=device) + 0.25 for shape in shapes
+    ]
     state_steps = [
         torch.tensor([float(i + 1)], dtype=torch.float32, device=device)
         for i in range(len(shapes))
@@ -696,9 +702,7 @@ def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
         params, grads, state_sums, state_steps, **opts
     )
 
-    result = flag_gems._fused_adagrad_(
-        params, grads, state_sums, state_steps, **opts
-    )
+    result = flag_gems._fused_adagrad_(params, grads, state_sums, state_steps, **opts)
 
     assert result is None
     for values, snapshots in zip(refs, layouts):
@@ -708,10 +712,19 @@ def test_fused_adagrad__mutation_identity_and_storage(found_inf_value):
     for got, expected in zip(state_sums, ref_sums):
         _assert_close(got, expected, dtype)
     for got, expected in zip(grads, before[1]):
-        utils.gems_assert_equal(got, expected)
+        assert got.device == expected.device
+        assert got.dtype == expected.dtype
+        assert got.shape == expected.shape
+        utils.gems_assert_equal(got, utils.to_reference(expected, False))
     for got, expected in zip(state_steps, before[3]):
-        utils.gems_assert_equal(got, expected)
+        assert got.device == expected.device
+        assert got.dtype == expected.dtype
+        assert got.shape == expected.shape
+        utils.gems_assert_equal(got, utils.to_reference(expected, False))
     if found_inf_value == 1.0:
         for values, originals in ((params, before[0]), (state_sums, before[2])):
             for got, expected in zip(values, originals):
-                utils.gems_assert_equal(got, expected)
+                assert got.device == expected.device
+                assert got.dtype == expected.dtype
+                assert got.shape == expected.shape
+                utils.gems_assert_equal(got, utils.to_reference(expected, False))

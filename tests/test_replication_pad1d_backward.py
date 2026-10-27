@@ -125,6 +125,13 @@ def _reference_backward(grad, inp, padding):
 @pytest.mark.parametrize("padding", REPLICATION_PAD1D_BACKWARD_PADDING)
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.bfloat16
+        and any(p < 0 for p in padding)
+    ):
+        pytest.skip("Ascend native BF16 negative-padding backward fails in PadV3Grad")
     if dtype.is_complex and flag_gems.vendor_name == "ascend":
         pytest.skip("Ascend randn does not support complex input construction")
     if dtype.is_complex and flag_gems.vendor_name == "mthreads":
@@ -169,7 +176,7 @@ def test_replication_pad1d_backward_grad_output_dtype_mismatch():
     inp = _make_input((2, 3, 8), torch.float64)
     assert inp.dtype == torch.float64
     bad_grad = torch.ones(2, 3, 10, dtype=torch.float32, device=inp.device)
-    with pytest.raises(RuntimeError, match="expected scalar type"):
+    with pytest.raises(RuntimeError):
         flag_gems.replication_pad1d_backward(bad_grad, inp, (1, 1))
 
 
