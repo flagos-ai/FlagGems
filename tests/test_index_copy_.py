@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import math
 
 import pytest
@@ -147,3 +148,101 @@ def test_ascend_index_copy_strides(dtype, inplace, layout, dim):
         assert not torch._C._is_alias_of(actual, inp)
         gems_assert_equal(raw.cpu(), initial.cpu())
     gems_assert_equal(actual.cpu(), reference)
+
+
+@pytest.mark.index_copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend row copies")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("layout", ["gdn", "prefix_transpose"])
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("registered", [False, True])
+def test_ascend_index_copy_wide_row_graph(dtype, layout, index_dtype, registered):
+    raw_shape = (6, 3, 4097) if layout == "gdn" else (6, 2, 257)
+    cpu_raw = (torch.arange(math.prod(raw_shape)) % 97).reshape(raw_shape).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    inp = raw[1:5].transpose(1, 2) if layout == "gdn" else raw[1:5].transpose(0, 1)
+    dim = 0 if layout == "gdn" else 1
+    source_shape = list(inp.shape)
+    source_shape[dim] = 2
+    source_cpu = torch.arange(math.prod(source_shape)).reshape(source_shape).to(dtype)
+    source_cpu = source_cpu % 97
+    # Construct special values in the source dtype, then compare backing bits.
+    int_dtype = torch.int32 if dtype == torch.float32 else torch.int16
+    if dtype == torch.float32:
+        bits = [0, -2147483648, 2139095040, -8388608, 2143289410]
+    elif dtype == torch.bfloat16:
+        bits = [0, -32768, 32640, -128, 32705]
+    else:
+        bits = [0, -32768, 31744, -1024, 32257]
+    source_cpu.flatten()[:5] = torch.tensor(bits, dtype=int_dtype).view(dtype)
+    storage = torch.empty(
+        (*source_shape[:-1], 2 * source_shape[-1] + 1), dtype=dtype, device=inp.device
+    )
+    source = storage[..., 1::2]
+    source.copy_(source_cpu)
+    index_storage = torch.tensor([1, 99, 3, 99], dtype=index_dtype, device=inp.device)
+    index = index_storage[::2]
+    previous_registrar = flag_gems.current_work_registrar
+    lib = None
+    try:
+        if registered:
+            lib = torch.library.Library("aten", "IMPL")
+            flag_gems.only_enable(lib=lib, include=["index_copy_"])
+
+        def invoke():
+            return (
+                inp.index_copy_(dim, index, source)
+                if registered
+                else flag_gems.index_copy_(inp, dim, index, source)
+            )
+
+        invoke()
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = invoke()
+        for positions in ([0, 2], [1, 3]):
+            raw.copy_(cpu_raw)
+            index.copy_(torch.tensor(positions, dtype=index_dtype))
+            reference_raw = cpu_raw.clone()
+            reference = (
+                reference_raw[1:5].transpose(1, 2)
+                if layout == "gdn"
+                else reference_raw[1:5].transpose(0, 1)
+            )
+            reference.index_copy_(dim, torch.tensor(positions), source_cpu)
+            graph.replay()
+            torch.npu.synchronize()
+            assert actual is inp
+            gems_assert_equal(raw.cpu().view(int_dtype), reference_raw.view(int_dtype))
+    finally:
+        if lib is not None:
+            lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+
+@pytest.mark.index_copy_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend row traversal")
+def test_ascend_index_copy_row_bounded_grid():
+    module = importlib.import_module(flag_gems.index_copy_.__module__)
+    inp = torch.zeros((4, 3, 513), device=flag_gems.device).transpose(1, 2)
+    source_cpu = torch.arange(2 * 513 * 3, dtype=torch.float32).reshape(2, 513, 3)
+    source = source_cpu.to(inp.device)
+    indices = torch.tensor([1, 3], device=inp.device)
+    module._index_copy_strided_row_kernel.jit_function[(2,)](
+        inp,
+        source,
+        indices,
+        6,
+        513,
+        4,
+        ROW_SHAPE=(2, 3),
+        OUT_STRIDES=(1539, 513),
+        SRC_STRIDES=(1539, 1),
+        DIM=0,
+        SRC_INNER_STRIDE=3,
+        INDEX_STRIDE=1,
+        BLOCK=256,
+    )
+    expected = torch.zeros((4, 513, 3))
+    expected.index_copy_(0, torch.tensor([1, 3]), source_cpu)
+    gems_assert_equal(inp.cpu(), expected)
