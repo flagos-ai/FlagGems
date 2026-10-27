@@ -45,9 +45,9 @@ _DENSE_MAX_CLASSES = 8192
 # minmax+reduce pair takes over.
 _MINMAX_DIRECT_MAX_ELEMENTS = 10_240
 
-# Cross-block reduce stays a single 1-CTA kernel up to this many blocks
-# (1-CTA wins <=8192 blocks; the extra launch of the two-level scheme wins
-# from ~10000 blocks up, official shapes hit 10000 status blocks).
+# Cross-block min/max reduce stays a single 1-CTA kernel up to this many
+# blocks (1-CTA wins <=8192 blocks; the extra launch of the two-level
+# scheme wins from ~10000 blocks up, official shapes hit 10000 stat blocks).
 _ONE_CTA_MAX_BLOCKS = 8_192
 _PARTIAL_CHUNK = 4096
 
@@ -94,31 +94,64 @@ def one_hot_dense_kernel(
         )
 
 
-# ── fused min/max reduction (num_classes inference) ──────────────────────────
+# ── fused validate + dense fill kernels ──────────────────────────────────────
+#
+# One multi-CTA launch folds the whole-input error verdict into a pre-zeroed
+# 1-element int32 via atomic max: the zero-init is a ~5 us aten fill
+# enqueue, far cheaper than any second Triton launch.  A single-CTA
+# "direct verdict store" variant was measured and dropped: S5000
+# single-CTA store bandwidth is ~19 GB/s, so even a 512 KiB output takes
+# ~30 us of serial GPU time once validation compute rides the loop, more
+# than the 5 us zero-init it saves (mirrors the c85ebe803 finding for the
+# validation-only single-CTA band).
 
 
 @libentry()
 @triton.jit
-def one_hot_status_reduce_kernel(
-    status_ptr,
-    out_ptr,
-    num_blocks,
-    BLOCK: tl.constexpr,
+def one_hot_validate_fill_kernel(
+    input_ptr,
+    output_ptr,
+    verdict_ptr,
+    num_elements,
+    num_classes,
+    BLOCK_SIZE: tl.constexpr,
+    CLASS_BLOCK: tl.constexpr,
 ):
-    """Reduce per-block status slots to a single code on the device.
+    """Dense fill and validation fused into a single launch.
 
-    Returning the verdict through a 4-byte readback keeps the host-side
-    blocking copy on the same tiny-transfer driver path as the reference
-    implementation, which measures stable across processes; multi-KiB
-    pageable readbacks are bimodal (fast/slow driver staging modes).
+    Each program validates its row block, folds it to one error code and
+    accumulates it into the pre-zeroed verdict with an atomic max, then
+    writes its output tiles (the dense equality form never stores out of
+    bounds: indices outside [0, num_classes) simply match no column).
+    The atomic is masked to blocks that actually contain an invalid index:
+    all-valid blocks (the overwhelmingly common case) issue no atomic at
+    all, so same-address serialization never taxes the dense band
+    (10000-block grids measured +40 us with an unmasked atomic).
+    Replaces the previous codes + reduce + fill triple launch.
     """
-    code = tl.full((), 0, tl.int32)
-    for start in range(0, num_blocks, BLOCK):
-        offs = start + tl.arange(0, BLOCK)
-        mask = offs < num_blocks
-        values = tl.load(status_ptr + offs, mask=mask, other=0)
-        code = tl.maximum(code, tl.max(values, axis=0))
-    tl.store(out_ptr, code)
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    row_mask = rows < num_elements
+    indices = tl.load(input_ptr + rows, mask=row_mask, other=0)
+    negative = indices < 0
+    too_large = indices >= num_classes
+    code = tl.where(negative, 2, tl.where(too_large, 1, 0))
+    block_code = tl.max(tl.where(row_mask, code, 0), axis=0)
+    tl.atomic_max(verdict_ptr, block_code.to(tl.int32), mask=block_code > 0)
+
+    cols = tl.arange(0, CLASS_BLOCK)
+    for col_start in range(0, num_classes, CLASS_BLOCK):
+        class_offsets = col_start + cols
+        col_mask = class_offsets < num_classes
+        values = tl.where(indices[:, None] == class_offsets[None, :], 1, 0)
+        values = values.to(tl.int64)
+        out_offsets = rows[:, None] * num_classes + class_offsets[None, :]
+        tl.store(
+            output_ptr + out_offsets, values, mask=row_mask[:, None] & col_mask[None, :]
+        )
+
+
+# ── fused min/max reduction (num_classes inference) ──────────────────────────
 
 
 @libentry()
@@ -204,64 +237,18 @@ def one_hot_validate_set_one_kernel(
     tl.store(status_ptr + pid, block_code.to(tl.int32))
 
 
-# ── fast-path fill kernels ────────────────────────────────────────────────────
-
-
 # ── fast-path verdict kernels ─────────────────────────────────────────────────
 #
 # The fast path splits validation from generation: the verdict kernels read
-# the input and reduce it all the way down to a single error code (explicit
-# path) or a [min, max] pair (inferred path) left on the device, so the host
-# pays one tiny blocking readback instead of copying a full per-block status
-# array to the CPU.  The enqueue order is verdict-first: the validation /
-# reduction kernels are launched before the fill plan lookup, the output
-# allocation and the fill launch, so all of that host work overlaps the
-# verdict round trip.  The blocking ``.item()`` that finally reads the
-# verdict is stream-ordered behind the speculative fill, so an invalid index
-# raises synchronously with the exact reference message while the output of
-# a poisoned call never escapes.
-
-
-@libentry()
-@triton.jit
-def one_hot_validate_codes_kernel(
-    input_ptr,
-    status_ptr,
-    num_elements,
-    num_classes,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Per-block error codes (validation half of the fused baseline kernel).
-
-    Status values preserve the error precedence: negative indices take
-    priority over indices >= num_classes.
-    """
-    pid = tl.program_id(0)
-    rows = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    row_mask = rows < num_elements
-    indices = tl.load(input_ptr + rows, mask=row_mask, other=0)
-    negative = indices < 0
-    too_large = indices >= num_classes
-    code = tl.where(negative, 2, tl.where(too_large, 1, 0))
-    block_code = tl.max(tl.where(row_mask, code, 0), axis=0)
-    tl.store(status_ptr + pid, block_code.to(tl.int32))
-
-
-@libentry()
-@triton.jit
-def one_hot_status_partial_reduce_kernel(
-    status_ptr,
-    partial_ptr,
-    num_blocks,
-    CHUNK: tl.constexpr,
-):
-    """Grid-level first stage for very large block counts: each CTA reduces
-    a CHUNK-wide slice of the per-block status to one int32."""
-    pid = tl.program_id(0)
-    offs = pid * CHUNK + tl.arange(0, CHUNK)
-    mask = offs < num_blocks
-    values = tl.load(status_ptr + offs, mask=mask, other=0)
-    tl.store(partial_ptr + pid, tl.max(values, axis=0))
+# the input and reduce it all the way down to a [min, max] pair (inferred
+# path) left on the device, so the host pays one tiny blocking readback
+# instead of copying a full per-block status array to the CPU.  The enqueue
+# order is verdict-first: the reduction kernel is launched before the fill
+# plan lookup, the output allocation and the fill launch, so all of that
+# host work overlaps the verdict round trip.  The blocking readback that
+# finally reads the verdict is stream-ordered behind the speculative fill,
+# so an invalid index raises synchronously with the exact reference message
+# while the output of a poisoned call never escapes.
 
 
 @libentry()
@@ -431,37 +418,29 @@ def _host_max(values: torch.Tensor) -> int:
     return result
 
 
-# ── fast-path verdict launch helpers ──────────────────────────────────────────
+# ── fast-path fused validate+fill launch helpers ─────────────────────────────
 
 
-def _launch_validate_kernels(flat_input, num_elements, num_classes, target):
-    """Enqueue the explicit-path validation writing the error code to target.
+def _launch_validate_fill(flat_input, out, verdict, num_elements, num_classes):
+    """Enqueue the multi-CTA fused validate+fill on the current stream.
 
-    The parallel per-block codes kernel plus the 1-CTA (or two-level) reduce
-    wins across the whole size range: the single-CTA alternative saves one
-    enqueue but its serial 8192-wide loop costs more GPU time than the
-    enqueue it saves (S5000 ablation: the direct variant measured 2-7 us
-    slower per call across four interleaved official rounds).
+    ``verdict`` must be a pre-zeroed 1-element int32 tensor: every program
+    folds its row block to one error code and atomic-maxes it in, so the
+    blocking ``.item()`` after the launch observes the global verdict.
+    The zero-init is a cheap aten fill enqueue (~5 us), far below a second
+    Triton launch.
     """
-    rows, _class_block, _num_warps = _dense_config(num_elements, num_classes)
-    num_blocks = triton.cdiv(num_elements, rows)
-    status = torch.empty(num_blocks, device=flat_input.device, dtype=torch.int32)
-    one_hot_validate_codes_kernel[(num_blocks,)](
+    grid, rows, class_block, num_warps = _fill_plan_cached(num_elements, num_classes)
+    one_hot_validate_fill_kernel[(grid,)](
         flat_input,
-        status,
+        out,
+        verdict,
         num_elements,
         num_classes,
         BLOCK_SIZE=rows,
+        CLASS_BLOCK=class_block,
+        num_warps=num_warps,
     )
-    if num_blocks <= _ONE_CTA_MAX_BLOCKS:
-        one_hot_status_reduce_kernel[(1,)](status, target, num_blocks, BLOCK=1024)
-    else:
-        partials = triton.cdiv(num_blocks, _PARTIAL_CHUNK)
-        partial = torch.empty(partials, device=flat_input.device, dtype=torch.int32)
-        one_hot_status_partial_reduce_kernel[(partials,)](
-            status, partial, num_blocks, CHUNK=_PARTIAL_CHUNK
-        )
-        one_hot_status_reduce_kernel[(1,)](partial, target, partials, BLOCK=1024)
 
 
 def _launch_minmax_kernels(flat_input, num_elements, target):
@@ -521,13 +500,15 @@ def _one_hot_fast(tensor, flat_input, num_elements, num_classes):
 def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
     inferred_num_classes = num_classes == -1
     device_explicit = (not inferred_num_classes) and num_classes > 0
+    # One device lookup shared by every allocation below (~0.3 us each).
+    device = tensor.device
 
     if inferred_num_classes:
         # One fused reduction all the way to [min, max] + one blocking
         # readback replaces aminmax + blocking copy_ + host folds.  A single
         # tolist() readback fetches both values with one device-to-host
         # copy + one synchronization.
-        verdict = torch.empty(2, device=tensor.device, dtype=torch.int64)
+        verdict = torch.empty(2, device=device, dtype=torch.int64)
         _launch_minmax_kernels(flat_input, num_elements, verdict)
         min_val, max_val = verdict.tolist()
         if min_val < 0:
@@ -557,23 +538,21 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
             num_elements * num_classes <= _DENSE_MAX_OUTPUT_ELEMENTS
             and num_classes <= _DENSE_MAX_CLASSES
         ):
-            # Verdict first: the validation kernels are enqueued before the
-            # plan lookup, the output allocation and the fill launch, so
-            # all of that host work overlaps the verdict round trip.  The
-            # fill is speculative; the blocking .item() below is
-            # stream-ordered behind it, so an invalid index raises with the
-            # exact reference message before the (garbage) output can
-            # escape.  The output is allocated in its final shape and
-            # returned directly (no re-view on the way out).
-            verdict = torch.empty(1, device=tensor.device, dtype=torch.int32)
-            _launch_validate_kernels(flat_input, num_elements, num_classes, verdict)
-            plan = _fill_plan_cached(num_elements, num_classes)
+            # Fused validate+fill: one kernel launch writes the dense output
+            # and folds the whole-input error verdict into a pre-zeroed
+            # 1-element int32 via per-program atomic max.  The fill is
+            # speculative; the blocking .item() below is stream-ordered
+            # behind it, so an invalid index raises with the exact reference
+            # message before the (garbage) output can escape.  The output is
+            # allocated in its final shape and returned directly (no re-view
+            # on the way out).
             out = torch.empty(
                 (*tensor.shape, num_classes),
-                device=tensor.device,
+                device=device,
                 dtype=torch.int64,
             )
-            _launch_fill(flat_input, out, num_elements, num_classes, plan)
+            verdict = torch.zeros(1, device=device, dtype=torch.int32)
+            _launch_validate_fill(flat_input, out, verdict, num_elements, num_classes)
             error = int(verdict.item())
             if error == 2:
                 raise RuntimeError("Class values must be non-negative.")
@@ -584,12 +563,12 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
         # the readback is irrelevant here).
         out = torch.zeros(
             num_elements * num_classes,
-            device=tensor.device,
+            device=device,
             dtype=torch.int64,
         )
         BLOCK_SIZE = _scatter_block_size(num_elements)
         num_blocks = triton.cdiv(num_elements, BLOCK_SIZE)
-        status = torch.empty(num_blocks, device=tensor.device, dtype=torch.int32)
+        status = torch.empty(num_blocks, device=device, dtype=torch.int32)
         one_hot_validate_set_one_kernel[(num_blocks,)](
             flat_input,
             out,
@@ -612,27 +591,30 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
             num_classes <= _DENSE_MAX_CLASSES
             and num_elements * num_classes <= _DENSE_MAX_OUTPUT_ELEMENTS
         ):
+            # Allocated in the final shape and returned directly (no
+            # re-view on the way out); the fill kernel writes through the
+            # flat contiguous layout.
             plan = _fill_plan_cached(num_elements, num_classes)
             out = torch.empty(
-                num_elements * num_classes,
-                device=tensor.device,
+                (*tensor.shape, num_classes),
+                device=device,
                 dtype=torch.int64,
             )
             _launch_fill(flat_input, out, num_elements, num_classes, plan)
-        else:
-            out = torch.zeros(
-                num_elements * num_classes,
-                device=tensor.device,
-                dtype=torch.int64,
-            )
-            BLOCK_SIZE = _scatter_block_size(num_elements)
-            one_hot_set_one_kernel[(triton.cdiv(num_elements, BLOCK_SIZE),)](
-                flat_input,
-                out,
-                num_elements,
-                num_classes,
-                BLOCK_SIZE=BLOCK_SIZE,
-            )
+            return out
+        out = torch.zeros(
+            num_elements * num_classes,
+            device=device,
+            dtype=torch.int64,
+        )
+        BLOCK_SIZE = _scatter_block_size(num_elements)
+        one_hot_set_one_kernel[(triton.cdiv(num_elements, BLOCK_SIZE),)](
+            flat_input,
+            out,
+            num_elements,
+            num_classes,
+            BLOCK_SIZE=BLOCK_SIZE,
+        )
 
     return out.view(*tensor.shape, num_classes)
 
@@ -678,7 +660,9 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
         out.scatter_(-1, tensor.unsqueeze(-1), 1)
         return out
 
-    # Device fast path: verdict-first enqueue order with tuned fill kernels
-    # and a standard blocking verdict readback.
-    flat_input = tensor.contiguous().view(-1)
+    # Device fast path: fused validate+fill launch and a standard blocking
+    # verdict readback.  reshape(-1) folds the contiguous() + view(-1) pair
+    # into one call (identical semantics: a view when already contiguous,
+    # a copy otherwise).
+    flat_input = tensor.reshape(-1)
     return _one_hot_fast(tensor, flat_input, flat_input.numel(), num_classes)
