@@ -309,6 +309,10 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
+from flag_gems.ops._nested_from_padded import _nested_from_padded
+from flag_gems.ops._nested_from_padded_and_nested_example import (
+    _nested_from_padded_and_nested_example,
+)
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -322,6 +326,7 @@ from flag_gems.ops._nested_tensor_from_tensor_list import (
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
+from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -659,12 +664,21 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.cross_attention import cross_attention
+from flag_gems.ops.crow_indices import crow_indices
 from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_add_relu import (
+    cudnn_convolution_add_relu,
+    cudnn_convolution_add_relu_out,
+)
+from flag_gems.ops.cudnn_convolution_relu import (
+    cudnn_convolution_relu,
+    cudnn_convolution_relu_out,
+)
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
@@ -1491,6 +1505,8 @@ from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze import squeeze
+from flag_gems.ops.squeeze_ import squeeze_, squeeze__dim, squeeze__dims
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.sspaddmm import sspaddmm, sspaddmm_out
 from flag_gems.ops.stack import stack
@@ -1911,6 +1927,8 @@ __all__ = [
     "_native_multi_head_attention",
     "_neg_view_copy",
     "_neg_view_copy_out",
+    "_nested_from_padded",
+    "_nested_from_padded_and_nested_example",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
@@ -1918,6 +1936,7 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
     "_nested_tensor_softmax_with_shape",
+    "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
@@ -2241,12 +2260,17 @@ __all__ = [
     "cross",
     "cross_attention",
     "cross_out",
+    "crow_indices",
     "crow_indices_copy",
     "ctc_loss",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
+    "cudnn_convolution_add_relu",
+    "cudnn_convolution_add_relu_out",
+    "cudnn_convolution_relu",
+    "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
     "cudnn_rnn",
     "cudnn_rnn_backward",
@@ -3128,6 +3152,10 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze",
+    "squeeze_",
+    "squeeze__dim",
+    "squeeze__dims",
     "squeeze_copy",
     "sspaddmm",
     "sspaddmm_out",

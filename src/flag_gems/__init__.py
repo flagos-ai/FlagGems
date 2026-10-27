@@ -91,6 +91,18 @@ def torch_has_aten_overload(operator, overload):
 
 
 _FULL_CONFIG = (
+    # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
+    # accelerator key: registering under the backend key would never fire.
+    # aten::dim is not a dispatcher operator on this build (it is a JIT
+        # primitive plus a Python Tensor method; probes: probe1..probe14 in the
+        # run dir). A device-key registration is unreachable dead code, so the
+    # backend key, so the composite key is the only place use_gems() can see it.
+    # entry registers no extra dispatch key and the implementation is tested
+    # key for use_gems() to intercept it instead of silently running the decomposition.
+    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
+    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
+    # reaching the backend key, so we must also register the CompositeImplicitAutograd
+    # through its direct call path, mirroring the can_cast investigation.
     ("__and__.Scalar", and_scalar),
     ("__and__.Tensor", and_tensor),
     ("__iand__.Scalar", __iand___scalar),
@@ -160,21 +172,21 @@ _FULL_CONFIG = (
     ("_copy_from_and_resize.out", _copy_from_and_resize_out),
     ("_cslt_sparse_mm", _cslt_sparse_mm),
     ("_ctc_loss", _ctc_loss),
-    ("_ctc_loss.out", _ctc_loss_out),
     ("_ctc_loss.Tensor", _ctc_loss),
     ("_ctc_loss.Tensor_out", _ctc_loss_out),
+    ("_ctc_loss.out", _ctc_loss_out),
     ("_ctc_loss_backward", _ctc_loss_backward),
-    ("_ctc_loss_backward.out", _ctc_loss_backward_out),
     ("_ctc_loss_backward.Tensor", _ctc_loss_backward),
+    ("_ctc_loss_backward.out", _ctc_loss_backward_out),
     ("_cudnn_attention_backward", cudnn_attention_backward),
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn", cudnn_rnn),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
-    ("_dim_arange", dim_arange),
     ("_dimI", _dimI, None, (SPARSE_DISPATCH_KEY,)),
     ("_dimV", dimV, None, (SPARSE_DISPATCH_KEY,)),
+    ("_dim_arange", dim_arange),
     ("_dirichlet_grad", _dirichlet_grad, lambda: _HAS_MAP_ELEMENTWISE),
     ("_dyn_quant_matmul_4bit", _dyn_quant_matmul_4bit),
     ("_dyn_quant_pack_4bit_weight", _dyn_quant_pack_4bit_weight),
@@ -451,6 +463,8 @@ _FULL_CONFIG = (
         "_nested_compute_contiguous_strides_offsets",
         nested_compute_contiguous_strides_offsets,
     ),
+    ("_nested_from_padded", _nested_from_padded),
+    ("_nested_from_padded_and_nested_example", _nested_from_padded_and_nested_example),
     ("_nested_from_padded_tensor", _nested_from_padded_tensor),
     ("_nested_select_backward", _nested_select_backward),
     ("_nested_sum_backward", _nested_sum_backward),
@@ -464,6 +478,7 @@ _FULL_CONFIG = (
         None,
         (AUTOGRAD_DISPATCH_KEY,),
     ),
+    ("_nested_view_from_buffer", _nested_view_from_buffer),
     ("_nested_view_from_buffer_copy", _nested_view_from_buffer_copy),
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
@@ -482,8 +497,6 @@ _FULL_CONFIG = (
     ("_pdist_backward", _pdist_backward),
     ("_pdist_forward", _pdist_forward),
     ("_philox_uniform_", _philox_uniform_),
-    # _pin_memory takes a CPU tensor and dispatches on the CPU key, not the
-    # accelerator key: registering under the backend key would never fire.
     ("_pin_memory", _pin_memory, None, ["CPU"]),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
@@ -798,9 +811,9 @@ _FULL_CONFIG = (
     ("bitwise_left_shift.Scalar_Tensor", bitwise_left_shift),
     ("bitwise_left_shift.Scalar_Tensor_out", bitwise_left_shift),
     ("bitwise_left_shift.Tensor", bitwise_left_shift),
-    ("bitwise_left_shift.Tensor_out", bitwise_left_shift),
     ("bitwise_left_shift.Tensor_Scalar", bitwise_left_shift),
     ("bitwise_left_shift.Tensor_Scalar_out", bitwise_left_shift),
+    ("bitwise_left_shift.Tensor_out", bitwise_left_shift),
     ("bitwise_left_shift_.Tensor", bitwise_left_shift_),
     ("bitwise_left_shift_.Tensor_Scalar", bitwise_left_shift_),
     ("bitwise_not", bitwise_not),
@@ -813,9 +826,9 @@ _FULL_CONFIG = (
     ("bitwise_right_shift.Scalar_Tensor", bitwise_right_shift),
     ("bitwise_right_shift.Scalar_Tensor_out", bitwise_right_shift),
     ("bitwise_right_shift.Tensor", bitwise_right_shift),
-    ("bitwise_right_shift.Tensor_out", bitwise_right_shift),
     ("bitwise_right_shift.Tensor_Scalar", bitwise_right_shift),
     ("bitwise_right_shift.Tensor_Scalar_out", bitwise_right_shift),
+    ("bitwise_right_shift.Tensor_out", bitwise_right_shift),
     ("bitwise_right_shift_.Tensor", bitwise_right_shift_),
     ("bitwise_right_shift_.Tensor_Scalar", bitwise_right_shift_),
     ("bitwise_xor.Scalar", bitwise_xor_scalar),
@@ -914,9 +927,9 @@ _FULL_CONFIG = (
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
     ("copy_sparse_to_sparse_", copy_sparse_to_sparse_, None, [SPARSE_DISPATCH_KEY]),
-    ("copysign.out", copysign_out),
     ("copysign.Scalar", copysign),
     ("copysign.Tensor", copysign),
+    ("copysign.out", copysign_out),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
     ("cos", cos),
@@ -930,6 +943,7 @@ _FULL_CONFIG = (
     ("cov", cov),
     ("cross", cross),
     ("cross.out", cross_out),
+    ("crow_indices", crow_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "crow_indices_copy",
         crow_indices_copy,
@@ -940,6 +954,10 @@ _FULL_CONFIG = (
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
+    ("cudnn_convolution_add_relu", cudnn_convolution_add_relu),
+    ("cudnn_convolution_add_relu.out", cudnn_convolution_add_relu_out),
+    ("cudnn_convolution_relu", cudnn_convolution_relu),
+    ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
     ("cummax", cummax),
     ("cummaxmin_backward", cummaxmin_backward),
@@ -972,18 +990,13 @@ _FULL_CONFIG = (
     ("diff", diff),
     ("digamma", digamma),
     ("digamma_", digamma_),
-    # aten::dim is not a dispatcher operator on this build (it is a JIT
-    # primitive plus a Python Tensor method; probes: probe1..probe14 in the
-    # run dir). A device-key registration is unreachable dead code, so the
-    # entry registers no extra dispatch key and the implementation is tested
-    # through its direct call path, mirroring the can_cast investigation.
     ("dim", dim),
     ("dist", dist),
-    ("div.out", true_divide_out),
     ("div.Scalar", true_divide),
     ("div.Scalar_mode", div_mode),
     ("div.Tensor", true_divide),
     ("div.Tensor_mode", div_mode),
+    ("div.out", true_divide_out),
     ("div_.Scalar", true_divide_),
     ("div_.Scalar_mode", div_mode_),
     ("div_.Tensor", true_divide_),
@@ -1258,8 +1271,8 @@ _FULL_CONFIG = (
     ("l1_loss", l1_loss),
     ("lcm", lcm),
     ("lcm_", lcm_),
-    ("ldexp.out", ldexp_out),
     ("ldexp.Tensor", ldexp),
+    ("ldexp.out", ldexp_out),
     ("ldexp_", ldexp_),
     ("le.Scalar", le_scalar),
     ("le.Tensor", le),
@@ -1414,6 +1427,8 @@ _FULL_CONFIG = (
     ("lt_.Tensor", lt_),
     ("lu_unpack", lu_unpack),
     ("lu_unpack.out", lu_unpack_out),
+    ("mH", mH),
+    ("mT", mT),
     ("margin_ranking_loss", margin_ranking_loss),
     ("masked_fill.Scalar", masked_fill),
     ("masked_fill.Tensor", masked_fill),
@@ -1453,7 +1468,6 @@ _FULL_CONFIG = (
     ("median.dim", median_dim),
     ("median.dim_values", median_dim_values),
     ("median.out", median_out),
-    ("mH", mH),
     ("min", min),
     ("min.dim", min_dim),
     ("minimum", minimum),
@@ -1472,7 +1486,6 @@ _FULL_CONFIG = (
     ("mse_loss_backward", mse_loss_backward),
     ("msort", msort),
     ("msort.out", msort_out),
-    ("mT", mT),
     ("mul.Scalar", mul),
     ("mul.Tensor", mul),
     ("mul_.Scalar", mul_),
@@ -1526,9 +1539,6 @@ _FULL_CONFIG = (
     ("neg_", neg_),
     ("negative", negative),
     ("negative_", negative_),
-    # nested_to_padded_tensor is a CompositeImplicitAutograd op; it decomposes before
-    # reaching the backend key, so we must also register the CompositeImplicitAutograd
-    # key for use_gems() to intercept it instead of silently running the decomposition.
     (
         "nested_to_padded_tensor",
         nested_to_padded_tensor,
@@ -1558,9 +1568,9 @@ _FULL_CONFIG = (
     ("norm.Scalar", norm_scalar),
     ("norm.ScalarOpt_dim", norm_scalaropt_dim),
     ("norm_except_dim", norm_except_dim),
-    ("normal.float_Tensor", normal_float_tensor),
-    ("normal.Tensor_float", normal_tensor_float),
     ("normal.Tensor_Tensor", normal_tensor_tensor),
+    ("normal.Tensor_float", normal_tensor_float),
+    ("normal.float_Tensor", normal_float_tensor),
     ("normal_", normal_),
     ("normal_functional", normal_functional),
     ("not_equal.Scalar", not_equal_scalar),
@@ -1579,8 +1589,6 @@ _FULL_CONFIG = (
     ("pairwise_distance", pairwise_distance),
     ("pdist", pdist),
     ("permute_copy", permute_copy),
-    # pin_memory is CompositeImplicitAutograd; it decomposes before reaching any
-    # backend key, so the composite key is the only place use_gems() can see it.
     ("pin_memory", pin_memory, None, ["CompositeImplicitAutograd"]),
     ("pinverse", pinverse, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("pixel_shuffle", pixel_shuffle),
@@ -1675,10 +1683,10 @@ _FULL_CONFIG = (
         real,
         None,
         (
-            (backend_info.dispatch_key, real_device),
-            (CONJUGATE_DISPATCH_KEY, real_conjugate),
-            (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
-        ),
+        (backend_info.dispatch_key, real_device),
+        (CONJUGATE_DISPATCH_KEY, real_conjugate),
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ),
     ("reciprocal", reciprocal),
     ("reciprocal_", reciprocal_),
@@ -1703,9 +1711,9 @@ _FULL_CONFIG = (
     ("renorm", renorm),
     ("renorm_", renorm_),
     ("repeat", repeat),
-    ("repeat_interleave.self_int", repeat_interleave_self_int),
-    ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
     ("repeat_interleave.Tensor", repeat_interleave_tensor),
+    ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
+    ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("replication_pad1d", replication_pad1d),
     ("replication_pad1d.out", replication_pad1d_out),
     ("replication_pad1d_backward", replication_pad1d_backward),
@@ -1936,6 +1944,12 @@ _FULL_CONFIG = (
     ("square", square),
     ("square.out", square_out),
     ("square_", square_),
+    ("squeeze", squeeze),
+    ("squeeze.dim", squeeze),
+    ("squeeze.dims", squeeze),
+    ("squeeze_", squeeze_),
+    ("squeeze_.dim", squeeze__dim),
+    ("squeeze_.dims", squeeze__dims),
     ("squeeze_copy", squeeze_copy),
     ("sspaddmm", sspaddmm, None, (SPARSE_DISPATCH_KEY,)),
     ("sspaddmm.out", sspaddmm_out, None, (SPARSE_DISPATCH_KEY,)),
@@ -1983,8 +1997,8 @@ _FULL_CONFIG = (
     ("subtract.Tensor", subtract),
     ("subtract_.Tensor", subtract_),
     ("sum", sum),
-    ("sum.dim_IntList", sum_dim),
     ("sum.IntList_out", sum_dim_out),
+    ("sum.dim_IntList", sum_dim),
     ("sum.out", sum_out),
     ("sum_to_size", sum_to_size),
     ("svd", svd),
@@ -2030,9 +2044,9 @@ _FULL_CONFIG = (
     ("triu", triu),
     ("triu_", triu_),
     ("triu_indices", triu_indices),
-    ("true_divide.out", true_divide_out),
     ("true_divide.Scalar", true_divide),
     ("true_divide.Tensor", true_divide_tensor),
+    ("true_divide.out", true_divide_out),
     ("true_divide_.Scalar", true_divide_),
     ("true_divide_.Tensor", true_divide_tensor_),
     ("trunc", trunc),

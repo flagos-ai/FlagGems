@@ -321,7 +321,10 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
     if config_node is None or not isinstance(config_node.value, ast.Tuple):
         return True  # No _FULL_CONFIG tuple
 
-    # Extract entries with full source text (including multi-line tuples)
+    # Extract entries with full source text (including multi-line tuples).
+    # Leading comment lines directly above an entry belong to it (e.g. the
+    # ``_pin_memory`` dispatch-key note) and must move with it, otherwise a
+    # re-sort silently drops them.
     entries = []
     lines = content.splitlines()
 
@@ -334,13 +337,20 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
                 start_line = elt.lineno - 1  # 0-indexed
                 end_line = elt.end_lineno - 1  # 0-indexed
 
-                if start_line == end_line:
+                # Walk upwards over contiguous standalone comment lines.
+                comment_start = start_line
+                j = start_line - 1
+                while j >= 0 and lines[j].lstrip().startswith("#"):
+                    comment_start = j
+                    j -= 1
+
+                if comment_start == end_line:
                     # Single-line entry
-                    source_text = lines[start_line].rstrip()
+                    source_text = lines[comment_start].rstrip()
                 else:
-                    # Multi-line entry - preserve all lines
-                    source_lines = [lines[start_line].rstrip()]
-                    for i in range(start_line + 1, end_line + 1):
+                    # Multi-line entry - preserve all lines (comments first)
+                    source_lines = [lines[comment_start].rstrip()]
+                    for i in range(comment_start + 1, end_line + 1):
                         source_lines.append(lines[i].rstrip())
                     source_text = "\n".join(source_lines)
 

@@ -4350,6 +4350,18 @@ tensor into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: crow_indices
+  description: |
+    Returns the compressed row pointer array of a sparse CSR/BSR tensor as a zero-copy alias of the internal crow storage, shaped `batch_dims + (nrows + 1)`.
+  for:
+    - crow_indices
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Sparse
+  stages:
+    - alpha: '5.5'
 - id: crow_indices_copy
   description: 'Returns a fresh copy of the crow (row) indices of a sparse compressed
     tensor, mirroring `aten::crow_indices_copy`.
@@ -4463,6 +4475,54 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: cudnn_convolution_add_relu
+  description: |
+    Fused convolution, bias add, scaled addend and ReLU, as performed by the cuDNN backend.
+  for:
+    - cudnn_convolution_add_relu
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5'
+- id: cudnn_convolution_add_relu_out
+  description: |
+    A variant of cudnn_convolution_add_relu() that writes the result into the out tensor.
+  for:
+    - cudnn_convolution_add_relu.out
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5'
+- id: cudnn_convolution_relu
+  description: |
+    Fused cuDNN-style convolution followed by a ReLU, computing relu(conv(input, weight) + bias).
+  for:
+    - cudnn_convolution_relu
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5'
+- id: cudnn_convolution_relu_out
+  description: |
+    A variant of cudnn_convolution_relu() that writes the result into the out tensor.
+  for:
+    - cudnn_convolution_relu.out
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5'
 - id: cudnn_convolution_transpose
   description: 'Wrapper for torch.cudnn_convolution_transpose, providing autograd
     support and device-agnostic interface for cuDNN transposed convolution.
@@ -14657,6 +14717,30 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_from_padded
+  description: |
+    Constructs a nested tensor from a padded dense tensor, keeping the left-aligned prefix box described by ``cpu_nested_shape_example`` per component.
+  for:
+    - _nested_from_padded
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
+- id: nested_from_padded_and_nested_example
+  description: |
+    Constructs a (strided-layout) nested tensor from a padded tensor, using the metadata of an example nested tensor to describe the output structure.
+  for:
+    - _nested_from_padded_and_nested_example
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
@@ -14788,6 +14872,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_view_from_buffer
+  description: |
+    Creates a strided nested tensor viewing a flat buffer, using component sizes, strides and offsets.
+  for:
+    - _nested_view_from_buffer
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: nested_view_from_buffer_copy
   description: 'Creates a nested tensor from a flat buffer using component sizes,
     strides,
@@ -20364,6 +20460,56 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: squeeze
+  description: |
+    Returns a tensor with all specified dimensions of input of size 1 removed.
+  for:
+    - squeeze
+    - squeeze.dim
+    - squeeze.dims
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
+- id: squeeze_
+  description: |
+    Removes all dimensions of size 1 from the tensor, in place, and returns the same tensor.
+  for:
+    - squeeze_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
+- id: squeeze__dim
+  description: |
+    Removes the given dimension of the tensor in place, but only if that dimension has size 1.
+  for:
+    - squeeze_.dim
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
+- id: squeeze__dims
+  description: |
+    Removes all the given dimensions of the tensor in place, but only those that have size 1.
+  for:
+    - squeeze_.dims
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: squeeze_copy
   description: Triton kernel implementation for squeeze_copy.
   for:
