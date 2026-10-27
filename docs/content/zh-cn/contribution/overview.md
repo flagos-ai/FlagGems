@@ -123,7 +123,8 @@ Other fields for an operator include:
 
 上述转换规则确保了 FlagGems 算子与原始 ATen 算子之间的一一对应关系。
 
-> **注意**：若仓库中两个算子仅存在前缀下划线的差异，则保留其前缀下划线。对应算子在测试时的 marker 需额外添加 `underscore` 前缀，以规避 pytest 的限制。
+> [!NOTE]
+> 若仓库中两个算子仅存在前缀下划线的差异，则保留其前缀下划线。对应算子在测试时的 marker 需额外添加 `underscore` 前缀，以规避 pytest 的限制。
 
 ## 4. 算子元信息管理 {#operator-metadata-management}
 
@@ -190,7 +191,8 @@ yaml 文件示例如下：
 > 为确保 FlagGems 能够平滑移植至各异构 AI 芯片并具备最大兼容性，**公版算子实现必须能够基于官方上游 Triton 编译器（Upstream Official Triton）在 NVIDIA Ampere 架构（如 A100）上直接稳定运行**。
 > 公版算子中严禁使用仅特定厂商或私有编译器支持的非标语言扩展、私有编译指令或特定芯片内联汇编。若您的优化仅适用于特定硬件架构（如昇腾、海光、沐曦、摩尔线程等），请将其作为厂商特化算子放置于 `src/flag_gems/runtime/backend/_<vendor>/` 目录下进行派发重载，以保持公版实现的纯粹性与高兼容性。
 
-> **注意**：FlagGems仓库是一个 triton 算子库，不接受无直接或间接设备端调用的算子。
+> [!NOTE]
+> FlagGems 仓库是一个 Triton 算子库，不接受无直接或间接设备端调用的算子。
 
 ## 6. 算子 Host 函数规范 {#operator-host-function-conventions}
 
@@ -220,11 +222,13 @@ under the `tests` directory.
 
 单元测试用于检验算子实现的正确性。在添加新算子时，需要在 `tests` 目录下的对应文件中添加单元测试用例。
 
-> **注意**：测试代码需显式调用 FlagGems API，例如 `flag_gems.log_softmax_out`，禁止使用 `flag_gems.use_gems` 进行隐式调用。禁止根据目录直接调用算子函数，此时会导致后端派发失效，如`flag_gems.ops.abs_`。
+> [!NOTE]
+> 测试代码需显式调用 FlagGems API，例如 `flag_gems.log_softmax_out`，禁止使用 `flag_gems.use_gems` 进行隐式调用。禁止根据目录直接调用算子函数，此时会导致后端派发失效，如 `flag_gems.ops.abs_`。
 
 添加新的测试文件时，需在测试函数前使用 `@pytest.mark.{OP_ID}` 进行修饰，以便通过 `pytest -m` 命令有针对性地执行特定算子的单元测试。
 
-> **注意**：单元测试的 mark 名需与算子的 API 名保持一致。若 API 名带有下划线前缀，则额外添加 `underscore` 前缀以规避 pytest 的限制。
+> [!NOTE]
+> 单元测试的 mark 名需与算子的 API 名保持一致。若 API 名带有下划线前缀，则额外添加 `underscore` 前缀以规避 pytest 的限制。
 
 当添加新的 C++ 封装算子时，需同时添加对应的 *ctest*。详见[添加 C++ 封装的算子](cpp-wrapper.md)。
 
@@ -270,15 +274,6 @@ assert f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog
 with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_i1e_out)):
     res_out = flag_gems.special_i1e_out(inp, out)
 assert f"{utils.gems_log_prefix(flag_gems.special_i1e_out)} SPECIAL_I1E_OUT" in caplog.text
-```
-
-若测试重点是验证通过 `flag_gems.use_gems()` 上下文对 PyTorch ATen 算子的拦截派发，同样可以使用该模式：
-
-```python
-with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
-assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
 ```
 
 #### 规范与避坑要点

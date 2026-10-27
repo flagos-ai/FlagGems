@@ -66,7 +66,8 @@ Therefore, for an ATen operator, the corresponding FlagGems operator name can be
 
 These conversion rules ensure a one-to-one correspondence between FlagGems operators and original ATen operators.
 
-> **Note**: If two operators in the repository differ only by a leading underscore, preserve the leading underscore. The corresponding operator's test marker should have an additional `underscore` prefix to bypass pytest's limitations.
+> [!NOTE]
+> If two operators in the repository differ only by a leading underscore, preserve the leading underscore. The corresponding operator's test marker should have an additional `underscore` prefix to bypass pytest's limitations.
 
 ## 4. Operator metadata management {#operator-metadata-management}
 
@@ -133,7 +134,8 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 > To guarantee maximum portability and neutrality across all AI hardware platforms, **generic baseline implementations must be able to run with the official upstream Triton compiler on the NVIDIA Ampere architecture (e.g. A100)**.
 > Generic kernels must not introduce vendor-proprietary compiler directives, non-standard language extensions, or chip-specific inline assembly. Hardware-specific optimizations targeting particular architectures (e.g. Ascend, Hygon, MetaX, Moore Threads) must be implemented under `src/flag_gems/runtime/backend/_<vendor>/` as backend overrides instead of altering the generic codebase.
 
-> **Note**: FlagGems is a Triton operator library. Operators with no direct or indirect device-side calls are not accepted.
+> [!NOTE]
+> FlagGems is a Triton operator library. Operators with no direct or indirect device-side calls are not accepted.
 
 ## 6. Operator host function conventions {#operator-host-function-conventions}
 
@@ -155,11 +157,13 @@ pre-commit
 
 Unit tests check the correctness of operators. When adding new operators, you need to add unit test cases in the corresponding file under the `tests` directory.
 
-> **Note**: Test code must explicitly call FlagGems APIs, such as `flag_gems.log_softmax_out`. Implicit calls using `flag_gems.use_gems` are prohibited. Calling operator functions directly by path is also prohibited, as it bypasses backend dispatch (e.g. `flag_gems.ops.abs_`).
+> [!NOTE]
+> Test code must explicitly call FlagGems APIs, such as `flag_gems.log_softmax_out`. Implicit calls using `flag_gems.use_gems` are prohibited. Calling operator functions directly by path is also prohibited, as it bypasses backend dispatch (e.g. `flag_gems.ops.abs_`).
 
 When adding new test files, decorate test functions with `@pytest.mark.{OP_ID}` so that we can selectively run unit tests for specific operators using the `pytest -m` command.
 
-> **Note**: The unit test mark name must match the operator's API name. If the API name has a leading underscore, add an additional `underscore` prefix to bypass pytest's limitations.
+> [!NOTE]
+> The unit test mark name must match the operator's API name. If the API name has a leading underscore, add an additional `underscore` prefix to bypass pytest's limitations.
 
 If you are adding a C++ wrapped operator, you should add a corresponding *ctest* as well. See [Add a C++ wrapper](cpp-wrapper.md) for more details.
 
@@ -205,15 +209,6 @@ assert f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog
 with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.special_i1e_out)):
     res_out = flag_gems.special_i1e_out(inp, out)
 assert f"{utils.gems_log_prefix(flag_gems.special_i1e_out)} SPECIAL_I1E_OUT" in caplog.text
-```
-
-When explicitly testing PyTorch ATen operator interception via `flag_gems.use_gems()`:
-
-```python
-with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
-assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
 ```
 
 #### Best practices and caveats
