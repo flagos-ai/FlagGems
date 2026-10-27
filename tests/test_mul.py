@@ -679,3 +679,136 @@ def test_ascend_mul_prefix_offset_limit():
     assert module._collapse_broadcast_prefix(shape, dense) is not None
     assert module._collapse_broadcast_prefix(shape, (2**31, 2**21, 1)) is None
     assert module._collapse_broadcast_prefix((2, 2**23, 128), (2**30, 128, 1)) is None
+
+
+@pytest.mark.mul
+@pytest.mark.mul_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend packed complex64")
+@pytest.mark.parametrize("numel", [0, 1, 257, 65537])
+@pytest.mark.parametrize("mode", ["fresh", "out", "inplace"])
+@pytest.mark.parametrize("registered", [False, True])
+def test_ascend_mul_packed_complex_graph(numel, mode, registered):
+    positions = torch.arange(numel + 2, dtype=torch.float32)
+    a_cpu = torch.complex((positions % 17 - 8) / 8, (positions % 11 - 5) / 4)
+    b_cpu = torch.complex((positions % 7 - 3) / 4, (positions % 13 - 6) / 8)
+    a_storage, b_storage = a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device)
+    a, b = a_storage[1:-1], b_storage[1:-1]
+    backing = torch.full((numel + 2,), 3 + 4j, dtype=torch.complex64, device=a.device)
+    out = backing[1:-1]
+    previous_registrar = flag_gems.current_work_registrar
+    lib = None
+    try:
+        if registered:
+            lib = torch.library.Library("aten", "IMPL")
+            flag_gems.only_enable(lib=lib, include=["mul", "mul_"])
+
+        def invoke():
+            if mode == "inplace":
+                return a.mul_(b) if registered else flag_gems.mul_(a, b)
+            if registered:
+                return torch.mul(a, b, out=out) if mode == "out" else torch.mul(a, b)
+            return flag_gems.mul(a, b, out=out if mode == "out" else None)
+
+        actual = invoke()
+        expected = (
+            a_cpu[1:-1].to(torch.complex128) * b_cpu[1:-1].to(torch.complex128)
+        ).to(torch.complex64)
+        utils.gems_assert_equal(actual.cpu(), expected)
+        a.copy_(a_cpu[1:-1])
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = invoke()
+        for factor in (2, -1):
+            a.copy_(a_cpu[1:-1])
+            b.copy_(b_cpu[1:-1] * factor)
+            graph.replay()
+            torch.npu.synchronize()
+            utils.gems_assert_equal(actual.cpu(), expected * factor)
+            if mode != "fresh":
+                assert actual is (a if mode == "inplace" else out)
+        utils.gems_assert_equal(a_storage.cpu()[[0, numel + 1]], a_cpu[[0, numel + 1]])
+        utils.gems_assert_equal(
+            backing.cpu()[[0, numel + 1]],
+            torch.full((2,), 3 + 4j, dtype=torch.complex64),
+        )
+    finally:
+        if lib is not None:
+            lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend packed complex64")
+@pytest.mark.parametrize("scale", [1.0, 10000.0])
+def test_ascend_mul_packed_complex_precision(scale):
+    generator = torch.Generator().manual_seed(37)
+    a = torch.randn(4097, dtype=torch.complex64, generator=generator) * scale
+    b = torch.randn(4097, dtype=torch.complex64, generator=generator) * scale
+    gold = a.to(torch.complex128) * b.to(torch.complex128)
+    actual = flag_gems.mul(a.to(flag_gems.device), b.to(flag_gems.device)).cpu()
+    utils.gems_assert_close(
+        actual, gold.to(torch.complex64), torch.complex64, atol=1e-6, rtol=1e-5
+    )
+    # Bound component errors by the magnitudes of the individual products, so
+    # cancellation is checked independently of the other complex component.
+    eps = torch.finfo(torch.float32).eps
+    real_bound = (
+        4
+        * eps
+        * (
+            a.real.double().abs() * b.real.double().abs()
+            + a.imag.double().abs() * b.imag.double().abs()
+        )
+    )
+    imag_bound = (
+        4
+        * eps
+        * (
+            a.real.double().abs() * b.imag.double().abs()
+            + a.imag.double().abs() * b.real.double().abs()
+        )
+    )
+    for error, bound in [
+        (abs(actual.real.double() - gold.real), real_bound),
+        (abs(actual.imag.double() - gold.imag), imag_bound),
+    ]:
+        utils.gems_assert_equal(
+            error <= bound + 1e-30, torch.ones_like(error, dtype=torch.bool)
+        )
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend packed complex64")
+def test_ascend_mul_packed_complex_special_values():
+    components = torch.tensor(
+        [0.0, -0.0, 1.0, -1.0, float("inf"), float("-inf"), float("nan")]
+    )
+    a = torch.complex(components.repeat_interleave(7), components.repeat(7))
+    b = torch.complex(components.repeat(7), components.repeat_interleave(7))
+    native = (a.to(flag_gems.device) * b.to(flag_gems.device)).cpu()
+    actual = flag_gems.mul(a.to(flag_gems.device), b.to(flag_gems.device)).cpu()
+    utils.gems_assert_equal(actual, native, equal_nan=True)
+    actual_parts, native_parts = torch.view_as_real(actual), torch.view_as_real(native)
+    zeros = native_parts == 0
+    utils.gems_assert_equal(
+        torch.signbit(actual_parts)[zeros], torch.signbit(native_parts)[zeros]
+    )
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend packed traversal")
+def test_ascend_mul_packed_bounded_grid():
+    values = torch.arange(1283, dtype=torch.float32) % 7
+    a_cpu = torch.complex(values / 4, values / 8)
+    b_cpu = torch.complex(values / 8, -values / 4)
+    a, b = a_cpu.to(flag_gems.device), b_cpu.to(flag_gems.device)
+    out = torch.empty_like(a)
+    _ascend_mul_module()._mul_complex_packed_kernel.jit_function[(2,)](
+        torch.view_as_real(a),
+        torch.view_as_real(b),
+        torch.view_as_real(out),
+        a.numel(),
+        BLOCK=128,
+        enable_fp_fusion=False,
+    )
+    utils.gems_assert_equal(out.cpu(), a_cpu * b_cpu)

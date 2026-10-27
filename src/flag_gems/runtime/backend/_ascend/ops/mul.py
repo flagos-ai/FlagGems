@@ -1013,6 +1013,41 @@ def _complex_layout(out_shape, tensors, out_r, out_i):
     )
 
 
+@libentry()
+@triton.jit
+def _mul_complex_packed_kernel(a, b, out, numel, BLOCK: tl.constexpr):
+    # Real and imaginary components are interleaved in contiguous complex64
+    # storage. Load/store complete pairs instead of stride-two gathers.
+    for start in range(tl.program_id(0) * BLOCK, numel, tl.num_programs(0) * BLOCK):
+        offsets = 2 * start + tl.arange(0, 2 * BLOCK)
+        mask = offsets < 2 * numel
+        av = tl.load(a + offsets, mask, other=0).reshape((BLOCK, 2))
+        bv = tl.load(b + offsets, mask, other=0).reshape((BLOCK, 2))
+        ar, ai = tl.split(av)
+        br, bi = tl.split(bv)
+        values = tl.join(ar * br - ai * bi, ar * bi + ai * br).reshape((2 * BLOCK,))
+        tl.store(out + offsets, values, mask)
+
+
+def _can_use_packed_complex(ar, br, output, strides, dtype):
+    if not (
+        dtype == output.dtype == torch.complex64
+        and output.is_contiguous()
+        and ar.shape == br.shape == output.shape
+        and output.numel() <= 2**30 - 512
+    ):
+        return False
+    expected = tuple(2 * stride for stride in output.stride())
+    if any(stride != expected for stride in strides):
+        return False
+    # Exact in-place mappings are safe; partial overlap keeps the general path.
+    return all(
+        output.untyped_storage().data_ptr() != tensor.untyped_storage().data_ptr()
+        or output.data_ptr() == tensor.data_ptr()
+        for tensor in (ar, br)
+    )
+
+
 def _launch_complex_generic(
     ar, ai, br, bi, output, out_shape, strides, out_r_stride, out_i_stride, dtype
 ):
@@ -1022,6 +1057,12 @@ def _launch_complex_generic(
     out_view = torch.view_as_real(output)
     out_r = out_view[..., 0]
     out_i = out_view[..., 1]
+    if _can_use_packed_complex(ar, br, output, strides, dtype):
+        with torch_device_fn.device(output.device):
+            _mul_complex_packed_kernel[(min(48, triton.cdiv(n_elements, 512)),)](
+                ar, br, out_r, n_elements, BLOCK=512, enable_fp_fusion=False
+            )
+        return output
     shape = out_shape or (1,)
     ndim = len(shape)
     strides = [stride or (0,) for stride in strides]
