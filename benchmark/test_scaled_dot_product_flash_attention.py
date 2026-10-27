@@ -69,6 +69,9 @@ class _ExternalH800Baseline:
     def _h800_baseline(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
         payload = path.read_bytes()
+        expected_sha = os.environ.get("FLAGGEMS_NV_BASELINE_SHA256")
+        if expected_sha is not None and hashlib.sha256(payload).hexdigest() != expected_sha:
+            raise ValueError("H800 baseline SHA256 differs from its frozen receipt")
 
         def unique(pairs):
             result = {}

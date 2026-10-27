@@ -154,6 +154,7 @@ def test_scaled_dot_product_flash_attention(
         "mthreads",
         "kunlunxin",
         "iluvatar",
+        "enflame",
     }:
         ref_q, ref_k, ref_v = (x.cpu() for x in (ref_q, ref_k, ref_v))
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
@@ -164,15 +165,21 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
+    input_specs = tuple(
+        (x.device, x.dtype, tuple(x.shape), x.untyped_storage().data_ptr())
+        for x in (q, k, v)
+    )
     result = flag_gems._scaled_dot_product_flash_attention(
         q, k, v, 0.0, is_causal, False, scale=scale
     )
 
+    for tensor, spec in zip((q, k, v), input_specs):
+        assert (tensor.device, tensor.dtype, tuple(tensor.shape), tensor.untyped_storage().data_ptr()) == spec
     assert len(result) == 9
     assert result[0].device == q.device and result[0].dtype == q.dtype
-    assert result[0].shape == q.shape
+    assert tuple(result[0].shape) == input_specs[0][2]
     assert result[1].device == q.device and result[1].dtype == torch.float32
-    assert result[1].shape == q.shape[:-1]
+    assert tuple(result[1].shape) == input_specs[0][2][:-1]
     utils.gems_assert_close(result[0].cpu(), ref_out.cpu(), dtype)
     utils.gems_assert_close(result[1].cpu(), ref_lse.cpu(), torch.float)
     assert result[2] is None
