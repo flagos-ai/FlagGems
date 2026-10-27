@@ -1432,10 +1432,12 @@ class UnaryPointwiseBenchmark(Benchmark):
 
 
 class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
+    output_dtype = None
+
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
             inp = generate_tensor_input(shape, cur_dtype, self.device)
-            out = torch.empty_like(inp)
+            out = torch.empty_like(inp, dtype=self.output_dtype)
             yield inp, {"out": out}
 
     def supports_cases(self) -> bool:
@@ -1460,8 +1462,12 @@ class UnaryPointwiseOutBenchmark(UnaryPointwiseBenchmark):
     def build_inputs(self, case: BenchmarkCaseSpec):
         shape = case.builder_args[0].builder_args[0]
         inp = generate_tensor_input(shape, case.dtype, self.device)
-        out = torch.empty_like(inp)
+        out = torch.empty_like(inp, dtype=self.output_dtype)
         return inp, {"out": out}
+
+
+class BoolUnaryPointwiseOutBenchmark(UnaryPointwiseOutBenchmark):
+    output_dtype = torch.bool
 
 
 class MarginRankingLossBenchmark(GenericBenchmark):
