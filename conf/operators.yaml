@@ -18866,8 +18866,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   for:
   - sparse_coo_tensor.indices
   - sparse_coo_tensor.indices_size
-  - sparse_coo_tensor.size
-  - sparse_coo_tensor.size_out
   labels:
   - aten
   - KernelGen
