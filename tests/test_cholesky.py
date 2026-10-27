@@ -83,3 +83,111 @@ def test_cholesky_batch(shape, dtype):
     res_out = flag_gems.cholesky(A)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (32, 32)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cholesky_non_contiguous(shape, dtype):
+    # Transposed views are the most common way to build a symmetric matrix and
+    # must not produce NaNs (the old kernel assumed contiguous strides).
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    A = (
+        B @ B.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+    ref_A = utils.to_reference(A.transpose(-2, -1))
+    ref_out = torch.cholesky(ref_A)
+
+    res_out = flag_gems.cholesky(A.transpose(-2, -1))
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", [(2, 3, 3), (3, 8, 8), (2, 2, 4, 4)])
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_cholesky_non_contiguous_batch(shape, dtype):
+    # Batched inputs whose batch dims are permuted/sliced stay dense but lose
+    # the standard layout; the kernel must still index through real strides.
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    A = (
+        B @ B.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+    for view in (A.transpose(1, 2), A[::2] if A.shape[0] >= 2 else A):
+        if view.shape[-2] != view.shape[-1]:
+            continue
+        ref_out = torch.cholesky(utils.to_reference(view))
+        res_out = flag_gems.cholesky(view)
+        utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cholesky_batched_4d(shape, dtype):
+    shape = (2, 3) + shape
+    n = shape[-1]
+    B = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    A = (
+        B @ B.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+    ref_A = utils.to_reference(A)
+    ref_out = torch.cholesky(ref_A)
+
+    res_out = flag_gems.cholesky(A)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+def _spd(n, dtype=torch.float32):
+    B = torch.randn(n, n, dtype=dtype, device=flag_gems.device)
+    return (
+        B @ B.transpose(-2, -1)
+        + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
+    )
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cholesky_not_positive_definite_raises(dtype):
+    # A non-positive pivot must surface as LinAlgError, not silent NaNs.
+    inp = -_spd(4, dtype)
+    with pytest.raises(torch.linalg.LinAlgError):
+        flag_gems.cholesky(inp)
+    # torch must raise the same class of error for the same input
+    with pytest.raises(torch.linalg.LinAlgError):
+        torch.cholesky(utils.to_reference(inp))
+
+
+@pytest.mark.cholesky
+def test_cholesky_empty_batch():
+    # Empty batch: vacuously factorised, returns a fresh empty tensor.
+    inp = torch.empty(0, 4, 4, device=flag_gems.device)
+    res_out = flag_gems.cholesky(inp)
+    assert res_out.shape == inp.shape
+    assert res_out is not inp
+
+
+@pytest.mark.cholesky
+def test_cholesky_non_square_raises():
+    inp = torch.randn(3, 4, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.cholesky(inp)
+
+
+@pytest.mark.cholesky
+@pytest.mark.parametrize("dtype", [torch.float32])
+def test_cholesky_large_n_fallback(dtype):
+    # N > 64 is out of scope for the blocked kernel; the operator must raise
+    # NotImplementedError so callers/ops can fall back to the native path.
+    inp = _spd(128, dtype)
+    with pytest.raises(NotImplementedError):
+        flag_gems.cholesky(inp)
