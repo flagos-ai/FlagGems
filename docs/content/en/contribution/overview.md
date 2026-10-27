@@ -127,6 +127,12 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 - Add unit tests in the `tests` directory;
 - Add performance tests in the `benchmark` directory.
 
+> [!IMPORTANT]
+> **Generic Baseline Implementations and Compatibility Requirement**:
+> All operator implementations located under `src/flag_gems/ops`, `src/flag_gems/fused`, and `src/flag_gems/experimental_ops` are considered **generic baseline operator implementations ("公版算子实现")**.
+> To guarantee maximum portability and neutrality across all AI hardware platforms, **generic baseline implementations must be able to run with the official upstream Triton compiler on the NVIDIA Ampere architecture (e.g. A100)**.
+> Generic kernels must not introduce vendor-proprietary compiler directives, non-standard language extensions, or chip-specific inline assembly. Hardware-specific optimizations targeting particular architectures (e.g. Ascend, Hygon, MetaX, Moore Threads) must be implemented under `src/flag_gems/runtime/backend/_<vendor>/` as backend overrides instead of altering the generic codebase.
+
 > **Note**: FlagGems is a Triton operator library. Operators with no direct or indirect device-side calls are not accepted.
 
 ## 6. Operator host function conventions {#operator-host-function-conventions}

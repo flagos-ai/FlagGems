@@ -53,6 +53,7 @@ When adding a new operator or modifying existing operators, complete all steps i
 - Place standard operators in `src/flag_gems/ops/<op_name>.py`.
 - Place fused operators in `src/flag_gems/fused/<op_name>.py`.
 - Place incubating operators in `src/flag_gems/experimental_ops/<op_name>.py`.
+- **Generic Baseline Implementations ("公版算子")**: Implementations in `ops/`, `fused/`, and `experimental_ops/` serve as the generic baseline. They **MUST run based on the official upstream Triton compiler on the NVIDIA Ampere architecture (e.g. A100)** to ensure maximum compatibility across hardware platforms. Vendor-specific optimizations must be placed under `src/flag_gems/runtime/backend/_<vendor>/`.
 - **vLLM Operators Notice**: vLLM-specific fused operators have migrated to the [FlagGems-vllm](https://github.com/flagos-ai/FlagGems-vllm) repository. Developers and agents should submit all vLLM optimization and kernel code directly to FlagGems-vllm rather than `src/flag_gems/fused/`.
 - Follow operator naming conventions: `snake_case`, lowercase, no leading underscore, no dots (`.`).
 

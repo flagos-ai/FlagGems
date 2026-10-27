@@ -184,12 +184,11 @@ yaml 文件示例如下：
 - 在 `tests` 目录下添加单元测试；
 - 在 `benchmark` 目录下添加性能测试。
 
-<!--
-## 3. Code Format Check
-
-Using `pre-commit` git hooks with FlagGems, you can format source Python code
-and perform basic code pre-checks when calling the `git commit` command.
--->
+> [!IMPORTANT]
+> **公版算子定位与兼容性基准要求**：
+> `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops` 目录下的代码均为 **公版算子实现**（Generic Baseline Implementations）。
+> 为确保 FlagGems 能够平滑移植至各异构 AI 芯片并具备最大兼容性，**公版算子实现必须能够基于官方上游 Triton 编译器（Upstream Official Triton）在 NVIDIA Ampere 架构（如 A100）上直接稳定运行**。
+> 公版算子中严禁使用仅特定厂商或私有编译器支持的非标语言扩展、私有编译指令或特定芯片内联汇编。若您的优化仅适用于特定硬件架构（如昇腾、海光、沐曦、摩尔线程等），请将其作为厂商特化算子放置于 `src/flag_gems/runtime/backend/_<vendor>/` 目录下进行派发重载，以保持公版实现的纯粹性与高兼容性。
 
 > **注意**：FlagGems仓库是一个 triton 算子库，不接受无直接或间接设备端调用的算子。
 

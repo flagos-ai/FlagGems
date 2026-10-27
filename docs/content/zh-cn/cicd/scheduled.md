@@ -51,12 +51,10 @@ NVIDIA runner:
 **触发条件：** cron 表达式 `3 16 * * *`（每天北京时间 00:03）；此外支持手动
 触发（`workflow_dispatch`）。
 
-在 NVIDIA runner 上运行完整的算子测试套件（而非仅测试变更的算子）：
+在 NVIDIA runner（配备 **NVIDIA A100-40G** GPU 服务器，运行环境安装官方 upstream **Triton** 编译器而非 FlagTree）上运行完整的算子测试套件（而非仅测试变更的算子）：
 
 - `cpp-op` —— 完整的 C++ 扩展测试套件。
-- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，
-  该设置会展开为 `tests/test*.py` 下的所有测试文件。同时收集覆盖率数据
-  并作为 `op-ut-coverage` 构件（artifact）上传。
+- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，覆盖全部 `tests/test*.py` 算子测试用例，并在官方 Triton 编译器与 Ampere 架构硬件环境下收集代码覆盖率数据，作为 `op-ut-coverage` 构件（artifact）上传。
 - `examples` —— 对所有示例/模型测试运行 `tools/test-examples.sh`。
 
 <!--
