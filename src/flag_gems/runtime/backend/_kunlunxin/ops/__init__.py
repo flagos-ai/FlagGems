@@ -116,6 +116,8 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_cos_,
     _foreach_exp,
     _foreach_exp_,
+    _foreach_log10,
+    _foreach_log10_,
     _foreach_reciprocal_,
     _foreach_rsqrt,
     _foreach_rsqrt_,
