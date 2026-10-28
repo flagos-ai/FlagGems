@@ -128,9 +128,21 @@ class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
+        if flag_gems.vendor_name == "thead" and (
+            self.is_backward
+            or base.Config.skip_native
+            or "tflops" in self.to_bench_metrics
+        ):
+            raise ValueError("H800 LDL comparison requires forward latency measurement")
         self._imported_baseline = None
         metric = super()._measure_input(input, case_id)
         if self._imported_baseline is not None:
+            if metric.latency is not None and (
+                not math.isfinite(metric.latency) or metric.latency <= 0
+            ):
+                raise ValueError("Target LDL latency must be finite and positive")
+            if "speedup" in self.to_bench_metrics:
+                metric.speedup = metric.latency_base / metric.latency
             return _LdlMetrics(
                 **asdict(metric), baseline_source=self._imported_baseline
             )
