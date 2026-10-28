@@ -596,6 +596,7 @@ _FULL_CONFIG = (
         to_copy,
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
     ),
+    ("_to_sparse_semi_structured", to_sparse_semi_structured),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
     ("_trilinear", _trilinear),
