@@ -110,9 +110,19 @@ MML_TARGET_PATTERNS = [
     "permuted",
     "ragged",
     "payload",
+    # The duplicate patterns are what distinguish a gradient that counts a
+    # repeated class id once per entry from one that counts it once per id:
+    # measured natively at C=3 with target [0, 0, -1], the gradient is
+    # [-4/3, 2/3, 2/3], exactly twice the single-entry [-2/3, 1/3, 1/3]. The
+    # forward loss scales the same way, so both sides of the op are covered.
+    "dup_single",
+    "dup_repeat",
+    "dup_mixed",
 ]
 MAIN_PATTERN = "half"
 MML_PATTERN_CASES = _cases(MML_TARGET_PATTERNS, [])
+# Patterns whose active prefix repeats a class id.
+MML_DUP_PATTERNS = ["dup_single", "dup_repeat", "dup_mixed"]
 
 # Both operands are addressed through explicit row and class strides, so every
 # layout pairing is swept: a view whose storage order differs from its logical
@@ -153,17 +163,35 @@ MML_SPECIAL_CASES = _cases(
 )
 
 # An empty batch carries no values, so the value-range dimension does not apply.
-MML_EMPTY_BATCH_CASES = _cases(MML_DTYPES, [])
+# Measured natively on a (0, 11) input: every reduction returns shape (0,), so
+# the mean does not produce a 0-dim nan and the sum does not produce a 0-dim
+# zero. All three are swept rather than reduction 0 alone.
+MML_EMPTY_BATCH_CASES = _cases(
+    [(dtype, r) for dtype in MML_DTYPES for r in (0, 1, 2)],
+    [],
+)
 
 # The class axis is tiled in blocks of 64, so the counts sit either side of a
-# whole number of tiles and exercise the partial-tile mask.
+# whole number of tiles and exercise the partial-tile mask. The 1023/1024/1025
+# and 2047/2048/2049 triples straddle the reduction-0 single-tile cap (1024 for
+# fp64, 2048 otherwise), which is where a row stops being computed by one
+# launch and moves to the split grid plus the finish kernel.
+MML_CLASS_COUNTS = (255, 256, 257, 1023, 1024, 1025, 2047, 2048, 2049)
 MML_CLASS_COUNT_CASES = _cases(
     [
         (n, dtype, value_range)
-        for n in (255, 256, 257)
+        for n in MML_CLASS_COUNTS
         for dtype in MML_DTYPES
         for value_range in MML_RANGES
     ],
+    [],
+)
+# Class counts large enough that no dtype takes the single-tile path, swept over
+# every reduction so the split grid's partial buffer and finish kernel are
+# covered on the scalar reductions too. Kept to one dtype per count and run on a
+# 2-row input, since the point is the class-axis split rather than the dtype.
+MML_SPLIT_PATH_CASES = _cases(
+    [(n, r) for n in (4095, 4096, 4097) for r in (0, 1, 2)],
     [],
 )
 
@@ -232,6 +260,24 @@ def _fill_rows(target, pattern):
         return
     if pattern == "full":
         target[:] = ids
+        return
+    if pattern == "dup_single":
+        # One class id repeated across the whole active prefix, so the per-entry
+        # multiplicity is the prefix length itself.
+        target[:, : max(1, classes // 2)] = 0
+        return
+    if pattern == "dup_repeat":
+        # Each active id appears exactly twice, by halving the id stride.
+        k = max(2, (classes // 2) & ~1)
+        target[:, :k] = (torch.arange(k, device=target.device) // 2) % classes
+        return
+    if pattern == "dup_mixed":
+        # A mix of multiplicities in one row: id 0 three times, id 1 twice and
+        # the remaining ids once, so no single multiplicity can be hoisted.
+        k = max(1, classes // 2)
+        head = torch.tensor([0, 0, 0, 1, 1], device=target.device)[:k]
+        rest = torch.arange(2, 2 + max(0, k - head.numel()), device=target.device)
+        target[:, :k] = torch.cat([head, rest % classes])[:k]
         return
     # "near_full" keeps every class but one active; the rest keep half.
     k = max(1, classes - 1) if pattern == "near_full" else max(1, classes // 2)
@@ -361,6 +407,86 @@ def _assert_close(res, ref, shape, reduction):
     )
 
 
+def _grad_oracle(inp, target, reduction, seed=None):
+    """Vectorised torch reference for d(loss)/d(input).
+
+    The gradient reference is computed here instead of via
+    ``torch.autograd.grad`` on the native op, because the native *CUDA*
+    backward drops the target-side term outright for any target class id in
+    ``[32, 128)``. Measured on an H20-3e with torch 2.9.0+cu128, a single-entry
+    target at ``C=64``: ids 0..31 give ``grad[id] = -0.984375`` and agree with
+    the CPU backward, while ids 32..63 give ``grad[id] = 0``; the pattern starts
+    at 32 and stops at 128 for every ``C`` (``C=33`` loses only id 32, ``C=200``
+    loses 32..127), is independent of the row count and the reduction, and does
+    not affect the forward loss, which agrees to 7e-15. The CPU backward and
+    this oracle agree with each other and with an entry-by-entry transcription
+    of the native algorithm, so the device backward is the outlier and is not a
+    usable contract.
+
+    The formula is the native one, with ``m[d]`` the number of times class ``d``
+    occurs in the active prefix:
+      ``d`` in S  : ``-m[d] * #{k in NT : 1 - x[d] + x[k] > 0}``
+      ``d`` in NT : ``+sum_{k in S} m[k] * [1 - x[k] + x[d] > 0]``
+    scaled by ``1/C`` and, for the mean, by ``1/N``.
+    """
+    rows, classes = _class_rows(tuple(inp.shape))
+    # The oracle is the reference side, so it has to live wherever the harness
+    # puts references: under --ref cpu, gems_assert_close requires a CPU
+    # reference, and this oracle does not go through to_reference on the way in.
+    x = utils.to_reference(inp.detach()).reshape(rows, classes)
+    t = utils.to_reference(target.detach()).reshape(rows, classes)
+    # The hinge is evaluated in the *input* dtype, as the kernel and the native
+    # op both do, rather than upcast. The counts it produces are integers, so a
+    # term sitting exactly on 1 - x[d] + x[k] == 0 that flips sign between two
+    # precisions moves a count by a whole unit rather than by a rounding error,
+    # and at the extreme value ranges the margin has to saturate where the
+    # kernel's does. ``to_reference`` is called without upcast for that reason;
+    # the subtraction and comparison used here are available for fp16 and
+    # bfloat16 on the CPU reference path too.
+    # Counts and the 1/C scaling are accumulated in the op's at::acc_type.
+    acc = torch.float64 if inp.dtype == torch.float64 else torch.float32
+
+    ids = torch.arange(classes, device=t.device)
+    # The active prefix ends at the first negative entry.
+    neg = t < 0
+    first_neg = torch.where(
+        neg.any(dim=1),
+        neg.to(torch.uint8).argmax(dim=1),
+        torch.full((rows,), classes, dtype=torch.long, device=t.device),
+    )
+    valid = (ids[None, :] < first_neg[:, None]) & (t >= 0) & (t < classes)
+
+    # m[r, d]: multiplicity of class d in row r's active prefix.
+    mult = torch.zeros((rows, classes), dtype=acc, device=x.device)
+    mult.scatter_add_(1, torch.where(valid, t, torch.zeros_like(t)), valid.to(acc))
+    is_t = mult > 0
+    nt = ~is_t
+
+    cnt_t = torch.zeros((rows, classes), dtype=acc, device=x.device)
+    cnt_n = torch.zeros((rows, classes), dtype=acc, device=x.device)
+    mult_t = mult * is_t
+    # Both counts reduce over the class axis, so that axis is the one chunked:
+    # a large class count never needs the whole classes x classes pair tile
+    # resident at once, while the result axis stays full width.
+    chunk = max(1, 4096 // max(1, rows))
+    for lo in range(0, classes, chunk):
+        hi = min(lo + chunk, classes)
+        # d plays the target, the chunk the non-target class.
+        hit_t = (1.0 - x[:, :, None] + x[:, None, lo:hi]) > 0.0
+        cnt_t += (hit_t & nt[:, None, lo:hi]).to(acc).sum(dim=2)
+        # The chunk plays the target, d the non-target class.
+        hit_n = (1.0 - x[:, lo:hi, None] + x[:, None, :]) > 0.0
+        cnt_n += (hit_n.to(acc) * mult_t[:, lo:hi, None]).sum(dim=1)
+
+    g = torch.where(is_t, -mult * cnt_t, cnt_n) / classes
+    if reduction == 1:
+        g = g / rows
+    if seed is not None:
+        s = utils.to_reference(seed.detach()).to(acc).reshape(-1)
+        g = g * (s[:, None] if s.numel() == rows else s.reshape(()))
+    return g.reshape(inp.shape).to(inp.dtype)
+
+
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("shape", MML_SHAPES)
 @pytest.mark.parametrize("value_range", MML_RANGES)
@@ -485,47 +611,143 @@ def test_multilabel_margin_loss_noncontiguous(in_layout, tgt_layout, reduction, 
 
 @pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("in_layout, tgt_layout", MML_LAYOUT_PAIRS)
+@pytest.mark.parametrize("reduction", MML_REDUCTIONS)
 @pytest.mark.parametrize("dtype", MML_DTYPES)
-def test_multilabel_margin_loss_backward(in_layout, tgt_layout, dtype):
+def test_multilabel_margin_loss_backward(in_layout, tgt_layout, reduction, dtype):
     shape = MML_MAIN_SHAPE
     values = _make_input(dtype, shape)
-    # Independent laid-out leaves, one per side, so the gradient is compared on
-    # the parent buffer rather than on a view of a shared tensor.
-    res_buf = _laid_out_input(shape, in_layout, values)
-    ref_buf = _laid_out_input(shape, in_layout, _ref_input(values))
-    res_buf.requires_grad_(True)
-    ref_buf.requires_grad_(True)
+    # A laid-out leaf, so the gradient is compared on the parent buffer rather
+    # than on a view of it.
+    res_buf = _laid_out_input(shape, in_layout, values).requires_grad_(True)
     res_inp = _view(res_buf, shape, in_layout)
-    ref_inp = _view(ref_buf, shape, in_layout)
-    res_target = _laid_out_target(shape, tgt_layout)
-    ref_target = utils.to_reference(res_target)
+    target = _laid_out_target(shape, tgt_layout)
+    ref_inp = _ref_input(values)
+    ref_target = utils.to_reference(target)
 
-    ref_out = _ATEN_OP(ref_inp, ref_target, 1)
-    res_out = flag_gems.multilabel_margin_loss(res_inp, res_target, 1)
+    ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
+    res_out = flag_gems.multilabel_margin_loss(res_inp, target, reduction)
 
-    _assert_close(res_out, ref_out, shape, 1)
+    _assert_close(res_out, ref_out, shape, reduction)
 
-    ref_grad = torch.autograd.grad(ref_out, ref_buf)[0]
-    res_grad = torch.autograd.grad(res_out, res_buf)[0]
+    # Reduction 0 returns a vector, so the backward needs a seed gradient; the
+    # scalar reductions differentiate directly.
+    res_seed = torch.ones_like(res_out) if reduction == 0 else None
+    res_grad = torch.autograd.grad(res_out, res_buf, grad_outputs=res_seed)[0]
+    # The gradient lands on the parent buffer, so only its logical view carries
+    # the result; the rest of the parent stays zero.
+    ref_grad = _grad_oracle(res_inp, target, reduction, res_seed)
 
-    _assert_close(res_grad, ref_grad, shape, 1)
+    _assert_close(_view(res_grad, shape, in_layout), ref_grad, shape, reduction)
 
 
 @pytest.mark.multilabel_margin_loss
-@pytest.mark.parametrize("dtype", MML_EMPTY_BATCH_CASES)
-def test_multilabel_margin_loss_empty_batch(dtype):
-    # A batch without frames; reduction 0 compares the empty per-row result.
+@pytest.mark.parametrize("pattern", MML_DUP_PATTERNS)
+@pytest.mark.parametrize("reduction", MML_REDUCTIONS)
+@pytest.mark.parametrize("value_range", MML_RANGES)
+@pytest.mark.parametrize("dtype", MML_DTYPES)
+def test_multilabel_margin_loss_backward_duplicate_targets(
+    pattern, reduction, value_range, dtype
+):
+    # A repeated class id must contribute once per target *entry*, not once per
+    # distinct id: measured natively at C=3 with target [0, 0, -1] the gradient
+    # is [-4/3, 2/3, 2/3], twice the single-entry value. An implementation that
+    # drops the multiplicity factor on the target side still matches the forward
+    # loss, so only a backward comparison over a duplicated prefix catches it.
+    shape = MML_MAIN_SHAPE
+    values = _make_input(dtype, shape, value_range)
+    res_inp = values.clone().requires_grad_(True)
+    target = _make_target(shape, pattern)
+    ref_inp = _ref_input(values)
+    ref_target = utils.to_reference(target)
+
+    ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
+    res_out = flag_gems.multilabel_margin_loss(res_inp, target, reduction)
+
+    _assert_close(res_out, ref_out, shape, reduction)
+
+    res_seed = torch.ones_like(res_out) if reduction == 0 else None
+    res_grad = torch.autograd.grad(res_out, res_inp, grad_outputs=res_seed)[0]
+    ref_grad = _grad_oracle(values, target, reduction, res_seed)
+
+    _assert_close(res_grad, ref_grad, shape, reduction)
+
+
+@pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("pattern", _cases([MAIN_PATTERN] + MML_DUP_PATTERNS, []))
+@pytest.mark.parametrize("dtype", MML_DTYPES)
+def test_multilabel_margin_loss_backward_strided_grad_out(pattern, dtype):
+    # Reduction 0's upstream gradient is a vector, so it can arrive as a
+    # non-contiguous view. The kernel reads it through its own stride rather
+    # than copying it, which only a strided seed distinguishes from a
+    # contiguous one, and a non-uniform seed is needed for the stride to
+    # matter at all.
+    shape = MML_MAIN_SHAPE
+    rows = shape[0]
+    values = _make_input(dtype, shape)
+    res_inp = values.clone().requires_grad_(True)
+    target = _make_target(shape, pattern)
+
+    # A stride-2 view of a 2N-long parent, so consecutive logical elements are
+    # two storage slots apart.
+    res_seed = torch.zeros(2 * rows, dtype=dtype, device=flag_gems.device)[::2]
+    res_seed.copy_(torch.arange(1, rows + 1, dtype=torch.float32).to(dtype))
+    assert res_seed.stride() == (2,)
+
+    res_out = flag_gems.multilabel_margin_loss(res_inp, target, 0)
+    res_grad = torch.autograd.grad(res_out, res_inp, grad_outputs=res_seed)[0]
+    ref_grad = _grad_oracle(values, target, 0, res_seed)
+
+    _assert_close(res_grad, ref_grad, shape, 0)
+
+
+@pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("n_classes", _cases([255, 1024, 4097], []))
+@pytest.mark.parametrize("reduction", MML_REDUCTIONS)
+def test_multilabel_margin_loss_backward_large_class_count(n_classes, reduction):
+    # The backward tiles the class axis too, so a class count past one tile
+    # covers the grid's second dimension. The oracle reference is what makes
+    # these counts testable at all: the native CUDA backward zeroes the
+    # target-side term for ids in [32, 128), which every one of these shapes
+    # reaches.
+    shape = (2, n_classes)
+    values = _make_input(torch.float32, shape)
+    res_inp = values.clone().requires_grad_(True)
+    target = _make_target(shape)
+
+    res_out = flag_gems.multilabel_margin_loss(res_inp, target, reduction)
+    res_seed = torch.ones_like(res_out) if reduction == 0 else None
+    res_grad = torch.autograd.grad(res_out, res_inp, grad_outputs=res_seed)[0]
+    ref_grad = _grad_oracle(values, target, reduction, res_seed)
+
+    _assert_close(res_grad, ref_grad, shape, reduction)
+
+
+@pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("dtype, reduction", MML_EMPTY_BATCH_CASES)
+def test_multilabel_margin_loss_empty_batch(dtype, reduction):
+    # A batch without frames. On the device path every reduction returns an
+    # empty (0,) result, not the 0-dim scalar a populated batch would give.
+    #
+    # The two aten backends disagree here, so only one of them can be the
+    # contract: measured on a (0, 11) fp32 input, CUDA returns shape (0,) for
+    # all three reductions, while CPU returns (0,) for reduction 0 and a 0-dim
+    # tensor holding *uninitialised* memory for reductions 1 and 2 (observed
+    # values 2.4e-44 and -1.5e+21 on consecutive calls). An uninitialised
+    # scalar cannot be a reference, so the device shape is the contract and the
+    # scalar reductions are only compared when the reference runs on device.
     shape = (0, 11)
     inp = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
     target = _make_target(shape)
-    ref_inp = _ref_input(inp)
-    ref_target = utils.to_reference(target)
+    res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
 
-    ref_out = _ATEN_OP(ref_inp, ref_target, 0)
-    res_out = flag_gems.multilabel_margin_loss(inp, target, 0)
+    assert res_out.shape == (0,)
 
+    if reduction != 0 and utils.TO_CPU:
+        pytest.skip("aten CPU returns uninitialised memory for this case")
+
+    ref_out = _ATEN_OP(_ref_input(inp), utils.to_reference(target), reduction)
     assert res_out.shape == ref_out.shape
-    _assert_close(res_out, ref_out, shape, 0)
+    _assert_close(res_out, ref_out, shape, reduction)
 
 
 @pytest.mark.multilabel_margin_loss
@@ -544,6 +766,25 @@ def test_multilabel_margin_loss_class_count(n_classes, dtype, value_range):
 
 
 @pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("n_classes, reduction", MML_SPLIT_PATH_CASES)
+def test_multilabel_margin_loss_class_split_path(n_classes, reduction):
+    # Past the reduction-0 single-tile cap the class axis is split across
+    # programs and folded by a second launch, so these counts exercise the
+    # partial buffer and the finish kernel that the smaller counts never reach.
+    shape = (2, n_classes)
+    inp = _make_input(torch.float32, shape)
+    target = _make_target(shape)
+    ref_inp = _ref_input(inp)
+    ref_target = utils.to_reference(target)
+
+    ref_out = _ATEN_OP(ref_inp, ref_target, reduction)
+    res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
+
+    assert res_out.shape == ref_out.shape
+    _assert_close(res_out, ref_out, shape, reduction)
+
+
+@pytest.mark.multilabel_margin_loss
 @pytest.mark.parametrize("dtype, special", MML_SPECIAL_CASES)
 @pytest.mark.parametrize("layout", MML_SPECIAL_LAYOUTS)
 def test_multilabel_margin_loss_special_values(dtype, special, layout):
@@ -557,6 +798,77 @@ def test_multilabel_margin_loss_special_values(dtype, special, layout):
     res_out = flag_gems.multilabel_margin_loss(inp, target, 1)
 
     _assert_close(res_out, ref_out, shape, 1)
+
+
+@pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("reduction", MML_REDUCTIONS)
+@pytest.mark.parametrize("bad_id", [11, 12, 1 << 40, (1 << 63) - 1, -2, -(1 << 40)])
+def test_multilabel_margin_loss_out_of_range_target(bad_id, reduction):
+    # An id outside [0, C) is garbage input, and the native kernel indexes with
+    # it unchecked: measured on CUDA, C=3 with id 5 returns a value assembled
+    # from memory past the row rather than raising, so there is no reference
+    # value to compare against and none is asserted. What is asserted is that
+    # the op stays memory-safe and produces a finite result of the right shape,
+    # which is what the in-kernel address clamp guarantees. Ids are swept on
+    # both sides of the range, including the int64 extremes whose unclamped
+    # address arithmetic would wrap.
+    shape = MML_MAIN_SHAPE
+    inp = _make_input(torch.float32, shape)
+    target = _make_target(shape)
+    target[:, 0] = bad_id
+
+    res_out = flag_gems.multilabel_margin_loss(inp, target, reduction)
+    torch.cuda.synchronize() if inp.is_cuda else None
+
+    assert res_out.shape == ((shape[0],) if reduction == 0 else ())
+    assert torch.isfinite(res_out).all()
+
+
+@pytest.mark.multilabel_margin_loss
+@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+def test_multilabel_margin_loss_out_dtype(out_dtype):
+    # The native overload casts into whatever floating buffer it is handed
+    # rather than requiring the input dtype (measured: fp16 and fp64 buffers
+    # both accept an fp32 input), so the wrapper accepts the same set.
+    if out_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("fp64 is not supported on this device")
+    shape = MML_MAIN_SHAPE
+    inp = _make_input(torch.float32, shape)
+    target = _make_target(shape)
+    ref_inp = _ref_input(inp)
+    ref_target = utils.to_reference(target)
+
+    res_buf = torch.full((), OUT_FILL, dtype=out_dtype, device=inp.device)
+    # The buffer under test carries out_dtype; the reference buffer follows the
+    # reference input's dtype, which is upcast on the CPU reference path.
+    ref_buf = torch.full((), OUT_FILL, dtype=ref_inp.dtype, device=ref_inp.device)
+
+    ref_out = torch.ops.aten.multilabel_margin_loss.out(
+        ref_inp, ref_target, 1, out=ref_buf
+    )
+    res_out = flag_gems.multilabel_margin_loss(inp, target, 1, out=res_buf)
+
+    assert res_out is res_buf
+    assert res_out.dtype == out_dtype
+    _assert_close(res_out, ref_out, shape, 1)
+
+
+@pytest.mark.multilabel_margin_loss
+def test_multilabel_margin_loss_out_invalid():
+    # A non-floating buffer and a buffer on another device are both rejected,
+    # the latter matching the native overload's cross-device error.
+    shape = MML_MAIN_SHAPE
+    inp = _make_input(torch.float32, shape)
+    target = _make_target(shape)
+
+    int_buf = torch.zeros((), dtype=torch.int32, device=inp.device)
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems.multilabel_margin_loss(inp, target, 1, out=int_buf)
+
+    if inp.device.type != "cpu":
+        cpu_buf = torch.zeros((), dtype=torch.float32, device="cpu")
+        with pytest.raises((RuntimeError, TypeError)):
+            flag_gems.multilabel_margin_loss(inp, target, 1, out=cpu_buf)
 
 
 @pytest.mark.multilabel_margin_loss

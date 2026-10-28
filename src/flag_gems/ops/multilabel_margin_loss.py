@@ -32,19 +32,41 @@ non-contiguous strides, gradient formula) and by the frozen FlagGems pytest:
   extreme-magnitude pytest ranges), sums the resulting terms in at::acc_type
   (fp32 for fp16/bf16/fp32, fp64 for fp64), and scales by 1/C in that
   accumulator.  This module does the same; the single rounding to the output
-  dtype happens at the final store.
+  dtype happens at the final store.  Reductions 1 and 2 likewise accumulate the
+  per-row losses in at::acc_type without an intermediate per-row rounding
+  (probed on a 300-case fp16 sweep: the native scalar matches an acc_type
+  accumulation of the unrounded rows, not a sum of fp16-rounded rows).
+* An id outside ``[0, C)`` is garbage input that the native kernel indexes with
+  unchecked -- probed on CUDA, an id of 5 against C=3 returns a value built from
+  memory past the row instead of raising -- so it is not validated here either.
+  What this module guarantees is memory safety: every indirect address is
+  clamped into the row while the target/non-target masks keep using the raw id,
+  so an out-of-range id contributes no hinge pair on any path.  A validating
+  kernel was considered and rejected: raising requires a device-to-host sync of
+  the flag, and that sync cannot be captured in a CUDA graph (probed: the
+  existing ``multilabel_margin_loss_forward``, which does validate this way,
+  fails ``torch.cuda.graph`` capture with ``cudaErrorStreamCaptureInvalidated``).
 * reduction 0 -> per-row losses; 1 -> mean over rows; anything else (2, and also
   -1/3, which the native kernel treats as sum) -> sum over rows.
 * rank<=1 inputs produce a 0-dim result for every reduction; output dtype is the
-  input dtype; N == 0 produces an empty (0,) result.
+  input dtype; N == 0 produces an empty (0,) result for *every* reduction, not
+  only for 0 (probed on CUDA: reductions 1 and 2 also return shape (0,) on a
+  (0, 11) input, so neither the 0-dim nan of a mean nor the 0-dim zero of a sum
+  appears here).
 * ``.out`` overload: positional ``reduction``, keyword-only ``out``; the buffer is
-  resized to the result shape, written in place and returned.
+  resized to the result shape, written in place and returned.  Any floating
+  ``out`` dtype is accepted, matching the native overload, which casts into the
+  buffer rather than requiring the input dtype (probed: an fp16 and an fp64
+  buffer both accept an fp32 input).
 * Non-contiguous strided inputs are handled through explicit strides.
 * The allocating overload is differentiable; the gradient is produced by the
-  Triton kernels below.  For a class ``d`` in ``S`` the native gradient is
-  ``-#{dd in NT : 1 - x[d] + x[dd] > 0}`` and for ``d`` in ``NT`` it is
-  ``+#{j in A : 1 - x[target[j]] + x[d] > 0}``, scaled by ``1/(C*N)`` for the
-  mean (probed to match ``torch.autograd.grad`` to 1e-8).
+  Triton kernels below.  Writing ``m[d]`` for the number of times class ``d``
+  occurs in ``A``, the native gradient for ``d`` in ``S`` is
+  ``-m[d] * #{k in NT : 1 - x[d] + x[k] > 0}`` and for ``d`` in ``NT`` it is
+  ``+sum_{k in S} m[k] * [1 - x[k] + x[d] > 0]``, scaled by ``1/(C*N)`` for the
+  mean.  The ``m`` factors are what make a duplicated target id count once per
+  entry: probed on CUDA, ``C=3``, ``target=[0, 0, -1]`` has native gradient
+  ``[-4/3, 2/3, 2/3]``, twice the single-entry value.
 
 The class axis of a row is split across a 2D ``(rows, n_class_tiles)`` grid so the
 benchmark's few-row / large-C shapes still cover the whole device; when a row has
@@ -60,6 +82,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
 _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
@@ -70,16 +95,38 @@ _BLOCK_T = 256
 _BLOCK_C = 64
 _BLOCK_J = 16
 # Class counts up to this size are handled by one program per row (a single
-# launch, no partial buffer) for reduction 0, whose per-class hinge work is
-# O(#active targets) and therefore nearly free when the active set is small.
+# launch, no partial buffer) for reduction 0, which saves the partial buffer and
+# the second launch whenever the row still fits a single tile.
 _R0_SINGLE_TILE_MAX = 4096
-_GRAD_BLOCK_A = 16
-_GRAD_BLOCK_B = 64
+# The outer-product path materialises a BLOCK_J x BLOCK_C tile, so the
+# single-tile BLOCK_C is capped to keep that tile inside the register budget:
+# 16 x 4096 fp64 would be 512KB per program and spills. Rows wider than the cap
+# fall back to the split grid, which tiles the class axis at _BLOCK_C instead.
+_R0_SINGLE_TILE_BLOCK_CAP = 2048
+_R0_SINGLE_TILE_BLOCK_CAP_FP64 = 1024
+_GRAD_BLOCK_D = 32
+_GRAD_BLOCK_K = 64
 
 
 # ---------------------------------------------------------------------------
 # forward kernels
 # ---------------------------------------------------------------------------
+@triton.jit
+def _safe_class_index(ids, C):
+    """Clamp a loaded class id into [0, C) for address arithmetic only.
+
+    A target id outside ``[0, C)`` is garbage input: the native kernel indexes
+    with it unchecked and reads whatever lies past the row (probed on CUDA: an
+    id of 5 against C=3 returns a value built from out-of-row memory rather than
+    raising).  Reproducing an out-of-range read is not an option here, so every
+    indirect load is clamped instead.  The clamp feeds the *address* only; the
+    target/non-target masks are still derived from the raw id, so an
+    out-of-range id contributes no hinge pair on either path.
+    """
+    return tl.minimum(tl.maximum(ids.to(tl.int32), 0), C - 1)
+
+
+@libentry()
 @triton.jit
 def _row_loss_kernel(
     x_ptr,
@@ -131,13 +178,16 @@ def _row_loss_kernel(
             # Exactly one active target: the target set is that single id, so the
             # whole pair tile collapses to one BLOCK_C-wide vector instead of a
             # BLOCK_J x BLOCK_C outer product that would spend 15/16 of its lanes
-            # on padding.  This is the shape the reduction-0 benchmark cases use.
-            id0 = tl.load(t_ptr + bt).to(tl.int32)
-            id0 = tl.minimum(tl.maximum(id0, 0), C - 1)
+            # on padding.
+            raw0 = tl.load(t_ptr + bt)
+            id0 = _safe_class_index(raw0, C)
+            in_range0 = (raw0 >= 0) & (raw0 < C)
             xj = tl.load(x_ptr + bx + id0 * scs)
             # Hinge in the input element type, exactly as the native CUDA kernel.
             marg = (1.0 - xj) + xd
-            keep = cm & (offs != id0) & (marg > 0.0)
+            # The non-target set excludes the raw id, so an out-of-range id
+            # leaves the whole tile inactive exactly as it does below.
+            keep = cm & in_range0 & (offs != raw0) & (marg > 0.0)
             if ACC64:
                 tot += tl.sum(tl.where(keep, marg, 0.0), axis=0)
             else:
@@ -157,9 +207,13 @@ def _row_loss_kernel(
                 for j0 in range(0, stop, BLOCK_J):
                     jj = j0 + tl.arange(0, BLOCK_J)
                     jm = jj < stop
-                    ids = tl.load(t_ptr + bt + jj * tcs, mask=jm, other=0)
+                    raw = tl.load(t_ptr + bt + jj * tcs, mask=jm, other=-2)
+                    # Masks come from the raw id, addresses from the clamp.
+                    jm = jm & (raw >= 0) & (raw < C)
                     xj = tl.load(
-                        x_ptr + bx + ids.to(tl.int32) * scs, mask=jm, other=0.0
+                        x_ptr + bx + _safe_class_index(raw, C) * scs,
+                        mask=jm,
+                        other=0.0,
                     )
                     # Hinge in the input element type, exactly as the native CUDA
                     # kernel: rounding the margin back to the element type before
@@ -185,6 +239,7 @@ def _row_loss_kernel(
         tl.store(o_ptr + row * cstride + pid_c, tot)
 
 
+@libentry()
 @triton.jit
 def _finish_kernel(
     part_ptr,
@@ -207,6 +262,7 @@ def _finish_kernel(
     tl.store(out_ptr + row, (tl.sum(acc, axis=0) / C).to(out_ptr.dtype.element_ty))
 
 
+@libentry()
 @triton.jit
 def _reduce_rows_kernel(
     rows_ptr,
@@ -234,6 +290,7 @@ def _reduce_rows_kernel(
 # ---------------------------------------------------------------------------
 # backward kernels
 # ---------------------------------------------------------------------------
+@libentry()
 @triton.jit
 def _membership_kernel(
     t_ptr,
@@ -267,6 +324,7 @@ def _membership_kernel(
         tl.store(m_ptr + row * C + offs, cnt, mask=cm)
 
 
+@libentry()
 @triton.jit
 def _grad_kernel(
     x_ptr,
@@ -276,52 +334,72 @@ def _grad_kernel(
     C,
     srs,
     scs,
-    scale,
-    GOUT: tl.constexpr,
+    gos,
+    n_mean,
     ACC64: tl.constexpr,
-    BLOCK_A: tl.constexpr,
-    BLOCK_B: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
-    """Accumulate d(loss)/dx for one row (see the module docstring)."""
+    """d(loss)/dx for one (row, class tile), written once in the output dtype.
+
+    Each class ``d`` of the tile gets its own complete reduction over the whole
+    class axis, so the tile is the only writer of its slice and no atomics or
+    zero-initialised buffer are needed:
+
+    * ``d`` in ``S``: ``-m[d] * #{k in NT : 1 - x[d] + x[k] > 0}``.  The ``m[d]``
+      factor is what makes a duplicated target id contribute once per *entry*,
+      matching the native kernel, which walks the target prefix and subtracts
+      the hinge count again for every repeat of the id.
+    * ``d`` in ``NT``: ``sum_{k in S} m[k] * [1 - x[k] + x[d] > 0]``, i.e. one
+      count per active target entry, duplicates included.
+
+    Both reductions are evaluated for every ``d`` and selected at the end, which
+    keeps the tile branch-free.  The hinge is compared in the input element type,
+    as in the forward kernel, and the accumulator is ``at::acc_type``.
+
+    ``n_mean`` is the row count for reduction 1 and 1 otherwise; the ``1/(C *
+    n_mean)`` scale is formed here rather than passed in, because a host-side
+    Python float binds to an fp32 kernel slot and would cap the fp64 gradient at
+    fp32 precision.
+    """
     row = tl.program_id(0)
+    pid_d = tl.program_id(1)
     bx = row * srs
     rb = row * C
-    if GOUT == 1:
-        factor = tl.load(go_ptr)
-    elif GOUT == 2:
-        factor = tl.load(go_ptr + row)
-    else:
-        factor = 1.0
     if ACC64:
-        factor = factor.to(tl.float64)
+        acc_ty: tl.constexpr = tl.float64
     else:
-        factor = factor.to(tl.float32)
-    for a0 in range(0, C, BLOCK_A):
-        offs_a = a0 + tl.arange(0, BLOCK_A)
-        cm_a = offs_a < C
-        ma = tl.load(m_ptr + rb + offs_a, mask=cm_a, other=0)
-        is_t = ma > 0
-        xa = tl.load(x_ptr + bx + offs_a * scs, mask=cm_a, other=0.0)
-        if ACC64:
-            gtile = tl.zeros((BLOCK_A,), dtype=tl.float64)
-        else:
-            gtile = tl.zeros((BLOCK_A,), dtype=tl.float32)
-        for b0 in range(0, C, BLOCK_B):
-            offs_b = b0 + tl.arange(0, BLOCK_B)
-            cm_b = offs_b < C
-            mb = tl.load(m_ptr + rb + offs_b, mask=cm_b, other=0)
-            xb = tl.load(x_ptr + bx + offs_b * scs, mask=cm_b, other=0.0)
-            nt_b = cm_b & (mb == 0)
-            k = ((1.0 - xa)[:, None] + xb[None, :]) > 0.0
-            sel = k & is_t[:, None] & nt_b[None, :]
-            if ACC64:
-                gtile += tl.sum(tl.where(sel, 1.0, 0.0), axis=1)
-                nb = tl.sum(tl.where(sel, ma.to(tl.float64)[:, None], 0.0), axis=0)
-            else:
-                gtile += tl.sum(tl.where(sel, 1.0, 0.0), axis=1)
-                nb = tl.sum(tl.where(sel, ma.to(tl.float32)[:, None], 0.0), axis=0)
-            tl.atomic_add(g_ptr + rb + offs_b, nb * (scale * factor), mask=nt_b)
-        tl.atomic_add(g_ptr + rb + offs_a, -gtile * (scale * factor), mask=cm_a & is_t)
+        acc_ty: tl.constexpr = tl.float32
+    # tl.full rather than ``.to``: a value Triton specialises to a literal 1
+    # arrives as a Python int, which has no ``.to``.  Forming the scale here
+    # rather than taking it as a host float matters for fp64, whose gradient
+    # would otherwise be capped at the fp32 precision of the argument slot.
+    scale = 1.0 / (tl.full((), 1.0, dtype=acc_ty) * C * n_mean)
+    # ``gos`` is 0 for a scalar upstream gradient, so the same expression reads
+    # the single element for reductions 1 and 2 and the per-row element for
+    # reduction 0, at whatever stride the caller's view has.
+    factor = tl.load(go_ptr + row * gos).to(acc_ty)
+    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    cm_d = offs_d < C
+    md = tl.load(m_ptr + rb + offs_d, mask=cm_d, other=0)
+    xd = tl.load(x_ptr + bx + offs_d * scs, mask=cm_d, other=0.0)
+    cnt_t = tl.zeros((BLOCK_D,), dtype=acc_ty)
+    cnt_n = tl.zeros((BLOCK_D,), dtype=acc_ty)
+    for k0 in range(0, C, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        cm_k = offs_k < C
+        mk = tl.load(m_ptr + rb + offs_k, mask=cm_k, other=0)
+        xk = tl.load(x_ptr + bx + offs_k * scs, mask=cm_k, other=0.0)
+        nt_k = cm_k & (mk == 0)
+        is_t_k = cm_k & (mk > 0)
+        # d plays the target, k the non-target class.
+        hit_t = (((1.0 - xd)[:, None] + xk[None, :]) > 0.0) & nt_k[None, :]
+        # k plays the target, d the non-target class.
+        hit_n = (((1.0 - xk)[None, :] + xd[:, None]) > 0.0) & is_t_k[None, :]
+        cnt_t += tl.sum(tl.where(hit_t, 1.0, 0.0), axis=1)
+        cnt_n += tl.sum(tl.where(hit_n, mk.to(acc_ty)[None, :], 0.0), axis=1)
+    g = tl.where(md > 0, -md.to(acc_ty) * cnt_t, cnt_n) * (scale * factor)
+    tl.store(g_ptr + rb + offs_d, g.to(g_ptr.dtype.element_ty), mask=cm_d)
 
 
 # ---------------------------------------------------------------------------
@@ -366,154 +444,156 @@ def _row_losses(self, target, dest):
     srs, scs = _strides2d(self)
     trs, tcs = _strides2d(target)
     n_ct = -(-n_classes // _BLOCK_C)
-    if n_ct == 1:
-        _row_loss_kernel[(rows, 1)](
+    with torch_device_fn.device(self.device):
+        if n_ct == 1:
+            _row_loss_kernel[(rows, 1)](
+                self,
+                target,
+                dest,
+                rows,
+                n_classes,
+                1,
+                1,
+                srs,
+                scs,
+                trs,
+                tcs,
+                ACC64=acc64,
+                FINAL=True,
+                BLOCK_T=_BLOCK_T,
+                BLOCK_C=_BLOCK_C,
+                BLOCK_J=_BLOCK_J,
+            )
+            return
+        part = torch.empty((rows, n_ct), dtype=acc_dtype, device=self.device)
+        _row_loss_kernel[(rows, n_ct)](
             self,
             target,
-            dest,
+            part,
             rows,
             n_classes,
-            1,
-            1,
+            n_ct,
+            n_ct,
             srs,
             scs,
             trs,
             tcs,
             ACC64=acc64,
-            FINAL=True,
+            FINAL=False,
             BLOCK_T=_BLOCK_T,
             BLOCK_C=_BLOCK_C,
             BLOCK_J=_BLOCK_J,
         )
-        return
-    part = torch.empty((rows, n_ct), dtype=acc_dtype, device=self.device)
-    _row_loss_kernel[(rows, n_ct)](
-        self,
-        target,
-        part,
-        rows,
-        n_classes,
-        n_ct,
-        n_ct,
-        srs,
-        scs,
-        trs,
-        tcs,
-        ACC64=acc64,
-        FINAL=False,
-        BLOCK_T=_BLOCK_T,
-        BLOCK_C=_BLOCK_C,
-        BLOCK_J=_BLOCK_J,
-    )
-    _finish_kernel[(rows,)](
-        part,
-        dest,
-        n_classes,
-        n_ct,
-        ACC64=acc64,
-        BLOCK=_FINISH_BLOCK,
-    )
+        _finish_kernel[(rows,)](
+            part,
+            dest,
+            n_classes,
+            n_ct,
+            ACC64=acc64,
+            BLOCK=_FINISH_BLOCK,
+        )
 
 
 def _launch_forward(self, target, reduction, dest):
     """Run the forward kernels and write the requested reduction into ``dest``.
 
-    Reduction 0 (a (rows,) result) that fits one class tile is computed by a
-    single launch covering the whole class axis: its per-class hinge work is
-    O(#active targets), which is one for the benchmark's reduction-0 shapes, so
-    the extra parallelism of a split grid does not pay for the second launch.
-    Wider rows -- and every scalar reduction, whose hinge work scales with
-    #active targets -- keep the split grid.
+    Reduction 0 (a (rows,) result) whose class axis fits one capped tile is
+    computed by a single launch covering the whole axis, which saves the partial
+    buffer and the second launch.  The cap keeps the BLOCK_J x BLOCK_C pair tile
+    inside the register budget (it is tighter for fp64, whose elements are twice
+    as wide); wider rows -- and every scalar reduction -- take the split grid.
     """
     rows, n_classes = _row_col(self)
     acc64 = self.dtype == torch.float64
     acc_dtype = torch.float64 if acc64 else torch.float32
     srs, scs = _strides2d(self)
     trs, tcs = _strides2d(target)
-    if reduction == 0 and not (self.dim() <= 1) and n_classes <= _R0_SINGLE_TILE_MAX:
-        _row_loss_kernel[(rows, 1)](
-            self,
-            target,
-            dest,
-            rows,
-            n_classes,
-            1,
-            1,
-            srs,
-            scs,
-            trs,
-            tcs,
-            ACC64=acc64,
-            FINAL=True,
-            BLOCK_T=_BLOCK_T,
-            BLOCK_C=triton.next_power_of_2(n_classes),
-            BLOCK_J=_BLOCK_J,
-        )
+    block_cap = _R0_SINGLE_TILE_BLOCK_CAP_FP64 if acc64 else _R0_SINGLE_TILE_BLOCK_CAP
+    single_tile_max = min(_R0_SINGLE_TILE_MAX, block_cap)
+    if reduction == 0 and not (self.dim() <= 1) and n_classes <= single_tile_max:
+        with torch_device_fn.device(self.device):
+            _row_loss_kernel[(rows, 1)](
+                self,
+                target,
+                dest,
+                rows,
+                n_classes,
+                1,
+                1,
+                srs,
+                scs,
+                trs,
+                tcs,
+                ACC64=acc64,
+                FINAL=True,
+                BLOCK_T=_BLOCK_T,
+                BLOCK_C=triton.next_power_of_2(n_classes),
+                BLOCK_J=_BLOCK_J,
+            )
         return
     if reduction == 0 and not (self.dim() <= 1):
         _row_losses(self, target, dest)
         return
-    row_buf = torch.empty(rows, dtype=acc_dtype, device=self.device)
-    _row_losses(self, target, row_buf)
-    _reduce_rows_kernel[(1,)](
-        row_buf,
-        dest,
-        rows,
-        MEAN=(reduction == 1),
-        ACC64=acc64,
-        BLOCK=_REDUCE_BLOCK,
-    )
+    with torch_device_fn.device(self.device):
+        row_buf = torch.empty(rows, dtype=acc_dtype, device=self.device)
+        _row_losses(self, target, row_buf)
+        _reduce_rows_kernel[(1,)](
+            row_buf,
+            dest,
+            rows,
+            MEAN=(reduction == 1),
+            ACC64=acc64,
+            BLOCK=_REDUCE_BLOCK,
+        )
 
 
 def _launch_backward(self, target, reduction, grad_out):
-    """Gradient of the loss w.r.t. ``self``, produced by the kernels above."""
+    """Gradient of the loss w.r.t. ``self``, produced by the kernels above.
+
+    ``g`` is allocated in the input dtype and each class tile stores its slice
+    exactly once, so the gradient needs no accumulator buffer, no atomics and no
+    host-side cast.  ``grad_out`` is read through its own stride rather than
+    being made contiguous first, so a strided upstream gradient costs no copy.
+    """
     rows, n_classes = _row_col(self)
     acc64 = self.dtype == torch.float64
     device = self.device
     srs, scs = _strides2d(self)
     trs, tcs = _strides2d(target)
-    mult = torch.empty((rows, n_classes), dtype=torch.int32, device=device)
-    _membership_kernel[(rows,)](
-        target,
-        mult,
-        n_classes,
-        trs,
-        tcs,
-        BLOCK_T=_BLOCK_T,
-        BLOCK_C=_BLOCK_C,
-    )
-    g = torch.zeros(
-        (rows, n_classes),
-        dtype=(torch.float64 if acc64 else torch.float32),
-        device=device,
-    )
-    scale = 1.0 / float(n_classes)
-    if reduction == 1:
-        scale /= float(rows)
-    if grad_out is None:
-        gout_mode = 0
-        go = g
-    elif grad_out.dim() == 1:
-        gout_mode = 2
-        go = grad_out.contiguous()
-    else:
-        gout_mode = 1
-        go = grad_out.contiguous()
-    _grad_kernel[(rows,)](
-        self,
-        mult,
-        g,
-        go,
-        n_classes,
-        srs,
-        scs,
-        scale,
-        GOUT=gout_mode,
-        ACC64=acc64,
-        BLOCK_A=_GRAD_BLOCK_A,
-        BLOCK_B=_GRAD_BLOCK_B,
-    )
-    return g.to(self.dtype).reshape(self.shape)
+    # Passed as an integer so the kernel can build the scale in its own
+    # accumulator precision; a host float would arrive as fp32.
+    n_mean = rows if reduction == 1 else 1
+    # A 0-dim upstream gradient (reductions 1 and 2, and rank<=1 at reduction 0)
+    # is read by every row, which stride 0 expresses directly; a per-row one is
+    # read at its own stride, so a strided view costs no copy.
+    gos = grad_out.stride(0) if grad_out.dim() == 1 else 0
+    with torch_device_fn.device(device):
+        mult = torch.empty((rows, n_classes), dtype=torch.int32, device=device)
+        _membership_kernel[(rows,)](
+            target,
+            mult,
+            n_classes,
+            trs,
+            tcs,
+            BLOCK_T=_BLOCK_T,
+            BLOCK_C=_BLOCK_C,
+        )
+        g = torch.empty((rows, n_classes), dtype=self.dtype, device=device)
+        _grad_kernel[(rows, triton.cdiv(n_classes, _GRAD_BLOCK_D))](
+            self,
+            mult,
+            g,
+            grad_out,
+            n_classes,
+            srs,
+            scs,
+            gos,
+            n_mean,
+            ACC64=acc64,
+            BLOCK_D=_GRAD_BLOCK_D,
+            BLOCK_K=_GRAD_BLOCK_K,
+        )
+    return g.reshape(self.shape)
 
 
 class _MMLFunction(torch.autograd.Function):
@@ -572,9 +652,24 @@ def multilabel_margin_loss(self, target, reduction=1, out=None):
     shape = _result_shape(rows, reduction, rank_leq_1)
 
     if out is not None:
+        if out.device != self.device:
+            raise RuntimeError(
+                "multilabel_margin_loss: out must be on the same device as input"
+            )
+        if out.dtype not in _FLOAT_DTYPES:
+            raise RuntimeError(
+                "multilabel_margin_loss: out must have a floating point dtype"
+            )
         if tuple(out.shape) != tuple(shape):
             out.resize_(shape)
         if rows != 0:
+            # The native overload writes the result contiguously from the
+            # buffer's base regardless of the buffer's strides (probed on CUDA:
+            # a (8,) stride-2 out at reduction 0 received all eight per-row
+            # values in consecutive storage slots, so its logical view read back
+            # [r0, r2, r4, r6, fill, fill, fill, fill]).  Writing through the
+            # kernel's flat indexing reproduces that, so no stride handling is
+            # added here; see the note in the test module.
             _launch_forward(self, target, reduction, out)
         return out
 
