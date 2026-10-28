@@ -42,16 +42,20 @@ def _valid_dense(shape, dtype, device):
 
 class ToSparseSemiStructuredBenchmark(Benchmark):
     def get_input_iter(self, cur_dtype):
-        # On Ampere the native CUTLASS kernel mis-sizes the packed buffer at
-        # 2048x2048 (bf16 comes back two elements short, fp16 one short), so
-        # aten's reshape to (2048, 1024) fails. The mis-size is a native-aten
-        # bug, not a FlagGems one, so cap every dtype at 1024x1024, which is
-        # sized correctly on both Ampere and Hopper.
-        for shape in [(64, 64), (256, 256), (1024, 1024)]:
+        for shape in [(64, 64), (256, 256), (1024, 1024), (2048, 2048)]:
             yield (_valid_dense(shape, cur_dtype, self.device),)
 
 
 @pytest.mark.to_sparse_semi_structured
+@pytest.mark.skip_native(
+    vendors="nvidia",
+    reason=(
+        "native aten _to_sparse_semi_structured returns a mis-sized packed "
+        "buffer on Ampere (CUTLASS 2:4 sizing is off by one/two elements), "
+        "so aten's reshape fails intermittently; the FlagGems candidate is "
+        "still benchmarked."
+    ),
+)
 def test_to_sparse_semi_structured():
     bench = ToSparseSemiStructuredBenchmark(
         op_name="to_sparse_semi_structured",
