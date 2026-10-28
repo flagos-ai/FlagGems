@@ -56,7 +56,6 @@ def test_arccosh_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.arccosh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.arccosh(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.arccosh_out(inp, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype)

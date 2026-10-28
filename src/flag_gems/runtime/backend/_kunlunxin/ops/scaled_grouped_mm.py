@@ -43,6 +43,8 @@ to the unchanged generic implementation. No generic source, test, tolerance or
 native fallback is touched, and every non-FP8 call is delegated verbatim.
 """
 
+import logging
+
 import torch
 import triton
 
@@ -50,12 +52,18 @@ from flag_gems.ops.scaled_grouped_mm import (
     _decode_e4m3_tensor,
     _default_out_dtype,
     _native_e4m3_dot,
+    _normalize_bias,
+    _normalize_scale,
+    _resolve_shapes,
+    _scaled_grouped_mm_fallback,
 )
 from flag_gems.ops.scaled_grouped_mm import (
     scaled_grouped_mm as _generic_scaled_grouped_mm,
 )
 
 __all__ = ["scaled_grouped_mm"]
+
+logger = logging.getLogger(__name__)
 
 _E4M3_DTYPES = tuple(
     getattr(torch, name)
@@ -99,8 +107,10 @@ def scaled_grouped_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
+    logger.debug("GEMS_KUNLUNXIN SCALED_GROUPED_MM")
     if self.dtype in _E4M3_DTYPES and not _native_e4m3_dot(self.dtype, self.device):
         fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+        logger.debug("GEMS_KUNLUNXIN SCALED_GROUPED_MM MATERIALIZE FP8 TO FP16")
         # The generic implementation derives the output dtype from the operand
         # dtype; preserve the original FP8-derived default (bfloat16) when the
         # caller did not request one explicitly.
@@ -108,6 +118,63 @@ def scaled_grouped_mm(
             out_dtype = _default_out_dtype(self.dtype)
         self = _materialize_e4m3_to_fp16(self, fnuz)
         mat2 = _materialize_e4m3_to_fp16(mat2, fnuz)
+
+    if offs is not None and self.dim() == 3 and mat2.dim() == 2:
+        a_is_2d, b_is_2d, num_groups, _m, n, _k, _shape, offs_c = _resolve_shapes(
+            self, mat2, offs
+        )
+        output_dtype = out_dtype or _default_out_dtype(self.dtype)
+        scale_a_n = _normalize_scale(
+            scale_a,
+            self,
+            dim=0,
+            num_groups=num_groups,
+            scale_multiplier=1,
+            name="scale_a",
+        )
+        scale_b_n = _normalize_scale(
+            scale_b,
+            mat2,
+            dim=1,
+            num_groups=num_groups,
+            scale_multiplier=1,
+            name="scale_b",
+        )
+        bias_n, _mode = _normalize_bias(
+            bias, a_is_2d=a_is_2d, b_is_2d=b_is_2d, num_groups=num_groups, N=n
+        )
+        return _scaled_grouped_mm_fallback(
+            self,
+            mat2,
+            scale_a_n,
+            scale_b_n,
+            offs_c,
+            bias_n,
+            output_dtype,
+            a_is_2d,
+            b_is_2d,
+            num_groups,
+        )
+
+    if offs is None and self.dim() == 3 and mat2.dim() == 3:
+        groups, m, k = self.shape
+        flat_self = self.reshape(groups * m, k)
+        flat_scale_a = scale_a.reshape(-1) if scale_a.dim() == 2 else scale_a
+        flat_offs = (
+            torch.arange(1, groups + 1, dtype=torch.int32, device=self.device) * m
+        )
+        flat_out = _generic_scaled_grouped_mm(
+            flat_self,
+            mat2,
+            flat_scale_a,
+            scale_b,
+            offs=flat_offs,
+            bias=bias,
+            scale_result=scale_result,
+            out_dtype=out_dtype,
+            use_fast_accum=use_fast_accum,
+        )
+        return flat_out.reshape(groups, m, mat2.shape[-1])
 
     return _generic_scaled_grouped_mm(
         self,

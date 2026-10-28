@@ -88,12 +88,8 @@ _VENDOR_ROUTE_SIG: dict = {}
 
 def _vendor_route_content_unchanged(topk_ids: torch.Tensor) -> bool:
     """True when the routing content at this address is unchanged since the
-    previous call, i.e. a vendor cache entry for this address (if any) still
-    corresponds to this content and the fast vendor path is safe to take.
-
-    Uses the tensor's autograd version counter, which increments on every
-    in-place mutation performed through torch ops, so this costs no device
-    sync and no allocation.
+    previous call. Uses the tensor's autograd version counter, so this costs
+    no device sync and no allocation.
     """
     key = (topk_ids.data_ptr(), topk_ids.numel())
     version = topk_ids._version
@@ -179,20 +175,8 @@ def fused_experts_impl(
     assert w1.dtype == hidden_states.dtype and w2.dtype == hidden_states.dtype
 
     config = {"BLOCK_SIZE_M": 16}
-    # ------------------------------------------------------------------
-    # Narrow stale-cache guard (2026-10-09).
-    #
-    # The vendor MoE cache is keyed on (routing-pointer, S, E) with NO content
-    # check, so it replays stale lod/count/sid whenever an address is reused
-    # with different routing. An earlier version gated ALL bf16 off the vendor
-    # path, which cost ~930x on bf16 (4.5 ms -> 4206 ms at (64,8,4096,14336,2)).
-    #
-    # The hazard is address-reuse-with-changed-content, not the dtype. Detect
-    # exactly that: record the routing version seen at each (pointer, numel)
-    # and only leave the fast vendor path when the content at a REUSED address
-    # has changed since the previous call.  Content that is unchanged (the
-    # common case, and the case the benchmark measures) keeps the fast path.
-    # ------------------------------------------------------------------
+    # Leave the fast path only when a reused routing address carries changed
+    # content since the previous call.
     generic_bf16_route = not _vendor_route_content_unchanged(topk_ids)
     # Convert routing metadata on the producer stream, without native casts.
     if topk_ids.dtype != torch.int32:
@@ -213,7 +197,7 @@ def fused_experts_impl(
         not apply_router_weight_on_input and w1_bias is None and w2_bias is None
     )
     if use_xblas_struct:
-        # Keep vendor plain GEMM calls, with Triton-only epilogues.
+        # Plain GEMMs with Triton-only epilogues.
         intermediate13 = torch.empty(
             (num_tokens, top_k, gate_up_size),
             dtype=hidden_states.dtype,
@@ -411,8 +395,7 @@ def outplace_fused_experts(
     )
 
 
-# Route the flag_gems-level MoE entry points to this implementation as well
-# (the generic chain's moe_align / moe_sum hit triton 3.6 compile walls).
+# Route the flag_gems-level MoE entry points to this implementation as well.
 # Runs at import time AFTER the defs above; the dispatch hijack at the top of
 # this file already replaced flag_gems.dispatch_fused_moe_kernel.
 _fg_mod = sys.modules["flag_gems"]

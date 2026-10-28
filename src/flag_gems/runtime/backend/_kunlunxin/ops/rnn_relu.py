@@ -9,6 +9,23 @@ from .stack import stack
 logger = logging.getLogger(__name__)
 
 
+def _gems_mm(a, b):
+    """Call the selected FlagGems matmul explicitly.
+
+    ``torch.mm`` only resolves to a FlagGems kernel while ``use_gems()`` is
+    active, so the same call would run the native kernel on direct paths.
+    """
+    import flag_gems
+
+    return flag_gems.mm(a, b)
+
+
+def _gems_relu(x):
+    import flag_gems
+
+    return flag_gems.relu(x)
+
+
 @triton.jit
 def _rnn_relu_step_kernel(
     h_ptr,
@@ -23,13 +40,10 @@ def _rnn_relu_step_kernel(
 ):
     """One fused RNN-ReLU step for every batch row (grid = batch_size).
 
-    h_new = relu(mm_result + b_hh + pre) matching native torch order and
-    precision: the matmul uses fp32 accumulation (like torch.mm on XPU), then
-    truncates to native dtype before adding b_hh and pre in native dtype, so
-    the final result is bit-identical to native torch.rnn_relu.
-    The host passes zero-padded buffers whose last dim is H_PAD (next pow2
-    of hidden_size), so every tile is unmasked: the XPU backend mishandles
-    masked tail reads and can fail to compile masked 2D tiles.
+    h_new = relu(mm_result + b_hh + pre): the matmul accumulates in fp32 and
+    is truncated to the native dtype before b_hh and pre are added, matching
+    native torch order and precision. The host passes zero-padded buffers whose
+    last dim is H_PAD (next pow2 of hidden_size), so every tile is unmasked.
     """
     native_ty = h_ptr.dtype.element_ty
     b = tl.program_id(0)
@@ -43,14 +57,13 @@ def _rnn_relu_step_kernel(
                 tl.float32
             )
             acc += tl.sum(w_tile * h_vec[None, :], axis=1)
-        # Truncate matmul result to native dtype, matching torch.mm output
-        # precision: mm internally uses fp32 accumulation but returns fp16/bf16.
+        # truncate matmul result to native dtype (torch.mm semantics)
         acc_native = acc.to(native_ty)
-        # hgates = mm_result + b_hh, in native dtype (matches native torch)
+        # hgates = mm_result + b_hh
         if HAS_B_HH:
             b_hh_val = tl.load(b_hh_ptr + o_offs)
             acc_native = acc_native + b_hh_val
-        # igates + hgates in native dtype (pre = x@w_ih.t()+b_ih, stored as native)
+        # igates + hgates
         p = tl.load(pre_ptr + b * H_PAD + o_offs)
         combined = acc_native + p
         h_new = tl.where(combined > 0, combined, tl.zeros([BLOCK_H], dtype=native_ty))
@@ -71,28 +84,8 @@ def rnn_relu(
 ):
     """Single-layer unidirectional Elman RNN with ReLU activation (kunlunxin).
 
-    XPU can not compile the generic fused Triton RNN kernel produced by
-    KernelGen (2D weight-tile + reduction inside the sequential loop
-    overflows uni_sram / hits constant-compile failures, and the fully
-    sequential per-batch-program design is ~2.5x slower than vendor native),
-    so the recurrence is folded into a minimal sequence of primitive ops.
-
-    Inference (train=False, no input/hx gradients, pow2 hidden <= 128):
-    a single fused Triton step kernel per time step
-    (``h_new = relu(h @ W_hh^T + pre)``, fp32 accumulation, unmasked tiles —
-    the XPU backend mishandles masked 2D reads and oversized tiles
-    miscompile). This avoids re-entering the FlagGems dispatcher (each XPU
-    triton launch is ~0.2ms; a native-op recurrence needs 4+ launches/step).
-
-    Training / non-pow2 / hidden > 128: native aten matmul/add/relu chain
-    with autograd tracking (torch.addmm would dispatch to the kunlunxin
-    addmm override which raises ``multiple values for keyword 'num_stages'``
-    under use_gems, so mm + add is used; the chain runs outside use_gems
-    when gradients are requested, so torch.stack stays native). fp32
-    accumulation keeps low-precision dtypes within a few ULP of the
-    reference (fp32 maxdiff ~4e-7; fp16/bf16 within test-declared atols).
-    A ``ZeroDivisionError`` (do_bench cold-tuning edge) falls back to a
-    per-step small-shape recurrence with identical math.
+    Inference uses a fused Triton step kernel per time step; training and other
+    cases use a per-step matmul/add/relu recurrence with autograd tracking.
     """
     logger.debug("GEMS_KUNLUNXIN RNN_RELU")
 
@@ -121,19 +114,13 @@ def rnn_relu(
 
     x2d = x.reshape(seq_len * batch_size, input_size)
 
-    # Parameters are nn.Parameter objects (requires_grad=True by default) even
-    # in inference; only input/hx gradients actually require the autograd-safe
-    # native chain. train=True also routes to the native chain (gradients are
-    # requested for the weight parameters).
+    # only input/hx gradients require the autograd-safe native chain
     need_autograd = (
         train or input.requires_grad or (hx is not None and hx.requires_grad)
     )
 
-    # Fused path is gated to pow2 hidden_size <= 128 and non-bf16: taller
-    # tiles exceed the on-chip memory budget during compilation, and for bf16 the Triton
-    # tiled matmul's reduction tree rounds differently from native torch.mm,
-    # accumulating error beyond the 1e-4 atol over time steps.
-    # BF16 uses the native-chain path with fp32 recurrence instead (see below).
+    # Fused path is gated to pow2 hidden_size <= 128 and non-bf16; bf16 uses the
+    # native-chain path with fp32 recurrence instead (see below).
     is_bf16 = x.dtype == torch.bfloat16
     if (
         not need_autograd
@@ -142,35 +129,23 @@ def rnn_relu(
         and ((hidden_size & (hidden_size - 1)) == 0)
     ):
         # ---- fused kernel path (inference-style, pow2 hidden, fp16/fp32) ----
-        # One triton kernel per time step: h_new = relu(h @ W_hh^T + b_hh + pre).
-        # Keeps h on device and writes output[t] directly, so the recurrence
-        # never re-enters the FlagGems dispatcher (each XPU triton launch is
-        # ~0.2ms; the native matmul chain needed 4+ launches/step). BLOCK_H
-        # equals hidden_size (pow2), so all tiles are unmasked: the XPU
-        # backend mishandles masked reads / masked 2D tiles, and oversized
-        # padded tiles also miscompile — hence the pow2-only gate. Non-pow2
-        # hidden sizes fall back to the native-chain branch below.
+        # One kernel per time step: h_new = relu(h @ W_hh^T + b_hh + pre).
+        # BLOCK_H equals hidden_size (pow2), so all tiles are unmasked.
         #
-        # For fp16, compute the pre-projection matmul in fp32 then cast back.
-        # On XPU, native torch.mm uses fp32 accumulation and truncates to the
-        # input dtype; FlagGems Triton mm may use a different reduction tree.
-        # fp32 mm + cast reproduces native mm output exactly.
+        # For fp16, compute the pre-projection matmul in fp32 then cast back to
+        # match native mm output.
         low_prec = x.dtype != torch.float32
         if low_prec:
-            pre = x2d.float().matmul(w_ih.t().float()).to(x.dtype)
+            pre = _gems_mm(x2d.float(), w_ih.t().float()).to(x.dtype)
         else:
-            pre = x2d.matmul(w_ih.t())
+            pre = _gems_mm(x2d, w_ih.t())
         if b_ih is not None:
             pre = pre + b_ih
         pre = pre.reshape(seq_len, batch_size, hidden_size)
-        # b_hh is NOT pre-added here; it is passed to the kernel and added
-        # per-step to match native torch accumulation order:
-        #   igates = mm(x, w_ih.t()) + b_ih
-        #   hgates = mm(h, w_hh.t()) + b_hh   <-- b_hh per step
-        #   h_new  = relu(igates + hgates)
+        # b_hh is added per step to match native torch accumulation order.
         hp = hidden_size
         blk = hp
-        # Prepare b_hh buffer for the kernel (zero-padded to hp)
+        # zero-pad b_hh to hp
         if b_hh is not None:
             b_hh_buf = torch.zeros((hp,), dtype=x.dtype, device=x.device)
             b_hh_buf[:hidden_size] = b_hh
@@ -196,69 +171,58 @@ def rnn_relu(
         output = out_buf[..., :hidden_size]
         h = h_in[..., :hidden_size]
     else:
-        # ---- native-chain path (autograd-friendly, also bf16 inference) ----
-        # Uses native aten matmul/add/relu only; calling torch.addmm would
-        # dispatch to the kunlunxin addmm override, which raises ``multiple
-        # values for keyword 'num_stages'`` under use_gems, and mm + add is
-        # mathematically identical and stable.
-        #
-        # For bf16 inference: the Triton tiled matmul rounds differently from
-        # native torch.mm for bf16 (8-bit mantissa amplifies reduction-tree
-        # differences beyond atol=1e-4 over time steps). Instead, per-step mm
-        # is computed in fp32 then truncated to bf16 to match native torch.mm
-        # behavior (native mm(bf16) == mm(fp32).to(bf16), verified diff 0.0).
-        # w_hh_t is pre-converted to fp32 once to avoid per-step cast overhead.
+        # ---- per-step chain (autograd-friendly, also bf16 inference) ----
+        # For bf16, per-step mm is computed in fp32 then truncated to bf16.
+        # Direct flag_gems.<op> calls do not build autograd nodes, so the grad
+        # path keeps the differentiable aten ops; the inference path calls the
+        # FlagGems kernels explicitly instead of relying on the use_gems()
+        # context to redirect torch.mm / torch.relu.
+        if need_autograd:
+            mm, relu = torch.mm, torch.relu
+        else:
+            mm, relu = _gems_mm, _gems_relu
         w_hh_t = w_hh.t().contiguous()
         is_bf16 = x.dtype == torch.bfloat16
         try:
             if is_bf16:
-                pre = x2d.float().matmul(w_ih.t().float()).to(x.dtype)
+                pre = mm(x2d.float(), w_ih.t().float()).to(x.dtype)
             else:
                 pre = (
-                    (x2d.matmul(w_ih.t()) + b_ih)
+                    (mm(x2d, w_ih.t()) + b_ih)
                     if b_ih is not None
-                    else x2d.matmul(w_ih.t())
+                    else mm(x2d, w_ih.t())
                 )
             if is_bf16 and b_ih is not None:
                 pre = pre + b_ih
             pre = pre.reshape(seq_len, batch_size, hidden_size)
-            # b_hh is NOT pre-added; it is added per-step to match native
-            # torch order: hgates = mm(h, w_hh.t()) + b_hh
+            # b_hh is added per step to match native torch order
             if is_bf16:
                 w_hh_t_f = w_hh_t.float()
             h = hx2d
             outputs = []
             for t in range(seq_len):
                 if is_bf16:
-                    hgates = torch.mm(h.float(), w_hh_t_f).to(h.dtype)
+                    hgates = mm(h.float(), w_hh_t_f).to(h.dtype)
                 else:
-                    hgates = torch.mm(h, w_hh_t)
+                    hgates = mm(h, w_hh_t)
                 if b_hh is not None:
                     hgates = hgates + b_hh
-                h = torch.relu(hgates + pre[t])
+                h = relu(hgates + pre[t])
                 outputs.append(h)
-            # autograd-safe assembly; this branch runs outside use_gems
-            # (backward tests call the wrapper directly), so torch.stack is
-            # never intercepted by the flag_gems pointwise stack override.
+            # autograd-safe assembly
             output = stack(outputs, 0)
         except ZeroDivisionError:
-            # per-step small-shape recurrence, same math, crash-free
+            # per-step small-shape recurrence, same math
             h = hx2d
             outputs = []
             for t in range(seq_len):
                 ih_t = (
-                    x[t].matmul(w_ih.t()) + b_ih
+                    mm(x[t], w_ih.t()) + b_ih
                     if b_ih is not None
-                    else x[t].matmul(w_ih.t())
+                    else mm(x[t], w_ih.t())
                 )
-                hh_t = (
-                    h.matmul(w_hh.t()) + b_hh
-                    if b_hh is not None
-                    else h.matmul(w_hh.t())
-                )
-                h = torch.relu(ih_t.to(torch.float32) + hh_t.to(torch.float32)).to(
-                    x.dtype
-                )
+                hh_t = mm(h, w_hh.t()) + b_hh if b_hh is not None else mm(h, w_hh.t())
+                h = relu(ih_t.to(torch.float32) + hh_t.to(torch.float32)).to(x.dtype)
                 outputs.append(h)
             output = stack(outputs, 0)
 
@@ -274,20 +238,8 @@ __all__ = ["rnn_relu"]
 class KunlunxinRnnReluFunction(torch.autograd.Function):
     """Kunlunxin-specific autograd for single-layer unidirectional RNN-ReLU.
 
-    Forward  → kunlunxin rnn_relu (fused Triton step kernel or mm+add chain).
-    Backward → recompute forward with mm + add (NOT addmm, which can trigger
-               L2 compile errors on XPU), then torch.autograd.grad.
-
-    The generic RnnReluFunction cannot be used on XPU because:
-    (1) its forward calls rnn_relu_kernel_forward (generic Triton kernel)
-        which fails to compile on XPU (2D weight-tile + masked reads exceed the
-        on-chip memory budget / hit core-tiling failures);
-    (2) its backward uses torch.addmm which was historically problematic
-        (though currently compiles at small shapes, the generic forward is
-        the primary blocker).
-
-    This kunlunxin version uses the same mm + add decomposition that the
-    kunlunxin forward native-chain path already uses successfully.
+    Forward uses the kunlunxin rnn_relu implementation; backward recomputes the
+    forward with mm + add (not addmm) and calls torch.autograd.grad.
     """
 
     @staticmethod
@@ -312,7 +264,7 @@ class KunlunxinRnnReluFunction(torch.autograd.Function):
         ctx.bidirectional = bidirectional
         ctx.batch_first = batch_first
 
-        # Use the kunlunxin rnn_relu forward (fused kernel or native chain)
+        # fused kernel or native chain
         return rnn_relu(
             input,
             hx,
@@ -349,10 +301,8 @@ class KunlunxinRnnReluFunction(torch.autograd.Function):
             seq_len, batch_size, input_size = input.shape
 
         # Recompute forward with autograd tracking using mm + add.
-        # This matches the kunlunxin native-chain accumulation order:
-        #   igates = mm(x, w_ih.t()) + b_ih
-        #   hgates = mm(h, w_hh.t()) + b_hh
-        #   h = relu(igates + hgates)
+        # The aten calls below are deliberate: a direct flag_gems.mm call does
+        # not create the grad_fn that torch.autograd.grad needs.
         # w_hh.t() must be inside enable_grad so autograd tracks w_hh.
         with torch.enable_grad():
             w_hh_t = w_hh.t().contiguous()
@@ -427,9 +377,8 @@ def _rnn_relu_with_autograd(
     bidirectional=False,
     batch_first=False,
 ):
-    """Dispatch wrapper: train=True uses KunlunxinRnnReluFunction (custom
-    autograd with kunlunxin-compatible backward); inference uses the fast
-    kunlunxin rnn_relu path.
+    """Dispatch wrapper: autograd uses KunlunxinRnnReluFunction, inference uses
+    the rnn_relu path.
     """
     need_autograd = (
         train or input.requires_grad or (hx is not None and hx.requires_grad)
@@ -460,36 +409,13 @@ def _rnn_relu_with_autograd(
 
 
 def _patch_generic_wrapper():
-    """Route direct calls to the generic wrapper (flag_gems.ops.rnn_relu module)
-    to this backend override, but only when running on the kunlunxin (XPU)
-    backend.
+    """Route direct calls to the generic module's ``rnn_relu`` to this override."""
+    import sys
 
-    The direct-wrapper tests import ``rnn_relu`` from ``flag_gems.ops.rnn_relu``
-    (bypassing the aten dispatcher), so the generic Triton kernel would still be
-    hit on XPU (it cannot compile there: uni_sram / TritonXPUCoreTiling failures).
-
-    On other backends (NVIDIA, etc.) the generic path works correctly and has
-    tighter numerical tolerances for low-precision dtypes, so the patch must
-    not be applied there.
-    """
-    try:
-        import flag_gems
-
-        if getattr(flag_gems, "device", None) != "cuda" or not hasattr(
-            flag_gems, "vendor_name"
-        ):
-            # Early import: flag_gems not fully initialised yet, defer.
-            return
-        if getattr(flag_gems, "vendor_name", None) != "kunlunxin":
-            return
-
-        import sys
-
-        _generic_module = sys.modules.get("flag_gems.ops.rnn_relu")
-        if _generic_module is not None and hasattr(_generic_module, "rnn_relu"):
-            _generic_module.rnn_relu = _rnn_relu_with_autograd
-    except (ImportError, AttributeError):
-        pass
+    # ``flag_gems.ops.rnn_relu`` is the function, not the module, so look the
+    # module up in sys.modules.
+    _generic_module = sys.modules["flag_gems.ops.rnn_relu"]
+    _generic_module.rnn_relu = _rnn_relu_with_autograd
 
 
 _patch_generic_wrapper()

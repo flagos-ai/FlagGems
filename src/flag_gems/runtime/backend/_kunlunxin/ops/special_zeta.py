@@ -23,7 +23,7 @@ from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.shape_utils import MemOverlap, has_internal_overlapping
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
-logger = logging.getLogger("flag_gems.ops.special_zeta")
+logger = logging.getLogger(__name__)
 
 _pow = tl_extra_shim.pow
 _SUPPORTED_COMPUTE_DTYPES = (torch.float32, torch.float64)

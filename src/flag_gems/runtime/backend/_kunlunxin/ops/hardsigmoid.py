@@ -6,7 +6,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,

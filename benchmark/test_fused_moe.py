@@ -39,6 +39,8 @@ if HAS_VLLM_FUSED_MOE:
 else:
     VLLM_SUPPORTS_INPLACE = False
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def _dispatch_fused_moe_kernel_config():
     return {

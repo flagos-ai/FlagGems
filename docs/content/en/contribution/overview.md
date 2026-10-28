@@ -128,7 +128,7 @@ Before developing a new operator, check the `for` field in `conf/operators.yaml`
 
 On the host side, operators may call data initialization functions such as `torch.empty_like()`, `torch.zeros()`, and `torch.randn()`, as well as other FlagGems operators. Calling PyTorch computation operators directly is prohibited.
 
-The first statement in every operator function should emit a DEBUG log. The message must include the vendor prefix (`GEMS` for the generic implementation or `GEMS_<VENDOR>` for a vendor implementation), followed by a space and the operator name in uppercase snake case, for example `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`.
+The first statement in every operator function should emit a DEBUG log. The message must include the vendor prefix (`GEMS` for the generic implementation or `GEMS_<VENDOR>` for a vendor implementation), followed by a space and the operator name in uppercase snake case, for example `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`. The vendor prefix may optionally append a device name, e.g. `GEMS_ENFLAME_GCU300 CONV1D`.
 
 ## 7. Code format check {#code-format-check}
 

@@ -19,9 +19,7 @@ import triton.language as tl
 
 from flag_gems.ops.special_erfcx import special_erfcx as default_special_erfcx
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 
