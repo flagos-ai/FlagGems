@@ -91,8 +91,15 @@ def test_batch_norm_with_update_functional(shape, dtype, affine):
         eps,
     )
 
+    # Native CUDA saves reduced-precision input statistics in FP32.
+    statistics_dtype = (
+        torch.float32
+        if flag_gems.vendor_name == "nvidia"
+        and dtype in (torch.float16, torch.bfloat16)
+        else dtype
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)
-    utils.gems_assert_close(res_save_invstd, ref_save_invstd, dtype)
+    utils.gems_assert_close(res_save_mean, ref_save_mean, statistics_dtype)
+    utils.gems_assert_close(res_save_invstd, ref_save_invstd, statistics_dtype)
     utils.gems_assert_close(res_running_mean_out, ref_running_mean_out, dtype)
     utils.gems_assert_close(res_running_var_out, ref_running_var_out, dtype)
