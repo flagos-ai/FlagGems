@@ -1505,8 +1505,7 @@ tl_extra_shim = _patch_missing_symbols(
 # loses accuracy as |y*log2(x)| grows (up to ~120 ULP for |y| ~ 100, ~170 ULP
 # on random inputs), well past the ~11 ULP fp32 test tolerance. This version
 # keeps log2(x) and y*log2(x) as fp32 double-floats (max ~1 ULP measured on
-# gfx1201) and defers every special case (x <= 0 without an integral y, 0,
-# inf, nan, y == 0) to the native pow.
+# gfx1201); special cases follow C99 pow and match the CPU bit-exactly.
 @triton.jit
 def _ff_opaque(x):
     # Empty asm tied to its input keeps a rounded product from being contracted
@@ -1611,7 +1610,22 @@ def _accurate_powf(x, y):
     r = r * _ff_pow2i(tl.minimum(tl.maximum(k2, -126), 127))
     r = tl.where(over, float("inf"), tl.where(under, 0.0, r))
     r = tl.where((x < 0.0) & y_odd, -r, r)
-    return tl.where(normal, r, _NATIVE_POW(x, y))
+    return tl.where(normal, r, _ff_pow_special(x, y, ax, y_int, y_odd))
+
+
+@triton.jit
+def _ff_pow_special(x, y, ax, y_int, y_odd):
+    # C99 pow special cases, spelled out so no native pow is expanded per element.
+    inf = float("inf")
+    y_inf = tl.abs(y) == inf
+    neg = x.to(tl.int32, bitcast=True) < 0
+    r_yinf = tl.where(ax == 1.0, 1.0, tl.where((ax < 1.0) == (y > 0.0), 0.0, inf))
+    r_zero_inf = tl.where((ax == 0.0) == (y < 0.0), inf, 0.0)
+    r = tl.where(y_inf, r_yinf, r_zero_inf)
+    r = tl.where(neg & y_odd & ~y_inf, -r, r)
+    r = tl.where((x < 0.0) & ~y_int & (ax < inf), float("nan"), r)
+    r = tl.where((x != x) | (y != y), float("nan"), r)
+    return tl.where((y == 0.0) | (x == 1.0), 1.0, r)
 
 
 @triton.jit
