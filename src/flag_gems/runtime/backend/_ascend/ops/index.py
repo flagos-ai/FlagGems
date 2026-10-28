@@ -155,12 +155,14 @@ def _gather_function(
     # A program owns a broadcast index and one small plain-data tile. Index
     # loads and int64 normalization are scalar, amortized across that tile.
     # Wide payloads also benefit beyond 65535 indices; narrow payloads retain
-    # their existing traversal. Both source and output offsets are narrowed below.
+    # their existing traversal. Only bounded payload and output offsets narrow;
+    # the indexed source base stays int64 when the view spans a wide address range.
     scalar_indices = (
         1 < broadcast_numel
         and plain_numel <= 1024
         and (broadcast_numel <= 65535 or plain_numel >= 128)
-        and span < 2**31
+        and sum((output_shape[axis] - 1) * strides[dim] for dim, axis in plain_axes)
+        < 2**31
         and broadcast_numel * plain_numel < 2**31
     )
     if scalar_indices:
@@ -200,8 +202,9 @@ def _gather_function(
                 f"        source_base += tl.where(valid{i}, normalized{i}, 0) * {strides[dim]}",
                 f"        valid_index = valid_index & valid{i}",
             ]
+        if span < 2**31:
+            lines += ["        source_base = source_base.to(tl.int32)"]
         lines += [
-            "        source_base = source_base.to(tl.int32)",
             "        destination_base = destination_base.to(tl.int32)",
             f"        plain = tl.arange(0, {block})",
             "        remaining = plain",
