@@ -31,7 +31,9 @@ class MedianBenchmark(base.Benchmark):
                 dtype,
                 ordinal,
                 base.BenchmarkCasePlan(
-                    shape={"input": list(shape)}, params={}, builder_args=(tuple(shape),)
+                    shape={"input": list(shape)},
+                    params={},
+                    builder_args=(tuple(shape),),
                 ),
             )
 
@@ -42,11 +44,29 @@ class MedianBenchmark(base.Benchmark):
         return (utils.generate_tensor_input(shape, case.dtype, self.device),)
 
 
+class MedianOutBenchmark(MedianBenchmark):
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        (shape,) = plan.builder_args
+        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        out = torch.empty((), dtype=case.dtype, device=self.device)
+        return inp, {"out": out}
+
+
 @pytest.mark.median
 def test_median():
     MedianBenchmark(
         op_name="median",
         torch_op=torch.median,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    ).run()
+
+
+@pytest.mark.median_out
+def test_median_out():
+    MedianOutBenchmark(
+        op_name="median_out",
+        torch_op=torch.ops.aten.median.out,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
     ).run()
 
