@@ -15668,6 +15668,18 @@ ops:
   - Reduction
   stages:
   - stable: '3.0'
+- id: softmax_backward_data
+  description: Alias entry named after the aten symbol `_softmax_backward_data`; the
+    backward version of `softmax()` (same semantics as the `softmax_backward` entry).
+  for:
+  - _softmax_backward_data
+  labels:
+  - aten
+  - nn.functional
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
 - id: softmax_backward_out
   description: A variant of `softmax_backward()`.
   for:
