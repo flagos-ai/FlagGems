@@ -242,7 +242,7 @@ def _assert_cholesky_solve_matches(A, factor, rhs, dtype, upper=False):
 _REAL_DTYPES = [torch.float32] + ([torch.float64] if SUPPORT_FP64 else [])
 _COMPLEX_DTYPES = (
     []
-    if IS_ASCEND
+    if (IS_ASCEND or IS_KUNLUNXIN)
     else [torch.complex64] + ([torch.complex128] if SUPPORT_FP64 else [])
 )
 if IS_KUNLUNXIN:

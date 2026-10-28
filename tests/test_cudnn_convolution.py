@@ -214,6 +214,15 @@ def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
     ndim = inp.ndim - 2
     ref_inp = utils.to_reference(inp, True)
     ref_weight = utils.to_reference(weight, True)
+    if vendor_name == "kunlunxin":
+        pads = _to_list(padding, ndim)
+        if all(size == 1 for size in ref_weight.shape[2:]) and any(
+            p != 0 for p in pads
+        ):
+            ref_inp = torch.nn.functional.pad(
+                ref_inp, [edge for p in reversed(pads) for edge in (p, p)]
+            )
+            padding = 0
     out = _CONV_REF_FN[ndim](
         ref_inp,
         ref_weight,

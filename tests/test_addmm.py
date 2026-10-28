@@ -52,8 +52,9 @@ _ADDMM_LAYOUT_BIAS_VENDORS = (
     "thead",
     "mthreads",
     "metax",
+    "kunlunxin",
 )
-_ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax")
+_ADDMM_BETA_ZERO_VENDORS = ("nvidia", "hygon", "thead", "metax", "kunlunxin")
 
 if IS_KUNLUNXIN:
     _ADDMM_LAYOUT_BIAS_VENDORS += ("kunlunxin",)

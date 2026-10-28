@@ -30,6 +30,7 @@ try:
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 if HAS_VLLM_FUSED_MOE:
     VLLM_SUPPORTS_INPLACE = (
         "inplace" in inspect.signature(vllm_fused_experts_impl).parameters
@@ -128,6 +129,10 @@ def _unfused_moe_experts_device_baseline(hidden_states, w1, w2, topk_weights, to
 
 def _vllm_outplace_fused_experts_wrapper(hidden_states, w1, w2, topk_weights, topk_ids):
     """Wrapper to call vLLM fused_experts_impl out-of-place."""
+    if IS_KUNLUNXIN:
+        return _unfused_moe_experts_device_baseline(
+            hidden_states, w1, w2, topk_weights, topk_ids
+        )
     if not VLLM_SUPPORTS_INPLACE:
         pytest.skip("installed vLLM fused_experts_impl does not accept inplace")
     return vllm_fused_experts_impl(

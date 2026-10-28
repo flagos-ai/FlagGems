@@ -31,6 +31,7 @@ try:
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 if HAS_VLLM_FUSED_MOE:
     VLLM_SUPPORTS_INPLACE = (
         "inplace" in inspect.signature(vllm_fused_experts_impl).parameters
