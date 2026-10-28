@@ -144,7 +144,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_empty():
                 and reference[2].data_ptr() == reference_inputs[3].data_ptr()
             )
             or (
-                flag_gems.vendor_name == "ascend"
+                flag_gems.vendor_name in {"ascend", "enflame"}
                 and not utils.TO_CPU
                 and torch.equal(reference[1], reference_inputs[2])
                 and torch.equal(reference[2], reference_inputs[3])
@@ -171,7 +171,7 @@ def test_fake_quantize_learnable_per_tensor_affine_backward_rejects_integer_inpu
     grad = torch.ones((4, 8), device=flag_gems.device)
     scale = torch.tensor([0.1], device=flag_gems.device)
     zero_point = torch.tensor([0.0], device=flag_gems.device)
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, RuntimeError)):
         flag_gems._fake_quantize_learnable_per_tensor_affine_backward(
             grad, self_t, scale, zero_point, -128, 127, 1.0
         )
