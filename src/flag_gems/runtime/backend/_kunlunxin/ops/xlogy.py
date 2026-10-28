@@ -59,10 +59,14 @@ def _xlogy_fast(x, y):
     x_f32 = x.to(tl.float32)
     y_f32 = y.to(tl.float32)
     prod = x_f32 * tl.log(1.0000000000000000 * y_f32)
+    # x == 0 with a non-NaN y must return 0 (ATen), but x == 0 with y == NaN
+    # must return NaN.  `prod` is already NaN whenever y is NaN (0 * NaN == NaN),
+    # so restore `prod` on the NaN lanes instead of the 0 clamp.  Two plain
+    # float comparisons vectorize on XPU3; an int bitcast / compound `&` mask
+    # collapses the fast memory path (~0.26x), so avoid both.
     res = tl.where(x_f32 == 0.0, 0.0, prod)
-    y_bits = y_f32.to(tl.int32, bitcast=True)
-    y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-    return tl.where(y_nan, float("nan"), res)
+    res = tl.where(y_f32 != y_f32, prod, res)
+    return res
 
 
 MIN_BLOCK = 2048
@@ -119,9 +123,7 @@ def xlogy_kernel(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
         res = x * tl.log(y)
@@ -143,9 +145,7 @@ def xlogy_kernel_unmasked(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
     else:
         res = x * tl.log(y)
@@ -169,9 +169,7 @@ def xlogy_tensor_scalar_kernel(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
         res = x * tl.log(y)
@@ -193,9 +191,7 @@ def xlogy_tensor_scalar_kernel_unmasked(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
     else:
         res = x * tl.log(y)
@@ -219,9 +215,7 @@ def xlogy_tensor_scalar_ptr_kernel(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
         res = x * tl.log(y)
@@ -243,9 +237,7 @@ def xlogy_tensor_scalar_ptr_kernel_unmasked(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
     else:
         res = x * tl.log(y)
@@ -269,9 +261,7 @@ def xlogy_scalar_tensor_kernel(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
         res = x * tl.log(y)
@@ -293,9 +283,7 @@ def xlogy_scalar_tensor_kernel_unmasked(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
     else:
         res = x * tl.log(y)
@@ -319,9 +307,7 @@ def xlogy_scalar_tensor_ptr_kernel(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty), mask=mask)
     else:
         res = x * tl.log(y)
@@ -343,9 +329,7 @@ def xlogy_scalar_tensor_ptr_kernel_unmasked(
     if EXACT:
         prod = x * tl.log(y)
         res = tl.where(x == 0.0, 0.0, prod)
-        y_bits = y.to(tl.int32, bitcast=True)
-        y_nan = (y_bits & 0x7FFFFFFF) > 0x7F800000
-        res = tl.where(y_nan, float("nan"), res)
+        res = tl.where(y != y, prod, res)
         tl.store(out_ptr + offset, res.to(out_ptr.dtype.element_ty))
     else:
         res = x * tl.log(y)
@@ -364,9 +348,13 @@ def _launch(x, y, out):
     n_elements = x.numel()
     if n_elements == 0:
         return
-    if n_elements >= _GATE:
-        _xlogy_fast(x, y, out0=out)
-        return
+    # The exact `pointwise_dynamic` kernel (`_xlogy_fast`) collapses to ~0.26x on
+    # large tensors because its generated body does not vectorize the two
+    # `tl.where` clamps.  The hand-tuned raw kernels below express the identical
+    # exact math but keep XPU3's fast vectorized memory path (~0.85-1.3x), so the
+    # same-shape contiguous path (this launcher) always uses them, at every size.
+    # `_xlogy_fast` stays the correctness fallback for the broadcast / strided-out
+    # path in `_launch_broadcast`, where flat indexing is not valid.
     block_size, num_warps, masked = _pick_block(n_elements)
     # The tensor-tensor body has to be exact for every size: the inexact
     # `x * log(y)` form returns NaN instead of 0 whenever x == 0 and y <= 0

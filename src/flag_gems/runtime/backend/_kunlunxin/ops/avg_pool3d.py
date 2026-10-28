@@ -73,6 +73,10 @@ def _avg_pool3d_kernel(
     remaining = remaining // OUT_H
     output_d = remaining % OUT_D
     channel_batch = remaining // OUT_D
+    # Clamp the batch/channel index so the gathered address is always in-bounds
+    # even for the tail block (lanes with offsets >= total).
+    nbc = total // (OUT_D * OUT_H * OUT_W)
+    channel_batch = tl.minimum(channel_batch, nbc - 1)
 
     start_d = output_d * SD - PD
     start_h = output_h * SH - PH
@@ -100,14 +104,11 @@ def _avg_pool3d_kernel(
                     & (input_w >= 0)
                     & (input_w < W)
                 )
-                input_offset = (
-                    (channel_batch * D + input_d) * H + input_h
-                ) * W + input_w
-                value = tl.load(
-                    input_ptr + input_offset,
-                    mask=valid & in_bounds,
-                    other=0.0,
-                ).to(tl.float32)
+                safe_d = tl.minimum(tl.maximum(input_d, 0), D - 1)
+                safe_h = tl.minimum(tl.maximum(input_h, 0), H - 1)
+                safe_w = tl.minimum(tl.maximum(input_w, 0), W - 1)
+                input_offset = ((channel_batch * D + safe_d) * H + safe_h) * W + safe_w
+                value = tl.load(input_ptr + input_offset).to(tl.float32)
                 accumulator += tl.where(in_bounds, value, 0.0)
                 valid_count += tl.where(in_bounds, 1, 0)
 
@@ -154,7 +155,7 @@ def avg_pool3d(
     total = output.numel()
     if total:
         x = x.contiguous()
-        block = 128
+        block = 512
         divisor = 0 if divisor_override is None else divisor_override
         with torch_device_fn.device(input.device):
             _avg_pool3d_kernel[(triton.cdiv(total, block),)](

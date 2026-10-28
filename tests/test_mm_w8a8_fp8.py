@@ -57,7 +57,7 @@ def _scaled_fp8_reference(a, b, sa, sb):
     return (a.float() @ b.float()) * sa.reshape(-1, 1) * sb.reshape(1, -1)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.parametrize(
     "M, N, K",
     [
@@ -106,7 +106,7 @@ def test_mm_w8a8_fp8(M, N, K):
     utils.gems_assert_close(res_out_reused, ref_out, dtype, reduce_dim=K)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize(
     "M,N,K",
@@ -150,7 +150,7 @@ def test_mm_w8a8_fp8_mthreads_prequantized(M, N, K, dtype, column_major, rowwise
     torch.testing.assert_close(result_fp32, ref, rtol=5e-4, atol=0.003)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("M,N,K", [(256, 256, 8192), (128, 1024, 16384)])
 @pytest.mark.parametrize("scalar_a", [False, True])
@@ -169,7 +169,68 @@ def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, scalar_a):
     torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize(
+    "M,N,K",
+    [
+        (1, 4096, 1024),
+        (1, 1536, 4096),
+        (1, 64, 4096),
+        (1, 4, 16384),
+        (2, 1536, 4096),
+        (4, 16160, 7168),
+        (512, 1, 2048),
+        (64, 4, 16384),
+        (64, 1536, 4096),
+        (100, 1536, 4096),
+    ],
+)
+@pytest.mark.parametrize("rowwise", [False, True])
+def test_mm_w8a8_fp8_mthreads_skinny_epilogue(M, N, K, rowwise):
+    torch.manual_seed(42)
+    a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, K), device=a.device).to(a.dtype).T
+    sa, sb = _external_scales(a, b, rowwise)
+    sr = torch.linspace(0.75, 1.25, M, device=a.device)
+    for dtype in (torch.bfloat16, torch.float32):
+        bias = torch.linspace(-0.25, 0.25, N, device=a.device).to(dtype)
+        storage = torch.empty((M, N * 2), device=a.device, dtype=dtype)
+        out = storage[:, ::2]
+        result = flag_gems.mm_w8a8_fp8_out(
+            a, b, sa, sb, bias=bias, scale_result=sr, out=out
+        )
+        assert result is out
+        ref = (_scaled_fp8_reference(a, b, sa, sb) + bias.float()) / sr[:, None]
+        rtol, atol = (5e-4, 0.003) if dtype == torch.float32 else (0.016, 0.01)
+        torch.testing.assert_close(result, ref.to(dtype), rtol=rtol, atol=atol)
+
+
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize("N", [384, 1024, 2048, 4096])
+def test_mm_w8a8_fp8_mthreads_dense_reuse(N):
+    torch.manual_seed(42)
+    a = torch.randn((N, N), device=flag_gems.device).to(torch.float8_e4m3fn)
+    b = torch.randn((N, N), device=a.device).to(a.dtype).T
+    sa, sb = _external_scales(a, b)
+    out = torch.empty((N, N), device=a.device, dtype=torch.bfloat16)
+    stream = torch.musa.Stream()
+    stream.wait_stream(torch.musa.current_stream())
+    with torch.musa.stream(stream):
+        for _ in range(3):
+            a.copy_(torch.randn(a.shape, device=a.device).to(a.dtype))
+            b.copy_(torch.randn(b.shape, device=b.device).to(b.dtype))
+            sa.mul_(0.75)
+            sb.mul_(1.25)
+            result = flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out)
+            assert result is out
+            ref = _scaled_fp8_reference(a, b, sa, sb).to(out.dtype)
+            torch.testing.assert_close(result, ref, rtol=0.016, atol=0.01)
+    torch.musa.current_stream().wait_stream(stream)
+
+
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
 def test_mm_w8a8_fp8_graph_updates(M, N, K):
@@ -198,7 +259,7 @@ def test_mm_w8a8_fp8_graph_updates(M, N, K):
         torch.testing.assert_close(out, ref, rtol=0.016, atol=0.01)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 def test_mm_w8a8_fp8_empty():
     for m, n, k in [(0, 32, 16), (32, 0, 16), (32, 16, 0)]:
@@ -211,7 +272,7 @@ def test_mm_w8a8_fp8_empty():
         )
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize(
     "out_dtype", [torch.float16, torch.float8_e4m3fn, torch.float8_e5m2]
@@ -228,7 +289,7 @@ def test_mm_w8a8_fp8_output_dtype(out_dtype):
     )
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 def test_mm_w8a8_fp8_independent_and_invalid_out():
     a = torch.randn((64, 32), device=flag_gems.device).to(torch.float8_e4m3fn).T
@@ -246,7 +307,7 @@ def test_mm_w8a8_fp8_independent_and_invalid_out():
         flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out_dtype=torch.float32, out=out)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
 def test_mm_w8a8_fp8_mthreads_broadcast(dtype):
@@ -259,7 +320,7 @@ def test_mm_w8a8_fp8_mthreads_broadcast(dtype):
     torch.testing.assert_close(result, ref, rtol=0.016, atol=0.01)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("out_variant", [False, True])
 def test_mm_w8a8_fp8_invalid_inputs_and_scales(out_variant):
@@ -302,7 +363,7 @@ def test_mm_w8a8_fp8_invalid_inputs_and_scales(out_variant):
             op(a, b, sa, invalid, **kwargs)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _scaled_mm_backend_available(), reason="FP8 scaled MM backend")
 @pytest.mark.parametrize("shape", [(), (1,), (1, 1)])
 def test_mm_w8a8_fp8_scalar_shapes(shape):
@@ -315,7 +376,7 @@ def test_mm_w8a8_fp8_scalar_shapes(shape):
     torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("M,N,K", [(32, 64, 128), (32, 64, 8192)])
 @pytest.mark.parametrize(
@@ -370,7 +431,7 @@ def test_mm_w8a8_fp8_mthreads_scaled_mm_interface(
     torch.testing.assert_close(out.float(), actual.float(), rtol=0, atol=0)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e5m2])
 def test_mm_w8a8_fp8_mthreads_default_dtype(dtype):
@@ -385,7 +446,7 @@ def test_mm_w8a8_fp8_mthreads_default_dtype(dtype):
     )
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 def test_mm_w8a8_fp8_mthreads_invalid_epilogue():
     a = torch.ones((16, 32), device=flag_gems.device).to(torch.float8_e4m3fn)
@@ -409,7 +470,7 @@ def test_mm_w8a8_fp8_mthreads_invalid_epilogue():
         flag_gems.mm_w8a8_fp8(a, b, sa, sb, scale_result=torch.ones(2, device=a.device))
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("K", [0, 128, 8192])
 def test_mm_w8a8_fp8_mthreads_strided_epilogue(K):
@@ -425,7 +486,7 @@ def test_mm_w8a8_fp8_mthreads_strided_epilogue(K):
     torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
 @pytest.mark.parametrize(
     "M,N,K",
@@ -465,7 +526,7 @@ def test_mm_w8a8_fp8_hopper_external_scales(M, N, K, column_major, rowwise, e5_o
     torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
 @pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
 @pytest.mark.parametrize(
@@ -530,7 +591,7 @@ def test_mm_w8a8_fp8_hopper_torch_interface(
     torch.testing.assert_close(out.float(), actual.float(), rtol=rtol, atol=atol)
 
 
-@pytest.mark.mm_w8a8_fp8
+@pytest.mark.mm_w8a8
 @pytest.mark.skipif(not _cuda_hopper_w8a8_fp8_available(), reason="Hopper FP8 backend")
 @pytest.mark.parametrize("M,N,K", [(32, 64, 128), (256, 256, 8192)])
 def test_mm_w8a8_fp8_hopper_torch_rowwise(M, N, K):

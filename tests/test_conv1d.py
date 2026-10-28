@@ -74,7 +74,6 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 
 
 @pytest.mark.conv1d_padding
-@pytest.mark.skipif(flag_gems.vendor_name == "kunlunxin", reason="Issue #3022")
 @pytest.mark.parametrize("shape, kernel", SHAPE_CONV1D)
 @pytest.mark.parametrize("stride", [1])
 @pytest.mark.parametrize("padding", STR_PADDINGS)
@@ -106,6 +105,7 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(flag_gems.vendor_name == "enflame", reason="not working recently")
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.
 

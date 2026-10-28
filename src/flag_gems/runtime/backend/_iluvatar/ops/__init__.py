@@ -28,14 +28,16 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
+from .conv_transpose2d import conv_transpose2d
+from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -94,6 +96,7 @@ from .special_chebyshev_polynomial_w import (
 )
 from .special_gammainc import special_gammainc
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
@@ -109,6 +112,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
 
@@ -133,13 +137,15 @@ __all__ = [
     "arccosh_",
     "as_strided_scatter",
     "avg_pool3d_backward",
-    "broadcast_tensors",
-    "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
     "concatenate",
     "constant_pad_nd",
+    "conv1d",
+    "conv2d",
     "conv_transpose1d",
+    "conv_transpose2d",
+    "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
@@ -208,6 +214,7 @@ __all__ = [
     "special_chebyshev_polynomial_w_out",
     "special_gammainc",
     "special_hermite_polynomial_h",
+    "special_hermite_polynomial_he",
     "special_legendre_polynomial_p",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
@@ -218,6 +225,8 @@ __all__ = [
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
+    "triangular_solve",
+    "triangular_solve_out",
     "var",
     "var_correction",
     "var_dim",

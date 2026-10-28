@@ -32,8 +32,7 @@ def test_sym_stride(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten.sym_stride(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.sym_stride(inp)
+    res_out = flag_gems.sym_stride(inp)
 
     # Compare stride results (convert to tensors for gems_assert_equal)
     utils.gems_assert_equal(torch.tensor(res_out), torch.tensor(ref_out))

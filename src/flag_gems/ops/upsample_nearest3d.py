@@ -113,7 +113,7 @@ def upsample_nearest3d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE NEAREST3D")
+    logger.debug("GEMS UPSAMPLE_NEAREST3D")
     assert input.device.type == device
     assert input.ndim == 5, "The ndim of input must be 5"
 

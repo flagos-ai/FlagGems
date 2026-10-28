@@ -201,7 +201,7 @@ def test_cumprod_inplace_dtype_mismatch():
     inp = _make_input((4, 9), torch.int16)
 
     with pytest.raises(RuntimeError, match="Bad in-place call"):
-        inp.cumprod_(1, dtype=torch.int64)
+        flag_gems.cumprod_(inp, 1, dtype=torch.int64)
 
 
 @pytest.mark.cumprod_

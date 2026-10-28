@@ -491,7 +491,7 @@ def rms_norm_w8a16_fp8(
                     _launch_cached(y, x, cached, M, N, eps)
                     return y
 
-    logger.debug("GEMS_METAX RMS_NORM W8A16 FORWARD")
+    logger.debug("GEMS_METAX RMS_NORM_W8A16_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

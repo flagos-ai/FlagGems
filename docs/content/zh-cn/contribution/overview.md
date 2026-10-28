@@ -46,7 +46,59 @@ instructions, including local and SSH remote workflows.
 
 如果您使用 VS Code 进行开发，且程序运行在容器中，推荐参考项目提供的 Dev Container 配置来搭建开发环境。详细的环境搭建步骤（包括本地和 SSH 远端两种使用场景）请参阅独立页面[开发容器](/FlagGems/zh-cn/contribution/devcontainer/)。
 
-## 2. 算子命名规范 {#operator-naming-conventions}
+<!--
+## 2. Device isolation and visibility
+
+On a node shared by several people, you usually want a test or benchmark run to use only
+a subset of the available devices. FlagGems does not implement its own device allocation;
+it relies on each backend's own visibility environment variable to do the isolation.
+
+A visibility variable must be set **before** the process starts, and the name differs
+from one backend to another:
+
+| Backend | Vendor name | Variable                    |
+| ------- | ----------- | --------------------------- |
+| NVIDIA  | `nvidia`    | `CUDA_VISIBLE_DEVICES`      |
+| Ascend  | `ascend`    | `ASCEND_RT_VISIBLE_DEVICES` |
+| Enflame | `enflame`   | `TOPS_VISIBLE_DEVICES`      |
+
+For example, to run the test suite on GCUs 4 and 6 only:
+
+```shell
+TOPS_VISIBLE_DEVICES=4,6 pytest tests/
+```
+
+Note that the runtime renumbers the devices that survive the filter, so in the command
+above the two remaining GCUs appear inside the process as `0` and `1`, not as `4` and `6`.
+
+For the common pitfalls around each backend's variable name, the full mapping, and how to
+verify that a setting took effect, see
+[Selecting Visible Devices](/FlagGems/contribution/device-visibility/).
+-->
+
+## 2. 设备隔离与可见性 {#device-visibility}
+
+在多人共享的节点上运行单元测试或性能测试时，通常只希望当前进程使用其中的一部分设备。FlagGems 并不自行实现一套设备分配机制，而是依赖各后端自身的可见性环境变量来完成隔离。
+
+可见性变量必须在进程启动**之前**设置，并且各后端的变量名互不相同：
+
+| 后端    | 厂商名      | 环境变量                        |
+| ----- | -------- | --------------------------- |
+| NVIDIA | `nvidia` | `CUDA_VISIBLE_DEVICES`      |
+| Ascend | `ascend` | `ASCEND_RT_VISIBLE_DEVICES` |
+| Enflame | `enflame` | `TOPS_VISIBLE_DEVICES`      |
+
+例如，在 Enflame 后端上只使用 4 号和 6 号 GCU 运行测试：
+
+```shell
+TOPS_VISIBLE_DEVICES=4,6 pytest tests/
+```
+
+需要注意，运行时会为过滤后保留下来的设备重新编号，因此上面这条命令中剩余的两张 GCU 在进程内看到的编号是 `0` 和 `1`，而不是 `4` 和 `6`。
+
+关于各后端变量名的常见陷阱、完整对应关系以及验证设置是否生效的方法，请参阅[设置设备可见性](/FlagGems/zh-cn/contribution/device-visibility/)。
+
+## 3. 算子命名规范 {#operator-naming-conventions}
 
 FlagGems 主要提供 PyTorch ATen 算子库的替代实现，其算子注册表为 [native_functions.yaml](https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/native_functions.yaml)。FlagGems API 的命名约定如下：
 
@@ -73,7 +125,7 @@ Other fields for an operator include:
 
 > **注意**：若仓库中两个算子仅存在前缀下划线的差异，则保留其前缀下划线。对应算子在测试时的 marker 需额外添加 `underscore` 前缀，以规避 pytest 的限制。
 
-## 3. 算子元信息管理 {#operator-metadata-management}
+## 4. 算子元信息管理 {#operator-metadata-management}
 
 从 v4.2 版本开始，FlagGems 项目引入了算子目录，即 `conf/operators.yaml` 文件。其中每个算子都有一个由 `id` 字段标识的唯一标识符。各字段说明如下：
 
@@ -116,7 +168,7 @@ yaml 文件示例如下：
       - aten
 ```
 
-## 4. 算子交付件 {#operator-deliverables}
+## 5. 算子交付件 {#operator-deliverables}
 
 开发新算子前，需要浏览`conf/operators.yaml` 中的`for`字段，避免开发重复算子。新算子需要提交以下内容：
 
@@ -143,11 +195,13 @@ and perform basic code pre-checks when calling the `git commit` command.
 
 > **注意**：FlagGems仓库是一个 triton 算子库，不接受无直接或间接设备端调用的算子。
 
-## 5. 算子 Host 函数规范 {#operator-host-function-conventions}
+## 6. 算子 Host 函数规范 {#operator-host-function-conventions}
 
 算子在 Host 端可以调用 `torch.empty_like()`、`torch.zeros()`、`torch.randn()` 等数据初始化函数，以及 FlagGems 的其他算子。禁止调用 PyTorch 运算相关的算子。
 
-## 6. 代码格式检查 {#code-format-check}
+每个算子函数的第一条语句都应输出 DEBUG 日志。日志内容必须包含 vendor 前缀（通用实现使用 `GEMS`，vendor 实现使用 `GEMS_<VENDOR>`），前缀后用空格分隔，并使用大写 snake_case 形式的算子名，例如 `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`。vendor 前缀还可以选择性地附加设备名称，例如 `GEMS_ENFLAME_GCU300 CONV1D`。
+
+## 7. 代码格式检查 {#code-format-check}
 
 在 FlagGems 项目中使用 `pre-commit` GIT 钩子，可以对 Python 源代码进行格式化，并在执行 `git commit` 命令时自动完成基本的代码预检。
 
@@ -165,7 +219,7 @@ When adding new operators, you need to add unit test cases in the corresponding 
 under the `tests` directory.
 -->
 
-## 7. 算子单元测试 {#operator-unit-tests}
+## 8. 算子单元测试 {#operator-unit-tests}
 
 单元测试用于检验算子实现的正确性。在添加新算子时，需要在 `tests` 目录下的对应文件中添加单元测试用例。
 
@@ -176,6 +230,21 @@ under the `tests` directory.
 > **注意**：单元测试的 mark 名需与算子的 API 名保持一致。若 API 名带有下划线前缀，则额外添加 `underscore` 前缀以规避 pytest 的限制。
 
 当添加新的 C++ 封装算子时，需同时添加对应的 *ctest*。详见[添加 C++ 封装的算子](https://github.com/flagos-ai/FlagGems/blob/gh-pages/FlagGems/zh-cn/contribution/cpp-wrapper)。
+
+### 测试算子日志 {#testing-operator-logs}
+
+算子单元测试可以通过检查 DEBUG 日志，确认实际派发的是预期实现。应只为被解析出的实现函数启用 DEBUG 日志，不要直接启用 root logger：
+
+```python
+with caplog.at_level(
+    "DEBUG", logger=utils.gems_log_logger(flag_gems.add)
+):
+    result = flag_gems.add(inp, other)
+
+assert f"{utils.gems_log_prefix(flag_gems.add)} ADD" in caplog.text
+```
+
+`gems_log_logger()` 根据最终解析出的函数获取 logger 名称，因此在选择 backend 特化实现时也能正常工作。`gems_log_prefix()` 对通用实现返回 `GEMS`，对 vendor 实现返回 `GEMS_<VENDOR>`。日志断言应限定在当前测试的算子范围内，避免其他 DEBUG 日志导致测试误通过。
 
 <!--
 ### Model test
@@ -214,7 +283,7 @@ you need to add performance test cases in the corresponding file
 under the `benchmark` directory.
 -->
 
-## 8. 算子性能基准测试 {#operator-performance-benchmarking}
+## 9. 算子性能基准测试 {#operator-performance-benchmarking}
 
 **算子基准测试（Operator Benchmark）** 用于评估算子实现的性能。在添加新算子或优化现有算子时，需要在 `benchmark/` 目录下的对应文件中添加性能测试用例。
 
@@ -243,7 +312,7 @@ selectively. In the example below, test case is annotated with `@pytest.mark.abs
 to indicate that this test case is for the `abs` operator.
 -->
 
-## 9. 关于测例的标记（marks） {#test-case-marking}
+## 10. 关于测例的标记（marks） {#test-case-marking}
 
 精度测试（单元测试）和性能测试（基准测试）均使用 pytest。pytest 提供的定制标记（Custom Marks）机制允许我们为测试用例添加注解。FlagGems 项目利用这一机制来选择性地执行针对特定算子的测试或性能分析。在下面的示例中，`@pytest.mark.abs` 注解表明此测试用例用于测试 `abs` 算子。
 

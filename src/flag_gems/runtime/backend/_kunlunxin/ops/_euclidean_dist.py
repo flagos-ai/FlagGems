@@ -8,12 +8,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.jit
-def _euclidean_dist_kernel_fast(
+def _euclidean_dist_mm_kernel(
     x1_ptr,
     x2_ptr,
     out_ptr,
@@ -23,77 +23,54 @@ def _euclidean_dist_kernel_fast(
     stride_x1,
     stride_x2,
     stride_out,
-    CHUNK: tl.constexpr,
+    BN: tl.constexpr,
     BM: tl.constexpr,
-    BLOCK_D: tl.constexpr,
+    BK: tl.constexpr,
 ):
-    """Fast path: D == BLOCK_D (D is a power of two) and N % BM == 0.
+    """dist = sqrt(relu(||x1||^2 + ||x2||^2 - 2 x1.x2^T)), the same GEMM identity
+    torch._euclidean_dist uses. The x1.x2^T term goes through tl.dot with
+    input_precision=ieee (full fp32 -- tf32 is ~2 off and fails the 1.3e-6 rtol
+    gate); the squared norms are reduced alongside in the same K loop.
 
-    No d-mask (D == BLOCK_D) and no per-row n_ok mask (N % BM == 0), so the
-    backend emits unmasked vector loads. Only the [CHUNK]-shaped m_mask guards
-    the M tail (M % CHUNK may be non-zero).
+    NOTE: the final combine is written step-by-step (acc, then += n1, then += n2)
+    on purpose -- the fused `n1[:,None] + n2[None,:] - 2*dot` expression
+    miscompiles on this backend (two broadcasts of reduction vectors in one
+    expression -> wrong result; verified), whereas the stepwise form is exact.
     """
-    pid_c = tle.program_id(0)
-    pid_r = tle.program_id(1)
-    d = tl.arange(0, BLOCK_D)
-    m = pid_c * CHUNK + tl.arange(0, CHUNK)
-    m_mask = m < M
-    x2_vals = tl.load(
-        x2_ptr + m[:, None] * stride_x2 + d[None, :],
-        mask=m_mask[:, None],
-        other=0.0,
-    ).to(tl.float32)
-    for b in tl.static_range(BM):
-        n = pid_r * BM + b
-        x1_vals = tl.load(x1_ptr + n * stride_x1 + d).to(tl.float32)
-        diff = x1_vals[None, :] - x2_vals
-        dist = tl.sqrt(tl.sum(diff * diff, axis=1))
-        tl.store(out_ptr + n * stride_out + m, dist, mask=m_mask)
-
-
-@libentry()
-@triton.jit
-def _euclidean_dist_kernel(
-    x1_ptr,
-    x2_ptr,
-    out_ptr,
-    N,
-    M,
-    D,
-    stride_x1,
-    stride_x2,
-    stride_out,
-    CHUNK: tl.constexpr,
-    BM: tl.constexpr,
-    BLOCK_D: tl.constexpr,
-):
-    """General path (any D / N): full d-mask and row mask."""
-    pid_c = tle.program_id(0)
-    pid_r = tle.program_id(1)
-    d = tl.arange(0, BLOCK_D)
-    d_mask = d < D
-    m = pid_c * CHUNK + tl.arange(0, CHUNK)
-    m_mask = m < M
-    x2_vals = tl.load(
-        x2_ptr + m[:, None] * stride_x2 + d[None, :],
-        mask=m_mask[:, None] & d_mask[None, :],
-        other=0.0,
-    ).to(tl.float32)
-    for b in tl.static_range(BM):
-        n = pid_r * BM + b
-        n_ok = n < N
-        x1_vals = tl.load(
-            x1_ptr + n * stride_x1 + d,
-            mask=n_ok & d_mask,
+    pid_n = tle.program_id(0)
+    pid_m = tle.program_id(1)
+    rn = pid_n * BN + tl.arange(0, BN)
+    rm = pid_m * BM + tl.arange(0, BM)
+    nmask = rn < N
+    mmask = rm < M
+    acc = tl.zeros((BN, BM), dtype=tl.float32)
+    n1 = tl.zeros((BN,), dtype=tl.float32)
+    n2 = tl.zeros((BM,), dtype=tl.float32)
+    for k in range(0, D, BK):
+        kk = k + tl.arange(0, BK)
+        kmask = kk < D
+        a = tl.load(
+            x1_ptr + rn[:, None] * stride_x1 + kk[None, :],
+            mask=nmask[:, None] & kmask[None, :],
             other=0.0,
         ).to(tl.float32)
-        diff = x1_vals[None, :] - x2_vals
-        dist = tl.sqrt(tl.sum(diff * diff, axis=1))
-        tl.store(
-            out_ptr + n * stride_out + m,
-            dist,
-            mask=m_mask & n_ok,
-        )
+        b = tl.load(
+            x2_ptr + rm[:, None] * stride_x2 + kk[None, :],
+            mask=mmask[:, None] & kmask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        acc += tl.dot(a, tl.trans(b), input_precision="ieee")
+        n1 += tl.sum(a * a, axis=1)
+        n2 += tl.sum(b * b, axis=1)
+    dist2 = -2.0 * acc
+    dist2 = dist2 + n1[:, None]
+    dist2 = dist2 + n2[None, :]
+    dist = tl.sqrt(tl.where(dist2 > 0.0, dist2, 0.0))
+    tl.store(
+        out_ptr + rn[:, None] * stride_out + rm[None, :],
+        dist,
+        mask=nmask[:, None] & mmask[None, :],
+    )
 
 
 def _euclidean_dist(x1, x2):
@@ -113,21 +90,16 @@ def _euclidean_dist(x1, x2):
     if N == 0 or M == 0:
         return output
 
-    BM = 8
-    BLOCK_D = min(triton.next_power_of_2(D), 1024)
-    max_chunk = max(1, 16384 // max(BLOCK_D, 1))
-    if D >= 256 or D == 64:
-        CHUNK = 16
-    else:
-        CHUNK = 64
-    CHUNK = min(CHUNK, max_chunk)
-
-    use_fast = (D == BLOCK_D) and (N % BM == 0)
-    kernel = _euclidean_dist_kernel_fast if use_fast else _euclidean_dist_kernel
+    # Small output tiles spread the [N,M] grid across many programs/cores (the
+    # pair counts here are tiny and otherwise launch-bound); BK >= 16 so tl.dot
+    # is legal even for tiny D, with kk < D masking the pad lanes to zero.
+    BN = 32
+    BM = 16
+    BK = max(16, min(triton.next_power_of_2(D), 256))
 
     with torch_device_fn.device(x1.device):
-        grid = (triton.cdiv(M, CHUNK), triton.cdiv(N, BM))
-        kernel[grid](
+        grid = (triton.cdiv(N, BN), triton.cdiv(M, BM))
+        _euclidean_dist_mm_kernel[grid](
             x1,
             x2,
             output,
@@ -137,9 +109,9 @@ def _euclidean_dist(x1, x2):
             x1.stride(0),
             x2.stride(0),
             output.stride(0),
-            CHUNK=CHUNK,
+            BN=BN,
             BM=BM,
-            BLOCK_D=BLOCK_D,
+            BK=BK,
         )
 
     return output

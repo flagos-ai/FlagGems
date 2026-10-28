@@ -510,7 +510,7 @@ def _launch_multi(dense, offsets, output, max_lengths, total_L, inner_size):
 
 def _padded_dense_to_jagged_forward(dense, offsets, total_L=None):
     """Convert padded dense storage into a one- to five-level jagged tensor."""
-    logger.debug("GEMS PADDED DENSE TO JAGGED FORWARD")
+    logger.debug("GEMS PADDED_DENSE_TO_JAGGED_FORWARD")
 
     num_jagged_dims, max_lengths, total_L = _check_inputs(dense, offsets, total_L)
     dense_contiguous = dense.contiguous()

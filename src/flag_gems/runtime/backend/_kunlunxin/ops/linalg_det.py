@@ -13,6 +13,24 @@ logger = logging.getLogger(__name__)
 
 _MIN_LDA = 64
 _MAX_BLK = 4096
+_MULTI_MIN_BATCH = 128
+_MIN_DET4_GROUP = 64
+# A grouped elimination tile may use twice a single block as long as the
+# per-matrix tile is itself block sized (n >= 32): measured 2.26x at
+# batch 512 / n 32 for 8192 lanes against 2.06x for 4096 and 1.82x for 16384.
+# Small-n layouts (TOT <= 512) lose from the wider tile and keep _MAX_BLK.
+_MAX_GROUP_LANES = 8192
+# Grouping pays off while the per-matrix tile is small enough for the group to
+# hold several of them.  At TOT = 4096 only BB = 2 fits and the second launch
+# per step then costs more than the grouping saves (n = 64 / batch 256:
+# grouped 14.3 ms vs 13.3 ms for the launch-per-step loop), so those shapes
+# take the plain per-step loop instead.
+_MAX_GROUP_TOT = 2048
+# Single-launch elimination needs a >= 1024 lane iteration tile, and for the
+# padded small-n layouts it is only reproducible up to a handful of matrices
+# (bit-exact and stable for batch <= 8, deterministically corrupt from 16).
+_ELIM_MIN_TOT = 1024
+_ELIM_SMALL_MAX_BATCH = 4
 
 
 @libentry()
@@ -74,9 +92,99 @@ def _det4_kernel(A, OUT, TOT: tl.constexpr):
     tl.store(OUT + b, det)
 
 
+@libentry()
+@triton.jit
+def _det4_group_kernel(A, OUT, BB: tl.constexpr):
+    """Closed-form 4x4 determinant for BB matrices per program.
+
+    Identical arithmetic to ``_det4_kernel`` (and bit-exact against it), but the
+    16 scalar loads become 16 BB-lane stride-16 loads, so a batch of 4096 costs
+    16 programs instead of 4096.  One matrix per program was spending ~1.3us of
+    per-program dispatch on 64 bytes of data.
+
+    BB must be >= 64: below that the [BB]-lane result store is not reliably
+    bit-reproducible on this backend.  At BB == 16 it disagreed with the
+    scalar kernel and with itself across runs; BB == 32 looked exact in some
+    probes but at batch 224 (grid 7) a single process saw BB == 8 disagree
+    across four runs and BB == 16/32 disagree with the scalar kernel, while a
+    second process saw all of them agree -- intermittent, so the gate stays
+    where every probe was stable.
+    """
+    g = tle.program_id(0).to(tl.int64)
+    idx = g * BB + tl.arange(0, BB).to(tl.int64)
+    base = idx * 16
+    a00 = tl.load(A + base + 0)
+    a01 = tl.load(A + base + 1)
+    a02 = tl.load(A + base + 2)
+    a03 = tl.load(A + base + 3)
+    a10 = tl.load(A + base + 4)
+    a11 = tl.load(A + base + 5)
+    a12 = tl.load(A + base + 6)
+    a13 = tl.load(A + base + 7)
+    a20 = tl.load(A + base + 8)
+    a21 = tl.load(A + base + 9)
+    a22 = tl.load(A + base + 10)
+    a23 = tl.load(A + base + 11)
+    a30 = tl.load(A + base + 12)
+    a31 = tl.load(A + base + 13)
+    a32 = tl.load(A + base + 14)
+    a33 = tl.load(A + base + 15)
+    det = (
+        a00
+        * (
+            a11 * (a22 * a33 - a23 * a32)
+            - a12 * (a21 * a33 - a23 * a31)
+            + a13 * (a21 * a32 - a22 * a31)
+        )
+        - a01
+        * (
+            a10 * (a22 * a33 - a23 * a32)
+            - a12 * (a20 * a33 - a23 * a30)
+            + a13 * (a20 * a32 - a22 * a30)
+        )
+        + a02
+        * (
+            a10 * (a21 * a33 - a23 * a31)
+            - a11 * (a20 * a33 - a23 * a30)
+            + a13 * (a20 * a31 - a21 * a30)
+        )
+        - a03
+        * (
+            a10 * (a21 * a32 - a22 * a31)
+            - a11 * (a20 * a32 - a22 * a30)
+            + a12 * (a20 * a31 - a21 * a30)
+        )
+    )
+    tl.store(OUT + idx, det)
+
+
 @triton.jit
 def _reduce_mul(a, b):
     return a * b
+
+
+def _pick_group(batch_count, tot):
+    """Matrices per program for the batched elimination path.
+
+    Per-launch pricing on this backend puts the elimination step at
+    ~0.46-0.56us *per program* with only a weak dependence on the tile size
+    (TOT 256 -> 512 costs ~20% more), i.e. one matrix per program spends
+    almost all of its time on per-program dispatch rather than on the 1-2 KB
+    it touches.  Grouping BB matrices into one program is the only lever on
+    that term, so take the largest power of two whose flat tile still fits a
+    single _MAX_BLK block and that divides the batch exactly -- a partial
+    group would need masked loads, which this backend does not honour.
+
+    Matrices whose own tile already fills a block (TOT >= 1024, i.e. n >= 32)
+    are allowed twice that budget; wider tiles were measured to help there
+    (n = 32: 2.26x at 8192 lanes vs 2.06x at 4096) and to hurt for the small-n
+    layouts (n = 8: 0.72x at 8192), which stay at one block.
+    """
+    cap = _MAX_GROUP_LANES if tot >= _ELIM_MIN_TOT else _MAX_BLK
+    bb = 1
+    while bb * 2 * tot <= cap and batch_count % (bb * 2) == 0:
+        bb *= 2
+    return bb
 
 
 def _plan(n):
@@ -88,6 +196,23 @@ def _plan(n):
     tot = rows * lda
     blk = min(_MAX_BLK, tot)
     return rows, lda, tot, blk, tot // blk
+
+
+def _plan_pad(n):
+    """Layout for n < 32 on the single-launch elimination path.
+
+    ``_det_elim_kernel`` is only exact when every iteration works on at least
+    _ELIM_MIN_TOT lanes, which the natural small-n layouts do not reach
+    (n = 8 -> 512, n = 16 -> 256), so the row stride is padded up until the
+    tile does.  Padding lanes are zeroed by ``_det_pack_kernel`` and masked by
+    the kernel, exactly as on the launch-per-step path.
+    """
+    rows = triton.next_power_of_2(n)
+    lda = max(_MIN_LDA, rows)
+    while rows * lda < _ELIM_MIN_TOT:
+        lda *= 2
+    tot = rows * lda
+    return rows, lda, tot, tot, 1
 
 
 @libentry()
@@ -195,6 +320,103 @@ def _det_step_kernel(W, DG, N, K, LDA: tl.constexpr, TOT: tl.constexpr):
 
 @libentry()
 @triton.jit
+def _det_pivot_scan_kernel(
+    W,
+    PR,
+    AP,
+    AK,
+    DG,
+    N,
+    K,
+    LDA: tl.constexpr,
+    ROWS: tl.constexpr,
+    TOT: tl.constexpr,
+    BB: tl.constexpr,
+):
+    """Pivot search for BB matrices at once, one program per group.
+
+    Only the pivot column of each matrix is touched, as a [BB, ROWS] tile, so
+    the three reductions stay on a single axis (axis=1).  Reducing a second
+    axis of the same tile is not tileable on this backend, which is why the
+    trailing update cannot live in this kernel and gets its own launch; a
+    fused [BB, TOT] version fails to tile with out of resource: uni_sram even
+    at BB == 1.  ROWS (not LDA) bounds the scan so the padded n=8 layout does
+    not pay for 64 rows, and the pivot row / signed pivot are handed to the
+    update kernel through small side buffers.
+    """
+    g = tle.program_id(0).to(tl.int64)
+    m = tl.arange(0, BB).to(tl.int64)
+    ridx = tl.arange(0, ROWS)[None, :]
+    idx = g * BB + m
+    mbase = idx[:, None] * TOT
+    cks = tl.load(W + mbase + ridx * LDA + K)
+    cand = tl.where((ridx >= K) & (ridx < N), tl.abs(cks), -1.0)
+    best = tl.max(cand, axis=1)[:, None]
+    prow = tl.min(tl.where(cand == best, ridx, ROWS), axis=1)
+    apk = tl.sum(tl.where(ridx == prow[:, None], cks, 0.0), axis=1)
+    akk = tl.sum(tl.where(ridx == K, cks, 0.0), axis=1)
+    tl.store(PR + idx, prow)
+    tl.store(AP + idx, apk)
+    tl.store(AK + idx, akk)
+    tl.store(DG + idx * LDA + K, tl.where(prow != K, -apk, apk))
+
+
+@libentry()
+@triton.jit
+def _det_update_group_kernel(
+    SRC,
+    DST,
+    PR,
+    AP,
+    AK,
+    K,
+    LDA: tl.constexpr,
+    TOT: tl.constexpr,
+    BB: tl.constexpr,
+    NLANE: tl.constexpr,
+):
+    """Swap + trailing rank-1 update for BB matrices, one flat NLANE tile.
+
+    Two backend constraints shape this kernel:
+
+    * It must not write the buffer it reads.  With one matrix per program the
+      in-place form of ``_det_step_kernel`` is safe, but once a program owns
+      BB matrices the tile is split into chunks and a later chunk gathers a
+      row an earlier chunk has already overwritten (every matrix came out
+      wrong at NLANE >= 2048, deterministically, even with grid == 2).  The
+      caller therefore ping-pongs two work buffers across K.
+    * The L column must be addressed as ``off - col + K``.  The algebraically
+      identical ``mbase + row * LDA + K`` gather is miscompiled for
+      NLANE >= 2048 (it was the only construct that changed results between
+      BB == 4 and BB == 8 in a per-construct differential); the row-broadcast
+      gathers ``K * LDA + col`` / ``prow * LDA + col`` are fine.
+    """
+    g = tle.program_id(0).to(tl.int64)
+    e = tl.arange(0, NLANE)
+    gb = g * BB
+    mm = e // TOT
+    inner = e % TOT
+    row = inner // LDA
+    col = inner % LDA
+    off = gb * TOT + e
+    mbase = gb * TOT + mm * TOT
+    w = tl.load(SRC + off)
+    prow = tl.load(PR + gb + mm)
+    apk = tl.load(AP + gb + mm)
+    akk = tl.load(AK + gb + mm)
+    row_k = tl.load(SRC + mbase + K * LDA + col)
+    row_p = tl.load(SRC + mbase + prow * LDA + col)
+    col_k = tl.load(SRC + off - col + K)
+    swapped = tl.where(row == K, row_p, tl.where(row == prow, row_k, w))
+    lcol = tl.where(row == K, apk, tl.where(row == prow, akk, col_k))
+    safe = tl.where(apk == 0.0, 1.0, apk)
+    mult = tl.where(row > K, lcol / safe, 0.0)
+    urow = tl.where(col > K, row_p, 0.0)
+    tl.store(DST + off, swapped - mult * urow)
+
+
+@libentry()
+@triton.jit
 def _det_pivot_swap_kernel(W, DG, N, K, LDA: tl.constexpr, ROWS: tl.constexpr):
     """Pivot search plus physical row swap, one matrix per program.
 
@@ -279,8 +501,12 @@ def _det_elim_kernel(
 
     Measured on this backend the pattern is exact only when the per-iteration
     tile is >= 1024 lanes (TOT >= 1024); smaller tiles are reordered and give
-    wrong results, so this kernel is only launched for n >= 32 (n = 8/16
-    keep the launch-per-step path).
+    wrong results, so n < 32 is padded up to _ELIM_MIN_TOT lanes before taking
+    this path.  Padding alone is not enough once many programs run at once:
+    with the padded small-n layouts the result is bit-exact and run-to-run
+    stable up to 8 matrices and deterministically corrupt from 16 (it is the
+    natural TOT >= 1024 layouts, n >= 32, that stay exact at batch 512), hence
+    the _ELIM_SMALL_MAX_BATCH gate on the caller side.
     """
     b = tle.program_id(0).to(tl.int64)
     base = b * TOT
@@ -316,14 +542,41 @@ def _det_elim_kernel(
 
 def _launch_det(A_work, out, batch_count, n, dtype, device):
     if n == 4:
+        group = _pick_group(batch_count, 16) if batch_count >= _MULTI_MIN_BATCH else 1
         with torch_device_fn.device(device):
-            _det4_kernel[(batch_count,)](
-                A_work.view(batch_count, 16), out, TOT=16, num_warps=1
-            )
+            if group >= _MIN_DET4_GROUP:
+                _det4_group_kernel[(batch_count // group,)](
+                    A_work.view(batch_count * 16), out, BB=group, num_warps=1
+                )
+            else:
+                _det4_kernel[(batch_count,)](
+                    A_work.view(batch_count, 16), out, TOT=16, num_warps=1
+                )
         return
 
     rows, lda, tot, blk, nblk = _plan(n)
-    if n >= 32 and batch_count >= 2 and nblk == 1:
+    group = (
+        _pick_group(batch_count, tot)
+        if nblk == 1 and batch_count >= _MULTI_MIN_BATCH and tot <= _MAX_GROUP_TOT
+        else 1
+    )
+    # Single-launch elimination wherever no grouping is available: it beats the
+    # launch-per-step loop by 1.8-3.3x (measured batch 1: n=16 2.53x, n=32
+    # 3.26x, n=64 1.80x, bit-exact), and beats the grouped path below only
+    # when the batch is too small for the grouped or per-step loops (from
+    # _MULTI_MIN_BATCH matrices on, those win: n=32/batch 512 grouped 4.4 ms
+    # and n=64/batch 256 per-step 13.3 ms against 9.7/16.1 ms here).  It stays
+    # out of nblk > 1 (its in-kernel chunk loop costs 2-4x the
+    # launch-per-chunk path) and out of small n with more than
+    # _ELIM_SMALL_MAX_BATCH matrices.
+    if (
+        nblk == 1
+        and batch_count < _MULTI_MIN_BATCH
+        and n >= 8
+        and (n >= 32 or batch_count <= _ELIM_SMALL_MAX_BATCH)
+    ):
+        if tot < _ELIM_MIN_TOT:
+            rows, lda, tot, blk, nblk = _plan_pad(n)
         work0 = torch.empty(batch_count * tot, dtype=dtype, device=device)
         work1 = torch.empty(batch_count * tot, dtype=dtype, device=device)
         with torch_device_fn.device(device):
@@ -346,7 +599,43 @@ def _launch_det(A_work, out, batch_count, n, dtype, device):
             _det_pack_kernel[(batch_count, nblk)](
                 A_work, work, n, LDA=lda, BLK=blk, TOT=tot, num_warps=1
             )
-        if nblk == 1:
+        if group > 1:
+            grid = (batch_count // group,)
+            spare = torch.empty(batch_count * tot, dtype=dtype, device=device)
+            prow = torch.empty(batch_count, dtype=torch.int32, device=device)
+            apk = torch.empty(batch_count, dtype=dtype, device=device)
+            akk = torch.empty(batch_count, dtype=dtype, device=device)
+            src, dst = work, spare
+            for k in range(n):
+                _det_pivot_scan_kernel[grid](
+                    src,
+                    prow,
+                    apk,
+                    akk,
+                    dg,
+                    n,
+                    k,
+                    LDA=lda,
+                    ROWS=rows,
+                    TOT=tot,
+                    BB=group,
+                    num_warps=1,
+                )
+                _det_update_group_kernel[grid](
+                    src,
+                    dst,
+                    prow,
+                    apk,
+                    akk,
+                    k,
+                    LDA=lda,
+                    TOT=tot,
+                    BB=group,
+                    NLANE=group * tot,
+                    num_warps=1,
+                )
+                src, dst = dst, src
+        elif nblk == 1:
             for k in range(n):
                 _det_step_kernel[(batch_count,)](
                     work, dg, n, k, LDA=lda, TOT=tot, num_warps=1

@@ -21,6 +21,15 @@ import flag_gems
 
 from . import base, consts
 
+fp8_is_supported = flag_gems.runtime.device.support_fp8
+
+FP8_DTYPES = [torch.float8_e4m3fn] if fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
+
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
         w8a8_triton_block_scaled_mm as vllm_w8a8_triton_block_scaled_mm,

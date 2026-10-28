@@ -126,25 +126,24 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
         reverse,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hy, res_cy, _ws = torch.mkldnn_rnn_layer(
-            input_tensor,
-            w_ih,
-            w_hh,
-            b_ih,
-            b_hh,
-            hx,
-            cx,
-            reverse,
-            [],
-            _MODE,
-            hidden_size,
-            _NUM_LAYERS,
-            True,
-            _BIDIRECTIONAL,
-            _BATCH_FIRST,
-            False,
-        )
+    res_out, res_hy, res_cy, _ws = flag_gems.mkldnn_rnn_layer(
+        input_tensor,
+        w_ih,
+        w_hh,
+        b_ih,
+        b_hh,
+        hx,
+        cx,
+        reverse,
+        [],
+        _MODE,
+        hidden_size,
+        _NUM_LAYERS,
+        True,
+        _BIDIRECTIONAL,
+        _BATCH_FIRST,
+        False,
+    )
 
     # fp16 LSTM accumulation over a sequence disagrees with oneDNN at the
     # ~1-ULP level; use FlagGems' RNN-level fp16 tolerance (5e-3).

@@ -35,6 +35,7 @@ class ParallelMmW8A8Int8Benchmark(ParallelBlasBenchmark):
     """
 
     SHAPE_CONFIG_KEYS = ("mm_w8a8_int8", "BlasBenchmark")
+    RECORD_PARALLEL_RESULTS = True
 
     def prepare_call(self, op, a, b):
         if op is self.torch_op:
@@ -70,13 +71,13 @@ class ParallelMmW8A8Int8Benchmark(ParallelBlasBenchmark):
         return 2 * a.shape[0] * a.shape[1] * b.shape[1]
 
 
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8():
     if flag_gems.vendor_name == "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
         pytest.skip("mm_w8a8_int8 is not implemented by the active backend")
     bench = ParallelMmW8A8Int8Benchmark(
         input_fn=mm_input_fn,
-        op_name="mm_w8a8_int8",
+        op_name="mm_w8a8",
         torch_op=torch.mm,
         dtypes=FLOAT_DTYPES,
     )
@@ -87,6 +88,9 @@ def test_mm_w8a8_int8():
 
 class ParallelMmW8A8Int8THeadBenchmark(ParallelMmW8A8Fp8Benchmark):
     """Reuse upstream workloads and timing with prequantized INT8 inputs."""
+
+    # Do not inherit the FP8 GEMM cost model; keep the generic shape cost.
+    SHAPE_COST_OP_NAME = None
 
     def get_latency(self, op, *args, **kwargs):
         if op is not self.torch_op:
@@ -130,13 +134,13 @@ class ParallelMmW8A8Int8THeadBenchmark(ParallelMmW8A8Fp8Benchmark):
         return 2 * a.shape[0] * a.shape[1] * b.shape[1]
 
 
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_thead():
     if flag_gems.vendor_name != "thead" or not hasattr(flag_gems, "mm_w8a8_int8_out"):
         pytest.skip("mm_w8a8_int8 benchmark requires the THead INT8 backend")
     bench = ParallelMmW8A8Int8THeadBenchmark(
         input_fn=mm_input_fn,
-        op_name="mm_w8a8_int8",
+        op_name="mm_w8a8",
         torch_op=torch.Tensor.mm,
         dtypes=FLOAT_DTYPES,
     )
