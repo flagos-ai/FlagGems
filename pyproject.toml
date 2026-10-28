@@ -91,7 +91,7 @@ ascend-cann900 = [
     "decorator==5.2.1",
     "attrs==25.3.0",
     "psutil==7.0.0",
-    "flagtree==0.7.0+ascend3.5",
+    "flagtree==0.7.1a1+ascend3.5",
 ]
 
 biren-br2xx = [
