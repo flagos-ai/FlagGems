@@ -313,7 +313,22 @@ def _pack_ok(
 
 @triton.jit
 def _unpack4(v, DT: tl.constexpr):
-    """Split one ``int64`` into four bit-identical ``DT`` values."""
+    """Split one ``int64`` into four bit-identical ``DT`` values.
+
+    bfloat16 travels through f32 rather than a 16-bit bitcast: XPU keeps bf16 in
+    32-bit registers, so ``uint16 -> bf16`` bitcast is rejected by
+    ``TritonXPUDtypeConvert`` ("Cannot bitcast data-type of size 16 to
+    data-type of size 32").  The upper half of an f32 word *is* the bf16 bit
+    pattern, and bf16 -> f32 -> bf16 is the identity for every representable
+    value, so the two forms agree bit for bit.
+    """
+    if DT == tl.bfloat16:
+        return (
+            (((v & 0xFFFF).to(tl.uint32)) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 16) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 32) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 48) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+        )
     return (
         (v & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
         ((v >> 16) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
@@ -325,6 +340,14 @@ def _unpack4(v, DT: tl.constexpr):
 @triton.jit
 def _pack4(a, b, c, d):
     """Inverse of :func:`_unpack4`; the four values must be 16 bits wide."""
+    if a.dtype == tl.bfloat16:
+        # Same 32-bit-register reason as in :func:`_unpack4`; bf16 -> f32 is
+        # exact and the high half of the f32 word holds the original bits.
+        ua = (a.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        ub = (b.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        uc = (c.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        ud = (d.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        return ua | (ub << 16) | (uc << 32) | (ud << 48)
     return (
         a.to(tl.uint16, bitcast=True).to(tl.int64)
         | (b.to(tl.uint16, bitcast=True).to(tl.int64) << 16)
@@ -530,7 +553,17 @@ def _binary_unpack4(v, DT: tl.constexpr):
     body: the split order is part of the packed-access contract, and a private
     definition keeps this lane from having to edit a helper the unary and
     ternary executors also use.
+
+    The bfloat16 branch exists for the same reason as in :func:`_unpack4`: XPU
+    holds bf16 in 32-bit registers and rejects a 16-bit bitcast.
     """
+    if DT == tl.bfloat16:
+        return (
+            (((v & 0xFFFF).to(tl.uint32)) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 16) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 32) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+            (((v >> 48) & 0xFFFF).to(tl.uint32) << 16).to(tl.float32, bitcast=True).to(DT),
+        )
     return (
         (v & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
         ((v >> 16) & 0xFFFF).to(tl.uint16).to(DT, bitcast=True),
@@ -542,6 +575,12 @@ def _binary_unpack4(v, DT: tl.constexpr):
 @triton.jit
 def _binary_pack4(a, b, c, d):
     """Inverse of :func:`_binary_unpack4`; the four values are 16 bits wide."""
+    if a.dtype == tl.bfloat16:
+        ua = (a.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        ub = (b.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        uc = (c.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        ud = (d.to(tl.float32).to(tl.uint32, bitcast=True) >> 16).to(tl.int64)
+        return ua | (ub << 16) | (uc << 32) | (ud << 48)
     return (
         a.to(tl.uint16, bitcast=True).to(tl.int64)
         | (b.to(tl.uint16, bitcast=True).to(tl.int64) << 16)
@@ -552,8 +591,10 @@ def _binary_pack4(a, b, c, d):
 
 @triton.jit
 def _binary_wide_body(
-    meta_ptr,
-    t,
+    a_raw,
+    b_raw,
+    out_raw,
+    n_elements,
     fn: tl.constexpr,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
@@ -566,10 +607,8 @@ def _binary_wide_body(
     """Four 16-bit elements per lane; same semantics as the narrow body."""
     offset = tl.program_id(1) * (BLOCK // 4)
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(tl.int64))
-    b_raw = tl.load(meta_ptr + NT + t)
-    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(tl.int64))
-    n_elements = tl.load(meta_ptr + 3 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(tl.int64))
+    out_ptr = out_raw.to(tl.pointer_type(tl.int64))
 
     idx = offset + tl.arange(0, BLOCK // 4)
     mask = idx < n_elements // 4
@@ -596,8 +635,10 @@ def _binary_wide_body(
 
 @triton.jit
 def _binary_narrow_body(
-    meta_ptr,
-    t,
+    a_raw,
+    b_raw,
+    out_raw,
+    n_elements,
     fn: tl.constexpr,
     NT: tl.constexpr,
     A_DT: tl.constexpr,
@@ -610,10 +651,9 @@ def _binary_narrow_body(
     """The element-indexed body: one operand element per lane."""
     offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(B_DT))
-    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 3 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    b_ptr = b_raw.to(tl.pointer_type(B_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
 
     idx = offset + tl.arange(0, BLOCK)
     mask = idx < n_elements
@@ -679,6 +719,11 @@ def foreach_binary_kernel(
     tail keep the element-indexed body, so nothing here depends on the caller.
     """
     t = tl.program_id(0)
+    # These four loads are hoisted here and threaded into the inlined bodies on
+    # purpose.  Loading them inside both arms of the runtime branch below let
+    # tritonxpu-memory-cache merge the identical loads and then fail dominance
+    # ("operand #0 does not dominate this use") on the arm that no longer owned
+    # the definition.
     a_raw = tl.load(meta_ptr + t)
     b_raw = tl.load(meta_ptr + NT + t)
     out_raw = tl.load(meta_ptr + 2 * NT + t)
@@ -694,15 +739,48 @@ def foreach_binary_kernel(
     if IS16:
         if (((a_raw | b_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
             _binary_wide_body(
-                meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+                a_raw,
+                b_raw,
+                out_raw,
+                n_elements,
+                fn,
+                NT,
+                A_DT,
+                B_DT,
+                OUT_DT,
+                ALPHA,
+                B_SCALAR,
+                BLOCK,
             )
         else:
             _binary_narrow_body(
-                meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+                a_raw,
+                b_raw,
+                out_raw,
+                n_elements,
+                fn,
+                NT,
+                A_DT,
+                B_DT,
+                OUT_DT,
+                ALPHA,
+                B_SCALAR,
+                BLOCK,
             )
     else:
         _binary_narrow_body(
-            meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+            a_raw,
+            b_raw,
+            out_raw,
+            n_elements,
+            fn,
+            NT,
+            A_DT,
+            B_DT,
+            OUT_DT,
+            ALPHA,
+            B_SCALAR,
+            BLOCK,
         )
 
 
@@ -765,7 +843,9 @@ def foreach_binary_kernel_p4(
 
 @triton.jit
 def _binary_scalar_narrow_body(
-    meta_ptr,
+    a_raw,
+    out_raw,
+    n_elements,
     scalar_ptr,
     scalar_value: tl.float64,
     fn: tl.constexpr,
@@ -781,9 +861,8 @@ def _binary_scalar_narrow_body(
     t = tl.program_id(0)
     offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 2 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
     if SCALAR_BY_VALUE:
         s = scalar_value.to(S_DT)
     else:
@@ -841,6 +920,9 @@ def foreach_binary_scalar_kernel(
     caller.
     """
     t = tl.program_id(0)
+    # Hoisted and threaded into the inlined body for the same reason as in
+    # ``foreach_binary_kernel``: duplicate loads inside both arms of the runtime
+    # branch trip tritonxpu-memory-cache's dominance check.
     a_raw = tl.load(meta_ptr + t)
     out_raw = tl.load(meta_ptr + NT + t)
     n_elements = tl.load(meta_ptr + 2 * NT + t)
@@ -868,7 +950,9 @@ def foreach_binary_scalar_kernel(
             )
         else:
             _binary_scalar_narrow_body(
-                meta_ptr,
+                a_raw,
+                out_raw,
+                n_elements,
                 scalar_ptr,
                 scalar_value,
                 fn,
@@ -882,7 +966,9 @@ def foreach_binary_scalar_kernel(
             )
     else:
         _binary_scalar_narrow_body(
-            meta_ptr,
+            a_raw,
+            out_raw,
+            n_elements,
             scalar_ptr,
             scalar_value,
             fn,
@@ -941,7 +1027,11 @@ def foreach_binary_scalar_kernel_p4(
 
 @triton.jit
 def _ternary_narrow_body(
-    meta_ptr,
+    a_raw,
+    b_raw,
+    c_raw,
+    out_raw,
+    n_elements,
     scalar_ptr,
     scalar_value: tl.float64,
     fn: tl.constexpr,
@@ -965,11 +1055,10 @@ def _ternary_narrow_body(
         t = tl.program_id(0)
         offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(A_DT))
-    c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(A_DT))
-    out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 4 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    b_ptr = b_raw.to(tl.pointer_type(A_DT))
+    c_ptr = c_raw.to(tl.pointer_type(A_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
     if SCALAR_BY_VALUE:
         s = scalar_value.to(S_DT)
     else:
@@ -1029,7 +1118,15 @@ def foreach_ternary_kernel(
     counts keep the element-indexed body, so nothing here depends on the
     caller.
     """
-    t = tl.program_id(0)
+    if SWAP:
+        t = tl.program_id(1)
+    else:
+        t = tl.program_id(0)
+    # Hoisted and threaded into the inlined body for the same reason as in
+    # ``foreach_binary_kernel``: duplicate loads inside both arms of the runtime
+    # branch trip tritonxpu-memory-cache's dominance check.  ``t`` follows
+    # ``SWAP`` so the values handed to the body are the ones it would have
+    # loaded itself.
     a_raw = tl.load(meta_ptr + t)
     b_raw = tl.load(meta_ptr + NT + t)
     c_raw = tl.load(meta_ptr + 2 * NT + t)
@@ -1059,7 +1156,11 @@ def foreach_ternary_kernel(
             )
         else:
             _ternary_narrow_body(
-                meta_ptr,
+                a_raw,
+                b_raw,
+                c_raw,
+                out_raw,
+                n_elements,
                 scalar_ptr,
                 scalar_value,
                 fn,
@@ -1073,7 +1174,11 @@ def foreach_ternary_kernel(
             )
     else:
         _ternary_narrow_body(
-            meta_ptr,
+            a_raw,
+            b_raw,
+            c_raw,
+            out_raw,
+            n_elements,
             scalar_ptr,
             scalar_value,
             fn,
