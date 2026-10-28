@@ -47,6 +47,65 @@ def _input(shape, dtype):
     return inp
 
 
+def _native_reference(
+    inp, q, dim=None, keepdim=False, *, interpolation="linear", out=None
+):
+    # The configured Enflame native path requests unsupported Long sort indices.
+    # Keep the original promoted arithmetic and reference output ABI on CPU.
+    tensor_q = isinstance(q, torch.Tensor)
+    overload = (
+        ("out" if out is not None else "default")
+        if tensor_q
+        else ("scalar_out" if out is not None else "scalar")
+    )
+    op = getattr(torch.ops.aten.nanquantile, overload)
+    if flag_gems.vendor_name != "enflame":
+        kwargs = {"interpolation": interpolation}
+        if out is not None:
+            kwargs["out"] = out
+        return op(inp, q, dim, keepdim, **kwargs)
+    cpu_inp = inp.to("cpu")
+    cpu_q = q.to("cpu") if tensor_q else q
+    kwargs = {"interpolation": interpolation}
+    if out is not None:
+        kwargs["out"] = torch.empty_like(out, device="cpu")
+    result = op(cpu_inp, cpu_q, dim, keepdim, **kwargs)
+    assert result.dtype == inp.dtype and result.device.type == "cpu"
+    result = result.to(inp.device)
+    assert result.device == inp.device and result.dtype == inp.dtype
+    if out is not None:
+        assert out.device == inp.device and out.dtype == inp.dtype
+        out.resize_(result.shape)
+        out.copy_(result)
+        return out
+    return result
+
+
+def _input_abi(inp, q):
+    tensors = [x for x in (inp, q) if isinstance(x, torch.Tensor)]
+    return [
+        (x, x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr())
+        for x in tensors
+    ]
+
+
+def _assert_output_abi(result, saved, expected_shape, *, out=None):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == saved[0][1]
+    assert result.dtype == saved[0][2]
+    assert tuple(result.shape) == tuple(expected_shape)
+    if out is not None:
+        assert result is out
+    for inp, device, dtype, shape, stride, pointer in saved:
+        assert inp.device == device and inp.dtype == dtype
+        assert tuple(inp.shape) == shape and inp.stride() == stride
+        assert inp.data_ptr() == pointer
+        if out is None and inp.numel() and result.numel():
+            assert (
+                result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+            )
+
+
 def _assert_close(result, reference, dtype, reduction_size):
     utils.gems_assert_close(
         result,
@@ -62,16 +121,20 @@ def _assert_close(result, reference, dtype, reduction_size):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (1, False), (-1, True)])
 def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
     inp = _input((7, 33), dtype).T
     q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
     ref_inp, ref_q = utils.to_reference(inp, True), utils.to_reference(q, True)
-    reference = torch.ops.aten.nanquantile.default(
+    reference = _native_reference(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(
         inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
     )
     reduction_size = inp.numel() if dim is None else inp.shape[dim]
+    _assert_output_abi(result, saved_abi, reference.shape)
     _assert_close(result, reference, dtype, reduction_size)
 
 
@@ -140,6 +203,8 @@ def _scalar_out_input(shape, dtype):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 def test_nanquantile_scalar_out(dtype, interpolation):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
     if dtype == torch.float64 and not cfg.TO_CPU:
         if flag_gems.vendor_name == "kunlunxin":
             pytest.skip(
@@ -151,7 +216,7 @@ def test_nanquantile_scalar_out(dtype, interpolation):
     assert inp.dtype == dtype and inp.device.type == torch.device(flag_gems.device).type
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.empty(0, dtype=ref_inp.dtype, device=ref_inp.device)
-    reference = torch.ops.aten.nanquantile.scalar_out(
+    reference = _native_reference(
         ref_inp, 0.73, 0, False, interpolation=interpolation, out=ref_out
     )
     out = (
@@ -160,9 +225,11 @@ def test_nanquantile_scalar_out(dtype, interpolation):
         else torch.empty((1,), dtype=dtype, device=inp.device)
     )
     assert out.dtype == dtype and out.device == inp.device
+    saved_abi = _input_abi(inp, 0.73)
     result = flag_gems.nanquantile_scalar_out(
         inp, 0.73, dim=0, interpolation=interpolation, out=out
     )
+    _assert_output_abi(result, saved_abi, reference.shape, out=out)
     assert result is out
     _assert_close(result, reference, dtype, inp.shape[0])
 
@@ -190,20 +257,26 @@ def test_nanquantile_dim_none_keepdim_shape(tensor_q, use_out):
             )
             result = flag_gems.nanquantile_out(inp, q, dim=None, keepdim=True, out=out)
         else:
-            reference = torch.ops.aten.nanquantile.scalar_out(
+            reference = _native_reference(
                 ref_inp, q, None, True, interpolation="linear", out=ref_out
             )
+            saved_abi = _input_abi(inp, q)
             result = flag_gems.nanquantile_scalar_out(
                 inp, q, dim=None, keepdim=True, out=out
             )
         assert result is out
         assert reference is ref_out
     elif tensor_q:
-        reference = torch.nanquantile(ref_inp, ref_q, keepdim=True)
+        reference = _native_reference(ref_inp, ref_q, keepdim=True)
+        saved_abi = _input_abi(inp, q)
         result = flag_gems.nanquantile(inp, q, keepdim=True)
     else:
         reference = torch.nanquantile(ref_inp, q, keepdim=True)
         result = flag_gems.nanquantile_scalar(inp, q, keepdim=True)
+    if (tensor_q and not use_out) or (not tensor_q and use_out):
+        _assert_output_abi(
+            result, saved_abi, reference.shape, out=out if use_out else None
+        )
     assert result.shape == reference.shape
     _assert_close(result, reference, torch.float32, inp.numel())
 
@@ -217,11 +290,16 @@ def test_nanquantile_maximum_reduction_one_valid(valid_count):
     if valid_count:
         inp[0] = 13.0
     q = torch.tensor([0.0, 0.5, 1.0], device=inp.device)
-    reference = torch.nanquantile(
+    reference = _native_reference(
         utils.to_reference(inp, True), utils.to_reference(q, True)
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(inp, q)
-    utils.gems_assert_equal(result, reference, equal_nan=True)
+    _assert_output_abi(result, saved_abi, reference.shape)
+    assert result.dtype == inp.dtype
+    assert result.device == inp.device
+    assert result.shape == reference.shape
+    utils.gems_assert_equal(result.to(reference.dtype), reference, equal_nan=True)
 
 
 @pytest.mark.nanquantile
@@ -229,10 +307,12 @@ def test_nanquantile_maximum_reduction_one_valid(valid_count):
 def test_nanquantile_large_q_is_tiled(size):
     inp = _input((2, size), torch.float32)
     q = torch.linspace(0, 1, 513, device=inp.device)
-    reference = torch.nanquantile(
+    reference = _native_reference(
         utils.to_reference(inp, True), utils.to_reference(q, True), dim=1
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(inp, q, dim=1)
+    _assert_output_abi(result, saved_abi, reference.shape)
     _assert_close(result, reference, torch.float32, size)
 
 
@@ -243,13 +323,15 @@ def test_nanquantile_large_q_is_tiled(size):
 def test_nanquantile_gather_interpolations(interpolation):
     inp = _input((2, 4097), torch.float32)
     q = torch.tensor([0.13, 0.51, 0.92], device=inp.device)
-    reference = torch.nanquantile(
+    reference = _native_reference(
         utils.to_reference(inp, True),
         utils.to_reference(q, True),
         dim=1,
         interpolation=interpolation,
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(inp, q, dim=1, interpolation=interpolation)
+    _assert_output_abi(result, saved_abi, reference.shape)
     _assert_close(result, reference, torch.float32, inp.shape[1])
 
 
@@ -279,10 +361,12 @@ def test_nanquantile_all_nan_and_path_boundaries(size):
     inp[1, 0] = -float("inf")
     inp[1, -1] = float("inf")
     q = torch.tensor([0.0, 0.5, 1.0], device=inp.device)
-    reference = torch.nanquantile(
+    reference = _native_reference(
         utils.to_reference(inp, True), utils.to_reference(q, True), dim=1
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(inp, q, dim=1)
+    _assert_output_abi(result, saved_abi, reference.shape)
     _assert_close(result, reference, torch.float32, size)
 
 
@@ -293,10 +377,12 @@ def test_nanquantile_special_values_and_scalar_tensor_q():
         device=flag_gems.device,
     )
     q = torch.tensor(0.5, device=inp.device)
-    reference = torch.nanquantile(
+    reference = _native_reference(
         utils.to_reference(inp, True), utils.to_reference(q, True), dim=1
     )
+    saved_abi = _input_abi(inp, q)
     result = flag_gems.nanquantile(inp, q, dim=1)
+    _assert_output_abi(result, saved_abi, reference.shape)
     _assert_close(result, reference, torch.float32, inp.shape[1])
     result_valid = ~torch.isnan(result)
     reference_valid = ~torch.isnan(reference)
