@@ -350,10 +350,9 @@ def cross_attention_fwd_kernel(
     row_max = tl.full((BLOCK_M,), -float("inf"), dtype=tl.float32)
     row_sum = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
-    # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` accepts
-    # num_stages=2, which lowers to the same pipelined loop as the legacy
-    # `tl.range`, so PIPELINE_NS=2 keeps behavior identical to the
-    # pre-TLE path (used as the safety fallback).
+    # TLE software pipelining for the K/V loop. `tle_gpu.pipeline` extends
+    # `tl.range`, so the loop lowers exactly like the legacy `tl.range` form
+    # and any stage count the tiling picks is valid; PIPELINE_NS carries it.
     for key_start in tle_gpu.pipeline(0, KEY_LEN, BLOCK_N, num_stages=PIPELINE_NS):
         logical_keys = key_start + key_offsets
         valid_keys = logical_keys < KEY_LEN
