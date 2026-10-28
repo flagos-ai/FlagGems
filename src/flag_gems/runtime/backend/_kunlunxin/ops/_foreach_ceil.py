@@ -136,7 +136,7 @@ def _try_fast(tensors):
 
 
 def _foreach_ceil(self):
-    logger.debug("GEMS _FOREACH_CEIL")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_CEIL")
     tensors = check_tensor_list(self)
     outs = _try_fast(tensors)
     if outs is not None:
