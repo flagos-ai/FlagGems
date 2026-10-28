@@ -105,9 +105,20 @@ def test_rrelu__training(shape, dtype):
     utils.gems_assert_equal(cmp_res[pos], ref_inp[pos])
 
     # Negative inputs are scaled by a slope sampled from [lower, upper].
-    slope = cmp_res[~pos] / ref_inp[~pos]
-    assert torch.all(slope >= lower - 1e-3), slope.min().item()
-    assert torch.all(slope <= upper + 1e-3), slope.max().item()
+    slope = cmp_res[~pos].float() / ref_inp[~pos].float()
+    # The sampled slope and product may each round to the input dtype.
+    # Bound those two roundings, then the FP32 division, rather than rounding
+    # the measured ratio once more in BF16. All inputs/products are normal.
+    unit_roundoff = torch.finfo(dtype).eps / 2
+    division_roundoff = torch.finfo(torch.float32).eps / 2
+    lower_bound = min(
+        lower - 1e-3, lower * (1 - unit_roundoff) ** 2 * (1 - division_roundoff)
+    )
+    upper_bound = max(
+        upper + 1e-3, upper * (1 + unit_roundoff) ** 2 * (1 + division_roundoff)
+    )
+    assert torch.all(slope >= lower_bound), slope.min().item()
+    assert torch.all(slope <= upper_bound), slope.max().item()
     # The slope must actually vary across elements (i.e. not the eval constant).
     avg_slope = (lower + upper) * 0.5
     assert not torch.allclose(slope.float(), torch.full_like(slope.float(), avg_slope))

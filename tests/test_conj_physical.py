@@ -174,9 +174,13 @@ def test_conj_physical_complex(shape, value_range):
 # ---------------------------------------------------------------------------
 
 
-def _layout_case(name, shape, dtype, device, *, cpu_complex=False):
+def _layout_case(name, shape, dtype, device, *, portable_input=False):
     """Build an input with a specific layout; mirrors the ATen layout rules."""
-    if cpu_complex and dtype.is_complex:
+    if portable_input and name in ("channels_last", "channels_last_3d"):
+        return _layout_case(name, shape, dtype, "cpu").to(
+            device, memory_format=torch.preserve_format
+        )
+    if portable_input and dtype.is_complex:
         base = torch.randn(shape, dtype=dtype, device="cpu").to(device)
     elif dtype.is_complex or dtype.is_floating_point:
         base = torch.randn(shape, dtype=dtype, device=device)
@@ -249,7 +253,7 @@ def test__conj_physical_layout_parity(layout, dtype):
         _LAYOUT_SHAPES[layout],
         dtype,
         flag_gems.device,
-        cpu_complex=flag_gems.vendor_name == "ascend",
+        portable_input=flag_gems.vendor_name == "ascend",
     )
 
     # Layout is a property of the op, not of the device, so the stride contract
