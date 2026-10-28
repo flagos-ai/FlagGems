@@ -123,7 +123,6 @@ def _try_fast(tensors):
 
 
 def _foreach_ceil_(self):
-    logger.debug("GEMS _FOREACH_CEIL_")
     logger.debug("GEMS_KUNLUNXIN _FOREACH_CEIL_")
     tensors = check_tensor_list(self)
     if _try_fast(tensors):
