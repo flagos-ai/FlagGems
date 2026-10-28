@@ -266,7 +266,10 @@ def fmin_out(a, b, out):
     n_elements = out_c.numel()
     block_size, num_warps = _pick_block_size(n_elements)
     need_mask = 1 if (n_elements % block_size) else 0
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    # Constant-tuple grid: on the XPU backend the launch grid is baked into the
+    # compilation options, so a `lambda meta:` grid puts a fresh callable in the
+    # cache key and forces a full recompile on every call.
+    grid = (triton.cdiv(n_elements, block_size),)
     with torch_device_fn.device(out.device):
         fmin_kernel[grid](
             a_c,
