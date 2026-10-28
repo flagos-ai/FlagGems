@@ -28,13 +28,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_unary import NO_COMPLEX32
-from flag_gems.ops.expm1 import expm1_func
-from flag_gems.ops.reciprocal import reciprocal_func
+from flag_gems.ops._foreach_unary import NO_COMPLEX32, apply_unary
 from flag_gems.utils.foreach import (
     check_dtype_supported,
     check_tensor_list,
-    foreach_unary,
     has_internal_overlap,
     tl_dtype,
 )
@@ -151,20 +148,20 @@ def _foreach_expm1(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_EXPM1")
     tensors = check_tensor_list(self)
     if any(t.dtype.is_complex for t in tensors):
-        return foreach_unary(self, expm1_func)
+        return apply_unary("expm1", self, inplace=False)
     for t in tensors:
         check_dtype_supported(t.dtype, NO_COMPLEX32)
     out = _try_direct(tensors, op=0)
     if out is not None:
         return out
-    return foreach_unary(self, expm1_func)
+    return apply_unary("expm1", self, inplace=False)
 
 
 def _foreach_expm1_(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_EXPM1_")
     tensors = check_tensor_list(self)
     if any(t.dtype.is_complex for t in tensors):
-        return foreach_unary(self, expm1_func, inplace=True)
+        return apply_unary("expm1", self, inplace=True)
     for t in tensors:
         check_dtype_supported(t.dtype, NO_COMPLEX32)
         if has_internal_overlap(t):
@@ -175,27 +172,27 @@ def _foreach_expm1_(self):
         srcs = tensors
         if _launch_inplace(srcs, op=0):
             return None
-    return foreach_unary(self, expm1_func, inplace=True)
+    return apply_unary("expm1", self, inplace=True)
 
 
 def _foreach_reciprocal(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_RECIPROCAL")
     tensors = check_tensor_list(self)
     if any(t.dtype.is_complex for t in tensors):
-        return foreach_unary(self, reciprocal_func)
+        return apply_unary("reciprocal", self, inplace=False)
     for t in tensors:
         check_dtype_supported(t.dtype, NO_COMPLEX32)
     out = _try_direct(tensors, op=1)
     if out is not None:
         return out
-    return foreach_unary(self, reciprocal_func)
+    return apply_unary("reciprocal", self, inplace=False)
 
 
 def _foreach_reciprocal_(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_RECIPROCAL_")
     tensors = check_tensor_list(self)
     if any(t.dtype.is_complex for t in tensors):
-        return foreach_unary(self, reciprocal_func, inplace=True)
+        return apply_unary("reciprocal", self, inplace=True)
     for t in tensors:
         check_dtype_supported(t.dtype, NO_COMPLEX32)
         if has_internal_overlap(t):
@@ -205,7 +202,7 @@ def _foreach_reciprocal_(self):
     ):
         if _launch_inplace(tensors, op=1):
             return None
-    return foreach_unary(self, reciprocal_func, inplace=True)
+    return apply_unary("reciprocal", self, inplace=True)
 
 
 def _launch_inplace(tensors, op):
