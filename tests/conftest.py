@@ -284,44 +284,40 @@ def _item_has_bfloat16_dtype(item):
     return False
 
 
-def _skip_unmeasurable_launch_count_tests(items):
-    targets = [
-        item
-        for item in items
-        if item.name
-        in (
-            "test_foreach_unary_launch_count_is_independent_of_list_length",
-            "test_foreach_unary_launch_count_scales_with_dtype_groups",
-        )
-    ]
-    if not targets:
-        return
+def _profiler_available():
     import torch
 
-    profiler_available = True
     try:
         with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
             (torch.ones(1, device=flag_gems.device) * 2).item()
     except RuntimeError:
-        profiler_available = False
-    fp64_available = (
+        return False
+    return True
+
+
+def _float64_available():
+    import torch
+
+    return (
         torch.empty(1, device=flag_gems.device).to(torch.float64).dtype == torch.float64
     )
-    for item in targets:
-        if not profiler_available and item.name.startswith(
-            "test_foreach_unary_launch_count_is_independent"
-        ):
-            item.add_marker(
-                pytest.mark.skip(
-                    reason="torch profiler is unavailable on this platform"
+
+
+def _skip_unmeasurable_launch_count_tests(items):
+    """Skip the launch-count cases whose measuring tool is missing here."""
+    for item in items:
+        if item.name == "test_foreach_unary_launch_count_is_independent_of_list_length":
+            if not _profiler_available():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="torch profiler is unavailable on this platform"
+                    )
                 )
-            )
-        if not fp64_available and item.name.startswith(
-            "test_foreach_unary_launch_count_scales"
-        ):
-            item.add_marker(
-                pytest.mark.skip(reason="float64 is not supported on this platform")
-            )
+        elif item.name == "test_foreach_unary_launch_count_scales_with_dtype_groups":
+            if not _float64_available():
+                item.add_marker(
+                    pytest.mark.skip(reason="float64 is not supported on this platform")
+                )
 
 
 def pytest_collection_modifyitems(session, config, items):
