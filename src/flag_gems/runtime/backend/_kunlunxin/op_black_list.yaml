@@ -18,8 +18,6 @@
 # Source: Operator Compatibility Test Table
 
 unsupported_operators:
-  - name: acos
-    reason: "All dtypes failed"
 
   - name: conv1d
     reason: "All dtypes failed"
@@ -52,6 +50,9 @@ unsupported_operators:
     reason: "All dtypes failed"
 
   - name: swiglu
+    reason: "All dtypes failed"
+
+  - name: topk_softmax
     reason: "All dtypes failed"
 
 summary:

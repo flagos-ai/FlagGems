@@ -49,8 +49,7 @@ def test_addmv_(M, N, scalar, dtype):
     ref_out = ref_inp.addmv_(ref_mat, ref_vec, alpha=alpha, beta=beta)
 
     inp1 = inp.clone()
-    with flag_gems.use_gems():
-        res_out = inp1.addmv_(mat, vec, alpha=alpha, beta=beta)
+    res_out = flag_gems.addmv_(inp1, mat, vec, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=N)
     utils.gems_assert_close(inp1, ref_inp, dtype, reduce_dim=N)

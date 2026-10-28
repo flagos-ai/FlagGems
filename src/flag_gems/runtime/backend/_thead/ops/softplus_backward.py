@@ -75,7 +75,7 @@ def softplus_backward(grad_output, self, beta=1.0, threshold=20.0):
     The PPU Triton toolchain miscompiles loads from zero-stride (expanded)
     views, so broadcast inputs are materialized contiguous before the launch.
     """
-    logger.debug("GEMS_THEAD SOFTPLUS BACKWARD")
+    logger.debug("GEMS_THEAD SOFTPLUS_BACKWARD")
 
     grad_output = grad_output.contiguous()
     x = self.contiguous()

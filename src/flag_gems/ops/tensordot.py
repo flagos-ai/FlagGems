@@ -301,7 +301,7 @@ def _tensordot_impl(self, other, dims_self, dims_other, out=None):
 class TensordotFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, self, other, dims_self, dims_other):
-        logger.debug("GEMS TENSORDOT FORWARD")
+        logger.debug("GEMS TENSORDOT_FORWARD")
 
         # Save the raw inputs and their original contracted-dim sizes so the
         # backward pass can broadcast for the matmul and then reduce the
@@ -317,7 +317,7 @@ class TensordotFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS TENSORDOT BACKWARD")
+        logger.debug("GEMS TENSORDOT_BACKWARD")
 
         self, other = ctx.saved_tensors
         dims_self = ctx.dims_self

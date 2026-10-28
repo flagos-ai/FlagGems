@@ -162,6 +162,20 @@ def _is_fp64_like(t):
     return t in (torch.float64, torch.int64)
 
 
+_INTEGRAL_DTYPES = (
+    torch.bool,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.uint8,
+)
+
+
+def _nansum_out_dtype(inp_dtype):
+    return torch.int64 if inp_dtype in _INTEGRAL_DTYPES else inp_dtype
+
+
 def _launch_nansum_rows(inp, out, M, N):
     block_n = min(triton.next_power_of_2(N), _BLOCK_N_MAX)
     if M <= _SMALL_M and N >= _HUGE_N:
@@ -282,9 +296,7 @@ def nansum(inp, dim=None, keepdim=False, *, dtype=None):
     if dtype is None:
         if inp.dtype == torch.bool:
             inp = inp.to(torch.int64)
-            out_dtype = torch.int64
-        else:
-            out_dtype = inp.dtype
+        out_dtype = _nansum_out_dtype(inp.dtype)
     else:
         out_dtype = dtype
 

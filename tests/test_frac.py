@@ -28,7 +28,6 @@ def test_frac(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.frac(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.frac(inp)
+    res_out = flag_gems.frac(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -31,8 +31,7 @@ def test_lt_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.lt_(ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lt_.Tensor(inp1, inp2)
+    res_out = flag_gems.lt_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out is inp1
@@ -48,8 +47,7 @@ def test_lt_scalar_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.lt_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lt_.Scalar(inp, scalar)
+    res_out = flag_gems.lt_scalar_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     assert res_out is inp

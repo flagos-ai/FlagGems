@@ -179,7 +179,7 @@ def fused_exponential_kernel_f64(
 
 
 def exponential_(x, lambd: float = 1.0, *, generator=None):
-    logger.debug("GEMS EXPONENTIAL_")
+    logger.debug("GEMS_TSINGMICRO EXPONENTIAL_")
 
     if True:
         # CPU fallback for unsupported precision mode; keep it vector-friendly.

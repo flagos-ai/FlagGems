@@ -39,6 +39,12 @@ case $BACKEND in
     # TODO: Check if this is necessary
     # export TRITON_ALL_BLOCKS_PARALLEL=1
     ;;
+  biren|biren-br2xx)
+    # The brsw_set_env.sh script is provided by the SUPA SDK
+    if [ -f /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh ]; then
+      source /usr/local/birensupa/all/latest/scripts/brsw_set_env.sh
+    fi
+    ;;
   cambricon)
     export PATH=/usr/local/neuware/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/neuware/lib64:$LD_LIBRARY_PATH
@@ -83,7 +89,7 @@ case $BACKEND in
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads|mthreads-436|mthreads-520)
+  mthreads|mthreads-436|mthreads-520|mthreads-musa436|mthreads-musa520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH

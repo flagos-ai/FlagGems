@@ -28,8 +28,7 @@ def test_cos(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.cos(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cos(inp)
+    res_out = flag_gems.cos(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,6 @@ def test_cos_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.cos_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.cos_(inp)
+    res_out = flag_gems.cos_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

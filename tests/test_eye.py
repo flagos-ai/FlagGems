@@ -41,16 +41,14 @@ def test_eye(shape, dtype):
     n, m = shape
 
     # test eye(n, m) without dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, m, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,
@@ -58,16 +56,14 @@ def test_eye(shape, dtype):
     )
 
     # test eye(n)
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, device=flag_gems.device)
+    res_out = flag_gems.eye(n, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye(n, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,
@@ -93,16 +89,14 @@ def test_eye_m(shape, dtype):
     n, m = shape
 
     # test eye(n, m) without dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out, torch.eye(n, m, device="cpu" if cfg.TO_CPU else device)
     )
 
     # with dtype
-    with flag_gems.use_gems():
-        res_out = torch.eye(n, m, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.eye_m(n, m, dtype=dtype, device=flag_gems.device)
 
     utils.gems_assert_equal(
         res_out,

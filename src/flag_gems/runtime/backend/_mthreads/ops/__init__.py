@@ -72,6 +72,7 @@ from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
+from .geometric import geometric, geometric_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
 from .im2col import im2col
@@ -120,6 +121,7 @@ from .ones_like import ones_like
 from .ormqr import ormqr
 from .pad import constant_pad_nd, pad
 from .permute_copy import permute_copy
+from .polar import polar
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .rad2deg_ import rad2deg_
@@ -137,9 +139,9 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
-from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
 from .softplus_backward import softplus_backward
@@ -155,6 +157,7 @@ from .special_round_out import special_round_out
 from .square_ import square_
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
@@ -229,6 +232,8 @@ __all__ = [
     "gather",
     "gather_backward",
     "gcd_",
+    "geometric",
+    "geometric_",
     "grid_sampler_3d_backward",
     "histc",
     "im2col",
@@ -291,6 +296,7 @@ __all__ = [
     "ormqr",
     "pad",
     "permute_copy",
+    "polar",
     "prod",
     "prod_dim",
     "quantile",
@@ -310,6 +316,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
+    "scaled_grouped_mm",
     "scatter_reduce",
     "scatter_reduce_",
     "scatter_reduce_out",
@@ -328,6 +335,8 @@ __all__ = [
     "square_",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "true_divide",
     "true_divide_",
     "true_divide_out",
@@ -348,9 +357,10 @@ __all__ = [
 if get_device_capability(current_device())[0] >= 3:
     from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
     from .baddbmm import baddbmm, baddbmm_out  # noqa: F401
-    from .bmm import bmm  # noqa: F401
+    from .bmm import bmm, bmm_out  # noqa: F401
     from .gelu import gelu  # noqa: F401
-    from .mm import mm  # noqa: F401
+    from .mm import mm, mm_out  # noqa: F401
+    from .mv import mv  # noqa: F401
     from .tanh import tanh  # noqa: F401
 
     __all__.extend(
@@ -362,8 +372,11 @@ if get_device_capability(current_device())[0] >= 3:
             "baddbmm",
             "baddbmm_out",
             "bmm",
+            "bmm_out",
             "gelu",
             "mm",
+            "mm_out",
+            "mv",
             "tanh",
             "atan2",
             "kthvalue",
@@ -428,3 +441,8 @@ if get_device_capability(current_device()) >= (3, 1):
     from .mm_w8a8_fp8 import mm_w8a8_fp8, mm_w8a8_fp8_out  # noqa: F401
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
+
+from .resolve_conj import resolve_conj
+from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
+
+__all__.extend(["scaled_mm", "scaled_mm_out"])

@@ -167,7 +167,10 @@ def main():
                     },
                     {
                         "is_short": True,
-                        "text": {"tag": "lark_md", "content": f"**Branch:** {ref}"},
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**Branch:** {ref}",
+                        },
                     },
                     {
                         "is_short": True,

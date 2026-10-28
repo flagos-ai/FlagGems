@@ -37,7 +37,7 @@ def _pack_4bit_weight_kernel(
     HAS_BIAS: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    offsets = tl.program_id(0).to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < total_elements
     values = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
 
@@ -78,16 +78,56 @@ def _dyn_quant_pack_4bit_weight(
     in_features: int,
     out_features: int,
 ) -> torch.Tensor:
-    """Pack dynamic INT4 weights in ATen's portable fallback format."""
+    """Pack INT4 weights into the portable ABI consumed by the generic matmul.
+
+    For K=in_features, N=out_features and G=K/block_size, weights is uint8
+    [N, K/2]. Each byte stores the even-K value in its low nibble and the
+    odd-K value in its high nibble; a nibble represents signed INT4 as value-8.
+    scales_zeros contains scales only, as [N, G] or a flat [N*G] tensor in
+    output-channel-major order. Optional bias has shape [N]. Scales and bias
+    may be float16, bfloat16 or float32, on the weights device.
+
+    The result is a contiguous 1D float32 tensor on that same device:
+    [weights.flatten().float(), scales_zeros.flatten().float(), optional bias].
+    Segment lengths are N*K/2, N*G and either zero or N, respectively. This
+    format is distinct from the opaque uint8 CPU KleidiAI packing. K must be
+    positive and even; N may be zero, in which case no kernel is launched.
+    """
     logger.debug("GEMS _DYN_QUANT_PACK_4BIT_WEIGHT")
+    if in_features <= 0 or in_features % 2 != 0:
+        raise RuntimeError("in_features must be positive and even for INT4 packing")
+    if out_features < 0:
+        raise RuntimeError("out_features must be nonnegative")
+    if block_size <= 0:
+        raise RuntimeError("block_size must be positive")
     if weights.dtype != torch.uint8:
         raise RuntimeError("_dyn_quant_pack_4bit_weight expects uint8 weights")
+    if weights.ndim != 2 or weights.shape != (out_features, in_features // 2):
+        raise RuntimeError("weights must have shape [out_features, in_features / 2]")
     if block_size != in_features and (
         block_size % 32 != 0 or in_features % block_size != 0
     ):
         raise RuntimeError(
             "group size must equal in_features or divide it as a multiple of 32"
         )
+    groups = in_features // block_size
+    scale_elements = out_features * groups
+    if not (
+        (scales_zeros.ndim == 1 and scales_zeros.numel() == scale_elements)
+        or (scales_zeros.ndim == 2 and scales_zeros.shape == (out_features, groups))
+    ):
+        raise RuntimeError(
+            "scales_zeros must have shape [out_features, in_features / block_size] "
+            "or its flat equivalent"
+        )
+    parameter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
+    if scales_zeros.dtype not in parameter_dtypes:
+        raise RuntimeError("scales_zeros must have dtype float16, bfloat16 or float32")
+    if bias is not None:
+        if bias.ndim != 1 or bias.numel() != out_features:
+            raise RuntimeError("bias must have shape [out_features]")
+        if bias.dtype not in parameter_dtypes:
+            raise RuntimeError("bias must have dtype float16, bfloat16 or float32")
     if scales_zeros.device != weights.device or (
         bias is not None and bias.device != weights.device
     ):
@@ -98,9 +138,8 @@ def _dyn_quant_pack_4bit_weight(
     if bias is not None:
         bias = bias.contiguous()
 
-    weight_elements = weights.numel()
-    scale_elements = scales_zeros.numel()
-    bias_elements = 0 if bias is None else bias.numel()
+    weight_elements = out_features * (in_features // 2)
+    bias_elements = 0 if bias is None else out_features
     total_elements = weight_elements + scale_elements + bias_elements
     output = torch.empty(total_elements, device=weights.device, dtype=torch.float32)
     if total_elements == 0:

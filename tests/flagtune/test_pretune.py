@@ -30,7 +30,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from flag_gems.flagtune.reporting import schema as reporting_schema
+from flag_gems.flagtune.offline.reporting import schema as reporting_schema
 
 HAS_FLAGTREE_FLAGTUNE = importlib.util.find_spec("triton.flagtune") is not None
 pytestmark = pytest.mark.skipif(
@@ -52,16 +52,30 @@ SCRIPT_PATH = (
     / "src"
     / "flag_gems"
     / "flagtune"
+    / "offline"
     / "cli"
     / "pretune.py"
 )
 BENCHMARK_PATH = SCRIPT_PATH.parents[1] / "collection" / "scheduler.py"
 CONFIG_PATH = (
-    SCRIPT_PATH.parents[1] / "contracts" / "configs" / "mm_flagtune_configs.yaml"
+    SCRIPT_PATH.parents[1] / "contracts" / "configs" / "mm_hopper_flagtune_configs.yaml"
 )
 MUL_CONFIG_PATH = (
     SCRIPT_PATH.parents[1] / "contracts" / "configs" / "mul_flagtune_configs.yaml"
 )
+
+
+@pytest.fixture
+def mm_stage_contract():
+    """Require stage-aware FlagTree only for tests compiling the MM YAML."""
+    from triton.flagtune.contract.operator_schema import VariantInfo
+
+    required = {"stage", "dtype_roles", "route_binding"}
+    if not required.issubset(getattr(VariantInfo, "__dataclass_fields__", {})):
+        pytest.skip(
+            "MM contract tests require stage-aware FlagTree "
+            "(stage, dtype_roles, route_binding); upgrade FlagTree to run them"
+        )
 
 
 def load_path(path, name):
@@ -150,16 +164,25 @@ def write_yaml(path, payload):
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
-def test_operator_yaml_compiles_shape_dispatch_and_benchmark_contract():
+def test_operator_yaml_compiles_shape_dispatch_and_benchmark_contract(
+    mm_stage_contract,
+):
     """Compile all Pretune semantics without importing an MM support module."""
     mod = load_module()
     spec = mod.load_operator_benchmark_spec(CONFIG_PATH)
 
     assert spec.op_id == "flaggems/mm"
     assert spec.public_operator_name == "mm"
-    assert spec.shape.identity == ("B", "M", "N", "K")
+    assert spec.shape.identity == ("B", "M", "N", "K", "B_layout")
     assert spec.shape.count_field == "Count"
-    assert spec.dispatch_order == ("gemv", "splitk", "general_tma")
+    assert spec.dispatch_order == (
+        "gemv",
+        "splitk_two_step",
+        "splitk",
+        "general_tma",
+        "tma_transposed_direct",
+    )
+    assert spec.explicit_variant_selection is True
     assert [tensor.name for tensor in spec.benchmark.tensors] == ["a", "b"]
     assert [tensor.dtype for tensor in spec.benchmark.tensors] == [
         "runtime",
@@ -167,6 +190,10 @@ def test_operator_yaml_compiles_shape_dispatch_and_benchmark_contract():
     ]
     assert tuple(reference.name for reference in spec.benchmark.args) == ("a", "b")
     assert spec.resolve_variant({"B": 1, "M": 16, "N": 1, "K": 4096}) == "gemv"
+    assert spec.shape.fields["B_layout"].choices == (
+        "contiguous",
+        "transposed_2d",
+    )
 
 
 def test_mul_operator_yaml_compiles_broadcast_and_scalar_variants():
@@ -255,7 +282,7 @@ def test_mul_shape_loader_aligns_optional_rhs_before_count(tmp_path):
 
 def test_mul_executor_uses_variant_specific_tensor_and_scalar_arguments():
     """Construct only active tensors and pass the scalar recipe to ``mul``."""
-    from flag_gems.flagtune.runtime import executor as executor_mod
+    from flag_gems.flagtune.offline.runtime import executor as executor_mod
 
     mod = load_module()
     spec = mod.load_operator_benchmark_spec(MUL_CONFIG_PATH)
@@ -302,7 +329,201 @@ def test_mul_executor_uses_variant_specific_tensor_and_scalar_arguments():
     assert [entry[1] for entry in calls] == [(18,)]
 
 
-def test_operator_yaml_rejects_device_placement_policy(tmp_path):
+def test_mul_keeps_legacy_contract_dispatch():
+    """MUL must keep using contract predicates rather than tensor routing."""
+    from flag_gems.flagtune.offline.train.route.resolver import has_route_resolver
+
+    assert not has_route_resolver("mul")
+    assert not has_route_resolver("flaggems/mul")
+    assert has_route_resolver("flaggems/mm")
+
+    mod = load_module()
+    spec = mod.load_operator_benchmark_spec(MUL_CONFIG_PATH)
+    for values, expected in (
+        ({"kind": "scalar", "lhs_shape": [128]}, "scalar"),
+        (
+            {"kind": "broadcast", "lhs_shape": [2, 1], "rhs_shape": [2, 2048]},
+            "broadcast_2d",
+        ),
+    ):
+        normalized, _ = spec.shape.normalize_values(values, "test")
+        assert spec.resolve_variant(normalized) == expected
+
+
+@pytest.mark.parametrize(
+    ("manifest_platform", "normalized"),
+    [
+        ("hygon-bw", "hygon"),
+        ("metax-c550", "metax"),
+        ("mthreads-s5000", "mthreads"),
+        ("nvidia-h20", "nvidia"),
+        ("thead-zw810e", "thead"),
+    ],
+)
+def test_route_platform_matches_default_manifest_catalog(manifest_platform, normalized):
+    """Normalize every platform key published by FlagTree's default manifest."""
+    from flag_gems.flagtune.offline.train.route.common import platform
+
+    assert platform({"platform_key": manifest_platform}) == normalized
+
+
+def test_mm_executor_resolves_route_before_tuner_lookup(monkeypatch):
+    """Use the real tensor route as the authoritative MM tuning variant."""
+    from flag_gems.flagtune.offline.runtime import executor as executor_mod
+    from flag_gems.flagtune.offline.train.route import resolver
+
+    worker = executor_mod.BenchmarkWorker.__new__(executor_mod.BenchmarkWorker)
+    worker.spec = SimpleNamespace(
+        op_id="flaggems/mm",
+        benchmark=SimpleNamespace(tensor_names=("a", "b")),
+        operator_info=SimpleNamespace(
+            variants={"metax_splitk_two_step_partial": object()}
+        ),
+    )
+    worker.device_runtime = SimpleNamespace(
+        metadata=lambda _index=0: {"platform_key": "metax-c550"}
+    )
+    monkeypatch.setitem(
+        resolver.ROUTE_RESOLVERS,
+        "flaggems/mm",
+        lambda _a, _b, _context: {
+            "physical_route": "metax_splitk_two_step",
+            "tuning_variant": "metax_splitk_two_step_partial",
+            "stage": "partial",
+            "adapted": True,
+            "dynamic_inputs": {"SPLIT_K": 8},
+        },
+    )
+
+    variant, route = worker._resolve_runtime_route(
+        {"M": 32, "N": 256, "K": 4096},
+        {"a": object(), "b": object()},
+        "metax_general",
+    )
+
+    assert variant == "metax_splitk_two_step_partial"
+    assert route["physical_route"] == "metax_splitk_two_step"
+    assert route["dynamic_inputs"] == {"SPLIT_K": 8}
+
+
+def test_mm_executor_keeps_non_adapted_route_out_of_model_binding(monkeypatch):
+    """An unsupported physical route is reported before tuner discovery."""
+    from flag_gems.flagtune.offline.runtime import executor as executor_mod
+    from flag_gems.flagtune.offline.train.route import resolver
+
+    worker = executor_mod.BenchmarkWorker.__new__(executor_mod.BenchmarkWorker)
+    worker.spec = SimpleNamespace(
+        op_id="flaggems/mm", benchmark=SimpleNamespace(tensor_names=("a", "b"))
+    )
+    worker.device_runtime = SimpleNamespace(
+        metadata=lambda _index=0: {"platform_key": "metax-c550"}
+    )
+    monkeypatch.setitem(
+        resolver.ROUTE_RESOLVERS,
+        "flaggems/mm",
+        lambda _a, _b, _context: {
+            "physical_route": "metax_small_n",
+            "tuning_variant": None,
+            "adapted": False,
+            "dynamic_inputs": {},
+        },
+    )
+
+    variant, route = worker._resolve_runtime_route(
+        {"M": 32, "N": 2, "K": 4096},
+        {"a": object(), "b": object()},
+        "metax_general",
+    )
+
+    assert variant == "metax_small_n"
+    assert route["adapted"] is False
+
+
+@pytest.mark.parametrize("adapted", [True, False])
+def test_worker_routes_actual_tensors_once_before_binding(monkeypatch, adapted):
+    """Unsupported routes never bind a tuner; supported routes bind the stage."""
+    from flag_gems.flagtune.offline.runtime import executor as executor_mod
+    from flag_gems.flagtune.offline.train.route import resolver
+
+    events = []
+    worker = executor_mod.BenchmarkWorker.__new__(executor_mod.BenchmarkWorker)
+    worker.spec = SimpleNamespace(
+        op_id="flaggems/mm",
+        source_sha256="test",
+        operator_info=SimpleNamespace(
+            variants={
+                "public": SimpleNamespace(route_binding="partial"),
+                "partial": SimpleNamespace(route_binding=None),
+            }
+        ),
+        benchmark=SimpleNamespace(tensor_names=("a", "b")),
+    )
+    worker.device_runtime = SimpleNamespace(
+        dtype=lambda x: x, metadata=lambda _: {"platform_key": "metax-c550"}
+    )
+    tensors = {"a": object(), "b": object()}
+
+    def make_tensors(*_):
+        events.append("tensors")
+        return tensors
+
+    def route(a, b, _context):
+        assert a is tensors["a"] and b is tensors["b"]
+        events.append("route")
+        return {
+            "adapted": adapted,
+            "physical_route": "public",
+            "tuning_variant": "partial" if adapted else None,
+            "stage": "partial",
+            "latency_scope": "partial_kernel",
+        }
+
+    def bind(variant):
+        events.append(("bind", variant))
+        raise RuntimeError("stop after binding")
+
+    worker._make_tensors = make_tensors
+    worker._find_tuner = bind
+    worker.skipped_result = lambda payload, **kwargs: {
+        "status": "skipped",
+        "route": payload["route"],
+    }
+    monkeypatch.setitem(resolver.ROUTE_RESOLVERS, "flaggems/mm", route)
+    kwargs = dict(
+        dtype_names=["bfloat16", "bfloat16"],
+        warmup=1,
+        iterations=1,
+        benchmark_mode="event",
+        benchmark_retries=1,
+        tuning_run_mode="force_policy",
+        latency_warmup=1,
+        latency_iterations=1,
+        latency_trials=1,
+        gpu_token="0",
+        worker_id=0,
+    )
+    payload = {"config_sha256": "test", "values": {"M": 1}, "variant": ""}
+    if adapted:
+        with pytest.raises(RuntimeError, match="stop after binding"):
+            worker.benchmark(payload, **kwargs)
+        assert events == ["tensors", "route", ("bind", "partial")]
+    else:
+        assert worker.benchmark(payload, **kwargs)["status"] == "skipped"
+        assert events == ["tensors", "route"]
+
+
+def test_hopper_atomic_splitk_is_a_model_route():
+    from flag_gems.flagtune.offline.train.route.mm import route_metadata_for_variant
+
+    route = route_metadata_for_variant("splitk", "nvidia")
+    assert route["adapted"] is True
+    assert route["tuning_variant"] == "splitk"
+    assert route["cost_model_variant"] == "splitk"
+    assert route["stage"] == "public"
+    assert route["latency_scope"] == "public_kernel"
+
+
+def test_operator_yaml_rejects_device_placement_policy(tmp_path, mm_stage_contract):
     """Keep device selection exclusively in the registered runtime adapter."""
     mod = load_module()
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -314,7 +535,7 @@ def test_operator_yaml_rejects_device_placement_policy(tmp_path):
         mod.load_operator_benchmark_spec(path)
 
 
-def test_operator_yaml_rejects_arbitrary_invocation(tmp_path):
+def test_operator_yaml_rejects_arbitrary_invocation(tmp_path, mm_stage_contract):
     """Reject YAML-selected imports or callables outside the public API policy."""
     mod = load_module()
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -326,7 +547,9 @@ def test_operator_yaml_rejects_arbitrary_invocation(tmp_path):
         mod.load_operator_benchmark_spec(path)
 
 
-def test_shared_safe_references_cover_fields_shapes_and_invoke_args(tmp_path):
+def test_shared_safe_references_cover_fields_shapes_and_invoke_args(
+    tmp_path, mm_stage_contract
+):
     """Use one ordered symbol contract across Pretune schema locations."""
     mod = load_module()
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -341,7 +564,9 @@ def test_shared_safe_references_cover_fields_shapes_and_invoke_args(tmp_path):
     assert tuple(reference.name for reference in spec.benchmark.args) == ("a", "b")
 
 
-def test_shared_safe_references_reject_forward_dependencies_and_calls(tmp_path):
+def test_shared_safe_references_reject_forward_dependencies_and_calls(
+    tmp_path, mm_stage_contract
+):
     mod = load_module()
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     payload["pretune"]["shape"]["fields"]["B"]["default"] = "M"
@@ -361,7 +586,7 @@ def test_shared_safe_references_reject_forward_dependencies_and_calls(tmp_path):
         mod.load_operator_benchmark_spec(path)
 
 
-def test_operator_yaml_rejects_unknown_identity_namespace(tmp_path):
+def test_operator_yaml_rejects_unknown_identity_namespace(tmp_path, mm_stage_contract):
     """Allow only code-owned FlagGems public-operator resolution."""
     mod = load_module()
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
@@ -375,12 +600,14 @@ def test_operator_yaml_rejects_unknown_identity_namespace(tmp_path):
 
 def test_public_operator_resolution_reports_missing_callable():
     """Fail explicitly when the op_id suffix is not exported by FlagGems."""
-    config_mod = importlib.import_module("flag_gems.flagtune.contracts.operator")
+    config_mod = importlib.import_module(
+        "flag_gems.flagtune.offline.contracts.operator"
+    )
     with pytest.raises(config_mod.OperatorConfigError, match="no public callable"):
         config_mod.resolve_public_operator(SimpleNamespace(), "flaggems/mm")
 
 
-def test_load_new_shape_spec_with_optional_count(tmp_path):
+def test_load_new_shape_spec_with_optional_count(tmp_path, mm_stage_contract):
     """Parse the new ordered shape schema and preserve optional Count metadata."""
     mod = load_module()
     path = tmp_path / "shapes.yaml"
@@ -399,14 +626,14 @@ def test_load_new_shape_spec_with_optional_count(tmp_path):
     )
 
     assert len(records) == 2
-    assert records[0].shape == [1, 16, 32, 64]
-    assert records[0].shape_key == "1,16,32,64"
+    assert records[0].shape == [1, 16, 32, 64, "contiguous"]
+    assert records[0].shape_key == "1,16,32,64,contiguous"
     assert records[0].count == 7
-    assert records[1].shape == [1, 32, 64, 128]
+    assert records[1].shape == [1, 32, 64, 128, "contiguous"]
     assert records[1].count is None
 
 
-def test_load_legacy_shape_desc_without_count(tmp_path):
+def test_load_legacy_shape_desc_without_count(tmp_path, mm_stage_contract):
     """Retain legacy shape-description compatibility when Count is absent."""
     mod = load_module()
     path = tmp_path / "legacy.yaml"
@@ -424,7 +651,7 @@ def test_load_legacy_shape_desc_without_count(tmp_path):
         path, mod.load_operator_benchmark_spec(CONFIG_PATH)
     )
 
-    assert records[0].shape == [1, 128, 256, 512]
+    assert records[0].shape == [1, 128, 256, 512, "contiguous"]
     assert records[0].count is None
 
 
@@ -445,7 +672,7 @@ def test_load_legacy_shape_desc_without_count(tmp_path):
         ),
     ],
 )
-def test_shape_validation_is_strict(tmp_path, payload, message):
+def test_shape_validation_is_strict(tmp_path, payload, message, mm_stage_contract):
     """Reject bad batches, dimensions, and operator keys with explicit errors."""
     mod = load_module()
     path = tmp_path / "bad.yaml"
@@ -475,8 +702,8 @@ def test_variant_resolution_follows_public_mm_priority():
     assert spec.resolve_variant(records[2].values) == "general_tma"
 
 
-def test_variant_filter_happens_before_sort_and_limit():
-    """Filter by exact variant before applying ordering and shape limits."""
+def test_mm_variant_filter_is_deferred_until_tensor_routing():
+    """The parent sorts raw recipes but cannot classify their MM route."""
     mod = load_module()
     selected = mod.select_shape_records(
         make_records(mod),
@@ -487,13 +714,13 @@ def test_variant_filter_happens_before_sort_and_limit():
     )
 
     assert len(selected) == 1
-    assert selected[0].source_index == 1
+    assert selected[0].source_index == 0
     assert selected[0].variant == "splitk"
     assert selected[0].selected_index == 0
 
 
-def test_percentage_shape_limit_rounds_down_after_variant_filtering():
-    """Apply percentages to eligible shapes and never exceed the requested share."""
+def test_mm_parent_percentage_limit_applies_to_raw_recipes():
+    """No shape-only variant classification happens in MM task preparation."""
     mod = load_module()
     records = [
         mod.ShapeRecord(
@@ -521,8 +748,8 @@ def test_percentage_shape_limit_rounds_down_after_variant_filtering():
         "50%",
     )
 
-    assert [record.source_index for record in selected] == [1, 2]
-    assert [record.selected_index for record in selected] == [0, 1]
+    assert [record.source_index for record in selected] == [0, 1, 2]
+    assert [record.selected_index for record in selected] == [0, 1, 2]
 
 
 def test_percentage_shape_limit_rejects_zero_resolved_shapes():
@@ -907,7 +1134,7 @@ def test_write_outputs_keeps_structured_jsonl_and_flat_csv(tmp_path):
 
 def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path):
     """Keep the private worker identity field aligned in both result branches."""
-    from flag_gems.flagtune.runtime import executor as executor_mod
+    from flag_gems.flagtune.offline.runtime import executor as executor_mod
 
     libentry_mod = importlib.import_module("flag_gems.utils.libentry")
 
@@ -944,6 +1171,9 @@ def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path)
     worker.spec = SimpleNamespace(
         source_sha256="sha256",
         op_id="flaggems/mm",
+        operator_info=SimpleNamespace(
+            variants={"general": SimpleNamespace(route_binding=None)}
+        ),
         public_operator_name="mm",
         shape=SimpleNamespace(identity=("M",)),
         benchmark=SimpleNamespace(
@@ -966,6 +1196,10 @@ def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path)
     )
     worker._find_tuner = lambda _variant: (object(), tuner)
     worker._make_tensors = lambda _values, _dtypes, _variant: {}
+    worker._resolve_runtime_route = lambda _values, _tensors, variant: (
+        variant,
+        executor_mod._public_metadata(variant),
+    )
     worker._benchmark_selected_config = lambda **_kwargs: (0.9, 1.0, 1.1)
 
     def invoke(_tensors, _variant):
@@ -1019,7 +1253,7 @@ def test_worker_success_and_failure_rows_use_platform_key(monkeypatch, tmp_path)
     load_module().write_outputs(tmp_path, [failure], ["M"])
 
 
-def test_generic_scheduler_prepares_cases_from_operator_yaml():
+def test_generic_scheduler_prepares_cases_from_operator_yaml(mm_stage_contract):
     """Prepare shapes and configs without importing an operator adapter."""
     mod = load_benchmark_module()
     shape = {"M": 17, "N": 3, "K": 32}
@@ -1041,17 +1275,29 @@ def test_generic_scheduler_prepares_cases_from_operator_yaml():
         CONFIG_PATH,
     )
 
-    assert tasks[0].payload["values"] == {"B": 1, "M": 17, "N": 3, "K": 32}
+    assert tasks[0].payload["values"] == {
+        "B": 1,
+        "M": 17,
+        "N": 3,
+        "K": 32,
+        "B_layout": "contiguous",
+    }
     assert tasks[0].payload["configs"] == configs
-    assert tasks[0].payload["variant"] == "general_tma"
+    assert tasks[0].payload["variant"] == ""
     assert set(tasks[0].to_json()) == {"task_index", "payload"}
-    assert tasks[1].payload["variant"] == "gemv"
-    assert tasks[2].payload["values"] == {"B": 1, "M": 32, "N": 32, "K": 32}
+    assert tasks[1].payload["variant"] == ""
+    assert tasks[2].payload["values"] == {
+        "B": 1,
+        "M": 32,
+        "N": 32,
+        "K": 32,
+        "B_layout": "contiguous",
+    }
     assert tasks[3].payload["count"] == 7
 
 
 def test_public_batch_api_returns_input_order_and_fail_fast_state(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, mm_stage_contract
 ):
     """Forward scheduler options and preserve ordered rows plus batch metadata."""
     mod = load_benchmark_module()
@@ -1090,8 +1336,8 @@ def test_public_batch_api_returns_input_order_and_fail_fast_state(
     )
 
     assert [row["token"] for row in batch.results] == [
-        {"B": 1, "M": 16, "N": 16, "K": 16},
-        {"B": 1, "M": 32, "N": 32, "K": 32},
+        {"B": 1, "M": 16, "N": 16, "K": 16, "B_layout": "contiguous"},
+        {"B": 1, "M": 32, "N": 32, "K": 32, "B_layout": "contiguous"},
     ]
     assert len(seen["tasks"]) == 2
     assert seen["kwargs"]["operator_config"] == CONFIG_PATH.resolve()
@@ -1104,7 +1350,9 @@ def test_public_batch_api_returns_input_order_and_fail_fast_state(
     assert batch.fail_fast_triggered is True
 
 
-def test_public_batch_api_rejects_unknown_or_misaligned_input_dtypes(tmp_path):
+def test_public_batch_api_rejects_unknown_or_misaligned_input_dtypes(
+    tmp_path, mm_stage_contract
+):
     mod = load_benchmark_module()
     cases = [({"M": 16, "N": 16, "K": 16}, None)]
     common = {

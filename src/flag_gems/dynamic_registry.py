@@ -177,12 +177,16 @@ class DynamicOpOverride:
 
         return True
 
-    def restore_all(self, module_name: str = "flag_gems"):
+    def restore_all(
+        self, module_name: str = "flag_gems", *, allow_unused: bool = False
+    ):
         """
         Restore all overridden operators in the specified module.
 
         Args:
             module_name: Module name (default: "flag_gems")
+            allow_unused: Only for a test session whose cases were all skipped;
+                restore implementations without requiring an invocation.
 
         Raises:
             AssertionError: If any override loaded via ``override_from_file``
@@ -204,12 +208,20 @@ class DynamicOpOverride:
             except AssertionError as e:
                 unused_errors.append(str(e))
 
-        if unused_errors:
+        if unused_errors and not allow_unused:
             raise AssertionError("; ".join(unused_errors))
 
     def list_overrides(self) -> List[str]:
         """Return list of currently overridden operator names."""
         return list(self._overrides.keys())
+
+    def call_counts(self) -> Dict[str, int]:
+        """Snapshot actual invocations of file-injected implementations."""
+        return dict(self._call_counts)
+
+    def get_override(self, op_name: str, module_name: str = "flag_gems"):
+        """Return the live callable for benchmark-owned candidate invocation."""
+        return self._overrides.get(f"{module_name}.{op_name}")
 
     def load_impl_from_file(self, filepath: str, func_name: str) -> Optional[Callable]:
         """

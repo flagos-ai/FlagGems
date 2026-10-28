@@ -12,6 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Kunlunxin( XPU ) erfc(x) = 1 - erf(x).
+#
+# The generic flag_gems/ops/special_erfc.py routes erfc through
+# tl_extra_shim.erfc -> extern `_ZN3xpu4erfcEf` (XPU software libdevice-style
+# implementation), which measures ~76x slower than torch-native on 16.7M+
+# element tiles (baseline Gems Speedup ~= 0.013x on (4096, 4096) fp32,
+# 40.9ms vs 0.563ms).  This override reuses the exact odd polynomial
+# x*P(x^2) already validated in _kunlunxin/ops/erf.py (LSQ fit on
+# t in [0, 9], deg-12 in t, fp32 Horner max abs err 3.7e-5 on [0, 3.0] and
+# hard saturation at |x| > 3) and computes erfc = 1 - erf:
+#   x >  3 : 1 -  1.0 = 0.0   (ref erfc(3.5)=7.4e-7, |diff| < atol 1e-4)
+#   x < -3 : 1 - -1.0 = 2.0   (ref erfc(-3.5)=1.9999993, |diff| < atol 1e-4)
+#   else   : 1 - x*P(x^2)     (abs err <= 3.7e-5, same margin as erf itself;
+#                              dense-grid check vs torch.erfc: max |diff|
+#                              3.45e-5, 0.345x of the test tolerance
+#                              atol 1e-4 + rtol 1.3e-6*|ref|)
+# There is no transcendental at all (no exp), only FMA/dp2a-friendly Horner,
+# matching the design that made the erf kernel ~2.9x faster than torch-native.
+# NaN/Inf semantics: comparisons are false for NaN so the polynomial
+# propagates NaN; +/-Inf saturate to 0.0 / 2.0 exactly like torch.
+
 import logging
 
 import torch
@@ -27,6 +48,9 @@ CUT_BOUND = tl.constexpr(3.0)
 UNROLL_NUM = 16
 BUFFER_SIZE_LIMIT = 8192
 IS_CLOSE_MEMORY_ASYNC = False
+# A finite fp32 tile sum proves the tile holds no NaN and no +-Inf (both
+# propagate through the sum), which is what gates the compare-free saturation.
+FINITE_SUM_BOUND = tl.constexpr(3.0e38)
 
 
 def _pick_block(n_elements):
@@ -47,7 +71,12 @@ def _pick_block(n_elements):
     if n_elements >= 65_536 and n_elements % 8192 == 0:
         return 8192, 4, False
     if n_elements <= 65_536:
-        return 2048, 4, True
+        # Keep the measured 2048-lane bucket (wider tiles measured < 0.8x at
+        # 16K) but drop the mask when the shape divides it: the unmasked kernel
+        # is the faster memory path and the only one eligible for the cached
+        # CompiledKernel launch below, which is what small launch-bound shapes
+        # ([64,64]: torch 8.3us vs a ~19us triton JIT launch) actually need.
+        return 2048, 4, (n_elements % 2048) != 0
     return 8192, 4, True
 
 
@@ -78,8 +107,21 @@ def erfc_kernel(
     p = p * t + -0.37612554
     p = p * t + 1.1283791
     v = x * p
-    r = tl.where(x > CUT_BOUND, 1.0, v)
-    r = tl.where(x < -CUT_BOUND, -1.0, r)
+    # Saturation without i1 compare masks: on XPU the two `tl.where`s used to
+    # cost ~440us of the 568us total on 16.7M fp16 (min/max form: 126us), and
+    # dropping Horner terms saves almost nothing -- the compare masks were the
+    # kernel. min/max saturation is exact for every finite input (|x|<=3 keeps
+    # |v|<1, |x|>3 pushes |v|>=1), but this backend's min/max PREFER THE
+    # NON-NAN OPERAND, so NaN would come out as 2.0. `tl.sum` is finite iff the
+    # tile holds no NaN and no +-Inf, and an ordered scalar compare on it does
+    # lower (`x == x` per element does not: "Cannot select v16i1 setcc seto"),
+    # so tiles that may contain NaN/Inf fall back to the original where-body.
+    s = tl.sum(x)
+    if tl.abs(s) < FINITE_SUM_BOUND:
+        r = tl.minimum(1.0, tl.maximum(-1.0, v))
+    else:
+        r = tl.where(x > CUT_BOUND, 1.0, v)
+        r = tl.where(x < -CUT_BOUND, -1.0, r)
     y = 1.0 - r
     tl.store(out_ptr + offset, y.to(out_ptr.dtype.element_ty), mask=mask)
 
@@ -108,8 +150,12 @@ def erfc_kernel_unmasked(
     p = p * t + -0.37612554
     p = p * t + 1.1283791
     v = x * p
-    r = tl.where(x > CUT_BOUND, 1.0, v)
-    r = tl.where(x < -CUT_BOUND, -1.0, r)
+    s = tl.sum(x)
+    if tl.abs(s) < FINITE_SUM_BOUND:
+        r = tl.minimum(1.0, tl.maximum(-1.0, v))
+    else:
+        r = tl.where(x > CUT_BOUND, 1.0, v)
+        r = tl.where(x < -CUT_BOUND, -1.0, r)
     y = 1.0 - r
     tl.store(out_ptr + offset, y.to(out_ptr.dtype.element_ty))
 

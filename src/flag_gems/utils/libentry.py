@@ -54,7 +54,7 @@ except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
         raise
     _HAS_FLAGTREE_FLAGTUNE = False
-    from flag_gems.flagtune.runtime._benchmark_protocol import (
+    from flag_gems.flagtune.offline.runtime.benchmark_protocol import (
         BenchmarkMode,
         BenchmarkProtocol,
         resolve_benchmarker,
@@ -67,8 +67,15 @@ else:
         resolve_benchmarker,
     )
 
+# FlagTree's auto-adjust-block-size knob exists only on Triton builds that
+# carry it; stock Triton exposes triton.knobs but without this attribute.
+try:
+    _HAS_FLAGTREE_AABS = hasattr(triton.knobs.autotuning, "adjust_block_size")
+except AttributeError:
+    _HAS_FLAGTREE_AABS = False
+
 from flag_gems import runtime
-from flag_gems.flagtune import cost_model
+from flag_gems.flagtune.inference import cost_model
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.runtime.backend import _state
 from flag_gems.utils.code_cache import config_cache_dir
@@ -160,13 +167,29 @@ def _infer_tensor_dtypes(values: Iterable[Any]) -> Tuple[Any, ...]:
     return tuple(dtypes)
 
 
+_TENSOR_DESCRIPTOR_TYPE = None  # None = unresolved; False = unavailable; else the class
+
+
 def _descriptor_cache_key(arg):
-    """Normalize descriptors for both positional and keyword dispatch keys."""
-    try:
-        from triton.tools.tensor_descriptor import TensorDescriptor
-    except ImportError:
-        return arg
-    if not isinstance(arg, TensorDescriptor):
+    """Normalize descriptors for both positional and keyword dispatch keys.
+
+    Per-call cost matters: this runs once per kernel argument per launch, and a
+    function-local `import` here measured ~1.1 us per call on this machine
+    (~95% of the whole helper, cascading to ~16 us/launch on small-shape ops).
+    Resolve the descriptor type once instead; the common path is then a single
+    isinstance check. Semantics unchanged.
+    """
+    global _TENSOR_DESCRIPTOR_TYPE
+    descriptor_type = _TENSOR_DESCRIPTOR_TYPE
+    if descriptor_type is None:
+        try:
+            from triton.tools.tensor_descriptor import TensorDescriptor
+        except ImportError:
+            descriptor_type = False
+        else:
+            descriptor_type = TensorDescriptor
+        _TENSOR_DESCRIPTOR_TYPE = descriptor_type
+    if descriptor_type is False or not isinstance(arg, descriptor_type):
         return arg
     return (
         "TensorDescriptor",
@@ -1275,6 +1298,7 @@ def libtuner(
     flagtune_yaml_path=None,
     flagtune_pre_hook=None,
     flagtune_dtype_resolver=None,
+    disable_aabs=False,
 ):
     """Decorator for triton library autotuner.
 
@@ -1288,6 +1312,11 @@ def libtuner(
     FlagTune Args:
         use_cuda_graph: Use CUDA Graph benchmarking for this ordinary tuner.
             The default is ``False`` and uses ``triton.testing.do_bench``.
+        disable_aabs: Keep the configured block sizes for this kernel when
+            FlagTree's auto-adjust-block-size is active. AABS sizes a block
+            from the extent of the ``tl.arange(0, BLOCK)`` that feeds it, so a
+            small runtime dimension can shrink the block below a constraint the
+            kernel relies on (an fp8 ``tl.dot`` needs K >= 32, for example).
         flagtune_op_name: FlagGems legacy runtime enablement key.
         flagtune_expand_op_name: Independent legacy expanded-config name; it
             defaults to ``flagtune_op_name``.
@@ -1322,7 +1351,7 @@ def libtuner(
 
     def decorator(fn):
         """Construct the selected policy class around a Triton JIT kernel."""
-        return policy(
+        tuner = policy(
             fn,
             fn.arg_names,
             configs,
@@ -1346,6 +1375,8 @@ def libtuner(
             flagtune_variant=flagtune_variant,
             flagtune_dtype_resolver=flagtune_dtype_resolver,
         )
+        tuner.disable_aabs = disable_aabs
+        return tuner
 
     return decorator
 
@@ -1453,6 +1484,34 @@ class LibEntry(triton.KernelInterface):
         const_key = [_descriptor_cache_key(arg) for arg in const_args]
         return tuple(spec_key + dns_key + const_key)
 
+    def _first_run(self, *args, **kwargs):
+        """Run the tuner once for a fresh entry key, with AABS disabled when
+        the caller passes constexpr values as keyword arguments, or when the
+        kernel opted out with ``libtuner(disable_aabs=True)``.
+
+        FlagTree's AABS (auto-adjust-block-size) treats ``tl.arange(0, X)``
+        constexprs as tunable block sizes and writes them back into
+        ``config.kwargs`` during benchmarking. When the caller also supplies
+        the same constexpr as a launch kwarg, the tuner's relaunch
+        (``fn.run(*args, **kwargs, **config.all_kwargs())``) binds that name
+        twice and raises TypeError. The caller's values are the intended
+        sizes, so AABS has nothing to adjust here — suspend it for the
+        benchmark and restore it afterwards.
+        """
+        if not _HAS_FLAGTREE_AABS:
+            return self.fn.run(*args, **kwargs)
+        knobs_obj = triton.knobs.autotuning
+        if not getattr(self.fn, "disable_aabs", False) and not any(
+            p.is_constexpr and p.name in kwargs for p in self.jit_function.params
+        ):
+            return self.fn.run(*args, **kwargs)
+        previous = knobs_obj.adjust_block_size
+        try:
+            knobs_obj.adjust_block_size = False
+            return self.fn.run(*args, **kwargs)
+        finally:
+            knobs_obj.adjust_block_size = previous
+
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
         if self._has_flagtune_tuner:
@@ -1516,7 +1575,7 @@ class LibEntry(triton.KernelInterface):
             with self.lock:
                 if entry_key in cache:
                     break
-                kernel = self.fn.run(*args, **kwargs)
+                kernel = self._first_run(*args, **kwargs)
                 fn = self.fn
                 # collect constexpr arguments for grid computation
                 constexprs = {}
