@@ -46,9 +46,15 @@ def test_linalg_ldl_factor_ex(shape, dtype):
     assert len({result.untyped_storage()._cdata for result in res_out}) == 3
     assert torch.equal(A, original_input)
 
+    # Only move results after checking their original target ABI above.
+    comparison_out = (
+        tuple(value.cpu() for value in res_out)
+        if flag_gems.vendor_name == "thead"
+        else res_out
+    )
     # Compare LD matrices
-    utils.gems_assert_close(res_out[0], ref_out[0], dtype)
+    utils.gems_assert_close(comparison_out[0], ref_out[0], dtype)
     # Compare pivots
-    utils.gems_assert_equal(res_out[1], ref_out[1])
+    utils.gems_assert_equal(comparison_out[1], ref_out[1])
     # Compare info (should be 0 for successful factorization)
-    utils.gems_assert_equal(res_out[2], ref_out[2])
+    utils.gems_assert_equal(comparison_out[2], ref_out[2])
