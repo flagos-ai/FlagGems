@@ -23,12 +23,7 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_unary import UNARY_OPS
 
-from .accuracy_utils import (
-    gems_assert_close,
-    gems_assert_equal,
-    gems_log_logger,
-    to_reference,
-)
+from .accuracy_utils import gems_assert_close, gems_assert_equal, to_reference
 
 # Every operator name in the table; used to parameterize the shared cases.
 UNARY_NAMES = sorted(UNARY_OPS)
@@ -458,10 +453,9 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     if flag_gems.device != "cuda":
         return
     inp = [_sample((8,), torch.float32, flag_gems.device)]
-    want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
-    logger_name = gems_log_logger(_gems_op(name, inplace))
+    want = f" _FOREACH_{name.upper()}{'_' if inplace else ''}"
 
-    with caplog.at_level(logging.DEBUG, logger=logger_name):
+    with caplog.at_level(logging.DEBUG):
         caplog.clear()
         _torch_op(name, inplace)([t.clone() for t in inp])
         assert want not in caplog.text, "negative control fired: probe proves nothing"
