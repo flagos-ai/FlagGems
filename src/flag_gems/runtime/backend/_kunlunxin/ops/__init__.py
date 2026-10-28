@@ -89,6 +89,16 @@ from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_round import _foreach_round
 from ._foreach_round_ import _foreach_round_
+from ._foreach_scalar_out import (  # noqa: F401
+    _foreach_add_Scalar,
+    _foreach_add_ScalarList,
+    _foreach_div_Scalar,
+    _foreach_div_ScalarList,
+    _foreach_mul_Scalar,
+    _foreach_mul_ScalarList,
+    _foreach_sub_Scalar,
+    _foreach_sub_ScalarList,
+)
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
@@ -876,6 +886,8 @@ __all__ = [
     "_foreach_acos_",
     "_foreach_add__List",
     "_foreach_add_List",
+    "_foreach_add_Scalar",
+    "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
@@ -891,6 +903,8 @@ __all__ = [
     "_foreach_div__List",
     "_foreach_div__Tensor",
     "_foreach_div_List",
+    "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
     "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
@@ -911,6 +925,8 @@ __all__ = [
     "_foreach_log2_",
     "_foreach_log_",
     "_foreach_mul__List",
+    "_foreach_mul_Scalar",
+    "_foreach_mul_ScalarList",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
@@ -928,6 +944,8 @@ __all__ = [
     "_foreach_sign_",
     "_foreach_sqrt",
     "_foreach_sub__List",
+    "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
     "_foreach_tan",
     "_foreach_tan_",
     "_foreach_zero",
