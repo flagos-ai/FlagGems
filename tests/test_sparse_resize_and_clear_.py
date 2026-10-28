@@ -21,6 +21,12 @@ from . import accuracy_utils as utils
 
 pytestmark = [pytest.mark.sparse_resize_and_clear_]
 
+# ATen has shipped two wordings for rejecting len(size) != sparse_dim + dense_dim.
+# Both name the two dimension counts, so accept either instead of pinning one build.
+_DIM_MISMATCH_MSG = (
+    r"number of dimensions must be sparse_dim|len\(size\) == sparse_dim \+ dense_dim"
+)
+
 # (target size, sparse_dim, dense_dim). The target metadata covers growing,
 # shrinking, changing the sparse/dense split, and turning a plain COO tensor
 # into a hybrid one; the reference accepts all of them because clearing makes
@@ -175,9 +181,14 @@ def test_sparse_resize_and_clear_size_mismatch_raises(empty):
         inp = _make_coo((2, 3), torch.float32)
     ref_inp = utils.to_reference(inp.clone())
 
-    with pytest.raises(RuntimeError, match="number of dimensions must be sparse_dim"):
+    # The contract is "rejected because len(size) != sparse_dim + dense_dim",
+    # not one exact sentence: ATen has shipped both of these wordings
+    #   torch 2.8: "number of dimensions must be sparse_dim (2) + dense_dim (1), but got 2"
+    #   later:     "'len(size) == sparse_dim + dense_dim' is not satisfied: ..."
+    # Pinning one string makes the test fail on whichever build says the other.
+    with pytest.raises(RuntimeError, match=_DIM_MISMATCH_MSG):
         _ref(ref_inp, (4, 5), 2, 1)
-    with pytest.raises(RuntimeError, match="number of dimensions must be sparse_dim"):
+    with pytest.raises(RuntimeError, match=_DIM_MISMATCH_MSG):
         flag_gems.sparse_resize_and_clear_(inp, (4, 5), 2, 1)
 
 

@@ -34,7 +34,10 @@ Measured against native ATen on the target build:
 * the resulting empty tensor reports ``is_coalesced() == True``;
 * ``size``, ``sparse_dim`` and ``dense_dim`` may all change in one call, for
   empty and non-empty inputs alike, and a size whose length differs from
-  ``sparse_dim + dense_dim`` is rejected with the native message.
+  ``sparse_dim + dense_dim`` is rejected by a ``RuntimeError`` that names both
+  dimension counts. The exact sentence is not pinned: ATen has shipped more
+  than one wording for this check, so matching a single string breaks on the
+  other build.
 
 The operator performs no per-element work: it is a TensorImpl metadata and
 storage replacement, like ``resize_as_sparse_``, so no Triton kernel is
