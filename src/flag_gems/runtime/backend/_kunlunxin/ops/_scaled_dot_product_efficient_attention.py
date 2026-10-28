@@ -364,7 +364,7 @@ def _scaled_dot_product_efficient_attention(
     is_causal=False,
     scale=None,
 ):
-    logger.debug("GEMS SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
+    logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_EFFICIENT_ATTENTION")
 
     assert dropout_p == 0.0, "Currently only support dropout_p=0.0"
     assert attn_bias is None, "attn_bias is not supported by this entry point"

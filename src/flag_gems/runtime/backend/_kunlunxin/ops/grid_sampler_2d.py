@@ -59,7 +59,7 @@ def grid_sampler_2d(
         padding_mode: 0=Zeros, 1=Border, 2=Reflection.
         align_corners: If True, corner pixels are aligned.
     """
-    logger.debug("GEMS GRID_SAMPLER_2D")
+    logger.debug("GEMS_KUNLUNXIN GRID_SAMPLER_2D")
 
     assert input.ndim == 4, "Input must be 4D"
     assert grid.ndim == 4, "Grid must be 4D"

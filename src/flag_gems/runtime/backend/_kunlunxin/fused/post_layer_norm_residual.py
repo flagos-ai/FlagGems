@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
@@ -21,6 +22,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
+
+logger = logging.getLogger(__name__)
 
 # Alignment budget (in elements) for the 2D tile kernel: a 16-row tile of a
 # 512-wide reduction is the empirical sweet spot on this backend (larger tiles
@@ -553,6 +556,8 @@ def post_layer_norm_residual(
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/gnn_layers/mesh_graph_mlp.py#L120-L171
     https://github.com/NVIDIA/physicsnemo/blob/65ec388929884436051203bca9dfb912eabd4c18/physicsnemo/nn/module/mesh_node_block.py#L70-L91
     """
+    logger.debug("GEMS_KUNLUNXIN POST_LAYER_NORM_RESIDUAL")
+
     normalized_shape = _normalize_shape(normalized_shape)
     _validate_inputs(input, residual, normalized_shape, weight, bias)
 
