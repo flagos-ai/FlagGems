@@ -284,6 +284,71 @@ def _item_has_bfloat16_dtype(item):
     return False
 
 
+def _skip_unmeasurable_launch_count_tests(items):
+    targets = [
+        item
+        for item in items
+        if item.name
+        in (
+            "test_foreach_unary_launch_count_is_independent_of_list_length",
+            "test_foreach_unary_launch_count_scales_with_dtype_groups",
+        )
+    ]
+    if not targets:
+        return
+    import torch
+
+    profiler_available = True
+    try:
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
+            (torch.ones(1, device=flag_gems.device) * 2).item()
+    except RuntimeError:
+        profiler_available = False
+    fp64_available = (
+        torch.empty(1, device=flag_gems.device).to(torch.float64).dtype == torch.float64
+    )
+    for item in targets:
+        if not profiler_available and item.name.startswith(
+            "test_foreach_unary_launch_count_is_independent"
+        ):
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="torch profiler is unavailable on this platform"
+                )
+            )
+        if not fp64_available and item.name.startswith(
+            "test_foreach_unary_launch_count_scales"
+        ):
+            item.add_marker(
+                pytest.mark.skip(reason="float64 is not supported on this platform")
+            )
+
+
+def _skip_unavailable_integral_foreach_reference(items):
+    import torch
+
+    probe = torch.tensor([1, -1], dtype=torch.int16, device=flag_gems.device)
+    try:
+        torch._foreach_ceil([probe])
+    except RuntimeError:
+        pass
+    else:
+        return
+    for item in items:
+        if (
+            getattr(item, "originalname", item.name)
+            != "test_accuracy_foreach_unary_int"
+        ):
+            continue
+        callspec = getattr(item, "callspec", None)
+        if callspec is not None and callspec.params.get("name") == "ceil":
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="integral ceil has no device reference on this platform"
+                )
+            )
+
+
 def pytest_collection_modifyitems(session, config, items):
     """
     Modify the collected test items before they are executed.
@@ -296,6 +361,10 @@ def pytest_collection_modifyitems(session, config, items):
 
     first_parameter_only = config.getoption("--first-parameter-only")
     collect_marks_file = config.getoption("--collect-marks")
+
+    if flag_gems.vendor_name == "kunlunxin":
+        _skip_unmeasurable_launch_count_tests(items)
+        _skip_unavailable_integral_foreach_reference(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)
