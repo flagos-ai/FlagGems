@@ -57,11 +57,10 @@ def test_igamma_equal_shape_(shape, dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = ref_inp.igamma_(ref_other)
 
-    with flag_gems.use_gems():
-        result = inp.igamma_(other)
+    result = flag_gems.igamma_(inp, other)
 
     _assert_inplace_result(result, inp, original_pointer, ref_out, dtype)
-    utils.gems_assert_equal(other, other_before)
+    utils.gems_assert_equal(other, utils.to_reference(other_before))
 
 
 @pytest.mark.inplace
@@ -77,8 +76,7 @@ def test_igamma_broadcast_(self_shape, other_shape, dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = ref_inp.igamma_(ref_other)
 
-    with flag_gems.use_gems():
-        result = inp.igamma_(other)
+    result = flag_gems.igamma_(inp, other)
 
     _assert_inplace_result(result, inp, original_pointer, ref_out, dtype)
 
@@ -97,8 +95,7 @@ def test_igamma_noncontiguous_():
     ref_other = utils.to_reference(other, True)
     ref_out = ref_inp.igamma_(ref_other)
 
-    with flag_gems.use_gems():
-        result = inp.igamma_(other)
+    result = flag_gems.igamma_(inp, other)
 
     assert result.stride() == original_stride
     _assert_inplace_result(
@@ -122,8 +119,7 @@ def test_igamma_boundary_values_():
     ref_other = utils.to_reference(other, True)
     ref_out = ref_inp.igamma_(ref_other)
 
-    with flag_gems.use_gems():
-        result = inp.igamma_(other)
+    result = flag_gems.igamma_(inp, other)
 
     _assert_inplace_result(
         result, inp, original_pointer, ref_out, torch.float32
@@ -137,5 +133,4 @@ def test_igamma_rejects_nonbroadcastable_shape_():
     other = torch.ones((4,), device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            inp.igamma_(other)
+        flag_gems.igamma_(inp, other)

@@ -49,14 +49,13 @@ def test_igamma_equal_shape(shape, dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = torch.igamma(ref_inp, ref_other)
 
-    with flag_gems.use_gems():
-        result = torch.igamma(inp, other)
+    result = flag_gems.igamma(inp, other)
 
     assert result.shape == torch.Size(shape)
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True, atol=1e-3)
-    utils.gems_assert_equal(inp, inp_before)
-    utils.gems_assert_equal(other, other_before)
+    utils.gems_assert_equal(inp, utils.to_reference(inp_before))
+    utils.gems_assert_equal(other, utils.to_reference(other_before))
 
 
 @pytest.mark.igamma
@@ -70,8 +69,7 @@ def test_igamma_broadcast(self_shape, other_shape, dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = torch.igamma(ref_inp, ref_other)
 
-    with flag_gems.use_gems():
-        result = torch.igamma(inp, other)
+    result = flag_gems.igamma(inp, other)
 
     assert result.shape == ref_out.shape
     utils.gems_assert_close(result, ref_out, dtype, equal_nan=True, atol=1e-3)
@@ -87,8 +85,7 @@ def test_igamma_noncontiguous():
         utils.to_reference(inp, True), utils.to_reference(other, True)
     )
 
-    with flag_gems.use_gems():
-        result = torch.igamma(inp, other)
+    result = flag_gems.igamma(inp, other)
 
     utils.gems_assert_close(result, ref_out, torch.float32, atol=1e-3)
 
@@ -107,8 +104,7 @@ def test_igamma_boundary_values():
         utils.to_reference(inp, True), utils.to_reference(other, True)
     )
 
-    with flag_gems.use_gems():
-        result = torch.igamma(inp, other)
+    result = flag_gems.igamma(inp, other)
 
     utils.gems_assert_close(
         result, ref_out, torch.float32, equal_nan=True, atol=1e-3
@@ -121,5 +117,4 @@ def test_igamma_rejects_nonbroadcastable_shape():
     other = torch.ones((4,), device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            torch.igamma(inp, other)
+        flag_gems.igamma(inp, other)

@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -63,12 +65,12 @@ def test_fake_quantize_per_channel_affine():
         def build_inputs(self, case):
             plan = case.builder_args[0]
             shape, axis = plan.builder_args
-            inp = torch.randn(shape, dtype=case.dtype, device="cuda")
+            inp = torch.randn(shape, dtype=case.dtype, device=flag_gems.device)
             n_channels = shape[axis]
             scale = (
-                torch.rand(n_channels, dtype=torch.float32, device="cuda") * 0.1 + 0.01
+                torch.rand(n_channels, dtype=torch.float32, device=flag_gems.device) * 0.1 + 0.01
             )
-            zero_point = torch.zeros(n_channels, dtype=torch.int32, device="cuda")
+            zero_point = torch.zeros(n_channels, dtype=torch.int32, device=flag_gems.device)
             quant_min = 0
             quant_max = 255
             return inp, scale, zero_point, axis, quant_min, quant_max

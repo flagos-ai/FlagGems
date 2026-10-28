@@ -62,6 +62,12 @@ def _make_metadata(
         False,
         padding_idx,
     )
+    # CPU-optimized sum forward may omit offset2bag, but the standalone
+    # backward ABI requires one bag index per sample.
+    if offset2bag.numel() == 0:
+        offset2bag = torch.arange(
+            num_bags, dtype=torch.long, device=indices.device
+        ).repeat_interleave(3)
     return (
         torch.randn_like(output),
         indices,

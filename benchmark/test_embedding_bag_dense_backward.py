@@ -55,6 +55,12 @@ def _build_inputs_fn(plan, dtype, device):
     output, offset2bag, bag_size, maximum_indices = torch.ops.aten._embedding_bag(
         weight, indices, offsets, False, 0, False, None, False, -1
     )
+    # Materialize the standalone backward metadata omitted by optimized
+    # CPU sum forward without changing the bags or sample indices.
+    if offset2bag.numel() == 0:
+        offset2bag = torch.arange(
+            num_bags, dtype=torch.long, device=indices.device
+        ).repeat_interleave(samples_per_bag)
     grad = torch.randn_like(output)
     return grad, indices, offset2bag, bag_size, maximum_indices, num_weights, False, 0, None, -1
 
