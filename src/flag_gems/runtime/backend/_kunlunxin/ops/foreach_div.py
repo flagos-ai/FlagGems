@@ -43,6 +43,7 @@ from flag_gems.utils.foreach import (
 )
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
