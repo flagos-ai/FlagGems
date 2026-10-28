@@ -199,7 +199,7 @@ and perform basic code pre-checks when calling the `git commit` command.
 
 算子在 Host 端可以调用 `torch.empty_like()`、`torch.zeros()`、`torch.randn()` 等数据初始化函数，以及 FlagGems 的其他算子。禁止调用 PyTorch 运算相关的算子。
 
-每个算子函数的第一条语句都应输出 DEBUG 日志。日志内容必须包含 vendor 前缀（通用实现使用 `GEMS`，vendor 实现使用 `GEMS_<VENDOR>`），前缀后用空格分隔，并使用大写 snake_case 形式的算子名，例如 `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`。
+每个算子函数的第一条语句都应输出 DEBUG 日志。日志内容必须包含 vendor 前缀（通用实现使用 `GEMS`，vendor 实现使用 `GEMS_<VENDOR>`），前缀后用空格分隔，并使用大写 snake_case 形式的算子名，例如 `GEMS_NVIDIA SPECIAL_MULTIGAMMALN`。vendor 前缀还可以选择性地附加设备名称，例如 `GEMS_ENFLAME_GCU300 CONV1D`。
 
 ## 7. 代码格式检查 {#code-format-check}
 

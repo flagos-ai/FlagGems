@@ -68,22 +68,19 @@ def _upsample_nearest_exact3d_kernel(
         id = od
     else:
         id = tl.minimum(
-            tl.math.floor((od.to(tl.float32) + 0.5) * reciprocal_scale_d).to(tl.int32),
-            ID - 1,
+            ((od.to(tl.float32) + 0.5) * reciprocal_scale_d).to(tl.int32), ID - 1
         )
     if SAME_H:
         ih = oh
     else:
         ih = tl.minimum(
-            tl.math.floor((oh.to(tl.float32) + 0.5) * reciprocal_scale_h).to(tl.int32),
-            IH - 1,
+            ((oh.to(tl.float32) + 0.5) * reciprocal_scale_h).to(tl.int32), IH - 1
         )
     if SAME_W:
         iw = ow
     else:
         iw = tl.minimum(
-            tl.math.floor((ow.to(tl.float32) + 0.5) * reciprocal_scale_w).to(tl.int32),
-            IW - 1,
+            ((ow.to(tl.float32) + 0.5) * reciprocal_scale_w).to(tl.int32), IW - 1
         )
 
     d_stride_in = IH * IW
@@ -150,7 +147,7 @@ def _upsample_nearest_exact3d(
     # 2nd/8th discrete stores are penalized on XPU, see upsample family notes.
 
     total_out = N * C * OD * OH * OW
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 4096 if total_out >= 4096 else 1024
     need_mask = total_out % BLOCK_SIZE != 0
     grid = (triton.cdiv(total_out, BLOCK_SIZE),)
 

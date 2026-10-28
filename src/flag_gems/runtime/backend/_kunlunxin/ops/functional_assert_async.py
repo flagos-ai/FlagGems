@@ -16,28 +16,15 @@
 #
 # Same root cause and fix as _kunlunxin/ops/assert_async.py: the Triton
 # XPU backend lowers `tl.device_assert` to a no-op, so a false assertion
-# never raises. The condition is written to a device scratch buffer and
-# checked on the host after an explicit sync so that
-# `_functional_assert_async.msg` keeps "raise when the value is falsy".
+# never raises. The single element is read back to the host (implicit stream
+# sync) and checked there so that `_functional_assert_async.msg` keeps
+# "raise when the value is falsy".
 
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
-
-
-@triton.jit
-def _functional_assert_async_kernel(x_ptr, scratch_ptr, MSG: tl.constexpr):
-    val = tl.load(x_ptr)
-    cond = val != 0
-    # Works on backends with a real device assert; no-op on XPU.
-    tl.device_assert(cond, MSG)
-    tl.store(scratch_ptr, cond)
 
 
 def _functional_assert_async(
@@ -63,11 +50,7 @@ def _functional_assert_async(
             f"Boolean value of Tensor with shape {list(tensor.shape)} is ambiguous"
         )
 
-    scratch = torch.empty((), dtype=torch.bool, device=tensor.device)
-    with torch_device_fn.device(tensor.device):
-        _functional_assert_async_kernel[(1,)](tensor, scratch, MSG=assert_msg)
-    torch_device_fn.synchronize()
-    if not scratch.item():
+    if not tensor.item():
         raise RuntimeError(assert_msg)
 
     # Return a new dependency token (empty tensor with same dtype/device as input token)

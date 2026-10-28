@@ -21,9 +21,6 @@ import triton.language.extra.cuda.libdevice as libdevice
 
 logger = logging.getLogger(__name__)
 
-
-_logger = logging.getLogger("flag_gems.ops.special_multigammaln")
-
 # ---------------------------------------------------------------------------
 # special_multigammaln(self, p)
 #
@@ -341,7 +338,7 @@ def _mgl_kernel_nd(
 
 
 def special_multigammaln(self, p):
-    _logger.debug("GEMS_METAX SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_METAX SPECIAL_MULTIGAMMALN")
     if isinstance(p, torch.Tensor):
         p = int(p.item())
     else:

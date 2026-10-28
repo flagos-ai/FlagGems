@@ -26,6 +26,8 @@ POINTWISE_SHAPES = [(128,), (512, 256), (2, 128, 128)]
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_bessel_j0(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("backend declares no fp64 support; float64 unavailable")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.special.bessel_j0(ref_inp)

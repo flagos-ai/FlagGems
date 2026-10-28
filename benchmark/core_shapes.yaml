@@ -296,6 +296,14 @@ softmax_backward_out:
     - [64, 512, 512]
     - [1024, 1024, 1024]
 
+softmax_backward_data:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+
 smooth_l1_loss:
   shapes:
     - [262144]
@@ -478,6 +486,16 @@ grouped_mm:
     - [16, 2560, 2048]
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
+sparse_mm_reduce_impl:
+  shapes:
+    - [2, 512, 512, 512]
+    - [8, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [4, 4096, 4096, 4096]
+    - [2, 4096, 1024, 4096]
+    - [8, 4096, 256, 4096]
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
 
 sparse_sampled_addmm:
   shapes:
@@ -1025,6 +1043,22 @@ MoeAlignBlockSizeBenchmark:
     - [8, 64]
     - [128, 4]
 
+# ``T`` = tokens, ``N_e`` = experts, ``K`` = Top-K.  Covers the small/medium
+# router shapes seen in practice up to the large ``32768 x 128`` case that
+# switches the MUSA kernels to the wider token tile.
+moe_load_balance_loss: &moe_load_balance_loss_shapes
+  shapes:
+    - [256, 8, 2]
+    - [1024, 8, 2]
+    - [4096, 16, 2]
+    - [4096, 64, 4]
+    - [16384, 64, 4]
+    - [32768, 128, 8]
+  shape_desc: "T, N_e, K"
+
+moe_load_balance_loss_mask:
+  <<: *moe_load_balance_loss_shapes
+
 ConcatAndCacheMLABenchmark:
   shapes:
     - [16, 8, 84, 32, 4]
@@ -1107,7 +1141,7 @@ repeat:
     - [64, 512, 512]
     - [512, 512, 512]
 
-topk_w8a16_fp8:
+topk_w8a16:
   shapes:
     - [64, 128, 8]
     - [256, 256, 8]

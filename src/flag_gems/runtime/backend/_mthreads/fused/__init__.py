@@ -15,11 +15,13 @@
 from .cross_entropy_loss import cross_entropy_loss
 from .matmul_bias_activation import matmul_bias_activation
 from .matmuladd import matmuladd
+from .moe_load_balance_loss import moe_load_balance_loss
 from .sparse_attention import sparse_attn_triton
 
 __all__ = [
     "cross_entropy_loss",
     "matmul_bias_activation",
+    "moe_load_balance_loss",
     "sparse_attn_triton",
     "matmuladd",
 ]

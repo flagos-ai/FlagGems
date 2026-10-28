@@ -36,6 +36,7 @@ from .instance_norm import instance_norm
 from .matmul_bias_activation import matmul_bias_activation
 from .matmuladd import matmuladd
 from .mhc_bwd import mhc_bwd  # noqa: F401  (import triggers _install)
+from .mhc_post import mhc_post  # noqa: F401  (import triggers _install)
 from .mhc_pre import mhc_pre  # noqa: F401  (import triggers _install)
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer

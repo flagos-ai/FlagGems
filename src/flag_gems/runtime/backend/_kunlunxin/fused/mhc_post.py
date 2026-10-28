@@ -23,6 +23,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.fused.mhc.mhc_post import mhc_post as _general_mhc_post
+
 logger = logging.getLogger(__name__)
 
 # Cap the whole-row tile so very large H still tiles across the grid instead of
@@ -217,3 +219,23 @@ def mhc_post(
             num_stages=1,
         )
     return out
+
+
+def _install():
+    """Wire the XPU implementation into the direct-import entrypoint.
+
+    The mhc fused family is called via direct module import
+    (`from flag_gems.fused.mhc.mhc_post import mhc_post`), so the normal
+    SpecOpRegistrar namespace swap cannot reach it.  Replace the attribute on
+    the already-imported module (loaded during `import flag_gems`).
+    """
+    import sys
+
+    mod = sys.modules.get("flag_gems.fused.mhc.mhc_post")
+    if mod is not None:
+        cur = getattr(mod, "mhc_post", None)
+        if cur is _general_mhc_post:
+            mod.mhc_post = mhc_post
+
+
+_install()
