@@ -107,3 +107,64 @@ def test_indices_copy_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class UnderscoreIndicesCopyBenchmark(base.Benchmark):
+    """``aten::_indices_copy`` over sparse COO index buffers.
+
+    The op copies the (sparse_dim, nnz) index tensor, so the workload axis is
+    nnz alone.
+    """
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = SPARSE_INDICES_BENCH_SHAPES
+
+    def get_input_iter(self, cur_dtype):
+        for nnz, size in self.shapes:
+            inp = _make_coo(nnz, size, self.device)
+            yield inp, {}
+
+
+def _indices_copy_ref(self):
+    # The native op has no CUDA sparse-COO kernel; the equivalent baseline is
+    # the plain indices accessor materialized with clone.
+    return self._indices().clone()
+
+
+def _indices_copy_out_ref(self, out):
+    # The native op has no CUDA sparse-COO kernel; the equivalent baseline is
+    # materializing the indices accessor into the provided out buffer.
+    out.copy_(self._indices())
+    return out
+
+
+@pytest.mark.underscore_indices_copy
+def test__indices_copy():
+    bench = UnderscoreIndicesCopyBenchmark(
+        op_name="_indices_copy",
+        torch_op=_indices_copy_ref,
+        # Index copies are dtype-agnostic (int64 buffers); float32 only
+        # drives the workload generator.
+        dtypes=[torch.float32],
+    )
+    bench.run()
+
+
+class UnderscoreIndicesCopyOutBenchmark(UnderscoreIndicesCopyBenchmark):
+    """``.out`` variant: yields the sparse input plus an out buffer."""
+
+    def get_input_iter(self, cur_dtype):
+        for nnz, size in self.shapes:
+            inp = _make_coo(nnz, size, self.device)
+            out = torch.empty_like(inp._indices())
+            yield inp, {"out": out}
+
+
+@pytest.mark.underscore_indices_copy_out
+def test__indices_copy_out():
+    bench = UnderscoreIndicesCopyOutBenchmark(
+        op_name="_indices_copy_out",
+        torch_op=_indices_copy_out_ref,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
