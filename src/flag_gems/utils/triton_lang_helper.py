@@ -1616,8 +1616,13 @@ def _accurate_powf(x, y):
 
 @triton.jit
 def _radeon_pow(x, y):
-    if x.dtype == tl.float32 and y.dtype == tl.float32:
-        return _accurate_powf(x, y)
+    # Callers also pass Python scalars (e.g. pow(x, 3)); where() turns them into
+    # tensors the way the native extern would (int -> int32, float -> fp32), so
+    # integer exponents keep the native pown overload.
+    xt = tl.where(True, x, x)
+    yt = tl.where(True, y, y)
+    if xt.dtype == tl.float32 and yt.dtype == tl.float32:
+        return _accurate_powf(xt, yt)
     else:
         return _NATIVE_POW(x, y)
 
