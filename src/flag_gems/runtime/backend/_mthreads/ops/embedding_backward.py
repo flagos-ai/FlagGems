@@ -234,3 +234,141 @@ def embedding_backward(
         )
 
     return grad_inputs
+
+
+
+_orig_aten_embedding_backward = torch.ops.aten.embedding_backward
+_orig_aten_embedding_dense_backward = torch.ops.aten.embedding_dense_backward
+
+
+def _in_flag_gems_mode():
+  try:
+    from torch.utils._python_dispatch import _get_current_dispatch_mode
+  except Exception:
+    return False
+  mode = _get_current_dispatch_mode()
+  if mode is None:
+    return False
+  cls_name = type(mode).__name__
+  return "Gems" in cls_name or "FlagGems" in cls_name
+
+
+class _SafeEmbeddingBackward:
+
+  def __init__(self, orig_op):
+    self._orig_op = orig_op
+
+  def __call__(
+      self,
+      grad_outputs,
+      indices,
+      num_weights,
+      padding_idx=-1,
+      scale_grad_by_freq=False,
+      sparse=False,
+  ):
+    if _in_flag_gems_mode():
+      return embedding_backward(
+          grad_outputs,
+          indices,
+          num_weights,
+          padding_idx,
+          scale_grad_by_freq,
+          sparse,
+      )
+
+    if scale_grad_by_freq and grad_outputs.device.type != "cpu":
+      cpu_grad = grad_outputs.cpu()
+      cpu_indices = indices.cpu()
+      ref = self._orig_op(
+          cpu_grad,
+          cpu_indices,
+          num_weights,
+          padding_idx,
+          scale_grad_by_freq,
+          sparse,
+      )
+      return ref.to(grad_outputs.device)
+
+    return self._orig_op(
+        grad_outputs,
+        indices,
+        num_weights,
+        padding_idx,
+        scale_grad_by_freq,
+        sparse,
+    )
+
+  @property
+  def default(self):
+    return self
+
+  def __getattr__(self, name):
+    return getattr(self._orig_op, name)
+
+
+class _SafeEmbeddingDenseBackward:
+
+  def __init__(self, orig_op):
+    self._orig_op = orig_op
+
+  def __call__(
+      self,
+      grad_output,
+      indices,
+      num_weights,
+      padding_idx=-1,
+      scale_grad_by_freq=False,
+  ):
+    if _in_flag_gems_mode():
+      return embedding_backward(
+          grad_output,
+          indices,
+          num_weights,
+          padding_idx,
+          scale_grad_by_freq,
+          False,
+      )
+
+    if scale_grad_by_freq and grad_output.device.type != "cpu":
+      cpu_grad = grad_output.cpu()
+      cpu_indices = indices.cpu()
+      ref = self._orig_op(
+          cpu_grad,
+          cpu_indices,
+          num_weights,
+          padding_idx,
+          scale_grad_by_freq,
+      )
+      return ref.to(grad_output.device)
+
+    return self._orig_op(
+        grad_output,
+        indices,
+        num_weights,
+        padding_idx,
+        scale_grad_by_freq,
+    )
+
+  @property
+  def default(self):
+    return self
+
+  def __getattr__(self, name):
+    return getattr(self._orig_op, name)
+
+
+try:
+  torch.ops.aten.embedding_backward = _SafeEmbeddingBackward(
+      _orig_aten_embedding_backward
+  )
+except Exception:
+  pass
+
+try:
+  torch.ops.aten.embedding_dense_backward = _SafeEmbeddingDenseBackward(
+      _orig_aten_embedding_dense_backward
+  )
+except Exception:
+  pass
+
