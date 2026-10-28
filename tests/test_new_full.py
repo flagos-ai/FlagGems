@@ -39,30 +39,29 @@ def test_new_full(shape, dtype, xdtype, fill_value):
     inp = torch.empty(size=shape, dtype=dtype, device=device)
     ref_inp = utils.to_reference(inp)
 
-    # without dtype: output dtype inherits from self (dtype), skip if dtype doesn't support inf/nan
-    if isinstance(fill_value, float) and (
-        math.isinf(fill_value) or math.isnan(fill_value)
-    ):
-        if dtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
+    nonfinite_fill = isinstance(fill_value, float) and not math.isfinite(fill_value)
+    for output_dtype in (None, xdtype):
+        kwargs = {} if output_dtype is None else {"dtype": output_dtype}
+        expected_dtype = dtype if output_dtype is None else output_dtype
+        if nonfinite_fill and expected_dtype in utils.ALL_INT_DTYPES:
+            # A nonfinite value cannot be represented by an integer output.
+            # Check each variant independently so this does not hide a valid
+            # explicit-dtype call in the same parameterized case.
+            with pytest.raises(
+                (RuntimeError, OverflowError), match="overflow|cannot be converted"
+            ) as native_error:
+                ref_inp.new_full(shape, fill_value, **kwargs)
+            with pytest.raises(
+                type(native_error.value), match="overflow|cannot be converted"
+            ):
+                flag_gems.new_full(inp, shape, fill_value, **kwargs)
+            continue
 
-    ref_out = ref_inp.new_full(shape, fill_value)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value)
-
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
-
-    # with dtype: output dtype is xdtype, skip if xdtype doesn't support inf/nan
-    if isinstance(fill_value, float) and (
-        math.isinf(fill_value) or math.isnan(fill_value)
-    ):
-        if xdtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
-
-    ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
-
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
+        ref_out = ref_inp.new_full(shape, fill_value, **kwargs)
+        res_out = flag_gems.new_full(inp, shape, fill_value, **kwargs)
+        assert isinstance(res_out, torch.Tensor)
+        assert res_out.device == inp.device
+        assert res_out.dtype == expected_dtype
+        assert res_out.shape == torch.Size(shape)
+        assert res_out.data_ptr() != inp.data_ptr()
+        utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
