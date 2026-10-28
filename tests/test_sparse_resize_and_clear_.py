@@ -164,8 +164,11 @@ def test_sparse_resize_and_clear_keeps_old_buffers_intact(dtype):
     _ref(ref_inp, (4, 5), 2, 0)
     flag_gems.sparse_resize_and_clear_(inp, (4, 5), 2, 0)
 
-    utils.gems_assert_equal(alias_values, res_values)
-    utils.gems_assert_equal(alias_indices, res_indices)
+    # These two compare the device tensor against a snapshot of itself, so they
+    # must not go through gems_assert_equal: that helper expects its second
+    # argument to be the CPU reference and asserts so under --ref=cpu.
+    assert torch.equal(alias_values, res_values)
+    assert torch.equal(alias_indices, res_indices)
     utils.gems_assert_equal(alias_values, ref_alias_values)
     utils.gems_assert_equal(alias_indices, ref_alias_indices)
 
