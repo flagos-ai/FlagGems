@@ -103,15 +103,6 @@ def masked_fill_tensor_value_kernel(inp, expand_mask, value):
 # lane work: measured +1.6x fp16 / +1.3x fp32 over the pointwise path on all
 # mid/large benchmark shapes, no regression on small shapes (gated below
 # _FAST_MIN_NUMEL where the pointwise path stays).
-#
-# Known limitation (2026-10-27): the flat kernels now blend in f32 as
-# `x*(1-m) + V*m` instead of the int-view form above. Finite inputs stay
-# bit-exact, but for a masked lane whose x is NaN/Inf, 0*inf = nan makes the
-# lane come out NaN where ATen returns V. Fixing it needs a per-lane select
-# (~122us fp16 / 133us fp32 per 16.8M elems), which costs 1.5-2x and drops the
-# dtype-equal-weight Gems speedup from 0.82 to 0.62, so the fast path is kept
-# and the deviation documented here. tests/test_masked_fill.py generates
-# finite inputs and does not cover this case.
 _FAST_TILE = 131072
 _FAST_MIN_NUMEL = 1 << 20
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -123,12 +114,10 @@ def masked_fill_fast_kernel(
 ):
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
-    x = tl.load(x_ptr + tid).to(tl.float32)
-    m = tl.load(mask_ptr + tid).to(tl.float32)
-    vv = tl.full((), V, tl.float32)
-    one = tl.full((), 1.0, tl.float32)
-    r = x * (one - m) + vv * m
-    tl.store(out_ptr + tid, r.to(out_ptr.dtype.element_ty))
+    xi = tl.load(x_ptr + tid)
+    m = tl.load(mask_ptr + tid).to(xi.dtype)
+    r = xi + (V - xi) * m
+    tl.store(out_ptr + tid, r)
 
 
 @triton.jit
@@ -138,19 +127,24 @@ def masked_fill_fast_masked_kernel(
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     m0 = tid < numel
-    x = tl.load(x_ptr + tid, mask=m0).to(tl.float32)
-    m = tl.load(mask_ptr + tid, mask=m0).to(tl.float32)
-    vv = tl.full((), V, tl.float32)
-    one = tl.full((), 1.0, tl.float32)
-    r = x * (one - m) + vv * m
-    tl.store(out_ptr + tid, r.to(out_ptr.dtype.element_ty), mask=m0)
+    xi = tl.load(x_ptr + tid, mask=m0)
+    m = tl.load(mask_ptr + tid, mask=m0).to(xi.dtype)
+    r = xi + (V - xi) * m
+    tl.store(out_ptr + tid, r, mask=m0)
+
+
+def _fast_bits(value, dtype):
+    iview = torch.int16 if dtype in (torch.float16, torch.bfloat16) else torch.int32
+    return int(torch.tensor([value], dtype=dtype).view(iview).item())
 
 
 def _masked_fill_fast(inp, mask, value, out):
     n = inp.numel()
-    # Round the fill value to the tensor dtype first, then to f32 (exact), so
-    # `x*(1-m) + V*m` reproduces masked_fill's cast semantics bit-exactly.
-    v = float(torch.tensor(value, dtype=inp.dtype).item())
+    bits = _fast_bits(value, inp.dtype)
+    xi = inp.view(
+        torch.int16 if inp.dtype in (torch.float16, torch.bfloat16) else torch.int32
+    )
+    oi = out.view(xi.dtype)
     mask8 = mask.view(torch.int8)
     launch = dict(
         num_warps=4,
@@ -160,11 +154,11 @@ def _masked_fill_fast(inp, mask, value, out):
     )
     if n % _FAST_TILE == 0:
         masked_fill_fast_kernel[(n // _FAST_TILE,)](
-            out, inp, mask8, V=v, TILE=_FAST_TILE, **launch
+            oi, xi, mask8, V=bits, TILE=_FAST_TILE, **launch
         )
     else:
         masked_fill_fast_masked_kernel[(math.ceil(n / _FAST_TILE),)](
-            out, inp, mask8, n, V=v, TILE=_FAST_TILE, **launch
+            oi, xi, mask8, n, V=bits, TILE=_FAST_TILE, **launch
         )
     return out
 
@@ -209,10 +203,9 @@ def masked_fill(inp, mask, value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
         # A 0-dim tensor value is a single element; ATen reads it as a scalar.
-        # Read it once and take the scalar kernel.  The tensor-value pointwise
-        # kernel lowers a 0-dim value tensor in a form FlagTree's MLIR->LLVM
-        # translation rejects ("failed to translate module to LLVM IR"), and the
-        # scalar path is bit-identical for every value dtype.
+        # Read it once and take the scalar kernel: the tensor-value pointwise
+        # kernel lowers a 0-dim value tensor in a form the FlagTree MLIR->LLVM
+        # translation rejects, and the scalar path is bit-identical.
         value = value.item()
     kernel = masked_fill_kernel
     assert broadcastable_to(
@@ -273,9 +266,7 @@ def masked_fill_(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        # Same scalar-isation as in ``masked_fill``: the tensor-value pointwise
-        # kernel fails to lower a 0-dim value on FlagTree, and the scalar path
-        # is bit-identical.
+        # Same scalar-isation as in ``masked_fill``.
         value = value.item()
     kernel = masked_fill_kernel
     assert broadcastable_to(
