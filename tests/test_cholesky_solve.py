@@ -105,6 +105,8 @@ def _use_cpu_complex_path(dtype):
 
 
 def _use_cpu_complex_validation(dtype):
+    if IS_KUNLUNXIN and dtype in (torch.complex64, torch.complex128):
+        return True
     return IS_ILUVATAR and dtype in (torch.complex64, torch.complex128)
 
 
