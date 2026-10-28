@@ -20,6 +20,9 @@ def _build_inputs_fn(plan, dtype, device):
         imag = torch.randn(shape, dtype=float_dtype, device=device)
         imag.reshape(-1)[::2] = 0
         return (torch.complex(real, imag).to(dtype),)
+    if not dtype.is_floating_point:
+        low, high = (0, 2) if dtype == torch.bool else (-8, 8)
+        return (torch.randint(low, high, shape, dtype=dtype, device=device),)
     return (torch.randn(shape, dtype=dtype, device=device),)
 
 
