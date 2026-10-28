@@ -571,7 +571,19 @@ def test__flash_attention_forward_dropout_debug_mask(dropout_p):
     assert len(actual) == len(replay) == 5
     utils.gems_assert_equal(actual[0].cpu(), replay[0].cpu())
     utils.gems_assert_equal(actual[1].cpu(), replay[1].cpu())
-    for result, repeated in zip(actual[2:], replay[2:]):
+    # Packed native RNG state contains both seed and offset; output 3 then
+    # has an unspecified payload. Keep its ABI check above and preserve full
+    # value replay checks for the legacy separate scalar seed/offset ABI.
+    packed_rng_state = (
+        flag_gems.vendor_name in {"nvidia", "thead"}
+        and actual[2].shape == replay[2].shape == (2,)
+        and actual[2].dtype in (torch.int64, torch.uint64)
+        and actual[3].shape == replay[3].shape == ()
+        and actual[3].dtype == actual[2].dtype
+        and actual[2].device == actual[3].device == query.device
+    )
+    for index in ((2, 4) if packed_rng_state else (2, 3, 4)):
+        result, repeated = actual[index], replay[index]
         assert result.shape == repeated.shape
         assert result.dtype == repeated.dtype
         if result.numel():
