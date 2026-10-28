@@ -46,3 +46,32 @@ def test_frobenius_norm(shape, dtype, keepdim, dim):
     res_out = torch.ops.aten.frobenius_norm.dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.frobenius_norm
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((0,), [0]),
+        ((0, 5), [1]),
+        ((5, 0), [1]),
+        ((0, 5), [0]),
+        ((2, 0, 3), [1]),
+        ((2, 0, 3), [0, 2]),
+    ],
+)
+def test_frobenius_norm_zero_size(shape, dim):
+    inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.ops.aten.frobenius_norm.dim(ref_inp, dim, False)
+    res_out = torch.ops.aten.frobenius_norm.dim(inp, dim, False)
+
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
+def test_frobenius_norm_duplicate_dim():
+    inp = torch.randn(4, 5, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="multiple times"):
+        torch.ops.aten.frobenius_norm.dim(inp, [1, 1], False)

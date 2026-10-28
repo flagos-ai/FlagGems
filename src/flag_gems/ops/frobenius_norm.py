@@ -41,8 +41,25 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _prune_frobenius_norm_configs(configs, named_args, **kwargs):
+    """Skip configs whose per-program loop count explodes: for N > 1024 the
+    small-BLOCK_N configs loop N/BLOCK_N times and dominate autotune; for tiny
+    N the BLOCK_N=1024 configs are almost fully masked-wasted."""
+    N = named_args["N"]
+    if N > 1024:
+        return [c for c in configs if c.kwargs["BLOCK_N"] == 1024]
+    if N <= 8:
+        return [c for c in configs if c.kwargs["BLOCK_N"] <= 64]
+    return configs
+
+
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("vector_norm"), key=["M", "N"])
+@triton.autotune(
+    configs=runtime.get_tuned_config("frobenius_norm"),
+    key=["M", "N"],
+    prune_configs_by={"early_config_prune": _prune_frobenius_norm_configs},
+    cache_results=True,
+)
 @triton.jit
 def frobenius_norm_kernel(X, Out, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
     pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
@@ -79,17 +96,22 @@ def frobenius_norm(x, dim, keepdim=False):
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
+    if len(set(dim)) != len(dim):
+        raise RuntimeError(f"dim {dim} appears multiple times in the list of dims")
     x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
-    M = x.numel() // N
+    M = x.numel() // N if N > 0 else 0
 
-    with torch_device_fn.device(x.device):
-        out = torch.empty(shape, dtype=dtype, device=x.device)
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
-        frobenius_norm_kernel[grid](x, out, M, N)
+    if N == 0 or M == 0:
+        out = torch.zeros(shape, dtype=dtype, device=x.device)
+    else:
+        with torch_device_fn.device(x.device):
+            out = torch.empty(shape, dtype=dtype, device=x.device)
+            grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+            frobenius_norm_kernel[grid](x, out, M, N)
 
     if not keepdim:
         out = out.squeeze(dim=dim)
