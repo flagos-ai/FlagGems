@@ -81,4 +81,3 @@ def test_cast_Long_strided(dtype, layout):
     else:
         x = x.contiguous(memory_format=torch.channels_last)
     assert_cast(x)
-

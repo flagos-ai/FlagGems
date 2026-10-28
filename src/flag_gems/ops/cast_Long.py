@@ -105,9 +105,30 @@ def _cast_long_strided_kernel(
     x_ptr,
     out_ptr,
     numel,
-    sh0, sh1, sh2, sh3, sh4, sh5, sh6, sh7,
-    st0, st1, st2, st3, st4, st5, st6, st7,
-    ot0, ot1, ot2, ot3, ot4, ot5, ot6, ot7,
+    sh0,
+    sh1,
+    sh2,
+    sh3,
+    sh4,
+    sh5,
+    sh6,
+    sh7,
+    st0,
+    st1,
+    st2,
+    st3,
+    st4,
+    st5,
+    st6,
+    st7,
+    ot0,
+    ot1,
+    ot2,
+    ot3,
+    ot4,
+    ot5,
+    ot6,
+    ot7,
     NDIM: tl.constexpr,
     BLOCK: tl.constexpr,
     MODE: tl.constexpr,
@@ -208,12 +229,24 @@ def _cast_long_strided_kernel(
         g = r % sh1
         h = r // sh1
         src = (
-            a * st7 + b * st6 + c * st5 + d * st4
-            + e * st3 + f * st2 + g * st1 + h * st0
+            a * st7
+            + b * st6
+            + c * st5
+            + d * st4
+            + e * st3
+            + f * st2
+            + g * st1
+            + h * st0
         )
         dst = (
-            a * ot7 + b * ot6 + c * ot5 + d * ot4
-            + e * ot3 + f * ot2 + g * ot1 + h * ot0
+            a * ot7
+            + b * ot6
+            + c * ot5
+            + d * ot4
+            + e * ot3
+            + f * ot2
+            + g * ot1
+            + h * ot0
         )
 
     if SAFE_LOAD:
@@ -228,7 +261,7 @@ def _cast_long_strided_kernel(
 
 
 def cast_Long(self, non_blocking=False):
-    logger.debug('GEMS CAST_LONG')
+    logger.debug("GEMS CAST_LONG")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "_cast_Long() received an invalid combination of arguments - got %r, "
@@ -291,9 +324,30 @@ def cast_Long(self, non_blocking=False):
         self,
         out,
         numel,
-        sh[0], sh[1], sh[2], sh[3], sh[4], sh[5], sh[6], sh[7],
-        st[0], st[1], st[2], st[3], st[4], st[5], st[6], st[7],
-        ot[0], ot[1], ot[2], ot[3], ot[4], ot[5], ot[6], ot[7],
+        sh[0],
+        sh[1],
+        sh[2],
+        sh[3],
+        sh[4],
+        sh[5],
+        sh[6],
+        sh[7],
+        st[0],
+        st[1],
+        st[2],
+        st[3],
+        st[4],
+        st[5],
+        st[6],
+        st[7],
+        ot[0],
+        ot[1],
+        ot[2],
+        ot[3],
+        ot[4],
+        ot[5],
+        ot[6],
+        ot[7],
         NDIM=ndim,
         BLOCK=_STRIDED_BLOCK,
         MODE=mode,
