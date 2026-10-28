@@ -283,6 +283,8 @@ def test__flash_attention_forward(
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
+    elif IS_KUNLUNXIN:
+        ref_out, ref_lse = _flash_fwd_device_ref(ref_q, ref_k, ref_v, scale, is_causal)
     else:
         ref_result = torch.ops.aten._flash_attention_forward.default(
             ref_q,
