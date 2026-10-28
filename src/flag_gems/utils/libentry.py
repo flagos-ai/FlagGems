@@ -1385,12 +1385,16 @@ class LibEntry(triton.KernelInterface):
     def __init__(
         self,
         fn,
+        *,
+        cache_binding=False,
     ):
         self.fn = fn
         self.arg_names = fn.arg_names
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
         self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
+        self._flagtune_state = None
+        self._flagtune_model_ids = self._cost_model_ids(fn)
         self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
@@ -1414,6 +1418,12 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        # The cached binder follows Triton 3.3-3.6 launch argument conventions.
+        self._cache_binding = (
+            cache_binding and major_version == 3 and 3 <= minor_version <= 6
+        )
+        if self._cache_binding:
+            self._init_cached_binding()
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1431,20 +1441,62 @@ class LibEntry(triton.KernelInterface):
                 break
         return False
 
-    def _apply_flagtune(self):
-        changed = False
-        fn = self.fn
+    @staticmethod
+    def _cost_model_ids(fn):
+        """Collect immutable identities whose process-wide AUTO fuse can change."""
+        identities = []
         while not isinstance(fn, triton.runtime.JITFunction):
-            apply_flagtune = getattr(fn, "apply_flagtune", None)
-            if apply_flagtune is not None:
-                changed = apply_flagtune() or changed
+            if _supports_flagtune_cost_model(fn):
+                identities.append((fn._flagtune_op_id, fn._flagtune_variant))
             fn = getattr(fn, "fn", None)
             if fn is None:
                 break
-        if changed:
-            for cache in self.kernel_cache:
-                cache.clear()
-            self._cpu_cache.clear()
+        return tuple(identities)
+
+    def _apply_flagtune(self, device=None):
+        from flag_gems.runtime.flagtune import _flagtune_state_key
+
+        if device is None:
+            device = torch_device_fn.current_device()
+        state = (
+            device,
+            _flagtune_state_key(),
+            tuple(
+                cost_model.is_auto_disabled(*key) for key in self._flagtune_model_ids
+            ),
+        )
+        if state == self._flagtune_state:
+            return
+        with self.lock:
+            # Recheck after waiting for another thread's initialization. Commit
+            # the state only after success, so failed validation is retried.
+            state = (
+                device,
+                _flagtune_state_key(),
+                tuple(
+                    cost_model.is_auto_disabled(*key)
+                    for key in self._flagtune_model_ids
+                ),
+            )
+            if state == self._flagtune_state:
+                return
+            changed = False
+            fn = self.fn
+            while not isinstance(fn, triton.runtime.JITFunction):
+                apply_flagtune = getattr(fn, "apply_flagtune", None)
+                if apply_flagtune is not None:
+                    changed = apply_flagtune() or changed
+                fn = getattr(fn, "fn", None)
+                if fn is None:
+                    break
+            if changed:
+                for cache in self.kernel_cache:
+                    cache.clear()
+                self._cpu_cache.clear()
+                plans = getattr(self, "_launch_plans", None)
+                if plans is not None:
+                    plans.clear()
+            self._flagtune_state = state
 
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
@@ -1513,9 +1565,14 @@ class LibEntry(triton.KernelInterface):
             knobs_obj.adjust_block_size = previous
 
     def run(self, *args, **kwargs):
+        if self._cache_binding:
+            cached = self._run_cached(args, kwargs)
+            if cached is not None:
+                return cached
         grid = kwargs["grid"]
+        device = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
-            self._apply_flagtune()
+            self._apply_flagtune(device)
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -1560,7 +1617,6 @@ class LibEntry(triton.KernelInterface):
             )
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch_device_fn.current_device()
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
         # This branch is CPU-generic — any future x86 / RISC-V CPU backend
@@ -1669,6 +1725,126 @@ class LibEntry(triton.KernelInterface):
             kernel[grid[0:3]](*k_args.values())
         return kernel, constexprs
 
+    def _init_cached_binding(self):
+        import torch
+
+        self._launch_plans = {}
+        self._binding_tensor_type = torch.Tensor
+        self._binding_scalar_types = (int, bool, float, str, type(None))
+        self._binding_param_names = tuple(p.name for p in self.jit_function.params)
+        self._binding_param_kinds = tuple(
+            0 if p.is_constexpr else 2 if p.do_not_specialize else 1
+            for p in self.jit_function.params
+        )
+        self._binding_param_defaults = tuple(
+            p.default for p in self.jit_function.params
+        )
+        self._binding_dtype_names = {}
+
+    def _run_cached(self, args, kwargs):
+        """Bind ordinary tensor/scalar launches without rebuilding OrderedDicts.
+
+        Cold entries and descriptors still use the complete generic path. The
+        key preserves tensor alignment, scalar specialization, integer widths,
+        defaults and FlagTune dtype identity. Plans store constants only; each
+        launch supplies its current tensors and unspecialized scalar values.
+        """
+        count = len(args)
+        if count > len(self._binding_param_names):
+            return None
+        keys = ([], [], [])
+        dtype_names = []
+        for kind, value in zip(self._binding_param_kinds, args):
+            if not (
+                isinstance(value, self._binding_tensor_type)
+                or type(value) in self._binding_scalar_types
+            ):
+                return None
+            if kind == 0 and isinstance(value, self._binding_tensor_type):
+                return None
+            keys[kind].append(value)
+            if self._has_flagtune_tuner and isinstance(
+                value, self._binding_tensor_type
+            ):
+                dtype = value.dtype
+                name = self._binding_dtype_names.get(dtype)
+                if name is None:
+                    name = self._binding_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        for name, kind, default in zip(
+            self._binding_param_names[count:],
+            self._binding_param_kinds[count:],
+            self._binding_param_defaults[count:],
+        ):
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                continue
+            if not (
+                isinstance(value, self._binding_tensor_type)
+                or type(value) in self._binding_scalar_types
+            ):
+                return None
+            if kind == 0 and isinstance(value, self._binding_tensor_type):
+                return None
+            keys[kind].append(value)
+            if self._has_flagtune_tuner and isinstance(
+                value, self._binding_tensor_type
+            ):
+                dtype = value.dtype
+                name = self._binding_dtype_names.get(dtype)
+                if name is None:
+                    name = self._binding_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        if self._has_flagtune_tuner:
+            keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
+        # Generic order is specialized, unspecialized, then constexpr values.
+        entry_key = self.key(keys[1], keys[2], keys[0])
+        device_index = torch_device_fn.current_device()
+        if self._has_flagtune_tuner:
+            self._apply_flagtune(device_index)
+        cache = (
+            self._cpu_cache
+            if device_index == "cpu"
+            else self.kernel_cache[device_index]
+        )
+        entry = cache.get(entry_key)
+        if entry is None:
+            return None
+        kernel, constexprs, tune_constexprs, heur_constexprs, hooks = entry
+        plan_key = (device_index, entry_key, count)
+        saved = self._launch_plans.get(plan_key)
+        if saved is None or saved[0] is not entry:
+            defaults = []
+            for name, default in zip(
+                self._binding_param_names[count:], self._binding_param_defaults[count:]
+            ):
+                if default is inspect._empty:
+                    if name in tune_constexprs:
+                        default = tune_constexprs[name]
+                    elif name in heur_constexprs:
+                        default = heur_constexprs[name]
+                    else:
+                        default = constexprs.get(name, inspect._empty)
+                defaults.append((name, default))
+            saved = (entry, tuple(defaults))
+            self._launch_plans[plan_key] = saved
+        all_args = list(args)
+        for name, default in saved[1]:
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                return None
+            all_args.append(value)
+        grid = kwargs["grid"]
+        if callable(grid):
+            grid = grid({**dict(zip(self.arg_names, args)), **kwargs, **constexprs})
+        grid = grid + (1, 1)
+        if hooks:
+            hook_nargs = {**dict(zip(self.arg_names, args)), **kwargs}
+            for pre_hook, hook_kwargs in hooks:
+                pre_hook({**hook_nargs, **hook_kwargs})
+        kernel[grid[:3]](*all_args)
+        return kernel, constexprs
+
 
 def find_flagtune_benchmark_target(
     public_operator: Callable[..., Any], op_id: str, variant: str
@@ -1741,12 +1917,19 @@ def clear_libentry_dispatch_cache(entry: "LibEntry") -> None:
     for cache in entry.kernel_cache:
         cache.clear()
     entry._cpu_cache.clear()
+    plans = getattr(entry, "_launch_plans", None)
+    if plans is not None:
+        plans.clear()
 
 
-def libentry():
-    """Decorator for triton library entries."""
+def libentry(*, cache_binding=False):
+    """Decorate a kernel, optionally caching warm-launch argument binding.
+
+    Disabled by default. Cold launches and unsupported arguments use the
+    ordinary LibEntry path. The optimization is independent of the backend.
+    """
 
     def decorator(fn):
-        return LibEntry(fn)
+        return LibEntry(fn, cache_binding=cache_binding)
 
     return decorator

@@ -710,6 +710,7 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
@@ -728,6 +729,7 @@ def test_descriptor_cache_key_uses_resolved_type(descriptor_module):
 
 def test_descriptor_cache_key_without_descriptor_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", None)
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     value = object()
     assert libentry_mod._descriptor_cache_key(value) is value
 
@@ -805,8 +807,9 @@ def test_libentry_key_normalizes_descriptor_arguments(descriptor_module):
 
 
 @pytest.mark.parametrize("keyword_first", [False, True])
+@pytest.mark.parametrize("cache_binding", [False, True])
 def test_libentry_run_normalizes_keyword_descriptors(
-    monkeypatch, descriptor_module, keyword_first
+    monkeypatch, descriptor_module, keyword_first, cache_binding
 ):
     """Both calling styles share a cache key and pass real descriptors on launch."""
 
@@ -814,9 +817,9 @@ def test_libentry_run_normalizes_keyword_descriptors(
     def kernel(a_desc):
         pass
 
-    entry = libentry_mod.LibEntry(kernel)
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
     entry._has_flagtune_tuner = True
-    monkeypatch.setattr(entry, "_apply_flagtune", lambda: None)
+    monkeypatch.setattr(entry, "_apply_flagtune", lambda device=None: None)
     monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
     launches = []
     compiled_calls = []
@@ -1084,6 +1087,7 @@ def test_flagtree_policy_uses_cost_model_by_default_for_adapted_operator(monkeyp
         """Convert one synthetic feature/config schema for proposer testing."""
 
         param_names = ["BLOCK"]
+        param_space = SimpleNamespace(validate=lambda config: True)
 
         @staticmethod
         def normalize_inputs(_nargs):
@@ -1180,6 +1184,7 @@ def test_enabled_flagtree_policy_propagates_contract_failures(
 
     class FakeVariantInfo:
         param_names = ["BLOCK"]
+        param_space = SimpleNamespace(validate=lambda config: True)
 
         @staticmethod
         def normalize_inputs(_nargs):
@@ -1440,6 +1445,9 @@ def test_operator_fuse_invalidates_existing_dispatch_caches(monkeypatch, expande
         current.apply_flagtune()
         return SimpleNamespace(
             fn=current,
+            lock=threading.Lock(),
+            _flagtune_state=None,
+            _flagtune_model_ids=((op_id, variant),),
             kernel_cache=({"device0": object()}, {"device1": object()}),
             _cpu_cache={"old": object()},
         )
