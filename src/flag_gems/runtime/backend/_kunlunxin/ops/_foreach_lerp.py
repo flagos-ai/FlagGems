@@ -38,6 +38,7 @@ from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 from ._foreach_direct import _pick_block, _select_ptr
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 _MAX_DIRECT = 16
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
