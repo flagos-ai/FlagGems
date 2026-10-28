@@ -106,7 +106,11 @@ def test_copy_inplace_broadcast():
     )
     res_dst = torch.zeros(dst_shape, dtype=torch.float32, device=flag_gems.device)
 
-    ref_dst.copy_(ref_src)
+    # Expand the reference source first: the XPU backend's native copy_ does not
+    # broadcast a source shape (it moves src.numel() elements and leaves the
+    # remaining rows of dst untouched), so a raw (3,) -> (2, 3) native copy_
+    # would not produce the reference the operator is supposed to match.
+    ref_dst.copy_(ref_src.expand(dst_shape))
     flag_gems.copy_(res_dst, src)
 
     utils.gems_assert_equal(res_dst, ref_dst)
@@ -372,7 +376,10 @@ def test_copy_functional_broadcast():
     ref_src = utils.to_reference(src)
     ref_template = utils.to_reference(template)
 
-    ref_out = torch.ops.aten.copy(ref_template, ref_src)
+    # Same as test_copy_inplace_broadcast: aten::copy is clone + copy_, and the
+    # native copy_ cannot broadcast the source shape on this backend, so hand it
+    # the already-expanded source.
+    ref_out = torch.ops.aten.copy(ref_template, ref_src.expand(ref_template.shape))
     res_out = flag_gems.copy(template, src)
 
     utils.gems_assert_equal(res_out, ref_out)

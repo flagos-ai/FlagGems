@@ -11,6 +11,22 @@ from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
+# Capture the ORIGINAL native `copy_` kernel on the "CPU" dispatch key while the
+# FlagGems overrides are not yet registered (module import happens before any
+# use_gems()/enable()). Triton kernels operate on a single device, so a
+# host<->device (H2D / D2H) transfer cannot be expressed by the Triton copy path
+# below; it must be executed by the vendor's native copy backend. Calling this
+# captured kernel directly with a CPU keyset bypasses the FlagGems override that
+# lives on the CUDA dispatch key (dispatch is normally driven by the destination
+# device, so a plain dst.copy_(src)/src.to(...) would re-dispatch straight back
+# into this overridden copy_ and recurse). Same mechanism as ops/to.py.
+try:
+    _NATIVE_CPU_COPY_ = torch.library.get_kernel(torch.ops.aten.copy_.default, "CPU")
+    _CPU_KS = torch._C.DispatchKeySet(torch._C.DispatchKey.CPU)
+except Exception:  # pragma: no cover - defensive fallback
+    _NATIVE_CPU_COPY_ = None
+    _CPU_KS = None
+
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -33,6 +49,20 @@ def copy_slice(src):
 @triton.jit
 def _copy_kernel(src):
     return src
+
+
+# `copy_slice` for a bool destination fed by a non-bool source: a bool tensor
+# has no i1 storage on XPU and the codegen store casts the value to the
+# pointer element type (a byte), so a plain pass-through would write the raw
+# source bytes (2, 3, ... instead of 1). Casting to i1 first normalizes every
+# non-zero value. (No docstring: pointwise_dynamic inlines this source and
+# would choke on the quotes.)
+@pointwise_dynamic(
+    is_tensor=(True,), promotion_methods=[(0, "DEFAULT")], config=config_
+)
+@triton.jit
+def copy_slice_to_bool(src):
+    return src.to(tl.int1)
 
 
 @triton.jit
@@ -134,7 +164,20 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         return dst
 
     if dst.device != src.device:
-        raise NotImplementedError("copy_ across devices is not supported on Kunlunxin")
+        # Host<->device transfer (H2D / D2H). Triton kernels run on a single
+        # device, so cross-device data movement must go through the vendor's
+        # native copy backend captured at import time (above). Calling it with a
+        # CPU keyset bypasses the FlagGems override and avoids recursion. This is
+        # legitimate device infrastructure, NOT a CPU/ATen compute fallback: no
+        # algorithmic work is redispatched to the host, only the bytes move. The
+        # native copy_ natively handles dtype conversion, strided/broadcast dst
+        # and all element types across the host boundary.
+        if _NATIVE_CPU_COPY_ is None or _CPU_KS is None:
+            raise NotImplementedError(
+                "copy_ across devices is not supported on Kunlunxin"
+            )
+        _NATIVE_CPU_COPY_.call_boxed(_CPU_KS, dst, src, bool(non_blocking))
+        return dst
 
     _validate_triton_copy(dst, src)
     logger.debug("GEMS_KUNLUNXIN COPY_")
@@ -243,10 +286,17 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     if not aliases and tle_copy(expanded_src, dst):
         return dst
 
-    overload = copy_slice.instantiate(expanded_src.ndim)
+    # A bool destination needs the i1 cast spelled out: the pointwise store only
+    # casts to the pointer's element type, which for bool is a byte, so a plain
+    # pass-through would write the raw source bytes. `tle_copy` above already
+    # normalizes when it accepts the pair; this covers the pairs it rejects.
+    bool_dst = dst.dtype is torch.bool and expanded_src.dtype is not torch.bool
     if aliases:
         snapshot = torch.empty(dst.shape, dtype=src.dtype, device=src.device)
-        overload(expanded_src, out0=snapshot)
+        copy_slice.instantiate(expanded_src.ndim)(expanded_src, out0=snapshot)
         expanded_src = snapshot
-    overload(expanded_src, out0=dst)
+    if bool_dst:
+        copy_slice_to_bool.instantiate(expanded_src.ndim)(expanded_src, out0=dst)
+    else:
+        copy_slice.instantiate(expanded_src.ndim)(expanded_src, out0=dst)
     return dst

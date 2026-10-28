@@ -1401,6 +1401,41 @@ def _l2_dim_launch(x, m, n, plan, dtype):
     return out
 
 
+_DIM_TLE_MAX_STAGE = 128 * 1024
+_DIM_TLE_MAX_ELEMS = 1 << 31
+
+
+@functools.lru_cache(maxsize=1024)
+def _tle_dim_plan(m, n, dtype):
+    """(XBLOCK, YBLOCK) for the trailing-dim TLE row reduce, or None."""
+    if not _TLE_GPU_OK or dtype not in _TLE_NORM_DTYPE:
+        return None
+    if m < 1 or n < 64 or m * n >= _DIM_TLE_MAX_ELEMS:
+        return None
+    esz = dtype.itemsize
+    cap = _DIM_TLE_MAX_STAGE // esz  # max XBLOCK*YBLOCK
+    if n <= 256:
+        xb = 1024 if (esz == 2 and m >= 1024) else 512
+    elif n <= 8192:
+        if esz == 2:
+            xb = 256 if m <= 1024 else 512
+        else:
+            xb = 128 if m <= 1024 else 512
+    else:
+        xb = 128
+    max_yb = cap // xb
+    if max_yb < 16:
+        return None
+    np2 = triton.next_power_of_2(n)
+    if np2 <= max_yb:
+        yb = np2
+    else:
+        yb = 1 << (max_yb.bit_length() - 1)
+    if yb < 16:
+        return None
+    return (xb, yb)
+
+
 def _l2_trailing_dim(x, dim, keepdim, dtype):
     """||x||_2 over a trailing block of dims of a contiguous x, or None when the
     shape/dims/dtype are not eligible for the fast path. `dim` is already
@@ -1417,6 +1452,14 @@ def _l2_trailing_dim(x, dim, keepdim, dtype):
     m = 1
     for d in range(ndim - len(red)):
         m *= x.shape[d]
+    tle = _tle_dim_plan(m, n, x.dtype)
+    if tle is not None:
+        xb, yb = tle
+        out = _tle_norm_launch(x.view(-1), m, n, xb, yb, 2, dtype)
+        kept = list(x.shape[: ndim - len(red)])
+        if keepdim:
+            return out.view(kept + [1] * len(red))
+        return out.view(kept)
     plan = _l2_dim_plan(m, n, x.dtype in (torch.float16, torch.bfloat16))
     if plan is None:
         return None

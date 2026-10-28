@@ -4,6 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.ops.gcd import _materialize_inputs
 
 logger = logging.getLogger(__name__)
@@ -218,5 +219,5 @@ def gcd_(A, B):
         return A
     flat_out = torch.empty(lhs.numel(), dtype=promoted_dtype, device=A.device)
     _launch_gcd(lhs.reshape(-1), rhs.reshape(-1), flat_out)
-    torch.ops.aten._copy_from(flat_out.view(A.shape), A, False)
+    _gems_copy_(A, flat_out.view(A.shape))
     return A
