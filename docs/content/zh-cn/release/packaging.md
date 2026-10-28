@@ -1,5 +1,5 @@
 ---
-title: 打包
+title: 打包与分发
 weight: 20
 ---
 
@@ -19,138 +19,56 @@ weight: 20
  limitations under the License.
  -->
 
+# 源码与二进制包打包构建
 
-<!--
-# Packaging
+创建 *FlagGems* 的源码包（sdist）或二进制包（wheel）的过程与[从源码构建安装](../getting-started/install.md#install-from-source)类似。打包流程通过构建前端（如 `build` 或 `pip`）调用对应的构建后端执行（主包 `flag-gems` 使用 `setuptools`；`cpp/` 目录下的 C++ 扩展包使用 `scikit-build-core`）。
 
-Creating a source or binary distribution is similar to
-[building and installing from source](/FlagGems/getting-started/installation/#install-from-source).
-It involves invoking a build-frontend (such as `pip` or `build`) and pass the command
-to the build-backend (`setuptools` for the main `flag-gems` package;
-`scikit-build-core` for the `cpp/` C++ extension package).
--->
-# 关于打包与发布
+## 1. 使用 `build` 工具打包 Python 主包（推荐）
 
-创建源码或二进制发行包的过程类似于基于[源码来构建和安装](/FlagGems/zh-cn/getting-started/installation/#install-from-source)的过程。
-打包过程包括对前端（如 `pip` 或 `build`）的调用以及将命令发送给后端
-（主包 `flag-gems` 使用 `setuptools`，`cpp/` C++ 扩展包使用 `scikit-build-core`）。
-
-<!--
-## 1. Using the `build` build frontend
-
-To build a wheel with `build` package (recommended).
--->
-## 1. 使用 `build` 构建前端
-
-要使用 `build` 包（建议）来构建一个 wheel 包，执行以下命令：
+通过官方标准的 `build` 模块构建 wheel 包：
 
 ```shell
 pip install -U build
 python -m build --no-isolation --no-deps .
 ```
 
-<!--
-This will first create a source distribution (sdist) and then build a binary distribution (wheel)
-from the source distribution.
+默认情况下，该命令会依次生成源码分发包（sdist）与二进制 wheel 包。您可以按需指定参数过滤输出：
 
-If you want to disable the default behavior (source-dir -> sdist -> wheel), You can
--->
-这一命令会首先基于源码创建一个源码发行包（sdist），之后构建一个二进制发行包（wheel）。
+- `--sdist`：仅生成源码包（`dist/*.tar.gz`）；
+- `--wheel`：仅生成二进制 Wheel 包（`dist/*.whl`）。
 
-如果你希望禁用默认的构建过程（源码目录 -> sdist -> wheel），你可以
+生成的产物将保存在项目根目录的 `dist/` 文件夹中。
 
-<!--
-- pass `--sdist` to build a source distribution from the source(source-dir -> sdist), or
+## 2. 使用 `pip` 构建 Wheel
 
-- pass `--wheel` to build a binary distribution from the source(source-dir -> wheel), or
-
-- pass both `--sdist` and `--wheel` to build both the source and binary distributions
-  from the source (source-dir -> sdist, and source-dir -> wheel).
-
-The result is placed in the `.dist/` directory.
--->
-- 指定 `--sdist` 选项从源码构建源码发行包（源码目录 -> sdist），或者
-- 指定 `--wheel` 选项从源码构建二进制发行包（源码目录 -> wheel），或者
-- 指定 `--sdist` 的同时指定 `--wheel` 来基于源码目录构建源码发行包和二进制发行包
-  （源码目录 -> sdist，源码目录 -> wheel）。
-
-构建的输出会存放在 `.dist/` 目录下：
-
-<!--
-## 2. Using the `pip` build frontend
-
-Alternatively, you can build a wheel with `pip`.
--->
-## 2. 使用 `pip` 构建前端
-
-另一种方式是使用 `pip` 来生成 wheel 包：
+也可直接利用 `pip wheel` 进行编译打包：
 
 ```shell
 pip wheel --no-build-isolation --no-deps -w dist .
 ```
 
-<!--
-The environment variables used to configure `setuptools` work in the same way
-as described in the [installation guide](/FlagGems/getting-started/installation/).
-
-After the binary distribution (wheel) is built, you can use `pip` to install it.
--->
-用来配置 `setuptools`
-的环境变量的工作方式与[安装说明](/FlagGems/zh-cn/getting-started/installation/)文档中的方式一致。
-
-构建二进制包（wheel）的动作完成之后，你可以使用 `pip` 命令来安装。
+生成完毕后，可直接在环境中安装：
 
 ```shell
-cd FlagGems
-python -m build --no-isolation --wheel .
+pip install dist/flag_gems-*.whl
 ```
 
-<!--
-## 3. Building C++ extension wheels
+## 3. 构建 C++ 扩展 Wheel 包
 
-The C++ wrapped operators are packaged as **per-vendor native extension wheels**
-built from the `cpp/` subdirectory. Each vendor produces a separate package
-(`flag-gems-cpp-cuda`, `flag-gems-cpp-musa`, etc.) that installs its `.so`
-files into the `flag_gems/` namespace.
+C++ 封装算子作为**面向特定硬件厂商的原生扩展 Wheel 包**独立提供（如 `flag-gems-cpp-cuda`、`flag-gems-cpp-musa` 等），其编译产物 `.so` 将被安装到 `flag_gems/` 命名空间中。
 
-Before building, inject the vendor name into `cpp/pyproject.toml`:
--->
-## 3. 构建 C++ 扩展 wheel
-
-C++ 封装算子以**按硬件厂商区分的原生扩展 wheel** 的形式进行打包，
-构建入口为 `cpp/` 子目录。每个厂商对应一个独立的包
-（`flag-gems-cpp-cuda`、`flag-gems-cpp-musa` 等），
-这些包将其 `.so` 文件安装到 `flag_gems/` 命名空间中。
-
-构建之前，先向 `cpp/pyproject.toml` 注入厂商标识：
+构建前，需先在 `cpp/pyproject.toml` 中声明目标硬件厂商标识：
 
 ```shell
-tools/set_cpp_vendor.sh cuda    # 或 musa、npu、gcu、ix
+# 可选值：cuda、musa、npu、gcu、ix 等
+tools/set_cpp_vendor.sh cuda
 ```
 
-<!--
-Then build from the `cpp/` subdirectory. The build requires the vendor's SDK
-and toolchain (CMake, a C++ compiler, and PyTorch for that backend):
--->
-然后从 `cpp/` 子目录进行构建。构建需要对应厂商的 SDK 和工具链
-（CMake、C++ 编译器以及该后端的 PyTorch）：
+随后进入 `cpp/` 子目录，结合目标硬件平台的编译器与 SDK 完成构建：
 
 ```shell
 cd cpp/
 CMAKE_ARGS="-DFLAGGEMS_BACKEND=CUDA" python -m build --no-isolation --wheel .
 ```
 
-<!--
-This produces a platform-specific wheel (e.g.
-`flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`) in `cpp/dist/`.
-
-The environment variables used to configure `scikit-build-core` (see the
-[installation guide](/FlagGems/getting-started/installation/#scikit-build-core-options))
-apply when building from `cpp/`.
--->
-该命令会在 `cpp/dist/` 目录下生成平台相关的 wheel 包
-（例如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）。
-
-用于配置 `scikit-build-core` 的环境变量（参见
-[安装说明](/FlagGems/zh-cn/getting-started/installation/#scikit-build-core-options)）
-在从 `cpp/` 构建时适用。
+构建生成的特定平台 Wheel（如 `flag_gems_cpp_cuda-x.y.z-cp312-cp312-linux_x86_64.whl`）将位于 `cpp/dist/` 目录下。相关 CMake 构建配置选项请参阅[构建与配置选项参考](../getting-started/build-options.md#cmake-options)。
