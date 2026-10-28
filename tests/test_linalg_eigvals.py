@@ -51,8 +51,10 @@ def test_linalg_eigvals(shape, dtype, request):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    candidate = request.config._override_registry.get_override("linalg_eigvals")
-    res_out = (candidate or flag_gems.ops._linalg_eigvals)(inp)
+    if request.config._override_registry.get_override("linalg_eigvals") is not None:
+        res_out = flag_gems.linalg_eigvals(inp)
+    else:
+        res_out = flag_gems.ops._linalg_eigvals(inp)
     _assert_eigvals_contract(res_out, inp)
 
     # For float32 input, the eigenvalues come back as complex64.
