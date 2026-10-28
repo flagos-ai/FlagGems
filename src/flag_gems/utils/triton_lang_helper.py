@@ -1548,21 +1548,14 @@ def _ff_log2(x):
     t3l = t3l + t2l * th + 3.0 * t2h * tlo
     qh, ql = _ff_two_prod(t3h, 0.6666666865348816)
     ql = ql + t3h * -1.9868215517249155e-08 + t3l * 0.6666666865348816
+    # 2t^5/5 + 2t^7/7 + ... (|t^5| term <= 6e-5, so fp32 is enough here).
     t2 = t2h
-    rest = (
-        th
-        * t2
-        * t2
-        * (
-            0.4
-            + t2
-            * (
-                0.2857142857
-                + t2
-                * (0.2222222222 + t2 * (0.1818181818 + t2 * (0.1538461538 + t2 * 0.1333333333)))
-            )
-        )
-    )
+    poly = 0.1538461538 + t2 * 0.1333333333
+    poly = 0.1818181818 + t2 * poly
+    poly = 0.2222222222 + t2 * poly
+    poly = 0.2857142857 + t2 * poly
+    poly = 0.4 + t2 * poly
+    rest = th * t2 * t2 * poly
     sh, sl = _ff_two_sum(2.0 * th, qh)
     sl = sl + 2.0 * tlo + ql + rest
     lnh = sh + sl
