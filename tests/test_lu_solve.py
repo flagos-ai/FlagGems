@@ -114,3 +114,59 @@ def test_lu_solve_out(shape, dtype):
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.lu_solve
+@pytest.mark.parametrize("dtype", LU_SOLVE_DTYPES)
+def test_lu_solve_non_contiguous(dtype):
+    """B with non-standard strides is handled by the expand/reshape path."""
+    n, nrhs = 8, 3
+    B, LU, pivots = _make_inputs(n, nrhs, dtype)
+    B_nc = torch.randn(n, 2 * nrhs, dtype=dtype, device=flag_gems.device)[:, ::2]
+
+    ref_B = utils.to_reference(B_nc)
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
+    ref_out = torch.lu_solve(ref_B, ref_LU, ref_pivots)
+
+    res_out = flag_gems.lu_solve(B_nc, LU, pivots)
+
+    assert not B_nc.is_contiguous()
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.lu_solve
+@pytest.mark.lu_solve_out
+@pytest.mark.parametrize("dtype", LU_SOLVE_DTYPES)
+def test_lu_solve_out_non_contiguous(dtype):
+    """A non-contiguous ``out`` exercises the copy-back path."""
+    n, nrhs = 8, 3
+    B, LU, pivots = _make_inputs(n, nrhs, dtype)
+
+    ref_B = utils.to_reference(B)
+    ref_LU = utils.to_reference(LU)
+    ref_pivots = utils.to_reference(pivots)
+    ref_out = torch.lu_solve(ref_B, ref_LU, ref_pivots)
+
+    out = torch.empty(n, 2 * nrhs, dtype=dtype, device=flag_gems.device)[:, ::2]
+    res_out = flag_gems.lu_solve_out(B, LU, pivots, out=out)
+
+    assert res_out is out
+    assert not out.is_contiguous()
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.lu_solve
+def test_lu_solve_dtype_mismatch():
+    n, nrhs = 4, 2
+    B, LU, pivots = _make_inputs(n, nrhs, torch.float32)
+    with pytest.raises(ValueError, match="same dtype"):
+        flag_gems.lu_solve(B, LU.double(), pivots)
+
+
+@pytest.mark.lu_solve
+def test_lu_solve_pivots_dtype():
+    n, nrhs = 4, 2
+    B, LU, pivots = _make_inputs(n, nrhs, torch.float32)
+    with pytest.raises(ValueError, match="int32"):
+        flag_gems.lu_solve(B, LU, pivots.long())
