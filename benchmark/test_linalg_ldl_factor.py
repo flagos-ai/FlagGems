@@ -38,6 +38,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if base.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
     (shape,) = plan.builder_args
     if base.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin cannot preserve float64 input storage")
