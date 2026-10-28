@@ -21198,6 +21198,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '4.1'
   - stable: '5.3'
+- id: to_dense_backward
+  description: Converts grad into the scalar type and sparse layout carried by
+    input, implementing the backward of to_dense.
+  for:
+  - to_dense_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: top_k_per_row_decode
   description: 'Triton top-K per row for DeepSeek V4 decode-phase token selection.
 
