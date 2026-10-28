@@ -60,10 +60,12 @@ def _valid_dense(shape, dtype, device=flag_gems.device):
         slots = [(g0 + i) % ksparse for i in range(keep)]
         if dtype.is_floating_point:
             vals = torch.randn(rows, keep, dtype=dtype, device=device)
-            # Guarantee a magnitude >= 1 so a retained slot can never round to
-            # zero or a denormal (which would flush to zero under FTZ and leave
-            # the group with fewer than KSPARSE/2 nonzero slots).
-            vals = vals.sign() * (vals.abs() + 1.0)
+            # Guarantee a magnitude >= 1 (never zero or denormal) so a retained
+            # slot can never read as zero in the kernel's validity check, which
+            # would leave the group with fewer than KSPARSE/2 nonzero slots.
+            # Shifting by +-1 also preserves the sign and avoids the exact-zero
+            # case where sign() * (abs() + 1) collapses to 0.
+            vals = torch.where(vals >= 0, vals + 1.0, vals - 1.0)
         else:
             vals = torch.randint(1, 128, (rows, keep), device=device).to(dtype)
         x[:, base + slots[0]] = vals[:, 0]
