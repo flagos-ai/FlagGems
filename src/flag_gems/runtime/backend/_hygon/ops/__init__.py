@@ -95,6 +95,7 @@ from .index_select_backward import index_select_backward
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .layernorm import layer_norm
 from .lcm import lcm, lcm_
 from .lift_fresh import lift_fresh
 from .linalg_ldl_factor import ldl_factor, linalg_ldl_factor
@@ -271,6 +272,7 @@ __all__ = [
     "int_mm_out",
     "isin",
     "jagged_to_padded_dense_forward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "ldl_factor",
