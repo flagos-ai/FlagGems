@@ -242,7 +242,7 @@ def _sparse_run(self):
 
 
 def cast_Int(self, non_blocking=False):
-    logger.debug('GEMS CAST_INT')
+    logger.debug("GEMS CAST_INT")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "Expected a value of type 'Tensor' for argument 'self' but got '"
