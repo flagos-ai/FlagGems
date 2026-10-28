@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -10,12 +12,18 @@ def _host_scalar_log1p(value):
     return torch.special.log1p(torch.tensor(value, dtype=torch.float32, device="cpu"))
 
 
+def _scalar_gems_fallback(value):
+    # Resolve only when called; an injected candidate still wins by op_name.
+    return flag_gems.special_log1p(value)
+
+
 class ScalarSpecialLog1pBenchmark(base.Benchmark):
     def __init__(self, value):
         self.value = value
         super().__init__(
             op_name="special_log1p",
             torch_op=_host_scalar_log1p,
+            gems_op=_scalar_gems_fallback,
             dtypes=[torch.float32],
         )
 
