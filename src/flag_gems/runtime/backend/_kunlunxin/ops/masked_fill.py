@@ -208,6 +208,13 @@ def masked_fill(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
+        # ATen casts the value tensor to the input dtype (the result is
+        # self.dtype for every value dtype).  Passing a mismatched 0-dim tensor
+        # leaves its pointer typed as the value dtype while the pointwise kernel
+        # is specialized for the input dtype, and the XPU runtime rejects the
+        # launch: "data type: kint64, using as: kfloat16".
+        if value.dtype != inp.dtype:
+            value = value.to(inp.dtype)
         kernel = masked_fill_tensor_value_kernel
     else:
         kernel = masked_fill_kernel
@@ -269,6 +276,10 @@ def masked_fill_(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
+        # Same cast as in ``masked_fill``: ATen writes the value into self's
+        # dtype, and a mismatched pointer fails the XPU launch-time dtype check.
+        if value.dtype != inp.dtype:
+            value = value.to(inp.dtype)
         kernel = masked_fill_tensor_value_kernel
     else:
         kernel = masked_fill_kernel
