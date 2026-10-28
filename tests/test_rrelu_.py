@@ -24,6 +24,19 @@ LOWER = 0.125
 UPPER = 1.0 / 3.0
 
 
+def _candidate_rrelu(inp, *args, **kwargs):
+    expected_device, expected_dtype = inp.device, inp.dtype
+    expected_shape, original_pointer = tuple(inp.shape), inp.data_ptr()
+    result = flag_gems.rrelu_(inp, *args, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result is inp
+    assert result.data_ptr() == original_pointer
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == expected_shape
+    return result
+
+
 @pytest.mark.rrelu_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -32,7 +45,7 @@ def test_rrelu_(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.rrelu_(ref_inp, training=False)
-    res_out = flag_gems.rrelu_(inp, training=False)
+    res_out = _candidate_rrelu(inp, training=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,7 +59,7 @@ def test_rrelu__custom_bounds(shape, dtype):
 
     lower, upper = 0.05, 0.5
     ref_out = torch.ops.aten.rrelu_(ref_inp, lower, upper, False, None)
-    res_out = flag_gems.rrelu_(inp, lower, upper, False, None)
+    res_out = _candidate_rrelu(inp, lower, upper, False, None)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -59,7 +72,7 @@ def test_rrelu__inplace(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.rrelu_(ref_inp, training=False)
-    res_out = flag_gems.rrelu_(inp, training=False)
+    res_out = _candidate_rrelu(inp, training=False)
 
     # The operator must mutate its input in place.
     utils.gems_assert_close(inp, ref_out, dtype)
@@ -82,7 +95,7 @@ def test_rrelu__training(shape, dtype):
     # (CPU), otherwise to_cpu()'s device assertion in gems_assert_equal fails.
     ref_inp = inp.clone() if not utils.TO_CPU else inp.cpu().clone()
 
-    res_out = flag_gems.rrelu_(inp, lower, upper, True, None)
+    res_out = _candidate_rrelu(inp, lower, upper, True, None)
 
     # Positive inputs are passed through untouched. Under --ref cpu the
     # untouched copy lives on the reference device, so compare both operands
@@ -107,6 +120,6 @@ def test_rrelu__non_contiguous(dtype):
 
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = torch.rrelu_(ref_inp, training=False)
-    res_out = flag_gems.rrelu_(inp, training=False)
+    res_out = _candidate_rrelu(inp, training=False)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
