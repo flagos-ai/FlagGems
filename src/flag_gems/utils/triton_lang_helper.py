@@ -1359,6 +1359,38 @@ def _fallback_isfinite(x):
     return (x - x) == 0.0
 
 
+# CUDA's fast_* intrinsics are reduced-precision approximations; on backends
+# whose libdevice lacks them (e.g. HIP) use the full-precision core math.
+@triton.jit
+def _fallback_fast_logf(x):
+    return tl.log(x)
+
+
+@triton.jit
+def _fallback_fast_log2f(x):
+    return tl.log2(x)
+
+
+@triton.jit
+def _fallback_fast_log10f(x):
+    return tl.log(x) * 0.4342944819032518
+
+
+@triton.jit
+def _fallback_fast_cosf(x):
+    return tl.cos(x)
+
+
+@triton.jit
+def _fallback_fast_sinf(x):
+    return tl.sin(x)
+
+
+@triton.jit
+def _fallback_fast_tanf(x):
+    return tl.sin(x) / tl.cos(x)
+
+
 @triton.jit
 def _fallback_ffs(x):
     # 1-based index of the lowest set bit (0 for x == 0), matching libdevice
@@ -1401,6 +1433,12 @@ _FALLBACK_SYMBOLS = {
     "tanh": _fallback_tanh,
     "erfc": _fallback_erfc,
     "erfinv": _fallback_erfinv,
+    "fast_cosf": _fallback_fast_cosf,
+    "fast_log10f": _fallback_fast_log10f,
+    "fast_log2f": _fallback_fast_log2f,
+    "fast_logf": _fallback_fast_logf,
+    "fast_sinf": _fallback_fast_sinf,
+    "fast_tanf": _fallback_fast_tanf,
     "ffs": _fallback_ffs,
     "finitef": _fallback_isfinite,
     "floor": _fallback_floor,
@@ -1467,8 +1505,14 @@ tl_extra_shim = _patch_missing_symbols(
         "erfinv",
         "exp",
         "exp2",
+        "fast_cosf",
         "fast_erf",
         "fast_gelu",
+        "fast_log10f",
+        "fast_log2f",
+        "fast_logf",
+        "fast_sinf",
+        "fast_tanf",
         "fast_tanh",
         "ffs",
         "finitef",
