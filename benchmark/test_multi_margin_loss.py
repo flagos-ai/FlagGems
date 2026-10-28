@@ -95,6 +95,8 @@ class MultiMarginLossBackwardBenchmark(MultiMarginLossBenchmark):
         plan = case.builder_args[0]
         n, classes = plan.builder_args
         dtype = case.dtype
+        if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+            pytest.skip("Enflame native multi_margin_loss backward does not support float16 or bfloat16")
         if flag_gems.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
             pytest.skip("Kunlunxin native multi_margin_loss backward does not support bfloat16")
         inp = torch.randn((n, classes), dtype=dtype, device=self.device)
