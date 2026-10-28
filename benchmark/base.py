@@ -814,6 +814,35 @@ class Benchmark:
             target_device=self.device,
         )
 
+    def _verify_base_invokes_kernel(self, op, args, kwargs):
+        """Confirm the native baseline actually launches a device kernel.
+
+        A baseline that silently falls back to a no-op or CPU-only path
+        would make latency_base (and derived metrics like speedup) report
+        comparisons against something that never touched the device.
+        Profile one call of the exact callable get_latency will time (so
+        backward ops are profiled through their autograd.grad call, not
+        just the forward) and check for at least one non-CPU event with
+        recorded device time, mirroring the call-count check used for the
+        candidate below.
+        """
+        from torch.autograd import DeviceType
+
+        fn, _ = self._benchmark_callable(op, *args, **kwargs)
+        with torch.profiler.profile() as prof:
+            fn()
+            torch_device_fn.synchronize()
+
+        invoked_kernel = any(
+            event.device_type != DeviceType.CPU and event.self_device_time_total > 0
+            for event in prof.key_averages()
+        )
+        if not invoked_kernel:
+            raise RuntimeError(
+                f"Benchmark baseline for '{self.op_name}' did not invoke any "
+                "device kernel; latency_base would not reflect real execution"
+            )
+
     def _measure_input(self, input, case_id=None, dtype=None):
         metric = BenchmarkMetrics(case_id=case_id)
         try:
@@ -821,6 +850,7 @@ class Benchmark:
             metric.shape_detail = self.record_shapes(*args, **kwargs)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
+                self._verify_base_invokes_kernel(self.torch_op, args, kwargs)
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
             if "latency" in self.to_bench_metrics:
                 op, dispatch, overridden = self._candidate_call()

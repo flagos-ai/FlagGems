@@ -292,6 +292,9 @@ def test_benchmark_times_reference_and_live_override_separately(monkeypatch, run
     bench.gems_op = fail
     bench.to_bench_metrics = ["latency_base", "latency", "speedup"]
     monkeypatch.setattr(bench, "record_shapes", lambda *args, **kwargs: ())
+    # Host fakes launch no device kernels; this test covers dispatch and call
+    # counting, the base-kernel check has its own tests below.
+    monkeypatch.setattr(bench, "_verify_base_invokes_kernel", lambda *a, **k: None)
 
     def latency(op, *args, **kwargs):
         op(*args, **kwargs)
@@ -302,6 +305,42 @@ def test_benchmark_times_reference_and_live_override_separately(monkeypatch, run
     assert events == ["reference", "candidate"]
     assert asdict(metric)["candidate_source"] == "override"
     assert metric.latency == 1.0 and metric.latency_base == 2.0
+
+
+def _fake_profile(events):
+    class FakeProfiler:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def key_averages(self):
+            return events
+
+    return lambda: FakeProfiler()
+
+
+def test_base_without_device_kernel_is_rejected(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    cpu_only = [SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0)]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(cpu_only))
+    with pytest.raises(RuntimeError, match="did not invoke any device kernel"):
+        bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
+
+
+def test_base_with_device_kernel_is_accepted(monkeypatch, runner):
+    from torch.autograd import DeviceType
+
+    bench, _, _ = runner
+    events = [
+        SimpleNamespace(device_type=DeviceType.CPU, self_device_time_total=0),
+        SimpleNamespace(device_type=DeviceType.CUDA, self_device_time_total=2.5),
+    ]
+    monkeypatch.setattr(base.torch.profiler, "profile", _fake_profile(events))
+    bench._verify_base_invokes_kernel(lambda *a, **k: None, (1,), {})
 
 
 def test_benchmark_cannot_claim_an_unused_override(monkeypatch, runner):
