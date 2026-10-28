@@ -29,6 +29,10 @@ MEDIAN_OUT_SHAPES = [(1,), (7, 5), (3, 17), (2, 3, 5), (4, 8, 16, 8)]
 @pytest.mark.parametrize("shape", MEDIAN_OUT_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_median_out(shape, dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.bfloat16 and shape == (1,):
+        pytest.skip(
+            "Ascend native median.out does not support bfloat16 input shape (1,)"
+        )
     if dtype in utils.ALL_INT_DTYPES:
         # Narrow range on purpose: integer inputs collide often, which is where
         # a wrong lower-middle rule shows up.
