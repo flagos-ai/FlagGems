@@ -81,12 +81,12 @@ def _foreach_unary_direct_kernel(
     o13,
     o14,
     o15,
-    t,
     DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     BLOCK: tl.constexpr,
     OP: tl.constexpr,
 ):
+    t = tl.program_id(0)
     a = _select_ptr(
         t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
     )
@@ -135,7 +135,6 @@ def _try_direct(tensors, op):
     _foreach_unary_direct_kernel[grid](
         *a_ptrs,
         *o_ptrs,
-        nt,
         tl_dtype(dtype),
         tl_dtype(dtype),
         block,
@@ -228,7 +227,6 @@ def _launch_inplace(tensors, op):
     _foreach_unary_direct_kernel[grid](
         *ptrs,
         *ptrs,
-        nt,
         tl_dtype(first.dtype),
         tl_dtype(first.dtype),
         block,

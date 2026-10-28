@@ -110,10 +110,10 @@ def _foreach_lerp_list_kernel(
     o13,
     o14,
     o15,
-    t,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
+    t = tl.program_id(0)
     a = _select_ptr(
         t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
     )
@@ -180,7 +180,6 @@ def _try_direct(self, other, weight, inplace):
         *b_ptrs,
         *w_ptrs,
         *o_ptrs,
-        nt,
         tl_dtype(dtype),
         block,
         num_warps=num_warps,
