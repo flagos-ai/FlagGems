@@ -208,16 +208,13 @@ def masked_fill(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        # ATen casts the value tensor to the input dtype (the result is
-        # self.dtype for every value dtype).  Passing a mismatched 0-dim tensor
-        # leaves its pointer typed as the value dtype while the pointwise kernel
-        # is specialized for the input dtype, and the XPU runtime rejects the
-        # launch: "data type: kint64, using as: kfloat16".
-        if value.dtype != inp.dtype:
-            value = value.to(inp.dtype)
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # A 0-dim tensor value is a single element; ATen reads it as a scalar.
+        # Read it once and take the scalar kernel.  The tensor-value pointwise
+        # kernel lowers a 0-dim value tensor in a form FlagTree's MLIR->LLVM
+        # translation rejects ("failed to translate module to LLVM IR"), and the
+        # scalar path is bit-identical for every value dtype.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
@@ -276,13 +273,11 @@ def masked_fill_(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        # Same cast as in ``masked_fill``: ATen writes the value into self's
-        # dtype, and a mismatched pointer fails the XPU launch-time dtype check.
-        if value.dtype != inp.dtype:
-            value = value.to(inp.dtype)
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # Same scalar-isation as in ``masked_fill``: the tensor-value pointwise
+        # kernel fails to lower a 0-dim value on FlagTree, and the scalar path
+        # is bit-identical.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
