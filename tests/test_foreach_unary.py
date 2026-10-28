@@ -32,7 +32,6 @@ from .accuracy_utils import (
 
 # Every operator name in the table; used to parameterize the shared cases.
 UNARY_NAMES = sorted(UNARY_OPS)
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 # A representative subset for the expensive layout / launch-count cases: one
 # dtype-preserving operator, one promoting operator, one with a complex kernel,
@@ -530,15 +529,6 @@ def test_foreach_unary_launch_count_is_independent_of_list_length():
     """
     if flag_gems.device != "cuda":
         return
-    if IS_KUNLUNXIN:
-        try:
-            _cuda_kernel_count(
-                lambda: flag_gems._foreach_sin(
-                    [torch.rand(16, device=flag_gems.device) + 0.1]
-                )
-            )
-        except RuntimeError:
-            pytest.skip("torch profiler is unavailable on this platform")
 
     def run(n):
         ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
@@ -566,12 +556,6 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
         [torch.float32, torch.float16],
         [torch.float32, torch.float16, torch.bfloat16, torch.float64],
     ):
-        if IS_KUNLUNXIN:
-            dtypes = [
-                d
-                for d in dtypes
-                if torch.empty(1, device=flag_gems.device).to(d).dtype == d
-            ]
         ts = [
             (torch.rand(512, device=flag_gems.device) + 0.1).to(d)
             for d in dtypes
