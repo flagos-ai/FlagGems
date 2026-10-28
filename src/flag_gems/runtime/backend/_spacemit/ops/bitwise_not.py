@@ -24,7 +24,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -39,6 +40,7 @@ def bitwise_not_kernel(
     n_elements,
     IS_BOOL: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -86,7 +88,7 @@ def bitwise_not(A):
     n = A.numel()
     is_bool = A.dtype == torch.bool
     with torch_device_fn.device(A.device):
-        bitwise_not_kernel[(NUM_CTAS,)](A, out, n, is_bool)
+        bitwise_not_kernel[num_ctas_grid](A, out, n, is_bool)
     return out
 
 
@@ -96,7 +98,7 @@ def bitwise_not_(A):
     n = A_c.numel()
     is_bool = A_c.dtype == torch.bool
     with torch_device_fn.device(A.device):
-        bitwise_not_kernel[(NUM_CTAS,)](A_c, A_c, n, is_bool)
+        bitwise_not_kernel[num_ctas_grid](A_c, A_c, n, is_bool)
     if not A.is_contiguous():
         A.copy_(A_c)
     return A

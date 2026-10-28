@@ -23,7 +23,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -38,6 +39,7 @@ def div_kernel_tt(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor / tensor, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -95,6 +97,7 @@ def div_kernel_ts(
     scalar,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor / scalar, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -143,6 +146,7 @@ def div_kernel_st(
     scalar,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """scalar / tensor, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -186,21 +190,21 @@ def true_divide(A, B):
         out_dtype = A.dtype if A.is_floating_point() else torch.float32
         out = torch.empty_like(A, dtype=out_dtype)
         n = A.numel()
-        div_kernel_tt[(NUM_CTAS,)](A, B, out, n)
+        div_kernel_tt[num_ctas_grid](A, B, out, n)
         return out
     elif isinstance(A, torch.Tensor):
         A = A.contiguous()
         out_dtype = A.dtype if A.is_floating_point() else torch.float32
         out = torch.empty_like(A, dtype=out_dtype)
         n = A.numel()
-        div_kernel_ts[(NUM_CTAS,)](A, out, float(B), n)
+        div_kernel_ts[num_ctas_grid](A, out, float(B), n)
         return out
     elif isinstance(B, torch.Tensor):
         B = B.contiguous()
         out_dtype = B.dtype if B.is_floating_point() else torch.float32
         out = torch.empty_like(B, dtype=out_dtype)
         n = B.numel()
-        div_kernel_st[(NUM_CTAS,)](B, out, float(A), n)
+        div_kernel_st[num_ctas_grid](B, out, float(A), n)
         return out
     else:
         return torch.tensor(A / B)
@@ -212,9 +216,9 @@ def true_divide_(A, B):
     n = A_contig.numel()
     if isinstance(B, torch.Tensor):
         B = B.contiguous()
-        div_kernel_tt[(NUM_CTAS,)](A_contig, B, A_contig, n)
+        div_kernel_tt[num_ctas_grid](A_contig, B, A_contig, n)
     else:
-        div_kernel_ts[(NUM_CTAS,)](A_contig, A_contig, float(B), n)
+        div_kernel_ts[num_ctas_grid](A_contig, A_contig, float(B), n)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A

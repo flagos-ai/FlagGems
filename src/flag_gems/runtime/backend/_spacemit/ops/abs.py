@@ -24,7 +24,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -38,6 +39,7 @@ def abs_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -76,7 +78,7 @@ def abs(A):
     out = torch.empty_like(A)
     n_elements = A.numel()
     with torch_device_fn.device(A.device):
-        abs_kernel[(NUM_CTAS,)](A, out, n_elements)
+        abs_kernel[num_ctas_grid](A, out, n_elements)
     return out
 
 
@@ -85,7 +87,7 @@ def abs_(A):
     A_contig = A.contiguous()
     n_elements = A_contig.numel()
     with torch_device_fn.device(A.device):
-        abs_kernel[(NUM_CTAS,)](A_contig, A_contig, n_elements)
+        abs_kernel[num_ctas_grid](A_contig, A_contig, n_elements)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A

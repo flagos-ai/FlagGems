@@ -23,7 +23,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -38,6 +39,7 @@ def mul_kernel_tt(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor * tensor, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -92,6 +94,7 @@ def mul_kernel_ts(
     scalar_val,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor * scalar, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -134,19 +137,19 @@ def mul(A, B):
         B = B.contiguous()
         out = torch.empty_like(A)
         n = A.numel()
-        mul_kernel_tt[(NUM_CTAS,)](A, B, out, n)
+        mul_kernel_tt[num_ctas_grid](A, B, out, n)
         return out
     elif isinstance(A, torch.Tensor):
         A = A.contiguous()
         out = torch.empty_like(A)
         n = A.numel()
-        mul_kernel_ts[(NUM_CTAS,)](A, out, float(B), n)
+        mul_kernel_ts[num_ctas_grid](A, out, float(B), n)
         return out
     elif isinstance(B, torch.Tensor):
         B = B.contiguous()
         out = torch.empty_like(B)
         n = B.numel()
-        mul_kernel_ts[(NUM_CTAS,)](B, out, float(A), n)
+        mul_kernel_ts[num_ctas_grid](B, out, float(A), n)
         return out
     else:
         return torch.tensor(A * B)
@@ -159,14 +162,14 @@ def mul_(A, B):
         A_contig = A.contiguous()
         B = B.contiguous()
         n = A_contig.numel()
-        mul_kernel_tt[(NUM_CTAS,)](A_contig, B, A_contig, n)
+        mul_kernel_tt[num_ctas_grid](A_contig, B, A_contig, n)
         if not A.is_contiguous():
             A.copy_(A_contig)
         return A
     else:
         A_contig = A.contiguous()
         n = A_contig.numel()
-        mul_kernel_ts[(NUM_CTAS,)](A_contig, A_contig, float(B), n)
+        mul_kernel_ts[num_ctas_grid](A_contig, A_contig, float(B), n)
         if not A.is_contiguous():
             A.copy_(A_contig)
         return A

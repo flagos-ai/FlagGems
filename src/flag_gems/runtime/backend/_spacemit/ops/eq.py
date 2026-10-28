@@ -23,7 +23,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -38,6 +39,7 @@ def eq_kernel_tt(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -92,6 +94,7 @@ def eq_kernel_ts(
     scalar,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -130,7 +133,7 @@ def eq(A, B):
     A, B = A.contiguous(), B.contiguous()
     out = torch.empty(A.shape, dtype=torch.uint8, device=A.device)
     n = A.numel()
-    eq_kernel_tt[(NUM_CTAS,)](A, B, out, n)
+    eq_kernel_tt[num_ctas_grid](A, B, out, n)
     return out.view(torch.bool)
 
 
@@ -139,5 +142,5 @@ def eq_scalar(A, B):
     A = A.contiguous()
     out = torch.empty(A.shape, dtype=torch.uint8, device=A.device)
     n = A.numel()
-    eq_kernel_ts[(NUM_CTAS,)](A, out, float(B), n)
+    eq_kernel_ts[num_ctas_grid](A, out, float(B), n)
     return out.view(torch.bool)

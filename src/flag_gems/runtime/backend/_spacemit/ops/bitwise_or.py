@@ -24,7 +24,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -39,6 +40,7 @@ def bitwise_or_kernel_tt(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -93,6 +95,7 @@ def bitwise_or_kernel_ts(
     scalar,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -132,7 +135,7 @@ def bitwise_or_tensor(A, B):
     out = torch.empty_like(A)
     n = A.numel()
     with torch_device_fn.device(A.device):
-        bitwise_or_kernel_tt[(NUM_CTAS,)](A, B, out, n)
+        bitwise_or_kernel_tt[num_ctas_grid](A, B, out, n)
     return out
 
 
@@ -142,7 +145,7 @@ def bitwise_or_tensor_(A, B):
     B = B.contiguous()
     n = A_c.numel()
     with torch_device_fn.device(A.device):
-        bitwise_or_kernel_tt[(NUM_CTAS,)](A_c, B, A_c, n)
+        bitwise_or_kernel_tt[num_ctas_grid](A_c, B, A_c, n)
     if not A.is_contiguous():
         A.copy_(A_c)
     return A
@@ -154,7 +157,7 @@ def bitwise_or_scalar(A, B):
     out = torch.empty_like(A)
     n = A.numel()
     with torch_device_fn.device(A.device):
-        bitwise_or_kernel_ts[(NUM_CTAS,)](A, out, int(B), n)
+        bitwise_or_kernel_ts[num_ctas_grid](A, out, int(B), n)
     return out
 
 
@@ -163,7 +166,7 @@ def bitwise_or_scalar_(A, B):
     A_c = A.contiguous()
     n = A_c.numel()
     with torch_device_fn.device(A.device):
-        bitwise_or_kernel_ts[(NUM_CTAS,)](A_c, A_c, int(B), n)
+        bitwise_or_kernel_ts[num_ctas_grid](A_c, A_c, int(B), n)
     if not A.is_contiguous():
         A.copy_(A_c)
     return A

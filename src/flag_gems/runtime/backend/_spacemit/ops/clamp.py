@@ -23,7 +23,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -39,6 +40,7 @@ def clamp_kernel_tensor(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -101,6 +103,7 @@ def clamp_kernel_min_tensor(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -154,6 +157,7 @@ def clamp_kernel_max_tensor(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -208,6 +212,7 @@ def clamp_kernel(
     maxi,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -252,6 +257,7 @@ def clamp_kernel_min(
     mini,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -296,6 +302,7 @@ def clamp_kernel_max(
     maxi,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -345,14 +352,14 @@ def clamp_tensor(A, mini=None, maxi=None):
     n = A.numel()
     if mini is None:
         maxi = _broadcast_tensor_arg(maxi, A.shape)
-        clamp_kernel_max_tensor[(NUM_CTAS,)](A, maxi, out, n)
+        clamp_kernel_max_tensor[num_ctas_grid](A, maxi, out, n)
     elif maxi is None:
         mini = _broadcast_tensor_arg(mini, A.shape)
-        clamp_kernel_min_tensor[(NUM_CTAS,)](A, mini, out, n)
+        clamp_kernel_min_tensor[num_ctas_grid](A, mini, out, n)
     else:
         mini = _broadcast_tensor_arg(mini, A.shape)
         maxi = _broadcast_tensor_arg(maxi, A.shape)
-        clamp_kernel_tensor[(NUM_CTAS,)](A, mini, maxi, out, n)
+        clamp_kernel_tensor[num_ctas_grid](A, mini, maxi, out, n)
     return out
 
 
@@ -364,14 +371,14 @@ def clamp_tensor_(A, mini=None, maxi=None):
     n = A.numel()
     if mini is None:
         maxi = _broadcast_tensor_arg(maxi, A.shape)
-        clamp_kernel_max_tensor[(NUM_CTAS,)](A, maxi, A, n)
+        clamp_kernel_max_tensor[num_ctas_grid](A, maxi, A, n)
     elif maxi is None:
         mini = _broadcast_tensor_arg(mini, A.shape)
-        clamp_kernel_min_tensor[(NUM_CTAS,)](A, mini, A, n)
+        clamp_kernel_min_tensor[num_ctas_grid](A, mini, A, n)
     else:
         mini = _broadcast_tensor_arg(mini, A.shape)
         maxi = _broadcast_tensor_arg(maxi, A.shape)
-        clamp_kernel_tensor[(NUM_CTAS,)](A, mini, maxi, A, n)
+        clamp_kernel_tensor[num_ctas_grid](A, mini, maxi, A, n)
     return A
 
 
@@ -382,7 +389,7 @@ def clamp_min(A, mini):
     A = A.contiguous()
     out = _empty_like(A)
     n = A.numel()
-    clamp_kernel_min[(NUM_CTAS,)](A, out, float(mini), n)
+    clamp_kernel_min[num_ctas_grid](A, out, float(mini), n)
     return out
 
 
@@ -392,7 +399,7 @@ def clamp_min_(A, mini):
         raise ValueError("Mini must not be None")
     A = A.contiguous()
     n = A.numel()
-    clamp_kernel_min[(NUM_CTAS,)](A, A, float(mini), n)
+    clamp_kernel_min[num_ctas_grid](A, A, float(mini), n)
     return A
 
 
@@ -404,11 +411,11 @@ def clamp(A, mini=None, maxi=None):
     out = _empty_like(A)
     n = A.numel()
     if mini is None:
-        clamp_kernel_max[(NUM_CTAS,)](A, out, float(maxi), n)
+        clamp_kernel_max[num_ctas_grid](A, out, float(maxi), n)
     elif maxi is None:
-        clamp_kernel_min[(NUM_CTAS,)](A, out, float(mini), n)
+        clamp_kernel_min[num_ctas_grid](A, out, float(mini), n)
     else:
-        clamp_kernel[(NUM_CTAS,)](A, out, float(mini), float(maxi), n)
+        clamp_kernel[num_ctas_grid](A, out, float(mini), float(maxi), n)
     return out
 
 
@@ -419,9 +426,9 @@ def clamp_(A, mini=None, maxi=None):
     A = A.contiguous()
     n = A.numel()
     if mini is None:
-        clamp_kernel_max[(NUM_CTAS,)](A, A, float(maxi), n)
+        clamp_kernel_max[num_ctas_grid](A, A, float(maxi), n)
     elif maxi is None:
-        clamp_kernel_min[(NUM_CTAS,)](A, A, float(mini), n)
+        clamp_kernel_min[num_ctas_grid](A, A, float(mini), n)
     else:
-        clamp_kernel[(NUM_CTAS,)](A, A, float(mini), float(maxi), n)
+        clamp_kernel[num_ctas_grid](A, A, float(mini), float(maxi), n)
     return A

@@ -23,9 +23,11 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
-exp_func = tl_extra_shim.exp
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
+
+exp_func = tl_extra_shim.exp
 
 
 @libentry()
@@ -39,6 +41,7 @@ def sigmoid_forward_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -83,6 +86,7 @@ def sigmoid_backward_kernel(
     DX_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -132,7 +136,7 @@ def sigmoid(self):
     out = torch.empty_like(A)
     n_elements = A.numel()
     with torch_device_fn.device(A.device):
-        sigmoid_forward_kernel[(NUM_CTAS,)](A, out, n_elements)
+        sigmoid_forward_kernel[num_ctas_grid](A, out, n_elements)
     return out
 
 
@@ -143,7 +147,7 @@ def sigmoid_backward(grad_output, output):
     grad_input = torch.empty_like(grad_output)
     n_elements = grad_output.numel()
     with torch_device_fn.device(grad_output.device):
-        sigmoid_backward_kernel[(NUM_CTAS,)](
+        sigmoid_backward_kernel[num_ctas_grid](
             grad_output, output, grad_input, n_elements
         )
     return grad_input
@@ -154,7 +158,7 @@ def sigmoid_(A):
     A_contig = A.contiguous()
     n_elements = A_contig.numel()
     with torch_device_fn.device(A.device):
-        sigmoid_forward_kernel[(NUM_CTAS,)](A_contig, A_contig, n_elements)
+        sigmoid_forward_kernel[num_ctas_grid](A_contig, A_contig, n_elements)
     if not A.is_contiguous():
         A.copy_(A_contig)
     return A

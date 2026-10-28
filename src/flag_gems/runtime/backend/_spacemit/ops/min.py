@@ -27,6 +27,8 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as tle
 from flag_gems.utils.limits import get_dtype_max
 
+from ..heuristics_config_utils import get_num_ctas
+
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
 except ImportError:
@@ -38,8 +40,6 @@ if os.environ.get("SPINE_TRITON_RPC_HOST"):
     release_mbarrier = None
 
 logger = logging.getLogger(__name__)
-
-NUM_CTAS = 8
 
 
 @libentry()
@@ -194,7 +194,7 @@ def min(inp):
     block_size = builtins.min(4096, triton.next_power_of_2(M))
     block_inner = 256
     num_blocks = triton.cdiv(M, block_size)
-    mid_size = builtins.min(NUM_CTAS, num_blocks)
+    mid_size = builtins.min(get_num_ctas(), num_blocks)
     # horizontal reduce over fewer than 32 lanes returns garbage (leftover
     # scalable register lanes); the masked mid load pads with identity
     block_mid = max(triton.next_power_of_2(mid_size), 32)

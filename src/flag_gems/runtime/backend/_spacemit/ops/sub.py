@@ -23,7 +23,8 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
-NUM_CTAS = 8
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 
 @libentry()
@@ -39,6 +40,7 @@ def sub_kernel_tt(
     alpha,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor - tensor * alpha, using make_block_ptr + boundary_check."""
     pid = tl.program_id(0)
@@ -95,6 +97,7 @@ def sub_kernel_ts(
     alpha,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """tensor - scalar * alpha."""
     pid = tl.program_id(0)
@@ -142,6 +145,7 @@ def sub_kernel_st(
     alpha,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     """scalar - tensor * alpha."""
     pid = tl.program_id(0)
@@ -183,19 +187,19 @@ def sub(A, B, *, alpha=1):
         B = B.contiguous()
         out = torch.empty_like(A)
         n_elements = A.numel()
-        sub_kernel_tt[(NUM_CTAS,)](A, B, out, alpha, n_elements)
+        sub_kernel_tt[num_ctas_grid](A, B, out, alpha, n_elements)
         return out
     elif isinstance(A, torch.Tensor):
         A = A.contiguous()
         out = torch.empty_like(A)
         n_elements = A.numel()
-        sub_kernel_ts[(NUM_CTAS,)](A, out, B, alpha, n_elements)
+        sub_kernel_ts[num_ctas_grid](A, out, B, alpha, n_elements)
         return out
     elif isinstance(B, torch.Tensor):
         B = B.contiguous()
         out = torch.empty_like(B)
         n_elements = B.numel()
-        sub_kernel_st[(NUM_CTAS,)](B, out, A, alpha, n_elements)
+        sub_kernel_st[num_ctas_grid](B, out, A, alpha, n_elements)
         return out
     else:
         return torch.tensor(A - B * alpha)
@@ -207,13 +211,13 @@ def sub_(A, B, *, alpha=1):
         A_contig = A.contiguous()
         B = B.contiguous()
         n_elements = A_contig.numel()
-        sub_kernel_tt[(NUM_CTAS,)](A_contig, B, A_contig, alpha, n_elements)
+        sub_kernel_tt[num_ctas_grid](A_contig, B, A_contig, alpha, n_elements)
         if not A.is_contiguous():
             A.copy_(A_contig)
     else:
         A_contig = A.contiguous()
         n_elements = A_contig.numel()
-        sub_kernel_ts[(NUM_CTAS,)](A_contig, A_contig, B, alpha, n_elements)
+        sub_kernel_ts[num_ctas_grid](A_contig, A_contig, B, alpha, n_elements)
         if not A.is_contiguous():
             A.copy_(A_contig)
     return A

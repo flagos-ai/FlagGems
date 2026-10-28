@@ -23,9 +23,11 @@ from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-_isinf = tl_extra_shim.isinf
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
-NUM_CTAS = 8
+
+_isinf = tl_extra_shim.isinf
 
 
 @libentry()
@@ -39,6 +41,7 @@ def isinf_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -77,5 +80,5 @@ def isinf(A):
     A = A.contiguous()
     out = torch.empty(A.shape, dtype=torch.uint8, device=A.device)
     n = A.numel()
-    isinf_kernel[(NUM_CTAS,)](A, out, n)
+    isinf_kernel[num_ctas_grid](A, out, n)
     return out.view(torch.bool)

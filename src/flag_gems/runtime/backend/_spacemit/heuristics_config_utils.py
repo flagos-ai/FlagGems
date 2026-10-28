@@ -17,7 +17,19 @@ import os
 import torch
 import triton
 
-from flag_gems.runtime import config_loader
+import flag_gems.runtime
+
+
+def _yaml_vendor_configs():
+    """The vendor's raw tune_configs.yaml dict.
+
+    ``flag_gems.runtime`` is still partially initialized when this module is
+    imported (TunedConfigLoader.__init__ pulls it in via
+    backend.get_heuristic_config), so the config_loader attribute must be
+    reached at call time through the module object, never at import time.
+    """
+    return flag_gems.runtime.config_loader.vendor_primitive_yaml_config
+
 
 # Shared smt_rvisa eDSL plumbing for mean/max/sum/softmax/log_softmax/mv
 # (they do `from ..heuristics_config_utils import HAS_SMT_RVISA, ...`).
@@ -43,16 +55,45 @@ def _rvisa_yaml_default() -> bool:
     # default comes from the spacemit_rvisa entry in tune_configs.yaml
     # (vendor_primitive_yaml_config is the raw yaml dict, kept on the loader
     # exactly for vendor-custom keys like this one)
-    for cfg in (config_loader.vendor_primitive_yaml_config or {}).get(
-        "spacemit_rvisa"
-    ) or []:
+    for cfg in _yaml_vendor_configs().get("spacemit_rvisa") or []:
         enabled = (cfg.get("META") or {}).get("enabled")
         if enabled is not None:
             return bool(enabled)
     return False
 
 
-_RVISA_YAML_DEFAULT = _rvisa_yaml_default()
+# cached on first call (this module loads during TunedConfigLoader.__init__,
+# when the yaml dict is not reachable yet; by the time any op runs it is)
+def _rvisa_default():
+    global _RVISA_YAML_DEFAULT
+    if _RVISA_YAML_DEFAULT is None:
+        _RVISA_YAML_DEFAULT = _rvisa_yaml_default()
+    return _RVISA_YAML_DEFAULT
+
+
+_RVISA_YAML_DEFAULT = None
+
+
+def _num_ctas_yaml_default() -> int:
+    # default comes from the spacemit_num_ctas entry in tune_configs.yaml
+    for cfg in _yaml_vendor_configs().get("spacemit_num_ctas") or []:
+        num_ctas = (cfg.get("META") or {}).get("num_ctas")
+        if num_ctas is not None:
+            return int(num_ctas)
+    return 8
+
+
+def get_num_ctas() -> int:
+    """Persistent-program count for the reduction ops without a libtuner.
+
+    Default lives in tune_configs.yaml (spacemit_num_ctas.num_ctas);
+    SPACEMIT_NUM_CTAS overrides it per process. Read per call so tuning
+    sweeps can flip it with monkeypatch.setenv.
+    """
+    env = os.environ.get("SPACEMIT_NUM_CTAS")
+    if env is not None:
+        return int(env)
+    return _num_ctas_yaml_default()
 
 
 def smt_rvisa_enabled() -> bool:
@@ -67,7 +108,7 @@ def smt_rvisa_enabled() -> bool:
     env = os.environ.get("SPACEMIT_SMT_RVISA")
     if env is not None:
         return env == "1"
-    return _RVISA_YAML_DEFAULT
+    return _rvisa_default()
 
 
 def argmax_heur_block_m(args):

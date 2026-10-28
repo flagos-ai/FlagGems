@@ -23,6 +23,8 @@ import triton.language.extra.smt as smt
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
+from ..heuristics_config_utils import get_num_ctas
+
 try:
     from triton.backends.spine_triton.env import alloc_mbarrier, release_mbarrier
 except ImportError:
@@ -34,8 +36,6 @@ if os.environ.get("SPINE_TRITON_RPC_HOST"):
     release_mbarrier = None
 
 logger = logging.getLogger(__name__)
-
-NUM_CTAS = 8
 
 
 @triton.jit
@@ -193,7 +193,7 @@ def all(inp):
     block_size = min(4096, triton.next_power_of_2(n_elements))
     block_inner = 256
     num_blocks = triton.cdiv(n_elements, block_size)
-    mid_size = min(NUM_CTAS, num_blocks)
+    mid_size = min(get_num_ctas(), num_blocks)
     # horizontal reduce over fewer than 32 lanes returns garbage (leftover
     # scalable register lanes); the masked mid load pads with identity
     block_mid = max(triton.next_power_of_2(mid_size), 32)

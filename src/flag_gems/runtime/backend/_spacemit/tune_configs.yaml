@@ -670,190 +670,271 @@ abs:
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 add_scalar_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 add_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 add_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 bitwise_and_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 bitwise_and_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 bitwise_not:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 bitwise_or_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 bitwise_or_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 cos:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 div_scalar_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 div_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 div_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 eq_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 eq_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 erf:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 exp:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gelu_none_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gelu_none_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gelu_tanh_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gelu_tanh_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 ge_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 ge_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gt_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 gt_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 le_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 le_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 log_softmax_spacemit:
 - META:
     ROW_SIZE: 1
@@ -863,15 +944,21 @@ lt_tensor_scalar:
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 lt_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 mean_spacemit_v1:
 - gen: true
   param_map:
@@ -887,71 +974,101 @@ mul_tensor_scalar:
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 mul_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 relu_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 relu_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 rsqrt:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 sigmoid_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 sigmoid_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 silu_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 silu_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 sin:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 softmax_spacemit:
 - META:
     ROW_SIZE: 1
@@ -961,33 +1078,55 @@ sub_scalar_tensor:
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 sub_tensor_scalar:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 sub_tensor_tensor:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 tanh_backward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
 tanh_forward:
 - gen: true
   param_map:
     META:
       BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
   block_size:
   - 512
+  num_ctas:
+  - 8
+# Persistent-program count for the reduction ops without a libtuner
+# (sum/min/max/amax/all read this through
+# heuristics_config_utils.get_num_ctas(); shaped like a config list because
+# the loader wraps every top-level key in triton.Config).
+spacemit_num_ctas:
+- META:
+    num_ctas: 8

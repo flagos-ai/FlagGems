@@ -23,14 +23,16 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
+
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
 pow = tl_extra_shim.pow
 tanh = tl_extra_shim.tanh
 geluTanh = tl_extra_shim.gelu_tanh
 geluNone = tl_extra_shim.gelu_none
-
-NUM_CTAS = 8
 
 
 @libentry()
@@ -44,6 +46,7 @@ def gelu_none_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -87,6 +90,7 @@ def gelu_tanh_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -131,6 +135,7 @@ def gelu_backward_none_kernel(
     DX_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -192,6 +197,7 @@ def gelu_backward_tanh_kernel(
     DX_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -247,9 +253,9 @@ class Gelu(torch.autograd.Function):
         n_elements = A.numel()
         with torch_device_fn.device(A.device):
             if approximate == "tanh":
-                gelu_tanh_kernel[(NUM_CTAS,)](A, out, n_elements)
+                gelu_tanh_kernel[num_ctas_grid](A, out, n_elements)
             else:
-                gelu_none_kernel[(NUM_CTAS,)](A, out, n_elements)
+                gelu_none_kernel[num_ctas_grid](A, out, n_elements)
         ctx.save_for_backward(A)
         ctx.approximate = approximate
         return out
@@ -265,11 +271,11 @@ class Gelu(torch.autograd.Function):
         n_elements = inp.numel()
         with torch_device_fn.device(inp.device):
             if approximate == "tanh":
-                gelu_backward_tanh_kernel[(NUM_CTAS,)](
+                gelu_backward_tanh_kernel[num_ctas_grid](
                     inp, out_grad, in_grad, n_elements
                 )
             else:
-                gelu_backward_none_kernel[(NUM_CTAS,)](
+                gelu_backward_none_kernel[num_ctas_grid](
                     inp, out_grad, in_grad, n_elements
                 )
         return in_grad, None

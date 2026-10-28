@@ -23,10 +23,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
+
 div_rn = tl_extra_shim.div_rn
 _silu = tl_extra_shim.silu
-
-NUM_CTAS = 8
 
 
 @libentry()
@@ -40,6 +42,7 @@ def silu_forward_kernel(
     Out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -85,6 +88,7 @@ def silu_backward_kernel(
     DX_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_ctas = tl.num_programs(0)
@@ -137,7 +141,7 @@ class Silu(torch.autograd.Function):
         out = torch.empty_like(A)
         n_elements = A.numel()
         with torch_device_fn.device(A.device):
-            silu_forward_kernel[(NUM_CTAS,)](A, out, n_elements)
+            silu_forward_kernel[num_ctas_grid](A, out, n_elements)
         ctx.save_for_backward(A)
         return out
 
@@ -150,7 +154,7 @@ class Silu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         n_elements = inp.numel()
         with torch_device_fn.device(inp.device):
-            silu_backward_kernel[(NUM_CTAS,)](inp, out_grad, in_grad, n_elements)
+            silu_backward_kernel[num_ctas_grid](inp, out_grad, in_grad, n_elements)
         return in_grad
 
 
@@ -167,7 +171,7 @@ class InplaceSilu(torch.autograd.Function):
         A_contig = A.contiguous()
         n_elements = A_contig.numel()
         with torch_device_fn.device(A.device):
-            silu_forward_kernel[(NUM_CTAS,)](A_contig, A_contig, n_elements)
+            silu_forward_kernel[num_ctas_grid](A_contig, A_contig, n_elements)
         if not A.is_contiguous():
             A.copy_(A_contig)
         return A
@@ -181,7 +185,7 @@ class InplaceSilu(torch.autograd.Function):
         in_grad = torch.empty_like(out_grad)
         n_elements = inp.numel()
         with torch_device_fn.device(inp.device):
-            silu_backward_kernel[(NUM_CTAS,)](inp, out_grad, in_grad, n_elements)
+            silu_backward_kernel[num_ctas_grid](inp, out_grad, in_grad, n_elements)
         return in_grad
 
 
