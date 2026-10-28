@@ -19,7 +19,6 @@ import torch
 
 import flag_gems
 
-from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 # _to_sparse_semi_structured compresses a dense 2D tensor to the CUTLASS
@@ -70,7 +69,10 @@ def _valid_dense(shape, dtype, device=flag_gems.device):
 
 
 def _assert_sss(dense, equal_nan=False):
-    expected = torch.ops.aten._to_sparse_semi_structured(utils.to_reference(dense))
+    # The native op is CUDA-only (CUTLASS), so the reference must be computed on
+    # the device rather than through to_reference (which would move it to CPU
+    # under --ref=cpu and hit a NotImplementedError).
+    expected = torch.ops.aten._to_sparse_semi_structured(dense)
     actual = flag_gems.to_sparse_semi_structured(dense)
     assert isinstance(actual, tuple) and len(actual) == 2
     packed, meta = actual
@@ -79,8 +81,8 @@ def _assert_sss(dense, equal_nan=False):
     assert meta.shape == a_meta.shape
     assert packed.dtype == a_packed.dtype
     assert meta.dtype == a_meta.dtype
-    utils.gems_assert_equal(packed, a_packed, equal_nan=equal_nan)
-    utils.gems_assert_equal(meta, a_meta)
+    torch.testing.assert_close(packed, a_packed, rtol=0, atol=0, equal_nan=equal_nan)
+    torch.testing.assert_close(meta, a_meta, rtol=0, atol=0)
     return actual, expected
 
 
@@ -133,9 +135,7 @@ def test_to_sparse_semi_structured_special_values(dtype):
             slot = (g + s) % ksparse
             x[:, base + slot] = specials[(g * keep + s) % specials.numel()]
     actual, expected = _assert_sss(x, equal_nan=True)
-    assert torch.equal(
-        torch.signbit(actual[0]), torch.signbit(expected[0])
-    )
+    assert torch.equal(torch.signbit(actual[0]), torch.signbit(expected[0]))
 
 
 @pytest.mark.to_sparse_semi_structured

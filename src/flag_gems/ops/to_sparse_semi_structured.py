@@ -75,12 +75,12 @@ def _to_sss_kernel(
     BLOCK_META: tl.constexpr,
     PER_META: tl.constexpr,
     KSPARSE: tl.constexpr,
-    GROUP: tl.constexpr,        # reorder row group: 32 for int16 meta, 16 for int32
-    INTERWEAVE: tl.constexpr,   # reorder row interleave: 4 for int16 meta, 2 for int32
+    GROUP: tl.constexpr,  # reorder row group: 32 for int16 meta, 16 for int32
+    INTERWEAVE: tl.constexpr,  # reorder row interleave: 4 for int16 meta, 2 for int32
     META_I32: tl.constexpr,
 ):
     """Fast path: logical row-major input with a logically valid pattern."""
-    NG: tl.constexpr = PER_META // KSPARSE   # groups per metadata element
+    NG: tl.constexpr = PER_META // KSPARSE  # groups per metadata element
     BLOCK_C: tl.constexpr = BLOCK_META * PER_META
     NGRP: tl.constexpr = BLOCK_C // KSPARSE  # groups per row-block
 
@@ -95,8 +95,11 @@ def _to_sss_kernel(
 
     # Masked-out columns read as +0 so they count as pruned slots and can never
     # create a spurious validity failure.
-    V = tl.load(dense_ptr + rows[:, None] * stride0 + cols[None, :] * stride1,
-                mask=load_mask, other=0)
+    V = tl.load(
+        dense_ptr + rows[:, None] * stride0 + cols[None, :] * stride1,
+        mask=load_mask,
+        other=0,
+    )
     Vr = tl.reshape(V, (BLOCK_R, NGRP, KSPARSE))
 
     # A group participates in the validity check only when its whole metadata
@@ -115,16 +118,17 @@ def _to_sss_kernel(
         n1 = v1 != 0
         n2 = v2 != 0
         n3 = v3 != 0
-        cnt = (n0.to(tl.int32) + n1.to(tl.int32) + n2.to(tl.int32)
-               + n3.to(tl.int32))
+        cnt = n0.to(tl.int32) + n1.to(tl.int32) + n2.to(tl.int32) + n3.to(tl.int32)
         c0 = tl.where(n0, 0, tl.where(n1, 1, tl.where(n2, 2, 3)))
-        c1 = tl.where(n0 & (c0 != 0), 0,
-                      tl.where(n1 & (c0 != 1), 1,
-                               tl.where(n2 & (c0 != 2), 2, 3)))
+        c1 = tl.where(
+            n0 & (c0 != 0),
+            0,
+            tl.where(n1 & (c0 != 1), 1, tl.where(n2 & (c0 != 2), 2, 3)),
+        )
         val0 = tl.where(c0 == 0, v0, tl.where(c0 == 1, v1, tl.where(c0 == 2, v2, v3)))
         val1 = tl.where(c1 == 0, v0, tl.where(c1 == 1, v1, tl.where(c1 == 2, v2, v3)))
         pl = tl.reshape(tl.join(val0, val1), (BLOCK_R, BLOCK_C // 2))
-        q = c0 | (c1 << 2)                                 # (BLOCK_R, NGRP)
+        q = c0 | (c1 << 2)  # (BLOCK_R, NGRP)
     else:
         v0, v1 = tl.split(tl.reshape(Vr, (BLOCK_R, NGRP, 1, 2)))
         v0 = tl.reshape(v0, (BLOCK_R, NGRP))
@@ -168,8 +172,16 @@ def _to_sss_kernel(
         q2, q6 = tl.split(q_e1)
         q1, q5 = tl.split(q_o0)
         q3c, q7 = tl.split(q_o1)
-        w = (q0 | (q1 << 4) | (q2 << 8) | (q3c << 12) | (q4 << 16) | (q5 << 20)
-             | (q6 << 24) | (q7 << 28))
+        w = (
+            q0
+            | (q1 << 4)
+            | (q2 << 8)
+            | (q3c << 12)
+            | (q4 << 16)
+            | (q5 << 20)
+            | (q6 << 24)
+            | (q7 << 28)
+        )
 
     # ---- ColumnMajorInterleaved<2> reorder (cutlass::reorder_meta) ----
     m = rows[:, None]
@@ -185,13 +197,15 @@ def _to_sss_kernel(
     if META_I32:
         tl.store(meta_ptr + flat, w.to(tl.int32, bitcast=True), mask=store_mask)
     else:
-        tl.store(meta_ptr + flat, w.to(tl.uint16).to(tl.int16, bitcast=True),
-                 mask=store_mask)
+        tl.store(
+            meta_ptr + flat, w.to(tl.uint16).to(tl.int16, bitcast=True), mask=store_mask
+        )
 
 
 @triton.jit
-def _row_counts(src, counts, nrows, ncols, stride0, stride1,
-                BR: tl.constexpr, CHUNK: tl.constexpr):
+def _row_counts(
+    src, counts, nrows, ncols, stride0, stride1, BR: tl.constexpr, CHUNK: tl.constexpr
+):
     """Retained-element count of every logical row."""
     rows = tl.program_id(0) * BR + tl.arange(0, BR)
     rmask = rows < nrows
@@ -199,8 +213,9 @@ def _row_counts(src, counts, nrows, ncols, stride0, stride1,
     for c0 in range(0, ncols, CHUNK):
         cols = c0 + tl.arange(0, CHUNK)
         m = rmask[:, None] & (cols < ncols)[None, :]
-        v = tl.load(src + rows[:, None] * stride0 + cols[None, :] * stride1,
-                    mask=m, other=0)
+        v = tl.load(
+            src + rows[:, None] * stride0 + cols[None, :] * stride1, mask=m, other=0
+        )
         tot += tl.sum(((v != 0) & m).to(tl.int32), axis=1)
     tl.store(counts + rows, tot, mask=rmask)
 
@@ -227,8 +242,18 @@ def _scan_counts(counts, base, flag_ptr, nrows, ncols, BLK: tl.constexpr):
 
 
 @triton.jit
-def _pack_logical(src, packed, base, flag_ptr, nrows, ncols, stride0, stride1,
-                  BR: tl.constexpr, CHUNK: tl.constexpr):
+def _pack_logical(
+    src,
+    packed,
+    base,
+    flag_ptr,
+    nrows,
+    ncols,
+    stride0,
+    stride1,
+    BR: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
     """masked_select over the LOGICAL row-major order, using the scan bases."""
     if tl.load(flag_ptr) != 0:
         # The total disagrees with nrows*ncols/2, so the reference's `.view()`
@@ -240,18 +265,32 @@ def _pack_logical(src, packed, base, flag_ptr, nrows, ncols, stride0, stride1,
     for c0 in range(0, ncols, CHUNK):
         cols = c0 + tl.arange(0, CHUNK)
         m = rmask[:, None] & (cols < ncols)[None, :]
-        v = tl.load(src + rows[:, None] * stride0 + cols[None, :] * stride1,
-                    mask=m, other=0)
+        v = tl.load(
+            src + rows[:, None] * stride0 + cols[None, :] * stride1, mask=m, other=0
+        )
         nz = (v != 0) & m
         rank = tl.cumsum(nz.to(tl.int32), axis=1) - 1 + b[:, None]
         tl.store(packed + rank, v, mask=nz)
 
 
 @triton.jit
-def _meta_compact(dense_ptr, meta_ptr, flag_ptr, nrows, ncols, meta_nrows, meta_ncols,
-                  stride0, stride1,
-                  BLOCK_W: tl.constexpr, PER_META: tl.constexpr, KSPARSE: tl.constexpr,
-                  GROUP: tl.constexpr, INTERWEAVE: tl.constexpr, META_I32: tl.constexpr):
+def _meta_compact(
+    dense_ptr,
+    meta_ptr,
+    flag_ptr,
+    nrows,
+    ncols,
+    meta_nrows,
+    meta_ncols,
+    stride0,
+    stride1,
+    BLOCK_W: tl.constexpr,
+    PER_META: tl.constexpr,
+    KSPARSE: tl.constexpr,
+    GROUP: tl.constexpr,
+    INTERWEAVE: tl.constexpr,
+    META_I32: tl.constexpr,
+):
     """Compact-order metadata + group validity (dim0 is the innermost strided dim)."""
     NGB: tl.constexpr = PER_META // KSPARSE
     total = meta_nrows * meta_ncols
@@ -262,8 +301,7 @@ def _meta_compact(dense_ptr, meta_ptr, flag_ptr, nrows, ncols, meta_nrows, meta_
     kk = w[:, None] * PER_META + tl.arange(0, PER_META)[None, :]
     row = kk % nrows
     col = kk // nrows
-    v = tl.load(dense_ptr + row * stride0 + col * stride1,
-                mask=wm[:, None], other=0)
+    v = tl.load(dense_ptr + row * stride0 + col * stride1, mask=wm[:, None], other=0)
     g = tl.reshape(v, (BLOCK_W, NGB, KSPARSE))
     nz = g != 0
     cnt = tl.sum(nz.to(tl.int32), axis=2)
@@ -287,7 +325,9 @@ def _meta_compact(dense_ptr, meta_ptr, flag_ptr, nrows, ncols, meta_nrows, meta_
     gidx = tl.arange(0, NGB)
     word = tl.zeros((BLOCK_W,), dtype=tl.uint32)
     for gidx_i in tl.static_range(NGB):
-        word = word | (tl.sum(tl.where(gidx[None, :] == gidx_i, q3, 0), axis=1) << (4 * gidx_i))
+        word = word | (
+            tl.sum(tl.where(gidx[None, :] == gidx_i, q3, 0), axis=1) << (4 * gidx_i)
+        )
 
     dr0 = (m // GROUP) * GROUP + (m % 8) * INTERWEAVE + (m % GROUP) // 8
     odd_r = (dr0 % 2) == 1
@@ -298,8 +338,9 @@ def _meta_compact(dense_ptr, meta_ptr, flag_ptr, nrows, ncols, meta_nrows, meta_
     if META_I32:
         tl.store(meta_ptr + flat, word.to(tl.int32, bitcast=True), mask=wm)
     else:
-        tl.store(meta_ptr + flat, word.to(tl.uint16).to(tl.int16, bitcast=True),
-                 mask=wm)
+        tl.store(
+            meta_ptr + flat, word.to(tl.uint16).to(tl.int16, bitcast=True), mask=wm
+        )
 
 
 def _compact_order(strides):
@@ -308,7 +349,7 @@ def _compact_order(strides):
 
 
 def to_sparse_semi_structured(dense):
-    logger.debug('GEMS TO_SPARSE_SEMI_STRUCTURED')
+    logger.debug("GEMS TO_SPARSE_SEMI_STRUCTURED")
     if not isinstance(dense, torch.Tensor):
         raise RuntimeError(
             "_to_sparse_semi_structured: dense argument must be a Tensor"
@@ -373,28 +414,75 @@ def to_sparse_semi_structured(dense):
         counts = torch.empty(nrows, dtype=torch.int32, device=dense.device)
         base = torch.empty(nrows, dtype=torch.int32, device=dense.device)
         _row_counts[(triton.cdiv(nrows, _GATHER_R),)](
-            dense, counts, nrows, ncols, strides[0], strides[1],
-            BR=_GATHER_R, CHUNK=_GATHER_C)
-        _scan_counts[(1,)](counts, base, flag, nrows, ncols,
-                           BLK=min(256, triton.next_power_of_2(max(nrows, 2))))
+            dense,
+            counts,
+            nrows,
+            ncols,
+            strides[0],
+            strides[1],
+            BR=_GATHER_R,
+            CHUNK=_GATHER_C,
+        )
+        _scan_counts[(1,)](
+            counts,
+            base,
+            flag,
+            nrows,
+            ncols,
+            BLK=min(256, triton.next_power_of_2(max(nrows, 2))),
+        )
         _pack_logical[(triton.cdiv(nrows, _GATHER_R),)](
-            dense, packed, base, flag, nrows, ncols, strides[0], strides[1],
-            BR=_GATHER_R, CHUNK=_GATHER_C)
+            dense,
+            packed,
+            base,
+            flag,
+            nrows,
+            ncols,
+            strides[0],
+            strides[1],
+            BR=_GATHER_R,
+            CHUNK=_GATHER_C,
+        )
         _meta_compact[(triton.cdiv(meta.numel(), _META_W),)](
-            dense, meta, flag, nrows, ncols, nrows, meta_ncols,
-            strides[0], strides[1],
-            BLOCK_W=_META_W, PER_META=per_meta, KSPARSE=ksparse,
-            GROUP=group, INTERWEAVE=interweave, META_I32=meta_i32)
+            dense,
+            meta,
+            flag,
+            nrows,
+            ncols,
+            nrows,
+            meta_ncols,
+            strides[0],
+            strides[1],
+            BLOCK_W=_META_W,
+            PER_META=per_meta,
+            KSPARSE=ksparse,
+            GROUP=group,
+            INTERWEAVE=interweave,
+            META_I32=meta_i32,
+        )
     else:
         block_meta = max(1, 64 // per_meta)
         block_c = block_meta * per_meta
         grid = (triton.cdiv(nrows, _BLOCK_R), triton.cdiv(ncols, block_c))
         _to_sss_kernel[grid](
-            dense, packed, meta, flag, nrows, ncols, nrows,
-            strides[0], strides[1],
-            BLOCK_R=_BLOCK_R, BLOCK_META=block_meta, PER_META=per_meta,
-            KSPARSE=ksparse, GROUP=group, INTERWEAVE=interweave,
-            META_I32=meta_i32, num_warps=4)
+            dense,
+            packed,
+            meta,
+            flag,
+            nrows,
+            ncols,
+            nrows,
+            strides[0],
+            strides[1],
+            BLOCK_R=_BLOCK_R,
+            BLOCK_META=block_meta,
+            PER_META=per_meta,
+            KSPARSE=ksparse,
+            GROUP=group,
+            INTERWEAVE=interweave,
+            META_I32=meta_i32,
+            num_warps=4,
+        )
 
     if flag.item() != 0:
         raise RuntimeError(
