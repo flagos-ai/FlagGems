@@ -15,9 +15,7 @@
 import pytest
 import torch
 
-import flag_gems
-
-from . import base, consts
+from . import base
 
 # aten::sym_constrain_range_for_size has no tensor input; the workload axis is
 # the scalar size being checked. Each entry below is therefore a size
@@ -90,21 +88,14 @@ class SymConstrainRangeForSizeBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.sym_constrain_range_for_size
-@pytest.mark.skipif(
-    base.Config.mode == consts.BenchMode.CUDAGRAPH,
-    reason=(
-        "sym_constrain_range_for_size records its own device graph per "
-        "(size, min, max) triple, which cannot be replayed inside an outer "
-        "capture; use --mode kernel or operator"
-    ),
-)
 def test_sym_constrain_range_for_size():
     bench = SymConstrainRangeForSizeBenchmark(
         op_name="sym_constrain_range_for_size",
         torch_op=torch.ops.aten.sym_constrain_range_for_size,
-        # torch.ops.aten dispatch may bypass FlagGems for this op, so point the
-        # gems side directly at the FlagGems Triton implementation.
-        gems_op=flag_gems.sym_constrain_range_for_size,
+        # No gems_op override: the operator is registered on the dispatcher key
+        # it actually resolves to, so the candidate side goes through use_gems()
+        # dispatch like every other op and the timing covers that path.
+        #
         # The operator takes a Scalar size and no tensor, so the dtype grid does
         # not apply; int64 is the schema type of the bounds it is compared to.
         dtypes=[torch.int64],

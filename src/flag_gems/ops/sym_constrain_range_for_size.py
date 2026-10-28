@@ -31,23 +31,12 @@ Semantics reproduced (verified against the native pytest case matrix):
   * non-numeric sizes (str, None, containers, complex) and non-int bounds
     (float, str, bool) raise, as does an out-of-int64 size.
 
-The range test itself runs on the device: for each distinct (size, min, max)
-triple a Triton program is recorded once into a device graph as a single replay
-of _BATCH programs, each writing its own page-locked host word.
-
-  * one replay therefore evaluates _BATCH range tests, and each later call with
-    the same triple reads its own already-final word, so the timed path is a
-    host word read and only one replay plus one stream synchronization is paid
-    per _BATCH calls;
-  * the words live in page-locked host memory, so a verdict costs a plain host
-    load instead of a device->host copy.
-
-Every scalar argument is exempt from specialization, so one compiled binary
-serves the whole int64 domain.
+The range comparison itself is evaluated by a Triton kernel: one launch writes
+a verdict word that the wrapper reads to decide whether to raise.  The scalar
+arguments are exempt from constant specialization, so one compiled binary
+serves a whole width class instead of recompiling per distinct size.
 """
 
-import collections
-import ctypes
 import logging
 
 import torch
@@ -55,140 +44,26 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
 device = device.name
 
-_INT64_MAX = 9223372036854775807
-_INT64_MIN = -9223372036854775808
-_SENTINEL = -1
-_BATCH = 256
-# Spin bound for the fallback polling path below. A range test lands in
-# microseconds, so a few iterations normally suffice; this only caps the wait
-# before falling back to an explicit synchronization, instead of spinning
-# unboundedly if the write never becomes visible.
-_SPIN_LIMIT = 1 << 20
-# Recorded replays are cached per (size, lo, hi) triple. Each entry pins a
-# device graph plus a page-locked word array, so the cache is bounded and
-# evicted least-recently-used rather than grown for the lifetime of the
-# process; an evicted triple simply records a fresh replay on its next call.
-_MAX_BATCHES = 64
-
-_runner = None
-_slot = None
-_cell = None
-_batches = collections.OrderedDict()
+# An omitted `max` means "unbounded"; int64 is the schema width of the bounds,
+# so its maximum is the widest bound the operator can be asked to enforce.
+_INT64_MAX = 2**63 - 1
+_INT64_MIN = -(2**63)
 
 
+@libentry()
 @triton.jit(do_not_specialize=["size", "lo", "hi"])
-def _sym_constrain_range_for_size_kernel(size, lo, hi, out_ptr):
-    in_range = (size >= lo) & (size <= hi)
-    tl.store(out_ptr + tl.program_id(axis=0), tl.where(in_range, 0, 1))
-
-
-@triton.jit(do_not_specialize=["size", "lo", "hi"])
-def _sym_constrain_range_for_size_single(size, lo, hi, out_ptr):
+def sym_constrain_range_for_size_kernel(size, lo, hi, out_ptr):
+    # The actual work of the operator -- testing that `size` lies in [lo, hi] --
+    # evaluated on device and stored as a violation flag (1 when out of range).
+    # `do_not_specialize` keeps the scalars out of the compilation key, so the
+    # kernel is not recompiled for every distinct size the caller passes.
     tl.store(out_ptr, tl.where((size >= lo) & (size <= hi), 0, 1))
-
-
-def _graph_capture_supported():
-    """Device graph capture is an optimization, not a requirement."""
-    return hasattr(torch_device_fn, "CUDAGraph") and hasattr(torch_device_fn, "graph")
-
-
-def _prepare():
-    """Compile the kernels once and cache the handles reused by every call."""
-    global _runner, _slot, _cell
-    try:
-        _slot = torch.zeros(1, dtype=torch.int32, pin_memory=True)
-        _cell = ctypes.c_int32.from_address(_slot.data_ptr())
-    except RuntimeError:
-        _slot = torch.zeros(1, dtype=torch.int32, device=device)
-        _cell = None
-
-    # Public launch path first: this compiles and caches the kernel on target.
-    _sym_constrain_range_for_size_single[(1,)](
-        _INT64_MIN, _INT64_MIN, _INT64_MAX, _slot
-    )
-    torch_device_fn.current_stream().synchronize()
-
-    if not _graph_capture_supported():
-        _runner = False
-        return
-
-    try:
-        # The reused handle below is bound to the scalar types Triton infers
-        # here, and `do_not_specialize` only waives constant specialization, not
-        # that binding. Warming up with an int32-sized value (e.g. 0) therefore
-        # yields an i32 `size`/`lo` slot, which silently wraps any later size
-        # outside int32 (2**31 reads back negative and fails the range test).
-        # Warm up at the int64 extremes so the signature is i64 for the whole
-        # domain the operator accepts.
-        compiled = _sym_constrain_range_for_size_kernel.warmup(
-            _INT64_MIN, _INT64_MIN, _INT64_MAX, _slot, grid=(_BATCH,)
-        )
-        _runner = compiled[(_BATCH, 1, 1)]
-    except Exception:  # pragma: no cover - keep the public launch path
-        _runner = False
-
-
-class _Batch:
-    """One recorded replay carrying _BATCH already-final range-test verdicts."""
-
-    __slots__ = ("words", "cells", "graph", "index", "size", "lo", "hi")
-
-    def __init__(self, size, lo, hi, runner, count):
-        self.size, self.lo, self.hi = size, lo, hi
-        self.words = torch.zeros(count, dtype=torch.int32, pin_memory=True)
-        self.cells = tuple(
-            ctypes.c_int32.from_address(self.words[i].data_ptr()) for i in range(count)
-        )
-        self.index = count  # the first call must replay before reading
-        side = torch_device_fn.Stream()
-        side.wait_stream(torch_device_fn.current_stream())
-        with torch_device_fn.stream(side):
-            runner(size, lo, hi, self.words)
-        torch_device_fn.current_stream().wait_stream(side)
-        torch_device_fn.synchronize()
-        graph = torch_device_fn.CUDAGraph()
-        with torch_device_fn.graph(graph):
-            runner(size, lo, hi, self.words)
-        torch_device_fn.synchronize()
-        self.graph = graph
-
-    def next_status(self):
-        """Return the verdict word of one recorded range test of this batch."""
-        index = self.index
-        if index >= len(self.cells):
-            # Replay evaluates all _BATCH range tests; the synchronization makes
-            # every one of their words final before any of them is read.
-            self.graph.replay()
-            torch_device_fn.current_stream().synchronize()
-            index = 0
-        self.index = index + 1
-        return self.cells[index].value
-
-
-def _batch_for(size, lo, hi):
-    batch = _Batch(size, lo, hi, _runner, _BATCH)
-    _batches[(size, lo, hi)] = batch
-    return batch
-
-
-def _single_launch(size, lo, hi):
-    """One range test, with the verdict polled from the page-locked word."""
-    _cell.value = _SENTINEL
-    _sym_constrain_range_for_size_single[(1,)](size, lo, hi, _slot)
-    verdict = _cell.value
-    guard = 0
-    while verdict == _SENTINEL:
-        guard += 1
-        if guard > _SPIN_LIMIT:
-            torch_device_fn.current_stream().synchronize()
-            return int(_slot.item())
-        verdict = _cell.value
-    return verdict
 
 
 def sym_constrain_range_for_size(size, *, min=None, max=None):
@@ -258,35 +133,11 @@ def sym_constrain_range_for_size(size, *, min=None, max=None):
     if size < _INT64_MIN or size > _INT64_MAX:
         raise RuntimeError("value cannot be converted to type int64_t without overflow")
 
-    if _runner is None:
-        _prepare()
+    violated = torch.empty((), dtype=torch.int32, device=device)
+    with torch_device_fn.device(violated.device):
+        sym_constrain_range_for_size_kernel[(1,)](size, lo, hi, violated)
 
-    if _cell is None:
-        # No page-locked memory: launch and read the verdict synchronously.
-        _sym_constrain_range_for_size_single[(1,)](size, lo, hi, _slot)
-        torch_device_fn.current_stream().synchronize()
-        verdict = int(_slot.item())
-    elif _runner is False:
-        verdict = _single_launch(size, lo, hi)
-    else:
-        key = (size, lo, hi)
-        batch = _batches.get(key)
-        if batch is None:
-            try:
-                batch = _batch_for(size, lo, hi)
-            except Exception:  # pragma: no cover - fall back to one launch
-                batch = False
-            _batches[key] = batch
-            while len(_batches) > _MAX_BATCHES:
-                _batches.popitem(last=False)
-        else:
-            # LRU: reinsert at the most-recently-used end on every hit.
-            _batches.move_to_end(key)
-        verdict = (
-            _single_launch(size, lo, hi) if batch is False else batch.next_status()
-        )
-
-    if verdict != 0:
+    if violated.item() != 0:
         raise RuntimeError(
             "Invalid value range for "
             + str(size)

@@ -16,6 +16,11 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.sym_constrain_range_for_size import (
+    sym_constrain_range_for_size as gems_impl,
+)
+
+from . import accuracy_utils as utils
 
 # aten::sym_constrain_range_for_size(Scalar size, *, int? min=None, int? max=None) -> ()
 # is a host-side / compile-graph guard for symbolic sizes: it checks that the
@@ -208,3 +213,43 @@ def test_sym_constrain_range_for_size_rejects_tensor_size(shape, dtype):
 
     with pytest.raises((RuntimeError, TypeError, ValueError)):
         flag_gems.sym_constrain_range_for_size(size)
+
+
+@pytest.mark.sym_constrain_range_for_size
+def test_sym_constrain_range_for_size_runs_triton_kernel(caplog):
+    # The wrapper must reach its Triton kernel rather than decide the range on
+    # the host, so assert the implementation's own debug log was emitted.
+    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(gems_impl)):
+        res_out = gems_impl(5, min=0, max=10)
+
+    prefix = utils.gems_log_prefix(gems_impl)
+    assert f"{prefix} SYM_CONSTRAIN_RANGE_FOR_SIZE" in caplog.text
+    assert res_out is None
+
+
+@pytest.mark.sym_constrain_range_for_size
+def test_sym_constrain_range_for_size_dispatch_is_reachable():
+    # Registration-path check. This operator takes a Scalar and no tensor, so it
+    # carries no device key: on this build ATen registers it as
+    # CompositeExplicitAutograd and a backend-key registration is never selected
+    # (measured: a CUDA-key impl that always raises is not entered). The entry in
+    # _FULL_CONFIG therefore also registers the alias key, and the sentinel below
+    # proves `torch.ops.aten` routes into the registered implementation instead
+    # of falling through to the native kernel.
+    hits = []
+
+    def sentinel(size, *, min=None, max=None):
+        hits.append((size, min, max))
+        return flag_gems.sym_constrain_range_for_size(size, min=min, max=max)
+
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        lib.impl("sym_constrain_range_for_size", sentinel, "CompositeExplicitAutograd")
+
+        assert torch.ops.aten.sym_constrain_range_for_size(5, min=0, max=10) is None
+        with pytest.raises(RuntimeError):
+            torch.ops.aten.sym_constrain_range_for_size(50, min=0, max=10)
+    finally:
+        lib._destroy()
+
+    assert hits == [(5, 0, 10), (50, 0, 10)]
