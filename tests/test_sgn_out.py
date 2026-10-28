@@ -75,10 +75,11 @@ def _to_reference(inp):
 
 
 def _assert_sgn_equal(result, reference, dtype):
-    if dtype in utils.COMPLEX_DTYPES:
+    assert result.dtype == dtype
+    if dtype.is_complex:
         utils.gems_assert_close(result, reference, dtype, equal_nan=True)
     else:
-        utils.gems_assert_equal(result, reference, equal_nan=True)
+        utils.gems_assert_equal(result, reference.to(dtype), equal_nan=True)
 
 
 def _assert_matches_torch(inp, out=None):
@@ -106,9 +107,11 @@ def _assert_matches_torch(inp, out=None):
     else:
         ref_out = torch.empty_like(ref_inp)
         torch.sgn(ref_inp, out=ref_out)
-        with flag_gems.use_gems():
-            result = torch.sgn(inp, out=out)
+        result = flag_gems.sgn_out(inp, out=out)
         assert result is out
+        assert result.device == inp.device
+        assert result.dtype == inp.dtype
+        assert result.shape == inp.shape
     _assert_sgn_equal(result, ref_out, inp.dtype)
 
 
@@ -142,5 +145,5 @@ def test_sgn_out_rejects_mismatched_dtype():
     out = torch.empty_like(inp, dtype=torch.int32)
     with pytest.raises(RuntimeError):
         torch.sgn(utils.to_reference(inp, True), out=out.detach().cpu())
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.sgn(inp, out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.sgn_out(inp, out=out)

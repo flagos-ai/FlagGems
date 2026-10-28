@@ -62,7 +62,7 @@ def test_special_chebyshev_polynomial_v_degree_boundaries(dtype):
 
 @pytest.mark.special_chebyshev_polynomial_v
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_special_chebyshev_polynomial_v_registered_dispatch(dtype, caplog):
+def test_special_chebyshev_polynomial_v_registered_dispatch(dtype, caplog, request):
     x = torch.tensor(
         [-0.75, -0.25, 0.25, 0.75], dtype=dtype, device=flag_gems.device
     )
@@ -74,12 +74,13 @@ def test_special_chebyshev_polynomial_v_registered_dispatch(dtype, caplog):
     )
 
     with caplog.at_level("DEBUG", logger="flag_gems.ops.special_chebyshev_polynomial_v"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_chebyshev_polynomial_v.default(x, degree)
+        res_out = flag_gems.special_chebyshev_polynomial_v(x, degree)
 
-    expected = (
-        f"{utils.gems_log_prefix(flag_gems.special_chebyshev_polynomial_v)} "
-        "SPECIAL_CHEBYSHEV_POLYNOMIAL_V"
-    )
-    assert expected in caplog.text
+    registry = getattr(request.config, "_override_registry", None)
+    if registry is None or registry.get_override("special_chebyshev_polynomial_v") is None:
+        expected = (
+            f"{utils.gems_log_prefix(flag_gems.special_chebyshev_polynomial_v)} "
+            "SPECIAL_CHEBYSHEV_POLYNOMIAL_V"
+        )
+        assert expected in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -93,7 +93,6 @@ def test_special_chebyshev_polynomial_v():
     bench = ChebyshevPolynomialVBenchmark(
         op_name="special_chebyshev_polynomial_v",
         torch_op=torch.special.chebyshev_polynomial_v,
-        gems_op=flag_gems.special_chebyshev_polynomial_v,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],

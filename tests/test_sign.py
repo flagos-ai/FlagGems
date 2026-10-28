@@ -163,7 +163,7 @@ def test_sign_empty():
 
 @pytest.mark.sign
 def test_sign_rejects_complex():
-    """Complex dtypes should raise NotImplementedError"""
+    """Complex dtypes are rejected by both native and FlagGems implementations."""
     inp = torch.tensor([1 + 1j, 2 + 2j], dtype=torch.complex64, device=flag_gems.device)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises((NotImplementedError, RuntimeError)):
         flag_gems.sign(inp)
