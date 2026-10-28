@@ -9,10 +9,23 @@ from flag_gems.utils import broadcastable_to, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from .addmm import addmm_out
+from .addmm import (
+    _addmm_contiguous_2d,
+    _bias_with_unit_inner_stride,
+    addmm_kernel,
+    addmm_out,
+)
 from .mv import mv
 
 logger = logging.getLogger(__name__)
+
+
+def _shares_storage(a, b):
+    """True when ``a`` and ``b`` are views of one storage (metadata only)."""
+    try:
+        return a.untyped_storage().data_ptr() == b.untyped_storage().data_ptr()
+    except (AttributeError, RuntimeError):
+        return True
 
 
 @pointwise_dynamic(
@@ -99,11 +112,21 @@ def addmv_empty_kernel(
     tl.store(Out_ptrs, bias_term, mask=n_mask)
 
 
+def heur_even(args):
+    """True when every tile is full: no per-lane masks needed.
+
+    On this backend an always-true mask still pays the masked-memory
+    lowering (~2x), so the fully divisible shapes take a mask-free body.
+    """
+    return args["M"] % heur_block_m(args) == 0 and args["N"] % heur_block_n(args) == 0
+
+
 @libentry()
 @triton.heuristics(
     {
         "BLOCK_N": heur_block_n,
         "BLOCK_M": heur_block_m,
+        "EVEN": heur_even,
     }
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -123,6 +146,7 @@ def addmv_kernel(
     stride_outn: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    EVEN: tl.constexpr = False,
 ):
     pid = ext.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)[:, None]
@@ -132,36 +156,84 @@ def addmv_kernel(
     B_ptrs = B + offset_m * stride_bm
     acc = tl.zeros((BLOCK_N, BLOCK_M), dtype=tl.float32)
     for m in range(0, M, BLOCK_M):
-        m_mask = m + offset_m < M
-        a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
-        b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(tl.float32)
+        if EVEN:
+            a = tl.load(A_ptrs).to(tl.float32)
+            b = tl.load(B_ptrs).to(tl.float32)
+        else:
+            m_mask = m + offset_m < M
+            a = tl.load(A_ptrs, mask=n_mask & m_mask, other=0.0).to(tl.float32)
+            b = tl.load(B_ptrs, mask=m_mask, other=0.0).to(tl.float32)
         acc += a * b
         A_ptrs += BLOCK_M * stride_am
         B_ptrs += BLOCK_M * stride_bm
 
     acc = tl.sum(acc, axis=1)[:, None]
     Inp_ptrs = Inp + offset_n * stride_in
-    inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(tl.float32)
     Out_ptrs = Out + offset_n * stride_outn
-    # Beta zero must ignore NaN/Inf bias, matching aten::addmv.
-    bias_term = tl.where(beta == 0, 0.0, inp * beta)
-    # M is constexpr. Keep alpha out of the generated expression for an empty
-    # reduction so NaN/Inf alpha cannot leak through 0 * alpha.
-    if M == 0:
-        matvec_term = tl.zeros((BLOCK_N, 1), dtype=tl.float32)
+    if EVEN:
+        inp = tl.load(Inp_ptrs).to(tl.float32)
+        out_block = acc * alpha + inp * beta
+        tl.store(Out_ptrs, out_block)
     else:
-        matvec_term = acc * alpha
-    out_block = matvec_term + bias_term
-    tl.store(Out_ptrs, out_block, mask=n_mask)
+        inp = tl.load(Inp_ptrs, mask=n_mask, other=0.0).to(tl.float32)
+        out_block = acc * alpha + inp * beta
+        tl.store(Out_ptrs, out_block, mask=n_mask)
 
 
 def _addmv_addmm(self, mat, vec, beta, alpha, out, N, M):
-    # Contiguous-bias fast path: fold the whole affine matvec into one addmm_out.
+    # Contiguous-bias fast path: fold the whole affine matvec into one addmm.
     # (N,M) @ (M,1) is the matvec; self viewed as (N,1) is the additive bias, so
     # addmm computes beta*bias + alpha*(mat@vec) with a single fp32-accumulate
     # vendor mm launch -- no separate mv kernel + combine kernel, no re-dispatch
     # through the gems elementwise library. Views are zero-copy (self/out are
     # contiguous (N,) here). Result reshapes back to (N,).
+    bias = self.view(N, 1)
+    dest = out.view(N, 1)
+    # In-place fast path (2026-10-22): for ``addmv_(...)`` bias and destination
+    # are the same storage, so ``addmm_out`` takes its "alias => materialize a
+    # temporary" branch and then copies the temporary back with
+    # ``_addmm_scatter_2d`` -- two extra launches per call. Writing straight
+    # into the destination is race free (each program loads its own bias tile
+    # before storing that same tile), so skip the temporary. Matches the
+    # addmm_ in-place fix (harness/solution/addmm_/README.md).
+    if (
+        _shares_storage(bias, dest)
+        and not _shares_storage(dest, mat)
+        and not _shares_storage(dest, vec)
+    ):
+        if not mat.is_contiguous():
+            mat = _addmm_contiguous_2d(mat)
+        bias = _bias_with_unit_inner_stride(bias, (N, 1), beta)
+        block_k_choice = 256 if mat.dtype == torch.float16 else 128
+        # Constant grid (not a lambda): the XPU backend bakes the launch grid
+        # into its compile-cache key, so a per-call lambda re-enters the slow
+        # compile path on every launch (KERNEL_OPT_EXPERIENCE 2.4-41).  This
+        # mirrors addmm.py's heur_block_m for M=N and heur_block_n for N=1.
+        block_m = 128 if N <= 512 else 256
+        grid = (triton.cdiv(N, block_m),)
+        with torch_device_fn.device(mat.device):
+            addmm_kernel[grid](
+                mat,
+                vec.view(M, 1),
+                bias,
+                dest,
+                alpha,
+                beta,
+                N,
+                1,
+                M,
+                mat.stride(0),
+                mat.stride(1),
+                vec.stride(0),
+                1,
+                bias.stride(0),
+                bias.stride(1),
+                dest.stride(0),
+                dest.stride(1),
+                GROUP_M=8,
+                BLOCK_K_CHOICE=block_k_choice,
+            )
+        return out
     addmm_out(
         self.view(N, 1),
         mat,
@@ -197,7 +269,11 @@ def _addmv_empty(self, beta, out, N):
 
 def _addmv_triton(self, mat, vec, beta, alpha, out, N, M):
     self = self.broadcast_to((N,))
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+    # Constant grid, not ``lambda META``: the XPU backend bakes the grid into
+    # the compile-cache key, so a fresh per-call lambda takes the slow compile
+    # path on every launch (KERNEL_OPT_EXPERIENCE 2.4-41).  BLOCK_N is computed
+    # on the host with the same heuristic the kernel uses.
+    grid = (triton.cdiv(N, heur_block_n({"N": N})),)
     with torch_device_fn.device(mat.device):
         addmv_kernel[grid](
             mat,

@@ -1,5 +1,5 @@
 ---
-title: Ascend
+title: Huawei Ascend
 weight: 10
 ---
 
@@ -19,28 +19,43 @@ weight: 10
  limitations under the License.
  -->
 
-# Ascend optimization
+# Huawei Ascend Backend Optimization Guide
 
-## Hardware architecture
+## 1. Hardware Architecture & Memory Hierarchy
 
-The Cube path executes matrix multiplication, the Vector path handles elementwise work and reductions, and the Scalar path handles address calculations and loop control. MTE engines move data from global memory (GM, usually HBM) into on-chip buffers. Cube uses L1, L0A, L0B, and L0C; Vector uses the Unified Buffer (UB). **UB and L0 are distinct spaces; L1 is a Cube-side buffer, not the cross-core L2 cache.** A kernel combining `tl.dot` with a Vector epilogue may need intermediate transfers and synchronization.
+The Ascend AI Core features a heterogeneous compute pipeline: the **Cube path** executes matrix multiplications, the **Vector path** handles element-wise operations and reductions, and the **Scalar path** manages address calculations and loop control.
+Data moves from global memory (GM, typically HBM) into on-chip buffers via the Memory Transfer Engine (MTE). The Cube unit exclusively accesses L1, L0A, L0B, and L0C buffers; the Vector unit operates out of the Unified Buffer (UB).
 
-The following on-chip capacities come from the Triton-Ascend/AscendNPU-IR references; values are in KiB. GM/HBM capacity, bandwidth, and L2 size depend on the actual device. There is no single latency figure for these levels across models.
+> [!IMPORTANT]
+> **UB and L0 are completely separate physical memory spaces**; **L1 is a Cube-dedicated on-chip buffer**, NOT a cross-core shared L2 cache. Composite kernels combining `tl.dot` with a Vector epilogue typically require intermediate data transfers and cross-path synchronization.
 
-| Space | IR name | 910B / 910_93 | 910_95 / 950 series | Main use |
-| --- | --- | ---: | ---: | --- |
-| GM | `gm` | Device-specific | Device-specific | Global data, possibly cached by L2 |
-| L1 | `cbuf` | 512 KiB | 512 KiB | Cube input buffer; typically plan for 32 B alignment |
-| L0A / L0B | `ca` / `cb` | 64 KiB each | 64 KiB each | Matrix A/B input buffers |
-| L0C | `cc` | 128 KiB | 256 KiB | Matrix accumulation result; plan related transfers around 512 B alignment |
-| UB | `ub` | 192 KiB | 248 KiB usable (256 KiB nominal, 8 KiB reserved) | Vector workspace; typically plan for 32 B alignment |
+The table below lists the on-chip buffer capacities (in KiB) from the Triton-Ascend / AscendNPU-IR specifications across representative architectures. GM/HBM capacity, bandwidth, and L2 cache sizes vary by hardware model and SKU:
+
+| Memory Space | IR Identifier | 910B / 910_93 | 910_95 / 950 Series | Primary Purpose & Alignment |
+| :----------- | :------------ | :------------ | :------------------ | :-------------------------- |
+| GM | `gm` | Device-specific | Device-specific | Global memory, cached via L2 |
+| L1 | `cbuf` | 512 KiB | 512 KiB | Cube input buffer; plan for 32 B alignment |
+| L0A / L0B | `ca` / `cb` | 64 KiB each | 64 KiB each | Matrix A/B operand on-chip input buffers |
+| L0C | `cc` | 128 KiB | 256 KiB | Matrix accumulation output; transfers plan for 512 B alignment |
+| UB | `ub` | 192 KiB | 248 KiB usable (256 KiB nominal, 8 KiB reserved) | Vector workspace; plan for 32 B alignment |
 | BT / FP Buffer | — | 1 / 7 KiB | 1 / 7 KiB | Bias table / FixPipe intermediate buffer |
 
-Typical Cube flow is `GM → L1 → L0A/L0B → L0C → GM`; Vector flow is `GM → UB → GM`. On the 910_95/950 family, FixPipe can also send L0C results directly to UB and UB data can return to L1. The corresponding mixed path on 910B/910_93 generally goes through GM. Confirm paths and synchronization on the target chip and compiler.
+- **Typical Cube Data Flow**: `GM → L1 → L0A/L0B → L0C → GM`
+- **Typical Vector Data Flow**: `GM → UB → GM`
 
-### Core counts and grid
+The 910_95/950 family further supports routing L0C accumulation results directly into UB via FixPipe and writing UB data back to L1; the corresponding mixed paths on 910B/910_93 chips generally route through global memory (GM).
 
-Query core counts by device model and compute path. The reference specification lists **24 Cube / 48 Vector** for 910B1/B2 and **20 Cube / 40 Vector** for 910B3/B4; 910_95 counts vary by SKU. Do not add Cube and Vector counts to choose one kernel's grid. FlagGems obtains `num_vectorcore` from Triton device properties for Vector work; matrix kernels can query `num_aicore`.
+### 1.1 Core Counts & Grid Mapping
+
+Ascend physical core counts are queried separately by compute unit type. Typical specifications:
+- **910B1 / 910B2**: 24 Cube / 48 Vector
+- **910B3 / 910B4**: 20 Cube / 40 Vector
+- **910_95 Series**: Configured dynamically by SKU
+
+> [!WARNING]
+> Do NOT sum the Cube and Vector core counts to configure the launch grid of a single kernel.
+
+*FlagGems* queries `num_vectorcore` from Triton device properties for Vector kernels, and `num_aicore` for matrix kernels:
 
 ```python
 import torch
@@ -53,75 +68,71 @@ vector_cores = props["num_vectorcore"]
 cube_cores = props["num_aicore"]
 ```
 
-Ordinary Triton-Ascend launches use a tuple `(x,)`, `(x, y)`, or `(x, y, z)`, with at most three dimensions. In the default path, `coreDim = x * y * z` must not exceed **65535**; an overflow can report `coreDim ... can't be greater than UINT16_MAX`. A 1D grid usually makes it easier to match the chosen core type. A 2D/3D grid counts the same product toward `coreDim`; keeping that product near the physical core count is a tuning choice, not a grid syntax rule.
+In Triton-Ascend, launch grids use 1D, 2D, or 3D tuples. Under the default pipeline, `coreDim = x * y * z` must not exceed **65535** (otherwise a `coreDim ... can't be greater than UINT16_MAX` error is triggered).
 
-For large shapes, cap the grid at `min(triton.cdiv(N, BLOCK_SIZE), vector_cores)` and let each program process multiple blocks, stepping by `tl.num_programs(0)`:
+When processing large tensor shapes, limit the grid to the physical core count and employ a grid-stride loop inside each program stepping by `tl.num_programs(0)`:
 
 ```python
 import triton
 import triton.language as tl
 
+
 @triton.jit
 def kernel(x, y, N, BLOCK_SIZE: tl.constexpr):
-    for block in range(tl.program_id(0), tl.cdiv(N, BLOCK_SIZE), tl.num_programs(0)):
+    for block in range(
+        tl.program_id(0), tl.cdiv(N, BLOCK_SIZE), tl.num_programs(0)
+    ):
         offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         values = tl.load(x + offsets, mask=offsets < N, other=0)
         tl.store(y + offsets, values, mask=offsets < N)
+
 
 grid = (min(triton.cdiv(N, BLOCK_SIZE), vector_cores),)
 kernel[grid](x, y, N, BLOCK_SIZE)
 ```
 
-Some toolchain versions can reduce a logical grid with `TRITON_ALL_BLOCKS_PARALLEL=1`. Consider it only when programs have no ordering dependency, atomics, or cross-core synchronization, and verify correctness first.
+### 1.2 Tile Capacity & Memory Alignment
 
-### Tile capacity and alignment
+- **UB Budgeting**: If a single tile occupied the 910B's 192 KiB UB, its theoretical capacity would be 98,304 FP16/BF16 elements or 49,152 FP32 elements. However, in practice, simultaneously live inputs, outputs, temporaries, alignment padding, and multibuffering all consume space. If a `ub overflow` compilation error occurs (often reported in bits), reduce `BLOCK_*` or use an internal `BLOCK_SIZE_SUB` loop.
+- **Cube Alignment**: The Cube path requires careful attention to row-width and trailing-axis alignment. A 512 B row corresponds to 256 FP16/BF16 or 128 FP32 elements; unaligned dimensions may trigger compiler padding and redundant memory transfers.
 
-If the 910B's 192 KiB UB held just **one** tile, its byte capacity would be 98,304 fp16/bf16 elements or 49,152 fp32 elements. These are neither legal Triton `BLOCK_SIZE` limits nor practical matmul tile sizes: simultaneously live inputs, outputs, intermediates, padding, and multiple buffers all consume space, and the compiler may impose a smaller block limit. Apply the same accounting to the 910_95's 248 KiB usable UB. When compilation reports `ub overflow` (often in bits), reduce `BLOCK_*` or introduce a `BLOCK_SIZE_SUB` loop within each core.
+## 2. Triton Compiler & Launch Options
 
-Check trailing-axis and matrix-row alignment for the Cube path. A 512 B row corresponds to 256 fp16/bf16 or 128 fp32 elements; shorter rows may be padded and transfer more data, rather than always causing a hardware error. Candidate searches can start around `BLOCK_M/N=128/256` and `BLOCK_K=128/256`, while accounting for separate A/B/C buffers and dtype support on the target chip. The reference lists FP8 `tl.dot` as unsupported on A2/A3, with FP8 support on 910_95 limited to specific `tl.dot_scaled` paths; element size alone does not establish a usable tile size.
+*FlagGems* designates Ascend as an NPU backend (`device_name="npu"`), utilizing the installed Triton-Ascend / FlagTree extension. Options can be passed as keyword arguments to `kernel[grid](...)` or through a `triton.Config`:
 
-## Triton compiler and launch options
+| Option | Target | Tuning Recommendations |
+| :----- | :----- | :--------------------- |
+| `BLOCK_SIZE`, `BLOCK_M/N/K` | Compile-time tile sizes (`tl.constexpr`) | Balance core occupancy, UB/L1 buffer budget, and masked tail overhead |
+| `num_warps` | Compiler parallelization & layout choice | Measure alongside tile sizes; SIMD semantics differ from GPU warp scheduling |
+| `num_stages` | Software pipeline depth | Regulates asynchronous prefetching; confirm with your installed compiler version |
+| `compile_mode` | Compiler path selection (`simd` / `simt_only` etc.) | Default to `simd`; experiment with SIMT only for suitable workloads after verifying accuracy |
+| `multibuffer` | Overlap data movement and compute | Test on looped kernels after checking local buffer budgets; watch for doubled UB usage |
+| `enable_flatten` | Loop structure flattening | Useful for simple Vector kernels to eliminate branching overhead |
+| `enable_mixed_cv`, `sync_solver` | Cube & Vector synchronization | Enable only for composite kernels that combine matrix multiplication and vector ops |
+| `enable_fp_fusion` | Floating-point operation fusion | Re-verify numerical tolerances when toggling this option |
 
-FlagGems selects the Ascend NPU backend (`device_name="npu"`) and its installed Triton/FlagTree extension. Pass supported options as keywords to `kernel[grid](...)` or through a `triton.Config`. Option availability and defaults depend on the installed Triton-Ascend version; check its `NPUOptions` definition before using an extension-specific option.
+> [!NOTE]
+> The reference compiler defaults `multibuffer` to disabled for the 910_95/950 family. When exploring double buffering, pass `multibuffer=True` explicitly. Be aware that double buffering almost doubles live on-chip memory usage.
 
-| Option | What to tune | When to consider it |
-| --- | --- | --- |
-| `BLOCK_SIZE`, `BLOCK_M/N/K` | Compile-time tile sizes (`tl.constexpr`), not backend options | Balance core occupancy, UB/L1 use, and masked tails. |
-| `num_warps` | Compiler parallelization/layout choice | Measure with the chosen tile; its SIMD meaning differs from GPU warp scheduling. |
-| `num_stages` | Compiler pipeline setting | Confirm the installed compiler's behavior; FlagGems includes Ascend configurations with several stage values. |
-| `compile_mode` | Selects the compiler path (`simd`, `unstructured_in_simt`, or `simt_only` where available) | Start with the installed compiler's default; test SIMT only for a suitable workload and verify output. |
-| `multibuffer` | Overlap data movement and computation | Test looped kernels after checking local-buffer use; its default can differ by architecture. |
-| `enable_flatten` | Flatten eligible loop structure | Try for Vector kernels, then verify generated code and performance. |
-| `enable_mixed_cv`, `sync_solver`, `enable_auto_bind_sub_block` | Cube/Vector cooperation and synchronization | Consider together for kernels that genuinely combine the two paths; validate correctness first. |
-| `enable_fp_fusion` | Floating-point fusion | Recheck numerical tolerance when changing it. |
+## 3. Common Performance Bottlenecks & Troubleshooting
 
-For example, an elementwise kernel can compare `kernel[grid](..., BLOCK_SIZE=1024, num_warps=4)` against neighboring tile sizes. On a looped kernel, compare `multibuffer=True` with the baseline. Do not apply Cube/Vector options to every kernel by default.
+| Performance Issue | Diagnosis & Mitigation |
+| :---------------- | :--------------------- |
+| **High `aiv_scalar_ratio`** | Check generated IR for scalar loops. On 910B, `int64` vector math and integer comparisons may degrade to scalar mode; cast to `int32` where values fit in range. |
+| **Mask load blocks compute overlap** | Only test `tl.load(..., care_padding=False)` if padding data will **never** participate in reductions or unmasked stores; otherwise keep standard masked loads. |
+| **Non-contiguous strided access** | Restructure tensor indices or tiling to enforce coalesced memory access. Avoid unnecessary `.contiguous()` copies which often erase kernel gains. |
+| **L2 cache thrashing on large matrices** | Implement grouped scheduling (Grouped Launch); avoid directly calling unsupported `tl.swizzle2d` on Ascend. |
+| **Low-precision accumulation overflow** | For FP16/BF16 inputs, ensure reductions and matrix multiplication accumulate into FP32 accumulators to prevent numerical drift. |
 
-The reference compiler defaults `multibuffer` to off for the 910_95/950 family; pass `multibuffer=True` explicitly when testing it. Double buffering increases simultaneously live on-chip data. Two equally sized UB buffers would each have about half the available space before other overhead, but use the compiler's actual allocation report for sizing.
+## 4. Recommended Optimization Workflow
 
-### Common performance issues
+1. **Classify the Compute Path**: Determine whether the kernel is purely Vector, purely Cube, or mixed; establish accuracy and latency baselines with representative shapes.
+2. **Ensure Coalesced Access**: Align strides and pointer offsets to maximize memory bandwidth utilization.
+3. **Budget On-chip Memory**: Fit tiles strictly within UB (192 KiB / 248 KiB) and L1 (512 KiB) physical limits to prevent register spills and UB overflows.
+4. **Explore Overlap & Pipelining**: For looped kernels, evaluate `multibuffer=True` and tune `num_stages`.
+5. **Profile on Device**: Use the Ascend Profiler to inspect Cube vs. Vector MTE utilization, validating that latency speedups pass strict numerical verification gates.
 
-| Symptom | Check and response |
-| --- | --- |
-| High `aiv_scalar_ratio` | Inspect generated IR for scalar loops. i64 vector arithmetic and some integer comparisons may lower to scalar operations on 910B/910_95. Use int32 only when values fit; if converting comparisons to fp32, check its exact integer range. An int32 equality comparison need not always be converted. |
-| Masked loads block transfer/compute overlap | Test `tl.load(..., care_padding=False)` only when padding values cannot affect subsequent computation, reduction, or an unmasked store. Otherwise preserve a correct fill value. |
-| Strided memory access | Change indexing or tiling to coalesce accesses. `.contiguous()` adds a copy, so compare end-to-end cost before preprocessing. |
-| L2 conflicts or poor reuse in large matmul | Compare ordinary, grouped, and diagonal mappings with profiling. `grouped_launch_diagonal` is available in reference implementations; avoid unsupported `tl.swizzle2d` on the Ascend path. |
-| Low-precision accumulation errors | For fp16/bf16 input, check fp32 accumulators in reductions and matrix operations and validate output tolerance. |
-
-### Explicit buffers and synchronization
-
-Where the installed compiler supports manual Cube/Vector data movement, `triton.backends.ascend.language.cann.extension.core` exposes `ascend_address_space` (GM/L1/UB/L0A/L0B/L0C), `copy`, `fixpipe`, `sync_block_set/wait/all`, and `sub_vec_id/num`. The L0C→UB `fixpipe` path is limited to capable 910_95/950 devices. Pair synchronization events and use IDs allowed by the installed version. Check the extension API, device capability, and generated transfer path before adopting these operations.
-
-## Optimization workflow
-
-1. Classify the kernel as Vector, Cube, or mixed; establish correctness and latency for representative shapes.
-2. Make adjacent `tl.load`/`tl.store` addresses contiguous where possible. Use masks for tail elements and verify alignment on the actual dtype and layout.
-3. Sweep grid size and tiles. Keep all live operands, intermediates, and any extra buffers within the relevant on-chip memory budget; reduce the tile if compilation reports UB pressure.
-4. For looped workloads, test overlap through `multibuffer`. For mixed Cube/Vector workloads, inspect synchronization and intermediate transfers before enabling mixed-path options.
-5. Profile the device to distinguish memory movement, Vector/Cube utilization, and launch overhead. Recheck numerical results after changes to precision or fusion.
-
-## References
+## 5. References
 
 - [cannbot-knowledge: NPU compiler options](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/compile_params.md)
 - [cannbot-knowledge: performance overview](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/perf_optimization_overview.md)
