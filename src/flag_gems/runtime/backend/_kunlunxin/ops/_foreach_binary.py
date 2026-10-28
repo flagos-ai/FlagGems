@@ -51,7 +51,8 @@ from ..utils.foreach import foreach_binary_list, foreach_binary_scalar, foreach_
 # in this Triton version.
 _pow = tl_extra_shim.pow
 
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+# Shares the generic operator's logger name; only the GEMS prefix differs.
+logger = logging.getLogger(f"flag_gems.ops.{__name__.rsplit('.', 1)[-1]}")
 
 
 # ---------------------------------------------------------------------------

@@ -95,7 +95,8 @@ from flag_gems.utils.foreach import has_internal_overlap, is_flat_addressable, t
 
 from ..utils.foreach import foreach_unary, int_to_float, real_dtype_of, same_dtype
 
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+# Shares the generic operator's logger name; only the GEMS prefix differs.
+logger = logging.getLogger(f"flag_gems.ops.{__name__.rsplit('.', 1)[-1]}")
 
 
 @triton.jit
