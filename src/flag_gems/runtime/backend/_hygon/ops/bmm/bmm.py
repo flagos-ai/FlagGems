@@ -23,12 +23,11 @@ from pathlib import Path
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
-from flag_gems.utils.libentry import LibTuner
+from flag_gems.utils.libentry import LibTuner, LibTunerRunMode
 
 from . import regular, ring
 
@@ -872,12 +871,188 @@ def _launch_autotuned(a, b, out):
     return True
 
 
+_dense_body = _bmm_regular_kernel.jit_function
+_dense_ring_body = ring.ring_kernel.jit_function
+_dense_half_body = regular.regular_0_64_64_128_2_2.jit_function
+_dense_bfloat_body = regular.regular_1_32_64_128_2_2.jit_function
+
+
+@libentry()
+@triton.jit
+def _dense_product(A, B, Out, P: tl.constexpr):
+    # Bundle scalar specialization metadata to keep the launch signature short.
+    family: tl.constexpr = P[0]
+    M: tl.constexpr = P[1]
+    N: tl.constexpr = P[2]
+    K: tl.constexpr = P[3]
+    batch: tl.constexpr = P[4]
+    column: tl.constexpr = P[5]
+    dt: tl.constexpr = P[6]
+    tm: tl.constexpr = P[7]
+    tn: tl.constexpr = P[8]
+    tk: tl.constexpr = P[9]
+    group: tl.constexpr = P[10]
+    stages: tl.constexpr = P[11]
+    if family == "ring":
+        _dense_ring_body(A, B, Out, M, N, K, group, dt == 1, P[12])
+    elif family == "regular" or family == "native":
+        if family == "regular" and dt == 0 and tk == 128:
+            _dense_half_body(A, B, Out, M, N, K, group)
+        elif family == "regular" and dt == 1 and tk == 128:
+            _dense_bfloat_body(A, B, Out, M, N, K, group)
+        else:
+            regular._native_dot(
+                A,
+                B,
+                Out,
+                M,
+                N,
+                K,
+                group,
+                tm,
+                tn,
+                tk,
+                stages if family == "native" else (1 if tk == 128 else 2),
+            )
+    else:
+        _dense_body(
+            A,
+            B,
+            Out,
+            M,
+            N,
+            K,
+            M * K,
+            K,
+            1,
+            N * K,
+            1 if column else N,
+            K if column else 1,
+            M * N,
+            N,
+            1,
+            tm,
+            tn,
+            tk,
+            M % tm == 0,
+            N % tn == 0,
+            K % tk == 0,
+            stages,
+            True,
+            not column,
+            column,
+            batch != 1,
+            False,
+        )
+
+
+def _launch_dense(a, b, out, batch, m, n, k):
+    # Dense families use existing arithmetic without the general pipeline's
+    # per-call tuning, stride collection and dispatch work.
+    dtype = a.dtype
+    if (
+        dtype not in (torch.float16, torch.bfloat16, torch.float32)
+        or min(m, n, k) < 128
+        or not a.is_contiguous()
+        or not out.is_contiguous()
+    ):
+        return False
+    column = b.stride() == (n * k, 1, k)
+    if not column and not b.is_contiguous():
+        return False
+    size = 4 if dtype == torch.float32 else 2
+    if max(batch * m * k, batch * k * n, batch * m * n) * size >= 2**31:
+        return False
+    if (
+        _TUNER is not None
+        and getattr(_TUNER, "_run_mode", LibTunerRunMode.NORMAL)
+        != LibTunerRunMode.NORMAL
+    ):
+        return False
+    dt = 2 if dtype == torch.float32 else 1 if dtype == torch.bfloat16 else 0
+    if max(m, n, k) <= 512 and not column:
+        family, group = "native", 1
+        tm, tn, tk, stages, warps = (
+            (32, 32, 64, 2, 4) if dtype == torch.float32 else (32, 64, 64, 2, 2)
+        )
+    elif m <= 512 and k <= 512 and n >= 1024 and dtype != torch.float32 and column:
+        # For short reductions, reading column-major B costs less than packing it.
+        family, group, warps = "generic", 1, 4
+        tm, tn, tk, stages = 64, 64, 64, 1
+    elif dtype == torch.float32 and max(m, n, k) > 512:
+        if m <= 512 and k <= 512:
+            config = (64, 64, 32, 1)
+        elif column:
+            config = (128, 64, 64, 1)
+        elif n >= 4096:
+            config = (
+                (128, 64, 64, 1)
+                if batch >= 8
+                else (64, 128, 32, 2 if m % 128 == 0 else 1)
+            )
+        elif m >= 4096:
+            config = (128, 64, 32, 2) if m % 128 == 0 else (64, 64, 64, 1)
+        else:
+            config = (64, 64, 32, 1)
+        tm, tn, tk, stages = config
+        family, group, warps = "generic", 1, 4
+    else:
+        family, config = select_kernel(dtype, batch, m, n, k)
+        if family not in ("ring", "regular") or not supports_isa(a):
+            return False
+        if (
+            a.data_ptr() % 16
+            or out.data_ptr() % 16
+            or (not column and b.data_ptr() % 16)
+        ):
+            return False
+        if column:
+            # Always materialize current B values; never retain packed tensors.
+            b = pack_b(b)
+        if family == "ring":
+            tm, tn, tk, stages, warps = 256, 256, 16, 1, 8
+            group = 4 if dt == 0 and k <= 512 else 1
+        else:
+            _, tm, tn, tk, wm, wn = config
+            stages, warps = 1, wm * wn
+            group = 1 if dt == 1 else 8
+    params = (
+        family,
+        m,
+        n,
+        k,
+        batch,
+        column,
+        dt,
+        tm,
+        tn,
+        tk,
+        group,
+        stages,
+        min(k.bit_length() - 1, 12),
+    )
+    _dense_product[(((m + tm - 1) // tm) * ((n + tn - 1) // tn), batch)](
+        a,
+        b,
+        out,
+        params,
+        num_warps=warps,
+        num_stages=stages,
+        matrix_instr_nonkdim=16 if family == "native" else 0,
+        allow_flush_denorm=True,
+        enable_fp_fusion=True,
+    )
+    return True
+
+
 def _dispatch_bmm(A, B, out):
     batch, M, K = A.shape
     N = B.shape[2]
     if batch == 0 or M == 0 or N == 0:
         return out
     with torch_device_fn.device(A.device):
+        if _launch_dense(A, B, out, batch, M, N, K):
+            return out
         if _launch_autotuned(A, B, out):
             return out
         if _launch_tle_ring(A, B, out):
