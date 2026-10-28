@@ -19,7 +19,25 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# Capture the native ``aten::cholesky`` kernel at import time, before FlagGems
+# registers its own implementation on the device dispatch key. Calling the
+# captured handle later bypasses the dispatcher entirely, so the fallback for
+# matrix orders beyond the Triton kernel's supported range never re-enters
+# FlagGems -- a plain ``torch.cholesky`` call here would recurse into this very
+# function. Guarded for older PyTorch versions without ``torch.library.get_kernel``.
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
+
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    _NATIVE_CHOLESKY = torch.library.get_kernel(
+        torch.ops.aten.cholesky.default, runtime.device.dispatch_key
+    )
+    _DEVICE_KEYSET = torch._C.DispatchKeySet(
+        getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+    )
 
 
 @triton.jit
@@ -128,8 +146,12 @@ def cholesky(A, upper=False):
 
     if n > _MAX_N:
         # The blocked kernel keeps the whole matrix register-resident, which is
-        # only viable for small orders; ATen's LAPACK-backed path wins for
-        # larger matrices anyway.
+        # only viable for small orders. Beyond that, delegate to the native
+        # LAPACK-backed ``aten::cholesky`` captured at import time; raising
+        # here would break callers (e.g. the benchmark) since a registered
+        # device kernel has no automatic ATen fallback.
+        if _CAN_CAPTURE_NATIVE_KERNEL:
+            return _NATIVE_CHOLESKY.call_boxed(_DEVICE_KEYSET, A, bool(upper))
         raise NotImplementedError("cholesky kernel supports N <= 64")
     num = int(A.numel()) // (n * n)
 

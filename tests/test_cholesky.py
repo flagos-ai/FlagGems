@@ -184,10 +184,14 @@ def test_cholesky_non_square_raises():
 
 
 @pytest.mark.cholesky
-@pytest.mark.parametrize("dtype", [torch.float32])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_cholesky_large_n_fallback(dtype):
-    # N > 64 is out of scope for the blocked kernel; the operator must raise
-    # NotImplementedError so callers/ops can fall back to the native path.
+    # N > 64 is out of scope for the blocked kernel; the operator delegates to
+    # the native ``aten::cholesky`` captured at import time and must return the
+    # same result as torch instead of raising.
     inp = _spd(128, dtype)
-    with pytest.raises(NotImplementedError):
-        flag_gems.cholesky(inp)
+    ref_out = torch.cholesky(utils.to_reference(inp))
+
+    res_out = flag_gems.cholesky(inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
