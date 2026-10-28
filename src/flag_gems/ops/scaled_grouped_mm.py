@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.device_info import get_sm_count
@@ -29,7 +30,37 @@ BIAS_VECTOR = 1
 BIAS_GROUPED = 2
 
 
+@triton.jit
+def _decode_e4m3(bits, FNUZ: tl.constexpr):
+    # Load FP8 storage as bytes: several backends cannot represent FP8 pointers.
+    bits = bits.to(tl.int32)
+    exponent = (bits >> 3) & 15
+    mantissa = bits & 7
+    if FNUZ:
+        power = ((exponent + 119) << 23).to(tl.float32, bitcast=True)
+        subnormal = mantissa.to(tl.float32) * 0.0009765625
+        is_nan = bits == 128
+    else:
+        power = ((exponent + 120) << 23).to(tl.float32, bitcast=True)
+        subnormal = mantissa.to(tl.float32) * 0.001953125
+        is_nan = (bits & 127) == 127
+    value = tl.where(exponent == 0, subnormal, power * (1.0 + mantissa * 0.125))
+    value = tl.where((bits & 128) != 0, -value, value)
+    return tl.where(is_nan, float("nan"), value).to(tl.float16)
+
+
+@triton.jit
+def _decode_e4m3_tensor(X, Y, N: tl.constexpr, FNUZ: tl.constexpr, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    bits = tl.load(X + offsets, offsets < N, other=0)
+    tl.store(Y + offsets, _decode_e4m3(bits, FNUZ), offsets < N)
+
+
 def get_autotune_config():
+    configs = runtime.get_tuned_config("scaled_grouped_mm")
+    if configs:
+        return configs
+
     return [
         triton.Config(
             {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64},
@@ -88,6 +119,8 @@ def scaled_grouped_mm_kernel(
     A_IS_2D: tl.constexpr,
     B_IS_2D: tl.constexpr,
     BIAS_MODE: tl.constexpr,
+    E4M3: tl.constexpr,
+    FNUZ: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
@@ -169,6 +202,9 @@ def scaled_grouped_mm_kernel(
                     )
                     a = tl.load(a_ptrs, mask=a_mask, other=0.0)
                     b = tl.load(b_ptrs, mask=b_mask, other=0.0)
+                    if E4M3:
+                        a = _decode_e4m3(a, FNUZ)
+                        b = _decode_e4m3(b, FNUZ)
                     acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
                 if A_IS_2D:
@@ -366,6 +402,23 @@ def _normalize_bias(bias, *, a_is_2d, b_is_2d, num_groups, N):
     raise RuntimeError(f"bias must have shape {expected}")
 
 
+def _native_e4m3_dot(dtype, device):
+    # FP8 storage/casts alone do not imply a working FP8 dot instruction.
+    if dtype == getattr(torch, "float8_e4m3fn", None):
+        if runtime.device.vendor_name == "nvidia":
+            return torch.cuda.get_device_capability(device) >= (8, 9)
+        if runtime.device.vendor_name == "mthreads":
+            # MUSA capability is vendor-specific; S5000 reports (3, 1).
+            return torch_device_fn.get_device_capability(device) == (3, 1)
+        if runtime.device.vendor_name == "hygon":
+            arch = torch.cuda.get_device_properties(device).gcnArchName.split(":")[0]
+            return arch == "gfx936"
+    if torch.version.hip and dtype == getattr(torch, "float8_e4m3fnuz", None):
+        arch = torch.cuda.get_device_properties(device).gcnArchName.split(":")[0]
+        return arch in ("gfx940", "gfx941", "gfx942")
+    return False
+
+
 def _supports_triton_dot(dtype):
     return dtype in (torch.float16, torch.bfloat16, torch.float32) or _is_float8_dtype(
         dtype
@@ -535,6 +588,34 @@ def scaled_grouped_mm(
     if mat2.stride(-2) > 1 and mat2.stride(-1) > 1:
         mat2 = mat2.contiguous()
 
+    e4m3 = self.dtype in tuple(
+        getattr(torch, name)
+        for name in ("float8_e4m3fn", "float8_e4m3fnuz")
+        if hasattr(torch, name)
+    )
+    fnuz = self.dtype == getattr(torch, "float8_e4m3fnuz", None)
+    e4m3 = e4m3 and not _native_e4m3_dot(self.dtype, self.device)
+    if e4m3:
+        self = self.view(torch.uint8)
+        mat2 = mat2.view(torch.uint8)
+        if runtime.device.vendor_name == "iluvatar":
+            # CoreX 4.4 miscompiles byte decoding fused into the dot loop.
+            # Materialize FP16 on device before using the validated dot path.
+            decoded = []
+            with torch_device_fn.device(self.device):
+                for operand in (self, mat2):
+                    storage = operand.contiguous()
+                    result = torch.empty(
+                        storage.shape, dtype=torch.float16, device=storage.device
+                    )
+                    if storage.numel():
+                        _decode_e4m3_tensor[(triton.cdiv(storage.numel(), 256),)](
+                            storage, result, storage.numel(), fnuz, 256
+                        )
+                    decoded.append(result)
+            self, mat2 = decoded
+            e4m3 = False
+
     out = torch.empty(out_shape, dtype=output_dtype, device=self.device)
     if out.numel() == 0:
         return out
@@ -579,5 +660,7 @@ def scaled_grouped_mm(
             A_IS_2D=a_is_2d,
             B_IS_2D=b_is_2d,
             BIAS_MODE=bias_mode,
+            E4M3=e4m3,
+            FNUZ=fnuz,
         )
     return out

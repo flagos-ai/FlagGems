@@ -27,9 +27,11 @@ else:
 
 logger = logging.getLogger(__name__)
 
+# GCU400: num_warps must be <= 4; keep num_stages small to limit DSM
+# pipeline buffers (dsmSize=1308672B, keep peak << budget).
 spar_mla_fwd_configs = [
-    triton.Config({"num_stages": 4}, num_warps=8),
     triton.Config({"num_stages": 2}, num_warps=4),
+    triton.Config({"num_stages": 1}, num_warps=2),
 ]
 
 
@@ -339,7 +341,9 @@ def triton_sparse_mla_fwd_interface(
     G = H // VG
     if sm_scale is None:
         sm_scale = DT**-0.5
-    BH = max(16, min(64, triton.next_power_of_2(G)))
+    # GCU400 DSM budget: cap BH so that q_blk/acc [BH, DP=512] tiles stay
+    # small (DSM peak must fit dsmSize=1308672B). More chunks via NH.
+    BH = max(8, min(32, triton.next_power_of_2(G)))
     NH = triton.cdiv(G, BH)
     BK = 32
     output = torch.zeros((B, SQ, H, D), device=q.device, dtype=q.dtype)

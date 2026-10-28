@@ -18,14 +18,11 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.index_copy_ import index_copy as default_index_copy
 from flag_gems.ops.index_copy_ import index_copy_ as default_index_copy_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 # mthreads hardware does not support fp64/int64 arithmetic inside kernels.
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
@@ -139,15 +136,6 @@ def _launch_index_copy(out, dim, index, src):
             delta,
         )
     return out
-
-
-def index_copy(inp, dim, index, src):
-    logger.debug("GEMS_MTHREADS INDEX_COPY")
-    if not _use_triton_kernel(inp, index, src):
-        return default_index_copy(inp, dim, index, src)
-
-    out = inp.clone().contiguous()
-    return _launch_index_copy(out, dim, index, src)
 
 
 def index_copy_(inp, dim, index, src):

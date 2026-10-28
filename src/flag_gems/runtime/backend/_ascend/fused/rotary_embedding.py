@@ -225,9 +225,9 @@ def apply_rotary_pos_emb(
             len(q.shape) == 4
         ), f"q must be 4-D when position_ids is not provided, got {q.shape}"
         seq_len = q.shape[-3]
-        # cos/sin indexed as cos[0:seq_len]: shape [seq_len, D/2]
-        cos_sel = cos[:seq_len]
-        sin_sel = sin[:seq_len]
+        # Match flattened q/k token order: [pos0..posN] for every batch.
+        cos_sel = cos[:seq_len].repeat(q.shape[0], 1)
+        sin_sel = sin[:seq_len].repeat(q.shape[0], 1)
     else:
         assert (
             position_ids.shape == q.shape[:-2]

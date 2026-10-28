@@ -89,8 +89,11 @@ def mul_kernel(
     rep=5,
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul",
+    flagtune_op_id="flaggems/mul",
+    flagtune_variant="scalar",
+    policy="flagtune",
 )
-@triton.jit
+@triton.jit(do_not_specialize=["scalar"])
 def mul_scalar_kernel(
     x_ptr,
     output_ptr,
@@ -103,6 +106,10 @@ def mul_scalar_kernel(
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask)
+    # Compute in the element's own dtype. An intermediate fp32 promotion would
+    # silently truncate int64 (and int32) inputs -- any value above 2**24 loses
+    # its low bits -- and does not help fp16/bf16, whose native multiply already
+    # matches the aten reference bit-for-bit.
     out = x & scalar if IS_BOOL else x * scalar
     tl.store(output_ptr + offsets, out, mask=mask)
 
@@ -116,6 +123,9 @@ def mul_scalar_kernel(
     rep=5,
     flagtune_op_name="mul",
     flagtune_expand_op_name="mul_broadcast_2d",
+    flagtune_op_id="flaggems/mul",
+    flagtune_variant="broadcast_2d",
+    policy="flagtune",
 )
 @triton.jit
 def mul_broadcast_2d_kernel(

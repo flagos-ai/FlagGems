@@ -49,7 +49,6 @@ def test_nonzero(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
     ref_out = torch.nonzero(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.nonzero(inp)
+    res_out = flag_gems.nonzero(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

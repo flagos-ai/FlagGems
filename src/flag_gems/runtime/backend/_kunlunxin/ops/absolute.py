@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -18,6 +19,21 @@ _absolute_config = CodeGenConfig(
     isCloseMemoryAsync=False,  # Enable memory async for better overlap
 )
 
+# Small tensors (<= 8192 elements) go faster on a direct masked BLOCK-1024
+# kernel (the vectorized 1D-tile path's coarser grid doubles launch count;
+# same hybrid as _kunlunxin/ops/sign.py).
+_SMALL_NUMEL = 8192
+
+
+@triton.jit
+def _absolute_small_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+    tl.store(out_ptr + offsets, tl.abs(x), mask=mask)
+
 
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")], config=_absolute_config)
 @triton.jit
@@ -27,4 +43,27 @@ def absolute_func(x):
 
 def absolute(A):
     logger.debug("GEMS_KUNLUNXIN ABSOLUTE")
+    if A.is_floating_point():
+        if (
+            A.dtype == torch.bfloat16
+            and A.dim() >= 1
+            and A.numel() > 0
+            and A.is_contiguous()
+        ):
+            B = A.view(torch.float16)
+            return absolute_func(B, out0=torch.empty_like(B)).view(torch.bfloat16)
+        return absolute_func(A, out0=torch.empty_like(A))
     return absolute_func(A)
+
+
+def absolute_(A):
+    logger.debug("GEMS_KUNLUNXIN ABSOLUTE_")
+    if A.numel() == 0:
+        return A
+    if A.numel() <= _SMALL_NUMEL and A.is_contiguous():
+        _absolute_small_kernel[(triton.cdiv(A.numel(), 1024),)](
+            A.view(-1), A.view(-1), A.numel(), BLOCK_SIZE=1024
+        )
+        return A
+    absolute_func(A, out0=A)
+    return A

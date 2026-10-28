@@ -77,15 +77,14 @@ def test_amp_update_scale_(scale_val, tracker_val, found_inf_val):
     res_scale, res_tracker, res_found_inf = _make_inputs(
         scale_val, tracker_val, found_inf_val
     )
-    with flag_gems.use_gems():
-        res_out = torch._amp_update_scale_(
-            res_scale,
-            res_tracker,
-            res_found_inf,
-            GROWTH_FACTOR,
-            BACKOFF_FACTOR,
-            GROWTH_INTERVAL,
-        )
+    res_out = flag_gems._amp_update_scale_(
+        res_scale,
+        res_tracker,
+        res_found_inf,
+        GROWTH_FACTOR,
+        BACKOFF_FACTOR,
+        GROWTH_INTERVAL,
+    )
 
     # The return value is the (in-place updated) scale tensor itself.
     assert res_out is res_scale
@@ -110,8 +109,7 @@ def test_amp_update_scale__growth_walk():
             dtype=torch.float32,
         )
         if use_gems:
-            with flag_gems.use_gems():
-                torch._amp_update_scale_(scale, tracker, found_inf, 2.0, 0.5, interval)
+            flag_gems._amp_update_scale_(scale, tracker, found_inf, 2.0, 0.5, interval)
         else:
             torch._amp_update_scale_(scale, tracker, found_inf, 2.0, 0.5, interval)
 
@@ -185,24 +183,23 @@ def test_amp_update_scale__backoff_then_recover():
     # GEMS mirrors the sequence
     res_scale = torch.tensor(8.0, device=flag_gems.device, dtype=torch.float32)
     res_tracker = torch.tensor(0, device=flag_gems.device, dtype=torch.int32)
-    with flag_gems.use_gems():
-        torch._amp_update_scale_(
+    flag_gems._amp_update_scale_(
+        res_scale,
+        res_tracker,
+        torch.tensor(1.0, device=flag_gems.device, dtype=torch.float32),
+        2.0,
+        0.5,
+        interval,
+    )
+    for _ in range(interval):
+        flag_gems._amp_update_scale_(
             res_scale,
             res_tracker,
-            torch.tensor(1.0, device=flag_gems.device, dtype=torch.float32),
+            torch.tensor(0.0, device=flag_gems.device, dtype=torch.float32),
             2.0,
             0.5,
             interval,
         )
-        for _ in range(interval):
-            torch._amp_update_scale_(
-                res_scale,
-                res_tracker,
-                torch.tensor(0.0, device=flag_gems.device, dtype=torch.float32),
-                2.0,
-                0.5,
-                interval,
-            )
 
     utils.gems_assert_equal(res_scale, ref_scale)
     utils.gems_assert_equal(res_tracker, ref_tracker)
@@ -237,10 +234,9 @@ def test_amp_update_scale__intervals(interval):
             tracker_val, device=flag_gems.device, dtype=torch.int32
         )
         res_found_inf = torch.tensor(0.0, device=flag_gems.device, dtype=torch.float32)
-        with flag_gems.use_gems():
-            torch._amp_update_scale_(
-                res_scale, res_tracker, res_found_inf, 3.0, 0.25, interval
-            )
+        flag_gems._amp_update_scale_(
+            res_scale, res_tracker, res_found_inf, 3.0, 0.25, interval
+        )
 
         utils.gems_assert_equal(res_scale, ref_scale)
         utils.gems_assert_equal(res_tracker, ref_tracker)

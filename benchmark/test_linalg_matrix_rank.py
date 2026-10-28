@@ -45,10 +45,10 @@ MATRIX_RANK_COMPREHENSIVE_SHAPES = [
     (1024, 32),
     (64, 512),
     (512, 64),
-    # Default-dispatch band (QR -> exact paths at k = 256): 65..255 stay on
-    # unpivoted QR, 256+ on the exact bidiagonalization/tridiagonalization.
-    # 65..192 are sampled densely because the exact paths have tile-edge
-    # performance dips there (which is why the boundary sits at 256).
+    # Exact-default dispatch band: 65+ uses bidiagonalization/tridiagonalization.
+    # Compact 65..255 stays exact even with FAST_PATH=1 because CANN 9.1.1
+    # cannot compile the register QR panel. The dense sampling captures the
+    # exact paths' tile-edge performance dips.
     (65, 65),
     (80, 80),
     (96, 96),
@@ -97,9 +97,8 @@ MATRIX_RANK_HERMITIAN_CORE_SHAPES = [
 ]
 
 MATRIX_RANK_HERMITIAN_COMPREHENSIVE_SHAPES = [
-    # herm 65..255 uses unpivoted QR by default and 256+ the one-sided
-    # tridiagonalization (since the stage-8 dispatch switch); 65/129/257
-    # sample both sides of the boundary.
+    # Hermitian 65+ always uses one-sided tridiagonalization. 65/129/257 sample
+    # the small/medium tile boundaries and the k >= 256 region.
     (65, 65),
     (128, 128),
     (129, 129),
@@ -193,7 +192,7 @@ def _composed_matrix_rank(matrix, atol=None, rtol=None, hermitian=False):
     return (svals > tol).sum(dim=-1)
 
 
-@pytest.mark.linalg_matrix_rank_atol_rtol_float
+@pytest.mark.linalg_matrix_rank
 def test_linalg_matrix_rank():
     def matrix_rank_input_fn(shape, cur_dtype, device):
         matrix = torch.randn(shape, dtype=cur_dtype, device=device)
@@ -209,7 +208,7 @@ def test_linalg_matrix_rank():
     bench.run()
 
 
-@pytest.mark.linalg_matrix_rank_atol_rtol_float
+@pytest.mark.linalg_matrix_rank_hermitian
 def test_linalg_matrix_rank_hermitian():
     def matrix_rank_hermitian_input_fn(shape, cur_dtype, device):
         matrix = torch.randn(shape, dtype=cur_dtype, device=device)

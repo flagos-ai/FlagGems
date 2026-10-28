@@ -35,8 +35,7 @@ def test_bitwise_not(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.bitwise_not(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.bitwise_not(inp)
+    res_out = flag_gems.bitwise_not(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -54,7 +53,6 @@ def test_bitwise_not_(shape, dtype):
     ref_inp = utils.to_reference(res_inp.clone())
 
     ref_out = ref_inp.bitwise_not_()  # NOTE: there is no torch.bitwse_not_
-    with flag_gems.use_gems():
-        res_out = res_inp.bitwise_not_()
+    res_out = flag_gems.bitwise_not_(res_inp)
 
     utils.gems_assert_equal(res_out, ref_out)

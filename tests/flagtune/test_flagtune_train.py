@@ -27,8 +27,12 @@ TRAIN_PATH = (
     / "src"
     / "flag_gems"
     / "flagtune"
+    / "offline"
     / "cli"
     / "train.py"
+)
+MUL_CONFIG_PATH = (
+    TRAIN_PATH.parents[1] / "contracts" / "configs" / "mul_flagtune_configs.yaml"
 )
 
 
@@ -55,7 +59,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -79,7 +83,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -96,7 +100,7 @@ def test_training_cli_requires_config_and_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -119,7 +123,7 @@ def test_training_cli_rejects_unsafe_variant():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "../outside",
             "--model-version",
@@ -139,7 +143,7 @@ def test_training_cli_rejects_negative_progress_interval():
             "--shape-config",
             "shapes.yaml",
             "--flagtune-config",
-            "mm_flagtune_configs.yaml",
+            "mm_hopper_flagtune_configs.yaml",
             "--variant",
             "general_tma",
             "--model-version",
@@ -191,20 +195,26 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     """Run the training coordinator with collection and XGBoost boundaries faked."""
 
     class Record:
+        variant = "general_tma"
+
         @staticmethod
         def to_benchmark_shape():
             return {"M": 16}
 
     variant = SimpleNamespace(
         name="general_tma",
+        op_id="flaggems/mm",
+        normalize_inputs=lambda values: {"M": values["M"]},
         feature_names=("M",),
         iter_configs=lambda: iter(({"BLOCK": 16},)),
     )
     operator_info = SimpleNamespace(
         op_id="flaggems/mm",
         get_variant=lambda _name: variant,
+        variants={"general_tma": variant},
     )
     spec = SimpleNamespace(
+        op_id="flaggems/mm",
         operator_info=operator_info,
         source_sha256="sha256",
         shape=SimpleNamespace(identity=("M",)),
@@ -212,6 +222,7 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     context = SimpleNamespace(
         visible_device_count=1,
         backend_name="cuda",
+        vendor_name="nvidia",
         device_names=("NVIDIA H20-3e",),
         device_architectures=("sm90",),
     )
@@ -225,6 +236,17 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     run_dir.mkdir()
 
     monkeypatch.setattr(mod, "load_operator_benchmark_spec", lambda _path: spec)
+
+    def fake_runtime_configs(op_id, variant_name, *, platform):
+        assert (op_id, variant_name, platform) == (
+            "flaggems/mm",
+            "general_tma",
+            "nvidia",
+        )
+        return [SimpleNamespace(kwargs={"BLOCK": 16}, num_warps=4, num_stages=2)]
+
+    # Candidate resolution must not probe the CI host's actual backend/YAML.
+    monkeypatch.setattr(mod, "runtime_configs_for_variant", fake_runtime_configs)
     monkeypatch.setattr(
         mod, "load_shape_records", lambda _path, _spec: [Record(), Record()]
     )
@@ -277,6 +299,7 @@ def _run_training_with_results(mod, monkeypatch, tmp_path, results, exported):
     )
 
     def fake_export(_model, _variant, _run_dir, _summary, **kwargs):
+        exported.setdefault("all_identities", []).append(kwargs["identity"])
         exported.update(kwargs)
         return SimpleNamespace(model_path=run_dir / "model.tar.gz", model_config={})
 
@@ -303,7 +326,10 @@ def _successful_collection_result(architecture="sm90"):
     return {
         "status": "ok",
         "platform_key": "nvidia-h20",
+        "variant": "general_tma",
+        "tuning_variant": "general_tma",
         "dtype_key": "bf16-bf16-bf16",
+        "model_dtypes": ["bfloat16", "bfloat16", "bfloat16"],
         "input_dtypes": ["bfloat16", "bfloat16"],
         "output_dtypes": ["bfloat16"],
         "gpu_metadata": {
@@ -349,6 +375,62 @@ def test_training_exports_platform_identity_and_retained_architecture(
     )
     assert exported["identity"].platform_key == "nvidia-h20"
     assert exported["gpu"]["architecture"] == "sm90"
+
+
+def test_routed_training_separates_model_dtype_groups(monkeypatch, tmp_path):
+    mod = load_path(TRAIN_PATH, "flag_gems_flagtune_train_dtype_groups")
+    first = _successful_collection_result()
+    second = _successful_collection_result()
+    second.update(
+        dtype_key="f32-f32-f32",
+        input_dtypes=["float32", "float32"],
+        output_dtypes=["float32"],
+        model_dtypes=["float32"] * 3,
+    )
+    exported = {}
+    assert (
+        _run_training_with_results(
+            mod, monkeypatch, tmp_path, [first, second], exported
+        )
+        == 0
+    )
+    assert {identity.dtype_key for identity in exported["all_identities"]} == {
+        "bf16-bf16-bf16",
+        "f32-f32-f32",
+    }
+
+
+def test_routed_training_excludes_unsupported_rows(monkeypatch, tmp_path):
+    mod = load_path(TRAIN_PATH, "flag_gems_flagtune_train_skip")
+    exported = {}
+    assert (
+        _run_training_with_results(
+            mod,
+            monkeypatch,
+            tmp_path,
+            [_successful_collection_result(), {"status": "skipped"}],
+            exported,
+        )
+        == 0
+    )
+    assert len(exported["all_identities"]) == 1
+
+
+@pytest.mark.parametrize("status", ["skipped", "failed"])
+def test_routed_training_does_not_export_empty_or_failed_collection(
+    monkeypatch, tmp_path, status
+):
+    mod = load_path(TRAIN_PATH, "flag_gems_flagtune_train_no_export")
+    exported = {}
+    monkeypatch.setenv("FLAGTREE_AABS", "1")
+    monkeypatch.setenv("FLAGTUNE_TRAIN_PROGRESS_INTERVAL", "17")
+    with pytest.raises(mod.TrainError, match="successful model groups=0"):
+        _run_training_with_results(
+            mod, monkeypatch, tmp_path, [{"status": status}] * 2, exported
+        )
+    assert not exported
+    assert mod.os.environ["FLAGTREE_AABS"] == "1"
+    assert mod.os.environ["FLAGTUNE_TRAIN_PROGRESS_INTERVAL"] == "17"
 
 
 def test_collection_rows_are_flattened_to_streaming_training_jsonl(tmp_path):
@@ -415,6 +497,9 @@ def test_collection_rows_are_flattened_to_streaming_training_jsonl(tmp_path):
     assert row["ranking_group"] == {
         "operator_id": "flaggems/mm",
         "variant": "general_tma",
+        "route_variant": "general_tma",
+        "stage": "public",
+        "latency_scope": "public_kernel",
         "dimensions": {
             "M": 64,
             "N": 32,
@@ -434,6 +519,75 @@ def test_collection_rows_are_flattened_to_streaming_training_jsonl(tmp_path):
     assert "source_shape_key" not in row
     assert row["inputs"]["stride_am"] == 128
     assert row["config"] == {"BLOCK_M": 16}
+
+
+def test_mul_collection_rows_reuse_derived_variant_inputs(tmp_path):
+    """Feed mul's derived dimensions directly into the generic training row."""
+    mod = load_path(TRAIN_PATH, "flag_gems_flagtune_train_mul_rows")
+    from flag_gems.flagtune.offline.contracts.operator import (
+        load_operator_benchmark_spec,
+    )
+
+    variant = load_operator_benchmark_spec(MUL_CONFIG_PATH).operator_info.get_variant(
+        "scalar"
+    )
+    data_path = tmp_path / "mul-data.jsonl"
+    failure_path = tmp_path / "mul-failures.jsonl"
+    result = {
+        "status": "ok",
+        "source_index": 0,
+        "Count": 3,
+        "kind": "scalar",
+        "lhs_shape": [18],
+        "rhs_shape": [],
+        "n_elements": 18,
+        "has_rhs": 0,
+        "platform_key": "nvidia-h20",
+        "gpu": "0",
+        "gpu_name": "NVIDIA H20-3e",
+        "gpu_metadata": {
+            "backend": "cuda",
+            "vendor": "NVIDIA",
+            "device_name": "NVIDIA H20-3e",
+            "architecture": "sm90",
+            "platform_key": "nvidia-h20",
+        },
+        "input_dtypes": ["bfloat16"],
+        "output_dtypes": ["bfloat16"],
+        "dtype_key": "bf16-bf16",
+        "config_timings": [
+            {
+                "config": {
+                    "BLOCK_SIZE": 128,
+                    "num_warps": 4,
+                    "num_stages": 3,
+                },
+                "latency_ms": 0.1,
+                "status": "ok",
+            }
+        ],
+    }
+
+    counts = mod._append_collection_rows(
+        data_path,
+        failure_path,
+        [result],
+        variant,
+        ["kind", "lhs_shape", "rhs_shape"],
+        1,
+    )
+
+    row = json.loads(data_path.read_text())
+    assert counts == (1, 1, 0)
+    assert row["ranking_group"] == {
+        "operator_id": "flaggems/mul",
+        "variant": "scalar",
+        "route_variant": "scalar",
+        "stage": "public",
+        "latency_scope": "public_kernel",
+        "dimensions": {"n_elements": 18, "has_rhs": 0},
+        "model_dtype_key": "bf16-bf16",
+    }
 
 
 def test_collection_failure_uses_workload_not_model_input_dimensions(tmp_path):
@@ -519,7 +673,7 @@ class FakeConfig:
 def test_generic_config_timing_serialization_uses_triton_quantile_order():
     """Map LibTuner's p50/p20/p80 samples and null non-finite values."""
     load_path(TRAIN_PATH, "flag_gems_flagtune_train_for_mm")
-    mod = importlib.import_module("flag_gems.flagtune.runtime.executor")
+    mod = importlib.import_module("flag_gems.flagtune.offline.runtime.executor")
 
     rows = mod._serialize_config_timings({FakeConfig(): [1.2, 1.0, float("inf")]})
 
@@ -530,6 +684,7 @@ def test_generic_config_timing_serialization_uses_triton_quantile_order():
             "latency_p50_ms": 1.2,
             "latency_p20_ms": 1.0,
             "latency_p80_ms": None,
+            "latency_scope": "public_kernel",
             "status": "ok",
         }
     ]
@@ -538,7 +693,7 @@ def test_generic_config_timing_serialization_uses_triton_quantile_order():
 def test_generic_config_progress_interval_handles_environment_values(monkeypatch):
     """Interpret positive intervals and safely disable malformed values."""
     load_path(TRAIN_PATH, "flag_gems_flagtune_train_for_progress_env")
-    mod = importlib.import_module("flag_gems.flagtune.runtime.executor")
+    mod = importlib.import_module("flag_gems.flagtune.offline.runtime.executor")
 
     monkeypatch.delenv("FLAGTUNE_TRAIN_PROGRESS_INTERVAL", raising=False)
     assert mod._progress_interval() == 0
@@ -553,7 +708,7 @@ def test_generic_config_progress_interval_handles_environment_values(monkeypatch
 def test_worker_log_forwarding_buffers_partial_lines(tmp_path, capsys):
     """Forward each complete worker line once and flush a final partial line."""
     load_path(TRAIN_PATH, "flag_gems_flagtune_train_for_log_forwarding")
-    mod = importlib.import_module("flag_gems.flagtune.collection.scheduler")
+    mod = importlib.import_module("flag_gems.flagtune.offline.collection.scheduler")
     first = tmp_path / "worker_0.log"
     second = tmp_path / "worker_1.log"
     first.write_text("started\npart", encoding="utf-8")
@@ -581,7 +736,7 @@ def test_worker_log_forwarding_buffers_partial_lines(tmp_path, capsys):
 def test_worker_environment_contains_device_and_database_overrides():
     """Keep tuning behavior out of process-global worker environment state."""
     load_path(TRAIN_PATH, "flag_gems_flagtune_train_for_worker_environment")
-    mod = importlib.import_module("flag_gems.flagtune.collection.scheduler")
+    mod = importlib.import_module("flag_gems.flagtune.offline.collection.scheduler")
 
     class FakeRuntime:
         @staticmethod

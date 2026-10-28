@@ -166,26 +166,21 @@ def _adaptive_avg_pool3d_backward_kernel(
     tl.store(grad_in_ptr, grad_acc, mask=mask)
 
 
-def _adaptive_avg_pool3d_backward(
+def _fill_grad_input(
     grad_output: torch.Tensor,
     input: torch.Tensor,
-):
-    """Gradient of adaptive_avg_pool3d backward."""
-    logger.debug("GEMS _ADAPTIVE_AVG_POOL3D_BACKWARD")
+    grad_input: torch.Tensor,
+) -> None:
+    """Launch the backward kernel, writing the result into ``grad_input``.
 
+    The kernel fully overwrites every element of ``grad_input``, so the
+    buffer needs no prior initialization. Its dtype may differ from
+    ``grad_output``; accumulation happens in float32 and the store converts
+    to the buffer's element type.
+    """
     # Get shapes
     in_n, in_c, in_d, in_h, in_w = input.shape
     out_n, out_c, out_d, out_h, out_w = grad_output.shape
-
-    # Allocate output
-    grad_input = torch.zeros(
-        (in_n, in_c, in_d, in_h, in_w),
-        device=input.device,
-        dtype=torch.float32,
-    )
-
-    if grad_output.numel() == 0:
-        return grad_input.to(grad_output.dtype)
 
     n_elements = in_n * in_c * in_d * in_h * in_w
 
@@ -226,4 +221,47 @@ def _adaptive_avg_pool3d_backward(
         MAX_OUT_W=max_out_w,
     )
 
+
+def _adaptive_avg_pool3d_backward(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+):
+    """Gradient of adaptive_avg_pool3d backward."""
+    logger.debug("GEMS _ADAPTIVE_AVG_POOL3D_BACKWARD")
+
+    # Allocate output. The kernel overwrites every element, so zeros vs
+    # empty only matters for the empty-tensor early return below.
+    grad_input = torch.zeros(
+        (input.shape),
+        device=input.device,
+        dtype=torch.float32,
+    )
+
+    if grad_output.numel() == 0:
+        return grad_input.to(grad_output.dtype)
+
+    _fill_grad_input(grad_output, input, grad_input)
+
     return grad_input.to(grad_output.dtype)
+
+
+def adaptive_avg_pool3d_backward_grad_input(
+    grad_output: torch.Tensor,
+    input: torch.Tensor,
+    *,
+    grad_input: torch.Tensor,
+):
+    """Out-variant of adaptive_avg_pool3d_backward.
+
+    Corresponds to ``aten::adaptive_avg_pool3d_backward.grad_input``: the
+    result is written into the caller-provided ``grad_input`` buffer, which
+    is also returned.
+    """
+    logger.debug("GEMS ADAPTIVE_AVG_POOL3D_BACKWARD_GRAD_INPUT")
+
+    if grad_output.numel() == 0 or input.numel() == 0:
+        return grad_input.zero_()
+
+    _fill_grad_input(grad_output, input, grad_input)
+
+    return grad_input

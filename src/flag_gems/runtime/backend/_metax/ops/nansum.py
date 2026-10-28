@@ -5,6 +5,7 @@ from functools import reduce
 import torch
 import triton
 import triton.language as tl
+from torch._prims_common import is_boolean_dtype, is_integer_dtype
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
@@ -12,6 +13,23 @@ from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+
+def _is_integral(dtype):
+    return is_integer_dtype(dtype) or is_boolean_dtype(dtype)
+
+
+def _nansum_out_dtype(inp_dtype):
+    return torch.int64 if _is_integral(inp_dtype) else inp_dtype
+
+
+@tl.constexpr
+def _nansum_acc_type(inp_dtype: tl.dtype) -> tl.dtype:
+    if inp_dtype.is_int():
+        return tl.int64
+    if inp_dtype.is_fp64():
+        return tl.float64
+    return tl.float32
 
 
 @libentry()
@@ -38,10 +56,7 @@ def nansum_kernel_1(
     M,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    cdtype: tl.constexpr = _nansum_acc_type(inp.dtype.element_ty)
 
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -49,7 +64,8 @@ def nansum_kernel_1(
     mask = offset < M
 
     x = tl.load(inp_ptrs, mask=mask, other=0.0).to(cdtype)
-    x = tl.where(x != x, 0.0, x)
+    if tl.constexpr(cdtype.is_floating()):
+        x = tl.where(x != x, 0.0, x)
 
     sum_val = tl.sum(x, axis=0)
     mid_ptr = mid + pid
@@ -68,10 +84,7 @@ def nansum_kernel_2(
     mid_size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    if tl.constexpr(mid.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    cdtype: tl.constexpr = _nansum_acc_type(mid.dtype.element_ty)
 
     _sum = tl.zeros((), dtype=cdtype)
 
@@ -79,7 +92,8 @@ def nansum_kernel_2(
         idx = start + tl.arange(0, BLOCK_SIZE)
         mask = idx < mid_size
         val = tl.load(mid + idx, mask=mask, other=0.0).to(cdtype)
-        val = tl.where(val != val, 0.0, val)
+        if tl.constexpr(cdtype.is_floating()):
+            val = tl.where(val != val, 0.0, val)
         _sum += tl.sum(val, axis=0)
 
     tl.store(out, _sum)
@@ -87,10 +101,9 @@ def nansum_kernel_2(
 
 def _nansum_global(inp, *, dtype=None):
     if dtype is None:
-        dtype = inp.dtype
-        if dtype == torch.bool:
+        dtype = _nansum_out_dtype(inp.dtype)
+        if inp.dtype == torch.bool:
             inp = inp.to(torch.int64)
-            dtype = torch.int64
 
     if inp.numel() == 0:
         return torch.tensor(0, dtype=dtype, device=inp.device)
@@ -105,11 +118,12 @@ def _nansum_global(inp, *, dtype=None):
             nansum_kernel_2[(1,)](inp, out, M)
         return out
 
-    compute_dtype = (
-        torch.float64
-        if inp.dtype == torch.float64 or dtype == torch.float64
-        else torch.float32
-    )
+    if _is_integral(inp.dtype):
+        compute_dtype = torch.int64
+    elif inp.dtype == torch.float64 or dtype == torch.float64:
+        compute_dtype = torch.float64
+    else:
+        compute_dtype = torch.float32
     block_size = max(triton.next_power_of_2(math.ceil(math.sqrt(M))), 4096)
     mid_size = triton.cdiv(M, block_size)
     mid = torch.empty(mid_size, dtype=compute_dtype, device=inp.device)
@@ -125,7 +139,8 @@ def _nansum_global(inp, *, dtype=None):
 def nansum(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS_METAX NANSUM")
     if dim is None:
-        return _nansum_global(inp, dtype=dtype)
+        result = _nansum_global(inp, dtype=dtype)
+        return result.reshape([1] * inp.ndim) if keepdim else result
     return nansum_dim(inp, dim=dim, keepdim=keepdim, dtype=dtype)
 
 
@@ -150,12 +165,9 @@ def nansum_dim_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    if tl.constexpr(inp.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    cdtype: tl.constexpr = _nansum_acc_type(inp.dtype.element_ty)
 
-    pid = ext.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
     inp = inp + pid * N
     out = out + pid
     row_mask = pid < M
@@ -167,15 +179,21 @@ def nansum_dim_kernel(
         col_mask = cols < N
         mask = row_mask & col_mask
         val = tl.load(inp + cols, mask, other=0.0).to(cdtype)
-        val = tl.where(val != val, 0.0, val)
+        if tl.constexpr(cdtype.is_floating()):
+            val = tl.where(val != val, 0.0, val)
         _sum += val
 
     result = tl.sum(_sum, axis=1)[:, None]
     tl.store(out, result, row_mask)
 
 
+_INT32_MAX = 2**31 - 1
+
+
 def _nansum_heur_tile_k(args):
     MAX_TILE_K = 8192
+    if args["input_ptr"].element_size() == 1:
+        MAX_TILE_K = 256
     NUM_SMS = torch.cuda.get_device_properties(
         torch.cuda.current_device()
     ).multi_processor_count
@@ -308,23 +326,30 @@ def nansum_dim_kernel_non_inner(
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
     ONE_TILE_PER_CTA: tl.constexpr,
+    WIDE_INDEX: tl.constexpr,
 ):
-    if tl.constexpr(input_ptr.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    cdtype: tl.constexpr = _nansum_acc_type(input_ptr.dtype.element_ty)
 
+    # Element offsets reach numel, so they pass INT32_MAX for tensors above 2**31
+    # elements. Widen the index math only for those: 64-bit address arithmetic
+    # costs a few percent on the large-tile path and is wasted below that.
     pid_m = ext.program_id(0)
     pid_k = ext.program_id(1)
+    if WIDE_INDEX:
+        pid_m = pid_m.to(tl.int64)
+        pid_k = pid_k.to(tl.int64)
 
     k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
 
     if ONE_TILE_PER_CTA:
         n_offsets = tl.arange(0, TILE_N)[:, None]
+        if WIDE_INDEX:
+            n_offsets = n_offsets.to(tl.int64)
         inp_offset = pid_m * N * K + n_offsets * K + k_offsets
         mask = (n_offsets < N) & (k_offsets < K)
         inp = tl.load(input_ptr + inp_offset, mask=mask, other=0.0).to(cdtype)
-        inp = tl.where(inp != inp, 0.0, inp)
+        if tl.constexpr(cdtype.is_floating()):
+            inp = tl.where(inp != inp, 0.0, inp)
         out = tl.sum(inp, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
         tl.store(output_ptr + out_offset, out, mask=k_offsets < K)
@@ -332,10 +357,13 @@ def nansum_dim_kernel_non_inner(
         _sum = tl.zeros([TILE_N, TILE_K], dtype=cdtype)
         for start_n in range(0, N, TILE_N):
             n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            if WIDE_INDEX:
+                n_offsets = n_offsets.to(tl.int64)
             inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
             mask = (n_offsets < N) & (k_offsets < K)
             inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0.0).to(cdtype)
-            inp = tl.where(inp != inp, 0.0, inp)
+            if tl.constexpr(cdtype.is_floating()):
+                inp = tl.where(inp != inp, 0.0, inp)
             _sum += inp
         out = tl.sum(_sum, axis=0, keep_dims=True)
         out_offset = pid_m * K + k_offsets
@@ -362,12 +390,9 @@ def nansum_dim_kernel_inner(
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
 ):
-    if tl.constexpr(input_ptr.dtype.element_ty == tl.float64):
-        cdtype = tl.float64
-    else:
-        cdtype = tl.float32
+    cdtype: tl.constexpr = _nansum_acc_type(input_ptr.dtype.element_ty)
 
-    pid = ext.program_id(0)
+    pid = ext.program_id(0).to(tl.int64)
     m_start = pid * TILE_M + tl.arange(0, TILE_M)[:, None]
     m_mask = m_start < M
 
@@ -377,7 +402,8 @@ def nansum_dim_kernel_inner(
         inp_offsets = m_start * N + n_offsets
         mask = m_mask & (n_offsets < N)
         inp = tl.load(input_ptr + inp_offsets, mask=mask, other=0.0).to(cdtype)
-        inp = tl.where(inp != inp, 0.0, inp)
+        if tl.constexpr(cdtype.is_floating()):
+            inp = tl.where(inp != inp, 0.0, inp)
         _sum += inp
 
     result = tl.sum(_sum, axis=1)[:, None]
@@ -391,8 +417,20 @@ def _normalize_dims(dim, ndim):
         return list(range(ndim))
     if isinstance(dim, int):
         dim = [dim]
-    dims = [d if d >= 0 else d + ndim for d in dim]
-    return sorted(set(dims), reverse=True)
+    span = max(ndim, 1)
+    for d in dim:
+        if d < -span or d >= span:
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of "
+                f"[{-span}, {span - 1}], but got {d})"
+            )
+    dims = [d + span if d < 0 else d for d in dim]
+    seen = set()
+    for d in dims:
+        if d in seen:
+            raise RuntimeError(f"dim {d} appears multiple times in the list of dims")
+        seen.add(d)
+    return sorted(dims, reverse=True)
 
 
 def _squeeze_dims(result, dims):
@@ -403,12 +441,14 @@ def _squeeze_dims(result, dims):
 
 def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     if dtype is None:
-        dtype = inp.dtype
-        if dtype == torch.bool:
+        dtype = _nansum_out_dtype(inp.dtype)
+        if inp.dtype == torch.bool:
             inp = inp.to(torch.int64)
-            dtype = torch.int64
 
     dims = _normalize_dims(dim, inp.ndim)
+
+    if inp.ndim == 0:
+        return _nansum_global(inp, dtype=dtype)
 
     if len(dims) == 0:
         result = _nansum_global(inp, dtype=dtype)
@@ -446,13 +486,17 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         out_shape[dim] = 1
 
         if N <= 1:
-            NANZERO_BLOCK = 4096
-            grid = (triton.cdiv(inp.numel(), NANZERO_BLOCK),)
-            out = torch.empty_like(inp, dtype=dtype)
-            with torch_device_fn.device(inp.device):
-                _nan_to_zero_kernel[grid](
-                    inp, out, inp.numel(), BLOCK_SIZE=NANZERO_BLOCK
-                )
+            if _is_integral(inp.dtype):
+                # integers carry no NaN: the widening cast is the whole job
+                out = inp.to(dtype)
+            else:
+                NANZERO_BLOCK = 4096
+                grid = (triton.cdiv(inp.numel(), NANZERO_BLOCK),)
+                out = torch.empty_like(inp, dtype=dtype)
+                with torch_device_fn.device(inp.device):
+                    _nan_to_zero_kernel[grid](
+                        inp, out, inp.numel(), BLOCK_SIZE=NANZERO_BLOCK
+                    )
             out = out.reshape(out_shape)
             return out if keepdim else _squeeze_dims(out, dims)
 
@@ -461,7 +505,9 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         with torch_device_fn.device(inp.device):
             if K > 1:
                 grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-                nansum_dim_kernel_non_inner[grid](out, inp, M, N, K)
+                nansum_dim_kernel_non_inner[grid](
+                    out, inp, M, N, K, WIDE_INDEX=inp.numel() > _INT32_MAX
+                )
             else:
                 grid = lambda meta: (triton.cdiv(M, meta["TILE_M"]), 1, 1)
                 nansum_dim_kernel_inner[grid](out, inp, M, N)
@@ -476,11 +522,16 @@ def nansum_dim(inp, dim=None, keepdim=False, *, dtype=None):
     M = inp.numel() // N
 
     if N <= 1:
-        NANZERO_BLOCK = 4096
-        grid = (triton.cdiv(inp.numel(), NANZERO_BLOCK),)
-        out = torch.empty_like(inp, dtype=dtype)
-        with torch_device_fn.device(inp.device):
-            _nan_to_zero_kernel[grid](inp, out, inp.numel(), BLOCK_SIZE=NANZERO_BLOCK)
+        if _is_integral(inp.dtype):
+            out = inp.to(dtype)
+        else:
+            NANZERO_BLOCK = 4096
+            grid = (triton.cdiv(inp.numel(), NANZERO_BLOCK),)
+            out = torch.empty_like(inp, dtype=dtype)
+            with torch_device_fn.device(inp.device):
+                _nan_to_zero_kernel[grid](
+                    inp, out, inp.numel(), BLOCK_SIZE=NANZERO_BLOCK
+                )
         out = out.reshape(shape)
         return out if keepdim else _squeeze_dims(out, dims)
 

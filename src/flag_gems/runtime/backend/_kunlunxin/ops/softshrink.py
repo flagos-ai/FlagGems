@@ -17,36 +17,39 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.runtime import torch_device_fn
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+config_ = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    kunlunAutoGrid=True,
+    unroll_num=8,
+)
 
+
+@pointwise_dynamic(
+    is_tensor=[True, False], promotion_methods=[(0, "DEFAULT")], config=config_
+)
 @triton.jit
-def softshrink_kernel(x_ptr, out_ptr, n_elements, lambd, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(x_ptr + offsets, mask=mask, other=0)
+def softshrink_kernel(x, lambd):
+    # softshrink(x) = x > l ? x - l : (x < -l ? x + l : 0)
+    #              == x - clamp(x, -l, l)
+    # Select-free min/max form: XPU favours min/max over tl.where (single
+    # instruction vs. compare+select), and the expression is exact for finite
+    # x (|x| <= l -> x - x = +-0; x > l -> x - l; x < -l -> x + l).  NaN
+    # propagates through min/max on this backend, matching F.softshrink(NaN)
+    # = NaN (verified against torch on CPU).
     x32 = x.to(tl.float32)
-
-    threshold = lambd  # scalar float32
-
-    gt = x32 > threshold
-    lt = x32 < -threshold
-    res32 = tl.where(gt, x32 - threshold, tl.where(lt, x32 + threshold, 0.0))
-
-    # Propagate NaN: if x is NaN, keep it
-    # res32 = tl.where(x32 != x32, x32, res32)
-    x_bits = x32.to(tl.int32, bitcast=True)
-    is_nan = (x_bits & 0x7FFFFFFF) > 0x7F800000
-    res32 = tl.where(is_nan, x32, res32)
-
-    res = res32.to(x.dtype)
-    tl.store(out_ptr + offsets, res, mask=mask)
+    return (x32 - tl.minimum(tl.maximum(x32, -lambd), lambd)).to(x.dtype)
 
 
 def _check_supported_dtype(t: torch.Tensor):
@@ -56,30 +59,10 @@ def _check_supported_dtype(t: torch.Tensor):
         )
 
 
-def _launch_softshrink_kernel(x: torch.Tensor, out: torch.Tensor, lambd: float):
-    n_elements = x.numel()
-    if n_elements == 0:
-        return
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        softshrink_kernel[grid](
-            x,
-            out,
-            n_elements,
-            float(lambd),
-            BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=4,
-        )
-
-
 def softshrink(input: torch.Tensor, lambd: float = 0.5):
     logger.debug("GEMS_KUNLUNXIN SOFTSHRINK")
     _check_supported_dtype(input)
-    x = input.contiguous()
-    out = torch.empty_like(x)
-    _launch_softshrink_kernel(x, out, lambd)
-    return out.reshape_as(input)
+    return softshrink_kernel(input, lambd)
 
 
 def softshrink_out(input: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = None):
@@ -95,15 +78,5 @@ def softshrink_out(input: torch.Tensor, lambd: float = 0.5, out: torch.Tensor = 
             f"Dtype mismatch: input.dtype={input.dtype}, out.dtype={out.dtype}"
         )
     _check_supported_dtype(input)
-
-    x = input.contiguous()
-    if out.is_contiguous():
-        out_buf = out
-    else:
-        out_buf = torch.empty_like(out, memory_format=torch.contiguous_format)
-
-    _launch_softshrink_kernel(x, out_buf, lambd)
-
-    if out_buf.data_ptr() != out.data_ptr():
-        out.copy_(out_buf)
+    softshrink_kernel(input, lambd, out0=out)
     return out

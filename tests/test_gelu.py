@@ -29,8 +29,7 @@ def test_gelu(shape, dtype, approximate):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.nn.functional.gelu(ref_inp, approximate=approximate)
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.gelu(res_inp, approximate=approximate)
+    res_out = flag_gems.gelu(res_inp, approximate=approximate)
 
     atol = 1e-4
     if flag_gems.vendor_name == "aipu" and dtype == torch.float16:
@@ -52,10 +51,7 @@ def test_gelu_backward(shape, dtype, approximate):
     ref_in_grad = torch.ops.aten.gelu_backward(
         ref_out, ref_inp, approximate=approximate
     )
-    with flag_gems.use_gems():
-        res_in_grad = torch.ops.aten.gelu_backward(
-            res_out, res_inp, approximate=approximate
-        )
+    res_in_grad = flag_gems.gelu_backward(res_out, res_inp, approximate=approximate)
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
 
@@ -69,7 +65,6 @@ def test_gelu_(shape, dtype, approximate):
     ref_inp = utils.to_reference(res_inp.clone(), True)
 
     ref_out = torch.ops.aten.gelu_.default(ref_inp, approximate=approximate)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.gelu_.default(res_inp, approximate=approximate)
+    res_out = flag_gems.gelu_(res_inp, approximate=approximate)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

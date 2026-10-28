@@ -17,6 +17,7 @@ import pytest
 from . import base, consts, utils
 
 
+@pytest.mark.gt_
 @pytest.mark.gt_scalar_
 def test_gt_scalar_():
     def _scalar_inplace_fn(shape, dtype, device):

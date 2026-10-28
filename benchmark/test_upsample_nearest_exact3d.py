@@ -20,7 +20,7 @@ def test_upsample_nearest_exact3d():
                 yield x, out_size, None, None, None
 
     bench = UpsampleNearestExact3dBenchmark(
-        op_name="_upsample_nearest_exact3d",
+        op_name="upsample_nearest_exact3d",
         torch_op=torch.ops.aten._upsample_nearest_exact3d,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -32,6 +32,7 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         dilation_width = dilation
 
+    # Map the 1-D length axis onto the W axis of an H == 1 2-D convolution.
     if isinstance(padding, str):
         if padding == "same":
             assert stride == 1, (
@@ -50,26 +51,26 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
                 + 1
             )
             return conv2d(
-                input.unsqueeze(-1),
-                weight.unsqueeze(-1),
+                input.unsqueeze(2),
+                weight.unsqueeze(2),
                 bias,
-                (stride_width, 1),
-                (padding_width, 0),
-                (dilation_width, 1),
+                (1, stride_width),
+                (0, padding_width),
+                (1, dilation_width),
                 groups,
-            ).squeeze(-1)[..., (ol - il) :]
+            ).squeeze(2)[..., (ol - il) :]
         elif padding == "valid":
             # For "valid" padding, pass the string directly to conv2d
             # conv2d will handle it properly in its own logic
             return conv2d(
-                input.unsqueeze(-1),
-                weight.unsqueeze(-1),
+                input.unsqueeze(2),
+                weight.unsqueeze(2),
                 bias,
-                (stride_width, 1),
+                (1, stride_width),
                 padding,  # Pass string "valid" directly
-                (dilation_width, 1),
+                (1, dilation_width),
                 groups,
-            ).squeeze(-1)
+            ).squeeze(2)
         else:
             raise ValueError(
                 f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
@@ -79,11 +80,11 @@ def conv1d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         padding_width = padding
     return conv2d(
-        input.unsqueeze(-1),
-        weight.unsqueeze(-1),
+        input.unsqueeze(2),
+        weight.unsqueeze(2),
         bias,
-        (stride_width, 1),
-        (padding_width, 0),
-        (dilation_width, 1),
+        (1, stride_width),
+        (0, padding_width),
+        (1, dilation_width),
         groups,
-    ).squeeze(-1)
+    ).squeeze(2)

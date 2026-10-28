@@ -28,8 +28,7 @@ def test_neg(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.neg(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.neg(inp)
+    res_out = flag_gems.neg(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -42,7 +41,6 @@ def test_neg_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.neg_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.neg_(inp)
+    res_out = flag_gems.neg_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

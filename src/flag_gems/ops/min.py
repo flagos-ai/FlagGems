@@ -128,7 +128,7 @@ def min(inp):
 
 
 def min_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS MIN DIM")
+    logger.debug("GEMS MIN_DIM")
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
     shape = list(inp.shape)
     dim = dim % inp.ndim

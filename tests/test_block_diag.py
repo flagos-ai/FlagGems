@@ -24,8 +24,7 @@ def test_accuracy_block_diag(dtype, shapes):
     refs = [utils.to_reference(b) for b in blocks]
 
     ref_out = torch.block_diag(*refs)
-    with flag_gems.use_gems():
-        res_out = torch.block_diag(*blocks)
+    res_out = flag_gems.block_diag(*blocks)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -41,8 +40,7 @@ def test_accuracy_block_diag_square(dtype):
     refs = [utils.to_reference(b) for b in blocks]
 
     ref_out = torch.block_diag(*refs)
-    with flag_gems.use_gems():
-        res_out = torch.block_diag(*blocks)
+    res_out = flag_gems.block_diag(*blocks)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -60,7 +58,6 @@ def test_accuracy_block_diag_1d_and_scalar(dtype):
     ref_c = utils.to_reference(c)
 
     ref_out = torch.block_diag(ref_a, ref_b, ref_c)
-    with flag_gems.use_gems():
-        res_out = torch.block_diag(a, b, c)
+    res_out = flag_gems.block_diag(a, b, c)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

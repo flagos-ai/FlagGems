@@ -26,21 +26,28 @@ _flagtune_op_registry = {}
 _include_ops = None
 
 
-def _platform_cost_model_available():
-    """Lazily resolve the active platform package without creating import cycles."""
-    from flag_gems.flagtune.runtime.model_package import (
-        platform_model_package_available,
-    )
-
-    return platform_model_package_available()
-
-
 class TuningMode(str, Enum):
     """Runtime configuration-selection path for one LibTuner operator."""
 
     DEFAULT = "default"
     EXPANDED = "expanded"
     COST_MODEL = "cost_model"
+
+
+class CostModelIntent(str, Enum):
+    DISABLED = "disabled"
+    AUTO = "auto"
+    REQUIRED = "required"
+
+
+def resolve_cost_model_intent(*, supports_cost_model=False):
+    """Parse user intent without importing or probing the model runtime."""
+    if _use_flagtune_setting_from_env() is False or not supports_cost_model:
+        return CostModelIntent.DISABLED
+    setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
+    if setting is False:
+        return CostModelIntent.DISABLED
+    return CostModelIntent.REQUIRED if setting else CostModelIntent.AUTO
 
 
 @dataclass(frozen=True)
@@ -143,21 +150,6 @@ def _use_flagtune_setting_from_env():
     return _optional_binary_environment(USE_FLAGTUNE_ENV)
 
 
-def _expanded_from_env():
-    """Return whether the legacy switch explicitly enables FlagTune."""
-    return _use_flagtune_setting_from_env() is True
-
-
-def flagtune_expanded_enabled():
-    """Return whether global expanded search is enabled.
-
-    This intentionally excludes per-operator include-list selection. It keeps
-    decorators that recognize only ``USE_FLAGTUNE=1`` on their exact global
-    enable semantics.
-    """
-    return _expanded_from_env()
-
-
 def flagtune(include=None):
     """Enable runtime FlagTune for selected operators.
 
@@ -198,7 +190,8 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     Default and adapted operators default to Cost Model. ``FLAGTUNE_INCLUDE``
     applies the same capability-based selection to individual operators. An
     adapted operator uses Expanded only when ``USE_FLAGTUNE_COST_MODEL=0``. If
-    the active platform has no model package, it follows the unadapted routes.
+    a model cannot be loaded, the policy handles AUTO fallback. Mode resolution
+    is deliberately independent of device discovery and model availability.
     """
     try:
         name = _normalize_op_name(op_name)
@@ -209,30 +202,10 @@ def resolve_tuning_mode(op_name, *, supports_cost_model=False):
     if use_flagtune_setting is False:
         return TuningMode.DEFAULT
 
-    # An explicit Expanded request does not need a model package. Short-circuit
-    # before probing so this path remains usable in offline environments.
     if supports_cost_model:
-        cost_model_value = os.environ.get(USE_FLAGTUNE_COST_MODEL_ENV)
-        explicitly_expanded = use_flagtune_setting is True or (
-            name in get_flagtune_include()
-        )
-        if (
-            explicitly_expanded
-            and cost_model_value is not None
-            and cost_model_value.strip() == "0"
-        ):
+        intent = resolve_cost_model_intent(supports_cost_model=True)
+        if intent is CostModelIntent.DISABLED:
             return TuningMode.EXPANDED
-
-    if supports_cost_model and not _platform_cost_model_available():
-        supports_cost_model = False
-
-    cost_model_setting = None
-    if supports_cost_model:
-        cost_model_setting = _optional_binary_environment(USE_FLAGTUNE_COST_MODEL_ENV)
-        if cost_model_setting is False:
-            return TuningMode.EXPANDED
-        if cost_model_setting is True or use_flagtune_setting is True:
-            return TuningMode.COST_MODEL
         return TuningMode.COST_MODEL
     if use_flagtune_setting is True or name in get_flagtune_include():
         return TuningMode.EXPANDED
@@ -247,16 +220,26 @@ def flagtune_enabled(op_name):
     )
 
 
-def __getattr__(name):
-    if name == "SUPPORTED_FLAGTUNE_OPS":
-        return get_supported_flagtune_ops()
-    if name == "DEFAULT_FLAGTUNE_INCLUDE":
-        return get_default_flagtune_include()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 register_flagtune_op("mm", default=False, description="matrix multiplication")
+register_flagtune_op(
+    "mm_w8a8_fp8", default=False, description="FP8 W8A8 matrix multiplication"
+)
 register_flagtune_op("bmm", default=False, description="batched matrix multiplication")
+register_flagtune_op(
+    "mv_row",
+    default=False,
+    description="matrix-vector multiplication over a row-major matrix",
+)
+register_flagtune_op(
+    "mv_column",
+    default=False,
+    description="matrix-vector multiplication over a column-major matrix",
+)
+register_flagtune_op(
+    "mv_reduce",
+    default=False,
+    description="split-K partial reduction for matrix-vector multiplication",
+)
 register_flagtune_op(
     "addmm",
     default=False,
@@ -313,17 +296,13 @@ register_flagtune_op(
     description="W8A8 block FP8 batched matrix multiplication",
 )
 
-# DEFAULT_FLAGTUNE_INCLUDE and SUPPORTED_FLAGTUNE_OPS are provided by __getattr__.
-__all__ = [  # noqa: F822
-    "DEFAULT_FLAGTUNE_INCLUDE",
+__all__ = [
     "FLAGTUNE_INCLUDE_ENV",
     "FlagTuneOpSpec",
-    "SUPPORTED_FLAGTUNE_OPS",
     "TuningMode",
     "USE_FLAGTUNE_COST_MODEL_ENV",
     "USE_FLAGTUNE_ENV",
     "flagtune",
-    "flagtune_expanded_enabled",
     "flagtune_enabled",
     "get_default_flagtune_include",
     "get_flagtune_include",

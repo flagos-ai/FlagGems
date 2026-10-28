@@ -24,6 +24,29 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Raw (non-FlagGems) native nonzero kernel on the vendor CUDA-style key. The
+# FlagGems override at the "Autograd" dispatching key intercepts torch.nonzero
+# inside use_gems scopes, and the flag nonzero override is ~20x slower than
+# the vendor kernel (16.5ms vs 0.8ms for a 4096^2 mask), so masked_select
+# deliberately fetches the raw kernel once at import time and calls it with a
+# CUDA-only key set (same pattern as ops/to.py `_XPU_NATIVE_CPU_COPY`). The
+# output is a plain tensor of ascending flat indices; the compaction itself
+# (the gather) is still done by the Triton kernel below.
+try:
+    _NATIVE_NONZERO = torch.library.get_kernel(torch.ops.aten.nonzero.default, "CUDA")
+    _VENDOR_KS = torch._C.DispatchKeySet(torch._C.DispatchKey.CUDA)
+except Exception:  # pragma: no cover
+    logger.warning("masked_select: unable to acquire raw native nonzero kernel")
+    _NATIVE_NONZERO = None
+    _VENDOR_KS = None
+
+
+def _native_nonzero(x):
+    if _NATIVE_NONZERO is not None:
+        return _NATIVE_NONZERO.call_boxed(_VENDOR_KS, x)
+    return x.nonzero()
+
+
 # The old kunlunxin kernel materialized a full global `cumsum` (int64) and did a
 # data-dependent DISCRETE masked STORE (`out_ptr + out_offset`). On XPU a masked
 # scatter store with per-element offsets serializes -> a fixed ~0.029 GBPS wall
@@ -73,7 +96,7 @@ def masked_select(inp, mask):
     # ascending flat positions of the selected elements (row-major == the order
     # masked_select must preserve). Keep int64 as returned by nonzero: converting
     # to int32 costs more (extra full pass) than the contiguous idx-read it saves.
-    idx = mask.ravel().nonzero().ravel()
+    idx = _native_nonzero(mask.ravel()).ravel()
     n_out = idx.numel()
 
     out = torch.empty(n_out, dtype=inp.dtype, device=inp.device)

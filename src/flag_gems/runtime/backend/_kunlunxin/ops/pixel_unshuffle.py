@@ -117,6 +117,43 @@ def _launch(inp, r, out):
         )
 
 
+# Above the copy threshold the gather kernel saturates the XPU strided-load path
+# (~0.10-0.12ms for 196K elements, ~13GB/s, config-insensitive). The same
+# permutation expressed as ONE native strided copy (6D views on both sides, the
+# "_copy_from is not overridden by gems" key used by slice_backward/resize/
+# rot90 fixes) runs at the vendor copy-engine rate (~15us for the same shape,
+# matching torch's ~12-14us). Below the threshold the gather kernel is faster
+# than an extra native launch (~7-10us vs ~10-12us), so keep both paths.
+_COPY_ROUTE_MIN_ELEMENTS = 65536
+
+
+def _contiguous_strides(shape):
+    strides = [1] * len(shape)
+    acc = 1
+    for i in range(len(shape) - 1, -1, -1):
+        strides[i] = acc
+        acc *= shape[i]
+    return tuple(strides)
+
+
+def _launch_copy_route(x, r, out):
+    # single native strided copy: src/dst expressed as same-shape 6D views
+    N, C, H, W = x.shape
+    r = int(r)
+    h_out, w_out = H // r, W // r
+    src6 = x.view(N, C, h_out, r, w_out, r)
+    dst6 = out.view(N, C, r, r, h_out, w_out).permute(0, 1, 4, 2, 5, 3)
+    assert src6.shape == dst6.shape
+    torch.ops.aten._copy_from(src6, dst6, False)
+
+
+def _route(x, r, out):
+    if x.numel() > _COPY_ROUTE_MIN_ELEMENTS:
+        _launch_copy_route(x, r, out)
+    else:
+        _launch(x, r, out)
+
+
 def pixel_unshuffle(input, downscale_factor, *, layout=None):
     logger.debug("GEMS_KUNLUNXIN PIXEL_UNSHUFFLE")
     x = input
@@ -131,8 +168,13 @@ def pixel_unshuffle(input, downscale_factor, *, layout=None):
     ), "H and W must be divisible by downscale_factor"
 
     out_shape = (N, C * r * r, H // r, W // r)
-    out = torch.empty(out_shape, device=x.device, dtype=x.dtype)
-    _launch(x, r, out)
+    # empty_strided is not registered by flag_gems -> native allocator: skips the
+    # gems empty kernel (extra zero-write launch that costs ~10-200us on small
+    # shapes and occasionally degrades to ~100ms on XPU)
+    out = torch.empty_strided(
+        out_shape, _contiguous_strides(out_shape), device=x.device, dtype=x.dtype
+    )
+    _route(x, r, out)
     return out
 
 
@@ -155,5 +197,5 @@ def pixel_unshuffle_out(input, downscale_factor, out):
     if not out.is_contiguous():
         raise ValueError("out must be contiguous")
 
-    _launch(x, r, out)
+    _route(x, r, out)
     return out

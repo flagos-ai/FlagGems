@@ -33,6 +33,7 @@ vendor_info = VendorDescriptor(
     device_query_cmd="ixsmi",
     triton_extra_name=get_triton_extra_name(),
     fp64_enabled=False,
+    tle_enabled=True,
 )
 
 CUSTOMIZED_UNUSED_OPS = ()

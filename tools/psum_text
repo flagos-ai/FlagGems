@@ -40,6 +40,25 @@ DATA_DIR = None
 ARGS = argparse.Namespace()
 
 
+def _format_metric(value):
+    return "N/A" if value is None else f"{value:.3f}"
+
+
+def _format_metric_change(
+    before, after, *, bold=False, colorize=False, compact_before=False
+):
+    before_str = "0" if compact_before and before == 0 else _format_metric(before)
+    change = f"{before_str} -> {_format_metric(after)}"
+    if bold:
+        change = f"**{change}**"
+    if colorize and before is not None and after is not None:
+        color = "Green" if after > before else "Red"
+        if bold:
+            change = f"**{change}**"
+        change = f"<span style='color:{color}'>{change}</span>"
+    return change
+
+
 def load_data(data_path):
     try:
         with data_path.open("r") as f:
@@ -225,7 +244,13 @@ def parse_single_performance():
             line = f"| {status} | {duration:6.2f} seconds | *No test case found.* |"
         else:
             status = f"<span style='color:Green'>{status}</span>"
-            line = f"| {status} | {duration:6.2f} seconds | *All tests completed.* |"
+            skip_reason = op_data.get("native_baseline_skip_reason")
+            if skip_reason:
+                reason = skip_reason.replace("\n", "<br/>")
+                reason = f"<blockquote>Native baseline: N/A ({reason})</blockquote>"
+            else:
+                reason = "*All tests completed.*"
+            line = f"| {status} | {duration:6.2f} seconds | {reason} |"
 
         if case is None:
             return line
@@ -281,47 +306,138 @@ def parse_single_performance():
 
     lines.append("| Dtype  | Speedup | Base | Gems  | Shape |")
     lines.append("|--------|---------|------|-------|-------|")
+    has_native_skip = bool(
+        op_data1.get("native_baseline_skip_reason")
+        or op_data2.get("native_baseline_skip_reason")
+    )
+    if not has_native_skip:
+        for dtype, ddata1 in perf_data1.items():
+            ddata2 = perf_data2.get(dtype, {})
+            speedup1 = ddata1.get("speedup", 0)
+            if ARGS.compare:
+                speedup2 = ddata2.get("speedup", 0)
+                spd_str = f"**{speedup1:.3f} -> {speedup2:.3f}**"
+                if speedup2 > speedup1:
+                    spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
+                else:
+                    spd_str = f"<span style='color:Red'>**{spd_str}**</span>"
+
+                line = f"| {dtype} | {spd_str} | - | - | - |"
+            else:
+                line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
+            lines.append(line)
+
+            for shp, res1 in ddata1.get("details", {}).items():
+                s1 = res1.get("speedup", 0)
+                b1 = res1.get("base", 0)
+                g1 = res1.get("gems", 0)
+
+                if ARGS.compare and shp in ddata2.get("details", {}):
+                    res2 = ddata2.get("details").get(shp)
+                    s2 = res2.get("speedup", 0)
+                    b2 = res2.get("base", 0)
+                    g2 = res2.get("gems", 0)
+
+                    spd_str = f"{s1:.3f} -> {s2:.3f}"
+                    if s2 > s1:
+                        spd_str = f"<span style='color:Green'>{spd_str}</span>"
+                    else:
+                        spd_str = f"<span style='color:Red'>{spd_str}</span>"
+
+                    line = (
+                        f"| | {spd_str} |"
+                        f" {b1:.3f} -> {b2:.3f} |"
+                        f" {g1:.3f} -> {g2:.3f} |"
+                        f" `{shp}` |"
+                    )
+                else:
+                    line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
+
+                lines.append(line)
+
+            # Deal with case where dtype in _after_ but not in _before_
+            if ARGS.compare:
+                for shp, res2 in ddata2.get("details", {}).items():
+                    if shp in ddata1.get("details", {}):
+                        continue
+                    s2 = res2.get("speedup", 0)
+                    b2 = res2.get("base", 0)
+                    g2 = res2.get("gems", 0)
+                    line = (
+                        f"| | 0 -> {s2:.3f} |"
+                        f" 0 -> {b2:.3f} |"
+                        f" 0 -> {g2:.3f} |"
+                        f" `{shp}` |"
+                    )
+                    lines.append(line)
+
+        # Handle dtypes that only exist in the 'after' data
+        if ARGS.compare:
+            for dtype, ddata2 in perf_data2.items():
+                if dtype in perf_data1:
+                    continue
+                speedup2 = ddata2.get("speedup", 0)
+                spd_str = f"**0 -> {speedup2:.3f}**"
+                spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
+                line = f"| {dtype} | {spd_str} | - | - | - |"
+                lines.append(line)
+
+                for shp, res2 in ddata2.get("details", {}).items():
+                    s2 = res2.get("speedup", 0)
+                    b2 = res2.get("base", 0)
+                    g2 = res2.get("gems", 0)
+                    line = (
+                        f"| | 0 -> {s2:.3f} |"
+                        f" 0 -> {b2:.3f} |"
+                        f" 0 -> {g2:.3f} |"
+                        f" `{shp}` |"
+                    )
+                    lines.append(line)
+
+        lines.append("")
+        return lines
+
+    missing_metric1 = None if op_data1.get("native_baseline_skip_reason") else 0
+    missing_metric2 = None if op_data2.get("native_baseline_skip_reason") else 0
+
     for dtype, ddata1 in perf_data1.items():
         ddata2 = perf_data2.get(dtype, {})
-        speedup1 = ddata1.get("speedup", 0)
+        speedup1 = ddata1.get("speedup", missing_metric1)
         if ARGS.compare:
-            speedup2 = ddata2.get("speedup", 0)
-            spd_str = f"**{speedup1:.3f} -> {speedup2:.3f}**"
-            if speedup2 > speedup1:
-                spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
-            else:
-                spd_str = f"<span style='color:Red'>**{spd_str}**</span>"
+            speedup2 = ddata2.get("speedup", missing_metric2)
+            spd_str = _format_metric_change(
+                speedup1, speedup2, bold=True, colorize=True
+            )
 
             line = f"| {dtype} | {spd_str} | - | - | - |"
         else:
-            line = f"| {dtype} | **{speedup1:.3f}** | - | - | - |"
+            line = f"| {dtype} | **{_format_metric(speedup1)}** | - | - | - |"
         lines.append(line)
 
         for shp, res1 in ddata1.get("details", {}).items():
-            s1 = res1.get("speedup", 0)
-            b1 = res1.get("base", 0)
-            g1 = res1.get("gems", 0)
+            s1 = res1.get("speedup", missing_metric1)
+            b1 = res1.get("base", missing_metric1)
+            g1 = res1.get("gems", missing_metric1)
 
             if ARGS.compare and shp in ddata2.get("details", {}):
                 res2 = ddata2.get("details").get(shp)
-                s2 = res2.get("speedup", 0)
-                b2 = res2.get("base", 0)
-                g2 = res2.get("gems", 0)
+                s2 = res2.get("speedup", missing_metric2)
+                b2 = res2.get("base", missing_metric2)
+                g2 = res2.get("gems", missing_metric2)
 
-                spd_str = f"{s1:.3f} -> {s2:.3f}"
-                if s2 > s1:
-                    spd_str = f"<span style='color:Green'>{spd_str}</span>"
-                else:
-                    spd_str = f"<span style='color:Red'>{spd_str}</span>"
+                spd_str = _format_metric_change(s1, s2, colorize=True)
 
                 line = (
                     f"| | {spd_str} |"
-                    f" {b1:.3f} -> {b2:.3f} |"
-                    f" {g1:.3f} -> {g2:.3f} |"
+                    f" {_format_metric_change(b1, b2)} |"
+                    f" {_format_metric_change(g1, g2)} |"
                     f" `{shp}` |"
                 )
             else:
-                line = f"| | {s1:6.3f} | {b1:6.3f} | {g1:6.3f} | `{shp}` |"
+                line = (
+                    f"| | {_format_metric(s1):>6} | {_format_metric(b1):>6} |"
+                    f" {_format_metric(g1):>6} | `{shp}` |"
+                )
 
             lines.append(line)
 
@@ -330,13 +446,13 @@ def parse_single_performance():
             for shp, res2 in ddata2.get("details", {}).items():
                 if shp in ddata1.get("details", {}):
                     continue
-                s2 = res2.get("speedup", 0)
-                b2 = res2.get("base", 0)
-                g2 = res2.get("gems", 0)
+                s2 = res2.get("speedup", missing_metric2)
+                b2 = res2.get("base", missing_metric2)
+                g2 = res2.get("gems", missing_metric2)
                 line = (
-                    f"| | 0 -> {s2:.3f} |"
-                    f" 0 -> {b2:.3f} |"
-                    f" 0 -> {g2:.3f} |"
+                    f"| | {_format_metric_change(missing_metric1, s2, compact_before=True)} |"
+                    f" {_format_metric_change(missing_metric1, b2, compact_before=True)} |"
+                    f" {_format_metric_change(missing_metric1, g2, compact_before=True)} |"
                     f" `{shp}` |"
                 )
                 lines.append(line)
@@ -346,20 +462,25 @@ def parse_single_performance():
         for dtype, ddata2 in perf_data2.items():
             if dtype in perf_data1:
                 continue
-            speedup2 = ddata2.get("speedup", 0)
-            spd_str = f"**0 -> {speedup2:.3f}**"
-            spd_str = f"<span style='color:Green'>**{spd_str}**</span>"
+            speedup2 = ddata2.get("speedup", missing_metric2)
+            spd_str = _format_metric_change(
+                missing_metric1,
+                speedup2,
+                bold=True,
+                colorize=True,
+                compact_before=True,
+            )
             line = f"| {dtype} | {spd_str} | - | - | - |"
             lines.append(line)
 
             for shp, res2 in ddata2.get("details", {}).items():
-                s2 = res2.get("speedup", 0)
-                b2 = res2.get("base", 0)
-                g2 = res2.get("gems", 0)
+                s2 = res2.get("speedup", missing_metric2)
+                b2 = res2.get("base", missing_metric2)
+                g2 = res2.get("gems", missing_metric2)
                 line = (
-                    f"| | 0 -> {s2:.3f} |"
-                    f" 0 -> {b2:.3f} |"
-                    f" 0 -> {g2:.3f} |"
+                    f"| | {_format_metric_change(missing_metric1, s2, compact_before=True)} |"
+                    f" {_format_metric_change(missing_metric1, b2, compact_before=True)} |"
+                    f" {_format_metric_change(missing_metric1, g2, compact_before=True)} |"
                     f" `{shp}` |"
                 )
                 lines.append(line)
@@ -417,9 +538,16 @@ def parse_lines():
                     # Process `base` by averaging across all shapes
                     total = 0
                     count = 0
-                    for sdata in dobj.get("details", {}).values():
-                        total += sdata.get("base", 0)
-                        count += 1
+                    if item["performance"].get("native_baseline_skip_reason"):
+                        for sdata in dobj.get("details", {}).values():
+                            value = sdata.get("base")
+                            if value is not None:
+                                total += value
+                                count += 1
+                    else:
+                        for sdata in dobj.get("details", {}).values():
+                            total += sdata.get("base", 0)
+                            count += 1
 
                     if count == 0:
                         metric = None

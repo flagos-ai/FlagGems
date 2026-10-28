@@ -18,6 +18,25 @@ import torch.nn.functional as F
 
 import flag_gems
 from benchmark.base import Benchmark
+from flag_gems.fused.FLA.chunk import naive_chunk_gated_delta_rule_fwd
+
+
+def torch_chunk_gated_delta_rule_fwd(
+    q, k, v, g, beta, scale, initial_state, output_final_state, cu_seqlens=None
+):
+    """Token-by-token PyTorch baseline for the fixed-length benchmark.
+
+    Speedup is relative to this eager recurrence, not to the FLA Triton kernels.
+    Only the output and final state are produced; chunk-specific intermediates
+    returned by the Gems implementation are not needed by the benchmark.
+    """
+    if cu_seqlens is not None:
+        raise NotImplementedError("The PyTorch baseline only supports fixed lengths")
+
+    output, final_state = naive_chunk_gated_delta_rule_fwd(
+        q, k, v, g, beta, scale, initial_state
+    )
+    return output, final_state if output_final_state else None
 
 
 class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
@@ -48,7 +67,10 @@ class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
         B, H, K, V = 1, 4, 64, 64
 
         q = torch.randn(B, T, H, K, device=device, dtype=dtype)
-        k = torch.randn(B, T, H, K, device=device, dtype=dtype)
+        # Keep the delta-rule recurrence stable over the longest sequences.
+        k = F.normalize(
+            torch.randn(B, T, H, K, device=device, dtype=torch.float32), dim=-1
+        ).to(dtype)
         v = torch.randn(B, T, H, V, device=device, dtype=dtype)
         g = F.logsigmoid(torch.randn(B, T, H, device=device, dtype=dtype))
         beta = torch.rand(B, T, H, device=device, dtype=dtype).sigmoid()
@@ -75,7 +97,7 @@ class ChunkGatedDeltaRuleFwdBenchmark(Benchmark):
 def test_perf_chunk_gated_delta_rule_fwd():
     bench = ChunkGatedDeltaRuleFwdBenchmark(
         op_name="chunk_gated_delta_rule_fwd",
-        torch_op=flag_gems.chunk_gated_delta_rule_fwd,
+        torch_op=torch_chunk_gated_delta_rule_fwd,
     )
     bench.set_gems(flag_gems.chunk_gated_delta_rule_fwd)
     bench.run()

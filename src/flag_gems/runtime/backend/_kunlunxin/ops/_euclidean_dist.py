@@ -1,25 +1,3 @@
-# Kunlunxin (XPU) override of _euclidean_dist.
-#
-# _euclidean_dist(x1, x2) computes pairwise Euclidean distances:
-#   out[i, j] = ||x1[i] - x2[j]||_2 ,  x1:(N,D)  x2:(M,D)  out:(N,M)
-#
-# The generic KernelGen kernel (src/flag_gems/ops/_euclidean_dist.py) launches
-# grid=(N, M): ONE program per output element, each re-loading the full D-length
-# rows of BOTH x1 and x2, doing a D-reduction and storing a single scalar. On XPU
-# that is launch-bound (N*M tiny programs) + O(N*M*D) redundant x1 reloads ->
-# [128,256]x[128,256] (=32768 programs) gems speedup ~0.02, [64,128] ~0.075
-# (harness/perf_ir_3/ir-euclidean_dist-dev6.log).
-#
-# Fix: keep the 1D-reduction structure (XPU handles 1D tiles well; a 2D
-# [BLOCK_M,BLOCK_D] tile + axis reduction hits `out of resource: uni_sram`, and a
-# gems-op composition -- matmul + norms + elementwise -- chains ~10 kernel launches
-# at ~0.15ms each and can wedge the device via async double-buffering), but:
-#   1) load the x1 row ONCE per program and reuse it across a CHUNK of x2 rows
-#      (kills the redundant x1 reloads), and
-#   2) have each program own a CHUNK of output columns so the launch count drops
-#      from N*M to N*cdiv(M,CHUNK).
-# CHUNK is picked to keep the grid around a few hundred programs (enough XPU
-# parallelism without over-serializing each program).
 import logging
 
 import torch
@@ -30,12 +8,12 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()
 @triton.jit
-def _euclidean_dist_kernel(
+def _euclidean_dist_mm_kernel(
     x1_ptr,
     x2_ptr,
     out_ptr,
@@ -45,31 +23,54 @@ def _euclidean_dist_kernel(
     stride_x1,
     stride_x2,
     stride_out,
-    CHUNK: tl.constexpr,
-    BLOCK_D: tl.constexpr,
+    BN: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
 ):
+    """dist = sqrt(relu(||x1||^2 + ||x2||^2 - 2 x1.x2^T)), the same GEMM identity
+    torch._euclidean_dist uses. The x1.x2^T term goes through tl.dot with
+    input_precision=ieee (full fp32 -- tf32 is ~2 off and fails the 1.3e-6 rtol
+    gate); the squared norms are reduced alongside in the same K loop.
+
+    NOTE: the final combine is written step-by-step (acc, then += n1, then += n2)
+    on purpose -- the fused `n1[:,None] + n2[None,:] - 2*dot` expression
+    miscompiles on this backend (two broadcasts of reduction vectors in one
+    expression -> wrong result; verified), whereas the stepwise form is exact.
+    """
     pid_n = tle.program_id(0)
-    pid_mc = tle.program_id(1)
-
-    d_offsets = tl.arange(0, BLOCK_D)
-    d_mask = d_offsets < D
-    # Load the x1 row once; reuse across all CHUNK output columns.
-    x1_vals = tl.load(
-        x1_ptr + pid_n * stride_x1 + d_offsets, mask=d_mask, other=0.0
-    ).to(tl.float32)
-
-    for i in range(CHUNK):
-        m = pid_mc * CHUNK + i
-        m_ok = m < M
-        x2_vals = tl.load(
-            x2_ptr + m * stride_x2 + d_offsets,
-            mask=d_mask & m_ok,
+    pid_m = tle.program_id(1)
+    rn = pid_n * BN + tl.arange(0, BN)
+    rm = pid_m * BM + tl.arange(0, BM)
+    nmask = rn < N
+    mmask = rm < M
+    acc = tl.zeros((BN, BM), dtype=tl.float32)
+    n1 = tl.zeros((BN,), dtype=tl.float32)
+    n2 = tl.zeros((BM,), dtype=tl.float32)
+    for k in range(0, D, BK):
+        kk = k + tl.arange(0, BK)
+        kmask = kk < D
+        a = tl.load(
+            x1_ptr + rn[:, None] * stride_x1 + kk[None, :],
+            mask=nmask[:, None] & kmask[None, :],
             other=0.0,
         ).to(tl.float32)
-        diff = x1_vals - x2_vals
-        dist = tl.sqrt(tl.sum(diff * diff))
-        if m_ok:
-            tl.store(out_ptr + pid_n * stride_out + m, dist)
+        b = tl.load(
+            x2_ptr + rm[:, None] * stride_x2 + kk[None, :],
+            mask=mmask[:, None] & kmask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        acc += tl.dot(a, tl.trans(b), input_precision="ieee")
+        n1 += tl.sum(a * a, axis=1)
+        n2 += tl.sum(b * b, axis=1)
+    dist2 = -2.0 * acc
+    dist2 = dist2 + n1[:, None]
+    dist2 = dist2 + n2[None, :]
+    dist = tl.sqrt(tl.where(dist2 > 0.0, dist2, 0.0))
+    tl.store(
+        out_ptr + rn[:, None] * stride_out + rm[None, :],
+        dist,
+        mask=nmask[:, None] & mmask[None, :],
+    )
 
 
 def _euclidean_dist(x1, x2):
@@ -89,14 +90,16 @@ def _euclidean_dist(x1, x2):
     if N == 0 or M == 0:
         return output
 
-    BLOCK_D = min(triton.next_power_of_2(D), 1024)
-    # Target ~512 programs total: split M into cdiv(512, N) column blocks.
-    n_col_blocks = max(1, triton.cdiv(512, N))
-    CHUNK = triton.cdiv(M, n_col_blocks)
+    # Small output tiles spread the [N,M] grid across many programs/cores (the
+    # pair counts here are tiny and otherwise launch-bound); BK >= 16 so tl.dot
+    # is legal even for tiny D, with kk < D masking the pad lanes to zero.
+    BN = 32
+    BM = 16
+    BK = max(16, min(triton.next_power_of_2(D), 256))
 
     with torch_device_fn.device(x1.device):
-        grid = (N, triton.cdiv(M, CHUNK))
-        _euclidean_dist_kernel[grid](
+        grid = (triton.cdiv(N, BN), triton.cdiv(M, BM))
+        _euclidean_dist_mm_kernel[grid](
             x1,
             x2,
             output,
@@ -106,8 +109,9 @@ def _euclidean_dist(x1, x2):
             x1.stride(0),
             x2.stride(0),
             output.stride(0),
-            CHUNK=CHUNK,
-            BLOCK_D=BLOCK_D,
+            BN=BN,
+            BM=BM,
+            BK=BK,
         )
 
     return output

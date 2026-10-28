@@ -44,10 +44,9 @@ def _run_and_assert(
     ref_out = torch.ops.aten._convolution_mode(
         ref_inp, ref_weight, ref_bias, stride, padding, dil, groups
     ).to(dtype)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._convolution_mode(
-            inp, weight, bias, stride, padding, dil, groups
-        )
+    res_out = flag_gems._convolution_mode(
+        inp, weight, bias, stride, padding, dil, groups
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -136,11 +135,8 @@ def test_convolution_mode_3d(input_shape, weight_shape, groups, padding, dtype, 
 def test_convolution_mode_invalid_padding(dtype):
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        with pytest.raises(ValueError):
-            torch.ops.aten._convolution_mode(
-                inp, weight, None, (1, 1), "reflect", (1, 1), 1
-            )
+    with pytest.raises(ValueError):
+        flag_gems._convolution_mode(inp, weight, None, (1, 1), "reflect", (1, 1), 1)
 
 
 @pytest.mark.convolution_mode
@@ -148,8 +144,5 @@ def test_convolution_mode_invalid_padding(dtype):
 def test_convolution_mode_same_strided_raises(dtype):
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        with pytest.raises(ValueError):
-            torch.ops.aten._convolution_mode(
-                inp, weight, None, (2, 2), "same", (1, 1), 1
-            )
+    with pytest.raises(ValueError):
+        flag_gems._convolution_mode(inp, weight, None, (2, 2), "same", (1, 1), 1)

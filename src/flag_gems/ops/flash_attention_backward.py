@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import logging
 import math
 from typing import Optional, Tuple
@@ -20,7 +21,42 @@ import torch
 import triton
 import triton.language as tl
 
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+except (ImportError, ModuleNotFoundError):
+    # Triton < 3.6 does not have triton.knobs module
+    _autotuning_knobs = None
+
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
+    """Temporarily disable FlagTree AABS for very short sequences.
+
+    AABS shrinks a tl.load-driven BLOCK to next_power_of_2(seqlen) when
+    BLOCK > seqlen. For seqlen < 16 it lowers BLOCK_M/BLOCK_N below Triton's
+    tl.dot K>=16 lower bound (these blocks double as a dot operand), which
+    makes _flash_attn_bwd_dq_fused / _flash_attn_bwd_dkv fail to compile with
+    "Input shapes should have M >= 1, N >= 1 and K >= 16" (decode: seqlen 1).
+    Fall back to the plain (non-adjusted) configs for such shapes.
+    """
+    # The AABS knob exists only on Triton builds that carry FlagTree's
+    # auto-adjust-block-size feature; on stock Triton (knobs present but no
+    # such knob) there is nothing to disable.
+    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
+        yield
+        return
+
+    if min(seqlen_q, seqlen_k) >= 16:
+        yield
+        return
+    previous = _autotuning_knobs.adjust_block_size
+    _autotuning_knobs.adjust_block_size = False
+    try:
+        yield
+    finally:
+        _autotuning_knobs.adjust_block_size = previous
 
 
 def _parse_rng_state(rng_state: torch.Tensor) -> Tuple[int, int]:
@@ -63,7 +99,10 @@ _DKV_CONFIGS = [
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -271,7 +310,10 @@ def _flash_attn_bwd_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -499,7 +541,10 @@ def _flash_attn_bwd_dkv(
 
 @triton.autotune(
     configs=_DQ_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
+    # shared-memory footprint, and a config tuned without an attention bias
+    # can exceed the device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dq_fused(
@@ -709,7 +754,10 @@ def _flash_attn_bwd_varlen_dq_fused(
 
 @triton.autotune(
     configs=_DKV_CONFIGS,
-    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM"],
+    # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
+    # footprint, and a config tuned without an attention bias can exceed the
+    # device limit once recompiled with one.
+    key=["max_seqlen_q", "max_seqlen_k", "HEAD_DIM", "HAS_BIAS"],
 )
 @triton.jit
 def _flash_attn_bwd_varlen_dkv(
@@ -1173,119 +1221,120 @@ def flash_attn_backward(
             attn_bias if has_bias else None
         )
 
-        grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
-        _flash_attn_bwd_dq_fused[grid_dq](
-            Q,
-            K,
-            V,
-            dOut,
-            Out,
-            L,
-            D,
-            dQ,
-            bias_ptr,
-            dbias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            D.stride(0),
-            D.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-            DO_BIAS_GRAD=do_bias_grad,
-        )
+        with _disable_aabs_for_small_seqlen(SeqLen_q, SeqLen_k):
+            grid_dq = lambda META: (triton.cdiv(SeqLen_q, META["BLOCK_M"]), Batch, H_q)
+            _flash_attn_bwd_dq_fused[grid_dq](
+                Q,
+                K,
+                V,
+                dOut,
+                Out,
+                L,
+                D,
+                dQ,
+                bias_ptr,
+                dbias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                D.stride(0),
+                D.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+                DO_BIAS_GRAD=do_bias_grad,
+            )
 
-        grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
-        _flash_attn_bwd_dkv[grid_dkv](
-            Q,
-            K,
-            V,
-            dOut,
-            L,
-            D,
-            dK,
-            dV,
-            bias_ptr,
-            alibi_ptr,
-            scale,
-            group_size,
-            wl,
-            wr,
-            dropout_p,
-            drop_scale,
-            seed_int,
-            base_offset_int,
-            drop_stride_b,
-            drop_stride_h,
-            drop_stride_m,
-            Q.stride(0),
-            Q.stride(1),
-            Q.stride(2),
-            Q.stride(3),
-            K.stride(0),
-            K.stride(1),
-            K.stride(2),
-            K.stride(3),
-            V.stride(0),
-            V.stride(1),
-            V.stride(2),
-            V.stride(3),
-            Out.stride(0),
-            Out.stride(1),
-            Out.stride(2),
-            Out.stride(3),
-            L.stride(0),
-            L.stride(1),
-            sb_b,
-            sb_h,
-            sb_m,
-            sb_n,
-            SeqLen_q,
-            SeqLen_k,
-            HEAD_DIM=Head_Dim,
-            IS_CAUSAL=is_causal,
-            IS_DROPOUT=use_dropout,
-            HAS_WINDOW=has_window,
-            HAS_ALIBI=has_alibi,
-            HAS_BIAS=has_bias,
-        )
+            grid_dkv = lambda META: (triton.cdiv(SeqLen_k, META["BLOCK_N"]), Batch, H_k)
+            _flash_attn_bwd_dkv[grid_dkv](
+                Q,
+                K,
+                V,
+                dOut,
+                L,
+                D,
+                dK,
+                dV,
+                bias_ptr,
+                alibi_ptr,
+                scale,
+                group_size,
+                wl,
+                wr,
+                dropout_p,
+                drop_scale,
+                seed_int,
+                base_offset_int,
+                drop_stride_b,
+                drop_stride_h,
+                drop_stride_m,
+                Q.stride(0),
+                Q.stride(1),
+                Q.stride(2),
+                Q.stride(3),
+                K.stride(0),
+                K.stride(1),
+                K.stride(2),
+                K.stride(3),
+                V.stride(0),
+                V.stride(1),
+                V.stride(2),
+                V.stride(3),
+                Out.stride(0),
+                Out.stride(1),
+                Out.stride(2),
+                Out.stride(3),
+                L.stride(0),
+                L.stride(1),
+                sb_b,
+                sb_h,
+                sb_m,
+                sb_n,
+                SeqLen_q,
+                SeqLen_k,
+                HEAD_DIM=Head_Dim,
+                IS_CAUSAL=is_causal,
+                IS_DROPOUT=use_dropout,
+                HAS_WINDOW=has_window,
+                HAS_ALIBI=has_alibi,
+                HAS_BIAS=has_bias,
+            )
 
     return dQ, dK, dV, dBias
 
@@ -1359,6 +1408,28 @@ def scaled_dot_product_flash_attention_backward(
     is_dropout = dropout_p > 0.0
     rng_tuple = _parse_philox(philox_seed, philox_offset) if is_dropout else None
     use_varlen = (cum_seq_q is not None) and (cum_seq_k is not None)
+    # The opaque ATen entry and the flash backward kernels share the
+    # (B, S, H, D) layout; tensors pass straight through. The log-sum-exp
+    # arrives from the ATen forward in (B, H, S) already, so no transpose is
+    # needed either — only a varlen caller's cumulative-sequence path differs.
+    if use_varlen:
+        return flash_attn_backward(
+            grad_out,
+            query,
+            key,
+            value,
+            out,
+            logsumexp,
+            cu_seq_q=cum_seq_q,
+            cu_seq_k=cum_seq_k,
+            max_seqlen_q=int(max_q),
+            max_seqlen_k=int(max_k),
+            is_dropout=is_dropout,
+            dropout_p=dropout_p,
+            rng_state=rng_tuple,
+            is_causal=is_causal,
+            softmax_scale=scale,
+        )[:3]
     dQ, dK, dV, _ = flash_attn_backward(
         grad_out,
         query,
@@ -1366,8 +1437,6 @@ def scaled_dot_product_flash_attention_backward(
         value,
         out,
         logsumexp,
-        cu_seq_q=cum_seq_q if use_varlen else None,
-        cu_seq_k=cum_seq_k if use_varlen else None,
         max_seqlen_q=int(max_q),
         max_seqlen_k=int(max_k),
         is_dropout=is_dropout,

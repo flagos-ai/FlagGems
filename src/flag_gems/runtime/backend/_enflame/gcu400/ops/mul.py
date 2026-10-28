@@ -46,9 +46,9 @@ def mul_get_configs():
 
 def mul_broadcast_get_configs():
     return [
-        triton.Config({"BLOCK_SIZE": 256}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=3),
         triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=3),
+        triton.Config({"BLOCK_SIZE": 16384}, num_warps=4, num_stages=3),
     ]
 
 

@@ -43,8 +43,30 @@ def conj_physical_kernel(in_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + base + 1, -imag, mask=mask)
 
 
+def launch_conj_physical(src: torch.Tensor, output: torch.Tensor) -> None:
+    """Conjugate ``src`` into ``output`` using the interleaved-pair kernel.
+
+    Both tensors must be complex, same-shape and contiguous: the kernel walks a
+    flat ``(real, imag, real, imag, ...)`` float stream, so a strided operand
+    would be visited in the wrong order. Layout handling is left to the caller
+    (see ``_conj_physical``), which keeps this launch shared between the public
+    and the private op.
+    """
+    n_elements = src.numel()
+    if n_elements == 0:
+        # Nothing to do, and the grid would be empty anyway.
+        return
+
+    in_real_ptr = torch.view_as_real(src)
+    out_real_ptr = torch.view_as_real(output)
+
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    conj_physical_kernel[grid](in_real_ptr, out_real_ptr, n_elements)
+
+
 def conj_physical(input: torch.Tensor) -> torch.Tensor:
-    logger.debug("GEMS Conj_Physical")
+    logger.debug("GEMS CONJ_PHYSICAL")
     if not input.is_complex():
         return input
 
@@ -52,14 +74,8 @@ def conj_physical(input: torch.Tensor) -> torch.Tensor:
     if input.is_conj():
         input = input.resolve_conj()
 
-    n_elements = input.numel()
     src = input if input.is_contiguous() else input.contiguous()
     output = torch.empty_like(src)
-    in_real_ptr = torch.view_as_real(src)
-    out_real_ptr = torch.view_as_real(output)
-
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    conj_physical_kernel[grid](in_real_ptr, out_real_ptr, n_elements)
+    launch_conj_physical(src, output)
 
     return output

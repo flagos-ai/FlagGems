@@ -80,6 +80,7 @@ def cat_copy_contig_kernel_4(
     total_elements_d: tl.int64,
     grid_x,
     BLOCK_X: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
     # dim == 0: every input occupies a contiguous block of the output, so this
     # is a plain 1D masked copy with a per-tensor output base.
@@ -133,6 +134,7 @@ def cat_copy_row_kernel_4(
     rows,
     grid_z,
     BLOCK_X: tl.constexpr,
+    ENABLE_I64: tl.constexpr,
 ):
     # dim > 0: view each input as [pre, row_size] and the output as
     # [pre, dim_size_out*dim_prod_post]. Grid: (blocks_per_row, num_tensors,
@@ -270,6 +272,7 @@ def _cat_run_kernel(
                 total_elements_d,
                 grid_x,
                 BLOCK_X=BLOCK,
+                ENABLE_I64=True,
             )
         else:
             # Row-based copy: grid = (blocks_per_row, num_tensors, grid_z),
@@ -304,6 +307,7 @@ def _cat_run_kernel(
                 pre,
                 grid_z,
                 BLOCK_X=BLOCK,
+                ENABLE_I64=True,
             )
 
         dim_offset = current_dim_offset
@@ -368,7 +372,7 @@ def cat_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME CAT")
+    logger.debug("GEMS_ENFLAME CAT_OUT")
     A = list(A)
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)

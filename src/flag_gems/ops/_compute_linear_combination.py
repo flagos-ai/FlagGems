@@ -143,5 +143,5 @@ def _compute_linear_combination(input, coefficients, *, out=None):
 
 
 def _compute_linear_combination_out(input, coefficients, *, out=None):
-    logger.debug("GEMS _COMPUTE_LINEAR_COMBINATION OUT")
+    logger.debug("GEMS _COMPUTE_LINEAR_COMBINATION_OUT")
     return _compute_linear_combination(input, coefficients, out=out)

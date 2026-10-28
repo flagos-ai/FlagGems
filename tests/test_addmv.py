@@ -47,21 +47,16 @@ def test_addmv(M, N, scalar, dtype):
     alpha = beta = scalar
 
     ref_out1 = torch.addmv(ref_bias1, ref_mat, ref_vec, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out1 = torch.addmv(bias1, mat, vec, alpha=alpha, beta=beta)
+    res_out1 = flag_gems.addmv(bias1, mat, vec, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out1, ref_out1, dtype, reduce_dim=N)
 
     # broadcast bias scalar
     bias2 = torch.randn((), dtype=dtype, device=flag_gems.device)
-    if flag_gems.vendor_name == "kunlunxin":
-        ref_bias2 = utils.to_reference(bias2, True)
-    else:
-        ref_bias2 = utils.to_reference(bias2)
+    ref_bias2 = utils.to_reference(bias2, True)
 
     ref_out2 = torch.addmv(ref_bias2, ref_mat, ref_vec, alpha=alpha, beta=beta)
-    with flag_gems.use_gems():
-        res_out2 = torch.addmv(bias2, mat, vec, alpha=alpha, beta=beta)
+    res_out2 = flag_gems.addmv(bias2, mat, vec, alpha=alpha, beta=beta)
 
     utils.gems_assert_close(res_out2, ref_out2, dtype, reduce_dim=N)
 
@@ -83,7 +78,6 @@ def test_addmv_out(M, N, scalar, dtype):
     alpha = beta = scalar
 
     torch.addmv(ref_bias, ref_mat, ref_vec, alpha=alpha, beta=beta, out=ref_out)
-    with flag_gems.use_gems():
-        torch.addmv(bias, mat, vec, alpha=alpha, beta=beta, out=out)
+    flag_gems.addmv_out(bias, mat, vec, alpha=alpha, beta=beta, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=N)

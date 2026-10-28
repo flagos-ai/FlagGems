@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 _BLOCK_B = 16
+_BLOCK_N_MAX = 64
 _BLOCK_H_MAX = 32
 _BLOCK_K_MAX = 64
 _GEMV_BLOCK_N_MAX = 16
@@ -40,6 +41,12 @@ _GEMV_BLOCK_K_MAX = 128
 _GEMV_HOIST_BLOCK_N = 2
 _GEMV_HOIST_NUM_WARPS = 1
 _SPLIT_BLOCK = 1024
+# MACA tensor-core (MMA) tiles need at least 16 rows: the metax pipeliner aborts in
+# MACAMmaEncodingAttr::composeSharedLayoutForOperand ("tn and tk not meet conditon",
+# third_party/metax/lib/Dialect/TritonGPU/IR/Dialect.cpp) for smaller M tiles, and
+# FlagTree's AABS shrinks an autotuned BLOCK_B down to next_power_of_2(batch_size),
+# so a batch below 16 would otherwise be lowered to M = 1/4/8 dot tiles.
+_MMA_MIN_BLOCK_B = 16
 
 
 def _fma_block_k(size: int, cap: int) -> int:
@@ -615,6 +622,60 @@ def _run_direction(
         seq_len,
         triton.cdiv(3 * hidden_size, META["BLOCK_N"]),
     )
+    # Below 16 rows the dot tiles AABS (input GEMM) and block_b_persist (persistent
+    # recurrence) derive from batch_size drop under the MMA floor (see
+    # _MMA_MIN_BLOCK_B); those shapes take the fixed-config and step-kernel paths instead.
+    small_batch = batch_size < _MMA_MIN_BLOCK_B
+
+    def _input_gemm(x_arg, w_arg, u_arg, gemm_bias, gemm_dtype):
+        args = (
+            x_arg,
+            w_arg,
+            b_ih,
+            u_arg,
+            batch_sizes if batch_sizes is not None else x_arg,
+            input_size,
+            hidden_size,
+            batch_size,
+            x_arg.stride(0),
+            x_arg.stride(1),
+            x_arg.stride(2),
+            w_ih_stride_r,
+            w_ih_stride_c,
+            b_ih_stride,
+            u_arg.stride(0),
+            u_arg.stride(1),
+            u_arg.stride(2),
+        )
+        meta = {
+            "PACKED": batch_sizes is not None,
+            "HAS_BIAS": gemm_bias,
+            "COMPUTE_DTYPE": gemm_dtype,
+        }
+        if not small_batch:
+            _gru_input_gemm_kernel[input_gemm_grid](*args, **meta)
+            return
+        # Small batch: launch the same kernel outside the autotuner with a fixed 16-row
+        # tile. AABS rewrites the tuned configs at launch time (BLOCK_B would become
+        # next_power_of_2(batch_size) < 16) and the resulting M < 16 dot aborts the metax
+        # pipeliner (see _MMA_MIN_BLOCK_B); the fixed tile reproduces the post-AABS
+        # BLOCK_N/BLOCK_K and skips the software pipeline as well.
+        block_n = _block_size(3 * hidden_size, _BLOCK_N_MAX)
+        grid = (
+            triton.cdiv(batch_size, _MMA_MIN_BLOCK_B),
+            seq_len,
+            triton.cdiv(3 * hidden_size, block_n),
+        )
+        _gru_input_gemm_kernel.jit_function[grid](
+            *args,
+            BLOCK_B=_MMA_MIN_BLOCK_B,
+            BLOCK_N=block_n,
+            BLOCK_K=_block_size(input_size, _BLOCK_K_MAX),
+            **meta,
+            num_warps=4,
+            num_stages=1,
+        )
+
     # fp64: emulate the input GEMM with three fp32 dots (the autotuned kernel);
     # keep the FMA kernel only for tiny input sizes (< 16 dot K).
     use_split_input = use_split and _ceil_power_of_2(input_size) >= 16
@@ -660,28 +721,7 @@ def _run_direction(
                 (x_hi, w_ih_lo, u2),
                 (x_lo, w_ih_hi, u3),
             ):
-                _gru_input_gemm_kernel[input_gemm_grid](
-                    x_part,
-                    w_part,
-                    b_ih,
-                    u_part,
-                    batch_sizes if batch_sizes is not None else x_part,
-                    input_size,
-                    hidden_size,
-                    batch_size,
-                    x_part.stride(0),
-                    x_part.stride(1),
-                    x_part.stride(2),
-                    w_ih_stride_r,
-                    w_ih_stride_c,
-                    b_ih_stride,
-                    u_part.stride(0),
-                    u_part.stride(1),
-                    u_part.stride(2),
-                    PACKED=batch_sizes is not None,
-                    HAS_BIAS=False,
-                    COMPUTE_DTYPE=tl.float32,
-                )
+                _input_gemm(x_part, w_part, u_part, False, tl.float32)
             _combine3_bias_kernel[(triton.cdiv(input_gates.numel(), _SPLIT_BLOCK),)](
                 u1,
                 u2,
@@ -730,28 +770,7 @@ def _run_direction(
                 num_stages=1,
             )
         else:
-            _gru_input_gemm_kernel[input_gemm_grid](
-                layer_input,
-                w_ih,
-                b_ih,
-                input_gates,
-                batch_sizes if batch_sizes is not None else input_gates,
-                input_size,
-                hidden_size,
-                batch_size,
-                layer_input.stride(0),
-                layer_input.stride(1),
-                layer_input.stride(2),
-                w_ih_stride_r,
-                w_ih_stride_c,
-                b_ih_stride,
-                input_gates.stride(0),
-                input_gates.stride(1),
-                input_gates.stride(2),
-                PACKED=batch_sizes is not None,
-                HAS_BIAS=has_biases,
-                COMPUTE_DTYPE=compute_dtype,
-            )
+            _input_gemm(layer_input, w_ih, input_gates, has_biases, compute_dtype)
 
         block_k_g = _block_size(hidden_size, _GEMV_BLOCK_K_MAX)
         gemv_hoist = hidden_size <= block_k_g
@@ -767,7 +786,13 @@ def _run_direction(
             gemv_num_programs = triton.cdiv(hidden_size, gemv_block_n)
 
         use_gemv = batch_size == 1 and gemv_num_programs <= max_persistent
-        use_persistent = batch_size != 1 and num_programs_persist <= max_persistent
+        # small_batch would shrink the persistent dot's M below the MMA floor: reuse the
+        # step kernels, which keep BLOCK_B = 16 for fp32 and 32 for the fp64 split dots.
+        use_persistent = (
+            batch_size != 1
+            and not small_batch
+            and num_programs_persist <= max_persistent
+        )
         use_split_recur = use_split and not use_gemv
 
         # Pre-split the recurrent weight once for the split-dot kernels.
@@ -889,6 +914,7 @@ def _run_direction(
                     NUM_PROGRAMS=num_programs_persist,
                     COMPUTE_DTYPE=compute_dtype,
                     PACKED=batch_sizes is not None,
+                    num_stages=1,
                 )
             final_h_state = h_buf[seq_len % 2]
         else:

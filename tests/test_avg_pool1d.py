@@ -61,15 +61,14 @@ def test_avg_pool1d(
         count_include_pad=count_include_pad,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.avg_pool1d(
-            inp,
-            kernel_size=[kernel_size],
-            stride=[stride],
-            padding=[padding],
-            ceil_mode=ceil_mode,
-            count_include_pad=count_include_pad,
-        )
+    res_out = flag_gems.avg_pool1d(
+        inp,
+        kernel_size=[kernel_size],
+        stride=[stride],
+        padding=[padding],
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -95,13 +94,12 @@ def test_avg_pool1d_default_stride(
         count_include_pad=count_include_pad,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.avg_pool1d(
-            inp,
-            kernel_size=[kernel_size],
-            padding=[padding],
-            ceil_mode=ceil_mode,
-            count_include_pad=count_include_pad,
-        )
+    res_out = flag_gems.avg_pool1d(
+        inp,
+        kernel_size=[kernel_size],
+        padding=[padding],
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

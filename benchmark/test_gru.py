@@ -1,3 +1,5 @@
+import os
+
 import pytest
 import torch
 
@@ -5,12 +7,17 @@ import flag_gems
 
 from . import base
 
-# torch.nn.GRU has precision issues when using fp16 or bf16 on CPU and GPU.
-DTYPES = [
-    torch.float32,
-]
-if flag_gems.runtime.device.support_fp64:
-    DTYPES.append(torch.float64)
+VENDOR = flag_gems.vendor_name
+# torch_npu.npu_gru only support fp16
+if VENDOR == "ascend":
+    DTYPES = [torch.float16]
+else:
+    # torch.nn.GRU has precision issues when using fp16 or bf16 on CPU and GPU.
+    DTYPES = [
+        torch.float32,
+    ]
+    if flag_gems.runtime.device.support_fp64:
+        DTYPES.append(torch.float64)
 
 torch.backends.cudnn.allow_tf32 = False
 torch.backends.cuda.matmul.allow_tf32 = False
@@ -141,8 +148,14 @@ def test_gru():
         input_fn=gru_input_fn,
         op_name="gru",
         torch_op=torch.gru,
+        gems_op=flag_gems.gru,
         dtypes=DTYPES,
     )
+    # When the number of logical cores exceeds the number of physical cores (65,535),
+    # the compiler automatically adjusts the logical core count to match the physical core count,
+    # thereby reducing scheduling overhead.
+    if flag_gems.vendor_name == "ascend":
+        os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()
 
 
@@ -150,8 +163,11 @@ def test_gru():
 def test_gru_data():
     bench = GRUDataBenchmark(
         input_fn=gru_data_input_fn,
-        op_name="gru.data",
+        op_name="gru_data",
         torch_op=torch.ops.aten.gru.data,
+        gems_op=flag_gems.gru_data,
         dtypes=DTYPES,
     )
+    if flag_gems.vendor_name == "ascend":
+        os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
     bench.run()

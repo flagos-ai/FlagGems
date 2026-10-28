@@ -42,7 +42,6 @@ def test_argmin(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.argmin(ref_inp, dim=dim, keepdim=keepdim)
 
-    with flag_gems.use_gems():
-        res_out = torch.argmin(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.argmin(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
