@@ -245,7 +245,7 @@ def _run(self, other, inplace):
     writebacks = []
 
     for a, b in zip(self, other):
-        out_dtype = _result_dtype(a, b)
+        out_dtype = torch.result_type(a, b)
         if not out_dtype.is_floating_point:  # div promotes integers to float32
             out_dtype = torch.float32
         src_a = _dense(a)
@@ -335,7 +335,7 @@ def _run_scalar_tensor(self, other, inplace):
     writebacks = []
     buckets = {}  # (device, a_dt, out_dt) -> (a_list, d_list)
     for a in self:
-        out_dtype = _result_dtype(a, other)
+        out_dtype = torch.result_type(a, other)
         if not out_dtype.is_floating_point:
             out_dtype = torch.float32
         src_a = _dense(a)

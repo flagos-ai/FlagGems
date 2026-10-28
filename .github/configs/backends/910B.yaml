@@ -17,6 +17,12 @@
 name: 910B
 vendor: Ascend
 
+# backends.yaml key for this backend. When set, ops-test reconciles the
+# image's preinstalled pinned deps (e.g. flagtree) against backends.yaml
+# before running tests, so a version bump in backends.yaml takes effect
+# without waiting for a rebuilt runtime image.
+backend: ascend-cann900
+
 
 # Runner labels for this backends (self-hosted)
 runner_labels: 910b-flaggems-weekly
