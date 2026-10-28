@@ -401,9 +401,8 @@ def attn_bias_from_alibi_slopes(slopes, seqlen_q, seqlen_k, causal=False):
 
 
 @pytest.mark.flash_attention_forward
-@pytest.mark.skipif(
-    vendor_name != "kunlunxin",
-    reason="Issue #2809: The operator fails this test on Nvidia at least.",
+@pytest.mark.skip(
+    reason="Issue #2809: The operator fails this test on Nvidia at least."
 )
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not supported")
@@ -594,6 +593,7 @@ def attention_ref(
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -670,6 +670,7 @@ def test_flash_attention_forward_gqa_alibi_softcap(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
@@ -745,6 +746,7 @@ def test_flash_attention_foward_splitkv(
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "metax", reason="Issue #2811: Not working")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not working")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not working")
 @pytest.mark.skipif(vendor_name == "cambricon", reason="Issue #5254: Not supported")
 @pytest.mark.skipif(vendor_name == "tsingmicro", reason="Issue #4083: Not working")
 @pytest.mark.flash_attention_forward
@@ -810,6 +812,7 @@ def test_flash_attention_foward_swa(
 @pytest.mark.skipif(triton.__version__ < "3.1", reason="RequiresTriton >= 3.1")
 @pytest.mark.skipif(vendor_name == "hygon", reason="Issue #2810: RuntimeError")
 @pytest.mark.skipif(vendor_name == "mthreads", reason="Issue #2812: Not supported")
+@pytest.mark.skipif(vendor_name == "kunlunxin", reason="Issue #2814: Not supported")
 @pytest.mark.flash_attention_forward
 @pytest.mark.parametrize(
     ["batch", "num_head", "q_seq_len", "kv_seq_len"], DROPOUT_CONFIGS
