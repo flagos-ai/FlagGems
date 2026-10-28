@@ -19,8 +19,6 @@ from typing import Generator
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 # matrix_H is a zero-copy view op (matrix conjugate transpose), so the measured
@@ -52,17 +50,17 @@ class MatrixHBenchmark(base.Benchmark):
             yield (inp,)
 
 
-def _matrix_H_op(self):
-    return torch.ops.aten.matrix_H(self)
-
-
+# Both sides are measured as boxed ``torch.ops.aten.matrix_H`` calls: the
+# baseline natively, the candidate under ``use_gems()``.  Handing the harness a
+# bare ``gems_op`` callable instead would drop the dispatcher from the candidate
+# side only, and the resulting "speedup" would be the argument binding the
+# baseline still pays -- not this operator's cost.
 @pytest.mark.matrix_H
 @pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
 def test_matrix_H(dtype):
     bench = MatrixHBenchmark(
         op_name="matrix_H",
-        torch_op=_matrix_H_op,
-        gems_op=flag_gems.ops.matrix_H,
+        torch_op=torch.ops.aten.matrix_H,
         dtypes=[dtype],
     )
     bench.run()
@@ -75,8 +73,7 @@ def test_matrix_H_complex():
     # is a real-valued list and cannot carry it.
     bench = MatrixHBenchmark(
         op_name="matrix_H",
-        torch_op=_matrix_H_op,
-        gems_op=flag_gems.ops.matrix_H,
+        torch_op=torch.ops.aten.matrix_H,
         dtypes=[torch.complex64],
     )
     bench.run()

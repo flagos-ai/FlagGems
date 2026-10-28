@@ -39,7 +39,12 @@ Contract points that drive the implementation:
   (``Tensor.conj``) and the stride-exchange view (``Tensor.transpose``) are
   used -- the same primitives aten composes, and the composition reproduces
   aten's alias chain exactly (``out._base is self``) for real, complex,
-  transposed, strided and offset inputs.
+  transposed, strided and offset inputs.  The ``conj`` call is issued with the
+  backend key excluded, because FlagGems also registers ``aten::_conj``: once
+  this operator is enabled through ``use_gems()``, an unguarded ``conj`` would
+  re-enter that device kernel and return a *physical* copy, dropping the shared
+  storage and the lazy bit.  ``src/flag_gems/ops/real.py`` redispatches past the
+  same kernel for the same reason.
 * **Conjugation is dtype-dependent.** The lazy conjugate bit only exists for
   complex dtypes; for a real tensor ``conj()`` is a no-op that hands back the
   very same object, so the rank-2 result is exactly ``transpose(-2, -1)``.
@@ -69,6 +74,8 @@ import warnings
 
 import torch
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["matrix_H"]
@@ -88,6 +95,26 @@ _CONJ = torch.Tensor.conj
 _TRANSPOSE = torch.Tensor.transpose
 _IS_COMPLEX = torch.Tensor.is_complex
 
+# Parsing also resolves renamed PrivateUse1 keys such as MUSA.
+_BACKEND_KEYSET = torch._C.DispatchKeySet(
+    torch._C._parse_dispatch_key(runtime.device.dispatch_key)
+)
+_EXCLUDE_BACKEND = torch._C._ExcludeDispatchKeyGuard
+
+
+def _lazy_conj(self):
+    """Toggle the lazy conjugate bit without re-entering FlagGems' ``_conj``.
+
+    FlagGems registers a device ``aten::_conj`` kernel that materializes the
+    conjugation.  With this operator enabled through ``use_gems()``, a plain
+    ``conj()`` would dispatch into it and hand back a physical copy, losing the
+    shared storage and the lazy bit the view contract requires.  Only the
+    ``conj`` call is guarded: the backend key is what ``Tensor.transpose``'s
+    ``as_strided`` needs to resolve, so the stride exchange stays outside.
+    """
+    with _EXCLUDE_BACKEND(_BACKEND_KEYSET):
+        return _CONJ(self)
+
 
 def matrix_H(self):
     """Return the zero-copy conjugate-transpose view of the matrix ``self``."""
@@ -97,7 +124,7 @@ def matrix_H(self):
     if ndim == 2:
         if _IS_COMPLEX(self):
             # Complex input: the lazy conjugate bit must be toggled as well.
-            return _TRANSPOSE(_CONJ(self), -2, -1)
+            return _TRANSPOSE(_lazy_conj(self), -2, -1)
         # Real input: conj() is a no-op identity, so the result is the stride
         # exchange.
         return _TRANSPOSE(self, -2, -1)
@@ -108,7 +135,7 @@ def matrix_H(self):
         if not _MATRIX_H_WARN_STATE["warned"]:
             _MATRIX_H_WARN_STATE["warned"] = True
             warnings.warn(_MATRIX_H_0D_MESSAGE, UserWarning, stacklevel=2)
-        return _CONJ(self)
+        return _lazy_conj(self) if _IS_COMPLEX(self) else self
     # Batches of matrices are aten::mH's domain, not this operator's; aten
     # rejects them here and names the alternative in the message.
     raise RuntimeError(
