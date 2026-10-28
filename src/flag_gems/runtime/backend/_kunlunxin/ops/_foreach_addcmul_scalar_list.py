@@ -79,7 +79,7 @@ def _is_fast_path(self, tensor1, tensor2):
 
 
 def _fast_path(self, tensor1, tensor2, value):
-    values = foreach._resolve_scalars(self, value)
+    values, _, _ = foreach._resolve_scalars(self, value)
     dtype = self[0].dtype
     device = self[0].device
     n = len(self)
