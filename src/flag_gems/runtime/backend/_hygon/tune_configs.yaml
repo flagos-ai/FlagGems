@@ -529,161 +529,543 @@ max:
     BLOCK_N: 512
   num_warps: 8
 addmm:
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 128
-  num_stages: 1
-  num_warps: 4
-  num_ldmatrixes: 0
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 1
-  num_warps: 8
-  num_ldmatrixes: 0
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 1
-  num_warps: 4
-  num_ldmatrixes: 0
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 128
-  num_stages: 3
-  num_warps: 4
-  num_ldmatrixes: 1
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 128
-  num_stages: 1
-  num_warps: 4
-  num_ldmatrixes: 1
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 2
-  num_warps: 4
-  num_ldmatrixes: 1
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 64
-  num_stages: 1
-  num_warps: 4
-  num_ldmatrixes: 1
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 64
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 64
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 2
-# Small-M configs: BLOCK_SIZE_M=16 increases tile count → better SM utilization
-# For M=128,N=4096: 16 tiles → (128/16)*(4096/BN), e.g. BN=128 → 256 tiles / 80 SMs = 3.2 waves
-- META:
-    BLOCK_SIZE_M: 16
-    BLOCK_SIZE_N: 32
-    BLOCK_SIZE_K: 128
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 16
-    BLOCK_SIZE_N: 64
-    BLOCK_SIZE_K: 128
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 16
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 64
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 16
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-  num_stages: 4
-  num_warps: 4
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 64
-  num_stages: 4
-  num_warps: 4
-# Large-M compute-bound configs: bigger tiles + more stages for 4096x4096x4096
-# For M=4096,N=4096: 256x256 → 256 tiles / 80 SMs = 3.2 waves, large tile = good register reuse
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 64
-  num_stages: 4
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 64
-  num_stages: 4
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-  num_stages: 3
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 256
-    BLOCK_SIZE_N: 128
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 8
-- META:
-    BLOCK_SIZE_M: 128
-    BLOCK_SIZE_N: 256
-    BLOCK_SIZE_K: 32
-  num_stages: 5
-  num_warps: 8
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+    num_stages: stages
+    num_warps: warps
+  block_m:
+  - 256
+  - 128
+  - 64
+  - 32
+  block_n:
+  - 256
+  - 128
+  - 64
+  - 32
+  block_k:
+  - 128
+  - 64
+  - 32
+  - 16
+  group_m:
+  - 16
+  - 8
+  - 4
+  - 2
+  - 1
+  warps:
+  - 8
+  - 4
+  - 2
+  stages:
+  - 4
+  - 3
+  - 2
+  - 1
+addmm_rowmajor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  stages:
+  - 1
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  stages:
+  - 1
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 256
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+  warps:
+  - 4
+  stages:
+  - 1
+addmm_small:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 16
+  block_n:
+  - 64
+  block_k:
+  - 128
+  - 64
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 1
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 32
+  block_n:
+  - 32
+  block_k:
+  - 128
+  - 64
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 1
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 32
+  block_n:
+  - 64
+  block_k:
+  - 128
+  - 64
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 2
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 32
+  block_n:
+  - 64
+  block_k:
+  - 128
+  - 64
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+addmm_medium:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 64
+  block_n:
+  - 64
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 2
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 2
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 2
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+addmm_fp32:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 64
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 64
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 8
+  stages:
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+addmm_column:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 128
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+      matrix_instr_nonkdim: matrix_instr_nonkdim
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  block_n:
+  - 256
+  block_k:
+  - 64
+  - 32
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 4
+  stages:
+  - 2
+  - 1
+  matrix_instr_nonkdim:
+  - 16
+addmm_ring:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 256
+  block_n:
+  - 256
+  block_k:
+  - 16
+  group_m:
+  - 8
+  - 4
+  - 1
+  warps:
+  - 8
+  stages:
+  - 1
 cross_entropy_loss:
 - META:
     BLOCK_C: 256
