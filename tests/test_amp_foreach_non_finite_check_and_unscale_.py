@@ -23,6 +23,15 @@ from . import accuracy_utils as utils
 PRIMARY_FLOAT_DTYPES = [torch.float16, torch.float32]
 
 
+def _assert_gradient_values(actual, expected, dtype, device, *, equal_nan=False):
+    assert len(actual) == len(expected)
+    for got, reference in zip(actual, expected):
+        assert got.device == device
+        assert got.dtype == dtype
+        assert got.shape == reference.shape
+        utils.gems_assert_close(got, reference, dtype, equal_nan=equal_nan)
+
+
 @pytest.fixture(autouse=True)
 def _deterministic_seed():
     torch.manual_seed(0)
@@ -53,15 +62,13 @@ def test_amp_foreach_non_finite_check_and_unscale_(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
+    expected_device = res_found_inf.device
     flag_gems._amp_foreach_non_finite_check_and_unscale_(
         res_tensors, res_found_inf, inv_scale
     )
 
     # Compare mutated inputs (in-place operation)
-    for i, (inp, ref_inp) in enumerate(zip(res_tensors, ref_tensors)):
-        utils.gems_assert_close(
-            utils.to_reference(inp, True), utils.to_reference(ref_inp, True), dtype
-        )
+    _assert_gradient_values(res_tensors, ref_tensors, dtype, expected_device)
 
     # Compare found_inf (also mutated in-place)
     utils.gems_assert_equal(res_found_inf, ref_found_inf)
@@ -94,16 +101,14 @@ def test_amp_foreach_non_finite_check_and_unscale__inf(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
+    expected_device = res_found_inf.device
     flag_gems._amp_foreach_non_finite_check_and_unscale_(
         res_tensors, res_found_inf, inv_scale
     )
 
     # Compare mutated inputs (in-place operation)
     # Note: inf values remain unchanged, only finite values are scaled
-    for i, (inp, ref_inp) in enumerate(zip(res_tensors, ref_tensors)):
-        utils.gems_assert_close(
-            utils.to_reference(inp, True), utils.to_reference(ref_inp, True), dtype
-        )
+    _assert_gradient_values(res_tensors, ref_tensors, dtype, expected_device)
 
     # Compare found_inf (also mutated in-place) - should be 1.0 when inf is present
     utils.gems_assert_equal(res_found_inf, ref_found_inf)
@@ -136,18 +141,15 @@ def test_amp_foreach_non_finite_check_and_unscale__nan(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
+    expected_device = res_found_inf.device
     flag_gems._amp_foreach_non_finite_check_and_unscale_(
         res_tensors, res_found_inf, inv_scale
     )
 
     # Compare mutated inputs with equal_nan=True since tensors contain NaN
-    for i, (inp, ref_inp) in enumerate(zip(res_tensors, ref_tensors)):
-        utils.gems_assert_close(
-            utils.to_reference(inp, True),
-            utils.to_reference(ref_inp, True),
-            dtype,
-            equal_nan=True,
-        )
+    _assert_gradient_values(
+        res_tensors, ref_tensors, dtype, expected_device, equal_nan=True
+    )
 
     # Compare found_inf - should be 1.0 when nan is present
     utils.gems_assert_equal(res_found_inf, ref_found_inf)
@@ -181,10 +183,11 @@ def test_amp_foreach_non_finite_check_and_unscale__mutation_contract(
     ]
     found_inf = torch.tensor(initial_found_inf, dtype=torch.float32, device=device)
     inv_scale = torch.tensor(0.25, dtype=torch.float32, device=device)
+    expected_device = found_inf.device
     tensor_layouts = _layout_snapshot(tensors)
     found_layout = _layout_snapshot([found_inf])
     inv_layout = _layout_snapshot([inv_scale])
-    inv_before = inv_scale.clone()
+    inv_before = utils.to_reference(inv_scale.clone(), False)
     ref_tensors = [utils.to_reference(tensor.clone(), False) for tensor in tensors]
     ref_found = utils.to_reference(found_inf.clone(), False)
     ref_scale = utils.to_reference(inv_scale.clone(), False)
@@ -200,13 +203,9 @@ def test_amp_foreach_non_finite_check_and_unscale__mutation_contract(
     _assert_layout_preserved(tensors, tensor_layouts)
     _assert_layout_preserved([found_inf], found_layout)
     _assert_layout_preserved([inv_scale], inv_layout)
-    for got, expected in zip(tensors, ref_tensors):
-        utils.gems_assert_close(
-            utils.to_reference(got, True),
-            utils.to_reference(expected, True),
-            dtype,
-            equal_nan=True,
-        )
+    _assert_gradient_values(
+        tensors, ref_tensors, dtype, expected_device, equal_nan=True
+    )
     utils.gems_assert_equal(found_inf, ref_found)
     utils.gems_assert_equal(inv_scale, inv_before)
 
@@ -224,8 +223,10 @@ def test_amp_foreach_non_finite_check_and_unscale__empty_list():
     assert result is None
     assert found_inf.data_ptr() == found_ptr
     assert inv_scale.data_ptr() == inv_ptr
-    utils.gems_assert_equal(found_inf, torch.zeros_like(found_inf))
-    utils.gems_assert_equal(inv_scale, torch.full_like(inv_scale, 0.5))
+    utils.gems_assert_equal(found_inf, utils.to_reference(torch.zeros_like(found_inf)))
+    utils.gems_assert_equal(
+        inv_scale, utils.to_reference(torch.full_like(inv_scale, 0.5))
+    )
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
@@ -233,7 +234,9 @@ def test_amp_foreach_non_finite_check_and_unscale__empty_list():
 def test_amp_foreach_non_finite_check_and_unscale__rejects_non_sequence():
     found_inf = torch.tensor(0.0, device=flag_gems.device)
     inv_scale = torch.tensor(0.5, device=flag_gems.device)
-    with pytest.raises(TypeError, match="list or tuple"):
+    with pytest.raises(
+        TypeError, match=r"list or tuple|must be tuple of Tensors"
+    ):
         flag_gems._amp_foreach_non_finite_check_and_unscale_(
             torch.ones(4, device=flag_gems.device), found_inf, inv_scale
         )
