@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -119,7 +120,11 @@ def bucket_sort_compact_kernel(
     _, sorted_vals = argsort(key, val, 0, descending=False)
 
     out_mask = (cols < my_count).to(tl.int1)
-    tl.store(out_ptr + out_base + cols, sorted_vals.to(out_ptr.dtype.element_ty), mask=out_mask)
+    tl.store(
+        out_ptr + out_base + cols,
+        sorted_vals.to(out_ptr.dtype.element_ty),
+        mask=out_mask,
+    )
 
 
 def _launch_uniform_bucket_sort(out, n, generator):
@@ -139,7 +144,14 @@ def _launch_uniform_bucket_sort(out, n, generator):
 
     with torch_device_fn.device(device):
         bucket_scatter_kernel[scatter_grid](
-            bucket_keys, bucket_vals, bucket_counts, n, seed, offset, bucket_cap, num_warps=8
+            bucket_keys,
+            bucket_vals,
+            bucket_counts,
+            n,
+            seed,
+            offset,
+            bucket_cap,
+            num_warps=8,
         )
         bucket_sort_compact_kernel[(num_buckets,)](
             bucket_keys, bucket_vals, bucket_counts, out, bucket_cap, num_warps=8
@@ -148,7 +160,14 @@ def _launch_uniform_bucket_sort(out, n, generator):
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "bit_offset"])
-def tile_digit_hist_kernel(key_ptr, hist_ptr, n_elements, bit_offset, NUM_BINS: tl.constexpr, BLOCK: tl.constexpr):
+def tile_digit_hist_kernel(
+    key_ptr,
+    hist_ptr,
+    n_elements,
+    bit_offset,
+    NUM_BINS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid = tl.program_id(0)
     offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     mask = (offs < n_elements.to(tl.int64)).to(tl.int1)
@@ -162,7 +181,15 @@ def tile_digit_hist_kernel(key_ptr, hist_ptr, n_elements, bit_offset, NUM_BINS: 
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "philox_seed", "philox_offset"])
-def fused_keygen_hist_kernel(key_ptr, hist_ptr, n_elements, philox_seed, philox_offset, NUM_BINS: tl.constexpr, BLOCK: tl.constexpr):
+def fused_keygen_hist_kernel(
+    key_ptr,
+    hist_ptr,
+    n_elements,
+    philox_seed,
+    philox_offset,
+    NUM_BINS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid = tl.program_id(0)
     offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     mask = (offs < n_elements.to(tl.int64)).to(tl.int1)
@@ -180,7 +207,9 @@ def fused_keygen_hist_kernel(key_ptr, hist_ptr, n_elements, philox_seed, philox_
 
 @libentry()
 @triton.jit(do_not_specialize=["tiles"])
-def scan_hist_le64k_kernel(tile_hist_ptr, global_off_ptr, tiles, MAX_TILES: tl.constexpr):
+def scan_hist_le64k_kernel(
+    tile_hist_ptr, global_off_ptr, tiles, MAX_TILES: tl.constexpr
+):
     t_idx = tl.arange(0, MAX_TILES)
     t_mask = t_idx < tiles
 
@@ -198,8 +227,16 @@ def scan_hist_le64k_kernel(tile_hist_ptr, global_off_ptr, tiles, MAX_TILES: tl.c
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "bit_offset"])
 def radix_scatter_kernel(
-    key_in_ptr, val_in_ptr, key_out_ptr, val_out_ptr, global_off_ptr,
-    n_elements, bit_offset, HAS_VAL_IN: tl.constexpr, NUM_BINS: tl.constexpr, BLOCK: tl.constexpr
+    key_in_ptr,
+    val_in_ptr,
+    key_out_ptr,
+    val_out_ptr,
+    global_off_ptr,
+    n_elements,
+    bit_offset,
+    HAS_VAL_IN: tl.constexpr,
+    NUM_BINS: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
     offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
@@ -219,7 +256,12 @@ def radix_scatter_kernel(
         rank = tl.cumsum(m.to(tl.int32)) - 1
         dest = tl.load(base + b) + rank.to(tl.int64)
         tl.store(key_out_ptr + dest, key, mask=m, cache_modifier=".cg")
-        tl.store(val_out_ptr + dest, val.to(val_out_ptr.dtype.element_ty), mask=m, cache_modifier=".cg")
+        tl.store(
+            val_out_ptr + dest,
+            val.to(val_out_ptr.dtype.element_ty),
+            mask=m,
+            cache_modifier=".cg",
+        )
 
 
 def _launch_fast_radix_mid(out, n, generator):
@@ -246,11 +288,17 @@ def _launch_fast_radix_mid(out, n, generator):
         for p in range(passes):
             bit_offset = p * bits
             if p == 0:
-                fused_keygen_hist_kernel[grid](key_a, tile_hist, n, seed, offset, num_bins, block, num_warps=4)
+                fused_keygen_hist_kernel[grid](
+                    key_a, tile_hist, n, seed, offset, num_bins, block, num_warps=4
+                )
             else:
-                tile_digit_hist_kernel[grid](k_in, tile_hist, n, bit_offset, num_bins, block, num_warps=4)
+                tile_digit_hist_kernel[grid](
+                    k_in, tile_hist, n, bit_offset, num_bins, block, num_warps=4
+                )
 
-            scan_hist_le64k_kernel[(1,)](tile_hist, global_off, tiles, MAX_TILES=64, num_warps=4)
+            scan_hist_le64k_kernel[(1,)](
+                tile_hist, global_off, tiles, MAX_TILES=64, num_warps=4
+            )
 
             has_val = 1 if p > 0 else 0
             if p == 0:
@@ -267,8 +315,17 @@ def _launch_fast_radix_mid(out, n, generator):
                 val_out = out
 
             radix_scatter_kernel[grid](
-                k_in, val_in, k_out, val_out, global_off,
-                n, bit_offset, has_val, num_bins, block, num_warps=8
+                k_in,
+                val_in,
+                k_out,
+                val_out,
+                global_off,
+                n,
+                bit_offset,
+                has_val,
+                num_bins,
+                block,
+                num_warps=8,
             )
             k_in, k_out = k_out, k_in
 
@@ -337,7 +394,9 @@ def scan_apply_16_kernel(
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elements", "philox_seed", "philox_offset"])
-def gen_keys_kernel(key_ptr, n_elements, philox_seed, philox_offset, BLOCK: tl.constexpr):
+def gen_keys_kernel(
+    key_ptr, n_elements, philox_seed, philox_offset, BLOCK: tl.constexpr
+):
     pid = tl.program_id(0)
     offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
     mask = (offs < n_elements.to(tl.int64)).to(tl.int1)
@@ -374,10 +433,23 @@ def _launch_fast_radix_large(out, n, generator):
 
         for p in range(passes):
             bit_offset = p * bits
-            tile_digit_hist_kernel[grid](k_in, tile_hist, n, bit_offset, num_bins, block, num_warps=4)
-            scan_reduce_16_kernel[(num_chunks, num_bins)](tile_hist, chunk_sums, tiles, CHUNK_SIZE=chunk_size, num_warps=4)
-            scan_spine_16_kernel[(1,)](chunk_sums, chunk_bases, num_chunks, MAX_CHUNKS=128, num_warps=4)
-            scan_apply_16_kernel[(num_chunks, num_bins)](tile_hist, chunk_bases, global_off, tiles, CHUNK_SIZE=chunk_size, num_warps=4)
+            tile_digit_hist_kernel[grid](
+                k_in, tile_hist, n, bit_offset, num_bins, block, num_warps=4
+            )
+            scan_reduce_16_kernel[(num_chunks, num_bins)](
+                tile_hist, chunk_sums, tiles, CHUNK_SIZE=chunk_size, num_warps=4
+            )
+            scan_spine_16_kernel[(1,)](
+                chunk_sums, chunk_bases, num_chunks, MAX_CHUNKS=128, num_warps=4
+            )
+            scan_apply_16_kernel[(num_chunks, num_bins)](
+                tile_hist,
+                chunk_bases,
+                global_off,
+                tiles,
+                CHUNK_SIZE=chunk_size,
+                num_warps=4,
+            )
 
             has_val = 1 if p > 0 else 0
             if p == 0:
@@ -391,8 +463,17 @@ def _launch_fast_radix_large(out, n, generator):
                 val_out = val_b if p < passes - 1 else out
 
             radix_scatter_kernel[grid](
-                k_in, val_in, k_out, val_out, global_off,
-                n, bit_offset, has_val, num_bins, block, num_warps=8
+                k_in,
+                val_in,
+                k_out,
+                val_out,
+                global_off,
+                n,
+                bit_offset,
+                has_val,
+                num_bins,
+                block,
+                num_warps=8,
             )
             k_in, k_out = k_out, k_in
 
@@ -426,7 +507,12 @@ def randperm(
         num_warps = 4
         with torch_device_fn.device(device):
             ultra_slim_bitonic_kernel[(1,)](
-                out, n, seed, offset, BLOCK_SIZE=block_size, num_warps=num_warps,
+                out,
+                n,
+                seed,
+                offset,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
             )
         return out
 

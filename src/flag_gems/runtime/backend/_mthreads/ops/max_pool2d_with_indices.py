@@ -141,9 +141,7 @@ def max_pool2d_channel_packed_kernel(
     kw_best = best_k % kernel_w
     best_h_in = h_base[None, :] + kh_best * dilation_h
     best_w_in = w_base[None, :] + kw_best * dilation_w
-    max_idx_acc = tl.where(
-        best_k >= 0, (best_h_in * in_w + best_w_in).to(tl.int32), -1
-    )
+    max_idx_acc = tl.where(best_k >= 0, (best_h_in * in_w + best_w_in).to(tl.int32), -1)
 
     out_base_offset = c_offsets[:, None] * out_hw + hw_offsets[None, :]
     store_mask = c_mask[:, None] & hw_mask[None, :]
@@ -152,47 +150,23 @@ def max_pool2d_channel_packed_kernel(
         max_val_acc.to(dtype),
         mask=store_mask,
     )
-    tl.store(
-        indices_ptr + out_base_offset, max_idx_acc.to(tl.int64), mask=store_mask
-    )
+    tl.store(indices_ptr + out_base_offset, max_idx_acc.to(tl.int64), mask=store_mask)
 
 
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config(
-            {"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=3, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 8, "BLOCK_W": 32}, num_stages=2, num_warps=2
-        ),
-        triton.Config(
-            {"BLOCK_H": 32, "BLOCK_W": 8}, num_stages=2, num_warps=2
-        ),
-        triton.Config(
-            {"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=4
-        ),
-        triton.Config(
-            {"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=2, num_warps=8
-        ),
-        triton.Config(
-            {"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=2, num_warps=8
-        ),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=3, num_warps=4),
+        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 8, "BLOCK_W": 32}, num_stages=2, num_warps=2),
+        triton.Config({"BLOCK_H": 32, "BLOCK_W": 8}, num_stages=2, num_warps=2),
+        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=4),
+        triton.Config({"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=2, num_warps=8),
     ],
     key=[
         "out_h",
@@ -272,9 +246,7 @@ def max_pool2d_forward_kernel(
     kw_best = best_k % kernel_w
     best_h_in = h_base + kh_best * dilation_h
     best_w_in = w_base + kw_best * dilation_w
-    max_idx_acc = tl.where(
-        best_k >= 0, (best_h_in * in_w + best_w_in).to(tl.int32), -1
-    )
+    max_idx_acc = tl.where(best_k >= 0, (best_h_in * in_w + best_w_in).to(tl.int32), -1)
 
     out_base_ptr = output_ptr + pid_nc * out_h * out_w
     indices_base_ptr = indices_ptr + pid_nc * out_h * out_w

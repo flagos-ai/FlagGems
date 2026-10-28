@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-from typing import Optional
 
 import torch
 import triton
@@ -79,28 +78,13 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
 
 
 def _can_use_contiguous_fastpath(dst: torch.Tensor, src: torch.Tensor) -> bool:
-    return (
-        dst.is_contiguous()
-        and src.is_contiguous()
-        and dst.shape == src.shape
-    )
+    return dst.is_contiguous() and src.is_contiguous() and dst.shape == src.shape
 
 
 def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
     if src.shape == target_shape:
         return src
     return src.expand(target_shape)
-
-
-def copy(
-    template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
-):
-    logger.debug("GEMS COPY (functional)")
-    out = torch.empty_strided(
-        template.size(), template.stride(), dtype=template.dtype, device=template.device
-    )
-    copy_(out, src, non_blocking=bool(non_blocking))
-    return out
 
 
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):

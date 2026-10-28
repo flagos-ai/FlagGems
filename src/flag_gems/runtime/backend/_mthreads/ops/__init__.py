@@ -45,12 +45,11 @@ from .bucketize import bucketize
 from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
-from .clamp import clamp_min_
 from .clip_ import clip_
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
-from .copy import copy, copy_
+from .copy_ import copy_
 from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
@@ -64,7 +63,7 @@ from .div import (
     true_divide_out,
 )
 from .dropout import dropout, dropout_backward
-from .embedding import embedding_backward
+from .embedding_backward import embedding_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
@@ -117,7 +116,8 @@ from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
-from .normal import normal_, normal_tensor_float
+from .normal import normal_
+from .normal_tensor_float import normal_tensor_float
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
@@ -147,8 +147,8 @@ from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
+from .softmax_backward import softmax_backward
 from .softplus_backward import softplus_backward
-from .softmax import  softmax_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
@@ -207,14 +207,12 @@ __all__ = [
     "celu",
     "channel_shuffle",
     "cholesky_inverse",
-    "clamp_min_",
     "clip_",
     "constant_pad_nd",
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
-    "copy",
     "copy_",
     "cudnn_convolution",
     "deg2rad_",
@@ -330,8 +328,8 @@ __all__ = [
     "scatter_reduce_",
     "scatter_reduce_out",
     "silu_backward",
-    "softplus_backward",
     "softmax_backward",
+    "softplus_backward",
     "sort",
     "sort_stable",
     "special_bessel_j0",

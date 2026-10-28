@@ -21,6 +21,7 @@ import triton.language as tl
 
 try:
     import triton.experimental.tle.language as tle
+
     HAS_TLE = tl.constexpr(True)
 except ImportError:
     tle = None
@@ -77,218 +78,26 @@ def _next_pow2(n):
     return 1 << (n - 1).bit_length()
 
 
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
-@triton.jit
-def softmax_kernel_non_inner(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    K,
-    TILE_N: tl.constexpr,
-    TILE_K: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
-):
-    pid_k = ext.program_id(1)
-    pid_m = ext.program_id(0)
-
-    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)
-
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N * K + n_offsets[:, None] * K + k_offsets
-        mask = (n_offsets[:, None] < N) & (k_offsets < K)
-        input_ptrs = input_ptr + offset
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        m = tl.max(inp, 0)
-        e = tl.exp(inp - m[None, :])
-        z = tl.sum(e, 0)
-        out = (e / z).to(output_ptr.dtype.element_ty)
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
-    else:
-        m = tl.full([TILE_N, TILE_K], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_N, TILE_K], value=0.0, dtype=tl.float32)
-
-        for start_n in range(0, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
-            mask = (n_offsets[:, None] < N) & (k_offsets < K)
-            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("-inf"))
-            m_new = tl.maximum(m, inp)
-            all_neg_inf = m_new == float("-inf")
-            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
-            m = m_new
-
-        m_reduced = tl.max(m, 0)
-        z = tl.sum(z * tl.exp(m - m_reduced[None, :]), 0)
-        m = m_reduced
-
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            offsets = pid_m * N * K + n_offsets[:, None] * K + k_offsets
-            mask = (n_offsets[:, None] < N) & (k_offsets[None, :] < K)
-            inp = tl.load(input_ptr + offsets, mask=mask, other=-float("-inf"))
-            o = tl.exp(inp - m[None, :]) / z[None, :]
-            tl.store(output_ptr + offsets, o, mask=mask)
-
-
-@triton.jit
-def next_multiple_of(a, b):
-    return tl.cdiv(a, b) * b
-
-
-@triton.jit
-def prev_multiple_of(a, b):
-    return tl.cdiv(a, b) * b - b
-
-
-@libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
-@triton.jit
-def softmax_kernel_inner(
-    output_ptr,
-    input_ptr,
-    M,
-    N,
-    TILE_N: tl.constexpr,
-    ONE_TILE_PER_CTA: tl.constexpr,
-):
-    pid_m = ext.program_id(0)
-    if ONE_TILE_PER_CTA:
-        n_offsets = tl.arange(0, TILE_N)
-        offset = pid_m * N + n_offsets
-        input_ptrs = input_ptr + offset
-        mask = n_offsets < N
-        inp = tl.load(input_ptrs, mask=mask, other=-float("inf")).to(tl.float32)
-        m = tl.max(inp, 0)
-        e = tl.exp(inp - m)
-        z = tl.sum(e, 0)
-        out = (e / z).to(output_ptr.dtype.element_ty)
-        output_ptrs = output_ptr + offset
-        tl.store(output_ptrs, out, mask=mask)
-    else:
-        m = tl.full([TILE_N], value=float("-inf"), dtype=tl.float32)
-        z = tl.full([TILE_N], value=0.0, dtype=tl.float32)
-        input_ptr += pid_m * N
-        output_ptr += pid_m * N
-
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, previous_multiple, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets)
-            m_new = tl.maximum(m, inp)
-            all_neg_inf = m_new == float("-inf")
-            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
-            m = m_new
-
-        for start_n in range(previous_multiple, N, TILE_N):
-            n_offsets = start_n + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(input_ptr + n_offsets, mask=mask, other=-float("-inf"))
-            m_new = tl.maximum(m, inp)
-            all_neg_inf = m_new == float("-inf")
-            z = tl.where(all_neg_inf, z, z * tl.exp(m - m_new) + tl.exp(inp - m_new))
-            m = m_new
-
-        m_reduced = tl.max(m, 0)
-        z = tl.sum(z * tl.exp(m - m_reduced), 0)
-        m = m_reduced
-
-        previous_multiple = prev_multiple_of(N, TILE_N)
-        for start_n in range(0, TILE_N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            mask = n_offsets < N
-            inp = tl.load(
-                input_ptr + n_offsets,
-                mask=mask,
-                other=-float("-inf"),
-                eviction_policy="evict_first",
-            )
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o, mask=mask)
-        for start_n in range(TILE_N, N, TILE_N):
-            n_offsets = (previous_multiple - start_n) + tl.arange(0, TILE_N)
-            inp = tl.load(input_ptr + n_offsets, eviction_policy="evict_first")
-            o = tl.exp(inp - m) / z
-            tl.store(output_ptr + n_offsets, o)
-
-
-def softmax_out(self, dim, half_to_float=False, *, out):
-    logger.debug("GEMS SOFTMAX_OUT")
-
-    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
-
-    if self.numel() == 0:
-        if tuple(out.shape) != tuple(self.shape):
-            out.resize_(self.shape)
-        zero_(out)
-        return out
-
-    dim = dim % self.ndim
-    M = 1
-    N = self.shape[dim]
-    for i in range(dim):
-        M *= self.shape[i]
-    self = self.contiguous()
-    dtype = torch.float32 if half_to_float else self.dtype
-    if tuple(out.shape) != tuple(self.shape):
-        out.resize_(self.shape)
-    if out.dtype != dtype:
-        raise RuntimeError(
-            f"_softmax.out: expected out dtype {dtype}, got {out.dtype}"
-        )
-    K = self.numel() // M // N
-
-    with torch_device_fn.device(self.device):
-        if K > 1:
-            grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
-            softmax_kernel_non_inner[grid](
-                out,
-                self,
-                M,
-                N,
-                K,
-            )
-        else:
-            grid = (M, 1, 1)
-            softmax_kernel_inner[grid](
-                out,
-                self,
-                M,
-                N,
-            )
-    return out
-
-
-def softmax(self, dim, half_to_float=False):
-    logger.debug("GEMS SOFTMAX")
-
-    assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
-
-    if self.numel() == 0:
-        out_shape = list(self.shape)
-        out = torch.empty(out_shape, dtype=self.dtype, device=self.device)
-        zero_(out)
-        return out
-
-    dtype = torch.float32 if half_to_float else self.dtype
-    out = torch.empty_like(self, dtype=dtype)
-    return softmax_out(self, dim, half_to_float, out=out)
-
-
 @triton.jit
 def _load_val(ptr, mask, is_aligned: tl.constexpr, eviction_policy: tl.constexpr):
     if is_aligned:
         if HAS_TLE:
-            return tle.load(ptr, is_async=True, eviction_policy=eviction_policy).to(tl.float32)
+            return tle.load(ptr, is_async=True, eviction_policy=eviction_policy).to(
+                tl.float32
+            )
         return tl.load(ptr, eviction_policy=eviction_policy).to(tl.float32)
     else:
         if HAS_TLE:
-            return tle.load(ptr, mask=mask, other=0.0, is_async=True, eviction_policy=eviction_policy).to(tl.float32)
-        return tl.load(ptr, mask=mask, other=0.0, eviction_policy=eviction_policy).to(tl.float32)
+            return tle.load(
+                ptr,
+                mask=mask,
+                other=0.0,
+                is_async=True,
+                eviction_policy=eviction_policy,
+            ).to(tl.float32)
+        return tl.load(ptr, mask=mask, other=0.0, eviction_policy=eviction_policy).to(
+            tl.float32
+        )
 
 
 @libentry()
@@ -349,9 +158,7 @@ def softmax_backward_1d_fast(grad_output, output, grad_input):
     NUM_WARPS = 8
     NUM_BLOCKS_REDUCE = min(240, triton.cdiv(N, BLOCK_N))
 
-    partial_sums = torch.empty(
-        (NUM_BLOCKS_REDUCE,), dtype=torch.float32, device=device
-    )
+    partial_sums = torch.empty((NUM_BLOCKS_REDUCE,), dtype=torch.float32, device=device)
     softmax_backward_1d_dot_kernel[(NUM_BLOCKS_REDUCE, 1, 1)](
         output,
         grad_output,
@@ -401,7 +208,9 @@ def softmax_backward_inner_packed_small_n_kernel(
 
     scale = tl.sum(out_tile * out_grad_tile, axis=1)
     in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
-    tl.store(in_grad_ptr + offsets, in_grad_tile.to(in_grad_ptr.dtype.element_ty), mask=mask)
+    tl.store(
+        in_grad_ptr + offsets, in_grad_tile.to(in_grad_ptr.dtype.element_ty), mask=mask
+    )
 
 
 def _packed_small_n_tiles(N):
@@ -427,9 +236,9 @@ def softmax_backward_inner_fused_kernel(
     base = pid_m.to(tl.int64) * N
 
     out_tile = tl.load(out_ptr + base + n_offsets, mask=mask, other=0.0).to(tl.float32)
-    out_grad_tile = tl.load(
-        out_grad_ptr + base + n_offsets, mask=mask, other=0.0
-    ).to(tl.float32)
+    out_grad_tile = tl.load(out_grad_ptr + base + n_offsets, mask=mask, other=0.0).to(
+        tl.float32
+    )
 
     scale = tl.sum(out_tile * out_grad_tile, axis=0)
     in_grad_tile = out_tile * (out_grad_tile - scale)
@@ -480,7 +289,9 @@ def softmax_backward_inner_large_n_tle_kernel(
     for start_n in range(0, N, TILE_N):
         mask = (start_n + elem_offsets) < N
         out_tile = _load_val(curr_out + elem_offsets, mask, IS_ALIGNED, "evict_last")
-        out_grad_tile = _load_val(curr_out_g + elem_offsets, mask, IS_ALIGNED, "evict_first")
+        out_grad_tile = _load_val(
+            curr_out_g + elem_offsets, mask, IS_ALIGNED, "evict_first"
+        )
 
         scale += out_tile * out_grad_tile
         curr_out += TILE_N
@@ -494,13 +305,19 @@ def softmax_backward_inner_large_n_tle_kernel(
     for start_n in range(0, N, TILE_N):
         mask = (start_n + elem_offsets) < N
         out_tile = _load_val(curr_out + elem_offsets, mask, IS_ALIGNED, "evict_first")
-        out_grad_tile = _load_val(curr_out_g + elem_offsets, mask, IS_ALIGNED, "evict_first")
+        out_grad_tile = _load_val(
+            curr_out_g + elem_offsets, mask, IS_ALIGNED, "evict_first"
+        )
         in_grad = out_tile * (out_grad_tile - scale_sum)
 
         if IS_ALIGNED:
             tl.store(curr_in_g + elem_offsets, in_grad.to(in_grad_ptr.dtype.element_ty))
         else:
-            tl.store(curr_in_g + elem_offsets, in_grad.to(in_grad_ptr.dtype.element_ty), mask=mask)
+            tl.store(
+                curr_in_g + elem_offsets,
+                in_grad.to(in_grad_ptr.dtype.element_ty),
+                mask=mask,
+            )
 
         curr_out += TILE_N
         curr_out_g += TILE_N
@@ -744,7 +561,9 @@ def softmax_backward_kernel_non_inner(
         offsets = pid_m * N * K + offsets_n[:, None] * K + offsets_k
         mask = (offsets_n < N)[:, None] & (offsets_k < K)
         out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
         scale = tl.sum(out_tile * out_grad_tile, axis=0)
         in_grad_tile = out_tile * (out_grad_tile - scale[None, :])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -755,9 +574,9 @@ def softmax_backward_kernel_non_inner(
         for _ in range(0, N, TILE_N):
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
             out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
             scale += out_tile * out_grad_tile
             offsets_n += TILE_N
             offsets += TILE_N * K
@@ -768,9 +587,9 @@ def softmax_backward_kernel_non_inner(
         for _ in range(0, N, TILE_N):
             mask = (offsets_n < N)[:, None] & (offsets_k < K)
             out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-            out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0
-            ).to(tl.float32)
+            out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+                tl.float32
+            )
             in_grad_tile = out_tile * (out_grad_tile - scale_sum[None, :])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
             offsets_n += TILE_N
@@ -803,7 +622,9 @@ def softmax_backward_kernel_inner(
         offsets = m_offsets[:, None] * N + n_offsets
         mask = (m_offsets[:, None] < M) & (n_offsets < N)
         out_tile = tl.load(out_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
-        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        out_grad_tile = tl.load(out_grad_ptr + offsets, mask=mask, other=0.0).to(
+            tl.float32
+        )
         scale = tl.sum(out_tile * out_grad_tile, 1)
         in_grad_tile = out_tile * (out_grad_tile - scale[:, None])
         tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -818,7 +639,10 @@ def softmax_backward_kernel_inner(
                 out_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_last"
             ).to(tl.float32)
             out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_first"
+                out_grad_ptr + offsets,
+                mask=mask,
+                other=0.0,
+                eviction_policy="evict_first",
             ).to(tl.float32)
             scale += out_tile * out_grad_tile
             n_offsets += TILE_N
@@ -833,7 +657,10 @@ def softmax_backward_kernel_inner(
                 out_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_first"
             ).to(tl.float32)
             out_grad_tile = tl.load(
-                out_grad_ptr + offsets, mask=mask, other=0.0, eviction_policy="evict_first"
+                out_grad_ptr + offsets,
+                mask=mask,
+                other=0.0,
+                eviction_policy="evict_first",
             ).to(tl.float32)
             in_grad_tile = out_tile * (out_grad_tile - scale_sum[:, None])
             tl.store(in_grad_ptr + offsets, in_grad_tile, mask=mask)
@@ -938,7 +765,9 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
 
             if N <= 32:
                 tile_m, tile_n = _packed_small_n_tiles(N)
-                softmax_backward_inner_packed_small_n_kernel[(triton.cdiv(M, tile_m), 1, 1)](
+                softmax_backward_inner_packed_small_n_kernel[
+                    (triton.cdiv(M, tile_m), 1, 1)
+                ](
                     output,
                     grad_output,
                     grad_input,

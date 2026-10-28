@@ -16,54 +16,14 @@ import logging
 
 import torch
 import triton
-import triton.language as tl
 import triton.experimental.tle.language as tle
+import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit
-def embedding_kernel(
-    out_ptr,
-    in_ptr,
-    weight_ptr,
-    N: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    pid = ext.program_id(0)
-    out_ptr += pid * N
-    in_ptr += pid
-
-    mask = tl.arange(0, BLOCK_SIZE) < N
-    cols = tl.arange(0, BLOCK_SIZE)
-
-    row_idx = tl.load(in_ptr)
-    weight_ptr += row_idx * N
-    embedding_weight = tl.load(weight_ptr + cols, mask, other=0.0)
-    tl.store(out_ptr + cols, embedding_weight, mask)
-
-
-def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
-    logger.debug("GEMS EMBEDDING FORWARD")
-    assert not sparse, "Currently do not support sparse format"
-
-    M = indices.numel()
-    N = weight.shape[-1]
-
-    BLOCK_SIZE = triton.next_power_of_2(N)
-    indices = indices.contiguous()
-    weight = weight.contiguous()
-    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
-
-    with torch_device_fn.device(weight.device):
-        embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
-
-    return output
 
 
 @libentry()
