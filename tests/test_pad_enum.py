@@ -38,7 +38,9 @@ def _candidate_pad_enum(request, inp, pad, mode, value):
     assert result.dtype == before[1]
     assert tuple(result.shape) == tuple(shape)
     assert result.data_ptr() != before[4]
-    assert (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()) == before
+    assert (
+        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+    ) == before
     assert torch.equal(
         inp.detach().cpu().reshape(-1).view(torch.uint8),
         saved.detach().cpu().reshape(-1).view(torch.uint8),
