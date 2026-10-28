@@ -94,7 +94,9 @@ def randn_kernel(
     r3 = uint_to_uniform_float(r3)
     n0, n1 = pair_uniform_to_normal_fast(r0, r1)
     n2, n3 = pair_uniform_to_normal_fast(r2, r3)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
+    # Promote before multiplying: large outputs can exceed signed int32 offsets.
+    output_pid = tl.program_id(0).to(tl.int64)
+    off_0 = output_pid * BLOCK * 4 + tl.arange(0, BLOCK).to(tl.int64)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
     off_3 = off_2 + BLOCK
