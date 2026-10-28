@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._conv_depthwise2d import _conv_depthwise2d
 from ._flash_attention_forward import _flash_attention_forward
 from ._resize_output_ import _resize_output_
@@ -93,6 +94,7 @@ from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unbind_copy import unbind_copy
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_conv_depthwise2d",
     "_flash_attention_forward",
     "_resize_output_",
