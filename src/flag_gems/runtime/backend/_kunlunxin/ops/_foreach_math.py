@@ -43,8 +43,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops._foreach_unary import UNARY_OPS, _scalar_fn
-from flag_gems.utils.foreach import foreach_unary, real_dtype_of
 
+from ..utils.foreach import foreach_unary, real_dtype_of
 from .acos import _acos_body
 from .asin import _asin_body
 from .lgamma import lgamma_func
