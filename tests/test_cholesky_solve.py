@@ -98,7 +98,9 @@ CHOLESKY_SOLVE_COMPLEX_BLOCKED_SHAPES = [
 def _use_cpu_complex_path(dtype):
     # MUSA and T-Head cannot reliably build Hermitian complex inputs with the
     # vendor torch stack, so assemble them on CPU and move them to the device.
-    return VENDOR_NAME in ("thead", "mthreads", "kunlunxin") and dtype in (
+    if IS_KUNLUNXIN and dtype in (torch.complex64, torch.complex128):
+        return True
+    return VENDOR_NAME in ("thead", "mthreads") and dtype in (
         torch.complex64,
         torch.complex128,
     )
