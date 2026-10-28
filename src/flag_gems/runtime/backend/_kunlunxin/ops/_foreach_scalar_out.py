@@ -14,19 +14,13 @@
 
 """Kunlunxin overrides for the out-of-place ``_foreach_*`` scalar overloads.
 
-The shared executor collapses a whole list into one launch whose tensor
-pointers are read back from device memory.  On XPU that indirection lowers
-every access to a per-element gather, so a 16.7M-element list measured ~250x
-slower than the vendor path, while the small shapes pay the same metadata
-round trip on a launch that is already host bound.
-
-These wrappers keep every pointer a kernel argument for uniform floating-point
-lists and pick the launch shape from the list size: one launch carrying the
-whole list for small numels, the big-tile streaming kernel of ``clamp_max`` per
-tensor once memory time dominates.  Anything else -- other dtypes, mixed
-numels/devices, non-contiguous inputs, tensor-valued scalars -- is handed back
-to the shared executor, so promotion, bool and layout semantics stay exactly as
-the generic implementation defines them.
+A uniform floating-point list keeps every tensor pointer a kernel argument and
+picks the launch shape from the list size: one launch carrying the whole list
+for small numels, a streaming tile per tensor once memory time dominates.
+Anything else -- other dtypes, mixed numels/devices, non-contiguous inputs,
+tensor-valued scalars -- is handed back to the shared executor, so promotion,
+bool and layout semantics stay exactly as the generic implementation defines
+them.
 """
 
 import logging
@@ -42,8 +36,7 @@ from ._foreach_binary_scalar import _K16_SLOTS, _foreach16_kernel, _pick_block
 logger = logging.getLogger(__name__)
 
 
-# bf16 arithmetic is not carried natively on this backend: leaving the
-# operation in bf16 measured ~3.2x slower than the f32 form for the same data.
+# bf16 is computed in fp32 and converted back.
 @triton.jit
 def _fadd(a, s):
     if a.dtype == tl.bfloat16:
@@ -89,9 +82,7 @@ def _scalar1_kernel(
 ):
     """One tensor per launch, streaming tile.
 
-    ``BLOCK`` is the widest tile that still streams at full bandwidth here;
-    going below it halves the observed bandwidth, which is why this is not the
-    ``BLOCK=1024`` shape the shared kernel uses.
+    ``BLOCK`` is the widest tile that still streams at full bandwidth here.
     """
     idx = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     if EVEN:
@@ -116,8 +107,8 @@ _K16_MAX_NUMEL = 1 << 19
 
 _BIG_BLOCK = 32768
 _BIG_WARPS = 8
-# A 128K tile with 16 warps gives the best streaming bandwidth for fp16
-# (1.81 TB/s measured vs 1.33 TB/s at 32K); fp32 and bf16 gain nothing from it.
+# A 128K tile with 16 warps streams fastest for fp16; fp32 and bf16 gain
+# nothing from it.
 _BIG_TILES = {torch.float16: (131072, 16, 16384)}
 
 
