@@ -124,6 +124,8 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_sin,
     _foreach_sin_,
     _foreach_sqrt_,
+    _foreach_tanh,
+    _foreach_tanh_,
 )
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
