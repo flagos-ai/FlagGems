@@ -18,6 +18,7 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver as _triton_driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -410,11 +411,20 @@ def _runner_put(cache, key, runner):
     return runner
 
 
-def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
-    """Enqueue the dense fill kernel on the current stream."""
+def _launch_fill(
+    flat_input, out, num_elements: int, num_classes: int, plan, dev, stream
+):
+    """Enqueue the dense fill kernel on the given stream.
+
+    ``dev``/``stream`` are queried once per one_hot call by the caller: the
+    current device/stream cannot change inside a single call (stream state is
+    per-thread and no set_stream runs in between), so hoisting the query is
+    semantically identical to the runner's own per-launch query while saving
+    ~4.7 us of driver round trips on the post-readback host path.
+    """
     grid, rows, class_block, num_warps = plan
     key = (
-        torch_device_fn.current_device(),
+        dev,
         flat_input.dtype,
         flat_input.data_ptr() % 16 == 0,
         out.data_ptr() % 16 == 0,
@@ -423,7 +433,7 @@ def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
     )
     runner = _runner_get(_FILL_RUNNERS, key)
     if runner is not None:
-        runner(flat_input, out, num_elements, num_classes)
+        runner(flat_input, out, num_elements, num_classes, stream)
         return
     compiled = one_hot_dense_kernel[(grid,)](
         flat_input,
@@ -436,8 +446,8 @@ def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
     )
     base = compiled[(grid, 1, 1)]
 
-    def runner(a, b, n, c, _b=base, _r=rows, _cb=class_block):
-        _b(a, b, n, c, _r, _cb)
+    def runner(a, b, n, c, s, _b=base, _r=rows, _cb=class_block):
+        _b(a, b, n, c, _r, _cb, stream=s)
 
     _runner_put(_FILL_RUNNERS, key, runner)
 
@@ -486,11 +496,16 @@ def _launch_validate_fill(flat_input, out, verdict, num_elements, num_classes):
     )
 
 
-def _launch_minmax_kernels(flat_input, num_elements, target):
-    """Enqueue the inferred-path reduction writing [min, max] to target."""
+def _launch_minmax_kernels(flat_input, num_elements, target, dev, stream):
+    """Enqueue the inferred-path reduction writing [min, max] to target.
+
+    ``dev``/``stream`` are hoisted per-call queries (see ``_launch_fill``);
+    every cached runner below passes the stream to the public
+    ``CompiledKernel.__getitem__`` runner, skipping its own redundant
+    device/stream queries."""
     if num_elements <= _MINMAX_DIRECT_MAX_ELEMENTS:
         key = (
-            torch_device_fn.current_device(),
+            dev,
             flat_input.dtype,
             flat_input.data_ptr() % 16 == 0,
             target.data_ptr() % 16 == 0,
@@ -498,7 +513,7 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
         )
         runner = _runner_get(_MINMAX_RUNNERS, key)
         if runner is not None:
-            runner(flat_input, target, num_elements)
+            runner(flat_input, target, num_elements, stream)
             return
         compiled = one_hot_minmax_direct_kernel[(1,)](
             flat_input,
@@ -509,8 +524,8 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
         )
         base = compiled[(1, 1, 1)]
 
-        def runner(a, t, n, _b=base):
-            _b(a, t, n, 8192)
+        def runner(a, t, n, s, _b=base):
+            _b(a, t, n, 8192, stream=s)
 
         _runner_put(_MINMAX_RUNNERS, key, runner)
         return
@@ -519,7 +534,7 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
     num_blocks = triton.cdiv(num_elements, BLOCK_SIZE)
     stat = torch.empty(2 * num_blocks, device=flat_input.device, dtype=torch.int64)
     key = (
-        torch_device_fn.current_device(),
+        dev,
         flat_input.dtype,
         flat_input.data_ptr() % 16 == 0,
         stat.data_ptr() % 16 == 0,
@@ -539,36 +554,36 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
         )
         base = compiled[(num_blocks, 1, 1)]
 
-        def runner(a, s, n, nb, _b=base, _bs=BLOCK_SIZE):
-            _b(a, s, n, nb, _bs)
+        def runner(a, st, n, nb, sm, _b=base, _bs=BLOCK_SIZE):
+            _b(a, st, n, nb, _bs, stream=sm)
 
         _runner_put(_MINMAX_RUNNERS, key, runner)
-    runner(flat_input, stat, num_elements, num_blocks)
+    runner(flat_input, stat, num_elements, num_blocks, stream)
     if num_blocks <= _ONE_CTA_MAX_BLOCKS:
         rkey = (
-            torch_device_fn.current_device(),
+            dev,
             stat.data_ptr() % 16 == 0,
             target.data_ptr() % 16 == 0,
             num_blocks,
         )
         rrunner = _runner_get(_MINMAX_RUNNERS, rkey)
         if rrunner is not None:
-            rrunner(stat, target, num_blocks)
+            rrunner(stat, target, num_blocks, stream)
             return
         compiled = one_hot_minmax_reduce_kernel[(1,)](
             stat, target, num_blocks, BLOCK=1024
         )
         base = compiled[(1, 1, 1)]
 
-        def rrunner(s, t, nb, _b=base):
-            _b(s, t, nb, 1024)
+        def rrunner(s, t, nb, sm, _b=base):
+            _b(s, t, nb, 1024, stream=sm)
 
         _runner_put(_MINMAX_RUNNERS, rkey, rrunner)
         return
     partials = triton.cdiv(num_blocks, _PARTIAL_CHUNK)
     stat2 = torch.empty(2 * partials, device=flat_input.device, dtype=torch.int64)
     pkey = (
-        torch_device_fn.current_device(),
+        dev,
         stat.data_ptr() % 16 == 0,
         stat2.data_ptr() % 16 == 0,
         num_blocks,
@@ -581,13 +596,13 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
         )
         base = compiled[(partials, 1, 1)]
 
-        def prunner(s, s2, nb, pb, _b=base):
-            _b(s, s2, nb, pb, 4096)
+        def prunner(s, s2, nb, pb, sm, _b=base):
+            _b(s, s2, nb, pb, 4096, stream=sm)
 
         _runner_put(_MINMAX_RUNNERS, pkey, prunner)
-    prunner(stat, stat2, num_blocks, partials)
+    prunner(stat, stat2, num_blocks, partials, stream)
     rkey = (
-        torch_device_fn.current_device(),
+        dev,
         stat2.data_ptr() % 16 == 0,
         target.data_ptr() % 16 == 0,
         partials,
@@ -599,11 +614,11 @@ def _launch_minmax_kernels(flat_input, num_elements, target):
         )
         base = compiled[(1, 1, 1)]
 
-        def rrunner(s, t, nb, _b=base):
-            _b(s, t, nb, 1024)
+        def rrunner(s, t, nb, sm, _b=base):
+            _b(s, t, nb, 1024, stream=sm)
 
         _runner_put(_MINMAX_RUNNERS, rkey, rrunner)
-    rrunner(stat2, target, partials)
+    rrunner(stat2, target, partials, stream)
 
 
 # ── fast-path entry point (device tensors only; called after the shared
@@ -636,9 +651,15 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
         # One fused reduction all the way to [min, max] + one blocking
         # readback replaces aminmax + blocking copy_ + host folds.  A single
         # tolist() readback fetches both values with one device-to-host
-        # copy + one synchronization.
+        # copy + one synchronization.  The device/stream are queried once
+        # here and shared with every cached runner below (the current
+        # stream cannot change inside a single call), removing ~4.7 us of
+        # per-launch driver queries from the post-readback host path.
+        active = _triton_driver.active
+        cur_dev = active.get_current_device()
+        cur_stream = active.get_current_stream(cur_dev)
         verdict = torch.empty(2, device=device, dtype=torch.int64)
-        _launch_minmax_kernels(flat_input, num_elements, verdict)
+        _launch_minmax_kernels(flat_input, num_elements, verdict, cur_dev, cur_stream)
         min_val, max_val = verdict.tolist()
         if min_val < 0:
             raise RuntimeError("Class values must be non-negative.")
@@ -729,7 +750,9 @@ def _one_hot_fast_impl(tensor, flat_input, num_elements, num_classes):
                 device=device,
                 dtype=torch.int64,
             )
-            _launch_fill(flat_input, out, num_elements, num_classes, plan)
+            _launch_fill(
+                flat_input, out, num_elements, num_classes, plan, cur_dev, cur_stream
+            )
             return out
         out = torch.zeros(
             num_elements * num_classes,
