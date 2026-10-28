@@ -64,23 +64,34 @@ class MoeLoadBalanceLossBenchmark(base.Benchmark):
         super().__init__(*args, **kwargs)
         self.masked = masked
 
-    def get_input_iter(self, dtype):
-        for num_tokens, num_experts, top_k in self.shapes:
-            logits = torch.randn(
-                num_tokens,
-                num_experts,
-                dtype=dtype,
-                device=self.device,
+    def get_case_iter(self, dtype):
+        for ordinal, (num_tokens, num_experts, top_k) in enumerate(self.shapes):
+            yield self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "gate_logits": (num_tokens, num_experts),
+                        "attention_mask": (num_tokens,) if self.masked else None,
+                    },
+                    params={"top_k": top_k, "masked": self.masked},
+                    builder_args=(num_tokens, num_experts, top_k),
+                ),
             )
-            attention_mask = None
-            if self.masked:
-                attention_mask = torch.ones(
-                    num_tokens,
-                    dtype=torch.int64,
-                    device=self.device,
-                )
-                attention_mask[3::4] = 0
-            yield logits, top_k, attention_mask
+
+    def build_inputs(self, case):
+        plan = case.builder_args[0]
+        num_tokens, num_experts, top_k = plan.builder_args
+        logits = torch.randn(
+            num_tokens, num_experts, dtype=case.dtype, device=self.device
+        )
+        attention_mask = None
+        if self.masked:
+            attention_mask = torch.ones(
+                num_tokens, dtype=torch.int64, device=self.device
+            )
+            attention_mask[3::4] = 0
+        return logits, top_k, attention_mask
 
 
 @pytest.mark.moe_load_balance_loss

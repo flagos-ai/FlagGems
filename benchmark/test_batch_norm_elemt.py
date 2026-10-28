@@ -51,10 +51,25 @@ def torch_batch_norm_elemt(inp, weight, bias, mean, invstd, eps):
     return torch.batch_norm_elemt(inp, weight, bias, mean, invstd, eps)
 
 
+def batch_norm_elemt_case_fn(shape, dtype):
+    if len(shape) < 2:
+        return
+    yield base.BenchmarkCasePlan(
+        shape={"input": shape, "channel_parameters": (shape[1],)},
+        builder_args=(shape,),
+    )
+
+
+def batch_norm_elemt_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    return next(batch_norm_elemt_input_fn(shape, dtype, device))
+
+
 @pytest.mark.batch_norm_elemt
 def test_batch_norm_elemt():
     bench = BatchNormElemtBenchmark(
-        input_fn=batch_norm_elemt_input_fn,
+        case_fn=batch_norm_elemt_case_fn,
+        build_inputs_fn=batch_norm_elemt_build_inputs_fn,
         op_name="batch_norm_elemt",
         torch_op=torch_batch_norm_elemt,
         dtypes=consts.FLOAT_DTYPES,

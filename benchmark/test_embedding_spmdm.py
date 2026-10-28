@@ -59,6 +59,24 @@ def _input_fn(shape, dtype, device, weighted):
     yield table, indices, weights
 
 
+def _case_fn(shape, dtype, weighted):
+    num_embeddings, embedding_dim, batch_size, bag_size = shape
+    yield base.BenchmarkCasePlan(
+        shape={
+            "table": (num_embeddings, embedding_dim),
+            "indices": (batch_size, bag_size),
+            "weights": (batch_size, bag_size) if weighted else None,
+        },
+        params={"weighted": weighted},
+        builder_args=(shape, weighted),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    shape, weighted = plan.builder_args
+    return next(_input_fn(shape, dtype, device, weighted))
+
+
 @pytest.mark.embedding_spmdm
 @pytest.mark.parametrize("weighted", (False, True))
 def test_embedding_spmdm_benchmark(weighted):
@@ -67,7 +85,8 @@ def test_embedding_spmdm_benchmark(weighted):
         op_name=op_name,
         torch_op=_torch_embedding_bag,
         gems_op=flag_gems.embedding_spmdm,
-        input_fn=lambda shape, dtype, device: _input_fn(shape, dtype, device, weighted),
+        case_fn=lambda shape, dtype: _case_fn(shape, dtype, weighted),
+        build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float16, torch.float32, torch.bfloat16],
     )
     bench.run()
