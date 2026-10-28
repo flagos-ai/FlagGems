@@ -14,13 +14,18 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import tl_extra_shim
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
+from flag_gems import runtime
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, libtuner, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# grid from the tuned config's NUM_CTAS (same META mechanism as BLOCK_SIZE)
+num_ctas_grid = lambda META: (META["NUM_CTAS"],)
 
 erf = tl_extra_shim.erf
 exp = tl_extra_shim.exp
@@ -30,75 +35,251 @@ geluTanh = tl_extra_shim.gelu_tanh
 geluNone = tl_extra_shim.gelu_none
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("gelu_none_forward"),
+    key=["n_elements"],
+)
 @triton.jit
-def gelu_none(x):
-    # scale: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    # output = 0.5 * x * (1 + erf(x * scale))
-    output = geluNone(x.to(tl.float32))
-    return output
+def gelu_none_kernel(
+    X_ptr,
+    Out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    total_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+    sub_num = tl.cdiv(max(total_blocks - pid, 0), num_ctas)
+
+    for block_idx in tl.range(0, sub_num):
+        task_idx = pid + num_ctas * block_idx
+        block_start = task_idx * BLOCK_SIZE
+
+        x_blk = tl.make_block_ptr(
+            base=X_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        out_blk = tl.make_block_ptr(
+            base=Out_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+
+        x = tl.load(x_blk, boundary_check=(0,))
+        out = geluNone(x.to(tl.float32))
+        tl.store(out_blk, out.to(x.dtype), boundary_check=(0,))
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("gelu_tanh_forward"),
+    key=["n_elements"],
+)
 @triton.jit
-def gelu_tanh(x):
-    output = (
-        # 0.5 * x * (1 + tanh(x * 0.79788456 * (1 + 0.044715 * pow(x.to(tl.float32), 2))))
-        geluTanh(x.to(tl.float32))
-    )
-    return output
+def gelu_tanh_kernel(
+    X_ptr,
+    Out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    total_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+    sub_num = tl.cdiv(max(total_blocks - pid, 0), num_ctas)
+
+    for block_idx in tl.range(0, sub_num):
+        task_idx = pid + num_ctas * block_idx
+        block_start = task_idx * BLOCK_SIZE
+
+        x_blk = tl.make_block_ptr(
+            base=X_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        out_blk = tl.make_block_ptr(
+            base=Out_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+
+        x = tl.load(x_blk, boundary_check=(0,))
+        out = geluTanh(x.to(tl.float32))
+        tl.store(out_blk, out.to(x.dtype), boundary_check=(0,))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("gelu_none_backward"),
+    key=["n_elements"],
+)
 @triton.jit
-def gelu_backward_none(x, dy):
-    scale1: tl.constexpr = 0.7071067811  # 1 / math.sqrt(2)
-    scale2: tl.constexpr = 0.3989422803  # 1 / math.sqrt(2 * math.pi)
-    x_fp32 = x.to(tl.float32)
-    dydx = (
-        scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
-        + 0.5 * erf(scale1 * x_fp32)
-        + 0.5
-    )
-    dx = dydx * dy
-    return dx
+def gelu_backward_none_kernel(
+    X_ptr,
+    DY_ptr,
+    DX_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    total_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+    sub_num = tl.cdiv(max(total_blocks - pid, 0), num_ctas)
+
+    for block_idx in tl.range(0, sub_num):
+        task_idx = pid + num_ctas * block_idx
+        block_start = task_idx * BLOCK_SIZE
+
+        x_blk = tl.make_block_ptr(
+            base=X_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        dy_blk = tl.make_block_ptr(
+            base=DY_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        dx_blk = tl.make_block_ptr(
+            base=DX_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+
+        x = tl.load(x_blk, boundary_check=(0,))
+        dy = tl.load(dy_blk, boundary_check=(0,))
+        x_fp32 = x.to(tl.float32)
+        scale1: tl.constexpr = 0.7071067811
+        scale2: tl.constexpr = 0.3989422803
+        dydx = (
+            scale2 * x_fp32 * exp(-pow(scale1 * x_fp32, 2))
+            + 0.5 * erf(scale1 * x_fp32)
+            + 0.5
+        )
+        dx = dydx * dy
+        tl.store(dx_blk, dx.to(dy.dtype), boundary_check=(0,))
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("gelu_tanh_backward"),
+    key=["n_elements"],
+)
 @triton.jit
-def gelu_backward_tanh(x, dy):
-    x_fp32 = x.to(tl.float32)
-    # 0.79788456 = math.sqrt(2 / math.pi)
-    tanh_out = tanh(0.79788456 * x_fp32 * (1 + 0.044715 * pow(x_fp32, 2)))
-    dydx = 0.5 * x_fp32 * (
-        (1 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
-    ) + 0.5 * (1 + tanh_out)
-    dx = dydx * dy
-    return dx
+def gelu_backward_tanh_kernel(
+    X_ptr,
+    DY_ptr,
+    DX_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    NUM_CTAS: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    total_blocks = tl.cdiv(n_elements, BLOCK_SIZE)
+    sub_num = tl.cdiv(max(total_blocks - pid, 0), num_ctas)
+
+    for block_idx in tl.range(0, sub_num):
+        task_idx = pid + num_ctas * block_idx
+        block_start = task_idx * BLOCK_SIZE
+
+        x_blk = tl.make_block_ptr(
+            base=X_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        dy_blk = tl.make_block_ptr(
+            base=DY_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+        dx_blk = tl.make_block_ptr(
+            base=DX_ptr,
+            shape=(n_elements,),
+            strides=(1,),
+            offsets=(block_start,),
+            block_shape=(BLOCK_SIZE,),
+            order=(0,),
+        )
+
+        x = tl.load(x_blk, boundary_check=(0,))
+        dy = tl.load(dy_blk, boundary_check=(0,))
+        x_fp32 = x.to(tl.float32)
+        tanh_out = tanh(0.79788456 * x_fp32 * (1.0 + 0.044715 * pow(x_fp32, 2)))
+        dydx = 0.5 * x_fp32 * (
+            (1.0 - pow(tanh_out, 2)) * (0.79788456 + 0.1070322243 * pow(x_fp32, 2))
+        ) + 0.5 * (1.0 + tanh_out)
+        dx = dydx * dy
+        tl.store(dx_blk, dx.to(dy.dtype), boundary_check=(0,))
+
+
+class Gelu(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A, approximate):
+        logger.debug("GEMS_SPACEMIT GELU_FORWARD")
+        A = A.contiguous()
+        out = torch.empty_like(A)
+        n_elements = A.numel()
+        with torch_device_fn.device(A.device):
+            if approximate == "tanh":
+                gelu_tanh_kernel[num_ctas_grid](A, out, n_elements)
+            else:
+                gelu_none_kernel[num_ctas_grid](A, out, n_elements)
+        ctx.save_for_backward(A)
+        ctx.approximate = approximate
+        return out
+
+    @staticmethod
+    def backward(ctx, out_grad):
+        logger.debug("GEMS_SPACEMIT GELU_BACKWARD")
+        (inp,) = ctx.saved_tensors
+        approximate = ctx.approximate
+        inp = inp.contiguous()
+        out_grad = out_grad.contiguous()
+        in_grad = torch.empty_like(out_grad)
+        n_elements = inp.numel()
+        with torch_device_fn.device(inp.device):
+            if approximate == "tanh":
+                gelu_backward_tanh_kernel[num_ctas_grid](
+                    inp, out_grad, in_grad, n_elements
+                )
+            else:
+                gelu_backward_none_kernel[num_ctas_grid](
+                    inp, out_grad, in_grad, n_elements
+                )
+        return in_grad, None
 
 
 def gelu(A, *, approximate="none"):
-    logger.debug("GEMS_SPACEMIT GELU")
-    if approximate == "tanh":
-        out = gelu_tanh(A)
-    else:
-        out = gelu_none(A)
-    return out
-
-
-def gelu_backward(grad_output, self, *, approximate="none"):
-    logger.debug("GEMS_SPACEMIT GELU_BACKWARD")
-    if approximate == "tanh":
-        in_grad = gelu_backward_tanh(self, grad_output)
-    else:
-        in_grad = gelu_backward_none(self, grad_output)
-    return in_grad
-
-
-def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS_SPACEMIT GELU_")
-    if approximate == "tanh":
-        out = gelu_tanh(A, out0=A)
-    else:
-        out = gelu_none(A, out0=A)
-    return out
+    return Gelu.apply(A, approximate)
