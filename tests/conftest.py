@@ -327,13 +327,19 @@ def _skip_unmeasurable_launch_count_tests(items):
 def _skip_unavailable_integral_foreach_reference(items):
     import torch
 
-    probe = torch.tensor([1, -1], dtype=torch.int16, device=flag_gems.device)
-    try:
-        torch._foreach_ceil([probe])
-    except RuntimeError:
-        pass
-    else:
-        return
+    availability = {}
+
+    def reference_available(dtype):
+        if dtype not in availability:
+            probe = torch.tensor([1, -1], dtype=dtype, device=flag_gems.device)
+            try:
+                torch._foreach_ceil([probe])
+            except RuntimeError:
+                availability[dtype] = False
+            else:
+                availability[dtype] = True
+        return availability[dtype]
+
     for item in items:
         if (
             getattr(item, "originalname", item.name)
@@ -341,12 +347,18 @@ def _skip_unavailable_integral_foreach_reference(items):
         ):
             continue
         callspec = getattr(item, "callspec", None)
-        if callspec is not None and callspec.params.get("name") == "ceil":
-            item.add_marker(
-                pytest.mark.skip(
-                    reason="integral ceil has no device reference on this platform"
-                )
+        if callspec is None:
+            continue
+        if callspec.params.get("name") != "ceil":
+            continue
+        dtype = callspec.params.get("dtype")
+        if dtype is not None and reference_available(dtype):
+            continue
+        item.add_marker(
+            pytest.mark.skip(
+                reason="integral ceil has no device reference on this platform"
             )
+        )
 
 
 def pytest_collection_modifyitems(session, config, items):
