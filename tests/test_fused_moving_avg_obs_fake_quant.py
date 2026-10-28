@@ -40,44 +40,22 @@ def ref_fused_moving_avg_obs_fake_quant(
     per_row_fake_quant=False,
     symmetric_quant=False,
 ):
-    """Reference implementation in pure PyTorch."""
-    x = input.float()
-
-    if observer_on:
-        cur_min = x.min()
-        cur_max = x.max()
-        running_min.lerp_(cur_min, averaging_const)
-        running_max.lerp_(cur_max, averaging_const)
-
-    rmin = min(running_min.item(), 0.0)
-    rmax = max(running_max.item(), 0.0)
-    qmin_f = float(quant_min)
-    qmax_f = float(quant_max)
-
-    sc = (rmax - rmin) / (qmax_f - qmin_f)
-    if sc == 0.0:
-        sc = 0.1
-    zp = round(qmin_f - rmin / sc)
-    zp = min(max(zp, qmin_f), qmax_f)
-
-    if symmetric_quant and rmin < 0.0 and rmax > 0.0:
-        sc = max(-rmin / (-qmin_f), rmax / qmax_f)
-        if sc == 0.0:
-            sc = 0.1
-        zp = round((qmin_f + qmax_f) / 2.0)
-
-    scale.fill_(sc)
-    zero_point.fill_(int(zp))
-
-    if fake_quant_on:
-        sc_t = torch.tensor(sc, dtype=torch.float32, device=input.device)
-        zp_t = torch.tensor(zp, dtype=torch.float32, device=input.device)
-        q = torch.round(x / sc_t) + zp_t
-        q = q.clamp(qmin_f, qmax_f)
-        out = (q - zp_t) * sc_t
-        return out.to(input.dtype)
-    else:
-        return input.clone()
+    """Native FP32 observer and quantization state transition."""
+    return torch.ops.aten.fused_moving_avg_obs_fake_quant(
+        input.float(),
+        torch.tensor([int(observer_on)], dtype=torch.long, device=input.device),
+        torch.tensor([int(fake_quant_on)], dtype=torch.long, device=input.device),
+        running_min,
+        running_max,
+        scale,
+        zero_point,
+        averaging_const,
+        quant_min,
+        quant_max,
+        ch_axis,
+        per_row_fake_quant,
+        symmetric_quant,
+    )
 
 
 @pytest.mark.fused_moving_avg_obs_fake_quant
@@ -129,8 +107,8 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
 
     res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
-        torch.tensor([observer_on], dtype=torch.int32),
-        torch.tensor([fake_quant_on], dtype=torch.int32),
+        torch.tensor([observer_on], dtype=torch.long, device=flag_gems.device),
+        torch.tensor([fake_quant_on], dtype=torch.long, device=flag_gems.device),
         running_min_tri,
         running_max_tri,
         scale_tri,
@@ -181,7 +159,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     input_ref = utils.to_reference(input_tensor, False)
     ref_device = input_ref.device
     if observer_on and (
-        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
+        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin", "enflame")
     ):
         pytest.skip(
             "Configured native reference only supports per-row observer "

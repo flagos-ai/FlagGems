@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -44,7 +42,6 @@ def test_grid_sampler_3d():
     ScopedBenchmark(
         op_name="grid_sampler_3d",
         torch_op=torch.ops.aten.grid_sampler_3d.default,
-        gems_op=flag_gems.grid_sampler_3d,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
