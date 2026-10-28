@@ -37,7 +37,7 @@ def dsplit(
     Returns:
         List[torch.Tensor]: List of tensor views.
     """
-    logger.debug("GEMS DSPLIT")
+    logger.debug("GEMS_KUNLUNXIN DSPLIT")
 
     # dsplit requires at least 3 dimensions and always splits along dim=2
     if A.ndim < 3:

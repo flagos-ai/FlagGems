@@ -468,7 +468,7 @@ def _matrix_power(A, n, out=None):
 
 
 def matrix_power(A, n):
-    logger.debug("GEMS MATRIX_POWER")
+    logger.debug("GEMS_KUNLUNXIN MATRIX_POWER")
     assert A.ndim >= 2, "matrix_power expects a tensor of at least 2 dimensions"
     assert A.shape[-1] == A.shape[-2], "matrix_power expects square matrices"
     assert A.dtype in [
@@ -487,7 +487,7 @@ def matrix_power(A, n):
 
 
 def matrix_power_out(A, n, *, out):
-    logger.debug("GEMS MATRIX_POWER_OUT")
+    logger.debug("GEMS_KUNLUNXIN MATRIX_POWER_OUT")
     assert A.ndim >= 2, "matrix_power expects a tensor of at least 2 dimensions"
     assert A.shape[-1] == A.shape[-2], "matrix_power expects square matrices"
     assert A.dtype in [
