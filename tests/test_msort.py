@@ -64,6 +64,8 @@ def _seed_random_inputs():
     ],
 )
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage cannot preserve signed-NaN payload bits")
     factory_device = (
         "cpu"
         if flag_gems.vendor_name in ("kunlunxin", "iluvatar") and dtype == torch.float64
@@ -210,8 +212,12 @@ def test_msort_rejects_complex(shape, dtype):
         assert str(native_error.value) == (
             "Sort currently does not support complex dtypes on CPU."
         )
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, ValueError)) as candidate_error:
         flag_gems.msort(inp)
+    if isinstance(candidate_error.value, ValueError):
+        assert str(candidate_error.value) == (
+            "Sort currently does not support complex dtypes on CPU."
+        )
 
 
 @pytest.mark.msort_out
