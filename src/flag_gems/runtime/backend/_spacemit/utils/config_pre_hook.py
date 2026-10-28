@@ -71,17 +71,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_current_arch_id():
-    import os
-
     import triton
 
-    # In QEMU RPC mode libspert lives only inside the guest, so the host-side
-    # driver detection (driver.c getArchId dlsym) falls back to a hardcoded
-    # "0xA03C" while the compile target is taken from
-    # SPACEMIT_EP_QEMU_SET_CORE_ARCH (driver.py get_current_target). Config
-    # lookup must follow the target arch, not the host fallback.
-    if os.environ.get("SPINE_TRITON_RPC_HOST", ""):
-        return os.environ.get("SPACEMIT_EP_QEMU_SET_CORE_ARCH", "0xF000")
     arch_id = triton.runtime.driver.active.current_arch_id
     return arch_id
 
