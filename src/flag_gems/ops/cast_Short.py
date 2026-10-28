@@ -58,8 +58,7 @@ _MAX_RANK = 8
 
 
 @triton.jit
-def _cast_flat_kernel(x_ptr, o_ptr, numel, FROM_FP8: tl.constexpr,
-                      BLOCK: tl.constexpr):
+def _cast_flat_kernel(x_ptr, o_ptr, numel, FROM_FP8: tl.constexpr, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < numel
@@ -74,12 +73,38 @@ def _cast_flat_kernel(x_ptr, o_ptr, numel, FROM_FP8: tl.constexpr,
 
 
 @triton.jit
-def _cast_strided_kernel(x_ptr, o_ptr, numel,
-                         sh0, sh1, sh2, sh3, sh4, sh5, sh6, sh7,
-                         st0, st1, st2, st3, st4, st5, st6, st7,
-                         ot0, ot1, ot2, ot3, ot4, ot5, ot6, ot7,
-                         NDIM: tl.constexpr, FROM_FP8: tl.constexpr,
-                         BLOCK: tl.constexpr):
+def _cast_strided_kernel(
+    x_ptr,
+    o_ptr,
+    numel,
+    sh0,
+    sh1,
+    sh2,
+    sh3,
+    sh4,
+    sh5,
+    sh6,
+    sh7,
+    st0,
+    st1,
+    st2,
+    st3,
+    st4,
+    st5,
+    st6,
+    st7,
+    ot0,
+    ot1,
+    ot2,
+    ot3,
+    ot4,
+    ot5,
+    ot6,
+    ot7,
+    NDIM: tl.constexpr,
+    FROM_FP8: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid = tl.program_id(0)
     i = pid * BLOCK + tl.arange(0, BLOCK)
     mask = i < numel
@@ -144,10 +169,8 @@ def _cast_strided_kernel(x_ptr, o_ptr, numel,
         r = r // sh2
         f = r % sh1
         g = r // sh1
-        addr = (g * st0 + f * st1 + e * st2 + d * st3 + c * st4
-                + b * st5 + a * st6)
-        oaddr = (g * ot0 + f * ot1 + e * ot2 + d * ot3 + c * ot4
-                 + b * ot5 + a * ot6)
+        addr = g * st0 + f * st1 + e * st2 + d * st3 + c * st4 + b * st5 + a * st6
+        oaddr = g * ot0 + f * ot1 + e * ot2 + d * ot3 + c * ot4 + b * ot5 + a * ot6
     else:
         a = i % sh7
         r = i // sh7
@@ -163,10 +186,26 @@ def _cast_strided_kernel(x_ptr, o_ptr, numel,
         r = r // sh2
         g = r % sh1
         h = r // sh1
-        addr = (h * st0 + g * st1 + f * st2 + e * st3 + d * st4
-                + c * st5 + b * st6 + a * st7)
-        oaddr = (h * ot0 + g * ot1 + f * ot2 + e * ot3 + d * ot4
-                 + c * ot5 + b * ot6 + a * ot7)
+        addr = (
+            h * st0
+            + g * st1
+            + f * st2
+            + e * st3
+            + d * st4
+            + c * st5
+            + b * st6
+            + a * st7
+        )
+        oaddr = (
+            h * ot0
+            + g * ot1
+            + f * ot2
+            + e * ot3
+            + d * ot4
+            + c * ot5
+            + b * ot6
+            + a * ot7
+        )
     x = tl.load(x_ptr + addr, mask=mask, other=0.0)
     if FROM_FP8:
         v = x.to(tl.float32).to(tl.int32).to(tl.int16)
@@ -176,17 +215,19 @@ def _cast_strided_kernel(x_ptr, o_ptr, numel,
 
 
 _FP8_DTYPES = tuple(
-    d for d in (
+    d
+    for d in (
         getattr(torch, "float8_e4m3fn", None),
         getattr(torch, "float8_e5m2", None),
         getattr(torch, "float8_e4m3fnuz", None),
         getattr(torch, "float8_e5m2fnuz", None),
-    ) if d is not None
+    )
+    if d is not None
 )
 
 
 def cast_Short(self, non_blocking=False):
-    logger.debug('GEMS CAST_SHORT')
+    logger.debug("GEMS CAST_SHORT")
     if not isinstance(self, torch.Tensor):
         raise TypeError(
             "_cast_Short(): argument 'self' must be a Tensor, not "
@@ -226,26 +267,50 @@ def cast_Short(self, non_blocking=False):
         else:
             block = _FLAT_BLOCK
         grid = ((numel + block - 1) // block,)
-        _cast_flat_kernel[grid](src, out, numel, FROM_FP8=from_fp8,
-                                BLOCK=block, num_warps=_FLAT_WARPS)
+        _cast_flat_kernel[grid](
+            src, out, numel, FROM_FP8=from_fp8, BLOCK=block, num_warps=_FLAT_WARPS
+        )
         return out
 
     ndim = src.dim()
     if ndim > _MAX_RANK:
-        raise NotImplementedError(
-            "_cast_Short: rank %d is not supported" % ndim
-        )
+        raise NotImplementedError("_cast_Short: rank %d is not supported" % ndim)
     pad = _MAX_RANK - ndim
     sh = list(src.shape) + [1] * pad
     st = list(src.stride()) + [0] * pad
     ot = list(out.stride()) + [0] * pad
     grid = ((numel + _STRIDED_BLOCK - 1) // _STRIDED_BLOCK,)
     _cast_strided_kernel[grid](
-        src, out, numel,
-        sh[0], sh[1], sh[2], sh[3], sh[4], sh[5], sh[6], sh[7],
-        st[0], st[1], st[2], st[3], st[4], st[5], st[6], st[7],
-        ot[0], ot[1], ot[2], ot[3], ot[4], ot[5], ot[6], ot[7],
-        NDIM=ndim, FROM_FP8=from_fp8, BLOCK=_STRIDED_BLOCK,
+        src,
+        out,
+        numel,
+        sh[0],
+        sh[1],
+        sh[2],
+        sh[3],
+        sh[4],
+        sh[5],
+        sh[6],
+        sh[7],
+        st[0],
+        st[1],
+        st[2],
+        st[3],
+        st[4],
+        st[5],
+        st[6],
+        st[7],
+        ot[0],
+        ot[1],
+        ot[2],
+        ot[3],
+        ot[4],
+        ot[5],
+        ot[6],
+        ot[7],
+        NDIM=ndim,
+        FROM_FP8=from_fp8,
+        BLOCK=_STRIDED_BLOCK,
         num_warps=_STRIDED_WARPS,
     )
     return out
