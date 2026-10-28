@@ -487,7 +487,8 @@ def test_ascend_index_large_payload_graph(count, width, dtype, strided_negative)
         (2**24 - 1, 128, 128, True),
         (2**24, 128, 128, False),
         (81920, 128, 2**31 - 128, True),
-        (81920, 128, 2**31 - 127, False),
+        (81920, 128, 2**31 - 127, True),
+        (81920, 128, 2**32, True),
     ],
 )
 def test_ascend_index_scalar_offset_bounds(count, width, row_stride, scalar_expected):
@@ -495,7 +496,7 @@ def test_ascend_index_scalar_offset_bounds(count, width, row_stride, scalar_expe
 
     # Exercise the generated address-width choice without allocating multi-GB
     # inputs or outputs. A rejected scalar path retains int64 vector offsets.
-    _, index_tiles = _gather_function(
+    kernel, index_tiles = _gather_function(
         (2, width),
         (row_stride, 1),
         (0,),
@@ -506,6 +507,10 @@ def test_ascend_index_scalar_offset_bounds(count, width, row_stride, scalar_expe
         (0,),
     )
     assert (index_tiles is not None) == scalar_expected
+    if scalar_expected:
+        source = kernel.fn.src
+        narrow = row_stride + width - 1 < 2**31
+        assert ("source_base = source_base.to(tl.int32)" in source) == narrow
 
 
 @pytest.mark.index
@@ -525,3 +530,71 @@ def test_ascend_index_large_nonleading_payload():
     graph.replay()
     torch.npu.synchronize()
     utils.gems_assert_equal(actual.cpu(), inp_cpu[:, -1 - index_cpu, :])
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend wide index addressing"
+)
+@pytest.mark.parametrize("layout", ["key", "scale", "plain"])
+def test_ascend_index_wide_source_graph(layout):
+    # Allocate real storage and read beyond 2**31 elements. A virtual stride
+    # with only low indices does not exercise the source address width.
+    if layout == "plain":
+        shape, strides, offset, dtype = (2, 3), (1, 2**30 + 16), 17, torch.int8
+    elif layout == "key":
+        shape, strides, offset, dtype = (
+            (3000, 32, 128),
+            (1496384, 128, 1),
+            1409024,
+            torch.int8,
+        )
+    else:
+        shape, strides, offset, dtype = (
+            (3000, 32, 1),
+            (748192, 1, 1),
+            747520,
+            torch.float16,
+        )
+    elements = offset + sum((n - 1) * s for n, s in zip(shape, strides)) + 1
+    required = elements * torch.empty((), dtype=dtype).element_size()
+    free, _ = torch.npu.mem_get_info()
+    if free < required + 512 * 1024**2:
+        pytest.skip("insufficient free NPU memory for real wide-offset storage")
+    storage = torch.empty(elements, dtype=dtype, device=flag_gems.device)
+    inp = storage.as_strided(shape, strides, offset)
+    if layout == "plain":
+        expected_cpu = torch.tensor([[11, 12, 13], [21, 22, 23]], dtype=dtype)
+        inp.copy_(expected_cpu)
+        values = torch.tensor([0, -1])
+        index = values.to(inp.device)
+        actual = flag_gems.index(inp, [index])
+        utils.gems_assert_equal(actual.cpu(), expected_cpu)
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = flag_gems.index(inp, [index])
+        index.copy_(torch.tensor([-1, 0]))
+        graph.replay()
+        torch.npu.synchronize()
+        utils.gems_assert_equal(actual.cpu(), expected_cpu.flip(0))
+    else:
+        payload = (torch.arange(32 * shape[-1]) % 113).reshape(shape[1:]).to(dtype)
+        for page in [0, 2998, 2999]:
+            inp[page].copy_(payload + (page % 7))
+        # Broadcast, negative, and noncontiguous indices in the wide path.
+        holder = torch.tensor([2999, 0, -3000, 0], device=inp.device)
+        pages = holder[::2].reshape(2, 1)
+        slots = torch.tensor([[0, -1, 17]], device=inp.device)
+        expected = torch.stack([payload + (2999 % 7), payload])[:, [0, 31, 17]]
+        actual = flag_gems.index(inp, [pages, slots])
+        utils.gems_assert_equal(actual.cpu(), expected)
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = flag_gems.index(inp, [pages, slots])
+        pages.copy_(torch.tensor([[-2], [-1]]))
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.stack([payload + (2998 % 7), payload + (2999 % 7)])[
+            :, [0, 31, 17]
+        ]
+        utils.gems_assert_equal(actual.cpu(), expected)
