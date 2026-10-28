@@ -127,7 +127,10 @@ def _cpu_flash_forward(
         (batch, query.shape[-2]),
     ]:
         raise RuntimeError("Invalid ALiBi slopes shape")
-    rng_state = torch.random.get_rng_state()[:16].clone().view(torch.uint64)
+    # PPU ATen exposes signed int64 seed/offset tensors. Preserve the real CPU
+    # RNG bytes while representing them with the target native metadata ABI.
+    rng_dtype = torch.int64 if flag_gems.vendor_name == "thead" else torch.uint64
+    rng_state = torch.random.get_rng_state()[:16].clone().view(rng_dtype)
     debug = (
         torch.zeros(
             (
@@ -177,7 +180,7 @@ def _cpu_flash_forward(
         outputs.append((probabilities @ vi).transpose(0, 1).to(query.dtype))
     output = torch.cat(outputs, dim=0) if varlen else torch.stack(outputs)
     lse = torch.cat(lses, dim=1) if varlen else torch.stack(lses)
-    return output, lse, rng_state, torch.zeros((), dtype=torch.uint64), debug
+    return output, lse, rng_state, torch.zeros((), dtype=rng_dtype), debug
 
 
 def _call(
