@@ -27,7 +27,6 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     gems_log_logger,
-    gems_log_prefix,
     to_reference,
 )
 
@@ -461,12 +460,7 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     inp = [_sample((8,), torch.float32, flag_gems.device)]
     want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
     logger_name = gems_log_logger(_gems_op(name, inplace))
-    if flag_gems.vendor_name == "kunlunxin" and name == "ceil":
-        want = (
-            f"{gems_log_prefix(_gems_op(name, inplace))}"
-            f" _FOREACH_{name.upper()}{'_' if inplace else ''}"
-        )
-        logger_name = None
+
     with caplog.at_level(logging.DEBUG, logger=logger_name):
         caplog.clear()
         _torch_op(name, inplace)([t.clone() for t in inp])
