@@ -21,14 +21,16 @@ import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
 
 
-# libdevice.div_rn does not lower on the HIP/AMD backend, so fall back to '/'
+# libdevice.div_rn does not lower on the AMD backend, so fall back to '/'
 # there (for fp32 it lowers to the same IEEE round-to-nearest-even division).
-# Every other backend keeps the exact div_rn intrinsic, so their behavior is
-# byte-for-byte unchanged.
-if torch.version.hip is not None:
+# Every other backend (including other HIP platforms such as Hygon) keeps the
+# exact div_rn intrinsic, so their behavior is byte-for-byte unchanged.
+if runtime.device.vendor_name == "amd":
 
     @triton.jit
     def _div_rn(a, b):

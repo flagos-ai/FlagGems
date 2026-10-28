@@ -322,7 +322,7 @@ def test_upsample_nearest2d_backward_native_device_scales(case, variant):
         else {"grad_input": torch.empty_like(_tensor(shape, torch.float32))}
     )
     native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
-    if torch.version.hip is not None:
+    if flag_gems.vendor_name == "amd":
         # ROCm's device kernel mis-maps explicit scales that disagree with
         # size/shape (its forward differs from CPU too); use the CPU kernel.
         cpu_kwargs = (

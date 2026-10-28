@@ -232,7 +232,7 @@ def test_flash_attention_backward(
     window_size_right,
     head_size,
 ):
-    if torch.version.hip is not None and (
+    if flag_gems.vendor_name == "amd" and (
         window_size_left is not None or window_size_right is not None
     ):
         # ROCm's native (AOTriton) sliding-window flash attention is wrong
@@ -319,7 +319,7 @@ def test_flash_attention_backward(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
 @pytest.mark.skipif(
-    torch.version.hip is not None,
+    flag_gems.vendor_name == "amd",
     reason="ROCm torch has no cuDNN SDPA reference",
 )
 @pytest.mark.parametrize(

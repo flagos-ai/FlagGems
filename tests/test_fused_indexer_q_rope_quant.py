@@ -40,7 +40,7 @@ HAS_NATIVE_FP8 = hasattr(torch, "float8_e4m3fn") and (
 def _supports_mxfp4_ptx():
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
         return False
-    if torch.version.hip is not None:
+    if flag_gems.vendor_name == "amd":
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 10

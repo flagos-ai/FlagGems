@@ -116,11 +116,12 @@ def is_amd_radeon() -> bool:
 
     These have WMMA for 16-bit types but no fp32 matrix instruction, so an
     "ieee" fp32 tl.dot is unrolled into scalar FMAs. CDNA (gfx9xx) and
-    GFX12.5 (gfx125x) are excluded.
+    GFX12.5 (gfx125x) are excluded, and so is every non-AMD vendor: other HIP
+    platforms such as Hygon also report torch.version.hip but are not Radeon.
     """
-    import torch
+    from flag_gems import runtime
 
-    if torch.version.hip is None:
+    if runtime.device.vendor_name != "amd":
         return False
     props = get_device_properties()
     arch = (getattr(props, "gcnArchName", "") or "").split(":")[0]
