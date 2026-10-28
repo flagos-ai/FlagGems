@@ -71,20 +71,21 @@ def _assert_dense(grad, input):
     if grad.dtype == input.dtype:
         assert actual is grad
     else:
-        torch.testing.assert_close(
-            actual, expected, rtol=0, atol=0, equal_nan=True
-        )
+        # gems_assert_equal moves `actual` to the reference device under
+        # --ref=cpu, where `expected` (computed via to_reference) lives on CPU
+        # while `actual` stays on the accelerator.
+        utils.gems_assert_equal(actual, expected, equal_nan=True)
         assert actual.dtype == expected.dtype
         assert actual.shape == expected.shape
     return actual, expected
 
 
 @pytest.mark.to_dense_backward
-@pytest.mark.parametrize(
-    "shape", [(), (0,), (1,), (1023,), (1025,), (4, 5, 6)]
-)
+@pytest.mark.parametrize("shape", [(), (0,), (1,), (1023,), (1025,), (4, 5, 6)])
 @pytest.mark.parametrize("grad_dtype", [torch.float32, torch.float16, torch.int32])
-@pytest.mark.parametrize("input_dtype", [torch.float16, torch.float32, torch.int32, torch.uint8])
+@pytest.mark.parametrize(
+    "input_dtype", [torch.float16, torch.float32, torch.int32, torch.uint8]
+)
 def test_to_dense_backward_dense_layout(shape, grad_dtype, input_dtype):
     grad = _make_grad(shape, grad_dtype)
     input = _make_strided_input(shape, input_dtype)
@@ -168,8 +169,11 @@ def test_to_dense_backward_special_values(dtype):
     )
     input = _make_strided_input(12, dtype)
     actual, expected = _assert_dense(grad, input)
+    # `expected` may live on CPU under --ref=cpu; compare sign bits on a single
+    # device.
     assert torch.equal(
-        torch.signbit(actual[:-1]), torch.signbit(expected[:-1])
+        torch.signbit(actual.to(expected.device)[:-1]),
+        torch.signbit(expected[:-1]),
     )
 
 
@@ -177,10 +181,18 @@ def test_to_dense_backward_special_values(dtype):
 def test_to_dense_backward_backward():
     # The strided conversion is wrapped in an autograd.Function whose backward
     # casts the output grad back to grad's dtype; this must equal the native
-    # grad.to(dtype) graph's gradient.
-    grad = torch.randn(23, device=flag_gems.device, dtype=torch.float32, requires_grad=True)
+    # grad.to(dtype) graph's gradient. The reference is computed on-device (not
+    # via to_reference) so it stays connected to `grad`: a CPU reference is
+    # detached from `grad` and cannot be differentiated against it under
+    # --ref=cpu, and keeping `actual`/`expected` on the same device keeps both
+    # gradients on the same device.
+    grad = torch.randn(
+        23, device=flag_gems.device, dtype=torch.float32, requires_grad=True
+    )
     input = _make_strided_input(23, torch.float16)
-    actual, expected = _assert_dense(grad, input)
+    expected = torch.ops.aten.to_dense_backward(grad, input)
+    actual = flag_gems.to_dense_backward(grad, input)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
     go = torch.randn_like(expected)
     torch.testing.assert_close(
         torch.autograd.grad(actual, grad, go)[0],

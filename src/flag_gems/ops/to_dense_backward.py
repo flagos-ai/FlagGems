@@ -50,7 +50,9 @@ _CBLOCK = 4096
 
 @triton.jit
 def _cast_kernel(
-    g_ptr, o_ptr, n,
+    g_ptr,
+    o_ptr,
+    n,
     MODE: tl.constexpr,  # 0 = plain cast, 1 = bool, 2 = unsigned wrap via int32
     BLOCK: tl.constexpr,
 ):
@@ -114,7 +116,7 @@ def _block(input):
 
 
 def to_dense_backward(grad, input, masked_grad=None):
-    logger.debug('GEMS TO_DENSE_BACKWARD')
+    logger.debug("GEMS TO_DENSE_BACKWARD")
     if not torch.is_tensor(grad):
         raise TypeError("to_dense_backward: grad must be a Tensor")
     masked = _norm_masked(masked_grad)
@@ -134,7 +136,9 @@ def to_dense_backward(grad, input, masked_grad=None):
     if masked:
         base = grad.sparse_mask(input)
     elif input.dense_dim() == 0 and grad.dim() > k:
-        base = grad.to_sparse_csr() if layout == torch.sparse_csr else grad.to_sparse_csc()
+        base = (
+            grad.to_sparse_csr() if layout == torch.sparse_csr else grad.to_sparse_csc()
+        )
     else:
         base = grad.to_sparse(k)
 
