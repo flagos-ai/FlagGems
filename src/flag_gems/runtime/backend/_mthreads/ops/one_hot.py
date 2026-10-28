@@ -61,7 +61,6 @@ _INT64_MAX_ELEMENTS = 2**63 - 1
 # ── dense generation kernels (single pass over rows, tiled over classes) ─────
 
 
-@libentry()
 @triton.jit
 def one_hot_dense_kernel(
     input_ptr,
@@ -154,7 +153,6 @@ def one_hot_validate_fill_kernel(
 # ── fused min/max reduction (num_classes inference) ──────────────────────────
 
 
-@libentry()
 @triton.jit
 def one_hot_minmax_kernel(
     input_ptr,
@@ -251,7 +249,6 @@ def one_hot_validate_set_one_kernel(
 # while the output of a poisoned call never escapes.
 
 
-@libentry()
 @triton.jit
 def one_hot_minmax_direct_kernel(
     input_ptr,
@@ -275,7 +272,6 @@ def one_hot_minmax_direct_kernel(
     tl.store(out_ptr + 1, vmax)
 
 
-@libentry()
 @triton.jit
 def one_hot_minmax_reduce_kernel(
     stat_ptr,
@@ -302,7 +298,6 @@ def one_hot_minmax_reduce_kernel(
     tl.store(out_ptr + 1, vmax)
 
 
-@libentry()
 @triton.jit
 def one_hot_minmax_partial_reduce_kernel(
     stat_ptr,
@@ -385,10 +380,52 @@ def _fill_plan_cached(num_elements: int, num_classes: int):
     return _fill_plan(num_elements, num_classes)
 
 
+# ── direct-launch mini-dispatch (inferred path only) ──────────────────────────
+#
+# Standard Triton public API only: the first call per key goes through the
+# normal ``kernel[grid](...)`` JIT path (which compiles, launches, and returns
+# the CompiledKernel); the returned kernel is then rebound via the public
+# ``CompiledKernel.__getitem__`` — the exact same call LibEntry's fast path
+# makes.  The dispatch key carries every factor Triton's binder specializes
+# on: device, tensor dtypes, per-pointer 16B alignment, the exact integer
+# arguments (subsuming int ==1 / %16 specialization), the constexpr plan and
+# num_warps.  Grid is bound into the cached runner closure.  The runner
+# queries the CURRENT device stream on every call, so multi-stream and
+# multi-thread semantics are unchanged.  No input-value-dependent state is
+# cached: the key holds shapes/dtypes/alignment only.
+
+_FILL_RUNNERS = {}
+_MINMAX_RUNNERS = {}
+_RUNNER_CACHE_MAX = 512
+
+
+def _runner_get(cache, key):
+    return cache.get(key)
+
+
+def _runner_put(cache, key, runner):
+    if len(cache) >= _RUNNER_CACHE_MAX:
+        cache.clear()
+    cache[key] = runner
+    return runner
+
+
 def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
     """Enqueue the dense fill kernel on the current stream."""
     grid, rows, class_block, num_warps = plan
-    one_hot_dense_kernel[(grid,)](
+    key = (
+        torch_device_fn.current_device(),
+        flat_input.dtype,
+        flat_input.data_ptr() % 16 == 0,
+        out.data_ptr() % 16 == 0,
+        num_elements,
+        num_classes,
+    )
+    runner = _runner_get(_FILL_RUNNERS, key)
+    if runner is not None:
+        runner(flat_input, out, num_elements, num_classes)
+        return
+    compiled = one_hot_dense_kernel[(grid,)](
         flat_input,
         out,
         num_elements,
@@ -397,6 +434,12 @@ def _launch_fill(flat_input, out, num_elements: int, num_classes: int, plan):
         CLASS_BLOCK=class_block,
         num_warps=num_warps,
     )
+    base = compiled[(grid, 1, 1)]
+
+    def runner(a, b, n, c, _b=base, _r=rows, _cb=class_block):
+        _b(a, b, n, c, _r, _cb)
+
+    _runner_put(_FILL_RUNNERS, key, runner)
 
 
 # Torch CPU reductions fork an OpenMP team above this grain size, which costs
@@ -446,35 +489,121 @@ def _launch_validate_fill(flat_input, out, verdict, num_elements, num_classes):
 def _launch_minmax_kernels(flat_input, num_elements, target):
     """Enqueue the inferred-path reduction writing [min, max] to target."""
     if num_elements <= _MINMAX_DIRECT_MAX_ELEMENTS:
-        one_hot_minmax_direct_kernel[(1,)](
+        key = (
+            torch_device_fn.current_device(),
+            flat_input.dtype,
+            flat_input.data_ptr() % 16 == 0,
+            target.data_ptr() % 16 == 0,
+            num_elements,
+        )
+        runner = _runner_get(_MINMAX_RUNNERS, key)
+        if runner is not None:
+            runner(flat_input, target, num_elements)
+            return
+        compiled = one_hot_minmax_direct_kernel[(1,)](
             flat_input,
             target,
             num_elements,
             BLOCK=8192,
             num_warps=16,
         )
+        base = compiled[(1, 1, 1)]
+
+        def runner(a, t, n, _b=base):
+            _b(a, t, n, 8192)
+
+        _runner_put(_MINMAX_RUNNERS, key, runner)
         return
     BLOCK_SIZE = _minmax_block_size(num_elements)
     num_warps = max(4, min(8, BLOCK_SIZE // 1024))
     num_blocks = triton.cdiv(num_elements, BLOCK_SIZE)
     stat = torch.empty(2 * num_blocks, device=flat_input.device, dtype=torch.int64)
-    one_hot_minmax_kernel[(num_blocks,)](
-        flat_input,
-        stat,
+    key = (
+        torch_device_fn.current_device(),
+        flat_input.dtype,
+        flat_input.data_ptr() % 16 == 0,
+        stat.data_ptr() % 16 == 0,
         num_elements,
         num_blocks,
-        BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=num_warps,
+        BLOCK_SIZE,
     )
+    runner = _runner_get(_MINMAX_RUNNERS, key)
+    if runner is None:
+        compiled = one_hot_minmax_kernel[(num_blocks,)](
+            flat_input,
+            stat,
+            num_elements,
+            num_blocks,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=num_warps,
+        )
+        base = compiled[(num_blocks, 1, 1)]
+
+        def runner(a, s, n, nb, _b=base, _bs=BLOCK_SIZE):
+            _b(a, s, n, nb, _bs)
+
+        _runner_put(_MINMAX_RUNNERS, key, runner)
+    runner(flat_input, stat, num_elements, num_blocks)
     if num_blocks <= _ONE_CTA_MAX_BLOCKS:
-        one_hot_minmax_reduce_kernel[(1,)](stat, target, num_blocks, BLOCK=1024)
-    else:
-        partials = triton.cdiv(num_blocks, _PARTIAL_CHUNK)
-        stat2 = torch.empty(2 * partials, device=flat_input.device, dtype=torch.int64)
-        one_hot_minmax_partial_reduce_kernel[(partials,)](
+        rkey = (
+            torch_device_fn.current_device(),
+            stat.data_ptr() % 16 == 0,
+            target.data_ptr() % 16 == 0,
+            num_blocks,
+        )
+        rrunner = _runner_get(_MINMAX_RUNNERS, rkey)
+        if rrunner is not None:
+            rrunner(stat, target, num_blocks)
+            return
+        compiled = one_hot_minmax_reduce_kernel[(1,)](
+            stat, target, num_blocks, BLOCK=1024
+        )
+        base = compiled[(1, 1, 1)]
+
+        def rrunner(s, t, nb, _b=base):
+            _b(s, t, nb, 1024)
+
+        _runner_put(_MINMAX_RUNNERS, rkey, rrunner)
+        return
+    partials = triton.cdiv(num_blocks, _PARTIAL_CHUNK)
+    stat2 = torch.empty(2 * partials, device=flat_input.device, dtype=torch.int64)
+    pkey = (
+        torch_device_fn.current_device(),
+        stat.data_ptr() % 16 == 0,
+        stat2.data_ptr() % 16 == 0,
+        num_blocks,
+        partials,
+    )
+    prunner = _runner_get(_MINMAX_RUNNERS, pkey)
+    if prunner is None:
+        compiled = one_hot_minmax_partial_reduce_kernel[(partials,)](
             stat, stat2, num_blocks, partials, CHUNK=_PARTIAL_CHUNK
         )
-        one_hot_minmax_reduce_kernel[(1,)](stat2, target, partials, BLOCK=1024)
+        base = compiled[(partials, 1, 1)]
+
+        def prunner(s, s2, nb, pb, _b=base):
+            _b(s, s2, nb, pb, 4096)
+
+        _runner_put(_MINMAX_RUNNERS, pkey, prunner)
+    prunner(stat, stat2, num_blocks, partials)
+    rkey = (
+        torch_device_fn.current_device(),
+        stat2.data_ptr() % 16 == 0,
+        target.data_ptr() % 16 == 0,
+        partials,
+    )
+    rrunner = _runner_get(_MINMAX_RUNNERS, rkey)
+    if rrunner is None:
+        compiled = one_hot_minmax_reduce_kernel[(1,)](
+            stat2, target, partials, BLOCK=1024
+        )
+        base = compiled[(1, 1, 1)]
+
+        def rrunner(s, t, nb, _b=base):
+            _b(s, t, nb, 1024)
+
+        _runner_put(_MINMAX_RUNNERS, rkey, rrunner)
+    rrunner(stat2, target, partials)
 
 
 # ── fast-path entry point (device tensors only; called after the shared
