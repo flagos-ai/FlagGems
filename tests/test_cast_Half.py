@@ -83,7 +83,6 @@ def test_cast_Half_strided(dtype, layout):
     assert_cast(x)
 
 
-
 @pytest.mark.cast_Half
 @pytest.mark.parametrize(
     "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
@@ -92,10 +91,19 @@ def test_cast_Half_special_values(dtype):
     info = torch.finfo(dtype)
     x = torch.tensor(
         [
-            -0.0, 0.0, -1.9, 0.5, 1.9,
-            info.tiny, -info.tiny, info.tiny * info.eps,
-            info.max, -info.max,
-            float("inf"), -float("inf"), float("nan"),
+            -0.0,
+            0.0,
+            -1.9,
+            0.5,
+            1.9,
+            info.tiny,
+            -info.tiny,
+            info.tiny * info.eps,
+            info.max,
+            -info.max,
+            float("inf"),
+            -float("inf"),
+            float("nan"),
         ],
         device=flag_gems.device,
         dtype=dtype,
@@ -119,4 +127,3 @@ def test_cast_Half_autograd(dtype, non_blocking):
     )
     with torch.no_grad():
         assert_cast(x, non_blocking)
-

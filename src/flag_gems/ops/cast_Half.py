@@ -60,8 +60,8 @@ _ALIGN_BYTES = 16
 _INT32_LIMIT = 1 << 31
 
 # Conversion selectors shared by the forward and the backward kernels.
-_OUT_FP16 = 0          # direct narrowing to float16
-_OUT_FP16_VIA32 = 1    # float32 round first (native float64 -> float16 path)
+_OUT_FP16 = 0  # direct narrowing to float16
+_OUT_FP16_VIA32 = 1  # float32 round first (native float64 -> float16 path)
 _OUT_FP32 = 2
 _OUT_FP64 = 3
 _OUT_BF16 = 4
@@ -96,8 +96,15 @@ def _convert(x, OUT_MODE: tl.constexpr):
 
 
 @triton.jit
-def _cast_flat(src, dst, n, OUT_MODE: tl.constexpr, WIDE: tl.constexpr,
-               ALIGNED: tl.constexpr, BLOCK: tl.constexpr):
+def _cast_flat(
+    src,
+    dst,
+    n,
+    OUT_MODE: tl.constexpr,
+    WIDE: tl.constexpr,
+    ALIGNED: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     """Contiguous source: one flat load and one converted store per element.
 
     ``ALIGNED`` is set only when the caller has proven that ``src`` and ``dst``
@@ -118,8 +125,17 @@ def _cast_flat(src, dst, n, OUT_MODE: tl.constexpr, WIDE: tl.constexpr,
 
 
 @triton.jit
-def _cast_strided(src, dst, shape_ptr, src_stride_ptr, dst_stride_ptr, n,
-                  R: tl.constexpr, OUT_MODE: tl.constexpr, BLOCK: tl.constexpr):
+def _cast_strided(
+    src,
+    dst,
+    shape_ptr,
+    src_stride_ptr,
+    dst_stride_ptr,
+    n,
+    R: tl.constexpr,
+    OUT_MODE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     """Strided source: unravel each linear index into both the source multi-index
     and the output multi-index, so the destination keeps the layout ``empty_like``
     allocated rather than collapsing to contiguous."""
@@ -166,24 +182,45 @@ def _cast_into(source, out, out_mode):
             block, warps = _FLAT_BLOCK, _FLAT_WARPS
         # An exactly covered tile lets the kernel drop its per-lane mask, which
         # the sweep shows is worth a few percent on the mid-size shapes.
-        aligned = n % block == 0 and (
-            source.data_ptr() % _ALIGN_BYTES == 0
-        ) and (out.data_ptr() % _ALIGN_BYTES == 0)
+        aligned = (
+            n % block == 0
+            and (source.data_ptr() % _ALIGN_BYTES == 0)
+            and (out.data_ptr() % _ALIGN_BYTES == 0)
+        )
         grid = (triton.cdiv(n, block),)
-        _cast_flat[grid](source, out, n, OUT_MODE=out_mode,
-                         WIDE=n >= _INT32_LIMIT, ALIGNED=aligned, BLOCK=block,
-                         num_warps=warps)
+        _cast_flat[grid](
+            source,
+            out,
+            n,
+            OUT_MODE=out_mode,
+            WIDE=n >= _INT32_LIMIT,
+            ALIGNED=aligned,
+            BLOCK=block,
+            num_warps=warps,
+        )
     else:
-        shape = torch.tensor(list(source.shape), dtype=torch.int64,
-                             device=source.device)
-        src_stride = torch.tensor(list(source.stride()), dtype=torch.int64,
-                                  device=source.device)
-        dst_stride = torch.tensor(list(out.stride()), dtype=torch.int64,
-                                  device=source.device)
+        shape = torch.tensor(
+            list(source.shape), dtype=torch.int64, device=source.device
+        )
+        src_stride = torch.tensor(
+            list(source.stride()), dtype=torch.int64, device=source.device
+        )
+        dst_stride = torch.tensor(
+            list(out.stride()), dtype=torch.int64, device=source.device
+        )
         grid = (triton.cdiv(n, _STRIDED_BLOCK),)
-        _cast_strided[grid](source, out, shape, src_stride, dst_stride, n,
-                            R=source.dim(), OUT_MODE=out_mode,
-                            BLOCK=_STRIDED_BLOCK, num_warps=_STRIDED_WARPS)
+        _cast_strided[grid](
+            source,
+            out,
+            shape,
+            src_stride,
+            dst_stride,
+            n,
+            R=source.dim(),
+            OUT_MODE=out_mode,
+            BLOCK=_STRIDED_BLOCK,
+            num_warps=_STRIDED_WARPS,
+        )
     return out
 
 
@@ -203,7 +240,7 @@ class _CastHalf(torch.autograd.Function):
 
 
 def cast_Half(self, non_blocking=False):
-    logger.debug('GEMS CAST_HALF')
+    logger.debug("GEMS CAST_HALF")
     """Narrowing cast of ``self`` to float16 (native ``aten::_cast_Half``)."""
     if not isinstance(self, torch.Tensor):
         raise TypeError(
@@ -211,9 +248,7 @@ def cast_Half(self, non_blocking=False):
             f"{type(self).__name__}"
         )
     if isinstance(non_blocking, str):
-        raise TypeError(
-            "_cast_Half(): argument 'non_blocking' must be a bool, not str"
-        )
+        raise TypeError("_cast_Half(): argument 'non_blocking' must be a bool, not str")
 
     # The native cast is a no-op for a float16 source: it answers with the very
     # same object, whatever the layout.  Its gradient flows through unchanged.
