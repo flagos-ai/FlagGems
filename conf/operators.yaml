@@ -19190,6 +19190,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_csr_sum
+  description: 'Reduces a 2-D sparse CSR tensor along dim and returns a sparse CSR
+    tensor. Only stored entries participate, so the result sparsity follows the
+    layout: a row or column keeps one entry when it stores at least one value,
+    and a full reduction keeps a single entry only when the input stores anything.
+
+    '
+  for:
+  - _sparse_csr_sum
+  - _sparse_csr_sum.dim_dtype
+  - _sparse_csr_sum.dim_dtype_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_dim
   description: 'Returns the number of sparse dimensions of a tensor: 0 for strided
     tensors, the index count for sparse COO, 2 for compressed layouts.
