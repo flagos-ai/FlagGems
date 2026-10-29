@@ -45,16 +45,13 @@ def _assert_eigvals_contract(actual, inp):
 @pytest.mark.linalg_eigvals
 @pytest.mark.parametrize("shape", EIGVALS_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
-def test_linalg_eigvals(shape, dtype, request):
+def test_linalg_eigvals(shape, dtype):
     """Test _linalg_eigvals accuracy against PyTorch reference."""
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    if request.config._override_registry.get_override("linalg_eigvals") is not None:
-        res_out = flag_gems.linalg_eigvals(inp)
-    else:
-        res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems.linalg_eigvals(inp)
     _assert_eigvals_contract(res_out, inp)
 
     # For float32 input, the eigenvalues come back as complex64.
