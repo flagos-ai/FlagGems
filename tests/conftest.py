@@ -288,11 +288,13 @@ def _profiler_available():
     import torch
 
     try:
-        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
+        with torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CUDA]
+        ) as prof:
             (torch.ones(1, device=flag_gems.device) * 2).item()
     except RuntimeError:
         return False
-    return True
+    return any(e.device_type == torch.autograd.DeviceType.CUDA for e in prof.events())
 
 
 def _float64_available():
@@ -310,7 +312,7 @@ def _skip_unmeasurable_launch_count_tests(items):
             if not _profiler_available():
                 item.add_marker(
                     pytest.mark.skip(
-                        reason="torch profiler is unavailable on this platform"
+                        reason="torch profiler tracing is not enabled on this platform"
                     )
                 )
         elif item.name == "test_foreach_unary_launch_count_scales_with_dtype_groups":

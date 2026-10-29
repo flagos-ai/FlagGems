@@ -12,13 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""XPU override for ``aten::_foreach_expm1_`` (in-place expm1 over Tensor[]).
+"""XPU override for ``aten::_foreach_expm1`` / ``aten::_foreach_expm1_``.
 
 A homogeneous list -- one device, one dtype (fp16/bf16/fp32), every tensor
 dense/flat-addressable, no internal overlap, all with the same power-of-two
 element count -- is processed by one unmasked 2D-grid kernel: without a mask
 the loads and stores become wide contiguous accesses.  Everything else goes
 through the shared ``foreach_unary``.
+
+An integral or bool input is promoted to its ATen result dtype before the
+kernel runs, so the kernel is handed a floating dtype rather than converting
+inside the launch; the promoted result matches the CPU reference, which the
+converting form does not on this backend.
 """
 
 import logging
@@ -29,9 +34,11 @@ import triton.language as tl
 
 from flag_gems.ops._foreach_unary import UNARY_OPS
 from flag_gems.utils.foreach import (
+    check_dtype_supported,
     check_tensor_list,
     foreach_unary,
     has_internal_overlap,
+    int_to_float,
     is_flat_addressable,
     tl_dtype,
 )
@@ -137,6 +144,30 @@ def _try_fast(tensors):
         if has_internal_overlap(t):
             return False
     return _launch_fast(tensors, dtype, device)
+
+
+def _promoted(tensors, allowed):
+    """Inputs cast to their ATen result dtype, refusals kept on the input dtype."""
+    for t in tensors:
+        check_dtype_supported(t.dtype, allowed)
+    return [
+        t if t.dtype == int_to_float(t.dtype) else t.to(int_to_float(t.dtype))
+        for t in tensors
+    ]
+
+
+def _foreach_expm1(self):
+    logger.debug("GEMS _FOREACH_EXPM1")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_EXPM1")
+    op = UNARY_OPS["expm1"]
+    tensors = check_tensor_list(self)
+    return foreach_unary(
+        _promoted(tensors, op.allowed),
+        _expm1_fast,
+        complex_fn=op.complex_fn,
+        out_dtype_fn=op.out_dtype_fn,
+        allowed_dtypes=op.allowed,
+    )
 
 
 def _foreach_expm1_(self):
