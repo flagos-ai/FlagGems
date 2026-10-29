@@ -60,11 +60,16 @@ def test__linalg_eigvals(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
+
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == inp.device
+    assert res_out.dtype == torch.complex64
+    assert res_out.shape == inp.shape[:-1]
 
     # For float32 input, the eigenvalues come back as complex64.
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -77,11 +82,11 @@ def test__linalg_eigvals_complex(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
 
     assert res_out.dtype == dtype
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -93,11 +98,11 @@ def test__linalg_eigvals_batched(shape):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems._linalg_eigvals(inp)
 
     assert res_out.shape == ref_out.shape == (*shape[:-1],)
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -118,7 +123,7 @@ def test_linalg_eigvals(shape, dtype):
     res_out = flag_gems.linalg_eigvals(inp)
 
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -139,7 +144,7 @@ def test_linalg_eigvals_out(shape, dtype):
     # the out variant must write in place and return the very same tensor
     assert returned.data_ptr() == res_out.data_ptr()
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -158,7 +163,7 @@ def test_linalg_eigvals_out_resize(dtype):
 
     assert res_out.shape == (6,)
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -196,7 +201,7 @@ def test_linalg_eigvals_out_non_contiguous(dtype):
     assert not res_out.is_contiguous()
     assert returned.data_ptr() == res_out.data_ptr()
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -215,5 +220,5 @@ def test_linalg_eigvals_out_float64(dtype):
 
     assert res_out.dtype == torch.complex128
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
