@@ -288,13 +288,11 @@ def _profiler_available():
     import torch
 
     try:
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CUDA]
-        ) as prof:
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
             (torch.ones(1, device=flag_gems.device) * 2).item()
     except RuntimeError:
         return False
-    return any(e.device_type == torch.autograd.DeviceType.CUDA for e in prof.events())
+    return True
 
 
 def _float64_available():
@@ -312,7 +310,7 @@ def _skip_unmeasurable_launch_count_tests(items):
             if not _profiler_available():
                 item.add_marker(
                     pytest.mark.skip(
-                        reason="torch profiler tracing is not enabled on this platform"
+                        reason="torch profiler is unavailable on this platform"
                     )
                 )
         elif item.name == "test_foreach_unary_launch_count_scales_with_dtype_groups":
@@ -320,6 +318,43 @@ def _skip_unmeasurable_launch_count_tests(items):
                 item.add_marker(
                     pytest.mark.skip(reason="float64 is not supported on this platform")
                 )
+
+
+def _skip_unavailable_integral_foreach_reference(items):
+    import torch
+
+    availability = {}
+
+    def reference_available(dtype):
+        if dtype not in availability:
+            probe = torch.tensor([1, -1], dtype=dtype, device=flag_gems.device)
+            try:
+                torch._foreach_ceil([probe])
+            except RuntimeError:
+                availability[dtype] = False
+            else:
+                availability[dtype] = True
+        return availability[dtype]
+
+    for item in items:
+        if (
+            getattr(item, "originalname", item.name)
+            != "test_accuracy_foreach_unary_int"
+        ):
+            continue
+        callspec = getattr(item, "callspec", None)
+        if callspec is None:
+            continue
+        if callspec.params.get("name") != "ceil":
+            continue
+        dtype = callspec.params.get("dtype")
+        if dtype is not None and reference_available(dtype):
+            continue
+        item.add_marker(
+            pytest.mark.skip(
+                reason="integral ceil has no device reference on this platform"
+            )
+        )
 
 
 def pytest_collection_modifyitems(session, config, items):
@@ -332,11 +367,12 @@ def pytest_collection_modifyitems(session, config, items):
        preferring the first one that uses bfloat16 dtype.
     """
 
-    if flag_gems.vendor_name == "kunlunxin":
-        _skip_unmeasurable_launch_count_tests(items)
-
     first_parameter_only = config.getoption("--first-parameter-only")
     collect_marks_file = config.getoption("--collect-marks")
+
+    if flag_gems.vendor_name == "kunlunxin":
+        _skip_unmeasurable_launch_count_tests(items)
+        _skip_unavailable_integral_foreach_reference(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)
