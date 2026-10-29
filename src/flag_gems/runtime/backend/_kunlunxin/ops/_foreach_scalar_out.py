@@ -36,37 +36,43 @@ from ._foreach_binary_scalar import _K16_SLOTS, _foreach16_kernel, _pick_block
 logger = logging.getLogger(__name__)
 
 
-# bf16 is computed in fp32 and converted back.
+# bf16 is computed in fp32 and converted back.  Keep the dtype branches
+# exclusive: a branch ``return`` does not stop the rest of the body from being
+# traced, so a trailing return would also count in the return-type check.
 @triton.jit
 def _fadd(a, s):
     if a.dtype == tl.bfloat16:
         return (a.to(tl.float32) + s.to(tl.float32)).to(tl.bfloat16)
-    if a.dtype == tl.int1:
+    elif a.dtype == tl.int1:
         return a | s
-    return a + s
+    else:
+        return a + s
 
 
 @triton.jit
 def _fsub(a, s):
     if a.dtype == tl.bfloat16:
         return (a.to(tl.float32) - s.to(tl.float32)).to(tl.bfloat16)
-    return a - s
+    else:
+        return a - s
 
 
 @triton.jit
 def _fmul(a, s):
     if a.dtype == tl.bfloat16:
         return (a.to(tl.float32) * s.to(tl.float32)).to(tl.bfloat16)
-    if a.dtype == tl.int1:
+    elif a.dtype == tl.int1:
         return a & s
-    return a * s
+    else:
+        return a * s
 
 
 @triton.jit
 def _fdiv(a, s):
     if a.dtype == tl.bfloat16:
         return (a.to(tl.float32) / s.to(tl.float32)).to(tl.bfloat16)
-    return a / s
+    else:
+        return a / s
 
 
 @triton.jit
