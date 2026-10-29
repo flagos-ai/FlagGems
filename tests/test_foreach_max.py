@@ -57,4 +57,8 @@ def test_foreach_max_noncontiguous():
     expected = _ATEN_OP(refs)
     actual = _gems_op(tensors)
 
-    utils.gems_assert_close(actual[0], expected[0], expected[0].dtype)
+    assert len(actual) == len(tensors)
+    assert actual[0].dtype == tensors[0].dtype
+    assert actual[0].shape == torch.Size([])
+    assert actual[0].device == tensors[0].device
+    utils.gems_assert_close(actual[0], expected[0], tensors[0].dtype)

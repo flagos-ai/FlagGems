@@ -21,6 +21,75 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _input_snapshot(values):
+    result = []
+    for value in values:
+        if value is None:
+            continue
+        storage = value.untyped_storage()
+        metadata = (
+            value.device,
+            value.dtype,
+            value.shape,
+            value.stride(),
+            value.storage_offset(),
+            value.requires_grad,
+            value.is_conj(),
+            value.is_neg(),
+            storage._cdata,
+            storage.data_ptr(),
+            storage.nbytes(),
+        )
+        raw = (
+            torch.empty(0, dtype=torch.uint8)
+            .set_(storage.cpu(), 0, (storage.nbytes(),), (1,))
+            .clone()
+        )
+        result.append((value, metadata, raw))
+    return result
+
+
+def _assert_inputs_preserved(snapshots):
+    for value, metadata, raw in snapshots:
+        current = _input_snapshot([value])[0]
+        assert current[1] == metadata
+        assert torch.equal(current[2], raw)
+
+
+def _assert_no_input_alias(result, snapshots):
+    storage = result.untyped_storage()
+    if storage.nbytes():
+        start, end = storage.data_ptr(), storage.data_ptr() + storage.nbytes()
+        for value, metadata, _ in snapshots:
+            if value.device != result.device or not metadata[10]:
+                continue
+            assert storage._cdata != metadata[8]
+            input_start, input_end = metadata[9], metadata[9] + metadata[10]
+            assert end <= input_start or input_end <= start
+
+
+def _assert_output_abi(result, original, shape, dtype, snapshots):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == original.device
+    assert result.dtype == dtype
+    assert result.shape == shape
+    _assert_no_input_alias(result, snapshots)
+
+
+def _assert_saved_stat_close(result, reference, input_dtype):
+    # CUDA native saved statistics use FP32 even for Half/BFloat16 inputs.
+    # Their ABI is independent of the reference's device/upcast dtype. Retain
+    # the original input-dtype tolerance without narrowing either value.
+    result = utils.to_cpu(result, reference)
+    torch.testing.assert_close(
+        result,
+        reference,
+        check_dtype=False,
+        rtol=flag_gems.testing.RESOLUTION[input_dtype],
+        atol=1e-4,
+    )
+
+
 @pytest.mark.batch_norm_with_update_functional
 @pytest.mark.underscore_batch_norm_with_update_functional
 @pytest.mark.parametrize(
@@ -74,6 +143,8 @@ def test_batch_norm_with_update_functional(shape, dtype, affine):
         eps,
     )
 
+    snapshots = _input_snapshot([inp, weight, bias, running_mean, running_var])
+
     (
         res_out,
         res_save_mean,
@@ -91,8 +162,26 @@ def test_batch_norm_with_update_functional(shape, dtype, affine):
         eps,
     )
 
+    _assert_inputs_preserved(snapshots)
+    saved_dtype = (
+        torch.float32
+        if flag_gems.vendor_name == "nvidia"
+        and dtype in (torch.float16, torch.bfloat16)
+        else dtype
+    )
+    _assert_output_abi(res_out, inp, inp.shape, dtype, snapshots)
+    _assert_output_abi(res_save_mean, inp, (C,), saved_dtype, snapshots)
+    _assert_output_abi(res_save_invstd, inp, (C,), saved_dtype, snapshots)
+    _assert_output_abi(res_running_mean_out, running_mean, (C,), dtype, snapshots)
+    _assert_output_abi(res_running_var_out, running_var, (C,), dtype, snapshots)
+    assert isinstance(res_reserve, torch.Tensor)
+    assert res_reserve.device == inp.device
+    assert res_reserve.dtype == torch.uint8
+    assert res_reserve.ndim == 1
+    _assert_no_input_alias(res_reserve, snapshots)
+
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_save_mean, ref_save_mean, dtype)
-    utils.gems_assert_close(res_save_invstd, ref_save_invstd, dtype)
+    _assert_saved_stat_close(res_save_mean, ref_save_mean, dtype)
+    _assert_saved_stat_close(res_save_invstd, ref_save_invstd, dtype)
     utils.gems_assert_close(res_running_mean_out, ref_running_mean_out, dtype)
     utils.gems_assert_close(res_running_var_out, ref_running_var_out, dtype)

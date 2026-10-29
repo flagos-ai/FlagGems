@@ -435,8 +435,8 @@ def test_put__empty_index_is_noop(self_numel):
 @pytest.mark.put_
 @pytest.mark.parametrize("bad", [4, 5, 100, -5, -100])
 def test_put__index_out_of_range(bad, request):
-    if flag_gems.vendor_name == "mthreads":
-        pytest.skip("MUSA native put_ does not enforce device-side index bounds")
+    if flag_gems.vendor_name in {"mthreads", "hygon", "metax", "iluvatar"}:
+        pytest.skip("native put_ does not enforce device-side index bounds")
 
     # A real valid-boundary control also exercises the currently injected root
     # in this process. The isolated negative call below must use that same root.

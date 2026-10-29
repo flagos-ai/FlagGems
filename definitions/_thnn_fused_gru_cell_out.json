@@ -1,8 +1,8 @@
 {
   "api_version": "v6.0",
-  "name": "thnn_fused_gru_cell_out",
+  "name": "_thnn_fused_gru_cell_out",
   "requires_triton_kernel": true,
-  "description": "A variant of `thnn_fused_gru_cell()` that writes the new hidden state and the\nbackward workspace into `out0` and `out1`.",
+  "description": "A variant of `thnn_fused_gru_cell()` that writes the new hidden state and the\nbackward workspace into `out0` and `out1`. Existing Gems requires distinct nonempty output storages; CUDA overlap behavior is not used as this precondition.",
   "parameters": [
     {
       "name": "input_gates",
@@ -54,7 +54,13 @@
     "workspace"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out0",
+      "out1"
+    ],
+    "returns_alias_of": {
+      "hy": "out0",
+      "workspace": "out1"
+    }
   }
 }

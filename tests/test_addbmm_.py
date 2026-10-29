@@ -51,8 +51,7 @@ def test_addbmm_(M, N, K, scalar, dtype):
         alpha=scalar,
         beta=scalar,
     )
-    with flag_gems.use_gems():
-        result = self.addbmm_(batch1, batch2, alpha=scalar, beta=scalar)
+    result = flag_gems.addbmm_(self, batch1, batch2, alpha=scalar, beta=scalar)
     assert result is self
     assert self.data_ptr() == pointer
     utils.gems_assert_close(result, ref_result, dtype, reduce_dim=K)
@@ -70,8 +69,7 @@ def test_addbmm_noncontiguous_self_preserves_storage():
     pointer = self.data_ptr()
     stride = self.stride()
     ref_result = ref_self.addbmm_(utils.to_reference(batch1, True), utils.to_reference(batch2, True))
-    with flag_gems.use_gems():
-        result = self.addbmm_(batch1, batch2)
+    result = flag_gems.addbmm_(self, batch1, batch2)
     assert result is self
     assert self.data_ptr() == pointer
     assert self.stride() == stride
@@ -84,5 +82,5 @@ def test_addbmm_rejects_incompatible_shapes():
     self = torch.randn((3, 5), device=flag_gems.device)
     batch1 = torch.randn((2, 3, 4), device=flag_gems.device)
     batch2 = torch.randn((2, 6, 5), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        self.addbmm_(batch1, batch2)
+    with pytest.raises(RuntimeError):
+        flag_gems.addbmm_(self, batch1, batch2)

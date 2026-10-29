@@ -12,17 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import hashlib
-import json
-import math
-import os
-from functools import lru_cache
-from pathlib import Path
-
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.ops.upsample_lanczos2d_aa import (
     _upsample_lanczos2d_aa,
     _upsample_lanczos2d_aa_out,
@@ -171,94 +163,10 @@ def _build_inputs_fn_vec(plan, dtype, device):
     return torch.randn(shape, device=device, dtype=dtype), None, False, (scale, scale)
 
 
-@lru_cache(maxsize=1)
-def _vec_h800_records():
-    payload = Path(os.environ["FLAGGEMS_LANCZOS_VEC_H800_BASELINE"]).read_bytes()
-    if hashlib.sha256(payload).hexdigest() != (
-        "be758c4f292c1d8ae7b25789b06d2733f23716fde65e798c80c62bc403d16cfb"
-    ):
-        raise ValueError("Unexpected Lanczos H800 baseline artifact")
-    artifact = json.loads(payload)
-    environment = artifact["_environment"]
-    if (
-        environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
-        or environment["source"]["git_commit"]
-        != "5b2ca5c0c317f1ea937997edde011509bae84cd6"
-        or environment["source"]["git_dirty"]
-        or environment["run"]["repo"] != "pytorch"
-        or environment["run"]["selected_ops"]
-        != ["median", "median_dim", "row_stack_out", "upsample_lanczos2d_aa_vec"]
-    ):
-        raise ValueError(
-            "Lanczos baseline is not the collected original H800 composition"
-        )
-    return artifact["upsample_lanczos2d_aa_vec"]["shapes"]
-
-
-class UpsampleLanczosVecBenchmark(UpsampleLanczosBenchmark):
-    def _candidate_call(self):
-        op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "enflame" and op is self.torch_op:
-            raise RuntimeError("Enflame Lanczos vec requires an explicit candidate")
-        return op, dispatch, overridden
-
-    def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "enflame" or op is not self.torch_op:
-            return super().get_latency(op, *args, **kwargs)
-        inp, output_size, align_corners, scale_factors = args
-        shape = tuple(inp.shape)
-        scale = _scale(shape)
-        if (
-            kwargs
-            or shape not in self.shapes
-            or inp.device.type != torch.device(self.device).type
-            or inp.dtype not in consts.FLOAT_DTYPES
-            or not inp.is_contiguous()
-            or inp.requires_grad
-            or output_size is not None
-            or align_corners is not False
-            or tuple(scale_factors) != (scale, scale)
-        ):
-            raise ValueError(
-                "Input differs from the collected original Lanczos core recipe"
-            )
-        record = _vec_h800_records()[str(list(shape))][str(inp.dtype)]
-        config = record["config"]
-        expected_inputs = {
-            "args": [
-                {
-                    "shape": list(shape),
-                    "dtype": str(inp.dtype),
-                    "stride": list(inp.stride()),
-                    "requires_grad": False,
-                },
-                None,
-                False,
-                [scale, scale],
-            ],
-            "kwargs": {},
-        }
-        if (
-            config["inputs"] != expected_inputs
-            or config["descriptor"] != list(shape)
-            or config["scope"] != "core"
-            or config["variant"] != 0
-            or config["source_commit"] != "9d57a23b4386bd669152a935fe88a96db907da7c"
-            or config["benchmark"] != "benchmark/test_upsample_lanczos2d_aa.py"
-        ):
-            raise ValueError("Lanczos H800 input identity does not match this case")
-        latency_us = record["T_us"]
-        if not math.isfinite(latency_us) or latency_us <= 0:
-            raise ValueError("Lanczos H800 latency must be positive and finite")
-        # Original PyTorch CUDA composition, not an opaque ATen Lanczos kernel.
-        # The candidate retains the ordinary local timer.
-        return latency_us / 1000.0
-
-
 @pytest.mark.upsample_lanczos2d_aa_vec
 @pytest.mark.underscore_upsample_lanczos2d_aa_vec
 def test_upsample_lanczos2d_aa_vec():
-    bench = UpsampleLanczosVecBenchmark(
+    bench = UpsampleLanczosBenchmark(
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn_vec,
         op_name="_upsample_lanczos2d_aa_vec",

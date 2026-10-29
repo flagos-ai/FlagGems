@@ -1,0 +1,21 @@
+{
+  "api_version": "v6.0",
+  "name": "_conj_copy",
+  "requires_triton_kernel": true,
+  "description": "New Derived Definition (2026-10-29), not a recovered original. Derived from the actual FlagGems export, aten::_conj_copy(Tensor self) -> Tensor (fresh, resolved conjugate copy), and preserved test ABI.",
+  "parameters": [
+    {
+      "name": "input",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

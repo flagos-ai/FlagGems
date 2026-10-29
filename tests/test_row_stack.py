@@ -260,11 +260,8 @@ def test_row_stack_out_non_contiguous(dtype):
     assert tuple(out.stride()) == (6, 1)
     utils.gems_assert_equal(out, ref_out)
     # The destination's strides must be respected: the untouched columns stay 0.
-    # Observe untouched columns only after checking the original target out ABI.
-    # The observer need not depend on a native integer-reduction kernel.
-    observed_buffer = buffer.cpu() if flag_gems.vendor_name == "enflame" else buffer
-    assert torch.count_nonzero(observed_buffer[:, 0]) == 0
-    assert torch.count_nonzero(observed_buffer[:, 4:]) == 0
+    assert torch.count_nonzero(buffer[:, 0]) == 0
+    assert torch.count_nonzero(buffer[:, 4:]) == 0
 
 
 @pytest.mark.row_stack_out
@@ -287,8 +284,6 @@ def test_row_stack_out_resize(shape, dtype):
 @pytest.mark.row_stack_out
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
-    if flag_gems.vendor_name == "enflame":
-        pytest.skip("This out-cast fixture requires genuine target Float64 storage")
     inp = [torch.randn((2, 3), device=flag_gems.device) for _ in range(2)]
     ref_inp = [utils.to_reference(e) for e in inp]
     if flag_gems.vendor_name == "iluvatar" and ref_inp[0].device.type != "cpu":

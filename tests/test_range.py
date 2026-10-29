@@ -31,6 +31,9 @@ device = flag_gems.device
     "dtype", utils.PRIMARY_FLOAT_DTYPES + utils.ALL_INT_DTYPES + [None]
 )
 def test_range(start, end, dtype):
+    if flag_gems.vendor_name == "ascend" and not cfg.TO_CPU and dtype == torch.int16:
+        pytest.skip("Ascend native range does not support int16 output")
+    expected_device = torch.empty(0, device=device).device
     ref_out = utils.to_reference(
         torch.range(
             start,
@@ -39,6 +42,9 @@ def test_range(start, end, dtype):
             device="cpu" if cfg.TO_CPU else device,
         )
     )
-    with flag_gems.use_gems():
-        res_out = torch.range(start, end, dtype=dtype, device=device)
+    res_out = flag_gems.range(start, end, dtype=dtype, device=device)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == expected_device
+    assert res_out.dtype == ref_out.dtype
+    assert res_out.shape == ref_out.shape
     utils.gems_assert_equal(res_out, ref_out)

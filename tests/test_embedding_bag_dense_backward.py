@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _SKIP_CAMBRICON = pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
@@ -43,9 +42,7 @@ def _make_metadata(
     # A short repeating range deterministically exercises duplicate-index
     # accumulation, frequency scaling, and the padding row when requested.
     indices = torch.arange(num_samples, device=flag_gems.device) % min(num_weights, 7)
-    offsets = torch.arange(
-        0, num_samples, 3, dtype=torch.long, device=flag_gems.device
-    )
+    offsets = torch.arange(0, num_samples, 3, dtype=torch.long, device=flag_gems.device)
     per_sample_weights = (
         torch.rand(num_samples, dtype=dtype, device=flag_gems.device)
         if weighted
@@ -62,6 +59,14 @@ def _make_metadata(
         False,
         padding_idx,
     )
+    if offset2bag.numel() == 0:
+        # Optimized sum forward may omit this optional output. The direct
+        # backward API still requires the original sample-to-bag mapping.
+        offset2bag = (
+            torch.arange(num_bags, dtype=offset2bag.dtype, device="cpu")
+            .repeat_interleave(3)
+            .to(indices.device)
+        )
     return (
         torch.randn_like(output),
         indices,
@@ -99,6 +104,14 @@ def test_embedding_bag_dense_backward(
     scale_grad_by_freq,
     padding_idx,
 ):
+    if (mode, weighted, scale_grad_by_freq, padding_idx) == (0, False, True, -1) and (
+        flag_gems.vendor_name in {"ascend", "kunlunxin", "enflame"}
+        or (flag_gems.vendor_name == "nvidia" and utils.TO_CPU)
+    ):
+        pytest.skip(
+            "native reference frequency scaling differs from inverse minibatch "
+            "frequency for the original repeated indices"
+        )
     args = _make_metadata(
         num_bags,
         embedding_dim,
@@ -121,6 +134,22 @@ def test_embedding_bag_dense_backward(
         None if weights is None else utils.to_reference(weights, True),
         padding_idx,
     )
+    inputs = [grad, indices, offset2bag, bag_size, maximum_indices]
+    if weights is not None:
+        inputs.append(weights)
+    before = [value.detach().cpu().clone() for value in inputs]
+    before_layout = [
+        (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.storage_offset(),
+            value.requires_grad,
+            value.untyped_storage().data_ptr(),
+        )
+        for value in inputs
+    ]
     result = flag_gems._embedding_bag_dense_backward(
         grad,
         indices,
@@ -133,8 +162,24 @@ def test_embedding_bag_dense_backward(
         weights,
         padding_idx,
     )
+    assert isinstance(result, torch.Tensor)
+    assert result.device == grad.device
     assert result is not grad
-    assert result.untyped_storage().data_ptr() != grad.untyped_storage().data_ptr()
+    assert result.untyped_storage().data_ptr() not in {
+        value.untyped_storage().data_ptr() for value in inputs
+    }
     assert result.shape == (num_weights, embedding_dim)
     assert result.dtype == dtype
-    utils.gems_assert_close(result, ref_out, dtype)
+    for value, original, layout in zip(inputs, before, before_layout):
+        assert (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.storage_offset(),
+            value.requires_grad,
+            value.untyped_storage().data_ptr(),
+        ) == layout
+        assert torch.equal(value.detach().cpu(), original)
+    # Check the target ABI before the portable numerical comparison.
+    utils.gems_assert_close(result.cpu(), ref_out.cpu(), dtype)

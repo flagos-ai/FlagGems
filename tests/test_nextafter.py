@@ -6,6 +6,31 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _candidate_nextafter(inp, other, **kwargs):
+    inputs = (inp, other)
+    before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in inputs
+    ]
+    saved = [x.clone() for x in inputs]
+    result = flag_gems.nextafter(inp, other, **kwargs)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == before[0][0]
+    assert result.dtype == before[0][1]
+    assert tuple(result.shape) == before[0][2]
+    assert result.data_ptr() not in {before[0][4], before[1][4]}
+    if kwargs.get("out") is not None:
+        assert result is kwargs["out"]
+    for value, original, abi in zip(inputs, saved, before):
+        assert (value.device, value.dtype, tuple(value.shape)) == abi[:3]
+        assert value.stride() == abi[3]
+        assert value.data_ptr() == abi[4]
+        assert torch.equal(
+            value.detach().cpu().reshape(-1).view(torch.uint8),
+            original.detach().cpu().reshape(-1).view(torch.uint8),
+        )
+    return result
+
+
 @pytest.mark.nextafter
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -16,8 +41,7 @@ def test_nextafter(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp1, inp2)
+    res_out = _candidate_nextafter(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -59,9 +83,8 @@ def test_nextafter_out(shape, dtype):
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        out = torch.empty_like(inp1)
-        res_out = torch.nextafter(inp1, inp2, out=out)
+    out = torch.empty_like(inp1)
+    res_out = _candidate_nextafter(inp1, inp2, out=out)
 
     # in-place contract: the same object is returned and populated
     assert res_out is out
@@ -81,12 +104,10 @@ def test_nextafter_out_none(shape, dtype):
 
     ref_out = torch.nextafter(ref_inp1, ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp1, inp2)
+    res_out = _candidate_nextafter(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
-    # the inputs must not be mutated
-    utils.gems_assert_close(inp1, utils.to_reference(inp1.clone()), dtype)
+    # The candidate helper checks both original inputs remain unchanged.
 
 
 @pytest.mark.nextafter_
@@ -160,8 +181,7 @@ def test_nextafter_edge_values(dtype, inp, other):
     ref_other = utils.to_reference(other_t)
 
     ref_out = torch.nextafter(ref_inp, ref_other)
-    with flag_gems.use_gems():
-        res_out = torch.nextafter(inp_t, other_t)
+    res_out = _candidate_nextafter(inp_t, other_t)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -170,12 +190,6 @@ def test_nextafter_edge_values(dtype, inp, other):
 @pytest.mark.parametrize("dtype", EDGE_DTYPES)
 def test_nextafter_nan(dtype):
     """nextafter(NaN, y) → NaN; nextafter(x, NaN) → NaN; nextafter(NaN, NaN) → NaN."""
-    # The uint16 bitcast path for float16/bf16 does not handle NaN reliably
-    # in all Triton backends (bitcast round-trip can corrupt NaN bits).
-    # The float32 path uses libdevice nextafter which handles NaN correctly.
-    # Skip float16/bf16 here; NaN handling is verified via the float32 path.
-    if dtype in (torch.float16, torch.bfloat16):
-        return
     device = flag_gems.device
     nan_val = float("nan")
     normal_val = 1.0
@@ -192,8 +206,7 @@ def test_nextafter_nan(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = _candidate_nextafter(inp_t, other_t)
 
         # All outputs must be NaN
         assert torch.isnan(ref_out).all()
@@ -226,8 +239,7 @@ def test_nextafter_infinity(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = _candidate_nextafter(inp_t, other_t)
 
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -252,7 +264,6 @@ def test_nextafter_small_values(dtype):
         ref_other = utils.to_reference(other_t)
 
         ref_out = torch.nextafter(ref_inp, ref_other)
-        with flag_gems.use_gems():
-            res_out = torch.nextafter(inp_t, other_t)
+        res_out = _candidate_nextafter(inp_t, other_t)
 
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
