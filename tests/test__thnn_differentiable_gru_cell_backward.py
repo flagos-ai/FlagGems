@@ -20,6 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+# The op is registered under its public id (thnn_differentiable_gru_cell_backward)
+# whose marker the daily per-op runs use, while tools/test-op.sh derives the
+# underscore_-prefixed marker from the underscored impl module name. Carry both
+# so either selection path finds these tests (#6359 marker convention).
+pytestmark = [
+    pytest.mark.thnn_differentiable_gru_cell_backward,
+    pytest.mark.underscore_thnn_differentiable_gru_cell_backward,
+]
+
 DTYPES = utils.ALL_FLOAT_DTYPES
 SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129)]
 if QUICK_MODE:
@@ -86,7 +95,6 @@ def _assert_outputs_close(result, reference, dtype, batch_size):
             )
 
 
-@pytest.mark.thnn_differentiable_gru_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("has_input_bias,has_hidden_bias", BIAS_MODES)
@@ -103,13 +111,11 @@ def test_thnn_differentiable_gru_cell_backward(
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
 
-@pytest.mark.thnn_differentiable_gru_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_thnn_differentiable_gru_cell_backward_noncontiguous(dtype):
     batch_size, hidden_size = 5, 19
@@ -123,13 +129,11 @@ def test_thnn_differentiable_gru_cell_backward_noncontiguous(dtype):
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
 
-@pytest.mark.thnn_differentiable_gru_cell_backward
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_thnn_differentiable_gru_cell_backward_empty(shape):
     batch_size, hidden_size = shape
@@ -143,13 +147,11 @@ def test_thnn_differentiable_gru_cell_backward_empty(shape):
         *_reference_args(args)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten._thnn_differentiable_gru_cell_backward(*args)
+    result = flag_gems._thnn_differentiable_gru_cell_backward(*args)
 
     _assert_outputs_close(result, reference, dtype, batch_size)
 
 
-@pytest.mark.thnn_differentiable_gru_cell_backward
 def test_thnn_differentiable_gru_cell_backward_invalid_shape():
     args = _make_inputs(2, 8, torch.float32)
     bad_input_gates = torch.randn(2, 23, device=flag_gems.device)

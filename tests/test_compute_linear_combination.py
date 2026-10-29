@@ -36,8 +36,7 @@ def test_compute_linear_combination(m, n, k, dtype):
     ref_coeffs = utils.to_reference(coeffs, True)
 
     ref_out = torch._compute_linear_combination(ref_inp, ref_coeffs)
-    with flag_gems.use_gems():
-        res_out = torch._compute_linear_combination(inp, coeffs)
+    res_out = flag_gems._compute_linear_combination(inp, coeffs)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -54,8 +53,7 @@ def test_compute_linear_combination_higher_rank(m, n, k, dtype):
     ref_coeffs = utils.to_reference(coeffs, True)
 
     ref_out = torch._compute_linear_combination(ref_inp, ref_coeffs)
-    with flag_gems.use_gems():
-        res_out = torch._compute_linear_combination(inp, coeffs)
+    res_out = flag_gems._compute_linear_combination(inp, coeffs)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -71,8 +69,7 @@ def test_compute_linear_combination_extreme(m, n, k, dtype):
     ref_coeffs = utils.to_reference(coeffs)
 
     ref_out = torch._compute_linear_combination(ref_inp, ref_coeffs)
-    with flag_gems.use_gems():
-        res_out = torch._compute_linear_combination(inp, coeffs)
+    res_out = flag_gems._compute_linear_combination(inp, coeffs)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=n)
 
@@ -92,8 +89,7 @@ def test_compute_linear_combination_out(m, n, k, dtype):
     ref_out = torch.zeros((m, k), dtype=ref_inp.dtype, device=ref_inp.device)
     torch.ops.aten._compute_linear_combination.out(ref_inp, ref_coeffs, out=ref_out)
     out = torch.zeros((m, k), dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._compute_linear_combination.out(inp, coeffs, out=out)
+    res_out = flag_gems._compute_linear_combination_out(inp, coeffs, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=n)

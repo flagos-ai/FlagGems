@@ -55,7 +55,16 @@ def special_log1p(A):
     logger.debug("GEMS_KUNLUNXIN SPECIAL_LOG1P")
     if isinstance(A, torch.Tensor):
         return special_log1p_func(A)
-    return math.log1p(A)
+    # aten::special_log1p has no scalar overload (a float raises TypeError), but the
+    # flag_gems Python API does accept one, and the generic implementation returns a
+    # 0-dim CPU fp32 tensor (`torch.log(torch.tensor(A + 1.0))`). Returning a bare
+    # float here breaks every tensor-style caller (`.to()`, `.item()`, assert_close).
+    try:
+        value = math.log1p(A)
+    except ValueError:
+        # math.log1p(-1) / math.log1p(x < -1) raise; aten returns -inf / nan there.
+        value = float("-inf") if A == -1 else float("nan")
+    return torch.tensor(value, dtype=torch.float32)
 
 
 def special_log1p_out(A, out):

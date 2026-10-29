@@ -196,6 +196,32 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _indices_copy
+  description: 'Returns a fresh non-aliasing copy of the coordinate (indices) tensor
+    of a sparse COO tensor, shaped (sparse_dim, nnz).
+
+    '
+  for:
+  - _indices_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: _indices_copy_out
+  description: A variant of `_indices_copy()` that writes the indices copy into
+    the `out` tensor.
+  for:
+  - _indices_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _linalg_eigh
   description: Computes the eigenvalues and eigenvectors of a symmetric or Hermitian
     matrix.
@@ -639,6 +665,20 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: adaptive_avg_pool2d_out
+  description: 'Apply a 2D adaptive average pooling over an input signal composed
+    of several input planes, writing the result into a pre-allocated output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool2d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: adaptive_avg_pool3d
   description: 'Applies a three-dimensional adaptive average pooling over an input
     signal composed of several input planes, producing an output of the requested
@@ -1176,6 +1216,21 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.3'
+- id: affine_grid_generator_backward
+  description: 'Computes the backward pass of affine_grid_generator: given the gradient
+
+    w.r.t. the output grid, produces the gradient w.r.t. the affine matrix theta.
+
+    '
+  for:
+  - affine_grid_generator_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: alias
   description: Return a view tensor sharing the same storage (zero-copy alias).
   for:
@@ -1813,6 +1868,20 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: argwhere
+  description: |
+    Returns a tensor containing the indices of all non-zero elements of the input
+    tensor. Each row in the result contains the multi-dimensional index of a
+    non-zero element. Uses a Triton-based prefix-sum compaction kernel.
+  for:
+  - argwhere
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: as_strided_copy
   description: 'Creates a contiguous copy of an `as_strided` view of the input tensor.
 
@@ -2833,29 +2902,6 @@ tensor into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
-- id: broadcast_tensors
-  description: Broadcasts the given tensors to a common shape according to broadcasting
-    semantics, returning a list of tensors.
-  for:
-  - broadcast_tensors
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: broadcast_to
-  description: Broadcasts input to the shape size. Equivalent to calling input.expand(size).
-  for:
-  - broadcast_to
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: bucket_sort_topk
   description: A wrapper of the TLE version and the Triton version bucket-sort topk
     operation.
@@ -3185,17 +3231,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: chunk
-  description: Split a tensor into a specific number of chunks along a given dimension.
+- id: choose_qparams_per_tensor
+  description: 'Chooses quantization parameters (scale and zero-point) for a tensor
+    by computing its min and max, returning the affine quantization pair as Python
+    scalars.
+
+    '
   for:
-  - chunk
+  - _choose_qparams_per_tensor
   labels:
   - aten
   - KernelGen
   kind:
-  - Math
+  - Reduction
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: chunk_cat
   description: Triton kernel implementation for _chunk_cat.
   for:
@@ -3834,6 +3884,31 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: convert_indices_from_coo_to_csr
+  description: Converts a COO row-index vector plus a row count into the CSR row pointer
+    tensor of length `size + 1`, where `out[k]` is the number of stored
+    indices below row `k`.
+  for:
+  - _convert_indices_from_coo_to_csr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
+- id: convert_indices_from_coo_to_csr_out
+  description: A variant of `_convert_indices_from_coo_to_csr()` that writes the CSR row
+    pointers into the `out` tensor.
+  for:
+  - _convert_indices_from_coo_to_csr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: convert_indices_from_csr_to_coo
   description: Decodes COO coordinates from CSR row pointers and stored column indices,
     returning a `(nd + 2, N * nnz)` table of batch coordinates, rows and
@@ -3877,6 +3952,26 @@ tensor into the caller-supplied `out` buffer.
   labels:
   - aten
   - KernelGen
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5'
+- id: convolution_backward
+  description: Computes input, weight and bias gradients for batched 1D, 2D and 3D convolutions.
+  for:
+  - convolution_backward
+  labels:
+  - aten
+  kind:
+  - Convolution
+  stages:
+  - alpha: '5.5'
+- id: convolution_backward_out
+  description: Writes convolution gradients into the requested output tensors.
+  for:
+  - convolution_backward.out
+  labels:
+  - aten
   kind:
   - Convolution
   stages:
@@ -5177,24 +5272,6 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: dsplit
-  description: 'Split a tensor along the third axis (depth-wise). Pure layout operation
-    returning zero-copy views.
-
-    '
-  for:
-  - dsplit.int
-  - dsplit.array
-  marks:
-  - dsplit
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: dstack
   description: 'Stack tensors in sequence depth wise (along the third axis). Inputs
     are promoted with atleast_3d first, so 1-D and 2-D tensors each contribute a
@@ -8472,6 +8549,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: fractional_max_pool3d_backward
+  description: |
+    Computes the gradient of fractional_max_pool3d.
+  for:
+  - fractional_max_pool3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: frexp
   description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent,
     with mantissa in (-1, 1).
@@ -8993,6 +9082,30 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.0'
+- id: ge_scalar_
+  description: The scalar version of `ge_()`.
+  for:
+  - ge_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: ge_tensor_
+  description: The in-place version of `ge()` (Tensor overload).
+  for:
+  - ge_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: geglu
   description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
@@ -10654,6 +10767,31 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: int_repr
+  description: |
+    Returns the raw integer codes stored by an affine-quantized tensor, mapping
+    quint8/qint8/qint32 storage to uint8/int8/int32 without applying the scale
+    or zero point.
+  for:
+  - int_repr
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: int_repr_out
+  description: A variant of `int_repr` that writes the result into the `out` tensor.
+  for:
+  - int_repr.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: inverse
   description: |
     Computes the inverse of a square matrix, batched over the leading dimensions
@@ -10718,6 +10856,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - beta: '5.3'
+- id: is_any_true
+  description: |
+    Return whether any logical element of a boolean tensor is true.
+  for:
+    - _is_any_true
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
+  stages:
+    - alpha: '5.5.0'
 - id: is_nonzero
   description: Returns True if the single-element input tensor is not equal to zero.
   for:
@@ -12966,6 +13116,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: make_per_tensor_quantized_tensor
+  description: 'Wraps an integer tensor into a per-tensor affine quantized tensor,
+    storing the given scale and zero point verbatim and copying the values into
+    the integer representation.
+
+    '
+  for:
+  - _make_per_tensor_quantized_tensor
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: make_per_tensor_quantized_tensor_out
+  description: 'A variant of `make_per_tensor_quantized_tensor()` that writes the
+    quantized tensor into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _make_per_tensor_quantized_tensor.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: margin_ranking_loss
   description: Compute the margin ranking loss.
   for:
@@ -14238,19 +14417,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - beta: '5.4'
-- id: narrow
-  description: Pure layout operation (narrow); returns a zero-copy view sharing storage
-    with the input.
-  for:
-  - narrow
-  labels:
-  - aten
-  - KernelGen
-  - skip_precision_check
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: narrow_copy
   description: Triton kernel implementation for narrow_copy.
   for:
@@ -14567,6 +14733,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: nested_compute_contiguous_strides_offsets
+  description: 'Computes the contiguous strides and storage offsets of a nested tensor
+    from its per-component sizes, mirroring
+    `aten::_nested_compute_contiguous_strides_offsets`.
+
+    '
+  for:
+  - _nested_compute_contiguous_strides_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
@@ -14784,6 +14965,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: new_zeros
+  description: 'Returns a Tensor of size `size` filled with 0, with the same
+    `torch.dtype` and `torch.device` as the input tensor.
+
+    '
+  for:
+  - new_zeros
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: new_zeros_out
+  description: 'A variant of `new_zeros` with output written to provided `out`.
+
+    '
+  for:
+  - new_zeros.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: new_zeros_with_same_feature_meta
   description: |
     Create zeros preserving the feature tensor dtype, device, strides, and storage offset.
@@ -14934,6 +15142,32 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: nnpack_spatial_convolution
+  description: 'Applies a 2D spatial convolution over an NCHW input using the NNPACK
+    CPU engine, with the given kernel weights, optional bias, padding and stride.
+
+    '
+  for:
+  - _nnpack_spatial_convolution
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: nnpack_spatial_convolution_out
+  description: A variant of `nnpack_spatial_convolution` that writes the result into
+    the `out` tensor.
+  for:
+  - _nnpack_spatial_convolution.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nnz
   description: 'Returns the number of stored entries of a sparse tensor: the
     number of values in the COO storage, or of entries in the compressed
@@ -15231,6 +15465,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: numpy_T
+  description: 'Returns a view of the input with its dimensions reversed, the
+    zero-copy equivalent of ``numpy.ndarray.T``.
+
+    '
+  for:
+  - numpy_T
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: one_hot
   description: 'Takes LongTensor with index values of shape `(*)` and returns a tensor
     of shape `(*, num_classes)`
@@ -16246,6 +16494,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: ravel
+  description: 'Returns a flattened (1-D) view of the input when possible, otherwise
+    a contiguous copy.
+
+    '
+  for:
+  - ravel
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: real
   description: |
     Returns the real component of a complex tensor as a zero-copy view. For
@@ -18349,22 +18611,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.0'
-- id: slice
-  description: 'Slices the input tensor along the specified dimension.
-
-    Returns a view of the original tensor with the given dimension sliced from start
-    to end.
-
-    '
-  for:
-  - slice.Tensor
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: slice_backward
   description: 'An automatic differentiation (autograd) function that computes the
     gradient of a tensor slicing operation
@@ -18788,6 +19034,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_broadcast_to_copy
+  description: 'Broadcasts a sparse COO tensor to the target shape, always materialising
+    a fresh copy of the broadcast indices and values; the copy variant of
+    ``aten::_sparse_broadcast_to`` supporting the out= form.
+
+    '
+  for:
+  - _sparse_broadcast_to_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_bsc_tensor
   description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
     components (ccol_indices, row_indices, and the block values payload) with an optional
@@ -18797,6 +19058,56 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   for:
   - sparse_bsc_tensor.ccol_row_value
   - sparse_bsc_tensor.ccol_row_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_bsr_tensor
+  description: 'Assembles a block-compressed sparse row (BSR) tensor from its stored
+    components: the block-row pointers (crow_indices), the block-column indices
+    (col_indices) and the block payload (values), with an optional explicit logical
+    size.
+
+    '
+  for:
+  - sparse_bsr_tensor.crow_col_value
+  - sparse_bsr_tensor.crow_col_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_compressed_tensor
+  description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
+    components: the compressed-axis index vector, the plain-axis index vector and
+    the payload (values), with an explicit logical size or one inferred from the
+    component buffers.
+
+    '
+  for:
+  - sparse_compressed_tensor.comp_plain_value
+  - sparse_compressed_tensor.comp_plain_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csc_tensor_unsafe
+  description: 'Assembles a torch.sparse_csc layout tensor from already-materialised
+    ccol/row indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_csc_tensor_unsafe
   labels:
   - aten
   - KernelGen
@@ -18834,6 +19145,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sparse_mm_reduce_impl
+  description: |
+    Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
+    product of a 2-D CSR tensor (M, K) and a dense (K, N) matrix with a
+    sum / mean / amax / amin reduction over each row's stored nnz products,
+    returning the (output, arg_out) pair. arg_out mirrors aten's contract
+    (empty int64 tensor outside grad mode).
+  for:
+  - _sparse_mm_reduce_impl
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
@@ -18907,6 +19234,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_tile
+  description: 'Prunes a dense fp16/bf16 matrix to the 2:4 semi-structured sparsity
+    pattern (greedy 4x4-tile largest-values selection) and packs it into the CUTLASS
+    compressed representation: packed values, int16 metadata, the transposed pair,
+    and the per-thread 8x8 selection bitmasks.
+
+    '
+  for:
+  - _sparse_semi_structured_tile
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: spdiags
   description: Triton kernel implementation for _spdiags that builds a sparse matrix
     from diagonals.
@@ -19752,6 +20095,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: special_psi
+  description: 'Computes the digamma function (psi) of `input` element-wise, the
+    logarithmic derivative of the gamma function.
+
+    '
+  for:
+  - special_psi
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: special_psi_out
+  description: 'A variant of `special_psi` with output written to provided `out`.
+
+    '
+  for:
+  - special_psi.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_round
   description: 'Rounds a tensor to the nearest integer, with ties rounding to the
     nearest
@@ -19781,6 +20153,36 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: special_scaled_modified_bessel_k0
+  description: 'Computes the scaled modified Bessel function of the second kind
+    of order 0 (scaled K_0(x) = exp(x)*K_0(x)) for each element in the input tensor.
+
+    '
+  for:
+  - special_scaled_modified_bessel_k0
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: special_scaled_modified_bessel_k0_out
+  description: 'A variant of `special_scaled_modified_bessel_k0` with output
+    written to provided `out`.
+
+    '
+  for:
+  - special_scaled_modified_bessel_k0.out
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: special_scaled_modified_bessel_k1
   description: 'Computes the scaled modified Bessel function of the first kind
 
@@ -20028,21 +20430,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: split_with_sizes
-  description: 'Splits a tensor into sub-tensors along a given dimension,
-
-    where each split has a specified size. Returns views into the input.
-
-    '
-  for:
-  - split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: split_with_sizes_copy
   description: 'Splits a tensor into sub-tensors along a given dimension,
 
@@ -20735,42 +21122,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
-- id: tensor_split_indices
-  description: Splits a tensor into multiple sub-tensors at the given indices along
-    a given dimension.
-  for:
-  - tensor_split.indices
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a number of sections.
-  for:
-  - tensor_split.sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
-- id: tensor_split_tensor_indices_or_sections
-  description: Splits a tensor into multiple sub-tensors along a given dimension,
-    using a tensor of split indices.
-  for:
-  - tensor_split.tensor_indices_or_sections
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.3'
 - id: tensordot
   description: Triton kernel implementation for tensordot.
   for:
@@ -20791,6 +21142,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: '5.5'
+- id: thnn_conv2d
+  description: 'Applies a 2D convolution over an NCHW input using the legacy THNN
+    entry point, with the given kernel weights, optional bias, stride and padding.
+
+    '
+  for:
+  - thnn_conv2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5'
 - id: thnn_differentiable_gru_cell_backward
@@ -21126,6 +21491,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     - aten
   kind:
     - Tensor
+  stages:
+    - alpha: '5.5'
+- id: trapezoid
+  description: |
+    A variant of trapezoid() that uses a tensor x to specify sample points
+    along the integration dimension.
+  for:
+    - trapezoid.x
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Reduction
   stages:
     - alpha: '5.5'
 - id: trapz
@@ -21569,17 +21947,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.3'
-- id: unsafe_chunk
-  description: Split a tensor into a specified number of chunks along a given dimension.
-  for:
-  - unsafe_chunk
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unsafe_index
   description: 'Indexes `input` along each dimension with the given indices, matching
 
@@ -22148,6 +22515,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: validate_sparse_csc_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_csc_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: value_selecting_reduction_backward
   description: 'Computes the gradient of a value-selecting reduction (such as `max.dim`
 
@@ -22288,6 +22667,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '2.0'
+- id: version
+  description: 'Returns the version counter of a tensor: an integer bumped by one
+    on every dispatched in-place call. Inference tensors do not track a version
+    counter and raise RuntimeError, mirroring aten::_version.
+
+    '
+  for:
+  - _version
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: view_as_complex
   description: Returns a view of the real input tensor as a complex tensor (zero-copy
     view operation).
@@ -22346,22 +22740,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
-- id: vsplit
-  description: 'Split a tensor along the first axis (row-wise).
-
-    Each chunk is copied into a freshly allocated output by a Triton kernel.
-
-    '
-  for:
-  - vsplit.int
-  - vsplit.array
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: vstack
   description: Stack tensors in sequence vertically (row wise).
   for:

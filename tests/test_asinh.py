@@ -93,9 +93,8 @@ def test_accuracy_asinh_out(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.empty_like(ref_inp)
     torch.asinh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.asinh(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.asinh_out(inp, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
