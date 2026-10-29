@@ -20,8 +20,14 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.utils import libentry
+from flag_gems.utils.device_info import is_amd_radeon
 
 logger = logging.getLogger(__name__)
+
+# Radeon has no fp32 matrix instruction: an "ieee" fp32 dot unrolls into scalar
+# FMAs whose compile time explodes, so use bf16x6 (WMMA, fp32-level accuracy).
+# Everywhere else keep ieee, i.e. the previous allow_tf32=False.
+_DOT_PRECISION = tl.constexpr("bf16x6" if is_amd_radeon() else "ieee")
 
 
 def conv_transpose1d_output_size(
@@ -190,7 +196,9 @@ def conv_transpose1d_forward_kernel(
 
         # Accumulate: input_block is [BLOCK_N_OW, BLOCK_IC], weight_block is [BLOCK_IC, BLOCK_OC]
         accum += tl.dot(
-            input_block.to(tl.float32), weight_block.to(tl.float32), allow_tf32=False
+            input_block.to(tl.float32),
+            weight_block.to(tl.float32),
+            input_precision=_DOT_PRECISION,
         )
 
     # Add bias if present
