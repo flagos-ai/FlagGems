@@ -24,12 +24,14 @@ def _build_inputs_fn(plan, dtype, device):
             "Enflame native Bartlett computes Double windows with Float precision"
         )
     (window_length,) = plan.builder_args
-    return (), {
-        "window_length": window_length,
-        "periodic": plan.params["periodic"],
-        "dtype": dtype,
-        "device": device,
-    }
+    return (
+        {
+            "window_length": window_length,
+            "periodic": plan.params["periodic"],
+            "dtype": dtype,
+            "device": device,
+        },
+    )
 
 
 @pytest.mark.bartlett_window

@@ -40,7 +40,7 @@ def test_bartlett_window(window_length, periodic, dtype):
     requested = torch.device(device)
     if requested.type != "cpu" and requested.index is None:
         requested = torch.device(
-            "gcu", flag_gems.runtime.torch_device_fn.current_device()
+            requested.type, flag_gems.runtime.torch_device_fn.current_device()
         )
     assert res_out.device == requested
     assert res_out.dtype == dtype and res_out.shape == (window_length,)
