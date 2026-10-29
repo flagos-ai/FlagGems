@@ -32,17 +32,39 @@ def fallback_lgamma_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr)
     tl.store(out_ptr + offsets, _fallback_lgamma(x), mask=mask)
 
 
+def _assert_lgamma_contract(actual, device, dtype, shape):
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == device
+    assert actual.dtype == dtype
+    assert actual.shape == shape
+
+
+def _has_lgamma_override(request):
+    return request.config._override_registry.get_override("lgamma") is not None
+
+
 @pytest.mark.lgamma
-def test_missing_lgamma_uses_fallback():
+def test_missing_lgamma_uses_fallback(request):
     class EmptyLibdevice:
         pass
 
     libdevice = _patch_missing_symbols(EmptyLibdevice(), ("lgamma",))
     assert libdevice.lgamma is _fallback_lgamma
+    if _has_lgamma_override(request):
+        inp = torch.tensor(
+            [-0.5, 0.5, 1.0, 2.0, 4.0],
+            dtype=torch.float32,
+            device=flag_gems.device,
+        )
+        device, dtype, shape = inp.device, inp.dtype, inp.shape
+        expected = torch.lgamma(inp.cpu())
+        actual = flag_gems.lgamma(inp)
+        _assert_lgamma_contract(actual, device, dtype, shape)
+        utils.gems_assert_close(actual.cpu(), expected, dtype)
 
 
 @pytest.mark.lgamma
-def test_fallback_lgamma():
+def test_fallback_lgamma(request):
     inp = torch.tensor(
         [
             -float("inf"),
@@ -78,10 +100,15 @@ def test_fallback_lgamma():
     # Sunrise does not provide an ATen lgamma reference, so evaluate the
     # high-precision reference explicitly on CPU.
     expected = torch.lgamma(inp.cpu().double()).float()
-    actual = torch.empty_like(inp)
-    block_size = triton.next_power_of_2(inp.numel())
-    with torch_device_fn.device(inp.device):
-        fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
+    device, dtype, shape = inp.device, inp.dtype, inp.shape
+    if _has_lgamma_override(request):
+        actual = flag_gems.lgamma(inp)
+    else:
+        actual = torch.empty_like(inp)
+        block_size = triton.next_power_of_2(inp.numel())
+        with torch_device_fn.device(inp.device):
+            fallback_lgamma_kernel[(1,)](inp, actual, inp.numel(), BLOCK_SIZE=block_size)
+    _assert_lgamma_contract(actual, device, dtype, shape)
     utils.gems_assert_close(
         actual.cpu(), expected, torch.float32, atol=2e-5, equal_nan=True
     )
@@ -96,7 +123,9 @@ def test_lgamma(shape, dtype):
     ref_inp = torch.rand(shape, dtype=dtype) + 0.1
     inp = ref_inp.to(flag_gems.device)
     ref_out = ref_inp.lgamma()
+    device, output_dtype, output_shape = inp.device, inp.dtype, inp.shape
     res_out = flag_gems.lgamma(inp)
+    _assert_lgamma_contract(res_out, device, output_dtype, output_shape)
     utils.gems_assert_close(res_out.cpu(), ref_out, dtype)
 
 
