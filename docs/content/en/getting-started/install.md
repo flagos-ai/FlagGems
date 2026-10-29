@@ -27,7 +27,7 @@ weight: 20
   your hardware have been installed and configured properly.
   This applies to both NVIDIA platforms and other AI accelerator hardware.
 
-- If you are trying out [the integration with vLLM](/FlagGems/usage/frameworks/#vllm),
+- If you are trying out [the integration with vLLM](../usage/frameworks.md#vllm),
   you will need to install [vLLM](https://github.com/vllm-project/vllm)
   or its vendor-customized version if any.
 
@@ -45,9 +45,7 @@ using your favorite Python package manager (e.g. `pip`).
 pip install flag_gems
 ```
 
-> [!INFO]
-> **Info**
->
+> [!NOTE]
 > This installs the pure-Python operators from *FlagGems*.
 >
 > To use the C++ wrapped operators (which reduce dispatch overhead for
@@ -121,7 +119,7 @@ flaggems-setup nvidia-cuda128 --compiler triton
 COMPILER=triton flaggems-setup nvidia-cuda128
 ```
 
-See [Environment variables](#env-vars) for the full `COMPILER` behavior.
+See [Environment variables](#env-vars) and the [Build and Configuration Options Reference](build-options.md#env-vars) for the full `COMPILER` behavior.
 
 ## 3. Build and install from source {#install-from-source}
 
@@ -239,7 +237,7 @@ CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_BACKEND=CUDA" \
   uv pip install --no-build-isolation ./cpp
 ```
 
-For manual control over CMake options, see the [CMake options reference](#cmake-options).
+For manual control over CMake options, see the [CMake options reference](build-options.md#cmake-options).
 
 #### Runtime: enable with `USE_C_EXTENSION`
 
@@ -251,84 +249,23 @@ export USE_C_EXTENSION=1
 
 Without this, only `torch.ops.flag_gems.*` and the `c_operators` pybind module
 are active; the ATen replacement and `flag_gems.enable()` C++ branches require
-it. See the [C++ usage guide](/FlagGems/usage/cpp/) for details.
+it. See the [C++ usage guide](../usage/cpp.md) for details.
 
-## 4. References
+## 4. Core Environment Variables Quick Reference {#env-vars}
 
-### 4.1 Available backends
+The following environment variables are essential during installation, build, and runtime:
 
-The full list of supported backends is defined in `src/flag_gems/backends.yaml`.
-Each backend specifies:
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `COMPILER` | Auto | Controls compiler selection: `flagtree` (forces FlagTree compiler) or `triton` (uses vendor/upstream Triton). Defaults to FlagTree when supported by the backend. |
+| `ENABLE_CPP` | `0` | Controls whether to compile C++ native extensions during `./setup.sh`. Set to `1` to build the `cpp/` package. |
+| `USE_C_EXTENSION` | `0` | Controls whether to activate C++ operator dispatch at runtime. Set to `1` to dispatch ATen calls via the C++ layer and reduce Python dispatch overhead. |
 
-- Python version
-- PyTorch and vendor-specific dependencies
-- Triton / FlagTree compiler packages
-- Runtime environment variables
+## 5. Build and Configuration Reference {#build-options-reference}
 
-### 4.2 Environment variables {#env-vars}
+For detailed specifications and advanced build parameters, please refer to the dedicated reference document:
 
-The `COMPILER` environment variable controls which compiler to use:
-
-| Value | Behavior |
-|-------|----------|
-| _(unset)_ | Auto: FlagTree if available, otherwise Triton |
-| `flagtree` | Use FlagTree |
-| `triton` | Use vendor Triton |
-
-The `ENABLE_CPP` environment variable enables C++ extensions:
-
-| Value | Behavior |
-|-------|----------|
-| _(unset or 0)_ | Python-only installation (default) |
-| `1` | Build C++ wrapped operators |
-
-### 4.3 CMake options {#cmake-options}
-
-When building with C++ extensions (`ENABLE_CPP=1`), the following CMake
-options are set automatically by `setup.sh`. For manual builds, you can
-pass them via the `CMAKE_ARGS` environment variable.
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `FLAGGEMS_BUILD_C_EXTENSIONS` | Build C++ extensions | `OFF` |
-| `FLAGGEMS_BACKEND` | Target backend (`CUDA`, `IX`, `MUSA`, `NPU`, `GCU`) | `CUDA` |
-| `FLAGGEMS_BUILD_CTESTS` | Build C++ unit tests | same as `FLAGGEMS_BUILD_C_EXTENSIONS` |
-| `FLAGGEMS_INSTALL` | Install CMake package | `ON` |
-| `FLAGGEMS_USE_EXTERNAL_TRITON_JIT` | Use external Triton JIT library | `OFF` |
-| `FLAGGEMS_USE_EXTERNAL_PYBIND11` | Use external pybind11 | `ON` |
-| `FLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP` | Build pointwise dynamic C++ module | `OFF` |
-
-### 4.4 `scikit-build-core` options {#scikit-build-core-options}
-
-> [!NOTE]
-> The main `flag-gems` package uses `setuptools` as its build-backend.
-> The `scikit-build-core` tool is used **only for the C++ extension**
-> built from the `cpp/` subdirectory.
-
-The `scikit-build-core` tool is a build-backend that bridges CMake
-and the Python build system, making it easier to create Python modules with CMake.
-Some commonly used environment variables for configuring `scikit-build-core` include:
-
-1. `SKBUILD_CMAKE_BUILD_TYPE`, used to configure the build type of the project.
-   Valid values are `Release`, `Debug`, `RelWithDebInfo` and `MinSizeRel`;
-
-1. `SKBUILD_BUILD_DIR`, which configures the build directory of the project.
-   The default value is `build/{cache_tag}`, which is defined in `pyproject.toml`.
-
-Note that for the environment variable `SKBUILD_CMAKE_ARGS`, multiple options
-are separated by semicolons (`;`), whereas for `CMAKE_ARGS`, they are separated
-by spaces.
-
-### 4.5 The `libtriton_jit` library {#libtriton-jit}
-
-The C++ extension of FlagGems depends on [TritonJIT](https://github.com/flagos-ai/libtriton_jit/),
-a library that implements a Triton JIT runtime in C++ and enables calling
-Triton JIT functions from C++ code.
-
-If you are building with an external TritonJIT, build and install it first,
-then pass `-DTritonJIT_ROOT=<install path>` to CMake:
-
-```shell
-CMAKE_ARGS="-DFLAGGEMS_BUILD_C_EXTENSIONS=ON -DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=/usr/local/lib/libtriton_jit" \
-ENABLE_CPP=1 ./setup.sh nvidia-cuda128
-```
+- **[Full Accelerator Backends Matrix](build-options.md#1-supported-accelerator-backends)**: View all supported hardware platform identifiers (`nvidia-cuda128`, `ascend-cann900`, `hygon`, `metax-maca3810`, `mthreads-musa520`, etc.) and dependencies.
+- **[CMake Options Reference](build-options.md#cmake-options)** {#cmake-options}: Definitions for `FLAGGEMS_BUILD_C_EXTENSIONS`, `FLAGGEMS_BACKEND`, `FLAGGEMS_BUILD_CTESTS`, and `CMAKE_ARGS` usage.
+- **[`scikit-build-core` Configuration](build-options.md#scikit-build-core-options)** {#scikit-build-core-options}: Build backend settings for packaging C++ extensions (`SKBUILD_CMAKE_BUILD_TYPE`, `SKBUILD_BUILD_DIR`).
+- **[External `libtriton_jit` Integration](build-options.md#libtriton-jit)** {#libtriton-jit}: Instructions for linking custom-built TritonJIT libraries.
