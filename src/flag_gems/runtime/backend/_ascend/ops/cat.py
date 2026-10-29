@@ -158,9 +158,7 @@ def _cat_fill_triton(out, A, dim):
             n_elements = a.numel()
 
             # CANN limits the flattened launch grid (coreDim) to 65535.
-            grid = (
-                min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),
-            )
+            grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),)
 
             if dim == 0:
                 output_offset = cat_offset * inner_size
