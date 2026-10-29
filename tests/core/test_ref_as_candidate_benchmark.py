@@ -6,6 +6,7 @@
 import pytest
 
 from benchmark import base, conftest
+from flag_gems.testing.reference import reference_test_mode
 
 
 def forbidden(*args, **kwargs):
@@ -18,7 +19,8 @@ def config(monkeypatch):
     config.ref_as_candidate = True
     monkeypatch.setattr(base, "Config", config)
     monkeypatch.setattr(base.flag_gems, "use_gems", forbidden)
-    return config
+    with reference_test_mode(True, "benchmark/test_probe.py::test_probe"):
+        yield config
 
 
 def test_reference_is_timed_on_both_sides(config, monkeypatch):
@@ -59,3 +61,11 @@ def test_candidate_timer_cannot_be_omitted(config, monkeypatch):
     bench.to_bench_metrics = ["latency_base"]
     with pytest.raises(ValueError, match="candidate latency metric"):
         bench.run()
+
+
+def test_timer_must_actually_invoke_reference(config, monkeypatch):
+    bench = base.Benchmark("example", torch_op=lambda value: value)
+    bench.to_bench_metrics = ["latency"]
+    monkeypatch.setattr(bench, "get_latency", lambda *args, **kwargs: 1.0)
+    with pytest.raises(pytest.fail.Exception, match="did not invoke"):
+        bench._measure_input((2,))

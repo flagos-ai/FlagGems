@@ -27,6 +27,7 @@ import triton
 import yaml
 
 import flag_gems
+from flag_gems.testing.reference import reference_execution, select_candidate
 from flag_gems.utils import shape_utils
 
 from . import consts
@@ -552,6 +553,11 @@ class Benchmark:
         select_all = case_ids is None
         selected = set(case_ids or [])
         Config.available_case_ids.update(available_ids)
+        state = reference_execution()
+        if state is not None and state.ref_as_candidate and not select_all:
+            state.benchmark_selection_empty = not any(
+                case.case_id in selected for case in cases
+            )
 
         results = []
         executed = []
@@ -582,7 +588,11 @@ class Benchmark:
     def _candidate_call(self):
         """Resolve the same callable and dispatch scope for candidate-only modes."""
         if getattr(Config, "ref_as_candidate", False):
-            return self.torch_op, nullcontext(), False
+            return (
+                select_candidate(None, self.torch_op, self.op_name),
+                nullcontext(),
+                False,
+            )
         override = (
             Config.override_registry.get_override(self.op_name)
             if Config.override_registry is not None
@@ -813,10 +823,19 @@ class Benchmark:
                 registry = Config.override_registry
                 key = f"flag_gems.{self.op_name}"
                 before = registry.call_counts().get(key, 0) if overridden else 0
+                state = reference_execution()
+                reference_before = state.candidate_calls if state is not None else 0
                 with dispatch:
                     metric.latency = self.get_latency(op, *args, **kwargs)
                 if getattr(Config, "ref_as_candidate", False):
                     metric.candidate_source = "reference"
+                    state = reference_execution()
+                    if state is not None:
+                        if state.candidate_calls <= reference_before:
+                            raise ValueError(
+                                "Reference candidate timer did not invoke its callable"
+                            )
+                        state.completed_timings += 1
                 if overridden:
                     if registry.call_counts().get(key, 0) <= before:
                         raise RuntimeError(

@@ -26,12 +26,7 @@ import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
-from flag_gems.testing.reference import (
-    ReferenceContractError,
-    is_reference_test,
-    reference_test_mode,
-    validate_ref_as_candidate_options,
-)
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -209,32 +204,11 @@ def pytest_unconfigure(config):
 def pytest_runtest_call(item):
     registry = item.config._override_registry
     before = registry.call_counts()
-    with reference_test_mode(item.config._ref_as_candidate, item.nodeid) as execution:
-        outcome = yield
+    yield
     after = registry.call_counts()
     TEST_RESULTS[item.nodeid]["candidate_calls"] = {
         name: count - before.get(name, 0) for name, count in after.items()
     }
-    if item.config._ref_as_candidate:
-        TEST_RESULTS[item.nodeid].update(
-            candidate_source="reference",
-            reference_calls=execution.reference_calls,
-            reference_candidate_calls=execution.candidate_calls,
-        )
-        if outcome.excinfo is None and execution.candidate_calls == 0:
-            outcome.force_exception(
-                ReferenceContractError(
-                    f"{item.nodeid}: reference contract did not execute a candidate call"
-                )
-            )
-
-
-def pytest_runtest_setup(item):
-    if item.config._ref_as_candidate and not is_reference_test(item.obj):
-        raise ReferenceContractError(
-            f"{item.nodeid}: --ref-as-candidate requires @reference_test "
-            "returning ReferenceCase with an explicit reference callable"
-        )
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -279,6 +253,8 @@ def pytest_runtest_logreport(report):
             result["reason"] = reason
         else:
             result["reason"] = None
+
+    result.update(getattr(report, "reference_candidate", {}))
 
 
 def pytest_terminal_summary(terminalreporter):

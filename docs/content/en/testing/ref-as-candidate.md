@@ -9,64 +9,49 @@ commands keep their original behavior.
 
 ## Correctness contract
 
-Use `@reference_test` on a parametrized factory returning `ReferenceCase`:
+Tests remain ordinary pytest functions. Explicitly choose the candidate:
 
 ```python
-import pytest
-import torch
-import flag_gems
-from flag_gems.testing.reference import ReferenceCase, reference_test
-from . import accuracy_utils as utils
+from flag_gems.testing.reference import get_candidate
 
-@pytest.mark.add
-@pytest.mark.parametrize("shape", [(16,), (32,)])
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-@reference_test
-def test_add(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    y = torch.randn_like(x)
 
-    def reference(args):
-        return torch.add(*args)
-
-    return ReferenceCase(
-        inputs=(x, y),
-        candidate=lambda args: flag_gems.add(*args),
-        reference=reference,
-        compare=lambda actual, expected: utils.gems_assert_close(actual, expected, dtype),
-        reference_inputs=(utils.to_reference(x, True), utils.to_reference(y, True)),
-    )
+def test_example():
+    reference = explicitly_defined_reference
+    candidate = get_candidate("example", reference=reference)
+    expected_inputs, candidate_inputs = build_independent_inputs()
+    expected = reference(*expected_inputs)
+    actual = candidate(*candidate_inputs)
+    original_comparison(actual, expected)
 ```
 
-Both callables receive one input bundle. The default mode executes the real
-candidate; the new mode executes `reference` in its place. The existing comparator
-still runs. Keep the candidate lookup inside its callable so CLI overrides remain
-effective and a missing public implementation need not be resolved in ref mode.
+Without the option, the helper reads the current public `flag_gems` export,
+including external overrides. With the option, it selects the explicit reference
+without looking up the real candidate; the public export may be absent.
+No reference is guessed from the operator name. Missing/non-callable references
+fail explicitly. Adapt differing signatures with an explicit callable.
 
-`reference_inputs` optionally supplies the expected-side CPU/upcast inputs; by
-default both sides start from `inputs`. The runner clones each bundle separately
-before either operation. The default clone is `copy.deepcopy`; supply `clone`
-when tensors need custom view/storage/gradient handling. The clone must preserve
-within-bundle alias relationships while making the two executions independent.
-Return mutated buffers and other observable outputs from each callable, and
-retain device, dtype, layout, mutation and alias checks in `compare`. CPU-oracle
-references must explicitly implement the candidate's required output contract;
-the runner does not silently move outputs or change dtype.
+The helper does not clone inputs, run assertions, adjust dtypes or move devices.
+Retain the original input preparation, independent buffers for in-place calls,
+CPU/upcast expected-side inputs, tolerances and mutation/alias assertions.
+The former `ReferenceCase` / `@reference_test` factory API is removed.
 
-A missing decorator, missing/non-callable field or wrong factory return is an
-error with the test node ID. Merely defining a local function named `reference`
-does not expose the contract. Unconverted tests still run normally without the
-new option. Existing pytest skips remain skips, not evidence of validation.
+`negative` is the initial migrated correctness test:
 
 ```sh
-python -m pytest tests/test_add.py -m add --ref-as-candidate
-python -m pytest tests/test_add.py -m add --ref-as-candidate --ref cpu
+python -m pytest tests/test_negative.py -m negative --ref-as-candidate
+python -m pytest tests/test_negative.py -m negative --ref-as-candidate --ref cpu
 ```
 
-These commands require the selected tests to implement the contract above. Run
-the full parameter grid for acceptance; `--quick` is only a preliminary check.
-Correctness JSON records identify `candidate_source: reference` and count both
-reference and candidate-side calls.
+Other tests need an explicit `get_candidate` declaration to opt in; their normal
+execution is unchanged. A passing node must actually call the selected candidate
+in its test body; calls only in fixtures do not qualify. Missing declarations or
+caught contract errors cannot be hidden by skip/xfail. A capability skip after
+valid selection remains a skip; an all-skip run is not successful validation.
+Setup/teardown contract failures are preserved in correctness JSON.
+
+JSON records include `candidate_source: reference`, `reference_calls` and
+`reference_candidate_calls`. Counters observe calls through the helper only;
+direct expected-side calls are not counted.
 
 ## Benchmark contract
 
@@ -85,8 +70,7 @@ A non-callable `torch_op` or a custom override of `run`, `_measure_input`,
 The original behavior of those benchmarks is unchanged without the option.
 
 The option cannot be combined with external overrides, `--reference-only`,
-`--preflight-only`, `--profile-only`, `--list-cases`, `--query`, `--parallel`, or
-`--collect-marks`. Those modes retain their existing meanings. This mode performs
+`--preflight-only`, `--profile-only`, `--list-cases`, `--query`, `--parallel`, `--collect-marks`, collection-only or xdist parallel execution. Those modes retain their existing meanings. This mode performs
 real timing; `--reference-only` still performs its original baseline-only probe.
 
 Ref-vs-ref is a harness executability check, not independent evidence that a

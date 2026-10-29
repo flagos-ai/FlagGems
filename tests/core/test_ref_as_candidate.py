@@ -1,152 +1,119 @@
 # Copyright 2026 FlagOS Contributors
-# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-"""Pure-Python contract and real pytest-hook regressions (no accelerator needed)."""
+"""Explicit reference contracts through shared helpers and real pytest hooks."""
 
 import importlib.util
-import inspect
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType
 
 import pytest
 
 pytest_plugins = ["pytester"]
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "src/flag_gems/testing/reference.py"
-SPEC = importlib.util.spec_from_file_location("_flaggems_reference_contract", SOURCE)
-reference = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = reference
-SPEC.loader.exec_module(reference)
-ReferenceCase = reference.ReferenceCase
 
 
-def compare(actual, expected):
-    assert actual == expected
+@pytest.fixture(scope="module")
+def contract():
+    # The public contract module is intentionally usable without a device
+    # runtime. CLI integration below loads the normal package and conftests.
+    source = ROOT / "src/flag_gems/testing/reference.py"
+    spec = importlib.util.spec_from_file_location(
+        "_sglang_reference_contract_test", source
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
-def forbidden(*args, **kwargs):
-    raise AssertionError("original candidate was called")
+def _forbidden(*args, **kwargs):
+    raise AssertionError("the original candidate was called")
 
 
-def test_default_execution_still_calls_candidate():
-    @reference.reference_test
-    def case():
-        return ReferenceCase([1, 2], forbidden, sum, compare)
+def test_default_candidate_is_the_current_public_export(contract, monkeypatch):
+    class FalseyCandidate:
+        def __bool__(self):
+            return False
 
-    with pytest.raises(AssertionError, match="original candidate"):
-        case()
-    with reference.reference_test_mode(True) as state:
-        case()
-    assert (state.reference_calls, state.candidate_calls) == (2, 1)
+        def __call__(self, value):
+            return value + 1
 
-
-@pytest.mark.parametrize("enabled", [False, True])
-def test_independent_inputs_preserve_internal_aliases_and_mutations(enabled):
-    original = [1]
-    inputs = (original, original)
-
-    def mutate(args):
-        assert args[0] is args[1]
-        args[0].append(2)
-        return args
-
-    @reference.reference_test
-    def case():
-        return ReferenceCase(inputs, mutate, mutate, compare)
-
-    with reference.reference_test_mode(enabled):
-        case()
-    assert original == [1]
+    public = ModuleType("flag_gems")
+    original, injected = _forbidden, FalseyCandidate()
+    public.reference_probe = original
+    monkeypatch.setitem(sys.modules, "flag_gems", public)
+    assert contract.get_candidate("reference_probe", reference=sum) is original
+    public.reference_probe = injected
+    assert contract.get_candidate("reference_probe", reference=None) is injected
+    assert contract.select_candidate(injected, sum) is injected
+    with contract.reference_test_mode(False):
+        assert contract.get_candidate("reference_probe") is injected
+    monkeypatch.delattr(public, "reference_probe")
+    with pytest.raises(ImportError):
+        contract.get_candidate("reference_probe", reference=sum)
 
 
-def test_separate_reference_inputs_and_custom_clone():
-    snapshots = []
+def test_reference_candidate_does_not_lookup_the_public_export(contract, monkeypatch):
+    public = ModuleType("flag_gems")
+    public.__getattr__ = _forbidden
+    monkeypatch.setitem(sys.modules, "flag_gems", public)
+    value = [1]
 
-    def clone(value):
-        snapshots.append(tuple(value))
-        return list(value)
+    def reference(values, *, increment):
+        assert values is value
+        values.append(increment)
+        return values
 
-    @reference.reference_test
-    def case(value):
-        return ReferenceCase(
-            [value],
-            forbidden,
-            sum,
-            compare,
-            reference_inputs=[float(value)],
-            clone=clone,
-        )
-
-    assert list(inspect.signature(case).parameters) == ["value"]
-    with reference.reference_test_mode(True):
-        case(2)
-    assert snapshots == [(2.0,), (2,)]
+    with contract.reference_test_mode(True, "explicit-node") as state:
+        candidate = contract.get_candidate("absent_export", reference=reference)
+        assert candidate(value, increment=2) is value
+    assert value == [1, 2]
+    assert (state.reference_calls, state.candidate_calls) == (1, 1)
 
 
-def test_mode_restores_after_failure_and_nested_execution():
-    @reference.reference_test
-    def case():
-        return ReferenceCase([1], forbidden, sum, compare)
-
-    with reference.reference_test_mode(True):
-        with reference.reference_test_mode(False):
-            with pytest.raises(AssertionError):
-                case()
-        case()
-    with pytest.raises(AssertionError):
-        case()
-
-
-@pytest.mark.parametrize("field", ["reference", "candidate", "compare", "clone"])
-def test_invalid_callable_is_contract_error(field):
-    values = dict(inputs=[1], candidate=sum, reference=sum, compare=compare)
-    values[field] = None
-    with pytest.raises(reference.ReferenceContractError, match=field):
-        ReferenceCase(**values)
+@pytest.mark.parametrize("reference", [None, 42, "sum"])
+def test_missing_reference_is_explicit_before_any_candidate_lookup(
+    contract, monkeypatch, reference
+):
+    public = ModuleType("flag_gems")
+    public.__getattr__ = _forbidden
+    monkeypatch.setitem(sys.modules, "flag_gems", public)
+    with contract.reference_test_mode(True, "missing-node") as state:
+        with pytest.raises(
+            contract.ReferenceContractError, match="No predefined reference"
+        ):
+            contract.get_candidate("absent_export", reference=reference)
+    assert state.candidate_calls == 0
+    assert len(state.contract_errors) == 1
 
 
-@pytest.mark.parametrize("value", [None, {}, sum])
-def test_factory_must_expose_case(value):
-    @reference.reference_test
-    def case():
-        return value
-
-    with pytest.raises(reference.ReferenceContractError, match="return ReferenceCase"):
-        case()
-
-
-def test_comparison_failure_is_not_swallowed():
-    @reference.reference_test
-    def case():
-        return ReferenceCase([1], lambda _: 100, sum, compare)
-
-    with pytest.raises(AssertionError):
-        case()
-
-
-@pytest.mark.parametrize(
-    "option",
-    [
-        "override",
-        "override_config",
-        "reference_only",
-        "preflight_only",
-        "profile_only",
-        "list_cases",
-        "query",
-        "parallel",
-        "collect_marks",
-    ],
-)
-def test_new_mode_conflicts_do_not_change_legacy_options(option):
-    options = SimpleNamespace(ref_as_candidate=False, **{option: True})
-    config = SimpleNamespace(option=options)
-    assert reference.validate_ref_as_candidate_options(config) is False
-    options.ref_as_candidate = True
-    with pytest.raises(pytest.UsageError, match="cannot be combined"):
-        reference.validate_ref_as_candidate_options(config)
+def test_omitted_reference_and_nested_mode_restoration(contract, monkeypatch):
+    public = ModuleType("flag_gems")
+    public.reference_probe = _forbidden
+    monkeypatch.setitem(sys.modules, "flag_gems", public)
+    with contract.reference_test_mode(True):
+        with pytest.raises(
+            contract.ReferenceContractError, match="No predefined reference"
+        ):
+            contract.get_candidate("reference_probe")
+        with contract.reference_test_mode(False):
+            assert contract.get_candidate("reference_probe") is _forbidden
+        assert contract.get_candidate("reference_probe", reference=sum)([1]) == 1
+    assert contract.get_candidate("reference_probe") is _forbidden
 
 
 @pytest.fixture
@@ -170,18 +137,17 @@ sys.modules["flag_gems.testing"] = testing
     pytester.makepyfile(test_case="""
 import pytest
 import flag_gems
-from flag_gems.testing.reference import ReferenceCase, reference_test
+from flag_gems.testing.reference import get_candidate
 
 def compare(actual, expected):
     assert actual == expected
 
 @pytest.mark.good
 @pytest.mark.parametrize("value", [1, 2, 3])
-@reference_test
 def test_case(value):
-    def reference(args):
-        return sum(args)
-    return ReferenceCase((value, 2), lambda args: flag_gems.add(*args), reference, compare)
+    reference = lambda a, b: a + b
+    candidate = get_candidate("add", reference=reference)
+    compare(candidate(value, 2), reference(value, 2))
 """)
     return pytester
 
@@ -192,7 +158,7 @@ def test_real_hooks_ref_mode_full_grid_and_call_report(project):
     records = json.loads((project.path / "accuracy_result.json").read_text())
     assert len(records) == 3
     assert all(r["candidate_source"] == "reference" for r in records.values())
-    assert all(r["reference_calls"] == 2 for r in records.values())
+    assert all(r["reference_calls"] == 1 for r in records.values())
     assert all(r["reference_candidate_calls"] == 1 for r in records.values())
 
 
@@ -218,33 +184,147 @@ def test_missing_declaration_fails_only_when_enabled_and_selected(project):
     project.makepyfile(test_legacy="def test_legacy(): pass\n")
     project.runpytest_subprocess("-q", "test_legacy.py").assert_outcomes(passed=1)
     result = project.runpytest_subprocess("-q", "--ref-as-candidate")
-    result.assert_outcomes(passed=3, errors=1)
+    result.assert_outcomes(passed=3, failed=1)
     result.stdout.fnmatch_lines(
-        ["*test_legacy.py::test_legacy*requires @reference_test*"]
+        ["*test_legacy.py::test_legacy*No predefined reference*"]
     )
     project.runpytest_subprocess(
         "-q", "--ref-as-candidate", "-m", "good"
     ).assert_outcomes(passed=3, deselected=1)
 
 
-def test_bad_factory_is_not_accepted_as_ref_validation(project):
-    project.makepyfile(test_bad="""
-from flag_gems.testing.reference import reference_test
-@reference_test
-def test_bad():
-    reference = lambda args: args
-""")
+@pytest.mark.parametrize(
+    "code",
+    [
+        "pass",
+        "get_candidate('add', reference=lambda a, b: a+b)",
+        "pytest.skip('no declaration')",
+        "pytest.xfail('no declaration')",
+        "get_candidate('add', reference=None)",
+        "try:\n        get_candidate('add')\n    except ValueError:\n        pytest.skip('hidden')",
+    ],
+)
+def test_missing_or_unused_contract_cannot_pass(project, code):
+    project.makepyfile(
+        test_bad="import pytest\nfrom flag_gems.testing.reference import get_candidate\ndef test_bad():\n    "
+        + code
+        + "\n"
+    )
     result = project.runpytest_subprocess("-q", "--ref-as-candidate", "test_bad.py")
     result.assert_outcomes(failed=1)
-    result.stdout.fnmatch_lines(["*must return ReferenceCase*"])
+    records = json.loads((project.path / "accuracy_result.json").read_text())
+    assert records["test_bad.py::test_bad"]["result"] == "failed"
 
 
-def test_declaration_without_execution_cannot_pass(project):
-    project.makepyfile(test_empty="""
-def test_empty():
+def test_fixture_calls_do_not_replace_body(project):
+    project.makepyfile(test_fixture="""
+import pytest
+from flag_gems.testing.reference import get_candidate
+@pytest.fixture
+def candidate():
+    op = get_candidate('add', reference=lambda a,b:a+b)
+    op(1,2)
+    return op
+def test_fixture(candidate):
     pass
-test_empty._flag_gems_reference_test = True
 """)
-    result = project.runpytest_subprocess("-q", "--ref-as-candidate", "test_empty.py")
-    result.assert_outcomes(failed=1)
-    result.stdout.fnmatch_lines(["*did not execute a candidate call*"])
+    project.runpytest_subprocess(
+        "-q", "--ref-as-candidate", "test_fixture.py"
+    ).assert_outcomes(failed=1)
+
+
+@pytest.mark.parametrize("phase", ["setup", "teardown"])
+def test_fixture_contract_errors_are_failed_in_json(project, phase):
+    setup = "get_candidate('add')" if phase == "setup" else "pass"
+    teardown = "get_candidate('add')" if phase == "teardown" else "pass"
+    project.makepyfile(test_phase=f"""
+import pytest
+from flag_gems.testing.reference import get_candidate
+@pytest.fixture(autouse=True)
+def fixture():
+    {setup}
+    yield
+    {teardown}
+def test_phase():
+    assert get_candidate('add', reference=lambda a,b:a+b)(1,2) == 3
+""")
+    result = project.runpytest_subprocess("-q", "--ref-as-candidate", "test_phase.py")
+    assert result.ret == 1
+    data = json.loads((project.path / "accuracy_result.json").read_text())
+    assert data["test_phase.py::test_phase"]["result"] == "failed"
+
+
+def test_valid_reference_capability_skip_is_not_validation(project):
+    project.makepyfile(test_skip="""
+import pytest
+from flag_gems.testing.reference import get_candidate
+def test_skip():
+    get_candidate('add', reference=lambda a,b:a+b)
+    pytest.skip('capability')
+""")
+    result = project.runpytest_subprocess("-q", "--ref-as-candidate", "test_skip.py")
+    result.assert_outcomes(skipped=1)
+    assert result.ret == 1
+
+
+@pytest.mark.parametrize("timer_calls", [0, 1, 3])
+def test_actual_benchmark_methods_require_reference_invocation(contract, timer_calls):
+    # Execute the production selection/measurement methods with a host timer.
+    # Importing the full benchmark module requires an accelerator runtime.
+    import ast
+    import gc
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    tree = ast.parse((ROOT / "benchmark/base.py").read_text())
+    cls = next(
+        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Benchmark"
+    )
+    cls.body = [
+        n
+        for n in cls.body
+        if isinstance(n, ast.FunctionDef)
+        and n.name in {"_candidate_call", "_measure_input"}
+    ]
+    namespace = {
+        "Config": SimpleNamespace(
+            ref_as_candidate=True, skip_native=False, override_registry=None
+        ),
+        "BenchmarkMetrics": lambda **kw: SimpleNamespace(**kw),
+        "reference_execution": contract.reference_execution,
+        "select_candidate": contract.select_candidate,
+        "nullcontext": nullcontext,
+        "gc": gc,
+        "pytest": pytest,
+    }
+    exec(
+        compile(ast.Module(body=[cls], type_ignores=[]), "benchmark/base.py", "exec"),
+        namespace,
+    )
+    bench = namespace["Benchmark"]()
+    calls = []
+    bench.op_name = "probe"
+    bench.torch_op = lambda value: calls.append(value)
+    bench.to_bench_metrics = ["latency_base", "latency"]
+    bench.unpack_to_args_kwargs = lambda inputs: (inputs, {})
+    bench.record_shapes = lambda *args, **kwargs: None
+    bench._capture_external_baseline = lambda *args, **kwargs: None
+    bench._apply_external_baseline = lambda *args, **kwargs: None
+
+    def timer(op, *args, **kwargs):
+        for _ in range(timer_calls):
+            op(*args, **kwargs)
+        return 1.0
+
+    bench.get_latency = timer
+    with contract.reference_test_mode(True) as state:
+        if not timer_calls:
+            with pytest.raises(pytest.fail.Exception, match="did not invoke"):
+                bench._measure_input((2,))
+            assert state.completed_timings == 0
+        else:
+            metric = bench._measure_input((2,))
+            assert metric.candidate_source == "reference"
+            assert state.completed_timings == 1
+            assert state.candidate_calls == timer_calls
+            assert calls == [2] * (2 * timer_calls)
