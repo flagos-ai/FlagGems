@@ -38,6 +38,8 @@ from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
+from .gdn_w8a16_int8 import gdn_w8a16_int8, quantize_gdn_state_int8
+from .gdn_w8a16_int8_prefill import chunk_gated_delta_rule_w8a16_int8
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
 from .index_copy_ import index_copy, index_copy_
@@ -112,6 +114,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "cholesky_inverse",
+    "chunk_gated_delta_rule_w8a16_int8",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "cross_attention",
@@ -121,6 +124,7 @@ __all__ = [
     "erfc",
     "gcd",
     "gcd_",
+    "gdn_w8a16_int8",
     "grid_sampler_3d_backward",
     "gru",
     "index_copy",
@@ -150,6 +154,7 @@ __all__ = [
     "mvlgamma",
     "nll_loss_backward",
     "nonzero_numpy",
+    "quantize_gdn_state_int8",
     "reflection_pad3d_backward",
     "renorm",
     "renorm_",

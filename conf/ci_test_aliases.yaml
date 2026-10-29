@@ -278,3 +278,5 @@ fused_adamw__tensor_lr: test_fused_adamw_
 # conf/operators.yaml cannot find its test.
 underscore_linalg_det: test__linalg_det
 underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
+
+gdn_w8a16_int8: test_FLA/test_chunk_gated_delta_rule

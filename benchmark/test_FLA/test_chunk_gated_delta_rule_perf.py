@@ -173,3 +173,215 @@ def test_perf_chunk_gated_delta_rule():
     )
     bench.set_gems(flag_gems.chunk_gated_delta_rule)
     bench.run()
+
+
+def torch_int8_state_gdn_prefill(
+    q, k, v, g, beta, initial_state, cu_seqlens, raw_cu_seqlens
+):
+    """PyTorch BF16/FP16-activation reference with FP32 recurrent state.
+
+    The chunk algebra follows FlagGems PR 7279's PyTorch reference. Sequence
+    boundaries are supplied on the host so timing contains no device reads.
+    """
+    dtype = q.dtype
+    q = (q.float() * torch.rsqrt(q.float().square().sum(-1, keepdim=True) + 1e-6)).to(
+        dtype
+    )
+    k = (k.float() * torch.rsqrt(k.float().square().sum(-1, keepdim=True) + 1e-6)).to(
+        dtype
+    )
+    state, bounds = initial_state, raw_cu_seqlens
+    group = v.shape[2] // q.shape[2]
+    q = q[0].float().repeat_interleave(group, 1).transpose(0, 1)
+    k = k[0].float().repeat_interleave(group, 1).transpose(0, 1)
+    v = v[0].float().transpose(0, 1)
+    g = g[0].transpose(0, 1)
+    beta = beta[0].float().transpose(0, 1)
+    outputs, states = [], []
+    for seq, (start, stop) in enumerate(zip(bounds, bounds[1:])):
+        length = stop - start
+        chunks = (length + 63) // 64
+        padding = chunks * 64 - length
+        qq = torch.nn.functional.pad(q[:, start:stop], (0, 0, 0, padding)).reshape(
+            q.shape[0], chunks, 64, q.shape[-1]
+        )
+        kk = torch.nn.functional.pad(k[:, start:stop], (0, 0, 0, padding)).reshape(
+            k.shape[0], chunks, 64, k.shape[-1]
+        )
+        vv = torch.nn.functional.pad(v[:, start:stop], (0, 0, 0, padding)).reshape(
+            v.shape[0], chunks, 64, v.shape[-1]
+        )
+        gg = (
+            torch.nn.functional.pad(g[:, start:stop], (0, padding))
+            .reshape(g.shape[0], chunks, 64)
+            .cumsum(-1)
+        )
+        bb = torch.nn.functional.pad(beta[:, start:stop], (0, padding)).reshape(
+            beta.shape[0], chunks, 64
+        )
+        decay = (gg[..., :, None] - gg[..., None, :]).exp().tril()
+        lhs = (kk @ kk.transpose(-1, -2) * decay * bb[..., None]).tril(-1)
+        # Strictly lower 64x64 L is nilpotent: the finite geometric series
+        # gives (I+L)^-1 exactly, using only PyTorch batched matmuls.
+        power = -lhs
+        inverse = torch.eye(64, device=q.device) + power
+        for _ in range(5):
+            power = power @ power
+            inverse = inverse + inverse @ power
+        rhs = bb[..., None] * torch.cat((vv, gg.exp()[..., None] * kk), dim=-1)
+        solved = inverse @ rhs
+        u, w = solved.split((vv.shape[-1], kk.shape[-1]), dim=-1)
+        q_exp = qq * gg.exp()[..., None]
+        qk = (qq @ kk.transpose(-1, -2)) * decay
+        weighted_k = kk * (gg[..., -1:] - gg).exp()[..., None]
+        last_decay = gg[..., -1].exp()
+        s = state[seq].transpose(-1, -2)
+        chunk_outputs = []
+        for i in range(chunks):
+            update = u[:, i] - w[:, i] @ s
+            chunk_outputs.append(q_exp[:, i] @ s + qk[:, i] @ update)
+            s = (
+                last_decay[:, i, None, None] * s
+                + weighted_k[:, i].transpose(-1, -2) @ update
+            )
+        outputs.append(
+            torch.stack(chunk_outputs, dim=1).reshape(
+                q.shape[0], chunks * 64, v.shape[-1]
+            )[:, :length]
+        )
+        states.append(s.transpose(-1, -2))
+    output = torch.cat(outputs, dim=1).transpose(0, 1).unsqueeze(0) * (
+        q.shape[-1] ** -0.5
+    )
+    return output.to(dtype), torch.stack(states).contiguous()
+
+
+def build_int8_gdn_prefill_inputs(shape, dtype):
+    batch, tokens, query_heads, reduction, heads, columns, sequences = shape
+    torch.manual_seed(42)
+    device = flag_gems.device
+    q = torch.randn((batch, tokens, query_heads, reduction), device=device, dtype=dtype)
+    k = torch.randn_like(q)
+    v = torch.randn((batch, tokens, heads, columns), device=device, dtype=dtype) * 0.125
+    g = -torch.rand((batch, tokens, heads), device=device, dtype=torch.float32) * 0.1
+    beta = torch.rand((batch, tokens, heads), device=device, dtype=dtype)
+    original = (
+        torch.randn((sequences, heads, columns, reduction), device=device, dtype=dtype)
+        * 0.1
+    )
+    state, scales = flag_gems.quantize_gdn_state_int8(original)
+    initial = state.float() * scales[..., None]
+    # The exports omit sequence boundaries; the user authorized uniform splits.
+    lengths = [
+        tokens // sequences + (index < tokens % sequences) for index in range(sequences)
+    ]
+    boundaries, pairs, starts = [0], [], [0]
+    for sequence, length in enumerate(lengths):
+        boundaries.append(boundaries[-1] + length)
+        pairs.extend((sequence, chunk) for chunk in range(triton.cdiv(length, 64)))
+        starts.append(len(pairs))
+    cu = torch.tensor(boundaries, device=device, dtype=torch.int32)
+    indices = torch.tensor(pairs, device=device, dtype=torch.int32)
+    offsets = torch.tensor(starts, device=device, dtype=torch.int32)
+    reference = dict(
+        q=q,
+        k=k,
+        v=v,
+        g=g,
+        beta=beta,
+        initial_state=initial,
+        cu_seqlens=cu,
+        raw_cu_seqlens=tuple(boundaries),
+    )
+    return (
+        torch_int8_state_gdn_prefill,
+        reference,
+        (q, k, v, g, beta, state, scales, cu, indices, offsets),
+    )
+
+
+class Int8StateGdnBenchmark(Benchmark):
+    DEFAULT_DTYPES = [torch.bfloat16]
+    DEFAULT_SHAPES = [
+        (1, 8192, 32, 128),
+        (3, 8192, 32, 128),
+        ("update", 1, 3, 16, 128, 32, 128, 3),
+        (1, 17, 16, 128, 32, 128, 1),
+        (1, 1826, 16, 128, 32, 128, 2),
+    ]
+    DEFAULT_SHAPE_DESC = (
+        "decode: T,packed,HV,V; prefill: B,T,H,K,HV,V,N; update: update,B,T,H,K,HV,V,N"
+    )
+
+    def get_input_iter(self, dtype):
+        from benchmark.test_FLA.test_fused_recurrent_gated_delta_rule_perf import (
+            build_int8_gdn_decode_inputs,
+        )
+
+        for shape in self.shapes:
+            if shape[0] == "update":
+                _, batch, tokens, query_heads, reduction, heads, columns, sequences = (
+                    shape
+                )
+                if batch != 1 or sequences != tokens:
+                    raise ValueError(
+                        "update shapes require B=1 and one token per sequence"
+                    )
+                packed = 2 * query_heads * reduction + heads * columns
+                _, reference, args = build_int8_gdn_decode_inputs(
+                    (tokens, packed, heads, columns), dtype, reduction
+                )
+                q, k, v = torch.split(
+                    args[0],
+                    (query_heads * reduction, query_heads * reduction, heads * columns),
+                    dim=-1,
+                )
+                qkv = (
+                    q.reshape(1, tokens, query_heads, reduction).contiguous(),
+                    k.reshape(1, tokens, query_heads, reduction).contiguous(),
+                    v.reshape(1, tokens, heads, columns).contiguous(),
+                )
+                yield ("update", (qkv, *reference[1:])), (qkv, *args[1:])
+            elif len(shape) == 7:
+                _, reference, args = build_int8_gdn_prefill_inputs(shape, dtype)
+                yield ("prefill", reference), args
+            else:
+                _, reference, args = build_int8_gdn_decode_inputs(shape, dtype)
+                yield ("decode", reference), args
+
+
+def torch_int8_state_gdn_baseline(reference, args):
+    from benchmark.test_FLA.test_fused_recurrent_gated_delta_rule_perf import (
+        torch_int8_state_gdn_decode,
+    )
+
+    if reference[0] == "prefill":
+        return torch_int8_state_gdn_prefill(**reference[1])
+    else:
+        return torch_int8_state_gdn_decode(*reference[1])
+
+
+def run_int8_state_gdn(reference, args):
+    if reference[0] == "prefill":
+        return flag_gems.chunk_gated_delta_rule_w8a16_int8(*args)
+    elif reference[0] == "update":
+        tokens = args[0][0].shape[1]
+        mixed = flag_gems.cat(
+            tuple(tensor.view(tokens, -1) for tensor in args[0]), dim=1
+        )
+        return flag_gems.gdn_w8a16_int8(mixed, *args[1:])
+    else:
+        return flag_gems.gdn_w8a16_int8(*args)
+
+
+@pytest.mark.gdn_w8a16_int8
+@pytest.mark.skipif(
+    "gdn_w8a16_int8" not in vars(flag_gems),
+    reason="backend does not export INT8-state GDN",
+)
+def test_perf_gdn_w8a16_int8():
+    bench = Int8StateGdnBenchmark(
+        op_name="gdn_w8a16_int8", torch_op=torch_int8_state_gdn_baseline
+    )
+    bench.set_gems(run_int8_state_gdn)
+    bench.run()

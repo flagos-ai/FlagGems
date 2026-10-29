@@ -840,3 +840,208 @@ def test_chunk_gated_delta_rule_does_not_broadly_reject_iluvatar_chunk_path(
     assert calls
     assert actual_final is None
     torch.testing.assert_close(actual, v)
+
+
+@pytest.mark.gdn_w8a16_int8
+@pytest.mark.skipif(
+    "chunk_gated_delta_rule_w8a16_int8" not in vars(flag_gems),
+    reason="backend does not export INT8-state prefill",
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 1, 16, 128, 32, 128, 1),
+        (1, 17, 16, 128, 32, 128, 1),
+        (1, 32, 16, 128, 32, 128, 3),
+        (1, 43, 16, 128, 32, 128, 1),
+        (1, 109, 16, 128, 32, 128, 1),
+        (1, 128, 16, 128, 32, 128, 2),
+        (1, 129, 16, 128, 32, 128, 2),
+        (1, 1036, 16, 128, 32, 128, 1),
+        (1, 2113, 16, 128, 32, 128, 2),
+        (1, 16357, 16, 128, 32, 128, 5),
+        (1, 16352, 16, 128, 32, 128, 17),
+    ],
+)
+def test_int8_state_gdn_prefill(dtype, shape, caplog):
+    from benchmark.test_FLA.test_chunk_gated_delta_rule_perf import (
+        build_int8_gdn_prefill_inputs,
+    )
+    from tests.accuracy_utils import gems_assert_close, gems_log_logger, gems_log_prefix
+
+    baseline, reference_args, args = build_int8_gdn_prefill_inputs(shape, dtype)
+    expected, expected_state = baseline(**reference_args)
+    entry = flag_gems.chunk_gated_delta_rule_w8a16_int8
+    with caplog.at_level("DEBUG", logger=gems_log_logger(entry)):
+        actual, state = entry(*args)
+    assert f"{gems_log_prefix(entry)} CHUNK_GATED_DELTA_RULE_W8A16_INT8" in caplog.text
+    gems_assert_close(actual, expected, dtype, reduce_dim=1, atol=2e-3)
+    restored = (state.float() * args[6][..., None]).to(dtype)
+    gems_assert_close(
+        restored, expected_state.to(dtype), dtype, reduce_dim=1, atol=3e-3
+    )
+
+
+@pytest.mark.gdn_w8a16_int8
+@pytest.mark.skipif(
+    "chunk_gated_delta_rule_w8a16_int8" not in vars(flag_gems),
+    reason="backend does not export INT8-state prefill",
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize(
+    "tokens,boundaries,normalize,metadata_dtype",
+    [
+        (17, None, True, torch.int32),
+        (32, [0, 3, 32], False, torch.int64),
+        (109, [0, 1, 65, 109], True, torch.int32),
+    ],
+)
+def test_int8_state_gdn_prefill_independent_calls(
+    dtype, tokens, boundaries, normalize, metadata_dtype
+):
+    from tests.accuracy_utils import gems_assert_close
+
+    torch.manual_seed(42)
+    device = flag_gems.device
+    cu, indices, offsets = None, None, None
+    sequences = 1 if boundaries is None else len(boundaries) - 1
+    if boundaries is not None:
+        pairs, starts = [], [0]
+        for sequence, (begin, end) in enumerate(zip(boundaries, boundaries[1:])):
+            pairs.extend(
+                (sequence, chunk) for chunk in range(triton.cdiv(end - begin, 64))
+            )
+            starts.append(len(pairs))
+        cu = torch.tensor(boundaries, device=device, dtype=metadata_dtype)
+        indices = torch.tensor(pairs, device=device, dtype=metadata_dtype)
+        offsets = torch.tensor(starts, device=device, dtype=metadata_dtype)
+
+    streams = [torch.cuda.Stream(), torch.cuda.Stream()]
+    for alignment_offset in (0, 1, 0):
+        calls = []
+        for stream in streams:
+            q, k, v, beta, g = _make_inputs(
+                B=1,
+                T=tokens,
+                Hg=2,
+                H=4,
+                K=128,
+                V=128,
+                dtype=dtype,
+                head_first=False,
+            )
+            original = (
+                torch.randn(sequences, 4, 128, 128, device=device, dtype=dtype) * 0.1
+            )
+            state, scales = flag_gems.quantize_gdn_state_int8(original)
+            inputs = [q, k, v, g.float(), beta, state, scales, cu, indices, offsets]
+            if alignment_offset:
+                for index, tensor in enumerate(inputs):
+                    if tensor is not None:
+                        storage = torch.empty(
+                            tensor.numel() + 1, device=device, dtype=tensor.dtype
+                        )
+                        shifted = storage[1:].view(tensor.shape)
+                        shifted.copy_(tensor)
+                        inputs[index] = shifted
+            q, k, v, g, beta, state, scales, cu_call, _, _ = inputs
+            expected, expected_state = _reference_chunk_gated_delta_rule(
+                q,
+                k,
+                v,
+                beta,
+                g,
+                initial_state=(state.float() * scales[..., None]).transpose(-1, -2),
+                output_final_state=True,
+                cu_seqlens=cu_call,
+                head_first=False,
+                scale=0.125,
+                use_qk_l2norm_in_kernel=normalize,
+            )
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                actual, updated = flag_gems.chunk_gated_delta_rule_w8a16_int8(
+                    *inputs,
+                    scale=0.125,
+                    use_qk_l2norm_in_kernel=normalize,
+                )
+            calls.append((stream, inputs, actual, updated, expected, expected_state))
+        for stream, inputs, actual, updated, expected, expected_state in calls:
+            stream.synchronize()
+            gems_assert_close(actual, expected, dtype, reduce_dim=1, atol=2e-3)
+            restored = updated.float() * inputs[6][..., None]
+            gems_assert_close(
+                restored.to(dtype),
+                expected_state.transpose(-1, -2).to(dtype),
+                dtype,
+                reduce_dim=1,
+                atol=3e-3,
+            )
+        assert calls[0][2].data_ptr() != calls[1][2].data_ptr()
+
+
+@pytest.mark.gdn_w8a16_int8
+@pytest.mark.skipif(
+    "gdn_w8a16_int8" not in vars(flag_gems),
+    reason="backend does not export INT8-state GDN",
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("tokens", [1, 3, 49])
+@pytest.mark.parametrize("steps", [1, 32])
+@pytest.mark.parametrize("dimensions", [(8192, 32, 128, 128), (100, 2, 17, 33)])
+def test_int8_state_gdn_decode(dtype, tokens, steps, dimensions, caplog):
+    from benchmark.test_FLA.test_fused_recurrent_gated_delta_rule_perf import (
+        build_int8_gdn_decode_inputs,
+    )
+    from tests.accuracy_utils import gems_assert_close, gems_log_logger, gems_log_prefix
+
+    packed, heads, columns, reduction = dimensions
+    baseline, reference_args, gems_args = build_int8_gdn_decode_inputs(
+        (tokens, packed, heads, columns), dtype, reduction=reduction
+    )
+    reference_args = list(reference_args)
+    reference_args[6] = reference_args[6].float()
+    for _ in range(steps):
+        # Isolate each update's arithmetic from accumulated quantization drift.
+        reference_args[6].copy_(gems_args[6].float() * gems_args[7][..., None])
+        expected, reference_state = baseline(*reference_args)
+        entry = flag_gems.gdn_w8a16_int8
+        with caplog.at_level("DEBUG", logger=gems_log_logger(entry)):
+            actual, state = entry(*gems_args)
+        assert f"{gems_log_prefix(entry)} GDN_W8A16_INT8" in caplog.text
+        gems_assert_close(actual, expected, dtype, reduce_dim=1, atol=1e-6)
+        scales = gems_args[7][..., None]
+        # Nearest rounding must stay within half one INT8 quantization step.
+        gems_assert_close(
+            state.float(),
+            reference_state / scales,
+            torch.float32,
+            reduce_dim=1,
+            atol=0.501,
+        )
+
+
+@pytest.mark.gdn_w8a16_int8
+@pytest.mark.skipif(
+    "gdn_w8a16_int8" not in vars(flag_gems),
+    reason="backend does not export INT8-state GDN",
+)
+@pytest.mark.parametrize("tokens", [0, 2])
+def test_int8_state_gdn_null_slots(tokens):
+    from benchmark.test_FLA.test_fused_recurrent_gated_delta_rule_perf import (
+        build_int8_gdn_decode_inputs,
+    )
+    from tests.accuracy_utils import gems_assert_equal
+
+    baseline, reference_args, gems_args = build_int8_gdn_decode_inputs(
+        (tokens, 8192, 32, 128), torch.bfloat16
+    )
+    gems_args[-2].zero_()
+    old_state = gems_args[6].clone()
+    old_scales = gems_args[7].clone()
+    expected, _ = baseline(*reference_args)
+    actual, state = flag_gems.gdn_w8a16_int8(*gems_args)
+    gems_assert_equal(actual, expected)
+    gems_assert_equal(state, old_state)
+    gems_assert_equal(gems_args[7], old_scales)

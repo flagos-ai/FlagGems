@@ -183,3 +183,76 @@ def test_perf_fused_recurrent_gated_delta_rule(qkv_contiguous):
     )
     bench.set_gems(flag_gems.fused_recurrent_gated_delta_rule_fwd)
     bench.run()
+
+
+def torch_int8_state_gdn_decode(
+    mixed, a, b, a_log, bias, scale, state, output, indices, normalize
+):
+    """Vectorized PyTorch recurrence with FP32 state and one token per slot."""
+    _, heads, columns, reduction = state.shape
+    if isinstance(mixed, tuple):
+        q, k, v = mixed
+        tokens, query_heads = q.shape[1:3]
+    else:
+        tokens, packed = mixed.shape
+        if tokens == 0:
+            return output, state
+        query_heads = (packed - heads * columns) // (2 * reduction)
+        q, k, v = rearrange_mixed_qkv(
+            mixed,
+            query_heads * reduction,
+            heads * columns,
+            reduction,
+            columns,
+            contiguous=False,
+        )
+    q, k = q[0].float(), k[0].float()
+    if normalize:
+        q = q * torch.rsqrt(q.square().sum(-1, keepdim=True) + 1e-6)
+        k = k * torch.rsqrt(k.square().sum(-1, keepdim=True) + 1e-6)
+    q = q.repeat_interleave(heads // query_heads, 1) * scale
+    k = k.repeat_interleave(heads // query_heads, 1)
+    slots = indices.clamp_min(0)
+    original = state[slots].float()
+    decay = torch.exp(-a_log.exp() * torch.nn.functional.softplus(a.float() + bias))
+    current = original * decay[..., None, None]
+    delta = (v[0].float() - (current * k[..., None, :]).sum(-1)) * b.float().sigmoid()[
+        ..., None
+    ]
+    current = current + delta[..., None] * k[..., None, :]
+    valid = indices > 0
+    result = (current * q[..., None, :]).sum(-1)
+    output.copy_(
+        torch.where(valid[:, None, None], result, 0).reshape(tokens, 1, heads, columns)
+    )
+    state.index_copy_(
+        0,
+        slots,
+        torch.where(valid[:, None, None, None], current, original).to(state.dtype),
+    )
+    return output, state
+
+
+def build_int8_gdn_decode_inputs(shape, dtype, reduction=128):
+    tokens, packed, heads, columns = shape
+    torch.manual_seed(42)
+    device = flag_gems.device
+    mixed = torch.randn((tokens, packed), device=device, dtype=dtype)
+    a = torch.randn((tokens, heads), device=device, dtype=dtype)
+    b = torch.randn_like(a)
+    A_log = torch.zeros(heads, device=device, dtype=torch.float32)
+    dt_bias = torch.zeros_like(A_log)
+    original = (
+        torch.randn((tokens + 1, heads, columns, reduction), device=device, dtype=dtype)
+        * 0.1
+    )
+    state, scales = flag_gems.quantize_gdn_state_int8(original)
+    # Start both paths from exactly the same representable state.
+    reference_state = state.float() * scales[..., None]
+    output = torch.empty((tokens, 1, heads, columns), device=device, dtype=dtype)
+    reference_output = torch.empty_like(output)
+    indices = torch.arange(1, tokens + 1, device=device, dtype=torch.int64)
+    shared = (mixed, a, b, A_log, dt_bias, reduction**-0.5)
+    reference_args = (*shared, reference_state, reference_output, indices, True)
+    gems_args = (*shared, state, scales, output, indices, True)
+    return torch_int8_state_gdn_decode, reference_args, gems_args
