@@ -177,3 +177,52 @@ def test_avg_pool3d_backward(
     gems_assert_close(
         res_inp_grad, ref_inp_grad, dtype, reduce_dim=kernel_volume * kernel_volume
     )
+
+
+# Unbatched (C, D, H, W) input: ATen accepts it and returns the same rank.
+UNBATCHED_AVGPOOL3D_CONFIGS = [
+    ((64, 16, 16, 16), 2, 2, 0, False, True, None),
+    ((8, 9, 11, 13), (2, 3, 4), (1, 2, 2), (0, 1, 1), False, True, None),
+]
+
+
+@pytest.mark.avg_pool3d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
+    UNBATCHED_AVGPOOL3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_avg_pool3d_unbatched(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+    dtype,
+):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.ops.aten.avg_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+    res_out = flag_gems.avg_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+
+    assert res_out.shape == ref_out.shape
+    gems_assert_close(res_out, ref_out, dtype)
