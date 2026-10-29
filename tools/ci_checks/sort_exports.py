@@ -309,21 +309,35 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
     content = file_path.read_text()
     tree = ast.parse(content)
 
-    # Find _FULL_CONFIG = (...) assignment
+    # Find the `_FULL_CONFIG = (...)` assignment that defines the main tuple
+    # literal. `ast.walk` also finds later conditional augmentations like
+    # `_FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)`
+    # (e.g. under an `if vendor_name == "amd":` guard), whose value is a
+    # BinOp, not a Tuple. Only the Tuple-valued assignment is the one we can
+    # sort, so pick that one specifically instead of "whichever node the walk
+    # visits last" (which depends on traversal order and silently skipped
+    # sorting entirely when it landed on the BinOp).
     config_node = None
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "_FULL_CONFIG":
+                if (
+                    isinstance(target, ast.Name)
+                    and target.id == "_FULL_CONFIG"
+                    and isinstance(node.value, ast.Tuple)
+                ):
                     config_node = node
                     break
 
-    if config_node is None or not isinstance(config_node.value, ast.Tuple):
+    if config_node is None:
         return True  # No _FULL_CONFIG tuple
 
     # Extract entries with full source text (including multi-line tuples)
     entries = []
     lines = content.splitlines()
+    # Track how far back the previous entry's source reached so a comment
+    # block doesn't get claimed by two entries at once.
+    prev_end_line = config_node.lineno - 1  # 0-indexed line of "_FULL_CONFIG = ("
 
     for elt in config_node.value.elts:
         if isinstance(elt, ast.Tuple) and len(elt.elts) >= 2:
@@ -333,6 +347,18 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
                 # Get the full source text for this tuple (may span multiple lines)
                 start_line = elt.lineno - 1  # 0-indexed
                 end_line = elt.end_lineno - 1  # 0-indexed
+
+                # Walk backward over contiguous comment-only lines immediately
+                # above the entry so explanatory comments (e.g. "why this
+                # entry registers an extra dispatch key") move with it when
+                # entries get reordered, instead of being orphaned in place
+                # and silently dropped.
+                comment_start = start_line
+                while comment_start - 1 > prev_end_line and lines[
+                    comment_start - 1
+                ].strip().startswith("#"):
+                    comment_start -= 1
+                start_line = comment_start
 
                 if start_line == end_line:
                     # Single-line entry
@@ -345,6 +371,7 @@ def sort_full_config(file_path: Path, fix: bool = False, dry_run: bool = False) 
                     source_text = "\n".join(source_lines)
 
                 entries.append((key, source_text))
+                prev_end_line = elt.end_lineno - 1
 
     if not entries:
         return True
