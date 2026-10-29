@@ -101,9 +101,16 @@ def test_underscore_weight_norm_zero_norm(dim):
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.float64])
 def test_underscore_weight_norm_rejects_unsupported_dtype(dtype):
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
-        pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
-    v = torch.ones((4, 5), dtype=dtype, device=flag_gems.device)
-    g = torch.ones((4, 1), dtype=dtype, device=flag_gems.device)
+        # Transfer Double storage without invoking the backend's narrowing cast.
+        def target_ones(shape):
+            cpu = torch.ones(shape, dtype=dtype, device="cpu")
+            raw = cpu.reshape(-1).view(torch.uint8).to(flag_gems.device)
+            return raw.view(dtype).reshape(shape)
+
+        v, g = target_ones((4, 5)), target_ones((4, 1))
+    else:
+        v = torch.ones((4, 5), dtype=dtype, device=flag_gems.device)
+        g = torch.ones((4, 1), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(TypeError):
         flag_gems._weight_norm(v, g, 0)
