@@ -114,18 +114,12 @@ def _native_batch_norm_reference(
     return result
 
 
-def _native_batch_norm_candidate(*args, **kwargs):
-    if getattr(flag_gems, "native_batch_norm_legit", None) is not None:
-        return flag_gems.native_batch_norm_legit(*args, **kwargs)
-    return flag_gems._native_batch_norm_legit(*args, **kwargs)
-
-
-@pytest.mark.native_batch_norm_legit
+@pytest.mark.underscore_native_batch_norm_legit
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 @pytest.mark.parametrize("training", TRAININGS)
-def test_native_batch_norm_legit(shape, dtype, affine, training):
+def test__native_batch_norm_legit(shape, dtype, affine, training):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(23)
         torch.mlu.manual_seed_all(23)
@@ -185,7 +179,7 @@ def test_native_batch_norm_legit(shape, dtype, affine, training):
         res_out,
         res_save_mean,
         res_save_var,
-    ) = _native_batch_norm_candidate(
+    ) = flag_gems._native_batch_norm_legit(
         inp,
         weight,
         bias,

@@ -185,10 +185,10 @@ def _run_benchmark(op_name, torch_op, gems_op, build_inputs_fn):
     bench.run()
 
 
-@pytest.mark.native_batch_norm_legit
-def test_native_batch_norm_legit():
+@pytest.mark.underscore_native_batch_norm_legit
+def test__native_batch_norm_legit():
     _run_benchmark(
-        "native_batch_norm_legit",
+        "_native_batch_norm_legit",
         _native_batch_norm_reference,
         _native_batch_norm_legit,
         _default_build_inputs_fn,
