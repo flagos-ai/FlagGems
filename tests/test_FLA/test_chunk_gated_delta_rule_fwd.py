@@ -120,8 +120,10 @@ def test_chunk_gated_delta_rule_fwd_with_cu_seqlens(T):
     g = F.logsigmoid(torch.randn(B, T, H, device=device, dtype=dtype))
     beta = torch.rand(B, T, H, device=device, dtype=dtype).sigmoid()
     scale = K**-0.5
-    initial_state = torch.zeros(B, H, K, V, device=device, dtype=dtype)
     cu_seqlens = torch.arange(T + 1, device=device, dtype=torch.long)
+    # Varlen mode takes one initial state per sequence, not per batch row.
+    N = len(cu_seqlens) - 1
+    initial_state = torch.zeros(N, H, K, V, device=device, dtype=dtype)
 
     result = flag_gems.chunk_gated_delta_rule_fwd(
         q=q,
@@ -138,4 +140,4 @@ def test_chunk_gated_delta_rule_fwd_with_cu_seqlens(T):
     res_o = result[1]
     res_final_state = result[3]
     assert res_o.shape == (B, T, H, V)
-    assert res_final_state.shape[1:] == (H, K, V)
+    assert res_final_state.shape == (N, H, K, V)

@@ -25,9 +25,12 @@ def _cuda_hopper_w8a8_fp8_available():
     tensor_descriptor = getattr(
         getattr(triton, "tools", None), "tensor_descriptor", None
     )
+    # AMD also reports device "cuda" with a major >= 9 (e.g. gfx1201 -> 12),
+    # but the w8a8 fp8 op is only registered by the NVIDIA Hopper backend.
     return (
         flag_gems.device == "cuda"
         and torch.cuda.is_available()
+        and flag_gems.vendor_name != "amd"
         and torch.cuda.get_device_capability()[0] >= 9
         and hasattr(torch, "float8_e4m3fn")
         and hasattr(tensor_descriptor, "TensorDescriptor")
