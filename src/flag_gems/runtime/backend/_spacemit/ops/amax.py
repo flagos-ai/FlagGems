@@ -156,8 +156,10 @@ def amax_kernel(
     BLOCK_N: tl.constexpr,
 ):
     dtype = inp.type.element_ty
-    # fp16/bf16 max lowers badly on this stack; compare in f32 (widening is
-    # lossless)
+    # fp16/bf16: compare in f32 (widening is lossless), but widen the reduced
+    # scalar, not the loaded vector -- the vector-wide cast costs ~3x at fp16
+    # (2048x2048: 4.42 -> 1.39 ms measured); the 1-D horizontal max is safe in
+    # the native dtype (amax_kernel_1 relies on it)
     acc_type = tl.float32 if (dtype is tl.float16 or dtype is tl.bfloat16) else dtype
     load_pad = get_dtype_min(dtype)
     element_ty = out.type.element_ty
@@ -167,8 +169,8 @@ def amax_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)
         mask = cols < N
-        inp_val = tl.load(inp + pid * N + cols, mask=mask, other=load_pad).to(acc_type)
-        amax_val = tl.maximum(amax_val, tl.max(inp_val))
+        inp_val = tl.load(inp + pid * N + cols, mask=mask, other=load_pad)
+        amax_val = tl.maximum(amax_val, tl.max(inp_val).to(acc_type))
     # bare scalar store lowers to ptr.to_ptr, which this spine-opt cannot
     # parse; write through a lane-0 masked vector store instead
     lanes = tl.arange(0, 32)
