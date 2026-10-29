@@ -10,6 +10,7 @@ from flag_gems.ops.linalg_lu_factor import _lu_scale_col
 from flag_gems.ops.linalg_lu_factor_ex import linalg_lu_factor_ex as gems_lu_factor_ex
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+from flag_gems.utils.device_info import is_amd_radeon
 
 logger = logging.getLogger(__name__)
 
@@ -1681,6 +1682,18 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
     fp64 (fp32 operands kept in fp32 storage); NVIDIA handles the K_SLICE=8
     fp64 dot fine.
     """
+    if is_amd_radeon():
+        # On Radeon _trsm_kernel's result depends on scheduling (wrong once
+        # ~48+ programs run concurrently, and always wrong with 1 stage or an
+        # extra barrier), so use the shared 2-D solve, which is exact there.
+        from flag_gems.ops.linalg_solve_triangular import linalg_solve_triangular
+
+        B.copy_(
+            linalg_solve_triangular(
+                A_tri, B, upper=upper, left=True, unitriangular=unitriangular
+            )
+        )
+        return B
     n = A_tri.shape[0]
     k = B.shape[1]
     K_SLICE = 8

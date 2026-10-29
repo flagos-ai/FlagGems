@@ -19,141 +19,71 @@ weight: 70
  limitations under the License.
  -->
 
+# 多 GPU 与分布式环境部署
 
-<!--
-# Multi-GPU Deployment
+在超大规模语言模型（LLM）的真实生产部署中，往往需要多卡或跨节点分布式集群来承载百亿/千亿级参数模型，以实现高吞吐、低延迟的推理服务。*FlagGems* 全面支持在多 GPU 及多机分布式部署环境中稳定运行。
 
-In real-world LLM deployment scenarios, multi-GPU or multi-node setups are often required
-to support large model sizes and high-throughput inference.
-*FlagGems* supports these scenarios by accelerating operator execution across multiple GPUs.
--->
-# 多 GPU 与分布式环境
+## 1. 单机多卡与多机集群部署差异
 
-在现实世界的 LLM 部署场景中，人们通常需要多 GPU 或者多节点的环境来支持较大的模型，
-与/或完成高吞吐量的推理任务。
-*FlagGems* 通过允许跨多个 GPU 完成算子执行加速来支持这类使用场景。
+- **单机单卡 / 单机多卡（单进程拉起）**：集成非常简单。只需在主进程脚本入口处引入 `flag_gems` 并调用 `flag_gems.enable()`，所有子线程或由主进程分发的 CUDA 计算均能透明享受加速。
+- **多机多节点 / 多进程集群（如 vLLM 分布式 Worker）**：主流分布式推理引擎通常会通过 Ray、PyTorch RPC 或多进程独立拉起各节点 Worker。若仅在 Master 节点的启动脚本中调用 `enable()`，其他节点或子进程由于处于独立的 Python 运行环境中，将无法自动继承加速配置，从而回退为未经优化的默认实现。
 
-<!--
-## 1. Single-node vs multi-node usage
+## 2. 实践案例：vLLM + DeepSeek 跨节点分布式部署
 
-For **single-node deployments**, the integration is straightforward. You can import `flag_gems`
-and invoke `flag_gems.enable()` at the beginning of your script.
-This enables acceleration without requiring any additional changes.
--->
-## 1. 单节点与多节点用法
-
-对于**单节点部署**而言，集成工作是相对简单直接的。
-你可以在你的代码开始部分 `import flag_gems` 之后调用 `flag_gems.enable()`。
-无需其他的变更，你就可以获得算子加速的效果。
-
-<!--
-In **multi-node deployments**, however, this approach is insufficient.
-Distributed inference frameworks (like vLLM) spawn multiple worker processes across nodes,
-where every process must initialize `flag_gems` individually.
-If the activation occurs only in the launch script on one node, worker processes
-on other nodes will fall back to the default implementation which is not accelerated.
--->
-然而，在**多节点部署**环境中，这种方法是不够的。
-分布式的推理框架（例如 vLLM）需要跨多个节点来启动多个工作进程，
-每个进程都需要独立初始化 `flag_gems`。
-如果对 `flag_gems` 的启用或激活操作仅发生在第一个节点的启动代码上，
-其他节点上的工作进程会回退为默认的算子实现，也就是没有被加速过的版本。
-
-<!--
-## 2. Example: integration with vLLM and DeepSeek
-
-To enable *FlagGems* in a distributed vLLM + DeepSeek deployment:
--->
-## 2. 示例：与 vLLM 和 DeepSeek 集成
-
-要在一个分布式的 vLLM + DeepSeek 部署环境中启用 *FlagGems*，需执行以下步骤：
+以基于 vLLM 部署大型模型（例如 DeepSeek-R1 系列）为例，在分布式环境中启用 *FlagGems* 的标准实操步骤如下：
 
 {{% steps %}}
 
-1. <!--**Baseline verification**-->
-   **基线检验**
+1. **基线连通性验证**
+   在集成 *FlagGems* 之前，建议首先确保原版模型在分布式环境下能够正常加载并完成基础推理服务验证。
 
-   <!--
-   Before conducting this experiment, please verify that the model can load
-   and serve correctly without integrating *FlagGems*.
-   For example, loading a model like `Deepseek-R1` typically requires **at least two H100 GPUs**
-   and it can take **up to 20 minutes** to initialize, depending on the checkpoint size and
-   the system I/O bandwidth and latency.
-   -->
-   在开始此实验之前，请先检查模型在没有与 *FlagGems* 集成的前提下可以正常启动并提供服务。
-   例如，加载类似于 `Deepseek-R1` 这类模型通常需要**至少 2 块 H100 GPU 卡**，
-   并且其初始化过程可能需要**将近 20 分钟**的时间，取决于检查点的大小、系统 I/O
-   的带宽与延迟。
+2. **在 vLLM Worker 中注入初始化逻辑**
+   根据所使用的 vLLM 版本，定位对应的模型执行器（Model Runner）源码：
+   - **vLLM v1 架构**（vLLM ≥ 0.8 推荐架构）：编辑 `vllm/v1/worker/gpu_model_runner.py`
+   - **vLLM v0 遗留架构**：编辑 `vllm/worker/model_runner.py`
 
-1. <!--**Inject `flag_gems` into vLLM worker code**-->
-   **将 `flag_gems` 注入到 vLLM 工作进程代码中**
-
-   <!--
-   Locate the appropriate model runner script depending on your vLLM version:
-
-   - If you are using the **vLLM v1 architecture** (available in vLLM ≥ 0.8),
-     modify `vllm/v1/worker/gpu_model_runner.py`
-   - If you are using the **legacy v0 architecture**, modify `vllm/worker/model_runner.py`
-
-   In either file, insert the following logic after the last `import` statement:
-   -->
-   基于你所使用的 vLLM 版本，找到模型运行脚本的位置：
-
-   - 如果所使用的是**vLLM v1 架构**（在 vLLM ≥ 0.8 环境中可用），
-     要修改 `vllm/v1/worker/gpu_model_runner.py` 文件；
-   - 如果所使用的是**老的 v0 架构**, 则需要修改 `vllm/worker/model_runner.py` 文件。
-
-   打开所找到的文件，在最后一行 `import` 语句之后插入如下逻辑：
+   在文件末尾的 `import` 之后添加环境变量控制的注入逻辑：
 
    ```python
    import os
+
    if os.getenv("USE_FLAGGEMS", "false").lower() in ("1", "true", "yes"):
        try:
            import flag_gems
+
            flag_gems.enable()
            flag_gems.apply_gems_patches_to_vllm(verbose=True)
-           logger.info("Successfully enabled flag_gems as default ops implementation.")
+           logger.info(
+               "Successfully enabled FlagGems as default ATen and vLLM custom ops backend."
+           )
        except ImportError:
-           logger.warning("Failed to import 'flag_gems', falling back to default implementation.")
+           logger.warning(
+               "Failed to import 'flag_gems', falling back to default implementations."
+           )
        except Exception as e:
-           logger.warning(f"Failed to enable 'flag_gems': {e}, falling back to default implementation.")
+           logger.warning(
+               f"Failed to enable 'flag_gems': {e}, falling back to default implementations."
+           )
    ```
 
-1. <!--**Set environment variables on all nodes**-->
-   **在所有节点上设置环境变量**
-
-   <!--
-   Before launching the service, ensure the following environment variable is set
-   on all nodes:
-   -->
-   在启动服务之前，要确保所有节点上都设置了下面的环境变量：
+3. **集群各节点配置环境变量**
+   在启动集群服务前，确保所有计算节点的环境变量中均声明了启用标识：
 
    ```shell
    export USE_FLAGGEMS=1
    ```
 
-1. <!--**Start distributed inference and verify**-->
-   **启动分布式推理服务并检验运行状态**
-
-   <!--
-   Launch the service and check the startup logs on each node for messages
-   indicating that operators have been overridden.
-   -->
-   启动分布式推理服务，在所有节点上检查启动日志，搜索表明算子已经被覆盖的消息。
+4. **启动服务并确认算子接管**
+   正常拉起分布式服务。检查各节点 Worker 的启动日志，确认输出包含 ATen 算子覆盖与 vLLM 补丁注入信息：
 
    ```none
    Overriding a previously registered kernel for the same operator and the same dispatch key
    operator: aten::add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
-     registered at /pytorch/build/aten/src/ATen/RegisterSchema.cpp:6
    dispatch key: CUDA
-   previous kernel: registered at /pytorch/aten/src/ATen/....
-        new kernel: registered at /dev/null:488 (Triggered internally at ....)
-   self.m.impl(
+   ...
+   Patched RMSNorm.forward_cuda with FLAGGEMS custom_gems_rms_forward_cuda
    ```
 
-   <!--
-   This confirms that `flag_gems` has been successfully enabled across all nodes.
-   -->
-   出现这类消息则意味着 `flag_gems` 已经被成功地跨多个节点启用了。
+   日志出现上述记录即表明集群内所有节点的工作进程均已成功挂载 *FlagGems* 算子。
 
 {{% /steps %}}
