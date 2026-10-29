@@ -25,7 +25,7 @@ _OVERRIDEABLE_CORE_SHAPES = [
 ]
 
 
-def torch_ref(
+def _native_dense_p0_nine_tuple(
     query,
     key,
     value,
@@ -56,6 +56,36 @@ def torch_ref(
         torch.tensor([0], dtype=torch.int64, device=query.device),
         torch.tensor([0], dtype=torch.int64, device=query.device),
         torch.empty(0, dtype=query.dtype, device=query.device),
+    )
+
+
+def torch_ref(
+    query,
+    key,
+    value,
+    attn_bias=None,
+    dropout_p=0.0,
+    is_causal=False,
+    return_debug_mask=False,
+    scale=None,
+):
+    if flag_gems.vendor_name == "nvidia":
+        return _native_dense_p0_nine_tuple(
+            query,
+            key,
+            value,
+            attn_bias,
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale=scale,
+        )
+    if flag_gems.vendor_name == "hygon":
+        raise ValueError(
+            "Hygon uses exact static H800 reference; native timer must be skipped"
+        )
+    return flag_gems.ops.scaled_dot_product_attention_forward(
+        query, key, value, is_causal=is_causal
     )
 
 
