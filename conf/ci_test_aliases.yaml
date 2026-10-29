@@ -192,6 +192,7 @@ searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
 scatter_reduce_two_out: test_scatter_reduce
 segment_reduce_out: test_segment_reduce
+slow_conv_dilated2d_out: test_slow_conv_dilated2d
 special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
