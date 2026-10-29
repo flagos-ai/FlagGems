@@ -20,6 +20,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import conftest as cfg
 
 device = flag_gems.device
 
@@ -35,34 +36,47 @@ device = flag_gems.device
 @pytest.mark.parametrize(
     "fill_value", [3.1415926, 2, False, float("inf"), float("nan")]
 )
-def test_new_full(shape, dtype, xdtype, fill_value):
+@pytest.mark.parametrize("dtype_variant", ["inherit", "explicit"])
+def test_new_full(shape, dtype, xdtype, fill_value, dtype_variant):
+    kwargs = {} if dtype_variant == "inherit" else {"dtype": xdtype}
+    expected_dtype = dtype if dtype_variant == "inherit" else xdtype
+    nonfinite_fill = isinstance(fill_value, float) and not math.isfinite(fill_value)
+    integer_nonfinite = nonfinite_fill and expected_dtype in utils.ALL_INT_DTYPES
+    bool_nan = (
+        isinstance(fill_value, float)
+        and math.isnan(fill_value)
+        and expected_dtype == torch.bool
+    )
+    if flag_gems.vendor_name == "ascend" and not cfg.TO_CPU:
+        if integer_nonfinite:
+            pytest.skip(
+                "Ascend native new_full accepts nonfinite integer fills instead "
+                "of the CPU overflow error"
+            )
+        if bool_nan:
+            pytest.skip(
+                "Ascend native new_full converts NaN to False for bool; CPU "
+                "converts it to True"
+            )
+
     inp = torch.empty(size=shape, dtype=dtype, device=device)
     ref_inp = utils.to_reference(inp)
+    if integer_nonfinite:
+        with pytest.raises(
+            (RuntimeError, OverflowError), match="overflow|cannot be converted"
+        ) as native_error:
+            ref_inp.new_full(shape, fill_value, **kwargs)
+        with pytest.raises(
+            type(native_error.value), match="overflow|cannot be converted"
+        ):
+            flag_gems.new_full(inp, shape, fill_value, **kwargs)
+        return
 
-    # without dtype: output dtype inherits from self (dtype), skip if dtype doesn't support inf/nan
-    if isinstance(fill_value, float) and (
-        math.isinf(fill_value) or math.isnan(fill_value)
-    ):
-        if dtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
-
-    ref_out = ref_inp.new_full(shape, fill_value)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value)
-
-    utils.gems_assert_equal(res_out, ref_out, equal_nan=True)
-
-    # with dtype: output dtype is xdtype, skip if xdtype doesn't support inf/nan
-    if isinstance(fill_value, float) and (
-        math.isinf(fill_value) or math.isnan(fill_value)
-    ):
-        if xdtype not in utils.ALL_FLOAT_DTYPES:
-            # Skipping inf/nan test for non-float dtypes
-            return
-
-    ref_out = ref_inp.new_full(shape, fill_value, dtype=xdtype)
-    with flag_gems.use_gems():
-        res_out = inp.new_full(shape, fill_value, dtype=xdtype)
-
+    ref_out = ref_inp.new_full(shape, fill_value, **kwargs)
+    res_out = flag_gems.new_full(inp, shape, fill_value, **kwargs)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == inp.device
+    assert res_out.dtype == expected_dtype
+    assert res_out.shape == torch.Size(shape)
+    assert res_out.data_ptr() != inp.data_ptr()
     utils.gems_assert_equal(res_out, ref_out, equal_nan=True)

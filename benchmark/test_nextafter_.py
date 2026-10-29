@@ -32,6 +32,8 @@ def _case_fn(shape, dtype):
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        pytest.skip("Iluvatar Float64 native nextafter returns incorrect values")
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("Enflame Float64 storage loses adjacent-double nextafter values")
     (shape,) = plan.builder_args
@@ -42,7 +44,19 @@ def _build_inputs_fn(plan, dtype, device):
     )
 
 
+def _fresh_nextafter_latency(self, op, inp, other):
+    if inp.untyped_storage()._cdata == other.untyped_storage()._cdata:
+        raise ValueError("Fresh nextafter benchmark inputs must not alias")
+    # Only self may change. Keep the independent read-only other tensor and
+    # clone self through the existing timer hook, outside every timed call.
+    return self._get_fresh_input_latency(
+        lambda fresh_self: op(fresh_self, other), (inp,), {}
+    )
+
+
 class NextafterInplaceBenchmark(base.BinaryPointwiseBenchmark, OperatorBenchmark):
+    get_latency = _fresh_nextafter_latency
+
     def supports_cases(self):
         return True
 

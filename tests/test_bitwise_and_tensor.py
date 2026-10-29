@@ -66,6 +66,39 @@ def test_bitwise_and_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.bitwise_and_(ref_inp2)
-    res_out = flag_gems.__iand___tensor(inp1, inp2)
+    before = (
+        inp1.device,
+        inp1.dtype,
+        tuple(inp1.shape),
+        inp1.stride(),
+        inp1.data_ptr(),
+    )
+    other_before = (
+        inp2.device,
+        inp2.dtype,
+        tuple(inp2.shape),
+        inp2.stride(),
+        inp2.data_ptr(),
+    )
+    other_bytes = inp2.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
+    res_out = flag_gems.bitwise_and_tensor_(inp1, inp2)
+    assert isinstance(res_out, torch.Tensor) and res_out is inp1
+    assert (
+        res_out.device,
+        res_out.dtype,
+        tuple(res_out.shape),
+        res_out.stride(),
+        res_out.data_ptr(),
+    ) == before
+    assert (
+        inp2.device,
+        inp2.dtype,
+        tuple(inp2.shape),
+        inp2.stride(),
+        inp2.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        inp2.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     utils.gems_assert_equal(res_out, ref_out)

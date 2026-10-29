@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "underscore_conj_physical",
+  "name": "_conj_physical",
   "requires_triton_kernel": true,
   "description": "The private `aten::_conj_physical` overload. Always materializes the element-wise\nconjugate of the given `input` tensor.",
   "parameters": [

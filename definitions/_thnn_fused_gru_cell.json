@@ -1,37 +1,45 @@
 {
   "api_version": "v6.0",
-  "name": "upsample_nearest_exact1d_backward",
+  "name": "_thnn_fused_gru_cell",
   "requires_triton_kernel": true,
-  "description": "A backward case for `_upsample_nearest_exact1d()`.",
+  "description": "Computes the fused GRU cell forward pass and backward workspace.",
   "parameters": [
     {
-      "name": "grad_output",
+      "name": "input_gates",
       "kind": "positional_or_keyword",
       "required": true,
       "type_hint": "torch.Tensor"
     },
     {
-      "name": "output_size",
+      "name": "hidden_gates",
       "kind": "positional_or_keyword",
       "required": true,
-      "type_hint": "Sequence[int]"
+      "type_hint": "torch.Tensor"
     },
     {
-      "name": "input_size",
+      "name": "hx",
       "kind": "positional_or_keyword",
       "required": true,
-      "type_hint": "Sequence[int]"
+      "type_hint": "torch.Tensor"
     },
     {
-      "name": "scales",
+      "name": "input_bias",
       "kind": "positional_or_keyword",
       "required": false,
       "default": null,
-      "type_hint": "Optional[float]"
+      "type_hint": "torch.Tensor"
+    },
+    {
+      "name": "hidden_bias",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "default": null,
+      "type_hint": "torch.Tensor"
     }
   ],
   "outputs": [
-    "out"
+    "hy",
+    "workspace"
   ],
   "effects": {
     "mutates": [],

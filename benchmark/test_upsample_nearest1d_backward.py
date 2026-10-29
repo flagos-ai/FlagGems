@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from flag_gems.ops.upsample_nearest1d_backward import (
-    upsample_nearest1d_backward,
     upsample_nearest1d_backward_grad_input,
 )
 
@@ -38,7 +37,7 @@ class UpsampleNearest1dBackwardBenchmark(base.Benchmark):
 
     def build_inputs(self, case):
         plan = case.builder_args[0]
-        (batch, channels, input_w, output_w) = plan.builder_args[0]
+        batch, channels, input_w, output_w = plan.builder_args[0]
         grad_output = torch.randn(
             (batch, channels, output_w),
             dtype=case.dtype,
@@ -59,7 +58,6 @@ def test_upsample_nearest1d_backward():
     bench = UpsampleNearest1dBackwardBenchmark(
         op_name="upsample_nearest1d_backward",
         torch_op=torch.ops.aten.upsample_nearest1d_backward.default,
-        gems_op=upsample_nearest1d_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

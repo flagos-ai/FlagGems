@@ -26,6 +26,7 @@ from flag_gems.cli_override import add_override_arguments, apply_overrides_from_
 from flag_gems.runtime import torch_device_fn
 
 from . import consts
+from .baseline import BaselineData
 from .profile_hook import ProfileHooks
 from .reference import reference_report, validate_reference_options
 
@@ -124,6 +125,7 @@ class BenchConfig:
         self.override_registry = None
         self.skip_native = False
         self.native_baseline_skip_reason = None
+        self.base_data = None
 
 
 def _get_native_baseline_skip_reason(marker, current_vendor):
@@ -186,6 +188,12 @@ def _deactivate_inactive_native_marker(item, current_vendor):
 
 
 def pytest_addoption(parser):
+    parser.addoption(
+        "--base-data",
+        default=None,
+        metavar="FILE",
+        help="Optional ops-baseline JSON for external NVIDIA speedup comparison.",
+    )
     parser.addoption(
         "--reference-only",
         action="store_true",
@@ -434,6 +442,7 @@ def pytest_configure(config):
 
     shape_file_str = config.getoption("--shape_file")
     Config.shape_file = shape_file_str
+    Config.base_data = BaselineData.load(config.getoption("--base-data"))
 
     Config.record_log = config.getoption("--record") == "log"
     Config.record_json = config.getoption("--record") == "json"

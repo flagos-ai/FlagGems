@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -26,12 +28,12 @@ def test_isneginf():
     bench.run()
 
 
-@pytest.mark.skip(reason="No support to non-boolean outputs: issue #2687")
 @pytest.mark.isneginf_out
 def test_isneginf_out():
-    bench = base.UnaryPointwiseOutBenchmark(
+    bench = base.BoolUnaryPointwiseOutBenchmark(
         op_name="isneginf_out",
         torch_op=torch.isneginf,
+        gems_op=flag_gems.isneginf_out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
