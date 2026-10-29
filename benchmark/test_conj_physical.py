@@ -127,7 +127,7 @@ def test__conj_physical():
     bench = Conj_physicalBenchmark(
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        op_name="underscore_conj_physical",
+        op_name="_conj_physical",
         torch_op=torch.ops.aten._conj_physical,
         dtypes=consts.COMPLEX_DTYPES,
     )

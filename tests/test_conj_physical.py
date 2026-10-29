@@ -216,20 +216,6 @@ _LAYOUT_SHAPES = {
 _UNDERSCORE_DTYPES = [torch.complex64, torch.float32, torch.int32]
 
 
-def _private_conj_candidate(inp):
-    expected_device, expected_dtype = inp.device, inp.dtype
-    expected_shape = tuple(inp.shape)
-    candidate = getattr(flag_gems, "underscore_conj_physical", None)
-    if candidate is None:
-        candidate = flag_gems.ops._conj_physical
-    result = candidate(inp)
-    assert isinstance(result, torch.Tensor)
-    assert result.device == expected_device
-    assert result.dtype == expected_dtype
-    assert tuple(result.shape) == expected_shape
-    return result
-
-
 def _assert_private_conj_equal(actual, expected):
     if flag_gems.vendor_name == "ascend":
         # Validate the original result's ABI before comparing values on CPU.
@@ -260,7 +246,10 @@ def test__conj_physical_layout_parity(layout, dtype):
     # is pinned against a same-device ATen call; the value comparison below goes
     # through to_reference so it still works under --ref=cpu.
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = _private_conj_candidate(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     assert (
         res_out.stride() == aten_out.stride()
@@ -290,7 +279,10 @@ def test__conj_physical_real_does_not_alias(dtype):
 
     # Aliasing is a same-device property, so compare against ATen on-device.
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = _private_conj_candidate(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     # ATen itself must not alias here; assert that first so the test documents
     # the contract it is pinning rather than just gems' behaviour.
@@ -318,7 +310,10 @@ def test__conj_physical_conj_bit_input(dtype):
     inp = base.conj()
     assert inp.is_conj()
 
-    res_out = _private_conj_candidate(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
     assert not res_out.is_conj(), "conjugate bit leaked into the result"
 
     ref_out = torch.ops.aten._conj_physical(utils.to_reference(inp))
@@ -337,7 +332,10 @@ def test__conj_physical_empty(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = _private_conj_candidate(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     assert res_out.shape == aten_out.shape
     assert res_out.dtype == aten_out.dtype
@@ -366,7 +364,10 @@ def test__conj_physical_matches_backward_formula(dtype):
 
     # What ATen's backward computes for an incoming gradient `grad`.
     ref_grad_in = torch.ops.aten._conj_physical(utils.to_reference(grad))
-    res_grad_in = _private_conj_candidate(grad)
+    expected = (grad.device, grad.dtype, tuple(grad.shape))
+    res_grad_in = flag_gems._conj_physical(grad)
+    assert isinstance(res_grad_in, torch.Tensor)
+    assert (res_grad_in.device, res_grad_in.dtype, tuple(res_grad_in.shape)) == expected
 
     _assert_private_conj_equal(
         torch.view_as_real(res_grad_in), torch.view_as_real(ref_grad_in)
@@ -374,7 +375,10 @@ def test__conj_physical_matches_backward_formula(dtype):
     # Applying it twice is the identity, which pins the sign convention: a
     # missing negation would pass a single comparison against a wrong reference
     # but cannot survive the round trip.
-    round_trip = _private_conj_candidate(res_grad_in)
+    expected = (res_grad_in.device, res_grad_in.dtype, tuple(res_grad_in.shape))
+    round_trip = flag_gems._conj_physical(res_grad_in)
+    assert isinstance(round_trip, torch.Tensor)
+    assert (round_trip.device, round_trip.dtype, tuple(round_trip.shape)) == expected
     _assert_private_conj_equal(
         torch.view_as_real(round_trip), torch.view_as_real(utils.to_reference(grad))
     )
