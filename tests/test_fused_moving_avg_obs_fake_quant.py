@@ -155,3 +155,150 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
         tensor.data_ptr()
         for tensor in (running_min_tri, running_max_tri, scale_tri, zp_tri)
     ] == state_pointers
+
+
+@pytest.mark.fused_moving_avg_obs_fake_quant
+@pytest.mark.parametrize("observer_on", [True, False])
+@pytest.mark.parametrize("fake_quant_on", [True, False])
+@pytest.mark.parametrize("symmetric_quant", [False, True])
+def test_fused_moving_avg_obs_fake_quant_per_row_contract(
+    observer_on, fake_quant_on, symmetric_quant
+):
+    """Preserve native per-row semantics for a nontrivial channel axis."""
+    torch.manual_seed(0)
+    shape = (3, 4, 5)
+    ch_axis = 1
+    channels = shape[ch_axis]
+    quant_min, quant_max = (-128, 127) if symmetric_quant else (0, 255)
+    averaging_const = 0.01
+
+    input_tensor = torch.randn(shape, device=flag_gems.device, dtype=torch.float32)
+    input_before = input_tensor.clone()
+    input_storage = input_tensor.untyped_storage().data_ptr()
+
+    # Native fused fake quant requires FP32 activations with these FP32 states.
+    input_ref = utils.to_reference(input_tensor, False)
+    ref_device = input_ref.device
+    if observer_on and (
+        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
+    ):
+        pytest.skip(
+            "Configured native reference only supports per-row observer "
+            "updates on ch_axis=0"
+        )
+    if (
+        flag_gems.vendor_name in ("nvidia", "iluvatar", "thead", "metax")
+        and ref_device.type == "cuda"
+        and fake_quant_on
+    ):
+        pytest.skip(
+            "Configured reference per-row fake quant rejects ch_axis=1 "
+            "scale/zero-point dimensions"
+        )
+    observer_ref = torch.tensor([int(observer_on)], dtype=torch.long, device=ref_device)
+    fake_quant_ref = torch.tensor(
+        [int(fake_quant_on)], dtype=torch.long, device=ref_device
+    )
+    running_min_ref = torch.tensor(
+        [-1.25, -0.75, -0.5, -1.0], dtype=torch.float32, device=ref_device
+    )
+    running_max_ref = torch.tensor(
+        [0.5, 1.0, 1.5, 0.75], dtype=torch.float32, device=ref_device
+    )
+    scale_ref = torch.ones(channels, dtype=torch.float32, device=ref_device)
+    zp_ref = torch.zeros(channels, dtype=torch.int32, device=ref_device)
+
+    ref_out = torch.ops.aten.fused_moving_avg_obs_fake_quant(
+        input_ref,
+        observer_ref,
+        fake_quant_ref,
+        running_min_ref,
+        running_max_ref,
+        scale_ref,
+        zp_ref,
+        averaging_const,
+        quant_min,
+        quant_max,
+        ch_axis,
+        True,
+        symmetric_quant,
+    )
+
+    device = flag_gems.device
+    observer_tri = torch.tensor([int(observer_on)], dtype=torch.long, device=device)
+    fake_quant_tri = torch.tensor([int(fake_quant_on)], dtype=torch.long, device=device)
+    running_min_tri = torch.tensor(
+        [-1.25, -0.75, -0.5, -1.0], dtype=torch.float32, device=device
+    )
+    running_max_tri = torch.tensor(
+        [0.5, 1.0, 1.5, 0.75], dtype=torch.float32, device=device
+    )
+    scale_tri = torch.ones(channels, dtype=torch.float32, device=device)
+    zp_tri = torch.zeros(channels, dtype=torch.int32, device=device)
+    state_tensors = (running_min_tri, running_max_tri, scale_tri, zp_tri)
+    state_layouts = [
+        (
+            tensor.untyped_storage().data_ptr(),
+            tensor.stride(),
+            tensor.storage_offset(),
+        )
+        for tensor in state_tensors
+    ]
+
+    # The current FlagGems implementation scalarizes these state tensors and
+    # ignores per_row_fake_quant/ch_axis. Keep the pinned ATen contract here so
+    # deferred runtime validation exposes that implementation mismatch.
+    res_out = flag_gems.fused_moving_avg_obs_fake_quant(
+        input_tensor,
+        observer_tri,
+        fake_quant_tri,
+        running_min_tri,
+        running_max_tri,
+        scale_tri,
+        zp_tri,
+        averaging_const,
+        quant_min,
+        quant_max,
+        ch_axis,
+        True,
+        symmetric_quant,
+    )
+
+    assert res_out.device == input_tensor.device
+    assert (
+        res_out.untyped_storage().data_ptr()
+        != input_tensor.untyped_storage().data_ptr()
+    )
+    assert all(
+        res_out.untyped_storage().data_ptr() != state.untyped_storage().data_ptr()
+        for state in (running_min_tri, running_max_tri, scale_tri, zp_tri)
+    )
+    assert res_out.dtype == input_tensor.dtype and res_out.shape == input_tensor.shape
+    for state, expected_dtype in zip(
+        (running_min_tri, running_max_tri, scale_tri, zp_tri),
+        (torch.float32, torch.float32, torch.float32, torch.int32),
+    ):
+        assert state.device == input_tensor.device and state.dtype == expected_dtype
+        assert state.shape == (channels,)
+    utils.gems_assert_close(res_out, ref_out, dtype=torch.float32, atol=1e-2)
+    utils.gems_assert_close(
+        running_min_tri, running_min_ref, dtype=torch.float32, atol=1e-4
+    )
+    utils.gems_assert_close(
+        running_max_tri, running_max_ref, dtype=torch.float32, atol=1e-4
+    )
+    utils.gems_assert_close(scale_tri, scale_ref, dtype=torch.float32, atol=1e-5)
+    utils.gems_assert_equal(zp_tri, zp_ref)
+    assert [
+        (
+            tensor.untyped_storage().data_ptr(),
+            tensor.stride(),
+            tensor.storage_offset(),
+        )
+        for tensor in state_tensors
+    ] == state_layouts
+    assert torch.equal(input_tensor, input_before)
+    assert input_tensor.untyped_storage().data_ptr() == input_storage
+    assert res_out.untyped_storage().data_ptr() != input_storage
+    assert res_out.shape == input_tensor.shape
+    assert res_out.dtype == input_tensor.dtype
