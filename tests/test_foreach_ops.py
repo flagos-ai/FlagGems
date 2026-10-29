@@ -835,3 +835,21 @@ def test_foreach_clamp_scalar_rejects_bool(core):
     inp = [torch.tensor([True, False], dtype=torch.bool, device=device)]
     with pytest.raises(RuntimeError):
         _gems(f"_foreach_{core}.Scalar")(inp, True)
+
+
+@pytest.mark.foreach_max
+def test_foreach_max_noncontiguous():
+    tensors = [
+        torch.arange(
+            24, dtype=torch.float32, device=flag_gems.device
+        ).reshape(4, 6).transpose(0, 1)
+    ]
+    refs = [to_reference(tensor, True) for tensor in tensors]
+    expected = torch._foreach_max(refs)
+    actual = _gems("_foreach_max")(tensors)
+
+    assert len(actual) == len(tensors)
+    assert actual[0].dtype == tensors[0].dtype
+    assert actual[0].shape == torch.Size([])
+    assert actual[0].device == tensors[0].device
+    gems_assert_close(actual[0], expected[0], tensors[0].dtype)
