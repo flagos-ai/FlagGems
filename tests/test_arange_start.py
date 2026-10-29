@@ -25,9 +25,9 @@ device = flag_gems.device
 
 @pytest.mark.arange_start
 @pytest.mark.arange_start_step
-@pytest.mark.parametrize("start", utils.ARANGE_START)
-@pytest.mark.parametrize("step", [1] if cfg.QUICK_MODE else [1, 2, 5])
-@pytest.mark.parametrize("end", [128] if cfg.QUICK_MODE else [128, 256, 1024])
+@pytest.mark.parametrize("start", [4] if cfg.QUICK_MODE else[3.5, 5.5, 8])
+@pytest.mark.parametrize("step", [1] if cfg.QUICK_MODE else [1, 2.4, 5])
+@pytest.mark.parametrize("end", [128] if cfg.QUICK_MODE else [128, 256.7, 1024])
 @pytest.mark.parametrize(
     "dtype",
     (

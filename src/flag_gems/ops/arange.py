@@ -52,22 +52,23 @@ def arange_start(
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
-        if dtype is torch.int64 and (
-            isinstance(step, float)
-            or isinstance(start, float)
-            or isinstance(end, float)
-        ):
-            int_step = int(step)
-            if int_step == 0:
-                raise RuntimeError("step must be nonzero")
+        if dtype is None:
+            if (isinstance(step, float)
+                or isinstance(start, float)
+                or isinstance(end, float)
+            ):
+                dtype = torch.get_default_dtype()
+            else:
+                dtype = torch.int64
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
+        if not dtype.is_floating_point:
+            start, step = int(start), int(step)
     size = int(size)
 
     BLOCK_SIZE = 128
     grid = triton.cdiv(size, BLOCK_SIZE)
-
-    if dtype is None:
-        dtype = torch.int64
 
     if pin_memory is None:
         pin_memory = False
