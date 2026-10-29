@@ -57,7 +57,15 @@ def _check_index_select_backward(shape, dim, dtype, index_dtype):
     assert result.shape == self_sizes
     assert result.dtype == dtype
     assert result.device == expected_device
-    utils.gems_assert_close(result, ref_out, dtype)
+    assert result.untyped_storage()._cdata not in {
+        grad.untyped_storage()._cdata,
+        index.untyped_storage()._cdata,
+    }
+    if flag_gems.vendor_name == "enflame":
+        result_for_compare, ref_for_compare = result.cpu(), ref_out.cpu()
+    else:
+        result_for_compare, ref_for_compare = result, ref_out
+    utils.gems_assert_close(result_for_compare, ref_for_compare, dtype)
 
 
 def _check_index_select_backward_repeated_indices(dtype, index_dtype):
@@ -76,7 +84,17 @@ def _check_index_select_backward_repeated_indices(dtype, index_dtype):
     )
     result = flag_gems.index_select_backward(grad, (6,), 0, index)
     assert result.device == expected_device
-    utils.gems_assert_close(result, ref_out, dtype)
+    assert result.dtype == dtype
+    assert result.shape == (6,)
+    assert result.untyped_storage()._cdata not in {
+        grad.untyped_storage()._cdata,
+        index.untyped_storage()._cdata,
+    }
+    if flag_gems.vendor_name == "enflame":
+        result_for_compare, ref_for_compare = result.cpu(), ref_out.cpu()
+    else:
+        result_for_compare, ref_for_compare = result, ref_out
+    utils.gems_assert_close(result_for_compare, ref_for_compare, dtype)
 
 
 @pytest.mark.index_select_backward
