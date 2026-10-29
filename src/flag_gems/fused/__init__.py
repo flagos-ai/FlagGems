@@ -51,7 +51,7 @@ from flag_gems.fused.fp8_fp4_mega_moe import (
 from flag_gems.fused.fp8_fp4_mqa_logits import fp8_fp4_mqa_logits
 from flag_gems.fused.fp8_fp4_paged_mqa_logits import fp8_fp4_paged_mqa_logits
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
-from flag_gems.fused.rs_norm_ag import fused_rs_add_rms_norm_ag
+from flag_gems.fused.rs_norm_ag import fused_qkv_norm_ag, fused_rs_add_rms_norm_ag
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_insert,
 )
@@ -149,6 +149,7 @@ __all__ = [
     "fp8_fp4_paged_mqa_logits",
     "fused_add_rms_norm",
     "fused_rs_add_rms_norm_ag",
+    "fused_qkv_norm_ag",
     "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert",
     "fused_experts_impl",

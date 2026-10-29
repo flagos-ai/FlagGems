@@ -29,6 +29,10 @@ Every send is followed by one flag increment on the successor (2W - 2 per call),
 receiver waits for flag >= base + step. Flags only grow; the parity flips every call, so
 a predecessor that runs ahead into call n + 1 never touches what call n still reads.
 Every rank must make the same calls in the same order on one stream (eager only).
+
+gather=False stops after the owner step (W - 1 signals): RS + add + RMSNorm, every rank
+keeps its normed rows. fused_qkv_norm_ag is the matching other end: it norms q / kv of
+the scattered qkv_a output and runs only the AG half of the ring (W - 1 signals).
 """
 
 import ctypes
@@ -310,6 +314,7 @@ def rs_norm_ag_ring_bulk_kernel(
     WORLD: tl.constexpr,
     V: tl.constexpr,  # threads per program, one 16B per thread: a row is NT tiles of V * 16B
     NT: tl.constexpr,
+    DO_AG: tl.constexpr,  # False: stop after the norm, out holds only my rows
 ):
     # every row access is a warp bulk op;
     # tiles cover the row exactly, so every warp is full and no lane is masked
@@ -373,27 +378,117 @@ def rs_norm_ag_ring_bulk_kernel(
             lo, hi = _pack(x)
             _bulk_st(res_addr + row + o, lo, hi)
             lo, hi = _pack(x * rrms * _ld(w_addr + o))
-            _bulk_st(out_addr + g + o, lo, hi)
-            _rbulk_st(nxt + (WORLD - 1) * sb + row + o, lo, hi)
-    _signal(succ_flag, base + WORLD)
+            if DO_AG:
+                _bulk_st(out_addr + g + o, lo, hi)
+                _rbulk_st(nxt + (WORLD - 1) * sb + row + o, lo, hi)
+            else:
+                _bulk_st(out_addr + row + o, lo, hi)
+    if DO_AG:
+        _signal(succ_flag, base + WORLD)
 
-    # AG steps: chunk order[p - t] arrives in slot W - 2 + t; keep it, pass it on
+        # AG steps: chunk order[p - t] arrives in slot W - 2 + t; keep it, pass it on
+        for t in range(1, WORLD):
+            _wait(my_flag, base + WORLD - 1 + t, err_ptr, max_spin)
+            k = tl.load(ring + (p + WORLD - t) % WORLD)
+            b = tl.minimum(k * chunk, num_tokens)
+            n = tl.minimum((k + 1) * chunk, num_tokens) - b
+            for lr in range(pid, n, G):
+                for j in tl.static_range(NT):
+                    o = lr.to(tl.int64) * rb + j * V * 16 + lane
+                    src = mine + (WORLD - 2 + t) * sb + o
+                    lo = _ldv_lo(src)
+                    hi = _ldv_hi(src)
+                    _bulk_st(out_addr + (b + lr).to(tl.int64) * rb + j * V * 16 + lane, lo, hi)
+                    if t < WORLD - 1:
+                        _rbulk_st(nxt + (WORLD - 1 + t) * sb + o, lo, hi)
+            if t < WORLD - 1:
+                _signal(succ_flag, base + WORLD + t)
+
+
+@triton.jit(
+    do_not_specialize=[
+        "num_tokens", "chunk", "slot_elems", "par_elems", "rank", "nchan", "q_eps", "kv_eps",
+        "base", "max_spin",
+    ]
+)
+def qkv_norm_ag_ring_kernel(
+    x_ptr,  # [rows of this rank, D] qkv_a output: [q | kv | rest]
+    qw_ptr,  # [Q]
+    kvw_ptr,  # [KV]
+    out_ptr,  # [T, D]
+    data_addrs,  # int64 [W], every rank's IPC data buffer
+    flag_ptrs,  # int64 [W], every rank's IPC flag buffer (one int32 per program)
+    order_ptr,  # int32 [C, W], ring of every channel
+    pos_ptr,  # int32 [C], my position in every ring
+    err_ptr,  # int32 [1], wait timeouts
+    num_tokens,
+    chunk,
+    slot_elems,
+    par_elems,  # parity * (W - 1) * slot_elems
+    rank,
+    nchan,
+    q_eps,
+    kv_eps,
+    base,  # flag value at the start of this call (int32, wraps)
+    max_spin,
+    WORLD: tl.constexpr,
+    D: tl.constexpr,
+    Q: tl.constexpr,
+    KV: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # owner: norm q and kv of my rows, keep them, send them to succ slot 0;
+    # AG step t = 1 .. W-1: chunk order[p - t] arrives in slot t - 1, keep it, pass it on.
+    # A row (D * 2B) is not a multiple of 512B, so plain accesses, no bulk ops.
+    pid = tl.program_id(0)
+    G = tl.num_programs(0)
+    cols = tl.arange(0, BLOCK)
+    in_row = cols < D
+    is_q = cols < Q
+    is_kv = (cols >= Q) & (cols < Q + KV)
+
+    c = pid % nchan
+    p = tl.load(pos_ptr + c)
+    ring = order_ptr + c * WORLD
+    succ = tl.load(ring + (p + 1) % WORLD)
+    my_flag = tl.load(flag_ptrs + rank).to(tl.pointer_type(tl.int32)) + pid
+    succ_flag = tl.load(flag_ptrs + succ).to(tl.pointer_type(tl.int32)) + pid
+    pe = par_elems.to(tl.int64)
+    se = slot_elems.to(tl.int64)
+    mine = tl.load(data_addrs + rank).to(tl.pointer_type(tl.bfloat16)) + pe
+    nxt = tl.load(data_addrs + succ).to(tl.pointer_type(tl.bfloat16)) + pe
+
+    wq = tl.load(qw_ptr + cols, mask=is_q, other=0.0).to(tl.float32)
+    wkv = tl.load(kvw_ptr + (cols - Q), mask=is_kv, other=0.0).to(tl.float32)
+    w = tl.where(is_q, wq, wkv)
+
+    mb = tl.minimum(rank * chunk, num_tokens)
+    mn = tl.minimum((rank + 1) * chunk, num_tokens) - mb
+    for lr in range(pid, mn, G):
+        x = tl.load(x_ptr + lr.to(tl.int64) * D + cols, mask=in_row, other=0.0).to(tl.float32)
+        xx = x * x
+        rq = 1 / tl.sqrt(tl.sum(tl.where(is_q, xx, 0.0)) / Q + q_eps)
+        rkv = 1 / tl.sqrt(tl.sum(tl.where(is_kv, xx, 0.0)) / KV + kv_eps)
+        y = tl.where(is_q, x * rq * w, tl.where(is_kv, x * rkv * w, x)).to(tl.bfloat16)
+        tl.store(out_ptr + (mb + lr).to(tl.int64) * D + cols, y, mask=in_row)
+        dst = tl.multiple_of(nxt + lr.to(tl.int64) * D, 16)
+        tl.store(dst + cols, y, mask=in_row)
+    _signal(succ_flag, base + 1)
+
     for t in range(1, WORLD):
-        _wait(my_flag, base + WORLD - 1 + t, err_ptr, max_spin)
+        _wait(my_flag, base + t, err_ptr, max_spin)
         k = tl.load(ring + (p + WORLD - t) % WORLD)
         b = tl.minimum(k * chunk, num_tokens)
         n = tl.minimum((k + 1) * chunk, num_tokens) - b
         for lr in range(pid, n, G):
-            for j in tl.static_range(NT):
-                o = lr.to(tl.int64) * rb + j * V * 16 + lane
-                src = mine + (WORLD - 2 + t) * sb + o
-                lo = _ldv_lo(src)
-                hi = _ldv_hi(src)
-                _bulk_st(out_addr + (b + lr).to(tl.int64) * rb + j * V * 16 + lane, lo, hi)
-                if t < WORLD - 1:
-                    _rbulk_st(nxt + (WORLD - 1 + t) * sb + o, lo, hi)
+            src = tl.multiple_of(mine + (t - 1) * se + lr.to(tl.int64) * D, 16)
+            v = tl.load(src + cols, mask=in_row, cache_modifier=".cg")
+            tl.store(out_ptr + (b + lr).to(tl.int64) * D + cols, v, mask=in_row)
+            if t < WORLD - 1:
+                dst = tl.multiple_of(nxt + t * se + lr.to(tl.int64) * D, 16)
+                tl.store(dst + cols, v, mask=in_row)
         if t < WORLD - 1:
-            _signal(succ_flag, base + WORLD + t)
+            _signal(succ_flag, base + t + 1)
 
 
 # pccl's 810E graph (pccl/liuda/810e_topo/28channnel/ring.xml): 7 distinct rings,
@@ -507,6 +602,8 @@ def row_range(num_tokens: int, world_size: int, rank: int) -> Tuple[int, int]:
     return min(num_tokens, rank * chunk), min(num_tokens, (rank + 1) * chunk)
 
 
+
+
 def rs_norm_ag_buffer_bytes(
     world_size: int, max_tokens: int, hidden_size: int, dtype: torch.dtype
 ) -> int:
@@ -516,56 +613,50 @@ def rs_norm_ag_buffer_bytes(
     return 2 * (2 * W - 2) * math.ceil(max_tokens / W) * hidden_size * elt
 
 
-class fused_rs_add_rms_norm_ag:
-    """IPC buffers + launcher of ``rs_norm_ag_ring_bulk_kernel`` for one TP group (bf16).
+def _wrap_i32(v: int) -> int:
+    return (v + 2**31) % 2**32 - 2**31
+
+
+class _RingComm:
+    """IPC data / flag buffers and ring channels shared by the ring kernels below.
 
     rings: rank orders, one per distinct ring (e.g. ``ppu810e_rings(phys_ids)``); default
     is the identity ring. nchannels: channels per call, the rings are repeated to fill
     them (pccl uses 28 on 810E); a call runs min(nchannels, chunk) of them.
-    max_tokens: largest T of a call, see ``rs_norm_ag_buffer_bytes``. cpu_group: a gloo
-    group of the same ranks for the handle exchange (default: `group`).
+    cpu_group: a gloo group of the same ranks for the handle exchange (default: `group`).
     Creation runs collectives: call it on every rank with the same rings.
+
+    Flags only grow: every call adds its number of signals to `_signals`, which is the
+    same on every rank because every rank makes the same calls. The parity of the data
+    slots flips every call.
     """
 
-    def __init__(
+    def _setup(
         self,
         group: dist.ProcessGroup,
         device: torch.device,
-        max_tokens: int,
-        hidden_size: int,
-        dtype: torch.dtype = torch.bfloat16,
-        cpu_group: Optional[dist.ProcessGroup] = None,
-        rings: Optional[Sequence[Sequence[int]]] = None,
-        nchannels: int = 28,
-        max_spin: int = 1 << 22,
+        data_bytes: int,
+        cpu_group: Optional[dist.ProcessGroup],
+        rings: Optional[Sequence[Sequence[int]]],
+        nchannels: int,
+        max_spin: int,
     ):
         self.group = group
         self.cpu_group = cpu_group or group
         self.world_size = dist.get_world_size(group)
         self.rank = dist.get_rank(group)
         self.device = torch.device(device)
-        self.hidden_size = hidden_size
-        self.dtype = dtype
-        self.max_tokens = max_tokens
         self.max_spin = max_spin
         self._seq = 0
+        self._signals = 0
 
-        W, H = self.world_size, hidden_size
+        W = self.world_size
         if W < 2:
-            raise ValueError("fused_rs_add_rms_norm_ag needs at least 2 ranks")
-        # one 16B per thread in whole warps
-        if dtype != torch.bfloat16 or H % 256 != 0:
-            raise ValueError(f"needs bf16 and H % 256 == 0, got {dtype} {H}")
+            raise ValueError(f"{type(self).__name__} needs at least 2 ranks")
         rings = [list(r) for r in (rings or [list(range(W))])]
         for r in rings:
             if sorted(r) != list(range(W)):
                 raise ValueError(f"ring {r} is not a permutation of the {W} ranks")
-        # rank 0 compiles the wrappers, the others read the cache
-        for turn in (0, 1):
-            if (self.rank == 0) == (turn == 0):
-                self.bulk_lib = build_bulk_lib()
-            dist.barrier(group=self.cpu_group)
-        install_bulk_ir_fix()
         self.max_programs = torch.cuda.get_device_properties(
             self.device
         ).multi_processor_count
@@ -579,13 +670,7 @@ class fused_rs_add_rms_norm_ag:
             [r.index(self.rank) for r in order], dtype=torch.int32, device=self.device
         )
 
-        elt = torch.empty((), dtype=dtype).element_size()
-        max_chunk = (max_tokens + W - 1) // W
-        self.slot_elems = max_chunk * H
-        self.parity_elems = (2 * W - 2) * self.slot_elems
-        data_bytes = 2 * self.parity_elems * elt
         flag_bytes = self.max_programs * 4
-
         self._rt = _CudaRT()
         self._rt.set_device(self.device.index)
         self._data = self._rt.malloc(data_bytes)
@@ -624,13 +709,22 @@ class fused_rs_add_rms_norm_ag:
         dist.barrier(group=self.cpu_group)
         self.closed = False
         logger.info(
-            "fused_rs_add_rms_norm_ag rank %d/%d: %.1f MiB data, %d channels on %d distinct rings",
+            "%s rank %d/%d: %.1f MiB data, %d channels on %d distinct rings",
+            type(self).__name__,
             self.rank,
             W,
             data_bytes / 2**20,
             self.nchannels,
             len(rings),
         )
+
+    def _next_call(self, signals: int) -> Tuple[int, int]:
+        """(parity, flag base) of the next call, which signals `signals` times."""
+        parity = self._seq & 1
+        base = _wrap_i32(self._signals)
+        self._seq += 1
+        self._signals += signals
+        return parity, base
 
     def row_range(self, num_tokens: int) -> Tuple[int, int]:
         return row_range(num_tokens, self.world_size, self.rank)
@@ -641,55 +735,6 @@ class fused_rs_add_rms_norm_ag:
         nchan = max(1, min(self.nchannels, chunk))
         per_chan = max(1, min(self.max_programs // nchan, triton.cdiv(chunk, nchan)))
         return nchan, nchan * per_chan
-
-    def __call__(
-        self,
-        x: torch.Tensor,
-        residual: torch.Tensor,
-        weight: torch.Tensor,
-        eps: float,
-        out: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """x: [T, H] partial sums, residual: this rank's rows (updated in place).
-        Returns the normed full [T, H]; written into x unless `out` is given."""
-        assert not self.closed
-        T, H = x.shape
-        W = self.world_size
-        b, e = self.row_range(T)
-        if H != self.hidden_size or x.dtype != self.dtype:
-            raise ValueError(f"expected [*, {self.hidden_size}] {self.dtype}, got {x.shape} {x.dtype}")
-        if T > self.max_tokens:
-            raise ValueError(f"{T} tokens > max_tokens {self.max_tokens}")
-        if tuple(residual.shape) != (e - b, H):
-            raise ValueError(f"residual must hold rows [{b}, {e}), got {tuple(residual.shape)}")
-        if not (x.is_contiguous() and residual.is_contiguous() and weight.is_contiguous()):
-            raise ValueError("tensors must be contiguous")
-        out = x if out is None else out
-        if T == 0:
-            return out
-
-        parity = self._seq & 1
-        # 2W - 2 flag increments per call; wrap to int32 like the device arithmetic
-        base = (self._seq * (2 * W - 2) + 2**31) % 2**32 - 2**31
-        self._seq += 1
-        chunk = (T + W - 1) // W
-        nchan, grid = self.launch_shape(T)
-        for t in (x, residual, weight, out):
-            if t.numel() and t.data_ptr() % 512 != 0:
-                raise ValueError("tensors must be 512B aligned (bulk ops)")
-        slot_bytes = self.slot_elems * x.element_size()
-        nv = H // 8
-        V = min(1024, nv & -nv)  # largest power of 2 dividing the row's 16B count
-        with torch.cuda.device(x.device):
-            self.last_kernel = rs_norm_ag_ring_bulk_kernel[(grid,)](
-                x.data_ptr(), residual.data_ptr() if residual.numel() else x.data_ptr(),
-                weight.data_ptr(), out.data_ptr(), self.data_addrs, self.flag_ptrs,
-                self.order, self.pos, self.err, T, chunk, H, slot_bytes,
-                parity * (2 * W - 2) * slot_bytes, self.rank, nchan, eps, base, self.max_spin,
-                WORLD=W, V=V, NT=nv // V, num_warps=V // 32,
-                extern_libs={"ppubulk": self.bulk_lib},
-            )
-        return out
 
     def errors(self) -> int:
         """Wait timeouts so far (syncs the device)."""
@@ -705,3 +750,193 @@ class fused_rs_add_rms_norm_ag:
         self._rt.free(self._data)
         self._rt.free(self._flags)
         self.closed = True
+
+
+class fused_rs_add_rms_norm_ag(_RingComm):
+    """IPC buffers + launcher of ``rs_norm_ag_ring_bulk_kernel`` for one TP group (bf16).
+
+    gather=True (default): RS + add + RMSNorm + AG, replaces all_reduce + add norm.
+    gather=False: RS + add + RMSNorm only, every rank keeps its normed rows (e.g. the
+    next layer's input norm when the attention input stays scattered).
+    max_tokens: largest T of a call, see ``rs_norm_ag_buffer_bytes``. Ring arguments: see
+    ``_RingComm``.
+    """
+
+    def __init__(
+        self,
+        group: dist.ProcessGroup,
+        device: torch.device,
+        max_tokens: int,
+        hidden_size: int,
+        dtype: torch.dtype = torch.bfloat16,
+        cpu_group: Optional[dist.ProcessGroup] = None,
+        rings: Optional[Sequence[Sequence[int]]] = None,
+        nchannels: int = 28,
+        max_spin: int = 1 << 22,
+    ):
+        W, H = dist.get_world_size(group), hidden_size
+        # one 16B per thread in whole warps
+        if dtype != torch.bfloat16 or H % 256 != 0:
+            raise ValueError(f"needs bf16 and H % 256 == 0, got {dtype} {H}")
+        self.hidden_size = hidden_size
+        self.dtype = dtype
+        self.max_tokens = max_tokens
+        cpu = cpu_group or group
+        # rank 0 compiles the wrappers, the others read the cache
+        rank = dist.get_rank(group)
+        for turn in (0, 1):
+            if (rank == 0) == (turn == 0):
+                self.bulk_lib = build_bulk_lib()
+            dist.barrier(group=cpu)
+        install_bulk_ir_fix()
+
+        elt = torch.empty((), dtype=dtype).element_size()
+        max_chunk = (max_tokens + W - 1) // W
+        self.slot_elems = max_chunk * H
+        self.parity_elems = (2 * W - 2) * self.slot_elems
+        self._setup(
+            group, device, 2 * self.parity_elems * elt, cpu_group, rings, nchannels, max_spin
+        )
+
+    def __call__(
+        self,
+        x: torch.Tensor,
+        residual: torch.Tensor,
+        weight: torch.Tensor,
+        eps: float,
+        out: Optional[torch.Tensor] = None,
+        gather: bool = True,
+    ) -> torch.Tensor:
+        """x: [T, H] partial sums, residual: this rank's rows (updated in place).
+        gather=True: returns the normed full [T, H], written into x unless `out` is given.
+        gather=False: returns the normed rows of this rank [e - b, H], written into
+        x[b:e] unless `out` is given."""
+        assert not self.closed
+        T, H = x.shape
+        W = self.world_size
+        b, e = self.row_range(T)
+        if H != self.hidden_size or x.dtype != self.dtype:
+            raise ValueError(f"expected [*, {self.hidden_size}] {self.dtype}, got {x.shape} {x.dtype}")
+        if T > self.max_tokens:
+            raise ValueError(f"{T} tokens > max_tokens {self.max_tokens}")
+        if tuple(residual.shape) != (e - b, H):
+            raise ValueError(f"residual must hold rows [{b}, {e}), got {tuple(residual.shape)}")
+        if not (x.is_contiguous() and residual.is_contiguous() and weight.is_contiguous()):
+            raise ValueError("tensors must be contiguous")
+        if out is None:
+            out = x if gather else x[b:e]
+        elif tuple(out.shape) != ((T, H) if gather else (e - b, H)):
+            raise ValueError(f"bad out shape {tuple(out.shape)}")
+        if T == 0:
+            return out
+
+        # RS + AG: 2W - 2 signals; RS only: the W - 1 RS hops
+        parity, base = self._next_call(2 * W - 2 if gather else W - 1)
+        chunk = (T + W - 1) // W
+        nchan, grid = self.launch_shape(T)
+        for t in (x, residual, weight, out):
+            if t.numel() and t.data_ptr() % 512 != 0:
+                raise ValueError("tensors must be 512B aligned (bulk ops)")
+        slot_bytes = self.slot_elems * x.element_size()
+        nv = H // 8
+        V = min(1024, nv & -nv)  # largest power of 2 dividing the row's 16B count
+        with torch.cuda.device(x.device):
+            self.last_kernel = rs_norm_ag_ring_bulk_kernel[(grid,)](
+                x.data_ptr(), residual.data_ptr() if residual.numel() else x.data_ptr(),
+                weight.data_ptr(), out.data_ptr() if out.numel() else x.data_ptr(),
+                self.data_addrs, self.flag_ptrs,
+                self.order, self.pos, self.err, T, chunk, H, slot_bytes,
+                parity * (2 * W - 2) * slot_bytes, self.rank, nchan, eps, base, self.max_spin,
+                WORLD=W, V=V, NT=nv // V, DO_AG=gather, num_warps=V // 32,
+                extern_libs={"ppubulk": self.bulk_lib},
+            )
+        return out
+
+
+class fused_qkv_norm_ag(_RingComm):
+    """IPC buffers + launcher of ``qkv_norm_ag_ring_kernel`` for one TP group (bf16).
+
+    The qkv_a output of MLA attention when its input is scattered: every rank holds the
+    rows row_range(T, W, rank) of [T, D] = [q | kv | rest], q has q_dim columns, kv
+    kv_dim. RMSNorm q and kv of those rows (rest, e.g. k_pe, is copied as is) and
+    all-gather them to every rank: replaces ``all_gather; q_a_layernorm; kv_a_layernorm``.
+    Ring arguments: see ``_RingComm``.
+    """
+
+    def __init__(
+        self,
+        group: dist.ProcessGroup,
+        device: torch.device,
+        max_tokens: int,
+        q_dim: int,
+        kv_dim: int,
+        row_dim: int,
+        dtype: torch.dtype = torch.bfloat16,
+        cpu_group: Optional[dist.ProcessGroup] = None,
+        rings: Optional[Sequence[Sequence[int]]] = None,
+        nchannels: int = 28,
+        max_spin: int = 1 << 22,
+    ):
+        W = dist.get_world_size(group)
+        if dtype != torch.bfloat16:
+            raise ValueError(f"needs bf16, got {dtype}")
+        if q_dim <= 0 or kv_dim <= 0 or q_dim + kv_dim > row_dim:
+            raise ValueError(f"bad split q {q_dim} + kv {kv_dim} of {row_dim}")
+        # 16B aligned rows: whole-vector accesses
+        if row_dim % 8 != 0:
+            raise ValueError(f"row_dim {row_dim} must be a multiple of 8")
+        self.q_dim, self.kv_dim, self.row_dim = q_dim, kv_dim, row_dim
+        self.dtype = dtype
+        self.max_tokens = max_tokens
+        elt = torch.empty((), dtype=dtype).element_size()
+        max_chunk = (max_tokens + W - 1) // W
+        self.slot_elems = max_chunk * row_dim
+        self.parity_elems = (W - 1) * self.slot_elems
+        self._setup(
+            group, device, 2 * self.parity_elems * elt, cpu_group, rings, nchannels, max_spin
+        )
+
+    def __call__(
+        self,
+        x: torch.Tensor,
+        num_tokens: int,
+        q_weight: torch.Tensor,
+        q_eps: float,
+        kv_weight: torch.Tensor,
+        kv_eps: float,
+        out: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """x: [e - b, D] rows of this rank, num_tokens: T of the whole batch (same on
+        every rank). Returns [T, D] with q and kv normed, in `out` if given."""
+        assert not self.closed
+        T, D, W = num_tokens, self.row_dim, self.world_size
+        b, e = self.row_range(T)
+        if tuple(x.shape) != (e - b, D) or x.dtype != self.dtype:
+            raise ValueError(f"x must be rows [{b}, {e}) of [*, {D}] {self.dtype}, got {tuple(x.shape)} {x.dtype}")
+        if T > self.max_tokens:
+            raise ValueError(f"{T} tokens > max_tokens {self.max_tokens}")
+        if q_weight.numel() != self.q_dim or kv_weight.numel() != self.kv_dim:
+            raise ValueError("weights do not match q_dim / kv_dim")
+        if out is None:
+            out = torch.empty((T, D), dtype=self.dtype, device=x.device)
+        elif tuple(out.shape) != (T, D) or not out.is_contiguous():
+            raise ValueError(f"out must be a contiguous [{T}, {D}]")
+        if not (x.is_contiguous() and q_weight.is_contiguous() and kv_weight.is_contiguous()):
+            raise ValueError("tensors must be contiguous")
+        if T == 0:
+            return out
+
+        parity, base = self._next_call(W - 1)
+        chunk = (T + W - 1) // W
+        nchan, grid = self.launch_shape(T)
+        BLOCK = triton.next_power_of_2(D)
+        with torch.cuda.device(x.device):
+            self.last_kernel = qkv_norm_ag_ring_kernel[(grid,)](
+                x if x.numel() else out, q_weight, kv_weight, out,
+                self.data_addrs, self.flag_ptrs, self.order, self.pos, self.err,
+                T, chunk, self.slot_elems, parity * self.parity_elems, self.rank, nchan,
+                q_eps, kv_eps, base, self.max_spin,
+                WORLD=W, D=D, Q=self.q_dim, KV=self.kv_dim, BLOCK=BLOCK,
+                num_warps=min(16, max(4, BLOCK // 256)),
+            )
+        return out
