@@ -1562,6 +1562,7 @@ from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
+from flag_gems.ops.to_sparse_semi_structured import to_sparse_semi_structured
 from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
@@ -3238,6 +3239,7 @@ __all__ = [
     "threshold_backward",
     "tile",
     "to_copy",
+    "to_sparse_semi_structured",
     "topk",
     "topk_w8a16_fp8",
     "trace",
