@@ -552,8 +552,12 @@ class _CudaRT:
         path = None
         with open("/proc/self/maps") as f:
             for line in f:
-                if "libcudart" in line:
-                    path = line[line.index("/") :].strip()
+                if "/" not in line:
+                    continue
+                p = line[line.index("/") :].strip()
+                name = os.path.basename(p)
+                if name.startswith("libcudart") and "stub" not in name:
+                    path = p
                     break
         self.lib = ctypes.CDLL(path or "libcudart.so")
         self.lib.cudaGetErrorString.restype = ctypes.c_char_p
