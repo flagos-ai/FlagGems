@@ -17,8 +17,22 @@ import logging
 from typing import Optional
 
 import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+
+@triton.jit
+def _clone_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = tl.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    vals = tl.load(src_ptr + offsets, mask=mask)
+    tl.store(dst_ptr + offsets, vals, mask=mask)
 
 
 class _CloneFunction(torch.autograd.Function):
@@ -42,32 +56,45 @@ def _allocate_preserve_format(inp: torch.Tensor) -> torch.Tensor:
     return torch.empty_like(inp, memory_format=torch.preserve_format)
 
 
+def _launch_copy(src: torch.Tensor, dst: torch.Tensor):
+    n_elements = src.numel()
+    # Constant-tuple grid: on the XPU backend a `lambda meta: ...` grid object is
+    # part of the compilation cache key for a bare `@triton.jit` kernel, so every
+    # call triggers a full recompile (measured ~105ms/call for a 4KB copy).
+    if n_elements >= 16384:
+        block = 16384
+    else:
+        block = min(16384, max(64, triton.next_power_of_2(n_elements)))
+    grid = (triton.cdiv(n_elements, block),)
+    with torch_device_fn.device(src.device):
+        _clone_kernel[grid](src, dst, n_elements, BLOCK_SIZE=block)
+
+
 def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
-    # The KernelGen copy kernel (masked triton launch) measures ~30us/call on
-    # the XPU backend -- strictly slower than the native device memcpy that
-    # ``copy_`` dispatches to (empty_like + copy_ measures ~6us vs native
-    # ``clone`` ~9.5us).  ``copy_`` handles strided/non-contiguous layouts
-    # itself, so every branch below just allocates and copies.
     if inp.numel() == 0:
         if memory_format == torch.preserve_format:
             return _allocate_preserve_format(inp)
         return torch.empty_like(inp, memory_format=memory_format)
 
     if memory_format == torch.preserve_format:
-        # Contiguous inputs are the hot case (benchmark, model weights):
-        # ``empty_like`` is a single allocator call, cheaper than the generic
-        # ``is_non_overlapping_and_dense`` + ``empty_strided`` round-trip.
-        if inp.is_contiguous():
-            out = torch.empty_like(inp)
-            out.copy_(inp)
-            return out
         out = _allocate_preserve_format(inp)
-        out.copy_(inp)
+        # Source and destination share the same layout, so element order
+        # matches and the flat kernel applies.
+        if inp.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(inp):
+            _launch_copy(inp, out)
+        else:
+            out.copy_(inp)
         return out
 
     if memory_format == torch.contiguous_format:
         out = torch.empty_like(inp, memory_format=torch.contiguous_format)
-        out.copy_(inp)
+        # flatten() on a contiguous input is a pure view; on a strided input it
+        # would dispatch through reshape, whose decomposition calls clone again
+        # and recurses.
+        if inp.is_contiguous():
+            _launch_copy(inp, out)
+        else:
+            out.copy_(inp)
         return out
 
     out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
@@ -90,10 +117,7 @@ def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None
     if memory_format is None:
         memory_format = torch.preserve_format
 
-    # Only wrap the copy in an autograd node when a gradient graph is actually
-    # live: torch's ``clone`` of a non-grad tensor carries no ``grad_fn``, and
-    # ``_CloneFunction.apply`` adds a measurable per-call cost (~10us) on the
-    # hot path.  Same grad_fn semantics as native, and a plain copy otherwise.
-    if inp.requires_grad and torch.is_grad_enabled():
-        return _CloneFunction.apply(inp, memory_format)
-    return _clone_impl(inp, memory_format)
+    # Wrap the copy in an autograd node so the output carries a grad_fn and
+    # gradients keep flowing when this clone is used inside a training graph.
+    out = _CloneFunction.apply(inp, memory_format)
+    return out
