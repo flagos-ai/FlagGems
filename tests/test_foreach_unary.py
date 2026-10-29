@@ -154,12 +154,12 @@ def _sample(shape, dtype, device, name=None):
     )
 
 
-def _assert_lists_close(res, ref, name):
+def _assert_lists_close(res, ref, name, *, equal_nan=False):
     assert len(res) == len(ref)
     for got, want in zip(res, ref):
         assert got.dtype == want.dtype, f"{name}: {got.dtype} != {want.dtype}"
         if got.dtype.is_floating_point or got.dtype.is_complex:
-            gems_assert_close(got, want, got.dtype)
+            gems_assert_close(got, want, got.dtype, equal_nan=equal_nan)
         else:
             gems_assert_equal(got, want)
 
@@ -728,3 +728,18 @@ def test_accuracy_foreach_abs_complex_large(dtype):
 
     assert torch.isfinite(res_out[0]).all(), f"{res_out[0].item()} overflowed"
     _assert_lists_close(res_out, ref_out, "abs")
+
+
+@pytest.mark.foreach_unary
+@pytest.mark.parametrize("name", _op_params(["acos", "asin"]))
+@pytest.mark.parametrize("dtype", [torch.int16, torch.int32, torch.int64])
+def test_foreach_inverse_trig_integer_nan(name, dtype):
+    if not _supports(name, dtype):
+        pytest.skip("backend does not support this integral foreach input")
+    inp = [torch.tensor([-2, -1, 0, 1, 2], dtype=dtype, device=flag_gems.device)]
+    reference = _torch_op(name)([to_reference(t) for t in inp])
+    result = _gems_op(name)(inp)
+    assert len(result) == len(inp)
+    for value, source in zip(result, inp):
+        assert value.device == source.device and value.shape == source.shape
+    _assert_lists_close(result, reference, name, equal_nan=True)
