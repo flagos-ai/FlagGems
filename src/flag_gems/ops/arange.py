@@ -31,12 +31,11 @@ logger = logging.getLogger(__name__)
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(0)
     y_ptr += pid * BLOCK_SIZE
-    step_offset = pid * BLOCK_SIZE * step
+    offsets = pid * BLOCK_SIZE
 
     cols = tl.arange(0, BLOCK_SIZE)
-    arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
+    arange_val = (cols + offsets) * step + start
+    tl.store(y_ptr + cols, arange_val, mask=cols + offsets < size)
 
 
 def arange_start(
