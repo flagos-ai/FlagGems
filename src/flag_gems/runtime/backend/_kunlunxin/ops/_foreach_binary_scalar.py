@@ -41,12 +41,19 @@ from typing import Any, List, Optional, Sequence
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
+from triton import knobs
+from triton.runtime import driver
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
     check_dtype_supported,
     check_tensor_list,
     has_internal_overlap,
+    tl_dtype,
 )
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -111,12 +118,119 @@ def _fpow_rev(a, s):
 
 
 # ---------------------------------------------------------------------------
+# bf16 large-shape route
+#
+# XPU3 has no bf16 ALU and no bf16 convert instruction (stated verbatim in the
+# vendor compiler, triton/backends/xpu/compiler.py); the backend is supposed to
+# promote bf16 arithmetic to f32 and fuse the narrowing into the LM-boundary
+# load/store.  In a hand-written kernel that fusion does not fire: every
+# formulation of ``tl.minimum`` on bf16 measures ~0.0088 ns/elem on a 16.7M
+# tensor against a 0.0027 load+store floor (fp16 runs the identical kernel at
+# 0.0027).  Eleven source forms, a 72-point launch-config sweep, a compiler-knob
+# sweep and four kernel-structure variants all land on the same number.
+#
+# The ``pointwise_dynamic`` codegen path does *not* pay the penalty -- it runs
+# bf16 at 0.0039 ns/elem -- so bf16 is routed through it.  fp16 and fp32 keep
+# ``_foreach1_kernel``, which is faster than the codegen path for them:
+#
+#   16.7M, ns/elem     bf16            fp16            fp32
+#   torch              0.0025          0.0024          0.0045
+#   _foreach1_kernel   0.0089 (0.28x)  0.0027 (0.89x)  0.0048 (0.94x)
+#   pointwise_dynamic  0.0039 (0.64x)  0.0038 (0.65x)  0.0074 (0.61x)
+#
+# The kernels below call the same ``_f*`` helpers as ``_foreach1_kernel``, so
+# the arithmetic is bit-identical between the two routes.
+# ---------------------------------------------------------------------------
+
+# clamp.py's tuned recipe for a 1-in/1-out memory-bound elementwise op.
+_PW_CONFIG = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=4096,
+    isCloseVectorization=False,
+    unroll_num=8,
+    kunlunAutoGrid=True,
+)
+
+
+def _pw(jit_fn):
+    return pointwise_dynamic(
+        is_tensor=[True, False],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=_PW_CONFIG,
+    )(jit_fn)
+
+
+@_pw
+@triton.jit
+def _pw_min(a, s):
+    return _fmin(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_max(a, s):
+    return _fmax(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_add(a, s):
+    return _fadd(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_sub(a, s):
+    return _fsub(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_mul(a, s):
+    return _fmul(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_div(a, s):
+    return _fdiv(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_pow(a, s):
+    return _fpow(a, s)
+
+
+@_pw
+@triton.jit
+def _pw_pow_rev(a, s):
+    return _fpow_rev(a, s)
+
+
+_PW_FOR = {
+    _fmin: _pw_min,
+    _fmax: _pw_max,
+    _fadd: _pw_add,
+    _fsub: _pw_sub,
+    _fmul: _pw_mul,
+    _fdiv: _pw_div,
+    _fpow: _pw_pow,
+    _fpow_rev: _pw_pow_rev,
+}
+
+
+# ---------------------------------------------------------------------------
 # kernels
 # ---------------------------------------------------------------------------
 
 
 @triton.jit
-def _foreach16_kernel(
+def _f16_body(
     a0,
     a1,
     a2,
@@ -313,6 +427,57 @@ def _foreach16_kernel(
             )
 
 
+# Two entry points over the same body.  Triton's host-side launch path costs
+# ~15us fixed plus ~0.9us per kernel argument on XPU (measured: an empty 2-arg
+# kernel 0.0151ms, an empty 35-arg kernel 0.0445ms, an empty 50-arg kernel
+# 0.0499ms), and at the small list shapes this operator is entirely launch
+# bound.  The ``.Scalar`` overloads -- and any ``.ScalarList`` that happens to
+# repeat one value -- need only one scalar, so they take the 35-argument entry:
+# measured 0.0454ms against 0.0638ms for the 50-argument one on 16 x 4096 fp16.
+
+
+@triton.jit
+def _foreach16_kernel(
+    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
+    o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+    s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15,
+    n,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    OT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Per-slot scalars (the general ``.ScalarList`` case)."""
+    _f16_body(
+        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
+        o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+        s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15,
+        n, fn, NT, OT, BLOCK, EVEN,
+    )
+
+
+@triton.jit
+def _foreach16s_kernel(
+    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
+    o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+    s,
+    n,
+    fn: tl.constexpr,
+    NT: tl.constexpr,
+    OT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """One scalar shared by every slot (the ``.Scalar`` case)."""
+    _f16_body(
+        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15,
+        o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15,
+        s, s, s, s, s, s, s, s, s, s, s, s, s, s, s, s,
+        n, fn, NT, OT, BLOCK, EVEN,
+    )
+
+
 @triton.jit
 def _foreach1_kernel(
     a_ptr,
@@ -360,6 +525,70 @@ def _pick_block(n: int) -> int:
     return 1024, False
 
 
+# ---------------------------------------------------------------------------
+# cached launcher
+#
+# At the small list shapes this operator is pure launch overhead, and about half
+# of it is Triton's host-side binding: on 16 x 4096 fp16 an empty 35-argument
+# kernel costs 0.0445ms through ``JITFunction.run`` but 0.0215ms when the
+# already-compiled kernel is invoked directly.  The binder re-derives the
+# specialization (pointer divisibility, int ==1 / %16) for all 35 arguments on
+# every call, then hashes it into a cache key.
+#
+# This takes the direct route, but only when the specialization is pinned to the
+# one case the cached binary was compiled for: every pointer congruent to 0 mod
+# 16 and ``n`` divisible by 16 and not 1.  A pointer that is 16-byte aligned is
+# also 8-, 4- and 2-byte aligned, so this holds whatever divisibility the
+# backend actually asks for; anything outside the guard falls back to
+# ``JITFunction.run``.  Entries are keyed per device and per constexpr tuple,
+# and a profiling launch hook also forces the fallback so its callbacks still
+# fire.
+# ---------------------------------------------------------------------------
+
+_RAW_CACHE: dict = {}
+
+
+def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
+    """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
+    # The knob holds a ``HookChain``, never ``None``, and the chain defines no
+    # ``__bool__``/``__len__`` -- so it is always truthy and ``is not None`` would
+    # reject every call.  An empty ``calls`` list means nobody is profiling; any
+    # other callable is treated as live hooks and forces the fallback.
+    hook = knobs.runtime.launch_enter_hook
+    if hook is not None and getattr(hook, "calls", True):
+        return False
+    for t in tensors:
+        if t.data_ptr() % 16:
+            return False
+    device = torch_device_fn.current_device()
+    key = (jit_fn, device, grid, num_warps) + const_key
+    entry = _RAW_CACHE.get(key)
+    if entry is None:
+        kernel = jit_fn[grid](*args, num_warps=num_warps)
+        stream = driver.active.get_current_stream(device)
+        _RAW_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+            stream,
+        )
+        return True
+    run, function, metadata, stream = entry
+    run(
+        grid[0],
+        1,
+        1,
+        stream,
+        function,
+        metadata,
+        None,
+        None,
+        knobs.runtime.launch_exit_hook,
+        *args,
+    )
+    return True
+
+
 def _launch16(
     srcs: List[torch.Tensor],
     dsts: List[torch.Tensor],
@@ -367,8 +596,6 @@ def _launch16(
     fn,
     n: int,
 ) -> None:
-    from flag_gems.utils.foreach import tl_dtype as _torch_to_tl
-
     block, even = _pick_block(n)
     nt = len(srcs)
     nt16 = min(nt, _K16_SLOTS)
@@ -379,14 +606,27 @@ def _launch16(
     # so a dedicated per-call scratch is used instead.
     o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
     svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
-    _foreach16_kernel[(triton.cdiv(n, block),)](
+    grid = (triton.cdiv(n, block),)
+    live = svals[:nt16]
+    ot = tl_dtype(dsts[0].dtype)
+    if live and live.count(live[0]) == nt16:
+        # One scalar for every slot: 35 kernel arguments instead of 50.
+        args = (*a, *o, live[0], n, fn, nt16, ot, block, even)
+        if even and n % 16 == 0 and n != 1:
+            if _raw_launch(
+                _foreach16s_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
+            ):
+                return
+        _foreach16s_kernel[grid](*args, num_warps=8)
+        return
+    _foreach16_kernel[grid](
         *a,
         *o,
         *svals,
         n,
         fn,
         nt16,
-        _torch_to_tl(dsts[0].dtype),
+        ot,
         block,
         even,
         num_warps=8,
@@ -414,6 +654,14 @@ def _launch1(
     fn,
 ) -> None:
     n = src.numel()
+    # bf16 has no hardware ALU on XPU3 and the hand-written kernel below runs it
+    # at 3.3x the fp16 rate; the codegen path does not pay that penalty.  See
+    # the "bf16 large-shape route" block above for the measurements.
+    if src.dtype is torch.bfloat16 and dst.dtype is torch.bfloat16:
+        pw = _PW_FOR.get(fn)
+        if pw is not None:
+            pw(src, val, out0=dst)
+            return
     # Cap the constexpr tile size: the previous next_pow2(cdiv(n, 12)) grew the
     # tile to ~2M elements for 16M-element tensors, and `tl.arange(0, tile)`
     # with a 2M constexpr tile compiles a gigantic kernel (register spill) that
@@ -446,9 +694,7 @@ def _launch1(
 
 
 def _torch_to_tl(dtype: torch.dtype):
-    from flag_gems.utils.foreach import tl_dtype as _t
-
-    return _t(dtype)
+    return tl_dtype(dtype)
 
 
 def _launch(
@@ -498,6 +744,26 @@ _OPS = {
 }
 
 
+_RESULT_TYPE: dict = {}
+
+
+def _result_type(t: torch.Tensor, v) -> torch.dtype:
+    """``torch.result_type(t, v)`` memoised on ``(tensor dtype, scalar kind)``.
+
+    A Python scalar enters type promotion as a *wrapped number*: only its
+    category (bool / int / float / complex) participates, never its value, so
+    the answer is a function of the two dtypes alone.  The lists this operator
+    sees are typically 16 tensors of one dtype, and the ATen call costs about as
+    much as a whole kernel launch at the small list shapes, so answer the
+    repeats from a dict and keep ATen as the one-time oracle.
+    """
+    key = (t.dtype, type(v))
+    out = _RESULT_TYPE.get(key)
+    if out is None:
+        out = _RESULT_TYPE[key] = torch.result_type(t, v)
+    return out
+
+
 def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[float]:
     """Normalise the ``.Scalar`` / ``.ScalarList`` forms into a per-tensor list."""
     if isinstance(scalars, torch.Tensor):
@@ -532,7 +798,7 @@ def _apply_scalar(name: str, self, scalars, inplace: bool):
 
     for i, (t, v) in enumerate(zip(self, values)):
         check_dtype_supported(t.dtype, allowed, dtype_error)
-        out_dtype = torch.result_type(t, v)
+        out_dtype = _result_type(t, v)
         if t.is_contiguous():
             src = t
         else:
