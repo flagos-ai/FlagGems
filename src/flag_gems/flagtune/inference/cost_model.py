@@ -16,12 +16,17 @@
 
 The tuner supplies dtype inference and legacy policy callbacks so this module
 never imports libentry or takes ownership of ordinary tuner caches.
+
+``FLAGTUNE_VERIFY_TOP_K`` optionally verifies the measured finalists with fresh
+samples before selection; zero preserves the ordinary cached policy.
+``FLAGTUNE_KEEP_DEFAULT_CONFIGS=1`` also measures legal Default candidates.
 """
 
 from __future__ import annotations
 
 import math
 import os
+import statistics
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
@@ -168,7 +173,7 @@ def benchmark_config(
 
 
 def ensure_proposer(identity: Any):
-    """Cache the proposer and variant by complete identity and model version."""
+    """Cache the proposer and variant by identity, package, and model version."""
     _configure_flagtune_model_source()
     from triton.flagtune.runtime.proposer import load_model_bundle, make_config_proposer
 
@@ -181,7 +186,8 @@ def ensure_proposer(identity: Any):
         platform_key=identity.platform_key,
         dtype_key=identity.dtype_key,
     )
-    cache_key = (identity, loaded.model_version)
+    package_version = getattr(loaded, "package_version", None) or loaded.model_version
+    cache_key = (identity, package_version, loaded.model_version)
     if cache_key not in _FLAGTUNE_PROPOSER_POOL:
         _FLAGTUNE_PROPOSER_POOL[cache_key] = make_config_proposer(
             identity.op_id,
@@ -246,6 +252,9 @@ def run_proposer(
     """Run a loaded proposer over the legal runtime candidate domain."""
     model_identity, proposer, variant_info = loaded
     identity = model_identity.artifact_key
+    verify_count = int(os.environ.get("FLAGTUNE_VERIFY_TOP_K", "0"))
+    if verify_count < 0:
+        raise ValueError("FLAGTUNE_VERIFY_TOP_K must be non-negative")
     fields = tuple(variant_info.param_names)
     to_config = variant_info.to_config
     initial = configs_to_dicts(candidate_configs, list(fields))
@@ -271,6 +280,21 @@ def run_proposer(
     if not result_dicts:
         raise RuntimeError(f"FlagTune proposer returned no configs for {identity}")
 
+    # Retained defaults must still belong to the caller's legal runtime domain.
+    if os.environ.get("FLAGTUNE_KEEP_DEFAULT_CONFIGS", "0") == "1":
+        retained = configs_to_dicts(
+            iter(getattr(tuner, "_flagtune_default_configs", ())), list(fields)
+        )
+        result_dicts = list(result_dicts)
+        selected_keys = {
+            tuple(config[name] for name in fields) for config in result_dicts
+        }
+        for config in retained:
+            key = tuple(config[name] for name in fields)
+            if key in legal_keys and key not in selected_keys:
+                result_dicts.append(config)
+                selected_keys.add(key)
+
     timings: Dict[triton.Config, float] = {}
     best_config = None
     best_latency = float("inf")
@@ -285,6 +309,33 @@ def run_proposer(
         raise RuntimeError(
             f"FlagTune proposer produced no benchmarkable configs for {identity}"
         )
+    # A cached low outlier must not decide optional final verification.
+    # Keep the original timing map/protocol intact for cache and corpus users.
+    if verify_count:
+        protocol = tuner.benchmark_protocol
+        if protocol is None:
+            raise RuntimeError(
+                "candidate verification requires an explicit benchmark protocol"
+            )
+        finalists = sorted(timings, key=timings.get)[:verify_count]
+        verified = {}
+        for config in finalists:
+            samples = [
+                benchmark_config(
+                    lambda candidate: tuner.benchmark_config(
+                        candidate,
+                        warmup=protocol.warmup_ms,
+                        rep=protocol.measurement_ms,
+                        benchmark_mode=protocol.requested_mode,
+                        benchmark_retries=protocol.n_retries,
+                    ),
+                    config,
+                )[0]
+                for _ in range(3)
+            ]
+            verified[config] = statistics.median(samples)
+        best_config = min(verified, key=verified.get)
+        tuner._flagtune_verified_timings = verified
     return best_config, timings
 
 
