@@ -59,19 +59,24 @@ def test_foreach_pow_scalar_list(dtype):
     assert len(result) == len(expected)
     for actual, wanted, source in zip(result, expected, self_tensors):
         assert actual.shape == wanted.shape
-        assert actual.dtype == wanted.dtype
+        assert actual.dtype == source.dtype
+        assert actual.device == source.device
         assert actual.data_ptr() != source.data_ptr()
-        utils.gems_assert_close(actual, wanted, wanted.dtype)
+        utils.gems_assert_close(actual, wanted, source.dtype)
 
 
 @pytest.mark.foreach_pow_scalar_list
 def test_foreach_pow_scalar_list_empty_list():
-    result = _candidate([], [])
-    assert result == []
+    with pytest.raises(RuntimeError):
+        _ATEN_OP([], [])
+    with pytest.raises(RuntimeError):
+        _candidate([], [])
 
 
 @pytest.mark.foreach_pow_scalar_list
 def test_foreach_pow_scalar_list_bool_base():
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
+        pytest.skip("MUSA native pow does not support boolean-base ScalarList inputs")
     if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
         pytest.skip(
             "Kunlunxin native pow does not support boolean-base ScalarList inputs"

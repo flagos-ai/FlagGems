@@ -132,7 +132,7 @@ def test_foreach_rsqrt_integer_promotion():
 
 @pytest.mark.foreach_rsqrt
 def test_foreach_rsqrt_complex_values():
-    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+    if flag_gems.vendor_name in ("kunlunxin", "enflame") and not utils.TO_CPU:
         pytest.skip(
             "backend native foreach does not support the complex reference contract"
         )

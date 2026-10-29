@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -22,6 +24,12 @@ SHAPES = [(1024, 1024), (2048, 2048), (4096, 4096)]
 
 
 class AmpForeachBenchmark(OperatorBenchmark):
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "kunlunxin" and case.dtype == torch.float16:
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Kunlunxin native Half AMP unscale returns incorrect values")
+        return super().build_inputs(case)
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "primary gradient shape"

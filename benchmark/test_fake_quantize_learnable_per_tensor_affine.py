@@ -15,11 +15,22 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # Quantization range for the per-tensor affine fake-quant benchmark.
 QUANT_MIN = 0
 QUANT_MAX = 255
+
+
+class FakeQuantizeBenchmark(base.GenericBenchmark):
+    def build_inputs(self, case):
+        try:
+            return super().build_inputs(case)
+        except pytest.skip.Exception:
+            base.Config.skipped_case_ids.add(case.case_id)
+            raise
 
 
 def _case_fn(shape, cur_dtype):
@@ -31,6 +42,10 @@ def _case_fn(shape, cur_dtype):
 
 
 def _build_inputs_fn(plan, cur_dtype, device):
+    if flag_gems.vendor_name == "kunlunxin" and cur_dtype == torch.float16:
+        pytest.skip(
+            "Kunlunxin native Half fake-quant reference returns float32 instead of Half"
+        )
     (shape,) = plan.builder_args
     inp = torch.randn(shape, dtype=cur_dtype, device=device) * 5
     scale = torch.tensor([0.1], dtype=torch.float32, device=device)
@@ -41,7 +56,7 @@ def _build_inputs_fn(plan, cur_dtype, device):
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine
 def test_fake_quantize_learnable_per_tensor_affine():
-    bench = base.GenericBenchmark(
+    bench = FakeQuantizeBenchmark(
         op_name="_fake_quantize_learnable_per_tensor_affine",
         torch_op=torch.ops.aten._fake_quantize_learnable_per_tensor_affine,
         case_fn=_case_fn,

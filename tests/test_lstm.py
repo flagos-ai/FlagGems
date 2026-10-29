@@ -72,12 +72,19 @@ def test_lstm(
     # have to be checked against, so the comparison would not be meaningful.
     # FlagGems' own deviation from the float64 result is ~1.2e-7, so a tight
     # tolerance against an accurate reference is both stricter and more informative.
-    use_fp64_ref = dtype is torch.float32
+    # PPU supports native Half/BFloat16 LSTM but not the promoted Float64
+    # reference. Keep only these default-mode references in their input dtype;
+    # CPU mode and other backends retain the original high-precision reference.
+    upcast_ref = not (
+        flag_gems.vendor_name == "thead"
+        and not utils.TO_CPU
+        and dtype in (torch.float16, torch.bfloat16)
+    )
 
-    ref_input = utils.to_reference(input, True)
-    ref_h0 = utils.to_reference(h0, True)
-    ref_c0 = utils.to_reference(c0, True)
-    ref_params = tuple(utils.to_reference(param, True) for param in params)
+    ref_input = utils.to_reference(input, upcast_ref)
+    ref_h0 = utils.to_reference(h0, upcast_ref)
+    ref_c0 = utils.to_reference(c0, upcast_ref)
+    ref_params = tuple(utils.to_reference(param, upcast_ref) for param in params)
     if (
         flag_gems.vendor_name == "thead"
         and not utils.TO_CPU
