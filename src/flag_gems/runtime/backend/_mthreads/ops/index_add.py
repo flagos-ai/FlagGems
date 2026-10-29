@@ -397,9 +397,7 @@ def _run_generic_gather(inp, dim, index, src, alpha, inplace):
         _index_add_generic_meta_init[
             (triton.cdiv(max(dim_size, 1), _META_INIT_BLOCK),)
         ](head, status, dim_size, BLOCK=_META_INIT_BLOCK)
-        _index_add_generic_meta_build[
-            (triton.cdiv(index_len, _META_BLOCK),)
-        ](
+        _index_add_generic_meta_build[(triton.cdiv(index_len, _META_BLOCK),)](
             head,
             next_positions,
             status,
@@ -506,10 +504,7 @@ def _index_add_strided_kernel(
         other=0.0,
     )
     tl.atomic_add(
-        out_ptr
-        + prefix * out_pstride
-        + receivers[:, None] * out_dstride
-        + ss[None, :],
+        out_ptr + prefix * out_pstride + receivers[:, None] * out_dstride + ss[None, :],
         alpha * values,
         mask=mask,
         sem="relaxed",
@@ -517,9 +512,7 @@ def _index_add_strided_kernel(
 
 
 def _plan_strided_blocks(index_len, suffix_size, prefix_size):
-    block_s = min(
-        triton.next_power_of_2(max(suffix_size, 1)), _STRIDED_MAX_BLOCK_S
-    )
+    block_s = min(triton.next_power_of_2(max(suffix_size, 1)), _STRIDED_MAX_BLOCK_S)
     block_n = max(
         1,
         min(
