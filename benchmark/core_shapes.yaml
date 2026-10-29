@@ -752,6 +752,23 @@ huber_loss:
     - [3072, 65536]
   shape_desc: "M, N"
 
+# frobenius_norm is a reduction op whose kernel tiles (M rows x N cols): tiny
+# reduction widths (N << BLOCK_N) previously fell back to the wide-tile
+# vector_norm config family and ran an order of magnitude slower than eager
+# torch. Keep the default 2D shapes and add small-N rows to lock in the
+# narrow-tile config path.
+frobenius_norm:
+  shapes:
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+    - [1048576, 2]
+    - [2097152, 4]
+    - [1048576, 16]
+    - [65536, 64]
+  shape_desc: "M, N"
+
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_forward:
