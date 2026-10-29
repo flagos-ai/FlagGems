@@ -859,12 +859,7 @@ _FULL_CONFIG = (
     ("clamp_min_", clamp_min_),
     ("clip", clip),
     ("clip_", clip_),
-    (
-        "clone",
-        clone,
-        None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
-    ),
+    ("clone", clone),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),
     ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
