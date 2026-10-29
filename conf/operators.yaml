@@ -19161,6 +19161,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_mm_reduce_impl_backward
+  description: |
+    Backward of aten::_sparse_mm_reduce_impl: computes the (grad_self,
+    grad_other) pair for the SpMM reduce forward over a 2-D CSR tensor (M, K),
+    a dense grad_out (M, N) and weight (K, N) with sum / mean / amax / amin
+    reductions. grad_self keeps the input's CSR structure (mean divides by the
+    row's stored nnz; amax/amin route the gradient through the forward's
+    arg_out indices); grad_other scatters val * grad_out[row] back onto the
+    weight rows. output_mask gates the two returns.
+  for:
+  - _sparse_mm_reduce_impl_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
