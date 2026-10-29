@@ -322,6 +322,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy, copy_
@@ -334,6 +335,7 @@ from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
 from .cummax import cummax
+from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
@@ -570,6 +572,7 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
+from .matrix_power import matrix_power, matrix_power_out
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -1191,6 +1194,8 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_tbc",
+    "conv_tbc_out",
     "conv_transpose1d",
     "conv_transpose2d",
     "copy",
@@ -1202,6 +1207,7 @@ __all__ = [
     "cos_",
     "count_nonzero",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
@@ -1469,6 +1475,8 @@ __all__ = [
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
+    "matrix_power",
+    "matrix_power_out",
     "max",
     "max_dim",
     "max_pool2d_backward",
