@@ -2054,6 +2054,7 @@ _FULL_CONFIG = (
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
     ("tile", tile),
+    ("to_dense_backward", to_dense_backward, None, ["CompositeImplicitAutograd"]),
     ("topk", topk),
     ("trace", trace),
     ("trace_backward", trace_backward),
