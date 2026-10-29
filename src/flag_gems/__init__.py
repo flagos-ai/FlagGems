@@ -2029,6 +2029,7 @@ _FULL_CONFIG = (
     ("sum.out", sum_out),
     ("sum_to_size", sum_to_size),
     ("svd", svd),
+    ("swapaxes", swapaxes),
     ("swapdims", swapdims),
     ("sym_constrain_range", sym_constrain_range),
     ("sym_numel", sym_numel),

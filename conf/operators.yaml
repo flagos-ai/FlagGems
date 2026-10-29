@@ -21045,6 +21045,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: swapaxes
+  description: |
+    Returns a view of the input tensor with the two specified dimensions
+    swapped; equivalent to torch.transpose().
+  for:
+  - swapaxes
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: swapdims
   description: |
     Returns a view of the input tensor with the two specified dimensions
