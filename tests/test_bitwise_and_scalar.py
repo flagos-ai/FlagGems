@@ -61,6 +61,21 @@ def test_bitwise_and_scalar_(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
 
     ref_out = ref_inp1.bitwise_and_(inp2)
+    before = (
+        inp1.device,
+        inp1.dtype,
+        tuple(inp1.shape),
+        inp1.stride(),
+        inp1.data_ptr(),
+    )
     res_out = flag_gems.bitwise_and_scalar_(inp1, inp2)
+    assert isinstance(res_out, torch.Tensor) and res_out is inp1
+    assert (
+        res_out.device,
+        res_out.dtype,
+        tuple(res_out.shape),
+        res_out.stride(),
+        res_out.data_ptr(),
+    ) == before
 
     utils.gems_assert_equal(res_out, ref_out)
