@@ -94,7 +94,11 @@ def test_standard_gamma_grad_noncontiguous(dtype):
 @pytest.mark.standard_gamma_grad
 def test_standard_gamma_grad_rejects_mismatched_dtype():
     alpha = torch.rand((8,), dtype=torch.float32, device=flag_gems.device) + 0.5
-    output = torch.rand((8,), dtype=torch.float64, device=flag_gems.device) + 0.5
+    output_dtype = (
+        torch.float16 if flag_gems.vendor_name == "kunlunxin" else torch.float64
+    )
+    output = torch.rand((8,), dtype=output_dtype, device=flag_gems.device) + 0.5
+    assert alpha.dtype != output.dtype
 
     with pytest.raises(RuntimeError):
         flag_gems.standard_gamma_grad(alpha, output)

@@ -32,6 +32,8 @@ def _case_fn(shape, dtype):
 def _build_inputs_fn(plan, dtype, device):
     if base.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
         pytest.skip(f"Enflame native standard_gamma_grad does not support {dtype}")
+    if base.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
+        pytest.skip(f"Kunlunxin native standard_gamma_grad does not support {dtype}")
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     alpha = torch.rand(shape, dtype=dtype, device=device) * 4.0 + 0.5
