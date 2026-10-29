@@ -17,8 +17,12 @@ import torch
 
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+from .test__addmm_activation import _ActivationH800Reference
 
-class BlasCaseBenchmark(base.BlasBenchmark, OperatorBenchmark):
+
+class BlasCaseBenchmark(
+    _ActivationH800Reference, base.BlasBenchmark, OperatorBenchmark
+):
     __init__ = OperatorBenchmark.__init__
     get_input_iter = OperatorBenchmark.get_input_iter
 
@@ -26,7 +30,10 @@ class BlasCaseBenchmark(base.BlasBenchmark, OperatorBenchmark):
         return True
 
     get_case_iter = OperatorBenchmark.get_case_iter
-    build_inputs = OperatorBenchmark.build_inputs
+
+    def build_inputs(self, case):
+        self._activation_input_case = case
+        return OperatorBenchmark.build_inputs(self, case)
 
 
 def _case_fn(shape, dtype):
