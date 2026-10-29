@@ -143,21 +143,24 @@ def compare_baseline(comm, rank, W, device, dtype):
         print(f"vs all_reduce + flag_gems: max |out| diff {d_out:.4g}, |residual| diff {d_res:.4g}")
 
 
-def _time(fn, reset, iters, device):
+def _time(fn, reset, iters, device, rounds=5):
+    # back-to-back calls amortize the launch skew between ranks; every fn keeps its
+    # values bounded without a reset (normed output written back, xp read only)
+    reset()
     for _ in range(3):
-        reset()
         fn()
-    total = 0.0
-    for _ in range(iters):
-        reset()
+    per_call = []
+    for _ in range(rounds):
         dist.barrier()
+        torch.cuda.synchronize(device)
         s, t = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
         s.record()
-        fn()
+        for _ in range(iters):
+            fn()
         t.record()
         torch.cuda.synchronize(device)
-        total += s.elapsed_time(t)
-    us = torch.tensor([total / iters * 1000], device=device)
+        per_call.append(s.elapsed_time(t) / iters * 1000)
+    us = torch.tensor([sorted(per_call)[rounds // 2]], device=device)
     dist.all_reduce(us, op=dist.ReduceOp.MAX)
     return us.item()
 
@@ -169,7 +172,7 @@ def bench(comm, rank, W, device, dtype, tokens, iters):
     if rank == 0:
         print(f"W={W} H={H} max_programs={comm.max_programs} nchannels={comm.nchannels}")
         print("launch (channels, programs):", {T: comm.launch_shape(T) for T in tokens})
-        print(f"{'T':>6} {'AR+norm':>10} {'RS+norm+AG':>11} {'fused':>9}  (us, max over ranks)")
+        print(f"{'T':>6} {'AR+norm':>10} {'RS+norm+AG':>11} {'fused':>9}  (us per call, median of 5 rounds, max over ranks)")
     for T in tokens:
         x0 = torch.randn(T, H, device=device, dtype=dtype)
         r0 = torch.randn(T, H, device=device, dtype=dtype)
