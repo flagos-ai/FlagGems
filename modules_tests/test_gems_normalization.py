@@ -130,3 +130,30 @@ def test_gems_rmsnorm_with_residual(shape, dtype):
             (inp, residual, target.weight.data, target.eps),
             test_utils=("test_schema", "test_autograd_registration"),
         )
+
+
+def test_gems_rms_forward_inplace_many_rows():
+    """Fused add + RMS norm is in-place; more rows than AI cores must be correct.
+
+    An Ascend launch with more programs than AI cores runs in several program
+    waves, and the later waves used to overwrite the row the first wave was
+    still writing (issue #5624).
+    """
+    from flag_gems.modules.normalization import gems_rms_forward
+
+    init_seed(42)
+    rows, cols = 1024, 512
+    x = torch.randn((rows, cols), dtype=torch.float32, device=device)
+    residual = torch.randn((rows, cols), dtype=torch.float32, device=device)
+    weight = torch.randn((cols,), dtype=torch.float32, device=device)
+
+    out, new_residual = gems_rms_forward(x.clone(), residual.clone(), weight, 1e-5)
+
+    ref_residual = x + residual
+    ref_out = (
+        ref_residual
+        * torch.rsqrt(ref_residual.pow(2).mean(-1, keepdim=True) + 1e-5)
+        * weight
+    )
+    assert_close(new_residual, ref_residual, torch.float32)
+    assert_close(out, ref_out, torch.float32)

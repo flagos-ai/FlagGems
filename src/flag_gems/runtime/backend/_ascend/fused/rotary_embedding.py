@@ -273,8 +273,17 @@ def apply_rotary_pos_emb(
             )
 
     if inplace:
-        _launch(q, q, num_q_heads)
-        _launch(k, k, num_k_heads)
+        # The kernel is always launched out-of-place.  Launching an in-place
+        # kernel with more programs than the number of NPU AI cores makes
+        # consecutive program waves overwrite the same global memory while the
+        # earlier wave is still running, which corrupts the first tile.  So for
+        # `inplace=True` we rotate into temporaries first and copy them back.
+        q_embed = torch.empty_like(q)
+        k_embed = torch.empty_like(k)
+        _launch(q_embed, q, num_q_heads)
+        _launch(k_embed, k, num_k_heads)
+        q.copy_(q_embed)
+        k.copy_(k_embed)
         return q.view(q_shape), k.view(k_shape)
     else:
         q_embed = torch.empty_like(q)

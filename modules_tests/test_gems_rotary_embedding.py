@@ -203,3 +203,34 @@ def test_gems_deepseek_rope(
         pytest.skip(
             "Skipping vLLM DeepseekScalingRotaryEmbedding comparison: vLLM not installed"
         )
+
+
+def test_gems_rope_inplace_matches_out_of_place():
+    """In-place must rotate exactly like out-of-place.
+
+    On Ascend an in-place kernel launched with more programs than the number of
+    AI cores runs in several program waves, and the later waves used to
+    overwrite the rows the earlier waves were still writing, corrupting the
+    first tile (issue #5624).
+    """
+    from flag_gems.modules.rotary_embedding import gems_rope_forward
+
+    init_seed(42)
+    batch, seq_len, heads, head_dim = 1, 129, 32, 128
+    query = torch.randn(
+        (batch, seq_len, heads, head_dim), dtype=torch.float32, device=device
+    )
+    key = torch.randn(
+        (batch, seq_len, heads, head_dim), dtype=torch.float32, device=device
+    )
+    cos = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=device)
+    sin = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=device)
+
+    ref_q, ref_k = gems_rope_forward(query.clone(), key.clone(), cos, sin, inplace=False)
+    q_in, k_in = query.clone(), key.clone()
+    out_q, out_k = gems_rope_forward(q_in, k_in, cos, sin, inplace=True)
+
+    assert out_q.data_ptr() == q_in.data_ptr()
+    assert out_k.data_ptr() == k_in.data_ptr()
+    assert_close(q_in, ref_q, torch.float32)
+    assert_close(k_in, ref_k, torch.float32)
