@@ -331,7 +331,10 @@ def te_rmsnorm_fwd(
     """
     del sm_margin
     if zero_centered_gamma:
-        weight = weight.to(torch.float32) + 1.0
+        # TE quantizes gamma = (weight + 1.0) back to the weight dtype; keeping
+        # the fp32 result here leaves a ~1-2 ulp discrepancy vs TE on fp16/bf16
+        # (vs_te precision test fails).  Quantize the same way TE does.
+        weight = (weight.to(torch.float32) + 1.0).to(weight.dtype)
     N = input.shape[-1]
     x = input.contiguous()
     M = x.numel() // N
@@ -373,6 +376,11 @@ def te_rmsnorm_bwd(
     zero_centered_gamma: bool = False,
 ):
     del sm_margin
+    if zero_centered_gamma:
+        # Same TE quantization as forward: gamma = (weight + 1.0) cast back to
+        # the weight dtype, then the kernels run the plain (non-zcg) path.
+        gamma = (gamma.to(torch.float32) + 1.0).to(gamma.dtype)
+        zero_centered_gamma = False
     original_shape = x.shape
     N = gamma.shape[0]
     x_2d = x.reshape(-1, N).contiguous()
@@ -446,43 +454,6 @@ def te_rmsnorm_bwd(
             )
 
     return dx.reshape(original_shape), dgamma
-
-
-def _patch_generic_wrapper():
-    """Route direct calls to the generic wrapper (flag_gems.ops.te_rmsnorm
-    module) to this backend override.
-
-    Tests and benchmarks import ``te_rmsnorm_bwd`` from
-    ``flag_gems.ops.te_rmsnorm`` (bypassing the top-level ``flag_gems``
-    registry that SpecOpRegistrar patches), so the generic Triton kernel
-    would still be hit on XPU (it cannot compile there: the 2D
-    ``tl.sum(..., axis=0)`` reduction in ``rmsnorm_bwd_dgamma_kernel`` is
-    rejected by the XPU legalizer with
-    ``axis must not be 0 for 2D+ shapes``).  Patching the module
-    attribute at import time keeps the change backend-local: the generic
-    module source is untouched and other vendor backends are unaffected
-    (this module is only imported for the kunlunxin backend).
-    """
-    try:
-        import sys
-
-        _generic_module = sys.modules.get("flag_gems.ops.te_rmsnorm")
-        if _generic_module is not None:
-            if hasattr(_generic_module, "te_rmsnorm_bwd"):
-                _generic_module.te_rmsnorm_bwd = te_rmsnorm_bwd
-            if hasattr(_generic_module, "te_rmsnorm_fwd"):
-                _generic_module.te_rmsnorm_fwd = te_rmsnorm_fwd
-        import flag_gems.ops as _ops
-
-        if hasattr(_ops, "te_rmsnorm_bwd"):
-            _ops.te_rmsnorm_bwd = te_rmsnorm_bwd
-        if hasattr(_ops, "te_rmsnorm_fwd"):
-            _ops.te_rmsnorm_fwd = te_rmsnorm_fwd
-    except ImportError:
-        pass
-
-
-_patch_generic_wrapper()
 
 
 __all__ = ["te_rmsnorm_bwd", "te_rmsnorm_fwd"]

@@ -15,7 +15,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
+from flag_gems import te_rmsnorm_bwd, te_rmsnorm_fwd
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -31,7 +31,11 @@ else:
 # Check if TransformerEngine is available
 try:
     import transformer_engine.pytorch.cpp_extensions as tex
-    from transformer_engine.pytorch import DType as TEDType
+
+    try:
+        from transformer_engine.pytorch import DType as TEDType
+    except ImportError:
+        from transformer_engine.pytorch.cpp_extensions import DType as TEDType
 
     HAS_TE = True
 
@@ -57,7 +61,9 @@ def _torch_rmsnorm_fwd(x, weight, eps, zero_centered_gamma=False, otype=None):
     x_norm = x_fp32 * rsigma
 
     if zero_centered_gamma:
-        gamma = weight.to(torch.float32) + 1.0
+        # TE quantizes gamma = (weight + 1.0) back to the weight dtype; emulate
+        # the same so the torch reference matches TE (and the gems override).
+        gamma = (weight.to(torch.float32) + 1.0).to(weight.dtype).to(torch.float32)
     else:
         gamma = weight.to(torch.float32)
 
@@ -76,7 +82,8 @@ def _torch_rmsnorm_bwd(dz, x, weight, eps, zero_centered_gamma=False):
     w_fp32 = weight.to(torch.float32)
 
     if zero_centered_gamma:
-        w_fp32 = w_fp32 + 1.0
+        # Same TE quantization as forward (see _torch_rmsnorm_fwd).
+        w_fp32 = (w_fp32 + 1.0).to(weight.dtype).to(torch.float32)
 
     # Recompute forward values
     variance = x_fp32.pow(2).mean(dim=-1, keepdim=True)
@@ -205,18 +212,25 @@ def test_te_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
     )
 
     # TransformerEngine reference
-    te_otype = TORCH_TO_TE_DTYPE[dtype]
-    te_result = tex.rmsnorm_fwd(
-        inp,
-        weight,
-        eps,
-        ln_out_te,
-        None,  # quantizer
-        te_otype,
-        0,  # sm_margin
-        zero_centered_gamma,
-    )
-    te_out, _, te_rsigma = te_result
+    if flag_gems.vendor_name == "kunlunxin":
+        te_result = tex.rmsnorm_fwd(inp, weight, eps, 0, zero_centered_gamma)
+    else:
+        te_otype = TORCH_TO_TE_DTYPE[dtype]
+        te_result = tex.rmsnorm_fwd(
+            inp,
+            weight,
+            eps,
+            ln_out_te,
+            None,  # quantizer
+            te_otype,
+            0,  # sm_margin
+            zero_centered_gamma,
+        )
+    if flag_gems.vendor_name == "kunlunxin":
+        te_out, te_rsigma = te_result
+        te_rsigma = te_rsigma.squeeze(-1)
+    else:
+        te_out, _, te_rsigma = te_result
 
     # FlagGems implementation
     res_out, _, res_rsigma = te_rmsnorm_fwd(
@@ -308,18 +322,25 @@ def test_te_rmsnorm_bwd_vs_te(shape, dtype, zero_centered_gamma):
     dz = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     # TransformerEngine forward to get rsigma
-    te_otype = TORCH_TO_TE_DTYPE[dtype]
-    te_fwd_result = tex.rmsnorm_fwd(
-        x,
-        weight,
-        eps,
-        None,  # ln_out
-        None,  # quantizer
-        te_otype,
-        0,  # sm_margin
-        zero_centered_gamma,
-    )
-    te_out, _, te_rsigma = te_fwd_result
+    if flag_gems.vendor_name == "kunlunxin":
+        te_fwd_result = tex.rmsnorm_fwd(x, weight, eps, 0, zero_centered_gamma)
+    else:
+        te_otype = TORCH_TO_TE_DTYPE[dtype]
+        te_fwd_result = tex.rmsnorm_fwd(
+            x,
+            weight,
+            eps,
+            None,  # ln_out
+            None,  # quantizer
+            te_otype,
+            0,  # sm_margin
+            zero_centered_gamma,
+        )
+    if flag_gems.vendor_name == "kunlunxin":
+        te_out, te_rsigma = te_fwd_result
+        te_rsigma = te_rsigma.squeeze(-1)
+    else:
+        te_out, _, te_rsigma = te_fwd_result
 
     # TransformerEngine backward
     te_bwd_result = tex.rmsnorm_bwd(
