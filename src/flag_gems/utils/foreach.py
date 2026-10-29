@@ -317,6 +317,23 @@ def _pack_ok(
 # whose lowering cannot carry a 16-bit bitcast keep the element-indexed body.
 _PACK_BF16 = tl.constexpr(_runtime_device.vendor_name != "kunlunxin")
 
+# A by-value scalar is cast inside the kernel with ``.to(S_DT)``, which for a
+# bf16 output is ``arith.truncf ... : f64 to bf16``.  Only the CUDA backend
+# decomposes that: MetaX and Hygon hit ``TruncFOpConversion``'s
+# ``inElemTy.isF32()`` assertion, MUSA hands ``llvm.musa.float2bfloat16`` a
+# double.  Measured on C550 / MTT-S5000 / BW1000 -- bf16 only, the same casts
+# to fp16 and fp32 lower fine, so bf16 keeps the device-array route.
+_BF16_SCALAR_BY_VALUE = _runtime_device.vendor_name == "nvidia"
+
+# ``fast_logf`` / ``fast_log2f`` / ``fast_log10f`` / ``fast_sinf`` / ``fast_cosf``
+# / ``fast_tanf`` / ``fast_expf`` are CUDA libdevice entry points.  HIP does not
+# export them (``AttributeError`` while the JIT hashes the function) and MUSA
+# exports stubs that raise ``NotImplementedError``, so a ``hasattr`` probe
+# cannot see the difference.  Gate on the vendor; ``_FAST_MATH`` is the
+# kernel-side twin of the host bool.
+_FAST_MATH_OK = _runtime_device.vendor_name == "nvidia"
+_FAST_MATH = tl.constexpr(_FAST_MATH_OK)
+
 
 @triton.jit
 def _unpack4(v, DT: tl.constexpr):
@@ -3120,7 +3137,9 @@ def _launch_scalar_group(
     # the broadcast forms; only a real list needs the equality scan.
     if common is None:
         common = _common_scalar(vals)
-    by_value = common is not None
+    by_value = common is not None and (
+        s_dtype is not torch.bfloat16 or _BF16_SCALAR_BY_VALUE
+    )
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common
@@ -3660,7 +3679,9 @@ def _launch_ternary_group(
     # device buffer.  The ``.ScalarList`` form still needs the array.
     if common is None:
         common = _common_scalar(v_l)
-    by_value = common is not None
+    by_value = common is not None and (
+        s_dtype is not torch.bfloat16 or _BF16_SCALAR_BY_VALUE
+    )
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common

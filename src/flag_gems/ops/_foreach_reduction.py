@@ -36,6 +36,7 @@ from triton import knobs
 from triton.runtime import driver as _triton_driver
 
 from flag_gems.ops.zero import _launch_zero_kernel
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
     _device_meta,
@@ -93,7 +94,9 @@ def _sm_count(device: torch.device) -> int:
     """SM count for ``device``, cached to keep the query off the hot path."""
     key = str(device)
     if key not in _SM_COUNTS:
-        _SM_COUNTS[key] = torch.cuda.get_device_properties(device).multi_processor_count
+        _SM_COUNTS[key] = torch_device_fn.get_device_properties(
+            device
+        ).multi_processor_count
     return _SM_COUNTS[key]
 
 
