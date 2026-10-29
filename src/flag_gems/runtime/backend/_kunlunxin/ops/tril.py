@@ -919,6 +919,7 @@ def _launch_v2_pow2(
     active_rows: int = None,
     block_size: int = _BLOCK_SIZE,
     num_warps: int = 4,
+    allow_mmask_band: bool = False,
 ):
     M, N = input.shape[-2:]
     MN = M * N
@@ -934,8 +935,11 @@ def _launch_v2_pow2(
         block_size = 32768
     grid = (triton.cdiv(active_total, block_size), batch)
     need_mask = active_total % block_size != 0
-    # v2 path (on by default; `TRILOUT_MEMMASK=0` reverts to the original path; only applies to pow2 full matrices).
-    if _TRIL_MEMMASK and active_rows is None and (N & (N - 1)) == 0:
+    if (
+        _TRIL_MEMMASK
+        and (active_rows is None or allow_mmask_band)
+        and (N & (N - 1)) == 0
+    ):
         fac = _tril_mmask_get(M, N, int(diagonal), input.dtype, input.device)
         with torch_device_fn.device(input.device):
             _tril_flat_pow2_kernel_mmask[grid](
@@ -1275,7 +1279,13 @@ def _launch_exact_diag0_tile(
     return out
 
 
-_INPLACE_FLAT_BLOCK = 8192
+# 4096 instead of the former 8192: the generic flat kernel is now reached by
+# thin-band shapes (e.g. [100,1,100] -> 100 elements/matrix, [100,256,100] ->
+# 9.9K) where an 8192-lane tile is mostly masked-off lanes. Probed on KL3
+# (fp16, kernel-only): [100,1,100] 29.4 -> 17.4us, [100,256,100] 53.0 -> 42.7,
+# [10000,256] 8.16 -> 7.75. Block only changes the launch geometry, the kernel
+# body is unchanged.
+_INPLACE_FLAT_BLOCK = 4096
 _INPLACE_POW2_MIN_TOTAL = 1 << 17
 # Batched pow2 (both M and N powers of 2) with a small/moderate N: route the
 # in-place tril_ to the div-free flat kernel that folds batch into a 1D grid.
@@ -1368,7 +1378,8 @@ def _launch_tril_inplace_contiguous(
     if active_rows == 0:
         return input
 
-    if _HAS_TLE_RAW and input.numel() >= _INPLACE_RAW_MIN_NUMEL:
+    band_elems = active_rows * N * (input.numel() // (M * N))
+    if _HAS_TLE_RAW and band_elems >= _INPLACE_RAW_MIN_NUMEL:
         batch = input.numel() // (M * N)
         if batch > 1 and N >= _INPLACE_DSA2D_MIN_N:
             return _launch_tril_inplace_dsa2d(input, diagonal)
@@ -1378,7 +1389,13 @@ def _launch_tril_inplace_contiguous(
         return _launch_v2_flat_pow2_batched(input, int(diagonal))
 
     if _is_power_of_2(N) and active_rows * N >= _INPLACE_POW2_MIN_TOTAL:
-        return _launch_v2_pow2(input, input, int(diagonal), active_rows=active_rows)
+        return _launch_v2_pow2(
+            input,
+            input,
+            int(diagonal),
+            active_rows=active_rows,
+            allow_mmask_band=True,
+        )
 
     MN = M * N
     active_total = active_rows * N

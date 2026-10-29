@@ -28,7 +28,7 @@ to support large model sizes and high-throughput inference.
 
 ## 1. Single-node vs multi-node usage
 
-For **single-node deployments**, the [enablement of FlagGems](/FlagGems/usage/basic/)
+For **single-node deployments**, the [enablement of FlagGems](basic.md)
 is straightforward. You can import `flag_gems` and invoke `flag_gems.enable()`
 at the beginning of your program or use the context manager when apprpriate.
 The *FlagGems* acceleration is then enabled without requiring any additional changes

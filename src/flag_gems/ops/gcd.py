@@ -17,7 +17,8 @@ import logging
 import torch
 import triton
 import triton.language as tl
-import triton.language.extra.libdevice as libdevice
+
+from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 _I16_MIN_LUT_CACHE = {}
@@ -25,7 +26,7 @@ _I16_MIN_LUT_CACHE = {}
 
 @triton.jit
 def _ctz(x):
-    return libdevice.ffs(x) - 1
+    return tl_extra_shim.ffs(x) - 1
 
 
 @triton.jit
