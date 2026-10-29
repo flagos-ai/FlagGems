@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "upsample_nearest_exact1d_backward",
+  "name": "_upsample_nearest_exact1d_backward",
   "requires_triton_kernel": true,
   "description": "A backward case for `_upsample_nearest_exact1d()`.",
   "parameters": [
