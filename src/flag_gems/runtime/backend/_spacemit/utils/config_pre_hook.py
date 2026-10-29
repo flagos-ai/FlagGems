@@ -177,6 +177,14 @@ def get_tuned_config(func):
                     current_k = nargs.get("MICRO_K", 0)
                     current_n = nargs.get("MICRO_N", 0)
 
+                    if "MICRO_M" not in nargs:
+                        # Kernel signature has no MICRO_* params: this is the
+                        # general kernel reached via intra-package imports
+                        # (e.g. baddbmm backward calls ops.bmm.bmm), not the
+                        # _spacemit gemm kernel. Injecting would crash the
+                        # launch with "Keyword argument MICRO_M ... unrecognised".
+                        return
+
                     is_legal = any(
                         cfg["MICRO_M"] == current_m
                         and cfg["MICRO_K"] == current_k
