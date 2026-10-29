@@ -186,6 +186,7 @@ linalg_eigvals_out: test_linalg_eigvals
 lu_unpack_out: test_lu_unpack
 multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
+nnpack_spatial_convolution_out: test_nnpack_spatial_convolution
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted

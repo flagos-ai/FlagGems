@@ -51,12 +51,10 @@ NVIDIA runner:
 **触发条件：** cron 表达式 `3 16 * * *`（每天北京时间 00:03）；此外支持手动
 触发（`workflow_dispatch`）。
 
-在 NVIDIA runner 上运行完整的算子测试套件（而非仅测试变更的算子）：
+在 NVIDIA runner（配备 **NVIDIA A100-40G** GPU 服务器，运行环境安装官方 upstream **Triton** 编译器而非 FlagTree）上运行完整的算子测试套件（而非仅测试变更的算子）：
 
 - `cpp-op` —— 完整的 C++ 扩展测试套件。
-- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，
-  该设置会展开为 `tests/test*.py` 下的所有测试文件。同时收集覆盖率数据
-  并作为 `op-ut-coverage` 构件（artifact）上传。
+- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，覆盖全部 `tests/test*.py` 算子测试用例，并在官方 Triton 编译器与 Ampere 架构硬件环境下收集代码覆盖率数据，作为 `op-ut-coverage` 构件（artifact）上传。
 - `examples` —— 对所有示例/模型测试运行 `tools/test-examples.sh`。
 
 <!--
@@ -239,14 +237,14 @@ gh workflow run review-stats.yaml \
 `command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
 are started by commenting on a pull request rather than by `workflow_dispatch`
 or a schedule, so they are documented in
-[Pull request checks](/FlagGems/zh-cn/cicd/pull-request/) together with the
+[Pull request checks](pull-request.md) together with the
 checks they complement.
 -->
 ## 由评论触发的 PR 命令
 
 `command.yaml`（`/test <算子名>:<runner>`）和 `fix-sort.yaml`（`/fix-sort`）
 是通过在 PR 下评论启动的，而非 `workflow_dispatch` 或定时触发，因此它们与各自
-配合的检查一并记录在[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)中。
+配合的检查一并记录在[拉取请求检查](pull-request.md)中。
 
 <!--
 ## Feishu and monitoring integrations
@@ -268,7 +266,7 @@ These are observability workflows; they do not gate merges.
   的 PR 也能拿到密钥；该运行本身只需要 `tools/ci_report_feishu.py` 和令牌，
   所以采用只检出该路径的稀疏检出。由于 GitHub API 可能滞后于已完成的工作流，
   脚本会先等待 5 秒，再以 10 秒 / 20 秒的退避最多重试 3 次。它在 PR 流程中的
-  作用见[拉取请求检查](/FlagGems/zh-cn/cicd/pull-request/)。
+  作用见[拉取请求检查](pull-request.md)。
 - `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于

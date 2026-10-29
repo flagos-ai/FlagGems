@@ -17,6 +17,7 @@ from backend_utils import VendorDescriptor
 vendor_info = VendorDescriptor(
     vendor_name="amd",
     device_name="cuda",
+    triton_extra_name="hip",
     device_query_cmd="rocm-smi",
 )
 
@@ -42,7 +43,6 @@ ARCH_MAP = {
 CUSTOMIZED_UNUSED_OPS = (
     "add",
     "cos",
-    "cumsum",
 )
 
 
