@@ -66,6 +66,7 @@ def test_rowwise_prune():
     bench = RowwisePruneBenchmark(
         op_name="rowwise_prune",
         torch_op=_torch_rowwise_prune,
+        gems_op=flag_gems._rowwise_prune,
         input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,
