@@ -187,7 +187,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
             "updates on ch_axis=0"
         )
     if (
-        flag_gems.vendor_name in ("nvidia", "iluvatar", "thead")
+        flag_gems.vendor_name in ("nvidia", "iluvatar", "thead", "metax")
         and ref_device.type == "cuda"
         and fake_quant_on
     ):
