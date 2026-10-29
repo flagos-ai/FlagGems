@@ -586,17 +586,19 @@ def _gems(key):
 
 
 def _foreach_ref(fn, refs, *args):
-    """ATen reference for a ``_foreach_*`` op, on CPU for Kunlunxin.
+    """ATen reference for a ``_foreach_*`` op, on CPU for Kunlunxin and MUSA.
 
     Kunlunxin's device-side eager implementations deviate from ATen semantics
     for some inputs: ``_foreach_norm`` does not special-case the 0/±inf orders
     (it returns the generic power-sum value) and ``_foreach_pow`` rejects a
     bool base (see ``tests/accuracy_utils.py::ref_div_rounding`` for the same
-    pattern).  The CPU implementation carries ATen's reference semantics, so
-    on that backend the reference is computed there; other backends keep the
-    on-device reference, which matches their eager implementation.
+    pattern).  MUSA's native ``pow`` likewise rejects boolean-base inputs
+    ("UnaryCall MUDNN failed in: Run PowScalar").  The CPU implementation
+    carries ATen's reference semantics, so on those backends the reference is
+    computed there; other backends keep the on-device reference, which matches
+    their eager implementation.
     """
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in ("kunlunxin", "mthreads"):
         refs = [t.cpu() for t in refs]
     return fn(refs, *args)
 
@@ -815,6 +817,21 @@ def test_foreach_pow_list_rejects_bool():
         _gems("_foreach_pow.List")(inp, [torch.tensor([True, True], device=device)])
     with pytest.raises(RuntimeError):
         torch._foreach_pow([t.cpu() for t in inp], [torch.tensor([True, True])])
+
+
+@pytest.mark.foreach_pow
+@pytest.mark.foreach_pow_scalar
+@pytest.mark.foreach_pow_scalar_list
+def test_foreach_pow_rejects_empty_list():
+    """An empty tensor list is refused, matching ATen, for both scalar forms."""
+    for key, arg in (
+        ("_foreach_pow.Scalar", 0.5),
+        ("_foreach_pow.ScalarList", []),
+    ):
+        with pytest.raises(RuntimeError):
+            _aten(key)([], arg)
+        with pytest.raises(RuntimeError):
+            _gems(key)([], arg)
 
 
 @pytest.mark.foreach_clamp_max
