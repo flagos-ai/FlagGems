@@ -81,6 +81,25 @@ def _reference_svdvals(inp):
     return _from_numpy(np.linalg.svd(inp.detach().numpy(), compute_uv=False))
 
 
+def _assert_target_abi(actual, reference, inp):
+    if isinstance(actual, (tuple, list)):
+        assert isinstance(reference, (tuple, list)) and len(actual) == len(reference)
+        for value, expected in zip(actual, reference):
+            _assert_target_abi(value, expected, inp)
+        return
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == reference.shape
+    assert actual.untyped_storage()._cdata != inp.untyped_storage()._cdata
+
+
+def _for_comparison(actual, reference, inp):
+    # Inspect requested target ABI before CPU observation or value comparison.
+    _assert_target_abi(actual, reference, inp)
+    return actual.cpu() if flag_gems.vendor_name == "mthreads" else actual
+
+
 def _make_spectrum_input(shape, singular_values, seed=0):
     # Build A = U diag(s) Vh from random orthogonal factors and a prescribed,
     # well-separated spectrum. Well-separated singular values make the singular
@@ -123,7 +142,12 @@ def _assert_orthonormal(actual, atol=2e-2):
     eye = torch.eye(k, dtype=actual.dtype, device=actual.device)
     gram = actual.mH @ actual
     expected = utils.to_reference(eye.expand_as(gram), False)
-    utils.gems_assert_close(gram, expected, gram.dtype, atol=atol)
+    if flag_gems.vendor_name == "mthreads":
+        assert gram.device == actual.device and gram.dtype == actual.dtype
+        assert gram.shape == expected.shape
+        utils.gems_assert_close(gram.cpu(), expected.cpu(), gram.dtype, atol=atol)
+    else:
+        utils.gems_assert_close(gram, expected, gram.dtype, atol=atol)
 
 
 # The Triton SVD kernels only cover float32 CUDA matrices (cuSOLVER's svd
@@ -171,6 +195,7 @@ def test_linalg_svd_full_matrices(shape, dtype):
     ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=True)
     res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=True)
 
+    _assert_target_abi((res_u, res_s, res_vh), (ref_u, ref_s, ref_vh), inp)
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
@@ -179,10 +204,15 @@ def test_linalg_svd_full_matrices(shape, dtype):
     # invariant, so they are the robust correctness checks for general inputs.
     # Per-vector orthonormality of U/Vh is only well-posed for well-separated
     # singular values; it is exercised in test_linalg_svd_orthonormal below.
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_s, ref_s, inp), ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL
+    )
     reconstructed = _reconstruct(res_u, res_s, res_vh)
     utils.gems_assert_close(
-        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+        _for_comparison(reconstructed, ref_inp, inp),
+        ref_inp,
+        reconstructed.dtype,
+        atol=RECONSTRUCTION_ATOL,
     )
 
 
@@ -197,14 +227,20 @@ def test_linalg_svd_reduced(shape, dtype):
     ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
     res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
+    _assert_target_abi((res_u, res_s, res_vh), (ref_u, ref_s, ref_vh), inp)
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_s, ref_s, inp), ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL
+    )
     reconstructed = _reconstruct(res_u, res_s, res_vh)
     utils.gems_assert_close(
-        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+        _for_comparison(reconstructed, ref_inp, inp),
+        ref_inp,
+        reconstructed.dtype,
+        atol=RECONSTRUCTION_ATOL,
     )
 
 
@@ -219,14 +255,20 @@ def test_linalg_svd_batched(shape, dtype):
     ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
     res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
+    _assert_target_abi((res_u, res_s, res_vh), (ref_u, ref_s, ref_vh), inp)
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_s, ref_s, inp), ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL
+    )
     reconstructed = _reconstruct(res_u, res_s, res_vh)
     utils.gems_assert_close(
-        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+        _for_comparison(reconstructed, ref_inp, inp),
+        ref_inp,
+        reconstructed.dtype,
+        atol=RECONSTRUCTION_ATOL,
     )
 
 
@@ -253,14 +295,20 @@ def test_linalg_svd_orthonormal(shape, dtype):
     ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
     res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
+    _assert_target_abi((res_u, res_s, res_vh), (ref_u, ref_s, ref_vh), inp)
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
     _assert_same_shape(res_vh, ref_vh)
 
-    utils.gems_assert_close(res_s, ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_s, ref_s, inp), ref_s, res_s.dtype, atol=SINGULAR_VALUE_ATOL
+    )
     reconstructed = _reconstruct(res_u, res_s, res_vh)
     utils.gems_assert_close(
-        reconstructed, ref_inp, reconstructed.dtype, atol=RECONSTRUCTION_ATOL
+        _for_comparison(reconstructed, ref_inp, inp),
+        ref_inp,
+        reconstructed.dtype,
+        atol=RECONSTRUCTION_ATOL,
     )
     _assert_orthonormal(res_vh.mH)
 

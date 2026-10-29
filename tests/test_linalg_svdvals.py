@@ -18,7 +18,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .test_linalg_svd import _reference_input, _reference_svd, _reference_svdvals
+from .test_linalg_svd import (
+    _for_comparison,
+    _reference_input,
+    _reference_svd,
+    _reference_svdvals,
+)
 
 # Small shapes for linalg_svdvals tests to avoid SVD kernel compilation timeouts
 SVD_SHAPES = [
@@ -67,10 +72,14 @@ def test_linalg_svdvals(M, N, dtype):
     ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
     gems_out = flag_gems.linalg_svdvals(A)
-    utils.gems_assert_close(gems_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(gems_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
 
 @pytest.mark.linalg_svdvals
@@ -90,7 +99,9 @@ def test_linalg_svdvals_batch(M, N, dtype):
     ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
 
 @pytest.mark.linalg_svdvals
@@ -110,7 +121,9 @@ def test_linalg_svdvals_non_contiguous(M, N, dtype):
     ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
 
 @pytest.mark.linalg_svdvals

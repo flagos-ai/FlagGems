@@ -20,7 +20,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .test_linalg_svd import _from_numpy, _missing_cpu_lapack, _reference_input
+from .test_linalg_svd import (
+    _for_comparison,
+    _from_numpy,
+    _missing_cpu_lapack,
+    _reference_input,
+)
 
 
 def _reference_cond(inp, p=None):
@@ -85,7 +90,9 @@ def test_linalg_cond(shape, dtype):
     res_out = flag_gems.linalg_cond(A)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -101,7 +108,9 @@ def test_linalg_cond_with_p(shape, dtype, p):
     res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -123,7 +132,9 @@ def test_linalg_cond_svd(shape, dtype, p):
     res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond

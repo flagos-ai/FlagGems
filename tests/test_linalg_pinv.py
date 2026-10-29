@@ -21,6 +21,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from .test_linalg_svd import (
+    _for_comparison,
     _from_numpy,
     _missing_cpu_lapack,
     _reference_input,
@@ -85,7 +86,7 @@ def test_linalg_pinv(shape, dtype):
     ref_A = _reference_input(A, True)
     ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -99,7 +100,7 @@ def test_linalg_pinv_batched(shape, dtype):
     ref_A = _reference_input(A, True)
     ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -111,7 +112,7 @@ def test_linalg_pinv_large(shape, dtype):
     ref_A = _reference_input(A, True)
     ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -125,4 +126,4 @@ def test_linalg_pinv_large_batched(shape, dtype):
     ref_A = _reference_input(A, True)
     ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
