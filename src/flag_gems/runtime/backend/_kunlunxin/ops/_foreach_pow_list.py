@@ -52,9 +52,7 @@ import triton.language as tl
 from flag_gems.ops._foreach_binary import _foreach_pow_List as _generic_pow_list
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
-# Same logger as the generic implementation; the registration-liveness test
-# keeps probing "GEMS _FOREACH_POW" under it through the generic wrapper.
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 

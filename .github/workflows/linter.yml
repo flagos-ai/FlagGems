@@ -50,19 +50,22 @@ jobs:
       http_proxy: ${{ secrets.CI_HTTP_PROXY }}
       https_proxy: ${{ secrets.CI_HTTP_PROXY }}
     steps:
-    # Robust checkout: probes SSH then HTTP ~10s each, hard-kills a hung fetch,
-    # rotates links across rounds (see the action). @master ref so it resolves
-    # from the runner's _actions cache before any checkout. ssh-key empty on
+    # Robust checkout: probes SSH then HTTP ~60s each, hard-kills a hung fetch,
+    # rotates links across rounds (see the action). Fully-qualified FlagOps
+    # @main ref so it resolves from the runner's _actions cache before any
+    # checkout. ssh-key empty on
     # fork PRs -> SSH skipped, token HTTP used. The action also registers the
     # workspace as a safe git dir (needed by pre-commit under HOME=/github/home).
-    - uses: flagos-ai/FlagGems/.github/actions/robust-checkout@master
+    - uses: flagos-ai/FlagOps/actions/robust-checkout@main
       with:
         ssh-key: ${{ secrets.CI_SSH_KEY }}
         # Each round is a connect probe (fast reject of a wedged link) then a
         # throughput-judged fetch, so a slow-but-moving link finishes in round 1
         # instead of being clock-killed. Rounds only buy retries across short
         # outage blips; a full outage fails fast on the connect probe either way.
-        rounds: "30"
+        # A handful of rounds covers transient blips; a full outage won't be
+        # waited out, so dozens of rounds buy nothing.
+        rounds: "5"
     - name: Ensure full working tree
       shell: bash
       run: |

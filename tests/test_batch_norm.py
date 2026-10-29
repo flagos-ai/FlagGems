@@ -152,6 +152,7 @@ def test_batch_norm(shape, dtype, affine):
 
 
 @pytest.mark.batch_norm_backward
+@pytest.mark.native_batch_norm_backward
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])

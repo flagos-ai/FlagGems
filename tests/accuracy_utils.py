@@ -314,6 +314,21 @@ def ref_div_rounding(a, b, rounding_mode):
     # compute the reference on CPU there. Other backends keep the on-device
     # reference (their eager implementation matches it).
     if flag_gems.vendor_name != "kunlunxin":
+        # floor/trunc at low precision: the reference must be computed on a
+        # wider type. Dividing in float16 rounds the quotient before the
+        # rounding mode is applied, which moves results across integer
+        # boundaries (the kernel follows the exact quotient, matching CUDA aten
+        # and an fp64 reference). fp32/fp64 inputs are unaffected by this
+        # upcast, so they keep the plain path.
+        if rounding_mode in ("floor", "trunc"):
+            orig_dtype = torch.result_type(a, b)
+            if orig_dtype in (torch.float16, torch.bfloat16):
+                wide = torch.float64 if fp64_is_supported else torch.float32
+                a_wide = a.to(wide) if isinstance(a, torch.Tensor) else a
+                b_wide = b.to(wide) if isinstance(b, torch.Tensor) else b
+                return torch.div(a_wide, b_wide, rounding_mode=rounding_mode).to(
+                    orig_dtype
+                )
         return torch.div(a, b, rounding_mode=rounding_mode)
     a_cpu = a.cpu() if isinstance(a, torch.Tensor) else a
     b_cpu = b.cpu() if isinstance(b, torch.Tensor) else b
@@ -383,11 +398,12 @@ def gems_log_prefix(fn):
 
 
 def gems_log_logger(fn):
-    """Return the canonical logger name used by an operator implementation.
+    """Return the logger name used by an operator implementation.
 
-    Vendor overrides may live in a vendor module while intentionally sharing
-    the generic ``flag_gems.ops.<operator>`` logger name.
+    Operator modules log with ``logging.getLogger(__name__)``, so the logger
+    name is just the resolved function's module: ``flag_gems.ops.<operator>``
+    for the generic implementation, or the vendor module's own dotted path
+    (e.g. ``_kunlunxin.ops.<operator>``) for vendor overrides, since backend
+    packages are imported under their short name.
     """
-    module = fn.__module__.split(".")
-    operator_module = module[-1]
-    return f"flag_gems.ops.{operator_module}"
+    return fn.__module__

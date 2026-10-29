@@ -125,7 +125,31 @@ def _marks_for(key):
     return ident
 
 
-PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in ALL_KEYS]
+def _aggregate_mark(key):
+    """The operator-level mark for a key: the per-overload mark minus the
+    overload suffix (``_foreach_add.Scalar`` -> ``foreach_add``). Selecting
+    with ``-m foreach_add`` picks every overload of that operator at once.
+    """
+    core, _, inplace = _key_parts(key)
+    ident = f"foreach_{core}"
+    if inplace:
+        ident += "_"
+    return ident
+
+
+# The specific mark comes first so it stays the first non-control mark on the
+# item: benchmark/conftest.py keys its JSON report off ``marks[0]``, and an
+# aggregate in that slot would merge every overload of an operator into one key.
+PARAMS = [
+    pytest.param(
+        k,
+        marks=[
+            getattr(pytest.mark, _marks_for(k)),
+            getattr(pytest.mark, _aggregate_mark(k)),
+        ],
+    )
+    for k in ALL_KEYS
+]
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +167,7 @@ PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in AL
 # select the identical set of cases. The per-parameter markers on the
 # parametrize list are what give `-m <id>` its one-operator selectivity.
 # ---------------------------------------------------------------------------
+@pytest.mark.foreach_add
 @pytest.mark.foreach_add_list
 @pytest.mark.foreach_add_list_
 @pytest.mark.foreach_add_scalar
@@ -151,32 +176,42 @@ PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in AL
 @pytest.mark.foreach_add_scalar_list_
 @pytest.mark.foreach_add_tensor
 @pytest.mark.foreach_add_tensor_
+@pytest.mark.foreach_add_
+@pytest.mark.foreach_addcdiv
 @pytest.mark.foreach_addcdiv_scalar
 @pytest.mark.foreach_addcdiv_scalar_
 @pytest.mark.foreach_addcdiv_scalar_list
 @pytest.mark.foreach_addcdiv_scalar_list_
 @pytest.mark.foreach_addcdiv_tensor
 @pytest.mark.foreach_addcdiv_tensor_
+@pytest.mark.foreach_addcdiv_
+@pytest.mark.foreach_addcmul
 @pytest.mark.foreach_addcmul_scalar
 @pytest.mark.foreach_addcmul_scalar_
 @pytest.mark.foreach_addcmul_scalar_list
 @pytest.mark.foreach_addcmul_scalar_list_
 @pytest.mark.foreach_addcmul_tensor
 @pytest.mark.foreach_addcmul_tensor_
+@pytest.mark.foreach_addcmul_
+@pytest.mark.foreach_clamp_max
 @pytest.mark.foreach_clamp_max_list
 @pytest.mark.foreach_clamp_max_list_
 @pytest.mark.foreach_clamp_max_scalar
 @pytest.mark.foreach_clamp_max_scalar_
 @pytest.mark.foreach_clamp_max_scalar_list
 @pytest.mark.foreach_clamp_max_scalar_list_
+@pytest.mark.foreach_clamp_max_
+@pytest.mark.foreach_clamp_min
 @pytest.mark.foreach_clamp_min_list
 @pytest.mark.foreach_clamp_min_list_
 @pytest.mark.foreach_clamp_min_scalar
 @pytest.mark.foreach_clamp_min_scalar_
 @pytest.mark.foreach_clamp_min_scalar_list
 @pytest.mark.foreach_clamp_min_scalar_list_
+@pytest.mark.foreach_clamp_min_
 @pytest.mark.foreach_copy
 @pytest.mark.foreach_copy_
+@pytest.mark.foreach_div
 @pytest.mark.foreach_div_list
 @pytest.mark.foreach_div_list_
 @pytest.mark.foreach_div_scalar
@@ -185,25 +220,33 @@ PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in AL
 @pytest.mark.foreach_div_scalar_list_
 @pytest.mark.foreach_div_tensor
 @pytest.mark.foreach_div_tensor_
+@pytest.mark.foreach_div_
+@pytest.mark.foreach_lerp
 @pytest.mark.foreach_lerp_list
 @pytest.mark.foreach_lerp_list_
 @pytest.mark.foreach_lerp_scalar
 @pytest.mark.foreach_lerp_scalar_
 @pytest.mark.foreach_lerp_scalar_list
 @pytest.mark.foreach_lerp_scalar_list_
+@pytest.mark.foreach_lerp_
 @pytest.mark.foreach_max
+@pytest.mark.foreach_maximum
 @pytest.mark.foreach_maximum_list
 @pytest.mark.foreach_maximum_list_
 @pytest.mark.foreach_maximum_scalar
 @pytest.mark.foreach_maximum_scalar_
 @pytest.mark.foreach_maximum_scalar_list
 @pytest.mark.foreach_maximum_scalar_list_
+@pytest.mark.foreach_maximum_
+@pytest.mark.foreach_minimum
 @pytest.mark.foreach_minimum_list
 @pytest.mark.foreach_minimum_list_
 @pytest.mark.foreach_minimum_scalar
 @pytest.mark.foreach_minimum_scalar_
 @pytest.mark.foreach_minimum_scalar_list
 @pytest.mark.foreach_minimum_scalar_list_
+@pytest.mark.foreach_minimum_
+@pytest.mark.foreach_mul
 @pytest.mark.foreach_mul_list
 @pytest.mark.foreach_mul_list_
 @pytest.mark.foreach_mul_scalar
@@ -212,7 +255,10 @@ PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in AL
 @pytest.mark.foreach_mul_scalar_list_
 @pytest.mark.foreach_mul_tensor
 @pytest.mark.foreach_mul_tensor_
+@pytest.mark.foreach_mul_
+@pytest.mark.foreach_norm
 @pytest.mark.foreach_norm_scalar
+@pytest.mark.foreach_pow
 @pytest.mark.foreach_pow_list
 @pytest.mark.foreach_pow_list_
 @pytest.mark.foreach_pow_scalar
@@ -220,12 +266,15 @@ PARAMS = [pytest.param(k, marks=getattr(pytest.mark, _marks_for(k))) for k in AL
 @pytest.mark.foreach_pow_scalar_and_tensor
 @pytest.mark.foreach_pow_scalar_list
 @pytest.mark.foreach_pow_scalar_list_
+@pytest.mark.foreach_pow_
+@pytest.mark.foreach_sub
 @pytest.mark.foreach_sub_list
 @pytest.mark.foreach_sub_list_
 @pytest.mark.foreach_sub_scalar
 @pytest.mark.foreach_sub_scalar_
 @pytest.mark.foreach_sub_scalar_list
 @pytest.mark.foreach_sub_scalar_list_
+@pytest.mark.foreach_sub_
 @pytest.mark.foreach_zero
 @pytest.mark.foreach_zero_
 def test_operator_markers_are_declared():
@@ -334,6 +383,9 @@ def test_foreach_ops_registration_is_live(key, caplog):
     assert caplog.text.strip(), f"dead registration for {key}"
 
 
+@pytest.mark.foreach_add
+@pytest.mark.foreach_mul
+@pytest.mark.foreach_div
 @pytest.mark.parametrize(
     "key",
     [
@@ -367,6 +419,8 @@ def test_accuracy_foreach_paired_noncontiguous(key):
     _compare(res_out, ref_out, torch.float32)
 
 
+@pytest.mark.foreach_add
+@pytest.mark.foreach_addcmul
 @pytest.mark.parametrize(
     "key",
     [
@@ -388,6 +442,7 @@ def test_foreach_ops_length_mismatch_rejected(key):
             BINARY_WRAPPERS[key](inp, short)
 
 
+@pytest.mark.foreach_norm
 @pytest.mark.parametrize(
     "core, ord_",
     [
@@ -428,6 +483,8 @@ def test_accuracy_foreach_zero_writes_through_views():
     gems_assert_close(storage, ref_storage, torch.float32)
 
 
+@pytest.mark.foreach_add
+@pytest.mark.foreach_mul
 @pytest.mark.parametrize(
     "key",
     [
@@ -453,6 +510,7 @@ def test_foreach_ops_launch_count_is_independent_of_list_length(key):
         )
 
 
+@pytest.mark.foreach_add
 @pytest.mark.foreach_add_scalar
 def test_accuracy_foreach_int_promotion():
     """An integral list plus a float scalar promotes, matching ATen."""
@@ -467,6 +525,7 @@ def test_accuracy_foreach_int_promotion():
     gems_assert_close(res_out[0], ref_out[0], ref_out[0].dtype)
 
 
+@pytest.mark.foreach_add_
 @pytest.mark.foreach_add_scalar_
 def test_foreach_inplace_rejects_promotion():
     """An in-place op may not narrow a promoted result back into an int input."""
@@ -674,6 +733,7 @@ def test_accuracy_foreach_norm_all_zero():
         assert res[0].item() == ref[0].item(), f"ord={ord_}"
 
 
+@pytest.mark.foreach_pow
 @pytest.mark.foreach_pow_scalar
 @pytest.mark.foreach_pow_scalar_list
 @pytest.mark.parametrize("exponent", [True, False, 0, 2, 2.0, 0.5, -1.0, float("inf")])
@@ -698,6 +758,7 @@ def test_accuracy_foreach_pow_bool_base(exponent):
     assert res[0].cpu().tolist() == ref[0].cpu().tolist()
 
 
+@pytest.mark.foreach_pow
 @pytest.mark.foreach_pow_list
 def test_foreach_pow_list_rejects_bool():
     """``pow.List`` with a bool tensor operand is refused, matching ATen."""
@@ -709,6 +770,10 @@ def test_foreach_pow_list_rejects_bool():
         torch._foreach_pow([t.cpu() for t in inp], [torch.tensor([True, True])])
 
 
+@pytest.mark.foreach_clamp_max
+@pytest.mark.foreach_clamp_min
+@pytest.mark.foreach_maximum
+@pytest.mark.foreach_minimum
 @pytest.mark.foreach_clamp_max_scalar
 @pytest.mark.foreach_clamp_min_scalar
 @pytest.mark.foreach_maximum_scalar

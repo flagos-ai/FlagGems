@@ -12,32 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Kunlunxin (XPU3/P800) logit / logit_out.
-#
-# Root cause of the ~0.001x-0.5x baseline: the generic implementation
-# (src/flag_gems/ops/logit.py) launches with a *callable* grid
-#     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-# On the XPU backend (binary_ext == "xpubin") the launch grid is folded into
-# XPUOptions and therefore into the Triton compile cache key
-# (triton/runtime/jit.py, run(): `if backend.binary_ext == 'xpubin':
-# kwargs['grid'] = grid`, before binder/parse_options/compute_cache_key).
-# A freshly-created lambda is a new object on every call, so the cache key
-# changes every launch and the kernel is fully RECOMPILED on every call.
-# Measured on KL3: 8 launches with a lambda grid -> 8 _do_compile calls;
-# with a tuple grid -> 0. The recompile is a shape-independent ~120 ms/call,
-# which is exactly the flat Gems latency the baseline benchmark reported for
-# every shape (0.001x for 4096 elements, 0.47x for 16.7M).
-#
-# Fix: a concrete tuple grid (cache hit, ~14-25 us/call) and a larger fixed
-# BLOCK_SIZE (8192). No pointwise_dynamic here: the op is a pure elementwise
-# map, and the hand-written kernel already emits contiguous block-DMA tiles;
-# the only defect was the grid form.
-#
-# BLOCK_SIZE=8192 measured best-or-tied across all benchmark shapes/dtypes
-# (median of 5x100 iters): large shapes 0.82 ms vs 1.51 ms at BLOCK=1024;
-# small shapes all sit on the ~14.2 us launch floor regardless of BLOCK.
-# A single fixed BLOCK_SIZE keeps the specialization set bounded.
-
 import logging
 
 import torch

@@ -12,451 +12,215 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import logging
-import os
-from typing import Callable, List, Mapping
 
 import torch
-
-from flag_gems.utils.code_cache import cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer
+import triton
+import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
 
-# --------------------------- tile wrapper genration -----------------------------------
-def parameter_for_wrapper() -> str:
-    """Generate parameter declaration with type annotation for wrapper function.
-    Example: in0: torch.Tensor, val0: float, out0: torch.Tensor
-    """
-    parameters: List[str] = []
-
-    parameters.append("in0")
-    parameters.append("dims")
-    return ", ".join(parameters)
-
-
-def parameter_for_wrapper_out() -> str:
-    """Generate parameter declaration with type annotation for wrapper function.
-    Example: in0: torch.Tensor, val0: float, out0: torch.Tensor
-    """
-    parameters: List[str] = []
-
-    parameters.append("in0")
-    parameters.append("out0")
-
-    return ", ".join(parameters)
-
-
-def parameter_ref_for_wrapper() -> str:
-    """Generate parameter reference for wrapper function.
-    Example: in0, val0, out0, out0_offset
-    """
-    parameters: List[str] = []
-
-    parameters.append("in0")
-    parameters.append("out0")
-
-    return ", ".join(parameters)
-
-
-def output_ref_for_wrapper() -> str:
-    return "out0"
-
-
-def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
-    code.writeline("import math")
-    code.writeline("import torch")
-    code.writeline("import triton")
-    code.writeline("from triton import language as tl")
-    code.newline()
-    code.writeline("from flag_gems.runtime import torch_device_fn")
-    code.writeline("from flag_gems.utils.shape_utils import volume")
-    code.writeline("from flag_gems.utils.libentry import libentry")
-    code.writeline("from flag_gems.utils.type_utils import type_promotion")
-    code.writeline("from flag_gems.utils import triton_lang_extension as ext")
-    code.newline()
-    code.newline()
-    return code
-
-
-def generate_functional_tile_wrapper(
-    wrapper_name: str,
-    destination_passing_func_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # wrapper signature
-    parameters: str = parameter_for_wrapper()
-    wrapper_signature: str = f"def {wrapper_name}({parameters}):"
-    code.writeline(wrapper_signature)
-
-    with code.indent():
-        code.writeline("in0_rank = in0.dim()")
-        code.writeline("dims_rank = len(dims)")
-        code.writeline("in0_shape = list(in0.shape)")
-        code.writeline("dims_shape = list(dims)")
-        code.newline()
-        code.writeline("if (dims_rank < in0_rank): ")
-        with code.indent():
-            code.writeline("diff = in0_rank - dims_rank")
-            code.writeline("ones = [1 for _ in range(diff)]")
-            code.writeline("dims_shape = ones + dims_shape")
-        code.writeline("elif (dims_rank > in0_rank): ")
-        with code.indent():
-            code.writeline("diff = dims_rank - in0_rank")
-            code.writeline("ones = [1 for _ in range(diff)]")
-            code.writeline("in0_shape = ones + in0_shape")
-        code.newline()
-        code.writeline("is_empty = False")
-        code.writeline("out_shape = []")
-        code.writeline("for i in range(len(in0_shape)): ")
-        with code.indent():
-            code.writeline(
-                "assert(dims_shape[i] >= 0), 'the number of repetitions per dimension out of range (expected to >= 0) \
-                but got {}'.format(dims_shape[i])"
-            )
-            code.writeline("if dims_shape[i] == 0: ")
-            with code.indent():
-                code.writeline("is_empty = True")
-            code.writeline("out_shape.append(in0_shape[i] * dims_shape[i])")
-        code.newline()
-        code.writeline(
-            "out0 = torch.empty(out_shape, device=in0.device, dtype=in0.dtype)"
-        )
-
-        code.writeline("in0 = in0.reshape(in0_shape)")
-        code.writeline("if not is_empty: ")
-        with code.indent():
-            # call destination_passing_func
-            output_names: str = output_ref_for_wrapper()
-            call_str = (
-                f"{output_names} = {destination_passing_func_name}"
-                f"({parameter_ref_for_wrapper()})"
-            )
-            code.writeline(call_str)
-
-        return_str = "return out0"
-        code.writeline(return_str)
-        code.newline()
-        code.newline()
-
-    return code
-
-
-def generate_destination_passing_tile_wrapper(
-    rank: int,
-    wrapper_name: str,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # wrapper signature
-    parameters: str = parameter_for_wrapper_out()
-
-    wrapper_signature: str = f"def {wrapper_name}({parameters}):"
-    code.writeline(wrapper_signature)
-
-    with code.indent():
-        # docstring
-        if rank > 0:
-            code.writeline("shape = out0.shape")
-            code.writeline("num_tasks = volume(shape)")
-
-        if rank > 0:
-            code.writeline("num_ctas = 12")
-            code.writeline("num_warps = 1")
-            code.writeline(
-                "tile_size = triton.next_power_of_2(triton.cdiv(num_tasks, num_ctas))"
-            )
-            code.writeline(
-                "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
-            )
-        else:
-            code.writeline("num_warps = 1")
-            code.writeline("num_ctas = 1")
-        code.writeline("grid = (num_ctas, 1, 1)")
-        code.newline()
-
-        # input strides for each input tensor w.r.t. the task index space
-        if rank > 0:
-            code.writeline("# strides of each tensor argument w.r.t the task space")
-            code.writeline("in0_strides = in0.stride()")
-            code.writeline("in0_shape = in0.shape")
-            code.writeline("out0_strides = out0.stride()")
-        code.newline()
-
-        # grid
-        code.writeline("# kernel launch")
-
-        # launch kernel
-        code.writeline("with torch_device_fn.device(in0.device.index):")
-        with code.indent():
-            kernel_launch: str = f"{kernel_name}[grid]("
-            code.writeline(kernel_launch)
-
-            with code.indent():
-                code.writeline("in0, out0, ")
-
-            if rank > 0:
-                s = ", ".join(f"in0_strides[{j}]" for j in range(rank))
-                code.writeline(f"{s}, # stride for in0")
-
-                s = ", ".join(f"out0_strides[{j}]" for j in range(rank))
-                code.writeline(f"{s}, # stride for out0")
-
-                shape_args: str = ", ".join(f"shape[{i}]" for i in range(rank))
-                code.writeline(f"{shape_args}, # task indexing space")
-                in_shape_args: str = ", ".join(f"in0_shape[{i}]" for i in range(rank))
-                code.writeline(
-                    f"{in_shape_args}, # task indexing space used when input and ouput tensor has different shape"
-                )
-                code.writeline("num_tasks, # num tasks")
-                code.writeline("tiles_per_cta=tiles_per_cta, # tiles_per_cta")
-                code.writeline("tile_size=tile_size,")
-                code.writeline("one_tile_per_cta=tiles_per_cta==1,")
-            code.writeline("num_warps=num_warps,")
-        code.writeline(")")
-
-        # return
-        code.writeline("return out0")
-        code.newline()
-        code.newline()
-    return code
-
-
-def generate_tile_kernel(
-    rank: int,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # make the inlined function visible in the context
-    code.newline()
-
-    # the decorators
-    code.writeline("@libentry()")
-    code.writeline("@triton.jit")
-
-    # signature
-    code.writeline(f"def {kernel_name}(")
-    with code.indent():
-        # signature: inputs ptrs & non tensor inputs
-        code.writeline("in0_ptr: tl.tensor, # of tl.pointer_type")
-
-        # signature: output ptrs
-        code.writeline("out0_ptr: tl.tensor, # of tl.pointer_type")
-
-        # signature: strides, for each tensor arguments
-        # only add this arguments when rank > 0
-        if rank > 0:
-            # strides for inputs
-            stride_args = ", ".join(f"in0_stride{j}: tl.constexpr" for j in range(rank))
-            code.writeline(f"{stride_args}, # strides for in0")
-
-            # strides for outputs
-            stride_args = ", ".join(
-                f"out0_stride{j}: tl.constexpr" for j in range(rank)
-            )
-            code.writeline(f"{stride_args}, # strides for out0")
-
-            # task space, used to reconstruct multi index
-            task_space_args = ", ".join(f"s{i}: tl.constexpr" for i in range(rank))
-            code.writeline(f"{task_space_args}, # task_space")
-
-            task_space_args2 = ", ".join(f"in_s{i}: tl.constexpr" for i in range(rank))
-            code.writeline(
-                f"{task_space_args2}, # task_space2 used when input and output tensor has different shape"
-            )
-
-            # number of tasks, used to compute mask
-            code.writeline("num_tasks: int,")
-
-        # tile size & tiles_per_cta, gsl style
-        if rank > 0:
-            code.writeline("tiles_per_cta,")
-
-            code.writeline("tile_size: tl.constexpr,")
-
-            code.writeline("one_tile_per_cta: tl.constexpr,")
-    code.writeline("):")
-
-    with code.indent():
-        # get pid
-        code.writeline("# task id & masking")
-        pid_stmt = "pid = ext.program_id(0)"
-        code.writeline(pid_stmt)
-
-        code.writeline("num_ctas = ext.num_programs(0)")
-
-        # get tid (a.k.a task id)
-        tid_stmt = "init_tid = pid * tile_size + tl.arange(0, tile_size)"
-        code.writeline(tid_stmt)
-
-        # one-tile-per-cta, monolithic kernel style
-        code.writeline("if one_tile_per_cta: # monolitic kernel style")
-        with code.indent():
-            tid_stmt = "tid = init_tid"
-            code.writeline(tid_stmt)
-
-            # only apply masking when rank > 0
-            # since we only load a value instead of a block of values when the rank is 0
-            mask_stmt: str = "mask = tid < num_tasks"
-            code.writeline(mask_stmt)
-            code.newline()
-
-            # reconstruct multi index
-            code.writeline("# multi index recontruction")
-            for i in reversed(range(rank)):
-                if i > 0:
-                    code.writeline(f"i{i} = tid % s{i}")
-                    code.writeline(f"tid //= s{i}")
-                else:
-                    code.writeline(f"i{i} = tid")
-            code.newline()
-
-            # loads
-            code.writeline("# loads")
-            ptrs_expr: str = " + ".join(
-                f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-            )
-            ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
-            load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
-            code.writeline(load_stmt)
-            code.newline()
-
-            # compute
-            code.writeline("# compute")
-            code.writeline("out0 = in0")
-            code.newline()
-
-            # stores
-            code.writeline("# stores")
-            ptrs_expr: str = " + ".join(f"i{j} * out0_stride{j}" for j in range(rank))
-            ptrs_expr: str = f"out0_ptr + {ptrs_expr}"
-            store_stmt: str = f"tl.store({ptrs_expr}, out0, mask=mask)"
-            code.writeline(store_stmt)
-
-        # https://developer.nvidia.com/blog/cuda-pro-tip-write-flexible-kernels-grid-stride-loops/
-        code.writeline("else: # grid-stride-loop style kernel")
-        with code.indent():
-            code.writeline("for j in range(0, tiles_per_cta):")
-            with code.indent():
-                tid_stmt = "tid = init_tid + j * tile_size * num_ctas"
-                code.writeline(tid_stmt)
-
-                # only apply masking when rank > 0
-                # since we only load a value instead of a block of values when the rank is 0
-                mask_stmt: str = "mask = tid < num_tasks"
-                code.writeline(mask_stmt)
-                code.newline()
-
-                # reconstruct multi index
-                code.writeline("# multi index recontruction")
-                for i in reversed(range(rank)):
-                    if i > 0:
-                        code.writeline(f"i{i} = tid % s{i}")
-                        code.writeline(f"tid //= s{i}")
-                    else:
-                        code.writeline(f"i{i} = tid")
-                code.newline()
-
-                # loads
-                code.writeline("# loads")
-                ptrs_expr: str = " + ".join(
-                    f"(i{j} % in_s{j}) * in{i}_stride{j}" for j in range(rank)
-                )
-                ptrs_expr: str = f"in0_ptr + {ptrs_expr}"
-                load_stmt: str = f"in0 = tl.load({ptrs_expr}, mask=mask)"
-                code.writeline(load_stmt)
-                code.newline()
-
-                # compute
-                code.writeline("# compute")
-                code.writeline("out0 = in0")
-                code.newline()
-
-                # stores
-                code.writeline("# stores")
-                ptrs_expr: str = " + ".join(
-                    f"i{j} * out0_stride{j}" for j in range(rank)
-                )
-                ptrs_expr: str = f"out0_ptr + {ptrs_expr}"
-                store_stmt: str = f"tl.store({ptrs_expr}, out0, mask=mask)"
-                code.writeline(store_stmt)
-                code.newline()
-    return code
-
-
-def generate_code(
-    rank: int,
-    wrapper_name: str,
-    destination_passing_func_name: str,
-    kernel_name: str,
-    code: IndentedBuffer,
-) -> IndentedBuffer:
-    # the only runtime determined factor is the rank of the task space
-    code = generate_imports(code)
-    code = generate_functional_tile_wrapper(
-        wrapper_name, destination_passing_func_name, code
-    )
-    code = generate_destination_passing_tile_wrapper(
-        rank, destination_passing_func_name, kernel_name, code
-    )
-    code = generate_tile_kernel(rank, kernel_name, code)
-    return code
-
-
-class TileFunction:
-    def __init__(self):
-        self.pid = os.getpid()
-        # instantiated & cached overloads
-        self.overloads: Mapping[str, Callable] = {}
-
-    def __call__(self, x, dims):
-        # note: kwargs should not be used in JITFunction directly
-        ndim = self.arg_key(x, dims)
-        key = str(ndim)
-        if key in self.overloads:
-            overload = self.overloads[key]
-        else:
-            # generate file & import it
-            code = IndentedBuffer()
-            code = generate_code(
-                ndim,
-                "_wrapper",
-                "_wrapper_out",
-                "_tile_flaggems_jit_function",
-                code,
-            )
-
-            file_name = f"tile_rank_{key}_pid_{self.pid}.py"
-
-            with open(cache_dir() / file_name, "wt", encoding="utf-8") as f:
-                f.write(code.getvalue())
-
-            # load
-            spec = importlib.util.spec_from_file_location(
-                f"_gen_module_rank_{key}_pid_{self.pid}",
-                f.name,
-            )
-
-            m = importlib.util.module_from_spec(spec)
-            # do not expose it to sys.modules
-            # sys.modules["_add_module"] = m
-            spec.loader.exec_module(m)
-            overload = getattr(m, "_wrapper")
-            self.overloads[key] = overload
-        return overload(x, dims)
-
-    def arg_key(self, x, dims):
-        max_rank = max(x.ndim, len(dims))
-        return max_rank
-
-
-_tile_func = TileFunction()
+# Packed uint64 wide-vector block-DMA block (mirrors expand_copy._expand_flat_pack_kernel).
+_PACK_BLOCK = 32768
+# Per-element flat block for the odd-numel / non-packable leading-repeat fallback.
+_FLAT_BLOCK = 4096
+# Block for the general modulo-gather fallback (mirrors expand_copy._expand_gather_kernel).
+_GATHER_BLOCK = 4096
+
+
+@triton.jit
+def _tile_leading_pack_kernel(
+    src_ptr, dst_ptr, nwide, BLOCK: tl.constexpr, NEED_MASK: tl.constexpr
+):
+    """Leading repeat through a uint64 view: out == [rep, src_numel], each output
+    row is a contiguous byte-copy of the source block.  One lane moves 8//ELEM
+    consecutive elements so the load/store hit the wide-vector block-DMA path."""
+    pid_c = tl.program_id(0)
+    pid_r = tl.program_id(1)
+    offs = pid_c * BLOCK + tl.arange(0, BLOCK)
+    src64 = src_ptr.to(tl.pointer_type(tl.uint64))
+    dst64 = dst_ptr.to(tl.pointer_type(tl.uint64))
+    if NEED_MASK:
+        mask = offs < nwide
+        vals = tl.load(src64 + offs, mask=mask)
+        tl.store(dst64 + pid_r * nwide + offs, vals, mask=mask)
+    else:
+        vals = tl.load(src64 + offs)
+        tl.store(dst64 + pid_r * nwide + offs, vals)
+
+
+@triton.jit
+def _tile_leading_flat_kernel(
+    src_ptr, dst_ptr, src_numel, BLOCK: tl.constexpr, NEED_MASK: tl.constexpr
+):
+    """Per-element leading repeat fallback (odd numel or misaligned storage)."""
+    pid_c = tl.program_id(0)
+    pid_r = tl.program_id(1)
+    offs = pid_c * BLOCK + tl.arange(0, BLOCK)
+    if NEED_MASK:
+        mask = offs < src_numel
+        vals = tl.load(src_ptr + offs, mask=mask)
+        tl.store(dst_ptr + pid_r * src_numel + offs, vals, mask=mask)
+    else:
+        vals = tl.load(src_ptr + offs)
+        tl.store(dst_ptr + pid_r * src_numel + offs, vals)
+
+
+@triton.jit
+def _tile_gather_kernel(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    st0,
+    st1,
+    st2,
+    st3,
+    st4,
+    st5,
+    NDIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """General multi-dim tile: decompose the flat output index into per-dim
+    indices, apply the per-dim modulo against the source shape, and accumulate
+    the contiguous source offset.  Correctness fallback for mixed repeats."""
+    pid = tl.program_id(0)
+    out_offs = pid * BLOCK + tl.arange(0, BLOCK)
+    offs = out_offs
+    src_off = tl.zeros([BLOCK], dtype=tl.int32)
+    if NDIM >= 6:
+        c = offs % s5
+        offs = offs // s5
+        src_off += (c % a5) * st5
+    if NDIM >= 5:
+        c = offs % s4
+        offs = offs // s4
+        src_off += (c % a4) * st4
+    if NDIM >= 4:
+        c = offs % s3
+        offs = offs // s3
+        src_off += (c % a3) * st3
+    if NDIM >= 3:
+        c = offs % s2
+        offs = offs // s2
+        src_off += (c % a2) * st2
+    if NDIM >= 2:
+        c = offs % s1
+        offs = offs // s1
+        src_off += (c % a1) * st1
+    if NDIM >= 1:
+        c = offs % s0
+        src_off += (c % a0) * st0
+    if NEED_MASK:
+        mask = out_offs < n_elements
+        vals = tl.load(src_ptr + src_off, mask=mask)
+        tl.store(dst_ptr + out_offs, vals, mask=mask)
+    else:
+        vals = tl.load(src_ptr + src_off)
+        tl.store(dst_ptr + out_offs, vals)
 
 
 def tile(inp: torch.Tensor, dims) -> torch.Tensor:
     logger.debug("GEMS_KUNLUNXIN TILE")
 
-    out = _tile_func(inp, dims)
+    in_rank = inp.dim()
+    dims_rank = len(dims)
+    in_shape = list(inp.shape)
+    dims_shape = list(dims)
+
+    if dims_rank < in_rank:
+        dims_shape = [1] * (in_rank - dims_rank) + dims_shape
+    elif dims_rank > in_rank:
+        in_shape = [1] * (dims_rank - in_rank) + in_shape
+
+    is_empty = False
+    out_shape = []
+    for i in range(len(in_shape)):
+        d = dims_shape[i]
+        if d < 0:
+            raise RuntimeError(
+                "the number of repetitions per dimension out of range "
+                "(expected to >= 0) but got {}".format(d)
+            )
+        if d == 0:
+            is_empty = True
+        out_shape.append(in_shape[i] * d)
+
+    out = torch.empty(out_shape, device=inp.device, dtype=inp.dtype)
+    if is_empty:
+        return out
+
+    in_contig = inp.reshape(in_shape)
+    if not in_contig.is_contiguous():
+        in_contig = in_contig.contiguous()
+
+    # Only the leading dimension is repeated (dims_shape[1:] all 1): the output
+    # is `rep` contiguous copies of the source block.  This is the common case
+    # (benchmark repeats dim 0) and maps to a no-div/no-mod block-DMA copy.
+    if all(d == 1 for d in dims_shape[1:]):
+        rep = dims_shape[0]
+        src_numel = in_contig.numel()
+        elem = in_contig.element_size()
+        epl = {2: 4, 4: 2}.get(elem, 1)
+        if (
+            epl > 1
+            and src_numel % epl == 0
+            and in_contig.data_ptr() % 8 == 0
+            and out.data_ptr() % 8 == 0
+        ):
+            nwide = src_numel // epl
+            grid = (triton.cdiv(nwide, _PACK_BLOCK), rep)
+            _tile_leading_pack_kernel[grid](
+                in_contig,
+                out,
+                nwide,
+                BLOCK=_PACK_BLOCK,
+                NEED_MASK=(nwide % _PACK_BLOCK != 0),
+                num_warps=32,
+            )
+        else:
+            grid = (triton.cdiv(src_numel, _FLAT_BLOCK), rep)
+            _tile_leading_flat_kernel[grid](
+                in_contig,
+                out,
+                src_numel,
+                BLOCK=_FLAT_BLOCK,
+                NEED_MASK=(src_numel % _FLAT_BLOCK != 0),
+                num_warps=4,
+            )
+        return out
+
+    # General multi-dim repeat: flat modulo gather.
+    r = len(in_shape)
+    in_strides = list(in_contig.stride())
+    out_shapes = tuple(out_shape) + (1,) * (6 - r)
+    in_shapes = tuple(in_shape) + (1,) * (6 - r)
+    strides = tuple(in_strides) + (0,) * (6 - r)
+    n = out.numel()
+    grid = (triton.cdiv(n, _GATHER_BLOCK),)
+    _tile_gather_kernel[grid](
+        in_contig,
+        out,
+        n,
+        *out_shapes,
+        *in_shapes,
+        *strides,
+        NDIM=r,
+        BLOCK=_GATHER_BLOCK,
+        NEED_MASK=(n % _GATHER_BLOCK != 0),
+        num_warps=4,
+    )
     return out

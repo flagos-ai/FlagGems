@@ -9,6 +9,7 @@ VENDOR_NAME = flag_gems.vendor_name
 IS_ASCEND = VENDOR_NAME == "ascend"
 IS_KUNLUNXIN = VENDOR_NAME == "kunlunxin"
 IS_THEAD = VENDOR_NAME == "thead"
+IS_MTHREADS = VENDOR_NAME == "mthreads"
 SUPPORT_FP64 = flag_gems.runtime.device.support_fp64
 
 REAL_DTYPES = [torch.float32] + ([torch.float64] if SUPPORT_FP64 else [])
@@ -88,16 +89,26 @@ class CholeskySolveBenchmark(base.Benchmark):
         self.shape_desc = "((*batch, N, nrhs), upper)"
 
     def get_input_iter(self, cur_dtype):
+        # MUSA cannot reliably build Hermitian complex inputs with the vendor
+        # torch stack (device cholesky reports non-positive-definite), so build
+        # the complex setup on CPU and move it to the device for the op.
+        build_on_cpu = IS_MTHREADS and cur_dtype in COMPLEX_DTYPES
+        setup_device = "cpu" if build_on_cpu else self.device
         for shape, upper in self.shapes:
             *batch_dims, n, nrhs = shape
-            B_mat = torch.randn(*batch_dims, n, n, dtype=cur_dtype, device=self.device)
-            eye = torch.eye(n, dtype=cur_dtype, device=self.device)
+            B_mat = torch.randn(*batch_dims, n, n, dtype=cur_dtype, device=setup_device)
+            eye = torch.eye(n, dtype=cur_dtype, device=setup_device)
             for _ in batch_dims:
                 eye = eye.unsqueeze(0)
             A = B_mat @ B_mat.mH + eye * 0.1
             L = torch.linalg.cholesky(A)
             factor = L.mH.contiguous() if upper else L
-            rhs = torch.randn(*batch_dims, n, nrhs, dtype=cur_dtype, device=self.device)
+            rhs = torch.randn(
+                *batch_dims, n, nrhs, dtype=cur_dtype, device=setup_device
+            )
+            if build_on_cpu:
+                factor = factor.to(self.device)
+                rhs = rhs.to(self.device)
             yield (rhs, factor, upper)
 
 

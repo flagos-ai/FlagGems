@@ -16,7 +16,7 @@ try:
 except ImportError:  # triton without the XPU tile-language extension
     _HAS_TLE = False
 
-logger = logging.getLogger("flag_gems.ops.native_group_norm")
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 

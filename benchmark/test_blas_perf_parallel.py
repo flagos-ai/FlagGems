@@ -939,10 +939,6 @@ class ParallelBenchmarkMixin:
             # helper processes use CUDA_VISIBLE_DEVICES. Keep both consistent.
             env["MACA_VISIBLE_DEVICES"] = str(gpu_id)
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-        elif flag_gems.vendor_name == "hygon":
-            # The HCU plugin may populate this in the parent. Override it for
-            # each worker so HIP does not retain the parent's first device.
-            env["HIP_VISIBLE_DEVICES"] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
 
@@ -1618,6 +1614,10 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
 
 
 @pytest.mark.mm_w8a8
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia",
+    reason="The parallel FP8 benchmark requires CUDA Graph; use test_mm_w8a8_fp8.py on other backends",
+)
 def test_mm_w8a8_fp8():
     if not hasattr(flag_gems, "mm_w8a8_fp8_out"):
         pytest.skip("mm_w8a8_fp8 benchmark requires the Hopper W8A8 backend")

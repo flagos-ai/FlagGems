@@ -19,110 +19,54 @@ weight: 30
  limitations under the License.
  -->
 
+# 性能数据库后端配置
 
-<!--
-# Performance Database Backends
+*FlagGems* 实现了 `LibCache` 数据持久化模块，支持将历史性能评测指标写入关系型数据库，以便于不同提交版本、不同硬件架构之间的横向性能对比与回归追踪。`LibCache` 底层基于 `SQLAlchemy` ORM 框架，可透明适配多种主流数据库后端。
 
-*FlagGems* implements a `LibCache` class for persisting performance benchmark data
-into a database. The `LibCache` interacts with the database backend through
-`sqlalchemy`, a generic database abstraction library.
+连接目标数据库的连接串通过环境变量 `FLAGGEMS_DB_URL` 进行配置。本文以常用的 **SQLite3**（本地嵌入式）与 **PostgreSQL**（网络集中式）为例进行说明。
 
-The connection to the backend database can be specified using the environment variable
-`FLAGGEMS_DB_URL`.
--->
-# 性能数据库后端
+## 1. SQLite3（本地默认后端）
 
-*FlagGems* 实现了一个 `LibCache` 类，用来将性能基准测试数据写入数据库中长期保存。
-`LibCache` 通过 `sqlalchemy` （一个通用的数据库抽象库）来与具体的数据库后端交互。
+默认情况下，基准测试框架采用嵌入式轻量数据库 *SQLite3*。
 
-与后端数据库的连接信息可以使用环境变量 `FLAGGEMS_DB_URL` 来设置。
-本文档以 *SQLite3* 和 *PostgreSQL* 为例讲解数据库后端的配置，
-如果需要，你也可以使用其他数据库管理系统来进行类似的配置。
+### 1.1 文件持久化存储
 
-<!--
-## 1. SQLite3
-
-The default backend is *SQLite3*, an embedded database.
-Please make sure the library `sqlite3` has been installed before running any benchmarks.
-If you want to store the database file in a specific place,
-you can set the environment variable as shown below:
-
--->
-## 1. SQLite3
-
-默认的数据库后端是 *SQLite3*，一种嵌入式数据库。
-在运行性能基准测试之前，请确保 `sqlite3` 库已经被安装。
-如果你希望将数据库文件保存在一个特定位置，可以按如下方式设置环境变量：
+若希望将测试结果持久化保存到本地特定磁盘路径，可声明文件数据库路径：
 
 ```shell
 export FLAGGEMS_DB_URL=sqlite:///${DB_PATH}
 ```
 
-<!--
-If you don't want to maintain or reuse the cached data in your current environment,
-you can choose to use SQLite as an in-memory database. This can be achieved
-by setting the environment variable `FLAGGEMS_DB_URL` as shown below:
--->
-如果你不想在当前的环境中维护或者复用已经缓存的性能数据，你也可以将 SQLite
-作为一种内存数据库来使用。你可以通过按下例所给的方式来设置 `FLAGGEMS_DB_URL`
-环境变量来实现这一点：
+### 1.2 纯内存数据库
+
+若无需在磁盘保留历史数据，仅用于单次单会话临时存储，可启用内存模式（会话结束即自动释放）：
 
 ```shell
 export FLAGGEMS_DB_URL=sqlite:///:memory:
 ```
 
-<!--
-The performance data would be cached in memory during the benchmark session.
-When the session ends, the database would be lost.
--->
-性能数据会在基准测试进行期间缓存在内存中。测试结束之后，数据库会丢失。
+## 2. PostgreSQL（集中式与多节点并发写入）
 
-<!--
-## 2. PostgreSQL
+由于 *SQLite3* 基于文件级锁机制，不支持多并发客户端同时执行写入；而在持续集成（CI/CD）或多机分布式性能评测集群中，通常需要多个节点将基准测试数据集中上报汇总。此时推荐使用 **PostgreSQL**。
 
-As an embedded database, *SQLite3* doesn't support multi-writers at the same time.
-However, having multiple writers writing performace data is a common use case.
-For this reason, we also support using *PostgreSQL* as the backend database.
-Different from the embedded database, *PostgreSQL* requires an additional setup
-step before being used. You could refer to the
-[PostgreSQL document](https://documentation.ubuntu.com/server/how-to/databases/install-postgresql/)
-for setup instructions. Note that you have to install the `psycopg` Python
-package before using *PostgreSQL*.
--->
-## 2. PostgreSQL
+### 2.1 环境准备
 
-作为一种嵌入式数据库，*SQLite3* 不支持同一时刻存在多个写入者的使用场景。
-但是，同时有多个写者写入性能数据是一种很常见的使用情况。
-出于这一原因，我们也支持类似 *PostgreSQL* 这类数据库作为后端数据库。
-与嵌入式数据库不同，*PostgreSQL* 在使用之前需要一些额外的安装部署操作。
-你可以参阅 [PostgreSQL 文档](https://documentation.ubuntu.com/server/how-to/databases/install-postgresql/)
-了解安装指令。需要注意的是，你在使用 *PostgreSQL* 之前必须安装 `psycopg` Python 包。
-
-<!--
-With a backend database like *PostgreSQL* in place, you can use it as a remote database
-to allow several *FlagGems* instances to connect to it at the same time
-and share benchmark results in this way.
-
-After having created your own database, you could use the following environment
-variable make the URL available to the *FlagGems* benchmarking framework.
--->
-有了类似于 *PostgreSQL* 这类后端数据库，你就可以将其作为一种远程数据库，
-支持多个 *FlagGems* 实例同时与它建立连接，共享基准测试数据结果。
-
-创建了自己的数据库之后，你可以使用下面的环境变量将数据库的 URL
-告知 *FlagGems* 的基准测试框架。
+请预先搭建好 PostgreSQL 服务实例，并在 Python 环境中安装对应的数据库驱动包：
 
 ```shell
-export FLAGGEMS_DB_URL=postgresql+psycopg:///${user}:${password}@${host}:${port}/${db}
+pip install psycopg
 ```
 
-<!--
-If the database runs on your local machine, and your account has direct access to it,
-you can set the `FLAGGEMS_DB_URL` environment variable as shown below:
--->
-如果你是在本地机器上运行 *PosgtreSQL* 数据库实例，并且你的账号具有直接访问数据库的权限，
-你可以按下面的方式来设置 `FLAGGEMS_DB_URL` 环境变量：
+### 2.2 配置连接串
 
-```bash
+通过环境变量配置网络连接凭证即可接入远程集中数据库：
+
+```shell
+export FLAGGEMS_DB_URL=postgresql+psycopg://${user}:${password}@${host}:${port}/${db}
+```
+
+若在本地运行免密或本地套接字认证的 PostgreSQL 实例，连接串可简写为：
+
+```shell
 export FLAGGEMS_DB_URL=postgresql+psycopg:///${db}
 ```

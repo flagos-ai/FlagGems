@@ -19,9 +19,7 @@ import triton.language as tl
 
 from flag_gems.ops.ldl_factor_ex import ldl_factor_ex as default_ldl_factor_ex
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float32}
 

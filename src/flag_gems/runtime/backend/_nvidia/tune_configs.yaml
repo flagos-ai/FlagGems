@@ -1850,6 +1850,42 @@ vector_norm:
       - 2
       - 4
       - 8
+frobenius_norm:
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: 1024
+      num_warps: 4
+    block_m:
+      - 1
+      - 2
+      - 4
+      - 8
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: 64
+      num_warps: 4
+    block_m:
+      - 16
+      - 64
+      - 256
+  - gen: true
+    param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+      num_warps: 4
+    block_m:
+      - 64
+      - 256
+    block_n:
+      - 2
+      - 4
+      - 8
+      - 16
 var_mean:
   - gen: true
     param_map:

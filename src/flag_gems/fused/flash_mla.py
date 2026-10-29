@@ -21,7 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import device, error, torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
-from flag_gems.utils.device_info import get_device_capability
+from flag_gems.utils.device_info import get_device_capability, is_amd_radeon
 
 vendor_name = device.vendor_name
 device = device.name
@@ -199,7 +199,11 @@ def flash_mla(
     o = torch.empty([b * s_q, h_q, dv], dtype=q.dtype, device=device)
 
     major, _ = get_device_capability()
-    if major == 9:
+    if is_amd_radeon():
+        # Radeon has 64KB of LDS; the sm80 tile (BLOCK_H=32, 2 stages) needs 76KB.
+        BLOCK_H = 32
+        num_stages = 1
+    elif major == 9:
         BLOCK_H = 64
         num_stages = 3
     elif major == 8:
