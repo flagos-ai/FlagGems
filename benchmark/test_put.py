@@ -17,9 +17,10 @@ import math
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
-
 
 DEFAULT_SHAPES = [(16,), (64, 64), (20, 320, 15), (16, 128, 64, 60)]
 MAX_NUMEL = 2**28
@@ -48,6 +49,13 @@ def _case_fn_factory(accumulate, use_out=False):
     return _case_fn
 
 
+def _put_randperm(numel, *, device):
+    # Enflame's native int64 randperm aborts before the operator under test.
+    # Build the same unique-index fixture on CPU, then preserve its target ABI.
+    factory_device = "cpu" if flag_gems.vendor_name == "enflame" else device
+    return torch.randperm(numel, device=factory_device).to(device)
+
+
 def _build_inputs_fn(plan, dtype, device):
     shape, count, accumulate, use_out = plan.builder_args
     torch.manual_seed(0)
@@ -55,7 +63,7 @@ def _build_inputs_fn(plan, dtype, device):
     index = (
         torch.randint(0, inp.numel(), (count,), dtype=torch.int64, device=device)
         if accumulate
-        else torch.randperm(inp.numel(), device=device)[:count].to(torch.int64)
+        else _put_randperm(inp.numel(), device=device)[:count].to(torch.int64)
     )
     source = torch.randn((count,), dtype=dtype, device=device)
     if use_out:
