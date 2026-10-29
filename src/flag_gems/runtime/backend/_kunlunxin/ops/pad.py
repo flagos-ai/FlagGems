@@ -153,6 +153,14 @@ def generate_destination_passing_padding_wrapper(
     code.writeline(wrapper_signature)
 
     with code.indent():
+        # Zero-sized output: a negative pad may crop some dimension down to 0
+        # (e.g. pad=(-5, 0) on a size-5 dim).  `next_power_of_2(0)` is 0, so the
+        # grid computation below would divide by a zero tile size.  There is
+        # nothing to launch for an empty output -> return it as-is.
+        code.writeline("if out0.numel() == 0: ")
+        with code.indent():
+            code.writeline("return out0")
+        code.newline()
         # docstring
         code.writeline("num_ctas = 12")
         code.writeline(
