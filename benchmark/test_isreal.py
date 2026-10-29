@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
 
 
 def _input_fn(shape, dtype, device):
@@ -29,8 +29,10 @@ def _input_fn(shape, dtype, device):
         # predicate are exercised (torch.randn never yields an exact zero).
         imag[::2] = 0
         yield (torch.complex(real, imag).to(dtype),)
-    else:
+    elif dtype.is_floating_point:
         yield (torch.randn(shape, dtype=dtype, device=device),)
+    else:
+        yield (utils.generate_tensor_input(shape, dtype, device),)
 
 
 @pytest.mark.isreal
