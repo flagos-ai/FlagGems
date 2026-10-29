@@ -26,7 +26,7 @@ weight: 50
 
 FlagGems supports a range of AI chips/platforms beyond NVIDIA.
 For an up-to-date list of validated platforms, please refer to
-[Supported Platforms](/FlagGems/overview/platforms/)
+[Supported Platforms](../overview/platforms.md)
 
 ## 2. Unified usage interface
 
@@ -34,7 +34,7 @@ Regardless of the underlying hardware, the usage of `flag_gems` remains exactly 
 There is no need to modify application code when switching from NVIDIA to non-NVIDIA platforms.
 
 Once you have imported `flag_gems` into your code and
-[enabled *FlagGems* acceleration](/FlagGems/usage/basic/#enabling-flaggems),
+[enabled *FlagGems* acceleration](basic.md#enabling-flaggems),
 the operator dispatch mechanism will automatically route operator invocations
 to the correct implementation for the backend.
 This provides a consistent developer experience across different environments.
@@ -80,7 +80,7 @@ export GEMS_VENDOR=<vendor_name>
 ```
 
 For the list of valid `vendor_name`s, please check the
-[supported platforms](/FlagGems/overview/platforms/) documentation
+[supported platforms](../overview/platforms.md) documentation
 for details.
 
 > [!WARNING]
