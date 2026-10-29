@@ -15,11 +15,9 @@
 import pytest
 import torch
 
-import flag_gems
 from flag_gems.utils import shape_utils
 
 from . import base, consts, utils
-
 
 SHAPES = [(1,), (1024,), (4096,), (4097,), (128, 128), (1024, 1024), (4096, 4096)]
 
@@ -63,7 +61,6 @@ def test_masked_select_backward():
     bench = MaskedSelectBackwardBenchmark(
         op_name="masked_select_backward",
         torch_op=torch.ops.aten.masked_select_backward.default,
-        gems_op=flag_gems.masked_select_backward,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
