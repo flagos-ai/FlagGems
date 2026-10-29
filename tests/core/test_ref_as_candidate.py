@@ -126,6 +126,7 @@ from pathlib import Path
 pkg = types.ModuleType("flag_gems")
 pkg.__path__ = [{str(ROOT / "src/flag_gems")!r}]
 pkg.device = "cpu"
+pkg.vendor_name = "nvidia"
 pkg.add = lambda a, b: -100
 sys.modules["flag_gems"] = pkg
 testing = types.ModuleType("flag_gems.testing")
