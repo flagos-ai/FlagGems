@@ -37,6 +37,62 @@ def _make_inputs(shape, dtype, quant_min, quant_max):
     return inp, scale, zero_point
 
 
+def _snapshot(tensor):
+    storage = tensor.untyped_storage()
+    metadata = (
+        tensor.device,
+        tensor.dtype,
+        tensor.shape,
+        tensor.stride(),
+        tensor.storage_offset(),
+        tensor.requires_grad,
+        tensor.is_conj(),
+        tensor.is_neg(),
+        storage._cdata,
+        storage.data_ptr(),
+        storage.nbytes(),
+    )
+    raw = (
+        torch.empty(0, dtype=torch.uint8)
+        .set_(storage.cpu(), 0, (storage.nbytes(),), (1,))
+        .clone()
+    )
+    return metadata, raw
+
+
+_OMITTED_GRAD_FACTOR = object()
+
+
+def _run_with_contract(
+    inp, scale, zero_point, quant_min, quant_max, grad_factor=_OMITTED_GRAD_FACTOR
+):
+    inputs = [inp, scale, zero_point]
+    snapshots = [_snapshot(value) for value in inputs]
+    if grad_factor is _OMITTED_GRAD_FACTOR:
+        result = flag_gems._fake_quantize_learnable_per_tensor_affine(
+            inp, scale, zero_point, quant_min, quant_max
+        )
+    else:
+        result = flag_gems._fake_quantize_learnable_per_tensor_affine(
+            inp, scale, zero_point, quant_min, quant_max, grad_factor
+        )
+    assert isinstance(result, torch.Tensor)
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
+    for value, (metadata, raw) in zip(inputs, snapshots):
+        current_metadata, current_raw = _snapshot(value)
+        assert current_metadata == metadata
+        assert torch.equal(current_raw, raw)
+        if result.numel() and metadata[10]:
+            storage = result.untyped_storage()
+            assert storage._cdata != metadata[8]
+            start, end = storage.data_ptr(), storage.data_ptr() + storage.nbytes()
+            original_start, original_end = metadata[9], metadata[9] + metadata[10]
+            assert end <= original_start or original_end <= start
+    return result
+
+
 @pytest.mark.fake_quantize_learnable_per_tensor_affine
 @pytest.mark.underscore_fake_quantize_learnable_per_tensor_affine
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -52,9 +108,7 @@ def test_fake_quantize_learnable_per_tensor_affine(shape, dtype, quant_range):
     ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
         ref_inp, ref_scale, ref_zp, quant_min, quant_max
     )
-    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine(
-        inp, scale, zero_point, quant_min, quant_max
-    )
+    res_out = _run_with_contract(inp, scale, zero_point, quant_min, quant_max)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -74,8 +128,6 @@ def test_fake_quantize_learnable_per_tensor_affine_grad_factor(shape, dtype):
     ref_out = torch.ops.aten._fake_quantize_learnable_per_tensor_affine(
         ref_inp, ref_scale, ref_zp, quant_min, quant_max, 0.5
     )
-    res_out = flag_gems._fake_quantize_learnable_per_tensor_affine(
-        inp, scale, zero_point, quant_min, quant_max, 0.5
-    )
+    res_out = _run_with_contract(inp, scale, zero_point, quant_min, quant_max, 0.5)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

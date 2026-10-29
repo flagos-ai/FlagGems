@@ -19,7 +19,6 @@ from flag_gems.utils import shape_utils
 
 from . import base, consts, utils
 
-
 SHAPES = [(1,), (1024,), (4096,), (4097,), (128, 128), (1024, 1024), (4096, 4096)]
 
 

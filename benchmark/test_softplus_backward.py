@@ -15,8 +15,21 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
+from .test_softplus import _SoftplusStaticReference
+
+
+class SoftplusBackwardBenchmark(_SoftplusStaticReference, OperatorBenchmark):
+    _H800_PROFILE = "direct"
+
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "kunlunxin" and case.dtype == torch.bfloat16:
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("native BF16 softplus backward is not implemented on Kunlunxin")
+        return super().build_inputs(case)
 
 
 def _case_fn(shape, dtype):
@@ -38,8 +51,12 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.softplus_backward
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="native softplus backward is CPU fallback; require exact direct H800 profile",
+)
 def test_softplus_backward():
-    OperatorBenchmark(
+    SoftplusBackwardBenchmark(
         op_name="softplus_backward",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,

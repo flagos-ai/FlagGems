@@ -7,6 +7,57 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _cpu_backward_reference(input, grad_output, weight, save_mean, save_invstd, eps):
+    # cuDNN has no CPU dispatch. Native BN uses the same saved inverse standard
+    # deviation directly, including the parameter publicly named save_var.
+    to_cpu = lambda value: value.detach().to(device="cpu", dtype=torch.float64)
+    return torch.ops.aten.native_batch_norm_backward.default(
+        to_cpu(grad_output),
+        to_cpu(input),
+        to_cpu(weight),
+        None,
+        None,
+        to_cpu(save_mean),
+        to_cpu(save_invstd),
+        True,
+        eps,
+        [True, True, True],
+    )
+
+
+def _saved_statistics(input, weight, bias, eps):
+    if flag_gems.vendor_name == "nvidia" and not utils.TO_CPU:
+        _, mean, invstd, reserve = torch.ops.aten.cudnn_batch_norm.default(
+            input,
+            weight,
+            bias,
+            None,
+            None,
+            training=True,
+            exponential_average_factor=0.1,
+            epsilon=eps,
+        )
+        return mean, invstd, reserve
+    # The target may have neither cuDNN forward nor backward. Construct genuine
+    # training statistics on CPU, then retain their required FP32 target ABI.
+    _, mean, invstd = torch.ops.aten.native_batch_norm.default(
+        input.detach().to(device="cpu", dtype=torch.float32),
+        weight.cpu(),
+        bias.cpu(),
+        None,
+        None,
+        True,
+        0.1,
+        eps,
+    )
+    return (
+        mean.to(input.device),
+        invstd.to(input.device),
+        torch.empty(0, dtype=torch.uint8, device=input.device),
+    )
+
+
 @pytest.mark.cudnn_batch_norm_backward
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -24,89 +75,68 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_cudnn_batch_norm_backward(shape, dtype, affine):
+    if (
+        flag_gems.vendor_name == "nvidia"
+        and dtype == torch.bfloat16
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "native cuDNN batch-normalization backward does not support bfloat16"
+        )
     torch.manual_seed(0)
-    C = shape[1]
-    # Create input and weight tensors (no requires_grad for backward kernel test)
+    channels = shape[1]
     res_inp = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    # Always create weight for cudnn_batch_norm_backward
-    res_weight = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
-    # For bias, we always create one but only check gradients when affine=True
-    res_bias = torch.ones(size=(C,), dtype=dtype, device=flag_gems.device)
-
-    eps = 1e-05
-    train = True
-
-    # Run forward pass using cudnn_batch_norm to get saved statistics
-    # Note: cudnn_batch_norm only supports float32 for the weight parameter
-    # so we need to convert to float32 for the forward pass
-    res_inp_f32 = res_inp.to(torch.float32)
-    res_weight_f32 = res_weight.to(torch.float32)
-    # Always use bias for forward pass
-    res_bias_f32 = res_bias.to(torch.float32)
-
-    out_cudnn, save_mean, save_var, reserve = torch.ops.aten.cudnn_batch_norm(
-        res_inp_f32, res_weight_f32, res_bias_f32, None, None, train, eps, False
+    # cuDNN half inputs require FP32 scale and saved statistics. Gradients for
+    # scale and bias follow that FP32 ABI; input gradients retain input dtype.
+    res_weight = torch.ones(channels, dtype=torch.float32, device=flag_gems.device)
+    res_bias = torch.ones_like(res_weight)
+    eps = 1e-5
+    save_mean, save_invstd, reserve = _saved_statistics(
+        res_inp, res_weight, res_bias, eps
     )
-
-    # Convert back to the test dtype
-    save_mean = save_mean.to(dtype)
-    save_var = save_var.to(dtype)
-
-    # Create grad_output (all ones for simplicity)
-    grad_output = torch.ones_like(out_cudnn).to(dtype)
-    reserve_space = torch.empty(0, dtype=dtype, device=flag_gems.device)
-
-    # Reference implementation using native_batch_norm_backward
-    ref_grad = utils.to_reference(grad_output, True)
-    ref_inp = utils.to_reference(res_inp, True)
-    ref_weight = utils.to_reference(res_weight, True)
-    ref_save_mean = utils.to_reference(save_mean, True)
-    ref_save_var = utils.to_reference(save_var, True)
-    ref_save_invstd = torch.rsqrt(ref_save_var + eps)
-    # For native_batch_norm_backward, we still need to output all gradients
-    output_mask = [True, True, True]
-
-    (
-        ref_in_grad,
-        ref_weight_grad,
-        ref_bias_grad,
-    ) = torch.ops.aten.native_batch_norm_backward(
-        ref_grad,
-        ref_inp,
-        ref_weight,
-        None,  # running_mean
-        None,  # running_var
-        ref_save_mean,
-        ref_save_invstd,
-        train,
-        eps,
-        output_mask,
-    )
-
-    # Run FlagGems implementation
-    (
-        res_in_grad,
-        res_weight_grad,
-        res_bias_grad,
-    ) = flag_gems.cudnn_batch_norm_backward(
+    grad_output = torch.ones_like(res_inp)
+    args = (
         res_inp,
         grad_output,
         res_weight,
-        None,  # running_mean
-        None,  # running_var
+        None,
+        None,
         save_mean,
-        save_var,
+        save_invstd,
         eps,
-        reserve_space,
+        reserve,
     )
-
-    reduce_dim = math.prod(shape) // C
-    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
-    # Only check weight and bias gradients when affine=True
+    if flag_gems.vendor_name == "nvidia" and not utils.TO_CPU:
+        reference = torch.ops.aten.cudnn_batch_norm_backward.default(*args)
+    else:
+        reference = _cpu_backward_reference(
+            res_inp, grad_output, res_weight, save_mean, save_invstd, eps
+        )
+    inputs = [res_inp, grad_output, res_weight, save_mean, save_invstd, reserve]
+    before = [value.clone() for value in inputs]
+    result = flag_gems.cudnn_batch_norm_backward(*args)
+    assert isinstance(result, (tuple, list)) and len(result) == 3
+    expected_shapes = [res_inp.shape, res_weight.shape, res_weight.shape]
+    expected_dtypes = [dtype, res_weight.dtype, res_weight.dtype]
+    for actual, expected_shape, expected_dtype in zip(
+        result, expected_shapes, expected_dtypes
+    ):
+        assert isinstance(actual, torch.Tensor)
+        assert actual.device == res_inp.device
+        assert actual.shape == expected_shape and actual.dtype == expected_dtype
+        assert all(
+            actual.untyped_storage().data_ptr() != value.untyped_storage().data_ptr()
+            for value in inputs
+        )
+    for actual, original in zip(inputs, before):
+        assert torch.equal(actual, original)
+    reduce_dim = math.prod(shape) // channels
+    # Check target ABI before transferring both values for numerical comparison.
+    utils.gems_assert_close(
+        result[0].cpu(), reference[0].cpu(), dtype, reduce_dim=reduce_dim
+    )
     if affine:
-        utils.gems_assert_close(
-            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
-        )
-        utils.gems_assert_close(
-            res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
-        )
+        for actual, expected in zip(result[1:], reference[1:]):
+            utils.gems_assert_close(
+                actual.cpu(), expected.cpu(), res_weight.dtype, reduce_dim=reduce_dim
+            )

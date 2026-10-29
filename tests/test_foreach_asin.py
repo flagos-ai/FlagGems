@@ -70,13 +70,15 @@ def _output_dtype(dtype):
     return dtype
 
 
-def _assert_values(actual, expected, expected_dtype):
+def _assert_values(actual, expected, expected_dtype, *, equal_nan=False):
     assert len(actual) == len(expected)
     for result, reference in zip(actual, expected):
         assert result.shape == reference.shape
         assert result.dtype == expected_dtype
         if result.dtype.is_floating_point or result.dtype.is_complex:
-            utils.gems_assert_close(result, reference, result.dtype)
+            utils.gems_assert_close(
+                result, reference, result.dtype, equal_nan=equal_nan
+            )
         else:
             utils.gems_assert_equal(result, reference)
 
@@ -127,7 +129,8 @@ def test_foreach_asin_integer_promotion():
         return
     expected = _ATEN_OP(reference_values)
     result = _gems_op(values)
-    _assert_values(result, expected, expected[0].dtype)
+    # The integer sample includes values outside asin's real-valued domain.
+    _assert_values(result, expected, expected[0].dtype, equal_nan=True)
 
 
 @pytest.mark.foreach_asin

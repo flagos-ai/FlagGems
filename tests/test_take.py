@@ -58,8 +58,13 @@ def _assert_matches_torch(inp, index, out=None):
     ref_idx = utils.to_reference(index)
     if out is None:
         ref_out = torch.take(ref_inp, ref_idx)
-        with flag_gems.use_gems():
-            result = torch.take(inp, index)
+        expected_device, expected_dtype = inp.device, inp.dtype
+        expected_shape = tuple(index.shape)
+        result = flag_gems.take(inp, index)
+        assert isinstance(result, torch.Tensor)
+        assert result.device == expected_device
+        assert result.dtype == expected_dtype
+        assert tuple(result.shape) == expected_shape
     else:
         ref_out = torch.empty(index.shape, dtype=inp.dtype, device=ref_inp.device)
         torch.take(ref_inp, ref_idx, out=ref_out)
@@ -110,6 +115,12 @@ def test_take_out_of_bounds(bad):
     index = torch.tensor([0, bad], dtype=torch.int64)
     with pytest.raises(IndexError):
         torch.take(inp, index)
+
+    # Exercise the candidate with safe indices after the CPU bounds check;
+    # invalid accelerator indices can poison the remaining test process.
+    safe_input = inp.to(flag_gems.device)
+    safe_index = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+    _assert_matches_torch(safe_input, safe_index)
 
 
 @pytest.mark.take
@@ -162,6 +173,8 @@ def test_take_multidim_index():
     inp = _make_input((4, 6), torch.float32)
     index = _make_index(inp.numel(), (3, 5))
     _assert_matches_torch(inp, index)
-    with flag_gems.use_gems():
-        result = torch.take(inp, index)
+    result = flag_gems.take(inp, index)
+    assert isinstance(result, torch.Tensor)
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
     assert tuple(result.shape) == (3, 5)

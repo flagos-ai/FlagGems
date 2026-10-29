@@ -131,7 +131,6 @@ def test__conj_physical():
         torch_op=torch.ops.aten._conj_physical,
         dtypes=consts.COMPLEX_DTYPES,
     )
-    bench.set_gems(flag_gems.ops._conj_physical)
     bench.run()
 
 

@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import gru_cpu_reference as gru_oracle
 from .conftest import QUICK_MODE, TO_CPU
 
 DTYPES = utils.ALL_FLOAT_DTYPES
@@ -86,6 +87,8 @@ def _reference(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None)
     ref_hidden_bias = (
         utils.to_reference(hidden_bias) if hidden_bias is not None else None
     )
+    if flag_gems.vendor_name == "ascend":
+        return gru_oracle.forward(*args, ref_input_bias, ref_hidden_bias)
     if args[0].device.type == "cpu":
         return _manual_reference(
             *args, input_bias=ref_input_bias, hidden_bias=ref_hidden_bias
@@ -93,13 +96,21 @@ def _reference(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None)
     return torch.ops.aten._thnn_fused_gru_cell(*args, ref_input_bias, ref_hidden_bias)
 
 
-def _assert_close(result, reference, dtype):
-    for actual, expected in zip(result, reference):
+def _assert_close(result, reference, dtype, expected_device, out_before=None):
+    assert isinstance(result, (tuple, list)) and len(result) == len(reference) == 2
+    for index, (actual, expected) in enumerate(zip(result, reference)):
+        assert isinstance(actual, torch.Tensor)
+        assert actual.device == expected_device
+        assert actual.dtype == dtype
+        assert actual.shape == expected.shape
+        if out_before is not None and out_before[index][2] == tuple(expected.shape):
+            assert actual.stride() == out_before[index][3]
+            assert actual.data_ptr() == out_before[index][4]
         utils.gems_assert_close(actual, expected, dtype)
 
 
 def _reference_out(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None):
-    if TO_CPU:
+    if TO_CPU or flag_gems.vendor_name == "ascend":
         return _reference(input_gates, hidden_gates, hx, input_bias, hidden_bias)
     args = tuple(
         utils.to_reference(value) if value is not None else None
@@ -111,7 +122,7 @@ def _reference_out(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=N
     )
 
 
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.underscore_thnn_fused_gru_cell
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("with_bias", [False, True])
@@ -125,14 +136,15 @@ def test_accuracy_thnn_fused_gru_cell(shape, dtype, with_bias):
         hidden_bias = torch.randn_like(input_bias)
     reference = _reference(input_gates, hidden_gates, hx, input_bias, hidden_bias)
 
+    expected_device = input_gates.device
     result = flag_gems._thnn_fused_gru_cell(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
 
-    _assert_close(result, reference, dtype)
+    _assert_close(result, reference, dtype, expected_device)
 
 
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.underscore_thnn_fused_gru_cell
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_accuracy_thnn_fused_gru_cell_noncontiguous(dtype):
     batch_size, hidden_size = 5, 19
@@ -145,35 +157,38 @@ def test_accuracy_thnn_fused_gru_cell_noncontiguous(dtype):
     ]
     reference = _reference(input_gates, hidden_gates, hx, input_bias, hidden_bias)
 
+    expected_device = input_gates.device
     result = flag_gems._thnn_fused_gru_cell(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
 
-    _assert_close(result, reference, dtype)
+    _assert_close(result, reference, dtype, expected_device)
 
 
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.underscore_thnn_fused_gru_cell
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_accuracy_thnn_fused_gru_cell_empty(shape):
     input_gates, hidden_gates, hx = _make_inputs(*shape, torch.float32)
     reference = _reference(input_gates, hidden_gates, hx)
+    expected_device = input_gates.device
     result = flag_gems._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
-    _assert_close(result, reference, torch.float32)
+    _assert_close(result, reference, torch.float32, expected_device)
 
 
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.underscore_thnn_fused_gru_cell
 def test_accuracy_thnn_fused_gru_cell_hidden_bias_without_input_bias():
     batch_size, hidden_size = 3, 11
     input_gates, hidden_gates, hx = _make_inputs(batch_size, hidden_size, torch.float32)
     hidden_bias = torch.randn(3 * hidden_size, device=flag_gems.device)
     reference = _reference(input_gates, hidden_gates, hx, hidden_bias=hidden_bias)
+    expected_device = input_gates.device
     result = flag_gems._thnn_fused_gru_cell(
         input_gates, hidden_gates, hx, hidden_bias=hidden_bias
     )
-    _assert_close(result, reference, torch.float32)
+    _assert_close(result, reference, torch.float32, expected_device)
 
 
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.underscore_thnn_fused_gru_cell
 def test_accuracy_thnn_fused_gru_cell_rejects_input_bias_only():
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
     input_bias = torch.randn(21, device=flag_gems.device)
@@ -183,8 +198,11 @@ def test_accuracy_thnn_fused_gru_cell_rejects_input_bias_only():
         )
 
 
-@pytest.mark.skipif(TO_CPU, reason="native fused GRU cell is CUDA-only")
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.skipif(
+    TO_CPU and flag_gems.vendor_name != "ascend",
+    reason="native fused GRU cell is CUDA-only",
+)
+@pytest.mark.underscore_thnn_fused_gru_cell
 @pytest.mark.parametrize("dtype", [torch.int32, torch.bool, torch.complex64])
 def test_thnn_fused_gru_cell_rejects_unsupported_dtype(dtype):
     shape = (2, 21)
@@ -193,14 +211,25 @@ def test_thnn_fused_gru_cell_rejects_unsupported_dtype(dtype):
             0, 2, shape, dtype=torch.int32, device=flag_gems.device
         ).bool()
     elif dtype.is_complex:
-        input_gates = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        # Ascend normal_ cannot construct complex tensors; keep the target ABI.
+        source_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+        input_gates = torch.randn(shape, dtype=dtype, device=source_device).to(
+            flag_gems.device
+        )
     else:
         input_gates = torch.randint(-4, 5, shape, dtype=dtype, device=flag_gems.device)
-    hidden_gates = torch.zeros_like(input_gates)
-    hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        hidden_gates = torch.zeros_like(input_gates, device="cpu").to(flag_gems.device)
+        hx = torch.zeros((2, 7), dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        hidden_gates = torch.zeros_like(input_gates)
+        hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
-        torch.ops.aten._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
+        if flag_gems.vendor_name == "ascend":
+            gru_oracle.forward(input_gates, hidden_gates, hx)
+        else:
+            torch.ops.aten._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
     with pytest.raises(RuntimeError):
         flag_gems._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
 
@@ -213,7 +242,7 @@ def _make_noncontiguous_outputs(batch_size, hidden_size, dtype):
     return out0, out1
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_accuracy_thnn_fused_gru_cell_out(dtype):
     batch_size, hidden_size = 7, 37
@@ -223,6 +252,10 @@ def test_accuracy_thnn_fused_gru_cell_out(dtype):
     reference = _reference_out(input_gates, hidden_gates, hx, input_bias, hidden_bias)
     outputs = _make_noncontiguous_outputs(batch_size, hidden_size, dtype)
 
+    expected_device = input_gates.device
+    out_before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in outputs
+    ]
     result = flag_gems._thnn_fused_gru_cell_out(
         input_gates,
         hidden_gates,
@@ -234,24 +267,30 @@ def test_accuracy_thnn_fused_gru_cell_out(dtype):
     )
 
     assert result[0] is outputs[0] and result[1] is outputs[1]
-    _assert_close(result, reference, dtype)
+    _assert_close(result, reference, dtype, expected_device, out_before=out_before)
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 def test_accuracy_thnn_fused_gru_cell_out_resize():
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
     reference = _reference_out(input_gates, hidden_gates, hx)
     outputs = tuple(torch.empty(0, device=flag_gems.device) for _ in range(2))
+    expected_device = input_gates.device
+    out_before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in outputs
+    ]
     result = flag_gems._thnn_fused_gru_cell_out(
         input_gates, hidden_gates, hx, out0=outputs[0], out1=outputs[1]
     )
     assert result[0] is outputs[0] and result[1] is outputs[1]
     assert tuple(outputs[0].shape) == (2, 7)
     assert tuple(outputs[1].shape) == (2, 35)
-    _assert_close(result, reference, torch.float32)
+    _assert_close(
+        result, reference, torch.float32, expected_device, out_before=out_before
+    )
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 @pytest.mark.parametrize("operand_index", range(5))
 @pytest.mark.parametrize("output_index", [0, 1])
 def test_thnn_fused_gru_cell_out_aliases_input(operand_index, output_index):
@@ -260,7 +299,7 @@ def test_thnn_fused_gru_cell_out_aliases_input(operand_index, output_index):
     ref_args = [value.clone() for value in args]
     ref_outputs = list(_make_noncontiguous_outputs(17, 37, torch.float32))
     ref_outputs[output_index] = ref_args[operand_index]
-    if TO_CPU:
+    if TO_CPU or flag_gems.vendor_name == "ascend":
         reference = _reference(*ref_args)
     else:
         reference = torch.ops.aten._thnn_fused_gru_cell.out(
@@ -268,12 +307,18 @@ def test_thnn_fused_gru_cell_out_aliases_input(operand_index, output_index):
         )
     outputs = list(_make_noncontiguous_outputs(17, 37, torch.float32))
     outputs[output_index] = args[operand_index]
+    expected_device = args[0].device
+    out_before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in outputs
+    ]
     result = flag_gems._thnn_fused_gru_cell_out(*args, out0=outputs[0], out1=outputs[1])
     assert result[output_index] is outputs[output_index]
-    _assert_close(result, reference, torch.float32)
+    _assert_close(
+        result, reference, torch.float32, expected_device, out_before=out_before
+    )
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 @pytest.mark.parametrize("output_index", [0, 1])
 def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
@@ -281,7 +326,10 @@ def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
         torch.empty((2, 7), dtype=torch.float32, device=flag_gems.device),
         torch.empty((2, 35), dtype=torch.float32, device=flag_gems.device),
     ]
-    outputs[output_index] = outputs[output_index].to(torch.float64)
+    # Ascend silently casts requested Float64 buffers to Float32. Use a real
+    # supported mismatch so this remains a dtype-rejection test on the target.
+    wrong_dtype = torch.float16 if flag_gems.vendor_name == "ascend" else torch.float64
+    outputs[output_index] = outputs[output_index].to(wrong_dtype)
     with pytest.raises(RuntimeError):
         flag_gems._thnn_fused_gru_cell_out(
             input_gates,
@@ -292,7 +340,7 @@ def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
         )
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 @pytest.mark.parametrize("output_index", [0, 1])
 def test_thnn_fused_gru_cell_out_rejects_invalid_device(output_index):
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
@@ -314,7 +362,7 @@ def test_thnn_fused_gru_cell_out_rejects_invalid_device(output_index):
         )
 
 
-@pytest.mark.thnn_fused_gru_cell_out
+@pytest.mark.underscore_thnn_fused_gru_cell_out
 def test_thnn_fused_gru_cell_out_rejects_overlapping_outputs():
     input_gates, hidden_gates, hx = _make_inputs(2, 7, torch.float32)
     storage = torch.empty((2, 35), device=flag_gems.device)
@@ -325,8 +373,11 @@ def test_thnn_fused_gru_cell_out_rejects_overlapping_outputs():
         )
 
 
-@pytest.mark.skipif(TO_CPU, reason="native fused GRU cell is CUDA-only")
-@pytest.mark.thnn_fused_gru_cell
+@pytest.mark.skipif(
+    TO_CPU and flag_gems.vendor_name != "ascend",
+    reason="native fused GRU cell is CUDA-only",
+)
+@pytest.mark.underscore_thnn_fused_gru_cell
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("with_bias", [False, True])
 def test_thnn_fused_gru_cell_backward_end_to_end(dtype, with_bias):
@@ -338,21 +389,37 @@ def test_thnn_fused_gru_cell_backward_end_to_end(dtype, with_bias):
         input_bias = torch.randn(3 * hidden_size, dtype=dtype, device=flag_gems.device)
         hidden_bias = torch.randn_like(input_bias)
 
-    ref_hy, ref_workspace = torch.ops.aten._thnn_fused_gru_cell(
+    ref_hy, ref_workspace = _reference(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
+    expected_device = input_gates.device
     hy, workspace = flag_gems._thnn_fused_gru_cell(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
+    _assert_close((hy, workspace), (ref_hy, ref_workspace), dtype, expected_device)
     grad_hy = torch.randn_like(hy)
-    reference = torch.ops.aten._thnn_fused_gru_cell_backward(
-        grad_hy, ref_workspace, with_bias
-    )
-    result = torch.ops.aten._thnn_fused_gru_cell_backward(grad_hy, workspace, with_bias)
+    if flag_gems.vendor_name == "ascend":
+        reference = gru_oracle.backward(
+            utils.to_reference(grad_hy), ref_workspace, with_bias
+        )
+        result = gru_oracle.backward(grad_hy, workspace, with_bias)
+    else:
+        reference = torch.ops.aten._thnn_fused_gru_cell_backward(
+            grad_hy, ref_workspace, with_bias
+        )
+        result = torch.ops.aten._thnn_fused_gru_cell_backward(
+            grad_hy, workspace, with_bias
+        )
 
     utils.gems_assert_close(hy, ref_hy, dtype)
-    for actual, expected in zip(result, reference):
+    for index, (actual, expected) in enumerate(zip(result, reference)):
         if expected is None:
             assert actual is None
         else:
+            assert isinstance(actual, torch.Tensor)
+            assert (actual.device, actual.dtype, actual.shape) == (
+                expected_device,
+                dtype,
+                expected.shape,
+            )
             utils.gems_assert_close(actual, expected, dtype)

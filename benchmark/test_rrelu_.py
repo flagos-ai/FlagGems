@@ -56,7 +56,7 @@ class RreluTrainBenchmark(base.UnaryPointwiseBenchmark):
 @pytest.mark.rrelu_
 def test_rrelu__training():
     bench = RreluTrainBenchmark(
-        op_name="rrelu__training",
+        op_name="rrelu_",
         torch_op=torch.rrelu_,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
