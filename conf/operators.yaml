@@ -19190,6 +19190,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_csr_prod
+  description: 'Multiplies the stored entries of a 2-D sparse CSR tensor along dim
+    and returns a sparse CSR tensor. Only stored entries participate, so the result
+    sparsity follows the layout; an implicit (unstored) zero is not multiplied in,
+    while an explicitly stored zero drives the product to zero.
+
+    '
+  for:
+  - _sparse_csr_prod
+  - _sparse_csr_prod.dim_dtype
+  - _sparse_csr_prod.dim_dtype_out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_dim
   description: 'Returns the number of sparse dimensions of a tensor: 0 for strided
     tensors, the index count for sparse COO, 2 for compressed layouts.
