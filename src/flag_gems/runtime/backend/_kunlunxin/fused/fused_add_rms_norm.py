@@ -16,6 +16,7 @@ import builtins
 import logging
 import math
 
+import torch
 import triton
 import triton.language as tl
 
@@ -34,10 +35,37 @@ logger = logging.getLogger(__name__)
 # owns TILE_M rows, reduces along axis=1) cuts the grid from M to cdiv(M, TILE_M) and
 # amortizes launch cost. The 2D axis=1 reduce is slower per element, so gate it
 # strictly to the launch-bound corner: N small AND M large. Otherwise keep per-row.
-MULTIROW_N = 256  # multi-row tile only pays off for normalized dims this small
+MULTIROW_N = 256  # masked multi-row tile only pays off for dims this small
 MULTIROW_M = 4096  # ... and only once there are enough rows to be launch-bound
 TILE_BUDGET = 8192  # rows * cols per 2D tile; keeps the tile in SRAM
 MULTIROW_MIN_GRID = 64  # keep at least ~this many programs so cores stay busy
+
+# --- Unmasked multi-row tile (the big win for mid-size N) ---------------------
+# The masked 2D tile above is only a win for very small N. Measured on this XPU
+# (M=32768, N=512, fp16) the row mask itself, not the 2D shape, is what costs:
+#   per-row grid=(M,)      21.2 ms   (speedup 0.013)
+#   2D tile, masked        43.5 ms   (speedup 0.006)  <- worse than per-row
+#   2D tile, UNMASKED       0.67 ms  (speedup 0.39)   <- 63x faster than masked
+# So for N in (MULTIROW_N, UNMASKED_N] we emit a fully unmasked kernel, which
+# requires M % TILE_M == 0; TILE_M walks down by powers of two until it divides
+# M. Everything else (launch kwargs, TILE_M beyond the budget, a per-row inner
+# loop, flat load + reshape) measured as noise, slower, or uncompilable.
+UNMASKED_N = 4096  # largest normalized dim that still fits an unmasked tile
+# The tile is NOT only for huge M -- it is a large win as soon as there are
+# enough rows to form a few tiles. Measured M=1024, N=1024 (per-row vs best
+# tile): fp16 1.18 -> 5.83, fp32 1.35 -> 5.49, bf16 1.06 -> 4.17. So the row
+# gate is just "enough rows to fill the grid", not the MULTIROW_M of the masked
+# path above.
+UNMASKED_M = 512
+# TILE_M * N budget: the kernel holds the fp32 [TILE_M, N] tile live across the
+# reduce, and bf16 needs ~2x the SRAM of fp16/fp32 for the same tile, so it gets
+# a smaller budget or it fails to compile with `uni_sram`. Cap it per dtype
+# here; do NOT instead catch OutOfResources at launch and retry a lighter
+# kernel, because the failed compile is re-attempted on every call (that
+# measured bf16 speedup 0.009 vs 2.59 for the capped budget).
+UNMASKED_TILE_ELEMS = 32768
+UNMASKED_TILE_ELEMS_BF16 = 8192
+UNMASKED_MIN_GRID = 8  # below this the grid is too small to fill the cores
 
 
 def _prev_pow2(n):
@@ -57,6 +85,28 @@ def _pick_tile_m(M, N):
     budget_cap = _prev_pow2(TILE_BUDGET // N)
     grid_cap = _prev_pow2(builtins.max(1, M // MULTIROW_MIN_GRID))
     return builtins.max(1, builtins.min(budget_cap, grid_cap))
+
+
+def _pick_unmasked_tile_m(M, N, dtype):
+    """Largest power-of-2 TILE_M that fits the SRAM budget and divides M exactly.
+
+    Returns None when no such TILE_M leaves a usable grid, in which case the
+    caller must fall back to a masked path (the unmasked kernel would read out
+    of bounds).
+    """
+    # bf16 holds ~2x the SRAM for the same tile, so cap its budget instead of
+    # letting the keep-live kernel fail to compile. (Catching OutOfResources at
+    # launch and retrying is NOT viable: the failed compile is re-attempted on
+    # every call and costs ~40x -- measured bf16 speedup 0.009 that way.)
+    budget = (
+        UNMASKED_TILE_ELEMS_BF16 if dtype == torch.bfloat16 else UNMASKED_TILE_ELEMS
+    )
+    tile_m = builtins.min(_prev_pow2(budget // N), _prev_pow2(M))
+    while tile_m > 1 and M % tile_m:
+        tile_m //= 2
+    if tile_m < 2 or (M // tile_m) < UNMASKED_MIN_GRID:
+        return None
+    return tile_m
 
 
 @libentry()
@@ -210,6 +260,44 @@ def fused_add_rmsnorm_multirow_kernel(
     tl.store(X + offs, y.to(X.dtype.element_ty), mask=m_mask[:, None])
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def fused_add_rmsnorm_unmasked_kernel(
+    X,  # pointer to the input (gets normalized output)
+    R,  # pointer to the residual (gets x + r)
+    W,  # pointer to the weight
+    eps,  # epsilon to avoid division by zero
+    TILE_M: tl.constexpr,
+    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+):
+    # Each program owns a [TILE_M, N] tile with NO masks anywhere: the caller
+    # guarantees M % TILE_M == 0, so every lane is in range. Dropping the row
+    # mask is worth 63x here (see the UNMASKED_N note above) because a masked
+    # 2D tile falls off the XPU block-DMA path entirely.
+    #
+    # N is a constexpr and n_off spans exactly [0, N) with no power-of-2
+    # padding, so the tile is one stride-1 contiguous block.
+    #
+    # `x` is also deliberately reused for the normalized value instead of
+    # keeping a separate `y`: fewer live fp32 [TILE_M, N] temporaries measured
+    # ~5% faster and is what lets bf16 fit in uni_sram at all.
+    pid = ext.program_id(0)
+
+    n_off = tl.arange(0, N)
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    offs = m_off[:, None] * N + n_off[None, :]
+
+    x = tl.load(X + offs).to(tl.float32) + tl.load(R + offs).to(tl.float32)
+    # write the residual sum back to R
+    tl.store(R + offs, x.to(R.dtype.element_ty))
+
+    rrms = 1.0 / tl.sqrt(tl.sum(x * x, axis=1) / N + eps)
+    x = x * rrms[:, None]
+    x = x * tl.load(W + n_off).to(tl.float32)[None, :]
+    # write the normalized output back to X
+    tl.store(X + offs, x.to(X.dtype.element_ty))
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     """
     This function performs fused residual addition and RMS normalization **in-place**.
@@ -256,8 +344,25 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
                 isCloseVectorization=True,
             )
         else:
-            need_mask = (N % BLOCK_SIZE) != 0
-            fused_add_rmsnorm_kernel[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
+            # Mid-size N (256 < N <= 4096) with enough rows is still badly
+            # launch-bound at grid=(M,) (e.g. M=32768 N=512 fp16: 21.2 ms,
+            # speedup 0.013). An UNMASKED multi-row tile fixes it (0.67 ms,
+            # speedup 0.39) but needs M % TILE_M == 0, so only take it when such
+            # a TILE_M exists; otherwise keep the correct per-row kernel.
+            tile_m = (
+                _pick_unmasked_tile_m(M, N, x.dtype)
+                if N <= UNMASKED_N and M >= UNMASKED_M
+                else None
             )
+            if tile_m is not None:
+                # The keep-live kernel is fastest for every dtype at the TILE_M
+                # its budget allows (bf16's budget is capped so it still fits).
+                fused_add_rmsnorm_unmasked_kernel[(M // tile_m,)](
+                    x, residual, weight, eps, tile_m, N
+                )
+            else:
+                need_mask = (N % BLOCK_SIZE) != 0
+                fused_add_rmsnorm_kernel[M,](
+                    x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
+                )
     return x, residual

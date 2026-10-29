@@ -30,7 +30,13 @@ config_ = CodeGenConfig(
     prefer_1d_tile=True,
     buffer_size_limit=4096,
     isCloseVectorization=True,
-    unroll_num=8,
+    # Reciprocal is bandwidth bound, so the win comes from keeping more
+    # in-flight loads per core rather than from wider lanes: unroll 16 measured
+    # best on P800 (8 -> 0.85, 16 -> 0.87, 32 -> 0.81), and enabling
+    # vectorization here regresses to ~0.69.  kunlunAutoGrid keeps small
+    # tensors on a single cluster, which lifts the 64x64 shapes.
+    kunlunAutoGrid=True,
+    unroll_num=16,
 )
 
 

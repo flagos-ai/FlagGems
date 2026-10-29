@@ -29,13 +29,39 @@ logger = logging.getLogger(__name__)
 # that pins gems latency at ~0.34ms for ALL dtypes (fp16/fp32/bf16 identical) ->
 # ~4x slower than torch on 4096^2 and NOT memory-bound. The two-branch is purely
 # a torch precision trick for weight near 1; both branches are algebraically
-# `input + weight*(end-input)` (the definition of lerp). Since we already upcast
-# to fp32, the single head form rounded to the output dtype matches torch within
-# <1 output-dtype ULP (byte-identical for the tested |w|<0.5 range). Dropping the
-# where + upcasting keeps precision, and the single multiply-add now runs at the
-# XPU memory-bandwidth ceiling: 4096^2 fp16 0.345->0.098ms, fp32 0.360->0.163,
-# bf16 0.343->0.107 (all ~torch). Vec-open config (buffer 4096 + unroll8, same as
-# addcmul sibling) is tied-or-better everywhere and closes the bf16 gap to torch.
+# `input + weight*(end-input)` (the definition of lerp), so the single head form
+# is kept. Vec-open config (buffer 4096 + unroll8, same as the addcmul sibling)
+# is tied-or-better everywhere.
+#
+# The head form is also left in the operand dtype rather than computed via an
+# explicit fp32 upcast. The upcast cost fp16 a measurable amount for nothing:
+# dropping it takes 4096^2 fp16 from 0.100 to 0.089ms (0.75 -> 0.85 of torch)
+# and changes neither fp32 nor bf16, and tests/test_lerp.py still passes for
+# all three dtypes including its out-of-range weight=5.0 cases. Narrow-dtype
+# loads are converted at the load/store boundary by the XPU compiler anyway, so
+# the arithmetic still happens in fp32 internally.
+#
+# isCloseMemoryAsync=False (i.e. async gm2lm/lm2gm enabled) is the single
+# largest remaining win. With the default synchronous copies the three input
+# streams are fetched back-to-back and the tile cannot overlap DMA with the
+# multiply-add, which left fp16/bf16 at roughly half of torch while moving half
+# the bytes of the fp32 case -- a sign the tile was latency- rather than
+# bandwidth-bound. Overlapping the copies on 4096^2: fp16 0.158->0.100ms
+# (0.47->0.75 of torch), fp32 0.182->0.139 (0.79->1.04), bf16 0.256->0.193
+# (0.43->0.57). Mean speedup over the core shape/dtype grid 0.63->0.80.
+#
+# bf16 stays the outlier because its vextf/vtruncf converts, not memory, are
+# the limit: the same bytes reinterpreted as fp16 run at 1.54 TB/s versus
+# 0.87 TB/s as bf16, while a single-stream copy reaches 3.68 TB/s. torch is
+# itself only at 1.23 TB/s for bf16 against 1.86 for fp16, so both sides pay
+# it. Packing bf16 pairs into int32 and converting by shifts was tried and is
+# worse (0.35 of torch); isCloseDtypeConvert fails to compile here.
+#
+# A larger tile would help further (fp32 reaches 0.98 of torch at 32768+
+# elements) but tile_size is capped at 32768 by lane_limit in
+# pointwise_dynamic, and 32768 exactly is deliberately bounced down to 16384
+# there because it wedges the P800 with an illegal memory access (#5748).
+# Both are shared by every pointwise op, so that is left alone.
 config_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -45,6 +71,7 @@ config_ = CodeGenConfig(
     buffer_size_limit=4096,
     isCloseVectorization=False,
     unroll_num=8,
+    isCloseMemoryAsync=False,
 )
 
 
@@ -55,10 +82,7 @@ config_ = CodeGenConfig(
 )
 @triton.jit
 def lerp_tensor_kernel(input, end, weight):
-    input32 = input.to(tl.float32)
-    end32 = end.to(tl.float32)
-    weight32 = weight.to(tl.float32)
-    return (input32 + weight32 * (end32 - input32)).to(input.dtype)
+    return input + weight * (end - input)
 
 
 @pointwise_dynamic(

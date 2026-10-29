@@ -39,14 +39,35 @@ torch_dtype_to_tl_dtype_and_max_value = {
 # compile ("out of resource: uni_sram" / "2D Shape[-1] <= core_num *
 # buffer_size Limit"). Such N is handled by the two-stage reduction below.
 MAX_TILE_N = 8192
-# Chunk width / row-tile for the two-stage large-N path (measured fastest on XPU).
+# Chunk width / row-tile for the two-stage large-N path. Re-measured on
+# (4096,4096) dim=1 across BLOCK_N 128..32768 x BLOCK_M 1..256: BLOCK_N=2048
+# is at the flat top of the curve (4096 ties within noise, >=8192 is 2-4x
+# worse, and BLOCK_M=128 with BLOCK_N<4096 fails to compile on uni_sram), and
+# BLOCK_M=64 beats 32 by ~10%. The remaining gap to torch is not tiling: a
+# plain tl.min over this data runs at 213 GB/s while the same reduce carrying
+# indices caps near 85 GB/s, so this path is bounded by the backend's 2D
+# argmin lowering, not by block size.
 STAGE_BLOCK_N = 2048
-STAGE_BLOCK_M = 32
+STAGE_BLOCK_M = 64
 # For a contiguous inner reduce (K == 1), route N at or above this width to the
 # constexpr two-stage path even when it would fit a single tile: the runtime-N/K
 # single-tile kernel degrades to discrete access and is far slower here. Below
 # this, single-tile launch overhead wins and the discrete penalty is negligible.
 TWO_STAGE_MIN_N = 256
+
+# --- Flat (dim=None) reduce tuning ---------------------------------------
+# Per-program width for the flat two-pass reduce. The old rule
+# (next_power_of_2(sqrt(M))) gives only 1024 for M=1M, which leaves the XPU
+# load unit almost idle: a flat min-reduce reaches 8 GB/s at 1024 but 310 GB/s
+# at 32768. Measured on (1048576,): fp16 263us -> 44us, fp32 299us -> 39us.
+# Past 32768 the gain flattens (<10%) while per-program SRAM keeps growing, so
+# this is the knee rather than the maximum.
+FLAT_BLOCK_SIZE = 32768
+# `buffer_size_limit` MUST stay >= 2048 for every kernel in this file. At the
+# XPU default (512) a wide min-reduce silently returns a WRONG index: on
+# (1048576,) fp16 at block 32768 it missed the true minimum in 7 of 12 random
+# trials. 2048 and 4096 were correct in every trial at every block size.
+BUFFER_SIZE_LIMIT = 4096
 
 
 @libentry()
@@ -60,11 +81,19 @@ def argmin_kernel_1(
     dtype_max_value: tl.constexpr,
 ):
     pid = ext.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    lane = tl.arange(0, BLOCK_SIZE)
+    offset = pid * BLOCK_SIZE + lane
     inp_ptrs = inp + offset
     mask = offset < M
     inp_val = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
-    min_val, min_index = tl.min(inp_val, axis=0, return_indices=True)
+    # Deliberately NOT tl.min(..., return_indices=True): on this XPU backend
+    # that returns the correct min *value* but a wrong index as soon as the
+    # tile has masked lanes (verified down to BLOCK_SIZE=8 with M=7, where it
+    # reported index 0 for a minimum sitting at index 5). Reducing the value
+    # and then the lowest lane achieving it is mask-safe, and also ~1.2x
+    # faster here (fp16 1M: 52.5us -> 44.4us).
+    min_val = tl.min(inp_val, axis=0)
+    min_index = tl.min(tl.where(inp_val == min_val, lane, BLOCK_SIZE), axis=0)
     min_index = min_index + pid * BLOCK_SIZE
     mid_value_ptr = mid_value + pid
     min_index_ptr = mid_index + pid
@@ -86,7 +115,11 @@ def argmin_kernel_2(
     mid_ptrs = mid_value + offset
     mask = offset < mid_size
     mid_val = tl.load(mid_ptrs, mask=mask, other=dtype_max_value)
-    index_val = tl.argmin(mid_val, axis=0)
+    # Same mask-safety concern as argmin_kernel_1: this tile is masked whenever
+    # mid_size is not a power of two. Taking the lowest winning lane also keeps
+    # first-occurrence tie-breaking, which is what torch.argmin reports.
+    min_val = tl.min(mid_val, axis=0)
+    index_val = tl.min(tl.where(mid_val == min_val, offset, BLOCK_MID), axis=0)
     mid_index_ptrs = mid_index + index_val
     out_val = tl.load(mid_index_ptrs)
     tl.store(out, out_val)
@@ -113,14 +146,21 @@ def argmin_stage1(
     pid_k = ext.program_id(2)
     m_offset = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     chunk_start = pid_c * BLOCK_N
-    n_offset = chunk_start + tl.arange(0, BLOCK_N)
+    lane = tl.arange(0, BLOCK_N)
+    n_offset = chunk_start + lane
     dtype = inp.type.element_ty
     max_value = get_dtype_max(dtype)
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
     vals = tl.load(inp + offset, mask=mask, other=max_value)
-    lmin, largmin = tl.min(vals, axis=1, return_indices=True)
-    gidx = chunk_start + largmin
+    # Value reduce then lowest-winning-lane reduce, rather than
+    # tl.min(return_indices=True): this tile is masked whenever N is not a
+    # multiple of BLOCK_N, and return_indices mis-reports the index on a
+    # masked tile on this backend. Also measurably faster (fp16 4096x4096
+    # stage 1: 477.8us -> 393.2us).
+    lmin = tl.min(vals, axis=1)
+    lane_hit = tl.where(vals == lmin[:, None], lane[None, :], BLOCK_N)
+    gidx = chunk_start + tl.min(lane_hit, axis=1)
     part_offset = m_offset * NUM_CHUNKS * K + pid_c * K + pid_k
     pmask = m_offset < M
     tl.store(part_val + part_offset, lmin, mask=pmask)
@@ -149,9 +189,14 @@ def argmin_stage2(
     dtype = part_val.type.element_ty
     max_value = get_dtype_max(dtype)
     offset = m_offset[:, None] * NUM_CHUNKS * K + c_offset[None, :] * K + pid_k
-    mask = m_offset[:, None] < M and c_offset[None, :] < NUM_CHUNKS
+    mask = (m_offset[:, None] < M) & (c_offset[None, :] < NUM_CHUNKS)
     vals = tl.load(part_val + offset, mask=mask, other=max_value)
-    _, best_c = tl.min(vals, axis=1, return_indices=True)
+    # BLOCK_C is next_power_of_2(NUM_CHUNKS), so this tile is masked whenever
+    # NUM_CHUNKS is not a power of two -- return_indices is unreliable there
+    # (see argmin_stage1). Lowest winning chunk also preserves the
+    # first-occurrence tie-break this kernel documented before.
+    cmin = tl.min(vals, axis=1)
+    best_c = tl.min(tl.where(vals == cmin[:, None], c_offset[None, :], BLOCK_C), axis=1)
     gather = m_offset * NUM_CHUNKS * K + best_c * K + pid_k
     pmask = m_offset < M
     res = tl.load(part_idx + gather, mask=pmask)
@@ -187,9 +232,13 @@ def argmin_kernel_small_n(
     offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
     offset_index = m_offset * K + pid_k
     mask1 = m_offset < M
-    mask = m_offset[:, None] < M and n_offset[None, :] < N
+    mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
     inp_ptrs = inp + offset
-    inp_vals = tl.load(inp_ptrs, mask=mask, other=-float("inf"))
+    # +max, not -inf: this is a MIN reduce, so a masked lane filled with -inf
+    # would beat every real element. The old -inf fill happened not to produce
+    # wrong answers here (the XPU mask lowering keeps masked lanes out of the
+    # reduce), but it only held by accident of the backend.
+    inp_vals = tl.load(inp_ptrs, mask=mask, other=dtype_max_value)
     _, result_index = tl.min(inp_vals, axis=1, return_indices=True)
 
     out_index_ptrs = out_index + offset_index
@@ -203,7 +252,11 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
         M = inp.numel()
         if dtype is None:
             dtype = inp.dtype
-        block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
+        # Fixed wide tile instead of the sqrt(M) rule, clamped so a single
+        # program never covers more than the input (an over-wide tile is all
+        # launch overhead, and for M < 1024 the narrow tile is actually
+        # faster because stage 2 then reduces fewer partials).
+        block_size = min(triton.next_power_of_2(M), FLAT_BLOCK_SIZE)
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
 
@@ -226,6 +279,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 M,
                 block_size,
                 dtype_max_value,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
             )
             argmin_kernel_2[(1, 1, 1)](
                 mid_value,
@@ -234,6 +288,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 mid_size,
                 block_mid,
                 dtype_max_value,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
             )
         return out
     else:
@@ -325,6 +380,7 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 num_chunks,
                 block_m,
                 block_n,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
             )
             # A single chunk already holds the whole reduce axis: stage 1 wrote
             # the final global argmin into part_idx (layout matches out_index),
@@ -343,5 +399,6 @@ def argmin(inp, dim=None, keepdim=False, *, dtype=None):
                 num_chunks,
                 block_m,
                 block_c,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
             )
         return out_index
