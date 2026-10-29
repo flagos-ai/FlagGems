@@ -34,6 +34,28 @@ def _reference_inputs(inp, grid, upcast):
     )
 
 
+def _skip_unsupported_reference(interpolation_mode, padding_mode, align_corners):
+    if (
+        flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+        and interpolation_mode == 1
+        and align_corners
+    ):
+        pytest.skip("Enflame native nearest grid_sampler_3d lacks align_corners=True")
+
+
+def _assert_output_abi(result, inp, grid):
+    # Validate the target result before the shared CPU numerical comparison.
+    assert isinstance(result, torch.Tensor)
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == (inp.shape[0], inp.shape[1], *grid.shape[1:-1])
+    assert result.untyped_storage().data_ptr() not in {
+        inp.untyped_storage().data_ptr(),
+        grid.untyped_storage().data_ptr(),
+    }
+
+
 @pytest.mark.grid_sampler_3d
 @pytest.mark.parametrize("input_shape", GRID_SAMPLER_3D_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -43,6 +65,7 @@ def _reference_inputs(inp, grid, upcast):
 def test_grid_sampler_3d(
     input_shape, dtype, interpolation_mode, padding_mode, align_corners
 ):
+    _skip_unsupported_reference(interpolation_mode, padding_mode, align_corners)
     N, C, ID, IH, IW = input_shape
     # Fixed small output size to keep test runtime manageable
     OD, OH, OW = 2, 2, 2
@@ -61,6 +84,7 @@ def test_grid_sampler_3d(
     res_out = flag_gems.grid_sampler_3d(
         inp, grid, interpolation_mode, padding_mode, align_corners
     )
+    _assert_output_abi(res_out, inp, grid)
 
     # Tolerances aligned with the 2D grid_sample test suite (ATOL_DICT).
     # float16/bfloat16 values measured on NVIDIA H20 with output size (2,2,2):
@@ -103,6 +127,7 @@ GRID_SAMPLER_3D_OUTPUT_SIZE_CONFIGS = [
 def test_grid_sampler_3d_varied_output_sizes(
     input_shape, output_size, dtype, interpolation_mode, padding_mode, align_corners
 ):
+    _skip_unsupported_reference(interpolation_mode, padding_mode, align_corners)
     N, C, ID, IH, IW = input_shape
     OD, OH, OW = output_size
 
@@ -120,5 +145,29 @@ def test_grid_sampler_3d_varied_output_sizes(
     res_out = flag_gems.grid_sampler_3d(
         inp, grid, interpolation_mode, padding_mode, align_corners
     )
+    _assert_output_abi(res_out, inp, grid)
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-5)
+
+
+@pytest.mark.grid_sampler_3d
+def test_grid_sampler_3d_explicit_autograd_rejection():
+    torch.manual_seed(0)
+    inp = torch.randn(
+        (1, 2, 4, 4, 4),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    grid = torch.randn(
+        (1, 2, 2, 2, 3),
+        dtype=torch.float32,
+        device=flag_gems.device,
+        requires_grad=True,
+    )
+    actual = flag_gems.grid_sampler_3d(inp, grid, 0, 0, False)
+    _assert_output_abi(actual, inp, grid)
+
+    assert not actual.requires_grad
+    with pytest.raises(RuntimeError, match="does not require grad"):
+        torch.autograd.grad(actual.sum(), (inp, grid))
