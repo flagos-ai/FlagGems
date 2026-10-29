@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
@@ -32,6 +34,16 @@ from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+if vendor_name == "mthreads":
+    # Enable MUSA graph APIs without replacing Triton's constexpr helper.
+    _triton_next_power_of_2 = triton.next_power_of_2
+    try:
+        importlib.import_module("torchada")
+    finally:
+        triton.next_power_of_2 = _triton_next_power_of_2
+    del _triton_next_power_of_2
+
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None

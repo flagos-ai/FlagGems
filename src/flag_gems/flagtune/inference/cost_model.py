@@ -168,7 +168,7 @@ def benchmark_config(
 
 
 def ensure_proposer(identity: Any):
-    """Cache the proposer and variant by complete identity and model version."""
+    """Cache the proposer and variant by identity, package, and model version."""
     _configure_flagtune_model_source()
     from triton.flagtune.runtime.proposer import load_model_bundle, make_config_proposer
 
@@ -181,7 +181,8 @@ def ensure_proposer(identity: Any):
         platform_key=identity.platform_key,
         dtype_key=identity.dtype_key,
     )
-    cache_key = (identity, loaded.model_version)
+    package_version = getattr(loaded, "package_version", None) or loaded.model_version
+    cache_key = (identity, package_version, loaded.model_version)
     if cache_key not in _FLAGTUNE_PROPOSER_POOL:
         _FLAGTUNE_PROPOSER_POOL[cache_key] = make_config_proposer(
             identity.op_id,

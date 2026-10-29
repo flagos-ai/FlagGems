@@ -82,6 +82,7 @@ except ImportError:
     pass
 from ._make_dep_token import _make_dep_token
 from .mode import mode
+from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -241,6 +242,8 @@ __all__ = [
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
     "mode",
+    "mul",
+    "mul_",
     "mv",
     "mvlgamma",
     "mvlgamma_",

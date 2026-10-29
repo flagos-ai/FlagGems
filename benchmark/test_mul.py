@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -27,6 +29,7 @@ def test_mul():
         dtypes=consts.FLOAT_DTYPES,
         # dtypes=attrs.FLOAT_DTYPES + attrs.COMPLEX_DTYPES,
     )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 
