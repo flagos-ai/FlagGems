@@ -60,7 +60,8 @@ def _reference_slogdet(inp):
         and inp.numel()
     ):
         pytest.skip(
-            "Iluvatar native double slogdet computes incorrect values or lacks the batched solver; CPU reference remains covered"
+            "Iluvatar native double slogdet computes incorrect values or lacks "
+            "the batched solver; CPU reference remains covered"
         )
     return torch.linalg.slogdet(inp)
 
@@ -379,7 +380,7 @@ def test_slogdet_nan_inf(dtype):
             torch.tensor(vals, dtype=dtype, device=_factory_device(dtype))
         )
         res_sign, res_logabsdet = _candidate_slogdet(A)
-        reference = torch.linalg.slogdet(utils.to_reference(A))
+        reference = _reference_slogdet(utils.to_reference(A))
         torch.testing.assert_close(res_sign.cpu(), reference.sign.cpu(), equal_nan=True)
         torch.testing.assert_close(
             res_logabsdet.cpu(), reference.logabsdet.cpu(), equal_nan=True
