@@ -80,14 +80,10 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
         return_indices=True,
         _random_samples=ref_random_samples,
     )
-    res_out, res_indices = flag_gems.fractional_max_pool2d(
-        inp,
-        kernel_size=kernel_size,
-        output_size=output_size,
-        _random_samples=random_samples,
-    )
-
-    out_grad = torch.randn_like(res_out, device=flag_gems.device)
+    # Both backward paths consume metadata produced by the trusted native
+    # reference, without running an unoverridden generated forward kernel.
+    res_indices = ref_indices.to(device=inp.device)
+    out_grad = torch.randn(ref_out.shape, dtype=dtype, device=inp.device)
     ref_grad = utils.to_reference(out_grad, upcast=True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
     res_in_grad = flag_gems.fractional_max_pool2d_backward(
@@ -98,4 +94,7 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
         indices=res_indices,
     )
 
+    assert res_in_grad.device == inp.device
+    assert res_in_grad.dtype == inp.dtype
+    assert res_in_grad.shape == inp.shape
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

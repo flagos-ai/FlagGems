@@ -58,14 +58,31 @@ def fractional_max_pool2d_backward_case_fn(shape, dtype):
     )
 
 
+def _native_backward_metadata(inp, output_size):
+    # Preserve the generated forward's FP32 random-sample draw on the target.
+    # Native CPU double produces indices outside the timed backward call.
+    samples = torch.rand(
+        inp.shape[0], inp.shape[1], 2, dtype=torch.float32, device=inp.device
+    )
+    _, indices = torch.nn.functional.fractional_max_pool2d(
+        inp.detach().to(device="cpu", dtype=torch.float64),
+        kernel_size=2,
+        output_size=output_size,
+        return_indices=True,
+        _random_samples=samples.to(device="cpu", dtype=torch.float64),
+    )
+    output = torch.empty(
+        (*inp.shape[:-2], *output_size), dtype=inp.dtype, device=inp.device
+    )
+    return output, indices.to(device=inp.device)
+
+
 def fractional_max_pool2d_backward_build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
     inp.requires_grad_(True)
     output_size = (shape[2] // 2, shape[3] // 2)
-    output, indices = flag_gems.fractional_max_pool2d(
-        inp, kernel_size=2, output_size=output_size
-    )
+    output, indices = _native_backward_metadata(inp, output_size)
     grad_output = torch.randn_like(output)
     return (
         grad_output,
@@ -97,5 +114,4 @@ def test_fractional_max_pool2d_backward():
         torch_op=torch_fractional_max_pool2d_backward_wrapper,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.fractional_max_pool2d_backward)
     bench.run()

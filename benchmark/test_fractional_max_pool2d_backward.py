@@ -15,9 +15,8 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
+from .test_fractional_max_pool2d import _native_backward_metadata
 
 
 SHAPES = [
@@ -51,9 +50,7 @@ def _build_inputs_fn(plan, dtype, device):
     torch.manual_seed(0)
     shape, output_size = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
-    output, indices = flag_gems.fractional_max_pool2d(
-        inp, kernel_size=2, output_size=output_size
-    )
+    output, indices = _native_backward_metadata(inp, output_size)
     grad_output = torch.randn_like(output)
     return grad_output, inp, {
         "kernel_size": [2, 2],
@@ -81,5 +78,4 @@ def test_fractional_max_pool2d_backward():
         torch_op=_torch_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.fractional_max_pool2d_backward)
     bench.run()

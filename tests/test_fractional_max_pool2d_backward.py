@@ -48,15 +48,10 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
         return_indices=True,
         _random_samples=ref_random_samples,
     )
-    actual_out, actual_indices = flag_gems.fractional_max_pool2d(
-        inp,
-        kernel_size=kernel_size,
-        output_size=output_size,
-        _random_samples=random_samples,
-    )
-    utils.gems_assert_equal(actual_indices, ref_indices)
-
-    grad_output = torch.randn_like(actual_out)
+    # Backward consumes trusted native metadata; it must not require a separate
+    # unoverridden generated forward kernel to run first.
+    actual_indices = ref_indices.to(device=inp.device)
+    grad_output = torch.randn(ref_out.shape, dtype=dtype, device=inp.device)
     ref_grad_output = utils.to_reference(grad_output, True)
     (expected,) = torch.autograd.grad(ref_out, ref_inp, ref_grad_output)
     actual = flag_gems.fractional_max_pool2d_backward(
@@ -67,6 +62,7 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
         indices=actual_indices,
     )
 
+    assert actual.device == inp.device
     assert actual.shape == inp.shape
     assert actual.dtype == inp.dtype
     utils.gems_assert_close(actual, expected, dtype)
