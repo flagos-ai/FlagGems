@@ -50,6 +50,13 @@ def test_nextafter(shape, dtype):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nextafter_(shape, dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and dtype == torch.float16
+        and 0 not in shape
+    ):
+        pytest.skip("Kunlunxin native Half nextafter loses original-dtype ULPs")
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
@@ -116,6 +123,13 @@ def test_nextafter_out_none(shape, dtype):
 def test_nextafter_inplace_is_self(shape, dtype):
     """`nextafter_` writes back into `self`: the returned object is the
     (mutated) input tensor, not a freshly allocated one."""
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and dtype == torch.float16
+        and 0 not in shape
+    ):
+        pytest.skip("Kunlunxin native Half nextafter loses original-dtype ULPs")
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), False)

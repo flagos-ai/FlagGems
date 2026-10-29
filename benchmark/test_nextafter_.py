@@ -77,7 +77,12 @@ class NextafterInplaceBenchmark(base.BinaryPointwiseBenchmark, OperatorBenchmark
         return True
 
     get_case_iter = OperatorBenchmark.get_case_iter
-    build_inputs = OperatorBenchmark.build_inputs
+
+    def build_inputs(self, case):
+        if flag_gems.vendor_name == "kunlunxin" and case.dtype == torch.float16:
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Kunlunxin native Half nextafter loses original-dtype ULPs")
+        return OperatorBenchmark.build_inputs(self, case)
 
 
 @pytest.mark.nextafter_
