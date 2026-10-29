@@ -56,6 +56,14 @@ def lift_fresh_copy(*args, **kwargs):
         )
 
     x_contig = x.contiguous()
+
+    # Triton address offsets are 32-bit: above 2**31-1 elements `pid * BLOCK_SIZE`
+    # wraps to a negative offset and the mask stops matching, so the kernel
+    # performs out-of-bounds accesses. Fall back to a native copy, the same guard
+    # `ops/copy.py` applies. See Issue #6954.
+    if x_contig.numel() > 2**31 - 1:
+        return x_contig.clone()
+
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
 
     n_elements = x_contig.numel()
@@ -88,6 +96,12 @@ def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
             out.resize_(x_contig.shape)
             if not out.is_contiguous():
                 out = out.contiguous()
+
+    # Same 32-bit offset guard as `lift_fresh_copy` above; `copy_` is the native
+    # equivalent and itself applies the `ops/copy.py` guard.
+    if x_contig.numel() > 2**31 - 1:
+        out.copy_(x_contig)
+        return out.view_as(x_contig)
 
     n_elements = x_contig.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
