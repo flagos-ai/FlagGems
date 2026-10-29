@@ -41,6 +41,11 @@ from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 from ._foreach_direct import _pick_block, _select_ptr
 
 logger = logging.getLogger(__name__)
+# The registration-liveness test only raises the *generic* foreach loggers to
+# DEBUG (``flag_gems.ops._foreach_binary`` / ``_foreach_reduction``).  This
+# override logs under its own ``__name__``, so raise it here as well; otherwise
+# the DEBUG record is filtered at the logger level and the test reports "dead
+# registration".
 logger.setLevel(logging.DEBUG)
 
 _MAX_DIRECT = 16
@@ -201,6 +206,16 @@ __all__ = [
 
 
 def _patch_generic_wrapper():
+    """Rebind the generic binary-foreach wrappers to this Kunlunxin fast path.
+
+    These ``.Tensor`` overloads are generated dynamically in
+    ``flag_gems.ops._foreach_binary`` (``_globals[_attr] = _fn``) and resolved
+    by ``registered_wrappers()``, which the foreach tests/benchmark read from
+    that module's ``__dict__``.  ``SpecOpRegistrar`` only patches the top-level
+    ``flag_gems.*`` namespace, so it never touches the generic module's
+    wrappers.  Patch both namespaces here so the fast path actually takes
+    effect.
+    """
     import sys
 
     _m = sys.modules.get("flag_gems.ops._foreach_binary")

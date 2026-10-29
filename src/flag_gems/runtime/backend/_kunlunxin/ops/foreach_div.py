@@ -45,6 +45,11 @@ from flag_gems.utils.foreach import (
 )
 
 logger = logging.getLogger(__name__)
+# The registration-liveness test only raises the *generic* foreach loggers to
+# DEBUG (``flag_gems.ops._foreach_binary`` / ``_foreach_reduction``).  This
+# override logs under its own ``__name__``, so raise it here as well; otherwise
+# the DEBUG record is filtered at the logger level and the test reports "dead
+# registration".
 logger.setLevel(logging.DEBUG)
 
 UNROLL_NUM = 8
