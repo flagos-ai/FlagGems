@@ -96,3 +96,69 @@ def test_accuracy_max_pool3d_with_indices_backward(
     # max_pool3d backward is scatter-based (each output grad maps to exactly
     # one input position), so no significant accumulation tolerance needed.
     gems_assert_close(res_in_grad, ref_in_grad, dtype)
+
+
+CHANNELS_LAST_3D_CONFIGS = [
+    # (shape, kernel_size, stride, padding, dilation, ceil_mode)
+    ((4, 3, 16, 16, 16), 3, 2, 1, 1, False),
+    ((2, 8, 8, 16, 16), 2, 2, 0, 1, False),
+    ((2, 4, 15, 15, 15), 3, 2, 1, 1, True),
+]
+
+
+# The backward kernel addresses grad_output/grad_input storage linearly under
+# an NCDHW-contiguous assumption. A channels_last_3d input makes zeros_like
+# allocate the gradient in NDHWC order, so the scatter would land at wrong
+# addresses. These tests pin the wrapper's layout handling: values and
+# gradients must match ATen even though the input is in channels_last_3d
+# memory format.
+@pytest.mark.max_pool3d_with_indices_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, dilation, ceil_mode",
+    CHANNELS_LAST_3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_accuracy_max_pool3d_with_indices_backward_channels_last_3d(
+    shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
+):
+    inp = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    ).to(memory_format=torch.channels_last_3d)
+    inp.requires_grad_(True)
+    ref_inp = to_reference(inp, upcast=True).contiguous()
+
+    res_out, res_indices = flag_gems.max_pool3d_with_indices(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    ref_out = torch.nn.functional.max_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        ceil_mode=ceil_mode,
+    )
+
+    out_grad = torch.randn_like(res_out)
+    ref_grad = to_reference(out_grad, upcast=True)
+
+    (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
+
+    res_in_grad = flag_gems.max_pool3d_with_indices_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        res_indices,
+    )
+
+    gems_assert_close(res_in_grad, ref_in_grad, dtype)

@@ -54,6 +54,9 @@ container_options: >-
   --device=/dev/alixpu_ppu13
   --device=/dev/alixpu_ppu14
   --device=/dev/alixpu_ppu15
+  --shm-size=256g
+  --ulimit=memlock=-1
+  --ulimit=stack=67108864
   --workdir=/root
 
 # GPUs to test for this backends
