@@ -94,12 +94,14 @@ def test_underscore_weight_norm_zero_norm(dim):
     result = flag_gems._weight_norm(v, g, dim)
 
     utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
-    utils.gems_assert_equal(torch.isfinite(result), torch.isfinite(ref).to(result.device))
+    utils.gems_assert_equal(torch.isfinite(result), torch.isfinite(ref))
 
 
 @pytest.mark.underscore_weight_norm
 @pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.float64])
 def test_underscore_weight_norm_rejects_unsupported_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        pytest.skip("Kunlunxin cannot preserve the required float64 input storage")
     v = torch.ones((4, 5), dtype=dtype, device=flag_gems.device)
     g = torch.ones((4, 1), dtype=dtype, device=flag_gems.device)
 
