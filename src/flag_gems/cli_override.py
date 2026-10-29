@@ -201,6 +201,13 @@ def add_override_arguments(parser) -> None:
     group = parser.getgroup("operator override", "dynamic operator override options")
 
     group.addoption(
+        "--ref-as-candidate",
+        action="store_true",
+        default=False,
+        help="Use an explicitly declared reference as candidate; fail on missing contracts.",
+    )
+
+    group.addoption(
         "--override",
         action="append",
         metavar="SPEC",

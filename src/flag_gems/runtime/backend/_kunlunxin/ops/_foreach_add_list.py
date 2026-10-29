@@ -91,11 +91,11 @@ def _foreach_add_list_kernel(
     o13,
     o14,
     o15,
-    t,
     ALPHA: tl.constexpr,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
+    t = tl.program_id(0)
     a = _select_ptr(
         t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
     )
@@ -154,7 +154,6 @@ def _try_fast(tensors, others, alpha):
         *a_ptrs,
         *b_ptrs,
         *o_ptrs,
-        nt,
         alpha,
         tl_dtype(dtype),
         block,
