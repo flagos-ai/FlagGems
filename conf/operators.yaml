@@ -1216,6 +1216,21 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.3'
+- id: affine_grid_generator_backward
+  description: 'Computes the backward pass of affine_grid_generator: given the gradient
+
+    w.r.t. the output grid, produces the gradient w.r.t. the affine matrix theta.
+
+    '
+  for:
+  - affine_grid_generator_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: alias
   description: Return a view tensor sharing the same storage (zero-copy alias).
   for:
@@ -1853,6 +1868,20 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: argwhere
+  description: |
+    Returns a tensor containing the indices of all non-zero elements of the input
+    tensor. Each row in the result contains the multi-dimensional index of a
+    non-zero element. Uses a Triton-based prefix-sum compaction kernel.
+  for:
+  - argwhere
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: as_strided_copy
   description: 'Creates a contiguous copy of an `as_strided` view of the input tensor.
 
@@ -8520,6 +8549,18 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: fractional_max_pool3d_backward
+  description: |
+    Computes the gradient of fractional_max_pool3d.
+  for:
+  - fractional_max_pool3d_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: frexp
   description: Return mantissa and exponent of input, such that x = mantissa * 2^exponent,
     with mantissa in (-1, 1).
@@ -9041,6 +9082,30 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.0'
+- id: ge_scalar_
+  description: The scalar version of `ge_()`.
+  for:
+  - ge_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: ge_tensor_
+  description: The in-place version of `ge()` (Tensor overload).
+  for:
+  - ge_.Tensor
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: geglu
   description: Gaussian Error Gated Linear Unit with GELU activation instead of sigmoid
     function.
@@ -15077,6 +15142,32 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '5.0'
+- id: nnpack_spatial_convolution
+  description: 'Applies a 2D spatial convolution over an NCHW input using the NNPACK
+    CPU engine, with the given kernel weights, optional bias, padding and stride.
+
+    '
+  for:
+  - _nnpack_spatial_convolution
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: nnpack_spatial_convolution_out
+  description: A variant of `nnpack_spatial_convolution` that writes the result into
+    the `out` tensor.
+  for:
+  - _nnpack_spatial_convolution.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: nnz
   description: 'Returns the number of stored entries of a sparse tensor: the
     number of values in the COO storage, or of entries in the compressed
@@ -18943,6 +19034,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_broadcast_to_copy
+  description: 'Broadcasts a sparse COO tensor to the target shape, always materialising
+    a fresh copy of the broadcast indices and values; the copy variant of
+    ``aten::_sparse_broadcast_to`` supporting the out= form.
+
+    '
+  for:
+  - _sparse_broadcast_to_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_bsc_tensor
   description: 'Constructs a block-compressed sparse column (BSC) tensor from its stored
     components (ccol_indices, row_indices, and the block values payload) with an optional
@@ -18986,6 +19092,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   for:
   - sparse_compressed_tensor.comp_plain_value
   - sparse_compressed_tensor.comp_plain_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csc_tensor_unsafe
+  description: 'Assembles a torch.sparse_csc layout tensor from already-materialised
+    ccol/row indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_csc_tensor_unsafe
   labels:
   - aten
   - KernelGen
@@ -21020,6 +21142,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: '5.5'
+- id: thnn_conv2d
+  description: 'Applies a 2D convolution over an NCHW input using the legacy THNN
+    entry point, with the given kernel weights, optional bias, stride and padding.
+
+    '
+  for:
+  - thnn_conv2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5'
 - id: thnn_differentiable_gru_cell_backward

@@ -475,6 +475,7 @@ from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
+from flag_gems.ops.affine_grid_generator_backward import affine_grid_generator_backward
 from flag_gems.ops.alias import alias
 from flag_gems.ops.alias_copy import alias_copy, alias_copy_out
 from flag_gems.ops.all import all, all_dim, all_dims
@@ -501,6 +502,7 @@ from flag_gems.ops.arctanh_ import arctanh_
 from flag_gems.ops.argmax import argmax
 from flag_gems.ops.argmin import argmin
 from flag_gems.ops.argsort import argsort
+from flag_gems.ops.argwhere import argwhere
 from flag_gems.ops.as_strided_copy import as_strided_copy, as_strided_copy_out
 from flag_gems.ops.as_strided_scatter import as_strided_scatter
 from flag_gems.ops.asin import asin, asin_
@@ -801,6 +803,7 @@ from flag_gems.ops.fractional_max_pool2d import (
     fractional_max_pool2d_backward,
 )
 from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d
+from flag_gems.ops.fractional_max_pool3d_backward import fractional_max_pool3d_backward
 from flag_gems.ops.frexp import frexp
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
@@ -814,6 +817,7 @@ from flag_gems.ops.gather_block_quantized import gather_block_quantized
 from flag_gems.ops.gcd import gcd, gcd_out
 from flag_gems.ops.gcd_ import gcd_  # noqa: F401
 from flag_gems.ops.ge import ge, ge_scalar
+from flag_gems.ops.ge_ import ge_scalar_, ge_tensor_
 from flag_gems.ops.gelu import gelu, gelu_, gelu_backward
 from flag_gems.ops.geometric import geometric, geometric_
 from flag_gems.ops.geqrf import geqrf
@@ -1163,6 +1167,7 @@ from flag_gems.ops.nllloss import (
     nll_loss_backward,
     nll_loss_forward,
 )
+from flag_gems.ops.nnpack_spatial_convolution import nnpack_spatial_convolution
 from flag_gems.ops.nonzero import nonzero
 from flag_gems.ops.nonzero_numpy import nonzero_numpy
 from flag_gems.ops.nonzero_static import nonzero_static, nonzero_static_out
@@ -1377,9 +1382,11 @@ from flag_gems.ops.softshrink import softshrink, softshrink_out
 from flag_gems.ops.softshrink_backward import softshrink_backward
 from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
+from flag_gems.ops.sparse_broadcast_to_copy import sparse_broadcast_to_copy
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
 from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
+from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
@@ -1524,6 +1531,7 @@ from flag_gems.ops.tan import tan, tan_
 from flag_gems.ops.tanh import tanh, tanh_, tanh_backward
 from flag_gems.ops.te_rmsnorm import te_rmsnorm_bwd, te_rmsnorm_fwd
 from flag_gems.ops.tensordot import tensordot, tensordot_out
+from flag_gems.ops.thnn_conv2d import thnn_conv2d
 from flag_gems.ops.thnn_differentiable_lstm_cell_backward import (
     _thnn_differentiable_lstm_cell_backward,
 )
@@ -2047,6 +2055,7 @@ __all__ = [
     "addr_",
     "adjoint",
     "affine_grid_generator",
+    "affine_grid_generator_backward",
     "alias",
     "alias_copy",
     "alias_copy_out",
@@ -2089,6 +2098,7 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "argwhere",
     "as_strided_copy",
     "as_strided_copy_out",
     "as_strided_scatter",
@@ -2394,6 +2404,7 @@ __all__ = [
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
     "fractional_max_pool3d",
+    "fractional_max_pool3d_backward",
     "frexp",
     "full",
     "full_like",
@@ -2406,6 +2417,8 @@ __all__ = [
     "gcd_out",
     "ge",
     "ge_scalar",
+    "ge_scalar_",
+    "ge_tensor_",
     "gelu",
     "gelu_",
     "gelu_backward",
@@ -2795,6 +2808,7 @@ __all__ = [
     "nll_loss_forward",
     "nll_loss_nd_backward",
     "nll_loss_nd_forward",
+    "nnpack_spatial_convolution",
     "nonzero",
     "nonzero_numpy",
     "nonzero_static",
@@ -3033,9 +3047,11 @@ __all__ = [
     "sort",
     "sort_stable",
     "sparse_broadcast_to",
+    "sparse_broadcast_to_copy",
     "sparse_bsc_tensor",
     "sparse_bsr_tensor",
     "sparse_compressed_tensor",
+    "sparse_csc_tensor_unsafe",
     "sparse_dim",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
@@ -3181,6 +3197,7 @@ __all__ = [
     "te_rmsnorm_fwd",
     "tensordot",
     "tensordot_out",
+    "thnn_conv2d",
     "threshold",
     "threshold_",
     "threshold_backward",
