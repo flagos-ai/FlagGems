@@ -31,6 +31,7 @@ import triton.language as tl
 
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
+    _promote_dtypes,
     foreach_binary_list,
     foreach_binary_scalar,
     foreach_ternary,
@@ -103,7 +104,109 @@ def _pow_fn(a, b):
     # path: ATen computes ``bool ** float`` in floating point (``False ** -1``
     # is ``inf``), which the plain power already gives once the operand is
     # promoted.
-    return _pow(a.to(tl.float32), b.to(tl.float32))
+    af = a.to(tl.float32)
+    bf = b.to(tl.float32)
+    if a.dtype == tl.float16 or a.dtype == tl.bfloat16:
+        # 16-bit output: ``powf`` is about half the kernel time, and the
+        # fixups a negative base needs are exactly what a *block-wide* guard
+        # would avoid -- but on data with mixed signs that guard never fires
+        # (one negative base rejects the whole block), so the full ``powf``
+        # runs on every element.  Pay for the closed form per element
+        # instead, cheap enough that the guard is not worth keeping:
+        #
+        #   |a| ** b = exp2(fast_log2f(|a|) * b)
+        #
+        # and supply the sign separately: a negative base is ``(-1)**b`` for
+        # an integral ``b`` and NaN otherwise.  The 16-bit output tolerance
+        # (fp16 rtol 1e-3, bf16 0.016) absorbs the ~2**-22 relative error of
+        # ``lg2.approx``; fp32/fp64 keep the exact path below bit for bit, so
+        # their ltol 1.3e-6 result is unchanged.
+        s = tl.abs(af)
+        if a.dtype == tl.bfloat16:
+            # A bf16 subnormal *is* an fp32 subnormal, and ``lg2.approx``
+            # flushes those to zero (``pow(2**-133, -0.5)`` would come back
+            # inf).  Scale them into the normal range first; the scale is a
+            # power of two, so the multiply is exact and the logarithm only
+            # shifts by a constant.  fp16 subnormals are normal in fp32 and
+            # skip this.
+            sub = s < 1.1754943508222875e-38
+            lg = tl_extra_shim.fast_log2f(tl.where(sub, s * 16777216.0, s)) - tl.where(
+                sub, 24.0, 0.0
+            )
+        else:
+            lg = tl_extra_shim.fast_log2f(s)
+        # ``|a| == 1`` is pinned to 1: the magnitude is 1 for every exponent,
+        # while ``exp2(0 * inf)`` is NaN and ``pow(±1, ±inf)`` is 1.
+        r = tl.where(s == 1.0, 1.0, tl.exp2(lg * bf))
+        # Negative base: ``(-1)**b`` when ``b`` is integral, NaN otherwise.
+        # Parity is tested through ``b/2`` because ``bi % 2`` is exact only for
+        # ``|b| < 2**24``; ``b == 2**24`` is even and ``2**24 - 1`` is odd, and
+        # ``floor`` keeps both halves of the test on representable values.
+        bi = tl.floor(bf)
+        odd = (bi * 0.5) != tl.floor(bi * 0.5)
+        # ``signbit`` rather than ``af < 0`` so that ``-0.0`` counts as
+        # negative: ``pow(-0.0, -1)`` is ``-inf``, not ``+inf``.
+        neg = tl_extra_shim.signbit(af) != 0
+        r = tl.where(
+            neg,
+            tl.where(
+                bf == bi,
+                tl.where(odd, -r, r),
+                # A zero or infinite magnitude is never NaN however fractional
+                # ``b`` is: ATen gives ``pow(-0.0, 0.5) == -0.0`` and
+                # ``pow(-inf, 0.5) == inf``, and ``exp2`` of ``-inf * b`` /
+                # ``inf * b`` already produces the right 0 or inf.
+                tl.where((s == 0.0) | (s == float("inf")), r, float("nan")),
+            ),
+            r,
+        )
+        # ``b == 0`` is pinned to 1 because ``exp2(-inf * 0)`` is NaN while
+        # ``pow(0, 0)`` and ``pow(nan, 0)`` are 1.
+        r = tl.where(bf == 0.0, 1.0, r)
+    elif a.dtype.is_floating():
+        # ``powf`` dominates the kernel time and is itself ``exp2(y * log2 x)``
+        # plus the fixups a negative base needs.  On a block of normal, positive
+        # bases those fixups are dead code, so evaluate the cheap form instead.
+        # The guard is a block-wide ``tl.min`` (one reduction per program); a
+        # per-element ``tl.where`` executes both branches and measured 35-60%
+        # slower than the plain power.  The bound is the smallest normal fp32:
+        # a subnormal base stays > 0 but ``log2`` flushes it to zero, and
+        # ``pow(2**-149, -0.5)`` came back as ``2.7e22`` instead of ``1.3e19``
+        # (rel 2.0e3) when the fast path was allowed to see it.
+        # ``a == 1`` is pinned to 1 because ``exp2(log2(1) * inf)`` is NaN while
+        # ``pow(1, inf)`` is 1; ``b == 0`` is pinned for the same reason on an
+        # infinite base (``exp2(inf * 0)`` is NaN, ``pow(inf, 0)`` is 1).
+        if tl.min(af) >= 1.1754943508222875e-38:
+            r = tl.where((af == 1.0) | (bf == 0.0), 1.0, tl.exp2(tl.log2(af) * bf))
+        else:
+            r = _pow(af, bf)
+    else:
+        # Integral results use ``powf`` unchanged: the last-bit difference
+        # changes the value once truncated to an integer.
+        r = _pow(af, bf)
+    return r
+
+
+@triton.jit
+def _rpow_fn(a, b):
+    # ``pow.ScalarAndTensor``: the scalar is the base, so the power is reversed
+    # relative to ``_pow_fn`` (``a`` is the exponent, ``b`` the base).  Kept at
+    # module scope like every other kernel: defining it inside the wrapper
+    # rebuilt the ``JITFunction`` and its caches on every call.
+    af = a.to(tl.float32)
+    bf = b.to(tl.float32)
+    # Same positive-base fast path as ``_pow_fn``.  The base is the scalar
+    # here, so the guard is the scalar condition itself -- ``tl.min`` rejects
+    # a 0-d operand in this Triton.  The smallest-normal bound and the
+    # ``exponent == 0`` pin carry over unchanged.
+    if b.dtype.is_floating():
+        if bf >= 1.1754943508222875e-38:
+            r = tl.where((bf == 1.0) | (af == 0.0), 1.0, tl.exp2(tl.log2(bf) * af))
+        else:
+            r = _pow(bf, af)
+    else:
+        r = _pow(bf, af)
+    return r
 
 
 @triton.jit
@@ -316,8 +419,9 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
 
     ATen accepts any shape here that broadcasts against each element of the list.
     A zero-dimensional tensor is the common case -- it is what optimizers pass --
-    and it is routed through the paired kernel with the operand expanded rather
-    than read back with ``.item()``.
+    and it is routed through the paired kernel with the operand read once per
+    program rather than expanded into a full-size staging copy (or read back
+    with ``.item()``).
 
     Reading the value out would be simpler, but ``.item()`` synchronises the
     device: with sixteen kernels already queued it measured 2.11ms per call
@@ -332,20 +436,50 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
     if alpha != 1:
         for t in self_list:
             _check_alpha(alpha, t.dtype)
-    expanded = [
-        other if other.shape == t.shape else other.expand_as(t) for t in self_list
-    ]
+    if other.numel() == 1:
+        # A single-element operand needs no copy at all: the kernel reads it
+        # once per program as a uniform load, so the same tensor is handed to
+        # every position and materialising it would only add a full-size copy.
+        operands = [other] * len(self_list)
+        scalar_operand = True
+    else:
+        operands = [
+            other if other.shape == t.shape else other.expand_as(t) for t in self_list
+        ]
+        scalar_operand = False
     # Promotion is resolved against the *original* operand, not the expanded
     # view: ATen treats a zero-dimensional tensor as a scalar here, so an fp16
     # list times an fp32 scalar tensor stays fp16, while a genuine fp32 tensor
     # list would promote. Expanding first and asking ``result_type`` afterwards
     # would silently widen the result.
-    out_dtypes = [torch.result_type(t, other) for t in self_list]
-    if op.out_dtype_fn is not None:
-        out_dtypes = [op.out_dtype_fn(dt) for dt in out_dtypes]
+    #
+    # ``_promote_dtypes`` keys on (dtype, is-zero-dimensional) for each side, so
+    # a list whose entries all share that pair resolves with one lookup rather
+    # than sixteen.  A mixed list falls back to the per-tensor form, which is
+    # the same function and therefore yields the same dtypes.
+    n = len(self_list)
+    homogeneous = False
+    if n:
+        first = self_list[0]
+        first_dtype = first.dtype
+        first_zero_dim = first.dim() == 0
+        homogeneous = True
+        for t in self_list:
+            if t.dtype is not first_dtype or (t.dim() == 0) != first_zero_dim:
+                homogeneous = False
+                break
+    if homogeneous:
+        promoted = _promote_dtypes(first, other)
+        if op.out_dtype_fn is not None:
+            promoted = op.out_dtype_fn(promoted)
+        out_dtypes = [promoted] * n
+    else:
+        out_dtypes = [_promote_dtypes(t, other) for t in self_list]
+        if op.out_dtype_fn is not None:
+            out_dtypes = [op.out_dtype_fn(dt) for dt in out_dtypes]
     res = foreach_binary_list(
         self_list,
-        expanded,
+        operands,
         op.fn,
         inplace=inplace,
         alpha=alpha,
@@ -353,6 +487,7 @@ def _apply_tensor(name: str, self, other: torch.Tensor, inplace: bool, alpha=1):
         dtype_error=op.dtype_error,
         dtype_error_type=op.dtype_error_type,
         out_dtypes=out_dtypes,
+        scalar_operand=scalar_operand,
     )
     return None if inplace else res
 
@@ -581,14 +716,10 @@ def _foreach_pow_ScalarAndTensor(self, exponent):
         if t.dtype == torch.bool:
             raise NotImplementedError(_POW_BOOL_ERROR)
 
-    @triton.jit
-    def _rpow(a, b):
-        return _pow(b.to(tl.float32), a.to(tl.float32))
-
     return foreach_binary_scalar(
         exponent,
         self,
-        _rpow,
+        _rpow_fn,
         allowed_dtypes=op.allowed,
         dtype_error=op.dtype_error,
         dtype_error_type=op.dtype_error_type,

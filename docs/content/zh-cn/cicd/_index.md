@@ -41,9 +41,8 @@ what runs on a schedule, and what runs on release.
 本章节介绍 FlagGems 持续集成与持续交付流水线所包含的 GitHub Actions 工作流：
 拉取请求上会运行哪些检查、有哪些按计划运行的任务，以及发布时会触发什么流程。
 
-- [拉取请求检查](pull-request/) — 由创建、更新拉取请求或在其下评论所触发的工作流
-- [CI 建设现状与规划](construction/) — 2026 年 8 月 10 日前后的状态、基础设施、门禁、运维与后续工作
-- [定时与按需测试](scheduled/) — 每日全量测试、覆盖率报告、多厂商 QA 验收测试，以及手动触发的工具
+- [拉取请求检查](pull-request.md) — 由创建、更新拉取请求或在其下评论所触发的工作流
+- [定时与按需测试](scheduled.md) — 每日全量测试、覆盖率报告、多厂商 QA 验收测试，以及手动触发的工具
   工作流（`random-test.yaml`、`probe-node.yaml`、`review-stats.yaml`）
-- [发布与同步](release-sync/) — 构建/发布 wheel 包与发行版安装包、上传产物到 Nexus，
+- [发布与同步](release-sync.md) — 构建/发布 wheel 包与发行版安装包、上传产物到 Nexus，
   以及将仓库镜像到其他远端
