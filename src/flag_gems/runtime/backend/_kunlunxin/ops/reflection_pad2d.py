@@ -21,14 +21,27 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
+from ..utils.tle_copy import tle_copy, tle_dma_available
+
 logger = logging.getLogger(__name__)
 
-# Above this many output elements, use the split path (row-copy interior +
-# strip/edge border kernels) instead of the single-launch flat gather kernel.
-# Measured crossover on the benchmark matrix: at 663K elements the split path
-# (~0.25ms, 4-7 launches) still loses to the flat kernel (~0.10ms); at 4.4M it
-# wins (0.42 vs 0.60ms) and at 70M it wins by ~6x. 2M sits between the two.
+# Above this many output elements, use the split path (SDNN-DMA interior /
+# border copies) instead of the single-launch flat gather kernel. Measured
+# crossover on fp16 with DMA-able borders: 0.59M -> flat 98 us vs split 152 us;
+# 4.39M -> flat 632 us vs split 265 us, i.e. the split path's ~150 us of extra
+# launches amortise from ~2.5M elements on.
 _SPLIT_THRESHOLD = 2000000
+
+# Lane tile of the flat gather kernel (one program per (image, tile)).
+_FLAT_BLOCK = 1024
+
+
+def _split_borders_ok(pad_left, pad_right):
+    if pad_left == 1 and pad_right == 0:
+        return False
+    if pad_right == 1 and pad_left == 0:
+        return False
+    return True
 
 
 # Flat 1D kernel over the ENTIRE output (all batches at once).
@@ -74,17 +87,17 @@ def reflection_pad2d_kernel(
     b = o // HW_out
     rem = o % HW_out
     h_idx = rem // W_out
-    w_idx = rem % W_out
+    w_idx = rem - h_idx * W_out
 
     # Reflected height index. pad_top < H_in is validated on the host, so a single
     # period (abs + where) is exact — no `% (2*(H_in-1))` needed.
-    y = h_idx.to(tl.int32) - pad_top
+    y = h_idx - pad_top
     pH = 2 * (H_in - 1)
     t_h = tl.abs(y)
     ih = tl.where(t_h < H_in, t_h, pH - t_h)
 
     # Reflected width index (same reasoning; pad_left < W_in validated).
-    x = w_idx.to(tl.int32) - pad_left
+    x = w_idx - pad_left
     pW = 2 * (W_in - 1)
     t_w = tl.abs(x)
     iw = tl.where(t_w < W_in, t_w, pW - t_w)
@@ -343,25 +356,105 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
     # BLOCK=1024 is the best all-round tile on XPU: small shapes avoid the
     # per-program waste of a huge block, while medium/large shapes still get
     # enough work per program to stay off the launch floor (measured sweep).
-    BLOCK = 1024
+    BLOCK = _FLAT_BLOCK
     HW_out = H_out * W_out
     HW_in = H_in * W_in
     total_out = B * HW_out
 
-    # Split path for large outputs: the interior is a pure strided copy served
-    # by the dedicated `_row_copy` kernel (provably stride-1 inner axis on both
-    # load and store), while the flat gather kernel is pinned at ~15 GB/s
-    # (discrete-gather wall) for EVERY element. Only the (small) reflection
-    # border needs gather-style work here. Below the threshold the single-launch
-    # flat kernel wins (the launch floor dominates small shapes and the flat
-    # kernel already beats vendor there).
-    if total_out >= _SPLIT_THRESHOLD:
-        # 1) interior: row-copy the input (contiguous W_in rows) into the
-        #    padded output (row stride W_out).
-        interior = out.narrow(-2, pad_top, H_in).narrow(-1, pad_left, W_in)
-        _row_copy(interior, x, H_in, W_in, HW_in, HW_out, W_in, W_out, B)
+    if (
+        total_out >= _SPLIT_THRESHOLD
+        and tle_dma_available()
+        and _split_borders_ok(pad_left, pad_right)
+    ):
+        x3 = x.reshape(B, H_in, W_in)
+        o3 = out.reshape(B, H_out, W_out)
+        dma = True
+        interior = o3[:, pad_top : pad_top + H_in, pad_left : pad_left + W_in]
 
-        # 2) top/bottom strips: full output rows, contiguous store per program.
+        # 1) left/right edge columns of the interior rows: build the reflected
+        #    columns into a contiguous temp, then move each side into its
+        #    strided destination. Done BEFORE the interior copy because a
+        #    one-column side is widened to two columns (a 2-D DMA transfer with
+        #    an extent of 1 faults the engine) and the extra column lands on the
+        #    first/last interior column, which the interior copy then rewrites.
+        if pad_left + pad_right > 0:
+            lr = pad_left + pad_right
+            total_edge = B * H_in * lr
+            tmp = torch.empty((B, H_in, lr), device=x.device, dtype=x.dtype)
+            grid_edge = (triton.cdiv(total_edge, BLOCK),)
+            with torch_device_fn.device(x.device):
+                reflection_pad2d_edge_kernel[grid_edge](
+                    x,
+                    tmp,
+                    H_in,
+                    W_in,
+                    pad_left,
+                    HW_in,
+                    lr,
+                    B,
+                    total_edge,
+                    BLOCK=BLOCK,
+                )
+            sides = []
+            if pad_left > 0:
+                width = pad_left
+                if width == 1 and lr >= 2:
+                    # col 1 of the temp is a reflected value too, so the widened
+                    # write stays in bounds; it is overwritten in step 2.
+                    width = 2
+                sides.append(
+                    (
+                        width,
+                        tmp[:, :, 0:width],
+                        o3[:, pad_top : pad_top + H_in, 0:width],
+                    )
+                )
+            if pad_right > 0:
+                width = pad_right
+                src = tmp[:, :, lr - width : lr]
+                if width == 1 and pad_left >= 1:
+                    # the column before the right part is the last reflected
+                    # left column: junk, overwritten by the interior copy.
+                    width = 2
+                    src = tmp[:, :, pad_left - 1 : pad_left + 1]
+                sides.append(
+                    (
+                        width,
+                        src,
+                        o3[:, pad_top : pad_top + H_in, W_out - width : W_out],
+                    )
+                )
+            for width, src_side, dst_side in sides:
+                done = False
+                if dma:
+                    try:
+                        done = tle_copy(src_side, dst_side)
+                    except Exception:  # tle build without a usable dsa path
+                        done = False
+                if not done:
+                    _row_copy(
+                        dst_side,
+                        src_side,
+                        H_in,
+                        width,
+                        H_in * lr,
+                        HW_out,
+                        lr,
+                        W_out,
+                        B,
+                    )
+
+        # 2) interior: bulk strided copy of the input.
+        interior_done = False
+        if dma:
+            try:
+                interior_done = tle_copy(x3, interior)
+            except Exception:  # tle build without a usable dsa path
+                interior_done = False
+        if not interior_done:
+            _row_copy(interior, x, H_in, W_in, HW_in, HW_out, W_in, W_out, B)
+
+        # 3) top/bottom strips: full output rows, contiguous store per program.
         if pad_top + pad_bottom > 0:
             len_top = pad_top * W_out
             len_bot = pad_bottom * W_out
@@ -389,55 +482,6 @@ def launch_reflection_pad2d(input: torch.Tensor, padding, out: torch.Tensor = No
                     len_top,
                     len_bot,
                     BLOCK=block_tb,
-                )
-
-        # 3) left/right edge columns of the interior rows: build the reflected
-        #    columns into a contiguous temp, then two native strided copies.
-        if pad_left + pad_right > 0:
-            lr = pad_left + pad_right
-            total_edge = B * H_in * lr
-            tmp = torch.empty(
-                (*leading_shape, H_in, lr), device=x.device, dtype=x.dtype
-            )
-            grid_edge = (triton.cdiv(total_edge, BLOCK),)
-            with torch_device_fn.device(x.device):
-                reflection_pad2d_edge_kernel[grid_edge](
-                    x,
-                    tmp,
-                    H_in,
-                    W_in,
-                    pad_left,
-                    HW_in,
-                    lr,
-                    B,
-                    total_edge,
-                    BLOCK=BLOCK,
-                )
-            if pad_left > 0:
-                _row_copy(
-                    out.narrow(-2, pad_top, H_in).narrow(-1, 0, pad_left),
-                    tmp.narrow(-1, 0, pad_left),
-                    H_in,
-                    pad_left,
-                    H_in * lr,
-                    HW_out,
-                    lr,
-                    W_out,
-                    B,
-                )
-            if pad_right > 0:
-                _row_copy(
-                    out.narrow(-2, pad_top, H_in).narrow(
-                        -1, W_in + pad_left, pad_right
-                    ),
-                    tmp.narrow(-1, pad_left, pad_right),
-                    H_in,
-                    pad_right,
-                    H_in * lr,
-                    HW_out,
-                    lr,
-                    W_out,
-                    B,
                 )
         return out
 
