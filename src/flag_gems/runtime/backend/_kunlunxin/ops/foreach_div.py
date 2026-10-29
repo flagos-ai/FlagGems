@@ -45,6 +45,12 @@ from flag_gems.utils.foreach import (
 )
 
 logger = logging.getLogger(__name__)
+# The registration-liveness test only raises the *generic* foreach loggers to
+# DEBUG (``flag_gems.ops._foreach_binary`` / ``_foreach_reduction``).  This
+# override logs under its own ``__name__``, so raise it here as well; otherwise
+# the DEBUG record is filtered at the logger level and the test reports "dead
+# registration".
+logger.setLevel(logging.DEBUG)
 
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
@@ -408,3 +414,19 @@ def _foreach_div__Tensor(self, other):
         return _apply_tensor("div", self, other, inplace=True)
     _run_scalar_tensor(self, other, inplace=True)
     return None
+
+
+def _patch_generic_wrapper():
+    import sys
+
+    _m = sys.modules.get("flag_gems.ops._foreach_binary")
+    if _m is not None:
+        _m._foreach_div_Tensor = _foreach_div_Tensor
+        _m._foreach_div__Tensor = _foreach_div__Tensor
+    import flag_gems
+
+    flag_gems._foreach_div_Tensor = _foreach_div_Tensor
+    flag_gems._foreach_div__Tensor = _foreach_div__Tensor
+
+
+_patch_generic_wrapper()

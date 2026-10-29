@@ -277,6 +277,7 @@ from flag_gems.ops._histogramdd_from_bin_tensors import (
     _histogramdd_from_bin_tensors,
     _histogramdd_from_bin_tensors_out,
 )
+from flag_gems.ops._indices import _indices
 from flag_gems.ops._indices_copy import _indices_copy, _indices_copy_out
 from flag_gems.ops._is_all_true import _is_all_true
 from flag_gems.ops._is_any_true import _is_any_true
@@ -592,6 +593,7 @@ from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
+from flag_gems.ops.chain_matmul import chain_matmul
 from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky import cholesky
@@ -615,6 +617,7 @@ from flag_gems.ops.col2im import col2im
 from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.col_indices_copy import col_indices_copy, col_indices_copy_out
 from flag_gems.ops.column_stack import column_stack, column_stack_out
+from flag_gems.ops.combinations import combinations
 from flag_gems.ops.concat import concat
 from flag_gems.ops.concatenate import concatenate
 from flag_gems.ops.conj import conj
@@ -717,6 +720,9 @@ from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
+from flag_gems.ops.empty_per_channel_affine_quantized import (
+    _empty_per_channel_affine_quantized,
+)
 from flag_gems.ops.empty_permuted import empty_permuted
 from flag_gems.ops.eq import eq, eq_scalar, equal
 from flag_gems.ops.eq_ import eq_, eq_scalar_
@@ -778,6 +784,7 @@ from flag_gems.ops.flash_attention_backward import (
     scaled_dot_product_flash_attention_backward,
 )
 from flag_gems.ops.flatten import flatten
+from flag_gems.ops.flatten_dense_tensors import flatten_dense_tensors
 from flag_gems.ops.flip import flip
 from flag_gems.ops.fliplr import fliplr
 from flag_gems.ops.flipud import flipud
@@ -1065,6 +1072,7 @@ from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
+from flag_gems.ops.make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from flag_gems.ops.make_per_tensor_quantized_tensor import (
     _make_per_tensor_quantized_tensor,
     _make_per_tensor_quantized_tensor_out,
@@ -1105,6 +1113,10 @@ from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
 from flag_gems.ops.mish import mish, mish_
 from flag_gems.ops.mish_backward import mish_backward
 from flag_gems.ops.mixed_dtypes_linear import mixed_dtypes_linear
+from flag_gems.ops.mkldnn_reorder_conv2d_weight import (
+    mkldnn_reorder_conv2d_weight,
+    mkldnn_reorder_conv2d_weight_out,
+)
 from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
@@ -1394,6 +1406,7 @@ from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_dim import sparse_dim
+from flag_gems.ops.sparse_resize_ import sparse_resize_
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -1722,6 +1735,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_embedding_bag_sparse_backward",
+    "_empty_per_channel_affine_quantized",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",
     "_fake_quantize_learnable_per_channel_affine_backward",
@@ -1899,6 +1913,7 @@ __all__ = [
     "_histogramdd_from_bin_tensors",
     "_histogramdd_from_bin_tensors_out",
     "_index_put_impl_",
+    "_indices",
     "_indices_copy",
     "_indices_copy_out",
     "_is_all_true",
@@ -1915,6 +1930,8 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_dual_copy",
+    "_make_dual_copy_out",
     "_make_per_tensor_quantized_tensor",
     "_make_per_tensor_quantized_tensor_out",
     "_masked_scale",
@@ -2195,6 +2212,7 @@ __all__ = [
     "ceil_out",
     "celu",
     "celu_",
+    "chain_matmul",
     "chalf",
     "channel_shuffle",
     "cholesky",
@@ -2221,6 +2239,7 @@ __all__ = [
     "col_indices_copy_out",
     "column_stack",
     "column_stack_out",
+    "combinations",
     "concat",
     "concatenate",
     "conj",
@@ -2381,6 +2400,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flatten",
+    "flatten_dense_tensors",
     "flip",
     "fliplr",
     "flipud",
@@ -2752,6 +2772,8 @@ __all__ = [
     "mish_",
     "mish_backward",
     "mixed_dtypes_linear",
+    "mkldnn_reorder_conv2d_weight",
+    "mkldnn_reorder_conv2d_weight_out",
     "mkldnn_rnn_layer",
     "mm",
     "mm_out",
@@ -3066,6 +3088,7 @@ __all__ = [
     "sparse_compressed_tensor",
     "sparse_csc_tensor_unsafe",
     "sparse_dim",
+    "sparse_resize_",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
