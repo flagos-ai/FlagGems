@@ -31,10 +31,9 @@ else:
 
 
 def _reference_input(value):
-    # PPU has no native inplace BLAS implementation. CPU ATen supplies the
-    # same reference semantics; cloning prevents in-place reference mutation
-    # from changing the original candidate input on same-device references.
-    if flag_gems.vendor_name == "thead":
+    # PPU lacks native inplace BLAS; Enflame has an unreliable F32 reference.
+    # Promote actual values on CPU and keep reference mutation independent.
+    if flag_gems.vendor_name in ("thead", "enflame"):
         return value.cpu().double().clone()
     return utils.to_reference(value, True).clone()
 
