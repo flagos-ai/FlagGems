@@ -2083,6 +2083,18 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: atleast_2d
+  description: 'Returns a 2-D view of the input: tensors with two or more dimensions
+    are returned unchanged.'
+  for:
+  - atleast_2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: atleast_3d
   description: Returns a view of the input tensor with at least three dimensions (view
     operation).
@@ -2936,6 +2948,16 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: cast_Byte
+  description: Casts a tensor to uint8, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Byte
+  labels:
+  - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cat
   description: Concatenates the given sequence of tensors in tensors in the given
     dimension.
@@ -3160,6 +3182,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: cholesky
+  description: Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix or for batches of symmetric positive-definite matrices.
+  for:
+  - cholesky
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: cholesky_inverse
   description: Compute inverse of symmetric positive-definite matrix from Cholesky
     factor.
@@ -9428,6 +9462,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - grid_sampler_2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: grid_sampler_2d_backward
+  description: Computes gradients for 2D grid sampling operation. Returns gradients
+    with respect to input tensor and/or sampling grid.
+  for:
+  - grid_sampler_2d_backward
   labels:
   - aten
   - KernelGen
@@ -19058,6 +19104,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   for:
   - sparse_bsc_tensor.ccol_row_value
   - sparse_bsc_tensor.ccol_row_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_bsc_tensor_unsafe
+  description: 'Assembles a torch.sparse_bsc layout tensor from already-materialised
+    ccol/row indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_bsc_tensor_unsafe
   labels:
   - aten
   - KernelGen

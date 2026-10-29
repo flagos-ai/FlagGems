@@ -22,6 +22,11 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+pytestmark = pytest.mark.skipif(
+    not hasattr(torch.ops.aten, "linalg__powsum"),
+    reason="the installed PyTorch has no aten.linalg__powsum reference",
+)
+
 if cfg.QUICK_MODE:
     SHAPE_DIM_CASES = [((2, 32), [1])]
     ORD_LIST = [2]
