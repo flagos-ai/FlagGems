@@ -155,7 +155,10 @@ _ISB_LARGE_GROUP_M = 8
 def _isb_large_tiles(M, K, N):
     bm = 256 if M > 512 else 128
     bn = 256 if N > 512 else 128
-    bk = 128 if K <= 512 else 256
+    if K > 512:
+        bk = 256
+    else:
+        bk = min(128, max(16, 1 << (K - 1).bit_length()))
     return bm, bn, bk
 
 
@@ -266,25 +269,30 @@ def _isb_gemm_large(x, y, M, K, N, Mp, Kp, Np, device):
 
 
 @triton.jit
-def _isb_one_hot_scatter_kernel(Oh, Index, L, S0, BLOCK: tl.constexpr):
-    # Dense 1D scatter: program i writes oh[i, index[i]] = 1.0 (oh pre-zeroed).
-    # One launch over L elements; replaces oh.scatter_ (an aten op) with a
-    # pure-triton kernel.  Duplicate index values are benign (all stores 1.0).
+def _isb_one_hot_scatter_kernel(Oh, Index, L, S_idx, S_off, BLOCK: tl.constexpr):
     pid = ext.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     m = offs < L
     idx = tl.load(Index + offs, mask=m, other=0)
-    tl.store(Oh + offs * S0 + idx, 1.0, mask=m)
+    tl.store(Oh + idx * S_idx + offs * S_off, 1.0, mask=m)
 
 
-def _one_hot_write(oh, index, index_len, dim_size_out, device):
-    """Write 1.0 at oh[i, index[i]] for i < index_len (oh is pre-zeroed).
+def _one_hot_write(oh, index, index_len, dim_size_out, device, transposed=False):
+    """Write 1.0 at (row=i, col=index[i]) for i < index_len (oh pre-zeroed).
 
     Pure-triton dense scatter (see _isb_one_hot_scatter_kernel); no aten.
+    ``transposed`` selects the (D, L) row-major layout, whose row stride is
+    the *unpadded* index length.
     """
+    # (row = index[i], col = i): the index value is the *outer* coordinate, so
+    # it multiplies the row stride; ``i`` is the inner one.
+    if transposed:
+        s_idx, s_off = oh.stride(0), 1
+    else:
+        s_idx, s_off = 1, oh.stride(0)
     grid = (triton.cdiv(index_len, 1024),)
     with torch_device_fn.device(device):
-        _isb_one_hot_scatter_kernel[grid](oh, index, index_len, oh.stride(0), 1024)
+        _isb_one_hot_scatter_kernel[grid](oh, index, index_len, s_idx, s_off, 1024)
 
 
 @triton.jit
@@ -400,12 +408,11 @@ def _isb_first(grad, self_sizes, dtype, device, index, index_len, dim_size_out):
     M = grad.numel() // index_len
     grad_flat = grad.reshape(index_len, M)
     Dp, Kp, Mp = _isb_large_pads(dim_size_out, index_len, M)
-    oh = torch.zeros((Kp, Dp), dtype=dtype, device=device)
-    _one_hot_write(oh, index, index_len, dim_size_out, device)
-    # The transposed one-hot (Dp, Kp) feeds the GEMM as a runtime-strided view:
-    # _isb_gemm_large_kernel is layout-agnostic and _isb_gemm_large's exact-shape
-    # check matches (Mp==Dp, Kp==Kp), so no materialisation (no aten) is needed.
-    oh_t = oh.t()
+    # Build the transposed one-hot (Dp, Kp) directly: the GEMM takes it as its
+    # first (row-major) operand, so the tile load stays contiguous.  The
+    # former (Kp, Dp) + .t() shape gave the kernel a column-major operand.
+    oh_t = torch.zeros((Dp, Kp), dtype=dtype, device=device)
+    _one_hot_write(oh_t, index, index_len, dim_size_out, device, transposed=True)
     out2d = _isb_gemm_large(
         oh_t, grad_flat, dim_size_out, index_len, M, Dp, Kp, Mp, device
     )
@@ -533,9 +540,12 @@ def _isb_mid(grad, self_sizes, dim, dtype, device, index, index_len, dim_size_ou
     L = index_len
     D = dim_size_out
     grad3d = grad.reshape(A, L, B)
-    oh = torch.zeros((L, D), dtype=dtype, device=device)
-    _one_hot_write(oh, index, L, D, device)
-    out = _isb_bmm(oh.t(), grad3d, A, D, L, B, dtype, device)
+    # Row-major (D, L) one-hot: the batched GEMM's first operand is then
+    # contiguous.  An ``oh.t()`` view would make it column-major
+    # (stride (1, D)), i.e. a non-unit inner stride on every A-tile load.
+    oh_t = torch.zeros((D, L), dtype=dtype, device=device)
+    _one_hot_write(oh_t, index, L, D, device, transposed=True)
+    out = _isb_bmm(oh_t, grad3d, A, D, L, B, dtype, device)
     return out.reshape(self_sizes)
 
 
@@ -552,14 +562,15 @@ def _isb_small_last(grad, self_sizes, dtype, device, index, index_len, dim_size_
 def _isb_small_first(grad, self_sizes, dtype, device, index, index_len, dim_size_out):
     """dim == 0, exact-shape dedicated kernel (D, M <= 512).
 
-    The one-hot (L, D) feeds the GEMM as the transposed operand: the kernel
-    takes runtime strides (1, D), so no oh_t materialisation is needed.
+    The one-hot is built directly in the transposed (D, L) row-major layout,
+    so it feeds the GEMM as a contiguous first operand (no ``.t()`` view with
+    stride (1, D) -- that is a non-unit inner stride on the tile load).
     """
     M = grad.numel() // index_len
     grad_flat = grad.reshape(index_len, M)
-    oh = torch.zeros((index_len, dim_size_out), dtype=dtype, device=device)
-    _one_hot_write(oh, index, index_len, dim_size_out, device)
-    res = _isb_gemm_small(oh.t(), grad_flat, dim_size_out, index_len, M, device)
+    oh_t = torch.zeros((dim_size_out, index_len), dtype=dtype, device=device)
+    _one_hot_write(oh_t, index, index_len, dim_size_out, device, transposed=True)
+    res = _isb_gemm_small(oh_t, grad_flat, dim_size_out, index_len, M, device)
     return _materialize(res, self_sizes, dtype, device)
 
 
