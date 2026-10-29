@@ -271,6 +271,81 @@ def _partial_at(
 
 
 @triton.jit
+def _chain_partial(
+    A,
+    B,
+    P,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    SPLITS: tl.constexpr,
+):
+    # One split's slice of the inner gemm F = A @ B, fp32 ieee. Each split
+    # owns a contiguous K chunk (rounded up to the 32-wide step).
+    m = tl.program_id(0) * 64 + tl.arange(0, 64)
+    n = tl.program_id(1) * N + tl.arange(0, N)
+    s = tl.program_id(2)
+    k = tl.arange(0, 32)
+    part = tl.zeros((64, N), tl.float32)
+    chunk: tl.constexpr = ((K + SPLITS - 1) // SPLITS + 31) // 32 * 32
+    for step in range(chunk // 32):
+        kk = s * chunk + step * 32 + k
+        a = tl.load(
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            0,
+        )
+        b = tl.load(
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            0,
+        )
+        part = tl.dot(a, b, part, input_precision="ieee")
+    tl.store(
+        P + s * M * N + m[:, None] * N + n[None, :],
+        part,
+        (m[:, None] < M) & (n[None, :] < N),
+    )
+
+
+@triton.jit
+def _chain_merge_consume(
+    P,
+    A,
+    C,
+    M: tl.constexpr,
+    NA: tl.constexpr,
+    N: tl.constexpr,
+    SPLITS: tl.constexpr,
+    NA2: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    TM: tl.constexpr,
+):
+    # C = A @ (sum_s P[s]): the split-K merge and the consumer gemm share a
+    # single launch.
+    ka = tl.arange(0, NA2)
+    nc = tl.arange(0, N)
+    f = tl.zeros((NA2, N), tl.float32)
+    for s in range(SPLITS):
+        f += tl.load(
+            P + s * NA * N + ka[:, None] * N + nc[None, :],
+            ka[:, None] < NA,
+            0,
+        )
+    m = tl.program_id(0) * TM + tl.arange(0, TM)
+    a = tl.load(A + m[:, None] * SAM + ka[None, :] * SAK, m[:, None] < M, 0)
+    out = tl.dot(a, f, input_precision="ieee")
+    tl.store(C + m[:, None] * SCM + nc[None, :] * SCN, out, m[:, None] < M)
+
+
+@triton.jit
 def _pair_partial(
     A, B, P, D, E, Q, X: tl.constexpr, Y: tl.constexpr, COUNT: tl.constexpr
 ):
@@ -360,6 +435,13 @@ def _config(dtype, m, n, k):
     tk = 64
     tm = 64
     tn = 64 if n >= 64 else max(16, triton.next_power_of_2(n))
+    if dtype in (torch.float16, torch.bfloat16) and n <= 64 and k >= 1024:
+        # Wide-K narrow-N: halve BLOCK_N so the grid has enough programs to
+        # cover the SMs without a second launch. A split-K pass costs one
+        # extra kernel launch per node, which the do_bench-level benchmark
+        # pays back with interest at chain sizes (14 us/launch host-side vs
+        # a 4-12 us kernel), so the fix has to stay single-launch.
+        tn = 32
     stages = 7 if k >= 512 else 3
     if dtype == torch.float64:
         # No fp64 tensor-core path; MODE 3 accumulates with scalar FMA, which
@@ -512,7 +594,88 @@ def _plan(p, dtype):
     )
 
 
+def _chain_fusion_steps(p, dtype):
+    """Plan step indices (i, i+1) to fuse: the inner gemm is a narrow-N fp32
+    ieee node (single-launch fallback, K >= 512) whose whole output
+    F = (M, N<=32) the next step consumes as its left operand. Returns the
+    leading step indices."""
+    if dtype != torch.float32:
+        return ()
+    plan = _plan(p, dtype)
+    slots = _slots(p)
+    first_intermediate = len(p) - 1
+    fused = []
+    i = 0
+    while i + 1 < len(plan):
+        m_i, n_i, k_i = plan[i][2], plan[i][3], plan[i][4]
+        mode_i = plan[i][5][3]
+        if (
+            mode_i == 1
+            and n_i <= 32
+            and m_i <= 128
+            and k_i >= 512
+            and slots[i + 1][1] == first_intermediate + i
+        ):
+            fused.append(i)
+            i += 2
+        else:
+            i += 1
+    return tuple(fused)
+
+
 @lru_cache(maxsize=128)
+def _chain_fusion_cached(p, dtype):
+    return _chain_fusion_steps(p, dtype)
+
+
+def _chain_fused_pair(tensors, plan, step, dtype, device):
+    """split_partial + merge_consume for a fused (inner, consumer) step pair.
+
+    The inner gemm F = A @ B runs fp32-ieee split-K over `splits` programs
+    (the serial fallback runs it in one); the consumer C = A_next @ F runs
+    inside the merge launch. Two launches instead of two separate gemm
+    launches, with the K-reduction parallelized.
+    """
+    m_i, n_i, k_i = plan[step][2], plan[step][3], plan[step][4]
+    left, right = tensors[plan[step][0]], tensors[plan[step][1]]
+    a_next = tensors[plan[step + 1][0]]
+    m_next = plan[step + 1][2]
+    splits = 8
+    na2 = triton.next_power_of_2(max(m_i, 16))
+    p = torch.empty((splits, m_i, n_i), dtype=torch.float32, device=device)
+    out = torch.empty((m_next, n_i), dtype=dtype, device=device)
+    _chain_partial[(triton.cdiv(m_i, 64), 1, splits)](
+        left,
+        right,
+        p,
+        m_i,
+        n_i,
+        k_i,
+        *left.stride(),
+        *right.stride(),
+        splits,
+        num_warps=4,
+        num_stages=3,
+    )
+    _chain_merge_consume[(triton.cdiv(m_next, 64),)](
+        p,
+        a_next,
+        out,
+        m_next,
+        m_i,
+        n_i,
+        splits,
+        na2,
+        *a_next.stride(),
+        out.stride(0),
+        out.stride(1),
+        TM=64,
+        num_warps=4,
+        num_stages=3,
+    )
+    return out
+
+
 def _pair_eligible(p, dtype):
     if dtype != torch.float32:
         return False
@@ -708,10 +871,30 @@ def _forward(mats):
     # (see its docstring), so gate it on the exact dimension tuple.
     fused = dtype in (torch.float16, torch.bfloat16) and p == _FUSED_TAIL_CHAIN
     unfused_steps = plan[:-2] if fused else plan
-    for left, right, m, n, k, config in unfused_steps:
-        tensors.append(
-            _mm_known(tensors[left], tensors[right], m, n, k, dtype, device, config)
-        )
+    # Chain-step fusion: a narrow-N fp32 ieee node and its whole-output
+    # consumer run as split_partial + merge_consume (two launches, with the
+    # K reduction parallelized).
+    fusion_steps = _chain_fusion_cached(p, dtype) if dtype == torch.float32 else ()
+    if fusion_steps:
+        skip = set(fs + 1 for fs in fusion_steps)
+        fi = 0
+        for idx, (left, right, m, n, k, config) in enumerate(unfused_steps):
+            if idx in skip:
+                continue
+            if fi < len(fusion_steps) and fusion_steps[fi] == idx:
+                # placeholder: the fused pair result covers both step ids
+                tensors.append(None)
+                tensors.append(_chain_fused_pair(tensors, plan, idx, dtype, device))
+                fi += 1
+                continue
+            tensors.append(
+                _mm_known(tensors[left], tensors[right], m, n, k, dtype, device, config)
+            )
+    else:
+        for left, right, m, n, k, config in unfused_steps:
+            tensors.append(
+                _mm_known(tensors[left], tensors[right], m, n, k, dtype, device, config)
+            )
     if fused:
         a = tensors[plan[-2][0]]
         b = tensors[plan[-2][1]]
