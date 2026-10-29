@@ -180,8 +180,9 @@ def test__stack_complex(shape, dim, dtype):
             value.cpu().contiguous().reshape(-1).view(torch.uint8), saved
         )
 
+    comparison_dtype = torch.complex64 if dtype == torch.complex32 else dtype
     assert torch.equal(
-        res_out.cpu().to(torch.complex64), ref_out.cpu().to(torch.complex64)
+        res_out.cpu().to(comparison_dtype), ref_out.cpu().to(comparison_dtype)
     )
 
 

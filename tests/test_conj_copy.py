@@ -90,9 +90,10 @@ def test_conj_copy(shape, dtype):
     )
 
     assert ref_out.dtype == dtype
+    comparison_dtype = torch.complex64 if dtype == torch.complex32 else dtype
     torch.testing.assert_close(
-        res_out.cpu().to(torch.complex64),
-        ref_out.cpu().to(torch.complex64),
+        res_out.cpu().to(comparison_dtype),
+        ref_out.cpu().to(comparison_dtype),
         atol=1e-4,
         rtol=flag_gems.testing.RESOLUTION[dtype],
     )
@@ -167,9 +168,10 @@ def test_conj_copy_with_conj_bit(shape, dtype):
     )
 
     assert ref_out.dtype == dtype
+    comparison_dtype = torch.complex64 if dtype == torch.complex32 else dtype
     torch.testing.assert_close(
-        res_out.cpu().to(torch.complex64),
-        ref_out.cpu().to(torch.complex64),
+        res_out.cpu().to(comparison_dtype),
+        ref_out.cpu().to(comparison_dtype),
         atol=1e-4,
         rtol=flag_gems.testing.RESOLUTION[dtype],
     )
