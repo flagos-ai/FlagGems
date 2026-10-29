@@ -16,11 +16,11 @@ import pytest
 import torch
 
 import flag_gems
+from tests import gru_cpu_reference as gru_oracle
 
 from . import base, consts
 from .conftest import Config
 from .test_thnn_fused_gru_cell import _H800GRUReference
-from tests import gru_cpu_reference as gru_oracle
 
 CORE_SHAPES = [
     (1, 32, False),
