@@ -59,6 +59,10 @@ def lift_fresh_copy(*args, **kwargs):
     out = torch.empty_like(x_contig, memory_format=torch.contiguous_format)
 
     n_elements = x_contig.numel()
+    if n_elements == 0:
+        # Nothing to copy, and a zero launch grid aborts the Ascend driver
+        # outright. The freshly allocated empty tensor is already the result.
+        return out.view_as(x_contig)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _copy_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=1024)
 
@@ -90,6 +94,10 @@ def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
                 out = out.contiguous()
 
     n_elements = x_contig.numel()
+    if n_elements == 0:
+        # Nothing to copy, and a zero launch grid aborts the Ascend driver
+        # outright. The freshly allocated empty tensor is already the result.
+        return out.view_as(x_contig)
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     _copy_kernel[grid](x_contig, out, n_elements, BLOCK_SIZE=1024)
 
