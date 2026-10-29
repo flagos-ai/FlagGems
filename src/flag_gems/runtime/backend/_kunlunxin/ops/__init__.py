@@ -72,8 +72,15 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_expm1_reciprocal import (  # noqa: F401
+    _foreach_expm1,
+    _foreach_expm1_,
+    _foreach_reciprocal,
+    _foreach_reciprocal_,
+)
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
+from ._foreach_lerp import _foreach_lerp__List, _foreach_lerp_List  # noqa: F401
 from ._foreach_log import _foreach_log, _foreach_log_  # noqa: F401
 from ._foreach_math import (
     _foreach_asin,
@@ -910,8 +917,12 @@ __all__ = [
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_expm1",
+    "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_lerp__List",
+    "_foreach_lerp_List",
     "_foreach_lerp__Scalar",
     "_foreach_lerp__ScalarList",
     "_foreach_lerp_Scalar",
@@ -934,6 +945,8 @@ __all__ = [
     "_foreach_pow__ScalarList",
     "_foreach_pow_List",
     "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal",
+    "_foreach_reciprocal_",
     "_foreach_round",
     "_foreach_round_",
     "_foreach_rsqrt",
