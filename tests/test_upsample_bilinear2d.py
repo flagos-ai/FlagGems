@@ -56,3 +56,43 @@ def test_upsample_bilinear2d(dtype, shape, scale, align_corners):
     # (fp32 ATen shows the same magnitude). reduce_dim=16 keeps ~2x headroom
     # over the observed worst-case diff so the test is not flaky on randn data.
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=16)
+
+
+@pytest.mark.upsample_bilinear2d
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "layout", ["contiguous", "channels_last", "transpose", "slice", "expand"]
+)
+@pytest.mark.parametrize("align_corners", [False, True])
+@pytest.mark.parametrize(
+    "resize", [{"size": (3, 9)}, {"scale_factor": (0.73, 1.37)}, {"size": (1, 1)}]
+)
+def test_upsample_bilinear2d_strided_input(dtype, layout, align_corners, resize):
+    shapes = {
+        "contiguous": (2, 3, 5, 7),
+        "channels_last": (2, 5, 7, 3),
+        "transpose": (2, 3, 7, 5),
+        "slice": (4, 6, 10, 14),
+        "expand": (1, 3, 5, 7),
+    }
+    input = torch.randn(shapes[layout], dtype=dtype, device=flag_gems.device)
+    if layout == "channels_last":
+        input = input.permute(0, 3, 1, 2)
+    elif layout == "transpose":
+        input = input.transpose(-1, -2)
+    elif layout == "slice":
+        input = input[::2, ::2, ::2, 1::2]
+    elif layout == "expand":
+        input = input.expand(2, -1, -1, -1)
+    assert input.is_contiguous() == (layout == "contiguous")
+    ref_i = utils.to_reference(input, True)
+    ref_out = torch.nn.functional.interpolate(
+        ref_i, mode="bilinear", align_corners=align_corners, **resize
+    )
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.interpolate(
+            input, mode="bilinear", align_corners=align_corners, **resize
+        )
+    if ref_out.dtype != res_out.dtype:
+        ref_out = ref_out.to(res_out.dtype)
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=16)

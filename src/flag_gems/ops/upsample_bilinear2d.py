@@ -41,6 +41,10 @@ def upsample_bilinear2d_kernel(
     OW,
     IH,
     IW,
+    stride_n,
+    stride_c,
+    stride_h,
+    stride_w,
     reciprocal_scale_h,
     reciprocal_scale_w,
     ALIGN_CORNERS: tl.constexpr,
@@ -104,13 +108,13 @@ def upsample_bilinear2d_kernel(
     for n in range(0, N, 1):
         for c in range(0, C, 1):
             # Compute base offset for input
-            base_offset = (n * C + c) * IH
+            base_offset = n * stride_n + c * stride_c
 
             # Load the 4 neighbors
-            offset_00 = (base_offset + h0[:, None]) * IW + w0[None, :]
-            offset_01 = (base_offset + h0[:, None]) * IW + w1[None, :]
-            offset_10 = (base_offset + h1[:, None]) * IW + w0[None, :]
-            offset_11 = (base_offset + h1[:, None]) * IW + w1[None, :]
+            offset_00 = base_offset + h0[:, None] * stride_h + w0[None, :] * stride_w
+            offset_01 = base_offset + h0[:, None] * stride_h + w1[None, :] * stride_w
+            offset_10 = base_offset + h1[:, None] * stride_h + w0[None, :] * stride_w
+            offset_11 = base_offset + h1[:, None] * stride_h + w1[None, :] * stride_w
 
             data_00 = tl.load(ptr_i + offset_00)
             data_01 = tl.load(ptr_i + offset_01)
@@ -179,6 +183,7 @@ def upsample_bilinear2d(
             OW,
             IH,
             IW,
+            *input.stride(),
             reciprocal_scale_h,
             reciprocal_scale_w,
             align_corners,
