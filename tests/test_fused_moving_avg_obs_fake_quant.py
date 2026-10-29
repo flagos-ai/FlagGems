@@ -41,9 +41,7 @@ def ref_fused_moving_avg_obs_fake_quant(
     symmetric_quant=False,
 ):
     """Use canonical FP32 ATen semantics on the configured reference device."""
-    observer = torch.tensor(
-        [int(observer_on)], dtype=torch.long, device=input.device
-    )
+    observer = torch.tensor([int(observer_on)], dtype=torch.long, device=input.device)
     fake_quant = torch.tensor(
         [int(fake_quant_on)], dtype=torch.long, device=input.device
     )
@@ -182,8 +180,7 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
     input_ref = utils.to_reference(input_tensor, False)
     ref_device = input_ref.device
     if observer_on and (
-        ref_device.type == "cpu"
-        or flag_gems.vendor_name in ("ascend", "kunlunxin")
+        ref_device.type == "cpu" or flag_gems.vendor_name in ("ascend", "kunlunxin")
     ):
         pytest.skip(
             "Configured native reference only supports per-row observer "
