@@ -703,7 +703,6 @@ from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
-from flag_gems.ops.dsplit import dsplit
 from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
@@ -2291,7 +2290,6 @@ __all__ = [
     "dropout",
     "dropout_",
     "dropout_backward",
-    "dsplit",
     "dstack",
     "efficient_attention_backward",
     "elu",

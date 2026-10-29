@@ -1000,8 +1000,6 @@ _FULL_CONFIG = (
     ("divide_.Tensor_mode", div_mode_),
     ("dot", dot),
     ("dropout_", dropout_),
-    ("dsplit.array", dsplit),
-    ("dsplit.int", dsplit),
     ("dstack", dstack),
     ("elu", elu),
     ("elu_", elu_),

@@ -323,7 +323,6 @@ from .div import (
 from .dot import dot
 from .dropout import dropout, dropout_backward
 from .dropout_ import dropout_  # noqa: F401
-from .dsplit import dsplit  # noqa: F401
 from .elu import elu, elu_, elu_backward
 from .embedding import embedding, embedding_backward, embedding_dense_backward
 from .empty import empty  # noqa: F401
@@ -1156,7 +1155,6 @@ __all__ = [
     "dot",
     "dropout",
     "dropout_backward",
-    "dsplit",
     "efficient_attention_backward",
     "elu",
     "elu_",
