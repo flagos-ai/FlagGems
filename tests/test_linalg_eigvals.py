@@ -35,6 +35,13 @@ def _sorted_eigvals(values):
     return ordered[torch.argsort(ordered.real, stable=True)]
 
 
+def _assert_eigvals_contract(actual, inp):
+    assert isinstance(actual, torch.Tensor)
+    assert actual.device == inp.device
+    assert actual.dtype == torch.complex64
+    assert actual.shape == inp.shape[:-1]
+
+
 @pytest.mark.linalg_eigvals
 @pytest.mark.parametrize("shape", EIGVALS_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -44,11 +51,12 @@ def test_linalg_eigvals(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.ops.aten._linalg_eigvals.default(ref_inp)
-    res_out = flag_gems.ops._linalg_eigvals(inp)
+    res_out = flag_gems.linalg_eigvals(inp)
+    _assert_eigvals_contract(res_out, inp)
 
     # For float32 input, the eigenvalues come back as complex64.
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 
@@ -62,9 +70,10 @@ def test_linalg_eigvals_default(shape, dtype):
 
     ref_out = torch.ops.aten.linalg_eigvals.default(ref_inp)
     res_out = flag_gems.linalg_eigvals(inp)
+    _assert_eigvals_contract(res_out, inp)
 
     utils.gems_assert_close(
-        _sorted_eigvals(res_out), _sorted_eigvals(ref_out), res_out.dtype
+        _sorted_eigvals(res_out.cpu()), _sorted_eigvals(ref_out.cpu()), res_out.dtype
     )
 
 

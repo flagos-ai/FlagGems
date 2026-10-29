@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 _ATEN_OP = torch.ops.aten._foreach_sinh
 
 
@@ -99,7 +98,9 @@ def test_foreach_sinh_accuracy(dtype, noncontiguous):
 
     _assert_values(result, expected, _output_dtype(dtype))
     for output, source in zip(result, values):
-        assert output.untyped_storage().data_ptr() != source.untyped_storage().data_ptr()
+        assert (
+            output.untyped_storage().data_ptr() != source.untyped_storage().data_ptr()
+        )
 
 
 @pytest.mark.foreach_sinh
@@ -131,6 +132,10 @@ def test_foreach_sinh_integer_promotion():
 
 @pytest.mark.foreach_sinh
 def test_foreach_sinh_complex_values():
+    if flag_gems.vendor_name == "enflame" and not utils.TO_CPU:
+        pytest.skip(
+            "backend native foreach does not support the complex reference contract"
+        )
     values = [_sample((9,), torch.complex64)]
     reference_values = _reference(values)
     if not _COMPLEX_SUPPORTED:

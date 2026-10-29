@@ -15,41 +15,14 @@
 import pytest
 import torch
 
-from . import base, consts, utils
-from .generated_operator_utils import OperatorBenchmark
-
-
-class MultigammalnBenchmark(base.UnaryPointwiseBenchmark, OperatorBenchmark):
-    def supports_cases(self):
-        return True
-
-    def set_shapes(self, shape_file_path=None):
-        base.Benchmark.set_shapes(self, shape_file_path)
-
-    get_case_iter = OperatorBenchmark.get_case_iter
-    build_inputs = OperatorBenchmark.build_inputs
-
-
-def _multigammaln_case_fn(shape, dtype):
-    del dtype
-    yield base.BenchmarkCasePlan(
-        shape={"self": list(shape)}, params={"p": 5}, builder_args=(shape,),
-    )
-
-
-def _multigammaln_build_inputs_fn(plan, dtype, device):
-    (shape,) = plan.builder_args
-    inp = utils.generate_tensor_input(shape, dtype, device)
-    return inp, 5
+from . import base, consts
 
 
 @pytest.mark.special_multigammaln
 def test_special_multigammaln():
-    bench = MultigammalnBenchmark(
+    bench = base.UnaryPointwiseBenchmark(
         op_name="special_multigammaln",
-        torch_op=torch.ops.aten.special_multigammaln.default,
-        case_fn=_multigammaln_case_fn,
-        build_inputs_fn=_multigammaln_build_inputs_fn,
+        torch_op=lambda a: torch.special.multigammaln(a, 5),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "native_batch_norm_legit",
+  "name": "_native_batch_norm_legit",
   "requires_triton_kernel": true,
   "description": "Batch normalization with in-place running statistics updates, returning the normalized output along with the saved mean and inverse standard deviation.",
   "parameters": [

@@ -15,10 +15,9 @@
 import pytest
 import torch
 
-import flag_gems
-
-from . import base, consts, utils
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -45,6 +44,5 @@ def test_dunder_or_tensor():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.__or__.Tensor,
-        gems_op=flag_gems.bitwise_or_tensor,
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
     ).run()

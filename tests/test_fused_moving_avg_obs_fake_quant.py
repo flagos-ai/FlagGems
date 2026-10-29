@@ -40,44 +40,27 @@ def ref_fused_moving_avg_obs_fake_quant(
     per_row_fake_quant=False,
     symmetric_quant=False,
 ):
-    """Reference implementation in pure PyTorch."""
-    x = input.float()
-
-    if observer_on:
-        cur_min = x.min()
-        cur_max = x.max()
-        running_min.lerp_(cur_min, averaging_const)
-        running_max.lerp_(cur_max, averaging_const)
-
-    rmin = min(running_min.item(), 0.0)
-    rmax = max(running_max.item(), 0.0)
-    qmin_f = float(quant_min)
-    qmax_f = float(quant_max)
-
-    sc = (rmax - rmin) / (qmax_f - qmin_f)
-    if sc == 0.0:
-        sc = 0.1
-    zp = round(qmin_f - rmin / sc)
-    zp = min(max(zp, qmin_f), qmax_f)
-
-    if symmetric_quant and rmin < 0.0 and rmax > 0.0:
-        sc = max(-rmin / (-qmin_f), rmax / qmax_f)
-        if sc == 0.0:
-            sc = 0.1
-        zp = round((qmin_f + qmax_f) / 2.0)
-
-    scale.fill_(sc)
-    zero_point.fill_(int(zp))
-
-    if fake_quant_on:
-        sc_t = torch.tensor(sc, dtype=torch.float32, device=input.device)
-        zp_t = torch.tensor(zp, dtype=torch.float32, device=input.device)
-        q = torch.round(x / sc_t) + zp_t
-        q = q.clamp(qmin_f, qmax_f)
-        out = (q - zp_t) * sc_t
-        return out.to(input.dtype)
-    else:
-        return input.clone()
+    """Use canonical FP32 ATen semantics on the configured reference device."""
+    observer = torch.tensor([int(observer_on)], dtype=torch.long, device=input.device)
+    fake_quant = torch.tensor(
+        [int(fake_quant_on)], dtype=torch.long, device=input.device
+    )
+    output = torch.ops.aten.fused_moving_avg_obs_fake_quant.default(
+        input.float(),
+        observer,
+        fake_quant,
+        running_min,
+        running_max,
+        scale,
+        zero_point,
+        averaging_const,
+        quant_min,
+        quant_max,
+        ch_axis,
+        per_row_fake_quant,
+        symmetric_quant,
+    )
+    return output.to(dtype=input.dtype)
 
 
 @pytest.mark.fused_moving_avg_obs_fake_quant
@@ -129,8 +112,8 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
 
     res_out = flag_gems.fused_moving_avg_obs_fake_quant(
         input_tensor,
-        torch.tensor([observer_on], dtype=torch.int32),
-        torch.tensor([fake_quant_on], dtype=torch.int32),
+        torch.tensor([observer_on], dtype=torch.long, device=flag_gems.device),
+        torch.tensor([fake_quant_on], dtype=torch.long, device=flag_gems.device),
         running_min_tri,
         running_max_tri,
         scale_tri,
@@ -142,6 +125,22 @@ def test_accuracy_fused_moving_avg_obs_fake_quant(
         symmetric_quant=symmetric_quant,
     )
 
+    assert res_out.device == input_tensor.device
+    assert (
+        res_out.untyped_storage().data_ptr()
+        != input_tensor.untyped_storage().data_ptr()
+    )
+    assert all(
+        res_out.untyped_storage().data_ptr() != state.untyped_storage().data_ptr()
+        for state in (running_min_tri, running_max_tri, scale_tri, zp_tri)
+    )
+    assert res_out.dtype == input_tensor.dtype and res_out.shape == input_tensor.shape
+    for state, expected_dtype in zip(
+        (running_min_tri, running_max_tri, scale_tri, zp_tri),
+        (torch.float32, torch.float32, torch.float32, torch.int32),
+    ):
+        assert state.device == input_tensor.device and state.dtype == expected_dtype
+        assert state.shape == (1,)
     utils.gems_assert_close(res_out, ref_out, dtype=torch.float32, atol=1e-2)
 
     utils.gems_assert_close(
@@ -188,12 +187,12 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
             "updates on ch_axis=0"
         )
     if (
-        flag_gems.vendor_name in ("nvidia", "iluvatar")
+        flag_gems.vendor_name in ("nvidia", "iluvatar", "thead", "metax")
         and ref_device.type == "cuda"
         and fake_quant_on
     ):
         pytest.skip(
-            "CUDA reference per-row fake quant rejects ch_axis=1 "
+            "Configured reference per-row fake quant rejects ch_axis=1 "
             "scale/zero-point dimensions"
         )
     observer_ref = torch.tensor([int(observer_on)], dtype=torch.long, device=ref_device)
@@ -265,6 +264,22 @@ def test_fused_moving_avg_obs_fake_quant_per_row_contract(
         symmetric_quant,
     )
 
+    assert res_out.device == input_tensor.device
+    assert (
+        res_out.untyped_storage().data_ptr()
+        != input_tensor.untyped_storage().data_ptr()
+    )
+    assert all(
+        res_out.untyped_storage().data_ptr() != state.untyped_storage().data_ptr()
+        for state in (running_min_tri, running_max_tri, scale_tri, zp_tri)
+    )
+    assert res_out.dtype == input_tensor.dtype and res_out.shape == input_tensor.shape
+    for state, expected_dtype in zip(
+        (running_min_tri, running_max_tri, scale_tri, zp_tri),
+        (torch.float32, torch.float32, torch.float32, torch.int32),
+    ):
+        assert state.device == input_tensor.device and state.dtype == expected_dtype
+        assert state.shape == (channels,)
     utils.gems_assert_close(res_out, ref_out, dtype=torch.float32, atol=1e-2)
     utils.gems_assert_close(
         running_min_tri, running_min_ref, dtype=torch.float32, atol=1e-4

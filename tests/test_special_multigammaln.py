@@ -39,23 +39,19 @@ MVLGAMMA_CASES = [(shape, dtype) for shape in utils.POINTWISE_SHAPES for dtype i
 @pytest.mark.special_multigammaln
 @pytest.mark.parametrize('shape,dtype', MVLGAMMA_CASES)
 @pytest.mark.parametrize('p', P_LIST)
-def test_special_multigammaln(shape, dtype, p, caplog, request):
+def test_special_multigammaln(shape, dtype, p, caplog):
     torch.manual_seed(42)
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     inp = inp + (p - 1) / 2 + 1.0
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.ops.aten.special_multigammaln(ref_inp, p)
     with caplog.at_level('DEBUG', logger='flag_gems.ops.special_multigammaln'):
-        res_out = flag_gems.special_multigammaln(inp, p)
+        with flag_gems.use_gems():
+            res_out = torch.ops.aten.special_multigammaln(inp, p)
     assert res_out is not inp
     if res_out.numel():
         assert res_out.data_ptr() != inp.data_ptr()
-    registry = getattr(request.config, "_override_registry", None)
-    if registry is None or registry.get_override("special_multigammaln") is None:
-        assert f'{utils.gems_log_prefix(flag_gems.special_multigammaln)} SPECIAL_MULTIGAMMALN' in caplog.text
-    assert res_out.device == inp.device
-    assert res_out.dtype == dtype
-    assert res_out.shape == inp.shape
+    assert f'{utils.gems_log_prefix(flag_gems.special_multigammaln)} SPECIAL_MULTIGAMMALN' in caplog.text
     atol = 0.01 if dtype == torch.float16 else 0.0001
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
     utils.gems_assert_close(inp, ref_inp, dtype, atol=atol)

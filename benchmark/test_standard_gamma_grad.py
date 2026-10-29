@@ -39,9 +39,7 @@ def _build_inputs_fn(plan, dtype, device):
     return alpha, output
 
 
-class StandardGammaGradBenchmark(
-    base.BinaryPointwiseBenchmark, OperatorBenchmark
-):
+class StandardGammaGradBenchmark(base.BinaryPointwiseBenchmark, OperatorBenchmark):
     def supports_cases(self):
         return True
 

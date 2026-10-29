@@ -14,7 +14,7 @@ INPLACE_BITWISE_SHAPES = [
 ]
 
 
-@pytest.mark.irshift
+@pytest.mark.bitwise_right_shift_
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
 def test_irshift(shapes, dtype):
@@ -33,14 +33,48 @@ def test_irshift(shapes, dtype):
 
     data_ptr = res_a.data_ptr()
 
+    before = (
+        res_a.device,
+        res_a.dtype,
+        tuple(res_a.shape),
+        res_a.stride(),
+        res_a.data_ptr(),
+    )
+    other_before = (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    )
+    other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
     ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    assert isinstance(ret, torch.Tensor)
+    assert ret is res_a
+    assert (
+        ret.device,
+        ret.dtype,
+        tuple(ret.shape),
+        ret.stride(),
+        ret.data_ptr(),
+    ) == before
+    assert (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        res_b.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr
     utils.gems_assert_close(res_a, ref_a, dtype)
 
 
-@pytest.mark.irshift
+@pytest.mark.bitwise_right_shift_
 @pytest.mark.parametrize("dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
 def test_irshift_edge_cases(dtype):
     # Signed values cover negative-number right shift behavior.
@@ -63,7 +97,41 @@ def test_irshift_edge_cases(dtype):
 
     data_ptr = res_a.data_ptr()
 
+    before = (
+        res_a.device,
+        res_a.dtype,
+        tuple(res_a.shape),
+        res_a.stride(),
+        res_a.data_ptr(),
+    )
+    other_before = (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    )
+    other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
     ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    assert isinstance(ret, torch.Tensor)
+    assert ret is res_a
+    assert (
+        ret.device,
+        ret.dtype,
+        tuple(ret.shape),
+        ret.stride(),
+        ret.data_ptr(),
+    ) == before
+    assert (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        res_b.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr

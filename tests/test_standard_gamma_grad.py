@@ -43,20 +43,17 @@ def test_standard_gamma_grad_regimes(shape, dtype, alpha_range, output_range):
     alpha_lo, alpha_hi = alpha_range
     out_lo, out_hi = output_range
     alpha = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device)
-        * (alpha_hi - alpha_lo)
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) * (alpha_hi - alpha_lo)
         + alpha_lo
     )
     if alpha_lo >= 10.0:
         output = alpha * (
-            torch.rand(shape, dtype=dtype, device=flag_gems.device)
-            * (out_hi - out_lo)
+            torch.rand(shape, dtype=dtype, device=flag_gems.device) * (out_hi - out_lo)
             + out_lo
         )
     else:
         output = (
-            torch.rand(shape, dtype=dtype, device=flag_gems.device)
-            * (out_hi - out_lo)
+            torch.rand(shape, dtype=dtype, device=flag_gems.device) * (out_hi - out_lo)
             + out_lo
         )
     alpha_before = utils.to_reference(alpha.clone())
