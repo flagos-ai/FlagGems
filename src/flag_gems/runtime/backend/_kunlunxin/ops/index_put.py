@@ -14,6 +14,8 @@
 
 import logging
 
+import torch
+
 from flag_gems.ops.index_put import index_put as _common_index_put
 from flag_gems.ops.index_put import index_put_ as _common_index_put_
 
@@ -29,7 +31,13 @@ def index_put(inp, indices, values, accumulate=False):
     # route the general cases (empty / None markers) to the common implementation.
     if not indices or any(index is None for index in indices):
         return _common_index_put(inp, indices, values, accumulate)
-    out = inp.clone()
+    # Avoid the gem `clone` override under use_gems(): its `grid = lambda`
+    # kernel recompiles per call on this backend (~100 ms/call, KERNEL_OPT #41),
+    # which made functional index_put ~0.003x in the benchmark.  `empty_like` +
+    # `copy_` uses the fast native copy path and is semantically identical for
+    # a fresh functional output (same layout, dtype, device as `inp`).
+    out = torch.empty_like(inp)
+    out.copy_(inp)
     return _index_put_impl_(out, indices, values, accumulate)
 
 
