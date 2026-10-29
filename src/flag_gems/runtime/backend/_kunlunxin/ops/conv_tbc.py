@@ -133,7 +133,9 @@ def _conv_tbc_impl(input, weight, bias, pad, out=None):
 
     inp_pad = torch.zeros((T_pad, B, Cin_pad), dtype=torch.float32, device=input.device)
     inp_pad[pad : pad + T, :, :Cin] = input.float()
-    w_pad = torch.zeros((kW, Cin_pad, Cout_pad), dtype=torch.float32, device=weight.device)
+    w_pad = torch.zeros(
+        (kW, Cin_pad, Cout_pad), dtype=torch.float32, device=weight.device
+    )
     w_pad[:, :Cin, :Cout] = weight.float()
     bias_pad = torch.zeros((Cout_pad,), dtype=torch.float32, device=bias.device)
     bias_pad[:Cout] = bias.float()

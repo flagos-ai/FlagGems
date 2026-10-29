@@ -17,7 +17,6 @@ import logging
 import torch
 import triton
 import triton.language as tl
-
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems.ops.matrix_power import _matrix_power as _generic_matrix_power
@@ -504,11 +503,7 @@ def matrix_power_out(A, n, *, out):
     # Write the final product directly into ``out`` when it is a contiguous
     # buffer that does not alias the input; otherwise fall back to a copy so
     # aliasing/stride semantics stay identical to ``torch.matrix_power``.
-    if (
-        out.is_contiguous()
-        and out.dtype == A.dtype
-        and out.data_ptr() != A.data_ptr()
-    ):
+    if out.is_contiguous() and out.dtype == A.dtype and out.data_ptr() != A.data_ptr():
         out3 = out.reshape(-1, M, M)
         _matrix_power(A3, n, out=out3)
         return out
