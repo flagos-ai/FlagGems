@@ -30,7 +30,6 @@ Fix:
   - real * real:       use backend scalar and dense-row kernels
 """
 
-import importlib
 import logging
 from numbers import Number
 
@@ -42,15 +41,6 @@ from flag_gems import runtime
 from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
-
-# torchada maps CUDA Graph APIs to MUSA. Its SGLang import replaces this
-# constexpr helper, so preserve FlagTree's implementation for JIT compilation.
-_triton_next_power_of_2 = triton.next_power_of_2
-importlib.import_module("torchada")
-
-triton.next_power_of_2 = _triton_next_power_of_2
-del _triton_next_power_of_2
-
 
 logger = logging.getLogger(__name__)
 
