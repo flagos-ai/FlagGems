@@ -80,9 +80,9 @@ def torch_ref(
             return_debug_mask,
             scale=scale,
         )
-    if flag_gems.vendor_name == "hygon":
+    if flag_gems.vendor_name in {"hygon", "metax"}:
         raise ValueError(
-            "Hygon uses exact static H800 reference; native timer must be skipped"
+            "Backend uses exact static H800 reference; native timer must be skipped"
         )
     return flag_gems.ops.scaled_dot_product_attention_forward(
         query, key, value, is_causal=is_causal
@@ -161,7 +161,7 @@ class _OverrideableH800Reference:
     def _require_composite_static(self, args, kwargs, case_id):
         if not base.Config.skip_native or base.Config.base_data is None:
             raise ValueError(
-                "Hygon overrideable attention requires exact native-composite H800 --base-data"
+                "Backend overrideable attention requires exact native-composite H800 --base-data"
             )
         if (
             self.op_name != "_scaled_dot_product_fused_attention_overrideable"
@@ -268,19 +268,19 @@ class _OverrideableH800Reference:
 
     def _candidate_call(self):
         op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "hygon" and op is self.torch_op:
-            raise ValueError("Hygon requires explicit supported CPU-oracle candidate")
+        if flag_gems.vendor_name in {"hygon", "metax"} and op is self.torch_op:
+            raise ValueError("Backend requires explicit supported CPU-oracle candidate")
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name == "hygon":
+        if flag_gems.vendor_name in {"hygon", "metax"}:
             self._composite_checked = self._require_composite_static(
                 *self.unpack_to_args_kwargs(input), case_id
             )
         return super()._measure_input(input, case_id=case_id)
 
     def _apply_external_baseline(self, metric, dtype, context):
-        if flag_gems.vendor_name != "hygon":
+        if flag_gems.vendor_name not in {"hygon", "metax"}:
             return super()._apply_external_baseline(metric, dtype, context)
         baseline, captured, latency, key = self._composite_checked
         if (
@@ -351,7 +351,7 @@ def _build_inputs_fn(plan, dtype, device):
 @pytest.mark.scaled_dot_product_fused_attention_overrideable
 @pytest.mark.underscore_scaled_dot_product_fused_attention_overrideable
 @pytest.mark.skip_native(
-    vendors=["hygon"],
+    vendors=["hygon", "metax"],
     reason="Absent overrideable hook; consume exact native ATen composite H800 records",
 )
 @pytest.mark.parametrize("is_causal", [False, True])
