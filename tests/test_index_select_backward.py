@@ -24,7 +24,11 @@ CASES = [(shape, dim) for shape in SHAPES for dim in range(len(shape))]
 
 
 def _skip_unsupported_index_dtype(index_dtype):
-    if flag_gems.vendor_name == "enflame" and index_dtype == torch.int64:
+    if (
+        flag_gems.vendor_name == "enflame"
+        and index_dtype == torch.int64
+        and not utils.TO_CPU
+    ):
         pytest.skip("Enflame native index_select_backward requires Int32 indices")
 
 
@@ -36,9 +40,10 @@ def _check_index_select_backward(shape, dim, dtype, index_dtype):
     self_sizes = tuple(self_sizes)
     torch.manual_seed(0)
     grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
     index = torch.randint(
-        0, dim_size_out, (shape[dim],), dtype=index_dtype, device=flag_gems.device
-    )
+        0, dim_size_out, (shape[dim],), dtype=index_dtype, device=index_device
+    ).to(flag_gems.device)
     assert index.dtype == index_dtype
     assert index.device == grad.device
     expected_device = grad.device
@@ -59,7 +64,10 @@ def _check_index_select_backward_repeated_indices(dtype, index_dtype):
     _skip_unsupported_index_dtype(index_dtype)
     torch.manual_seed(0)
     grad = torch.randn(4, dtype=dtype, device=flag_gems.device)
-    index = torch.tensor([0, 2, 2, 5], dtype=index_dtype, device=flag_gems.device)
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
+    index = torch.tensor([0, 2, 2, 5], dtype=index_dtype, device=index_device).to(
+        flag_gems.device
+    )
     assert index.dtype == index_dtype
     assert index.device == grad.device
     expected_device = grad.device

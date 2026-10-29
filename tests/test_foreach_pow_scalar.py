@@ -57,20 +57,25 @@ def test_foreach_pow_scalar(dtype):
     assert len(result) == len(expected)
     for actual, wanted, source in zip(result, expected, self_tensors):
         assert actual.shape == wanted.shape
-        assert actual.dtype == wanted.dtype
+        assert actual.dtype == source.dtype
+        assert actual.device == source.device
         assert actual.data_ptr() != source.data_ptr()
-        utils.gems_assert_close(actual, wanted, wanted.dtype)
+        utils.gems_assert_close(actual, wanted, source.dtype)
 
 
 @pytest.mark.foreach_pow_scalar
 def test_foreach_pow_scalar_empty_list():
-    result = _candidate([], 0.5)
-    assert result == []
+    with pytest.raises(RuntimeError):
+        _ATEN_OP([], 0.5)
+    with pytest.raises(RuntimeError):
+        _candidate([], 0.5)
 
 
 @pytest.mark.foreach_pow_scalar
 @pytest.mark.parametrize("exponent", [True, False, 0, 2, 0.5, -1.0, float("inf")])
 def test_foreach_pow_scalar_bool_base(exponent):
+    if flag_gems.vendor_name == "mthreads" and not utils.TO_CPU:
+        pytest.skip("MUSA native pow does not support boolean-base inputs")
     if not utils.TO_CPU and (
         (flag_gems.vendor_name == "ascend" and isinstance(exponent, bool))
         or (

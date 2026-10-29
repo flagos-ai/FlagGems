@@ -23,11 +23,13 @@ REDUCTIONS = ("prod", "mean", "amax", "amin")
 
 
 def _inputs(dtype=torch.float32, index_dtype=torch.int64):
-    _skip_unsupported_index_dtype(index_dtype)
     torch.manual_seed(0)
     inp = torch.randn((4, 6), dtype=dtype, device=flag_gems.device)
     source = torch.randn((4, 8), dtype=dtype, device=flag_gems.device)
-    index = (torch.arange(8, dtype=index_dtype, device=flag_gems.device) * 3 + 1) % 6
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else flag_gems.device
+    index = ((torch.arange(8, dtype=index_dtype, device=index_device) * 3 + 1) % 6).to(
+        flag_gems.device
+    )
     assert index.dtype == index_dtype
     assert index.device == inp.device
     return inp, index, source
@@ -46,11 +48,16 @@ def _reference(inp, index, source, reduce, include_self, out):
 
 
 def _skip_unsupported_index_dtype(index_dtype):
-    if flag_gems.vendor_name == "enflame" and index_dtype == torch.int64:
+    if (
+        flag_gems.vendor_name == "enflame"
+        and index_dtype == torch.int64
+        and not utils.TO_CPU
+    ):
         pytest.skip("Enflame native index_reduce_out requires Int32 indices")
 
 
 def _check_index_reduce_out_resizes(reduce, include_self, index_dtype):
+    _skip_unsupported_index_dtype(index_dtype)
     inp, index, source = _inputs(index_dtype=index_dtype)
     expected_device, expected_dtype, expected_shape = inp.device, inp.dtype, inp.shape
     out = torch.empty((0,), dtype=inp.dtype, device=flag_gems.device)
@@ -75,6 +82,7 @@ def _check_index_reduce_out_resizes(reduce, include_self, index_dtype):
 
 
 def _check_index_reduce_out_preserves_storage(reduce, index_dtype):
+    _skip_unsupported_index_dtype(index_dtype)
     inp, index, source = _inputs(index_dtype=index_dtype)
     expected_device, expected_dtype, expected_shape = inp.device, inp.dtype, inp.shape
     out = torch.empty_like(inp)
@@ -95,6 +103,7 @@ def _check_index_reduce_out_preserves_storage(reduce, index_dtype):
 
 
 def _check_index_reduce_out_aliases_input(index_dtype):
+    _skip_unsupported_index_dtype(index_dtype)
     inp, index, source = _inputs(index_dtype=index_dtype)
     expected_device = inp.device
     expected_dtype = inp.dtype

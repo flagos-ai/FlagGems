@@ -62,10 +62,10 @@ class MaskedSoftmaxBackwardBenchmark(base.Benchmark):
         return grad_output, output, mask, -1
 
 
-@pytest.mark.masked_softmax_backward
-def test_masked_softmax_backward():
+@pytest.mark.underscore_masked_softmax_backward
+def test__masked_softmax_backward():
     bench = MaskedSoftmaxBackwardBenchmark(
-        op_name="masked_softmax_backward",
+        op_name="_masked_softmax_backward",
         torch_op=torch.ops.aten._masked_softmax_backward,
         dtypes=consts.FLOAT_DTYPES,
     )

@@ -63,6 +63,14 @@ def test_stack(shape, dim, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+def _private_stack_reference(inputs, dim):
+    # The installed Ascend host's internal CPU _stack traps with SIGILL.
+    # Public CPU stack is checked against native NPU _stack on this contract.
+    if flag_gems.vendor_name == "ascend" and utils.TO_CPU:
+        return torch.stack(inputs, dim)
+    return torch._stack(inputs, dim)
+
+
 @pytest.mark.underscore_stack
 @pytest.mark.parametrize("shape", utils.STACK_SHAPES)
 @pytest.mark.parametrize("dim", utils.STACK_DIM_LIST)
@@ -79,9 +87,36 @@ def test__stack(shape, dim, dtype):
         ]
 
     ref_inp = [utils.to_reference(_) for _ in inp]
-    ref_out = torch._stack(ref_inp, dim)
+    ref_out = _private_stack_reference(ref_inp, dim)
 
+    expected_device, expected_dtype = inp[0].device, inp[0].dtype
+    expected_shape = list(inp[0].shape)
+    expected_shape.insert(dim if dim >= 0 else dim + len(expected_shape) + 1, len(inp))
+    before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr(), x.is_conj())
+        for x in inp
+    ]
+    input_bytes = [
+        x.cpu().contiguous().reshape(-1).view(torch.uint8).clone() for x in inp
+    ]
     res_out = flag_gems._stack(inp, dim)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == expected_device and res_out.dtype == expected_dtype
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    if res_out.numel():
+        assert res_out.data_ptr() not in {x[4] for x in before}
+    for value, metadata, saved in zip(inp, before, input_bytes):
+        assert (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.data_ptr(),
+            value.is_conj(),
+        ) == metadata
+        assert torch.equal(
+            value.cpu().contiguous().reshape(-1).view(torch.uint8), saved
+        )
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -99,14 +134,56 @@ def test__stack_dim_out_of_range(dtype):
 @pytest.mark.parametrize("dim", utils.STACK_DIM_LIST)
 @pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
 def test__stack_complex(shape, dim, dtype):
-    inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not utils.TO_CPU
+        and dtype == torch.complex32
+    ):
+        pytest.skip("Ascend native private stack does not support complex32")
+    if flag_gems.vendor_name == "ascend":
+        inp = [
+            torch.randn(s, dtype=dtype, device="cpu").to(flag_gems.device)
+            for s in shape
+        ]
+    else:
+        inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
 
     ref_inp = [utils.to_reference(_) for _ in inp]
-    ref_out = torch._stack(ref_inp, dim)
+    ref_out = _private_stack_reference(ref_inp, dim)
 
+    expected_device, expected_dtype = inp[0].device, inp[0].dtype
+    expected_shape = list(inp[0].shape)
+    expected_shape.insert(dim if dim >= 0 else dim + len(expected_shape) + 1, len(inp))
+    before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr(), x.is_conj())
+        for x in inp
+    ]
+    input_bytes = [
+        x.cpu().contiguous().reshape(-1).view(torch.uint8).clone() for x in inp
+    ]
     res_out = flag_gems._stack(inp, dim)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == expected_device and res_out.dtype == expected_dtype
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    if res_out.numel():
+        assert res_out.data_ptr() not in {x[4] for x in before}
+    for value, metadata, saved in zip(inp, before, input_bytes):
+        assert (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.data_ptr(),
+            value.is_conj(),
+        ) == metadata
+        assert torch.equal(
+            value.cpu().contiguous().reshape(-1).view(torch.uint8), saved
+        )
 
-    utils.gems_assert_equal(res_out, ref_out)
+    comparison_dtype = torch.complex64 if dtype == torch.complex32 else dtype
+    assert torch.equal(
+        res_out.cpu().to(comparison_dtype), ref_out.cpu().to(comparison_dtype)
+    )
 
 
 @pytest.mark.underscore_stack
@@ -132,9 +209,36 @@ def test__stack_zero_sized(shape, dim):
     ]
 
     ref_inp = [utils.to_reference(_) for _ in inp]
-    ref_out = torch._stack(ref_inp, dim)
+    ref_out = _private_stack_reference(ref_inp, dim)
 
+    expected_device, expected_dtype = inp[0].device, inp[0].dtype
+    expected_shape = list(inp[0].shape)
+    expected_shape.insert(dim if dim >= 0 else dim + len(expected_shape) + 1, len(inp))
+    before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr(), x.is_conj())
+        for x in inp
+    ]
+    input_bytes = [
+        x.cpu().contiguous().reshape(-1).view(torch.uint8).clone() for x in inp
+    ]
     res_out = flag_gems._stack(inp, dim)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == expected_device and res_out.dtype == expected_dtype
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    if res_out.numel():
+        assert res_out.data_ptr() not in {x[4] for x in before}
+    for value, metadata, saved in zip(inp, before, input_bytes):
+        assert (
+            value.device,
+            value.dtype,
+            tuple(value.shape),
+            value.stride(),
+            value.data_ptr(),
+            value.is_conj(),
+        ) == metadata
+        assert torch.equal(
+            value.cpu().contiguous().reshape(-1).view(torch.uint8), saved
+        )
 
     assert res_out.shape == ref_out.shape
     assert res_out.numel() == 0

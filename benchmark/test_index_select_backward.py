@@ -86,9 +86,10 @@ def _build_inputs_int32_fn(plan, dtype, device):
     torch.manual_seed(0)
     shape, self_sizes, dim = plan.builder_args
     grad = torch.randn(shape, dtype=dtype, device=device)
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else device
     index = torch.randint(
-        0, self_sizes[dim], (shape[dim],), dtype=torch.int32, device=device
-    )
+        0, self_sizes[dim], (shape[dim],), dtype=torch.int32, device=index_device
+    ).to(device)
     assert index.dtype == torch.int32
     assert index.device == grad.device
     return grad, self_sizes, dim, index

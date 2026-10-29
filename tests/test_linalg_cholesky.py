@@ -20,6 +20,69 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _cholesky_raw_cpu(tensor):
+    return torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        tensor.untyped_storage().cpu(),
+        tensor.storage_offset(),
+        tensor.shape,
+        tensor.stride(),
+    )
+
+
+def _cholesky_comparison_values(tensor):
+    # Other backends retain their original tensor comparison path.
+    if flag_gems.vendor_name not in ("nvidia", "ascend", "iluvatar"):
+        return tensor
+    values = _cholesky_raw_cpu(tensor)
+    if tensor.is_conj():
+        values = values.conj_physical()
+    if tensor.is_neg():
+        values = -values
+    return values
+
+
+def _cholesky_input_snapshot(tensor):
+    metadata = (
+        tensor.device,
+        tensor.dtype,
+        tuple(tensor.shape),
+        tuple(tensor.stride()),
+        tensor.storage_offset(),
+        tensor.untyped_storage()._cdata,
+        tensor.untyped_storage().data_ptr(),
+        tensor.untyped_storage().nbytes(),
+        tensor.requires_grad,
+        tensor.is_conj(),
+        tensor.is_neg(),
+    )
+    values = (
+        _cholesky_raw_cpu(tensor).contiguous().reshape(-1).view(torch.uint8).clone()
+    )
+    return metadata, values
+
+
+def _checked_cholesky(inp, dtype, *, upper=False):
+    if flag_gems.vendor_name not in ("nvidia", "ascend", "iluvatar"):
+        if upper:
+            return flag_gems.linalg_cholesky(inp, upper=True)
+        return flag_gems.linalg_cholesky(inp)
+    assert inp.dtype == dtype
+    assert inp.device.type == torch.device(flag_gems.device).type
+    metadata, values = _cholesky_input_snapshot(inp)
+    try:
+        result = flag_gems.linalg_cholesky(inp, upper=upper)
+    finally:
+        after_metadata, after_values = _cholesky_input_snapshot(inp)
+        assert after_metadata == metadata
+        assert torch.equal(after_values, values)
+    # Check the target ABI before moving values to CPU for comparison.
+    assert isinstance(result, torch.Tensor)
+    assert result.device == metadata[0] and result.dtype == metadata[1]
+    assert tuple(result.shape) == metadata[2]
+    assert result.untyped_storage()._cdata != metadata[5]
+    return result
+
+
 @pytest.mark.linalg_cholesky
 @pytest.mark.parametrize("shape", [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)])
 # Cholesky only supports float32/float64; fp16/bf16 not supported by PyTorch
@@ -50,9 +113,13 @@ def test_linalg_cholesky(shape, dtype):
     ref_out = torch.linalg.cholesky(ref_A)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    res_out = flag_gems.linalg_cholesky(A)
+    res_out = _checked_cholesky(A, dtype)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(
+        _cholesky_comparison_values(res_out),
+        _cholesky_comparison_values(ref_out),
+        dtype,
+    )
 
 
 @pytest.mark.linalg_cholesky
@@ -85,9 +152,13 @@ def test_linalg_cholesky_upper(shape, dtype):
     ref_out = torch.linalg.cholesky(ref_A, upper=True)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    res_out = flag_gems.linalg_cholesky(A, upper=True)
+    res_out = _checked_cholesky(A, dtype, upper=True)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(
+        _cholesky_comparison_values(res_out),
+        _cholesky_comparison_values(ref_out),
+        dtype,
+    )
 
 
 @pytest.mark.linalg_cholesky
@@ -120,6 +191,10 @@ def test_linalg_cholesky_batch(shape, dtype):
     ref_out = torch.linalg.cholesky(ref_A)
 
     # For gems, use aten.linalg_cholesky with flag_gems
-    res_out = flag_gems.linalg_cholesky(A)
+    res_out = _checked_cholesky(A, dtype)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(
+        _cholesky_comparison_values(res_out),
+        _cholesky_comparison_values(ref_out),
+        dtype,
+    )

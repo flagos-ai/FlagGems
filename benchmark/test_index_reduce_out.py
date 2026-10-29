@@ -129,7 +129,10 @@ def _build_inputs_int32_fn(plan, dtype, device):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
     index_len = source_shape[dim]
-    index = torch.randperm(shape[dim], dtype=torch.int32, device=device)[:index_len]
+    index_device = "cpu" if flag_gems.vendor_name == "enflame" else device
+    index = torch.randperm(shape[dim], dtype=torch.int32, device=index_device)[
+        :index_len
+    ].to(device)
     source = (
         torch.ones(source_shape, dtype=dtype, device=device)
         if reduce == "prod"
