@@ -42,18 +42,58 @@ class AmpForeachNonFiniteCheckAndUnscaleBenchmark(base.Benchmark):
         more_shapes_3d = [(64, 2**i, 64) for i in range(2, 10, 4)]
         return more_shapes_2d + more_shapes_3d
 
-    def get_input_iter(self, dtype) -> Generator:
-        for shape in self.shapes:
-            # generate 2 tensors: one at shape, one at half size in the first dim
+    def get_case_iter(self, dtype):
+        for ordinal, shape in enumerate(self.shapes):
             second_shape = (max(1, shape[0] // 2),) + shape[1:]
-            tensors = [
-                torch.randn(shape, device=self.device, dtype=dtype),
-                torch.randn(second_shape, device=self.device, dtype=dtype),
-            ]
-            # PyTorch expects inv_scale and found_inf as float32
-            inv_scale = torch.tensor(2.0, device=self.device, dtype=torch.float32)
-            found_inf = torch.tensor(0.0, device=self.device, dtype=torch.float32)
-            yield tensors, found_inf, inv_scale
+            case = self._case_from_plan(
+                dtype,
+                ordinal,
+                base.BenchmarkCasePlan(
+                    shape={
+                        "tensors": [shape, second_shape],
+                        "found_inf": (),
+                        "inv_scale": (),
+                    },
+                    params={},
+                    builder_args=(shape, second_shape),
+                ),
+            )
+            if self._skip_native_half_case(case):
+                base.Config.skipped_case_ids.add(case.case_id)
+                print(
+                    f"SKIPPED native benchmark case {case.case_id}: "
+                    "Kunlunxin native Half AMP unscale returns incorrect values"
+                )
+                continue
+            yield case
+
+    def _skip_native_half_case(self, case):
+        native_requested = (
+            not getattr(base.Config, "list_cases", False)
+            and not base.Config.skip_native
+            and "latency_base" in self.to_bench_metrics
+            and not getattr(base.Config, "preflight_only", False)
+            and not getattr(base.Config, "profile_only", False)
+        )
+        return (
+            base.vendor_name == "kunlunxin"
+            and case.dtype == torch.float16
+            and native_requested
+        )
+
+    def build_inputs(self, case):
+        shape, second_shape = case.builder_args[0].builder_args
+        tensors = [
+            torch.randn(shape, device=self.device, dtype=case.dtype),
+            torch.randn(second_shape, device=self.device, dtype=case.dtype),
+        ]
+        inv_scale = torch.tensor(2.0, device=self.device, dtype=torch.float32)
+        found_inf = torch.tensor(0.0, device=self.device, dtype=torch.float32)
+        return tensors, found_inf, inv_scale
+
+    def get_input_iter(self, dtype) -> Generator:
+        for case in self.get_case_iter(dtype):
+            yield self.build_inputs(case)
 
 
 @pytest.mark.amp_foreach_non_finite_check_and_unscale_
