@@ -102,8 +102,22 @@ def _foreach_floor_unmasked_kernel(
 
 @triton.jit
 def _foreach_floor_direct_kernel(
-    p0, p1, p2, p3, p4, p5, p6, p7,
-    p8, p9, p10, p11, p12, p13, p14, p15,
+    p0,
+    p1,
+    p2,
+    p3,
+    p4,
+    p5,
+    p6,
+    p7,
+    p8,
+    p9,
+    p10,
+    p11,
+    p12,
+    p13,
+    p14,
+    p15,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
