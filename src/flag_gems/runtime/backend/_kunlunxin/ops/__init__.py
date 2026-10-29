@@ -39,6 +39,13 @@ from ._foreach_addcdiv_ import (
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_atan import _foreach_atan, _foreach_atan_
+from ._foreach_binary import (  # noqa: F401
+    _foreach_addcdiv_ScalarList,
+    _foreach_addcdiv_Tensor,
+    _foreach_lerp_List,
+    _foreach_mul_List,
+    _foreach_sub_List,
+)
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__Scalar,
     _foreach_add__ScalarList,
@@ -114,7 +121,22 @@ from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_lerp_Scalar,
     _foreach_lerp_ScalarList,
 )
-from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
+from ._foreach_unary import (  # noqa: F401
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_log10,
+    _foreach_log10_,
+    _foreach_reciprocal_,
+    _foreach_rsqrt,
+    _foreach_rsqrt_,
+    _foreach_sin,
+    _foreach_sin_,
+    _foreach_sqrt_,
+    _foreach_tanh,
+    _foreach_tanh_,
+)
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -136,6 +158,9 @@ from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
+from ._scaled_dot_product_efficient_attention import (
+    _scaled_dot_product_efficient_attention,
+)
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
@@ -171,6 +196,7 @@ from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
 from .addmm_ import addmm_
 from .addmv import addmv, addmv_, addmv_out  # noqa: F401
 from .addr import addr
+from .addr_ import addr_
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
@@ -413,6 +439,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
+from .grid_sampler_2d import grid_sampler_2d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
@@ -892,6 +919,8 @@ __all__ = [
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
+    "_foreach_addcdiv_ScalarList",
+    "_foreach_addcdiv_Tensor",
     "_foreach_addcmul_Scalar",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
@@ -900,6 +929,8 @@ __all__ = [
     "_foreach_atan_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cos_",
     "_foreach_div__List",
     "_foreach_div__Tensor",
     "_foreach_div_List",
@@ -910,10 +941,13 @@ __all__ = [
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lerp__Scalar",
     "_foreach_lerp__ScalarList",
+    "_foreach_lerp_List",
     "_foreach_lerp_Scalar",
     "_foreach_lerp_ScalarList",
     "_foreach_lgamma",
@@ -925,6 +959,7 @@ __all__ = [
     "_foreach_log2_",
     "_foreach_log_",
     "_foreach_mul__List",
+    "_foreach_mul_List",
     "_foreach_mul_Scalar",
     "_foreach_mul_ScalarList",
     "_foreach_neg",
@@ -934,6 +969,7 @@ __all__ = [
     "_foreach_pow__ScalarList",
     "_foreach_pow_List",
     "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal_",
     "_foreach_round",
     "_foreach_round_",
     "_foreach_rsqrt",
@@ -942,8 +978,12 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign",
     "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sqrt",
+    "_foreach_sqrt_",
     "_foreach_sub__List",
+    "_foreach_sub_List",
     "_foreach_sub_Scalar",
     "_foreach_sub_ScalarList",
     "_foreach_tan",
@@ -967,6 +1007,7 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -1013,6 +1054,7 @@ __all__ = [
     "addmv_",
     "addmv_out",
     "addr",
+    "addr_",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -1255,6 +1297,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler_2d",
     "grid_sampler_3d_backward",
     "group_mm",
     "group_norm",
