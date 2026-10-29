@@ -648,6 +648,7 @@ _FULL_CONFIG = (
         "_upsample_nearest_exact3d_backward.grad_input",
         _upsample_nearest_exact3d_backward_grad_input,
     ),
+    ("_validate_compressed_sparse_indices", _validate_compressed_sparse_indices),
     ("_validate_sparse_csc_tensor_args", _validate_sparse_csc_tensor_args),
     (
         "_values",
