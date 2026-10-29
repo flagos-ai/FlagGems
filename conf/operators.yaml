@@ -19145,6 +19145,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sparse_mm
+  description: |
+    Computes the sparse-times-dense product of a 2-D CSR tensor (M, K) and a
+    dense (K, N) matrix, returning a dense (M, N) tensor. The .reduce overload
+    applies a reduction (sum / mean / amax / amin) over the per-nnz products of
+    each output element.
+  for:
+  - _sparse_mm
+  - _sparse_mm.reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_mm_reduce_impl
   description: |
     Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
