@@ -58,7 +58,6 @@ class RepetitionPenaltyBenchmark(base.Benchmark):
 UNSUPPORTED_VENDORS = {
     "metax",
     "kunlunxin",
-    "iluvatar",
     "mthreads",
     "hygon",
     "cambricon",
