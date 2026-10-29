@@ -52,8 +52,8 @@ def test_nextafter(shape, dtype):
 def test_nextafter_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1.clone(), True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.nextafter_(ref_inp2)
     res_out = flag_gems.nextafter_(inp1, inp2)
@@ -118,8 +118,8 @@ def test_nextafter_inplace_is_self(shape, dtype):
     (mutated) input tensor, not a freshly allocated one."""
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1.clone(), True)
-    ref_inp2 = utils.to_reference(inp2, True)
+    ref_inp1 = utils.to_reference(inp1.clone(), False)
+    ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.nextafter_(ref_inp2)
 
