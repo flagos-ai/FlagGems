@@ -3106,12 +3106,8 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.4'
 - id: cholesky
-  description: 'Computes the Cholesky decomposition of a symmetric positive-definite
-    matrix A
-
-    or for batches of symmetric positive-definite matrices.
-
-    '
+  description: Computes the Cholesky decomposition of a symmetric positive-definite
+    matrix or for batches of symmetric positive-definite matrices.
   for:
   - cholesky
   labels:
@@ -3120,7 +3116,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - BLAS
   stages:
-  - alpha: '5.4'
+  - alpha: '5.5'
 - id: cholesky_inverse
   description: Compute inverse of symmetric positive-definite matrix from Cholesky
     factor.
