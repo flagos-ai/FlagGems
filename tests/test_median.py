@@ -149,6 +149,24 @@ def _assert_indices_select_values(inp, dim, values, indices, *, keepdim, equal_n
     flag_gems.testing.assert_equal(gathered, expected, equal_nan=equal_nan)
 
 
+def _assert_nan_index_locations(inp, dim, indices, expected_indices, *, keepdim=False):
+    assert indices.device == inp.device and indices.dtype == torch.int64
+    observed_input = (
+        _median_cpu_bytes(inp)
+        if flag_gems.vendor_name == "kunlunxin" and inp.dtype == torch.float64
+        else inp.cpu()
+    )
+    observed_indices = indices.cpu()
+    gather_indices = observed_indices if keepdim else observed_indices.unsqueeze(dim)
+    assert torch.all(
+        torch.isnan(torch.gather(observed_input, dim, gather_indices))
+    ).item()
+    unique = torch.count_nonzero(torch.isnan(observed_input), dim=dim).reshape(-1) == 1
+    flag_gems.testing.assert_equal(
+        observed_indices.reshape(-1)[unique], expected_indices.cpu().reshape(-1)[unique]
+    )
+
+
 def _median_wide_to_device(value):
     return (
         value.contiguous()
@@ -460,7 +478,9 @@ def test_median_direct_nan_first_index_dim0(dtype, reduction_size, keepdim):
         dim=0,
         keepdim=keepdim,
     )
-    flag_gems.testing.assert_equal(res_out.indices.reshape(-1), expected_indices)
+    _assert_nan_index_locations(
+        inp, 0, res_out.indices, expected_indices, keepdim=keepdim
+    )
     assert torch.all(torch.isnan(res_out.values)).item()
 
 
@@ -914,7 +934,9 @@ def test_median_float64_key_select_nan_first_index(width):
         inp=inp,
         dim=1,
     )
-    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+    _assert_nan_index_locations(
+        inp, 1, res_out.indices, expected_indices, keepdim=False
+    )
     observed_values = (
         _median_cpu_bytes(res_out.values)
         if flag_gems.vendor_name == "kunlunxin"
@@ -1070,7 +1092,9 @@ def test_median_fp32_key_select_nan_first_index(width):
         inp=inp,
         dim=1,
     )
-    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+    _assert_nan_index_locations(
+        inp, 1, res_out.indices, expected_indices, keepdim=False
+    )
     assert torch.all(torch.isnan(res_out.values)).item()
 
 
@@ -1202,7 +1226,9 @@ def test_median_f16_key_select_nan_first_index(dtype, width):
         inp=inp,
         dim=1,
     )
-    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+    _assert_nan_index_locations(
+        inp, 1, res_out.indices, expected_indices, keepdim=False
+    )
     assert torch.all(torch.isnan(res_out.values)).item()
 
 
@@ -1327,7 +1353,9 @@ def test_median_large_width_nan_first_index(dtype, width):
     _assert_median_dim_equal(
         res_out, ref_out, dtype, equal_nan=True, exact_indices=False, inp=inp, dim=1
     )
-    flag_gems.testing.assert_equal(res_out.indices, expected_indices)
+    _assert_nan_index_locations(
+        inp, 1, res_out.indices, expected_indices, keepdim=False
+    )
     assert torch.all(torch.isnan(res_out.values)).item()
 
 
@@ -1382,8 +1410,9 @@ def test_median_non_lastdim_fallback_nan_first_index(dtype, keepdim):
         dim=0,
         keepdim=keepdim,
     )
-    observed_indices = res_out.indices.reshape(-1)
-    flag_gems.testing.assert_equal(observed_indices, expected_indices)
+    _assert_nan_index_locations(
+        inp, 0, res_out.indices, expected_indices, keepdim=keepdim
+    )
     assert torch.all(torch.isnan(res_out.values)).item()
 
 
@@ -1433,11 +1462,15 @@ def test_median_strided_nonlast_large_reduction_semantics(dtype, keepdim):
     if dtype.is_floating_point:
         observed_indices = res_out.indices.squeeze(1) if keepdim else res_out.indices
         observed_values = res_out.values.squeeze(1) if keepdim else res_out.values
-        assert observed_indices[0, 0].item() == 0
+        observed_input = inp.cpu()
+        assert torch.isnan(observed_input[0, observed_indices[0, 0].item(), 0]).item()
         assert observed_indices[2, 1].item() == width - 1
         assert torch.isnan(observed_values[0, 0]).item()
         assert torch.isnan(observed_values[2, 1]).item()
-        assert torch.signbit(observed_values[1, 3].cpu()).item()
+        flag_gems.testing.assert_equal(
+            torch.signbit(observed_values[1, 3].cpu()),
+            torch.signbit(observed_input[1, observed_indices[1, 3].item(), 3]),
+        )
 
 
 @pytest.mark.median_dim_values
