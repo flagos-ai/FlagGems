@@ -39,8 +39,7 @@ def test_normal_pvalue(shape, dtype):
     scale = torch.full(
         size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
     )
-    with flag_gems.use_gems():
-        res_out = torch.distributions.normal.Normal(loc, scale).sample()
+    res_out = flag_gems.normal_tensor_tensor(loc, scale)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(),
         lambda x: scipy.stats.norm.cdf(x, loc=3.0, scale=10.0),
@@ -56,8 +55,7 @@ def test_uniform_pvalue(shape, dtype):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     x = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.uniform_(-3, 3)
+    flag_gems.uniform_(x, -3, 3)
     pvalue = scipy.stats.kstest(
         x.cpu().numpy().flatten(),
         lambda x: scipy.stats.uniform.cdf(x, loc=-3.0, scale=6.0),
@@ -74,8 +72,7 @@ def test_exponential_pvalue(shape, dtype, lambd):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.exponential_(lambd=lambd)
+    flag_gems.exponential_(x, lambd=lambd)
     expo_cdf = lambda x: np.where(x < 0, 0, 1.0 - np.exp(-lambd * x))
     pvalue = scipy.stats.kstest(x.cpu().numpy().flatten(), expo_cdf).pvalue
     assert pvalue > 0.05
@@ -112,8 +109,7 @@ def test_rand_pvalue(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
-    with flag_gems.use_gems():
-        res_out = torch.rand(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.rand(shape, dtype=dtype, device=flag_gems.device)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(), lambda x: scipy.stats.uniform.cdf(x)
     ).pvalue
@@ -124,8 +120,7 @@ def test_rand_pvalue(shape, dtype):
 @pytest.mark.parametrize("shape", DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
 def test_randn_pvalue(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.randn(shape, dtype=dtype, device=flag_gems.device)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(), lambda x: scipy.stats.norm.cdf(x)
     ).pvalue

@@ -43,9 +43,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_SIGMOID" record
-# under the generic logger name (see tests/test_foreach_unary.py).
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # sigmoid rejects complex32 but accepts complex64/complex128, all ints and bool.
 _NO_COMPLEX32 = frozenset(
@@ -155,7 +153,7 @@ def _try_fast(tensors):
 
 
 def _foreach_sigmoid(self):
-    logger.debug("GEMS _FOREACH_SIGMOID")
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_SIGMOID")
     tensors = check_tensor_list(self)
     outs = _try_fast(tensors)
     if outs is not None:

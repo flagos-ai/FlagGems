@@ -16,7 +16,7 @@ import logging
 
 from .layernorm import layer_norm
 
-logger = logging.getLogger("flag_gems.ops.native_layer_norm")
+logger = logging.getLogger(__name__)
 
 
 def native_layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):

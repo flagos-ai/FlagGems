@@ -53,3 +53,26 @@ def test_exponential_moments(shape, dtype):
 
     assert torch.abs(mean_res - mean_ref) < mean_tol
     assert torch.abs(var_res - var_ref) < var_tol
+
+
+@pytest.mark.exponential
+@pytest.mark.parametrize("seed", [260828, 2026, 7])
+def test_exponential_far_left_tail(seed):
+    """The far left tail must not carry an inflated atom (Issue #7040).
+
+    The fast transform pinned every sample with ``u >= 1 - 1e-4`` to
+    ``y == 0.5 * eps(float32) = 5.96e-8``, so ~1e-4 of the mass sat just above
+    zero: ``P(X < 1e-5)`` measured ~1e-4 instead of ~1e-5.
+    """
+    x = torch.empty(1 << 22, dtype=torch.float32, device=flag_gems.device)
+    generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
+    y = flag_gems.exponential(x, generator=generator)
+
+    assert y.min().item() > 0, "exponential must not produce non-positive values"
+    # Exp(1): P(X < t) = 1 - exp(-t) ~= t for small t. Bound each point by a
+    # few times the true mass; the buggy atom overshoots by ~90x.
+    for t, bound in ((1e-6, 5e-6), (1e-5, 3e-5)):
+        observed = (y < t).float().mean().item()
+        assert (
+            observed < bound
+        ), f"seed={seed}: P(X < {t:.0e}) = {observed:.3e}, expected ~{t:.0e}"

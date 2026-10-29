@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems." + __name__)
+logger = logging.getLogger(__name__)
 
 # Payload copy block size (in elements). B=8192 is a fixed value validated on 0.4–0.8MB payloads; no sweep was run.
 _CPO_BLOCK = 8192

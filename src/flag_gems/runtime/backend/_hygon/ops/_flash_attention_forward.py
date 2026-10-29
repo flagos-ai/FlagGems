@@ -4,7 +4,7 @@ import torch
 import triton
 import triton.language as tl
 
-_GEMS_LOGGER = logging.getLogger("flag_gems.ops._flash_attention_forward")
+logger = logging.getLogger(__name__)
 
 # Optional override for tiling experiments (None => per-head-dim defaults).
 _CFG_OVERRIDE = None
@@ -261,7 +261,7 @@ def run(
     seqused_k=None,
     alibi_slopes=None,
 ):
-    _GEMS_LOGGER.debug("GEMS_HYGON _FLASH_ATTENTION_FORWARD")
+    logger.debug("GEMS_HYGON _FLASH_ATTENTION_FORWARD")
     q4 = query
     k4 = key
     v4 = value
