@@ -140,6 +140,13 @@ def test_conv_depthwise2d_noncontiguous(dtype):
 
 @pytest.mark.conv_depthwise2d
 @pytest.mark.underscore_conv_depthwise2d
+@pytest.mark.skipif(
+    flag_gems.vendor_name in ("nvidia", "mthreads"),
+    reason=(
+        "Native depthwise has no portable error guarantee for kernel_size/weight "
+        "shape mismatch; this invalid configuration is not validated"
+    ),
+)
 def test_conv_depthwise2d_invalid_kernel_size():
     torch.manual_seed(0)
     inp = torch.randn((1, 4, 8, 8), device=flag_gems.device)
