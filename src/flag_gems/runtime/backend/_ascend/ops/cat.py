@@ -8,6 +8,8 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+_ASCEND_MAX_CORE_DIM = 65535
+
 
 @libentry()
 @triton.jit
@@ -18,19 +20,23 @@ def _cat_copy_flat_kernel(
     OUTPUT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    lanes = tl.arange(0, BLOCK_SIZE)
+    for block in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block * BLOCK_SIZE + lanes
+        mask = offsets < n_elements
 
-    values = tl.load(
-        input_ptr + offsets,
-        mask=mask,
-    )
+        values = tl.load(
+            input_ptr + offsets,
+            mask=mask,
+        )
 
-    tl.store(
-        output_ptr + OUTPUT_OFFSET + offsets,
-        values,
-        mask=mask,
-    )
+        tl.store(
+            output_ptr + OUTPUT_OFFSET + offsets,
+            values,
+            mask=mask,
+        )
 
 
 @libentry()
@@ -45,29 +51,33 @@ def _cat_copy_strided_kernel(
     CAT_OFFSET: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    lanes = tl.arange(0, BLOCK_SIZE)
+    for block in range(
+        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
+    ):
+        offsets = block * BLOCK_SIZE + lanes
+        mask = offsets < n_elements
 
-    inner_idx = offsets % INNER_SIZE
-    tmp = offsets // INNER_SIZE
+        inner_idx = offsets % INNER_SIZE
+        tmp = offsets // INNER_SIZE
 
-    cat_idx = tmp % INPUT_CAT_SIZE
-    outer_idx = tmp // INPUT_CAT_SIZE
+        cat_idx = tmp % INPUT_CAT_SIZE
+        outer_idx = tmp // INPUT_CAT_SIZE
 
-    output_offsets = (
-        outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
-    ) * INNER_SIZE + inner_idx
+        output_offsets = (
+            outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
+        ) * INNER_SIZE + inner_idx
 
-    values = tl.load(
-        input_ptr + offsets,
-        mask=mask,
-    )
+        values = tl.load(
+            input_ptr + offsets,
+            mask=mask,
+        )
 
-    tl.store(
-        output_ptr + output_offsets,
-        values,
-        mask=mask,
-    )
+        tl.store(
+            output_ptr + output_offsets,
+            values,
+            mask=mask,
+        )
 
 
 def _prepare_cat_inputs(A, dim):
@@ -75,9 +85,11 @@ def _prepare_cat_inputs(A, dim):
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
 
     device = A[0].device
-    dtype = A[0].dtype
 
     A = list(A)
+    dtype = A[0].dtype
+    for tensor in A[1:]:
+        dtype = torch.promote_types(dtype, tensor.dtype)
 
     for i in range(len(A) - 1, -1, -1):
         if A[i].shape == torch.Size([0]):
@@ -116,6 +128,8 @@ def _prepare_cat_inputs(A, dim):
     out_shape = list(base)
     out_shape[dim] = sum(s[dim] for s in shapes)
 
+    A = [tensor.to(dtype) if tensor.dtype != dtype else tensor for tensor in A]
+
     return A, dim, device, dtype, out_shape
 
 
@@ -143,7 +157,10 @@ def _cat_fill_triton(out, A, dim):
 
             n_elements = a.numel()
 
-            grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+            # CANN limits the flattened launch grid (coreDim) to 65535.
+            grid = (
+                min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),
+            )
 
             if dim == 0:
                 output_offset = cat_offset * inner_size
@@ -211,6 +228,12 @@ def cat_out(
     out: torch.Tensor,
 ):
     A, dim, device, dtype, out_shape = _prepare_cat_inputs(A, dim)
+
+    if not torch.can_cast(dtype, out.dtype):
+        raise RuntimeError(
+            f"torch.cat(): input types can't be cast to the desired output type "
+            f"{out.dtype}"
+        )
 
     out.resize_(out_shape)
 
