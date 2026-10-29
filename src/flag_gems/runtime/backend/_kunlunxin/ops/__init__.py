@@ -39,6 +39,13 @@ from ._foreach_addcdiv_ import (
 from ._foreach_addcdiv_scalar import _foreach_addcdiv_Scalar
 from ._foreach_addcmul_scalar_list import _foreach_addcmul_ScalarList
 from ._foreach_atan import _foreach_atan, _foreach_atan_
+from ._foreach_binary import (  # noqa: F401
+    _foreach_addcdiv_ScalarList,
+    _foreach_addcdiv_Tensor,
+    _foreach_lerp_List,
+    _foreach_mul_List,
+    _foreach_sub_List,
+)
 from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_add__Scalar,
     _foreach_add__ScalarList,
@@ -89,6 +96,16 @@ from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
 from ._foreach_round import _foreach_round
 from ._foreach_round_ import _foreach_round_
+from ._foreach_scalar_out import (  # noqa: F401
+    _foreach_add_Scalar,
+    _foreach_add_ScalarList,
+    _foreach_div_Scalar,
+    _foreach_div_ScalarList,
+    _foreach_mul_Scalar,
+    _foreach_mul_ScalarList,
+    _foreach_sub_Scalar,
+    _foreach_sub_ScalarList,
+)
 from ._foreach_sigmoid import _foreach_sigmoid
 from ._foreach_sigmoid_ import _foreach_sigmoid_
 from ._foreach_sign import _foreach_sign
@@ -104,7 +121,22 @@ from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_lerp_Scalar,
     _foreach_lerp_ScalarList,
 )
-from ._foreach_unary import _foreach_rsqrt, _foreach_rsqrt_  # noqa: F401
+from ._foreach_unary import (  # noqa: F401
+    _foreach_cos,
+    _foreach_cos_,
+    _foreach_exp,
+    _foreach_exp_,
+    _foreach_log10,
+    _foreach_log10_,
+    _foreach_reciprocal_,
+    _foreach_rsqrt,
+    _foreach_rsqrt_,
+    _foreach_sin,
+    _foreach_sin_,
+    _foreach_sqrt_,
+    _foreach_tanh,
+    _foreach_tanh_,
+)
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
@@ -133,6 +165,7 @@ from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
+from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
@@ -219,7 +252,7 @@ from .bitwise_and import (
     bitwise_and_tensor,
     bitwise_and_tensor_,
 )
-from .bitwise_left_shift import bitwise_left_shift
+from .bitwise_left_shift import bitwise_left_shift, bitwise_left_shift_
 from .bitwise_not import bitwise_not, bitwise_not_
 from .bitwise_or import (
     bitwise_or_scalar,
@@ -735,7 +768,7 @@ from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_i0 import special_i0, special_i0_out  # noqa: F401
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out  # noqa: F401
-from .special_i1e import special_i1e, special_i1e_out  # noqa: F401
+from .special_i1e import special_i1e, special_i1e_out
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_log1p import special_log1p  # noqa: F401  (kunlunxin override)
 from .special_log1p import special_log1p_out
@@ -875,10 +908,14 @@ __all__ = [
     "_foreach_acos_",
     "_foreach_add__List",
     "_foreach_add_List",
+    "_foreach_add_Scalar",
+    "_foreach_add_ScalarList",
     "_foreach_addcdiv__Scalar",
     "_foreach_addcdiv__ScalarList",
     "_foreach_addcdiv__Tensor",
     "_foreach_addcdiv_Scalar",
+    "_foreach_addcdiv_ScalarList",
+    "_foreach_addcdiv_Tensor",
     "_foreach_addcmul_Scalar",
     "_foreach_addcmul_ScalarList",
     "_foreach_asin",
@@ -887,18 +924,25 @@ __all__ = [
     "_foreach_atan_",
     "_foreach_copy",
     "_foreach_copy_",
+    "_foreach_cos",
+    "_foreach_cos_",
     "_foreach_div__List",
     "_foreach_div__Tensor",
     "_foreach_div_List",
+    "_foreach_div_Scalar",
+    "_foreach_div_ScalarList",
     "_foreach_div_Tensor",
     "_foreach_erf",
     "_foreach_erf_",
     "_foreach_erfc",
     "_foreach_erfc_",
+    "_foreach_exp",
+    "_foreach_exp_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lerp__Scalar",
     "_foreach_lerp__ScalarList",
+    "_foreach_lerp_List",
     "_foreach_lerp_Scalar",
     "_foreach_lerp_ScalarList",
     "_foreach_lgamma",
@@ -910,6 +954,9 @@ __all__ = [
     "_foreach_log2_",
     "_foreach_log_",
     "_foreach_mul__List",
+    "_foreach_mul_List",
+    "_foreach_mul_Scalar",
+    "_foreach_mul_ScalarList",
     "_foreach_neg",
     "_foreach_neg_",
     "_foreach_pow__List",
@@ -917,6 +964,7 @@ __all__ = [
     "_foreach_pow__ScalarList",
     "_foreach_pow_List",
     "_foreach_pow_ScalarAndTensor",
+    "_foreach_reciprocal_",
     "_foreach_round",
     "_foreach_round_",
     "_foreach_rsqrt",
@@ -925,8 +973,14 @@ __all__ = [
     "_foreach_sigmoid_",
     "_foreach_sign",
     "_foreach_sign_",
+    "_foreach_sin",
+    "_foreach_sin_",
     "_foreach_sqrt",
+    "_foreach_sqrt_",
     "_foreach_sub__List",
+    "_foreach_sub_List",
+    "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
     "_foreach_tan",
     "_foreach_tan_",
     "_foreach_zero",
@@ -955,6 +1009,7 @@ __all__ = [
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
     "_thnn_fused_lstm_cell_backward_impl",
+    "_transform_bias_rescale_qkv",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
@@ -1059,6 +1114,7 @@ __all__ = [
     "bitwise_and_tensor",
     "bitwise_and_tensor_",
     "bitwise_left_shift",
+    "bitwise_left_shift_",
     "bitwise_not",
     "bitwise_not_",
     "bitwise_or_scalar",
