@@ -23,28 +23,90 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# Size-based BLOCK_SIZE/num_warps heuristics (mirrors the sibling generation op
+# `arange` on this backend). The original hard-coded BLOCK_SIZE=128 spawned
+# cdiv(steps, 128) programs (up to ~8M for 1G steps), each writing only 128
+# elements -> launch-bound. 8192/8 is the measured sweet spot for the large
+# store-heavy kernel; smaller steps keep smaller blocks to avoid tail waste.
+_BLOCK_SMALL = 256
+_WARPS_SMALL = 2
+_BLOCK_MED = 1024
+_WARPS_MED = 4
+_BLOCK_LARGE = 4096
+_WARPS_LARGE = 8
+_BLOCK_BIG = 8192
+_WARPS_BIG = 8
+_SINGLE_BLOCK = 256
+
 
 @libentry()
 @triton.jit
-def linspace_kernel(
+def linspace_single_kernel(out_ptr, value, BLOCK_SIZE: tl.constexpr):
+    idx = tl.arange(0, BLOCK_SIZE)
+    tl.store(out_ptr + idx, value, mask=idx < 1)
+
+
+@libentry()
+@triton.jit
+def linspace_fp_kernel(
     out_ptr,
-    out_stride0,
+    start,
+    step_size,
+    steps,
+    BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    # Single forward-formula store-only kernel for floating point dtypes.
+    # `base` is a scalar so the whole value is one fma on the vector of
+    # consecutive indices: value[i] = start + (pid*BLOCK_SIZE + i) * step.
+    pid = ext.program_id(0)
+    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    base = (pid * BLOCK_SIZE * step_size + start).to(tl.float32)
+    cols = tl.arange(0, BLOCK_SIZE).to(tl.float32)
+    out_val = cols * step_size + base
+    if NEED_MASK:
+        tl.store(out_ptr + idx, out_val, mask=idx < steps)
+    else:
+        tl.store(out_ptr + idx, out_val)
+
+
+@libentry()
+@triton.jit
+def linspace_int_kernel(
+    out_ptr,
     start,
     mid,
     end,
     step_size,
     steps,
     BLOCK_SIZE: tl.constexpr,
+    NEED_MASK: tl.constexpr,
 ):
+    # Two-sided (forward/backward) formula for integer dtypes, mirroring torch's
+    # exact truncation semantics: fw = start + step*idx, bd = end - step*(steps-1-idx),
+    # choose fw for idx < mid (so the head is exact) and bd otherwise (so the
+    # tail is exact). 1-ULP forward-only drift would flip the last element by 1
+    # after truncation, hence the two-sided form.
     pid = ext.program_id(0)
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = idx < steps
-    fw_mask = idx < mid
     fw_values = start + (step_size * idx)
     bd_values = end - step_size * (steps - idx - 1)
+    out_val = tl.where(idx < mid, fw_values, bd_values)
+    if NEED_MASK:
+        tl.store(out_ptr + idx, out_val, mask=idx < steps)
+    else:
+        tl.store(out_ptr + idx, out_val)
 
-    out_val = tl.where(fw_mask, fw_values, bd_values)
-    tl.store(out_ptr + idx * out_stride0, out_val, mask=mask)
+
+def _block_config(steps):
+    if steps <= 1024:
+        return _BLOCK_SMALL, _WARPS_SMALL
+    elif steps <= 8192:
+        return _BLOCK_MED, _WARPS_MED
+    elif steps <= 65536:
+        return _BLOCK_LARGE, _WARPS_LARGE
+    else:
+        return _BLOCK_BIG, _WARPS_BIG
 
 
 def linspace(
@@ -60,42 +122,44 @@ def linspace(
         device=device,
         pin_memory=pin_memory,
     )
+    if isinstance(start, torch.Tensor):
+        start = start.item()
+    if isinstance(end, torch.Tensor):
+        end = end.item()
+
     if steps == 1:
-        return torch.fill(out, start)
-    else:
-        if isinstance(start, torch.Tensor):
-            start = start.item()
-        if isinstance(end, torch.Tensor):
-            end = end.item()
-        mid = steps // 2
-        step_size = (float(end) - float(start)) / (steps - 1)
-        # Size-based BLOCK_SIZE/num_warps heuristic (mirrors the sibling generation
-        # op `arange` on this backend). The original hard-coded BLOCK_SIZE=128 spawned
-        # cdiv(steps, 128) programs (up to ~8M for 1G steps), each writing only 128
-        # elements -> launch-bound, ~10 GB/s regardless of size. Larger blocks let the
-        # write-only kernel reach the ~90 GB/s store ceiling (~9.5x on large shapes).
-        if steps <= 1024:
-            BLOCK_SIZE = 256
-            num_warps = 2
-        elif steps <= 8192:
-            BLOCK_SIZE = 1024
-            num_warps = 4
-        elif steps <= 65536:
-            BLOCK_SIZE = 4096
-            num_warps = 8
-        else:
-            BLOCK_SIZE = 8192
-            num_warps = 8
-        grid = (triton.cdiv(steps, BLOCK_SIZE),)
-        linspace_kernel[grid](
+        # Single element: value is `start` (cast to out dtype on store).
+        linspace_single_kernel[(1,)](
+            out, float(start), BLOCK_SIZE=_SINGLE_BLOCK, num_warps=1
+        )
+        return out
+
+    mid = steps // 2
+    step_size = (float(end) - float(start)) / (steps - 1)
+    BLOCK_SIZE, num_warps = _block_config(steps)
+    NEED_MASK = (steps % BLOCK_SIZE) != 0
+    grid = (triton.cdiv(steps, BLOCK_SIZE),)
+
+    if out.dtype.is_floating_point:
+        linspace_fp_kernel[grid](
             out,
-            out.stride(0),
+            start,
+            step_size,
+            steps,
+            BLOCK_SIZE=BLOCK_SIZE,
+            NEED_MASK=NEED_MASK,
+            num_warps=num_warps,
+        )
+    else:
+        linspace_int_kernel[grid](
+            out,
             start,
             mid,
             end,
             step_size,
             steps,
             BLOCK_SIZE=BLOCK_SIZE,
+            NEED_MASK=NEED_MASK,
             num_warps=num_warps,
         )
-        return out
+    return out
