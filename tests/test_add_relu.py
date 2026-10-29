@@ -6,10 +6,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.add_relu
+@pytest.mark.underscore_add_relu
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_add_relu(shape, dtype, request):
+def test_add_relu(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1, True)
@@ -23,10 +23,7 @@ def test_add_relu(shape, dtype, request):
         (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in inputs
     ]
     saved = [x.clone() for x in inputs]
-    if request.config._override_registry.get_override("add_relu") is not None:
-        res_out = flag_gems.add_relu(inp1, inp2)
-    else:
-        res_out = flag_gems._add_relu(inp1, inp2)
+    res_out = flag_gems._add_relu(inp1, inp2)
     assert isinstance(res_out, torch.Tensor)
     assert res_out.device == before[0][0]
     assert res_out.dtype == before[0][1]

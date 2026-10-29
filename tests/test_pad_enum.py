@@ -23,32 +23,7 @@ from . import accuracy_utils as utils
 # Only mode 3 (constant) consumes `value`; the others require value=None.
 
 
-def _candidate_pad_enum(request, inp, pad, mode, value):
-    before = (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr())
-    saved = inp.clone()
-    shape = list(inp.shape)
-    for index in range(len(pad) // 2):
-        shape[-1 - index] += pad[2 * index] + pad[2 * index + 1]
-    if request.config._override_registry.get_override("pad_enum") is not None:
-        result = flag_gems.pad_enum(inp, pad, mode, value)
-    else:
-        result = flag_gems.ops._pad_enum(inp, pad, mode, value)
-    assert isinstance(result, torch.Tensor)
-    assert result.device == before[0]
-    assert result.dtype == before[1]
-    assert tuple(result.shape) == tuple(shape)
-    assert result.data_ptr() != before[4]
-    assert (
-        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
-    ) == before
-    assert torch.equal(
-        inp.detach().cpu().reshape(-1).view(torch.uint8),
-        saved.detach().cpu().reshape(-1).view(torch.uint8),
-    )
-    return result
-
-
-@pytest.mark.pad_enum
+@pytest.mark.underscore_pad_enum
 @pytest.mark.parametrize(
     "shape",
     # Representative N-D shapes; 3D/4D cover the common F.pad use cases.
@@ -56,66 +31,134 @@ def _candidate_pad_enum(request, inp, pad, mode, value):
 )
 @pytest.mark.parametrize("value", [0.0, 1.5, -2.0])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__pad_enum_constant(shape, value, dtype, request):
+def test__pad_enum_constant(shape, value, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     rank = len(shape)
     pad = [torch.randint(0, 8, (1,)).item() for _ in range(rank * 2)]
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten._pad_enum(ref_inp, pad, 3, value)
-    res_out = _candidate_pad_enum(request, inp, pad, 3, value)
+    before = (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr())
+    saved = inp.clone()
+    expected_shape = list(inp.shape)
+    for index in range(len(pad) // 2):
+        expected_shape[-1 - index] += pad[2 * index] + pad[2 * index + 1]
+    res_out = flag_gems._pad_enum(inp, pad, 3, value)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == before[0]
+    assert res_out.dtype == before[1]
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    assert res_out.data_ptr() != before[4]
+    assert (
+        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+    ) == before
+    assert torch.equal(
+        inp.detach().cpu().reshape(-1).view(torch.uint8),
+        saved.detach().cpu().reshape(-1).view(torch.uint8),
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.pad_enum
+@pytest.mark.underscore_pad_enum
 @pytest.mark.parametrize(
     "shape_pad",
     # reflect: pad must be strictly smaller than the padded dim size.
     [((2, 3, 16, 16), [2, 2, 2, 2]), ((4, 8, 50), [7, 7])],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__pad_enum_reflect(shape_pad, dtype, request):
+def test__pad_enum_reflect(shape_pad, dtype):
     shape, pad = shape_pad
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten._pad_enum(ref_inp, pad, 0, None)
-    res_out = _candidate_pad_enum(request, inp, pad, 0, None)
+    before = (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr())
+    saved = inp.clone()
+    expected_shape = list(inp.shape)
+    for index in range(len(pad) // 2):
+        expected_shape[-1 - index] += pad[2 * index] + pad[2 * index + 1]
+    res_out = flag_gems._pad_enum(inp, pad, 0, None)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == before[0]
+    assert res_out.dtype == before[1]
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    assert res_out.data_ptr() != before[4]
+    assert (
+        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+    ) == before
+    assert torch.equal(
+        inp.detach().cpu().reshape(-1).view(torch.uint8),
+        saved.detach().cpu().reshape(-1).view(torch.uint8),
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.pad_enum
+@pytest.mark.underscore_pad_enum
 @pytest.mark.parametrize(
     "shape_pad",
     [((2, 3, 16, 16), [3, 4, 3, 4]), ((2, 3, 8, 8, 8), [1, 1, 1, 1, 1, 1])],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__pad_enum_replicate(shape_pad, dtype, request):
+def test__pad_enum_replicate(shape_pad, dtype):
     shape, pad = shape_pad
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten._pad_enum(ref_inp, pad, 1, None)
-    res_out = _candidate_pad_enum(request, inp, pad, 1, None)
+    before = (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr())
+    saved = inp.clone()
+    expected_shape = list(inp.shape)
+    for index in range(len(pad) // 2):
+        expected_shape[-1 - index] += pad[2 * index] + pad[2 * index + 1]
+    res_out = flag_gems._pad_enum(inp, pad, 1, None)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == before[0]
+    assert res_out.dtype == before[1]
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    assert res_out.data_ptr() != before[4]
+    assert (
+        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+    ) == before
+    assert torch.equal(
+        inp.detach().cpu().reshape(-1).view(torch.uint8),
+        saved.detach().cpu().reshape(-1).view(torch.uint8),
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.pad_enum
+@pytest.mark.underscore_pad_enum
 @pytest.mark.parametrize(
     "shape_pad",
     # circular: pad must be <= the padded dim size.
     [((2, 3, 24, 24), [5, 5, 5, 5]), ((4, 8, 40), [10, 10])],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test__pad_enum_circular(shape_pad, dtype, request):
+def test__pad_enum_circular(shape_pad, dtype):
     shape, pad = shape_pad
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten._pad_enum(ref_inp, pad, 2, None)
-    res_out = _candidate_pad_enum(request, inp, pad, 2, None)
+    before = (inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr())
+    saved = inp.clone()
+    expected_shape = list(inp.shape)
+    for index in range(len(pad) // 2):
+        expected_shape[-1 - index] += pad[2 * index] + pad[2 * index + 1]
+    res_out = flag_gems._pad_enum(inp, pad, 2, None)
+    assert isinstance(res_out, torch.Tensor)
+    assert res_out.device == before[0]
+    assert res_out.dtype == before[1]
+    assert tuple(res_out.shape) == tuple(expected_shape)
+    assert res_out.data_ptr() != before[4]
+    assert (
+        inp.device, inp.dtype, tuple(inp.shape), inp.stride(), inp.data_ptr()
+    ) == before
+    assert torch.equal(
+        inp.detach().cpu().reshape(-1).view(torch.uint8),
+        saved.detach().cpu().reshape(-1).view(torch.uint8),
+    )
 
     utils.gems_assert_equal(res_out, ref_out)
