@@ -489,6 +489,9 @@ from .index_select import index_select
 from .index_select_backward import index_select_backward
 from .ior_scalar import ior_scalar
 from .ior_tensor import ior_tensor
+from .is_same_size import (  # noqa: F401  (shape operator: host impl, see docstring)
+    is_same_size,
+)
 from .isclose import allclose, isclose
 from .isfinite import isfinite
 from .isin import isin
@@ -1358,6 +1361,7 @@ __all__ = [
     "inplace_fused_experts",
     "ior_scalar",
     "ior_tensor",
+    "is_same_size",
     "isclose",
     "isfinite",
     "isin",
