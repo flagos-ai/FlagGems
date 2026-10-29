@@ -19,9 +19,22 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner, tl_extra_shim
+from flag_gems.utils.device_info import is_amd_radeon
 
 logger = logging.getLogger(__name__)
+
+# The AMD backend rejects tf32x3 (it only accepts ieee/bf16x3/bf16x6). Radeon
+# has no fp32 matrix instruction, so "ieee" unrolls into scalar FMAs that take
+# up to hours to compile; bf16x6 runs on WMMA at fp32-level accuracy. Other AMD
+# GPUs use ieee and every other backend keeps tf32x3.
+if is_amd_radeon():
+    _DOT_PRECISION = tl.constexpr("bf16x6")
+else:
+    _DOT_PRECISION = tl.constexpr(
+        "ieee" if runtime.device.vendor_name == "amd" else "tf32x3"
+    )
 
 # Dequantized weights keyed by (params object, device, dtype). The weights are
 # constant, so unpacking them once per params object keeps the host copy out of
@@ -29,71 +42,82 @@ logger = logging.getLogger(__name__)
 _PARAM_CACHE = {}
 
 
+_CONFIGS = [
+    # Original narrow BLOCK_N configs with deeper pipelining: each K iteration
+    # loads four separate gate weight tiles, so a narrow N keeps the loads
+    # in flight and lets num_stages hide the latency.
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=3
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4
+    ),
+    # Smaller tiles for small batch / small hidden shapes
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=3
+    ),
+    triton.Config(
+        {"BLOCK_M": 16, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=2, num_stages=4
+    ),
+    # Wider N fallback
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=3
+    ),
+    # Aggressive: larger BLOCK_K to increase arithmetic intensity and amortize
+    # the 4x weight load overhead. Higher num_stages compensates for longer
+    # load latency. These target medium-to-large shapes (hidden >= 256).
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 256}, num_warps=8, num_stages=5
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=5
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=4
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=8, num_stages=3
+    ),
+    # Very aggressive: maximize tile size for large batches (batch >= 64)
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=5
+    ),
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4
+    ),
+    # High pipeline depth for memory-bound cases
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4, num_stages=6
+    ),
+    triton.Config(
+        {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=6
+    ),
+]
+if is_amd_radeon():
+    # Radeon has 64KB of LDS: larger tiles and deeper pipelines never launch
+    # there and only add compile time.
+    _CONFIGS = [
+        c
+        for c in _CONFIGS
+        if c.kwargs["BLOCK_M"] <= 64 and c.kwargs["BLOCK_K"] <= 64 and c.num_stages <= 4
+    ]
+
+
 @libentry()
 @libtuner(
-    configs=[
-        # Original narrow BLOCK_N configs with deeper pipelining: each K iteration
-        # loads four separate gate weight tiles, so a narrow N keeps the loads
-        # in flight and lets num_stages hide the latency.
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=4
-        ),
-        # Smaller tiles for small batch / small hidden shapes
-        triton.Config(
-            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 32, "BLOCK_N": 32, "BLOCK_K": 32}, num_warps=4, num_stages=3
-        ),
-        triton.Config(
-            {"BLOCK_M": 16, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=2, num_stages=4
-        ),
-        # Wider N fallback
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 32, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=4, num_stages=3
-        ),
-        # Aggressive: larger BLOCK_K to increase arithmetic intensity and amortize
-        # the 4x weight load overhead. Higher num_stages compensates for longer
-        # load latency. These target medium-to-large shapes (hidden >= 256).
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 256}, num_warps=8, num_stages=5
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=5
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=8, num_stages=4
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 64}, num_warps=8, num_stages=3
-        ),
-        # Very aggressive: maximize tile size for large batches (batch >= 64)
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=8, num_stages=5
-        ),
-        triton.Config(
-            {"BLOCK_M": 128, "BLOCK_N": 64, "BLOCK_K": 128}, num_warps=8, num_stages=4
-        ),
-        # High pipeline depth for memory-bound cases
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 128}, num_warps=4, num_stages=6
-        ),
-        triton.Config(
-            {"BLOCK_M": 64, "BLOCK_N": 32, "BLOCK_K": 64}, num_warps=4, num_stages=6
-        ),
-    ],
+    configs=_CONFIGS,
     key=["batch_size", "input_size", "hidden_size"],
 )
 @triton.jit
@@ -195,10 +219,10 @@ def quantized_lstm_step_kernel(
 
         # tf32x3 gives near-fp32 accuracy for fp32 inputs on tensor cores;
         # ignored for fp16/bf16 which use their native tensor core path.
-        acc_i += tl.dot(x_tile, tl.trans(w_i), input_precision="tf32x3")
-        acc_f += tl.dot(x_tile, tl.trans(w_f), input_precision="tf32x3")
-        acc_g += tl.dot(x_tile, tl.trans(w_g), input_precision="tf32x3")
-        acc_o += tl.dot(x_tile, tl.trans(w_o), input_precision="tf32x3")
+        acc_i += tl.dot(x_tile, tl.trans(w_i), input_precision=_DOT_PRECISION)
+        acc_f += tl.dot(x_tile, tl.trans(w_f), input_precision=_DOT_PRECISION)
+        acc_g += tl.dot(x_tile, tl.trans(w_g), input_precision=_DOT_PRECISION)
+        acc_o += tl.dot(x_tile, tl.trans(w_o), input_precision=_DOT_PRECISION)
 
     # K-loop 2: h_prev @ w_hh.T, reducing over hidden_size.
     for k in range(0, tl.cdiv(hidden_size, BLOCK_K)):
@@ -242,10 +266,10 @@ def quantized_lstm_step_kernel(
             other=0.0,
         )
 
-        acc_i += tl.dot(h_tile, tl.trans(wh_i), input_precision="tf32x3")
-        acc_f += tl.dot(h_tile, tl.trans(wh_f), input_precision="tf32x3")
-        acc_g += tl.dot(h_tile, tl.trans(wh_g), input_precision="tf32x3")
-        acc_o += tl.dot(h_tile, tl.trans(wh_o), input_precision="tf32x3")
+        acc_i += tl.dot(h_tile, tl.trans(wh_i), input_precision=_DOT_PRECISION)
+        acc_f += tl.dot(h_tile, tl.trans(wh_f), input_precision=_DOT_PRECISION)
+        acc_g += tl.dot(h_tile, tl.trans(wh_g), input_precision=_DOT_PRECISION)
+        acc_o += tl.dot(h_tile, tl.trans(wh_o), input_precision=_DOT_PRECISION)
 
     if HAS_BIAS:
         acc_i += tl.load(b_ih_ptr + offs_n, mask=n_mask, other=0.0).to(tl.float32)[
