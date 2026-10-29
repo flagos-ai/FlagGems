@@ -1,0 +1,83 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+import flag_gems
+
+DTYPES = [
+    torch.bool,
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.float16,
+    torch.bfloat16,
+    torch.float32,
+    torch.float64,
+]
+
+
+TARGET = torch.int16
+
+
+def make_input(shape, dtype):
+    if dtype.is_floating_point:
+        return torch.randn(shape, device=flag_gems.device, dtype=dtype)
+    return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
+
+
+def assert_cast(x, non_blocking=False):
+    expected = torch.ops.aten._cast_Short(x, non_blocking)
+    actual = flag_gems.cast_Short(x, non_blocking)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0, equal_nan=True)
+    assert actual.stride() == expected.stride()
+    assert actual.requires_grad == expected.requires_grad
+    if x.dtype == TARGET:
+        assert actual is x
+    elif x.numel():
+        assert actual.data_ptr() != x.data_ptr()
+    return actual, expected
+
+
+@pytest.mark.cast_Short
+@pytest.mark.parametrize(
+    "shape", [(), (0,), (2, 0, 3), (1,), (1023,), (1025,), (129, 257)]
+)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("non_blocking", [False, True])
+def test_cast_Short(shape, dtype, non_blocking):
+    assert_cast(make_input(shape, dtype), non_blocking)
+
+
+@pytest.mark.cast_Short
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize(
+    "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
+)
+def test_cast_Short_strided(dtype, layout):
+    x = make_input((4, 5, 6, 7), dtype)
+    if layout == "transpose":
+        x = x.transpose(0, 3)
+    elif layout == "slice":
+        x = x[1:, :, ::2, 1::2]
+    elif layout == "expand":
+        x = x[:1].expand(9, -1, -1, -1)
+    elif layout == "permuted_slice":
+        x = x.transpose(0, 3)[::2, :, 1::2, :]
+    else:
+        x = x.contiguous(memory_format=torch.channels_last)
+    assert_cast(x)
