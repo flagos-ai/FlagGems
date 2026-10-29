@@ -20,6 +20,29 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_linalg_svd import (
+    _for_comparison,
+    _from_numpy,
+    _missing_cpu_lapack,
+    _reference_input,
+    _reference_qr,
+)
+
+
+def _reference_pinv(inp):
+    try:
+        return torch.linalg.pinv(inp)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    array = inp.detach().numpy()
+    # torch.linalg.pinv's original default cutoff is dtype/geometry dependent;
+    # it differs from torch.pinverse's explicit rcond=1e-15 contract.
+    rtol = max(array.shape[-2:]) * np.finfo(array.dtype).eps
+    return _from_numpy(np.linalg.pinv(array, rcond=rtol))
+
 
 # Jacobi SVD kernel operates in float32; float16/bfloat16 lack precision for convergence
 PINV_DTYPES = [torch.float32]
@@ -47,8 +70,8 @@ def _well_conditioned(m, n, dtype, seed=0):
     g = torch.Generator(device="cpu").manual_seed(seed)
     k = min(m, n)
     # Orthonormal factors via QR of fixed-seed gaussians.
-    u, _ = torch.linalg.qr(torch.randn(m, k, generator=g))
-    v, _ = torch.linalg.qr(torch.randn(n, k, generator=g))
+    u, _ = _reference_qr(torch.randn(m, k, generator=g))
+    v, _ = _reference_qr(torch.randn(n, k, generator=g))
     s = torch.linspace(2.0, 1.0, k)
     A = (u * s) @ v.T
     return A.to(dtype).to(flag_gems.device)
@@ -60,10 +83,10 @@ def _well_conditioned(m, n, dtype, seed=0):
 def test_linalg_pinv(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A, True)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -74,10 +97,10 @@ def test_linalg_pinv_batched(shape, dtype):
     batch = 4
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A, True)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -86,10 +109,10 @@ def test_linalg_pinv_batched(shape, dtype):
 def test_linalg_pinv_large(shape, dtype):
     m, n = shape
     A = _well_conditioned(m, n, dtype)
-    ref_A = utils.to_reference(A, True)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)
 
 
 @pytest.mark.linalg_pinv
@@ -100,7 +123,7 @@ def test_linalg_pinv_large_batched(shape, dtype):
     batch = 2
     # Distinct seeds so the batch elements are not identical matrices.
     A = torch.stack([_well_conditioned(m, n, dtype, seed=s) for s in range(batch)])
-    ref_A = utils.to_reference(A, True)
-    ref_out = torch.linalg.pinv(ref_A)
+    ref_A = _reference_input(A, True)
+    ref_out = _reference_pinv(ref_A)
     res_out = flag_gems.linalg_pinv(A)
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(_for_comparison(res_out, ref_out, A), ref_out, dtype)

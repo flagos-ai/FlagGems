@@ -20,6 +20,31 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_linalg_svd import (
+    _for_comparison,
+    _from_numpy,
+    _missing_cpu_lapack,
+    _reference_input,
+)
+
+
+def _reference_cond(inp, p=None):
+    try:
+        return torch.linalg.cond(inp, p=p)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    array = inp.detach().numpy()
+    if p == "nuc":
+        value = np.linalg.norm(array, ord="nuc", axis=(-2, -1)) * np.linalg.norm(
+            np.linalg.inv(array), ord="nuc", axis=(-2, -1)
+        )
+    else:
+        value = np.linalg.cond(array, p=p)
+    return _from_numpy(value)
+
 
 # Matrix shapes for linalg_cond tests
 LINALG_COND_SHAPES = [(2, 2), (4, 4), (8, 8), (16, 16), (32, 32)]
@@ -59,13 +84,15 @@ def _make_moderate_cond_matrix(shape, dtype, device):
 def test_linalg_cond(shape, dtype):
     # Test with p=None (2-norm via Jacobi SVD)
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A)
+    ref_out = _reference_cond(ref_A)
     res_out = flag_gems.linalg_cond(A)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -75,13 +102,15 @@ def test_linalg_cond(shape, dtype):
 def test_linalg_cond_with_p(shape, dtype, p):
     # Test with various p values that require square matrices
     A = _make_moderate_cond_matrix(shape, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A, p=p)
+    ref_out = _reference_cond(ref_A, p=p)
     res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond
@@ -97,13 +126,15 @@ def test_linalg_cond_svd(shape, dtype, p):
     k = min(m, n)
     eye_k = torch.eye(k, dtype=dtype, device=flag_gems.device)
     A[..., :k, :k] = A[..., :k, :k] + k * eye_k
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.cond(ref_A, p=p)
+    ref_out = _reference_cond(ref_A, p=p)
     res_out = flag_gems.linalg_cond(A, p=p)
 
     # Use relative comparison for condition numbers
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1.0)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=1.0
+    )
 
 
 @pytest.mark.linalg_cond

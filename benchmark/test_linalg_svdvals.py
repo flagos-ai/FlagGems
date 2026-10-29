@@ -15,15 +15,14 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
+from .test_linalg_cond import _MusaLinalgStaticBaseline
 
 SHAPES = [(16, 16), (32, 32), (64, 64), (128, 128), (256, 256), (512, 512)]
 
 
-class OperatorCaseBenchmark(OperatorBenchmark):
+class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "(*B), M, N"
@@ -43,7 +42,7 @@ def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    return (inp)
+    return (inp,)
 
 
 @pytest.mark.linalg_svdvals
@@ -51,7 +50,6 @@ def test_linalg_svdvals():
     OperatorCaseBenchmark(
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,
-        gems_op=flag_gems.linalg_svdvals,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
