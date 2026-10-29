@@ -4,6 +4,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_linalg_ldl_factor import _reference_ldl_factor_ex
 
 # Worktree test uses square matrices for LDL factorization.
 LDLD_SHAPES = [(4, 4), (8, 8), (16, 16), (32, 32)]
@@ -23,13 +24,13 @@ def test_linalg_ldl_factor_ex(shape, dtype):
     # Make it symmetric: A = A @ A^T + small diagonal for numerical stability
     A = A @ A.mT + torch.eye(n, dtype=dtype, device=flag_gems.device) * 0.1
 
-    # PPU SYTRF is unavailable. Preserve the original Float64 reference on
-    # CPU in both modes, using the same target-generated input payload.
-    reference_input = A.cpu() if flag_gems.vendor_name == "thead" else A
+    # PPU lacks SYTRF and the MUSA Torch build lacks CPU LAPACK. Preserve
+    # configured reference precision on CPU using the actual target payload.
+    reference_input = A.cpu() if flag_gems.vendor_name in ("thead", "mthreads") else A
     ref_A = utils.to_reference(reference_input, True)
     original_input = A.clone()
 
-    ref_out = torch.linalg.ldl_factor_ex(ref_A)
+    ref_out = _reference_ldl_factor_ex(ref_A)
     res_out = flag_gems.ldl_factor_ex(A)
 
     # Check the target ABI before numerical helpers can move tensors to CPU.
@@ -49,7 +50,7 @@ def test_linalg_ldl_factor_ex(shape, dtype):
     # Only move results after checking their original target ABI above.
     comparison_out = (
         tuple(value.cpu() for value in res_out)
-        if flag_gems.vendor_name == "thead"
+        if flag_gems.vendor_name in ("thead", "mthreads")
         else res_out
     )
     # Compare LD matrices

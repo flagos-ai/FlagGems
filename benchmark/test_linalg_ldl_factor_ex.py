@@ -59,7 +59,10 @@ class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
         }
 
     def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "thead" or op is not self.torch_op:
+        if (
+            flag_gems.vendor_name not in ("thead", "mthreads")
+            or op is not self.torch_op
+        ):
             return super().get_latency(op, *args, **kwargs)
         if self.is_backward or kwargs or len(args) != 1 or base.Config.skip_native:
             raise ValueError("H800 LDL baseline requires the original forward core ABI")
@@ -121,14 +124,14 @@ class LinalgLdlFactorExBenchmark(base.GenericBenchmark):
 
     def _candidate_call(self):
         op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "thead" and op is self.torch_op:
+        if flag_gems.vendor_name in ("thead", "mthreads") and op is self.torch_op:
             raise ValueError(
-                "PPU LDL needs an explicit candidate because native SYTRF is unavailable"
+                "This backend LDL needs an explicit candidate because native SYTRF/LAPACK is unavailable"
             )
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name == "thead" and (
+        if flag_gems.vendor_name in ("thead", "mthreads") and (
             self.is_backward
             or base.Config.skip_native
             or "tflops" in self.to_bench_metrics
