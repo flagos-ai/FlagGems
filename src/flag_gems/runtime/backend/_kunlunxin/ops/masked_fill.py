@@ -202,9 +202,12 @@ def masked_fill(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # A 0-dim tensor value is a single element; ATen reads it as a scalar.
+        # Read it once and take the scalar kernel: the tensor-value pointwise
+        # kernel lowers a 0-dim value tensor in a form the FlagTree MLIR->LLVM
+        # translation rejects, and the scalar path is bit-identical.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
@@ -263,9 +266,9 @@ def masked_fill_(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # Same scalar-isation as in ``masked_fill``.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"

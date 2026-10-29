@@ -36,6 +36,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
+from .conv_transpose2d import conv_transpose2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
@@ -143,6 +144,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv_transpose1d",
+    "conv_transpose2d",
     "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
