@@ -24,6 +24,39 @@ from .accuracy_utils import _SKIP_FP64
 SHAPES = [(2, 3)] if cfg.QUICK_MODE else [(2, 3), (128, 256), (512, 512)]
 
 
+def _poisson_ones(shape, dtype):
+    if (flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64) or (
+        flag_gems.vendor_name == "enflame" and dtype in (torch.int64, torch.float64)
+    ):
+        value = torch.ones(shape, dtype=dtype, device="cpu")
+        return (
+            value.reshape(-1)
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(dtype)
+            .reshape(shape)
+        )
+    return torch.ones(shape, dtype=dtype, device=flag_gems.device)
+
+
+def _poisson_reference_input(value):
+    if utils.TO_CPU and (
+        (flag_gems.vendor_name == "kunlunxin" and value.dtype == torch.float64)
+        or (
+            flag_gems.vendor_name == "enflame"
+            and value.dtype in (torch.int64, torch.float64)
+        )
+    ):
+        return (
+            value.reshape(-1)
+            .view(torch.uint8)
+            .cpu()
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+    return utils.to_reference(value)
+
+
 @pytest.mark.poisson_nll_loss
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -67,6 +100,11 @@ def test_accuracy_poisson_nll_loss_broadcast_noncontiguous(reduction):
 @pytest.mark.poisson_nll_loss
 @pytest.mark.parametrize("reduction", [0, 1, 2])
 def test_accuracy_poisson_nll_loss_empty(reduction):
+    if flag_gems.vendor_name == "enflame" and not utils.TO_CPU and reduction == 1:
+        pytest.skip(
+            "Enflame native Poisson NLL aborts for empty mean reduction; "
+            "CPU reference remains covered"
+        )
     input = torch.empty((0, 3), device=flag_gems.device)
     target = torch.empty_like(input)
     ref = torch.ops.aten.poisson_nll_loss(
@@ -78,6 +116,11 @@ def test_accuracy_poisson_nll_loss_empty(reduction):
         reduction,
     )
     result = flag_gems.poisson_nll_loss(input, target, True, False, 1e-8, reduction)
+    if flag_gems.vendor_name == "enflame" and not utils.TO_CPU and reduction == 2:
+        assert result.device == ref.device == input.device
+        assert result.dtype == ref.dtype == torch.float32
+        assert result.shape == ref.shape == torch.Size([])
+        result, ref = result.cpu(), ref.cpu()
     utils.gems_assert_close(result, ref, torch.float32, equal_nan=True)
 
 
@@ -116,29 +159,69 @@ def test_accuracy_poisson_nll_loss_boundary(dtype):
 def test_poisson_nll_loss_mixed_dtype_promotion(
     input_dtype, target_dtype, expected_dtype
 ):
-    if not utils.fp64_is_supported and any(
-        _dt in (torch.float64, torch.complex128)
-        for _dt in (input_dtype, target_dtype, expected_dtype)
+    if (
+        not utils.fp64_is_supported
+        and flag_gems.vendor_name != "enflame"
+        and any(
+            _dt in (torch.float64, torch.complex128)
+            for _dt in (input_dtype, target_dtype, expected_dtype)
+        )
     ):
         pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
-    input = torch.ones((2, 3), dtype=input_dtype, device=flag_gems.device)
-    target = torch.ones((1, 3), dtype=target_dtype, device=flag_gems.device)
+    input = _poisson_ones((2, 3), input_dtype)
+    target = _poisson_ones((1, 3), target_dtype)
+    if (
+        flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+        and (input_dtype, target_dtype)
+        in (
+            (torch.bool, torch.float32),
+            (torch.int64, torch.float16),
+            (torch.float16, torch.int64),
+            (torch.float32, torch.float64),
+        )
+    ):
+        pytest.skip(
+            "Enflame native Poisson NLL does not support this mixed "
+            "dtype configuration; CPU reference remains covered"
+        )
     ref = torch.ops.aten.poisson_nll_loss(
-        utils.to_reference(input),
-        utils.to_reference(target),
+        _poisson_reference_input(input),
+        _poisson_reference_input(target),
         True,
         False,
         1e-8,
         0,
     )
     result = flag_gems.poisson_nll_loss(input, target, True, False, 1e-8, 0)
+    assert result.device == input.device
+    assert result.shape == ref.shape
     assert result.dtype == expected_dtype
     assert ref.dtype == expected_dtype
-    utils.gems_assert_close(result, ref, expected_dtype)
+    if (
+        utils.TO_CPU
+        and flag_gems.vendor_name in ("kunlunxin", "enflame")
+        and expected_dtype == torch.float64
+    ):
+        observed = (
+            result.reshape(-1)
+            .view(torch.uint8)
+            .cpu()
+            .view(result.dtype)
+            .reshape(result.shape)
+        )
+        utils.gems_assert_close(observed, ref.cpu(), expected_dtype)
+    else:
+        utils.gems_assert_close(result, ref, expected_dtype)
 
 
 @pytest.mark.poisson_nll_loss
 def test_poisson_nll_loss_mixed_dtype_exceptions():
+    if flag_gems.vendor_name == "enflame" and not utils.TO_CPU:
+        pytest.skip(
+            "Enflame native Poisson NLL does not support bool exp; "
+            "CPU reference remains covered"
+        )
     bool_input = torch.ones((2, 3), dtype=torch.bool, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         torch.ops.aten.poisson_nll_loss(bool_input, bool_input, True, False, 1e-8, 0)
@@ -185,10 +268,22 @@ def test_poisson_nll_loss_bool_input_nonlog_rejected(full, reduction):
 def test_poisson_nll_loss_complex(dtype, log_input, reduction, case):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
+    if (
+        flag_gems.vendor_name == "enflame"
+        and not utils.TO_CPU
+        and not utils.complex_is_supported
+    ):
+        pytest.skip(
+            "Enflame target does not support native complex compute; "
+            "CPU reference remains covered"
+        )
     use_cpu_reference = flag_gems.vendor_name == "mthreads" and case != "empty"
     shape = (65537,) if case == "large" else (0, 3) if case == "empty" else (3, 7)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    target = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    factory_device = (
+        "cpu" if flag_gems.vendor_name in ("ascend", "enflame") else flag_gems.device
+    )
+    inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
+    target = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
     if case == "broadcast_conjugate":
         inp = inp.T.conj()
         target = target[:1].T.conj()
