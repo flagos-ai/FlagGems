@@ -18904,6 +18904,34 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+- id: slow_conv_dilated3d
+  description: |
+    Applies a 3D dilated convolution operator over an input image composed of
+    several input planes, using the slow (im2col-free) direct algorithm.
+    The ``weight`` tensor uses the plain convolution layout
+    ``(out_channels, in_channels, kD, kH, kW)`` and no kernel flip is applied.
+  for:
+  - slow_conv_dilated3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: slow_conv_dilated3d_out
+  description: |
+    Out variant of ``slow_conv_dilated3d``: writes the 3D dilated convolution
+    result into the caller-provided ``out`` tensor and returns it.
+  for:
+  - slow_conv_dilated3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: slow_conv_transpose2d
   description: |
     Applies a 2D transposed convolution operator over an input image composed of
