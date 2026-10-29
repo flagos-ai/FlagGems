@@ -49,6 +49,39 @@ def test_bitwise_right_shift_(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.bitwise_right_shift_(ref_b)
-    flag_gems.bitwise_right_shift_(res_a, res_b)
+    before = (
+        res_a.device,
+        res_a.dtype,
+        tuple(res_a.shape),
+        res_a.stride(),
+        res_a.data_ptr(),
+    )
+    other_before = (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    )
+    other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
+    result = flag_gems.bitwise_right_shift_(res_a, res_b)
+    assert isinstance(result, torch.Tensor) and result is res_a
+    assert (
+        result.device,
+        result.dtype,
+        tuple(result.shape),
+        result.stride(),
+        result.data_ptr(),
+    ) == before
+    assert (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        res_b.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     utils.gems_assert_close(res_a, ref_a, dtype)
