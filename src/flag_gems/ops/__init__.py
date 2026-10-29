@@ -514,6 +514,7 @@ from flag_gems.ops.atan2 import atan2, atan2_out
 from flag_gems.ops.atan2_ import atan2_
 from flag_gems.ops.atanh import atanh, atanh_
 from flag_gems.ops.atleast_1d import run as atleast_1d
+from flag_gems.ops.atleast_2d import atleast_2d
 from flag_gems.ops.atleast_3d import run as atleast_3d
 from flag_gems.ops.attention import (
     ScaleDotProductAttention,
@@ -583,6 +584,7 @@ from flag_gems.ops.bmm import bmm, bmm_out
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
+from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ccol_indices import ccol_indices
@@ -592,6 +594,7 @@ from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
 from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
+from flag_gems.ops.cholesky import cholesky
 from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
 from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
@@ -805,6 +808,7 @@ from flag_gems.ops.fractional_max_pool2d import (
 from flag_gems.ops.fractional_max_pool3d import fractional_max_pool3d
 from flag_gems.ops.fractional_max_pool3d_backward import fractional_max_pool3d_backward
 from flag_gems.ops.frexp import frexp
+from flag_gems.ops.frobenius_norm import frobenius_norm
 from flag_gems.ops.full import full
 from flag_gems.ops.full_like import full_like
 from flag_gems.ops.functional_assert_async import _functional_assert_async
@@ -843,6 +847,7 @@ from flag_gems.ops.greater_equal import (
 from flag_gems.ops.grid_sample import grid_sample
 from flag_gems.ops.grid_sampler import grid_sampler
 from flag_gems.ops.grid_sampler_2d import grid_sampler_2d
+from flag_gems.ops.grid_sampler_2d_backward import grid_sampler_2d_backward
 from flag_gems.ops.grid_sampler_3d import grid_sampler_3d
 from flag_gems.ops.grid_sampler_3d_backward import grid_sampler_3d_backward
 from flag_gems.ops.group_gemm import group_mm
@@ -1384,6 +1389,7 @@ from flag_gems.ops.sort import sort, sort_stable
 from flag_gems.ops.sparse_broadcast_to import sparse_broadcast_to
 from flag_gems.ops.sparse_broadcast_to_copy import sparse_broadcast_to_copy
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
+from flag_gems.ops.sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
 from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
@@ -2115,6 +2121,7 @@ __all__ = [
     "atanh",
     "atanh_",
     "atleast_1d",
+    "atleast_2d",
     "atleast_3d",
     "avg_pool1d",
     "avg_pool2d",
@@ -2173,6 +2180,7 @@ __all__ = [
     "bmm_w8a8_fp8",
     "bucketize",
     "cartesian_prod",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",
@@ -2188,6 +2196,7 @@ __all__ = [
     "celu_",
     "chalf",
     "channel_shuffle",
+    "cholesky",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
@@ -2406,6 +2415,7 @@ __all__ = [
     "fractional_max_pool3d",
     "fractional_max_pool3d_backward",
     "frexp",
+    "frobenius_norm",
     "full",
     "full_like",
     "fused_moving_avg_obs_fake_quant",
@@ -2444,6 +2454,7 @@ __all__ = [
     "grid_sample",
     "grid_sampler",
     "grid_sampler_2d",
+    "grid_sampler_2d_backward",
     "grid_sampler_3d",
     "grid_sampler_3d_backward",
     "group_mm",
@@ -3049,6 +3060,7 @@ __all__ = [
     "sparse_broadcast_to",
     "sparse_broadcast_to_copy",
     "sparse_bsc_tensor",
+    "sparse_bsc_tensor_unsafe",
     "sparse_bsr_tensor",
     "sparse_compressed_tensor",
     "sparse_csc_tensor_unsafe",

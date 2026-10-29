@@ -75,6 +75,8 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
 )
+from ._foreach_ceil import _foreach_ceil
+from ._foreach_ceil_ import _foreach_ceil_
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
@@ -927,6 +929,8 @@ __all__ = [
     "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
+    "_foreach_ceil",
+    "_foreach_ceil_",
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_cos",
