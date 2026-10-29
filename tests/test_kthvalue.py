@@ -31,11 +31,11 @@ def _assert_kth_indices(
     assert indices.device == inp.device
     assert indices.dtype == torch.int64
     assert indices.shape == reference_indices.shape
-    if flag_gems.vendor_name != "mthreads":
+    if flag_gems.vendor_name not in ("mthreads", "ascend", "iluvatar"):
         utils.gems_assert_equal(indices, reference_indices)
         return
-    # Native MUSA kthvalue may choose different valid positions for equal
-    # values on repeated calls. Keep exact indices away from those ties.
+    # Native kthvalue may choose different valid positions for equal values
+    # across devices or repeated calls. Keep exact indices away from ties.
     source = inp.cpu()
     actual_indices = indices.cpu()
     expected_indices = reference_indices.cpu()
