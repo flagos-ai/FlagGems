@@ -157,7 +157,6 @@ def _promoted(tensors, allowed):
 
 
 def _foreach_expm1(self):
-    logger.debug("GEMS _FOREACH_EXPM1")
     logger.debug("GEMS_KUNLUNXIN _FOREACH_EXPM1")
     op = UNARY_OPS["expm1"]
     tensors = check_tensor_list(self)
@@ -171,7 +170,6 @@ def _foreach_expm1(self):
 
 
 def _foreach_expm1_(self):
-    logger.debug("GEMS _FOREACH_EXPM1_")
     logger.debug("GEMS_KUNLUNXIN _FOREACH_EXPM1_")
     tensors = check_tensor_list(self)
     if _try_fast(tensors):
