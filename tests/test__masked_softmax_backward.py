@@ -35,15 +35,6 @@ else:
     ]
 
 
-def _candidate_masked_softmax_backward(*args, **kwargs):
-    if getattr(flag_gems, "masked_softmax_backward", None) is not None:
-        return flag_gems.masked_softmax_backward(*args, **kwargs)
-
-    from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
-
-    return _masked_softmax_backward(*args, **kwargs)
-
-
 def _reference_masked_softmax_backward(grad_output, output, mask, dim):
     out = torch.where(mask, torch.zeros_like(output), output)
     tmp = torch.where(mask, torch.zeros_like(out), out * grad_output)
@@ -52,10 +43,10 @@ def _reference_masked_softmax_backward(grad_output, output, mask, dim):
     return torch.where(mask, torch.zeros_like(grad_input), grad_input)
 
 
-@pytest.mark.masked_softmax_backward
+@pytest.mark.underscore_masked_softmax_backward
 @pytest.mark.parametrize("shape_dim", MASKED_SOFTMAX_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_masked_softmax_backward(shape_dim, dtype):
+def test__masked_softmax_backward(shape_dim, dtype):
     shape, dim = shape_dim
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     # ``mask`` marks masked-out positions; build a consistent forward output so
@@ -75,7 +66,7 @@ def test_masked_softmax_backward(shape_dim, dtype):
     )
 
     expected = (grad_output.device, grad_output.dtype, grad_output.shape)
-    res_grad_input = _candidate_masked_softmax_backward(grad_output, output, mask, dim)
+    res_grad_input = flag_gems._masked_softmax_backward(grad_output, output, mask, dim)
 
     assert isinstance(res_grad_input, torch.Tensor)
     assert (
