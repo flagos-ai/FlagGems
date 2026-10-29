@@ -36,9 +36,9 @@ releases only; dev, rc, and other pre-release tags do not match).
   [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC via
   `id-token: write`, no stored PyPI token).
 
-See [Versioning](/FlagGems/zh-cn/release/versioning/) for the tag-naming rules
+See [Versioning](../release/versioning.md) for the tag-naming rules
 that determine what triggers this workflow, and
-[Packaging](/FlagGems/zh-cn/release/packaging/) for build details.
+[Packaging](../release/packaging.md) for build details.
 -->
 ## `release.yaml` — 构建并发布 wheel 包
 
@@ -52,8 +52,8 @@ dev、rc 等预发布标签不会匹配该规则）。
   （通过 `id-token: write` 实现 OIDC 认证，无需存储 PyPI token）将其发布到
   PyPI。
 
-标签命名规则决定了哪些标签会触发该工作流，详见[版本管理](/FlagGems/zh-cn/release/versioning/)；
-构建细节请参阅[打包](/FlagGems/zh-cn/release/packaging/)。
+标签命名规则决定了哪些标签会触发该工作流，详见[版本管理](../release/versioning.md)；
+构建细节请参阅[打包](../release/packaging.md)。
 
 <!--
 ## `hugo-site.yaml` — build and publish documentation
@@ -145,7 +145,7 @@ Artifacts are uploaded as `flag-gems-amd64-packages` and
 The manually dispatched tools that do not touch releases — `probe-node.yaml`,
 `random-test.yaml`, `review-stats.yaml`, plus the comment-triggered
 `fix-sort.yaml` — are documented in
-[Scheduled and on-demand testing](/FlagGems/zh-cn/cicd/scheduled/), which
+[Scheduled and on-demand testing](scheduled.md), which
 owns everything you start by hand.
 -->
 ## `build-deb.yml` 与 `build-rpm.yml` —— 发行版安装包
@@ -174,5 +174,5 @@ owns everything you start by hand.
 不涉及发布、需要手动触发的工具类工作流 —— `probe-node.yaml`、
 `random-test.yaml`、`review-stats.yaml`，以及由评论触发的
 `fix-sort.yaml` —— 统一记录在
-[定时与按需测试](/FlagGems/zh-cn/cicd/scheduled/)，凡是需要手动启动的
+[定时与按需测试](scheduled.md)，凡是需要手动启动的
 工作流都归那一页。

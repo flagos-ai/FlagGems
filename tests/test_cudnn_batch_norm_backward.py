@@ -12,6 +12,10 @@ from . import accuracy_utils as utils
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "amd",
+    reason="ROCm torch has no aten.cudnn_batch_norm reference (MIOpen backend)",
+)
 @pytest.mark.parametrize(
     "shape",
     [
