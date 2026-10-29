@@ -31,11 +31,11 @@ vendors that aren't touched by a given PR.
 `workflow_dispatch`.
 
 Runs the entire operator test suite (not just changed operators) on the
-NVIDIA runner:
+NVIDIA runner (hosted on an **NVIDIA A100-40G** GPU server with the official upstream **Triton** compiler installed, rather than FlagTree):
 
 - `cpp-op` — the full C++ extension test suite.
 - `python-op` — `tools/test-op.sh` with `CHANGED_FILES=__ALL__`, which
-  expands to every `tests/test*.py` file. Also collects coverage and
+  expands to every `tests/test*.py` file to test baseline compatibility on official Triton and Ampere architecture. Also collects coverage and
   uploads it as the `op-ut-coverage` artifact.
 - `examples` — `tools/test-examples.sh` against all example/model tests.
 
@@ -168,7 +168,7 @@ gh workflow run review-stats.yaml \
 `command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
 are started by commenting on a pull request rather than by `workflow_dispatch`
 or a schedule, so they are documented in
-[Pull request checks](/FlagGems/cicd/pull-request/) together with the checks
+[Pull request checks](pull-request.md) together with the checks
 they complement.
 
 ## Feishu and monitoring integrations
@@ -181,7 +181,7 @@ they complement.
   that single path. Because the GitHub API can lag behind a finished run, the
   script sleeps 5s and then retries up to 3 times with 10s/20s backoff. Its
   per-PR role is described under `rule-check` in
-  [Pull request checks](/FlagGems/cicd/pull-request/).
+  [Pull request checks](pull-request.md).
 - `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
   notifications via `.github/scripts/notify_feishu.py`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP

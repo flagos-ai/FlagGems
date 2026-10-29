@@ -23,7 +23,7 @@ weight: 20
 # Platforms Supported
 
 *FlagGems* supports 10+ backends. The currently supported platforms and
-their capabilities are listed blow:
+their capabilities are listed below:
 
 | Vendor     | Vendor name   | State | float16 | float32 | bfloat16 |
 | ---------- | ------------- | ------| ------- | ------- | -------- |
@@ -32,7 +32,7 @@ their capabilities are listed blow:
 | ARM(CPU)   | `arm`         | ☑️     | -       | -       | -        |
 | Ascend     | `ascend`      | ✅    | ✅      | ✅      | ✅       |
 | Cambricon  | `cambricon`   | ✅    | ✅      | ✅      | ✅       |
-| Hygon      | `hugon`       | ✅    | ✅      | ✅      | ✅       |
+| Hygon      | `hygon`       | ✅    | ✅      | ✅      | ✅       |
 | Iluvatar   | `iluvatar`    | ✅    | ✅      | ✅      | ✅       |
 | Kunlunxin  | `kunlunxin`   | ✅    | ✅      | ✅      | ✅       |
 | MetaX      | `metax`       | ✅    | ✅      | ✅      | ✅       |
