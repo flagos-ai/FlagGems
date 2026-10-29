@@ -1548,6 +1548,7 @@ from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
+from flag_gems.ops.transpose_ import transpose_
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
@@ -3208,6 +3209,7 @@ __all__ = [
     "trace",
     "trace_backward",
     "transpose",
+    "transpose_",
     "transpose_copy",
     "trapezoid_x",
     "trapz",

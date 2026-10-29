@@ -2033,6 +2033,7 @@ _FULL_CONFIG = (
     ("trace", trace),
     ("trace_backward", trace_backward),
     ("transpose.int", transpose),
+    ("transpose_", transpose_),
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
     ("trapezoid.x", trapezoid_x),
