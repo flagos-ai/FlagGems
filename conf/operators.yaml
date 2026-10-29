@@ -19174,6 +19174,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_csc_tensor
+  description: 'Assembles a compressed sparse column (CSC) tensor from its stored
+    components: the column-pointer vector (ccol_indices), the row indices (row_indices)
+    and the payload (values), with an explicit logical size or one inferred from
+    the component buffers.
+
+    '
+  for:
+  - sparse_csc_tensor.ccol_row_value
+  - sparse_csc_tensor.ccol_row_value_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_csc_tensor_unsafe
   description: 'Assembles a torch.sparse_csc layout tensor from already-materialised
     ccol/row indices and values without validating the compressed indices; the

@@ -568,14 +568,14 @@ _FULL_CONFIG = (
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
     ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
-    ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
-    ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
         "_sparse_broadcast_to_copy",
         sparse_broadcast_to_copy,
         None,
         (SPARSE_DISPATCH_KEY,),
     ),
+    ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
+    ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,
@@ -1848,6 +1848,8 @@ _FULL_CONFIG = (
     ("sparse_bsr_tensor.crow_col_value_size", sparse_bsr_tensor),
     ("sparse_compressed_tensor.comp_plain_value", sparse_compressed_tensor),
     ("sparse_compressed_tensor.comp_plain_value_size", sparse_compressed_tensor),
+    ("sparse_csc_tensor.ccol_row_value", sparse_csc_tensor),
+    ("sparse_csc_tensor.ccol_row_value_size", sparse_csc_tensor),
     (
         "sparse_dim",
         sparse_dim,
