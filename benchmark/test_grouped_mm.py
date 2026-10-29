@@ -115,7 +115,7 @@ class _GroupMMH800Reference:
     def _require_composite_static(self, args, kwargs, case_id):
         if not base.Config.skip_native or base.Config.base_data is None:
             raise ValueError(
-                "Hygon group_mm requires exact native-composite H800 --base-data"
+                "Selected backend group_mm requires exact native-composite H800 --base-data"
             )
         if (
             self.op_name != "group_mm"
@@ -210,19 +210,19 @@ class _GroupMMH800Reference:
 
     def _candidate_call(self):
         op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "hygon" and op is self.torch_op:
-            raise ValueError("Hygon requires explicit CPU-oracle candidate")
+        if flag_gems.vendor_name in {"hygon", "metax"} and op is self.torch_op:
+            raise ValueError("Selected backend requires explicit CPU-oracle candidate")
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name == "hygon":
+        if flag_gems.vendor_name in {"hygon", "metax"}:
             self._composite_checked = self._require_composite_static(
                 *self.unpack_to_args_kwargs(input), case_id
             )
         return super()._measure_input(input, case_id=case_id)
 
     def _apply_external_baseline(self, metric, dtype, context):
-        if flag_gems.vendor_name != "hygon":
+        if flag_gems.vendor_name not in {"hygon", "metax"}:
             return super()._apply_external_baseline(metric, dtype, context)
         baseline, captured, latency, key = self._composite_checked
         if (
@@ -297,8 +297,8 @@ def _build_inputs_fn(plan, dtype, device):
 @pytest.mark.grouped_mm
 @pytest.mark.group_mm
 @pytest.mark.skip_native(
-    vendors=["hygon"],
-    reason="Hygon uses exact native per-group mm composite H800 static records",
+    vendors=["hygon", "metax"],
+    reason="Selected backend uses exact native per-group mm composite H800 static records",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon" and utils.SkipVersion("torch", "<2.8"),
@@ -309,7 +309,7 @@ def test_grouped_mm():
         op_name="group_mm",
         torch_op=(
             _native_group_mm_composite
-            if flag_gems.vendor_name in {"nvidia", "hygon"}
+            if flag_gems.vendor_name in {"nvidia", "hygon", "metax"}
             else torch._grouped_mm
         ),
         case_fn=_case_fn,
