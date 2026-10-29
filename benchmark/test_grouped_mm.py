@@ -296,6 +296,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 @pytest.mark.grouped_mm
 @pytest.mark.group_mm
+@pytest.mark.skip_native(
+    vendors=["hygon"],
+    reason="Hygon uses exact native per-group mm composite H800 static records",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name != "hygon" and utils.SkipVersion("torch", "<2.8"),
     reason="torch._grouped_mm requires PyTorch >= 2.8.0.",
