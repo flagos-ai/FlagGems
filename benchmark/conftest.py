@@ -24,6 +24,7 @@ import yaml
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
 from flag_gems.runtime import torch_device_fn
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 from . import consts
 from .baseline import BaselineData
@@ -118,6 +119,7 @@ class BenchConfig:
         self.preflight_only = False
         self.preflight_records = []
         self.reference_only = False
+        self.ref_as_candidate = False
         self.reference_records = []
         self.profile_warmup = 10
         self.profile_iterations = 1
@@ -373,6 +375,7 @@ def pytest_configure(config):
     )
 
     Config = BenchConfig()
+    Config.ref_as_candidate = validate_ref_as_candidate_options(config)
     Config.reference_only = validate_reference_options(config)
     CASE_LISTS.clear()
     TEST_RESULTS.clear()
