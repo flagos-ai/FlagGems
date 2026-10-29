@@ -58,6 +58,11 @@ _TLE_NARROW_ROW_BYTES = 2048
 _TLE_FLAT_COLS = 256
 # Everything that fits one program's loop is reduced in a single [1, n] launch.
 _TLE_FLAT_ONESHOT = 8192
+# Flat multi-stage geometry: rows target this many per program so that one stage
+# finishes n up to 2M, and the row width is capped so a very wide row cannot
+# starve the tile loop.
+_TLE_FLAT_ROWS = 4096
+_TLE_FLAT_MAX_COLS = 8192
 
 # Only dtypes verified to survive an LM round trip on KL3. float64 is absent
 # because it is broken on this path (see sum.py); bool has no LM dtype.
@@ -153,6 +158,11 @@ def _tle_row_geom(M, N, itemsize):
     yblock = max(1, min(_npo2(N), tile_elems // xblock))
     while yblock > N and yblock > 1:
         yblock >>= 1
+    # A 16-wide LM tile is miscompiled for the 16-bit dtypes: fp16 fails the LLVM
+    # lowering ("size mismatch when packing elements for LLVM struct") and bf16
+    # silently returns wrong rows. 32 is both correct and the fastest tile here.
+    if yblock == 16:
+        yblock = 32
     geom = (xblock, yblock)
     _TLE_ROW_GEOM[geom_key] = geom
     return geom
@@ -233,14 +243,17 @@ def _tle_prod_flat(inp, out, device):
     which for this size is one launch and is cheaper than another tle stage.
     """
     with torch_device_fn.device(device):
-        cur = inp.reshape(-1)
+        cur = inp if inp.ndim == 1 and inp.is_contiguous() else inp.reshape(-1)
         while cur.numel() > _TLE_FLAT_ONESHOT:
             n = cur.numel()
-            cols = (
-                _TLE_FLAT_COLS
-                if n >= 2 * _TLE_FLAT_COLS
-                else max(2, _npo2(n) // _TLE_CORE_NUM)
-            )
+            cols = _TLE_FLAT_COLS
+            if n >= 2 * cols:
+                # Wider rows when n no longer fits one stage at the default width:
+                # a second stage costs a whole extra launch, and every shape here
+                # measured faster with rows around 4096 (16.7M f16: 82us vs 176us).
+                cols = min(
+                    _TLE_FLAT_MAX_COLS, max(cols, _npo2(-(-n // _TLE_FLAT_ROWS)))
+                )
             rows = n // cols
             if rows < 2:
                 break
@@ -251,9 +264,11 @@ def _tle_prod_flat(inp, out, device):
                 (rows + tail,), dtype=_TLE_ACC_TORCH[acc_dtype], device=device
             )
             xblock, yblock = _tle_row_geom(rows, cols, cur.element_size())
-            _tle_row_reduce(cur[:main].view(rows, cols), nxt[:rows], xblock, yblock)
             if tail:
+                _tle_row_reduce(cur[:main].view(rows, cols), nxt[:rows], xblock, yblock)
                 nxt[rows:].copy_(cur[main:])
+            else:
+                _tle_row_reduce(cur.view(rows, cols), nxt, xblock, yblock)
             cur = nxt
         _reduce_partials(cur, cur.numel(), out, device, inp.dtype.is_floating_point)
 
@@ -262,7 +277,9 @@ def _tle_prod_dim(inp, out_flat, rows, N, device):
     """`out_flat[m] = prod(inp[m, :])` for the contiguous [rows, N] reduce view."""
     with torch_device_fn.device(device):
         xblock, yblock = _tle_row_geom(rows, N, inp.element_size())
-        _tle_row_reduce(inp.view(rows, N), out_flat, xblock, yblock)
+        _tle_row_reduce(
+            inp if inp.ndim == 2 else inp.view(rows, N), out_flat, xblock, yblock
+        )
 
 
 @triton.jit
@@ -477,7 +494,7 @@ def _reduce_partials(data, n, out, device, acc32):
                 pos += w
             data = midn
             n = sz
-        width = triton.next_power_of_2(n)
+        width = _npo2(n)
         prod_final_mask[(1, 1)](data, out, n, width, acc32, buffer_size_limit=2048)
 
 
