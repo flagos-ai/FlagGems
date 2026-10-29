@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "masked_softmax_backward",
+  "name": "_masked_softmax_backward",
   "requires_triton_kernel": true,
   "description": "Computes the input gradient of a masked softmax: masked positions are\nzeroed and the remaining positions follow the standard softmax backward\nformula output * (grad_output - sum(output * grad_output over dim)).",
   "parameters": [

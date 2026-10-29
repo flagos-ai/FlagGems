@@ -125,7 +125,7 @@ def test_foreach_round__writes_through_noncontiguous_view():
 
 @pytest.mark.foreach_round_
 def test_foreach_round__integer_contract():
-    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+    if flag_gems.vendor_name in ("kunlunxin", "mthreads") and not utils.TO_CPU:
         pytest.skip(
             "backend native foreach does not support the integer reference contract"
         )

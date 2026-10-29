@@ -1,0 +1,28 @@
+{
+  "api_version": "v6.0",
+  "name": "_stack",
+  "requires_triton_kernel": true,
+  "description": "New Derived Definition (2026-10-29), not a recovered original. Derived from the actual FlagGems export, aten::_stack(Tensor[] tensors, int dim=0) -> Tensor (fresh output), and preserved test ABI.",
+  "parameters": [
+    {
+      "name": "tensors",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor[]"
+    },
+    {
+      "name": "dim",
+      "kind": "positional_or_keyword",
+      "required": false,
+      "type_hint": "int",
+      "default": 0
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}

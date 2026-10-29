@@ -102,7 +102,8 @@ def test_batch_norm_backward_elemt(shape, dtype, has_weight):
         ref_count,
     )
 
-    res_out = torch.batch_norm_backward_elemt(
+    expected = (grad_output.device, grad_output.dtype, grad_output.shape)
+    res_out = flag_gems.batch_norm_backward_elemt(
         grad_output,
         inp,
         mean,
@@ -113,4 +114,6 @@ def test_batch_norm_backward_elemt(shape, dtype, has_weight):
         count,
     )
 
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, res_out.shape) == expected
     utils.gems_assert_close(res_out, ref_out, dtype)

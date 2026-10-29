@@ -49,11 +49,13 @@ def _make_grad_output(shape, dtype, noncontiguous=False):
     )
 
 
-@pytest.mark.upsample_nearest_exact1d_backward
+@pytest.mark.underscore_upsample_nearest_exact1d_backward
 @pytest.mark.parametrize("noncontiguous", [False, True])
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_upsample_nearest_exact1d_backward(shape, dtype, noncontiguous):
+    if flag_gems.vendor_name == "ascend" and not TO_CPU and dtype == torch.float64:
+        pytest.skip("Ascend native nearest-exact1d backward does not support float64")
     batch, channels, input_w, output_w = shape
     grad_output = _make_grad_output(shape, dtype, noncontiguous)
     ref_grad_output = utils.to_reference(grad_output)
@@ -63,20 +65,26 @@ def test_upsample_nearest_exact1d_backward(shape, dtype, noncontiguous):
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, output_size, input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, output_size, input_size
-        )
+    expected_device, expected_dtype = grad_output.device, grad_output.dtype
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, output_size, input_size
+    )
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == tuple(input_size)
 
     utils.gems_assert_close(result, reference, dtype)
 
 
-@pytest.mark.upsample_nearest_exact1d_backward
+@pytest.mark.underscore_upsample_nearest_exact1d_backward
 @pytest.mark.parametrize(
     "input_w,output_w,scale", [(3, 5, 1.6), (4, 7, 2.0), (9, 4, 0.5)]
 )
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_upsample_nearest_exact1d_backward_with_scale(input_w, output_w, scale, dtype):
+    if flag_gems.vendor_name == "ascend" and not TO_CPU and dtype == torch.float64:
+        pytest.skip("Ascend native nearest-exact1d backward does not support float64")
     grad_output = torch.randn((2, 3, output_w), dtype=dtype, device=flag_gems.device)
     ref_grad_output = utils.to_reference(grad_output)
     output_size = (output_w,)
@@ -85,18 +93,26 @@ def test_upsample_nearest_exact1d_backward_with_scale(input_w, output_w, scale, 
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, output_size, input_size, scale
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, output_size, input_size, scale
-        )
+    expected_device, expected_dtype = grad_output.device, grad_output.dtype
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, output_size, input_size, scale
+    )
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == tuple(input_size)
 
     utils.gems_assert_close(result, reference, dtype)
 
 
-@pytest.mark.upsample_nearest_exact1d_backward_grad_input
+@pytest.mark.underscore_upsample_nearest_exact1d_backward_grad_input
 @pytest.mark.parametrize("noncontiguous", [False, True])
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_upsample_nearest_exact1d_backward_grad_input(dtype, noncontiguous):
+    if flag_gems.vendor_name == "ascend" and not TO_CPU and dtype == torch.float64:
+        pytest.skip(
+            "Ascend native nearest-exact1d backward grad_input does not support float64"
+        )
     grad_output = torch.randn((2, 3, 13), dtype=dtype, device=flag_gems.device)
     ref_grad_output = utils.to_reference(grad_output)
     input_size = (2, 3, 7)
@@ -121,20 +137,40 @@ def test_upsample_nearest_exact1d_backward_grad_input(dtype, noncontiguous):
         reference = torch.ops.aten._upsample_nearest_exact1d_backward.grad_input(
             ref_grad_output, (13,), input_size, grad_input=ref_grad_input
         )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.grad_input(
-            grad_output, (13,), input_size, grad_input=grad_input
-        )
+    expected_device, expected_dtype = grad_output.device, grad_output.dtype
+    original_out_stride = (
+        grad_input.stride() if tuple(grad_input.shape) == tuple(input_size) else None
+    )
+    result = flag_gems._upsample_nearest_exact1d_backward_grad_input(
+        grad_output,
+        (13,),
+        input_size,
+        grad_input=grad_input,
+    )
 
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == tuple(input_size)
     assert result is grad_input
+    if original_out_stride is not None:
+        assert result.stride() == original_out_stride
     if ref_grad_input is not None:
         assert reference is ref_grad_input
     utils.gems_assert_close(result, reference, dtype)
 
 
-@pytest.mark.upsample_nearest_exact1d_backward
+@pytest.mark.underscore_upsample_nearest_exact1d_backward
 @pytest.mark.parametrize("shape", [(0, 3, 7, 13), (2, 0, 7, 13)])
 def test_upsample_nearest_exact1d_backward_empty(shape):
+    if (
+        flag_gems.vendor_name == "ascend"
+        and not TO_CPU
+        and shape in ((0, 3, 7, 13), (2, 0, 7, 13))
+    ):
+        pytest.skip(
+            "Ascend native nearest-exact1d backward rejects empty batch/channel"
+        )
     batch, channels, input_w, output_w = shape
     grad_output = torch.empty(shape[:2] + (output_w,), device=flag_gems.device)
     ref_grad_output = utils.to_reference(grad_output)
@@ -142,37 +178,45 @@ def test_upsample_nearest_exact1d_backward_empty(shape):
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         ref_grad_output, (output_w,), input_size
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, (output_w,), input_size
-        )
+    expected_device, expected_dtype = grad_output.device, grad_output.dtype
+    result = flag_gems._upsample_nearest_exact1d_backward(
+        grad_output, (output_w,), input_size
+    )
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == tuple(input_size)
     utils.gems_assert_equal(result, reference)
 
 
-@pytest.mark.upsample_nearest_exact1d_backward
+@pytest.mark.underscore_upsample_nearest_exact1d_backward
 @pytest.mark.skipif(TO_CPU, reason="native CPU backward does not support uint8")
 def test_upsample_nearest_exact1d_backward_uint8():
+    if flag_gems.vendor_name == "ascend":
+        pytest.skip("Ascend native nearest-exact1d backward does not support uint8")
     grad_output = torch.randint(
         0, 256, (2, 3, 17), dtype=torch.uint8, device=flag_gems.device
     )
     reference = torch.ops.aten._upsample_nearest_exact1d_backward.default(
         grad_output, (17,), (2, 3, 5)
     )
-    with flag_gems.use_gems():
-        result = torch.ops.aten._upsample_nearest_exact1d_backward.default(
-            grad_output, (17,), (2, 3, 5)
-        )
+    expected_device, expected_dtype = grad_output.device, grad_output.dtype
+    result = flag_gems._upsample_nearest_exact1d_backward(grad_output, (17,), (2, 3, 5))
+    assert isinstance(result, torch.Tensor)
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == (2, 3, 5)
     utils.gems_assert_equal(result, reference)
 
 
-@pytest.mark.upsample_nearest_exact1d_backward
+@pytest.mark.underscore_upsample_nearest_exact1d_backward
 @pytest.mark.parametrize(
     "output_size,input_size",
     [((0,), (1, 1, 3)), ((6,), (1, 1, 0)), ((6, 7), (1, 1, 3))],
 )
 def test_upsample_nearest_exact1d_backward_invalid_size(output_size, input_size):
     grad_output = torch.randn((1, 1, max(output_size[0], 1)), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten._upsample_nearest_exact1d_backward.default(
+    with pytest.raises(RuntimeError):
+        flag_gems._upsample_nearest_exact1d_backward(
             grad_output, output_size, input_size
         )

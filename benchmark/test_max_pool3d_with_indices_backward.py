@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
 
 
@@ -96,7 +94,6 @@ def test_max_pool3d_with_indices_backward():
         build_inputs_fn=_build_inputs_fn,
         op_name="max_pool3d_with_indices_backward",
         torch_op=torch.ops.aten.max_pool3d_with_indices_backward,
-        gems_op=flag_gems.max_pool3d_with_indices_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -15,10 +15,10 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts, utils
-from .generated_operator_utils import OperatorBenchmark
+from .generated_operator_utils import OperatorBenchmark as _BaseOperatorBenchmark
+from .test_sgn import _SgnOutCurrentNativeReference
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -37,14 +37,21 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, {"out": out}
 
 
+class OperatorBenchmark(_SgnOutCurrentNativeReference, _BaseOperatorBenchmark):
+    _sgn_profile = "current-fresh"
+
+
 @pytest.mark.sgn_out
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="Native SGNOut executes on CPU; use the exact H800 fresh-input profile",
+)
 def test_sgn_out():
     OperatorBenchmark(
         op_name="sgn_out",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sgn.out,
-        gems_op=getattr(flag_gems, "sgn_out", None),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,

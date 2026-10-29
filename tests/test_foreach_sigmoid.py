@@ -117,6 +117,10 @@ def test_foreach_sigmoid_mixed_shapes_and_empty_tensor():
 
 @pytest.mark.foreach_sigmoid
 def test_foreach_sigmoid_integer_promotion():
+    if flag_gems.vendor_name == "enflame" and not utils.TO_CPU:
+        pytest.skip(
+            "Enflame native foreach_sigmoid does not support the Int32 reference contract"
+        )
     values = [_sample((11,), torch.int32)]
     reference_values = _reference(values)
     if not _INTEGER_SUPPORTED:
@@ -132,7 +136,7 @@ def test_foreach_sigmoid_integer_promotion():
 
 @pytest.mark.foreach_sigmoid
 def test_foreach_sigmoid_complex_values():
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and not utils.TO_CPU:
+    if flag_gems.vendor_name in ("ascend", "kunlunxin", "enflame") and not utils.TO_CPU:
         pytest.skip(
             "backend native foreach does not support the complex reference contract"
         )

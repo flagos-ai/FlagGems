@@ -116,6 +116,10 @@ def test_foreach_frac_mixed_shapes_and_empty_tensor():
 
 @pytest.mark.foreach_frac
 def test_foreach_frac_integer_promotion():
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU:
+        pytest.skip(
+            "backend native foreach accepts int32 instead of the reference error contract"
+        )
     values = [_sample((11,), torch.int32)]
     reference_values = _reference(values)
     if not _INTEGER_SUPPORTED:

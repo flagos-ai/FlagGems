@@ -174,9 +174,15 @@ def test_conj_physical_complex(shape, value_range):
 # ---------------------------------------------------------------------------
 
 
-def _layout_case(name, shape, dtype, device):
+def _layout_case(name, shape, dtype, device, *, portable_input=False):
     """Build an input with a specific layout; mirrors the ATen layout rules."""
-    if dtype.is_complex or dtype.is_floating_point:
+    if portable_input and name in ("channels_last", "channels_last_3d"):
+        return _layout_case(name, shape, dtype, "cpu").to(
+            device, memory_format=torch.preserve_format
+        )
+    if portable_input and dtype.is_complex:
+        base = torch.randn(shape, dtype=dtype, device="cpu").to(device)
+    elif dtype.is_complex or dtype.is_floating_point:
         base = torch.randn(shape, dtype=dtype, device=device)
     else:
         base = torch.randint(-9, 9, shape, dtype=dtype, device=device)
@@ -210,6 +216,13 @@ _LAYOUT_SHAPES = {
 _UNDERSCORE_DTYPES = [torch.complex64, torch.float32, torch.int32]
 
 
+def _assert_private_conj_equal(actual, expected):
+    if flag_gems.vendor_name == "ascend":
+        # Validate the original result's ABI before comparing values on CPU.
+        actual, expected = actual.cpu(), expected.cpu()
+    utils.gems_assert_equal(actual, expected)
+
+
 @pytest.mark.underscore_conj_physical
 @pytest.mark.parametrize("layout", list(_LAYOUT_SHAPES))
 @pytest.mark.parametrize("dtype", _UNDERSCORE_DTYPES)
@@ -221,13 +234,22 @@ def test__conj_physical_layout_parity(layout, dtype):
     (``gappy``, ``expanded``) comes back contiguous. Building the output from a
     contiguous temporary would silently flatten the first group.
     """
-    inp = _layout_case(layout, _LAYOUT_SHAPES[layout], dtype, flag_gems.device)
+    inp = _layout_case(
+        layout,
+        _LAYOUT_SHAPES[layout],
+        dtype,
+        flag_gems.device,
+        portable_input=flag_gems.vendor_name == "ascend",
+    )
 
     # Layout is a property of the op, not of the device, so the stride contract
     # is pinned against a same-device ATen call; the value comparison below goes
     # through to_reference so it still works under --ref=cpu.
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = flag_gems.ops._conj_physical(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     assert (
         res_out.stride() == aten_out.stride()
@@ -235,7 +257,7 @@ def test__conj_physical_layout_parity(layout, dtype):
     assert res_out.shape == aten_out.shape
 
     ref_out = torch.ops.aten._conj_physical(utils.to_reference(inp))
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_private_conj_equal(res_out, ref_out)
 
 
 @pytest.mark.underscore_conj_physical
@@ -257,7 +279,10 @@ def test__conj_physical_real_does_not_alias(dtype):
 
     # Aliasing is a same-device property, so compare against ATen on-device.
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = flag_gems.ops._conj_physical(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     # ATen itself must not alias here; assert that first so the test documents
     # the contract it is pinning rather than just gems' behaviour.
@@ -266,29 +291,35 @@ def test__conj_physical_real_does_not_alias(dtype):
     assert res_out.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
 
     ref_out = torch.ops.aten._conj_physical(utils.to_reference(inp))
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_private_conj_equal(res_out, ref_out)
 
     # Writing through the result must leave the input untouched.
     original = utils.to_reference(inp.clone())
     res_out.zero_()
-    utils.gems_assert_equal(inp, original)
+    _assert_private_conj_equal(inp, original)
 
 
 @pytest.mark.underscore_conj_physical
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test__conj_physical_conj_bit_input(dtype):
     """A conj-bit input conjugates its *logical* value: conj(conj(x)) == x."""
-    base = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend":
+        base = torch.randn((3, 4), dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        base = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
     inp = base.conj()
     assert inp.is_conj()
 
-    res_out = flag_gems.ops._conj_physical(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
     assert not res_out.is_conj(), "conjugate bit leaked into the result"
 
     ref_out = torch.ops.aten._conj_physical(utils.to_reference(inp))
-    utils.gems_assert_equal(torch.view_as_real(res_out), torch.view_as_real(ref_out))
+    _assert_private_conj_equal(torch.view_as_real(res_out), torch.view_as_real(ref_out))
     # conj(conj(base)) == base, so the result is the original tensor's values.
-    utils.gems_assert_equal(
+    _assert_private_conj_equal(
         torch.view_as_real(res_out), torch.view_as_real(utils.to_reference(base))
     )
 
@@ -301,7 +332,10 @@ def test__conj_physical_empty(dtype, shape):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
 
     aten_out = torch.ops.aten._conj_physical(inp)
-    res_out = flag_gems.ops._conj_physical(inp)
+    expected = (inp.device, inp.dtype, tuple(inp.shape))
+    res_out = flag_gems._conj_physical(inp)
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, tuple(res_out.shape)) == expected
 
     assert res_out.shape == aten_out.shape
     assert res_out.dtype == aten_out.dtype
@@ -323,20 +357,29 @@ def test__conj_physical_matches_backward_formula(dtype):
     differentiable on its own, and building the graph would require wrapping the
     call at the dispatcher level.
     """
-    grad = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
+    if flag_gems.vendor_name == "ascend":
+        grad = torch.randn((3, 4), dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        grad = torch.randn((3, 4), dtype=dtype, device=flag_gems.device)
 
     # What ATen's backward computes for an incoming gradient `grad`.
     ref_grad_in = torch.ops.aten._conj_physical(utils.to_reference(grad))
-    res_grad_in = flag_gems.ops._conj_physical(grad)
+    expected = (grad.device, grad.dtype, tuple(grad.shape))
+    res_grad_in = flag_gems._conj_physical(grad)
+    assert isinstance(res_grad_in, torch.Tensor)
+    assert (res_grad_in.device, res_grad_in.dtype, tuple(res_grad_in.shape)) == expected
 
-    utils.gems_assert_equal(
+    _assert_private_conj_equal(
         torch.view_as_real(res_grad_in), torch.view_as_real(ref_grad_in)
     )
     # Applying it twice is the identity, which pins the sign convention: a
     # missing negation would pass a single comparison against a wrong reference
     # but cannot survive the round trip.
-    round_trip = flag_gems.ops._conj_physical(res_grad_in)
-    utils.gems_assert_equal(
+    expected = (res_grad_in.device, res_grad_in.dtype, tuple(res_grad_in.shape))
+    round_trip = flag_gems._conj_physical(res_grad_in)
+    assert isinstance(round_trip, torch.Tensor)
+    assert (round_trip.device, round_trip.dtype, tuple(round_trip.shape)) == expected
+    _assert_private_conj_equal(
         torch.view_as_real(round_trip), torch.view_as_real(utils.to_reference(grad))
     )
 

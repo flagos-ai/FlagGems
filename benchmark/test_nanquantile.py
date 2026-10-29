@@ -66,6 +66,34 @@ def test_nanquantile():
     ).run()
 
 
+def _scalar_case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)},
+        params={"q": 0.37, "dim": -1, "keepdim": False, "interpolation": "linear"},
+        builder_args=(dims,),
+    )
+
+
+def _scalar_build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    inp.reshape(-1)[::5] = float("nan")
+    return inp, 0.37, -1
+
+
+@pytest.mark.nanquantile_scalar
+def test_nanquantile_scalar():
+    NanquantileBenchmark(
+        op_name="nanquantile_scalar",
+        torch_op=torch.ops.aten.nanquantile.scalar,
+        case_fn=_scalar_case_fn,
+        build_inputs_fn=_scalar_build_inputs_fn,
+        dtypes=[torch.float32],
+    ).run()
+
+
 def _scalar_out_case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
