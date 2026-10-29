@@ -134,6 +134,11 @@ _FULL_CONFIG = (
     ("_batch_norm_with_update", _batch_norm_with_update),
     ("_batch_norm_with_update_functional", _batch_norm_with_update_functional),
     (
+        "_cast_Byte",
+        cast_Byte,
+        lambda: torch_has_aten_overload("_cast_Byte", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
@@ -475,6 +480,8 @@ _FULL_CONFIG = (
     ("_nested_view_from_jagged", _nested_view_from_jagged),
     ("_nested_view_from_jagged_copy", _nested_view_from_jagged_copy),
     ("_new_zeros_with_same_feature_meta", _new_zeros_with_same_feature_meta),
+    ("_nnpack_spatial_convolution", nnpack_spatial_convolution),
+    ("_nnpack_spatial_convolution.out", nnpack_spatial_convolution),
     (
         "_nnz",
         _nnz,
@@ -566,6 +573,14 @@ _FULL_CONFIG = (
     ("_softmax_backward_data", softmax_backward),
     ("_softmax_backward_data.out", softmax_backward_out),
     ("_sparse_broadcast_to", sparse_broadcast_to, None, (SPARSE_DISPATCH_KEY,)),
+    (
+        "_sparse_broadcast_to_copy",
+        sparse_broadcast_to_copy,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
+    ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
+    ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,
@@ -712,6 +727,7 @@ _FULL_CONFIG = (
     ("addr_", addr_),
     ("adjoint", adjoint),
     ("affine_grid_generator", affine_grid_generator),
+    ("affine_grid_generator_backward", affine_grid_generator_backward),
     ("alias", alias),
     ("alias_copy", alias_copy),
     ("alias_copy.out", alias_copy_out),
@@ -752,6 +768,7 @@ _FULL_CONFIG = (
     ("argmax", argmax),
     ("argmin", argmin),
     ("argsort", argsort),
+    ("argwhere", argwhere),
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
     ("as_strided_scatter", as_strided_scatter),
@@ -769,6 +786,7 @@ _FULL_CONFIG = (
     ("atanh_", atanh_),
     ("atleast_1d", atleast_1d),
     ("atleast_1d.Sequence", atleast_1d),
+    ("atleast_2d", atleast_2d),
     ("atleast_3d", atleast_3d),
     ("atleast_3d.Sequence", atleast_3d),
     ("avg_pool1d", avg_pool1d),
@@ -862,6 +880,7 @@ _FULL_CONFIG = (
     ("celu_", celu_),
     ("chalf", chalf),
     ("channel_shuffle", channel_shuffle),
+    ("cholesky", cholesky),
     ("cholesky_inverse", cholesky_inverse),
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
@@ -1120,6 +1139,7 @@ _FULL_CONFIG = (
     ("fractional_max_pool2d", fractional_max_pool2d),
     ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
     ("fractional_max_pool3d", fractional_max_pool3d),
+    ("fractional_max_pool3d_backward", fractional_max_pool3d_backward),
     ("frexp.Tensor", frexp),
     ("full", full),
     ("full_like", full_like),
@@ -1131,6 +1151,8 @@ _FULL_CONFIG = (
     ("gcd_", gcd_),
     ("ge.Scalar", ge_scalar),
     ("ge.Tensor", ge),
+    ("ge_.Scalar", ge_scalar_),
+    ("ge_.Tensor", ge_tensor_),
     ("gelu", gelu),
     ("gelu_", gelu_),
     ("gelu_backward", gelu_backward),
@@ -1160,6 +1182,7 @@ _FULL_CONFIG = (
     ("greater_equal_.Tensor", greater_equal_),
     ("grid_sampler", grid_sampler),
     ("grid_sampler_2d", grid_sampler_2d),
+    ("grid_sampler_2d_backward", grid_sampler_2d_backward),
     ("grid_sampler_3d", grid_sampler_3d),
     ("grid_sampler_3d_backward", grid_sampler_3d_backward),
     ("gru.data", gru_data),
@@ -2015,6 +2038,7 @@ _FULL_CONFIG = (
     ("tanh_backward", tanh_backward),
     ("tensordot", tensordot),
     ("tensordot.out", tensordot_out),
+    ("thnn_conv2d", thnn_conv2d),
     ("threshold", threshold),
     ("threshold_", threshold_),
     ("threshold_backward", threshold_backward),
@@ -2116,6 +2140,13 @@ _FULL_CONFIG = (
     ("zeros", zeros),
     ("zeros_like", zeros_like),
 )
+
+# aten's torch.empty returns uninitialized memory, whereas FlagGems' empty
+# zero-fills. Registering it is only needed on AMD, where the uninitialized
+# path made test_empty flaky; gate it to the AMD backend so other vendors do
+# not pay an extra zero-fill kernel on every torch.empty under use_gems.
+if vendor_name == "amd":
+    _FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)
 
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}

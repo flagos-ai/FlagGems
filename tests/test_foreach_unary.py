@@ -27,6 +27,7 @@ from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
     gems_log_logger,
+    gems_log_prefix,
     to_reference,
 )
 
@@ -94,7 +95,32 @@ def _gems_op(name, inplace=False):
     return getattr(flag_gems, f"_foreach_{name}_" if inplace else f"_foreach_{name}")
 
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+_KUNLUNXIN_UNSUPPORTED = {
+    torch.float16: {"log2", "lgamma"},
+    torch.float32: {"lgamma", "sigmoid"},
+    torch.bfloat16: {"cosh", "log10", "sinh", "log2", "lgamma", "sigmoid"},
+    torch.int16: {"ceil", "floor", "lgamma", "log10", "round", "sign"},
+    torch.int32: {"ceil", "floor", "lgamma", "log10", "round", "sign"},
+    torch.int64: {"ceil", "floor", "lgamma", "log10"},
+    torch.bool: {"lgamma", "log10"},
+    torch.complex64: set(UNARY_NAMES),
+    torch.complex128: set(UNARY_NAMES),
+}
+
+
+_KUNLUNXIN_INTEGRAL = (torch.bool, torch.int16, torch.int32, torch.int64)
+
+_KUNLUNXIN_REGISTERED = frozenset({"cos", "cos_", "exp", "exp_", "sin", "sin_"})
+
+
 def _supports(name, dtype):
+    if IS_KUNLUNXIN:
+        if name in _KUNLUNXIN_UNSUPPORTED.get(dtype, ()):
+            return False
+        if dtype in _KUNLUNXIN_INTEGRAL and name not in _KUNLUNXIN_REGISTERED:
+            return False
     allowed = UNARY_OPS[name].allowed
     return allowed is None or dtype in allowed
 
@@ -435,6 +461,12 @@ def test_accuracy_foreach_unary_inplace_writes_through_views(name):
 def test_accuracy_foreach_unary_inplace_rejects_overlap():
     """``expand`` aliases one element many times; ATen refuses to write it."""
     src = torch.randn(1, 8, device=flag_gems.device).expand(4, 8)
+    if IS_KUNLUNXIN:
+        with pytest.raises(RuntimeError):
+            _gems_op("cos", inplace=True)([src])
+        with pytest.raises(RuntimeError):
+            _gems_op("neg", inplace=True)([src])
+        return
     with pytest.raises(RuntimeError):
         torch._foreach_neg_([src])
 
@@ -488,18 +520,30 @@ def test_foreach_unary_registration_is_live(name, inplace, caplog):
     """
     if flag_gems.device != "cuda":
         return
+    if IS_KUNLUNXIN and not _supports(name, torch.float32):
+        pytest.skip(f"kunlunxin backend has no kernel for _foreach_{name} on float32")
     inp = [_sample((8,), torch.float32, flag_gems.device)]
     want = f"GEMS _FOREACH_{name.upper()}{'_' if inplace else ''}"
+    wants = (want,)
     logger_name = gems_log_logger(_gems_op(name, inplace))
+    if IS_KUNLUNXIN:
+        wants = (
+            want,
+            f"{gems_log_prefix(_gems_op(name, inplace))}"
+            f" _FOREACH_{name.upper()}{'_' if inplace else ''}",
+        )
+        logger_name = None
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
         caplog.clear()
         _torch_op(name, inplace)([t.clone() for t in inp])
-        assert want not in caplog.text, "negative control fired: probe proves nothing"
+        assert not any(
+            w in caplog.text for w in wants
+        ), "negative control fired: probe proves nothing"
 
         caplog.clear()
         _gems_op(name, inplace)([t.clone() for t in inp])
-        assert want in caplog.text, f"dead registration for {want}"
+        assert any(w in caplog.text for w in wants), f"dead registration for {wants}"
 
 
 def _cuda_kernel_count(fn):
@@ -530,9 +574,19 @@ def test_foreach_unary_launch_count_is_independent_of_list_length():
     if flag_gems.device != "cuda":
         return
 
-    def run(n):
-        ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
-        return _cuda_kernel_count(lambda: flag_gems._foreach_sin(ts))
+    if IS_KUNLUNXIN:
+        from _kunlunxin.utils.foreach import launch_stats
+
+        def run(n):
+            ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
+            flag_gems._foreach_sin(ts)
+            return launch_stats()["executor_launches"]
+
+    else:
+
+        def run(n):
+            ts = [torch.rand(1024, device=flag_gems.device) + 0.1 for _ in range(n)]
+            return _cuda_kernel_count(lambda: flag_gems._foreach_sin(ts))
 
     baseline = run(1)
     for n in (16, 64, 128, 256):
@@ -549,6 +603,8 @@ def test_foreach_unary_launch_count_scales_with_dtype_groups():
     """Launches track ``(device, dtype)`` groups, which is the real bound."""
     if flag_gems.device != "cuda":
         return
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend has no float64, so this dtype list cannot group")
     from flag_gems.utils.foreach import launch_stats
 
     for dtypes in (
@@ -628,6 +684,8 @@ def test_accuracy_foreach_abs_complex_large(dtype):
     The modulus is the shared dependency of every complex operator here, so it
     is asserted for its own sake as well as through the operators above.
     """
+    if IS_KUNLUNXIN:
+        pytest.skip("kunlunxin backend has no complex kernel for _foreach_abs")
     mag = LARGE_COMPLEX[dtype]
     base = torch.tensor([complex(mag, mag)], dtype=dtype)
     inp = [base.to(flag_gems.device)]
