@@ -682,3 +682,46 @@ def test_div_mode_scalar_(shape, scalar, rounding_mode, dtype):
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True, atol=5)
     else:
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor
+@pytest.mark.parametrize("order", ["tensor_first", "scalar_first"])
+@pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
+def test_div_cpu_0dim_tensor(order, rounding_mode, dtype):
+    """A 0-dim CPU tensor is a legal scalar operand of a device tensor (#6960).
+
+    The Triton kernels require every tensor pointer on the same device, so the
+    0-dim operand has to be moved; PyTorch accepts it as-is. The
+    (rounding_mode, dtype) matrix mirrors DIV_MODE_FLOAT_CASES, which excludes
+    trunc for float16/bfloat16.
+    """
+    inp = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
+    other = torch.tensor(2.0, dtype=dtype)  # CPU, 0-dim
+    assert other.device.type == "cpu" and other.ndim == 0
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_other = utils.to_reference(other, False)
+    if order == "tensor_first":
+        ref_out = torch.div(ref_inp, ref_other, rounding_mode=rounding_mode)
+        res_out = flag_gems.ops.div_mode(inp, other, rounding_mode=rounding_mode)
+    else:
+        ref_out = torch.div(ref_other, ref_inp, rounding_mode=rounding_mode)
+        res_out = flag_gems.ops.div_mode(other, inp, rounding_mode=rounding_mode)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+
+
+@pytest.mark.div_tensor_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_div_cpu_0dim_tensor_(dtype):
+    inp = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
+    other = torch.tensor(2.0, dtype=dtype)  # CPU, 0-dim
+    assert other.device.type == "cpu" and other.ndim == 0
+
+    ref_inp = utils.to_reference(inp, False)
+    ref_other = utils.to_reference(other, False)
+
+    ref_inp.div_(ref_other)
+    flag_gems.true_divide_(inp, other)
+
+    utils.gems_assert_close(inp, ref_inp, dtype, equal_nan=True)

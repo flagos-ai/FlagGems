@@ -227,3 +227,44 @@ def test_sub_complex_int_scalar(shape, complex_dtype):
     res_out = flag_gems.sub(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
+
+
+@pytest.mark.sub
+@pytest.mark.parametrize("order", ["tensor_first", "scalar_first"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sub_cpu_0dim_tensor(order, dtype):
+    """A 0-dim CPU tensor is a legal scalar operand of a device tensor (#6960).
+
+    The Triton kernels require every tensor pointer on the same device, so the
+    0-dim operand has to be moved; PyTorch accepts it as-is.
+    """
+    inp = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
+    other = torch.tensor(2.0, dtype=dtype)  # CPU, 0-dim
+    assert other.device.type == "cpu" and other.ndim == 0
+
+    ref_inp = utils.to_reference(inp)
+    ref_other = utils.to_reference(other)
+    if order == "tensor_first":
+        ref_out = torch.sub(ref_inp, ref_other)
+        res_out = flag_gems.sub(inp, other)
+    else:
+        ref_out = torch.sub(ref_other, ref_inp)
+        res_out = flag_gems.sub(other, inp)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.sub_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sub__cpu_0dim_tensor(dtype):
+    inp = torch.randn((2, 3), dtype=dtype, device=flag_gems.device)
+    other = torch.tensor(1.5, dtype=dtype)  # CPU, 0-dim
+    assert other.device.type == "cpu" and other.ndim == 0
+
+    ref_inp = utils.to_reference(inp.clone(), True)
+    ref_other = utils.to_reference(other, True)
+
+    ref_inp.sub_(ref_other)
+    res_out = flag_gems.sub_(inp, other)
+
+    utils.gems_assert_close(res_out, ref_inp, dtype)
