@@ -211,11 +211,19 @@ def test_thnn_fused_gru_cell_rejects_unsupported_dtype(dtype):
             0, 2, shape, dtype=torch.int32, device=flag_gems.device
         ).bool()
     elif dtype.is_complex:
-        input_gates = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+        # Ascend normal_ cannot construct complex tensors; keep the target ABI.
+        source_device = "cpu" if flag_gems.vendor_name == "ascend" else flag_gems.device
+        input_gates = torch.randn(shape, dtype=dtype, device=source_device).to(
+            flag_gems.device
+        )
     else:
         input_gates = torch.randint(-4, 5, shape, dtype=dtype, device=flag_gems.device)
-    hidden_gates = torch.zeros_like(input_gates)
-    hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
+    if dtype.is_complex and flag_gems.vendor_name == "ascend":
+        hidden_gates = torch.zeros_like(input_gates, device="cpu").to(flag_gems.device)
+        hx = torch.zeros((2, 7), dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        hidden_gates = torch.zeros_like(input_gates)
+        hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(RuntimeError):
         if flag_gems.vendor_name == "ascend":

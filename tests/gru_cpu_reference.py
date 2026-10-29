@@ -127,12 +127,30 @@ def _backward_math(grad_hy, workspace, has_bias):
     )
 
 
+class _ForwardWithNativeBackward(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_gates, hidden_gates, hx, input_bias, hidden_bias):
+        hy, workspace = _forward_math(
+            input_gates, hidden_gates, hx, input_bias, hidden_bias
+        )
+        # Native CUDA backward consumes the rounded saved planes, including for
+        # Half/BFloat16, rather than differentiating the unrounded intermediates.
+        ctx.save_for_backward(workspace)
+        ctx.has_bias = input_bias is not None
+        ctx.mark_non_differentiable(workspace)
+        return hy, workspace
+
+    @staticmethod
+    def backward(ctx, grad_hy, grad_workspace):
+        (workspace,) = ctx.saved_tensors
+        return _backward_math(grad_hy, workspace, ctx.has_bias)
+
+
 def forward(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None):
     ig, hg, ib, hb = input_gates, hidden_gates, input_bias, hidden_bias
     _forward_inputs(ig, hg, hx, ib, hb)
-    hy, workspace = _forward_math(*[_cpu(x) for x in (ig, hg, hx, ib, hb)])
-    # CUDA exposes hy to autograd and marks its saved workspace non-differentiable.
-    return hy.to(ig.device), workspace.detach().to(ig.device)
+    values = _ForwardWithNativeBackward.apply(*[_cpu(x) for x in (ig, hg, hx, ib, hb)])
+    return _on_device(values, ig.device)
 
 
 def backward(grad_hy, workspace, has_bias):
