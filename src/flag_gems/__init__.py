@@ -1500,6 +1500,7 @@ _FULL_CONFIG = (
         "multi_margin_loss_backward.grad_input",
         multi_margin_loss_backward_out,
     ),
+    ("multilabel_margin_loss_backward", multilabel_margin_loss_backward),
     ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
     ("multinomial", multinomial),
     ("multiply.Scalar", multiply),

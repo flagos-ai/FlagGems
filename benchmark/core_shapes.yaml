@@ -754,6 +754,18 @@ huber_loss:
 
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
+multilabel_margin_loss_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
+# O(N*C^2): keep the class axis representative without inheriting the generic
+# 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_forward:
   shapes:
     - [8, 128]
