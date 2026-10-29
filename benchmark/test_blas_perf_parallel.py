@@ -939,6 +939,10 @@ class ParallelBenchmarkMixin:
             # helper processes use CUDA_VISIBLE_DEVICES. Keep both consistent.
             env["MACA_VISIBLE_DEVICES"] = str(gpu_id)
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        elif flag_gems.vendor_name == "hygon":
+            # The HCU plugin may populate this in the parent. Override it for
+            # each worker so HIP does not retain the parent's first device.
+            env["HIP_VISIBLE_DEVICES"] = str(gpu_id)
         env[PARALLEL_WORKER_ENV] = "1"
         env[PARALLEL_RESULT_FILE_ENV] = tmp_result_path
 

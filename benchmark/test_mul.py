@@ -20,12 +20,6 @@ import flag_gems
 from . import base, consts
 
 
-@pytest.fixture(autouse=True)
-def _mul_benchmark_mode(monkeypatch):
-    if flag_gems.vendor_name in ("nvidia", "metax", "hygon", "mthreads", "thead"):
-        monkeypatch.setattr(base.Config, "mode", consts.BenchMode.CUDAGRAPH)
-
-
 # TODO(0x45f): Fix OOM when dtypes includes COMPLEX_DTYPES is included (Issue #2693).
 @pytest.mark.mul
 def test_mul():
@@ -35,6 +29,7 @@ def test_mul():
         dtypes=consts.FLOAT_DTYPES,
         # dtypes=attrs.FLOAT_DTYPES + attrs.COMPLEX_DTYPES,
     )
+    bench.set_gems(flag_gems.mul)
     bench.run()
 
 
