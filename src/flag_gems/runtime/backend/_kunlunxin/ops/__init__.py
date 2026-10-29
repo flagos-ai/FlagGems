@@ -75,6 +75,8 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
 )
+from ._foreach_ceil import _foreach_ceil
+from ._foreach_ceil_ import _foreach_ceil_
 from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
@@ -158,6 +160,9 @@ from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
 from ._prelu_kernel_backward import _prelu_kernel_backward  # noqa: F401
+from ._scaled_dot_product_efficient_attention import (
+    _scaled_dot_product_efficient_attention,
+)
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
@@ -193,6 +198,7 @@ from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
 from .addmm_ import addmm_
 from .addmv import addmv, addmv_, addmv_out  # noqa: F401
 from .addr import addr
+from .addr_ import addr_
 from .affine_grid_generator import affine_grid_generator  # noqa: F401
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
@@ -435,6 +441,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
+from .grid_sampler_2d import grid_sampler_2d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
@@ -922,6 +929,8 @@ __all__ = [
     "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
+    "_foreach_ceil",
+    "_foreach_ceil_",
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_cos",
@@ -1002,6 +1011,7 @@ __all__ = [
     "_resize_output",
     "_resize_output_",
     "_safe_softmax",
+    "_scaled_dot_product_efficient_attention",
     "_scaled_dot_product_fused_attention_overrideable",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
@@ -1048,6 +1058,7 @@ __all__ = [
     "addmv_",
     "addmv_out",
     "addr",
+    "addr_",
     "alias_copy",
     "alias_copy_out",
     "all",
@@ -1290,6 +1301,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler_2d",
     "grid_sampler_3d_backward",
     "group_mm",
     "group_norm",
