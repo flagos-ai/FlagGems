@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # consts.FLOAT_DTYPES omits float64; bartlett_window supports it, so add it here.
@@ -36,10 +38,16 @@ def _input_fn(shape, dtype, device):
 
 @pytest.mark.bartlett_window
 def test_bartlett_window():
+    # bartlett_window takes no tensor input, so the dispatcher resolves the
+    # call from its `device` argument and never selects the CUDA/XPU key the
+    # gems op is registered under; `use_gems()` therefore measures ATen's
+    # composite decomposition instead of the gems kernel. Time the gems op
+    # directly via the gems_op hook.
     bench = base.GenericBenchmark(
         op_name="bartlett_window",
         input_fn=_input_fn,
         torch_op=torch.bartlett_window,
         dtypes=BARTLETT_DTYPES,
+        gems_op=flag_gems.bartlett_window,
     )
     bench.run()
