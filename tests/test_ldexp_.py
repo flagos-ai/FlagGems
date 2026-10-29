@@ -21,6 +21,10 @@ from . import accuracy_utils as utils
 
 
 def _reference(inp, exponent):
+    if flag_gems.vendor_name == "enflame":
+        # The target native ldexp DispatchStub has no GCU kernel. Preserve
+        # the chosen reference precision while evaluating the same ATen CPU API.
+        inp, exponent = inp.cpu(), exponent.cpu()
     return torch.ops.aten.ldexp.Tensor(inp, exponent).to(inp.dtype)
 
 
@@ -35,12 +39,14 @@ def test_ldexp_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
     reference = _reference(ref_inp, utils.to_reference(exponent, False))
 
+    expected_device = inp.device
     result = flag_gems.ldexp_(inp, exponent)
 
     assert result is inp
+    assert result.device == expected_device
     assert result.data_ptr() == original_pointer
     assert result.dtype == dtype
-    utils.gems_assert_close(result, reference, dtype)
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype)
 
 
 @pytest.mark.ldexp_
@@ -55,12 +61,14 @@ def test_ldexp_noncontiguous_broadcast_(dtype):
         utils.to_reference(inp.clone(), True), utils.to_reference(exponent, False)
     )
 
+    expected_device = inp.device
     result = flag_gems.ldexp_(inp, exponent)
 
     assert result is inp
+    assert result.device == expected_device
     assert result.data_ptr() == original_pointer
     assert result.stride() == original_stride
-    utils.gems_assert_close(result, reference, dtype)
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype)
 
 
 @pytest.mark.ldexp_
@@ -76,10 +84,12 @@ def test_ldexp_special_values_(dtype):
         utils.to_reference(inp.clone(), True), utils.to_reference(exponent, False)
     )
 
+    expected_device = inp.device
     result = flag_gems.ldexp_(inp, exponent)
 
     assert result is inp
-    utils.gems_assert_close(result, reference, dtype, equal_nan=True)
+    assert result.device == expected_device
+    utils.gems_assert_close(result.cpu(), reference.cpu(), dtype, equal_nan=True)
 
 
 @pytest.mark.ldexp_
