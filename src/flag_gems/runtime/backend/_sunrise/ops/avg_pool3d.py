@@ -395,7 +395,7 @@ def avg_pool3d(
     planes.
 
     Args:
-        input: 5D tensor of shape (N, C, D, H, W).
+        input: 4D (C, D, H, W) or 5D (N, C, D, H, W) tensor.
         kernel_size: Size of the pooling window. Can be int or (kD, kH, kW).
         stride: Stride of the pooling window. Default: kernel_size.
         padding: Implicit zero padding on both sides. Default: 0.
@@ -406,13 +406,16 @@ def avg_pool3d(
             pool size. Default: None.
 
     Returns:
-        5D tensor of shape (N, C, D_out, H_out, W_out).
+        Tensor with the same rank as input and pooled spatial dimensions.
     """
     logger.debug("GEMS_SUNRISE AVG_POOL3D_FORWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
+    unbatched = input.ndim == 4
+    if unbatched:
+        input = input.unsqueeze(0)
     input = input.contiguous()
 
     (
@@ -445,7 +448,7 @@ def avg_pool3d(
     )
 
     if output.numel() == 0:
-        return output
+        return output.squeeze(0) if unbatched else output
 
     grid = lambda meta: (
         in_n * in_c,
@@ -485,7 +488,7 @@ def avg_pool3d(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return output
+    return output.squeeze(0) if unbatched else output
 
 
 def avg_pool3d_backward(
@@ -518,6 +521,12 @@ def avg_pool3d_backward(
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
+    unbatched = input.ndim == 4
+    if unbatched:
+        if grad_output.ndim != 4:
+            raise RuntimeError("Expected a 4D grad_output for a 4D input")
+        input = input.unsqueeze(0)
+        grad_output = grad_output.unsqueeze(0)
     grad_output = grad_output.contiguous()
 
     (
@@ -542,7 +551,8 @@ def avg_pool3d_backward(
     grad_input = torch.empty_like(input)
 
     if grad_output.numel() == 0:
-        return grad_input.zero_()
+        grad_input.zero_()
+        return grad_input.squeeze(0) if unbatched else grad_input
 
     # Input-centric grid: iterate over input positions
     grid = lambda meta: (
@@ -583,4 +593,4 @@ def avg_pool3d_backward(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return grad_input
+    return grad_input.squeeze(0) if unbatched else grad_input
