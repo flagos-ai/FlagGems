@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_msort import _msort_assert_equal, _msort_reference_input
 
 
 def _to_target_wide(value):
@@ -38,7 +39,7 @@ def _to_target_wide(value):
 
 def _make_input(shape, dtype):
     torch.manual_seed(0)
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+    if flag_gems.vendor_name in ("kunlunxin", "enflame") and dtype == torch.float64:
         return _to_target_wide(torch.randn(shape, dtype=dtype, device="cpu"))
     if not dtype.is_floating_point:
         return torch.randint(-100, 101, shape, dtype=dtype, device=flag_gems.device)
@@ -50,7 +51,7 @@ def _make_input(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_msort_out_content_identity_and_storage(shape, dtype):
     inp = _make_input(shape, dtype)
-    reference = torch.msort(utils.to_reference(inp))
+    reference = torch.msort(_msort_reference_input(inp))
     out = torch.empty_like(inp)
     pointer = out.data_ptr()
 
@@ -58,7 +59,7 @@ def test_msort_out_content_identity_and_storage(shape, dtype):
 
     assert result is out
     assert result.data_ptr() == pointer
-    utils.gems_assert_equal(result, reference)
+    _msort_assert_equal(result, reference)
 
 
 @pytest.mark.msort_out
@@ -73,7 +74,7 @@ def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
     ):
         pytest.skip("Backend native msort does not support faithful float64 sorting")
     inp = _make_input((rows, 129), dtype)
-    reference_input = utils.to_reference(inp).clone()
+    reference_input = _msort_reference_input(inp).clone()
     reference = torch.msort(reference_input, out=reference_input)
     out = inp.view_as(inp) if view_alias else inp
     pointer, strides = out.data_ptr(), out.stride()
@@ -83,27 +84,27 @@ def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
     assert result is out
     assert result.data_ptr() == pointer
     assert result.stride() == strides
-    utils.gems_assert_equal(result, reference)
+    _msort_assert_equal(result, reference)
 
 
 @pytest.mark.msort_out
 def test_msort_out_resize_noncontiguous_alias_and_dtype_error():
     torch.manual_seed(0)
     inp = torch.randn((19, 7), device=flag_gems.device).T
-    reference = torch.msort(utils.to_reference(inp))
+    reference = torch.msort(_msort_reference_input(inp))
     out = torch.empty((1,), device=flag_gems.device)
 
     result = flag_gems.msort_out(inp, out=out)
 
     assert result is out
     assert result.shape == inp.shape
-    utils.gems_assert_equal(result, reference)
+    _msort_assert_equal(result, reference)
 
     alias = torch.randn((31, 13), device=flag_gems.device)
-    reference_alias = torch.msort(utils.to_reference(alias))
+    reference_alias = torch.msort(_msort_reference_input(alias))
     result = flag_gems.msort_out(alias, out=alias)
     assert result is alias
-    utils.gems_assert_equal(result, reference_alias)
+    _msort_assert_equal(result, reference_alias)
 
     with pytest.raises(RuntimeError):
         flag_gems.msort_out(

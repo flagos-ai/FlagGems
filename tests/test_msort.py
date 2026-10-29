@@ -20,6 +20,38 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _msort_reference_input(inp):
+    if flag_gems.vendor_name != "enflame":
+        return utils.to_reference(inp)
+    # Current S60 native msort aborts even for a valid original core input.
+    # Copy actual inputs losslessly; CPU ATen computes each reference afresh.
+    if inp.dtype in (torch.float64, torch.complex128):
+        return (
+            inp.detach()
+            .contiguous()
+            .reshape(-1)
+            .view(torch.uint8)
+            .cpu()
+            .clone()
+            .view(inp.dtype)
+            .reshape(inp.shape)
+        )
+    return inp.detach().cpu().clone()
+
+
+def _msort_assert_equal(result, reference, **kwargs):
+    if flag_gems.vendor_name == "enflame":
+        target = torch.device(flag_gems.device)
+        if target.index is None:
+            target = torch.device(target.type, torch.gcu.current_device())
+        assert result.device == target
+        assert result.dtype == reference.dtype
+        assert result.shape == reference.shape
+        result = _msort_reference_input(result)
+        reference = reference.cpu()
+    utils.gems_assert_equal(result, reference, **kwargs)
+
+
 def _to_target_wide(value):
     # KU's ordinary .to() factory narrows Double/ComplexDouble. Transfer the
     # physical bytes first and recover only the dtype/shape metadata on device.
@@ -66,7 +98,8 @@ def _seed_random_inputs():
 def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
     factory_device = (
         "cpu"
-        if flag_gems.vendor_name in ("kunlunxin", "iluvatar") and dtype == torch.float64
+        if flag_gems.vendor_name in ("kunlunxin", "iluvatar", "enflame")
+        and dtype == torch.float64
         else flag_gems.device
     )
     inp = torch.randn(rows, 3, dtype=dtype, device=factory_device)
@@ -78,12 +111,16 @@ def test_msort_preserves_nan_payloads(rows, dtype, int_dtype, bits):
         inp = _to_target_wide(inp)
     # Older CUDA radix-sort implementations order negative NaNs before -inf.
     # CPU ATen provides the intended NaNs-last ordering while preserving bits.
-    reference = torch.msort(utils.to_reference(inp).cpu())
+    reference = torch.msort(_msort_reference_input(inp).cpu())
     result = flag_gems.msort(inp)
     assert result.device == inp.device
     assert result.dtype == dtype
     assert result.shape == inp.shape
-    result = result.cpu()
+    result = (
+        _msort_reference_input(result)
+        if flag_gems.vendor_name == "enflame"
+        else result.cpu()
+    )
     torch.testing.assert_close(result, reference, atol=0, rtol=0, equal_nan=True)
     for col in range(3):
         actual_nan = result[:, col][torch.isnan(result[:, col])].view(int_dtype)
@@ -110,19 +147,19 @@ def test_msort_out_alias_across_sort_paths(rows, dtype, view_alias):
         pytest.skip("Backend native msort does not support faithful float64 sorting")
     # Many columns and rows force multiple programs in both sorting paths.
     inp = _make_input((rows, 129), dtype)
-    reference_input = utils.to_reference(inp).clone()
+    reference_input = _msort_reference_input(inp).clone()
     reference = torch.msort(reference_input, out=reference_input)
     out = inp.view_as(inp) if view_alias else inp
     pointer, strides = out.data_ptr(), out.stride()
     result = flag_gems.msort_out(inp, out=out)
     assert result is out and result.data_ptr() == pointer
     assert result.stride() == strides
-    utils.gems_assert_equal(result, reference)
+    _msort_assert_equal(result, reference)
 
 
 def _make_input(shape, dtype):
     torch.manual_seed(0)
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+    if flag_gems.vendor_name in ("kunlunxin", "enflame") and dtype == torch.float64:
         return _to_target_wide(torch.randn(shape, dtype=dtype, device="cpu"))
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, dtype=dtype, device=flag_gems.device)
@@ -144,23 +181,23 @@ def test_msort(shape, dtype):
     ):
         pytest.skip("Backend native msort does not support bool")
     inp = _make_input(shape, dtype)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = _msort_reference_input(inp)
     ref_out = torch.msort(ref_inp)
 
     result = flag_gems.msort(inp)
 
     assert result.dtype == inp.dtype
     assert result.stride() == inp.stride()
-    utils.gems_assert_equal(result, ref_out)
+    _msort_assert_equal(result, ref_out)
 
 
 @pytest.mark.msort
 def test_msort_noncontiguous_empty_scalar_and_special_values():
     inp = torch.randn((19, 7), device=flag_gems.device).T
-    ref_out = torch.msort(utils.to_reference(inp))
+    ref_out = torch.msort(_msort_reference_input(inp))
     result = flag_gems.msort(inp)
     assert result.stride() == inp.stride()
-    utils.gems_assert_equal(result, ref_out)
+    _msort_assert_equal(result, ref_out)
 
     for shape in [(), (0,), (0, 7), (3, 0)]:
         inp = torch.empty(shape, device=flag_gems.device)
@@ -172,9 +209,9 @@ def test_msort_noncontiguous_empty_scalar_and_special_values():
         [float("nan"), float("inf"), -float("inf"), 0.0, -0.0, 2.0, -3.0],
         device=flag_gems.device,
     )
-    ref_out = torch.msort(utils.to_reference(inp))
+    ref_out = torch.msort(_msort_reference_input(inp))
     result = flag_gems.msort(inp)
-    utils.gems_assert_equal(result, ref_out, equal_nan=True)
+    _msort_assert_equal(result, ref_out, equal_nan=True)
 
     # Exercise the large-first-dimension radix fallback.
     inp = torch.randn((1025, 3), device=flag_gems.device)
@@ -200,12 +237,13 @@ def test_msort_rejects_complex(shape, dtype):
         pytest.skip("MUSA native msort accepts scalar and empty complex tensors")
     inp = (
         _to_target_wide(torch.empty(shape, dtype=dtype, device="cpu"))
-        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128
+        if flag_gems.vendor_name in ("kunlunxin", "enflame")
+        and dtype == torch.complex128
         else torch.empty(shape, dtype=dtype, device=flag_gems.device)
     )
     assert inp.dtype == dtype
     with pytest.raises((RuntimeError, ValueError)) as native_error:
-        torch.msort(utils.to_reference(inp))
+        torch.msort(_msort_reference_input(inp))
     if isinstance(native_error.value, ValueError):
         assert str(native_error.value) == (
             "Sort currently does not support complex dtypes on CPU."
@@ -219,7 +257,7 @@ def test_msort_rejects_complex(shape, dtype):
 @pytest.mark.parametrize("dtype", utils.ALL_FLOAT_DTYPES + utils.ALL_INT_DTYPES)
 def test_msort_out(shape, dtype):
     inp = _make_input(shape, dtype)
-    ref_out = torch.msort(utils.to_reference(inp))
+    ref_out = torch.msort(_msort_reference_input(inp))
     out = torch.empty_like(inp)
     ptr = out.data_ptr()
 
@@ -227,24 +265,24 @@ def test_msort_out(shape, dtype):
 
     assert result is out
     assert result.data_ptr() == ptr
-    utils.gems_assert_equal(result, ref_out)
+    _msort_assert_equal(result, ref_out)
 
 
 @pytest.mark.msort_out
 def test_msort_out_resize_noncontiguous_alias_and_dtype_error():
     inp = torch.randn((19, 7), device=flag_gems.device).T
-    ref_out = torch.msort(utils.to_reference(inp))
+    ref_out = torch.msort(_msort_reference_input(inp))
     out = torch.empty((1,), device=flag_gems.device)
     result = flag_gems.msort_out(inp, out=out)
     assert result is out
     assert result.shape == inp.shape
-    utils.gems_assert_equal(result, ref_out)
+    _msort_assert_equal(result, ref_out)
 
     alias = torch.randn((31, 13), device=flag_gems.device)
-    ref_alias = torch.msort(utils.to_reference(alias))
+    ref_alias = torch.msort(_msort_reference_input(alias))
     result = flag_gems.msort_out(alias, out=alias)
     assert result is alias
-    utils.gems_assert_equal(result, ref_alias)
+    _msort_assert_equal(result, ref_alias)
 
     with pytest.raises(RuntimeError):
         flag_gems.msort_out(
