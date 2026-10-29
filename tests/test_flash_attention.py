@@ -116,6 +116,45 @@ def make_input(
     return q, k, v
 
 
+def _flash_fwd_device_ref(
+    q, k, v, scale, is_causal, window_size_left=None, window_size_right=None
+):
+    B, H, Sq, D = q.shape
+    Sk = k.shape[-2]
+    Hk = k.shape[1]
+    g = H // Hk
+    qf = q.float()
+    kf = k.float().repeat_interleave(g, dim=1)
+    vf = v.float().repeat_interleave(g, dim=1)
+    wl = -1 if window_size_left is None else window_size_left
+    wr = -1 if window_size_right is None else window_size_right
+    row = torch.arange(Sq, device=q.device)[:, None]
+    col = torch.arange(Sk, device=q.device)[None, :]
+    off = Sk - Sq
+    if is_causal:
+        valid = col <= (row + off)
+    else:
+        valid = torch.ones((Sq, Sk), dtype=torch.bool, device=q.device)
+    if wl < 0 and wr >= 0:
+        valid = valid & (col <= (row + off + wr))
+    elif wl >= 0:
+        hi = torch.minimum(row + off + wr, torch.tensor(Sk, device=q.device))
+        valid = valid & (col <= hi) & (col >= (row + off - wl))
+    out = torch.empty((B, H, Sq, D), dtype=torch.float32, device=q.device)
+    lse = torch.empty((B, H, Sq), dtype=torch.float32, device=q.device)
+    for b in range(B):
+        for h in range(H):
+            scores = (qf[b, h] @ kf[b, h].t()) * scale
+            scores = scores.masked_fill(~valid, float("-inf"))
+            m = scores.max(dim=-1, keepdim=True).values
+            m_safe = torch.where(torch.isfinite(m), m, torch.zeros_like(m))
+            p = torch.exp(scores - m_safe)
+            denom = p.sum(dim=-1, keepdim=True)
+            lse[b, h] = (m_safe + torch.log(denom)).squeeze(-1)
+            out[b, h] = (p / denom.clamp(min=1e-30)) @ vf[b, h]
+    return out.to(q.dtype), lse
+
+
 def torch_flash_fwd(
     q, k, v, scale, is_causal, dropout_p=0, return_debug_mask=False, **extra_kwargs
 ):
@@ -123,26 +162,40 @@ def torch_flash_fwd(
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
 
-    (
-        out,
-        lse,
-        seed,
-        offset,
-        debug_softmax,
-    ) = torch.ops.aten._flash_attention_forward(
-        q,
-        k,
-        v,
-        None,
-        None,
-        q.shape[-3],
-        k.shape[-3],
-        dropout_p,
-        is_causal,
-        return_debug_mask,
-        scale=scale,
-        **extra_kwargs,
-    )
+    try:
+        (
+            out,
+            lse,
+            seed,
+            offset,
+            debug_softmax,
+        ) = torch.ops.aten._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            q.shape[-3],
+            k.shape[-3],
+            dropout_p,
+            is_causal,
+            return_debug_mask,
+            scale=scale,
+            **extra_kwargs,
+        )
+    except NotImplementedError:
+        if vendor_name != "kunlunxin":
+            raise
+        out, lse = _flash_fwd_device_ref(
+            q,
+            k,
+            v,
+            scale,
+            is_causal,
+            window_size_left=extra_kwargs.get("window_size_left"),
+            window_size_right=extra_kwargs.get("window_size_right"),
+        )
+        seed, offset, debug_softmax = None, None, None
 
     return out, lse, seed, offset, debug_softmax
 
@@ -231,6 +284,12 @@ def test__flash_attention_forward(
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
+    elif vendor_name == "kunlunxin":
+        ref_out, ref_lse = dense_flash_attention_ref(
+            ref_q.cpu(), ref_k.cpu(), ref_v.cpu(), scale, is_causal
+        )
+        ref_out = ref_out.to(q.device)
+        ref_lse = ref_lse.to(q.device)
     else:
         ref_result = torch.ops.aten._flash_attention_forward.default(
             ref_q,

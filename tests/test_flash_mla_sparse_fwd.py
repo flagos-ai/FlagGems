@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import dataclasses
+import importlib
 import random
 from typing import List, Optional, Tuple
 
@@ -22,6 +23,8 @@ import torch
 import flag_gems
 
 from .conftest import QUICK_MODE
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 random.seed(42)
 
@@ -37,6 +40,14 @@ except ImportError:
         "vLLM not installed, the native pytorch implementation of FlashMLA for comparison"
     )
     torch.set_float32_matmul_precision("high")
+
+VLLM_FLASHMLA_C_AVAILABLE = False
+if IS_KUNLUNXIN:
+    try:
+        importlib.import_module("vllm._flashmla_C")
+        VLLM_FLASHMLA_C_AVAILABLE = True
+    except ImportError:
+        torch.set_float32_matmul_precision("high")
 
 
 @dataclasses.dataclass
@@ -113,12 +124,23 @@ class FlashmlaSparseTestKit:
             .reshape(s_q, topk, d_qk)
             .float()
         )
-        P = q @ gathered_kv.transpose(1, 2)
+        if IS_KUNLUNXIN:
+            P = torch.empty(s_q, h_q, topk, dtype=torch.float32, device=q.device)
+            for _i in range(s_q):
+                P[_i] = q[_i] @ gathered_kv[_i].transpose(0, 1)
+        else:
+            P = q @ gathered_kv.transpose(1, 2)
         P *= sm_scale
         P[invalid_mask.unsqueeze(1).broadcast_to(P.shape)] = float("-inf")
 
         orig_lse = torch.logsumexp(P, dim=-1)
         max_logits = P.max(dim=-1).values
+        if IS_KUNLUNXIN:
+            max_logits = torch.where(
+                orig_lse == float("-inf"),
+                torch.full_like(max_logits, float("-inf")),
+                max_logits,
+            )
 
         lse_for_o = FlashmlaSparseTestKit._merge_two_lse(orig_lse, attn_sink, s_q, h_q)
         if not torch.is_inference_mode_enabled():
@@ -127,7 +149,12 @@ class FlashmlaSparseTestKit:
             "+inf"
         )  # So that corresponding O will be 0
         s_for_o = torch.exp(P - lse_for_o.unsqueeze(-1))
-        out = s_for_o @ gathered_kv[..., :d_v]
+        if IS_KUNLUNXIN:
+            out = torch.empty(s_q, h_q, d_v, dtype=torch.float32, device=q.device)
+            for _i in range(s_q):
+                out[_i] = s_for_o[_i] @ gathered_kv[_i, :, :d_v]
+        else:
+            out = s_for_o @ gathered_kv[..., :d_v]
 
         lonely_q_mask = orig_lse == float("-inf")
         orig_lse[lonely_q_mask] = float("+inf")
@@ -343,7 +370,7 @@ def test_flashmla_sparse(param):
         # FlashMLA requires that h_q is 64 or 128
         return
 
-    if param.topk % 128 != 0:
+    if param.topk % 128 != 0 and not IS_KUNLUNXIN:
         # Assertion `params.topk % (2*B_TOPK) == 0` failed
         # FlashMLA csrc/sm90/prefill/sparse/phase1.cuh:577
         # FlashMLA csrc/sm90/prefill/sparse/config.h:27 "B_TOPK = 64"
@@ -354,7 +381,7 @@ def test_flashmla_sparse(param):
     q, kv, indices = FlashmlaSparseTestKit.make_input(param)
     sm_scale = param.d_qk**-0.5
 
-    if HAS_VLLM_FLASHMLA_SPARSE:
+    if HAS_VLLM_FLASHMLA_SPARSE and (not IS_KUNLUNXIN or VLLM_FLASHMLA_C_AVAILABLE):
         ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(
             q, kv, indices, sm_scale, param.d_v
         )
@@ -396,7 +423,7 @@ def test_flashmla_sparse(param):
     flag_gems.testing.assert_close(your_lse, ref_lse, torch.float32, atol=1e-4)
 
 
-@pytest.mark.skip(reason="Issue #3691: operator not working")
+@pytest.mark.skipif(not IS_KUNLUNXIN, reason="Issue #3691: operator not working")
 @pytest.mark.flash_mla_sparse_fwd
 @pytest.mark.parametrize(
     "param", FlashmlaSparseTestKit.get_correctness_test_params_flashmla()
@@ -412,7 +439,7 @@ def test_flash_mla_sparse_flashmla(param: Flashmla_Sparse_Test_Param):
     )
     sm_scale = 0.5
 
-    if HAS_VLLM_FLASHMLA_SPARSE:
+    if HAS_VLLM_FLASHMLA_SPARSE and (not IS_KUNLUNXIN or VLLM_FLASHMLA_C_AVAILABLE):
         ref_output, ref_max_logbits, ref_lse = vllm_flash_mla_sparse_fwd(
             q, kv, indices, sm_scale, param.d_v, attn_sink, topk_length
         )

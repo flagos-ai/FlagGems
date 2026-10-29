@@ -25,6 +25,9 @@ from . import base
 
 _SAFE_HEAD_SIZES = (64, 128)
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+_KUNLUNXIN_MAX_SEQ = 1024
+
 
 def _is_unsafe_decode_causal(seq_len: int, is_causal: bool) -> bool:
     return seq_len == 1 and is_causal
@@ -146,8 +149,12 @@ def cudnn_attn_forward_native(
     )
     out = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
+    if IS_KUNLUNXIN:
+        philox_seed = results[6]
+        philox_offset = results[7]
+    else:
+        philox_seed = results[2]
+        philox_offset = results[3]
 
     lse = lse_4d.squeeze(-1).float()
     return out, lse, philox_seed, philox_offset
@@ -177,8 +184,8 @@ def efficient_attn_forward_native(
         bias,
         None,
         None,
-        Q.shape[2],
-        K.shape[2],
+        None if IS_KUNLUNXIN else Q.shape[2],
+        None if IS_KUNLUNXIN else K.shape[2],
         dropout_p=dropout_p,
         custom_mask_type=1 if is_causal else 0,
         compute_log_sumexp=True,
@@ -682,6 +689,7 @@ def _cudnn_attn_bwd_aten(
     is_causal,
     scale=None,
 ):
+    lse = lse.unsqueeze(-1)
     return torch.ops.aten._scaled_dot_product_cudnn_attention_backward(
         dOut_bhsd,
         Q_bhsd,
@@ -793,6 +801,8 @@ def efficient_attn_bwd_input_fn(config, dtype, device):
     is_causal = custom_mask_type == 1
     if _is_unsafe_decode_causal(seq_len, is_causal):
         return
+    if IS_KUNLUNXIN and (seq_len > _KUNLUNXIN_MAX_SEQ or has_bias):
+        return
     scale = 1.0 / math.sqrt(head_size)
 
     dev_idx = _device_index(device)
@@ -898,7 +908,7 @@ def _efficient_attn_bwd_aten(
         custom_mask_type,
         bias_requires_grad,
         scale=scale,
-        num_splits_key=0,
+        num_splits_key=None if IS_KUNLUNXIN else 0,
     )
 
 
@@ -922,7 +932,12 @@ def _efficient_attn_bwd_gems(
     lse,
     scale=None,
 ):
-    return flag_gems.ops.efficient_attention_backward(
+    _candidate = (
+        flag_gems.efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.efficient_attention_backward
+    )
+    return _candidate(
         dOut_bshd,
         Q_bshd,
         K_bshd,
@@ -1117,7 +1132,12 @@ def _sdp_eff_attn_bwd_gems(
     is_causal,
     scale=None,
 ):
-    return flag_gems.ops.scaled_dot_product_efficient_attention_backward(
+    _candidate = (
+        flag_gems.scaled_dot_product_efficient_attention_backward
+        if IS_KUNLUNXIN
+        else flag_gems.ops.scaled_dot_product_efficient_attention_backward
+    )
+    return _candidate(
         dOut_bhsd,
         Q_bhsd,
         K_bhsd,

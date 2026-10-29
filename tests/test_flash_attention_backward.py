@@ -23,6 +23,8 @@ from flag_gems.utils.random_utils import set_philox_state
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
     dev = torch_device_fn.current_device()
@@ -112,9 +114,12 @@ def cudnn_attn_forward_native(
     )
     out_bhsd = results[0]
     lse_4d = results[1]
-    philox_seed = results[2]
-    philox_offset = results[3]
-
+    if IS_KUNLUNXIN:
+        philox_seed = results[6]
+        philox_offset = results[7]
+    else:
+        philox_seed = results[2]
+        philox_offset = results[3]
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
     lse = lse_4d.squeeze(-1).float()
     return out, lse, philox_seed, philox_offset
@@ -140,8 +145,8 @@ def efficient_attn_forward_native(
         bias,
         None,
         None,
-        Q.shape[1],
-        K.shape[1],
+        None if IS_KUNLUNXIN else Q.shape[1],
+        None if IS_KUNLUNXIN else K.shape[1],
         dropout_p=dropout_p,
         custom_mask_type=1 if is_causal else 0,
         compute_log_sumexp=True,
@@ -397,12 +402,20 @@ def test_scaled_dot_product_cudnn_attention_backward(
     # backward indexes the stats input as a 4D (B, H, S, 1) tensor; a squeezed
     # 3D view is rejected by cuDNN Frontend with "The dim for input_names::Stats
     # is invalid" on the first call in a process.
-    ref_dOut_bhsd = dOut_bhsd
-    ref_Q_bhsd = Q_bhsd
-    ref_K_bhsd = K_bhsd
-    ref_V_bhsd = V_bhsd
-    ref_out_bhsd = out_bhsd
-    ref_lse = lse.unsqueeze(-1)
+    if IS_KUNLUNXIN:
+        ref_dOut_bhsd = utils.to_reference(dOut_bhsd)
+        ref_Q_bhsd = utils.to_reference(Q_bhsd)
+        ref_K_bhsd = utils.to_reference(K_bhsd)
+        ref_V_bhsd = utils.to_reference(V_bhsd)
+        ref_out_bhsd = utils.to_reference(out_bhsd)
+        ref_lse = utils.to_reference(lse.unsqueeze(-1))
+    else:
+        ref_dOut_bhsd = dOut_bhsd
+        ref_Q_bhsd = Q_bhsd
+        ref_K_bhsd = K_bhsd
+        ref_V_bhsd = V_bhsd
+        ref_out_bhsd = out_bhsd
+        ref_lse = lse.unsqueeze(-1)
 
     (
         ref_dQ_bhsd,
