@@ -52,7 +52,7 @@ def _embedding_bag_dense_backward_kernel(
         grad_weight_ptr: output gradient for embedding table, shape (num_weights, embedding_dim)
         num_weights: number of rows in embedding table
         padding_idx: padding index to ignore
-        mode: 0=mean, 1=sum
+        mode: 0=sum, 1=mean (2=max runs _embedding_bag_dense_backward_max_kernel)
         has_per_sample_weights: whether per_sample_weights are provided
         per_sample_weights_ptr: optional per-sample weights
         scale_grad_by_freq: whether to scale by word frequency
@@ -60,8 +60,8 @@ def _embedding_bag_dense_backward_kernel(
         EMBED_DIM: embedding dimension
 
     Note on scaling:
-        For mode=0 (mean): grad is already scaled by bag_size, so no division needed
-        For mode=1 (sum): grad needs to be divided by bag_size
+        For mode=0 (sum): each sample receives the bag's gradient as is
+        For mode=1 (mean): each sample receives the bag's gradient / bag_size
     """
     pid = tl.program_id(0)
     pid_d = tl.program_id(1)
@@ -85,12 +85,12 @@ def _embedding_bag_dense_backward_kernel(
     go = tl.load(go_ptrs, mask=mask_d, other=0.0).to(tl.float32)
 
     # Compute scale factor based on mode
-    # For mode=0 (mean): grad is already scaled by bag_size from autograd, so scale=1
-    # For mode=1 (sum): grad needs to be divided by bag_size
+    # For mode=0 (sum): the bag's gradient applies to every sample as is
+    # For mode=1 (mean): every sample receives the bag's gradient / bag_size
     if mode == 0:
         scale = 1.0
     else:
-        # Sum mode: divide by bag size
+        # Mean mode: divide by bag size
         scale = 1.0 / bag_size
 
     # Handle per_sample_weights if provided
@@ -118,6 +118,47 @@ def _embedding_bag_dense_backward_kernel(
     tl.atomic_add(gw_ptrs, go, mask=mask)
 
 
+@libentry()
+@triton.jit
+def _embedding_bag_dense_backward_max_kernel(
+    grad_ptr,
+    max_indices_ptr,
+    grad_weight_ptr,
+    num_weights,
+    BLOCK_D: tl.constexpr,
+    EMBED_DIM: tl.constexpr,
+):
+    """Kernel for _embedding_bag_dense_backward with mode=2 (max).
+
+    Max pooling routes, per feature, the whole gradient of a bag to the single
+    row that won the max for that feature; every other row in the bag gets
+    nothing. That row is per (bag, feature), so the grid is one program per
+    (bag, feature block) and the store address varies along the feature axis.
+
+    Args:
+        grad_ptr: gradient tensor of shape (num_bags, embedding_dim)
+        max_indices_ptr: argmax rows from the forward, shape (num_bags, embedding_dim)
+        grad_weight_ptr: output gradient for embedding table, shape (num_weights, embedding_dim)
+        num_weights: number of rows in embedding table
+        BLOCK_D: block size for embedding dimension
+        EMBED_DIM: embedding dimension
+    """
+    bag_idx = tl.program_id(0)
+    pid_d = tl.program_id(1)
+
+    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
+    mask_d = offs_d < EMBED_DIM
+
+    mi = tl.load(max_indices_ptr + bag_idx * EMBED_DIM + offs_d, mask=mask_d, other=-1)
+    go = tl.load(grad_ptr + bag_idx * EMBED_DIM + offs_d, mask=mask_d, other=0.0).to(
+        tl.float32
+    )
+
+    # Empty bags carry no valid argmax; guard the scatter.
+    mask = mask_d & (mi >= 0) & (mi < num_weights)
+    tl.atomic_add(grad_weight_ptr + mi * EMBED_DIM + offs_d, go, mask=mask)
+
+
 def _embedding_bag_dense_backward(
     grad: torch.Tensor,
     indices: torch.Tensor,
@@ -137,10 +178,10 @@ def _embedding_bag_dense_backward(
         indices: indices into embedding table of shape (num_samples,)
         offset2bag: maps each sample position to its bag of shape (num_samples,)
         bag_size: number of samples in each bag of shape (num_bags,)
-        maximum_indices: indices of maximum values (unused for mode=0)
+        maximum_indices: per-feature argmax rows from the forward (used for mode=2)
         num_weights: number of rows in embedding table
         scale_grad_by_freq: whether to scale gradients by word frequency
-        mode: embedding bag mode (0=mean, 1=sum)
+        mode: embedding bag mode (0=sum, 1=mean, 2=max)
         per_sample_weights: optional per-sample weights of shape (num_samples,)
         padding_idx: padding index to ignore
 
@@ -176,6 +217,22 @@ def _embedding_bag_dense_backward(
 
     # BLOCK_D chosen for optimal occupancy on common GPU architectures
     BLOCK_D = 128
+
+    if mode == 2:
+        # Max mode is a per-(bag, feature) scatter to the argmax row; it does
+        # not read indices, offset2bag or bag_size at all.
+        _embedding_bag_dense_backward_max_kernel[(num_bags, triton.cdiv(D, BLOCK_D))](
+            grad,
+            maximum_indices.contiguous(),
+            grad_weight,
+            num_weights,
+            BLOCK_D=BLOCK_D,
+            EMBED_DIM=D,
+        )
+        if grad.dtype != torch.float32:
+            return grad_weight.to(grad.dtype)
+        return grad_weight
+
     grid = (num_samples, triton.cdiv(D, BLOCK_D))
 
     # Create a dummy tensor for per_sample_weights if not provided
