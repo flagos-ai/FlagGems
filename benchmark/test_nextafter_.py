@@ -38,6 +38,22 @@ def _build_inputs_fn(plan, dtype, device):
         pytest.skip("Enflame Float64 storage loses adjacent-double nextafter values")
     (shape,) = plan.builder_args
     torch.manual_seed(0)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        # Device randn narrows Double; retain the requested normal recipe and
+        # move its bytes without invoking that narrowing conversion.
+        host = [torch.randn(shape, dtype=dtype, device="cpu") for _ in range(2)]
+        inputs = tuple(
+            value.reshape(-1).view(torch.uint8).to(device).view(dtype).reshape(shape)
+            for value in host
+        )
+        assert all(
+            value.dtype == dtype
+            and value.device.type == torch.device(device).type
+            and value.element_size() == 8
+            and value.untyped_storage().nbytes() == value.numel() * 8
+            for value in inputs
+        )
+        return inputs
     return (
         torch.randn(shape, dtype=dtype, device=device),
         torch.randn(shape, dtype=dtype, device=device),
