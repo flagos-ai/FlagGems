@@ -35,6 +35,11 @@ def ones_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
+    if N == 0:
+        # Nothing to fill; returning early also avoids BLOCK_SIZE == 0
+        # (next_power_of_2(0) == 0), which makes the tl.arange(0, BLOCK_SIZE)
+        # inside ones_kernel un-buildable on the Ascend backend.
+        return out
     BLOCK_SIZE = triton.next_power_of_2(math.ceil(math.sqrt(N)))
     grid_fn = lambda meta: (triton.cdiv(N, BLOCK_SIZE),)
     with torch_device_fn.device(x.device):
