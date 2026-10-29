@@ -15,12 +15,19 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
 def _input_fn(shape, dtype, device):
     input = torch.randn(shape, dtype=dtype, device=device)
-    target = torch.randint(0, 5, shape, device=device).to(dtype)
+    raw_target = torch.randint(0, 5, shape, device=device)
+    target = (
+        raw_target.cpu().to(dtype).to(device)
+        if flag_gems.vendor_name == "enflame"
+        else raw_target.to(dtype)
+    )
     yield input, target, True, False, 1e-8, 1
 
 

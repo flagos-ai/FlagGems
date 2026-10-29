@@ -33,6 +33,12 @@ def _vander_copy(value, device):
 
 
 def _vander_random(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float64, torch.complex128):
+        pytest.skip("Enflame target transfer does not retain genuine wide-component precision")
+    if flag_gems.vendor_name == "enflame" and dtype == torch.complex64:
+        # The target complex randn constructor aborts; preserve its distribution
+        # with a CPU-generator recipe, then transfer a genuine Complex64 tensor.
+        return torch.randn(shape, dtype=dtype, device="cpu").to(flag_gems.device)
     if flag_gems.vendor_name == "kunlunxin" and dtype in (
         torch.float64,
         torch.complex128,
@@ -54,6 +60,13 @@ def _vander_reference_input(value, upcast=False):
 
 
 def _vander_reference(value, N=None, increasing=False):
+    if flag_gems.vendor_name == "enflame" and value.device.type != "cpu":
+        if value.dtype in (torch.int16, torch.int32, torch.int64, torch.bool):
+            pytest.skip(
+                "Enflame native vander promotes integer/Bool to unsupported Long cumprod; CPU reference remains covered"
+            )
+        if value.dtype == torch.float32 and not value.is_contiguous():
+            pytest.skip("Enflame native vander reference misreads strided Float32 input")
     if flag_gems.vendor_name == "kunlunxin" and value.device.type != "cpu":
         if value.dtype in (torch.float64, torch.int16, torch.int32, torch.bool):
             pytest.skip(
@@ -85,7 +98,12 @@ def _make_input(M, dtype):
     if dtype.is_floating_point:
         return _vander_random(M, dtype)
     if dtype is torch.bool:
-        return torch.randint(0, 2, (M,), device=flag_gems.device).to(torch.bool)
+        raw = torch.randint(0, 2, (M,), device=flag_gems.device)
+        return (
+            raw.cpu().to(torch.bool).to(raw.device)
+            if flag_gems.vendor_name == "enflame"
+            else raw.to(torch.bool)
+        )
     return torch.randint(-4, 5, (M,), dtype=dtype, device=flag_gems.device)
 
 
@@ -233,6 +251,8 @@ def test_vander_invalid_rank():
 
 @pytest.mark.vander
 def test_vander_output_dtype():
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip("Original compound promotion fixture requires genuine target Float64 storage")
     # Explicit promotion contract: bool/integer -> int64, floating keeps its type.
     cases = [
         (torch.bool, torch.int64),
