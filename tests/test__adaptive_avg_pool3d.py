@@ -108,3 +108,47 @@ def test_adaptive_avg_pool3d_out_4d_input(dtype):
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+# The public ``aten::adaptive_avg_pool3d.out`` overload carries its own backend
+# kernel (it is not CompositeImplicitAutograd like the plain public overload),
+# so registering ``_adaptive_avg_pool3d.out`` does not intercept it. These cases
+# reference the public overload directly to cover that separate dispatch entry.
+@pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
+@pytest.mark.parametrize("shape, output_size", ADAPTIVE_AVG_POOL3D_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_adaptive_avg_pool3d_public_out_overload(shape, output_size, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    out_shape = (shape[0], shape[1], *output_size)
+    ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
+    torch.ops.aten.adaptive_avg_pool3d.out(ref_inp, output_size, out=ref_out)
+
+    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.adaptive_avg_pool3d_out(inp, output_size, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.adaptive_avg_pool3d_out
+@pytest.mark.underscore_adaptive_avg_pool3d_out
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_adaptive_avg_pool3d_public_out_overload_4d_input(dtype):
+    # A 4D (C, D, H, W) input takes the unsqueeze-to-5D branch of the out variant.
+    shape = (3, 8, 7, 6)
+    output_size = (4, 5, 6)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    out_shape = (shape[0], *output_size)
+    ref_out = torch.empty(out_shape, dtype=ref_inp.dtype, device=ref_inp.device)
+    torch.ops.aten.adaptive_avg_pool3d.out(ref_inp, output_size, out=ref_out)
+
+    out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.adaptive_avg_pool3d_out(inp, output_size, out=out)
+
+    assert res_out is out
+    utils.gems_assert_close(out, ref_out, dtype)

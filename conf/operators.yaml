@@ -716,6 +716,7 @@ tensor into the caller-supplied `out` buffer.
     '
   for:
   - _adaptive_avg_pool3d.out
+  - adaptive_avg_pool3d.out
   labels:
   - aten
   - KernelGen
