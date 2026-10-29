@@ -18,7 +18,67 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from . import conftest as cfg
+
+
+def _reference_input(inp, upcast=False):
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _missing_cpu_lapack(inp, error):
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and (
+            "requires compiling PyTorch with LAPACK" in str(error)
+            or "LAPACK library not found in compilation" in str(error)
+        )
+    )
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    # Preserve scalar shape, make each output independent, and keep real dtype.
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _reference_qr(inp):
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    try:
+        result = torch.linalg.qr(source)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(source, error):
+            raise
+        import numpy as np
+
+        result = tuple(_from_numpy(x) for x in np.linalg.qr(source.detach().numpy()))
+    return tuple(x.to(device=inp.device, dtype=inp.dtype) for x in result)
+
+
+def _reference_svd(inp, full_matrices=True):
+    try:
+        return torch.linalg.svd(inp, full_matrices=full_matrices)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    return tuple(
+        _from_numpy(x)
+        for x in np.linalg.svd(inp.detach().numpy(), full_matrices=full_matrices)
+    )
+
+
+def _reference_svdvals(inp):
+    try:
+        return torch.linalg.svdvals(inp)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    return _from_numpy(np.linalg.svd(inp.detach().numpy(), compute_uv=False))
 
 
 def _make_spectrum_input(shape, singular_values, seed=0):
@@ -29,10 +89,10 @@ def _make_spectrum_input(shape, singular_values, seed=0):
     torch.manual_seed(seed)
     *batch_shape, m, n = shape
     k = min(m, n)
-    left, _ = torch.linalg.qr(
+    left, _ = _reference_qr(
         torch.randn((*batch_shape, m, m), dtype=torch.float32, device=flag_gems.device)
     )
-    right, _ = torch.linalg.qr(
+    right, _ = _reference_qr(
         torch.randn((*batch_shape, n, n), dtype=torch.float32, device=flag_gems.device)
     )
     sigma = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
@@ -106,11 +166,10 @@ RECONSTRUCTION_ATOL = 5e-3
 def test_linalg_svd_full_matrices(shape, dtype):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _reference_input(inp, True)
 
-    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=True)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=True)
+    ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=True)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -133,11 +192,10 @@ def test_linalg_svd_full_matrices(shape, dtype):
 def test_linalg_svd_reduced(shape, dtype):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _reference_input(inp, True)
 
-    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -156,11 +214,10 @@ def test_linalg_svd_reduced(shape, dtype):
 def test_linalg_svd_batched(shape, dtype):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _reference_input(inp, True)
 
-    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -191,11 +248,10 @@ def test_linalg_svd_orthonormal(shape, dtype):
     k = min(shape[-2:])
     singular_values = torch.logspace(0, -3, steps=k).tolist()
     inp = _make_spectrum_input(shape, singular_values, seed=7)
-    ref_inp = utils.to_reference(inp, True)
+    ref_inp = _reference_input(inp, True)
 
-    ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    ref_u, ref_s, ref_vh = _reference_svd(ref_inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -215,8 +271,7 @@ def test_linalg_svd_autograd_is_explicitly_unsupported():
     inp = torch.randn((4, 4), dtype=torch.float32, device=flag_gems.device)
     inp.requires_grad_(True)
 
-    with flag_gems.use_gems():
-        outputs = torch.linalg.svd(inp, full_matrices=False)
+    outputs = flag_gems.linalg_svd(inp, full_matrices=False)
 
     assert all(not output.requires_grad for output in outputs)
     with pytest.raises(RuntimeError, match="does not require grad"):
