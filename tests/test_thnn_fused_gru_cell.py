@@ -326,7 +326,10 @@ def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
         torch.empty((2, 7), dtype=torch.float32, device=flag_gems.device),
         torch.empty((2, 35), dtype=torch.float32, device=flag_gems.device),
     ]
-    outputs[output_index] = outputs[output_index].to(torch.float64)
+    # Ascend silently casts requested Float64 buffers to Float32. Use a real
+    # supported mismatch so this remains a dtype-rejection test on the target.
+    wrong_dtype = torch.float16 if flag_gems.vendor_name == "ascend" else torch.float64
+    outputs[output_index] = outputs[output_index].to(wrong_dtype)
     with pytest.raises(RuntimeError):
         flag_gems._thnn_fused_gru_cell_out(
             input_gates,
