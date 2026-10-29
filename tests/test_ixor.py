@@ -12,6 +12,25 @@ INT_DTYPES = [torch.int16, torch.int32, torch.int64]
 BOOL_TYPES = [torch.bool]
 
 
+def _candidate_ixor(inp, other):
+    expected_device, expected_dtype = inp.device, inp.dtype
+    expected_shape = tuple(inp.shape)
+    original_pointer = inp.data_ptr()
+    candidate = getattr(flag_gems, "ixor", None)
+    if candidate is None:
+        candidate = (
+            flag_gems.xor_ if isinstance(other, torch.Tensor) else flag_gems.xor_scalar_
+        )
+    result = candidate(inp, other)
+    assert isinstance(result, torch.Tensor)
+    assert result is inp
+    assert result.data_ptr() == original_pointer
+    assert result.device == expected_device
+    assert result.dtype == expected_dtype
+    assert tuple(result.shape) == expected_shape
+    return result
+
+
 @pytest.mark.ixor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", INT_DTYPES + BOOL_TYPES)
@@ -30,7 +49,7 @@ def test_ixor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1.__ixor__(ref_inp2)
-    res_out = flag_gems.xor_(inp1, inp2)
+    res_out = _candidate_ixor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -50,6 +69,6 @@ def test_ixor_scalar(shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone())
 
     ref_out = ref_inp1.__ixor__(inp2)
-    res_out = flag_gems.xor_scalar_(inp1, inp2)
+    res_out = _candidate_ixor(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
