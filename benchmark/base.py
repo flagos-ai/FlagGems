@@ -27,7 +27,11 @@ import triton
 import yaml
 
 import flag_gems
-from flag_gems.testing.reference import reference_execution, select_candidate
+from flag_gems.testing.reference import (
+    ReferenceContractError,
+    reference_execution,
+    select_candidate,
+)
 from flag_gems.utils import shape_utils
 
 from . import consts
@@ -110,7 +114,7 @@ class Benchmark:
         self.op_name = op_name
         if getattr(Config, "ref_as_candidate", False):
             if not callable(torch_op):
-                raise ValueError(
+                raise ReferenceContractError(
                     f"Operator '{op_name}': --ref-as-candidate requires an explicit "
                     "callable torch_op reference"
                 )
@@ -118,7 +122,7 @@ class Benchmark:
                 getattr(type(self), name) is not getattr(Benchmark, name)
                 for name in ("run", "_measure_input", "get_latency", "_candidate_call")
             ):
-                raise ValueError(
+                raise ReferenceContractError(
                     f"Operator '{op_name}': custom benchmark execution does not "
                     "support the --ref-as-candidate reference contract"
                 )
@@ -829,10 +833,9 @@ class Benchmark:
                     metric.latency = self.get_latency(op, *args, **kwargs)
                 if getattr(Config, "ref_as_candidate", False):
                     metric.candidate_source = "reference"
-                    state = reference_execution()
                     if state is not None:
                         if state.candidate_calls <= reference_before:
-                            raise ValueError(
+                            raise ReferenceContractError(
                                 "Reference candidate timer did not invoke its callable"
                             )
                         state.completed_timings += 1
@@ -900,7 +903,9 @@ class Benchmark:
             getattr(Config, "ref_as_candidate", False)
             and "latency" not in self.to_bench_metrics
         ):
-            raise ValueError("--ref-as-candidate requires the candidate latency metric")
+            raise ReferenceContractError(
+                "--ref-as-candidate requires the candidate latency metric"
+            )
         configured_case_ids = getattr(Config, "case_ids", None)
         selection_requested = case_ids is not None or configured_case_ids is not None
         selected_case_ids = case_ids if case_ids is not None else configured_case_ids

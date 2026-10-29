@@ -22,7 +22,6 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import wraps
-from pathlib import Path
 
 import pytest
 
@@ -63,11 +62,6 @@ def reference_test_mode(enabled, nodeid=""):
         _MODE.reset(token)
 
 
-def reference_mode_enabled():
-    state = _MODE.get()
-    return state is not None and state.ref_as_candidate
-
-
 def reference_execution():
     """Return the current execution, for thin runner/report adapters."""
     return _MODE.get()
@@ -101,7 +95,8 @@ def get_candidate(op_name, *, reference=None):
     lookup uses the package's current public attribute, including CLI overrides
     and dummy injection, rather than its underlying implementation registrar.
     """
-    if reference_mode_enabled():
+    state = _MODE.get()
+    if state is not None and state.ref_as_candidate:
         return select_candidate(None, reference, op_name)
 
     import flag_gems
@@ -115,60 +110,15 @@ def get_candidate(op_name, *, reference=None):
     return select_candidate(candidate, reference, op_name)
 
 
-def configure_reference_candidate(config):
-    """Register one opt-in plugin through the shared override lifecycle."""
-    if not getattr(config.option, "ref_as_candidate", False):
-        return
-    conflicts = (
-        "override",
-        "override_config",
-        "list_overrides",
-        "dummy_candidate",
-        "dummy_report",
-        "reference_only",
-        "preflight_only",
-        "profile_only",
-        "list_cases",
-        "query",
-        "parallel",
-        "collect_marks",
-        "collectonly",
-        "numprocesses",
-    )
-    for name in conflicts:
-        if getattr(config.option, name, None):
-            flag = (
-                "--collect-only"
-                if name == "collectonly"
-                else "--" + name.replace("_", "-")
-            )
-            raise pytest.UsageError(
-                f"--ref-as-candidate cannot be combined with {flag}."
-            )
-    if hasattr(config, "_reference_candidate"):
-        return
-    plugin = _ReferenceCandidatePlugin()
-    config._reference_candidate = plugin
-    config.pluginmanager.register(plugin, "flaggems-ref-as-candidate")
-
-
 class _ReferenceCandidatePlugin:
     """Shared pytest lifecycle; correctness and benchmark keep their runners."""
 
     def __init__(self):
-        self.records = {}
-        self.collection_failed = False
+        self.validated = False
 
     @staticmethod
     def _accuracy(item):
-        return Path(item.nodeid.split("::", 1)[0]).parts[0] != "benchmark"
-
-    def pytest_collection_finish(self, session):
-        for item in session.items:
-            self.records[item.nodeid] = {"status": "NOT_RUN", "calls": 0}
-
-    def pytest_collectreport(self, report):
-        self.collection_failed = self.collection_failed or report.failed
+        return item.path.parent.name != "benchmark"
 
     @pytest.hookimpl(hookwrapper=True, tryfirst=True)
     def pytest_runtest_protocol(self, item, nextitem):
@@ -197,12 +147,12 @@ class _ReferenceCandidatePlugin:
                 outcome.force_exception(
                     ReferenceContractError(state.contract_errors[0])
                 )
-        elif outcome.excinfo is None and (
-            (state.candidate_calls == 0 and not state.benchmark_selection_empty)
-            or (
-                not self._accuracy(item)
-                and state.completed_timings == 0
-                and not (state.benchmark_selection_empty and state.candidate_calls == 0)
+        elif (
+            outcome.excinfo is None
+            and not (state.benchmark_selection_empty and state.candidate_calls == 0)
+            and (
+                state.candidate_calls == 0
+                or (not self._accuracy(item) and state.completed_timings == 0)
             )
         ):
             outcome.force_exception(
@@ -223,7 +173,6 @@ class _ReferenceCandidatePlugin:
         outcome = yield
         report = outcome.get_result()
         state = getattr(item, "_reference_execution", None)
-        record = self.records.setdefault(item.nodeid, {"status": "NOT_RUN", "calls": 0})
         if (
             state is not None
             and self._accuracy(item)
@@ -246,27 +195,15 @@ class _ReferenceCandidatePlugin:
             report.longrepr = "ReferenceContractError: " + state.contract_errors[0]
             if hasattr(report, "wasxfail"):
                 del report.wasxfail
-            record["status"] = "FAILED"
-        elif report.failed:
-            record["status"] = "FAILED"
-        elif report.skipped and record["status"] != "FAILED":
-            record["status"] = "SKIP"
-        elif call.when == "call" and report.passed and record["status"] != "FAILED":
-            record.update(
-                status=(
-                    "NOT_SELECTED"
-                    if state.benchmark_selection_empty and not state.candidate_calls
-                    else "PASSED"
-                ),
-                calls=state.candidate_calls,
-            )
+        if call.when == "call" and report.passed and state.candidate_calls:
+            self.validated = True
         if state is not None and (call.when == "call" or state.contract_errors):
             report.reference_candidate = {
                 "candidate_source": "reference",
                 "reference_calls": state.reference_calls,
                 "reference_candidate_calls": state.candidate_calls,
             }
-            if state.contract_errors and record["status"] == "FAILED":
+            if state.contract_errors:
                 # The ordinary JSON adapter mainly records call outcomes.
                 # Preserve contract failures from setup/teardown as well,
                 # including later successful phases of this failed node.
@@ -278,14 +215,7 @@ class _ReferenceCandidatePlugin:
     @pytest.hookimpl(hookwrapper=True, tryfirst=True)
     def pytest_sessionfinish(self, session, exitstatus):
         yield
-        records = list(self.records.values())
-        supported = any(r["status"] == "PASSED" and r["calls"] > 0 for r in records)
-        complete = all(
-            r["status"] in {"PASSED", "SKIP", "NOT_SELECTED"} for r in records
-        )
-        if (
-            self.collection_failed or not supported or not complete
-        ) and session.exitstatus in (0, 5):
+        if not self.validated and session.exitstatus in (0, 5):
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
@@ -293,8 +223,6 @@ def validate_ref_as_candidate_options(config):
     """Validate only the new mode; leave all existing combinations unchanged."""
     if not getattr(config.option, "ref_as_candidate", False):
         return False
-    import pytest
-
     conflicts = [
         name
         for name in (
@@ -307,13 +235,25 @@ def validate_ref_as_candidate_options(config):
             "query",
             "parallel",
             "collect_marks",
+            "collectonly",
+            "numprocesses",
         )
         if getattr(config.option, name, None)
     ]
     if conflicts:
         raise pytest.UsageError(
             "--ref-as-candidate cannot be combined with "
-            + ", ".join("--" + name.replace("_", "-") for name in conflicts)
+            + ", ".join(
+                (
+                    "--collect-only"
+                    if name == "collectonly"
+                    else "--" + name.replace("_", "-")
+                )
+                for name in conflicts
+            )
         )
-    configure_reference_candidate(config)
+    if not config.pluginmanager.hasplugin("flaggems-ref-as-candidate"):
+        config.pluginmanager.register(
+            _ReferenceCandidatePlugin(), "flaggems-ref-as-candidate"
+        )
     return True

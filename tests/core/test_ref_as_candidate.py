@@ -32,7 +32,7 @@ def contract():
     # runtime. CLI integration below loads the normal package and conftests.
     source = ROOT / "src/flag_gems/testing/reference.py"
     spec = importlib.util.spec_from_file_location(
-        "_sglang_reference_contract_test", source
+        "_flaggems_reference_contract_test", source
     )
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -284,13 +284,14 @@ def test_actual_benchmark_methods_require_reference_invocation(contract, timer_c
         n
         for n in cls.body
         if isinstance(n, ast.FunctionDef)
-        and n.name in {"_candidate_call", "_measure_input"}
+        and n.name in {"__init__", "_candidate_call", "_measure_input"}
     ]
     namespace = {
         "Config": SimpleNamespace(
             ref_as_candidate=True, skip_native=False, override_registry=None
         ),
         "BenchmarkMetrics": lambda **kw: SimpleNamespace(**kw),
+        "ReferenceContractError": contract.ReferenceContractError,
         "reference_execution": contract.reference_execution,
         "select_candidate": contract.select_candidate,
         "nullcontext": nullcontext,
@@ -301,7 +302,12 @@ def test_actual_benchmark_methods_require_reference_invocation(contract, timer_c
         compile(ast.Module(body=[cls], type_ignores=[]), "benchmark/base.py", "exec"),
         namespace,
     )
-    bench = namespace["Benchmark"]()
+    benchmark_type = namespace["Benchmark"]
+    with contract.reference_test_mode(True) as invalid:
+        with pytest.raises(contract.ReferenceContractError, match="callable torch_op"):
+            benchmark_type("missing", torch_op=None)
+        assert invalid.contract_errors
+    bench = object.__new__(benchmark_type)
     calls = []
     bench.op_name = "probe"
     bench.torch_op = lambda value: calls.append(value)
@@ -328,3 +334,18 @@ def test_actual_benchmark_methods_require_reference_invocation(contract, timer_c
             assert state.completed_timings == 1
             assert state.candidate_calls == timer_calls
             assert calls == [2] * (2 * timer_calls)
+
+
+@pytest.mark.parametrize(
+    "option", ["override", "reference_only", "collectonly", "numprocesses"]
+)
+def test_options_are_validated_only_when_enabled(contract, option):
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(
+        option=SimpleNamespace(ref_as_candidate=False, **{option: True})
+    )
+    assert contract.validate_ref_as_candidate_options(config) is False
+    config.option.ref_as_candidate = True
+    with pytest.raises(pytest.UsageError, match="cannot be combined"):
+        contract.validate_ref_as_candidate_options(config)

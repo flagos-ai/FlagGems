@@ -2,78 +2,58 @@
 title: "Reference as candidate"
 ---
 
-`--ref-as-candidate` checks whether a correctness test or benchmark can execute
-using its explicitly declared reference as the candidate. It does not require a
-candidate source file. The option is off by default; existing tests and override
-commands keep their original behavior.
+`--ref-as-candidate` runs an explicitly declared reference on the candidate side
+of correctness tests and standard benchmarks. It defaults to false.
 
-## Correctness contract
+## Correctness
 
-Tests remain ordinary pytest functions. Explicitly choose the candidate:
+Tests remain ordinary pytest functions. Select the candidate explicitly:
 
 ```python
 from flag_gems.testing.reference import get_candidate
 
 
 def test_example():
-    reference = explicitly_defined_reference
-    candidate = get_candidate("example", reference=reference)
+    candidate = get_candidate("example", reference=explicit_reference)
     expected_inputs, candidate_inputs = build_independent_inputs()
-    expected = reference(*expected_inputs)
+    expected = explicit_reference(*expected_inputs)
     actual = candidate(*candidate_inputs)
     original_comparison(actual, expected)
 ```
 
-Without the option, the helper reads the current public `flag_gems` export,
-including external overrides. With the option, it selects the explicit reference
-without looking up the real candidate; the public export may be absent.
-No reference is guessed from the operator name. Missing/non-callable references
-fail explicitly. Adapt differing signatures with an explicit callable.
+Normal mode resolves the current public `flag_gems` export, including overrides.
+Reference mode uses the supplied callable without looking up the real candidate.
+The callable must accept the candidate's arguments; no reference is inferred
+from the operator name. Input cloning, CPU/upcast reference preparation and all
+original assertions remain the test author's responsibility.
 
-The helper does not clone inputs, run assertions, adjust dtypes or move devices.
-Retain the original input preparation, independent buffers for in-place calls,
-CPU/upcast expected-side inputs, tolerances and mutation/alias assertions.
-The former `ReferenceCase` / `@reference_test` factory API is removed.
-
-`negative` is the initial migrated correctness test:
+`negative` is the initial migrated test:
 
 ```sh
-python -m pytest tests/test_negative.py -m negative --ref-as-candidate
-python -m pytest tests/test_negative.py -m negative --ref-as-candidate --ref cpu
+pytest tests/test_negative.py -m negative --ref-as-candidate
+pytest tests/test_negative.py -m negative --ref-as-candidate --ref cpu
 ```
 
-Other tests need an explicit `get_candidate` declaration to opt in; their normal
-execution is unchanged. A passing node must actually call the selected candidate
-in its test body; calls only in fixtures do not qualify. Missing declarations or
-caught contract errors cannot be hidden by skip/xfail. A capability skip after
-valid selection remains a skip; an all-skip run is not successful validation.
-Setup/teardown contract failures are preserved in correctness JSON.
+Selected tests must declare a callable reference and invoke it on the candidate
+side in the test body. Fixture-only calls do not qualify. Missing declarations
+or caught contract errors cannot be hidden by skip/xfail; an all-skip run fails.
+Existing correctness JSON records the candidate source, helper-observed call
+counts and setup/teardown contract failures. Direct expected-side calls are not
+included in those counts.
 
-JSON records include `candidate_source: reference`, `reference_calls` and
-`reference_candidate_calls`. Counters observe calls through the helper only;
-direct expected-side calls are not counted.
+## Benchmark
 
-## Benchmark contract
-
-Standard `Benchmark` subclasses already declare their reference as `torch_op`.
-With the new option, that callable is also used for candidate timing, outside
-Gems dispatch. Input generation, selected cases, timing mode and metrics remain
-in use. The candidate latency metric is required; records identify
-`candidate_source: reference`.
+Standard benchmarks use their declared `torch_op` as the candidate outside Gems
+dispatch. The existing inputs, timer and metrics are retained. Each candidate
+timing must invoke that callable; records identify `candidate_source: reference`.
+Custom execution paths fail explicitly when they cannot satisfy this contract.
 
 ```sh
-python -m pytest benchmark/test_add.py -m add --level core --ref-as-candidate
+pytest benchmark/test_add.py -m add --level core --ref-as-candidate
 ```
 
-A non-callable `torch_op` or a custom override of `run`, `_measure_input`,
-`get_latency` or `_candidate_call` is an explicit contract error in this mode.
-The original behavior of those benchmarks is unchanged without the option.
-
-The option cannot be combined with external overrides, `--reference-only`,
-`--preflight-only`, `--profile-only`, `--list-cases`, `--query`, `--parallel`, `--collect-marks`, collection-only or xdist parallel execution. Those modes retain their existing meanings. This mode performs
-real timing; `--reference-only` still performs its original baseline-only probe.
-
-Ref-vs-ref is a harness executability check, not independent evidence that a
-reference is correct or that external candidate injection works. Continue to
-use dummy candidate injection to check the actual override route. These timings
-are diagnostic and do not replace the H800 ops-baseline collection workflow.
+The mode is incompatible with override, reference-only, preflight, profiling,
+case listing/query, marker collection, collection-only and parallel execution.
+`--reference-only` remains the separate baseline-only probe. Reference-vs-reference
+validates harness execution; it does not independently establish numerical
+correctness or verify external candidate injection.
