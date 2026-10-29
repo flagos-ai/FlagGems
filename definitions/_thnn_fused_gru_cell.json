@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "thnn_fused_gru_cell",
+  "name": "_thnn_fused_gru_cell",
   "requires_triton_kernel": true,
   "description": "Computes the fused GRU cell forward pass and backward workspace.",
   "parameters": [

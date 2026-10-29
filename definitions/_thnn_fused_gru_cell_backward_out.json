@@ -1,8 +1,8 @@
 {
   "api_version": "v6.0",
-  "name": "thnn_fused_gru_cell_backward_out",
+  "name": "_thnn_fused_gru_cell_backward_out",
   "requires_triton_kernel": true,
-  "description": "A variant of `thnn_fused_gru_cell_backward()` that writes the five gradients into\nthe provided `out0` through `out4` tensors.",
+  "description": "A variant of `thnn_fused_gru_cell_backward()` that writes the five gradients into\nthe provided `out0` through `out4` tensors. The existing Gems out interface requires has_bias=True.",
   "parameters": [
     {
       "name": "grad_hy",
@@ -61,7 +61,19 @@
     "grad_hidden_bias"
   ],
   "effects": {
-    "mutates": [],
-    "returns_alias_of": {}
+    "mutates": [
+      "out0",
+      "out1",
+      "out2",
+      "out3",
+      "out4"
+    ],
+    "returns_alias_of": {
+      "grad_input_gates": "out0",
+      "grad_hidden_gates": "out1",
+      "grad_hx": "out2",
+      "grad_input_bias": "out3",
+      "grad_hidden_bias": "out4"
+    }
   }
 }
