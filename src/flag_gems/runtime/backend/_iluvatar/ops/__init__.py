@@ -79,6 +79,7 @@ from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
+from .pinverse import pinverse
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -196,6 +197,7 @@ __all__ = [
     "nonzero_numpy",
     "pad_sequence",
     "permute_copy",
+    "pinverse",
     "randperm",
     "renorm_",
     "repeat",
