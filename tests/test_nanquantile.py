@@ -57,21 +57,67 @@ def _assert_close(result, reference, dtype, reduction_size):
     )
 
 
+def _kunlun_nanquantile_default_skip(dtype=torch.float32):
+    if flag_gems.vendor_name == "kunlunxin" and not cfg.TO_CPU:
+        if dtype == torch.float64:
+            pytest.skip("Kunlunxin native nanquantile Float64 factories narrow storage")
+        pytest.skip(
+            "Kunlunxin native nanquantile has incorrect NaN reduction semantics"
+        )
+
+
+def _tensor_nanquantile_reference(inp):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and cfg.TO_CPU
+        and inp.dtype == torch.float64
+    ):
+        # Decode actual target storage without a narrowing Float64 transfer.
+        raw = (
+            torch.empty(0, dtype=torch.uint8, device=inp.device)
+            .set_(inp.untyped_storage(), 0, (inp.untyped_storage().nbytes(),), (1,))
+            .cpu()
+        )
+        return raw.view(inp.dtype).as_strided(
+            inp.shape, inp.stride(), inp.storage_offset()
+        )
+    return utils.to_reference(inp, False)
+
+
 @pytest.mark.nanquantile
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (1, False), (-1, True)])
 def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
-    inp = _input((7, 33), dtype).T
-    q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
+    _kunlun_nanquantile_default_skip(dtype)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        inp = torch.randn((7, 33), dtype=dtype, device="cpu")
+        inp.reshape(-1)[::5] = float("nan")
+        inp = _scalar_out_target_from_cpu(inp).T
+        q = _scalar_out_target_from_cpu(
+            torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device="cpu")
+        )
+    else:
+        inp = _input((7, 33), dtype).T
+        q = torch.tensor([0.0, 0.2, 0.5, 0.8, 1.0], dtype=dtype, device=inp.device)
+    if flag_gems.vendor_name == "kunlunxin":
+        assert inp.dtype == q.dtype == dtype
+        assert inp.device == q.device
+        assert inp.device.type == torch.device(flag_gems.device).type
+        assert inp.shape == (33, 7) and q.shape == (5,)
     # Promoting q can move an exact interpolation rank across a ceil boundary.
-    ref_inp, ref_q = utils.to_reference(inp, False), utils.to_reference(q, False)
+    ref_inp, ref_q = _tensor_nanquantile_reference(inp), _tensor_nanquantile_reference(
+        q
+    )
     reference = torch.ops.aten.nanquantile.default(
         ref_inp, ref_q, dim, keepdim, interpolation=interpolation
     )
     result = flag_gems.nanquantile(
         inp, q, dim=dim, keepdim=keepdim, interpolation=interpolation
     )
+    if flag_gems.vendor_name == "kunlunxin":
+        assert result.dtype == dtype and result.device == inp.device
+        assert result.shape == reference.shape
     reduction_size = inp.numel() if dim is None else inp.shape[dim]
     _assert_close(result, reference, dtype, reduction_size)
 
@@ -230,6 +276,7 @@ def test_nanquantile_maximum_reduction_one_valid(valid_count):
 @pytest.mark.nanquantile
 @pytest.mark.parametrize("size", [1025, 2049])
 def test_nanquantile_large_q_is_tiled(size):
+    _kunlun_nanquantile_default_skip()
     inp = _input((2, size), torch.float32)
     q = torch.linspace(0, 1, 513, device=inp.device)
     reference = torch.nanquantile(
@@ -244,6 +291,7 @@ def test_nanquantile_large_q_is_tiled(size):
     "interpolation", ["linear", "lower", "higher", "nearest", "midpoint"]
 )
 def test_nanquantile_gather_interpolations(interpolation):
+    _kunlun_nanquantile_default_skip()
     inp = _input((2, 4097), torch.float32)
     q = torch.tensor([0.13, 0.51, 0.92], device=inp.device)
     reference = torch.nanquantile(
@@ -278,6 +326,8 @@ def test_nanquantile_noncontiguous_out():
 @pytest.mark.nanquantile
 @pytest.mark.parametrize("size", [1, 1024, 1025, 4097])
 def test_nanquantile_all_nan_and_path_boundaries(size):
+    if size in (1025, 4097):
+        _kunlun_nanquantile_default_skip()
     inp = torch.full((3, size), float("nan"), device=flag_gems.device)
     inp[1, 0] = -float("inf")
     inp[1, -1] = float("inf")
