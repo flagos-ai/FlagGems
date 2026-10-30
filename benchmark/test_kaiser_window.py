@@ -213,7 +213,11 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
         needs_native = (
             "latency_base" in self.to_bench_metrics and not base.Config.skip_native
         )
-        if needs_native and flag_gems.vendor_name == "enflame" and not external:
+        if (
+            needs_native
+            and flag_gems.vendor_name in ("enflame", "ascend")
+            and not external
+        ):
             raise ValueError("Missing native H800 Kaiser reference")
         if external and needs_native and self.is_backward:
             raise ValueError("Expected native/candidate latency mode")
