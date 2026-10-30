@@ -21,11 +21,13 @@ import triton.language as tl
 
 from flag_gems import runtime
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 
 device = device.name
 logger = logging.getLogger(__name__)
 
 
+@libentry()
 @triton.autotune(
     configs=runtime.get_tuned_config("upsample_nearest1d"), key=["N", "C", "OL"]
 )
