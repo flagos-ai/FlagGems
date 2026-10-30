@@ -28,24 +28,24 @@ class _CholeskyH800Baseline:
             strict=True
         )
         payload = path.read_bytes()
-        digest = "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3"
+        digest = "0bfceeb8f17e7ccf1f8ae89e458177840e0784036a4a128a896cd2482fb772c3"
         if hashlib.sha256(payload).hexdigest() != digest:
             raise ValueError(
                 "Expected the published native H800 Cholesky solve artifact"
             )
         data = json.loads(payload)
-        task = data["_collection"]["tasks"]["cholesky_solve_helper"]
+        task = data["_collection"]["tasks"]["cholesky_solve_helper_rowmajor_core"]
         environment = data["_environments"][str(task["device"])]
-        operator = data["cholesky_solve_helper"]
+        operator = data["cholesky_solve_helper_rowmajor_core"]
         records = operator["shapes"]
         if (
             task["status"] != "completed"
             or task["returncode"] != 0
             or data["_collection"]["configuration"]["repo"] != "pytorch"
-            or operator["native_api"] != "ops.cholesky_solve_helper"
+            or operator["native_api"] != "ops.cholesky_solve_helper_rowmajor_core"
             or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
             or environment["source"]["git_commit"]
-            != "ccc0508d81b3b10283a62dab73fc05e256093848"
+            != "8d6871d2b07cc52296d905905ed8ac1d284e6c4c"
             or environment["source"]["git_dirty"] is not False
             or sum(len(values) for values in records.values()) != 5
         ):
@@ -55,7 +55,7 @@ class _CholeskyH800Baseline:
         return records, dict(
             artifact=str(path),
             artifact_sha256=digest,
-            operator="cholesky_solve_helper",
+            operator="cholesky_solve_helper_rowmajor_core",
             collection_task=task,
             environment=environment,
             input_identity="Same matrix construction and full input contract; not cross-device random-byte identity",
@@ -87,6 +87,7 @@ class _CholeskyH800Baseline:
                 "Runtime inputs differ from the H800 Cholesky solve contract"
             )
         expected = dict(
+            native_expression="torch.ops.aten._cholesky_solve_helper",
             inputs=dict(
                 args=[
                     dict(
@@ -100,18 +101,33 @@ class _CholeskyH800Baseline:
                 + [False],
                 kwargs={},
             ),
-            source_commit="9d57a23b4386bd669152a935fe88a96db907da7c",
+            source_commit="2a3a455fa9eef530dc11a6b96ff333ffb47235fd",
             benchmark="benchmark/test_cholesky_solve_helper.py",
             descriptor=list(rhs.shape),
             scope="core",
             variant=0,
+            input_recipe={
+                "matrix": "randn((n,n),dtype,device) @ matrix.mT + n*eye(n)",
+                "factor": (
+                    "linalg.cholesky outside timed call; "
+                    "row-major factor matches actual original Ascend layout"
+                ),
+                "rhs": "randn((n,nrhs),dtype,device)",
+                "seed": "original torch.manual_seed(0) per case",
+            },
         )
         records, source = self._cholesky_h800_records
         matches = [
             record
             for values in records.values()
             for dtype, record in values.items()
-            if dtype == str(rhs.dtype) and record["config"] == expected
+            if dtype == str(rhs.dtype)
+            and {
+                key: value
+                for key, value in record["config"].items()
+                if key != "producer_sample"
+            }
+            == expected
         ]
         if len(matches) != 1:
             raise ValueError(
