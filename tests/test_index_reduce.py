@@ -75,7 +75,7 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     assert result.shape == inp.shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(dim))
-    utils.gems_assert_equal(inp.cpu(), snapshot.cpu())
+    utils.gems_assert_equal(inp, snapshot)
 
 
 @pytest.mark.index_reduce
