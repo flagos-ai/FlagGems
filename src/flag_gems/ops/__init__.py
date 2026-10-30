@@ -347,6 +347,7 @@ from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
+from flag_gems.ops._rowwise_prune import _rowwise_prune
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._saturate_weight_to_fp16 import _saturate_weight_to_fp16
@@ -1977,6 +1978,7 @@ __all__ = [
     "_reshape_copy",
     "_resize_output",
     "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
     "_sample_dirichlet",
     "_saturate_weight_to_fp16",

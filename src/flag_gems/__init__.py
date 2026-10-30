@@ -510,6 +510,7 @@ _FULL_CONFIG = (
     ("_reshape_copy", _reshape_copy),
     ("_resize_output", _resize_output),
     ("_resize_output_", _resize_output_),
+    ("_rowwise_prune", _rowwise_prune),
     ("_safe_softmax", _safe_softmax),
     ("_sample_dirichlet", _sample_dirichlet),
     ("_saturate_weight_to_fp16", _saturate_weight_to_fp16),
