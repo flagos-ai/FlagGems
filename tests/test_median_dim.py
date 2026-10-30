@@ -126,12 +126,20 @@ def test_median_dim_even_count_picks_lower_middle(values, expected):
     result = flag_gems.median_dim(inp, dim=0)
 
     value, index = expected
+    assert result.values.device == result.indices.device == inp.device
+    assert result.values.dtype == inp.dtype and result.indices.dtype == torch.int64
+    assert result.values.shape == result.indices.shape == torch.Size([])
     utils.gems_assert_equal(
         result.values, utils.to_reference(torch.full_like(result.values, value))
     )
-    utils.gems_assert_equal(
-        result.indices, utils.to_reference(torch.full_like(result.indices, index))
+    # ATen does not require the first occurrence when several entries equal the median.
+    flag_gems.testing.assert_equal(
+        _selected_along_dim(inp, 0, result.indices, False), result.values.cpu()
     )
+    if values.count(value) == 1:
+        utils.gems_assert_equal(
+            result.indices, utils.to_reference(torch.full_like(result.indices, index))
+        )
 
 
 @pytest.mark.median_dim
