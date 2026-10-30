@@ -858,6 +858,7 @@ _FULL_CONFIG = (
     ("bmm", bmm),
     ("bmm.out", bmm_out),
     ("bucketize.Tensor", bucketize),
+    ("can_cast", can_cast, None, ["CompositeImplicitAutograd"]),
     ("cartesian_prod", cartesian_prod),
     ("cat", cat),
     ("cat.out", cat_out),
