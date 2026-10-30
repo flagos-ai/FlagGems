@@ -69,6 +69,49 @@ def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
             return _allocate_preserve_format(inp)
         return torch.empty_like(inp, memory_format=memory_format)
 
+    # Triton has no complex dtype mapping.  Following the project convention
+    # (see detach_copy, ravel, slice_copy, etc.), complex tensors are
+    # reinterpreted through ``torch.view_as_real`` as interleaved (real, imag)
+    # pairs so the existing Triton copy kernel operates on real-valued data.
+    # ``view_as_real`` appends a trailing size-2 axis, preserving contiguity of
+    # the original layout.  For contiguous / non-overlapping-dense inputs the
+    # flat Triton kernel can be used directly; non-contiguous or non-standard
+    # memory-format requests fall back to ``Tensor.copy_`` which handles
+    # arbitrary strides natively.
+    if inp.is_complex():
+        # Resolve lazy conjugate/negative bits so view_as_real reads the
+        # logical values (same pattern as detach_copy).
+        if inp.is_conj():
+            inp = inp.resolve_conj()
+        is_neg = getattr(inp, "is_neg", None)
+        if is_neg is not None and is_neg():
+            inp = inp.resolve_neg()
+
+        if memory_format == torch.preserve_format:
+            out = _allocate_preserve_format(inp)
+            if inp.is_contiguous() or torch.ops.aten.is_non_overlapping_and_dense(inp):
+                _launch_copy(torch.view_as_real(inp), torch.view_as_real(out))
+            else:
+                out.copy_(inp)
+            return out
+
+        if memory_format == torch.contiguous_format:
+            out = torch.empty_like(inp, memory_format=torch.contiguous_format)
+            if inp.is_contiguous():
+                _launch_copy(torch.view_as_real(inp), torch.view_as_real(out))
+            else:
+                # inp.contiguous() would dispatch through clone and recurse;
+                # Tensor.copy_ handles the strided-to-contiguous copy natively.
+                out.copy_(inp)
+            return out
+
+        # Other memory formats (channels_last, etc.): view_as_real would
+        # disturb the requested layout, so fall back to native copy.
+        out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
+        out = out.to(memory_format=memory_format)
+        out.copy_(inp)
+        return out
+
     if memory_format == torch.preserve_format:
         out = _allocate_preserve_format(inp)
         # Source and destination share the same layout, so element order
