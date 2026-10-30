@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import pytest
-
 import torch
 
 import flag_gems
@@ -41,6 +40,7 @@ POOL_CONFIGS = [
     (3, 2, 1, 1, True),  # ceil_mode + padding
 ]
 
+
 def _quantized_device(value, device):
     if flag_gems.vendor_name == "ascend" and torch.device(device).type != "cpu":
         result = torch._empty_affine_quantized(
@@ -57,11 +57,16 @@ def _quantized_device(value, device):
 
 def _quantized_cpu(value):
     if flag_gems.vendor_name == "ascend" and value.device.type != "cpu":
-        int_dtype = {torch.quint8: torch.uint8, torch.qint8: torch.int8,
-                     torch.qint32: torch.int32}[value.dtype]
+        int_dtype = {
+            torch.quint8: torch.uint8,
+            torch.qint8: torch.int8,
+            torch.qint32: torch.int32,
+        }[value.dtype]
         ints = torch.empty(0, dtype=int_dtype).set_(
-            value.untyped_storage().cpu(), value.storage_offset(),
-            value.shape, value.stride(),
+            value.untyped_storage().cpu(),
+            value.storage_offset(),
+            value.shape,
+            value.stride(),
         )
         return torch._make_per_tensor_quantized_tensor(
             ints, value.q_scale(), value.q_zero_point()
@@ -72,9 +77,11 @@ def _quantized_cpu(value):
 def _make_quantized(shape, scale, zero_point, dtype, device):
     torch.manual_seed(0)
     fp = torch.randn(shape, device="cpu").clamp_(-2, 2)
-    return _quantized_device(torch.quantize_per_tensor(
-        fp, scale=scale, zero_point=zero_point, dtype=dtype
-    ), device)
+    return _quantized_device(
+        torch.quantize_per_tensor(fp, scale=scale, zero_point=zero_point, dtype=dtype),
+        device,
+    )
+
 
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize("shape", POOL_SHAPES)
@@ -119,6 +126,7 @@ def test_quantized_max_pool1d(
         reduce_dim=1,
     )
 
+
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
 def test_quantized_max_pool1d_padding_neutral(in_dtype):
@@ -140,6 +148,7 @@ def test_quantized_max_pool1d_padding_neutral(in_dtype):
     # Exact integer equality: any wrong neutral element shows up here.
     assert torch.equal(res_out.int_repr().to("cpu"), ref_out.int_repr())
 
+
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
 def test_quantized_max_pool1d_all_padding_window(in_dtype):
@@ -156,6 +165,7 @@ def test_quantized_max_pool1d_all_padding_window(in_dtype):
     assert res_out.device == res_inp.device
 
     assert torch.equal(res_out.int_repr().to("cpu"), ref_out.int_repr())
+
 
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize(
@@ -185,6 +195,7 @@ def test_quantized_max_pool1d_invalid_params(kwargs, message):
     with pytest.raises(RuntimeError, match=message):
         flag_gems.quantized_max_pool1d(res_inp, **kwargs)
 
+
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize(
     "shape, message",
@@ -202,6 +213,7 @@ def test_quantized_max_pool1d_invalid_shapes(shape, message):
     with pytest.raises(RuntimeError, match=message):
         flag_gems.quantized_max_pool1d(res_inp, 2, stride=2)
 
+
 @pytest.mark.quantized_max_pool1d
 def test_quantized_max_pool1d_empty_batch():
     res_inp = _make_quantized((0, 3, 8), 0.1, 0, torch.quint8, flag_gems.device)
@@ -211,12 +223,14 @@ def test_quantized_max_pool1d_empty_batch():
     assert tuple(res_out.shape) == tuple(ref_out.shape)
     assert res_out.numel() == 0
 
+
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)
 @pytest.mark.parametrize("layout", ["slice", "transpose", "offset"])
 def test_quantized_max_pool1d_non_contiguous_input(in_dtype, layout):
     if flag_gems.vendor_name == "ascend" and layout == "transpose":
         pytest.skip("QuantizedNPU as_strided cannot construct transposed inputs")
+
     def _view(base):
         if layout == "slice":
             return base[:, :, ::2]
@@ -237,6 +251,7 @@ def test_quantized_max_pool1d_non_contiguous_input(in_dtype, layout):
     assert res_out.device == res_inp.device
     assert torch.equal(res_out.int_repr().to("cpu"), ref_out.int_repr())
 
+
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize(
     "in_dtype, scale, zero_point",
@@ -248,13 +263,16 @@ def test_quantized_max_pool1d_non_contiguous_input(in_dtype, layout):
 )
 def test_quantized_max_pool1d_quant_params(in_dtype, scale, zero_point):
     res_inp = _make_quantized((2, 3, 16), scale, zero_point, in_dtype, flag_gems.device)
-    ref_out = torch.quantized_max_pool1d(_quantized_cpu(res_inp), 3, stride=2, padding=1)
+    ref_out = torch.quantized_max_pool1d(
+        _quantized_cpu(res_inp), 3, stride=2, padding=1
+    )
     res_out = flag_gems.quantized_max_pool1d(res_inp, 3, stride=2, padding=1)
     assert res_out.device == res_inp.device
 
     assert res_out.q_scale() == ref_out.q_scale()
     assert res_out.q_zero_point() == ref_out.q_zero_point()
     assert torch.equal(res_out.int_repr().to("cpu"), ref_out.int_repr())
+
 
 def _aten_unit_length_layout_is_broken(q_input):
     """The documented domain of the ATen layout defect described below.
@@ -264,6 +282,7 @@ def _aten_unit_length_layout_is_broken(q_input):
     silently repair it.
     """
     return q_input.dim() == 3 and q_input.shape[1] > 1 and q_input.shape[-1] == 1
+
 
 def _aten_unit_length_int_repr(out):
     """The integer result ATen's mislabelled buffer actually holds.
@@ -275,6 +294,7 @@ def _aten_unit_length_int_repr(out):
     n, c = out.shape[0], out.shape[1]
     out_l = out.shape[-1]
     return out.int_repr().reshape(n, out_l, c).permute(0, 2, 1).contiguous()
+
 
 @pytest.mark.quantized_max_pool1d
 @pytest.mark.parametrize("in_dtype", QUANT_DTYPES)

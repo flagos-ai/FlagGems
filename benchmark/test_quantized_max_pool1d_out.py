@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base
 from .generated_operator_utils import OperatorBenchmark
 
 SCALE = 0.1
@@ -53,8 +53,15 @@ def _cpu_input(value):
     twin = getattr(value, "_cpu_twin", None)
     return twin if twin is not None else value.to("cpu")
 
+
 SHAPES = [(4, 1024), (16, 4096), (32, 8192), (64, 16384), (8, 3, 1024), (16, 8, 2048)]
-PARAMS = {"kernel_size": 3, "stride": 2, "padding": 1, "dilation": 1, "ceil_mode": False}
+PARAMS = {
+    "kernel_size": 3,
+    "stride": 2,
+    "padding": 1,
+    "dilation": 1,
+    "ceil_mode": False,
+}
 
 
 class QuantizedMaxPool1dBenchmark(OperatorBenchmark):
@@ -66,24 +73,47 @@ class QuantizedMaxPool1dBenchmark(OperatorBenchmark):
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
-    out_l = (dims[-1] + 2 * PARAMS["padding"] - (PARAMS["kernel_size"] - 1) * PARAMS["dilation"] - 1) // PARAMS["stride"] + 1
-    yield base.BenchmarkCasePlan(shape={"self": list(dims), "out": list(dims[:-1] + (out_l,))}, params=dict(PARAMS), builder_args=(dims, out_l))
+    out_l = (
+        dims[-1]
+        + 2 * PARAMS["padding"]
+        - (PARAMS["kernel_size"] - 1) * PARAMS["dilation"]
+        - 1
+    ) // PARAMS["stride"] + 1
+    yield base.BenchmarkCasePlan(
+        shape={"self": list(dims), "out": list(dims[:-1] + (out_l,))},
+        params=dict(PARAMS),
+        builder_args=(dims, out_l),
+    )
 
 
 def _build_inputs_fn(plan, dtype, device):
     shape, out_l = plan.builder_args
     qx = _make_quantized(shape, device)
     out_shape = shape[:-1] + (out_l,)
-    out = torch._empty_affine_quantized(out_shape, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE, device=device)
-    out._cpu_twin = torch._empty_affine_quantized(out_shape, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE, device="cpu")
+    out = torch._empty_affine_quantized(
+        out_shape, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE, device=device
+    )
+    out._cpu_twin = torch._empty_affine_quantized(
+        out_shape, scale=SCALE, zero_point=ZERO_POINT, dtype=QDTYPE, device="cpu"
+    )
     return qx, {**PARAMS, "out": out}
 
 
 def _torch_op(qx, **kwargs):
     out = kwargs.pop("out")
-    return torch.ops.aten.quantized_max_pool1d.out(_cpu_input(qx), out=_cpu_input(out), **kwargs)
+    return torch.ops.aten.quantized_max_pool1d.out(
+        _cpu_input(qx), out=_cpu_input(out), **kwargs
+    )
 
 
 @pytest.mark.quantized_max_pool1d_out
 def test_quantized_max_pool1d_out():
-    QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d_out", torch_op=_torch_op, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE], is_inplace=True, fresh_inputs=True).run()
+    QuantizedMaxPool1dBenchmark(
+        op_name="quantized_max_pool1d_out",
+        torch_op=_torch_op,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[QDTYPE],
+        is_inplace=True,
+        fresh_inputs=True,
+    ).run()
