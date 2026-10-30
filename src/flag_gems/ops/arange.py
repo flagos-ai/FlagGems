@@ -31,12 +31,11 @@ logger = logging.getLogger(__name__)
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(0)
     y_ptr += pid * BLOCK_SIZE
-    step_offset = pid * BLOCK_SIZE * step
+    offsets = pid * BLOCK_SIZE
 
     cols = tl.arange(0, BLOCK_SIZE)
-    arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
+    arange_val = (cols + offsets) * step + start
+    tl.store(y_ptr + cols, arange_val, mask=cols + offsets < size)
 
 
 def arange_start(
@@ -52,22 +51,23 @@ def arange_start(
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
-        if dtype is torch.int64 and (
-            isinstance(step, float)
-            or isinstance(start, float)
-            or isinstance(end, float)
-        ):
-            int_step = int(step)
-            if int_step == 0:
-                raise RuntimeError("step must be nonzero")
+        if dtype is None:
+            if (isinstance(step, float)
+                or isinstance(start, float)
+                or isinstance(end, float)
+            ):
+                dtype = torch.get_default_dtype()
+            else:
+                dtype = torch.int64
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
+        if not dtype.is_floating_point:
+            start, step = int(start), int(step)
     size = int(size)
 
     BLOCK_SIZE = 128
     grid = triton.cdiv(size, BLOCK_SIZE)
-
-    if dtype is None:
-        dtype = torch.int64
 
     if pin_memory is None:
         pin_memory = False
