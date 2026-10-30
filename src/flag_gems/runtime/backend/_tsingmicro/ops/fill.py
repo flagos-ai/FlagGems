@@ -23,7 +23,7 @@ from flag_gems.utils import libentry, libtuner
 
 TOTAL_CORE_NUM = torch_device_fn.get_device_properties().multi_processor_count
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @libentry()

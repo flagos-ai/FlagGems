@@ -40,6 +40,7 @@ import flag_gems
 from .accuracy_utils import (
     gems_assert_close,
     gems_assert_equal,
+    gems_log_logger,
     gems_log_prefix,
     to_reference,
 )
@@ -132,7 +133,7 @@ def _check_liveness(name, caplog):
     if flag_gems.device != "cuda":
         return
     want = f"{gems_log_prefix(_gems_op(name))} _FOREACH_{name.upper()}_"
-    logger_name = "flag_gems.ops._foreach_unary"
+    logger_name = gems_log_logger(_gems_op(name))
 
     with caplog.at_level(logging.DEBUG, logger=logger_name):
         # Negative control: the ATen reference must not emit the record.

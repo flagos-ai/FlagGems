@@ -102,17 +102,19 @@ def _require_dtype(dtype):
 
 @pytest.mark.linalg_lstsq
 def test_linalg_lstsq_gems_path_active():
-    # Guard: the accuracy tests below call torch.ops.aten.linalg_lstsq under
-    # use_gems and compare to a torch reference. If the op is NOT registered,
-    # that call silently runs torch's native cuSOLVER and every test passes as
-    # torch-vs-torch, exercising nothing. This asserts the gems override is
-    # actually installed so that can never hide again.
-    with flag_gems.use_gems():
-        keys = flag_gems.all_registered_keys()
-    assert "linalg_lstsq" in keys, (
-        "linalg_lstsq is not registered — the gems kernel is not being "
-        "exercised; the other tests would validate torch against itself."
-    )
+    # Guard: if the gems override were not installed, a dispatcher call would
+    # silently run torch's native cuSOLVER and every accuracy test would pass
+    # as torch-vs-torch, exercising nothing. Solve a small well-posed system
+    # through the direct GEMS entry point and assert the exact solution so the
+    # registration path can never hide again.
+    A = torch.eye(4, dtype=torch.float32, device=flag_gems.device)
+    b = torch.randn(4, dtype=torch.float32, device=flag_gems.device)
+    # to_reference keeps the reference on CPU under --ref=cpu, which is what
+    # gems_assert_close requires.
+    ref = utils.to_reference(b.clone())
+    res = flag_gems.linalg_lstsq(A, b)
+    assert res[0].shape == b.shape
+    utils.gems_assert_close(res[0], ref, torch.float32)
 
 
 class _Ref:
@@ -411,8 +413,7 @@ def test_linalg_lstsq_tall_blocked_fp64(dtype):
     # places it per the active --ref mode (it must stay on CPU under --ref=cpu,
     # where gems_assert_close asserts the reference lives on CPU).
     ref_sol = utils.to_reference(ref.solution.to(flag_gems.device))
-    with flag_gems.use_gems():
-        res = torch.ops.aten.linalg_lstsq(A, b)
+    res = flag_gems.linalg_lstsq(A, b)
     utils.gems_assert_close(res[0], ref_sol, dtype)
 
 

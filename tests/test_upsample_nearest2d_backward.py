@@ -162,6 +162,7 @@ def _reference(grad_output, output_size, input_size, sh, sw):
         "mthreads",
         "hygon",
         "iluvatar",
+        "thead",
         "metax",
     ):
         return _ceil_cpu_reference(grad_output, output_size, input_size, sh, sw)
@@ -339,7 +340,18 @@ def test_upsample_nearest2d_backward_native_device_scales(case, variant):
         else {"grad_input": torch.empty_like(_tensor(shape, torch.float32))}
     )
     native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
-    expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
+    if flag_gems.vendor_name == "amd":
+        # ROCm's device kernel mis-maps explicit scales that disagree with
+        # size/shape (its forward differs from CPU too); use the CPU kernel.
+        cpu_kwargs = (
+            {}
+            if variant == "default"
+            else {"grad_input": torch.empty(shape, dtype=torch.float32)}
+        )
+        expected = native(grad_output.cpu(), size, shape, sh, sw, **cpu_kwargs)
+        expected = expected.to(grad_output.device)
+    else:
+        expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
     if variant == "default":
         actual = flag_gems.ops.upsample_nearest2d_backward(
             grad_output, size, shape, sh, sw
@@ -368,6 +380,7 @@ def _check_scale_contract(case, layout, variant):
         "mthreads",
         "hygon",
         "iluvatar",
+        "thead",
         "metax",
     ):
         expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)
@@ -377,7 +390,17 @@ def _check_scale_contract(case, layout, variant):
     stride = output.stride()
     kwargs = {} if variant == "default" else {"grad_input": output}
     native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
-    native_result = native(grad_output, size, shape, sh, sw, **kwargs)
+    if flag_gems.vendor_name == "amd":
+        # Follow the existing AMD reference convention for inconsistent scales.
+        # Gems still runs on the device and is checked against the independent oracle.
+        cpu_kwargs = (
+            {}
+            if variant == "default"
+            else {"grad_input": torch.empty(shape, dtype=torch.float32)}
+        )
+        native_result = native(grad_output.cpu(), size, shape, sh, sw, **cpu_kwargs)
+    else:
+        native_result = native(grad_output, size, shape, sh, sw, **kwargs)
     # muDNN applies explicit scales even for equal spatial sizes. Keep the
     # independent identity check for Gems rather than treating muDNN as its oracle.
     if not (flag_gems.vendor_name == "mthreads" and tuple(shape[-2:]) == tuple(size)):
@@ -594,6 +617,7 @@ def test_upsample_nearest2d_backward_uint8(variant, case, layout):
             "mthreads",
             "hygon",
             "iluvatar",
+            "thead",
             "metax",
         ):
             expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)

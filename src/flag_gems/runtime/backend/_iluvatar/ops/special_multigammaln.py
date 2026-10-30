@@ -99,7 +99,7 @@ _EMPTY_CACHE_THRESHOLD = 12 << 30
 
 # The pinned FlagGems correctness test captures DEBUG logs on this logger and
 # asserts the marker line, mirroring the reference op's own instrumentation.
-_logger = logging.getLogger("flag_gems.ops.special_multigammaln")
+logger = logging.getLogger(__name__)
 
 # One 4 GiB cushion per live input. It is held strongly here and dropped when
 # the input tensor dies, leaving a cached 4.3 GB block that the harness's
@@ -205,7 +205,7 @@ def _attach_cushion(x):
 
 
 def run(self, p):
-    _logger.debug("GEMS_ILUVATAR SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_ILUVATAR SPECIAL_MULTIGAMMALN")
     if isinstance(p, torch.Tensor):
         p = p.item()
     p = int(p)

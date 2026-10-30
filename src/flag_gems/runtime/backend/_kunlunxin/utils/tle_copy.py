@@ -57,7 +57,7 @@ import triton
 import triton.language as tl
 from triton.runtime import driver
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 try:
     # `.language` carries both surfaces: `tle.gpu` for the cluster/LM path and

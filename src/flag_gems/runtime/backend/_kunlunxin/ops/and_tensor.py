@@ -20,10 +20,7 @@ import triton.language as tl
 
 from .bitwise_and import bitwise_and_tensor
 
-# Use the generic op's logger name so the functional test's
-# ``caplog.at_level("DEBUG", logger="flag_gems.ops.and_tensor")`` assertion on
-# the "GEMS AND" message still fires from this backend override.
-logger = logging.getLogger("flag_gems.ops.and_tensor")
+logger = logging.getLogger(__name__)
 
 # Below this element count the tuned pointwise_dynamic path is dominated by its
 # Python-side rank/stride analysis + task build (host overhead), so a flat 1-D

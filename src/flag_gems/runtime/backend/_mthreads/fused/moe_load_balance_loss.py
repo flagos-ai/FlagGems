@@ -62,7 +62,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
-logger = logging.getLogger("flag_gems.ops.moe_load_balancing_loss")
+logger = logging.getLogger(__name__)
 
 
 _NUM_WARPS = 8
