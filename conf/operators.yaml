@@ -4603,6 +4603,23 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_ctc_loss
+  description: |
+    Triton kernel implementation of the cuDNN connectionist temporal
+    classification (CTC) loss. It returns the per-batch negative log
+    likelihood together with the gradient of the loss w.r.t. `log_probs`.
+    The backward pass is computed eagerly, matching the cuDNN contract of
+    returning the gradient as a plain tensor.
+  for:
+    - _cudnn_ctc_loss
+    - _cudnn_ctc_loss.Tensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - NeuralNetwork
+  stages:
+    - alpha: '5.5.0'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
     the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and

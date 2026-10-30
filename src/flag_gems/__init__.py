@@ -173,6 +173,8 @@ _FULL_CONFIG = (
     ("_ctc_loss_backward.Tensor", _ctc_loss_backward),
     ("_cudnn_attention_backward", cudnn_attention_backward),
     ("_cudnn_attention_forward", cudnn_attention_forward),
+    ("_cudnn_ctc_loss", cudnn_ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_cudnn_ctc_loss.Tensor", cudnn_ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_cudnn_rnn", cudnn_rnn),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
     ("_cummax_helper", _cummax_helper),
