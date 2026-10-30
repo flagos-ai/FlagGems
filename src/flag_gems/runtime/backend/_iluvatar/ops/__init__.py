@@ -83,6 +83,7 @@ from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
+from .replication_pad1d_backward import replication_pad1d_backward
 from .resolve_neg import resolve_neg
 from .scatter_add import scatter_add_
 from .softplus import softplus_backward
@@ -200,6 +201,7 @@ __all__ = [
     "renorm_",
     "repeat",
     "repeat_interleave_self_int",
+    "replication_pad1d_backward",
     "resolve_neg",
     "run",
     "scatter_add_",
