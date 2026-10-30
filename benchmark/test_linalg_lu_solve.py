@@ -168,7 +168,7 @@ class LinalgLuSolveBenchmark(OperatorBenchmark):
             config=config,
             target_timing_mode=base.Config.mode.value,
             original_runtime_kwargs={},
-            resolved_native_defaults=dict(left=True, adjoint=False)
+            resolved_native_defaults=dict(left=True, adjoint=False),
         )
         return us / 1000
 
