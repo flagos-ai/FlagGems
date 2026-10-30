@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import base, consts, utils
+from .test_fractional_max_pool2d import _FractionalBackwardH800Mixin
 
 SHAPES = [
     (4, 3, 32, 32),
@@ -52,7 +53,11 @@ def _fractional_backward_forward_fixture(
     return output.to(device=inp.device, dtype=inp.dtype), indices.to(device=inp.device)
 
 
-class FractionalMaxPool2DBackwardBenchmark(base.GenericBenchmark):
+class FractionalMaxPool2DBackwardBenchmark(
+    _FractionalBackwardH800Mixin, base.GenericBenchmark
+):
+    _h800_namespace = "split"
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = SHAPES
         self.shape_desc = "N, C, H, W"
