@@ -15,6 +15,7 @@
 import importlib
 
 from ..utils.pointwise_dynamic import ModuleGenerator
+from ._ctc_loss import _ctc_loss
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .acos_ import acos_
@@ -37,7 +38,6 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
-from ._ctc_loss import _ctc_loss
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
