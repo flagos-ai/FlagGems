@@ -12,12 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
 import pytest
 import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 SCALE = 0.1
@@ -49,9 +51,52 @@ def _make_quantized(shape, device):
     return result
 
 
+def _quantized_cpu(value):
+    if flag_gems.vendor_name == "ascend" and value.device.type != "cpu":
+        int_dtype = {
+            torch.quint8: torch.uint8,
+            torch.qint8: torch.int8,
+            torch.qint32: torch.int32,
+        }[value.dtype]
+        ints = torch.empty(0, dtype=int_dtype).set_(
+            value.untyped_storage().cpu(),
+            value.storage_offset(),
+            value.shape,
+            value.stride(),
+        )
+        return torch._make_per_tensor_quantized_tensor(
+            ints, value.q_scale(), value.q_zero_point()
+        )
+    return value.to("cpu")
+
+
+def _clone_pool_inputs(value):
+    if isinstance(value, torch.Tensor):
+        if value.is_quantized and value.device.type == "npu":
+            # Own core plans use contiguous per-tensor quantized tensors. Build
+            # a genuine independent target clone before each timed call.
+            assert value.is_contiguous() and not value.requires_grad
+            clone = torch._empty_affine_quantized(
+                value.shape,
+                scale=value.q_scale(),
+                zero_point=value.q_zero_point(),
+                dtype=value.dtype,
+                device=value.device,
+            )
+            clone.untyped_storage().copy_(value.untyped_storage())
+            clone._cpu_twin = _quantized_cpu(clone)
+            return clone
+        return value.detach().clone().requires_grad_(value.requires_grad)
+    if isinstance(value, (tuple, list)):
+        return type(value)(_clone_pool_inputs(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _clone_pool_inputs(item) for key, item in value.items()}
+    return value
+
+
 def _cpu_input(value):
     twin = getattr(value, "_cpu_twin", None)
-    return twin if twin is not None else value.to("cpu")
+    return twin if twin is not None else _quantized_cpu(value)
 
 
 SHAPES = [(4, 1024), (16, 4096), (32, 8192), (64, 16384), (8, 3, 1024), (16, 8, 2048)]
@@ -65,6 +110,65 @@ PARAMS = {
 
 
 class QuantizedMaxPool1dBenchmark(OperatorBenchmark):
+    def _get_fresh_input_latency(self, op, args, kwargs):
+        if flag_gems.vendor_name != "ascend":
+            return super()._get_fresh_input_latency(op, args, kwargs)
+        # Each sample starts from an independent snapshot. Input restoration
+        # happens before the start event/clock, never inside the measured call.
+        if self.is_backward:
+            raise ValueError("Fresh-input backward measurement is not supported")
+        if getattr(base.Config, "reference_only", False):
+            fresh_args, fresh_kwargs = _clone_pool_inputs((args, kwargs))
+            return base.GenericBenchmark.get_latency(
+                self, op, *fresh_args, **fresh_kwargs
+            )
+        if base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError(
+                "State-changing benchmarks require fresh inputs; use kernel or operator mode"
+            )
+        if base.Config.mode not in (
+            consts.BenchMode.KERNEL,
+            consts.BenchMode.OPERATOR,
+            consts.BenchMode.WRAPPER,
+        ):
+            raise ValueError("Undefined Value of Benchmark Mode.")
+        device_timing = base.Config.mode == consts.BenchMode.KERNEL
+        if device_timing and not hasattr(base.torch_device_fn, "Event"):
+            raise ValueError("Backend has no event timer for fresh-input measurements")
+
+        def sample():
+            fresh_args, fresh_kwargs = _clone_pool_inputs((args, kwargs))
+            base.torch_device_fn.synchronize()
+            if device_timing:
+                start = base.torch_device_fn.Event(enable_timing=True)
+                end = base.torch_device_fn.Event(enable_timing=True)
+                start.record()
+                result = op(*fresh_args, **fresh_kwargs)
+                end.record()
+                end.synchronize()
+                elapsed = start.elapsed_time(end)
+            else:
+                start = time.perf_counter()
+                result = op(*fresh_args, **fresh_kwargs)
+                if base.Config.mode == consts.BenchMode.OPERATOR:
+                    base.torch_device_fn.synchronize()
+                elapsed = (time.perf_counter() - start) * 1000
+            del result
+            if elapsed <= 0:
+                raise RuntimeError("Fresh-input timer returned a nonpositive latency")
+            return elapsed
+
+        warmup_elapsed = 0.0
+        while warmup_elapsed < base.Config.warm_up:
+            warmup_elapsed += sample()
+        measured = []
+        elapsed = 0.0
+        while not measured or elapsed < base.Config.repetition:
+            value = sample()
+            measured.append(value)
+            elapsed += value
+        return sum(measured) / len(measured)
+
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "N[, C], L"
