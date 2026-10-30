@@ -213,6 +213,7 @@ class _AscendNextafterBaseline:
             artifact_sha256=digest,
             config=expected,
             environment=environment,
+            environment_scope="artifact last-worker environment header; per-profile selected-op provenance is retained in the original worker results",
             input_identity="exact recipes and joint configuration; independent random payloads",
             target_timing_mode=base.Config.mode.value,
             target_implementation="injected/default candidate timed locally; implementation not inferred",
