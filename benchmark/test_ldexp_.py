@@ -208,12 +208,15 @@ class _LdexpStaticBaseline:
 
     def _measure_input(self, input, case_id=None):
         external = bool(os.environ.get("FLAGGEMS_NV_BASELINE"))
-        if flag_gems.vendor_name == "enflame" and not external:
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if needs_native and flag_gems.vendor_name == "enflame" and not external:
             raise ValueError("Missing fresh native H800 ldexp reference")
-        if external and (self.is_backward or base.Config.skip_native):
+        if external and needs_native and self.is_backward:
             raise ValueError("Expected native/candidate latency mode")
         self._baseline_source = None
-        self._native_pending = external and "latency_base" in self.to_bench_metrics
+        self._native_pending = external and needs_native
         try:
             metric = super()._measure_input(input, case_id)
             if self._baseline_source is not None:
