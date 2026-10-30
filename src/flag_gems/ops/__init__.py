@@ -1277,6 +1277,7 @@ from flag_gems.ops.randint_like import randint_like
 from flag_gems.ops.randn import randn
 from flag_gems.ops.randn_like import randn_like
 from flag_gems.ops.randperm import randperm
+from flag_gems.ops.random_ import random_, random_from
 from flag_gems.ops.range import range
 from flag_gems.ops.ravel import ravel
 from flag_gems.ops.real import real, real_conjugate, real_device
@@ -2927,6 +2928,8 @@ __all__ = [
     "randint_like",
     "randn",
     "randn_like",
+    "random_",
+    "random_from",
     "randperm",
     "range",
     "ravel",
