@@ -1843,6 +1843,8 @@ _FULL_CONFIG = (
     ("slice_copy.Tensor_out", slice_copy_out),
     ("slice_scatter", slice_scatter),
     ("slogdet", slogdet),
+    ("slow_conv_dilated2d", slow_conv_dilated2d),
+    ("slow_conv_dilated2d.out", slow_conv_dilated2d_out),
     ("slow_conv_transpose2d", slow_conv_transpose2d),
     ("slow_conv_transpose3d", slow_conv_transpose3d),
     ("smm", smm, None, (SPARSE_CUDA_DISPATCH_KEY,)),

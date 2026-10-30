@@ -18922,6 +18922,34 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+- id: slow_conv_dilated2d
+  description: Applies a 2D dilated convolution over an input signal composed of
+    several input planes, using the slow (non-cuDNN) reference path. The operator
+    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
+    and supports an optional bias.
+  for:
+  - slow_conv_dilated2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_dilated2d_out
+  description: 'A variant of slow_conv_dilated2d() that writes the result into the
+    out tensor.
+
+    '
+  for:
+  - slow_conv_dilated2d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: slow_conv_transpose2d
   description: |
     Applies a 2D transposed convolution operator over an input image composed of
