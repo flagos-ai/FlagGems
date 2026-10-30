@@ -253,6 +253,7 @@ def _is_fast_path(self, tensor1, tensor2):
 
 
 def _fast_path(self, tensor1, tensor2, value):
+    # _resolve_scalars returns (values, common, value_class).
     values, _, _ = foreach._resolve_scalars(self, value)
     dtype = self[0].dtype
     device = self[0].device
