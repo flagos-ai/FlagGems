@@ -19223,6 +19223,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - stable: '3.0'
+- id: sparse_addmm
+  description: |
+    Computes beta * self + alpha * (mat1 @ mat2), where mat1 is a sparse 2-D
+    tensor (CSR/CSC/COO) and self and mat2 are dense. The result is a dense
+    (M, N) tensor; self follows the standard addmm bias broadcasting rules.
+  for:
+  - _sparse_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
+- id: sparse_addmm_out
+  description: |
+    A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)
+    into the provided dense out tensor.
+  for:
+  - _sparse_addmm.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_attn_triton
   description: Sparse attention with attention-sink.
   for:
