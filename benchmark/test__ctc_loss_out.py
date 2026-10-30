@@ -24,6 +24,19 @@ CTC_DTYPES = [torch.float32, torch.float64]
 
 
 class CtcLossOutBenchmark(OperatorBenchmark):
+    def build_inputs(self, case):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if (
+            flag_gems.vendor_name == "ascend"
+            and case.dtype == torch.float64
+            and needs_native
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Ascend native CTC Float64 input conversion narrows to Float32")
+        return super().build_inputs(case)
+
     DEFAULT_SHAPES = [
         (64, 4, 32, 16),
         (256, 16, 64, 48),
@@ -55,6 +68,17 @@ def _case_fn(shape, dtype):
     )
 
 
+def _ascend_double(value, device):
+    return (
+        value.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .to(device)
+        .view(torch.float64)
+        .reshape(value.shape)
+    )
+
+
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
@@ -64,14 +88,28 @@ def _build_inputs_fn(plan, dtype, device):
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
-    log_probs = raw.log_softmax(-1).to(dtype)
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        log_probs = _ascend_double(raw.log_softmax(-1).cpu().double(), device)
+    else:
+        log_probs = raw.log_softmax(-1).to(dtype)
     targets = torch.randint(
         1, classes, (batch, max_target), dtype=torch.long, device=device
     )
     input_lengths = [t_steps] * batch
     target_lengths = [max_target] * batch
-    out0 = torch.empty(batch, dtype=dtype, device=device)
-    out1 = torch.empty(batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device)
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        out0 = _ascend_double(torch.empty(batch, dtype=dtype, device="cpu"), device)
+        out1 = _ascend_double(
+            torch.empty(batch, t_steps, 2 * max_target + 1, dtype=dtype, device="cpu"),
+            device,
+        )
+        assert log_probs.dtype == out0.dtype == out1.dtype == dtype
+        assert log_probs.device == out0.device == out1.device
+    else:
+        out0 = torch.empty(batch, dtype=dtype, device=device)
+        out1 = torch.empty(
+            batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device
+        )
     return (
         log_probs,
         targets,

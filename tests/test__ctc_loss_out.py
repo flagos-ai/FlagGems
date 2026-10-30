@@ -34,10 +34,18 @@ def _to_target_double(value):
     )
     assert result.dtype == torch.float64
     assert result.shape == value.shape
+    if flag_gems.vendor_name == "ascend":
+        assert result.device.type == torch.device(flag_gems.device).type
+        assert result.device.index == flag_gems.runtime.torch_device_fn.current_device()
+        assert result.untyped_storage().nbytes() == value.numel() * value.element_size()
     return result
 
 
 def _log_probs(raw, dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        if not utils.TO_CPU:
+            pytest.skip("Ascend native CTC Float64 input conversion narrows to Float32")
+        return _to_target_double(raw.log_softmax(-1).cpu().double())
     if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
         if not utils.TO_CPU:
             pytest.skip(
@@ -51,7 +59,20 @@ def _log_probs(raw, dtype):
     return raw.log_softmax(-1).to(dtype)
 
 
+def _double_to_cpu(value):
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=value.device)
+        .set_(value.untyped_storage(), 0, (value.untyped_storage().nbytes(),), (1,))
+        .cpu()
+    )
+    return raw.view(value.dtype).as_strided(
+        value.shape, value.stride(), value.storage_offset()
+    )
+
+
 def _reference_probs(value):
+    if flag_gems.vendor_name == "ascend" and value.dtype == torch.float64:
+        return _double_to_cpu(value).clone().detach()
     if flag_gems.vendor_name == "iluvatar" and value.dtype == torch.float64:
         return value.cpu().clone().detach()
     # Clone on CPU before Double device clone/cast can narrow the input on KU.
@@ -66,10 +87,20 @@ def _assert_ctc_result(result, reference, dtype, *, reduce_dim):
     assert result.dtype == dtype
     assert result.shape == reference.shape
     # Observe values only after checking the target contract.
-    gems_assert_close(result.cpu(), reference.cpu(), dtype, reduce_dim=reduce_dim)
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        gems_assert_close(
+            _double_to_cpu(result),
+            _double_to_cpu(reference),
+            dtype,
+            reduce_dim=reduce_dim,
+        )
+    else:
+        gems_assert_close(result.cpu(), reference.cpu(), dtype, reduce_dim=reduce_dim)
 
 
 def _empty_output(shape, dtype):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        return _to_target_double(torch.empty(shape, dtype=dtype, device="cpu"))
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         return _to_target_double(torch.empty(shape, dtype=dtype, device="cpu"))
     return torch.empty(shape, dtype=dtype, device=flag_gems.device)
