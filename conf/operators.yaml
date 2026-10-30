@@ -16433,6 +16433,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.5'
+- id: quantize_per_tensor_dynamic
+  description: |
+    Dynamically quantizes a float32 tensor to qint8 or quint8: the per-tensor
+    scale and zero point are derived from the input's min/max at runtime
+    (range extended to zero, small-scale cutoff, nudged integer zero point,
+    halved grid under reduce_range), then each element is stored as
+    round-half-to-even(x / scale) + zero_point clamped to the integer range.
+  for:
+  - quantize_per_tensor_dynamic
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
+- id: quantize_per_tensor_dynamic_out
+  description: |
+    A variant of `quantize_per_tensor_dynamic()` that writes the result into
+    the `out` quantized tensor with the dynamically computed quantizer.
+  for:
+  - quantize_per_tensor_dynamic.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
 - id: quantize_per_tensor_out
   description: |
     A variant of `quantize_per_tensor()` that writes the result into the `out`

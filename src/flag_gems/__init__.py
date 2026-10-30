@@ -1651,6 +1651,18 @@ _FULL_CONFIG = (
     ("quantize_per_tensor", quantize_per_tensor),
     ("quantize_per_tensor.out", quantize_per_tensor_out),
     (
+        "quantize_per_tensor_dynamic",
+        quantize_per_tensor_dynamic,
+        None,
+        (QUANTIZED_DISPATCH_KEY,),
+    ),
+    (
+        "quantize_per_tensor_dynamic.out",
+        quantize_per_tensor_dynamic_out,
+        None,
+        (QUANTIZED_DISPATCH_KEY,),
+    ),
+    (
         "quantized_batch_norm",
         quantized_batch_norm,
         None,
