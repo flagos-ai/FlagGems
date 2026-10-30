@@ -31,12 +31,21 @@ def _case_fn(shape, dtype, align_corners=False):
     output_size = (depth * 2, new_height * 2, width * 2)
     yield base.BenchmarkCasePlan(
         shape={"grad_output": [batch, channel, *output_size]},
-        params={"output_size": list(output_size), "input_size": list(input_size), "align_corners": align_corners},
+        params={
+            "output_size": list(output_size),
+            "input_size": list(input_size),
+            "align_corners": align_corners,
+        },
         builder_args=(input_size, output_size, align_corners),
     )
 
 
 def _build_inputs_fn(plan, dtype, device):
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float16,
+        torch.bfloat16,
+    ):
+        pytest.skip("Kunlunxin native trilinear3d backward supports float32 only")
     torch.manual_seed(0)
     input_size, output_size, align_corners = plan.builder_args
     grad_output = torch.randn(
@@ -62,7 +71,6 @@ def test_upsample_trilinear3d_backward(align_corners):
     UpsampleBenchmark(
         op_name="upsample_trilinear3d_backward",
         torch_op=torch.ops.aten.upsample_trilinear3d_backward.default,
-        gems_op=flag_gems.upsample_trilinear3d_backward,
         case_fn=case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
