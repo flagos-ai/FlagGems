@@ -303,8 +303,13 @@ def _launch(a2d, dst, n):
         # Preserve the explicit TwoSum/TwoProd rounding boundaries. Only the
         # product-error extraction uses an explicitly requested fused FMA.
         _tensorinv_residual_kernel[grid](
-            a2d, inverse, residual, n, BLOCK=block,
-            num_warps=4, enable_fp_fusion=False,
+            a2d,
+            inverse,
+            residual,
+            n,
+            BLOCK=block,
+            num_warps=4,
+            enable_fp_fusion=False,
         )
         target = working if step == 0 else dst
         _tensorinv_refine_kernel[grid](
