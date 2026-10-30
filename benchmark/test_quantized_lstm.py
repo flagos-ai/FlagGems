@@ -39,9 +39,20 @@ def _case_fn(shape, dtype):
     )
 
 
+def _quantized_engine():
+    # oneDNN preserves CellParamsBase/linear_unpack on Ascend CPU builds
+    # that do not provide FBGEMM.
+    if (
+        flag_gems.vendor_name == "ascend"
+        and "fbgemm" not in torch.backends.quantized.supported_engines
+    ):
+        return "onednn"
+    return "fbgemm"
+
+
 def _pack(input_size, hidden_size, device, dtype):
     original_engine = torch.backends.quantized.engine
-    torch.backends.quantized.engine = "fbgemm"
+    torch.backends.quantized.engine = _quantized_engine()
     try:
         w_ih = torch.randn(4 * hidden_size, input_size) * 0.3
         w_hh = torch.randn(4 * hidden_size, hidden_size) * 0.3
