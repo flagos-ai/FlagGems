@@ -710,6 +710,9 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
+    # `_descriptor_cache_key` memoizes the resolved descriptor type; drop the
+    # memoized value so the patched module is actually used (test isolation).
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
