@@ -111,13 +111,15 @@ def cudnn_attn_forward_native(
         scale=scale,
     )
     out_bhsd = results[0]
-    lse_4d = results[1]
+    raw_lse = results[1]
     philox_seed = results[2]
     philox_offset = results[3]
 
     out = out_bhsd.permute(0, 2, 1, 3).contiguous()
-    lse = lse_4d.squeeze(-1).float()
-    return out, lse, philox_seed, philox_offset
+    # FlagGems backward always expects 3-D (B, H, S); the aten backward
+    # expects the *same* layout returned by the aten forward.
+    lse = raw_lse.squeeze(-1).float()
+    return out, lse, raw_lse.float(), philox_seed, philox_offset
 
 
 def efficient_attn_forward_native(
@@ -377,7 +379,7 @@ def test_scaled_dot_product_cudnn_attention_backward(
             * 0.1
         )
 
-    out, lse, philox_seed, philox_offset = cudnn_attn_forward_native(
+    out, lse, raw_lse, philox_seed, philox_offset = cudnn_attn_forward_native(
         Q,
         K,
         V,
@@ -392,17 +394,17 @@ def test_scaled_dot_product_cudnn_attention_backward(
     out_bhsd = out.permute(0, 2, 1, 3).contiguous()
     dOut_bhsd = dOut.permute(0, 2, 1, 3).contiguous()
 
-    # The aten cudnn backward kernel exists only for the CUDA backend, so the
-    # reference inputs stay on the accelerator even under --ref cpu. The cudnn
-    # backward indexes the stats input as a 4D (B, H, S, 1) tensor; a squeezed
-    # 3D view is rejected by cuDNN Frontend with "The dim for input_names::Stats
-    # is invalid" on the first call in a process.
+    # The aten cudnn backward kernel exists only for the CUDA backend, so
+    # reference inputs stay on the accelerator even under --ref cpu.
+    # Pass `raw_lse` (the original logsumexp shape from forward) directly to
+    # the aten backward so the Stats layout always matches what cuDNN expects,
+    # regardless of PyTorch / cuDNN version.
     ref_dOut_bhsd = dOut_bhsd
     ref_Q_bhsd = Q_bhsd
     ref_K_bhsd = K_bhsd
     ref_V_bhsd = V_bhsd
     ref_out_bhsd = out_bhsd
-    ref_lse = lse.unsqueeze(-1)
+    ref_lse = raw_lse
 
     (
         ref_dQ_bhsd,
