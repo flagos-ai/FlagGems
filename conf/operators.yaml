@@ -19494,6 +19494,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_sparse_matmul
+  description: 'SpGEMM: multiplies two 2-D sparse COO matrices with a five-phase
+    Triton pipeline (B-CSR grouping, dense-flag/product accumulation, exact per-row
+    counting and row-major emission); the output is a coalesced row-major COO whose
+    support set is the deterministic intersection pattern with structural zeros
+    preserved.
+
+    '
+  for:
+  - _sparse_sparse_matmul
+  - _sparse_sparse_matmul.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: spdiags
   description: Triton kernel implementation for _spdiags that builds a sparse matrix
     from diagonals.
