@@ -35,15 +35,50 @@ def _make_args(shape, dtype, threshold=0.5):
     return grad, inp, mask
 
 
+def _wide_to_device(value):
+    return (
+        value.contiguous()
+        .view(torch.uint8)
+        .to(flag_gems.device)
+        .view(value.dtype)
+        .reshape(value.shape)
+    )
+
+
+def _reference_input(value):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and utils.TO_CPU
+        and value.dtype == torch.float64
+    ):
+        return (
+            value.contiguous()
+            .view(torch.uint8)
+            .cpu()
+            .view(value.dtype)
+            .reshape(value.shape)
+        )
+    return utils.to_reference(value)
+
+
 def _assert_matches_reference(grad, inp, mask):
     ref = torch.ops.aten.masked_select_backward.default(
-        utils.to_reference(grad),
-        utils.to_reference(inp),
-        utils.to_reference(mask),
+        _reference_input(grad),
+        _reference_input(inp),
+        _reference_input(mask),
     )
     result = flag_gems.masked_select_backward(grad, inp, mask)
-    utils.gems_assert_equal(result, ref)
+    assert result.device == inp.device and result.dtype == inp.dtype
+    assert result.shape == ref.shape
     assert result.stride() == ref.stride()
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and utils.TO_CPU
+        and inp.dtype == torch.float64
+    ):
+        utils.gems_assert_equal(_reference_input(result), ref)
+    else:
+        utils.gems_assert_equal(result, ref)
 
 
 @pytest.mark.masked_select_backward
@@ -77,13 +112,11 @@ def test_accuracy_masked_select_backward_mask_extremes(shape, threshold):
 def test_accuracy_masked_select_backward_extended_dtypes(dtype):
     if (
         flag_gems.vendor_name == "kunlunxin"
-        and dtype in (torch.bool, torch.complex64)
+        and dtype in (torch.bool, torch.float64, torch.complex64)
         or flag_gems.vendor_name == "ascend"
         and dtype.is_complex
     ) and not utils.TO_CPU:
-        pytest.skip(
-            "backend native masked_select_backward reference lacks this bool/complex dtype"
-        )
+        pytest.skip("backend native masked_select_backward reference lacks this dtype")
     torch.manual_seed(0)
     shape = (73, 71)
     mask = torch.rand(shape, device=flag_gems.device) < 0.4
@@ -100,6 +133,9 @@ def test_accuracy_masked_select_backward_extended_dtypes(dtype):
         grad = torch.randn(int(mask.sum()), dtype=dtype, device=factory_device).to(
             flag_gems.device
         )
+    elif flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        inp = _wide_to_device(torch.randn(shape, dtype=dtype, device="cpu"))
+        grad = _wide_to_device(torch.randn(int(mask.sum()), dtype=dtype, device="cpu"))
     elif dtype.is_floating_point:
         inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
         grad = torch.randn(int(mask.sum()), dtype=dtype, device=flag_gems.device)
@@ -108,6 +144,7 @@ def test_accuracy_masked_select_backward_extended_dtypes(dtype):
         grad = torch.randint(
             -5, 6, (int(mask.sum()),), dtype=dtype, device=flag_gems.device
         )
+    assert inp.dtype == grad.dtype == dtype
     _assert_matches_reference(grad, inp, mask)
 
 
@@ -205,9 +242,16 @@ def test_masked_select_backward_errors():
     grad = torch.randn((4,), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.masked_select_backward(grad, inp, torch.ones_like(inp))
+    mismatch_dtype = (
+        torch.float16
+        if flag_gems.vendor_name in ("kunlunxin", "ascend")
+        else torch.float64
+    )
+    bad_grad = grad.to(mismatch_dtype)
+    assert bad_grad.dtype == mismatch_dtype and bad_grad.dtype != inp.dtype
     with pytest.raises(RuntimeError):
         flag_gems.masked_select_backward(
-            grad.to(torch.float64), inp, torch.ones_like(inp, dtype=torch.bool)
+            bad_grad, inp, torch.ones_like(inp, dtype=torch.bool)
         )
 
     mask = torch.ones_like(inp, dtype=torch.bool)
