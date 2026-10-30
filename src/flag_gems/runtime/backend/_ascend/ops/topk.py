@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-TopK on Ascend NPU via tle.dsa.ascend.raw
+TopK on Ascend NPU via tle_raw.call
 ===================================================
 
 This file keeps a generic fallback path and layers the current optimized
@@ -28,7 +28,8 @@ dispatch on top:
   - batch-local path: merge per-row runs into out_segs, optionally group
     them further, then finish with merge+unpack.
 
-This variant calls the unified TopK custom ops through tle.dsa.ascend.raw.
+This variant calls the unified TopK custom ops through tle_raw.call with the
+"ascend_" op-name prefix (equivalent IR to the old tle.dsa.ascend.raw entry).
 Data format: proposal = [value(f32), index(i32 as f32)] = 8B.
 """
 
@@ -39,11 +40,13 @@ import triton.language as tl
 try:
     import triton.experimental.tle as tle
     import triton.experimental.tle.language.dsa.ascend.custom_ops
+    import triton.experimental.tle.language.raw as tle_raw
     import triton.language.extra.cann.extension as al
 
     HAS_TLE = True
 except (ImportError, AttributeError):
     tle = None
+    tle_raw = None
     al = None
     HAS_TLE = False
 
@@ -283,8 +286,8 @@ def generic_merge_unpack_kernel(
                             [l3 * 2],
                         )
 
-                    _, cons = tle.dsa.ascend.raw(
-                        "merge_exhaust_sort4",
+                    _, cons = tle_raw.call(
+                        "ascend_merge_exhaust_sort4",
                         tle.dsa.to_tensor(in_ub),
                         aw,
                         0 * CHUNK_C,
@@ -344,8 +347,8 @@ def generic_merge_unpack_kernel(
                 tle.dsa.subview(in_ub, [0], [UP2], [1]),
                 [clen * 2],
             )
-            dval, didx = tle.dsa.ascend.raw(
-                "unpack_sort", tle.dsa.to_tensor(in_ub), clen, out=[dval, didx]
+            dval, didx = tle_raw.call(
+                "ascend_unpack_sort", tle.dsa.to_tensor(in_ub), clen, out=[dval, didx]
             )
             tl.store(Yv + row * K + cstart + offs, dval, mask=offs < clen)
             tl.store(Yi + row * K + cstart + offs, didx, mask=offs < clen)
@@ -362,8 +365,8 @@ def generic_merge_unpack_kernel(
                 tle.dsa.subview(in_ub, [0], [UP2], [1]),
                 [clen * 2],
             )
-            dval, didx = tle.dsa.ascend.raw(
-                "unpack_sort", tle.dsa.to_tensor(in_ub), clen, out=[dval, didx]
+            dval, didx = tle_raw.call(
+                "ascend_unpack_sort", tle.dsa.to_tensor(in_ub), clen, out=[dval, didx]
             )
             tl.store(Yv + row * K + cstart + offs, dval, mask=offs < clen)
             tl.store(Yi + row * K + cstart + offs, didx, mask=offs < clen)
@@ -414,8 +417,8 @@ def smallk_stream_merge_unpack_kernel(
         l1 = RUN_LEN if first_runs > 1 else 0
         l2 = RUN_LEN if first_runs > 2 else 0
         l3 = RUN_LEN if first_runs > 3 else 0
-        tle.dsa.ascend.raw(
-            "merge_exhaust_sort4",
+        tle_raw.call(
+            "ascend_merge_exhaust_sort4",
             tle.dsa.to_tensor(a_ub),
             4,
             0,
@@ -448,8 +451,8 @@ def smallk_stream_merge_unpack_kernel(
             l1 = RUN_LEN if next_runs > 0 else 0
             l2 = RUN_LEN if next_runs > 1 else 0
             l3 = RUN_LEN if next_runs > 2 else 0
-            tle.dsa.ascend.raw(
-                "merge_exhaust_sort4",
+            tle_raw.call(
+                "ascend_merge_exhaust_sort4",
                 tle.dsa.to_tensor(a_ub),
                 4,
                 0,
@@ -475,8 +478,8 @@ def smallk_stream_merge_unpack_kernel(
             l1 = RUN_LEN if next_runs > 0 else 0
             l2 = RUN_LEN if next_runs > 1 else 0
             l3 = RUN_LEN if next_runs > 2 else 0
-            tle.dsa.ascend.raw(
-                "merge_exhaust_sort4",
+            tle_raw.call(
+                "ascend_merge_exhaust_sort4",
                 tle.dsa.to_tensor(b_ub),
                 4,
                 0,
@@ -496,12 +499,12 @@ def smallk_stream_merge_unpack_kernel(
     didx = tl.zeros([UNPACK_CAP], dtype=tl.int32)
     offs = tl.arange(0, UNPACK_CAP)
     if phase == 0:
-        dval, didx = tle.dsa.ascend.raw(
-            "unpack_sort", tle.dsa.to_tensor(a_ub), K, out=[dval, didx]
+        dval, didx = tle_raw.call(
+            "ascend_unpack_sort", tle.dsa.to_tensor(a_ub), K, out=[dval, didx]
         )
     else:
-        dval, didx = tle.dsa.ascend.raw(
-            "unpack_sort", tle.dsa.to_tensor(b_ub), K, out=[dval, didx]
+        dval, didx = tle_raw.call(
+            "ascend_unpack_sort", tle.dsa.to_tensor(b_ub), K, out=[dval, didx]
         )
     tl.store(Yv + row * K + offs, dval, mask=offs < K)
     tl.store(Yi + row * K + offs, didx, mask=offs < K)
@@ -541,8 +544,8 @@ def smallk_stream_merge4_unpack_kernel(
     l1 = RUN_LEN if NUM_RUNS_C > 1 else 0
     l2 = RUN_LEN if NUM_RUNS_C > 2 else 0
     l3 = RUN_LEN if NUM_RUNS_C > 3 else 0
-    tle.dsa.ascend.raw(
-        "merge_exhaust_sort4",
+    tle_raw.call(
+        "ascend_merge_exhaust_sort4",
         tle.dsa.to_tensor(in_ub),
         4,
         0,
@@ -559,8 +562,8 @@ def smallk_stream_merge4_unpack_kernel(
     dval = tl.zeros([UNPACK_CAP], dtype=tl.float32)
     didx = tl.zeros([UNPACK_CAP], dtype=tl.int32)
     offs = tl.arange(0, UNPACK_CAP)
-    dval, didx = tle.dsa.ascend.raw(
-        "unpack_sort", tle.dsa.to_tensor(out_ub), K, out=[dval, didx]
+    dval, didx = tle_raw.call(
+        "ascend_unpack_sort", tle.dsa.to_tensor(out_ub), K, out=[dval, didx]
     )
     tl.store(Yv + row * K + offs, dval, mask=offs < K)
     tl.store(Yi + row * K + offs, didx, mask=offs < K)
@@ -620,8 +623,8 @@ def smallk_core_local_stream_merge_kernel(
         l1 = RUN_LEN if first_runs > 1 else 0
         l2 = RUN_LEN if first_runs > 2 else 0
         l3 = RUN_LEN if first_runs > 3 else 0
-        tle.dsa.ascend.raw(
-            "merge_exhaust_sort4",
+        tle_raw.call(
+            "ascend_merge_exhaust_sort4",
             tle.dsa.to_tensor(a_ub),
             4,
             0,
@@ -654,8 +657,8 @@ def smallk_core_local_stream_merge_kernel(
             l1 = RUN_LEN if next_runs > 0 else 0
             l2 = RUN_LEN if next_runs > 1 else 0
             l3 = RUN_LEN if next_runs > 2 else 0
-            tle.dsa.ascend.raw(
-                "merge_exhaust_sort4",
+            tle_raw.call(
+                "ascend_merge_exhaust_sort4",
                 tle.dsa.to_tensor(a_ub),
                 4,
                 0,
@@ -681,8 +684,8 @@ def smallk_core_local_stream_merge_kernel(
             l1 = RUN_LEN if next_runs > 0 else 0
             l2 = RUN_LEN if next_runs > 1 else 0
             l3 = RUN_LEN if next_runs > 2 else 0
-            tle.dsa.ascend.raw(
-                "merge_exhaust_sort4",
+            tle_raw.call(
+                "ascend_merge_exhaust_sort4",
                 tle.dsa.to_tensor(b_ub),
                 4,
                 0,
@@ -756,8 +759,8 @@ def static_merge4_unpack_kernel(
     l1 = RUN_LEN if NUM_RUNS_C > 1 else 0
     l2 = RUN_LEN if NUM_RUNS_C > 2 else 0
     l3 = RUN_LEN if NUM_RUNS_C > 3 else 0
-    tle.dsa.ascend.raw(
-        "merge_exhaust_sort4",
+    tle_raw.call(
+        "ascend_merge_exhaust_sort4",
         tle.dsa.to_tensor(in_ub),
         NUM_RUNS_C,
         0,
@@ -775,8 +778,8 @@ def static_merge4_unpack_kernel(
     dval = tl.zeros([KP2], dtype=tl.float32)
     didx = tl.zeros([KP2], dtype=tl.int32)
     offs = tl.arange(0, KP2)
-    dval, didx = tle.dsa.ascend.raw(
-        "unpack_sort", tle.dsa.to_tensor(out_ub), K, out=[dval, didx]
+    dval, didx = tle_raw.call(
+        "ascend_unpack_sort", tle.dsa.to_tensor(out_ub), K, out=[dval, didx]
     )
     tl.store(Yv + row * K + offs, dval, mask=offs < K)
     tl.store(Yi + row * K + offs, didx, mask=offs < K)
@@ -1051,8 +1054,8 @@ def core_local_nocopy_merge_kernel(
                             [l3 * 2],
                         )
 
-                    _, cons = tle.dsa.ascend.raw(
-                        "merge_exhaust_sort4",
+                    _, cons = tle_raw.call(
+                        "ascend_merge_exhaust_sort4",
                         tle.dsa.to_tensor(in_ub),
                         aw,
                         0 * CHUNK_C,
@@ -1267,8 +1270,8 @@ def core_local_nocopy_merge_kernel(
                                 [l3 * 2],
                             )
 
-                        _, cons = tle.dsa.ascend.raw(
-                            "merge_exhaust_sort4",
+                        _, cons = tle_raw.call(
+                            "ascend_merge_exhaust_sort4",
                             tle.dsa.to_tensor(in_ub),
                             aw,
                             0 * CHUNK_C,
@@ -1444,8 +1447,8 @@ def sort_kernel(
             if seg_real < SEG_LEN:
                 soffs = tl.arange(0, SP2)
                 buf = tl.load(X + in_off + soffs, mask=soffs < seg_real, other=neg_inf)
-                tle.dsa.ascend.raw(
-                    "sort_1d_pack",
+                tle_raw.call(
+                    "ascend_sort_1d_pack",
                     buf,
                     tmp,
                     True,
@@ -1457,8 +1460,8 @@ def sort_kernel(
             else:
                 tle.dsa.copy(X + (in_off + tl.arange(0, SP2)), buf_ub, [SEG_LEN])
                 buf = tle.dsa.to_tensor(buf_ub)
-                tle.dsa.ascend.raw(
-                    "sort_1d_pack",
+                tle_raw.call(
+                    "ascend_sort_1d_pack",
                     buf,
                     tmp,
                     True,
@@ -1634,8 +1637,8 @@ def final_merge_unpack_kernel(
                     [l3 * 2],
                 )
 
-            _, cons = tle.dsa.ascend.raw(
-                "merge_exhaust_sort4",
+            _, cons = tle_raw.call(
+                "ascend_merge_exhaust_sort4",
                 tle.dsa.to_tensor(in_ub),
                 aw,
                 0 * CHUNK_C,
@@ -1683,8 +1686,8 @@ def final_merge_unpack_kernel(
         tle.dsa.copy(
             WorkGM + ((dst_base + cstart) * 2 + tl.arange(0, UP2)), un_ub, [clen * 2]
         )
-        dval, didx = tle.dsa.ascend.raw(
-            "unpack_sort", tle.dsa.to_tensor(un_ub), clen, out=[dval, didx]
+        dval, didx = tle_raw.call(
+            "ascend_unpack_sort", tle.dsa.to_tensor(un_ub), clen, out=[dval, didx]
         )
         tl.store(Yv + row * K + cstart + offs, dval, mask=offs < clen)
         tl.store(Yi + row * K + cstart + offs, didx, mask=offs < clen)
@@ -1719,8 +1722,8 @@ def unpack_kernel(
         tle.dsa.copy(
             WorkGM + ((res_base + cstart) * 2 + tl.arange(0, UP2)), s_ub, [clen * 2]
         )
-        dval, didx = tle.dsa.ascend.raw(
-            "unpack_sort", tle.dsa.to_tensor(s_ub), clen, out=[dval, didx]
+        dval, didx = tle_raw.call(
+            "ascend_unpack_sort", tle.dsa.to_tensor(s_ub), clen, out=[dval, didx]
         )
         tl.store(Yv + row * K + cstart + offs, dval, mask=offs < clen)
         tl.store(Yi + row * K + cstart + offs, didx, mask=offs < clen)
