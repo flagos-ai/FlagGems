@@ -557,7 +557,7 @@ class KernelGenerator:
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
             code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(tl.int8 if out{i}_ptr.dtype.element_ty == tl.int1 else out{i}_ptr.dtype.element_ty, boundary_check=({order}))) "
+                f"tl.store(out{i}_bptr, out{i}.to(tl.int8 if out{i}_ptr.dtype.element_ty == tl.int1 else out{i}_ptr.dtype.element_ty), boundary_check=({order})) "
                 "# bptr type matches out_ptr type, except when out_ptr is int1. In that case, bptr is cast to int8."
             )
 
