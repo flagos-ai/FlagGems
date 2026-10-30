@@ -55,18 +55,18 @@ class RepetitionPenaltyBenchmark(base.Benchmark):
         self.gems_op = gems_op
 
 
+# Moore Threads (MUSA) is intentionally absent: the operator matches the vLLM
+# reference there, so the benchmark is runnable.  See issue #2884.
 UNSUPPORTED_VENDORS = {
     "metax",
     "kunlunxin",
     "iluvatar",
-    "mthreads",
     "hygon",
     "cambricon",
 }
 
 
 @pytest.mark.skipif(utils.SkipVersion("vllm", "<0.4"), reason="vLLM <0.4 not supported")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
 @pytest.mark.skipif(vendor_name in UNSUPPORTED_VENDORS, reason="Vendor not supported")
 @pytest.mark.apply_repetition_penalties
 def test_apply_repetition_penalties():
