@@ -26,8 +26,10 @@ from .argmin import argmin
 from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
+    _flash_attention_forward,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
@@ -53,6 +55,7 @@ from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -179,6 +182,7 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_flash_attention_forward",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -230,6 +234,7 @@ __all__ = [
     "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "full",
     "full_like",
@@ -307,6 +312,9 @@ __all__ = [
     "max_dim",
     "mean",
     "mean_dim",
+    "mha_fwd",
+    "mha_varlan_fwd",
+    "mha_varlan_fwd_opt",
     "min",
     "min_dim",
     "mm",
