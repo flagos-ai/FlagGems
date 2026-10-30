@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -23,12 +25,26 @@ ZERO_POINT = 0
 QDTYPE = torch.quint8
 
 
+def _quantized_device(value, device):
+    if flag_gems.vendor_name == "ascend" and torch.device(device).type != "cpu":
+        result = torch._empty_affine_quantized(
+            value.shape,
+            scale=value.q_scale(),
+            zero_point=value.q_zero_point(),
+            dtype=value.dtype,
+            device=device,
+        )
+        result.untyped_storage().copy_(value.untyped_storage())
+        return result
+    return value.to(device)
+
+
 def _make_quantized(shape, device):
     torch.manual_seed(0)
     host = torch.quantize_per_tensor(
         torch.randn(shape).clamp_(-2, 2), SCALE, ZERO_POINT, QDTYPE
     )
-    result = host if device == "cpu" else host.to(device)
+    result = _quantized_device(host, device)
     result._cpu_twin = host
     return result
 

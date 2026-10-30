@@ -25,12 +25,26 @@ ZERO_POINT = 0
 QDTYPE = torch.quint8
 
 
+def _quantized_device(value, device):
+    if flag_gems.vendor_name == "ascend" and torch.device(device).type != "cpu":
+        result = torch._empty_affine_quantized(
+            value.shape,
+            scale=value.q_scale(),
+            zero_point=value.q_zero_point(),
+            dtype=value.dtype,
+            device=device,
+        )
+        result.untyped_storage().copy_(value.untyped_storage())
+        return result
+    return value.to(device)
+
+
 def _make_quantized(shape, device):
     torch.manual_seed(0)
     host = torch.quantize_per_tensor(
         torch.randn(shape).clamp_(-2, 2), SCALE, ZERO_POINT, QDTYPE
     )
-    result = host if device == "cpu" else host.to(device)
+    result = _quantized_device(host, device)
     result._cpu_twin = host
     return result
 
@@ -67,4 +81,4 @@ def _torch_op(qx, **kwargs):
 
 @pytest.mark.quantized_max_pool1d
 def test_quantized_max_pool1d():
-    QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d", torch_op=_torch_op, gems_op=flag_gems.quantized_max_pool1d, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE]).run()
+    QuantizedMaxPool1dBenchmark(op_name="quantized_max_pool1d", torch_op=_torch_op, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=[QDTYPE]).run()
