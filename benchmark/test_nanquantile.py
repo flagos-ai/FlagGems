@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -30,6 +32,22 @@ _DEFAULT_SHAPES = [
 
 
 class NanquantileBenchmark(OperatorBenchmark):
+    def build_inputs(self, case):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if (
+            flag_gems.vendor_name == "kunlunxin"
+            and self.op_name == "nanquantile"
+            and tuple(case.shape["input"]) in _DEFAULT_SHAPES[1:]
+            and needs_native
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip(
+                "Kunlunxin native nanquantile has incorrect NaN reduction semantics"
+            )
+        return super().build_inputs(case)
+
     def set_shapes(self, shape_file_path):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
         if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:

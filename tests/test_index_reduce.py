@@ -56,7 +56,7 @@ def _case(shape, dim, dtype, index_dtype=torch.int64):
 @pytest.mark.parametrize("include_self", (True, False))
 def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     inp, dim, index, source = _case(shape, dim, dtype, index_dtype)
-    snapshot = inp.clone()
+    snapshot = utils.to_reference(inp, False).clone()
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.index_reduce(
         ref_inp,
