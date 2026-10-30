@@ -41,11 +41,6 @@ def _case_fn(shape, dtype, align_corners=False):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    if flag_gems.vendor_name == "kunlunxin" and dtype in (
-        torch.float16,
-        torch.bfloat16,
-    ):
-        pytest.skip("Kunlunxin native trilinear3d backward supports float32 only")
     torch.manual_seed(0)
     input_size, output_size, align_corners = plan.builder_args
     grad_output = torch.randn(
@@ -55,6 +50,18 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 class UpsampleBenchmark(OperatorBenchmark):
+    def build_inputs(self, case):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if (
+            flag_gems.vendor_name == "kunlunxin"
+            and case.dtype in (torch.float16, torch.bfloat16)
+            and needs_native
+        ):
+            pytest.skip("Kunlunxin native trilinear3d backward supports float32 only")
+        return super().build_inputs(case)
+
     def set_more_shapes(self):
         return None
 
