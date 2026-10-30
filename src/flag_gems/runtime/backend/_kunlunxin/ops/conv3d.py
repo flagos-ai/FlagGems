@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
@@ -254,6 +255,30 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_depth = stride_height = stride_width = stride
 
+    _same_crop = False
+    if isinstance(padding, str):
+        if padding == "valid":
+            padding = 0
+        elif padding == "same":
+            assert stride == 1, (
+                "Doesn't support any stride values other than 1 in padding = 'same' mode, "
+                f"received stride value {stride}"
+            )
+            _dil = (
+                dilation
+                if isinstance(dilation, (list, tuple))
+                else (dilation, dilation, dilation)
+            )
+            padding = tuple(
+                int(math.ceil((d * (k - 1)) / 2))
+                for d, k in zip(_dil, weight.shape[2:])
+            )
+            _same_crop = True
+        else:
+            raise ValueError(
+                f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
+            )
+
     if isinstance(padding, (list, tuple)):
         padding_depth, padding_height, padding_width = padding
     else:
@@ -348,6 +373,16 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         BLOCK_CI=32,
         BLOCK_CO=32,
     )
+
+    if _same_crop and (
+        out_depth > input_depth or out_height > input_height or out_width > input_width
+    ):
+        output = output[
+            ...,
+            out_depth - input_depth : out_depth,
+            out_height - input_height : out_height,
+            out_width - input_width : out_width,
+        ]
 
     # Convert back to original dtype if we promoted to fp32
     if use_fp32_compute:
