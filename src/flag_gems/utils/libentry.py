@@ -49,6 +49,15 @@ from typing import (
 import triton
 
 try:
+    # OutOfResources is a TritonError, NOT a RuntimeError, so it is not caught by
+    # a bare `except RuntimeError` during config benchmarking. Catch it too so an
+    # over-large config (e.g. one exceeding the LDS/shared-memory limit) is
+    # pruned instead of crashing the whole tuning run.
+    from triton.runtime.errors import OutOfResources as _TritonOutOfResources
+except Exception:  # pragma: no cover - older/newer triton layouts
+    _TritonOutOfResources = ()
+
+try:
     import triton.flagtune  # noqa: F401
 except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
@@ -66,6 +75,13 @@ else:
         BenchmarkProtocol,
         resolve_benchmarker,
     )
+
+# FlagTree's auto-adjust-block-size knob exists only on Triton builds that
+# carry it; stock Triton exposes triton.knobs but without this attribute.
+try:
+    _HAS_FLAGTREE_AABS = hasattr(triton.knobs.autotuning, "adjust_block_size")
+except AttributeError:
+    _HAS_FLAGTREE_AABS = False
 
 from flag_gems import runtime
 from flag_gems.flagtune.inference import cost_model
@@ -1039,7 +1055,7 @@ class LibTuner(triton.runtime.Autotuner):
                     if ret is None:
                         try:
                             ret = self._bench(*args, config=config, **kwargs)
-                        except RuntimeError as e:
+                        except (RuntimeError, _TritonOutOfResources) as e:
                             if getattr(self, "_flagtune_strict_benchmark", False):
                                 raise
                             # A config whose COMPILE raises a plain RuntimeError
@@ -1126,11 +1142,52 @@ class LibTuner(triton.runtime.Autotuner):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
+        try:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.all_kwargs(),
+            )
+        except _TritonOutOfResources:
+            # The selected config exceeds a hardware limit (e.g. LDS/shared
+            # memory) on this device. Some selection paths (single-config, cost
+            # model, cached result) never launch the kernel during tuning, so
+            # the limit only surfaces here. Retry the remaining configs,
+            # smallest first, and keep the first one that fits.
+            def _cfg_size(c):
+                blocks = 1
+                for k, v in c.kwargs.items():
+                    if isinstance(v, int) and "BLOCK" in k.upper():
+                        blocks *= max(1, v)
+                return (getattr(c, "num_stages", 1) or 1, blocks)
+
+            # Honor early_config_prune so the retry never picks a config the
+            # user's prune hook already ruled out; fall back to all configs if
+            # pruning is unset or fails.
+            candidate_configs = self.configs
+            if getattr(self, "early_config_prune", None) is not None:
+                try:
+                    pruned = self.early_config_prune(self.configs, self.nargs, **kwargs)
+                    if pruned:
+                        candidate_configs = pruned
+                except Exception:
+                    candidate_configs = self.configs
+
+            ret = None
+            for alt in sorted(candidate_configs, key=_cfg_size):
+                if alt is config:
+                    continue
+                try:
+                    if alt.pre_hook is not None:
+                        alt.pre_hook({**self.nargs, **kwargs, **alt.all_kwargs()})
+                    ret = self.fn.run(*args, **kwargs, **alt.all_kwargs())
+                    config = alt
+                    self.best_config = alt
+                    break
+                except _TritonOutOfResources:
+                    continue
+            if ret is None:
+                raise
         self.nargs = None
         return ret
 
@@ -1291,6 +1348,7 @@ def libtuner(
     flagtune_yaml_path=None,
     flagtune_pre_hook=None,
     flagtune_dtype_resolver=None,
+    disable_aabs=False,
 ):
     """Decorator for triton library autotuner.
 
@@ -1304,6 +1362,11 @@ def libtuner(
     FlagTune Args:
         use_cuda_graph: Use CUDA Graph benchmarking for this ordinary tuner.
             The default is ``False`` and uses ``triton.testing.do_bench``.
+        disable_aabs: Keep the configured block sizes for this kernel when
+            FlagTree's auto-adjust-block-size is active. AABS sizes a block
+            from the extent of the ``tl.arange(0, BLOCK)`` that feeds it, so a
+            small runtime dimension can shrink the block below a constraint the
+            kernel relies on (an fp8 ``tl.dot`` needs K >= 32, for example).
         flagtune_op_name: FlagGems legacy runtime enablement key.
         flagtune_expand_op_name: Independent legacy expanded-config name; it
             defaults to ``flagtune_op_name``.
@@ -1338,7 +1401,7 @@ def libtuner(
 
     def decorator(fn):
         """Construct the selected policy class around a Triton JIT kernel."""
-        return policy(
+        tuner = policy(
             fn,
             fn.arg_names,
             configs,
@@ -1362,6 +1425,8 @@ def libtuner(
             flagtune_variant=flagtune_variant,
             flagtune_dtype_resolver=flagtune_dtype_resolver,
         )
+        tuner.disable_aabs = disable_aabs
+        return tuner
 
     return decorator
 
@@ -1399,6 +1464,28 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+
+    @staticmethod
+    def _resolve_tensor_spec_fn():
+        # On backends whose pointer specialization depends on tensor size (AMD
+        # and hygon mark tensors <2GB so their pointers use 32-bit buffer-op
+        # addressing), that specialization must be part of the kernel cache key.
+        # Otherwise a kernel compiled for a <2GB tensor is wrongly reused for a
+        # >2GB tensor and its 32-bit offset overflows.
+        vendor = device.vendor_name
+        backend = None
+        try:
+            if vendor == "amd":
+                from triton.backends.amd.compiler import HIPBackend as backend
+            elif vendor == "hygon" and hasattr(triton.backends, "hcu"):
+                from triton.backends.hcu.compiler import HIPBackend as backend
+        except ImportError:
+            backend = None
+        if backend is None:
+            return None
+        fn = getattr(backend, "get_tensor_specialization", None)
+        return fn if callable(fn) else None
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1434,22 +1521,10 @@ class LibEntry(triton.KernelInterface):
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
-                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
-                    try:
-                        from triton.backends.hcu.compiler import HIPBackend
-                    except ImportError:
-                        tensor_spec = None
-                    else:
-                        tensor_spec = getattr(
-                            HIPBackend, "get_tensor_specialization", None
-                        )
-                    if callable(tensor_spec):
-                        return (
-                            arg.dtype,
-                            arg.data_ptr() % self.divisibility == 0,
-                            tensor_spec(arg),
-                        )
-                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                if self._tensor_spec_fn is not None:
+                    return base + (self._tensor_spec_fn(arg),)
+                return base
             return (type(arg), arg)
 
         def dns_arg(arg):
@@ -1468,6 +1543,51 @@ class LibEntry(triton.KernelInterface):
         # const args passed by position
         const_key = [_descriptor_cache_key(arg) for arg in const_args]
         return tuple(spec_key + dns_key + const_key)
+
+    def _first_run(self, *args, **kwargs):
+        try:
+            return self._first_run_once(*args, **kwargs)
+        except _TritonOutOfResources:
+            # A fixed-config kernel has no tuner to fall back on when it exceeds
+            # shared memory (e.g. RDNA's 64KB LDS). num_stages only sets the
+            # software-pipelining depth, not the result, so retry shallower.
+            if not isinstance(self.fn, triton.runtime.JITFunction):
+                raise
+            stages = kwargs.get("num_stages") or 2
+            for s in range(stages - 1, 0, -1):
+                try:
+                    return self._first_run_once(*args, **{**kwargs, "num_stages": s})
+                except _TritonOutOfResources:
+                    continue
+            raise
+
+    def _first_run_once(self, *args, **kwargs):
+        """Run the tuner once for a fresh entry key, with AABS disabled when
+        the caller passes constexpr values as keyword arguments, or when the
+        kernel opted out with ``libtuner(disable_aabs=True)``.
+
+        FlagTree's AABS (auto-adjust-block-size) treats ``tl.arange(0, X)``
+        constexprs as tunable block sizes and writes them back into
+        ``config.kwargs`` during benchmarking. When the caller also supplies
+        the same constexpr as a launch kwarg, the tuner's relaunch
+        (``fn.run(*args, **kwargs, **config.all_kwargs())``) binds that name
+        twice and raises TypeError. The caller's values are the intended
+        sizes, so AABS has nothing to adjust here — suspend it for the
+        benchmark and restore it afterwards.
+        """
+        if not _HAS_FLAGTREE_AABS:
+            return self.fn.run(*args, **kwargs)
+        knobs_obj = triton.knobs.autotuning
+        if not getattr(self.fn, "disable_aabs", False) and not any(
+            p.is_constexpr and p.name in kwargs for p in self.jit_function.params
+        ):
+            return self.fn.run(*args, **kwargs)
+        previous = knobs_obj.adjust_block_size
+        try:
+            knobs_obj.adjust_block_size = False
+            return self.fn.run(*args, **kwargs)
+        finally:
+            knobs_obj.adjust_block_size = previous
 
     def run(self, *args, **kwargs):
         grid = kwargs["grid"]
@@ -1532,7 +1652,7 @@ class LibEntry(triton.KernelInterface):
             with self.lock:
                 if entry_key in cache:
                     break
-                kernel = self.fn.run(*args, **kwargs)
+                kernel = self._first_run(*args, **kwargs)
                 fn = self.fn
                 # collect constexpr arguments for grid computation
                 constexprs = {}

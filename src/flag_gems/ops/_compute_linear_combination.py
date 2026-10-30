@@ -94,7 +94,6 @@ def _compute_linear_combination_kernel(
             other=0.0,
         ).to(tl.float32)
         acc += tl.dot(a, b, allow_tf32=False)
-        coeff_ptrs += BLOCK_K * stride_coeff_k
 
     tl.store(out_ptrs, acc.to(Out.dtype.element_ty), mask=m_mask & n_mask)
 

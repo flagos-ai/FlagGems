@@ -116,3 +116,57 @@ def test_indices_copy_out():
 
     assert res_ret is res_out
     utils.gems_assert_equal(res_out, res_inp._indices())
+
+
+@pytest.mark.underscore_indices_copy
+@pytest.mark.parametrize("nnd, nnz, size", SPARSE_INDICES_SHAPES)
+def test__indices_copy(nnd, nnz, size):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    # The native CUDA op has no sparse-COO kernel, so the reference is the
+    # plain indices accessor copied on device.
+    res_inp = _make_coo(nnd, nnz, size, flag_gems.device, seed=3)
+    ref_inp = _make_coo(nnd, nnz, size, flag_gems.device, seed=3)
+    ref_out = ref_inp._indices().clone()
+
+    res_out = flag_gems._indices_copy(res_inp)
+
+    assert res_out.dtype == torch.int64
+    assert res_out.shape == (nnd, nnz)
+    # The copy must not alias the input storage.
+    assert res_out.data_ptr() != res_inp._indices().data_ptr()
+    utils.gems_assert_equal(res_out, res_inp._indices())
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_indices_copy
+def test__indices_copy_empty():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = torch.sparse_coo_tensor(
+        torch.zeros((2, 0), dtype=torch.int64, device=flag_gems.device),
+        torch.zeros((0,), device=flag_gems.device),
+        (4, 4),
+    )
+    res_out = flag_gems._indices_copy(res_inp)
+
+    assert res_out.shape == (2, 0)
+
+
+@pytest.mark.underscore_indices_copy_out
+def test__indices_copy_out():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = _make_coo(2, 16, (8, 8), flag_gems.device, seed=5)
+    res_out = torch.empty((2, 16), dtype=torch.int64, device=flag_gems.device)
+
+    res_ret = flag_gems._indices_copy_out(res_inp, out=res_out)
+
+    assert res_ret is res_out
+    utils.gems_assert_equal(res_out, res_inp._indices())

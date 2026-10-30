@@ -58,10 +58,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_FLOOR_" record under
-# the *generic* logger name (see tests/test_foreach_unary.py), so the record
-# must be emitted from this logger rather than the module's own.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # The unmasked fast path is only for the benchmark/real floating dtypes; fp64
 # device tensors silently degrade to fp32 on this backend anyway (#4.5.1), and

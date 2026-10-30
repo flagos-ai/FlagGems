@@ -90,6 +90,26 @@ def _fmul(a, s):
     return a * s
 
 
+@triton.jit
+def _fdiv(a, s):
+    return a / s
+
+
+@triton.jit
+def _fpow(a, s):
+    if a.dtype == tl.float64:
+        return tl.exp2(tl.log2(a) * s)
+    return tl.exp2(tl.log2(a.to(tl.float32)) * s.to(tl.float32))
+
+
+@triton.jit
+def _fpow_rev(a, s):
+    # pow.ScalarAndTensor: ``a`` is the exponent list element, ``s`` the base.
+    if a.dtype == tl.float64:
+        return tl.exp2(tl.log2(s) * a)
+    return tl.exp2(tl.log2(s.to(tl.float32)) * a.to(tl.float32))
+
+
 # ---------------------------------------------------------------------------
 # kernels
 # ---------------------------------------------------------------------------
@@ -394,16 +414,20 @@ def _launch1(
     fn,
 ) -> None:
     n = src.numel()
-    if n <= 2048 * 64:
-        num_ctas, num_tiles = 1, 1
+    # Cap the constexpr tile size: the previous next_pow2(cdiv(n, 12)) grew the
+    # tile to ~2M elements for 16M-element tensors, and `tl.arange(0, tile)`
+    # with a 2M constexpr tile compiles a gigantic kernel (register spill) that
+    # runs ~250x slower than torch on the large shapes.  A fixed 64K tile keeps
+    # one compiled kernel for every large size and lets the 12-CTA grid walk
+    # more, smaller tiles instead.
+    MAX_TILE = 1 << 16
+    if n <= MAX_TILE:
+        tile_size = triton.next_power_of_2(n)
+        num_tiles = 1
     else:
-        num_ctas, num_tiles = 12, 12
-    tile_size = triton.next_power_of_2(triton.cdiv(n, num_tiles))
-    if tile_size == 32768:
-        tile_size = 16384
+        tile_size = MAX_TILE
         num_tiles = triton.cdiv(n, tile_size)
-        num_ctas = num_tiles
-    num_tiles = triton.cdiv(n, tile_size)
+    num_ctas = 12 if num_tiles > 1 else 1
     tiles_per_cta = triton.cdiv(num_tiles, num_ctas)
     num_warps = 16 if tile_size >= 4096 else (8 if tile_size >= 2048 else 4)
     _foreach1_kernel[(num_ctas,)](
@@ -469,6 +493,8 @@ _OPS = {
     "sub": (_fsub, NO_BOOL, _SUB_BOOL_ERROR),
     "mul": (_fmul, ARITH, None),
     "add": (_fadd, ARITH, None),
+    "div": (_fdiv, NO_BOOL, None),
+    "pow": (_fpow, _FLOAT, None),
 }
 
 
@@ -581,8 +607,15 @@ _ENTRIES = [
     ("maximum", "ScalarList", False),
     ("maximum", "ScalarList", True),
     ("sub", "Scalar", True),
+    ("sub", "ScalarList", True),
     ("mul", "Scalar", True),
+    ("mul", "ScalarList", True),
+    ("add", "Scalar", True),
     ("add", "ScalarList", True),
+    ("div", "Scalar", True),
+    ("div", "ScalarList", True),
+    ("pow", "Scalar", True),
+    ("pow", "ScalarList", True),
 ]
 
 _globals = globals()
@@ -606,3 +639,19 @@ def registered_wrappers():
         suffix = "_" if inplace else ""
         out[f"_foreach_{name}{suffix}.{ov}"] = _globals[f"_foreach_{name}{suffix}_{ov}"]
     return out
+
+
+def _foreach_pow_ScalarAndTensor(self, exponent):
+    """``pow.ScalarAndTensor``: ``self`` is the scalar base, ``exponent`` the list."""
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_POW_SCALARANDTENSOR")
+    tensors = check_tensor_list(exponent)
+    srcs, dsts, vals = [], [], []
+    for t in tensors:
+        check_dtype_supported(t.dtype, _FLOAT, None)
+        src = t if t.is_contiguous() else t.contiguous()
+        dst = torch.empty_like(src, dtype=t.dtype)
+        srcs.append(src)
+        dsts.append(dst)
+        vals.append(float(self))
+    _launch(srcs, dsts, vals, _fpow_rev)
+    return dsts

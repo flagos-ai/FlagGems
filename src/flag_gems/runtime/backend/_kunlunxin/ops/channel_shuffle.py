@@ -6,7 +6,7 @@ import triton
 from flag_gems.ops.channel_shuffle import channel_shuffle_kernel
 from flag_gems.runtime import torch_device_fn
 
-logger = logging.getLogger("flag_gems.ops.channel_shuffle")
+logger = logging.getLogger(__name__)
 
 
 def channel_shuffle(input: torch.Tensor, groups: int) -> torch.Tensor:

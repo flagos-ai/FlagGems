@@ -21,9 +21,7 @@ from flag_gems.ops.max_pool2d_with_indices import (
     max_pool2d_with_indices_backward as default_max_pool2d_with_indices_backward,
 )
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _SUPPORTED_DTYPES = {torch.float16, torch.bfloat16, torch.float32}
 

@@ -92,18 +92,17 @@ def test_lstm(
         batch_first,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = torch.lstm(
-            input,
-            (h0, c0),
-            params,
-            has_biases,
-            num_layers,
-            0.0,
-            False,
-            bidirectional,
-            batch_first,
-        )
+    res_out, res_hn, res_cn = flag_gems.lstm(
+        input,
+        (h0, c0),
+        params,
+        has_biases,
+        num_layers,
+        0.0,
+        False,
+        bidirectional,
+        batch_first,
+    )
 
     atol = 3e-2 if dtype is torch.bfloat16 else 2e-2 if dtype is torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
