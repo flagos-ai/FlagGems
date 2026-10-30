@@ -119,7 +119,11 @@ def _build_inputs_fn(plan, dtype, device):
     for value, shape in ((a, a_shape), (b, b_shape)):
         assert value.dtype == dtype and tuple(value.shape) == shape
         target = torch.device(device)
-        assert value.device == torch.device(target.type, target.index or 0)
+        assert value.device == (
+            target
+            if target.type == "cpu"
+            else torch.device(target.type, target.index or 0)
+        )
     return a, b, {"left": left}
 
 
