@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -41,6 +43,39 @@ def test_sum(shape, dtype):
     res_out = flag_gems.sum(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=inp.numel())
+
+
+@pytest.mark.sum
+@pytest.mark.sum_out
+@pytest.mark.parametrize("use_out", [False, True])
+def test_sum_large_ascend_reduction_tile(use_out):
+    if flag_gems.device != "npu":
+        pytest.skip("Ascend local-buffer reduction limit")
+
+    # The old sqrt-based heuristic selected 32768, overflowing Ascend's UB.
+    # At BLOCK_SIZE=4096 this also exceeds coreDim and needs multiple mid tiles.
+    inp = torch.randn(2**28 + 97, dtype=torch.float32, device=flag_gems.device)
+    if use_out:
+        result = torch.empty((), dtype=inp.dtype, device=inp.device)
+        flag_gems.sum_out(inp, out=result)
+    else:
+        result = flag_gems.sum(inp)
+    expected = torch.sum(inp)
+    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-2)
+
+
+@pytest.mark.sum
+def test_sum_ascend_grid_stride(monkeypatch):
+    if flag_gems.device != "npu":
+        pytest.skip("Ascend launch-grid limit")
+
+    sum_ops = importlib.import_module(flag_gems.sum.__module__)
+    monkeypatch.setattr(sum_ops, "_ASCEND_MAX_CORE_DIM", 1)
+    monkeypatch.setattr(sum_ops, "_ASCEND_SUM_MAX_BLOCK_SIZE", 128)
+    inp = torch.randn(65537, dtype=torch.float32, device=flag_gems.device)
+    expected = torch.sum(inp)
+    result = flag_gems.sum(inp)
+    torch.testing.assert_close(result, expected, rtol=1e-4, atol=1e-3)
 
 
 INCLUDE_0_SHAPES = [(1, 0, 128, 512), (4096, 1, 256, 0), (200, 10, 0, 3)]
