@@ -84,7 +84,6 @@ def _clone_pool_inputs(value):
                 device=value.device,
             )
             clone.untyped_storage().copy_(value.untyped_storage())
-            clone._cpu_twin = _quantized_cpu(clone)
             return clone
         return value.detach().clone().requires_grad_(value.requires_grad)
     if isinstance(value, (tuple, list)):
