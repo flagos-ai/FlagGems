@@ -113,6 +113,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .triplet_margin_loss import triplet_margin_loss
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .var import var, var_correction, var_dim
 
@@ -227,6 +228,7 @@ __all__ = [
     "tile",
     "triangular_solve",
     "triangular_solve_out",
+    "triplet_margin_loss",
     "var",
     "var_correction",
     "var_dim",
