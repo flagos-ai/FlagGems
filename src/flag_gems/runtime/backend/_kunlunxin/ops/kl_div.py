@@ -53,10 +53,34 @@ _REDUCTION_MAP = {
 # --------------------------------------------------------------------------- #
 @triton.jit
 def _kl_none_kernel(
-    x_ptr, t_ptr, out_ptr, n,
-    S0, S1, S2, S3, S4, S5, S6, S7,
-    XA0, XA1, XA2, XA3, XA4, XA5, XA6, XA7,
-    TA0, TA1, TA2, TA3, TA4, TA5, TA6, TA7,
+    x_ptr,
+    t_ptr,
+    out_ptr,
+    n,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    XA0,
+    XA1,
+    XA2,
+    XA3,
+    XA4,
+    XA5,
+    XA6,
+    XA7,
+    TA0,
+    TA1,
+    TA2,
+    TA3,
+    TA4,
+    TA5,
+    TA6,
+    TA7,
     RANK: tl.constexpr,
     LOG_TARGET: tl.constexpr,
     X_FLAT: tl.constexpr,
@@ -157,10 +181,36 @@ def _kl_none_kernel(
 
 @triton.jit
 def _kl_block_kernel(
-    x_ptr, t_ptr, mid_ptr, out_ptr, n, denom,
-    S0, S1, S2, S3, S4, S5, S6, S7,
-    XA0, XA1, XA2, XA3, XA4, XA5, XA6, XA7,
-    TA0, TA1, TA2, TA3, TA4, TA5, TA6, TA7,
+    x_ptr,
+    t_ptr,
+    mid_ptr,
+    out_ptr,
+    n,
+    denom,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    XA0,
+    XA1,
+    XA2,
+    XA3,
+    XA4,
+    XA5,
+    XA6,
+    XA7,
+    TA0,
+    TA1,
+    TA2,
+    TA3,
+    TA4,
+    TA5,
+    TA6,
+    TA7,
     RANK: tl.constexpr,
     LOG_TARGET: tl.constexpr,
     X_FLAT: tl.constexpr,
@@ -281,7 +331,9 @@ def _kl_block_kernel(
 
 @triton.jit
 def _kl_buf_kernel(
-    buf_ptr, out_ptr, n,
+    buf_ptr,
+    out_ptr,
+    n,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -292,7 +344,10 @@ def _kl_buf_kernel(
 
 @triton.jit
 def _kl_final_kernel(
-    mid_ptr, out_ptr, P, denom,
+    mid_ptr,
+    out_ptr,
+    P,
+    denom,
     DIV: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
@@ -376,7 +431,8 @@ def _plan(shape, x, target, n):
         dims = _collapse(shape, xs, ts)
     if len(dims) > _MAX_DIMS:
         raise NotImplementedError(
-            "kl_div: broadcast pattern needs %d index dims" % len(dims))
+            "kl_div: broadcast pattern needs %d index dims" % len(dims)
+        )
 
     S = [1] * _MAX_DIMS
     XA = [0] * _MAX_DIMS
@@ -426,7 +482,8 @@ def run(self, target, reduction=1, log_target=False):
     if not x.is_floating_point() or not target.is_floating_point():
         raise RuntimeError(
             "kl_div: expected floating point tensors, got %s and %s"
-            % (x.dtype, target.dtype))
+            % (x.dtype, target.dtype)
+        )
     if x.device != target.device:
         raise RuntimeError("kl_div: input and target must be on the same device")
 
@@ -444,12 +501,41 @@ def run(self, target, reduction=1, log_target=False):
         S, XA, TA, rank, xf, tf, i64 = _plan(shape, x, target, n)
         grid = (triton.cdiv(n, _BLOCK_NONE),)
         _kl_none_kernel[grid](
-            x, target, out, n,
-            S[0], S[1], S[2], S[3], S[4], S[5], S[6], S[7],
-            XA[0], XA[1], XA[2], XA[3], XA[4], XA[5], XA[6], XA[7],
-            TA[0], TA[1], TA[2], TA[3], TA[4], TA[5], TA[6], TA[7],
-            RANK=rank, LOG_TARGET=lt, X_FLAT=xf, T_FLAT=tf, IDX64=i64,
-            BLOCK=_BLOCK_NONE, num_warps=_WARPS_NONE,
+            x,
+            target,
+            out,
+            n,
+            S[0],
+            S[1],
+            S[2],
+            S[3],
+            S[4],
+            S[5],
+            S[6],
+            S[7],
+            XA[0],
+            XA[1],
+            XA[2],
+            XA[3],
+            XA[4],
+            XA[5],
+            XA[6],
+            XA[7],
+            TA[0],
+            TA[1],
+            TA[2],
+            TA[3],
+            TA[4],
+            TA[5],
+            TA[6],
+            TA[7],
+            RANK=rank,
+            LOG_TARGET=lt,
+            X_FLAT=xf,
+            T_FLAT=tf,
+            IDX64=i64,
+            BLOCK=_BLOCK_NONE,
+            num_warps=_WARPS_NONE,
         )
         return out
 
@@ -465,7 +551,8 @@ def run(self, target, reduction=1, log_target=False):
     else:
         if len(shape) == 0:
             raise IndexError(
-                "kl_div: batchmean reduction requires at least 1 dimension")
+                "kl_div: batchmean reduction requires at least 1 dimension"
+            )
         div = True
         first = int(shape[0])
         denom = float(first)
@@ -479,17 +566,53 @@ def run(self, target, reduction=1, log_target=False):
         return torch.zeros((), dtype=dtype, device=dev)
 
     S, XA, TA, rank, xf, tf, i64 = _plan(shape, x, target, n)
-    spread = (S[0], S[1], S[2], S[3], S[4], S[5], S[6], S[7],
-              XA[0], XA[1], XA[2], XA[3], XA[4], XA[5], XA[6], XA[7],
-              TA[0], TA[1], TA[2], TA[3], TA[4], TA[5], TA[6], TA[7])
+    spread = (
+        S[0],
+        S[1],
+        S[2],
+        S[3],
+        S[4],
+        S[5],
+        S[6],
+        S[7],
+        XA[0],
+        XA[1],
+        XA[2],
+        XA[3],
+        XA[4],
+        XA[5],
+        XA[6],
+        XA[7],
+        TA[0],
+        TA[1],
+        TA[2],
+        TA[3],
+        TA[4],
+        TA[5],
+        TA[6],
+        TA[7],
+    )
 
     if n <= _SMALL_N:
         blk = max(128, triton.next_power_of_2(n))
         _kl_block_kernel[(1,)](
-            x, target, out, out, n, denom, *spread,
-            RANK=rank, LOG_TARGET=lt, X_FLAT=xf, T_FLAT=tf,
-            IDX64=i64, FULL=(n % blk == 0), FINAL=True, DIV=div,
-            BLOCK=blk, num_warps=_WARPS_RED,
+            x,
+            target,
+            out,
+            out,
+            n,
+            denom,
+            *spread,
+            RANK=rank,
+            LOG_TARGET=lt,
+            X_FLAT=xf,
+            T_FLAT=tf,
+            IDX64=i64,
+            FULL=(n % blk == 0),
+            FINAL=True,
+            DIV=div,
+            BLOCK=blk,
+            num_warps=_WARPS_RED,
         )
         return out
 
@@ -498,10 +621,23 @@ def run(self, target, reduction=1, log_target=False):
     nblk = triton.cdiv(n, blk)
     mid = torch.empty((nblk,), dtype=torch.float32, device=dev)
     _kl_block_kernel[(nblk,)](
-        x, target, mid, out, n, denom, *spread,
-        RANK=rank, LOG_TARGET=lt, X_FLAT=xf, T_FLAT=tf,
-        IDX64=i64, FULL=(n % blk == 0), FINAL=False, DIV=div,
-        BLOCK=blk, num_warps=warps,
+        x,
+        target,
+        mid,
+        out,
+        n,
+        denom,
+        *spread,
+        RANK=rank,
+        LOG_TARGET=lt,
+        X_FLAT=xf,
+        T_FLAT=tf,
+        IDX64=i64,
+        FULL=(n % blk == 0),
+        FINAL=False,
+        DIV=div,
+        BLOCK=blk,
+        num_warps=warps,
     )
     cur = mid
     p = nblk
@@ -512,10 +648,16 @@ def run(self, target, reduction=1, log_target=False):
         cur = nxt
         p = q
     _kl_final_kernel[(1,)](
-        cur, out, p, denom,
-        DIV=div, BLOCK_P=triton.next_power_of_2(p), num_warps=_WARPS_FINAL,
+        cur,
+        out,
+        p,
+        denom,
+        DIV=div,
+        BLOCK_P=triton.next_power_of_2(p),
+        num_warps=_WARPS_FINAL,
     )
     return out
+
 
 # --- backend entry point ---------------------------------------------------
 def kl_div(self, target, reduction=1, log_target=False):

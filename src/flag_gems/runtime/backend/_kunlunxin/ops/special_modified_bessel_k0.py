@@ -15,6 +15,7 @@ import triton.language as tl
 # exp(-inf)/sqrt(inf).  No unordered fp compare is used, because the XPU backend
 # cannot select one (LLVM "setuo" fatal error).
 
+
 @triton.jit
 def _k0_of(xf):
     # ---- shared: one logarithm serves both branches; both series use y=(x/2)^2 ----
@@ -52,8 +53,7 @@ def _k0_of(xf):
         + z
         * (
             0.02189568
-            + z
-            * (-0.01062446 + z * (0.00587872 + z * (-0.00251540 + z * 0.00053208)))
+            + z * (-0.01062446 + z * (0.00587872 + z * (-0.00251540 + z * 0.00053208)))
         )
     )
     # exp(-x) / sqrt(x) == exp(-x - 0.5*log(x)), reusing the log computed above so
@@ -78,7 +78,9 @@ def _k0_contig_kernel(x_ptr, out_ptr, numel, BLOCK: tl.constexpr):
 def _k0_aligned_kernel(x_ptr, out_ptr, BLOCK: tl.constexpr):
     """Unmasked variant for numel % BLOCK == 0: no bounds mask, no staging copy."""
     pid = tl.program_id(0)
-    offs = tl.max_contiguous(tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK)
+    offs = tl.max_contiguous(
+        tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK
+    )
     x = tl.load(x_ptr + offs)
     xf = x.to(tl.float32)
     res = _k0_of(xf)
@@ -111,7 +113,9 @@ _CONFIGS = [
 @triton.jit
 def _k0_aligned_tuned(x_ptr, out_ptr, numel, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-    offs = tl.max_contiguous(tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK)
+    offs = tl.max_contiguous(
+        tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK
+    )
     x = tl.load(x_ptr + offs)
     xf = x.to(tl.float32)
     res = _k0_of(xf)
@@ -229,6 +233,7 @@ def _k0_grid(n):
         grid = lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
         _K0_GRID_CACHE[n] = grid
     return grid
+
 
 # --- backend entry point ---------------------------------------------------
 def special_modified_bessel_k0(A, out=None):

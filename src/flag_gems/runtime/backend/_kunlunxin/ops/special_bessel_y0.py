@@ -28,6 +28,7 @@ def _log_dispatch():
             if op_logger.isEnabledFor(logging.DEBUG):
                 op_logger.debug("GEMS SPECIAL_BESSEL_Y0")
 
+
 _BLOCK = 1024
 _NUM_WARPS = 4
 _MAX_OUTER = 7
@@ -115,9 +116,7 @@ def _y0_asym(x):
     so = 0.0732421875 + w * so
     so = -0.125 + w * so
     omega = x - _PI_OVER_4
-    return tl.sqrt(_TWO_OVER_PI / x) * (
-        tl.sin(omega) * se + tl.cos(omega) * so / x
-    )
+    return tl.sqrt(_TWO_OVER_PI / x) * (tl.sin(omega) * se + tl.cos(omega) * so / x)
 
 
 @triton.jit
@@ -298,9 +297,7 @@ def run(self, out=None):
     if self.is_contiguous() and out.is_contiguous():
         blk = _BLOCK_LARGE if n >= _SMALL_N else _BLOCK
         if n < 2147483648 and n % blk == 0:
-            _y0_flat_aligned[(n // blk,)](
-                self, out, BLOCK=blk, num_warps=_NUM_WARPS
-            )
+            _y0_flat_aligned[(n // blk,)](self, out, BLOCK=blk, num_warps=_NUM_WARPS)
         else:
             _y0_flat_kernel[(triton.cdiv(n, blk),)](
                 self, out, n, BLOCK=blk, num_warps=_NUM_WARPS
@@ -308,6 +305,7 @@ def run(self, out=None):
     else:
         _launch_strided(self, out)
     return out
+
 
 # --- backend entry point ---------------------------------------------------
 def special_bessel_y0(A):

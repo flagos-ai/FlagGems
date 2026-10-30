@@ -155,9 +155,7 @@ def _choose_qparams_optimized_kernel(
             move_hi = go & (loss_lo >= loss_hi)
             lo = tl.where(move_lo, lo1, lo)
             hi = tl.where(move_hi, hi1, hi)
-            cur_loss = tl.where(
-                move_lo, loss_lo, tl.where(move_hi, loss_hi, cur_loss)
-            )
+            cur_loss = tl.where(move_lo, loss_lo, tl.where(move_hi, loss_hi, cur_loss))
             cont = go & ((lo + threshold) < hi)
 
     # remaining worst-case depth (rarely executed, e.g. crafted inputs)
@@ -230,6 +228,7 @@ def run(input, numel, n_bins, ratio, bit_width):
         num_warps=num_warps,
     )
     return out[0:1], out[1:2]
+
 
 # --- backend entry point ---------------------------------------------------
 def choose_qparams_optimized(input, numel, n_bins, ratio, bit_width):
