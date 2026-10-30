@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import accuracy_utils as utils
 

@@ -12,22 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flag_gems
 import pytest
-
 import torch
 
-import flag_gems
-
 from . import accuracy_utils as utils
-
 from .accuracy_utils import gems_assert_close
-
 from .conftest import QUICK_MODE
 
 CTC_DTYPES = [torch.float32, torch.float64]
 
+
 def _to_target_double(value):
-    result = value.contiguous().reshape(-1).view(torch.uint8).to(flag_gems.device).view(torch.float64).reshape(value.shape)
+    result = (
+        value.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .to(flag_gems.device)
+        .view(torch.float64)
+        .reshape(value.shape)
+    )
     assert result.dtype == torch.float64
     assert result.shape == value.shape
     return result
@@ -36,7 +40,9 @@ def _to_target_double(value):
 def _log_probs(raw, dtype):
     if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
         if not utils.TO_CPU:
-            pytest.skip("Iluvatar native CTC Float64 output numerics are incorrect; CPU reference remains covered")
+            pytest.skip(
+                "Iluvatar native CTC Float64 output numerics are incorrect; CPU reference remains covered"
+            )
         return _to_target_double(raw.log_softmax(-1).cpu().double())
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         if not utils.TO_CPU:
@@ -86,8 +92,9 @@ def _make_inputs(T, N, S, C, dtype):
     ref_args = (ref_log_probs, ref_targets, input_lengths, target_lengths)
     return (gems_args, ref_args)
 
+
 @pytest.mark.underscore_ctc_loss_out
-@pytest.mark.parametrize('dtype', CTC_DTYPES)
+@pytest.mark.parametrize("dtype", CTC_DTYPES)
 def test__ctc_loss_out(dtype):
     """The out variant writes both results in place and returns those tensors."""
     T, N, S, C = (20, 4, 8, 10)
@@ -96,7 +103,9 @@ def test__ctc_loss_out(dtype):
     # The oracle may be upcast; candidate output buffers keep the input dtype.
     res_out0 = _empty_output(ref_nll.shape, dtype)
     res_out1 = _empty_output(ref_log_alpha.shape, dtype)
-    got0, got1 = flag_gems._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
+    got0, got1 = flag_gems._ctc_loss_out(
+        *gems_args, 0, False, out0=res_out0, out1=res_out1
+    )
     assert got0 is res_out0
     assert got1 is res_out1
     assert got0.data_ptr() == res_out0.data_ptr()
@@ -105,8 +114,9 @@ def test__ctc_loss_out(dtype):
     _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
     _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
+
 @pytest.mark.underscore_ctc_loss_out
-@pytest.mark.parametrize('dtype', CTC_DTYPES)
+@pytest.mark.parametrize("dtype", CTC_DTYPES)
 def test__ctc_loss_out_resize(dtype):
     """Empty out tensors must be resized to the produced shapes."""
     T, N, S, C = (20, 4, 8, 10)

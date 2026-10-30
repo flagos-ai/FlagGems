@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import flag_gems
 import pytest
 import torch
-
-import flag_gems
 
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
@@ -65,7 +64,9 @@ def _build_inputs_fn(plan, dtype, device):
         pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
-    targets = torch.randint(1, classes, (batch, max_target), dtype=torch.long, device=device)
+    targets = torch.randint(
+        1, classes, (batch, max_target), dtype=torch.long, device=device
+    )
     input_lengths = [t_steps] * batch
     target_lengths = [max_target] * batch
     out0 = torch.empty(batch, dtype=dtype, device=device)
