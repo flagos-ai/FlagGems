@@ -80,7 +80,7 @@ def torch_ref(
             return_debug_mask,
             scale=scale,
         )
-    if flag_gems.vendor_name in {"hygon", "metax"} and (
+    if flag_gems.vendor_name in {"hygon", "metax", "mthreads"} and (
         base.Config.reference_only or not base.Config.skip_native
     ):
         raise ValueError(
@@ -270,7 +270,7 @@ class _OverrideableH800Reference:
 
     def _measure_input(self, input, case_id=None):
         if (
-            flag_gems.vendor_name in {"hygon", "metax"}
+            flag_gems.vendor_name in {"hygon", "metax", "mthreads"}
             and base.Config.base_data is not None
         ):
             self._composite_checked = self._require_composite_static(
@@ -280,7 +280,7 @@ class _OverrideableH800Reference:
 
     def _apply_external_baseline(self, metric, dtype, context):
         if (
-            flag_gems.vendor_name not in {"hygon", "metax"}
+            flag_gems.vendor_name not in {"hygon", "metax", "mthreads"}
             or base.Config.base_data is None
         ):
             return super()._apply_external_baseline(metric, dtype, context)
@@ -353,7 +353,7 @@ def _build_inputs_fn(plan, dtype, device):
 @pytest.mark.scaled_dot_product_fused_attention_overrideable
 @pytest.mark.underscore_scaled_dot_product_fused_attention_overrideable
 @pytest.mark.skip_native(
-    vendors=["hygon", "metax"],
+    vendors=["hygon", "metax", "mthreads"],
     reason="Absent overrideable hook; consume exact native ATen composite H800 records",
 )
 @pytest.mark.parametrize("is_causal", [False, True])
