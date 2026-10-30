@@ -25,6 +25,10 @@ in registers and runs a partial-pivoted Gauss-Jordan elimination (fast path).
 Larger n uses a multi-launch Gauss-Jordan over global-memory workspaces with
 one launch per elimination step, which is deterministic (no intra-launch
 cross-phase synchronization is required).
+
+Two refinement steps use compensated FP32 residuals to reduce elimination
+roundoff on general matrices. Outputs retain the input dtype; this path does
+not require FP64 support from the device.
 """
 
 import torch
@@ -220,7 +224,44 @@ def _tensorinv_copy_kernel(R, B, N, BLOCK: tl.constexpr):
     tl.store(B + o, v, mask=m)
 
 
-def _launch(a2d, dst, n):
+@triton.jit
+def _tensorinv_residual_kernel(A, X, R, N, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N * N
+    rows = offs // N
+    cols = offs % N
+    high = tl.full((BLOCK,), 0.0, tl.float32)
+    low = tl.full((BLOCK,), 0.0, tl.float32)
+    for k in range(N):
+        a = tl.load(A + rows * N + k, mask=mask, other=0.0).to(tl.float32)
+        x = tl.load(X + k * N + cols, mask=mask, other=0.0)
+        product = a * x
+        product_error = tl.fma(a, x, -product)
+        total = high + product
+        recovered = total - high
+        sum_error = (high - (total - recovered)) + (product - recovered)
+        low = low + (sum_error + product_error)
+        high = total
+    residual = (tl.where(rows == cols, 1.0, 0.0) - high) - low
+    tl.store(R + offs, residual, mask=mask)
+
+
+@triton.jit
+def _tensorinv_refine_kernel(X, R, Y, N, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N * N
+    rows = offs // N
+    cols = offs % N
+    correction = tl.full((BLOCK,), 0.0, tl.float32)
+    for k in range(N):
+        x = tl.load(X + rows * N + k, mask=mask, other=0.0)
+        r = tl.load(R + k * N + cols, mask=mask, other=0.0)
+        correction = tl.fma(x, r, correction)
+    original = tl.load(X + offs, mask=mask, other=0.0)
+    tl.store(Y + offs, original + correction, mask=mask)
+
+
+def _launch_inverse(a2d, dst, n):
     if n <= _TILE_MAX:
         block = max(4, triton.next_power_of_2(n))
         # One warp keeps 16-wide tiles fully intra-warp (shuffle only, no
@@ -249,6 +290,28 @@ def _launch(a2d, dst, n):
                 ws, rhs, n, k, BM=32, BN=128, num_warps=4
             )
         _tensorinv_copy_kernel[grid](rhs, dst, n, BLOCK=blk)
+
+
+def _launch(a2d, dst, n):
+    inverse = torch.empty((n, n), dtype=torch.float32, device=dst.device)
+    _launch_inverse(a2d, inverse, n)
+    residual = torch.empty_like(inverse)
+    working = torch.empty_like(inverse)
+    block = 256
+    grid = (triton.cdiv(n * n, block),)
+    for step in range(2):
+        # Preserve the explicit TwoSum/TwoProd rounding boundaries. Only the
+        # product-error extraction uses an explicitly requested fused FMA.
+        _tensorinv_residual_kernel[grid](
+            a2d, inverse, residual, n, BLOCK=block,
+            num_warps=4, enable_fp_fusion=False,
+        )
+        target = working if step == 0 else dst
+        _tensorinv_refine_kernel[grid](
+            inverse, residual, target, n, BLOCK=block, num_warps=4
+        )
+        if step == 0:
+            inverse, working = working, inverse
 
 
 def linalg_tensorinv(A, ind=2, *, out=None):
