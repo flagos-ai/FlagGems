@@ -225,22 +225,35 @@ class _AscendNextafterBaseline:
         if flag_gems.vendor_name != "ascend":
             return super()._measure_input(input, case_id)
         self._imported_nextafter = None
-        metric = super()._measure_input(input, case_id)
-        if self._imported_nextafter is not None:
-            records, path, digest = self._h800_records
-            del records
-            if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-                raise ValueError("Nextafter H800 artifact changed during measurement")
-            return _NextafterMetrics(
-                **asdict(metric), baseline_source=self._imported_nextafter
-            )
-        return metric
+        self._nextafter_native_pending = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        try:
+            metric = super()._measure_input(input, case_id)
+            if self._imported_nextafter is not None:
+                records, path, digest = self._h800_records
+                del records
+                if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                    raise ValueError(
+                        "Nextafter H800 artifact changed during measurement"
+                    )
+                return _NextafterMetrics(
+                    **asdict(metric), baseline_source=self._imported_nextafter
+                )
+            return metric
+        finally:
+            self._nextafter_native_pending = False
 
 
 def _fresh_nextafter_latency(self, op, inp, other):
     if inp.untyped_storage()._cdata == other.untyped_storage()._cdata:
         raise ValueError("Fresh nextafter benchmark inputs must not alias")
-    if flag_gems.vendor_name == "ascend" and op is self.torch_op:
+    if flag_gems.vendor_name == "ascend" and (
+        getattr(self, "_nextafter_native_pending", False) or base.Config.reference_only
+    ):
+        self._nextafter_native_pending = False
+        if op is not self.torch_op:
+            raise ValueError("H800 data replaces only the native reference role")
         return self._h800_latency(inp, other)
     # Only self may change. Keep the independent read-only other tensor and
     # clone self through the existing timer hook, outside every timed call.
