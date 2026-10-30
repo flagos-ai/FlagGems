@@ -37,6 +37,7 @@ from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
+from .convolution_double_backward import _convolution_double_backward
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
@@ -124,6 +125,7 @@ __all__ = [
     "_batch_norm_no_update",
     "_cholesky_solve_helper",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
     "_dyn_quant_matmul_4bit",
     "_native_batch_norm_legit_functional",
     "_thnn_fused_lstm_cell_backward_impl",
