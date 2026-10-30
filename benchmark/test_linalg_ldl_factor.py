@@ -79,14 +79,12 @@ class LdlFactorBenchmark(OperatorBenchmark):
         )
 
     def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "mthreads" or op is not self.torch_op:
+        if not getattr(self, "_ldl_native_pending", False):
             return super().get_latency(op, *args, **kwargs)
-        if (
-            self.is_backward
-            or base.Config.skip_native
-            or len(args) != 1
-            or kwargs != {"hermitian": False}
-        ):
+        self._ldl_native_pending = False
+        if op is not self.torch_op:
+            raise ValueError("External LDL latency replaces only its native reference")
+        if self.is_backward or len(args) != 1 or kwargs != {"hermitian": False}:
             raise ValueError(
                 "Static LDL requires the original forward input and explicit hermitian=False"
             )
@@ -151,38 +149,41 @@ class LdlFactorBenchmark(OperatorBenchmark):
         )
         return us / 1000
 
-    def _candidate_call(self):
-        op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "mthreads" and not overridden:
-            raise ValueError(
-                "MUSA LDL requires an explicit candidate; its native route lacks LAPACK"
-            )
-        return op, dispatch, overridden
-
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name == "mthreads" and (
-            self.is_backward
-            or base.Config.skip_native
-            or "tflops" in self.to_bench_metrics
-        ):
-            raise ValueError(
-                "Static H800 LDL supports the original forward latency measurement"
-            )
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        self._ldl_native_pending = (
+            flag_gems.vendor_name in ("mthreads", "ascend") and needs_native
+        )
         self._imported_baseline = None
-        metric = super()._measure_input(input, case_id)
-        if self._imported_baseline is not None:
-            if metric.latency is not None and (
-                not math.isfinite(metric.latency) or metric.latency <= 0
+        try:
+            if self._ldl_native_pending and (
+                self.is_backward or "tflops" in self.to_bench_metrics
             ):
                 raise ValueError(
-                    "Target LDL candidate latency must be positive and finite"
+                    "Static H800 LDL supports the original forward latency measurement"
                 )
-            if "speedup" in self.to_bench_metrics:
-                metric.speedup = metric.latency_base / metric.latency
-            return _LdlFactorMetrics(
-                **asdict(metric), baseline_source=self._imported_baseline
-            )
-        return metric
+            if self._ldl_native_pending and not os.environ.get(
+                "FLAGGEMS_LDL_FACTOR_H800_BASELINE"
+            ):
+                raise ValueError("Missing native H800 LDL reference")
+            metric = super()._measure_input(input, case_id)
+            if self._imported_baseline is not None:
+                if metric.latency is not None and (
+                    not math.isfinite(metric.latency) or metric.latency <= 0
+                ):
+                    raise ValueError(
+                        "Target LDL candidate latency must be positive and finite"
+                    )
+                if "speedup" in self.to_bench_metrics:
+                    metric.speedup = metric.latency_base / metric.latency
+                return _LdlFactorMetrics(
+                    **asdict(metric), baseline_source=self._imported_baseline
+                )
+            return metric
+        finally:
+            self._ldl_native_pending = False
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = LDL_FACTOR_SHAPES
