@@ -68,6 +68,12 @@ SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
 registrar = GeneralOpRegistrar
 current_work_registrar = None
 AUTOGRAD_DISPATCH_KEY = torch._C.DispatchKey.Autograd.name
+# CUDA-specific autograd key. A call whose tensor arguments live on CUDA carries
+# ``AutogradCUDA`` in its key set, so the bare ``Autograd`` alias key (above)
+# never fires for it; registering a CUDA-argument operator on ``Autograd``
+# leaves it un-intercepted. Measured on the target for the sparse COO
+# constructor overloads (one fresh process per candidate key).
+AUTOGRAD_CUDA_DISPATCH_KEY = torch._C.DispatchKey.AutogradCUDA.name
 CONJUGATE_DISPATCH_KEY = torch._C.DispatchKey.Conjugate.name
 QUANTIZED_CUDA_DISPATCH_KEY = torch._C.DispatchKey.QuantizedCUDA.name
 SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
@@ -1864,6 +1870,25 @@ _FULL_CONFIG = (
     ("sparse_bsr_tensor.crow_col_value_size", sparse_bsr_tensor),
     ("sparse_compressed_tensor.comp_plain_value", sparse_compressed_tensor),
     ("sparse_compressed_tensor.comp_plain_value_size", sparse_compressed_tensor),
+    (
+        "sparse_coo_tensor.indices",
+        sparse_coo_tensor_indices,
+        None,
+        (AUTOGRAD_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "sparse_coo_tensor.indices_size",
+        sparse_coo_tensor_indices_size,
+        None,
+        (AUTOGRAD_CUDA_DISPATCH_KEY,),
+    ),
+    ("sparse_coo_tensor.size", sparse_coo_tensor_size, None, (SPARSE_DISPATCH_KEY,)),
+    (
+        "sparse_coo_tensor.size_out",
+        sparse_coo_tensor_size_out,
+        None,
+        (SPARSE_DISPATCH_KEY,),
+    ),
     (
         "sparse_dim",
         sparse_dim,
