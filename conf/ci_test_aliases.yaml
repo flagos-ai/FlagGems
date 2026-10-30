@@ -183,6 +183,7 @@ huber_loss_out: test_huber_loss
 int_mm_out: test_int_mm
 int_repr_out: test_int_repr
 linalg_eigvals_out: test_linalg_eigvals
+lu_solve_out: test_lu_solve
 lu_unpack_out: test_lu_unpack
 multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
