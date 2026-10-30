@@ -113,6 +113,12 @@ def _ascend_input_fn(shape, dtype, device):
 @pytest.mark.topk
 def test_topk():
     if flag_gems.vendor_name == "ascend":
+        from packaging.version import Version
+        from torch_npu.npu.utils import get_cann_version
+
+        if Version(get_cann_version()) < Version("9.1.0"):
+            pytest.skip("Ascend DSA topk benchmark requires CANN >= 9.1.0")
+
         # DSA topk has no dim/largest args and is called directly (base.py
         # skips use_gems when gems_op is given); torch.topk(x, k) defaults to
         # last-dim largest=True on both sides.
