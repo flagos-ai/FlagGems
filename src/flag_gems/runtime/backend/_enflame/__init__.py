@@ -198,7 +198,6 @@ if arch_version == 300:
         "special_shifted_chebyshev_polynomial_u",
         "special_shifted_chebyshev_polynomial_u_",
         "subtract_Tensor",
-        "sym_stride",
         "threshold_",
         "true_divide_out",
         "unbind_copy",
