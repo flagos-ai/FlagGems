@@ -9609,6 +9609,16 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '3.0'
+- id: grouped_gemm_w8a8
+  description: Per-channel INT8 grouped NT GEMM with unpadded rows and BF16 output.
+  for:
+  - grouped_gemm_nt_i8i8bf16_nopad
+  labels:
+  - fused
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: grouped_matmul
   description: 'Grouped matrix multiplication on Ascend NPUs, mirroring ``torch_npu.npu_grouped_matmul``.
 

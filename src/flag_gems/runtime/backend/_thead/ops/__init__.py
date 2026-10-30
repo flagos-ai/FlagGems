@@ -39,6 +39,7 @@ from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .gru import gru
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
@@ -122,6 +123,7 @@ __all__ = [
     "gcd",
     "gcd_",
     "grid_sampler_3d_backward",
+    "grouped_gemm_w8a8",
     "gru",
     "index_copy",
     "index_copy_",
