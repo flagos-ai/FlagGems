@@ -400,9 +400,9 @@ def _uniform_float(tensors) -> bool:
     if dtype not in _FAST_DTYPES:
         return False
     device = tensors[0].device
-    numel = tensors[0].numel()
+    shape = tensors[0].shape
     for t in tensors:
-        if t.dtype is not dtype or t.device != device or t.numel() != numel:
+        if t.dtype is not dtype or t.device != device or t.shape != shape:
             return False
         if not t.is_contiguous():
             return False
