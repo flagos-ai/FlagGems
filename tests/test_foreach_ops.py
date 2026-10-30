@@ -27,6 +27,7 @@ from flag_gems.ops._foreach_binary import BINARY_OPS, registered_wrappers
 from flag_gems.ops._foreach_reduction import registered_wrappers as reduction_wrappers
 
 from .accuracy_utils import gems_assert_close, to_reference
+from .conftest import QUICK_MODE
 
 BINARY_WRAPPERS = registered_wrappers()
 REDUCTION_WRAPPERS = reduction_wrappers()
@@ -785,3 +786,44 @@ def test_foreach_clamp_scalar_rejects_bool(core):
     inp = [torch.tensor([True, False], dtype=torch.bool, device=device)]
     with pytest.raises(RuntimeError):
         _gems(f"_foreach_{core}.Scalar")(inp, True)
+
+
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+FAST_LIST_SIZES = [128] if QUICK_MODE else [128, 1024, 4096]
+
+KUNLUNXIN_LIST_FAST_KEYS = [
+    pytest.param("_foreach_add.List", marks=pytest.mark.foreach_add_list),
+    pytest.param("_foreach_add_.List", marks=pytest.mark.foreach_add_list_),
+    pytest.param("_foreach_mul_.List", marks=pytest.mark.foreach_mul_list_),
+    pytest.param("_foreach_sub_.List", marks=pytest.mark.foreach_sub_list_),
+    pytest.param("_foreach_pow.List", marks=pytest.mark.foreach_pow_list),
+    pytest.param("_foreach_pow_.List", marks=pytest.mark.foreach_pow_list_),
+]
+
+
+@pytest.mark.skipif(not IS_KUNLUNXIN, reason="kunlunxin direct-pointer fast path")
+@pytest.mark.parametrize("key", KUNLUNXIN_LIST_FAST_KEYS)
+@pytest.mark.parametrize("num_tensors", [2, 16])
+@pytest.mark.parametrize("size", FAST_LIST_SIZES)
+def test_accuracy_foreach_list_dispatch_fast_path(key, num_tensors, size):
+    base, _, overload = key.partition(".")
+    inplace = base.endswith("_")
+    device = flag_gems.device
+    inp = [_sample((size,), torch.float32, device) for _ in range(num_tensors)]
+    other = [_sample((size,), torch.float32, device) for _ in range(num_tensors)]
+    ref_inp = [to_reference(t.clone()) for t in inp]
+    ref_other = [to_reference(t.clone()) for t in other]
+
+    ref = getattr(getattr(torch.ops.aten, base), overload)(ref_inp, ref_other)
+    want = ref_inp if ref is None else ref
+    res = getattr(flag_gems, f"{base}_{overload}")(inp, other)
+    got = inp if inplace else res
+
+    assert (res is None) == inplace
+    assert len(got) == len(want) == num_tensors
+    for result, expected in zip(got, want):
+        assert result.shape == expected.shape
+        gems_assert_close(result, expected, torch.float32)
+        if "pow" not in base:
+            assert torch.equal(result.cpu(), expected.cpu())
