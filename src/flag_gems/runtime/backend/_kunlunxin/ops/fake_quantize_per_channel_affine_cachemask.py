@@ -34,9 +34,10 @@ host recompile due to a ``grid = lambda``):
   never with ``setcc``-based ``i1`` comparisons/``tl.where``: per-element
   ``i1`` classification costs ~300-400 us/core on this backend, and direct
   ``i1`` stores are pathological here. The 0.0/1.0 fp32 mask is converted to
-  bool with ``torch.ops.aten._copy_from`` (the vendor DMA converter, exact for
-  {0.0, 1.0}); tiny inputs (n <= 512) use a single-launch kernel that stores
-  ``i1`` directly (an extra launch would cost more than the i1-path penalty).
+  bool with a plain triton elementwise pass (``_fp32_mask_to_bool_kernel``,
+  exact for {0.0, 1.0}); tiny inputs (n <= 512) use a single-launch kernel
+  that stores ``i1`` directly (an extra launch would cost more than the
+  i1-path penalty).
 * The launch grid is a constant tuple (never ``lambda``): a callable grid
   participates in the xpubin compile-cache key and forces a full
   recompilation on every call (~236 ms/call, size-independent).
@@ -57,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 # n <= _TINY_N: single-launch kernel with a direct i1 (bool) store.
 # For larger n the i1 store is ~10-100x slower than the fp32-mask +
-# `_copy_from` conversion, so we pay the extra launch there.
+# triton bool-conversion kernel, so we pay the extra launch there.
 _TINY_N = 512
 
 
@@ -79,6 +80,24 @@ def _mask_f32(nudge, quant_min, quant_max):
     m2 = ((quant_max + 1) - nudge) * 1e30
     m2 = tl.minimum(tl.maximum(m2, 0.0), 1.0)
     return m1 * m2
+
+
+@triton.jit
+def _fp32_mask_to_bool_kernel(
+    mask_fp32_ptr,
+    cachemask_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    # Convert the 0.0/1.0 fp32 mask to bool, one element per lane.  This is a
+    # plain elementwise pass: `x != 0.0` is exact for the {0.0, 1.0} domain
+    # produced by `_mask_f32`.  It replaces `torch.ops.aten._copy_from` (which
+    # also rejected the 1-D src / N-D dst shape mismatch outright).
+    pid = tl.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    valid = off < n_elements
+    x = tl.load(mask_fp32_ptr + off, mask=valid, other=0.0)
+    tl.store(cachemask_ptr + off, x != 0.0, mask=valid)
 
 
 @triton.jit
@@ -172,7 +191,7 @@ def _fake_quantize_per_channel_affine_cachemask_rows_i1_kernel(
     BLOCK: tl.constexpr,
 ):
     # Single-launch path for tiny inputs (n <= _TINY_N): store the i1 mask
-    # directly (no extra _copy_from launch).
+    # directly (no extra bool-conversion launch).
     pid0 = tl.program_id(0)
     c = tl.program_id(1)
     o = tl.program_id(2)
@@ -333,6 +352,20 @@ def _launch_cols(
             )
 
 
+def _launch_fp32_mask_to_bool(mask_fp32, cachemask):
+    n_elements = mask_fp32.numel()
+    block = 1024
+    grid = (triton.cdiv(n_elements, block),)
+    with torch_device_fn.device(mask_fp32.device):
+        _fp32_mask_to_bool_kernel[grid](
+            mask_fp32,
+            cachemask,
+            n_elements,
+            BLOCK=block,
+            num_warps=4,
+        )
+
+
 def _fake_quantize_per_channel_affine_cachemask_impl(
     input,
     scale,
@@ -394,9 +427,10 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                     quant_max,
                     mask_fp32=mask_fp32,
                 )
-                # Vendor DMA converter fp32 -> bool; exact for {0.0, 1.0}
-                # masks (verified: same as reference for 0/1 inputs).
-                torch.ops.aten._copy_from(mask_fp32, cachemask, False)
+                # Convert fp32 -> bool in a plain triton pass (exact for
+                # {0.0, 1.0} masks; the 1-D src / N-D dst shape mismatch of an
+                # ATen _copy_from would raise an expand error).
+                _launch_fp32_mask_to_bool(mask_fp32, cachemask)
         else:
             outer = n_elements // n_channels
             if n_elements <= _TINY_N:
@@ -427,7 +461,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                     quant_max,
                     mask_fp32=mask_fp32,
                 )
-                torch.ops.aten._copy_from(mask_fp32, cachemask, False)
+                _launch_fp32_mask_to_bool(mask_fp32, cachemask)
     return output, cachemask
 
 
