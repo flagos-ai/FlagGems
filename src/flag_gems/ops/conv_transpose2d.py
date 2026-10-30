@@ -1917,6 +1917,13 @@ def _conv_transpose2d_residue(
         block_nhw = 128
         num_warps = 8
 
+    # Workaround for Triton compiler bug: when the output spatial size is
+    # degenerate (e.g. output_width==1 from a 1-D convolution unsqueezed to
+    # 2-D), BLOCK_NHW=64 with num_warps=4 triggers an illegal shared-memory
+    # access inside tl.dot.  Bumping to 8 warps avoids the mis-compilation.
+    if (output_height <= 1 or output_width <= 1) and num_warps < 8:
+        num_warps = 8
+
     compact_height = triton.cdiv(output_height, stride_h)
     compact_width = triton.cdiv(output_width, stride_w)
     max_sub_spatial = batch * compact_height * compact_width
