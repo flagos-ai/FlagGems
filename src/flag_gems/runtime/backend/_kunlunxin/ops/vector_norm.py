@@ -368,8 +368,25 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
         col_mask = cols < N
         mask = row_mask and col_mask
 
-        a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        # `other` MUST NOT be 0.0 here.  `BLOCK_N` is a power of two (see
+        # heur_block_n) so whenever N is not a multiple of it the trailing tile
+        # carries padding lanes.  For a negative `ord` those lanes evaluate
+        # pow(0.0, ord) = +inf, which poisons `_sum` for *every* row, so
+        # tl.sum() is +inf and the result pow(+inf, 1/ord) collapses to exactly
+        # 0.0.  Measured on XPU 3 (2026-10-29, ones([64, 200]), dim=1):
+        #   ord=-1 -> 0.0 (ref 0.005), ord=-2 -> 0.0 (ref 0.07071068)
+        # while the power-of-two width N=256 (no padding lane) was exact.
+        # `other=1.0` keeps pow() finite for every ord and the `keep` factor
+        # below cancels the padding lanes exactly, so the padding value itself
+        # never reaches the sum.  Note the cancellation cannot be done by
+        # subtracting `pad * pow(1, ord)` from the total: this backend's pow()
+        # returns 1.0000000763 for pow(1.0, 1.0) (measured, same probe), and
+        # for a negative `ord` with large |a| the true sum is far below the
+        # padding term, so the subtraction cancels catastrophically into a
+        # negative sum and pow() then yields NaN.
+        a = tl.load(X + cols, mask, other=1.0).to(tl.float32)
+        keep = col_mask.to(tl.float32)
+        _sum += pow(tl.abs(a), ord) * keep
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
