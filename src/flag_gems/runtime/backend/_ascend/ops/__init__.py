@@ -23,6 +23,7 @@ from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
+from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -37,6 +38,7 @@ from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
 from .count_nonzero import count_nonzero
+from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
@@ -47,6 +49,7 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -55,6 +58,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
@@ -106,6 +110,8 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mode import mode
+from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -152,6 +158,8 @@ from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -193,6 +201,7 @@ __all__ = [
     "arange_start",
     "argmax",
     "argmin",
+    "argsort",
     "baddbmm",
     "bmm",
     "cat",
@@ -201,6 +210,7 @@ __all__ = [
     "cholesky_solve_out",
     "concat",
     "count_nonzero",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumsum",
@@ -211,6 +221,7 @@ __all__ = [
     "dist",
     "dot",
     "embedding",
+    "embedding_spmdm",
     "exponential",
     "exponential_",
     "fill_scalar",
@@ -225,6 +236,8 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "geometric",
+    "geometric_",
     "group_norm",
     "group_norm_backward",
     "grouped_matmul",
@@ -298,6 +311,8 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mode",
+    "mul",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -361,6 +376,9 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "triu",
     "unique_dim",
     "unsafe_index",

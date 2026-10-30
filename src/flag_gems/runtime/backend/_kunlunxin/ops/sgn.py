@@ -3,6 +3,7 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 
+import dataclasses
 import logging
 
 import torch
@@ -14,14 +15,13 @@ from flag_gems.runtime import torch_device_fn
 from ..utils.pointwise_dynamic import pointwise_dynamic
 from .sign import _SIGN_CONFIG, _sign_bit
 
+# Wider 1D-tile grid for the large-numel path only.
+_SGN_CONFIG = dataclasses.replace(_SIGN_CONFIG, num_ctas_1d=128)
+
 logger = logging.getLogger(__name__)
 
 # For real dtypes torch.sgn equals torch.sign (both map +-0 -> 0, +-inf -> +-1,
-# NaN -> 0), so the real path shares sign's pure integer-ALU bit-domain body
-# `_sign_bit` (see harness/solution/performance/sign_xpu5_20260813.md). The
-# generic fp compare `(x > 0).to(x.dtype) - (x < 0).to(x.dtype)` lowers on XPU
-# to fp compare -> i1 -> select -> sub and costs ~2.8x the bit-domain
-# formulation. Complex tensors keep the magnitude-normalization kernels below
+# NaN -> 0). Complex tensors keep the magnitude-normalization kernels below
 # (torch.sgn complex semantics differ from torch.sign).
 _SMALL_NUMEL = 65536
 
@@ -191,11 +191,17 @@ def _sgn_complex_strided_kernel(
     )
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SIGN_CONFIG)
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SGN_CONFIG)
 @triton.jit
 def _sgn_func(x):
-    # vectorized 1D-tile DMA path for numel > _SMALL_NUMEL (same config family
-    # as sign); bit-domain body shared with the small masked kernel.
+    # vectorized 1D-tile path for numel > _SMALL_NUMEL.  The compare/select body
+    # is cheaper than the bit-domain one, but its literals only exist for
+    # floating dtypes; integer tensors keep the shared bit-domain body.
+    if x.dtype.is_floating():
+        one = tl.full(x.shape, 1.0, x.dtype)
+        none = tl.full(x.shape, -1.0, x.dtype)
+        zero = tl.full(x.shape, 0.0, x.dtype)
+        return tl.where(x > 0, one, tl.where(x < 0, none, zero))
     return _sign_bit(x)
 
 
@@ -209,7 +215,8 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
     if x.numel() == 0:
         return out
 
-    grid = lambda meta: (triton.cdiv(x.numel(), meta["BLOCK_SIZE"]),)
+    # All launches below use BLOCK_SIZE=1024.
+    grid = (triton.cdiv(x.numel(), 1024),)
     if x.is_complex() and (not x.is_contiguous() or not out.is_contiguous()):
         if x.ndim > 8:
             raise RuntimeError(

@@ -71,7 +71,6 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
-from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .ceil import ceil, ceil_
 from .celu import celu, celu_
@@ -324,7 +323,6 @@ __all__ = [
     "bitwise_xor_tensor_",
     "bmm",
     "bmm_out",
-    "broadcast_to",
     "cat",
     "cat_out",
     "ceil",

@@ -24,8 +24,7 @@ def test_unsqueeze(shape, dtype, dim):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.unsqueeze(ref_inp, dim)
-    with flag_gems.use_gems():
-        res_out = torch.unsqueeze(inp, dim)
+    res_out = flag_gems.unsqueeze(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -45,8 +44,7 @@ def test_unsqueeze_(shape, dtype, dim):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.unsqueeze_(dim)
-    with flag_gems.use_gems():
-        res_out = inp.unsqueeze_(dim)
+    res_out = flag_gems.unsqueeze_(inp, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
     utils.gems_assert_equal(inp, ref_inp)

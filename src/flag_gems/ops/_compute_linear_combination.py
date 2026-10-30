@@ -94,7 +94,6 @@ def _compute_linear_combination_kernel(
             other=0.0,
         ).to(tl.float32)
         acc += tl.dot(a, b, allow_tf32=False)
-        coeff_ptrs += BLOCK_K * stride_coeff_k
 
     tl.store(out_ptrs, acc.to(Out.dtype.element_ty), mask=m_mask & n_mask)
 
@@ -143,5 +142,5 @@ def _compute_linear_combination(input, coefficients, *, out=None):
 
 
 def _compute_linear_combination_out(input, coefficients, *, out=None):
-    logger.debug("GEMS _COMPUTE_LINEAR_COMBINATION OUT")
+    logger.debug("GEMS _COMPUTE_LINEAR_COMBINATION_OUT")
     return _compute_linear_combination(input, coefficients, out=out)

@@ -12,14 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import os
 
 import torch
 import triton
 import triton.language as tl
 
-# Enable all blocks parallel to avoid coreDim > 65535 issue on NPU
-os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+
+@contextlib.contextmanager
+def _all_blocks_parallel():
+    """Scope TRITON_ALL_BLOCKS_PARALLEL to the sparse-attention kernel.
+
+    The flagtree Ascend backend reads this env var at TRITON COMPILE time to
+    enable auto-blockify (needed here to avoid the coreDim > 65535 limit on
+    the 1D grid). It used to be set at module import, which leaked into every
+    later triton kernel in the process and changed their codegen (observed as
+    nondeterministic results for unrelated kernels). Scope it to the launch.
+    """
+    previous = os.environ.get("TRITON_ALL_BLOCKS_PARALLEL")
+    os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TRITON_ALL_BLOCKS_PARALLEL", None)
+        else:
+            os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = previous
 
 
 # ---------------------------------------------------------------------------
@@ -176,38 +195,41 @@ def sparse_attn_triton(
     # H must be >= 16 for tl.dot; pad to next power of 2
     H_padded = max(16, triton.next_power_of_2(h))
 
-    # NPU: use 1D grid, TRITON_ALL_BLOCKS_PARALLEL handles large grid
+    # NPU: use 1D grid; TRITON_ALL_BLOCKS_PARALLEL enables the auto-blockify
+    # pass that handles the large grid. Scoped so it does not leak into other
+    # kernels compiled later in the process.
     grid = (b * m,)
 
-    sparse_attn_triton_kernel[grid](
-        q,
-        kv,
-        o,
-        attn_sink,
-        topk_idxs,
-        q.stride(0),
-        q.stride(1),
-        q.stride(2),
-        q.stride(3),
-        kv.stride(0),
-        kv.stride(1),
-        kv.stride(2),
-        o.stride(0),
-        o.stride(1),
-        o.stride(2),
-        o.stride(3),
-        topk_idxs.stride(0),
-        topk_idxs.stride(1),
-        topk_idxs.stride(2),
-        softmax_scale,
-        topk,
-        kv_len,
-        h,
-        BLOCK=BLOCK,
-        BLOCK_SUB=BLOCK_SUB,
-        D=d,
-        H=H_padded,
-        BATCH_STRIDE=m,  # for 1D grid: pid = pid_b * m + pid_m
-        num_warps=4,  # reduced for NPU
-    )
+    with _all_blocks_parallel():
+        sparse_attn_triton_kernel[grid](
+            q,
+            kv,
+            o,
+            attn_sink,
+            topk_idxs,
+            q.stride(0),
+            q.stride(1),
+            q.stride(2),
+            q.stride(3),
+            kv.stride(0),
+            kv.stride(1),
+            kv.stride(2),
+            o.stride(0),
+            o.stride(1),
+            o.stride(2),
+            o.stride(3),
+            topk_idxs.stride(0),
+            topk_idxs.stride(1),
+            topk_idxs.stride(2),
+            softmax_scale,
+            topk,
+            kv_len,
+            h,
+            BLOCK=BLOCK,
+            BLOCK_SUB=BLOCK_SUB,
+            D=d,
+            H=H_padded,
+            BATCH_STRIDE=m,  # for 1D grid: pid = pid_b * m + pid_m
+            num_warps=4,  # reduced for NPU
+        )
     return o

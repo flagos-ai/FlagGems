@@ -21,10 +21,43 @@ vendor: THead
 runner_labels: 810e-flaggems-weekly
 
 # Use container or not for this backends
-use_container: false
+use_container: true
 
 # Container image for this backends
-# container_image: baai-cp-registry.cn-wulanchabu.cr.aliyuncs.com/flagos/flagos:vllm-qwen3-next-0528
+container_image: harbor.baai.ac.cn/flaggems/flaggems-test-thead-ppu-zw810e:20261015
+
+# Container volumes to mount for this backends
+container_volumes:
+  - /mnt/data1:/data
+
+# Container options for this backends
+# NOTE: do not add --network=host here. GitHub Actions always attaches job
+# containers to its own user-defined network, and Docker rejects combining a
+# user-defined network with host mode ("cannot attach both user-defined and
+# non-user-defined network-modes").
+container_options: >-
+  --device=/dev/alixpu
+  --device=/dev/alixpu_ctl
+  --device=/dev/alixpu_ppu0
+  --device=/dev/alixpu_ppu1
+  --device=/dev/alixpu_ppu2
+  --device=/dev/alixpu_ppu3
+  --device=/dev/alixpu_ppu4
+  --device=/dev/alixpu_ppu5
+  --device=/dev/alixpu_ppu6
+  --device=/dev/alixpu_ppu7
+  --device=/dev/alixpu_ppu8
+  --device=/dev/alixpu_ppu9
+  --device=/dev/alixpu_ppu10
+  --device=/dev/alixpu_ppu11
+  --device=/dev/alixpu_ppu12
+  --device=/dev/alixpu_ppu13
+  --device=/dev/alixpu_ppu14
+  --device=/dev/alixpu_ppu15
+  --shm-size=256g
+  --ulimit=memlock=-1
+  --ulimit=stack=67108864
+  --workdir=/root
 
 # GPUs to test for this backends
 test_gpus: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"

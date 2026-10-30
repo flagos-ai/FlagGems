@@ -80,7 +80,7 @@ def _compute_block_size(inner_size):
 
 
 def renorm(input, p, dim, maxnorm):
-    logger.debug("GEMS RENORM")
+    logger.debug("GEMS_HYGON RENORM")
 
     if dim < 0:
         dim = input.ndim + dim
@@ -123,7 +123,7 @@ def renorm(input, p, dim, maxnorm):
 
 
 def renorm_(input, p, dim, maxnorm):
-    logger.debug("GEMS RENORM_")
+    logger.debug("GEMS_HYGON RENORM_")
 
     if dim < 0:
         dim = input.ndim + dim

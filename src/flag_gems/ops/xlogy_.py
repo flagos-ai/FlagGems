@@ -25,5 +25,5 @@ def xlogy_(A, B):
 
 
 def xlogy_tensor_scalar_(A, B):
-    logger.debug("GEMS XLOGY_ TENSOR_SCALAR")
+    logger.debug("GEMS XLOGY__TENSOR_SCALAR")
     return xlogy_func_tensor_scalar(A, B, out0=A)

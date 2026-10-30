@@ -34,7 +34,6 @@ def test_accuracy_lift_fresh_copy(shape, dtype):
 
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.lift_fresh_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.lift_fresh_copy(inp)
+    res_out = flag_gems.lift_fresh_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

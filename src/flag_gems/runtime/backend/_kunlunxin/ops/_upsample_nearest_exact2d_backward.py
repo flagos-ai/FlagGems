@@ -280,7 +280,7 @@ def _upsample_nearest_exact2d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_KUNLUNXIN UPSAMPLE NEAREST EXACT2D BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN UPSAMPLE_NEAREST_EXACT2D_BACKWARD")
 
     assert grad_output.device.type == device.name
     assert grad_output.ndim == 4, "The ndim of grad_output must be 4"

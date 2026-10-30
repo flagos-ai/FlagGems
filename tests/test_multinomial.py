@@ -46,8 +46,7 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
 
     if shape[-1] == 1:
         dist = torch.rand(size=shape, dtype=dtype, device=flag_gems.device)
-        with flag_gems.use_gems():
-            res_out = torch.multinomial(dist, n_samples, True)
+        res_out = flag_gems.multinomial(dist, n_samples, True)
         assert torch.all(res_out == 0)
     else:
         # Mask p% off of the categories and test the sampling results fall in the rest
@@ -57,8 +56,7 @@ def test_multinomial_with_replacement(shape, dtype, n_samples):
             # Make sure there's at least one non-zero probability
             dist[..., -1] = 0.5
 
-            with flag_gems.use_gems():
-                res_out = torch.multinomial(dist, n_samples, True)
+            res_out = flag_gems.multinomial(dist, n_samples, True)
 
             res_dist = torch.gather(dist, -1, res_out)
             # assert torch.all(res_dist)
@@ -74,8 +72,7 @@ def test_multinomial_with_replacement_1(shape, dtype, n_samples):
     # use the index counts as the input probabilities (scaled)
     rand_indices = torch.multinomial(torch.rand(shape), n_samples, True).to(device)
     inp_counts = torch.nn.functional.one_hot(rand_indices).sum(1)
-    with flag_gems.use_gems():
-        out_indices = torch.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
+    out_indices = flag_gems.multinomial(inp_counts.to(dtype=dtype), n_samples, True)
     out_counts = torch.nn.functional.one_hot(out_indices).sum(1)
 
     # Do a simple Chi-square test
@@ -111,8 +108,7 @@ def test_multinomial_without_replacement(pool, dtype):
         ns = [1]
 
     for n in ns:
-        with flag_gems.use_gems():
-            out = torch.multinomial(dist, n, False)
+        out = flag_gems.multinomial(dist, n, False)
 
         # Verifies uniqueness
         idx_cnt = torch.nn.functional.one_hot(out).sum(1)

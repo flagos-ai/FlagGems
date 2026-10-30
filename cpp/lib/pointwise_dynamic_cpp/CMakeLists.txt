@@ -19,7 +19,11 @@
 set(POINTWISE_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 # Operations to generate (full module paths)
+# ``flag_gems.ops.remainder`` is listed because lib/div.cpp wraps
+# ``pointwise_dynamic::rem_tt`` / ``rem_ts`` / ``rem_st`` (and their ``_out``
+# forms); those kernels are defined in the remainder module, not in ``div``.
 set(POINTWISE_OP_FILES "flag_gems.ops.add" "flag_gems.ops.div" "flag_gems.ops.fill"
+    "flag_gems.ops.remainder"
     CACHE STRING "Space-separated list of op module paths" FORCE)
 
 # Maximum tensor rank

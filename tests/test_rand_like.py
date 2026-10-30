@@ -28,8 +28,7 @@ device = flag_gems.device
 def test_rand_like(shape, dtype):
     x = torch.randn(size=shape, dtype=dtype, device=device)
 
-    with flag_gems.use_gems():
-        res_out = torch.rand_like(x)
+    res_out = flag_gems.rand_like(x)
 
     ref_out = utils.to_reference(res_out)
 

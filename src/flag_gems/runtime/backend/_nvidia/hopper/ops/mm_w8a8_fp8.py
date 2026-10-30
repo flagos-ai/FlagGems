@@ -28,6 +28,7 @@ _FP8_DTYPES = (torch.float8_e4m3fn, torch.float8_e5m2)
 _EXPAND_YAML = str(Path(__file__).resolve().parent.parent / "mm_hopper_expand.yaml")
 _TMA_SPACE = "mm_w8a8_fp8_block_scaled"
 _LOAD_SPACE = "mm_w8a8_fp8_block_scaled_splitk"
+_SMALL_SPACE = "mm_w8a8_fp8_skinny"
 _TUNE_KEY = ["M", "N", "K", "stride_am", "stride_bk"]
 _LAUNCH_CACHE = OrderedDict()
 
@@ -91,7 +92,104 @@ _TMA_CONFIGS = runtime.ops_get_configs(
     _TMA_SPACE, pre_hook=_set_tma_blocks, yaml_path=_EXPAND_YAML
 )
 _LOAD_CONFIGS = runtime.ops_get_configs(_LOAD_SPACE, yaml_path=_EXPAND_YAML)
+_SMALL_CONFIGS = runtime.ops_get_configs(_SMALL_SPACE, yaml_path=_EXPAND_YAML)
 _MAX_SPLIT_K = max(config.kwargs["SPLIT_K"] for config in _LOAD_CONFIGS)
+
+
+def _prune_small_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    return [
+        config
+        for config in configs
+        if config.kwargs["BLOCK_K"] <= triton.next_power_of_2(args["K"])
+        and (
+            config.kwargs["scenario"] != 0
+            or config.kwargs["BLOCK_N"] * config.kwargs["BLOCK_K"]
+            <= 128 * 32 * config.num_warps
+        )
+    ]
+
+
+@libentry()
+@libtuner(
+    configs=[
+        _SMALL_CONFIGS[0],
+        next(c for c in _SMALL_CONFIGS if c.kwargs["scenario"] == 1),
+    ],
+    key=_TUNE_KEY,
+    warmup=5,
+    rep=10,
+    prune_configs_by={"early_config_prune": _prune_small_configs},
+    flagtune_op_name="mm_w8a8_fp8",
+    flagtune_expand_op_name=_SMALL_SPACE,
+    flagtune_yaml_path=_EXPAND_YAML,
+)
+@triton.jit
+def _mm_w8a8_fp8_small_m(
+    A,
+    B,
+    C,
+    SA,
+    SB,
+    M,
+    N,
+    K: tl.constexpr,
+    stride_am,
+    stride_bk,
+    stride_bn: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    AS: tl.constexpr,
+    BS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    scenario: tl.constexpr,
+):
+    pn, pm = tl.program_id(0), tl.program_id(1)
+    rn = pn * BLOCK_N + tl.arange(0, BLOCK_N)
+    rk = tl.arange(0, BLOCK_K)
+    if scenario == 0:
+        # GEMV: avoid padded matrix rows; reduce FP32 partial sums only once.
+        acc = tl.zeros((BLOCK_N, BLOCK_K), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K)):
+            kk = block * BLOCK_K + rk
+            a = tl.load(A + pm * stride_am + kk, kk < K, 0.0).to(tl.float32)
+            b = tl.load(
+                B + rn[:, None] * stride_bn + kk[None, :] * stride_bk,
+                (rn[:, None] < N) & (kk[None, :] < K),
+                0.0,
+            ).to(tl.float32)
+            acc = tl.fma(a[None, :], b, acc)
+        value = tl.sum(acc, 1)
+        value *= tl.load(SA + pm * AS)
+        value *= tl.load(SB + rn * BS, rn < N, 0.0)
+        tl.store(C + pm * CM + rn * CN, value, rn < N)
+    else:
+        # B.T @ A.T puts the short M on the smaller native FP8 MMA dimension.
+        rm = pm * BLOCK_M + tl.arange(0, BLOCK_M)
+        acc = tl.zeros((BLOCK_N, BLOCK_M), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K)):
+            kk = block * BLOCK_K + rk
+            b = tl.load(
+                B + rn[:, None] * stride_bn + kk[None, :] * stride_bk,
+                (rn[:, None] < N) & (kk[None, :] < K),
+                0.0,
+            )
+            a = tl.load(
+                A + rm[None, :] * stride_am + kk[:, None],
+                (rm[None, :] < M) & (kk[:, None] < K),
+                0.0,
+            )
+            acc = tl.dot(b, a, acc=acc, max_num_imprecise_acc=32)
+        sa = tl.load(SA + rm * AS, rm < M, 0.0)
+        sb = tl.load(SB + rn * BS, rn < N, 0.0)
+        value = acc * sa[None, :] * sb[:, None]
+        tl.store(
+            C + rm[None, :] * CM + rn[:, None] * CN,
+            value,
+            (rm[None, :] < M) & (rn[:, None] < N),
+        )
 
 
 def _prune_load_configs(configs, named_args, **kwargs):
@@ -312,6 +410,38 @@ def _scaled_matmul(a, b, c, sa, sb):
     n = b.shape[1]
     as_ = 0 if sa.numel() == 1 else sa.stride(0)
     bs = 0 if sb.numel() == 1 else sb.stride(0)
+    # Larger M benefits from B reuse in the existing matrix-multiply path.
+    if (
+        m <= 4
+        and n >= 64
+        and 128 <= k <= 4096
+        and a.stride(1) == b.stride(0) == 1
+        and c.dtype == torch.bfloat16
+    ):
+        _launch_tuned(
+            _mm_w8a8_fp8_small_m,
+            lambda meta: (
+                triton.cdiv(n, meta["BLOCK_N"]),
+                triton.cdiv(m, meta["BLOCK_M"]),
+            ),
+            (
+                a,
+                b,
+                c,
+                sa,
+                sb,
+                m,
+                n,
+                k,
+                a.stride(0),
+                b.stride(0),
+                b.stride(1),
+                *c.stride(),
+                as_,
+                bs,
+            ),
+        )
+        return
     precise = c.dtype not in (torch.float16, torch.bfloat16) or k > 4096
     # Small matrices avoid host-side TMA descriptor setup.
     use_tma = (

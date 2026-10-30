@@ -77,8 +77,7 @@ def test_gather(inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_out = torch.gather(ref_inp, dim, ref_index)
 
-    with flag_gems.use_gems():
-        res_out = torch.gather(inp, dim, index)
+    res_out = flag_gems.gather(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -89,7 +88,9 @@ def test_gather(inp_shape, dim, dtype):
     ref_grad = utils.to_reference(out_grad)
 
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
-    (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    # The GEMS forward is called directly (no dispatcher), so the backward is
+    # exercised through the explicit gather_backward entry point.
+    res_in_grad = flag_gems.gather_backward(out_grad, inp, dim, index, False)
 
     res_in_grad = utils.to_reference(res_in_grad)
     utils.gems_assert_equal(res_in_grad, ref_in_grad)

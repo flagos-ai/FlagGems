@@ -1222,7 +1222,7 @@ def _copy_out(src, out, name):
 
 
 def median(inp):
-    logger.debug("GEMS MEDIAN")
+    logger.debug("GEMS_SUNRISE MEDIAN")
 
     inp = _anonymous(inp)
     if inp.numel() == 0:
@@ -1259,12 +1259,12 @@ def median(inp):
 
 
 def median_out(inp, *, out):
-    logger.debug("GEMS MEDIAN.OUT")
+    logger.debug("GEMS_SUNRISE MEDIAN.OUT")
     return _copy_out(median(inp), out, "out")
 
 
 def median_dim(inp, dim=0, keepdim=False):
-    logger.debug("GEMS MEDIAN.DIM")
+    logger.debug("GEMS_SUNRISE MEDIAN.DIM")
 
     if isinstance(dim, str):
         dim = _name_to_dim(inp, dim)
@@ -1369,7 +1369,7 @@ def median_dim(inp, dim=0, keepdim=False):
 
 
 def median_dim_values(inp, dim=0, keepdim=False, *, values, indices):
-    logger.debug("GEMS MEDIAN.DIM_VALUES")
+    logger.debug("GEMS_SUNRISE MEDIAN.DIM_VALUES")
     result = median_dim(inp, dim=dim, keepdim=keepdim)
     _copy_out(result.values, values, "values")
     _copy_out(result.indices, indices, "indices")

@@ -39,6 +39,6 @@ def test_range(start, end, dtype):
             device="cpu" if cfg.TO_CPU else device,
         )
     )
-    with flag_gems.use_gems():
-        res_out = torch.range(start, end, dtype=dtype, device=device)
+    result_dtype = torch.get_default_dtype() if dtype is None else dtype
+    res_out = flag_gems.range(start, end, dtype=result_dtype, device=device)
     utils.gems_assert_equal(res_out, ref_out)

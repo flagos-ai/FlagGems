@@ -89,7 +89,7 @@ case $BACKEND in
     export PATH=/usr/local/cuda/bin:$PATH
     export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
     ;;
-  mthreads|mthreads-436|mthreads-520)
+  mthreads|mthreads-436|mthreads-520|mthreads-musa436|mthreads-musa520)
     export MUSA_HOME=/usr/local/musa
     export PATH=$MUSA_HOME/bin:$PATH
     export LD_LIBRARY_PATH=$MUSA_HOME/lib:$LD_LIBRARY_PATH

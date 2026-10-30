@@ -94,8 +94,7 @@ def test_linalg_svd_full_matrices(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=True)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=True)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=True)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -120,8 +119,7 @@ def test_linalg_svd_reduced(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -142,8 +140,7 @@ def test_linalg_svd_batched(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
@@ -177,8 +174,7 @@ def test_linalg_svd_orthonormal(shape, dtype):
     ref_inp = utils.to_reference(inp, False)
 
     ref_u, ref_s, ref_vh = torch.linalg.svd(ref_inp, full_matrices=False)
-    with flag_gems.use_gems():
-        res_u, res_s, res_vh = torch.linalg.svd(inp, full_matrices=False)
+    res_u, res_s, res_vh = flag_gems.linalg_svd(inp, full_matrices=False)
 
     _assert_same_shape(res_u, ref_u)
     _assert_same_shape(res_s, ref_s)
