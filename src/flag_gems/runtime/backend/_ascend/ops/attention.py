@@ -28,6 +28,8 @@ from flag_gems.ops.flash_kernel import keep
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 
+from .flash_attention_tle import can_use_tle_fa, tle_flash_attention_forward
+
 logger = logging.getLogger(__name__)
 
 
@@ -780,6 +782,7 @@ def scaled_dot_product_attention_forward(
     is_causal=False,
     scale=None,
     enable_gqa=False,
+    _allow_tle=True,
 ):
     logger.debug("GEMS_ASCEND SCALED_DOT_PRODUCT_ATTENTION_FORWARD")
     # shape constraints
@@ -789,6 +792,18 @@ def scaled_dot_product_attention_forward(
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
     assert HEAD_DIM_K in {16, 32, 64, 128, 256}
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
+
+    # The TLE kernel is a fast path for fp16 / D=64 / unmasked / inference-only
+    # self-attention; can_use_tle_fa rejects everything else and we fall through
+    # to _attn_fwd below. It returns no logsumexp, so M is None on this path and
+    # the caller must not need backward -- hence `_allow_tle=False` from
+    # ScaleDotProductAttention.forward, where grad mode is off and the guard's
+    # own requires_grad test cannot see that backward is coming.
+    if _allow_tle and can_use_tle_fa(query, key, value, attn_mask, dropout_p):
+        o = tle_flash_attention_forward(
+            query, key, value, is_causal=is_causal, scale=scale
+        )
+        return o, None
 
     o = torch.empty_like(query, dtype=value.dtype)
 
@@ -1026,6 +1041,8 @@ class ScaleDotProductAttention(torch.autograd.Function):
         enable_gqa=False,
     ):
         sm_scale = scale if scale is not None else 1.0 / (key.shape[-1] ** 0.5)
+        # The TLE fast path is not allowed here: it produces no logsumexp, and
+        # `backward` below needs the M this call saves into ctx.
         o, M = scaled_dot_product_attention_forward(
             query,
             key,
@@ -1035,6 +1052,7 @@ class ScaleDotProductAttention(torch.autograd.Function):
             is_causal,
             sm_scale,
             enable_gqa,
+            _allow_tle=False,
         )
 
         ctx.save_for_backward(query, key, value, o, M)
