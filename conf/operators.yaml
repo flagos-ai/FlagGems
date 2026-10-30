@@ -196,6 +196,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _indices
+  description: Returns the coordinate (indices) tensor of a sparse COO tensor as a
+    zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
+  for:
+  - _indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: _indices_copy
   description: 'Returns a fresh non-aliasing copy of the coordinate (indices) tensor
     of a sparse COO tensor, shaped (sparse_dim, nnz).
@@ -3153,6 +3165,19 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '4.0'
+- id: chain_matmul
+  description: Computes the product of a chain of 2-D matrices using an optimal
+    (minimum-flop) parenthesization, mirroring `torch.linalg.multi_dot` and
+    `aten::chain_matmul` semantics.
+  for:
+  - chain_matmul
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: chalf
   description: 'Returns a copy of the tensor cast to the ``complex32`` dtype. Real
     inputs are
@@ -3539,6 +3564,18 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: combinations
+  description: Returns a tensor of all combinations of r elements from the input
+    1-D tensor.
+  for:
+  - combinations
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: combine_topk_swa_indices
   description: 'Combines compressed top-k sparse attention indices with sliding-window
     attention indices
@@ -5580,6 +5617,22 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: empty_per_channel_affine_quantized
+  description: 'Tensor factory operator — allocates an uninitialized per-channel
+    affine quantized tensor carrying the supplied scales, zero points and channel
+    axis.
+
+    '
+  for:
+  - _empty_per_channel_affine_quantized
+  labels:
+  - aten
+  - KernelGen
+  - skip_precision_check
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: empty_permuted
   description: 'Tensor factory operator — allocates an uninitialized tensor whose
     memory
@@ -6425,6 +6478,20 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: flatten_dense_tensors
+  description: 'Concatenates the flattened views of every tensor in a list into one
+    dense 1-D tensor, in list order.
+
+    '
+  for:
+  - flatten_dense_tensors
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: flip
   description: Reverse the order of an n-D tensor along given axis in dims.
   for:
@@ -9574,6 +9641,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - beta: '5.3'
+- id: grouped_mm_w8a8
+  description: |
+    MetaX grouped matrix multiplication with matching signed INT8 or E4M3FN/FNUZ
+    operands and FP32 row/column scales. Writes preallocated BF16 output in
+    place using packed expert indices and row counts; no padding is required.
+  for:
+  - grouped_mm_w8a8
+  labels:
+  - non-aten
+  - MoE
+  - Quantization
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: grouped_topk
   description: 'A specialized routing mechanism used in Mixture-of-Experts (MoE) models
     (like DeepSeek-V3/R1)
@@ -13175,6 +13257,34 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: make_dual_copy
+  description: 'Returns an independent copy of the primal tensor of a forward-mode
+    dual tensor, instead of aliasing it as `_make_dual` does.
+
+    '
+  for:
+  - _make_dual_copy
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: make_dual_copy_out
+  description: 'A variant of `make_dual_copy()` that writes the independent copy
+    of the primal tensor into the caller-supplied `out` buffer.
+
+    '
+  for:
+  - _make_dual_copy.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: make_per_tensor_quantized_tensor
   description: 'Wraps an integer tensor into a per-tensor affine quantized tensor,
     storing the given scale and zero point verbatim and copying the values into
@@ -13904,6 +14014,33 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: mkldnn_reorder_conv2d_weight
+  description: 'Re-expresses the packed oneDNN (MkldnnCPU) conv2d weight in the
+    blocked layout the mkldnn convolution primitive expects, preserving every
+    element and dtype bit-for-bit.
+
+    '
+  for:
+  - mkldnn_reorder_conv2d_weight
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: mkldnn_reorder_conv2d_weight_out
+  description: A variant of `mkldnn_reorder_conv2d_weight()` that writes the
+    reordered weight into the `out` mkldnn buffer.
+  for:
+  - mkldnn_reorder_conv2d_weight.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: mkldnn_rnn_layer
   description: 'Applies a single-layer unidirectional LSTM (oneDNN mkldnn_rnn_layer,
     mode=2)
@@ -14059,6 +14196,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   for:
   - moveaxis.int
   - moveaxis.intlist
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: movedim
+  description: 'Returns a view of the original tensor with the axes in `source` moved
+    to the positions in `destination`.
+
+    This is a zero-copy view operation that only reorders sizes and strides, sharing
+    storage with the input.
+
+    '
+  for:
+  - movedim.int
+  - movedim.intlist
   labels:
   - aten
   - KernelGen
@@ -19236,6 +19391,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_resize_
+  description: |
+    Resizes a sparse COO tensor in place to the requested sizes and
+    sparse/dense dimension split, preserving the stored entries. A non-empty
+    tensor may only grow, mirroring aten::sparse_resize_ semantics.
+  for:
+  - sparse_resize_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_sampled_addmm
   description: 'Computes alpha * (mat1 @ mat2) * spy(input) + beta * input, where
     input is a sparse CSR tensor
@@ -20909,12 +21078,38 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: swapaxes_
+  description: |
+    In-place version of torch.swapaxes(): swaps the two specified dimensions
+    of the input tensor's size and stride metadata.
+  for:
+  - swapaxes_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: swapdims
   description: |
     Returns a view of the input tensor with the two specified dimensions
     swapped; equivalent to torch.transpose().
   for:
   - swapdims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: swapdims_
+  description: |
+    In-place version of torch.swapdims(): swaps the two specified dimensions
+    of the input tensor's size and stride metadata.
+  for:
+  - swapdims_
   labels:
   - aten
   - KernelGen

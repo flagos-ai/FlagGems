@@ -56,6 +56,12 @@ def tensordot_mm_kernel(
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
     IS_FP64: tl.constexpr = False,
+    # NOTE: accepted and unused. This kernel shares the "mm" tune configs
+    # (see the libtuner decorator above), and on the backends whose own mm
+    # kernel implements split-K those configs carry SPLIT_K. Declaring it
+    # keeps the shared config list usable here; a kernel that reduces the
+    # whole K extent in one pass IS the SPLIT_K == 1 case.
+    SPLIT_K: tl.constexpr = 1,
 ):
     # Tiled matrix multiplication C = A @ B, where A is (M, K) and B is (K, N).
     # The contracted axes of tensordot are collapsed into K before launch.

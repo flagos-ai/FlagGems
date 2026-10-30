@@ -344,6 +344,25 @@ def ref_div_rounding(a, b, rounding_mode):
     return ref
 
 
+def ref_fmod(a, b):
+    # Kunlunxin eager fmod is not exact on lanes whose quotient is within one
+    # ulp of an integer: it returns ~0 there instead of the correct remainder
+    # (~|y|), so the reference is computed in float64 on CPU there. The kernel
+    # follows the exact remainder, which is what this reference produces.
+    # Other backends keep the on-device reference (their eager implementation
+    # matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.fmod(a, b)
+    a_cpu = a.cpu().to(torch.float64) if isinstance(a, torch.Tensor) else a
+    b_cpu = b.cpu().to(torch.float64) if isinstance(b, torch.Tensor) else b
+    ref = torch.fmod(a_cpu, b_cpu)
+    if not TO_CPU:
+        # assert_close casts the reference to the result dtype anyway; casting
+        # here lets the reference travel back to a device without fp64 support.
+        ref = ref.to(a.dtype).to(a.device)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
