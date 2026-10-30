@@ -30,6 +30,7 @@ from .avg_pool3d import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .compute_linear_combination import _compute_linear_combination
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
 from .conv1d import conv1d
@@ -123,6 +124,7 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_batch_norm_no_update",
     "_cholesky_solve_helper",
+    "_compute_linear_combination",
     "_conv_depthwise2d",
     "_dyn_quant_matmul_4bit",
     "_native_batch_norm_legit_functional",
