@@ -21,6 +21,45 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+@pytest.fixture(autouse=True)
+def _fp32_reference_ieee():
+    # The aten fp32 reference must run at true fp32 (ieee), matching the
+    # candidate kernels' input_precision="ieee". On some runners cuBLAS TF32
+    # is enabled globally, which leaves the reference at ~1e-4 relative error
+    # on chained matmuls while the candidate stays at ~1e-7 — the comparison
+    # against the fp32 tolerance (1.3e-6) then fails on whichever random shape
+    # draws a long reduction. Pin both precision APIs off (torch >= 2.9 new
+    # API and the legacy flag, which older versions only have) and restore
+    # whatever the environment had afterwards.
+    saved_precision = None
+    try:
+        saved_precision = torch.backends.cuda.matmul.fp32_precision
+    except (AttributeError, RuntimeError):
+        pass
+    saved_tf32 = None
+    try:
+        saved_tf32 = torch.backends.cuda.matmul.allow_tf32
+    except RuntimeError:
+        pass
+    try:
+        torch.backends.cuda.matmul.fp32_precision = "ieee"
+    except AttributeError:
+        pass
+    torch.backends.cuda.matmul.allow_tf32 = False
+    yield
+    if saved_precision is not None:
+        try:
+            torch.backends.cuda.matmul.fp32_precision = saved_precision
+        except RuntimeError:
+            pass
+    if saved_tf32 is not None:
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = saved_tf32
+        except RuntimeError:
+            pass
+
+
 # The helpers below (value-range resolution, native-dtype comparison, the
 # special-value payloads) come from the KernelGen test harness that the kernel
 # was evaluated against. That harness lives outside this repository, so the

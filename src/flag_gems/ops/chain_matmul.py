@@ -940,6 +940,7 @@ class _Chain(torch.autograd.Function):
 
 
 def run(matrices, *args, out=None):
+    logger.debug("GEMS CHAIN_MATMUL")
     if isinstance(matrices, torch.Tensor):
         mats = [matrices, *args]
     elif isinstance(matrices, (list, tuple)):
@@ -981,4 +982,5 @@ def run(matrices, *args, out=None):
 
 def chain_matmul_out(matrices, *args, out):
     """aten::chain_matmul.out — same product, written into the caller's buffer."""
+    logger.debug("GEMS CHAIN_MATMUL_OUT")
     return run(matrices, *args, out=out)
