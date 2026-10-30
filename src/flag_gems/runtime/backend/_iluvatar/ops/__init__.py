@@ -50,6 +50,7 @@ from .index_copy_ import index_copy_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_householder_product import run as linalg_householder_product
@@ -163,6 +164,7 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
+    "lift_fresh",
     "lift_out",
     "linalg_cholesky",
     "linalg_householder_product",
