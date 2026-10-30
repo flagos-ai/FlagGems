@@ -48,10 +48,12 @@ def _amp_foreach_non_finite_check_and_unscale_kernel(
         mask = offsets < num_elements
         inp = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
         inp_fp32 = inp.to(tl.float32)
-        is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
+    # finitef() may lower to a wider int, where bitwise-not is not logical
+    # negation; compare against zero so the predicate is right everywhere.
+        is_non_finite = tl_extra_shim.finitef(inp_fp32) == 0
         scaled_fp32 = tl.where(is_non_finite, inp_fp32, inp_fp32 * scale)
         scaled = scaled_fp32.to(inp.dtype)
-        is_non_finite_out = ~tl_extra_shim.finitef(scaled.to(tl.float32))
+        is_non_finite_out = tl_extra_shim.finitef(scaled.to(tl.float32)) == 0
         non_finite_count = tl.sum(
             tl.where(mask, is_non_finite_out, False).to(tl.int32), axis=0
         )
