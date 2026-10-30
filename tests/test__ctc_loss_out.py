@@ -81,10 +81,34 @@ def _reference_probs(value):
     return utils.to_reference(value.clone().detach(), True)
 
 
-def _assert_ctc_result(result, reference, dtype, *, reduce_dim):
+def _assert_ctc_result(result, reference, dtype, *, reduce_dim, alpha_shape=None):
     assert result.device.type == torch.device(flag_gems.device).type
     assert result.device.index == flag_gems.runtime.torch_device_fn.current_device()
     assert result.dtype == dtype
+    if flag_gems.vendor_name == "ascend" and alpha_shape is not None:
+        # Native NPU CTC aligns alpha's state axis to eight; Gems and CPU use
+        # the logical 2*S+1 states. Check the complete ABI before slicing only
+        # that proven backend padding from both representations.
+        allowed_shapes = {alpha_shape}
+        if dtype == torch.float32:
+            n, t, states = alpha_shape
+            allowed_shapes.add((n, t, ((states + 7) // 8) * 8))
+        assert tuple(result.shape) in allowed_shapes
+        assert tuple(reference.shape) in allowed_shapes
+        actual_cpu = _double_to_cpu(result) if dtype == torch.float64 else result.cpu()
+        reference_cpu = (
+            _double_to_cpu(reference)
+            if reference.dtype == torch.float64
+            else reference.cpu()
+        )
+        states = alpha_shape[-1]
+        gems_assert_close(
+            actual_cpu[..., :states],
+            reference_cpu[..., :states],
+            dtype,
+            reduce_dim=reduce_dim,
+        )
+        return
     assert result.shape == reference.shape
     # Observe values only after checking the target contract.
     if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
@@ -143,7 +167,13 @@ def test__ctc_loss_out(dtype):
     assert got1.data_ptr() == res_out1.data_ptr()
     reduce_dim = 8
     _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(
+        res_out1,
+        ref_log_alpha,
+        dtype,
+        reduce_dim=reduce_dim,
+        alpha_shape=(N, T, 2 * S + 1),
+    )
 
 
 @pytest.mark.underscore_ctc_loss_out
@@ -157,7 +187,14 @@ def test__ctc_loss_out_resize(dtype):
     res_out1 = _empty_output((0,), dtype)
     flag_gems._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
     assert res_out0.shape == ref_nll.shape
-    assert res_out1.shape == ref_log_alpha.shape
+    if flag_gems.vendor_name != "ascend":
+        assert res_out1.shape == ref_log_alpha.shape
     reduce_dim = 8
     _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
+    _assert_ctc_result(
+        res_out1,
+        ref_log_alpha,
+        dtype,
+        reduce_dim=reduce_dim,
+        alpha_shape=(N, T, 2 * S + 1),
+    )
