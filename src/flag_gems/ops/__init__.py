@@ -675,6 +675,7 @@ from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_grid_sampler import cudnn_grid_sampler, cudnn_grid_sampler_out
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
@@ -2292,6 +2293,8 @@ __all__ = [
     "cudnn_batch_norm_backward",
     "cudnn_convolution",
     "cudnn_convolution_transpose",
+    "cudnn_grid_sampler",
+    "cudnn_grid_sampler_out",
     "cudnn_rnn",
     "cudnn_rnn_backward",
     "cummax",

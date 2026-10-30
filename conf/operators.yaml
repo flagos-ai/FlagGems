@@ -4603,6 +4603,17 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_grid_sampler
+  description: Triton kernel implementation for cudnn_grid_sampler.
+  for:
+  - cudnn_grid_sampler
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
     the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
