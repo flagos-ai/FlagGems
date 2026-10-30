@@ -291,12 +291,31 @@ def test_pinverse_nonfinite(value, rcond):
     ],
 )
 def test_pinverse_invalid_input(shape, dtype):
-    factory_device = (
-        "cpu"
-        if flag_gems.vendor_name == "ascend" and dtype.is_complex
-        else flag_gems.device
-    )
-    inp = torch.randn(shape, dtype=dtype, device=factory_device).to(flag_gems.device)
+    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
+        # KU's typed Double factory narrows to Float32. Preserve a genuine
+        # unsupported Double input so this remains a dtype rejection test.
+        host = torch.randn(shape, dtype=dtype, device="cpu")
+        inp = (
+            host.contiguous()
+            .reshape(-1)
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(dtype)
+            .reshape(shape)
+        )
+        assert inp.dtype == dtype
+        assert inp.device.type == torch.device(flag_gems.device).type
+        assert inp.device.index == flag_gems.runtime.torch_device_fn.current_device()
+        assert tuple(inp.shape) == shape
+    else:
+        factory_device = (
+            "cpu"
+            if flag_gems.vendor_name == "ascend" and dtype.is_complex
+            else flag_gems.device
+        )
+        inp = torch.randn(shape, dtype=dtype, device=factory_device).to(
+            flag_gems.device
+        )
     with pytest.raises(RuntimeError):
         flag_gems.pinverse(inp)
 
