@@ -12981,7 +12981,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   kind:
   - BLAS
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
+- id: lu_solve_out
+  description: Out-of-place variant of lu_solve that writes the result into the
+    out tensor.
+  for:
+  - lu_solve.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: lu_unpack
   description: Unpacks the LU decomposition returned by `lu_factor` into separate
     permutation matrix P, lower triangular L, and upper triangular U.
