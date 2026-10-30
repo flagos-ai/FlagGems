@@ -269,14 +269,20 @@ class _OverrideableH800Reference:
         return baseline, json.dumps(call, sort_keys=True), record["latency_ms"], key
 
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name in {"hygon", "metax"}:
+        if (
+            flag_gems.vendor_name in {"hygon", "metax"}
+            and base.Config.base_data is not None
+        ):
             self._composite_checked = self._require_composite_static(
                 *self.unpack_to_args_kwargs(input), case_id
             )
         return super()._measure_input(input, case_id=case_id)
 
     def _apply_external_baseline(self, metric, dtype, context):
-        if flag_gems.vendor_name not in {"hygon", "metax"}:
+        if (
+            flag_gems.vendor_name not in {"hygon", "metax"}
+            or base.Config.base_data is None
+        ):
             return super()._apply_external_baseline(metric, dtype, context)
         baseline, captured, latency, key = self._composite_checked
         if (
