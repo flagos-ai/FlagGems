@@ -2911,6 +2911,16 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '5.0'
   cpp: '4.0'
+- id: bmm_w8a8
+  description: Channel-wise INT8 batched matrix multiplication with per-row and per-column scales.
+  for:
+  - bmm_w8a8
+  labels:
+  - non-aten
+  kind:
+  - Blas
+  stages:
+  - alpha: '5.5'
 - id: bmm_w8a8_fp8
   description: 'Performs batched matrix multiplication with block-wise FP8 E4M3
 
