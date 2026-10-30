@@ -25,6 +25,16 @@ from flag_gems.utils.shape_utils import volume
 device_ = device
 logger = logging.getLogger(__name__)
 
+# NPU 要求 grid 每个轴的取值落在 [1, 65535]。BLOCK_SIZE=20480 时，N 超过
+# 65535*20480（int8 约 1.25 GiB）就必然越界，KernelLaunch 报
+# "value 65536 for parameter coreDim is invalid"，进程随后 segfault。
+# vLLM 这类框架会给 KV cache 一次性分配几十 GB 的 int8 张量，直接命中；
+# 超过一片容量就按片多次启动，每片的 grid 都落在上限内。
+_MAX_GRID = 65535
+_BLOCK_SIZE = 20480
+_BLOCK_SIZE_SUB = 1024
+_CHUNK = _MAX_GRID * _BLOCK_SIZE
+
 
 @triton.jit
 def zeros_kernel(
@@ -43,6 +53,13 @@ def zeros_kernel(
         tl.store(output_ptr + sub_offset, 0.0, mask=mask)
 
 
+def _launch(out, n_elements):
+    grid_fn = lambda meta: (max(triton.cdiv(n_elements, meta["BLOCK_SIZE"]), 1),)
+    zeros_kernel[grid_fn](
+        out, n_elements, BLOCK_SIZE=_BLOCK_SIZE, BLOCK_SIZE_SUB=_BLOCK_SIZE_SUB
+    )
+
+
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS_ASCEND ZEROS")
     if dtype is None:
@@ -52,7 +69,17 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (max(triton.cdiv(N, meta["BLOCK_SIZE"]), 1),)
+    # 空张量没有元素要写：N == 0 时 cdiv(N, BLOCK_SIZE) 为 0，grid 退化成 0
+    # 会被驱动直接拒绝，这里不启动 kernel。
+    if N == 0:
+        return out
     with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=20480, BLOCK_SIZE_SUB=1024)
+        if N <= _CHUNK:
+            _launch(out, N)
+        else:
+            # kernel 按扁平偏移写，分片要求连续布局；torch.empty 一定是连续的。
+            flat = out.view(-1)
+            for start in range(0, N, _CHUNK):
+                part = flat[start : start + _CHUNK]
+                _launch(part, part.numel())
     return out
