@@ -19312,6 +19312,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_bsr_tensor_unsafe
+  description: 'Assembles a torch.sparse_bsr layout tensor from already-materialised
+    crow/col indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_bsr_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_compressed_tensor
   description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
     components: the compressed-axis index vector, the plain-axis index vector and
