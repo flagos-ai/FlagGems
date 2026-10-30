@@ -149,17 +149,16 @@ class _OrgqrH800Baseline:
         return ms
 
     def _measure_input(self, input, case_id=None):
-        if flag_gems.vendor_name != "ascend":
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if flag_gems.vendor_name != "ascend" or not needs_native:
             return super()._measure_input(input, case_id)
         if not os.environ.get("FLAGGEMS_ORGQR_H800_BASELINE"):
             raise ValueError(
                 "Ascend native orgqr uses CPU fallback; set FLAGGEMS_ORGQR_H800_BASELINE to the reviewed native H800 core artifact"
             )
-        if (
-            self.is_backward
-            or base.Config.skip_native
-            or "tflops" in self.to_bench_metrics
-        ):
+        if self.is_backward or "tflops" in self.to_bench_metrics:
             raise ValueError(
                 "Static orgqr baseline requires the original forward latency measurement"
             )
@@ -168,9 +167,8 @@ class _OrgqrH800Baseline:
         try:
             metric = super()._measure_input(input, case_id)
             if self._orgqr_h800_source is not None:
-                if (
-                    metric.latency is None
-                    or isinstance(metric.latency, bool)
+                if metric.latency is not None and (
+                    isinstance(metric.latency, bool)
                     or not math.isfinite(metric.latency)
                     or metric.latency <= 0
                 ):
