@@ -155,6 +155,136 @@ def _combinations_kernel(
 
 
 @triton.jit
+def _advance4(c0, c1, c2, c3, N):
+    # Lexicographic next-combination advance for r == 4.  The rightmost index
+    # that can still grow picks the case:
+    #   g3:            (c0, c1,   c2,   c3+1)
+    #   ~g3 & g2:      (c0, c1,   c2+1, c2+2)
+    #   ~g3~g2 & g1:   (c0, c1+1, c1+2, c1+3)
+    #   none:          (c0+1, c0+2, c0+3, c0+4)
+    g3 = c3 < N - 1
+    g2 = c2 < N - 2
+    g1 = c1 < N - 3
+    d0 = tl.where(g1 | g2 | g3, c0, c0 + 1)
+    d1 = tl.where(g3 | g2, c1, tl.where(g1, c1 + 1, c0 + 2))
+    d2 = tl.where(g3, c2, tl.where(g2, c2 + 1, tl.where(g1, c1 + 2, c0 + 3)))
+    d3 = tl.where(g3, c3 + 1, tl.where(g2, c2 + 2, tl.where(g1, c1 + 3, c0 + 4)))
+    return d0, d1, d2, d3
+
+
+@triton.jit
+def _combinations4_kernel(
+    out_ptr,
+    in_ptr,
+    stride,
+    n,
+    total,
+    r: tl.constexpr,
+    WR: tl.constexpr,
+    LOGM: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Closed-form unranking for r == 4 only (host guarantees this), processing
+    # 4 consecutive rows per lane: row m0 via one exact binary search for the
+    # first index followed by nested closed forms for the remaining three, then
+    # rows m0+1..m0+3 via 3 incremental next-combination advances, so each lane
+    # emits 4 consecutive rows as one coalesced (BLOCK, 16) tile.
+    # with_replacement unrank happens in the strict space of N' = n + r - 1
+    # elements and the column offset is subtracted at the end.
+    pid = tl.program_id(0)
+    lanes = tl.arange(0, BLOCK)
+    m0 = pid * (4 * BLOCK) + 4 * lanes
+    m0 = m0.to(tl.int64)
+    rmask0 = m0 < total
+    m = tl.where(rmask0, m0, m0 * 0)
+    off0 = m0 * 4
+    st = stride + m * 0
+    N = n + m * 0
+    if WR:
+        N = N + 3
+    cap = tl.full((), (1 << 62), tl.int64)
+    # j == 0: exact binary search, smallest c with C(N-1-c, 4) < S0
+    S0 = _comb_capped(N, 4, cap, 4) - m
+    lo_c = m * 0
+    hi_c = (N - 4) + m * 0
+    for _ in tl.static_range(LOGM):
+        mid = (lo_c + hi_c) >> 1
+        fv = _comb_capped(N - 1 - mid, 4, cap, 4)
+        cnd = fv < S0
+        lo_c = tl.where(cnd, lo_c, mid + 1)
+        hi_c = tl.where(cnd, mid, hi_c)
+    c0 = lo_c
+    m2 = _comb_capped(N - c0, 4, cap, 4) - S0
+    # j == 1: closed form over the x1 = N-1-c0 elements after c0
+    S1 = _comb_capped(N - c0 - 1, 3, cap, 4) - m2
+    x1 = _x3_bound(S1, N - c0 - 2)
+    c1 = N - 1 - x1
+    m3 = (x1 + 1) * x1 * (x1 - 1) // 6 - S1
+    # j == 2: closed form
+    S2 = x1 * (x1 - 1) // 2 - m3
+    x2 = _x2_bound(S2, x1 - 1)
+    c2 = N - 1 - x2
+    m4 = (x2 + 1) * x2 // 2 - S2
+    # j == 3: direct
+    c3 = c2 + 1 + m4
+
+    a1, b1, e1, f1 = _advance4(c0, c1, c2, c3, N)
+    a2, b2, e2, f2 = _advance4(a1, b1, e1, f1, N)
+    a3, b3, e3, f3 = _advance4(a2, b2, e2, f2, N)
+
+    cols = tl.arange(0, 16)
+    j = cols % 4
+    t = cols // 4
+    r0 = tl.where(
+        j[None, :] == 0,
+        c0[:, None],
+        tl.where(
+            j[None, :] == 1,
+            c1[:, None],
+            tl.where(j[None, :] == 2, c2[:, None], c3[:, None]),
+        ),
+    )
+    r1 = tl.where(
+        j[None, :] == 0,
+        a1[:, None],
+        tl.where(
+            j[None, :] == 1,
+            b1[:, None],
+            tl.where(j[None, :] == 2, e1[:, None], f1[:, None]),
+        ),
+    )
+    r2 = tl.where(
+        j[None, :] == 0,
+        a2[:, None],
+        tl.where(
+            j[None, :] == 1,
+            b2[:, None],
+            tl.where(j[None, :] == 2, e2[:, None], f2[:, None]),
+        ),
+    )
+    r3 = tl.where(
+        j[None, :] == 0,
+        a3[:, None],
+        tl.where(
+            j[None, :] == 1,
+            b3[:, None],
+            tl.where(j[None, :] == 2, e3[:, None], f3[:, None]),
+        ),
+    )
+    i8 = tl.where(
+        t[None, :] == 0,
+        r0,
+        tl.where(t[None, :] == 1, r1, tl.where(t[None, :] == 2, r2, r3)),
+    )
+    if WR:
+        i8 = i8 - j[None, :].to(tl.int64)
+    t64 = t.to(tl.int64)
+    rowm = (m0[:, None] + t64[None, :]) < total
+    vals = tl.load(in_ptr + i8 * st[:, None], mask=rowm, other=0)
+    tl.store(out_ptr + off0[:, None] + cols[None, :], vals, mask=rowm)
+
+
+@triton.jit
 def _combinations1_kernel(
     out_ptr,
     in_ptr,
@@ -305,6 +435,19 @@ def run(self, r=2, with_replacement=False):
             total,
             r,
             int(with_replacement),
+            BLOCK=_BLOCK,
+        )
+    elif r == 4 and n <= (1 << 20):
+        grid = (triton.cdiv(total, 4 * _BLOCK),)
+        _combinations4_kernel[grid](
+            out,
+            flat,
+            flat.stride(0),
+            n,
+            total,
+            r,
+            int(with_replacement),
+            LOGM=max(1, n.bit_length() + 1),
             BLOCK=_BLOCK,
         )
     else:

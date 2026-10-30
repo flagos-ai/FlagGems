@@ -25,8 +25,9 @@ from . import accuracy_utils as utils
 #
 # Covered: r == 0 (empty 1-D result), n < r (empty 2-D result), n == r (single
 # row), r == 2 and r == 3 (the two closed-form unranking kernels, including
-# sizes past one program block of BLOCK=256 x 4 rows per lane), and r >= 4
-# (the generic binary-search kernel).
+# sizes past one program block of BLOCK=256 x 4 rows per lane), r == 4 (the
+# closed-form r == 4 kernel, including sizes past one program block of
+# BLOCK=256 x 4 rows per lane), and r >= 5 (the generic binary-search kernel).
 COMBINATIONS_CASES = [
     (0, 0),
     (0, 2),
@@ -43,6 +44,8 @@ COMBINATIONS_CASES = [
     (64, 3),
     (4, 4),
     (16, 4),
+    (129, 4),
+    (130, 4),
     (6, 5),
     (12, 5),
 ]
