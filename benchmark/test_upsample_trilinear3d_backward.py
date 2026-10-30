@@ -59,6 +59,7 @@ class UpsampleBenchmark(OperatorBenchmark):
             and case.dtype in (torch.float16, torch.bfloat16)
             and needs_native
         ):
+            base.Config.skipped_case_ids.add(case.case_id)
             pytest.skip("Kunlunxin native trilinear3d backward supports float32 only")
         return super().build_inputs(case)
 
