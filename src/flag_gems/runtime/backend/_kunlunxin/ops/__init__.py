@@ -395,6 +395,9 @@ from .fake_quantize_per_channel_affine_cachemask import (  # noqa: F401
 from .fake_quantize_per_channel_affine_cachemask_backward import (  # noqa: F401
     fake_quantize_per_channel_affine_cachemask_backward,
 )
+from .fake_quantize_per_tensor_affine import (  # noqa: F401
+    fake_quantize_per_tensor_affine,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -1266,6 +1269,7 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask",
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
+    "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
