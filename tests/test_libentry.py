@@ -710,6 +710,10 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
+    # `_descriptor_cache_key` resolves the descriptor class once and caches it in
+    # a module global that the kernel-launch tests above already populated, so
+    # clear it or the patched module below is ignored.
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
@@ -2481,3 +2485,33 @@ def test_libcache_concurrent_write_on_signal():
                 cache_path.unlink()
             except sqlite3.Error:
                 pass
+
+
+class _StoredConfigModel:
+    """Minimal `PersistantModel` stand-in backed by a dict."""
+
+    def __init__(self, stored):
+        self.stored = stored
+
+    def get_config(self, table, key):
+        return self.stored.get(key)
+
+    def put_config(self, table, key, config):
+        self.stored[key] = config
+
+
+def test_config_cache_misses_below_dot_block_floor(monkeypatch):
+    """A cached dot tile the compiler no longer lowers must be retuned (#7278)."""
+    stale = triton.Config({"BLOCK_SIZE_M": 8, "BLOCK_SIZE_N": 256})
+    fresh = triton.Config({"BLOCK_SIZE_M": 16, "BLOCK_SIZE_N": 256})
+    cache = libentry_mod.ConfigCache(
+        "mm", _StoredConfigModel({("stale",): stale, ("fresh",): fresh})
+    )
+
+    assert ("stale",) in cache
+
+    vendor = libentry_mod._state.vendor_module.vendor_info.vendor_name
+    monkeypatch.setitem(libentry_mod._DOT_BLOCK_FLOOR, vendor, 16)
+
+    assert ("stale",) not in cache
+    assert cache.get(("fresh",)) is fresh
