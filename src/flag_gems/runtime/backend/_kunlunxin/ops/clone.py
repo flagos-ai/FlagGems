@@ -1,0 +1,97 @@
+# Kunlunxin (XPU) override of clone.
+#
+# clone used to fall through to the generic KernelGen ops/clone.py, whose masked
+# triton copy kernel costs ~30us/call on the XPU backend, and whose always-on
+# _CloneFunction autograd wrapper costs another ~10us/call -- measured 0.22x of
+# torch.clone.  On XPU the native device memcpy reached through ``copy_`` is
+# cheaper than the kernel, and ``copy_`` already handles strided layouts:
+# empty_like + copy_ measures 6.2us/call vs native clone 9.5us/call.
+#
+# The override is kept vendor-local on purpose: other vendors keep the generic
+# triton copy kernel.  ("clone", clone) is already present in the generic
+# _FULL_CONFIG, so importing ``clone`` here and exporting it from
+# ops/__init__.py is enough for SpecOpRegistrar to replace the generic one.
+import logging
+from typing import Optional
+
+import torch
+
+logger = logging.getLogger(__name__)
+
+
+class _CloneFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, memory_format):
+        ctx.memory_format = memory_format
+        return _clone_impl(inp, memory_format)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        return grad_out, None
+
+
+def _allocate_preserve_format(inp: torch.Tensor) -> torch.Tensor:
+    # Replicating the original strides is only valid for a non-overlapping
+    # dense layout; other inputs take PyTorch's suggested layout.
+    if torch.ops.aten.is_non_overlapping_and_dense(inp):
+        return torch.empty_strided(
+            inp.size(), inp.stride(), dtype=inp.dtype, device=inp.device
+        )
+    return torch.empty_like(inp, memory_format=torch.preserve_format)
+
+
+def _clone_impl(inp: torch.Tensor, memory_format: torch.memory_format):
+    # The KernelGen copy kernel (masked triton launch) measures ~30us/call on
+    # the XPU backend -- strictly slower than the native device memcpy that
+    # ``copy_`` dispatches to (empty_like + copy_ measures ~6us vs native
+    # ``clone`` ~9.5us).  ``copy_`` handles strided/non-contiguous layouts
+    # itself, so every branch below just allocates and copies.
+    if inp.numel() == 0:
+        if memory_format == torch.preserve_format:
+            return _allocate_preserve_format(inp)
+        return torch.empty_like(inp, memory_format=memory_format)
+
+    if memory_format == torch.preserve_format:
+        # Contiguous inputs are the hot case (benchmark, model weights):
+        # ``empty_like`` is a single allocator call, cheaper than the generic
+        # ``is_non_overlapping_and_dense`` + ``empty_strided`` round-trip.
+        if inp.is_contiguous():
+            out = torch.empty_like(inp)
+            out.copy_(inp)
+            return out
+        out = _allocate_preserve_format(inp)
+        out.copy_(inp)
+        return out
+
+    if memory_format == torch.contiguous_format:
+        out = torch.empty_like(inp, memory_format=torch.contiguous_format)
+        out.copy_(inp)
+        return out
+
+    out = torch.empty(inp.size(), dtype=inp.dtype, device=inp.device)
+    out = out.to(memory_format=memory_format)
+    out.copy_(inp)
+    return out
+
+
+def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None):
+    """
+    Returns a copy of the input tensor.
+
+    Args:
+        inp: The input tensor to clone.
+        memory_format: The desired memory format of the returned tensor.
+            Default is torch.preserve_format.
+    """
+    logger.debug("GEMS_KUNLUNXIN CLONE")
+
+    if memory_format is None:
+        memory_format = torch.preserve_format
+
+    # Only wrap the copy in an autograd node when a gradient graph is actually
+    # live: torch's ``clone`` of a non-grad tensor carries no ``grad_fn``, and
+    # ``_CloneFunction.apply`` adds a measurable per-call cost (~10us) on the
+    # hot path.  Same grad_fn semantics as native, and a plain copy otherwise.
+    if inp.requires_grad and torch.is_grad_enabled():
+        return _CloneFunction.apply(inp, memory_format)
+    return _clone_impl(inp, memory_format)

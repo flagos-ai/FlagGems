@@ -57,6 +57,8 @@ import triton.language as tl
 from flag_gems.ops._foreach_binary import _foreach_mul__List as _generic_mul_list
 from flag_gems.utils.foreach import check_tensor_list, has_internal_overlap, tl_dtype
 
+from ._foreach_direct import _select_ptr
+
 logger = logging.getLogger(__name__)
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
@@ -89,6 +91,84 @@ def _foreach_mul_inplace_kernel(
     x = tl.load(a_ptr + idx)
     e = tl.load(b_ptr + idx)
     tl.store(a_ptr + idx, (x * e).to(DT))
+
+
+@triton.jit
+def _foreach_mul_inplace_direct_kernel(
+    a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    a8,
+    a9,
+    a10,
+    a11,
+    a12,
+    a13,
+    a14,
+    a15,
+    b0,
+    b1,
+    b2,
+    b3,
+    b4,
+    b5,
+    b6,
+    b7,
+    b8,
+    b9,
+    b10,
+    b11,
+    b12,
+    b13,
+    b14,
+    b15,
+    DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Direct-pointer in-place mul: scalar pointer args keep block-DMA."""
+    t = tl.program_id(0)
+    chunk = tl.program_id(1)
+    a_ptr = _select_ptr(
+        t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
+    ).to(tl.pointer_type(DT))
+    b_ptr = _select_ptr(
+        t, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15
+    ).to(tl.pointer_type(DT))
+    idx = chunk * BLOCK + tl.arange(0, BLOCK)
+    tl.store(a_ptr + idx, (tl.load(a_ptr + idx) * tl.load(b_ptr + idx)).to(DT))
+
+
+_MAX_DIRECT = 16
+
+
+def _launch_direct(tensors, others, dtype, device):
+    if len(tensors) > _MAX_DIRECT:
+        return False
+    n_elements = tensors[0].numel()
+    block, num_warps = _pick_block(n_elements)
+    if n_elements % block != 0:
+        return False
+    a_ptrs = [t.data_ptr() for t in tensors]
+    a_ptrs += [a_ptrs[0]] * (_MAX_DIRECT - len(a_ptrs))
+    b_ptrs = [t.data_ptr() for t in others]
+    b_ptrs += [b_ptrs[0]] * (_MAX_DIRECT - len(b_ptrs))
+    grid = (len(tensors), n_elements // block)
+    _foreach_mul_inplace_direct_kernel[grid](
+        *a_ptrs,
+        *b_ptrs,
+        tl_dtype(dtype),
+        block,
+        num_warps=num_warps,
+        unroll_num=16,
+        buffer_size_limit=8192,
+        isCloseMemoryAsync=False,
+    )
+    return True
 
 
 def _pick_block(n_elements):
@@ -137,6 +217,8 @@ def _try_fast(tensors, others):
             return False
         if has_internal_overlap(a):
             return False
+    if _launch_direct(tensors, others, dtype, device):
+        return True
     block, num_warps = _pick_block(n_elements)
     if n_elements % block != 0:
         return False

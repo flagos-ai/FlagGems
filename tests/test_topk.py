@@ -29,6 +29,10 @@ random.seed(time.time() // 100)
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op (no largest/dim/sorted); see test_topk_ascend_dsa",
+)
 @pytest.mark.parametrize("batch_size", [4, 8])
 @pytest.mark.parametrize("hiddensize", [128, 256])
 @pytest.mark.parametrize("topk", [0, 5])
@@ -63,6 +67,10 @@ def test_topk(batch_size, hiddensize, topk, largest, dtype):
 
 
 @pytest.mark.topk
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="Ascend overrides flag_gems.topk with the DSA-only op (no largest/dim/sorted); see test_topk_ascend_dsa",
+)
 @pytest.mark.parametrize(
     "shape, topk",
     [
@@ -169,7 +177,17 @@ def test_topk_radix_tle_large_fp32_k256_correctness():
     ],
 )
 def test_topk_ascend_dsa(m, n, k):
-    x = torch.rand((m, n), dtype=torch.float32, device=flag_gems.device)
+    from packaging.version import Version
+    from torch_npu.npu.utils import get_cann_version
+
+    if Version(get_cann_version()) < Version("9.1.0"):
+        pytest.skip("Ascend DSA topk requires CANN >= 9.1.0")
+
+    # Random permutation of 0..n-1 per row: values are unique, so topk has no
+    # ties and the index order is deterministic across implementations.
+    x = torch.argsort(torch.rand((m, n), device=flag_gems.device), dim=1).to(
+        torch.float32
+    )
     ref_value, ref_index = torch.topk(utils.to_reference(x), k, dim=-1)
 
     res_value, res_index = flag_gems.topk(x, k)
@@ -178,5 +196,6 @@ def test_topk_ascend_dsa(m, n, k):
     utils.gems_assert_equal(res_index.to(torch.int64), ref_index)
     # Consistency: values must match the input at the returned indices.
     utils.gems_assert_equal(
-        x.gather(1, res_index.to(torch.int64)), res_value.to(torch.float32)
+        x.gather(1, res_index.to(torch.int64)),
+        utils.to_reference(res_value.to(torch.float32)),
     )
