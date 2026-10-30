@@ -53,6 +53,43 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=8)
+def _smem_limit(device):
+    """Shared-memory budget per block, in bytes, for pipelining decisions.
+
+    The config table is tuned on a Hopper part (227 KB per block); Ampere and
+    earlier archs cap at 163 KB (or less), where a 7-stage 64x64 pipeline
+    already overflows. Falls back to a conservative Ampere budget when the
+    device query is unavailable (non-CUDA backends).
+    """
+    try:
+        props = torch.cuda.get_device_properties(device)
+        limit = getattr(props, "shared_memory_per_block_optin", None)
+        if limit:
+            return limit
+    except (RuntimeError, ValueError, AssertionError):
+        pass
+    return 163840  # A100-class conservative default
+
+
+def _cap_stages(stages, tm, tn, tk, dtype_size, loops=1):
+    """Lower num_stages until the pipelined tile buffers fit in shared memory.
+
+    Each pipelined loop holds (tm*tk + tk*tn) * dtype_size bytes per stage. The
+    fused pair kernels inline two gemm mainloops (loops=2), and on non-TMA
+    archs (sm80) the compiler gives each its own pipeline buffers, so their
+    requirement is roughly loops times a single loop's. Steps down one stage at
+    a time; stages=1 always fits (no pipelining).
+    """
+    if stages <= 1:
+        return stages
+    per_stage = (tm * tk + tk * tn) * dtype_size * loops
+    limit = _smem_limit(None)
+    while stages > 1 and stages * per_stage > limit:
+        stages -= 1
+    return stages
+
+
 @triton.jit
 def _gemm(
     A,
@@ -474,6 +511,12 @@ def _config(dtype, m, n, k):
         # residual tile is most of the reduction.
         mode = 4 if (m, n, k) == (17, 255, 129) else 5
         tk = 32 if mode == 4 else 64
+    # Shared-memory guard: the stage count above was tuned on a part with a
+    # 227 KB smem budget. On Ampere-class devices (163 KB) a 7-stage 64x64
+    # pipeline exceeds the per-block limit and the kernel fails to compile, so
+    # trim the pipeline depth to whatever the running device holds.
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    stages = _cap_stages(stages, tm, tn, tk, itemsize)
     return tm, tn, tk, mode, stages, (triton.cdiv(m, tm), triton.cdiv(n, tn))
 
 
@@ -800,6 +843,11 @@ def _lowp_pair(tensors, first, second, dtype, device):
         outs.append(c)
         meta.append((m, n, k, *a.stride(), *b.stride(), n, 1, tm, tn, tk, mode))
         counts.append(grid[0] * grid[1])
+    # The pair kernel inlines two pipelined mainloops; on non-TMA archs each
+    # gets its own buffers, so the shared-memory guard has to budget both.
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    tm, tn, tk, _, _, _ = first[-1]
+    stages = _cap_stages(first[-1][4], tm, tn, tk, itemsize, loops=2)
     _lowp_pair_kernel[(sum(counts),)](
         *args, *meta, counts[0], num_warps=4, num_stages=stages
     )
