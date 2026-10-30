@@ -243,7 +243,9 @@ def test_masked_select_backward_errors():
     with pytest.raises(RuntimeError):
         flag_gems.masked_select_backward(grad, inp, torch.ones_like(inp))
     mismatch_dtype = (
-        torch.float16 if flag_gems.vendor_name == "kunlunxin" else torch.float64
+        torch.float16
+        if flag_gems.vendor_name in ("kunlunxin", "ascend")
+        else torch.float64
     )
     bad_grad = grad.to(mismatch_dtype)
     assert bad_grad.dtype == mismatch_dtype and bad_grad.dtype != inp.dtype
