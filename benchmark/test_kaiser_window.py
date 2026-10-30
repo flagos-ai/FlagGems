@@ -215,7 +215,7 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
         )
         if (
             needs_native
-            and flag_gems.vendor_name in ("enflame", "ascend")
+            and flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
             and not external
         ):
             raise ValueError("Missing native H800 Kaiser reference")
