@@ -250,6 +250,8 @@ class BenchmarkResult:
             f"\nOperator: {self.op_name}  Performance Test (dtype={self.dtype}, mode={self.mode},"
             f"level={self.level})\n"
         )
+        if not self.result:
+            return header_title + "No benchmark results were collected.\n"
         native_baseline_skip_reason = getattr(self, "native_baseline_skip_reason", None)
         if native_baseline_skip_reason:
             header_title += f"Native baseline: N/A ({native_baseline_skip_reason})\n"
