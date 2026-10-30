@@ -19,12 +19,37 @@ import flag_gems
 
 from . import base, consts, utils
 
-
 SHAPES = [
     (4, 3, 32, 32),
     (8, 16, 28, 28),
     (2, 8, 16, 20),
 ]
+
+
+def _fractional_backward_forward_fixture(
+    inp, kernel_size, output_size, random_samples=None
+):
+    if flag_gems.vendor_name != "ascend":
+        return flag_gems.fractional_max_pool2d(
+            inp,
+            kernel_size=kernel_size,
+            output_size=output_size,
+            _random_samples=random_samples,
+        )
+    # Build canonical flat indices from the actual input and original samples.
+    # Ascend's native frontend also uses a CPU fallback for this forward API.
+    if random_samples is None:
+        random_samples = torch.rand(
+            inp.shape[0], inp.shape[1], 2, dtype=torch.float32, device=inp.device
+        )
+    output, indices = torch.nn.functional.fractional_max_pool2d(
+        inp.detach().to(device="cpu", dtype=torch.float64),
+        kernel_size=kernel_size,
+        output_size=output_size,
+        return_indices=True,
+        _random_samples=random_samples.to(device="cpu", dtype=torch.float64),
+    )
+    return output.to(device=inp.device, dtype=inp.dtype), indices.to(device=inp.device)
 
 
 class FractionalMaxPool2DBackwardBenchmark(base.GenericBenchmark):
@@ -51,15 +76,19 @@ def _build_inputs_fn(plan, dtype, device):
     torch.manual_seed(0)
     shape, output_size = plan.builder_args
     inp = utils.generate_tensor_input(shape, dtype, device)
-    output, indices = flag_gems.fractional_max_pool2d(
+    output, indices = _fractional_backward_forward_fixture(
         inp, kernel_size=2, output_size=output_size
     )
     grad_output = torch.randn_like(output)
-    return grad_output, inp, {
-        "kernel_size": [2, 2],
-        "output_size": list(output_size),
-        "indices": indices,
-    }
+    return (
+        grad_output,
+        inp,
+        {
+            "kernel_size": [2, 2],
+            "output_size": list(output_size),
+            "indices": indices,
+        },
+    )
 
 
 def _torch_backward(grad_output, inp, **kwargs):

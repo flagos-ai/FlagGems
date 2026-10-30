@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 CASES = [
     ((4, 3, 32, 32), 2, (16, 16)),
     ((8, 16, 28, 28), 2, (14, 14)),
@@ -28,6 +27,32 @@ CASES = [
     ((2, 8, 16, 16), 2, (8, 8)),
     ((2, 8, 16, 20), 2, (8, 10)),
 ]
+
+
+def _fractional_backward_forward_fixture(
+    inp, kernel_size, output_size, random_samples=None
+):
+    if flag_gems.vendor_name != "ascend":
+        return flag_gems.fractional_max_pool2d(
+            inp,
+            kernel_size=kernel_size,
+            output_size=output_size,
+            _random_samples=random_samples,
+        )
+    # Build canonical flat indices from the actual input and original samples.
+    # Ascend's native frontend also uses a CPU fallback for this forward API.
+    if random_samples is None:
+        random_samples = torch.rand(
+            inp.shape[0], inp.shape[1], 2, dtype=torch.float32, device=inp.device
+        )
+    output, indices = torch.nn.functional.fractional_max_pool2d(
+        inp.detach().to(device="cpu", dtype=torch.float64),
+        kernel_size=kernel_size,
+        output_size=output_size,
+        return_indices=True,
+        _random_samples=random_samples.to(device="cpu", dtype=torch.float64),
+    )
+    return output.to(device=inp.device, dtype=inp.dtype), indices.to(device=inp.device)
 
 
 @pytest.mark.fractional_max_pool2d_backward
@@ -48,11 +73,11 @@ def test_fractional_max_pool2d_backward(shape, kernel_size, output_size, dtype):
         return_indices=True,
         _random_samples=ref_random_samples,
     )
-    actual_out, actual_indices = flag_gems.fractional_max_pool2d(
+    actual_out, actual_indices = _fractional_backward_forward_fixture(
         inp,
         kernel_size=kernel_size,
         output_size=output_size,
-        _random_samples=random_samples,
+        random_samples=random_samples,
     )
     utils.gems_assert_equal(actual_indices, ref_indices)
 
