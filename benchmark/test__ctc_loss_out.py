@@ -12,18 +12,108 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
 import pytest
 import torch
 
 import flag_gems
 
-from . import base
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 CTC_DTYPES = [torch.float32, torch.float64]
 
 
+def _clone_ctc_inputs(value):
+    if isinstance(value, torch.Tensor):
+        if value.dtype == torch.float64:
+            if not value.is_contiguous():
+                raise ValueError(
+                    "CTC Double snapshots require the original contiguous layout"
+                )
+            result = (
+                value.detach()
+                .reshape(-1)
+                .view(torch.uint8)
+                .clone()
+                .view(torch.float64)
+                .reshape(value.shape)
+            )
+            return result.requires_grad_(value.requires_grad)
+        return value.detach().clone().requires_grad_(value.requires_grad)
+    if isinstance(value, (tuple, list)):
+        return type(value)(_clone_ctc_inputs(v) for v in value)
+    if isinstance(value, dict):
+        return {k: _clone_ctc_inputs(v) for k, v in value.items()}
+    return value
+
+
 class CtcLossOutBenchmark(OperatorBenchmark):
+    def _get_fresh_input_latency(self, op, args, kwargs):
+        if not (
+            flag_gems.vendor_name == "ascend"
+            and args
+            and isinstance(args[0], torch.Tensor)
+            and args[0].dtype == torch.float64
+        ):
+            return super()._get_fresh_input_latency(op, args, kwargs)
+        # Each sample starts from an independent snapshot. Input restoration
+        # happens before the start event/clock, never inside the measured call.
+        if self.is_backward:
+            raise ValueError("Fresh-input backward measurement is not supported")
+        if getattr(base.Config, "reference_only", False):
+            fresh_args, fresh_kwargs = _clone_ctc_inputs((args, kwargs))
+            return super(OperatorBenchmark, self).get_latency(
+                op, *fresh_args, **fresh_kwargs
+            )
+        if base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError(
+                "State-changing benchmarks require fresh inputs; use kernel or operator mode"
+            )
+        if base.Config.mode not in (
+            consts.BenchMode.KERNEL,
+            consts.BenchMode.OPERATOR,
+            consts.BenchMode.WRAPPER,
+        ):
+            raise ValueError("Undefined Value of Benchmark Mode.")
+        device_timing = base.Config.mode == consts.BenchMode.KERNEL
+        if device_timing and not hasattr(base.torch_device_fn, "Event"):
+            raise ValueError("Backend has no event timer for fresh-input measurements")
+
+        def sample():
+            fresh_args, fresh_kwargs = _clone_ctc_inputs((args, kwargs))
+            base.torch_device_fn.synchronize()
+            if device_timing:
+                start = base.torch_device_fn.Event(enable_timing=True)
+                end = base.torch_device_fn.Event(enable_timing=True)
+                start.record()
+                result = op(*fresh_args, **fresh_kwargs)
+                end.record()
+                end.synchronize()
+                elapsed = start.elapsed_time(end)
+            else:
+                start = time.perf_counter()
+                result = op(*fresh_args, **fresh_kwargs)
+                if base.Config.mode == consts.BenchMode.OPERATOR:
+                    base.torch_device_fn.synchronize()
+                elapsed = (time.perf_counter() - start) * 1000
+            del result
+            if elapsed <= 0:
+                raise RuntimeError("Fresh-input timer returned a nonpositive latency")
+            return elapsed
+
+        warmup_elapsed = 0.0
+        while warmup_elapsed < base.Config.warm_up:
+            warmup_elapsed += sample()
+        measured = []
+        elapsed = 0.0
+        while not measured or elapsed < base.Config.repetition:
+            value = sample()
+            measured.append(value)
+            elapsed += value
+        return sum(measured) / len(measured)
+
     def build_inputs(self, case):
         needs_native = getattr(base.Config, "reference_only", False) or (
             "latency_base" in self.to_bench_metrics and not base.Config.skip_native
