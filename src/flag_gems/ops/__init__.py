@@ -677,6 +677,10 @@ from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
+from flag_gems.ops.cudnn_rnn_flatten_weight import (
+    cudnn_rnn_flatten_weight,
+    cudnn_rnn_flatten_weight_out,
+)
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_, cumprod_backward
@@ -2294,6 +2298,8 @@ __all__ = [
     "cudnn_convolution_transpose",
     "cudnn_rnn",
     "cudnn_rnn_backward",
+    "cudnn_rnn_flatten_weight",
+    "cudnn_rnn_flatten_weight_out",
     "cummax",
     "cummaxmin_backward",
     "cummin",

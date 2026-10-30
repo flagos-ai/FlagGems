@@ -175,6 +175,8 @@ _FULL_CONFIG = (
     ("_cudnn_attention_forward", cudnn_attention_forward),
     ("_cudnn_rnn", cudnn_rnn),
     ("_cudnn_rnn_backward", cudnn_rnn_backward),
+    ("_cudnn_rnn_flatten_weight", cudnn_rnn_flatten_weight),
+    ("_cudnn_rnn_flatten_weight.out", cudnn_rnn_flatten_weight_out),
     ("_cummax_helper", _cummax_helper),
     ("_cummin_helper", _cummin_helper),
     ("_dim_arange", dim_arange),
