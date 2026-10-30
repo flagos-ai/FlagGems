@@ -2035,6 +2035,16 @@ _FULL_CONFIG = (
     ("swapdims", swapdims),
     ("swapdims_", swapdims_),
     ("sym_constrain_range", sym_constrain_range),
+    # sym_constrain_range_for_size takes a Scalar and no tensor, so it carries no
+    # device key: ATen registers it as CompositeExplicitAutograd and the backend
+    # key is never reached. Registering only the device key would be dead code
+    # under use_gems(), so the alias key is registered too.
+    (
+        "sym_constrain_range_for_size",
+        sym_constrain_range_for_size,
+        None,
+        ["CompositeExplicitAutograd"],
+    ),
     ("sym_numel", sym_numel),
     ("sym_size.int", sym_size_int),
     ("sym_storage_offset", sym_storage_offset),

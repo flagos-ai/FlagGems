@@ -1541,6 +1541,7 @@ from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
 from flag_gems.ops.swapdims_ import swapdims_
 from flag_gems.ops.sym_constrain_range import sym_constrain_range
+from flag_gems.ops.sym_constrain_range_for_size import sym_constrain_range_for_size
 from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
 from flag_gems.ops.sym_storage_offset import sym_storage_offset
@@ -3216,6 +3217,7 @@ __all__ = [
     "swapdims",
     "swapdims_",
     "sym_constrain_range",
+    "sym_constrain_range_for_size",
     "sym_numel",
     "sym_size",
     "sym_size_int",

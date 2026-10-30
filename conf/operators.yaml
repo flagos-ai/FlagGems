@@ -21141,6 +21141,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: sym_constrain_range_for_size
+  description: Constrains a symbolic size to an inclusive [min, max] range. Used for
+    torch.compile symbolic shape analysis to bound an unbacked symbolic size, raising
+    when the size falls outside the range.
+  for:
+  - sym_constrain_range_for_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Utility
+  stages:
+  - alpha: '5.5'
 - id: sym_numel
   description: Returns the total number of elements of the input tensor.
   for:
