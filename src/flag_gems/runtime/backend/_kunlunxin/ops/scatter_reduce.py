@@ -1,5 +1,6 @@
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -7,6 +8,56 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# tle.raw hand-written XTDK (xpu3) payload: O(N) 2D last-dim scatter_reduce.
+# Each thread owns disjoint output rows and writes them completely (no atomics,
+# no fold); per row the output is tiled in LM and the (index,src) streamed and
+# reduced -> replaces the O(numel*dim) pull kernel.  fp32 + 2D + dim=-1 +
+# index.shape==inp.shape==src.shape only; anything else or any failure falls
+# back to the existing Triton kernels (functional safety net).
+#
+# The payload is loaded via tle.raw object= loader, which only exists on newer
+# tle builds; on older environments the decorator raises at import time (e.g.
+# "RawJITFunction.__init__() got an unexpected keyword argument object").  The
+# whole declaration is guarded so an unsupported tle leaves _HAS_RAW False and
+# the pure-Triton kernels run instead -- a failure here must never crash the
+# vendor-lib import (same pattern as ops/amin.py and ops/reflection_pad1d.py).
+# ---------------------------------------------------------------------------
+_SR_NCLU = 12  # P800: 12 clusters x 64 cores
+_SR_RC = {"sum": 0, "prod": 1, "mean": 2, "amax": 3, "amin": 4}
+
+try:
+    import triton.experimental.tle.language as _tle
+
+    _HAS_TLE = True
+except Exception:  # pragma: no cover
+    _HAS_TLE = False
+
+_HAS_RAW = False
+if _HAS_TLE:
+    try:
+        import os as _os
+
+        import triton.experimental.tle as _tle_ext
+
+        _RAW_DIR = _os.path.dirname(_os.path.abspath(__file__))
+        _SR_OBJ = _os.path.join(
+            _os.path.dirname(_RAW_DIR), "payload", "obj", "scatter_reduce.o"
+        )
+
+        @_tle_ext.raw.dialect("xpu3", object=_SR_OBJ, arch=3)
+        def sr_reduce_f32(inp, index, src, out, rows, cols, reduce, include_self): ...
+
+        @triton.jit(do_not_specialize=["rows", "cols", "reduce", "include_self"])
+        def _raw_sr_reduce(Inp, Index, Src, Out, rows, cols, reduce, include_self):
+            _tle.raw.call(
+                sr_reduce_f32, (Inp, Index, Src, Out, rows, cols, reduce, include_self)
+            )
+
+        _HAS_RAW = True
+    except Exception:  # pragma: no cover
+        _HAS_RAW = False
 
 
 @libentry()
@@ -577,6 +628,37 @@ def scatter_reduce(inp, dim, index, src, reduce, *, include_self=True):
 
     index = index.contiguous()
     src = src.contiguous()
+
+    if (
+        _HAS_RAW
+        and inp.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and inp.ndim == 2
+        and (dim % inp.ndim) == inp.ndim - 1
+        and tuple(index.shape) == tuple(inp.shape)
+        and tuple(src.shape) == tuple(inp.shape)
+        and reduce in _SR_RC
+    ):
+        try:
+            rows, cols = inp.shape
+            inp32 = inp.to(torch.float32).contiguous()
+            src32 = src.to(torch.float32).contiguous()
+            out32 = inp32.clone()
+            idx32 = index.to(torch.int32).contiguous()
+            with torch_device_fn.device(inp.device):
+                _raw_sr_reduce[(_SR_NCLU,)](
+                    inp32,
+                    idx32,
+                    src32,
+                    out32,
+                    rows,
+                    cols,
+                    _SR_RC[reduce],
+                    1 if include_self else 0,
+                )
+            return out32.to(inp.dtype)
+        except Exception:  # pragma: no cover
+            logger.debug("GEMS_KUNLUNXIN SCATTER_REDUCE raw path failed, fallback")
+            result = inp.contiguous().clone()
     block = triton.next_power_of_2(index.shape[dim])
     if block > 65536:
         raise RuntimeError(
