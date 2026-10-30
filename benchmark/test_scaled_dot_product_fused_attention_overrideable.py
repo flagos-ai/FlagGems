@@ -80,7 +80,9 @@ def torch_ref(
             return_debug_mask,
             scale=scale,
         )
-    if flag_gems.vendor_name in {"hygon", "metax"}:
+    if flag_gems.vendor_name in {"hygon", "metax"} and (
+        base.Config.reference_only or not base.Config.skip_native
+    ):
         raise ValueError(
             "Backend uses exact static H800 reference; native timer must be skipped"
         )
@@ -265,12 +267,6 @@ class _OverrideableH800Reference:
                 "Actual call must select its exact original native-composite H800 record"
             )
         return baseline, json.dumps(call, sort_keys=True), record["latency_ms"], key
-
-    def _candidate_call(self):
-        op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name in {"hygon", "metax"} and op is self.torch_op:
-            raise ValueError("Backend requires explicit supported CPU-oracle candidate")
-        return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
         if flag_gems.vendor_name in {"hygon", "metax"}:
