@@ -45,6 +45,7 @@ from .gcd_ import gcd_
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
+from .igamma import igamma
 from .igamma_ import igamma_
 from .index_copy_ import index_copy_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
@@ -155,6 +156,7 @@ __all__ = [
     "gru_data",
     "hadamard_transform",
     "histc",
+    "igamma",
     "igamma_",
     "index_copy_",
     "index_reduce",
