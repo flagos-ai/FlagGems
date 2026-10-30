@@ -102,9 +102,24 @@ def _build_inputs_fn(plan, dtype, device):
     # generate_tensor_input only covers consts.FLOAT_DTYPES and returns None for
     # float64/complex128, so the operands are built directly; torch.randn
     # supports all four natively solved types.
-    a = torch.randn(a_shape, dtype=dtype, device=device)
+    cpu_fixture = flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex
+    fixture_device = "cpu" if cpu_fixture else device
+    a = torch.randn(a_shape, dtype=dtype, device=fixture_device)
     a.diagonal(dim1=-2, dim2=-1).add_(a_shape[-1])
-    b = torch.randn(b_shape, dtype=dtype, device=device)
+    b = torch.randn(b_shape, dtype=dtype, device=fixture_device)
+    if cpu_fixture:
+        a, b = (
+            value.contiguous()
+            .view(torch.uint8)
+            .to(device)
+            .view(dtype)
+            .reshape(value.shape)
+            for value in (a, b)
+        )
+    for value, shape in ((a, a_shape), (b, b_shape)):
+        assert value.dtype == dtype and tuple(value.shape) == shape
+        target = torch.device(device)
+        assert value.device == torch.device(target.type, target.index or 0)
     return a, b, {"left": left}
 
 
@@ -162,8 +177,17 @@ class _HiddenSolveH800Baseline:
         }
 
     def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "thead" or op is not self.torch_op:
+        ascend_native = (
+            flag_gems.vendor_name == "ascend"
+            and getattr(self, "_hidden_asc_pending", False)
+            and op is self.torch_op
+        )
+        if not ascend_native and (
+            flag_gems.vendor_name != "thead" or op is not self.torch_op
+        ):
             return super().get_latency(op, *args, **kwargs)
+        if ascend_native:
+            self._hidden_asc_pending = False
         if args[0].device.type != torch.device(self.device).type:
             raise ValueError("H800 comparison requires actual target-device inputs")
         if (
@@ -202,6 +226,12 @@ class _HiddenSolveH800Baseline:
             **provenance,
             "config": config,
             "target_timing_mode": base.Config.mode.value,
+            "target_input_factory": (
+                "CPU complex randn and diagonal conditioning, lossless bytes to actual target"
+                if flag_gems.vendor_name in ("ascend", "kunlunxin")
+                and args[0].is_complex()
+                else "original requested-device randn and diagonal conditioning"
+            ),
         }
         return ms
 
@@ -212,6 +242,28 @@ class _HiddenSolveH800Baseline:
         return op, dispatch, overridden
 
     def _measure_input(self, input, case_id=None):
+        if flag_gems.vendor_name != "ascend":
+            return self._measure_imported_input(input, case_id)
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if not needs_native:
+            return super()._measure_input(input, case_id)
+        if not os.environ.get("FLAGGEMS_HIDDEN_SOLVE_H800_BASELINE"):
+            raise ValueError(
+                "Ascend hidden solve uses CPU fallback; set FLAGGEMS_HIDDEN_SOLVE_H800_BASELINE to the reviewed native four-output H800 artifact"
+            )
+        if self.is_backward or "tflops" in self.to_bench_metrics:
+            raise ValueError(
+                "Static hidden solve baseline requires original forward latency"
+            )
+        self._hidden_asc_pending = True
+        try:
+            return self._measure_imported_input(input, case_id)
+        finally:
+            self._hidden_asc_pending = False
+
+    def _measure_imported_input(self, input, case_id=None):
         self._imported_baseline = None
         metric = super()._measure_input(input, case_id)
         if self._imported_baseline is None:

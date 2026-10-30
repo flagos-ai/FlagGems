@@ -52,6 +52,24 @@ INVERSE_PIVOT_MATRICES = [
 ]
 
 
+def _reference_inverse(matrix):
+    # Kunlun's native inverse rejects matrices with side 64 or greater.
+    # Keep the configured reference dtype and use the actual input values.
+    if flag_gems.vendor_name == "kunlunxin" and matrix.shape[-1] >= 64:
+        return torch.inverse(matrix.cpu())
+    return torch.inverse(matrix)
+
+
+def _assert_inverse_close(actual, reference, dtype, **kwargs):
+    if flag_gems.vendor_name == "kunlunxin":
+        device = torch.device(flag_gems.device)
+        assert actual.device == torch.device(device.type, device.index or 0)
+        assert actual.dtype == dtype and actual.shape == reference.shape
+        if reference.device.type == "cpu":
+            actual = actual.cpu()
+    utils.gems_assert_close(actual, reference, dtype, **kwargs)
+
+
 def _make_well_conditioned(shape, dtype, device):
     """Identity plus a small perturbation: always invertible, never singular."""
     torch.manual_seed(0)
@@ -72,10 +90,10 @@ def test_inverse(shape, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = _reference_inverse(ref_A).to(dtype)
 
     assert res_out.shape == A.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    _assert_inverse_close(res_out, ref_out, dtype, atol=1e-3)
 
 
 @pytest.mark.inverse
@@ -86,10 +104,10 @@ def test_inverse_batch(shape, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = _reference_inverse(ref_A).to(dtype)
 
     assert res_out.shape == A.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    _assert_inverse_close(res_out, ref_out, dtype, atol=1e-3)
 
 
 @pytest.mark.inverse
@@ -102,9 +120,9 @@ def test_inverse_requires_pivoting(matrix, dtype):
     ref_A = utils.to_reference(A, upcast=True)
 
     res_out = flag_gems.inverse(A)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = _reference_inverse(ref_A).to(dtype)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    _assert_inverse_close(res_out, ref_out, dtype, atol=1e-3)
 
 
 @pytest.mark.inverse
@@ -137,10 +155,10 @@ def test_inverse_noncontiguous(dtype):
     ref_A = utils.to_reference(A_t, upcast=True)
 
     res_out = flag_gems.inverse(A_t)
-    ref_out = torch.inverse(ref_A).to(dtype)
+    ref_out = _reference_inverse(ref_A).to(dtype)
 
     assert res_out.shape == A_t.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=1e-3)
+    _assert_inverse_close(res_out, ref_out, dtype, atol=1e-3)
 
 
 @pytest.mark.inverse
