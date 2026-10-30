@@ -20,6 +20,79 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _reference_input(inp, upcast=False):
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    return utils.to_reference(source, upcast)
+
+
+def _missing_cpu_lapack(inp, error):
+    return (
+        flag_gems.vendor_name == "mthreads"
+        and inp.device.type == "cpu"
+        and (
+            "requires compiling PyTorch with LAPACK" in str(error)
+            or "LAPACK library not found in compilation" in str(error)
+        )
+    )
+
+
+def _from_numpy(value):
+    import numpy as np
+
+    # Preserve scalar shape, make each output independent, and keep real dtype.
+    return torch.from_numpy(np.array(value, copy=True))
+
+
+def _reference_qr(inp):
+    source = inp.cpu() if flag_gems.vendor_name == "mthreads" else inp
+    try:
+        result = torch.linalg.qr(source)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(source, error):
+            raise
+        import numpy as np
+
+        result = tuple(_from_numpy(x) for x in np.linalg.qr(source.detach().numpy()))
+    return tuple(x.to(device=inp.device, dtype=inp.dtype) for x in result)
+
+
+def _reference_svd(inp, full_matrices=True):
+    try:
+        return torch.linalg.svd(inp, full_matrices=full_matrices)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    return tuple(
+        _from_numpy(x)
+        for x in np.linalg.svd(inp.detach().numpy(), full_matrices=full_matrices)
+    )
+
+
+def _reference_pinverse(inp, rcond=1e-15):
+    try:
+        return torch.pinverse(inp, rcond=rcond)
+    except RuntimeError as error:
+        if not _missing_cpu_lapack(inp, error):
+            raise
+    import numpy as np
+
+    return _from_numpy(np.linalg.pinv(inp.detach().numpy(), rcond=rcond))
+
+
+def _for_comparison(actual, reference, inp):
+    # Preserve the target ABI check before observing values on CPU.
+    assert actual.device == inp.device
+    assert actual.dtype == inp.dtype
+    assert actual.shape == (*inp.shape[:-2], inp.shape[-1], inp.shape[-2])
+    return (
+        actual.cpu()
+        if flag_gems.vendor_name == "mthreads"
+        else utils.to_cpu(actual, reference)
+    )
+
+
 @pytest.fixture(autouse=True)
 def _seed_random_inputs():
     torch.manual_seed(0)
@@ -48,7 +121,7 @@ def _make_well_conditioned(shape, dtype, device):
     matrix = torch.randn(shape, generator=generator, dtype=real_dtype)
     if dtype.is_complex:
         matrix = matrix + 1j * torch.randn(shape, generator=generator, dtype=real_dtype)
-    u, _, vh = torch.linalg.svd(matrix, full_matrices=False)
+    u, _, vh = _reference_svd(matrix, full_matrices=False)
     spectrum = torch.linspace(2.0, 1.0, k, dtype=real_dtype)
     spectrum = spectrum.expand(*batch_shape, k)
     matrix = (u * spectrum.unsqueeze(-2)) @ vh
@@ -60,31 +133,43 @@ def _make_well_conditioned(shape, dtype, device):
 @pytest.mark.parametrize("shape", SHAPES)
 def test_pinverse(shape, dtype):
     inp = _make_well_conditioned(shape, dtype, flag_gems.device)
-    ref_inp = utils.to_reference(inp, True)
-    reference = torch.pinverse(ref_inp)
+    ref_inp = _reference_input(inp, True)
+    reference = _reference_pinverse(ref_inp)
 
     result = flag_gems.pinverse(inp)
-    utils.gems_assert_close(result, reference, dtype, atol=PINVERSE_ATOL[dtype])
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp),
+        reference,
+        dtype,
+        atol=PINVERSE_ATOL[dtype],
+    )
     assert result.is_contiguous()
 
 
 @pytest.mark.pinverse
 def test_pinverse_rcond():
     inp = _make_well_conditioned((2, 5, 3), torch.float32, flag_gems.device)
-    reference = torch.pinverse(utils.to_reference(inp, True), rcond=1e-4)
+    reference = _reference_pinverse(_reference_input(inp, True), rcond=1e-4)
 
     result = flag_gems.pinverse(inp, rcond=1e-4)
 
-    utils.gems_assert_close(result, reference, inp.dtype, atol=PINVERSE_ATOL[inp.dtype])
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp),
+        reference,
+        inp.dtype,
+        atol=PINVERSE_ATOL[inp.dtype],
+    )
 
 
 @pytest.mark.pinverse
 def test_pinverse_batch_above_cuda_grid_y_limit():
     inp = torch.tensor([[2.0, 1.0], [0.0, 3.0]], device=flag_gems.device)
     inp = inp.expand(65536, 2, 2).contiguous()
-    reference = torch.pinverse(utils.to_reference(inp, True))
+    reference = _reference_pinverse(_reference_input(inp, True))
     result = flag_gems.pinverse(inp)
-    utils.gems_assert_close(result, reference, inp.dtype)
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp), reference, inp.dtype
+    )
 
 
 @pytest.mark.pinverse
@@ -92,20 +177,25 @@ def test_pinverse_noncontiguous():
     base = _make_well_conditioned((2, 3, 5), torch.float32, flag_gems.device)
     inp = base.transpose(-2, -1)
     assert not inp.is_contiguous()
-    reference = torch.pinverse(utils.to_reference(inp, True))
+    reference = _reference_pinverse(_reference_input(inp, True))
 
     result = flag_gems.pinverse(inp)
-    utils.gems_assert_close(result, reference, inp.dtype, atol=PINVERSE_ATOL[inp.dtype])
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp),
+        reference,
+        inp.dtype,
+        atol=PINVERSE_ATOL[inp.dtype],
+    )
 
 
 @pytest.mark.pinverse
 @pytest.mark.parametrize("shape", [(0, 0), (0, 3), (3, 0), (2, 0, 3)])
 def test_pinverse_empty(shape):
     inp = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
-    reference = torch.pinverse(utils.to_reference(inp))
+    reference = _reference_pinverse(_reference_input(inp))
 
     result = flag_gems.pinverse(inp)
-    utils.gems_assert_equal(result, reference)
+    utils.gems_assert_equal(_for_comparison(result, reference, inp), reference)
     assert result.stride() == reference.stride()
 
 
@@ -119,10 +209,12 @@ def test_pinverse_rcond_and_rank_deficiency(rcond):
         with pytest.raises(NotImplementedError, match="negative rcond"):
             flag_gems.pinverse(inp, rcond=rcond)
         return
-    reference = torch.pinverse(utils.to_reference(inp, True), rcond=rcond)
+    reference = _reference_pinverse(_reference_input(inp, True), rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
-    utils.gems_assert_close(result, reference, inp.dtype, atol=5e-3)
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp), reference, inp.dtype, atol=5e-3
+    )
 
 
 @pytest.mark.pinverse
@@ -143,13 +235,19 @@ def test_pinverse_nonfinite(value, rcond):
         return
     if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU and value != value:
         pytest.skip("Kunlunxin native SVD reference rejects NaN input")
-    ref_inp = utils.to_reference(inp)
-    if ref_inp.device.type == "cpu" and (torch.isnan(ref_inp).any() or rcond < 0):
+    ref_inp = _reference_input(inp)
+    # CPU-only qualification stalled on the non-finite SVD domain. Keep the
+    # existing NaN limitation and avoid invoking the same path for Inf inputs.
+    if ref_inp.device.type == "cpu" and (
+        not torch.isfinite(ref_inp).all() or rcond < 0
+    ):
         pytest.skip("CPU and CUDA SVD differ for this non-finite input")
-    reference = torch.pinverse(ref_inp, rcond=rcond)
+    reference = _reference_pinverse(ref_inp, rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
-    utils.gems_assert_equal(result, reference, equal_nan=True)
+    utils.gems_assert_equal(
+        _for_comparison(result, reference, inp), reference, equal_nan=True
+    )
 
 
 @pytest.mark.pinverse
@@ -185,9 +283,11 @@ def test_pinverse_autograd():
 @pytest.mark.parametrize("shape", [(48, 40), (40, 48), (4, 96, 40), (4, 40, 96)])
 def test_pinverse_large_multitile_and_moore_penrose(shape):
     inp = _make_well_conditioned(shape, torch.float32, flag_gems.device)
-    reference = torch.pinverse(utils.to_reference(inp, True), rcond=1e-5)
+    reference = _reference_pinverse(_reference_input(inp, True), rcond=1e-5)
     result = flag_gems.pinverse(inp, rcond=1e-5)
-    utils.gems_assert_close(result, reference, torch.float32, atol=5e-2)
+    utils.gems_assert_close(
+        _for_comparison(result, reference, inp), reference, torch.float32, atol=5e-2
+    )
 
     reconstructed = inp @ result @ inp
     inverse_reconstructed = result @ inp @ result
@@ -205,14 +305,17 @@ def test_pinverse_non_diagonal_difficult_inputs(case):
         inp = (left @ right).to(flag_gems.device)
         rcond = 1e-5
     else:
-        left, _ = torch.linalg.qr(torch.randn((40, 40), generator=generator))
-        right, _ = torch.linalg.qr(torch.randn((40, 40), generator=generator))
+        left, _ = _reference_qr(torch.randn((40, 40), generator=generator))
+        right, _ = _reference_qr(torch.randn((40, 40), generator=generator))
         singular = torch.logspace(0, -3, 40)
         inp = (left @ torch.diag(singular) @ right.T).to(flag_gems.device)
         rcond = 1e-4
 
-    reference = torch.pinverse(utils.to_reference(inp, True), rcond=rcond)
+    reference = _reference_pinverse(_reference_input(inp, True), rcond=rcond)
     result = flag_gems.pinverse(inp, rcond=rcond)
     torch.testing.assert_close(
-        utils.to_cpu(result, reference), reference, atol=1e-1, rtol=2e-2
+        _for_comparison(result, reference, inp).to(reference.dtype),
+        reference,
+        atol=1e-1,
+        rtol=2e-2,
     )
