@@ -26,7 +26,7 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
-from .avg_pool3d import avg_pool3d_backward
+from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
