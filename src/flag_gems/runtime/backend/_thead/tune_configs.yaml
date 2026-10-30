@@ -733,6 +733,155 @@ upsample_bicubic2d_aa:
     block_y: [2, 1]
     warps: [4, 8]
 
+mm_w8a8_int8:
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 1
+      num_stages: 2
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 1
+      num_stages: 3
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 1
+      num_stages: 4
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 2
+      num_stages: 2
+    metas:
+      - {BLOCK_M: 32, BLOCK_N: 16, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 16, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 2
+      num_stages: 3
+    metas:
+      - {BLOCK_M: 32, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 2
+      num_stages: 4
+    metas:
+      - {BLOCK_M: 32, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 4
+      num_stages: 1
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 1}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 4
+      num_stages: 2
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 16, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 16, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 32, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 32, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 32, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 64, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 4
+      num_stages: 3
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 256, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 256, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 256, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 256, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 4
+      num_stages: 4
+    metas:
+      - {BLOCK_M: 16, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 16, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 32, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 16, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 32, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 64, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 8
+      num_stages: 3
+    metas:
+      - {BLOCK_M: 64, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 64, BLOCK_N: 256, BLOCK_K: 128, GROUP_M: 8}
+      - {BLOCK_M: 128, BLOCK_N: 128, BLOCK_K: 128, GROUP_M: 8}
+  - gen: true
+    param_map:
+      META: metas
+      num_warps: 8
+      num_stages: 4
+    metas:
+      - {BLOCK_M: 64, BLOCK_N: 256, BLOCK_K: 128, GROUP_M: 8}
+mm_w8a8_int8_rows192:
+  - META: {BN: 64, BK: 256, GROUP: 8, CACHE: ""}
+    num_warps: 8
+    num_stages: 3
 mv:
   - gen: true
     param_map:
