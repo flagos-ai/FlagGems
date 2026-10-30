@@ -1,0 +1,146 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Iluvatar embedding bag diagnostics parallel
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
+      - '.github/workflows/iluvatar-embedding-bag-probes-parallel.yaml'
+      - '.github/scripts/test_iluvatar_embedding_bag_performance.py'
+      - '.github/scripts/iluvatar-embedding-bag-async-warmup.patch'
+
+permissions:
+  contents: read
+
+jobs:
+  ix-diagnostics-parallel:
+    if: github.head_ref == 'ci/iluvatar-embedding-bag-probes'
+    runs-on: iluvatar
+    timeout-minutes: 90
+    container:
+      image: harbor.baai.ac.cn/flagos-runtime/flagos-runtime-iluvatar-corex4.5.0:2.2.0
+      options: --device /dev/iluvatar0 --device /dev/itrctl --shm-size=256g --ulimit memlock=-1 --ulimit stack=67108864
+    concurrency:
+      group: ix-embedding-bag-probes-parallel-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@505d8b4c9440c710446f857942263c7f7bc3b1b8
+      - name: Check out the pinned IX operator (attempt 1)
+        id: operator-checkout-1
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned IX operator (attempt 2)
+        id: operator-checkout-2
+        if: ${{ !cancelled() && steps.operator-checkout-1.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned IX operator (attempt 3)
+        id: operator-checkout-3
+        if: ${{ !cancelled() && steps.operator-checkout-2.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned IX operator (attempt 4)
+        id: operator-checkout-4
+        if: ${{ !cancelled() && steps.operator-checkout-3.outcome == 'failure' }}
+        timeout-minutes: 5
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          fetch-depth: 1
+          path: operator-source
+      - name: Check out the pinned IX operator (attempt 5)
+        id: operator-checkout-5
+        if: ${{ !cancelled() && steps.operator-checkout-4.outcome == 'failure' }}
+        timeout-minutes: 5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          fetch-depth: 1
+          path: operator-source
+      - name: Install FlagGems using the current IX runtime image
+        id: setup
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          test "$(git rev-parse HEAD)" = 2d9f6e395c3dd4642c0bf301be11629356eb92df
+          mkdir -p ../ix-results
+          git rev-parse HEAD > ../ix-results/operator-sha.txt
+          git show HEAD:src/flag_gems/runtime/backend/_iluvatar/ops/embedding_bag.py > ../ix-results/baseline_embedding_bag.py
+          git apply --check ../.github/scripts/iluvatar-embedding-bag-async-warmup.patch
+          git apply ../.github/scripts/iluvatar-embedding-bag-async-warmup.patch
+          git diff > ../ix-results/candidate.patch
+          # Match backend-test.yaml: retain image compiler/deps and reconcile.
+          # Keep the requested five attempts, each bounded at five minutes.
+          retry_install() {
+            for attempt in 1 2 3 4 5; do
+              if timeout --kill-after=10s 300s "$@"; then return 0; fi
+              if [[ "$attempt" == 5 ]]; then return 1; fi
+              sleep 10
+            done
+          }
+          {
+            pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+            pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/"
+            pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com"
+            retry_install pip install --no-deps .
+            retry_install python3 tools/reconcile_backend_deps.py iluvatar
+            retry_install pip install '.[test]'
+            bash tools/gpu_check_iluvatar.sh
+            python3 -c 'import torch; torch.empty(1, device="cuda"); torch.cuda.synchronize()'
+            python3 -c 'import inspect, flag_gems; print(flag_gems.__file__); print(inspect.getfile(flag_gems._embedding_bag)); print(inspect.getfile(flag_gems._embedding_bag_backward))'
+            python3 -m pip freeze > ../ix-results/environment.txt
+          } 2>&1 | tee ../ix-results/setup.stdout.log
+      - name: Validate changed MAX paths only
+        id: accuracy
+        timeout-minutes: 20
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          python3 -m pytest -c /dev/null -s -vv \
+            ../.github/scripts/test_iluvatar_embedding_bag_performance.py -k max_candidate_accuracy \
+            --durations=0 --junitxml=../ix-results/max-accuracy.xml \
+            2>&1 | tee ../ix-results/max-accuracy.stdout.log
+      # MAX performance was measured on n23 in run 38859878207.
+      # This test-only ABI correction requires accuracy validation only.
+      - name: Preserve diagnostics even when assertions fail
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ix-embedding-bag-${{ github.run_id }}
+          path: ix-results/
+          if-no-files-found: warn
