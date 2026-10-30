@@ -190,9 +190,7 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
             config=config,
             case_id=case_id,
             target_candidate=(
-                "CPU native semantic bootstrap restored to real target"
-                if flag_gems.vendor_name == "enflame"
-                else "native target"
+                "locally timed candidate; implementation supplied by the runner"
             ),
         )
         if base.Config.reference_only:

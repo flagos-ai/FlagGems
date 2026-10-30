@@ -179,9 +179,7 @@ class _LdexpStaticBaseline:
             source,
             config=config,
             target_candidate=(
-                "CPU original-dtype native bootstrap restored in place to target"
-                if flag_gems.vendor_name == "enflame"
-                else "original-dtype native target"
+                "locally timed candidate; implementation supplied by the runner"
             ),
         )
         if base.Config.reference_only:
