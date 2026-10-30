@@ -19359,6 +19359,71 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_log_softmax
+  description: 'Sparse COO log_softmax: normalizes stored values over a sparse or
+    dense axis with a two-pass log-sum-exp, coalescing duplicate coordinates first
+    and returning a coalesced COO tensor.
+
+    '
+  for:
+  - _sparse_log_softmax
+  - _sparse_log_softmax.int
+  - _sparse_log_softmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_log_softmax_backward_data
+  description: 'Computes the gradient of stored values for sparse COO log_softmax
+    from grad_output and the output values, pooling the gradient over all entries
+    that share the reduced coordinate.
+
+    '
+  for:
+  - _sparse_log_softmax_backward_data
+  - _sparse_log_softmax_backward_data.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_mask
+  description: 'Gathers a sparse COO tensor at the coordinates stored in a boolean
+    mask tensor, returning a COO tensor with the mask indices and the self values;
+    supports the out= form.
+
+    '
+  for:
+  - sparse_mask
+  - sparse_mask.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_mask_projection
+  description: 'Projects the stored entries of a sparse COO tensor onto the support
+    of a boolean mask COO tensor; with accumulate_matches the values are multiplied
+    by the number of matching mask entries.
+
+    '
+  for:
+  - _sparse_mask_projection
+  - _sparse_mask_projection.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
@@ -19449,6 +19514,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_apply
+  description: 'Applies a 2:4 sparsity mask to a dense matrix, returning the two packed
+    cutlass-style compressed operands (packed values and swizzled metadata) used by
+    semi-structured sparse matmul.
+
+    '
+  for:
+  - _sparse_semi_structured_apply
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
+- id: sparse_semi_structured_apply_dense
+  description: 'Keeps the elements of a dense matrix selected by a packed 2:4 sparsity
+    bit mask and sets the remaining elements to exact +0.0, matching aten::_sparse_semi_structured_apply_dense.
+
+    '
+  for:
+  - _sparse_semi_structured_apply_dense
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: sparse_semi_structured_linear
   description: 'Performs a semi-structured (2:4) sparse linear transformation
 
@@ -19492,6 +19586,56 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: '5.5'
+- id: sparse_softmax
+  description: 'Sparse COO softmax: entries sharing all sparse coordinates except
+    the reduced dim are normalized together for a sparse dim, and dense value rows
+    are normalized along the dense axis otherwise; supports the dtype conversion and
+    out= forms.
+
+    '
+  for:
+  - _sparse_softmax
+  - _sparse_softmax.int
+  - _sparse_softmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_softmax_backward_data
+  description: 'Computes the gradient of stored values for sparse COO softmax as y
+    * (dy - sum(dy * y)) pooled over the entries that share the reduced coordinate,
+    returning a coalesced COO tensor.
+
+    '
+  for:
+  - _sparse_softmax_backward_data
+  - _sparse_softmax_backward_data.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_sum_backward
+  description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
+    back onto the sorted-unique coordinate support of the input sparse tensor, keeping
+    the sparse/dense dim split.
+
+    '
+  for:
+  - _sparse_sum_backward
+  - _sparse_sum_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
   stages:
   - alpha: '5.5'
 - id: spdiags
