@@ -171,20 +171,19 @@ class _AscendWeightBackwardStaticReference:
         self._weight_input_case = case
         return super().build_inputs(case)
 
-    def _candidate_call(self):
-        op, dispatch, overridden = super()._candidate_call()
-        if flag_gems.vendor_name == "ascend" and (
-            op is torch.ops.aten._weight_norm_interface_backward
-            or op is torch.ops.aten._weight_norm_interface_backward.default
-        ):
-            raise ValueError(
-                "Ascend static reference requires an explicit candidate implementation"
-            )
-        return op, dispatch, overridden
-
     def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "ascend" or op is not self.torch_op:
+        # Ordinary Gems dispatch keeps the reference callable's identity.
+        # Consume the external reference once; candidate calls use the timer.
+        native_reference = getattr(self, "_weight_native_pending", False) or getattr(
+            base.Config, "reference_only", False
+        )
+        if (
+            flag_gems.vendor_name != "ascend"
+            or op is not self.torch_op
+            or not native_reference
+        ):
             return super().get_latency(op, *args, **kwargs)
+        self._weight_native_pending = False
         if (
             self.op_name != "weight_norm_interface_backward"
             or self.is_backward
@@ -310,24 +309,37 @@ class _AscendWeightBackwardStaticReference:
         if case_id != self._weight_input_case.case_id:
             raise ValueError("Measured case must equal the original built case")
         self._weight_imported_source = None
-        metric = super()._measure_input(input, case_id=case_id)
-        source = self._weight_imported_source
-        if source is None or metric.latency_base is None or metric.latency is None:
-            raise ValueError(
-                "Both static native H800 and actual candidate timing required"
-            )
-        if not math.isfinite(metric.latency) or metric.latency <= 0:
-            raise ValueError(
-                "Actual local candidate latency must be finite and positive"
-            )
-        if (
-            hashlib.sha256(Path(source["artifact"]).read_bytes()).hexdigest()
-            != source["artifact_sha256"]
-        ):
-            raise ValueError("Native H800 artifact changed around candidate timing")
-        if "speedup" in self.to_bench_metrics:
-            metric.speedup = metric.latency_base / metric.latency
-        return _WeightBackwardMetrics(**asdict(metric), baseline_source=source)
+        needs_reference = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        self._weight_native_pending = needs_reference
+        try:
+            metric = super()._measure_input(input, case_id=case_id)
+            source = self._weight_imported_source
+            if source is None:
+                if needs_reference:
+                    raise ValueError("Static native H800 reference was not consumed")
+                return metric
+            if metric.latency_base is None:
+                raise ValueError("Static native H800 reference latency must be present")
+            if "latency" in self.to_bench_metrics and (
+                metric.latency is None
+                or not math.isfinite(metric.latency)
+                or metric.latency <= 0
+            ):
+                raise ValueError(
+                    "Actual local candidate latency must be finite and positive"
+                )
+            if (
+                hashlib.sha256(Path(source["artifact"]).read_bytes()).hexdigest()
+                != source["artifact_sha256"]
+            ):
+                raise ValueError("Native H800 artifact changed around candidate timing")
+            if "speedup" in self.to_bench_metrics:
+                metric.speedup = metric.latency_base / metric.latency
+            return _WeightBackwardMetrics(**asdict(metric), baseline_source=source)
+        finally:
+            self._weight_native_pending = False
 
 
 class _LegacyWeightBackwardBenchmark(
