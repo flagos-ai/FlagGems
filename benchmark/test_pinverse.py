@@ -155,17 +155,17 @@ class _PinverseH800Reference:
             flag_gems.vendor_name == "mthreads" and needs_native
         )
         self._pinverse_imported_reference = None
-        if self._pinverse_native_pending and (
-            self.is_backward or "tflops" in self.to_bench_metrics
-        ):
-            raise ValueError(
-                "The native H800 pinverse artifact covers forward latency only"
-            )
-        if self._pinverse_native_pending and not os.environ.get(
-            "FLAGGEMS_PINVERSE_H800_BASELINE"
-        ):
-            raise ValueError("Missing native H800 pinverse reference")
         try:
+            if self._pinverse_native_pending and (
+                self.is_backward or "tflops" in self.to_bench_metrics
+            ):
+                raise ValueError(
+                    "The native H800 pinverse artifact covers forward latency only"
+                )
+            if self._pinverse_native_pending and not os.environ.get(
+                "FLAGGEMS_PINVERSE_H800_BASELINE"
+            ):
+                raise ValueError("Missing native H800 pinverse reference")
             metric = super()._measure_input(input, case_id)
             if self._pinverse_imported_reference is None:
                 return metric
@@ -213,5 +213,4 @@ def test_pinverse():
         torch_op=torch.pinverse,
         dtypes=[torch.float32],
     )
-    bench.set_gems(flag_gems.pinverse)
     bench.run()
