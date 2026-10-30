@@ -2949,6 +2949,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: can_cast
+  description: 'Returns whether a cast from one ScalarType to another is permitted.
+    This is a category test (bool < integral < floating < complex), not a losslessness
+    check: narrowing inside a category is allowed.
+
+    '
+  for:
+  - can_cast
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: cartesian_prod
   description: Returns the cartesian product of the given sequence of 1-D tensors.
   for:
