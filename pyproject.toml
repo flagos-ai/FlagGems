@@ -314,6 +314,8 @@ flaggems-flagtune-compare = "flag_gems.flagtune.offline.cli.compare:main"
 "flag_gems.runtime.backend._metax" = ["stft_fft_shim.cpp"]
 "flag_gems.flagtune.inference" = ["manifest.json"]
 "flag_gems.flagtune.offline.contracts" = ["configs/*.yaml"]
+"flag_gems.utils" = ["configs/*.yaml"]
+"flag_gems.flagtune.contracts" = ["configs/*.yaml"]
 
 [tool.setuptools_scm]
 write_to = "src/flag_gems/_version.py"

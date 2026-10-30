@@ -12,19 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import torch
 import triton
 import triton.language as tl
-import yaml
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
+from flag_gems.utils.w8a8_block_fp8_configs import get_w8a8_block_fp8_configs
 
 logger = logging.getLogger(__name__)
 CACHE_USAGE_THRESHOLD = 0.8
@@ -35,46 +34,6 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
         "w8a8_block_fp8_matmul_hopper_expand.yaml",
     )
 )
-
-
-@functools.lru_cache
-def get_w8a8_block_fp8_hopper_configs(N: int, K: int) -> Optional[Dict[int, Any]]:
-    device_name = torch.cuda.get_device_name().replace(" ", "_")
-    file_name = "w8a8_block_fp8_matmul_hopper.yaml"
-
-    cfg_file = os.path.join(os.path.dirname(__file__), "..", file_name)
-
-    if os.path.exists(cfg_file):
-        with open(cfg_file) as f:
-            logger.info(
-                "GEMS_NVIDIA Using config from %s for W8A8 block FP8 kernel.",
-                cfg_file,
-            )
-            dev_data = yaml.safe_load(f).get(device_name, {})
-            NK_data = dev_data.get(f"{N},{K}", {})
-
-            result = {}
-            for k, p in NK_data.items():
-                # unpack the list into dictionary
-                result[int(k)] = {
-                    "BLOCK_SIZE_M": p[0],
-                    "BLOCK_SIZE_N": p[1],
-                    "BLOCK_SIZE_K": p[2],
-                    "GROUP_SIZE_M": p[3],
-                    "num_warps": p[4],
-                    "num_stages": p[5],
-                }
-
-            if not result:
-                return None
-            return result
-
-    logger.warning(
-        "GEMS_NVIDIA Using default W8A8 Block FP8 kernel config. Performance might be sub-optimal! "
-        "Config file not found at %s",
-        cfg_file,
-    )
-    return None
 
 
 def _get_placeholder_tuner_configs(pre_hook=None):
@@ -95,7 +54,7 @@ def _get_placeholder_tuner_configs(pre_hook=None):
 
 
 def _get_fixed_matmul_meta(M: int, N: int, K: int, block_n: int, block_k: int):
-    configs = get_w8a8_block_fp8_hopper_configs(N, K)
+    configs = get_w8a8_block_fp8_configs(N, K, block_n, block_k)
     if not configs:
         return {
             "BLOCK_M": 64,
