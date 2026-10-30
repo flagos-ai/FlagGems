@@ -298,6 +298,7 @@ from .celu import celu, celu_
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .choose_qparams_optimized import choose_qparams_optimized  # noqa: F401
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -500,6 +501,7 @@ from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
@@ -1172,6 +1174,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "choose_qparams_optimized",
     "chunk_cat",
     "chunk_gated_delta_rule_fwd",
     "clamp",
@@ -1374,6 +1377,7 @@ __all__ = [
     "isposinf",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kl_div",
     "kron",
     "kthvalue",
     "layer_norm",
