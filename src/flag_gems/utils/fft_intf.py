@@ -18,6 +18,7 @@ No FFT is dispatched through ATen. Both transform directions are unnormalized.
 The direct C ABIs are cuFFT (CUDA and CoreX), hipFFT (DTK), and muFFT
 (MUSA). The latter two use pointer handles, not cuFFT's int. MetaX uses a
 small C ABI shim compiled against its installed SDK to resolve native types.
+PPU uses acFFT with int handles and the same R2C/C2C codes and directions.
 """
 
 import atexit
@@ -66,13 +67,15 @@ def _close_cached_plans():
 atexit.register(_close_cached_plans)
 
 # Verified against CUDA/CoreX headers, DTK 26.04 hipfft.h and the MUSA
-# muFFT API reference. A same-named function alone is not an ABI guarantee.
+# muFFT API reference, and PPU SDK 2.1.1 acfft.h. A same-named
+# function alone is not an ABI guarantee.
 _VENDORS = {
     "nvidia": ("cufft", ctypes.c_int, ("libcufft.so.12", "libcufft.so.11")),
     "iluvatar": ("cufft", ctypes.c_int, ("libcufft.so.10",)),
     "hygon": ("hipfft", ctypes.c_void_p, ("libhipfft.so.0",)),
     "mthreads": ("mufft", ctypes.c_void_p, ("libmufft.so.1",)),
     "metax": ("gemsMcfft", ctypes.c_void_p, ()),
+    "thead": ("acfft", ctypes.c_int, ()),
 }
 
 
@@ -102,6 +105,7 @@ def _library_candidates(vendor, prefix, sonames):
         "iluvatar": (os.environ.get("COREX_HOME"), "/usr/local/corex"),
         "hygon": (os.environ.get("ROCM_PATH"), "/opt/dtk"),
         "mthreads": (os.environ.get("MUSA_HOME"), "/usr/local/musa"),
+        "thead": (os.environ.get("PPU_SDK"), "/usr/local/PPU_SDK"),
     }
     for root in sdk_roots[vendor]:
         if root:

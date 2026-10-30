@@ -163,6 +163,19 @@ def _column_major_stride(shape):
     return torch.empty((*shape[:-2], shape[-1], shape[-2]), device="meta").mT.stride()
 
 
+def _assert_residual(X, B, A, flags):
+    # Evaluate the equation independently in CPU FP64. This is a validation
+    # oracle, not an implementation fallback or a vendor solve reference.
+    a, b, x = A.cpu().double(), B.cpu().double(), X.cpu().double()
+    a = a.triu() if flags[0] else a.tril()
+    if flags[2]:
+        a.diagonal(0, -2, -1).fill_(1)
+    if flags[1]:
+        a = a.mT
+    tolerance = 1e-8 if A.dtype == torch.float64 else 1e-4
+    torch.testing.assert_close(a @ x, b.expand_as(x), atol=tolerance, rtol=tolerance)
+
+
 def _assert_result(result, reference, B, A, functional=True):
     X, M = result
     ref_X, ref_M = reference
@@ -198,6 +211,7 @@ def test_triangular_solve(system, flags, dtype, caplog):
         for record in caplog.records
     ), "triangular_solve did not execute a FlagGems implementation"
     _assert_result(result, reference, B, A)
+    _assert_residual(result[0], B, A, flags)
     torch.testing.assert_close(A, before_A, atol=0, rtol=0)
     torch.testing.assert_close(B, before_B, atol=0, rtol=0)
 
@@ -309,7 +323,7 @@ def test_triangular_solve_out(flags, dtype, layout, caplog):
                 )[..., ::2]
             else:
                 out = torch.empty(shape, dtype=dtype, device=A.device)
-            outputs.append(out)
+            outputs.append(out.fill_(float("nan")))
         X, M = outputs
     pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
     with caplog.at_level(logging.DEBUG):
@@ -327,6 +341,7 @@ def test_triangular_solve_out(flags, dtype, layout, caplog):
         assert (X.data_ptr(), M.data_ptr()) == pointers
         assert (X.stride(), M.stride()) == strides
     _assert_result(result, reference, B, A, functional=False)
+    _assert_residual(result[0], B, A, flags)
 
 
 @pytest.mark.triangular_solve_out
@@ -567,3 +582,227 @@ def test_triangular_solve_wide_rhs(use_out):
     torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
     assert result[0].mT.is_contiguous()
     assert result[1].mT.is_contiguous()
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.parametrize("flags", FLAGS)
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_triangular_solve_large_ignored_entries(flags, dtype):
+    B, A = _inputs((), (), 257, 1, dtype, flags[2])
+    reference = _reference(B, A, *flags)
+    unused = torch.ones(257, 257, dtype=torch.bool, device=A.device)
+    unused = unused.tril(-1) if flags[0] else unused.triu(1)
+    A.masked_fill_(unused, float("nan"))
+    if flags[2]:
+        A.diagonal().fill_(float("inf"))
+    reference = reference[0], A.cpu()
+    result = _functional(B, A, flags)
+    _assert_result(result, reference, B, A)
+    assert torch.isfinite(result[0]).all()
+
+
+@pytest.mark.triangular_solve_out
+@pytest.mark.parametrize("flags", FLAGS)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("system", [((), (), 257, 1), ((2, 1), (3,), 129, 3)])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_triangular_solve_out_large_ignored_entries(flags, dtype, system, layout):
+    B, A = _inputs(*system, dtype, flags[2])
+    reference = _reference(B, A, *flags)
+    n = A.shape[-1]
+    unused = torch.ones(n, n, dtype=torch.bool, device=A.device)
+    unused = unused.tril(-1) if flags[0] else unused.triu(1)
+    A.masked_fill_(unused, float("nan"))
+    if flags[2]:
+        A.diagonal(0, -2, -1).fill_(float("inf"))
+    reference = reference[0], A.cpu().expand(reference[1].shape)
+    outputs = []
+    for ref in reference:
+        shape = ref.shape
+        if layout == "transpose":
+            out = torch.empty(
+                *shape[:-2], shape[-1], shape[-2], dtype=dtype, device=A.device
+            ).mT
+        else:
+            out = torch.empty(*shape[:-1], shape[-1] * 2, dtype=dtype, device=A.device)[
+                ..., ::2
+            ]
+        outputs.append(out.fill_(float("nan")))
+    X, M = outputs
+    pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
+    before_A, before_B = A.clone(), B.clone()
+    result = _out(B, A, flags, X, M)
+    assert result[0] is X and result[1] is M
+    assert (X.data_ptr(), M.data_ptr()) == pointers
+    assert (X.stride(), M.stride()) == strides
+    _assert_result(result, reference, B, A, functional=False)
+    _assert_residual(result[0], B, A, flags)
+    assert torch.isfinite(X).all()
+    torch.testing.assert_close(A, before_A, atol=0, rtol=0, equal_nan=True)
+    torch.testing.assert_close(B, before_B, atol=0, rtol=0)
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.triangular_solve_out
+@pytest.mark.skipif(
+    not flag_gems.runtime.device.support_fp64, reason="backend does not support float64"
+)
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize("flags", FLAGS)
+def test_triangular_solve_float64_precision(flags, use_out):
+    # Values distinguish FP64 arithmetic from an FP32 computation cast back.
+    n = 257
+    A = torch.eye(n, dtype=torch.float64, device=flag_gems.device)
+    A.diagonal().fill_(1 + 2**-30)
+    B = torch.full((n, 1), 1 + 2**-28, dtype=A.dtype, device=A.device)
+    if use_out:
+        X = torch.full((1, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        M = torch.full((n, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        result = _out(B, A, flags, X, M)
+        assert result[0] is X and result[1] is M
+    else:
+        result = _functional(B, A, flags)
+    expected = B.cpu() if flags[2] else B.cpu() / (1 + 2**-30)
+    torch.testing.assert_close(result[0].cpu(), expected, atol=1e-14, rtol=1e-14)
+    torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.triangular_solve_out
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("use_out", [False, True], ids=["default", "out"])
+@pytest.mark.parametrize(
+    "upper,transpose", list(itertools.product((False, True), repeat=2))
+)
+def test_triangular_solve_finite_inverse_overflow(dtype, use_out, upper, transpose):
+    # The inverse is finite, but multiplying its second row by the RHS would
+    # overflow before cancellation. Direct substitution gives exactly [1, 0].
+    n = 33
+    high = 2.0 ** (600 if dtype == torch.float64 else 70)
+    low = 1.0 / high
+    A = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    A[0, 0], A[1, 0], A[1, 1] = high, high, low
+    B = torch.zeros(n, 1, dtype=dtype, device=A.device)
+    B[:2] = high
+    expected = torch.zeros(n, 1, dtype=dtype)
+    expected[0, 0] = 1
+    # Build op(A) first, then recover the original A for transpose=True.
+    if upper != transpose:
+        A = A.flip((-2, -1))
+        B = B.flip((-2,))
+        expected = expected.flip((-2,))
+    if transpose:
+        A = A.mT
+    before_A, before_B = A.clone(), B.clone()
+    flags = (upper, transpose, False)
+    if use_out:
+        X = torch.full((1, n), float("nan"), dtype=dtype, device=A.device).mT
+        M = torch.full((n, n), float("nan"), dtype=dtype, device=A.device).mT
+        pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
+        result = _out(B, A, flags, X, M)
+        assert result[0] is X and result[1] is M
+        assert (X.data_ptr(), M.data_ptr()) == pointers
+        assert (X.stride(), M.stride()) == strides
+    else:
+        result = _functional(B, A, flags)
+    torch.testing.assert_close(result[0].cpu(), expected, atol=0, rtol=0)
+    torch.testing.assert_close(result[1], before_A, atol=0, rtol=0)
+    torch.testing.assert_close(A, before_A, atol=0, rtol=0)
+    torch.testing.assert_close(B, before_B, atol=0, rtol=0)
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.triangular_solve_out
+@pytest.mark.skipif(
+    not flag_gems.runtime.device.support_fp64, reason="backend does not support float64"
+)
+@pytest.mark.parametrize("use_out", [False, True], ids=["default", "out"])
+@pytest.mark.parametrize(
+    "upper,transpose", list(itertools.product((False, True), repeat=2))
+)
+def test_triangular_solve_chunked_previous_rows(use_out, upper, transpose):
+    # Cross the 1024-row reduction boundary and retain a partial final panel.
+    B, A = _inputs((), (), 1041, 1, torch.float64)
+    flags = (upper, transpose, False)
+    native = _native_reference(B, A, *flags)
+    reference = native[0].cpu(), A.cpu()
+    if use_out:
+        X = torch.full((1, 1041), float("nan"), dtype=A.dtype, device=A.device).mT
+        M = torch.full((1041, 1041), float("nan"), dtype=A.dtype, device=A.device).mT
+        pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
+        result = _out(B, A, flags, X, M)
+        assert result[0] is X and result[1] is M
+        assert (X.data_ptr(), M.data_ptr()) == pointers
+        assert (X.stride(), M.stride()) == strides
+    else:
+        result = _functional(B, A, flags)
+    _assert_result(result, reference, B, A, functional=not use_out)
+    _assert_residual(result[0], B, A, flags)
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.triangular_solve_out
+@pytest.mark.parametrize("use_out", [False, True], ids=["default", "out"])
+def test_triangular_solve_panel_wide_rhs(use_out):
+    # n > 32 selects the panel solver while k exceeds the grid.y limit.
+    n, nrhs = 33, 65536
+    A = torch.eye(n, dtype=torch.float32, device=flag_gems.device) * 2
+    A[16, 0] = 0.25
+    columns = torch.arange(nrhs, dtype=A.dtype, device=A.device).remainder_(17).add_(1)
+    B = columns.unsqueeze(0).expand(n, nrhs)
+    flags = (False, False, False)
+    if use_out:
+        X = torch.full((nrhs, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        M = torch.full((n, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        pointers, strides = (X.data_ptr(), M.data_ptr()), (X.stride(), M.stride())
+        result = _out(B, A, flags, X, M)
+        assert result[0] is X and result[1] is M
+        assert (X.data_ptr(), M.data_ptr()) == pointers
+        assert (X.stride(), M.stride()) == strides
+    else:
+        result = _functional(B, A, flags)
+    # Check every column without materializing several full CPU FP64 matrices.
+    a = A.cpu().double()
+    for start in range(0, nrhs, 1024):
+        x = result[0][:, start : start + 1024].cpu().double()
+        b = B[:, start : start + 1024].cpu().double()
+        expected = b / 2
+        expected[16] *= 7 / 8
+        torch.testing.assert_close(x, expected, atol=0, rtol=0)
+        torch.testing.assert_close(a @ x, b, atol=0, rtol=0)
+    torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
+
+
+@pytest.mark.triangular_solve
+@pytest.mark.triangular_solve_out
+@pytest.mark.skipif(
+    not flag_gems.runtime.device.support_fp64, reason="backend does not support float64"
+)
+@pytest.mark.parametrize("use_out", [False, True], ids=["default", "out"])
+@pytest.mark.parametrize("flags", FLAGS)
+def test_triangular_solve_float64_offdiagonal_precision(flags, use_out):
+    # Low bits in both within-panel and previous-panel contributions must survive.
+    n = 257
+    value, offdiagonal = 1 + 2**-28, 0.5 + 2**-30
+    diagonal = 1.0 if flags[2] else 1 + 2**-30
+    A = torch.eye(n, dtype=torch.float64, device=flag_gems.device)
+    A.diagonal().fill_(7.0 if flags[2] else diagonal)
+    A[1, 0] = A[32, 0] = A[256, 0] = offdiagonal
+    B = torch.full((n, 1), value * diagonal, dtype=A.dtype, device=A.device)
+    B[1, 0] = B[32, 0] = B[256, 0] = value * (diagonal + offdiagonal)
+    if flags[0] != flags[1]:
+        A = A.flip((-2, -1))
+        B = B.flip((-2,))
+    if flags[1]:
+        A = A.mT
+    if use_out:
+        X = torch.full((1, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        M = torch.full((n, n), float("nan"), dtype=A.dtype, device=A.device).mT
+        result = _out(B, A, flags, X, M)
+        assert result[0] is X and result[1] is M
+    else:
+        result = _functional(B, A, flags)
+    expected = torch.full((n, 1), value, dtype=torch.float64)
+    torch.testing.assert_close(result[0].cpu(), expected, atol=1e-14, rtol=1e-14)
+    torch.testing.assert_close(result[1].cpu(), A.cpu(), atol=0, rtol=0)
+    _assert_residual(result[0], B, A, flags)
