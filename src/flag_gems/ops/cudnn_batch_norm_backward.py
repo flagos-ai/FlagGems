@@ -8,9 +8,24 @@ from torch import Tensor
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+
+def _backward_heuristics():
+    heuristics = dict(runtime.get_heuristic_config("batch_norm"))
+    if runtime.device.vendor_name == "ascend":
+        # The strided 3-D channels-last tile needs additional compiler buffers
+        # on CANN 8.5; cap this operator's tile without changing other BN ops.
+        heuristics["BLOCK_M"] = lambda args: min(
+            8, triton.next_power_of_2(args["batch_dim"])
+        )
+        heuristics["BLOCK_N"] = lambda args: min(
+            triton.next_power_of_2(args["spatial_dim"]),
+            max(1, 256 // min(8, triton.next_power_of_2(args["batch_dim"]))),
+        )
+    return heuristics
 
 
 def make_3d_for_bn(input: Tensor) -> Tensor:
@@ -37,7 +52,7 @@ def make_3d_for_bn(input: Tensor) -> Tensor:
     configs=runtime.get_tuned_config("batch_norm"),
     key=["batch_dim", "spatial_dim"],
 )
-@triton.heuristics(runtime.get_heuristic_config("batch_norm"))
+@triton.heuristics(_backward_heuristics())
 @triton.jit
 def cudnn_batch_norm_backward_kernel(
     grad_output_pointer,
@@ -68,12 +83,14 @@ def cudnn_batch_norm_backward_kernel(
 ):
     feat_pid = tl.program_id(axis=0)
 
-    mean = tl.load(feat_pid + mean_pointer).to(tl.float32)
-    var = tl.load(feat_pid + var_pointer).to(tl.float32)
-    inv_std = tl_extra_shim.rsqrt(var + eps)
+    acc: tl.constexpr = (
+        tl.float64 if input_pointer.dtype.element_ty == tl.float64 else tl.float32
+    )
+    mean = tl.load(feat_pid + mean_pointer).to(acc)
+    inv_std = tl.load(feat_pid + var_pointer).to(acc)
 
-    term1 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    term1 = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc)
+    term2 = tl.zeros([BLOCK_M, BLOCK_N], dtype=acc)
 
     for m_step in range(0, tl.cdiv(batch_dim, BLOCK_M)):
         for n_step in range(0, tl.cdiv(spatial_dim, BLOCK_N)):
@@ -97,14 +114,14 @@ def cudnn_batch_norm_backward_kernel(
             )
 
             mask = batch_mask[:, None] & spatial_mask[None, :]
-            curr_input = tl.load(curr_input_pointer, mask=mask).to(tl.float32)
+            curr_input = tl.load(curr_input_pointer, mask=mask, other=0).to(acc)
 
             curr_norm = (curr_input - mean) * inv_std
-            curr_grad_output = tl.load(curr_grad_output_pointer, mask=mask).to(
-                tl.float32
+            curr_grad_output = tl.load(curr_grad_output_pointer, mask=mask, other=0).to(
+                acc
             )
 
-            term1 += curr_norm * curr_grad_output
+            term1 += tl.where(mask, curr_norm * curr_grad_output, 0)
             term2 += curr_grad_output
 
     term1 = tl.sum(term1)
@@ -118,10 +135,7 @@ def cudnn_batch_norm_backward_kernel(
     if not input_grad_mask:
         return
 
-    if weight_pointer:
-        weight = tl.load(feat_pid + weight_pointer).to(tl.float32)
-    else:
-        weight = 1.0
+    weight = tl.load(feat_pid + weight_pointer).to(acc)
 
     count = batch_dim * spatial_dim
 
@@ -154,12 +168,12 @@ def cudnn_batch_norm_backward_kernel(
 
             curr_input = tl.load(
                 curr_input_pointer, mask=batch_mask[:, None] & spatial_mask[None, :]
-            ).to(tl.float32)
+            ).to(acc)
             curr_norm = (curr_input - mean) * inv_std
             curr_grad_output = tl.load(
                 curr_grad_output_pointer,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
-            ).to(tl.float32)
+            ).to(acc)
             curr_input_grad = (
                 inv_std
                 * weight
@@ -169,6 +183,33 @@ def cudnn_batch_norm_backward_kernel(
                 curr_input_grad_pointer,
                 curr_input_grad,
                 mask=batch_mask[:, None] & spatial_mask[None, :],
+            )
+
+
+def _validate_backward(input, grad_output, weight, save_mean, save_var):
+    if input.ndim < 2 or input.ndim > 5 or input.numel() == 0:
+        raise RuntimeError(
+            "cudnn_batch_norm_backward requires a nonempty rank 2 through 5 input"
+        )
+    if (
+        grad_output.shape != input.shape
+        or grad_output.dtype != input.dtype
+        or grad_output.device != input.device
+    ):
+        raise RuntimeError("grad_output must match input shape, dtype and device")
+    param_dtype = torch.float32 if input.dtype == torch.float16 else input.dtype
+    if input.dtype not in (torch.float16, torch.float32, torch.float64):
+        raise RuntimeError("unsupported cudnn_batch_norm_backward input dtype")
+    for t in (weight, save_mean, save_var):
+        if (
+            t is None
+            or t.numel() != input.shape[1]
+            or t.dtype != param_dtype
+            or t.device != input.device
+            or not t.is_contiguous()
+        ):
+            raise RuntimeError(
+                "weight and saved statistics must be contiguous C-element tensors with the parameter dtype"
             )
 
 
@@ -184,6 +225,7 @@ def cudnn_batch_norm_backward(
     reserveSpace: Tensor = None,
 ):
     logger.debug("GEMS CUDNN_BATCH_NORM_BACKWARD")
+    _validate_backward(input, grad_output, weight, save_mean, save_var)
 
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)
@@ -192,8 +234,8 @@ def cudnn_batch_norm_backward(
 
     # Always compute all gradients
     input_grad = torch.empty_like(input_3d)
-    weight_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
-    bias_grad = torch.empty((feat_dim,), dtype=input.dtype, device=input.device)
+    weight_grad = torch.empty_like(weight)
+    bias_grad = torch.empty_like(weight)
 
     # Launches 1D grid where each program operates over one feature.
     with torch_device_fn.device(input.device):
@@ -202,7 +244,7 @@ def cudnn_batch_norm_backward(
             input_3d,
             weight,
             save_mean,
-            save_var,  # Pass variance
+            save_var,  # Saved inverse standard deviation
             input_grad,
             weight_grad,
             bias_grad,

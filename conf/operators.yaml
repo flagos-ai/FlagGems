@@ -4565,6 +4565,16 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.5'
+- id: cudnn_batch_norm
+  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  for:
+  - cudnn_batch_norm
+  labels:
+  - aten
+  kind:
+  - Normalization
+  stages:
+  - alpha: '5.5'
 - id: cudnn_batch_norm_backward
   description: Triton kernel implementation for cudnn_batch_norm_backward.
   for:
@@ -4576,6 +4586,16 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_batch_norm_out
+  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  for:
+  - cudnn_batch_norm.out
+  labels:
+  - aten
+  kind:
+  - Normalization
+  stages:
+  - alpha: '5.5'
 - id: cudnn_convolution
   description: 'A wrapper for cuDNN convolution backend.
 
