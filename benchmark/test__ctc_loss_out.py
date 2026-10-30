@@ -12,18 +12,121 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
 import pytest
 import torch
 
 import flag_gems
 
-from . import base, consts, utils
+from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 CTC_DTYPES = [torch.float32, torch.float64]
 
 
+def _clone_ctc_inputs(value):
+    if isinstance(value, torch.Tensor):
+        if value.dtype == torch.float64:
+            if not value.is_contiguous():
+                raise ValueError(
+                    "CTC Double snapshots require the original contiguous layout"
+                )
+            result = (
+                value.detach()
+                .reshape(-1)
+                .view(torch.uint8)
+                .clone()
+                .view(torch.float64)
+                .reshape(value.shape)
+            )
+            return result.requires_grad_(value.requires_grad)
+        return value.detach().clone().requires_grad_(value.requires_grad)
+    if isinstance(value, (tuple, list)):
+        return type(value)(_clone_ctc_inputs(v) for v in value)
+    if isinstance(value, dict):
+        return {k: _clone_ctc_inputs(v) for k, v in value.items()}
+    return value
+
+
 class CtcLossOutBenchmark(OperatorBenchmark):
+    def _get_fresh_input_latency(self, op, args, kwargs):
+        if not (
+            flag_gems.vendor_name == "ascend"
+            and args
+            and isinstance(args[0], torch.Tensor)
+            and args[0].dtype == torch.float64
+        ):
+            return super()._get_fresh_input_latency(op, args, kwargs)
+        # Each sample starts from an independent snapshot. Input restoration
+        # happens before the start event/clock, never inside the measured call.
+        if self.is_backward:
+            raise ValueError("Fresh-input backward measurement is not supported")
+        if getattr(base.Config, "reference_only", False):
+            fresh_args, fresh_kwargs = _clone_ctc_inputs((args, kwargs))
+            return super(OperatorBenchmark, self).get_latency(
+                op, *fresh_args, **fresh_kwargs
+            )
+        if base.Config.mode == consts.BenchMode.CUDAGRAPH:
+            raise ValueError(
+                "State-changing benchmarks require fresh inputs; use kernel or operator mode"
+            )
+        if base.Config.mode not in (
+            consts.BenchMode.KERNEL,
+            consts.BenchMode.OPERATOR,
+            consts.BenchMode.WRAPPER,
+        ):
+            raise ValueError("Undefined Value of Benchmark Mode.")
+        device_timing = base.Config.mode == consts.BenchMode.KERNEL
+        if device_timing and not hasattr(base.torch_device_fn, "Event"):
+            raise ValueError("Backend has no event timer for fresh-input measurements")
+
+        def sample():
+            fresh_args, fresh_kwargs = _clone_ctc_inputs((args, kwargs))
+            base.torch_device_fn.synchronize()
+            if device_timing:
+                start = base.torch_device_fn.Event(enable_timing=True)
+                end = base.torch_device_fn.Event(enable_timing=True)
+                start.record()
+                result = op(*fresh_args, **fresh_kwargs)
+                end.record()
+                end.synchronize()
+                elapsed = start.elapsed_time(end)
+            else:
+                start = time.perf_counter()
+                result = op(*fresh_args, **fresh_kwargs)
+                if base.Config.mode == consts.BenchMode.OPERATOR:
+                    base.torch_device_fn.synchronize()
+                elapsed = (time.perf_counter() - start) * 1000
+            del result
+            if elapsed <= 0:
+                raise RuntimeError("Fresh-input timer returned a nonpositive latency")
+            return elapsed
+
+        warmup_elapsed = 0.0
+        while warmup_elapsed < base.Config.warm_up:
+            warmup_elapsed += sample()
+        measured = []
+        elapsed = 0.0
+        while not measured or elapsed < base.Config.repetition:
+            value = sample()
+            measured.append(value)
+            elapsed += value
+        return sum(measured) / len(measured)
+
+    def build_inputs(self, case):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if (
+            flag_gems.vendor_name == "ascend"
+            and case.dtype == torch.float64
+            and needs_native
+        ):
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Ascend native CTC Float64 input conversion narrows to Float32")
+        return super().build_inputs(case)
+
     DEFAULT_SHAPES = [
         (64, 4, 32, 16),
         (256, 16, 64, 48),
@@ -55,19 +158,48 @@ def _case_fn(shape, dtype):
     )
 
 
+def _ascend_double(value, device):
+    return (
+        value.contiguous()
+        .reshape(-1)
+        .view(torch.uint8)
+        .to(device)
+        .view(torch.float64)
+        .reshape(value.shape)
+    )
+
+
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
     torch.manual_seed(0)
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        pytest.skip("Iluvatar native CTC Float64 output numerics are incorrect")
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
         pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
-    log_probs = raw.log_softmax(-1).to(dtype)
-    targets = torch.randint(1, classes, (batch, max_target), dtype=torch.long, device=device)
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        log_probs = _ascend_double(raw.log_softmax(-1).cpu().double(), device)
+    else:
+        log_probs = raw.log_softmax(-1).to(dtype)
+    targets = torch.randint(
+        1, classes, (batch, max_target), dtype=torch.long, device=device
+    )
     input_lengths = [t_steps] * batch
     target_lengths = [max_target] * batch
-    out0 = torch.empty(batch, dtype=dtype, device=device)
-    out1 = torch.empty(batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device)
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        out0 = _ascend_double(torch.empty(batch, dtype=dtype, device="cpu"), device)
+        out1 = _ascend_double(
+            torch.empty(batch, t_steps, 2 * max_target + 1, dtype=dtype, device="cpu"),
+            device,
+        )
+        assert log_probs.dtype == out0.dtype == out1.dtype == dtype
+        assert log_probs.device == out0.device == out1.device
+    else:
+        out0 = torch.empty(batch, dtype=dtype, device=device)
+        out1 = torch.empty(
+            batch, t_steps, 2 * max_target + 1, dtype=dtype, device=device
+        )
     return (
         log_probs,
         targets,
