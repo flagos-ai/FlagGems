@@ -527,6 +527,7 @@ from flag_gems.ops.attention import (
     scaled_dot_product_attention_forward,
 )
 from flag_gems.ops.avg_pool1d import avg_pool1d
+from flag_gems.ops.awq_gemm import awq_gemm, pack_awq_weight
 from flag_gems.ops.avg_pool2d import avg_pool2d, avg_pool2d_backward
 from flag_gems.ops.avg_pool3d import avg_pool3d, avg_pool3d_backward
 from flag_gems.ops.baddbmm import baddbmm, baddbmm_out
@@ -2148,6 +2149,7 @@ __all__ = [
     "avg_pool2d_backward",
     "avg_pool3d",
     "avg_pool3d_backward",
+    "awq_gemm",
     "baddbmm",
     "baddbmm_",
     "baddbmm_out",
@@ -2874,6 +2876,7 @@ __all__ = [
     "orgqr",
     "orgqr_out",
     "ormqr",
+    "pack_awq_weight",
     "pad",
     "pad_sequence",
     "pairwise_distance",
