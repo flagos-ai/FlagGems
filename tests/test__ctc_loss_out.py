@@ -81,34 +81,30 @@ def _reference_probs(value):
     return utils.to_reference(value.clone().detach(), True)
 
 
-def _assert_ctc_result(result, reference, dtype, *, reduce_dim, alpha_shape=None):
+def _reference_alpha(value, log_probs, target_lengths):
+    if flag_gems.vendor_name != "ascend":
+        return value
+    # NPU native alpha pads the state axis to eight. The canonical candidate
+    # keeps the logical 2*S+1 states, so normalize only this reference format.
+    assert value.device == log_probs.device
+    assert value.dtype == log_probs.dtype
+    logical_shape = (
+        log_probs.shape[1],
+        log_probs.shape[0],
+        2 * max(target_lengths) + 1,
+    )
+    allowed_shapes = {logical_shape}
+    if value.dtype == torch.float32:
+        n, t, states = logical_shape
+        allowed_shapes.add((n, t, ((states + 7) // 8) * 8))
+    assert tuple(value.shape) in allowed_shapes
+    return value[..., : logical_shape[-1]]
+
+
+def _assert_ctc_result(result, reference, dtype, *, reduce_dim):
     assert result.device.type == torch.device(flag_gems.device).type
     assert result.device.index == flag_gems.runtime.torch_device_fn.current_device()
     assert result.dtype == dtype
-    if flag_gems.vendor_name == "ascend" and alpha_shape is not None:
-        # Native NPU CTC aligns alpha's state axis to eight; Gems and CPU use
-        # the logical 2*S+1 states. Check the complete ABI before slicing only
-        # that proven backend padding from both representations.
-        allowed_shapes = {alpha_shape}
-        if dtype == torch.float32:
-            n, t, states = alpha_shape
-            allowed_shapes.add((n, t, ((states + 7) // 8) * 8))
-        assert tuple(result.shape) in allowed_shapes
-        assert tuple(reference.shape) in allowed_shapes
-        actual_cpu = _double_to_cpu(result) if dtype == torch.float64 else result.cpu()
-        reference_cpu = (
-            _double_to_cpu(reference)
-            if reference.dtype == torch.float64
-            else reference.cpu()
-        )
-        states = alpha_shape[-1]
-        gems_assert_close(
-            actual_cpu[..., :states],
-            reference_cpu[..., :states],
-            dtype,
-            reduce_dim=reduce_dim,
-        )
-        return
     assert result.shape == reference.shape
     # Observe values only after checking the target contract.
     if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
@@ -155,6 +151,7 @@ def test__ctc_loss_out(dtype):
     T, N, S, C = (20, 4, 8, 10)
     gems_args, ref_args = _make_inputs(T, N, S, C, dtype)
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(*ref_args, 0, False)
+    ref_log_alpha = _reference_alpha(ref_log_alpha, ref_args[0], ref_args[3])
     # The oracle may be upcast; candidate output buffers keep the input dtype.
     res_out0 = _empty_output(ref_nll.shape, dtype)
     res_out1 = _empty_output(ref_log_alpha.shape, dtype)
@@ -167,13 +164,7 @@ def test__ctc_loss_out(dtype):
     assert got1.data_ptr() == res_out1.data_ptr()
     reduce_dim = 8
     _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    _assert_ctc_result(
-        res_out1,
-        ref_log_alpha,
-        dtype,
-        reduce_dim=reduce_dim,
-        alpha_shape=(N, T, 2 * S + 1),
-    )
+    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.underscore_ctc_loss_out
@@ -183,18 +174,12 @@ def test__ctc_loss_out_resize(dtype):
     T, N, S, C = (20, 4, 8, 10)
     gems_args, ref_args = _make_inputs(T, N, S, C, dtype)
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(*ref_args, 0, False)
+    ref_log_alpha = _reference_alpha(ref_log_alpha, ref_args[0], ref_args[3])
     res_out0 = _empty_output((0,), dtype)
     res_out1 = _empty_output((0,), dtype)
     flag_gems._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
     assert res_out0.shape == ref_nll.shape
-    if flag_gems.vendor_name != "ascend":
-        assert res_out1.shape == ref_log_alpha.shape
+    assert res_out1.shape == ref_log_alpha.shape
     reduce_dim = 8
     _assert_ctc_result(res_out0, ref_nll, dtype, reduce_dim=reduce_dim)
-    _assert_ctc_result(
-        res_out1,
-        ref_log_alpha,
-        dtype,
-        reduce_dim=reduce_dim,
-        alpha_shape=(N, T, 2 * S + 1),
-    )
+    _assert_ctc_result(res_out1, ref_log_alpha, dtype, reduce_dim=reduce_dim)
