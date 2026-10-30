@@ -14203,6 +14203,24 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: movedim
+  description: 'Returns a view of the original tensor with the axes in `source` moved
+    to the positions in `destination`.
+
+    This is a zero-copy view operation that only reorders sizes and strides, sharing
+    storage with the input.
+
+    '
+  for:
+  - movedim.int
+  - movedim.intlist
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: mse_loss
   description: Compute the element-wise mean squared error, with optional weighting.
   for:
@@ -21060,12 +21078,38 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: swapaxes_
+  description: |
+    In-place version of torch.swapaxes(): swaps the two specified dimensions
+    of the input tensor's size and stride metadata.
+  for:
+  - swapaxes_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: swapdims
   description: |
     Returns a view of the input tensor with the two specified dimensions
     swapped; equivalent to torch.transpose().
   for:
   - swapdims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
+- id: swapdims_
+  description: |
+    In-place version of torch.swapdims(): swaps the two specified dimensions
+    of the input tensor's size and stride metadata.
+  for:
+  - swapdims_
   labels:
   - aten
   - KernelGen
