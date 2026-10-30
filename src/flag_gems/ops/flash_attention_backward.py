@@ -1451,6 +1451,10 @@ def scaled_dot_product_flash_attention_backward(
         is_causal=is_causal,
         softmax_scale=scale,
     )
+    if not use_varlen:
+        dQ = dQ.permute(0, 2, 1, 3).contiguous()
+        dK = dK.permute(0, 2, 1, 3).contiguous()
+        dV = dV.permute(0, 2, 1, 3).contiguous()
     return dQ, dK, dV
 
 
