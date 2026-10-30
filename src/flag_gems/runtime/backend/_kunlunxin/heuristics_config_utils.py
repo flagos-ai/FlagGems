@@ -231,6 +231,14 @@ def softmax_heur_tile_n_inner(args):
         return 4096
 
 
+def var_heur_tile_n(args):
+    # Pad the reduction tile to at least 64 lanes: the XPU backend silently
+    # miscompiles tl.sum/tl.arange over vectors narrower than one full warp
+    # (out-of-bounds reads, garbage on masked lanes), which is exactly the
+    # small-N (e.g. N=2) path the functional var tests exercise.
+    return max(64, softmax_heur_tile_n_inner(args))
+
+
 def softmax_heur_num_warps_inner(args):
     tile_size = args["TILE_N"]
     if tile_size < 2048:
@@ -386,6 +394,11 @@ HEURISTICS_CONFIGS = {
     },
     "softmax_inner": {
         "TILE_N": softmax_heur_tile_n_inner,
+        "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
+        "num_warps": softmax_heur_num_warps_inner,
+    },
+    "var": {
+        "TILE_N": var_heur_tile_n,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
         "num_warps": softmax_heur_num_warps_inner,
     },

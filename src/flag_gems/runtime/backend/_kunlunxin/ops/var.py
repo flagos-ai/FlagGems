@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.heuristics(runtime.get_heuristic_config("var"))
 @triton.jit(do_not_specialize=["correction"])
 def _var_dim_kernel(
     out,
@@ -41,32 +41,69 @@ def _var_dim_kernel(
     if ONE_TILE_PER_CTA:
         offsets = tl.arange(0, TILE_N)
         mask = offsets < N
-        values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
-        mean = tl.sum(values, axis=0) / N
-        diff = values - mean
-        squared_sum = tl.sum(tl.where(mask, diff * diff, 0.0), axis=0)
+        safe_offsets = tl.minimum(offsets, N - 1)
+        values = tl.load(x + row * N + safe_offsets).to(tl.float32)
+        values = tl.where(mask, values, 0.0)
+        total_sum = tl.sum(values, axis=0)
+        total_sum_sq = tl.sum(values * values, axis=0)
     else:
         sum_acc = tl.zeros((TILE_N,), dtype=tl.float32)
+        sum_sq_acc = tl.zeros((TILE_N,), dtype=tl.float32)
         for start in range(0, N, TILE_N):
             offsets = start + tl.arange(0, TILE_N)
             mask = offsets < N
-            values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
+            safe_offsets = tl.minimum(offsets, N - 1)
+            values = tl.load(x + row * N + safe_offsets).to(tl.float32)
+            values = tl.where(mask, values, 0.0)
             sum_acc += values
-        mean = tl.sum(sum_acc, axis=0) / N
+            sum_sq_acc += values * values
+        total_sum = tl.sum(sum_acc, axis=0)
+        total_sum_sq = tl.sum(sum_sq_acc, axis=0)
 
-        squared_acc = tl.zeros((TILE_N,), dtype=tl.float32)
-        for start in range(0, N, TILE_N):
-            offsets = start + tl.arange(0, TILE_N)
-            mask = offsets < N
-            values = tl.load(x + row * N + offsets, mask=mask, other=0.0).to(tl.float32)
-            diff = values - mean
-            squared_acc += tl.where(mask, diff * diff, 0.0)
-        squared_sum = tl.sum(squared_acc, axis=0)
-
+    mean = total_sum / N
     denominator = N - correction
-    variance = squared_sum / denominator
-    result = tl.where(denominator > 0, variance, float("nan"))
+    variance = (total_sum_sq / N) - (mean * mean)
+    result = tl.where(denominator > 0, variance * N / denominator, float("nan"))
     tl.store(out + row, result)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["correction"])
+def _var_dim_row_kernel(
+    out,
+    x,
+    M,
+    N,
+    correction,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # One program reduces BLOCK_M rows at once (inner reduction along the N
+    # axis), so the many-row / small-N dim-reduction cases are no longer
+    # launch-bound by one program per row.
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    row_mask = rows < M
+    rows_c = tl.minimum(rows, M - 1)
+
+    sum_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    sum_sq_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    for start_n in range(0, N, BLOCK_N):
+        cols = start_n + tl.arange(0, BLOCK_N)
+        col_mask = cols < N
+        cols_c = tl.minimum(cols, N - 1)
+        a = tl.load(x + rows_c[:, None] * N + cols_c[None, :]).to(tl.float32)
+        a = tl.where(row_mask[:, None] & col_mask[None, :], a, 0.0)
+        sum_acc += a
+        sum_sq_acc += a * a
+
+    total_sum = tl.sum(sum_acc, axis=1)
+    total_sum_sq = tl.sum(sum_sq_acc, axis=1)
+    mean = total_sum / N
+    denominator = N - correction
+    variance = (total_sum_sq / N) - (mean * mean)
+    result = tl.where(denominator > 0, variance * N / denominator, float("nan"))
+    tl.store(out + rows, result.to(out.dtype.element_ty), mask=row_mask)
 
 
 def _normalize_dims(x, dim):
@@ -112,20 +149,33 @@ def _var_impl(x, dim, correction, keepdim):
         )
 
     work = dim_compress(x, dims).reshape(-1, N)
-    result = torch.empty(work.shape[0], dtype=x.dtype, device=x.device)
+    M = work.shape[0]
+    result = torch.empty(M, dtype=x.dtype, device=x.device)
     with torch_device_fn.device(x.device):
-        _var_dim_kernel[(work.shape[0],)](result, work, N, float(correction))
+        if M >= 128 and N <= 512:
+            # Many rows with a short inner reduction: amortize the per-program
+            # launch/reduction overhead over BLOCK_M rows.
+            BLOCK_M = 128
+            BLOCK_N = max(64, triton.next_power_of_2(N))
+            grid = (triton.cdiv(M, BLOCK_M),)
+            _var_dim_row_kernel[grid](
+                result, work, M, N, float(correction), BLOCK_M, BLOCK_N
+            )
+        else:
+            _var_dim_kernel[(M,)](result, work, N, float(correction))
     return result.reshape(_output_shape(x, dims, keepdim))
 
 
-def var(x, unbiased=True):
+def var(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN VAR")
-    return _var_impl(x, None, 1 if unbiased else 0, False)
+    effective_correction = 1 if correction is None else correction
+    return _var_impl(x, dim, effective_correction, keepdim)
 
 
-def var_dim(x, dim=None, unbiased=True, keepdim=False):
+def var_dim(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS_KUNLUNXIN VAR_DIM")
-    return _var_impl(x, dim, 1 if unbiased else 0, keepdim)
+    effective_correction = 1 if correction is None else correction
+    return _var_impl(x, dim, effective_correction, keepdim)
 
 
 def var_correction(x, dim=None, *, correction=None, keepdim=False):

@@ -281,10 +281,12 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
 
     dtype = arr.dtype
     num_bits = 1
+    bit_offset_base = 0
     if dtype == torch.bool:
         pass
     elif dtype == torch.bfloat16:
-        num_bits = 4 * 8
+        num_bits = 16
+        bit_offset_base = 16
     else:
         num_bits = arr.element_size() * 8
     num_passes = (num_bits + k_bits - 1) // k_bits
@@ -299,7 +301,7 @@ def radix_sort_low_mem(arr, k_bits=4, descending=False):
         global_offsets = torch.empty(M * r_pad, device=arr.device, dtype=torch.int32)
 
         for p in range(num_passes):
-            bit_offset = p * k_bits
+            bit_offset = bit_offset_base + p * k_bits
             count_kernel[grid](
                 arr_in,
                 counts,

@@ -941,6 +941,11 @@ _FULL_CONFIG = (
     ("convolution_overrideable", convolution_overrideable),
     ("convolution_overrideable.out", convolution_overrideable_out),
     (
+        "copy",
+        copy,
+        lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
+    ),
+    (
         "copy_",
         copy_,
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),

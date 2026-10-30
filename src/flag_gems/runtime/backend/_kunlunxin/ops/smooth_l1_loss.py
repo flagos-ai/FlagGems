@@ -1,5 +1,4 @@
 import logging
-import os
 
 import torch
 import triton
@@ -148,7 +147,7 @@ def _loss_values(input, target, beta):
 
 @libentry()
 @triton.jit
-def _smooth_l1_loss_partial_sum_kernel(
+def _smooth_l1_loss_full_block_kernel(
     inp,
     target,
     mid,
@@ -157,11 +156,17 @@ def _smooth_l1_loss_partial_sum_kernel(
     reduction: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
+    # Unmasked stage-1 program over a FULL BLOCK_SIZE-lane block. On this
+    # backend a masked load does not reliably keep out-of-range lanes out of
+    # the reduction, and a masked stage-1 tile at BLOCK >= 32768 runs at a
+    # fraction of the unmasked bandwidth (masked-memory path), so the masked
+    # variant is avoided entirely -- see mse_loss.py / sum.py. The host
+    # guarantees the grid covers only in-bounds full blocks; any remainder is
+    # reduced by the tail kernel below without masks either.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < M
-    inp_val = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
-    target_val = tl.load(target + offset, mask=mask, other=0.0).to(tl.float32)
+    inp_val = tl.load(inp + offset).to(tl.float32)
+    target_val = tl.load(target + offset).to(tl.float32)
     diff = tl.abs(inp_val - target_val)
     if beta == 0.0:
         loss = diff
@@ -176,11 +181,45 @@ def _smooth_l1_loss_partial_sum_kernel(
 
 @libentry()
 @triton.jit
-def _sum_partial_kernel(inp, mid, M, MEAN: tl.constexpr, BLOCK_SIZE: tl.constexpr):
+def _smooth_l1_loss_tail_kernel(
+    inp,
+    target,
+    mid,
+    M,
+    base,
+    n_keep,
+    g,
+    beta: tl.constexpr,
+    reduction: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # Reduces the in-bounds window [M - BLOCK_SIZE, M). Its trailing `n_keep`
+    # lanes are the remainder past the full blocks; the leading lanes were
+    # already counted by the full-block kernel and are zeroed BY VALUE (a value
+    # predicate, never an address mask). Exact for any tensor and never reads
+    # out of range.
+    lane = tl.arange(0, BLOCK_SIZE)
+    inp_val = tl.load(inp + base + lane).to(tl.float32)
+    target_val = tl.load(target + base + lane).to(tl.float32)
+    diff = tl.abs(inp_val - target_val)
+    if beta == 0.0:
+        loss = diff
+    else:
+        loss = tl.where(diff < beta, 0.5 * diff * diff / beta, diff - 0.5 * beta)
+    loss = tl.where(lane >= BLOCK_SIZE - n_keep, loss, 0.0)
+    if reduction == 1:
+        sum_val = tl.sum(loss) / M
+    else:
+        sum_val = tl.sum(loss)
+    tl.store(mid + g, sum_val)
+
+
+@libentry()
+@triton.jit
+def _sum_full_block_kernel(inp, mid, M, MEAN: tl.constexpr, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offset < M
-    v = tl.load(inp + offset, mask=mask, other=0.0).to(tl.float32)
+    v = tl.load(inp + offset).to(tl.float32)
     sum_val = tl.sum(v)
     if MEAN:
         sum_val = sum_val / M
@@ -189,16 +228,45 @@ def _sum_partial_kernel(inp, mid, M, MEAN: tl.constexpr, BLOCK_SIZE: tl.constexp
 
 @libentry()
 @triton.jit
+def _sum_tail_kernel(
+    inp, mid, M, base, n_keep, g, MEAN: tl.constexpr, BLOCK_SIZE: tl.constexpr
+):
+    lane = tl.arange(0, BLOCK_SIZE)
+    v = tl.load(inp + base + lane).to(tl.float32)
+    v = tl.where(lane >= BLOCK_SIZE - n_keep, v, 0.0)
+    sum_val = tl.sum(v)
+    if MEAN:
+        sum_val = sum_val / M
+    tl.store(mid + g, sum_val)
+
+
+@libentry()
+@triton.jit
 def _smooth_l1_loss_final_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    # `mid` has BLOCK_MID slots but only the first `mid_size` hold partials;
+    # the padding lanes are dropped BY VALUE before the sum -- a value
+    # predicate, never an address mask on the load.
     offset = tl.arange(0, BLOCK_MID)
-    mid_ptrs = mid + offset
-    mask = offset < mid_size
-    mid_val = tl.load(mid_ptrs, mask=mask, other=0.0).to(tl.float32)
-    sum_val = tl.sum(mid_val)
-    tl.store(out, sum_val)
+    mid_val = tl.load(mid + offset).to(tl.float32)
+    mid_val = tl.where(offset < mid_size, mid_val, 0.0)
+    tl.store(out, tl.sum(mid_val))
 
 
+# Largest exact tl.sum tile on this XPU with buffer_size_limit=2048: fully
+# 131072-divisible tensors get the unmasked block-DMA path, measured +27..36%
+# over the 32768-lane tile on this 2-load + reduce pattern (see mse_loss.py).
+_FULL_BLOCK = 131072
+# Secondary exact tile: 2 programs of 32768 lanes beat 1 program of 65536 on
+# the 65536-element shapes (cluster scheduling).
+_V2_BLOCK = 32768
+# Legacy full-block size for the big non-divisible shapes.
+_LEGACY_BLOCK = 65536
+# Stage-2 must stay inside the 32768-lane tl.sum ceiling; grow stage-1 blocks
+# if the grid would exceed it (legacy MAX_MID rule).
 _MAX_MID = 32768
+# buffer_size_limit for every kernel launch: the largest exact tl.sum tile
+# ceiling on this backend.
+_BUFFER_SIZE_LIMIT = 2048
 
 
 def _smooth_l1_loss_reduce_fused(input, target, beta, reduction):
@@ -209,18 +277,85 @@ def _smooth_l1_loss_reduce_fused(input, target, beta, reduction):
 
     block_size = get_block_size_1d(M, input.element_size() * 2)
 
+    if (M > _FULL_BLOCK) and (M % _FULL_BLOCK == 0):
+        # Fully divisible by the largest exact tl.sum tile: the unmasked
+        # stage-1 path skips the masked-memory penalty entirely.
+        mid_size = M // _FULL_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=input.device)
+            out = torch.empty([], dtype=dtype, device=input.device)
+            with torch_device_fn.device(input.device):
+                _smooth_l1_loss_full_block_kernel[(mid_size,)](
+                    input,
+                    target,
+                    mid,
+                    M,
+                    beta,
+                    reduction,
+                    _FULL_BLOCK,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
+                    mid,
+                    out,
+                    mid_size,
+                    block_mid,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+            return out
+
+    if (M > _V2_BLOCK) and (M % _V2_BLOCK == 0):
+        # Divisible by 32768 but not by 131072 (e.g. 65536 = 2 tiles): keep the
+        # smaller unmasked tile, which beats one 65536-lane program.
+        mid_size = M // _V2_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=input.device)
+            out = torch.empty([], dtype=dtype, device=input.device)
+            with torch_device_fn.device(input.device):
+                _smooth_l1_loss_full_block_kernel[(mid_size,)](
+                    input,
+                    target,
+                    mid,
+                    M,
+                    beta,
+                    reduction,
+                    _V2_BLOCK,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
+                    mid,
+                    out,
+                    mid_size,
+                    block_mid,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+            return out
+
+    # Legacy path: stage-1 blocks sized by get_block_size_1d (or the measured
+    # 65536-lane optimum for the big non-divisible shapes), fp32 mid
+    # accumulation. Stage 1 is fully unmasked: full blocks via the full-block
+    # kernel and one in-bounds window program for the remainder (tail kernel);
+    # the mid padding lanes are dropped by value in the final-sum kernel.
+    if M > _LEGACY_BLOCK:
+        block_size = _LEGACY_BLOCK
     mid_size = triton.cdiv(M, block_size)
     if mid_size > _MAX_MID:
         block_size = triton.next_power_of_2(triton.cdiv(M, _MAX_MID))
         mid_size = triton.cdiv(M, block_size)
+    n_full = M // block_size
+    rem = M - n_full * block_size
+    mid_size = n_full + (1 if rem else 0)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=input.device)
+    # BLOCK_MID slots: stage 2 sums the whole tile and drops the padding lanes
+    # by value, so the slots past `mid_size` must be readable.
+    mid = torch.empty((block_mid,), dtype=torch.float32, device=input.device)
     out = torch.empty([], dtype=dtype, device=input.device)
 
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
     with torch_device_fn.device(input.device):
-        _smooth_l1_loss_partial_sum_kernel[(mid_size, 1, 1)](
+        _smooth_l1_loss_full_block_kernel[(n_full, 1, 1)](
             input,
             target,
             mid,
@@ -228,17 +363,27 @@ def _smooth_l1_loss_reduce_fused(input, target, beta, reduction):
             beta,
             reduction,
             block_size,
-            buffer_size_limit=2048,
+            buffer_size_limit=_BUFFER_SIZE_LIMIT,
         )
+        if rem:
+            _smooth_l1_loss_tail_kernel[(1, 1, 1)](
+                input,
+                target,
+                mid,
+                M,
+                M - block_size,
+                rem,
+                n_full,
+                beta,
+                reduction,
+                block_size,
+                buffer_size_limit=_BUFFER_SIZE_LIMIT,
+            )
         if mid_size == 1:
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
             return mid.reshape([]).to(dtype)
         _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
-            mid, out, mid_size, block_mid, buffer_size_limit=2048
+            mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
         )
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
 
     return out
 
@@ -248,35 +393,97 @@ def _sum_reduce(loss, mean):
 
     The broadcast path materializes the loss with the generic pointwise codegen
     and reduces it here; stage-1 is shared logic with
-    ``_smooth_l1_loss_reduce_fused`` (masked tail, fp32 accumulation, and the
-    ``mean`` division inside stage-1 so the returned 0-d is already the mean).
+    ``_smooth_l1_loss_reduce_fused`` (unmasked full blocks plus an in-bounds
+    tail, fp32 accumulation, and the ``mean`` division inside stage-1 so the
+    returned 0-d is already the mean).
     """
     loss = loss.contiguous().reshape(-1)
     M = loss.numel()
     block_size = get_block_size_1d(M, loss.element_size())
+
+    if (M > _FULL_BLOCK) and (M % _FULL_BLOCK == 0):
+        mid_size = M // _FULL_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=loss.device)
+            out = torch.empty([], dtype=loss.dtype, device=loss.device)
+            with torch_device_fn.device(loss.device):
+                _sum_full_block_kernel[(mid_size,)](
+                    loss,
+                    mid,
+                    M,
+                    mean,
+                    _FULL_BLOCK,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
+                    mid,
+                    out,
+                    mid_size,
+                    block_mid,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+            return out
+
+    if (M > _V2_BLOCK) and (M % _V2_BLOCK == 0):
+        mid_size = M // _V2_BLOCK
+        if mid_size <= _MAX_MID:
+            block_mid = triton.next_power_of_2(mid_size)
+            mid = torch.empty((block_mid,), dtype=torch.float32, device=loss.device)
+            out = torch.empty([], dtype=loss.dtype, device=loss.device)
+            with torch_device_fn.device(loss.device):
+                _sum_full_block_kernel[(mid_size,)](
+                    loss,
+                    mid,
+                    M,
+                    mean,
+                    _V2_BLOCK,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+                _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
+                    mid,
+                    out,
+                    mid_size,
+                    block_mid,
+                    buffer_size_limit=_BUFFER_SIZE_LIMIT,
+                )
+            return out
+
+    if M > _LEGACY_BLOCK:
+        block_size = _LEGACY_BLOCK
     mid_size = triton.cdiv(M, block_size)
     if mid_size > _MAX_MID:
         block_size = triton.next_power_of_2(triton.cdiv(M, _MAX_MID))
         mid_size = triton.cdiv(M, block_size)
+    n_full = M // block_size
+    rem = M - n_full * block_size
+    mid_size = n_full + (1 if rem else 0)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.float32, device=loss.device)
+    mid = torch.empty((block_mid,), dtype=torch.float32, device=loss.device)
     out = torch.empty([], dtype=loss.dtype, device=loss.device)
 
-    os.environ["TRITONXPU_OTHER_SIM"] = "1"
     with torch_device_fn.device(loss.device):
-        _sum_partial_kernel[(mid_size, 1, 1)](
-            loss, mid, M, mean, block_size, buffer_size_limit=2048
+        _sum_full_block_kernel[(n_full, 1, 1)](
+            loss, mid, M, mean, block_size, buffer_size_limit=_BUFFER_SIZE_LIMIT
         )
+        if rem:
+            _sum_tail_kernel[(1, 1, 1)](
+                loss,
+                mid,
+                M,
+                M - block_size,
+                rem,
+                n_full,
+                mean,
+                block_size,
+                buffer_size_limit=_BUFFER_SIZE_LIMIT,
+            )
         if mid_size == 1:
-            if "TRITONXPU_OTHER_SIM" in os.environ:
-                del os.environ["TRITONXPU_OTHER_SIM"]
             return mid.reshape([]).to(loss.dtype)
         _smooth_l1_loss_final_sum_kernel[(1, 1, 1)](
-            mid, out, mid_size, block_mid, buffer_size_limit=2048
+            mid, out, mid_size, block_mid, buffer_size_limit=_BUFFER_SIZE_LIMIT
         )
-    if "TRITONXPU_OTHER_SIM" in os.environ:
-        del os.environ["TRITONXPU_OTHER_SIM"]
 
     return out
 

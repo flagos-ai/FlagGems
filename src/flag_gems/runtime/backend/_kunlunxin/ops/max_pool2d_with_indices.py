@@ -186,7 +186,7 @@ def max_pool2d_forward_wide_kernel(
     output_ptr,
     indices_ptr,
     total,
-    total64,
+    total_words,
     in_h,
     in_w,
     out_h,
@@ -222,7 +222,7 @@ def max_pool2d_forward_wide_kernel(
     ow_base = ow * stride_w - padding_w
 
     for kh in tl.static_range(kernel_h):
-        ih = oh * stride_h - padding_h + kh
+        ih = oh * stride_h - padding_h + kh * dilation_h
         h_ok = (ih >= 0) & (ih < in_h)
         ih_safe = tl.where(h_ok, ih, 0)
         e0 = (nc_safe * in_h + ih_safe) * in_w + ow_base
@@ -655,6 +655,8 @@ def max_pool2d_with_indices(
         and stride_w % 2 == 0
         and in_w % 2 == 0
     ):
+        is_16bit = input.dtype != torch.float32
+        is_bf16 = input.dtype == torch.bfloat16
         with torch_device_fn.device(input.device):
             max_pool2d_forward_wide_kernel[grid](
                 input,

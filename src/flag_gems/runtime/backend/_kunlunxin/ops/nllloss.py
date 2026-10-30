@@ -9,7 +9,7 @@ from flag_gems.utils import libentry
 
 from .sum import sum as xpu_sum
 from .zero import zero_
-from .zeros_like import zeros_like as xpu_zeros_like
+from .zeros import zeros_kernel
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,6 @@ def nll_loss_scalar_mean_kernel(num_ptr, den_ptr, out_ptr, tw_ptr):
     tl.store(tw_ptr, den.to(tw_ptr.dtype.element_ty))
 
 
-@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_backward_kernel(
     out_grad_ptr,
@@ -837,7 +836,6 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_BWD")
     if self.numel() == 0:
         return torch.empty_like(self)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -848,13 +846,22 @@ def nll_loss_backward(
     weight = None if weight is None else weight.contiguous()
 
     if self.is_contiguous():
-        grad_input = xpu_zeros_like(self)
+        grad_input = torch.empty_like(self)
     else:
         grad_input = torch.empty_like(self).contiguous()
         zero_(grad_input)
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
+    grid = (triton.cdiv(N, 128),)
     with torch_device_fn.device(self.device):
+        if self.is_contiguous():
+            numel = grad_input.numel()
+            zeros_kernel.fn[(12, 1, 1)](
+                grad_input,
+                numel,
+                BLOCK_SIZE=triton.next_power_of_2(triton.cdiv(numel, 12)),
+                buffer_size_limit=2048,
+                isCloseDtypeConvert=True,
+            )
         nll_loss_backward_kernel[grid](
             grad_output,
             target,

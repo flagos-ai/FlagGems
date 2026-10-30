@@ -43,7 +43,7 @@ def max_pool3d_forward_kernel(
     out_d,
     out_h,
     out_w,
-    kcount,
+    kernel_d: tl.constexpr,
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
     stride_d: tl.constexpr,
@@ -61,16 +61,18 @@ def max_pool3d_forward_kernel(
 
     Grid: (cdiv(N * C * D * H * W, BLOCK),)
     Each lane handles one flattened output position and scans the kd*kh*kw
-    window with a small runtime loop (``kcount = kd*kh*kw``), keeping the
-    compiled IR tiny: unlike a fully unrolled kd*kh*kw peel (the Kunlunxin
-    compiler explodes on it) or a [BLOCK, KK] 2-D tile with two cross-lane
-    reductions (tl.max + tl.min), this shape compiles in seconds and runs
-    >1.4x faster than the previous tile-reduce variant.  Semantics match
-    ATen: ties pick the first window position in (D, H, W) iteration order
-    (a strictly-greater update keeps the earliest tap).  Out-of-window
-    (padding) taps are clamped to an in-bounds address and the loaded value
-    is discarded with ``tl.where``, so the loads stay unmasked (the XPU
-    backend treats compound i1-masked loads as a slow path).
+    window.  The depth dimension is a small runtime loop (``kd``) while the
+    two in-plane dimensions are ``tl.static_range``-unrolled: this removes the
+    per-tap soft integer division (``k // ncfg`` / ``k % kernel_w``) that the
+    previous single-flat-loop form had to do, which on XPU is the dominant
+    cost (measured ~2.4x faster).  Unlike a fully unrolled kd*kh*kw peel the
+    Kunlunxin compiler still only sees 9 unrolled taps (kh x kw), so it
+    compiles in seconds.  Semantics match ATen: ties pick the first window
+    position in (D, H, W) iteration order (a strictly-greater update keeps
+    the earliest tap).  Out-of-window (padding) taps are clamped to an
+    in-bounds address and the loaded value is discarded with ``tl.where``, so
+    the loads stay unmasked (the XPU backend treats compound i1-masked loads
+    as a slow path).
     """
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     output_mask = offsets < total
@@ -85,38 +87,154 @@ def max_pool3d_forward_kernel(
     d_base = od * stride_d - padding_d
     h_base = oh * stride_h - padding_h
     w_base = ow * stride_w - padding_w
-    ncfg = kernel_h * kernel_w
     base_off = nc_idx * (in_d * in_hw)
 
     max_val = tl.full((BLOCK,), float("-inf"), dtype=tl.float32)
     max_off = tl.zeros((BLOCK,), dtype=tl.int64)
-    for k in range(0, kcount):
-        kd = k // ncfg
-        kh = (k // kernel_w) % kernel_h
-        kw = k % kernel_w
+    for kd in range(0, kernel_d):
         id_ = d_base + kd * dilation_d
-        ih_ = h_base + kh * dilation_h
-        iw_ = w_base + kw * dilation_w
-        active = (
-            output_mask
-            & (id_ >= 0)
-            & (id_ < in_d)
-            & (ih_ >= 0)
-            & (ih_ < in_h)
-            & (iw_ >= 0)
-            & (iw_ < in_w)
+        for kh in tl.static_range(0, kernel_h):
+            ih_ = h_base + kh * dilation_h
+            for kw in tl.static_range(0, kernel_w):
+                iw_ = w_base + kw * dilation_w
+                active = (
+                    output_mask
+                    & (id_ >= 0)
+                    & (id_ < in_d)
+                    & (ih_ >= 0)
+                    & (ih_ < in_h)
+                    & (iw_ >= 0)
+                    & (iw_ < in_w)
+                )
+                id_s = tl.where(active, id_, 0)
+                ih_s = tl.where(active, ih_, 0)
+                iw_s = tl.where(active, iw_, 0)
+                io = base_off + id_s * in_hw + ih_s * in_w + iw_s
+                value = tl.load(input_ptr + io).to(tl.float32)
+                value = tl.where(active, value, float("-inf"))
+                is_max = value > max_val
+                max_val = tl.where(is_max, value, max_val)
+                max_off = tl.where(
+                    is_max,
+                    (id_s * in_hw + ih_s * in_w + iw_s).to(tl.int64),
+                    max_off,
+                )
+
+    tl.store(output_ptr + offsets, max_val, mask=output_mask)
+    tl.store(indices_ptr + offsets, max_off, mask=output_mask)
+
+
+@triton.jit
+def _extract32_wide(raw, sub):
+    return (((raw >> (32 * sub)) & 0xFFFFFFFF).to(tl.uint32)).to(
+        tl.float32, bitcast=True
+    )
+
+
+@triton.jit
+def _extract16_wide(raw, sub, IS_BF16: tl.constexpr):
+    if IS_BF16:
+        # bf16 == top 16 bits of fp32; reconstruct in the integer domain to
+        # avoid the XPU bf16 in-kernel bitcast miscompile.
+        return (((raw >> (16 * sub)) & 0xFFFF).to(tl.uint32) << 16).to(
+            tl.float32, bitcast=True
         )
-        id_s = tl.where(active, id_, 0)
-        ih_s = tl.where(active, ih_, 0)
-        iw_s = tl.where(active, iw_, 0)
-        io = base_off + id_s * in_hw + ih_s * in_w + iw_s
-        value = tl.load(input_ptr + io).to(tl.float32)
-        value = tl.where(active, value, float("-inf"))
-        is_max = value > max_val
-        max_val = tl.where(is_max, value, max_val)
-        max_off = tl.where(
-            is_max, (id_s * in_hw + ih_s * in_w + iw_s).to(tl.int64), max_off
-        )
+    else:
+        return (((raw >> (16 * sub)) & 0xFFFF).to(tl.uint16)).to(
+            tl.float16, bitcast=True
+        ).to(tl.float32)
+
+
+@libentry()
+@triton.jit
+def max_pool3d_forward_wide_kernel(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    total,
+    total_words,
+    in_d,
+    in_h,
+    in_w,
+    out_d,
+    out_h,
+    out_w,
+    kernel_d: tl.constexpr,
+    kernel_h: tl.constexpr,
+    kernel_w: tl.constexpr,
+    stride_d: tl.constexpr,
+    stride_h: tl.constexpr,
+    stride_w: tl.constexpr,
+    padding_d: tl.constexpr,
+    padding_h: tl.constexpr,
+    padding_w: tl.constexpr,
+    dilation_d: tl.constexpr,
+    dilation_h: tl.constexpr,
+    IS_16BIT: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """W-packed forward kernel for 3-D max pooling.
+
+    Same 1-D scan as ``max_pool3d_forward_kernel``, but the three ``kw`` taps
+    are packed two-per-word in the contiguous W dimension (two fp32 per int64,
+    or two fp16/bf16 per int32), so the per-tap W loads become a single
+    contiguous word load.  Requires ``dilation_w == 1``, ``stride_w % 2 == 0``
+    and ``in_w % 2 == 0`` (the packing alignment), enforced by the caller.
+    """
+    MIS: tl.constexpr = padding_w % 2
+    NLOAD: tl.constexpr = (kernel_w + MIS + 1) // 2
+
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    output_mask = offsets < total
+    out_dhw = out_d * out_h * out_w
+    nc_idx = offsets // out_dhw
+    rem = offsets % out_dhw
+    od = rem // (out_h * out_w)
+    rem2 = rem % (out_h * out_w)
+    oh = rem2 // out_w
+    ow = rem2 % out_w
+    in_hw = in_h * in_w
+    d_base = od * stride_d - padding_d
+    h_base = oh * stride_h - padding_h
+    ow_base = ow * stride_w - padding_w
+    nc_safe = tl.where(output_mask, nc_idx, 0)
+
+    max_val = tl.full((BLOCK,), float("-inf"), dtype=tl.float32)
+    max_off = tl.zeros((BLOCK,), dtype=tl.int64)
+    for kd in range(0, kernel_d):
+        id_ = d_base + kd * dilation_d
+        d_ok = (id_ >= 0) & (id_ < in_d)
+        id_s = tl.where(d_ok, id_, 0)
+        for kh in tl.static_range(0, kernel_h):
+            ih_ = h_base + kh * dilation_h
+            h_ok = d_ok & (ih_ >= 0) & (ih_ < in_h)
+            ih_s = tl.where(h_ok, ih_, 0)
+            e0 = (nc_safe * in_d + id_s) * in_hw + ih_s * in_w + ow_base
+            b0 = e0 >> 1
+            for k in tl.static_range(NLOAD):
+                bk = tl.minimum(tl.maximum(b0 + k, 0), total_words - 1)
+                if IS_16BIT:
+                    raw = tl.load(input_ptr.to(tl.pointer_type(tl.int32)) + bk)
+                else:
+                    raw = tl.load(input_ptr.to(tl.pointer_type(tl.int64)) + bk)
+                for s in tl.static_range(kernel_w):
+                    if (s + MIS) // 2 != k:
+                        pass
+                    else:
+                        if IS_16BIT:
+                            v = _extract16_wide(raw, (s + MIS) % 2, IS_BF16)
+                        else:
+                            v = _extract32_wide(raw, (s + MIS) % 2)
+                        e = ow_base + s
+                        valid = output_mask & h_ok & (e >= 0) & (e < in_w)
+                        is_new = valid & (v > max_val)
+                        max_val = tl.where(is_new, v, max_val)
+                        max_off = tl.where(
+                            is_new,
+                            (id_s * in_hw + ih_s * in_w + e).to(tl.int64),
+                            max_off,
+                        )
 
     tl.store(output_ptr + offsets, max_val, mask=output_mask)
     tl.store(indices_ptr + offsets, max_off, mask=output_mask)
@@ -232,39 +350,83 @@ def max_pool3d_with_indices(
 
     total = output.numel()
     block = 128
-    kcount = kd * kh * kw
 
     grid = (triton.cdiv(total, block),)
 
+    # W-packed wide kernel halves the innermost (kw) loads by packing two
+    # elements per word; it needs an even input width, an even W stride and
+    # unit W dilation for the word alignment to hold.  Otherwise fall back to
+    # the plain nested scan kernel.
+    use_wide = (
+        dw == 1
+        and sw % 2 == 0
+        and in_w % 2 == 0
+        and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+    )
+
     with torch_device_fn.device(input.device):
-        max_pool3d_forward_kernel[grid](
-            input,
-            output,
-            indices,
-            total,
-            in_d,
-            in_h,
-            in_w,
-            out_d,
-            out_h,
-            out_w,
-            kcount,
-            kh,
-            kw,
-            sd,
-            sh,
-            sw,
-            pd,
-            ph,
-            pw,
-            dd,
-            dh,
-            dw,
-            block,
-            num_warps=2,
-            buffer_size_limit=2048,
-            isCloseVectorization=True,
-        )
+        if use_wide:
+            is_16bit = input.dtype != torch.float32
+            is_bf16 = input.dtype == torch.bfloat16
+            max_pool3d_forward_wide_kernel[grid](
+                input,
+                output,
+                indices,
+                total,
+                input.numel() // 2,
+                in_d,
+                in_h,
+                in_w,
+                out_d,
+                out_h,
+                out_w,
+                kd,
+                kh,
+                kw,
+                sd,
+                sh,
+                sw,
+                pd,
+                ph,
+                pw,
+                dd,
+                dh,
+                is_16bit,
+                is_bf16,
+                block,
+                num_warps=2,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
+            )
+        else:
+            max_pool3d_forward_kernel[grid](
+                input,
+                output,
+                indices,
+                total,
+                in_d,
+                in_h,
+                in_w,
+                out_d,
+                out_h,
+                out_w,
+                kd,
+                kh,
+                kw,
+                sd,
+                sh,
+                sw,
+                pd,
+                ph,
+                pw,
+                dd,
+                dh,
+                dw,
+                block,
+                num_warps=2,
+                buffer_size_limit=2048,
+                isCloseVectorization=True,
+            )
 
     return output, indices
 

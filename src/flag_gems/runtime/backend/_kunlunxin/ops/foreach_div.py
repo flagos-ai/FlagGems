@@ -62,6 +62,16 @@ logger = logging.getLogger(__name__)
 # registration".
 logger.setLevel(logging.DEBUG)
 
+
+def _result_dtype(t, other):
+    """ATen type promotion for one tensor against a tensor or a number.
+
+    ``torch.result_type`` is the same routine ATen consults; it was removed
+    from ``flag_gems.utils.foreach`` upstream (#7561) while this vendor file
+    still depended on it, so the one-liner is kept locally.
+    """
+    return torch.result_type(t, other)
+
 UNROLL_NUM = 8
 IS_CLOSE_MEMORY_ASYNC = False
 LARGE_THRESHOLD = 1_048_576

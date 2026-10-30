@@ -9,6 +9,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.tle_copy import tle_copy
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,6 +169,44 @@ def safe_softmax_kernel_multirow(
     tl.store(output_ptr + off, out.to(output_ptr.dtype.element_ty))
 
 
+_COPY_BLOCK = 1024
+
+
+@triton.jit
+def _strided_copy_3d(dst_ptr, src_ptr, d0, d1, d2, s0, s1, s2, BLOCK: tl.constexpr):
+    """Copy a strided 3D source into a contiguous 3D destination (same shape).
+
+    Only used as a fallback when `tle_copy` cannot express the layout (e.g. the
+    tle.dsa surface is unavailable); the fast path is tle_copy's on-chip
+    transpose. This is a real XPU kernel (no forbidden aten copy primitive).
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    total = d0 * d1 * d2
+    mask = offs < total
+    i0 = offs // (d1 * d2)
+    rem = offs % (d1 * d2)
+    i1 = rem // d2
+    i2 = rem % d2
+    src_off = i0 * s0 + i1 * s1 + i2 * s2
+    v = tl.load(src_ptr + src_off, mask=mask)
+    tl.store(dst_ptr + offs, v, mask=mask)
+
+
+def _copy_strided(dst, src):
+    """Materialize `src` (strided 3D) into contiguous `dst` (same shape/dtype).
+
+    Real XPU copy only: tle_copy's dsa-transpose path first, then a plain
+    Triton gather copy. No forbidden aten copy primitive is used.
+    """
+    if tle_copy(src, dst):
+        return
+    d0, d1, d2 = src.shape
+    s0, s1, s2 = src.stride()
+    grid = (triton.cdiv(src.numel(), _COPY_BLOCK),)
+    _strided_copy_3d[grid](dst, src, d0, d1, d2, s0, s1, s2, BLOCK=_COPY_BLOCK)
+
+
 def _safe_softmax_launch(output, inp, M, N):
     """Inner launch on a contiguous [M, N] view (reduced dim innermost)."""
     # The 2D multirow tile uses `tl.arange(0, N)`; on this XPU non-power-of-2
@@ -229,50 +269,29 @@ def _safe_softmax(x: torch.Tensor, dim: int = -1, dtype: torch.dtype = None):
     if x.numel() == 0:
         return torch.empty_like(x, dtype=out_dtype)
 
-    out = torch.empty_like(x, dtype=kern_dtype)
     K = x.numel() // M // N  # post_dim
 
     with torch_device_fn.device(x.device):
         if K > 1:
             # Rearrange [M, N, K] -> [M*K, N] so the reduced dim N is innermost
-            # (the only fast axis on this XPU). Transpose copies go through
-            # aten._copy_from, which flag_gems NEVER overrides, so they run at
-            # native strided-copy speed (the old `.contiguous()` path dispatched
-            # to the gems copy override and was much slower).
-            inp_view = x.view(M, N, K).transpose(1, 2)
-            inp_reshaped = torch.empty((M * K, N), dtype=x.dtype, device=x.device)
-            torch.ops.aten._copy_from(inp_view, inp_reshaped, False)
+            # (the only fast axis on this XPU). The transpose is materialized
+            # with a real XPU copy kernel (tle_copy dsa-transpose path).
+            inp_view = x.view(M, N, K).transpose(1, 2)  # [M, K, N] strided
+            inp_reshaped = torch.empty((M, K, N), dtype=x.dtype, device=x.device)
+            _copy_strided(inp_reshaped, inp_view)
 
-            out_view = out.view(M, N, K).transpose(1, 2)
-            out_reshaped = torch.empty((M * K, N), dtype=kern_dtype, device=out.device)
-            torch.ops.aten._copy_from(out_view, out_reshaped, False)
+            out_reshaped = torch.empty((M * K, N), dtype=kern_dtype, device=x.device)
+            _safe_softmax_launch(out_reshaped, inp_reshaped.view(M * K, N), M * K, N)
 
-            _safe_softmax_launch(out_reshaped, inp_reshaped, M * K, N)
-
-            origin_dim = out.ndim
-            if origin_dim == 3:
-                m, n, k = out.shape
-            elif origin_dim == 2:
-                m, n = out.shape
-
-            if M == 1 and origin_dim == 2:
-                out = out_reshaped.view(K, N).transpose(0, 1)
-            elif M == 1 and origin_dim == 3:
-                out = out_reshaped.transpose(0, 1).view(m, n, k)
-            else:
-                out = out_reshaped.view(m, k, n).transpose(1, 2)
+            # [M*K, N] -> [M, N, K] (strided view) then materialize contiguous,
+            # mirroring the ATen reference which returns a contiguous tensor.
+            out = out_reshaped.view(M, K, N).transpose(1, 2)  # [M, N, K] strided
+            final = torch.empty((M, N, K), dtype=kern_dtype, device=x.device)
+            _copy_strided(final, out)
+            out = final.reshape(x.shape)
         else:
+            out = torch.empty_like(x, dtype=kern_dtype)
             _safe_softmax_launch(out, x, M, N)
-
-    if not out.is_contiguous():
-        # The K>1 rearrangement returns a transposed view; the ATen reference
-        # returns a contiguous tensor, so mirror that layout. Go through
-        # aten._copy_from so the copy never re-enters the gems copy_ override.
-        # NB: torch.empty_like(out) would preserve the strided layout
-        # (preserve_format), so allocate with an explicit contiguous shape.
-        tmp = torch.empty(out.shape, dtype=out.dtype, device=out.device)
-        torch.ops.aten._copy_from(out, tmp, False)
-        out = tmp
 
     if need_cast:
         out = out.to(out_dtype)
