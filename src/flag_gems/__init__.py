@@ -1465,6 +1465,7 @@ _FULL_CONFIG = (
     ("matmul_backward", matmul_backward),
     ("matrix_exp", matrix_exp),
     ("matrix_exp_backward", matrix_exp_backward),
+    ("matrix_H", matrix_H),
     ("matrix_power", matrix_power),
     ("matrix_power.out", matrix_power_out),
     ("max", max),

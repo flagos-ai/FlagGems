@@ -13559,6 +13559,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: matrix_H
+  description: Returns a view of this matrix with its two dimensions conjugated and
+    transposed.
+  for:
+  - matrix_H
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: matrix_power
   description: Triton kernel implementation for matrix_power.
   for:
