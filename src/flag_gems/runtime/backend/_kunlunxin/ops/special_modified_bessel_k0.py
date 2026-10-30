@@ -214,9 +214,21 @@ def run(self, out=None, *args, **kwargs):
     return out
 
 
+_K0_GRID_CACHE = {}
+
+
 def _k0_grid(n):
-    """Stable grid lambda: a per-call lambda misses the compile cache."""
-    return lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
+    """One grid callable per numel.
+
+    The Kunlunxin Triton backend keys its compile cache on the grid object, so a
+    lambda built per call never hits the cache and recompiles the kernel on every
+    launch (~124 ms instead of ~1.8 ms for 16.7M elements).
+    """
+    grid = _K0_GRID_CACHE.get(n)
+    if grid is None:
+        grid = lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
+        _K0_GRID_CACHE[n] = grid
+    return grid
 
 # --- backend entry point ---------------------------------------------------
 def special_modified_bessel_k0(A, out=None):
