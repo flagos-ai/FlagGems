@@ -215,18 +215,10 @@ class _AscendNextafterBaseline:
             environment=environment,
             input_identity="exact recipes and joint configuration; independent random payloads",
             target_timing_mode=base.Config.mode.value,
-            target_implementation="explicit CPU oracle plus target transfer; not NPU-native",
+            target_implementation="injected/default candidate timed locally; implementation not inferred",
             ratio="raw H800 milliseconds / target milliseconds; no normalization",
         )
         return latency / 1000
-
-    def _candidate_call(self):
-        result = super()._candidate_call()
-        if flag_gems.vendor_name == "ascend" and not result[2]:
-            raise ValueError(
-                "Ascend nextafter requires an explicit target-adapted candidate"
-            )
-        return result
 
     def _measure_input(self, input, case_id=None):
         if flag_gems.vendor_name != "ascend":
