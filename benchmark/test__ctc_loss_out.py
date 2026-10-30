@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import flag_gems
 import pytest
 import torch
 
-from . import base, consts, utils
+import flag_gems
+
+from . import base
 from .generated_operator_utils import OperatorBenchmark
 
 CTC_DTYPES = [torch.float32, torch.float64]

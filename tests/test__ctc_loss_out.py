@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import flag_gems
 import pytest
 import torch
 
+import flag_gems
+
 from . import accuracy_utils as utils
 from .accuracy_utils import gems_assert_close
-from .conftest import QUICK_MODE
 
 CTC_DTYPES = [torch.float32, torch.float64]
 
