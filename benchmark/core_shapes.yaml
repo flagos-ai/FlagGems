@@ -497,6 +497,17 @@ sparse_mm_reduce_impl:
     - [8, 4096, 256, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
 
+# Sparse COO inputs: the dim-1 / dim-0 projection cost scales with the stored
+# nnz, so these are the (M, N) sparse-matrix shapes the benchmark builds.
+sparse_sum:
+  shapes:
+    - [1024, 1024]
+    - [2048, 2048]
+    - [4096, 4096]
+    - [8192, 8192]
+    - [4096, 1024]
+  shape_desc: "M, N"
+
 sparse_sampled_addmm:
   shapes:
     - [2, 128, 128, 128]

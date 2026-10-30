@@ -19494,6 +19494,28 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.5'
+- id: sparse_sum
+  description: 'Sums a sparse COO tensor.  The default and dtype overloads sum every
+    stored value into a 0-D dense scalar; the dim and dim_dtype overloads project
+    the stored entries onto the kept dimensions and coalesce the projection, so
+    entries sharing a kept coordinate are added together and explicit structural
+    zeros survive as stored entries.  The dim_out overload writes the result into
+    the provided out tensor.
+
+    '
+  for:
+  - _sparse_sum
+  - _sparse_sum.dim
+  - _sparse_sum.dim_dtype
+  - _sparse_sum.dim_out
+  - _sparse_sum.dtype
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5.0'
 - id: spdiags
   description: Triton kernel implementation for _spdiags that builds a sparse matrix
     from diagonals.
