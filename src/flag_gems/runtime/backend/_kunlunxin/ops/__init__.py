@@ -312,6 +312,7 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .clone import clone  # noqa: F401
 from .col2im import col2im
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
@@ -1184,6 +1185,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "column_stack",
     "column_stack_out",
