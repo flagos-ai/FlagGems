@@ -35,6 +35,7 @@ from .constant_pad_nd import constant_pad_nd
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .cudnn_convolution import cudnn_convolution
@@ -143,6 +144,7 @@ __all__ = [
     "constant_pad_nd",
     "conv1d",
     "conv2d",
+    "conv_tbc",
     "conv_transpose1d",
     "conv_transpose2d",
     "cudnn_convolution",
