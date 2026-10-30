@@ -61,7 +61,9 @@ def test_kaiser_window(window_length, dtype):
     # aten::kaiser_window overload.
     target = torch.empty(0, device=flag_gems.device).device
     device = (
-        "cpu" if cfg.TO_CPU or flag_gems.vendor_name == "enflame" else flag_gems.device
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend")
+        else flag_gems.device
     )
     ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(
@@ -136,7 +138,9 @@ def test_kaiser_window_degenerate_lengths(dtype):
     # tensor, regardless of periodic / beta.
     target = torch.empty(0, device=flag_gems.device).device
     device = (
-        "cpu" if cfg.TO_CPU or flag_gems.vendor_name == "enflame" else flag_gems.device
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend")
+        else flag_gems.device
     )
     for periodic in (True, False):
         ref_one = torch.kaiser_window(1, periodic=periodic, dtype=dtype, device=device)
@@ -170,7 +174,9 @@ def test_kaiser_window_default_device(window_length, dtype):
     # onto the default flag_gems device.
     target = torch.empty(0, device=flag_gems.device).device
     device = (
-        "cpu" if cfg.TO_CPU or flag_gems.vendor_name == "enflame" else flag_gems.device
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend")
+        else flag_gems.device
     )
     ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(window_length, dtype=dtype)
