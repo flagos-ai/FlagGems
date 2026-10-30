@@ -720,6 +720,10 @@ from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
+from flag_gems.ops.empty_affine_quantized import (
+    _empty_affine_quantized,
+    _empty_affine_quantized_out,
+)
 from flag_gems.ops.empty_per_channel_affine_quantized import (
     _empty_per_channel_affine_quantized,
 )
@@ -1732,6 +1736,8 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_embedding_bag_sparse_backward",
+    "_empty_affine_quantized",
+    "_empty_affine_quantized_out",
     "_empty_per_channel_affine_quantized",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",

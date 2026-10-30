@@ -191,6 +191,18 @@ _FULL_CONFIG = (
     ),
     ("_embedding_bag_sparse_backward", _embedding_bag_sparse_backward),
     (
+        "_empty_affine_quantized",
+        _empty_affine_quantized,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
+        "_empty_affine_quantized.out",
+        _empty_affine_quantized_out,
+        None,
+        (QUANTIZED_CUDA_DISPATCH_KEY,),
+    ),
+    (
         "_empty_per_channel_affine_quantized",
         _empty_per_channel_affine_quantized,
         None,
