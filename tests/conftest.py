@@ -26,6 +26,7 @@ import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -117,6 +118,7 @@ def pytest_configure(config):
     global QUICK_MODE
     global FIRST_PARAMETER_ONLY
 
+    config._ref_as_candidate = validate_ref_as_candidate_options(config)
     TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
@@ -251,6 +253,8 @@ def pytest_runtest_logreport(report):
             result["reason"] = reason
         else:
             result["reason"] = None
+
+    result.update(getattr(report, "reference_candidate", {}))
 
 
 def pytest_terminal_summary(terminalreporter):
