@@ -74,6 +74,7 @@ backends:
     env:
       PATH: /usr/local/cuda/bin:$PATH
       LD_LIBRARY_PATH: /usr/local/cuda/lib64:$LD_LIBRARY_PATH
+      USE_FLAGCX: "OFF"
     deps:
       - flagcx==0.14.0rc2.post2+cuda13.3
       - torch==2.11.0+cu130
@@ -100,7 +101,7 @@ backends:
     triton: triton==3.5.0
     triton_post_install:
       - triton_ascend==3.2.1
-    flagtree: flagtree==0.7.0+ascend3.5
+    flagtree: flagtree==0.7.1a1+ascend3.5
     env_source:
       - /usr/local/Ascend/cann/set_env.sh
     deps:
@@ -161,7 +162,6 @@ backends:
       LD_LIBRARY_PATH: /opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
-      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - pyefml==1.9.10
       - torch==2.10.0+cpu
@@ -184,7 +184,6 @@ backends:
       TORCH_GCU_ENABLE_INT64_AND_UINT64: "1"
       ENABLE_I64_CHECK: "0"
       TORCHGCU_INDUCTOR_ENABLE: "1"
-      ENFLAME_PT_OP_DEBUG_CONFIG: "fallback_cpu=all_ops"
     deps:
       - enflame-modelopt==3.6.20260615+torch.2.11.0
       - numpy==2.3.5

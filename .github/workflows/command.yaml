@@ -136,21 +136,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
-      - uses: ./.github/actions/checkout-pr
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-flaggems
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: ./.github/actions/ondemand-test
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Hygon, MetaX, MooreThreads, Iluvatar, and Kunlunxin only have their
@@ -173,21 +200,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-mthreads:
@@ -205,21 +259,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-metax:
@@ -237,21 +318,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   test-operator-iluvatar:
@@ -267,21 +375,48 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # Kunlunxin reuses its workspace across jobs on klx-p800, so stale
@@ -307,21 +442,48 @@ jobs:
           git clean -ffdx 2>/dev/null || true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: ${{ needs.preprocess.outputs.backend }}
-          gpu_check_script: ${{ needs.preprocess.outputs.gpu_check }}
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: ${{ needs.preprocess.outputs.gpu_check }}
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: ${{ needs.preprocess.outputs.backend }}
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.backend }}
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # THead's flagcicd-810e runner needs the PPU driver/runtime that only
@@ -345,19 +507,46 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@master
-      - uses: flagos-ai/FlagGems/.github/actions/checkout-pr@master
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
+      - uses: flagos-ai/FlagOps/actions/checkout-pr@main
         with:
           pull: ${{ needs.preprocess.outputs.pull }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: flagos-ai/FlagGems/.github/actions/setup-flaggems@master
+      - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
           backend: thead
-          gpu_check_script: tools/gpu_check_thead.sh
-      - uses: flagos-ai/FlagGems/.github/actions/ondemand-test@master
+          vllm-version: '0.21.0'
+          gpu-check-script: tools/gpu_check_thead.sh
+      - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
         with:
-          op: ${{ needs.preprocess.outputs.op }}
-          backend: thead
-          runner: ${{ needs.preprocess.outputs.runner }}
-          existing: ${{ needs.preprocess.outputs.existing }}
+          test-command: |
+            source .venv/bin/activate
+            tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+              --gpus "${AVAILABLE_GPUS}" \
+              --dump-output \
+              --output-dir results_new
+
+            if [ "${{ needs.preprocess.outputs.existing }}" == "0" ]; then
+              tools/psum_text --format markdown \
+                --output report.md \
+                --single \
+                results_new
+              mv results_new results
+            else
+              git checkout master
+              tools/run_tests.py --ops ${{ needs.preprocess.outputs.op }} \
+                --gpus "${AVAILABLE_GPUS}" \
+                --dump-output \
+                --output-dir results_old
+              mkdir results
+              mv results_old results/before
+              mv results_new results/after
+              tools/psum_text --format markdown \
+                --single \
+                --compare \
+                --output report.md \
+                results
+            fi
+          artifact-name: ${{ needs.preprocess.outputs.op }}-thead
+          comment-message-id: ${{ needs.preprocess.outputs.op }}-${{ needs.preprocess.outputs.runner }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

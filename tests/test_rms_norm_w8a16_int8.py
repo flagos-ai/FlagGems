@@ -79,7 +79,7 @@ def _run_rms_norm_w8a16_test(shape, quantize_weight, op):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
-@pytest.mark.rms_norm_w8a16_int8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("shape", W8A16_SHAPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend",
@@ -123,7 +123,7 @@ RAGGED_SHAPES = [
 ]
 
 
-@pytest.mark.rms_norm_w8a16_int8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.parametrize("m,n,group_size", RAGGED_SHAPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend",

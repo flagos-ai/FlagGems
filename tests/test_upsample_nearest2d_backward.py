@@ -127,6 +127,7 @@ def _reference(grad_output, output_size, input_size, sh, sw):
         "mthreads",
         "hygon",
         "iluvatar",
+        "thead",
     ):
         return _ceil_cpu_reference(grad_output, output_size, input_size, sh, sw)
     return torch.ops.aten.upsample_nearest2d_backward.default(
@@ -191,6 +192,94 @@ def test_upsample_nearest2d_backward_grad_input_contiguous(case, dtype):
 
 
 @pytest.mark.upsample_nearest2d_backward
+@pytest.mark.upsample_nearest2d_backward_grad_input
+@pytest.mark.parametrize("dtype", DTYPES[:3])
+@pytest.mark.parametrize("variant", ["default", "grad_input"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        ((4, 32, 63, 65), (126, 130), None, None),
+        ((2, 7, 17, 19), (34, 38), None, None),
+        ((2, 7, 31, 47), (67, 99), 2.2, 2.125),
+        ((2, 7, 31, 47), (13, 19), None, None),
+        ((2, 7, 31, 47), (31, 47), 0.7, 2.2),
+    ],
+    ids=["large-double", "odd-channels", "fractional", "downsample", "identity"],
+)
+def test_upsample_nearest2d_backward_channels_last_tiles(case, variant, dtype):
+    # Exercise multiple spatial tiles and their tails with both tensors NHWC.
+    shape, size, sh, sw = case
+    grad_output = _tensor((*shape[:2], *size), dtype, "channels_last")
+    expected = _reference(grad_output, size, shape, sh, sw)
+    if variant == "grad_input":
+        output = _tensor(shape, dtype, "channels_last")
+        stride = output.stride()
+        actual = flag_gems.ops.upsample_nearest2d_backward_grad_input(
+            grad_output, size, shape, sh, sw, grad_input=output
+        )
+        assert actual is output
+        assert actual.stride() == stride
+    else:
+        actual = flag_gems.ops.upsample_nearest2d_backward(
+            grad_output, size, shape, sh, sw
+        )
+    assert actual.is_contiguous(memory_format=torch.channels_last)
+    utils.gems_assert_close(actual, expected, dtype)
+
+
+@pytest.mark.upsample_nearest2d_backward
+@pytest.mark.upsample_nearest2d_backward_grad_input
+@pytest.mark.parametrize("dtype", DTYPES[:3])
+@pytest.mark.parametrize("variant", ["default", "grad_input"])
+@pytest.mark.parametrize("offset", [0, 1])
+@pytest.mark.parametrize(
+    "case",
+    [
+        ((2, 7, 31, 47), (31, 47), 0.7, 2.2, "strided"),
+        ((2, 7, 31, 47), (67, 99), None, None, "strided"),
+        ((2, 7, 31, 47), (67, 99), 2.2, 2.125, "strided"),
+        ((2, 7, 31, 47), (31, 99), 0.7, 2.2, "channels_last"),
+        ((4, 8, 31, 47), (1, 1), None, None, "contiguous"),
+    ],
+    ids=["identity", "fractional", "explicit", "mixed-layout", "output-one"],
+)
+def test_upsample_nearest2d_backward_strided_tiles(case, offset, variant, dtype):
+    shape, size, sh, sw, layout = case
+    grad_output = _tensor((*shape[:2], *size), dtype, layout)
+    if offset:
+        extent = 1 + sum(
+            (size - 1) * stride
+            for size, stride in zip(grad_output.shape, grad_output.stride())
+        )
+        storage = torch.empty(extent + offset, dtype=dtype, device=flag_gems.device)
+        shifted = storage.as_strided(grad_output.shape, grad_output.stride(), offset)
+        shifted.copy_(grad_output)
+        grad_output = shifted
+    expected = _reference(grad_output, size, shape, sh, sw)
+    if variant == "grad_input":
+        n, c, h, w = shape
+        storage = torch.full(
+            (2 * math.prod(shape) + 2,), 123, dtype=dtype, device=flag_gems.device
+        )
+        output = storage.as_strided(shape, (2 * c * h * w, 2 * h * w, 2 * w, 2), 1)
+        stride = output.stride()
+        actual = flag_gems.ops.upsample_nearest2d_backward_grad_input(
+            grad_output, size, shape, sh, sw, grad_input=output
+        )
+        assert actual is output
+        assert actual.stride() == stride
+        assert actual.storage_offset() == 1
+        guard = storage.cpu()
+        assert torch.all(guard[::2] == 123)
+        assert guard[-1] == 123
+    else:
+        actual = flag_gems.ops.upsample_nearest2d_backward(
+            grad_output, size, shape, sh, sw
+        )
+    utils.gems_assert_close(actual, expected, dtype)
+
+
+@pytest.mark.upsample_nearest2d_backward
 @pytest.mark.parametrize("case", SCALE_CASES)
 def test_upsample_nearest2d_backward_cpu_legacy_reference(case):
     shape, size, sh, sw = case
@@ -234,7 +323,18 @@ def test_upsample_nearest2d_backward_native_device_scales(case, variant):
         else {"grad_input": torch.empty_like(_tensor(shape, torch.float32))}
     )
     native = getattr(torch.ops.aten.upsample_nearest2d_backward, variant)
-    expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
+    if flag_gems.vendor_name == "amd":
+        # ROCm's device kernel mis-maps explicit scales that disagree with
+        # size/shape (its forward differs from CPU too); use the CPU kernel.
+        cpu_kwargs = (
+            {}
+            if variant == "default"
+            else {"grad_input": torch.empty(shape, dtype=torch.float32)}
+        )
+        expected = native(grad_output.cpu(), size, shape, sh, sw, **cpu_kwargs)
+        expected = expected.to(grad_output.device)
+    else:
+        expected = native(grad_output, size, shape, sh, sw, **kwargs).clone()
     if variant == "default":
         actual = flag_gems.ops.upsample_nearest2d_backward(
             grad_output, size, shape, sh, sw
@@ -427,6 +527,7 @@ def test_upsample_nearest2d_backward_uint8(variant, case, layout):
             "mthreads",
             "hygon",
             "iluvatar",
+            "thead",
         ):
             expected = _ceil_cpu_reference(grad_output, size, shape, sh, sw)
         else:

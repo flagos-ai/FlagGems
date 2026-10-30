@@ -20,8 +20,10 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # Kernel uses generic int bitcast based on input dtype bitwidth;
-# supports fp16, bf16, fp32, and fp64.
-NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+# supports fp16, bf16, and fp32.
+NEXTAFTER_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    NEXTAFTER_DTYPES.append(torch.float64)
 
 
 @pytest.mark.nextafter_

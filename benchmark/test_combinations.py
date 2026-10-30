@@ -18,44 +18,32 @@ import pytest
 import torch
 
 from . import base, consts
-from .conftest import Config
 
-# (n, r) pairs: n is the input vector length, r the combination width. The
-# default shape set cannot be reused, because the output has C(n, r) rows and
-# the row count explodes with r -- a 1024-long vector at r=4 would already be
-# 4.6e10 rows. Each entry below keeps the output under ~2e7 rows while still
-# covering the r == 2 and r == 3 closed-form kernels and the generic
-# binary-search kernel used for r >= 4.
-CORE_CASES = [
-    (4096, 2),
-    (8192, 2),
-    (512, 3),
-    (1024, 3),
-    (128, 4),
-    (64, 5),
-]
-
-COMPREHENSIVE_CASES = [
-    (16384, 2),
-    (32768, 2),
-    (2048, 3),
-    (4096, 3),
-    (256, 4),
-    (96, 5),
+# Each entry is (input length, r, with_replacement), i.e. the output has
+# C(n, r) (or C(n + r - 1, r)) rows and r columns. The sizes stay below a few
+# million rows: r == 2 and r == 3 take the closed-form kernels, r == 4 the
+# closed-form r == 4 kernel, and the higher ranks the generic binary-search
+# unranking kernel.
+COMBINATIONS_CASES = [
+    (1024, 2, False),
+    (1024, 2, True),
+    (256, 3, False),
+    (256, 3, True),
+    (128, 4, False),
+    (32, 5, False),
+    (16, 6, True),
 ]
 
 
 class CombinationsBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
-        self.shapes = list(CORE_CASES)
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            self.shapes.extend(COMPREHENSIVE_CASES)
-        self.shape_desc = "input vector length n, combination width r"
+        self.shapes = COMBINATIONS_CASES
+        self.shape_desc = "input length, r, with_replacement"
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        for n, r in self.shapes:
+        for n, r, with_replacement in self.shapes:
             inp = base.generate_tensor_input((n,), cur_dtype, self.device)
-            yield inp, r
+            yield (inp, r, with_replacement)
 
 
 @pytest.mark.combinations

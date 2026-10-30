@@ -36,6 +36,17 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
 # False when Triton < 3.2 (e.g. 3.1), True when Triton >= 3.2.
 SQMMA_ON = tuple(int(x) for x in triton.__version__.split(".")[:2]) >= (3, 2)
 
+# The warp-specialized SQMMA path below is built on the MUSA TLE frontend,
+# which only exists in MUSA-enabled Triton builds.  Probe it once at import
+# time; when it is missing every mm falls back to the ordinary SQMMA/FMA path.
+try:
+    import triton.experimental.tle.language as tle
+
+    TLE_WS_ON = SQMMA_ON
+except ImportError:  # pragma: no cover - depends on the installed Triton build
+    tle = None
+    TLE_WS_ON = False
+
 
 def is_supported_sqmma_layout(tensor):
     return tensor.is_contiguous() or (
@@ -307,6 +318,17 @@ def mm_out(a, b, *, out):
     c = out
     if N == 1:
         return gemv_mm(a, b, c, M, K)
+    # The warp-specialized kernel stores straight into a row-major buffer whose
+    # dtype matches the operands, so the SQMMA tiles and the output agree.  Any
+    # other output layout or dtype keeps the portable FMA kernel.
+    if (
+        is_tle_ws_compatible(a, b, M, N, K)
+        and out.is_contiguous()
+        and out.dtype == a.dtype
+        and out.shape == (M, N)
+    ):
+        with torch_device_fn.device(a.device):
+            return mm_sqmma_ws(a, b, M, N, K, C=out)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -338,6 +360,19 @@ def sqmma_descriptor_pre_hook(nargs):
     nargs["c_desc"].block_shape = [nargs["BLOCK_M"], nargs["BLOCK_N"]]
 
 
+def _prune_sqmma_configs(configs, named_args, **kwargs):
+    """Use the wider N tile only for measured large GEMM shapes."""
+    M = named_args["M"]
+    N = named_args["N"]
+    K = named_args["K"]
+    large = M >= 2048 and N >= 2048 and K >= 2048
+    preferred_block_n = 256 if large else 128
+    pruned = [
+        config for config in configs if config.kwargs["BLOCK_N"] == preferred_block_n
+    ]
+    return pruned or list(configs)
+
+
 @libentry()
 @libtuner(
     configs=[
@@ -346,12 +381,19 @@ def sqmma_descriptor_pre_hook(nargs):
             num_stages=1,
             num_warps=4,
             pre_hook=sqmma_descriptor_pre_hook,
-        )
+        ),
+        triton.Config(
+            {"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8},
+            num_stages=1,
+            num_warps=4,
+            pre_hook=sqmma_descriptor_pre_hook,
+        ),
     ],
     key=["M", "N", "K", "dtype"],
     strategy=["align32", "align32", "align32", "default"],
     warmup=5,
     rep=5,
+    prune_configs_by={"early_config_prune": _prune_sqmma_configs},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_sqmma",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -515,6 +557,258 @@ def mm_small(a, b):
     return c
 
 
+# ---------------------------------------------------------------------------
+# Warp-specialized SQMMA.  A producer warp group drives TME copies into a
+# pipelined shared-memory ring while a consumer warp group runs SQMMA, so the
+# next K tile is already in flight during the MMA instead of being serialized
+# behind it.  This is what closes most of the remaining gap to the vendor
+# persistent GEMM: the plain SQMMA kernel has no such overlap.
+# ---------------------------------------------------------------------------
+
+_WS_BLOCK_M = 256
+_WS_BLOCK_N = 256
+_WS_BLOCK_K = 64
+_WS_PANEL_WIDTH = 4
+_WS_NUM_WARPS = 16
+_WS_STAGES = 3
+
+
+@triton.jit
+def _ws_rasterization_2d_column(
+    block_idx,
+    grid_x,
+    grid_y,
+    panel_width: tl.constexpr,
+    full_panel: tl.constexpr,
+):
+    panel_size = panel_width * grid_y
+    panel_idx = block_idx // panel_size
+    panel_offset = block_idx % panel_size
+    if full_panel:
+        width = panel_width
+    else:
+        residual_panel_width = grid_x % panel_width
+        full_panels_size = grid_x // panel_width * panel_width * grid_y
+        width = tl.where(
+            block_idx >= full_panels_size,
+            residual_panel_width,
+            panel_width,
+        )
+    row_idx = panel_offset // width
+    mini_x = panel_offset % width
+    mini_x = tl.where(row_idx % 2 == 1, width - 1 - mini_x, mini_x)
+    row_idx = tl.where(panel_idx % 2 == 1, grid_y - 1 - row_idx, row_idx)
+    col_idx = panel_idx * panel_width + mini_x
+    return col_idx, row_idx
+
+
+@triton.jit
+def _ws_mm_consumer(
+    a_reader,
+    b_reader,
+    c_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+):
+    offset_m = pid_m * block_m + tl.arange(0, block_m)
+    offset_n = pid_n * block_n + tl.arange(0, block_n)
+    mask = (offset_m[:, None] < M) & (offset_n[None, :] < N)
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    acc = tl.zeros((block_m, block_n), dtype=tl.float32)
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        a_wait = a_reader.wait(k_iter)
+        b_wait = b_reader.wait(k_iter)
+        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc)
+        acc = tle.gpu.wgmma_wait(0, acc)
+        a_reader.release(k_iter)
+        b_reader.release(k_iter)
+
+    c_block_ptr = c_ptr + N * offset_m[:, None] + offset_n[None, :]
+    tl.store(c_block_ptr, acc.to(c_ptr.dtype.element_ty), mask=mask)
+
+
+@triton.jit
+def _ws_mm_producer(
+    a_writer,
+    b_writer,
+    a_desc,
+    b_desc,
+    K: tl.constexpr,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+):
+    offset_m = pid_m * block_m
+    offset_n = pid_n * block_n
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        offset_k = k_iter * block_k
+        a_slot = a_writer.acquire(k_iter)
+        b_slot = b_writer.acquire(k_iter)
+        tle.gpu.copy(
+            a_desc,
+            a_slot.a,
+            (block_m, block_k),
+            (offset_m, offset_k),
+        )
+        tle.gpu.copy(
+            b_desc,
+            b_slot.b,
+            (block_k, block_n),
+            (offset_k, offset_n),
+        )
+        a_writer.commit(k_iter)
+        b_writer.commit(k_iter)
+
+
+@triton.jit
+def mm_sqmma_ws_kernel(
+    a_desc,
+    b_desc,
+    c_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    panel_width: tl.constexpr,
+    pipeline_stages: tl.constexpr,
+    full_panel: tl.constexpr,
+):
+    raw_bx = tl.program_id(axis=0)
+    raw_by = tl.program_id(axis=1)
+    grid_x = tl.num_programs(axis=0)
+    grid_y = tl.num_programs(axis=1)
+    block_idx = raw_bx + raw_by * grid_x
+    pid_n, pid_m = _ws_rasterization_2d_column(
+        block_idx,
+        grid_x,
+        grid_y,
+        panel_width,
+        full_panel,
+    )
+
+    a_smem = tle.gpu.alloc(
+        (pipeline_stages, block_m, block_k),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    b_smem = tle.gpu.alloc(
+        (pipeline_stages, block_k, block_n),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    a_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_a", a=a_smem)
+    b_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_b", b=b_smem)
+
+    tle.gpu.warp_specialize(
+        [
+            (
+                _ws_mm_consumer,
+                (
+                    a_pipe.reader(),
+                    b_pipe.reader(),
+                    c_ptr,
+                    M,
+                    N,
+                    K,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                ),
+            ),
+            (
+                _ws_mm_producer,
+                (
+                    a_pipe.writer(),
+                    b_pipe.writer(),
+                    a_desc,
+                    b_desc,
+                    K,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                ),
+            ),
+        ],
+        worker_num_warps=[4],
+        worker_num_regs=[24],
+    )
+
+
+def is_tle_ws_compatible(a, b, M, N, K):
+    """Warp-specialized SQMMA needs the TLE frontend and half-tile shapes."""
+    return (
+        TLE_WS_ON
+        and M >= _WS_BLOCK_M // 2
+        and N >= _WS_BLOCK_N // 2
+        and is_sqmma_compatible(a, b, N, K)
+    )
+
+
+def mm_sqmma_ws(A, B, M, N, K, C=None):
+    logger.debug("GEMS_MTHREADS MM_SQMMA_WS")
+    device = A.device
+    if not A.is_contiguous():
+        A = A.contiguous()
+    if not B.is_contiguous():
+        B = B.contiguous()
+    assert A.dtype == B.dtype, "Mat A and Mat B should have the same dtype"
+    if C is None:
+        C = torch.empty(
+            (M, N),
+            dtype=get_higher_dtype(A.dtype, B.dtype),
+            device=device,
+        )
+    desc_a = TensorDescriptor.from_tensor(A, [_WS_BLOCK_M, _WS_BLOCK_K])
+    desc_b = TensorDescriptor.from_tensor(B, [_WS_BLOCK_K, _WS_BLOCK_N])
+    grid = (triton.cdiv(N, _WS_BLOCK_N), triton.cdiv(M, _WS_BLOCK_M), 1)
+    mm_sqmma_ws_kernel[grid](
+        desc_a,
+        desc_b,
+        C,
+        M,
+        N,
+        K,
+        _WS_BLOCK_M,
+        _WS_BLOCK_N,
+        _WS_BLOCK_K,
+        _WS_PANEL_WIDTH,
+        _WS_STAGES,
+        grid[0] % _WS_PANEL_WIDTH == 0,
+        num_warps=_WS_NUM_WARPS,
+        num_stages=_WS_STAGES,
+    )
+    return C
+
+
 def mm(a, b):
     a_dtype = a.dtype
     b_dtype = b.dtype
@@ -537,6 +831,14 @@ def mm(a, b):
     ):
         return mm_small(a, b)
 
+    if is_tle_ws_compatible(a, b, M, N, K):
+        return mm_sqmma_ws(
+            a,
+            b,
+            M,
+            N,
+            K,
+        )
     if is_sqmma_compatible(a, b, N, K):
         return mm_sqmma(
             a,

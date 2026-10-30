@@ -51,12 +51,10 @@ NVIDIA runner:
 **触发条件：** cron 表达式 `3 16 * * *`（每天北京时间 00:03）；此外支持手动
 触发（`workflow_dispatch`）。
 
-在 NVIDIA runner 上运行完整的算子测试套件（而非仅测试变更的算子）：
+在 NVIDIA runner（配备 **NVIDIA A100-40G** GPU 服务器，运行环境安装官方 upstream **Triton** 编译器而非 FlagTree）上运行完整的算子测试套件（而非仅测试变更的算子）：
 
 - `cpp-op` —— 完整的 C++ 扩展测试套件。
-- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，
-  该设置会展开为 `tests/test*.py` 下的所有测试文件。同时收集覆盖率数据
-  并作为 `op-ut-coverage` 构件（artifact）上传。
+- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，覆盖全部 `tests/test*.py` 算子测试用例，并在官方 Triton 编译器与 Ampere 架构硬件环境下收集代码覆盖率数据，作为 `op-ut-coverage` 构件（artifact）上传。
 - `examples` —— 对所有示例/模型测试运行 `tools/test-examples.sh`。
 
 <!--
@@ -114,7 +112,8 @@ Backends are split into two execution modes:
 - **Native** (`test-native`) — runs directly on the self-hosted runner
   without a container, with an 1080-minute (18h) job timeout.
 
-Each matrix job retries checkout up to three times (with 30s backoff),
+Each matrix job attempts checkout up to three times (the initial attempt plus
+at most two retries, waiting 30s before each retry),
 installs FlagGems, checks GPU availability, runs `tools/run_tests.py`
 scoped by `--ops` or `--stages all`, summarizes results with
 `add_labels`/`psum_text`/`psum_html`, packages them into a per-vendor
@@ -150,7 +149,8 @@ GitHub Actions 原生的 `schedule` 触发器——因为在负载较高时，�
 - **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，不使用
   容器，作业超时时间为 1080 分钟（18 小时）。
 
-矩阵中的每个作业最多会重试三次代码检出（每次间隔 30 秒），随后安装
+矩阵中的每个作业最多尝试检出代码 3 次（首次失败后最多重试 2 次，
+每次重试前等待 30 秒），随后安装
 FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` 或
 `--stages all` 参数控制测试范围）、使用
 `add_labels`/`psum_text`/`psum_html` 汇总结果，并将结果打包为每个厂商
@@ -158,29 +158,93 @@ FlagGems、检查 GPU 可用性、运行 `tools/run_tests.py`（通过 `--ops` �
 压缩包上传到内部 op-monitor 服务，并发送包含结果的飞书通知。
 
 <!--
-## `command.yaml` — on-demand `/test` command
+## Manually dispatched utility workflows
 
-**Trigger:** `issue_comment` created on a PR, matching `/test
-<operator>:<runner>`.
-
-Lets any PR participant with the right permissions request an ad-hoc test
-of a single operator on a specific runner (e.g. `/test
-constant_pad_nd:mthreads`) without waiting for the operator to have a
-`vendor/*` label or for a full CI run. For operators that already have
-history, it runs the test before and after the PR's changes and posts a
-comparison; for brand-new operators, it posts a single-run report. Results
-(and full logs) are attached as a PR comment and an uploaded artifact.
+These workflows only have a `workflow_dispatch` trigger (`random-test.yaml`,
+`probe-node.yaml`, `review-stats.yaml`); see the English documentation.
 -->
-## `command.yaml` — 按需 `/test` 命令
+## 手动触发的辅助工作流
 
-**触发条件：** PR 下创建的 `issue_comment` 事件，且评论内容匹配
-`/test <算子名>:<runner>` 格式。
+以下工作流只有 `workflow_dispatch` 触发器，需要在 **Actions** 页面点击
+**Run workflow**，或通过 `gh workflow run` 手动运行。
 
-允许拥有相应权限的任何 PR 参与者，针对单个算子在指定 runner 上发起临时测试
-（例如 `/test constant_pad_nd:mthreads`），而无需等待该算子被打上 `vendor/*`
-标签或等待完整的 CI 运行。对于已有测试历史的算子，会在 PR 改动前后分别运行
-测试并发布对比结果；对于全新算子，则只发布单次运行的报告。测试结果（及完整
-日志）会以 PR 评论和上传构件的形式提供。
+### `random-test.yaml` —— 在指定 runner 上测试指定算子
+
+**触发方式：** `workflow_dispatch`，包含三个必填输入：
+
+| 输入 | 含义 | 示例 |
+|---|---|---|
+| `runner` | 运行所用的 runner 标签 | `a100`、`h100`、`h20`、`ascend`、`cann9`、`metax`、`maca381`、`enflame`、`cambricon` |
+| `operators` | 以逗号分隔的算子名 | `add,mul,softmax` |
+| `gpus` | 以逗号分隔的 GPU 编号 | `0,1` |
+
+```bash
+gh workflow run random-test.yaml \
+  -f runner=a100 -f operators=add,mul,softmax -f gpus=0,1
+```
+
+`check-permission` 作业会先检查触发者是否属于 `FlagGems` 团队，不属于则跳过
+测试作业。随后 `test-operator` 作业把 runner 标签映射为厂商和 backend
+profile（例如 `a100`/`h100`/`h20` → `nvidia-cuda133`，`ascend`/`cann9` →
+`ascend-cann900`；标签未知时直接用标签本身作为两者的值），检出代码，运行对应
+厂商的 GPU 检查脚本和 `setup-flaggems`，再执行
+`tools/run_tests.py --ops <operators> --gpus <gpus>`。`results/` 目录会作为
+名为 `random-test` 的构件上传。
+
+`operators` 和 `gpus` 会直接拼接到命令行，因此其中不要带空格。如需在本地复现，
+可直接运行 `tools/run_tests.py`。
+
+### `probe-node.yaml` —— 探测自托管 runner 的环境
+
+**触发方式：** `workflow_dispatch`，有一个必填输入 `runner`（runner 标签，
+默认 `h100`）。
+
+收集自托管 runner 的环境信息，用于为其选择合适的 backend profile（例如
+`nvidia-cuda133` 还是 `nvidia-cuda128`）。它只要求 runner 上有 bash，也不会
+检出仓库。输出内容包括：
+
+- 系统与 Python：`uname -a`、`python3 --version`
+- 容器 / 虚拟化：`/.dockerenv`、`/proc/1/cgroup`、`systemd-detect-virt`、
+  PID 1
+- 内存：`free -h` 以及 cgroup 内存上限
+- GPU：`nvidia-smi`，以及每张卡的显存总量 / 已用 / 空闲
+- CUDA 工具链：`nvcc --version` 和 `/usr/local/cuda*`
+
+输出会写入作业日志和该次运行的 **Summary** 页面（`$GITHUB_STEP_SUMMARY`）。
+该探测是只读的，且没有团队成员权限检查。GPU 与 CUDA 相关探测仅针对 NVIDIA；
+在其他厂商的机器上这些项会显示 "not found"，其余部分仍然有效。
+
+### `review-stats.yaml` —— 拉取请求分析报告
+
+**触发方式：** `workflow_dispatch`，有两个可选输入 `report_date_start` 和
+`report_date_end`，格式均为 `dd/MM/YYYY`。
+
+在 `ubuntu-latest` 上运行，使用
+[`AlexSim93/pull-request-analytics-action`](https://github.com/AlexSim93/pull-request-analytics-action)
+统计 `flagos-ai/FlagGems` 在给定日期范围内的拉取请求数据（评审响应时间、活跃度
+等指标）。工作时间配置为 `Asia/Shanghai` 时区的 9:00–23:00。报告会以 issue
+的形式创建在 `flagos-ai/FlagGems` 仓库中，因此该作业需要 `issues: write`
+权限（以及对 contents、pull requests、statuses 的读权限）。
+
+```bash
+gh workflow run review-stats.yaml \
+  -f report_date_start=01/09/2026 -f report_date_end=30/09/2026
+```
+
+<!--
+## Comment-triggered PR commands
+
+`command.yaml` (`/test <operator>:<runner>`) and `fix-sort.yaml` (`/fix-sort`)
+are started by commenting on a pull request rather than by `workflow_dispatch`
+or a schedule, so they are documented in
+[Pull request checks](pull-request.md) together with the
+checks they complement.
+-->
+## 由评论触发的 PR 命令
+
+`command.yaml`（`/test <算子名>:<runner>`）和 `fix-sort.yaml`（`/fix-sort`）
+是通过在 PR 下评论启动的，而非 `workflow_dispatch` 或定时触发，因此它们与各自
+配合的检查一并记录在[拉取请求检查](pull-request.md)中。
 
 <!--
 ## Feishu and monitoring integrations
@@ -197,7 +261,12 @@ These are observability workflows; they do not gate merges.
 ## 飞书与监控集成
 
 - `ci-report-feishu.yaml` 会将每一次 `rule-check` 的执行结果上报到飞书
-  多维表格（Bitable），用于跟踪长期的通过/失败趋势。
+  多维表格（Bitable），用于跟踪长期的通过/失败趋势。它由 `workflow_run`
+  （而非 `pull_request`）触发，因此在基础仓库上下文中执行，即使是来自 fork
+  的 PR 也能拿到密钥；该运行本身只需要 `tools/ci_report_feishu.py` 和令牌，
+  所以采用只检出该路径的稀疏检出。由于 GitHub API 可能滞后于已完成的工作流，
+  脚本会先等待 5 秒，再以 10 秒 / 20 秒的退避最多重试 3 次。它在 PR 流程中的
+  作用见[拉取请求检查](pull-request.md)。
 - `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
   `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于

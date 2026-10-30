@@ -48,6 +48,28 @@ def test_softmax_backward():
     bench.run()
 
 
+def softmax_backward_data_input_fn(shape, dtype, device):
+    grad_output = torch.randn(shape, dtype=dtype, device=device)
+    output = torch.randn(shape, dtype=dtype, device=device)
+    dim = 1 if len(shape) > 1 else 0
+    yield grad_output, output, dim, dtype
+
+
+@pytest.mark.softmax_backward_data
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_softmax_backward_data():
+    bench = base.GenericBenchmark(
+        op_name="softmax_backward_data",
+        torch_op=torch.ops.aten._softmax_backward_data,
+        input_fn=softmax_backward_data_input_fn,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.set_gems(flag_gems.softmax_backward)
+    bench.run()
+
+
 def softmax_backward_out_input_fn(shape, dtype, device):
     grad_output = torch.randn(shape, dtype=dtype, device=device)
     output = torch.randn(shape, dtype=dtype, device=device)

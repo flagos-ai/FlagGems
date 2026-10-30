@@ -439,6 +439,83 @@ def test_upsample_bilinear2d_backward_grad_input_channels_last(dtype, align_corn
 
 
 @pytest.mark.upsample_bilinear2d_backward
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_upsample_bilinear2d_backward_channels_last_cache_reuse(dtype):
+    input_size, output_size = (2, 16, 31, 47), (61, 89)
+    case = ("cache_reuse", input_size, output_size, None, None, "channels_last")
+    expected_stride = (16 * 31 * 47, 1, 16 * 47, 16)
+    for _ in range(2):
+        for align_corners in (False, True):
+            grad = _make_grad(case, dtype)
+            reference = torch.ops.aten.upsample_bilinear2d_backward.default(
+                _reference_grad(grad, input_size, output_size),
+                output_size,
+                input_size,
+                align_corners,
+            )
+            result = flag_gems.ops.upsample_bilinear2d_backward(
+                grad, output_size, input_size, align_corners
+            )
+            assert result.shape == input_size
+            assert result.dtype == dtype and result.device == grad.device
+            assert result.is_contiguous(memory_format=torch.channels_last)
+            assert result.stride() == expected_stride
+            gems_assert_close(
+                result.cpu() if reference.device.type == "cpu" else result,
+                reference,
+                dtype,
+            )
+            del grad, reference, result
+
+
+@pytest.mark.upsample_bilinear2d_backward
+@pytest.mark.upsample_bilinear2d_backward_grad_input
+@pytest.mark.parametrize("dtype", DTYPES)
+def test_upsample_bilinear2d_backward_grad_input_channels_last_cache_reuse(dtype):
+    input_size, output_size = (2, 16, 31, 47), (61, 89)
+    case = ("cache_reuse", input_size, output_size, None, None, "channels_last")
+    expected_stride = (16 * 31 * 47, 1, 16 * 47, 16)
+    guard = 16
+    guard_value = -17
+    for _ in range(2):
+        for align_corners in (False, True):
+            grad = _make_grad(case, dtype)
+            ref_grad = _reference_grad(grad, input_size, output_size)
+            ref_out = torch.empty(
+                input_size, dtype=ref_grad.dtype, device=ref_grad.device
+            )
+            reference = torch.ops.aten.upsample_bilinear2d_backward.grad_input(
+                ref_grad,
+                output_size,
+                input_size,
+                align_corners,
+                grad_input=ref_out,
+            )
+            storage = torch.full(
+                (2 * 16 * 31 * 47 + 2 * guard,),
+                guard_value,
+                dtype=dtype,
+                device=grad.device,
+            )
+            output = storage.as_strided(input_size, expected_stride, guard)
+            result = flag_gems.ops.upsample_bilinear2d_backward_grad_input(
+                grad, output_size, input_size, align_corners, grad_input=output
+            )
+            assert result is output and reference is ref_out
+            assert result.storage_offset() == guard
+            assert result.is_contiguous(memory_format=torch.channels_last)
+            assert result.stride() == expected_stride
+            gems_assert_close(
+                result.cpu() if reference.device.type == "cpu" else result,
+                reference,
+                dtype,
+            )
+            assert torch.all(storage[:guard] == guard_value)
+            assert torch.all(storage[-guard:] == guard_value)
+            del grad, ref_grad, ref_out, reference, storage, output, result
+
+
+@pytest.mark.upsample_bilinear2d_backward
 @pytest.mark.upsample_bilinear2d_backward_grad_input
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("ascend", "iluvatar"),

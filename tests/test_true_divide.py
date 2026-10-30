@@ -30,8 +30,7 @@ def test_true_divide(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.true_divide(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.true_divide(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -46,8 +45,7 @@ def test_true_divide_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_inp1.true_divide_(ref_inp2)
-    with flag_gems.use_gems():
-        inp1.true_divide_(inp2)
+    flag_gems.true_divide_(inp1, inp2)
 
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
@@ -65,8 +63,7 @@ def test_true_divide_out(shape, dtype):
     res_out = torch.empty_like(inp1)
 
     torch.true_divide(ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        torch.true_divide(inp1, inp2, out=res_out)
+    flag_gems.true_divide_out(inp1, inp2, out=res_out)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -81,8 +78,7 @@ def test_true_divide_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = torch.true_divide(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.true_divide(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -97,8 +93,7 @@ def test_true_divide_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
 
     ref_inp1.true_divide_(inp2)
-    with flag_gems.use_gems():
-        inp1.true_divide_(inp2)
+    flag_gems.true_divide_(inp1, inp2)
 
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
@@ -113,8 +108,7 @@ def test_true_divide_scalar_tensor(shape, scalar, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.true_divide(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.true_divide(inp1, inp2)
+    res_out = flag_gems.true_divide(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -130,8 +124,7 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog):
 
     ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
     with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.true_divide.Tensor(inp1, inp2)
+        res_out = flag_gems.true_divide(inp1, inp2)
 
     assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
@@ -148,8 +141,7 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
 
     torch.ops.aten.true_divide_.Tensor(ref_inp1, ref_inp2)
     with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_)):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.true_divide_.Tensor(inp1, inp2)
+        res_out = flag_gems.true_divide_(inp1, inp2)
 
     assert (
         f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text

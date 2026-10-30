@@ -34,9 +34,26 @@ driver = _GCUDriver()
 arch = driver.get_arch()
 arch_version = int(re.search(r"gcu(\d+)", arch).group(1))
 
-# fp8 casts are only supported on gcu400/410; gcu300 aborts the process on
-# unsupported fp8 casts instead of raising a catchable exception.
-fp8_enabled = arch_version in (400, 410)
+# Ask the backend which fp8 dtypes the target supports rather than matching
+# arch numbers here: GCUOptions is the compiler's own capability table, so a
+# new target is picked up without editing this file. gcu300 aborts the process
+# on unsupported fp8 casts instead of raising a catchable exception.
+_gcu_compiler = importlib.import_module(
+    _GCUDriver.__module__.rsplit(".", 1)[0] + ".compiler"
+)
+fp8_enabled = bool(_gcu_compiler.GCUOptions().supported_fp8_dtypes)
+
+# int64 is supported everywhere except gcu300, where the topsaten path aborts
+# the process instead of raising. Kept hardcoded until the backend exposes a
+# capability query for it: GCUOptions.enable_i64 reflects the compile-time
+# ENABLE_I64_CHECK setting, not what the target can do.
+int64_enabled = arch_version != 300
+
+# Complex tensors abort the process on gcu300: even creating one via
+# torch.randn(dtype=complex64) reaches topsatenNormal with ComplexFloat and
+# fails TOPSATEN_STATUS_NOT_SUPPORT, which is a C++ terminate rather than a
+# catchable exception.
+complex_enabled = arch_version != 300
 
 vendor_info = VendorDescriptor(
     vendor_name="enflame",
@@ -44,8 +61,9 @@ vendor_info = VendorDescriptor(
     device_query_cmd="",
     dispatch_key="PrivateUse1",
     fp64_enabled=False,
-    int64_enabled=False,
+    int64_enabled=int64_enabled,
     fp8_enabled=fp8_enabled,
+    complex_enabled=complex_enabled,
     tle_enabled=True,
 )
 
@@ -112,7 +130,6 @@ if arch_version == 300:
         "beam_search_score",
         "beam_search_score_",
         "bitwise_right_shift_",
-        "broadcast_to",
         "bucketize_Tensor",
         "channel_shuffle",
         "deg2rad_out",

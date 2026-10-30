@@ -26,7 +26,7 @@ weight: 30
 
 *FlagGems* can be installed either as a pure python package
 or a package with C-extensions for better runtime performance.
-See [installation](/FlagGems/getting-started//install/) for some detailed guidance
+See [installation](install.md) for some detailed guidance
 on different installation options.
 
 ## 2. Verify the installation
@@ -43,7 +43,7 @@ The first thing you want to check is that you can import
 python -c "import torch; print(torch.__version__)"
 ```
 
-If you are using a [non-NVIDIA platform](/FlagGems/usage/non-nvidia/),
+If you are using a [non-NVIDIA platform](../usage/non-nvidia.md),
 you may have a PyTorch plugin that is provided by the backend vendor.
 You can perform a similar verification against this plugin.
 For example, on a MooreThreads GPU platform, you can verify if the plugin
@@ -63,7 +63,7 @@ command:
 python -c "import torch, triton; print(triton.__version__)"
 ```
 
-Note that if you are using a [non-NVIDIA platform](/FlagGems/usage/non-nvidia/),
+Note that if you are using a [non-NVIDIA platform](../usage/non-nvidia.md),
 you have to consult your platform vendor to see if they have
 a customized version.
 
@@ -142,5 +142,5 @@ topk_ids = torch.randint(
 sorted_ids, expert_ids, num_tokens_post_pad = flag_gems.fused.moe_align_block_size.moe_align_block_size(topk_ids, block_size, num_experts)
 ```
 
-Check the [using FlagGems](/FlagGems/usage/) section for more detailed
+Check the [using FlagGems](../usage/_index.md) section for more detailed
 documentation on the various usage patterns about *FlagGems*.

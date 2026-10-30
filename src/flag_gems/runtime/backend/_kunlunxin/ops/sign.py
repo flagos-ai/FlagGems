@@ -23,27 +23,31 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
-# sign is a pure memory-bound sign-extract pointwise op. Body evidence (XPU5
-# probe, see harness/solution/performance/sign_xpu5_20260813.md): the generic
-# fp compare path `(x>0).to(dtype) - (x<0).to(dtype)` lowers to fp compare ->
-# i1 -> select -> sub, which on XPU costs ~2.8x the bit-domain formulation
-# (fp16 (4096,4096): 810us -> 289us; fp32 713us -> 285us; bf16 757us -> 354us).
-# The bit-domain body uses only integer ALU ops (no fp compare, no select):
-#   r = (1.0-bits | signbit) & (nonzero-mask) & (not-NaN-mask)
-# with the two masks computed arithmetically:
-#   nz = ((0 - m) | m) >> (bits-1)     (-1 iff magnitude m != 0, kills +-0)
-#   nf = (m - INF_BITS - 1) >> (bits-1) (-1 iff m <= INF_BITS, kills NaN;
-#        for fp16 inf==0x7C00, fp32/bf16(wide) inf==0x7F800000; masked m is
-#        unsigned so m - (inf+1) is >= 0 exactly for NaN bit patterns)
-# NaN -> 0 and +-0 -> 0 match torch.sign semantics; -1.0 is encoded through the
-# pure sign mask, +1.0 through 1.0-bits, both exact. The single-tensor kernel
-# (no scalar arg) goes through the vectorized 1D-tile DMA path, which is
-# ~2.2x faster than the generic masked kernel on numel > 65536 (sweep A/B
-# evidence, see sign_out_xpu4_20260812.md). The generic masked kernel
-# (BLOCK_SIZE=1024, grid=cdiv(n,1024)) keeps the edge on tiny tensors where
-# the vectorized path's coarser grid doubles launch count; keep it as the
-# numel <= SMALL_NUMEL fast path.
+# sign is a pure memory-bound sign-extract pointwise op. sign/sign_out use the
+# saturating-multiply body  min(1, max(0, x*8.6e37)) - min(1, max(0, -x*8.6e37))
+# below (_sign_sat): 7 fp ops (2 mul -> 2 max -> 2 min, then a subtract) with a
+# short dependency chain, measured at the memory-bound floor for sign_ (see
+# harness/solution/sign_/README.md: 90us vs pure-copy 89.8us on 16.7M f32; same
+# BIG technique as angle.py's pi*clamp(-real*BIG, 0, 1), BIG = 8.6e37). The
+# two-sided form maps NaN -> 0 - 0 = 0 on this backend (the ordered-compare
+# min/max lowering returns the numeric operand for a NaN), which matches
+# torch.sign(NaN) = 0; the one-sided form would map NaN -> -1. The previous
+# bit-domain body (_sign_bit, ~11 i32 instructions with a long dependency
+# chain) did not overlap with memory (~285us on 16.7M f32, 3.2x the floor); it
+# is retained below for the sgn op (sgn.py imports _sign_bit for its real-dtype
+# path).
+# Exactness (verified on-device against torch.sign on the boundary battery):
+#   - exact for every f16 value (incl. subnormals, +-0, +-inf): f16 is widened
+#     to f32 and |x| >= 2^-24 => |x*8.6e37| >= 5e30 (saturates);
+#   - exact for NaN, +-inf, +-0 and every f32/bf16 normal (|x| >= 1.18e-38);
+#   - boundary (same class as angle.py's documented BIG caveat, not covered by
+#     the sign test matrix which uses randn/randint only):
+#       |x| < 1/8.6e37 (~1.16e-38, f32/bf16 subnormals) -> 0 (torch: +-1).
+# Integer dtypes keep the exact compare body (torch.sign semantics).
 _SMALL_NUMEL = 65536
+# Small-numel fast-path block size: used both for the grid (cdiv by this) and
+# the kernel's BLOCK_SIZE; keeping the two in sync as one constant.
+_SMALL_BLOCK_SIZE = 4096
 _SIGN_CONFIG = CodeGenConfig(
     1024,
     (65536, 65536, 65536),
@@ -62,6 +66,8 @@ def _sign_bit(x):
     # sign(x) via integer bit domain; exact for +-0/+-inf/NaN/subnormals.
     # NaN -> 0, +-0 -> 0 (torch semantics). Non-float dtypes fall back to the
     # exact compare body (correct for all ints; fp64/others use the same path).
+    # Retained for sgn's real-dtype path (sgn.py imports this body); sign and
+    # sign_out use _sign_sat below (saturating multiply, memory-bound floor).
     if x.dtype == tl.float16:
         i = x.to(tl.int16, bitcast=True)
         m = i & 0x7FFF
@@ -97,10 +103,30 @@ def _sign_bit(x):
         return (x > 0).to(x.dtype) - (x < 0).to(x.dtype)
 
 
+@triton.jit
+def _sign_sat(x):
+    # sign(x) via two-sided saturating multiply (see module docstring for
+    # exactness). The two-sided form gives NaN -> 0 - 0 = 0 on this backend
+    # (torch.sign(NaN) = 0). f16/bf16 are widened to f32 first (bf16 arithmetic
+    # is unreliable on this backend, and f16 needs f32 range so x*8.6e37
+    # saturates for every f16 value).
+    if x.dtype == tl.float16 or x.dtype == tl.bfloat16:
+        xw = x.to(tl.float32)
+        p = tl.minimum(tl.maximum(xw * 8.6e37, 0.0), 1.0)
+        n = tl.minimum(tl.maximum(-xw * 8.6e37, 0.0), 1.0)
+        return (p - n).to(x.dtype)
+    if x.dtype == tl.float32:
+        p = tl.minimum(tl.maximum(x * 8.6e37, 0.0), 1.0)
+        n = tl.minimum(tl.maximum(-x * 8.6e37, 0.0), 1.0)
+        return p - n
+    # integers / other dtypes: exact compare (same semantics as torch.sign)
+    return (x > 0).to(x.dtype) - (x < 0).to(x.dtype)
+
+
 @pointwise_dynamic(promotion_methods=[(0, "DEFAULT")], config=_SIGN_CONFIG)
 @triton.jit
 def _sign_func(x):
-    return _sign_bit(x)
+    return _sign_sat(x)
 
 
 @triton.jit
@@ -109,19 +135,15 @@ def _sign_small_kernel(
     out_ptr,
     n_elements,
     BLOCK_SIZE: tl.constexpr,
-    IS_BOOL: tl.constexpr,
 ):
-    # small-numel fast path: 1D masked kernel with minimal launch count
+    # small-numel fast path: minimal launch count; in-place safe (load and store
+    # use the same index, one element per lane).
     pid = tl.program_id(axis=0)
     block_start = pid * BLOCK_SIZE
     offsets = block_start + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
     x = tl.load(x_ptr + offsets, mask=mask, other=0)
-    if IS_BOOL:
-        result = x
-    else:
-        result = _sign_bit(x)
-    tl.store(out_ptr + offsets, result, mask=mask)
+    tl.store(out_ptr + offsets, _sign_sat(x), mask=mask)
 
 
 def _sign_impl(x: torch.Tensor, out: torch.Tensor):
@@ -143,13 +165,12 @@ def _sign_impl(x: torch.Tensor, out: torch.Tensor):
             out.copy_(x)
         return out
     if x.numel() <= _SMALL_NUMEL and x.is_contiguous() and out.is_contiguous():
-        grid = (triton.cdiv(x.numel(), 1024),)
+        grid = (triton.cdiv(x.numel(), _SMALL_BLOCK_SIZE),)
         _sign_small_kernel[grid](
             x.view(-1),
             out.view(-1),
             x.numel(),
-            BLOCK_SIZE=1024,
-            IS_BOOL=x.dtype == torch.bool,
+            BLOCK_SIZE=_SMALL_BLOCK_SIZE,
         )
         return out
     _sign_func(x, out0=out)

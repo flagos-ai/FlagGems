@@ -30,7 +30,6 @@ def test_zeros_like(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.zeros_like(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.zeros_like(inp)
+    res_out = flag_gems.zeros_like(inp)
 
     utils.gems_assert_equal(res_out, ref_out)

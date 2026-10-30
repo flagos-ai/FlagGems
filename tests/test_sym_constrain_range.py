@@ -50,8 +50,7 @@ def test_sym_constrain_range(size, min_val, max_val):
     implementation matches ATen: both accept in-range values and return None.
     """
     ref_out = torch.ops.aten.sym_constrain_range(size, min=min_val, max=max_val)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.sym_constrain_range(size, min=min_val, max=max_val)
+    res_out = flag_gems.sym_constrain_range(size, min=min_val, max=max_val)
 
     assert res_out is None
     assert ref_out is None

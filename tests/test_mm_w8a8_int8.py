@@ -19,7 +19,7 @@ import flag_gems
 
 from .accuracy_utils import gems_assert_equal
 
-pytestmark = pytest.mark.mm_w8a8_int8
+pytestmark = pytest.mark.mm_w8a8
 
 
 SHAPES = [
@@ -52,7 +52,7 @@ SHAPES = [
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8(shape, dtype):
     m, n, k = shape
     a = torch.randint(-128, 128, (m, k), device=flag_gems.device, dtype=torch.int8)
@@ -68,7 +68,7 @@ def test_mm_w8a8_int8(shape, dtype):
 
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
 @pytest.mark.parametrize("layout", ["row_major", "sliced", "broadcast"])
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_strides(layout):
     m, n, k = 17, 35, 67
     a = torch.randint(-10, 11, (m, k), device=flag_gems.device, dtype=torch.int8)
@@ -92,7 +92,7 @@ def test_mm_w8a8_int8_strides(layout):
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
 @pytest.mark.parametrize("use_graph", [False, True])
 @pytest.mark.parametrize("use_out", [False, True])
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 @pytest.mark.parametrize("shape", [(16, 32, 128), (1, 64, 2048), (128, 1, 2048)])
 def test_mm_w8a8_int8_updates(use_graph, use_out, shape):
     m, n, k = shape
@@ -138,7 +138,7 @@ def test_mm_w8a8_int8_updates(use_graph, use_out, shape):
 
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
 @pytest.mark.parametrize("shape", [(2, 3, 0), (0, 3, 8), (2, 0, 8), (0, 0, 0)])
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_empty(shape):
     m, n, k = shape
     a = torch.empty((m, k), device=flag_gems.device, dtype=torch.int8)
@@ -150,7 +150,7 @@ def test_mm_w8a8_int8_empty(shape):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_reject_float():
     a = torch.ones((2, 3), device=flag_gems.device)
     b = torch.ones((3, 4), device=a.device)
@@ -399,7 +399,7 @@ _PREQUANTIZED = ("hygon", "metax")
     "scalar,bias_on,layout",
     [(False, False, False), (False, True, True), (True, True, False)],
 )
-@pytest.mark.mm_w8a8_int8
+@pytest.mark.mm_w8a8
 def test_prequantized(shape, dtype, scalar, bias_on, layout):
     if flag_gems.vendor_name == "metax" and dtype == torch.float32:
         pytest.skip("MetaX scaled_mm output is FP16 or BF16")

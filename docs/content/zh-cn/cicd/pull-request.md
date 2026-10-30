@@ -192,10 +192,16 @@ matching label:
 |---|---|---|
 | `build-doc` | `documentation`（且 PR 已合并） | 通过 `sync-docs.yaml` 同步文档 |
 | `cpp-op` | `ops/cpp` | 构建并运行 C++ 扩展测试套件（`cpp-op-test.yaml`） |
-| `python-op` | `tests` | 对变更算子运行 `tools/test-op.sh`（NVIDIA runner） |
+| `python-op` | `tests` | 运行在 NVIDIA A100-40G 服务器上（安装官方 upstream triton 编译器而非 flagtree），对变更算子运行 `tools/test-op.sh` 进行单元测试 |
 | `examples` | `examples` | 运行 `tools/test-examples.sh`（端到端模型测试） |
 | `backend-tests` | 任意 `vendor/*` 标签 | 针对每个匹配的后端/runner 运行一次 `backend-test.yaml` |
 | `alpha-ops` | `ops/alpha` | 在 NVIDIA 上运行实验性算子的测试脚本 |
+
+#### `python-op` 运行环境与编译器选型
+
+`python-op` 是验证公版算子正确性与兼容性的核心门禁作业：
+- **硬件基础设施**：该作业部署并运行在标签为 `jiuding` 的专用自托管 Runner 上，底层硬件为配备 **NVIDIA A100-40G** GPU 的高性能服务器；
+- **编译器选型**：在 `python-op` 测试环境中，**默认安装并使用的是官方上游原生 Triton 编译器，而非 FlagTree 编译器**。这一策略用于严格检验所有公版算子实现（位于 `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops`）与官方社区 Triton 语义及 NVIDIA Ampere 架构的基线兼容性，防止依赖特定编译器衍生分支的代码合入公版目录。
 
 <!--
 `backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR,
@@ -218,6 +224,20 @@ Because these jobs are skipped when the corresponding label is absent, a
 `examples`, `backend-tests`, and `alpha-ops` with `if: always()`, so branch
 protection can require a single, always-present check instead of the
 individual label-gated jobs.
+
+The `python-op` and `examples` jobs in `unittest.yaml`, plus the jobs in
+`cpp-op-test.yaml` and `backend-test.yaml`, first run an independent
+`actions/checkout` with `continue-on-error`, then call `checkout-retry`.
+The composite action makes at most three attempts (one initial attempt and
+two retries, waiting 30s before each retry), so these PR test jobs can make
+up to four checkout attempts in total. `rule-check.yaml` and `linter.yml`
+instead use `robust-checkout` with `rounds: 30` (the action defaults to 3).
+Each round tries SSH when a key is available, then HTTPS, and stops after a
+successful fetch. Each link has a 10s connection probe and a 180s hard fetch
+timeout. HTTP fetch also aborts after 20s below 20 KiB/s; SSH uses keepalives
+every 5s and aborts after two unanswered probes. There is no fixed wait
+between rounds. The 30-round setting counts link-rotation cycles, not checkout
+retries; the four-attempt limit above does not apply to these workflows.
 -->
 `backend-test.yaml`（一个可复用的 `workflow_call` 工作流）会检出 PR 代码、
 运行对应厂商的 GPU 可用性检查、通过 `setup-flaggems` 组合动作搭建环境，
@@ -235,6 +255,20 @@ individual label-gated jobs.
 `if: always()` 聚合 `preprocess`、`cpp-op`、`python-op`、`examples`、
 `backend-tests`、`alpha-ops` 的结果，使分支保护规则可以要求这一个始终存在
 的检查，而不必逐个要求那些按标签门控的作业。
+
+`unittest.yaml` 的 `python-op`、`examples`，以及 `cpp-op-test.yaml`、
+`backend-test.yaml` 中的作业，会先独立执行一次允许失败的
+`actions/checkout`，再调用 `checkout-retry`。该组合动作内部最多尝试检出
+3 次（首次检出加最多 2 次重试，每次重试前等待 30 秒），因此这类 PR 测试
+作业合计最多可尝试检出 4 次。
+
+`rule-check.yaml` 和 `linter.yml` 均将 `robust-checkout` 的 `rounds`
+设为 30（动作默认值为 3）。每轮先尝试 SSH（有密钥时），再尝试 HTTPS；
+任一链路成功就结束，密钥为空时跳过 SSH。每条链路的连接探测最多 10 秒，
+fetch 的硬超时为 180 秒。HTTP fetch 若连续 20 秒低于 20 KiB/s 也会中止；
+SSH 每隔 5 秒发送 keepalive，连续 2 次无响应则中止。
+轮次之间没有固定等待。“30 轮”指链路轮转次数，并非重试检出 30 次；
+上述 4 次检出上限不适用于这两个工作流。
 
 <!--
 ## 5. On-demand and comment-triggered workflows

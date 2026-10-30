@@ -26,6 +26,7 @@ import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -117,6 +118,7 @@ def pytest_configure(config):
     global QUICK_MODE
     global FIRST_PARAMETER_ONLY
 
+    config._ref_as_candidate = validate_ref_as_candidate_options(config)
     TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
@@ -152,13 +154,13 @@ def pytest_configure(config):
 
     # Print info when first-parameter-only is enabled
     if FIRST_PARAMETER_ONLY:
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED")
         print(
             "   Each test function will run with only its first parameter combination"
         )
 
-        print(f"{'='*70}\n")
+        print(f"{'=' * 70}\n")
 
 
 def pytest_runtest_teardown(item, nextitem):
@@ -252,6 +254,8 @@ def pytest_runtest_logreport(report):
         else:
             result["reason"] = None
 
+    result.update(getattr(report, "reference_candidate", {}))
+
 
 def pytest_terminal_summary(terminalreporter):
     data = TEST_RESULTS
@@ -284,6 +288,79 @@ def _item_has_bfloat16_dtype(item):
     return False
 
 
+def _profiler_available():
+    import torch
+
+    try:
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
+            (torch.ones(1, device=flag_gems.device) * 2).item()
+    except RuntimeError:
+        return False
+    return True
+
+
+def _float64_available():
+    import torch
+
+    return (
+        torch.empty(1, device=flag_gems.device).to(torch.float64).dtype == torch.float64
+    )
+
+
+def _skip_unmeasurable_launch_count_tests(items):
+    """Skip the launch-count cases whose measuring tool is missing here."""
+    for item in items:
+        if item.name == "test_foreach_unary_launch_count_is_independent_of_list_length":
+            if not _profiler_available():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="torch profiler is unavailable on this platform"
+                    )
+                )
+        elif item.name == "test_foreach_unary_launch_count_scales_with_dtype_groups":
+            if not _float64_available():
+                item.add_marker(
+                    pytest.mark.skip(reason="float64 is not supported on this platform")
+                )
+
+
+def _skip_unavailable_integral_foreach_reference(items):
+    import torch
+
+    availability = {}
+
+    def reference_available(dtype):
+        if dtype not in availability:
+            probe = torch.tensor([1, -1], dtype=dtype, device=flag_gems.device)
+            try:
+                torch._foreach_ceil([probe])
+            except RuntimeError:
+                availability[dtype] = False
+            else:
+                availability[dtype] = True
+        return availability[dtype]
+
+    for item in items:
+        if (
+            getattr(item, "originalname", item.name)
+            != "test_accuracy_foreach_unary_int"
+        ):
+            continue
+        callspec = getattr(item, "callspec", None)
+        if callspec is None:
+            continue
+        if callspec.params.get("name") != "ceil":
+            continue
+        dtype = callspec.params.get("dtype")
+        if dtype is not None and reference_available(dtype):
+            continue
+        item.add_marker(
+            pytest.mark.skip(
+                reason="integral ceil has no device reference on this platform"
+            )
+        )
+
+
 def pytest_collection_modifyitems(session, config, items):
     """
     Modify the collected test items before they are executed.
@@ -296,6 +373,10 @@ def pytest_collection_modifyitems(session, config, items):
 
     first_parameter_only = config.getoption("--first-parameter-only")
     collect_marks_file = config.getoption("--collect-marks")
+
+    if flag_gems.vendor_name == "kunlunxin":
+        _skip_unmeasurable_launch_count_tests(items)
+        _skip_unavailable_integral_foreach_reference(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)
@@ -339,13 +420,13 @@ def pytest_collection_modifyitems(session, config, items):
         original_count = len(items)
         items[:] = kept_items
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED (bfloat16 preferred)")
         print(f"   Original tests: {original_count}")
         print(f"   Running tests:  {len(kept_items)} (one per test function)")
         print(f"      ├─ bfloat16 preferred: {bfloat16_count}")
         print(f"      └─ fallback (no bfloat16): {fallback_count}")
-        print(f"{'='*70}\n")
+        print(f"{'=' * 70}\n")
 
     if collect_marks_file:
         report = []
