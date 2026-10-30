@@ -714,7 +714,12 @@ from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
-from flag_gems.ops.embedding_bag import embedding_bag
+from flag_gems.ops.embedding_bag import (
+    _embedding_bag,
+    _embedding_bag_forward_only,
+    embedding_bag,
+)
+from flag_gems.ops.embedding_bag_backward import _embedding_bag_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
@@ -1734,7 +1739,10 @@ __all__ = [
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
+    "_embedding_bag",
+    "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
+    "_embedding_bag_forward_only",
     "_embedding_bag_per_sample_weights_backward",
     "_embedding_bag_sparse_backward",
     "_empty_per_channel_affine_quantized",

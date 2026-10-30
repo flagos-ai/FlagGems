@@ -49,6 +49,8 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
@@ -179,6 +181,9 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
