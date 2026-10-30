@@ -441,6 +441,11 @@ _FULL_CONFIG = (
     ("_make_dual_copy.out", _make_dual_copy_out),
     ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),
     ("_make_per_tensor_quantized_tensor.out", _make_per_tensor_quantized_tensor_out),
+    ("_make_per_channel_quantized_tensor", _make_per_channel_quantized_tensor),
+    (
+        "_make_per_channel_quantized_tensor.out",
+        _make_per_channel_quantized_tensor_out,
+    ),
     ("_masked_scale", _masked_scale),
     ("_masked_softmax", _masked_softmax),
     ("_masked_softmax_backward", _masked_softmax_backward),
