@@ -263,8 +263,8 @@ def _reference_solve(a, b, *, left=True, overflow=False):
         or not (a.isfinite().all() and b.isfinite().all())
     ):
         native = torch.ops.aten._linalg_solve_ex(
-            a if flag_gems.vendor_name == "kunlunxin" else a.clone(),
-            b if flag_gems.vendor_name == "kunlunxin" else b.clone(),
+            a if flag_gems.vendor_name in ("ascend", "kunlunxin") else a.clone(),
+            b if flag_gems.vendor_name in ("ascend", "kunlunxin") else b.clone(),
             left=left,
         )
         return tuple(_reference_input(value) for value in native)
@@ -871,7 +871,7 @@ def test__linalg_solve_ex_noncontiguous_layouts(kind, dtype):
 
     ref_out = (
         _reference_solve(a, b)
-        if flag_gems.vendor_name == "kunlunxin" and utils.TO_CPU
+        if flag_gems.vendor_name in ("ascend", "kunlunxin") and utils.TO_CPU
         else torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     )
     res_out = flag_gems._linalg_solve_ex(a, b)

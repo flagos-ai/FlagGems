@@ -42,12 +42,11 @@ class InverseBenchmark(base.Benchmark):
     def build_inputs(self, case):
         plan = case.builder_args[0]
         (shape,) = plan.builder_args
-        if (
-            flag_gems.vendor_name == "kunlunxin"
-            and shape[-1] >= 64
-            and "latency_base" in self.to_bench_metrics
-            and not base.Config.skip_native
-        ):
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if flag_gems.vendor_name == "kunlunxin" and shape[-1] >= 64 and needs_native:
+            base.Config.skipped_case_ids.add(case.case_id)
             pytest.skip("Kunlun native inverse reference rejects matrix sides >=64")
         torch.manual_seed(0)
         n = shape[-1]
