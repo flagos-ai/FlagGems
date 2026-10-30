@@ -123,7 +123,6 @@ class _AscendNextafterBaseline:
         if (
             self.is_backward
             or base.Config.skip_native
-            or "tflops" in self.to_bench_metrics
             or inp.device.type != torch.device(self.device).type
             or other.device != inp.device
             or inp.layout != torch.strided
