@@ -113,7 +113,7 @@ def _cholesky_solve_complex_row_kernel(
     L_ptr,
     B_ptr,
     X_ptr,
-    N: tl.constexpr,
+    N,
     nrhs,
     batch_stride_L,
     batch_stride_B,
@@ -124,9 +124,10 @@ def _cholesky_solve_complex_row_kernel(
     stride_B_col,
     stride_X_row,
     stride_X_col,
-    ROW: tl.constexpr,
+    ROW,
     FORWARD: tl.constexpr,
     upper: tl.constexpr,
+    CONJ_STORAGE: tl.constexpr,
     BLOCK_RHS: tl.constexpr,
 ):
     batch_pid = tl.program_id(0)
@@ -137,6 +138,9 @@ def _cholesky_solve_complex_row_kernel(
     L_base = batch_pid * batch_stride_L
     B_base = batch_pid * batch_stride_B
     X_base = batch_pid * batch_stride_X
+    flip = (FORWARD and upper) or ((not FORWARD) and (not upper))
+    if CONJ_STORAGE:
+        flip = not flip
 
     if FORWARD:
         b_offset = B_base + ROW * stride_B_row + cols * stride_B_col
@@ -151,7 +155,7 @@ def _cholesky_solve_complex_row_kernel(
         start = ROW + 1
         end = N
 
-    for col in range(start, end):
+    for col in tl.range(start, end, loop_unroll_factor=1):
         if FORWARD:
             if upper:
                 factor_offset = L_base + col * stride_L_row + ROW * stride_L_col
@@ -164,7 +168,7 @@ def _cholesky_solve_complex_row_kernel(
                 factor_offset = L_base + col * stride_L_row + ROW * stride_L_col
         factor_real = tl.load(L_ptr + factor_offset)
         factor_imag = tl.load(L_ptr + factor_offset + 1)
-        if (FORWARD and upper) or ((not FORWARD) and (not upper)):
+        if flip:
             factor_imag = -factor_imag
         previous_offset = X_base + col * stride_X_row + cols * stride_X_col
         previous_real = tl.load(X_ptr + previous_offset, mask=cols_mask, other=0.0)
@@ -175,6 +179,8 @@ def _cholesky_solve_complex_row_kernel(
     diagonal_offset = L_base + ROW * stride_L_row + ROW * stride_L_col
     diagonal_real = tl.load(L_ptr + diagonal_offset)
     diagonal_imag = tl.load(L_ptr + diagonal_offset + 1)
+    if flip:
+        diagonal_imag = -diagonal_imag
     denominator = diagonal_real * diagonal_real + diagonal_imag * diagonal_imag
     out_real = (value_real * diagonal_real + value_imag * diagonal_imag) / denominator
     out_imag = (value_imag * diagonal_real - value_real * diagonal_imag) / denominator
@@ -289,7 +295,7 @@ def _can_use_row_kernel(B: torch.Tensor, L: torch.Tensor) -> bool:
 def _can_use_complex_row_kernel(B: torch.Tensor, L: torch.Tensor) -> bool:
     if B.dtype != torch.complex64 or L.dtype != torch.complex64:
         return False
-    if B.ndim < 2 or L.ndim < 2 or B.is_conj() or L.is_conj():
+    if B.ndim < 2 or L.ndim < 2:
         return False
     if B.shape[:-2] != L.shape[:-2] or L.shape[-2] != L.shape[-1]:
         return False
@@ -298,12 +304,22 @@ def _can_use_complex_row_kernel(B: torch.Tensor, L: torch.Tensor) -> bool:
 
 
 def _cholesky_solve_complex_rows(B, L, upper, out):
+    storage_conj = L.is_conj()
+    if storage_conj:
+        base = L._base
+        if base is not None and not base.is_conj():
+            L = base.as_strided(L.shape, L.stride(), L.storage_offset())
+        else:
+            L = L.resolve_conj()
+            storage_conj = False
+    if B.is_conj():
+        B = B.resolve_conj()
     B_real = torch.view_as_real(B).reshape(-1, B.shape[-2], B.shape[-1], 2)
     L_real = torch.view_as_real(L).reshape(-1, L.shape[-2], L.shape[-1], 2)
     X_real = torch.view_as_real(out).reshape(-1, out.shape[-2], out.shape[-1], 2)
     batch_size = B_real.shape[0]
     n, nrhs = B.shape[-2:]
-    block_rhs = triton.next_power_of_2(nrhs)
+    block_rhs = min(triton.next_power_of_2(nrhs), 64)
     grid = (batch_size, triton.cdiv(nrhs, block_rhs))
 
     for row in range(n):
@@ -325,6 +341,7 @@ def _cholesky_solve_complex_rows(B, L, upper, out):
             ROW=row,
             FORWARD=True,
             upper=upper,
+            CONJ_STORAGE=storage_conj,
             BLOCK_RHS=block_rhs,
             num_warps=1,
             num_stages=1,
@@ -348,6 +365,7 @@ def _cholesky_solve_complex_rows(B, L, upper, out):
             ROW=row,
             FORWARD=False,
             upper=upper,
+            CONJ_STORAGE=storage_conj,
             BLOCK_RHS=block_rhs,
             num_warps=1,
             num_stages=1,

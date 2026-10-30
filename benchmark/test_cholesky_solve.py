@@ -93,6 +93,8 @@ class CholeskySolveBenchmark(base.Benchmark):
         # torch stack (device cholesky reports non-positive-definite), so build
         # the complex setup on CPU and move it to the device for the op.
         build_on_cpu = IS_MTHREADS and cur_dtype in COMPLEX_DTYPES
+        if IS_KUNLUNXIN and cur_dtype in COMPLEX_DTYPES:
+            build_on_cpu = True
         setup_device = "cpu" if build_on_cpu else self.device
         for shape, upper in self.shapes:
             *batch_dims, n, nrhs = shape
@@ -151,6 +153,8 @@ def test_cholesky_solve():
         dtypes = (
             REAL_DTYPES if (IS_THEAD or IS_KUNLUNXIN) else REAL_DTYPES + COMPLEX_DTYPES
         )
+        if IS_KUNLUNXIN:
+            dtypes = REAL_DTYPES + COMPLEX_DTYPES
 
     bench = CholeskySolveBenchmark(
         op_name="cholesky_solve",
@@ -173,6 +177,8 @@ def test_cholesky_solve_out():
         dtypes = (
             REAL_DTYPES if (IS_THEAD or IS_KUNLUNXIN) else REAL_DTYPES + COMPLEX_DTYPES
         )
+        if IS_KUNLUNXIN:
+            dtypes = REAL_DTYPES + COMPLEX_DTYPES
 
     bench = CholeskySolveOutBenchmark(
         op_name="cholesky_solve_out",
