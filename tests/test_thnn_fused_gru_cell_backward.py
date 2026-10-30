@@ -18,6 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from . import gru_cpu_reference as gru_oracle
 from .conftest import QUICK_MODE
 
 DTYPES = utils.ALL_FLOAT_DTYPES
@@ -34,6 +35,23 @@ def _make_workspace(batch_size, hidden_size, dtype):
     hx = torch.randn(batch_size, hidden_size, device=flag_gems.device, dtype=dtype)
     input_bias = torch.randn(3 * hidden_size, device=flag_gems.device, dtype=dtype)
     hidden_bias = torch.randn_like(input_bias)
+    return torch.ops.aten._thnn_fused_gru_cell(
+        input_gates, hidden_gates, hx, input_bias, hidden_bias
+    )[1]
+
+
+def _make_out_workspace(batch_size, hidden_size, dtype):
+    input_gates = torch.randn(
+        batch_size, 3 * hidden_size, device=flag_gems.device, dtype=dtype
+    )
+    hidden_gates = torch.randn_like(input_gates)
+    hx = torch.randn(batch_size, hidden_size, device=flag_gems.device, dtype=dtype)
+    input_bias = torch.randn(3 * hidden_size, device=flag_gems.device, dtype=dtype)
+    hidden_bias = torch.randn_like(input_bias)
+    if flag_gems.vendor_name == "ascend":
+        return gru_oracle.forward(
+            input_gates, hidden_gates, hx, input_bias, hidden_bias
+        )[1]
     return torch.ops.aten._thnn_fused_gru_cell(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )[1]
@@ -182,16 +200,28 @@ def _make_noncontiguous_outputs(batch_size, hidden_size, dtype):
     return out0, out1, out2, out3, out4
 
 
-@pytest.mark.thnn_fused_gru_cell_backward_out
+def _reference_out(grad_hy, workspace):
+    if flag_gems.vendor_name == "ascend":
+        return gru_oracle.backward(
+            utils.to_reference(grad_hy), utils.to_reference(workspace), True
+        )
+    return _reference(grad_hy, workspace, True)
+
+
+@pytest.mark.underscore_thnn_fused_gru_cell_backward_out
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
 def test_thnn_fused_gru_cell_backward_out(dtype, shape):
     batch_size, hidden_size = shape
-    workspace = _make_workspace(batch_size, hidden_size, dtype)
+    workspace = _make_out_workspace(batch_size, hidden_size, dtype)
     grad_hy = torch.randn(batch_size, hidden_size, device=flag_gems.device, dtype=dtype)
-    reference = _reference(grad_hy, workspace, True)
+    reference = _reference_out(grad_hy, workspace)
     outputs = _make_noncontiguous_outputs(batch_size, hidden_size, dtype)
 
+    expected_device = grad_hy.device
+    out_before = [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in outputs
+    ]
     result = flag_gems._thnn_fused_gru_cell_backward_out(
         grad_hy,
         workspace,
@@ -204,16 +234,20 @@ def test_thnn_fused_gru_cell_backward_out(dtype, shape):
     )
 
     assert all(actual is out for actual, out in zip(result, outputs))
-    _assert_outputs_close(result, reference, dtype, batch_size, grad_hy.device)
+    assert [
+        (x.device, x.dtype, tuple(x.shape), x.stride(), x.data_ptr()) for x in result
+    ] == out_before
+    _assert_outputs_close(result, reference, dtype, batch_size, expected_device)
 
 
-@pytest.mark.thnn_fused_gru_cell_backward_out
+@pytest.mark.underscore_thnn_fused_gru_cell_backward_out
 def test_thnn_fused_gru_cell_backward_out_resize():
     batch_size, hidden_size = 2, 7
-    workspace = _make_workspace(batch_size, hidden_size, torch.float32)
+    workspace = _make_out_workspace(batch_size, hidden_size, torch.float32)
     grad_hy = torch.randn(batch_size, hidden_size, device=flag_gems.device)
     outputs = tuple(torch.empty(0, device=flag_gems.device) for _ in range(5))
 
+    expected_device = grad_hy.device
     result = flag_gems._thnn_fused_gru_cell_backward_out(
         grad_hy,
         workspace,
@@ -233,3 +267,9 @@ def test_thnn_fused_gru_cell_backward_out_resize():
         (3 * hidden_size,),
         (3 * hidden_size,),
     ]
+    assert all(
+        isinstance(x, torch.Tensor)
+        and x.device == expected_device
+        and x.dtype == torch.float32
+        for x in result
+    )

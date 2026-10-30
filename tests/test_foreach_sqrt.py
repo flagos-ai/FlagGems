@@ -132,7 +132,7 @@ def test_foreach_sqrt_integer_promotion():
 
 @pytest.mark.foreach_sqrt
 def test_foreach_sqrt_complex_values():
-    if flag_gems.vendor_name in ("ascend", "kunlunxin") and not utils.TO_CPU:
+    if flag_gems.vendor_name in ("ascend", "kunlunxin", "enflame") and not utils.TO_CPU:
         pytest.skip(
             "backend native foreach does not support the complex reference contract"
         )

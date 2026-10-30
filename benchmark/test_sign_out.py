@@ -15,10 +15,10 @@
 import pytest
 import torch
 
-import flag_gems
 
 from . import base, consts, utils
 from .generated_operator_utils import OperatorBenchmark
+
 
 def _case_fn(shape, dtype):
     del dtype
@@ -44,7 +44,6 @@ def test_sign_out():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.sign.out,
-        gems_op=getattr(flag_gems, "sign_out", None),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,

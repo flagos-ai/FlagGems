@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "bitwise_and_tensor_",
+  "requires_triton_kernel": true,
+  "description": "New Derived Definition (2026-10-29), not a recovered original. Derived from the actual FlagGems export bitwise_and_tensor_(A,B), also called by __iand___tensor; aten::__iand__.Tensor / bitwise_and_.Tensor and the preserved original in-place test ABI.",
+  "parameters": [
+    {
+      "name": "A",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "B",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "A"
+    ],
+    "returns_alias_of": {
+      "out": "A"
+    }
+  }
+}

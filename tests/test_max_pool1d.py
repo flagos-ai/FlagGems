@@ -46,6 +46,9 @@ MAXPOOL1D_CONFIGS = [
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_max_pool1d(shape, kernel_size, stride, padding, dilation, ceil_mode, dtype):
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU and dilation != 1:
+        pytest.skip("Ascend native max_pool1d reference only supports dilation=1")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
@@ -58,6 +61,7 @@ def test_max_pool1d(shape, kernel_size, stride, padding, dilation, ceil_mode, dt
         ceil_mode=ceil_mode,
     )
 
+    expected = (inp.device, inp.dtype, ref_out.shape)
     res_out = flag_gems.max_pool1d(
         inp,
         kernel_size=[kernel_size],
@@ -67,6 +71,8 @@ def test_max_pool1d(shape, kernel_size, stride, padding, dilation, ceil_mode, dt
         ceil_mode=ceil_mode,
     )
 
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, res_out.shape) == expected
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -80,6 +86,9 @@ def test_max_pool1d_default_stride(
     shape, kernel_size, stride, padding, dilation, ceil_mode, dtype
 ):
     """Test max_pool1d with default stride (stride=[] means stride=kernel_size)."""
+    if flag_gems.vendor_name == "ascend" and not utils.TO_CPU and dilation != 1:
+        pytest.skip("Ascend native max_pool1d reference only supports dilation=1")
+
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
@@ -91,6 +100,7 @@ def test_max_pool1d_default_stride(
         ceil_mode=ceil_mode,
     )
 
+    expected = (inp.device, inp.dtype, ref_out.shape)
     res_out = flag_gems.max_pool1d(
         inp,
         kernel_size=[kernel_size],
@@ -99,4 +109,6 @@ def test_max_pool1d_default_stride(
         ceil_mode=ceil_mode,
     )
 
+    assert isinstance(res_out, torch.Tensor)
+    assert (res_out.device, res_out.dtype, res_out.shape) == expected
     utils.gems_assert_equal(res_out, ref_out)

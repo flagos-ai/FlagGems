@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "upsample_nearest_exact1d_backward_grad_input",
+  "name": "_upsample_nearest_exact1d_backward_grad_input",
   "requires_triton_kernel": true,
   "description": "An out variant of `_upsample_nearest_exact1d_backward()`, writing the input\ngradient into the provided `grad_input` tensor.",
   "parameters": [

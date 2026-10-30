@@ -1,6 +1,6 @@
 {
   "api_version": "v6.0",
-  "name": "pad_enum",
+  "name": "_pad_enum",
   "requires_triton_kernel": true,
   "description": "Integer-mode dispatcher backing torch.nn.functional.pad. Pads an N-D\ntensor where `mode` is an integer enum (0 reflect, 1 replicate,\n2 circular, 3 constant); `value` is only used for constant padding.",
   "parameters": [

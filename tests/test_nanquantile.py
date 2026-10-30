@@ -80,6 +80,8 @@ def test_nanquantile_tensor(dtype, interpolation, dim, keepdim):
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 @pytest.mark.parametrize("dim, keepdim", [(None, False), (0, True), (-1, False)])
 def test_nanquantile_scalar(dtype, interpolation, dim, keepdim):
+    if flag_gems.vendor_name == "ascend" and dtype == torch.float64:
+        pytest.skip("Ascend native nanquantile sorting does not support Float64")
     inp = _input((17, 19), dtype)
     ref_inp = utils.to_reference(inp, True)
     reference = torch.ops.aten.nanquantile.scalar(

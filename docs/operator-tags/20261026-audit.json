@@ -1,0 +1,529 @@
+{
+  "batch": "20261026",
+  "tag_file": "definitions/tag-20261026.txt",
+  "source": {
+    "url": "https://jwolpxeehx.feishu.cn/wiki/StENwmi74igKA7k6YcpcRawtn3c?sheet=qiFV6I",
+    "sheet_name": "20261026",
+    "sheet_id": "qiFV6I",
+    "revision": 302,
+    "range": "A1:AB94",
+    "repository_base_commit": "2ff0931a646b97ec98ebd50642b5889619125a6b"
+  },
+  "selection_rule": "Only rows whose trimmed operator library is exactly FlagGems. Include an operator once only when sheet operator, development name, dedicated test and benchmark file stems, and Definition.name all agree. Do not automatically remove/add underscores or equate public and internal APIs.",
+  "path_templates": {
+    "test": "tests/test_<name>.py",
+    "benchmark": "benchmark/test_<name>.py",
+    "definition": "definitions/<name>.json"
+  },
+  "summary": {
+    "source_data_rows": 93,
+    "FlagGems_rows": 51,
+    "FlagGems_unique_operators": 50,
+    "included_unique_operators": 33,
+    "missing_exact_triplet": 10,
+    "naming_mismatch": 7,
+    "other_libraries_excluded": {
+      "FlagGems-sglang": 42
+    }
+  },
+  "notes": [
+    "The date is a requirement-batch selector, not a claim of backend support, test success, or coverage of every requested feature.",
+    "Missing files means missing exact dedicated paths; it does not establish absence of implementations or tests in shared suites.",
+    "Related candidates are discovery hints, not verified aliases, and are excluded from the tag.",
+    "Repeated source rows are retained in sheet_rows; tag membership is deduplicated."
+  ],
+  "included": [
+    {
+      "name": "addbmm",
+      "sheet_rows": [
+        67
+      ]
+    },
+    {
+      "name": "addbmm_",
+      "sheet_rows": [
+        66
+      ]
+    },
+    {
+      "name": "baddbmm_",
+      "sheet_rows": [
+        65
+      ]
+    },
+    {
+      "name": "combinations",
+      "sheet_rows": [
+        46
+      ]
+    },
+    {
+      "name": "cudnn_rnn",
+      "sheet_rows": [
+        68
+      ]
+    },
+    {
+      "name": "cudnn_rnn_backward",
+      "sheet_rows": [
+        69
+      ]
+    },
+    {
+      "name": "embedding_renorm_",
+      "sheet_rows": [
+        45
+      ]
+    },
+    {
+      "name": "fft_irfftn",
+      "sheet_rows": [
+        9
+      ]
+    },
+    {
+      "name": "fft_rfft",
+      "sheet_rows": [
+        44
+      ]
+    },
+    {
+      "name": "foreach_add_scalar",
+      "sheet_rows": [
+        33
+      ]
+    },
+    {
+      "name": "foreach_add_scalar_",
+      "sheet_rows": [
+        8
+      ]
+    },
+    {
+      "name": "foreach_addcdiv_scalar_list",
+      "sheet_rows": [
+        31
+      ]
+    },
+    {
+      "name": "foreach_addcdiv_scalar_list_",
+      "sheet_rows": [
+        7
+      ]
+    },
+    {
+      "name": "foreach_addcmul_scalar",
+      "sheet_rows": [
+        32
+      ]
+    },
+    {
+      "name": "foreach_addcmul_scalar_",
+      "sheet_rows": [
+        6
+      ]
+    },
+    {
+      "name": "foreach_addcmul_scalar_list",
+      "sheet_rows": [
+        5
+      ]
+    },
+    {
+      "name": "foreach_addcmul_scalar_list_",
+      "sheet_rows": [
+        4
+      ]
+    },
+    {
+      "name": "linalg__powsum",
+      "sheet_rows": [
+        42
+      ]
+    },
+    {
+      "name": "linalg_eig",
+      "sheet_rows": [
+        64
+      ]
+    },
+    {
+      "name": "linalg_eigvals",
+      "sheet_rows": [
+        63
+      ]
+    },
+    {
+      "name": "linalg_eigvals_out",
+      "sheet_rows": [
+        10
+      ]
+    },
+    {
+      "name": "linalg_lu_solve",
+      "sheet_rows": [
+        62
+      ]
+    },
+    {
+      "name": "linear_backward",
+      "sheet_rows": [
+        61
+      ]
+    },
+    {
+      "name": "masked_select_backward",
+      "sheet_rows": [
+        41
+      ]
+    },
+    {
+      "name": "matmul_backward",
+      "sheet_rows": [
+        40
+      ]
+    },
+    {
+      "name": "multilabel_margin_loss",
+      "sheet_rows": [
+        39
+      ]
+    },
+    {
+      "name": "quantized_lstm",
+      "sheet_rows": [
+        60
+      ]
+    },
+    {
+      "name": "row_indices_copy",
+      "sheet_rows": [
+        36
+      ]
+    },
+    {
+      "name": "scaled_dot_product_cudnn_attention",
+      "sheet_rows": [
+        71
+      ]
+    },
+    {
+      "name": "scaled_dot_product_efficient_attention",
+      "sheet_rows": [
+        70
+      ]
+    },
+    {
+      "name": "scaled_dot_product_efficient_attention_backward",
+      "sheet_rows": [
+        55
+      ]
+    },
+    {
+      "name": "scaled_grouped_mm_v2",
+      "sheet_rows": [
+        50
+      ]
+    },
+    {
+      "name": "sym_numel",
+      "sheet_rows": [
+        58
+      ]
+    }
+  ],
+  "missing_exact_triplet": [
+    {
+      "name": "batch_norm_stats",
+      "sheet_rows": [
+        48
+      ],
+      "present_files": [
+        "test",
+        "benchmark"
+      ],
+      "missing_files": [
+        "definition"
+      ]
+    },
+    {
+      "name": "batch_norm_update_stats",
+      "sheet_rows": [
+        47
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "fft_ifftshift",
+      "sheet_rows": [
+        3
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "indices_copy",
+      "sheet_rows": [
+        43
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "linalg_eigh",
+      "sheet_rows": [
+        57
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "multilabel_margin_loss_backward",
+      "sheet_rows": [
+        38
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "native_group_norm_backward",
+      "sheet_rows": [
+        37
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "svd",
+      "sheet_rows": [
+        59
+      ],
+      "present_files": [
+        "test",
+        "benchmark"
+      ],
+      "missing_files": [
+        "definition"
+      ]
+    },
+    {
+      "name": "trapezoid",
+      "sheet_rows": [
+        35
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    },
+    {
+      "name": "unique_dim_consecutive",
+      "sheet_rows": [
+        34
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ]
+    }
+  ],
+  "naming_mismatches": [
+    {
+      "name": "choose_qparams_per_tensor",
+      "sheet_rows": [
+        54
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_choose_qparams_per_tensor",
+          "files": [
+            "test",
+            "benchmark",
+            "definition"
+          ],
+          "definition_name": "_choose_qparams_per_tensor"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "convert_indices_from_coo_to_csr",
+      "sheet_rows": [
+        53
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_convert_indices_from_coo_to_csr",
+          "files": [
+            "test",
+            "benchmark",
+            "definition"
+          ],
+          "definition_name": "_convert_indices_from_coo_to_csr"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "convert_indices_from_csr_to_coo",
+      "sheet_rows": [
+        52
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_convert_indices_from_csr_to_coo",
+          "files": [
+            "test",
+            "benchmark",
+            "definition"
+          ],
+          "definition_name": "_convert_indices_from_csr_to_coo"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "convolution_mode",
+      "sheet_rows": [
+        51
+      ],
+      "present_files": [
+        "test",
+        "benchmark"
+      ],
+      "missing_files": [
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_convolution_mode",
+          "files": [
+            "definition"
+          ],
+          "definition_name": "_convolution_mode"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "flash_attention_forward",
+      "sheet_rows": [
+        2,
+        56
+      ],
+      "present_files": [
+        "benchmark"
+      ],
+      "missing_files": [
+        "test",
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_flash_attention_forward",
+          "files": [
+            "test",
+            "benchmark",
+            "definition"
+          ],
+          "definition_name": "_flash_attention_forward"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "scaled_dot_product_flash_attention",
+      "sheet_rows": [
+        72
+      ],
+      "present_files": [
+        "test",
+        "benchmark"
+      ],
+      "missing_files": [
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_scaled_dot_product_flash_attention",
+          "files": [
+            "definition"
+          ],
+          "definition_name": "_scaled_dot_product_flash_attention"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    },
+    {
+      "name": "sparse_sparse_matmul",
+      "sheet_rows": [
+        49
+      ],
+      "present_files": [],
+      "missing_files": [
+        "test",
+        "benchmark",
+        "definition"
+      ],
+      "related_candidates": [
+        {
+          "name": "_sparse_sparse_matmul",
+          "files": [
+            "test",
+            "benchmark",
+            "definition"
+          ],
+          "definition_name": "_sparse_sparse_matmul"
+        }
+      ],
+      "reason": "Related names differ; equivalence and a single test/benchmark/Definition identity require explicit confirmation."
+    }
+  ]
+}

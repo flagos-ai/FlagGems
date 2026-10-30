@@ -127,12 +127,21 @@ def test_trapz_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_trapz_int_promotion(dtype):
     """Integer inputs are promoted to float32, matching PyTorch."""
+    if (
+        flag_gems.vendor_name == "enflame"
+        and dtype in (torch.int16, torch.int32)
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "Enflame native trapezoid integer sum promotes to unsupported Int64"
+        )
     inp = torch.randint(-8, 8, (3, 4), device="cpu", dtype=dtype).to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.trapezoid(ref_inp, dx=0.5, dim=-1)
     res_out = flag_gems.trapz(inp, dx=0.5, dim=-1)
 
+    assert res_out.device == inp.device
     assert res_out.dtype == torch.float32
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=4)
 

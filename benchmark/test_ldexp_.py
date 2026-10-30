@@ -16,9 +16,9 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from functools import cached_property
+from pathlib import Path
 
 import pytest
 import torch
@@ -45,7 +45,6 @@ def _build_inputs_fn(plan, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     exponent = torch.randint(-8, 9, shape, dtype=torch.int32, device=device)
     return inp, exponent
-
 
 
 @dataclass
@@ -180,9 +179,7 @@ class _LdexpStaticBaseline:
             source,
             config=config,
             target_candidate=(
-                "CPU original-dtype native bootstrap restored in place to target"
-                if flag_gems.vendor_name == "enflame"
-                else "original-dtype native target"
+                "locally timed candidate; implementation supplied by the runner"
             ),
         )
         if base.Config.reference_only:
@@ -211,12 +208,15 @@ class _LdexpStaticBaseline:
 
     def _measure_input(self, input, case_id=None):
         external = bool(os.environ.get("FLAGGEMS_NV_BASELINE"))
-        if flag_gems.vendor_name == "enflame" and not external:
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if needs_native and flag_gems.vendor_name == "enflame" and not external:
             raise ValueError("Missing fresh native H800 ldexp reference")
-        if external and (self.is_backward or base.Config.skip_native):
+        if external and needs_native and self.is_backward:
             raise ValueError("Expected native/candidate latency mode")
         self._baseline_source = None
-        self._native_pending = external and "latency_base" in self.to_bench_metrics
+        self._native_pending = external and needs_native
         try:
             metric = super()._measure_input(input, case_id)
             if self._baseline_source is not None:
@@ -226,6 +226,7 @@ class _LdexpStaticBaseline:
             return metric
         finally:
             self._native_pending = False
+
 
 class LdexpInplaceBenchmark(
     _LdexpStaticBaseline, base.BinaryPointwiseBenchmark, OperatorBenchmark

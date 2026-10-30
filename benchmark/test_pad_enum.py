@@ -39,7 +39,7 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, pad, 3, 1.5
 
 
-@pytest.mark.pad_enum
+@pytest.mark.underscore_pad_enum
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -47,7 +47,7 @@ def test_pad_enum():
     bench = base.GenericBenchmark(
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
-        op_name="pad_enum",
+        op_name="_pad_enum",
         torch_op=torch.ops.aten._pad_enum,
         dtypes=consts.FLOAT_DTYPES,
     )

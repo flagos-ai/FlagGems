@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 import hashlib
 import json
+import math
 import os
-from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from functools import cached_property
+from pathlib import Path
 
 import pytest
 import torch
@@ -53,7 +53,6 @@ def _build_inputs_fn(plan, dtype, device):
             "device": device,
         },
     )
-
 
 
 @dataclass
@@ -191,9 +190,7 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
             config=config,
             case_id=case_id,
             target_candidate=(
-                "CPU native semantic bootstrap restored to real target"
-                if flag_gems.vendor_name == "enflame"
-                else "native target"
+                "locally timed candidate; implementation supplied by the runner"
             ),
         )
         if base.Config.reference_only:
@@ -213,13 +210,16 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
 
     def _measure_input(self, input, case_id=None):
         external = bool(os.environ.get("FLAGGEMS_NV_BASELINE"))
-        if flag_gems.vendor_name == "enflame" and not external:
+        needs_native = (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if needs_native and flag_gems.vendor_name == "enflame" and not external:
             raise ValueError("Missing native H800 Kaiser reference")
-        if external and (self.is_backward or base.Config.skip_native):
+        if external and needs_native and self.is_backward:
             raise ValueError("Expected native/candidate latency mode")
         self._native_case_id = case_id
         self._baseline_source = None
-        self._native_pending = external and "latency_base" in self.to_bench_metrics
+        self._native_pending = external and needs_native
         try:
             metric = super()._measure_input(input, case_id)
             if self._baseline_source is not None:
@@ -230,6 +230,7 @@ class _KaiserStaticBenchmark(base.GenericBenchmark):
         finally:
             self._native_pending = False
             self._native_case_id = None
+
 
 @pytest.mark.kaiser_window
 def test_kaiser_window():

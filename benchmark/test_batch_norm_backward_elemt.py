@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -78,6 +76,5 @@ def test_batch_norm_backward_elemt():
         torch_op=torch.batch_norm_backward_elemt,
         dtypes=consts.FLOAT_DTYPES,
     )
-    bench.set_gems(flag_gems.batch_norm_backward_elemt)
 
     bench.run()

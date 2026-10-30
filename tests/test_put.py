@@ -480,8 +480,8 @@ def _assert_put_bounds_failure(proc, report):
 
 @pytest.mark.put
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="MUSA native put has no target-device trap for invalid indices",
+    flag_gems.vendor_name in {"mthreads", "metax", "iluvatar"},
+    reason="native put has no target-device trap for invalid indices",
 )
 @pytest.mark.parametrize("numel", [1, 8, 1000])
 @pytest.mark.parametrize("bad_offset", [0, 5])
