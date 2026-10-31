@@ -962,6 +962,7 @@ _FULL_CONFIG = (
     ("cov", cov),
     ("cross", cross),
     ("cross.out", cross_out),
+    ("crow_indices", crow_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     (
         "crow_indices_copy",
         crow_indices_copy,

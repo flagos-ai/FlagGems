@@ -4476,6 +4476,20 @@ tensor into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.5'
+- id: crow_indices
+  description: |
+    Returns the compressed row pointer array of a sparse CSR/BSR tensor as a
+    zero-copy alias of the internal crow storage, shaped
+    `batch_dims + (nrows + 1)`.
+  for:
+  - crow_indices
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Sparse
+  stages:
+  - alpha: '5.5'
 - id: crow_indices_copy
   description: 'Returns a fresh copy of the crow (row) indices of a sparse compressed
     tensor, mirroring `aten::crow_indices_copy`.
