@@ -4589,6 +4589,30 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.3'
+- id: cudnn_convolution_add_relu
+  description: |
+    Fused convolution, bias add, scaled addend and ReLU, as performed by the cuDNN backend.
+  for:
+  - cudnn_convolution_add_relu
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: cudnn_convolution_add_relu_out
+  description: |
+    A variant of cudnn_convolution_add_relu() that writes the result into the out tensor.
+  for:
+  - cudnn_convolution_add_relu.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: cudnn_convolution_transpose
   description: 'Wrapper for torch.cudnn_convolution_transpose, providing autograd
     support and device-agnostic interface for cuDNN transposed convolution.
