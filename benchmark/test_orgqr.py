@@ -26,6 +26,7 @@ class _OrgqrCaseBenchmark(OrgqrBenchmark):
         if cur_dtype == torch.float64 and flag_gems.vendor_name in (
             "kunlunxin",
             "thead",
+            "enflame",
         ):
             pytest.skip(
                 "Native orgqr reference cannot preserve float64 on this backend"

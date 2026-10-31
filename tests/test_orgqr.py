@@ -42,6 +42,12 @@ def _copy_reflector(value, device):
 
 def _make_orgqr_reflectors(shape, dtype):
     if (
+        flag_gems.vendor_name == "enflame"
+        and dtype == torch.float64
+        and torch.Size(shape).numel() != 0
+    ):
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
+    if (
         dtype == torch.float64
         and flag_gems.vendor_name in ("kunlunxin", "iluvatar", "thead")
     ) or (

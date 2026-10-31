@@ -48,6 +48,12 @@ def ctc_loss_internal_build_inputs_fn(plan, dtype, device):
     return log_probs, targets, input_lengths, target_lengths, {"blank": 0}
 
 
+def _ctc_loss_build_inputs_fn(plan, dtype, device):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
+        pytest.skip("Enflame Float64 storage loses adjacent-double values")
+    return ctc_loss_internal_build_inputs_fn(plan, dtype, device)
+
+
 class CtcLossInternalBenchmark(OperatorBenchmark):
     DEFAULT_SHAPES = [
         (64, 4, 32, 16),
@@ -69,7 +75,7 @@ def test_perf__ctc_loss():
     bench = CtcLossInternalBenchmark(
         op_name="_ctc_loss",
         case_fn=ctc_loss_internal_case_fn,
-        build_inputs_fn=ctc_loss_internal_build_inputs_fn,
+        build_inputs_fn=_ctc_loss_build_inputs_fn,
         torch_op=torch.ops.aten._ctc_loss,
         dtypes=CTC_DTYPES,
     )
