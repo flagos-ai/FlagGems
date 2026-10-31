@@ -4603,6 +4603,29 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_grid_sampler_backward
+  description: Triton kernel implementation for cudnn_grid_sampler_backward.
+  for:
+  - cudnn_grid_sampler_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: cudnn_grid_sampler_backward_out
+  description: A variant of cudnn_grid_sampler_backward() that writes the result
+    into the out0 and out1 tensors.
+  for:
+  - cudnn_grid_sampler_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
     the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
