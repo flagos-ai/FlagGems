@@ -33,6 +33,9 @@ from .hc_head_fused_kernel import (  # noqa: F401  (import triggers _install)
 )
 from .hc_split_sinkhorn import hc_split_sinkhorn
 from .instance_norm import instance_norm
+from .indexer_k_tiled import (  # noqa: F401  (import triggers _install)
+    triton_lighting_indexer_k_tiled_interface_xpu,
+)
 from .matmul_bias_activation import matmul_bias_activation
 from .matmuladd import matmuladd
 from .mhc_bwd import mhc_bwd  # noqa: F401  (import triggers _install)

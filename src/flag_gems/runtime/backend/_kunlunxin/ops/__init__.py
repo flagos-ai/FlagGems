@@ -842,6 +842,7 @@ from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
+from .svd import svd
 from .t_copy import t_copy, t_copy_out
 from .take import take, take_out
 from .take_along_dim import take_along_dim_kernel  # noqa: F401
@@ -1794,6 +1795,7 @@ __all__ = [
     "sum_dim",
     "sum_dim_out",
     "sum_out",
+    "svd",
     "SUPPORTED_FP8_DTYPE",
     "t_copy",
     "t_copy_out",
