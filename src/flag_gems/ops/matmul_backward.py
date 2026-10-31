@@ -17,11 +17,27 @@ import logging
 
 import torch
 
-from .bmm import bmm
-from .mm import mm
 from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
+
+
+def _lookup_matmul_entries():
+    """The mm / bmm entries off the flag_gems namespace, resolved at call time.
+
+    Why: a backend may override mm with a kernel whose tune configs carry keys
+    the general kernel does not declare -- kunlunxin's mm takes SPLIT_K and the
+    general one does not -- so importing flag_gems.ops.mm directly binds the
+    general kernel and the backend's own configs then fail with
+    "Keyword argument SPLIT_K was specified but unrecognised". Same reasoning
+    as _matmul() in linalg_matrix_power.py.
+
+    Returns:
+        The (mm, bmm) callables for the active backend.
+    """
+    from flag_gems import bmm, mm
+
+    return mm, bmm
 
 
 def _matmul_2d_or_batched(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -32,6 +48,7 @@ def _matmul_2d_or_batched(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     broadcast against each other, mirroring ``torch.matmul``.
     """
     if a.dim() == 2 and b.dim() == 2:
+        mm, _ = _lookup_matmul_entries()
         return mm(a.contiguous(), b.contiguous())
 
     M, K = a.shape[-2], a.shape[-1]
@@ -40,6 +57,7 @@ def _matmul_2d_or_batched(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     a_exp = a.expand(*batch_shape, M, K).reshape(-1, M, K).contiguous()
     b_exp = b.expand(*batch_shape, K2, N).reshape(-1, K2, N).contiguous()
+    _, bmm = _lookup_matmul_entries()
     out = bmm(a_exp, b_exp)
     return out.reshape(*batch_shape, M, N)
 
