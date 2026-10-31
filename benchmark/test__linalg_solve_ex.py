@@ -125,7 +125,6 @@ def test__linalg_solve_ex():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._linalg_solve_ex,
-        gems_op=getattr(flag_gems, "_linalg_solve_ex", None),
         dtypes=SUPPORTED_DTYPES,
     )
     bench.run()
