@@ -147,13 +147,24 @@ else()
 endif()
 
 if(FLAGGEMS_BUILD_CTESTS)
-  set(INSTALL_GTEST OFF) # we do not install tests
-  FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG v1.16.0
-  )
-  FetchContent_MakeAvailable(googletest)
+  # Prefer a pre-installed GTest when available so that the build does not
+  # depend on network access at all. This follows the first option suggested
+  # in issue #2380: install a binary package if available.
+  find_package(GTest 1.16 QUIET)
+  if(NOT GTest_FOUND)
+    set(INSTALL_GTEST OFF) # we do not install tests
+    FetchContent_Declare(
+      googletest
+      # Downloading from github.com is not always reliable on self-hosted
+      # runners (issue #2380), so try the flagos resource mirror first and
+      # fall back to the canonical GitHub archive. The archive is pinned by
+      # SHA256 (v1.16.0 release tarball).
+      URL https://resource.flagos.net/repository/flagos-filestore/googletest/googletest-v1.16.0.tar.gz
+          https://github.com/google/googletest/archive/refs/tags/v1.16.0.tar.gz
+      URL_HASH SHA256=78c676fc63881529bf97bf9d45948d905a66833fbfa5318ea2cd7478cb98f399
+    )
+    FetchContent_MakeAvailable(googletest)
+  endif()
 endif()
 
 execute_process(
