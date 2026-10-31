@@ -4531,6 +4531,30 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: cudnn_affine_grid_generator
+  description: |
+    Triton kernel implementation for cudnn_affine_grid_generator.
+  for:
+    - cudnn_affine_grid_generator
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
+- id: cudnn_affine_grid_generator_out
+  description: A variant of cudnn_affine_grid_generator() that writes the result into
+    the out tensor.
+  for:
+    - cudnn_affine_grid_generator.out
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: cudnn_attention_backward
   description: 'Backward kernel for cuDNN attention, computing gradients of query,
 
