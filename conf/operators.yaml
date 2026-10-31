@@ -3166,16 +3166,29 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '4.0'
 - id: chain_matmul
-  description: Computes the product of a chain of 2-D matrices using an optimal
-    (minimum-flop) parenthesization, mirroring `torch.linalg.multi_dot` and
-    `aten::chain_matmul` semantics.
+  description: Computes the product of a chain of 2-D matrices using an optimal (minimum-flop)
+    parenthesization.
   for:
   - chain_matmul
   labels:
   - aten
   - KernelGen
   kind:
-  - Tensor
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: chain_matmul_out
+  description: 'A variant of `chain_matmul` that assigns to the output to the provided
+    `out` parameter.
+
+    '
+  for:
+  - chain_matmul.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
   stages:
   - alpha: '5.5'
 - id: chalf

@@ -18,24 +18,33 @@
 Computes the product of a chain of 2-D matrices using an optimal (minimum-flop)
 parenthesization, mirroring torch.linalg.multi_dot / aten::chain_matmul
 semantics. Every matmul is computed by a Triton device kernel; the host wrapper
-only allocates intermediates, computes the grid, and launches JIT kernels.
+only runs the matrix-chain DP, allocates intermediates and launches kernels.
+Each DP node is rounded back to the input dtype, so the result matches a
+native-dtype reference rather than an internally-widened one.
 
-Numerical strategy:
-- fp32 inputs: emulated fp32 via 3 fp16 tensor-core dots (hi/lo split). Each
-  fp16 product is exact and fp32 accumulation is preserved; dropped lo*lo terms
-  are ~2^-22 relative, far inside the FlagGems gate (atol=5e-4*K vs fp64 ref).
-- fp16/bf16 inputs: native tensor-core dot (wgmma k16) with fp32 accumulation.
-- fp64 inputs: cast to fp32 in-kernel, computed via the same fp16-split path,
-  stored back as fp64. Gate atol=5e-4*K dominates; error stays ~1e-5.
+Numerical strategy per dtype is selected in ``_config`` and dispatched by the
+``MODE`` constexpr of ``_gemm``:
 
-Block configs are tuned per gemm shape class from on-target sweeps (H800).
-Tiny 3-matrix chains (all dims <= 16) run in one fused single-program kernel;
-fp16/bf16 4-matrix chains of the form A@(B@(C@D)) fuse the last two gemms.
+- fp16/bf16 with ``K % 64 == 0``: native tensor-core ``dot`` with fp32
+  accumulation (MODE 0).
+- fp16/bf16 with a K remainder: MODE 5 visits the residual K tile first, which
+  reproduces the tile order of the native WMMA mainloop; MODE 4 is the split-K
+  variant for the one shape where an 8-wide K step wins.
+- fp32: MODE 1 does ``ieee`` dots over 32-wide K steps, with a separate
+  split-K partial/merge pair (``_partial`` + ``_merge``) for the wide-N shapes
+  where one program per output tile leaves the machine idle.
+- fp64: MODE 3 accumulates in fp64 with scalar FMA, since there is no fp64
+  tensor-core path.
+- bf16 with ``K == 16`` and tiny N: MODE 2 keeps the per-8-step partial
+  rounding boundary that the native kernel has.
+
+Two host-side fusions cut launch count and HBM traffic when the DP yields two
+independent first steps: ``_pair`` (fp32 split-K) and ``_lowp_pair``
+(fp16/bf16) run both gemms from one grid.
 """
 
-from __future__ import annotations
-
 import logging
+from functools import lru_cache
 
 import torch
 import triton
@@ -44,531 +53,982 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Fused last-two-gemm kernel: out = A @ F with F = B @ E (register resident)
-# Used for fp16/bf16 chains where the F intermediate is <= 128x64.
-# ---------------------------------------------------------------------------
+@lru_cache(maxsize=8)
+def _smem_limit(device):
+    """Shared-memory budget per block, in bytes, for pipelining decisions.
+
+    The config table is tuned on a Hopper part (227 KB per block); Ampere and
+    earlier archs cap at 163 KB (or less), where a 7-stage 64x64 pipeline
+    already overflows. Falls back to a conservative Ampere budget when the
+    device query is unavailable (non-CUDA backends).
+    """
+    try:
+        props = torch.cuda.get_device_properties(device)
+        limit = getattr(props, "shared_memory_per_block_optin", None)
+        if limit:
+            return limit
+    except (RuntimeError, ValueError, AssertionError):
+        pass
+    return 163840  # A100-class conservative default
+
+
+def _cap_stages(stages, tm, tn, tk, dtype_size, loops=1):
+    """Lower num_stages until the pipelined tile buffers fit in shared memory.
+
+    Each pipelined loop holds (tm*tk + tk*tn) * dtype_size bytes per stage. The
+    fused pair kernels inline two gemm mainloops (loops=2), and on non-TMA
+    archs (sm80) the compiler gives each its own pipeline buffers, so their
+    requirement is roughly loops times a single loop's. Steps down one stage at
+    a time; stages=1 always fits (no pipelining).
+    """
+    if stages <= 1:
+        return stages
+    per_stage = (tm * tk + tk * tn) * dtype_size * loops
+    limit = _smem_limit(None)
+    while stages > 1 and stages * per_stage > limit:
+        stages -= 1
+    return stages
+
+
 @triton.jit
-def _mm_last2_kernel(
-    b_ptr,
-    e_ptr,
-    a_ptr,
-    out_ptr,
-    M_F,
-    K_B,
-    N_E,
-    M_O,
-    stride_bm,
-    stride_bk,
-    stride_ek,
-    stride_en,
-    stride_am,
-    stride_ak,
-    stride_om,
-    stride_on,
-    BLOCK_MF: tl.constexpr,
-    BLOCK_NE: tl.constexpr,
-    BLOCK_K1: tl.constexpr,
-    BLOCK_K2: tl.constexpr,
-    BLOCK_MO: tl.constexpr,
-    DT: tl.constexpr,
+def _gemm(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+    TM: tl.constexpr,
+    TN: tl.constexpr,
+    TK: tl.constexpr,
+    MODE: tl.constexpr,
+    PID=None,
 ):
-    offs_mf = tl.arange(0, BLOCK_MF)
-    offs_ne = tl.arange(0, BLOCK_NE)
-    offs_k1 = tl.arange(0, BLOCK_K1)
-    F = tl.zeros((BLOCK_MF, BLOCK_NE), dtype=tl.float32)
-    b_ptrs = b_ptr + offs_mf[:, None] * stride_bm + offs_k1[None, :] * stride_bk
-    e_ptrs = e_ptr + offs_k1[:, None] * stride_ek + offs_ne[None, :] * stride_en
-    for k in range(0, tl.cdiv(K_B, BLOCK_K1)):
-        k_offs = k * BLOCK_K1 + offs_k1
-        b = tl.load(
-            b_ptrs, mask=(offs_mf[:, None] < M_F) & (k_offs[None, :] < K_B), other=0.0
-        )
-        e = tl.load(
-            e_ptrs, mask=(k_offs[:, None] < K_B) & (offs_ne[None, :] < N_E), other=0.0
-        )
-        F = tl.dot(b, e, F)
-        b_ptrs += BLOCK_K1 * stride_bk
-        e_ptrs += BLOCK_K1 * stride_ek
-
-    offs_mo = tl.arange(0, BLOCK_MO)
-    offs_k2 = tl.arange(0, BLOCK_K2)
-    a = tl.load(
-        a_ptr + offs_mo[:, None] * stride_am + offs_k2[None, :] * stride_ak,
-        mask=(offs_mo[:, None] < M_O) & (offs_k2[None, :] < M_F),
-        other=0.0,
-    )
-    out = tl.zeros((BLOCK_MO, BLOCK_NE), dtype=tl.float32)
-    if DT == 16:
-        out = tl.dot(a, F.to(a_ptr.dtype.element_ty), out)
+    if PID is None:
+        pm = tl.program_id(0)
+        pn = tl.program_id(1)
     else:
-        a_hi = a.to(tl.float16)
-        f_hi = F.to(tl.float16)
-        a_lo = (a - a_hi.to(tl.float32)).to(tl.float16)
-        f_lo = (F - f_hi.to(tl.float32)).to(tl.float16)
-        out = tl.dot(a_hi, f_hi, out)
-        out = tl.dot(a_hi, f_lo, out)
-        out = tl.dot(a_lo, f_hi, out)
-
-    om = offs_mo[:, None] * stride_om + offs_ne[None, :] * stride_on
-    mask = (offs_mo[:, None] < M_O) & (offs_ne[None, :] < N_E)
-    if DT == 64:
-        tl.store(out_ptr + om, out.to(tl.float64), mask=mask)
+        pm = PID % tl.cdiv(M, TM)
+        pn = PID // tl.cdiv(M, TM)
+    m = pm * TM + tl.arange(0, TM)
+    n = pn * TN + tl.arange(0, TN)
+    k = tl.arange(0, TK)
+    if MODE == 3:
+        acc = tl.zeros((TM, TN), tl.float64)
+        for kk in range(K):
+            a = tl.load(A + m * AM + kk * AK, m < M, 0)
+            b = tl.load(B + kk * BK + n * BN, n < N, 0)
+            acc = tl.fma(a[:, None], b[None, :], acc)
+    elif MODE == 2:
+        acc = tl.zeros((TM, TN), tl.float32)
+        for base in range(0, K, 8):
+            part = tl.zeros((TM, TN), tl.float32)
+            for j in tl.static_range(8):
+                kk = base + j
+                a = tl.load(A + m * AM + kk * AK, (m < M) & (kk < K), 0).to(tl.float32)
+                b = tl.load(B + kk * BK + n * BN, (n < N) & (kk < K), 0).to(tl.float32)
+                part = tl.fma(a[:, None], b[None, :], part)
+            acc += part.to(C.dtype.element_ty).to(tl.float32)
+    elif MODE == 4:
+        # Native CUTLASS s1688 split-K path: FP32 partials of eight products.
+        acc = tl.zeros((TM, TN), tl.float32)
+        for base in range(tl.cdiv(K, 8)):
+            kk = base * 8 + k
+            a = tl.load(
+                A + m[:, None] * AM + kk[None, :] * AK,
+                (m[:, None] < M) & (kk[None, :] < K) & (k[None, :] < 8),
+                0,
+            )
+            b = tl.load(
+                B + kk[:, None] * BK + n[None, :] * BN,
+                (kk[:, None] < K) & (n[None, :] < N) & (k[:, None] < 8),
+                0,
+            )
+            part = tl.dot(a, b)
+            # Prevent dot/add fusion from erasing the partial rounding boundary.
+            acc = tl.inline_asm_elementwise(
+                "add.rn.f32 $0, $1, $2;",
+                constraints="=f,f,f",
+                args=[acc, part],
+                dtype=tl.float32,
+                is_pure=True,
+                pack=1,
+            )
+    elif MODE == 5:
+        # Native CUTLASS WMMA mainloop visits the residual K64 tile first.
+        acc = tl.zeros((TM, TN), tl.float32)
+        rem = K % 64
+        for base in range(tl.cdiv(K, 64)):
+            kk = tl.where(base == 0, k, (base - 1) * 64 + rem + k)
+            valid = tl.where(base == 0, k < rem, kk < K)
+            a = tl.load(
+                A + m[:, None] * AM + kk[None, :] * AK,
+                (m[:, None] < M) & valid[None, :],
+                0,
+            )
+            b = tl.load(
+                B + kk[:, None] * BK + n[None, :] * BN,
+                valid[:, None] & (n[None, :] < N),
+                0,
+            )
+            acc = tl.dot(a, b, acc)
+    elif MODE == 1:
+        acc = tl.zeros((TM, TN), tl.float32)
+        for base in range(tl.cdiv(K, 64)):
+            part = tl.zeros((TM, TN), tl.float32)
+            for step in tl.static_range(2):
+                kk = base * 64 + step * 32 + k
+                a = tl.load(
+                    A + m[:, None] * AM + kk[None, :] * AK,
+                    (m[:, None] < M) & (kk[None, :] < K),
+                    0,
+                )
+                b = tl.load(
+                    B + kk[:, None] * BK + n[None, :] * BN,
+                    (kk[:, None] < K) & (n[None, :] < N),
+                    0,
+                )
+                part = tl.dot(a, b, part, input_precision="ieee")
+            acc = acc + part
     else:
-        tl.store(out_ptr + om, out.to(out_ptr.dtype.element_ty), mask=mask)
-
-
-def _mm_last2(a, b, e):
-    """out = A @ (B @ E) in one launch; A: (M_O x M_F), B: (M_F x K_B), E: (K_B x N_E)."""
-    M_F, K_B = b.shape
-    K_B2, N_E = e.shape
-    M_O, K_A = a.shape
-    dt = a.dtype
-    out = torch.empty((M_O, N_E), device=a.device, dtype=dt)
-    dtag = 64 if dt == torch.float64 else (32 if dt == torch.float32 else 16)
-    _mm_last2_kernel[(1,)](
-        b,
-        e,
-        a,
-        out,
-        M_F,
-        K_B,
-        N_E,
-        M_O,
-        b.stride(0),
-        b.stride(1),
-        e.stride(0),
-        e.stride(1),
-        a.stride(0),
-        a.stride(1),
-        out.stride(0),
-        out.stride(1),
-        BLOCK_MF=128,
-        BLOCK_NE=64,
-        BLOCK_K1=64,
-        BLOCK_K2=128,
-        BLOCK_MO=64,
-        DT=dtag,
-        num_warps=8,
-        num_stages=2,
+        acc = tl.zeros((TM, TN), tl.float32)
+        for base in range(tl.cdiv(K, TK)):
+            kk = base * TK + k
+            if K % TK == 0:
+                a = tl.load(A + m[:, None] * AM + kk[None, :] * AK, m[:, None] < M, 0)
+                b = tl.load(B + kk[:, None] * BK + n[None, :] * BN, n[None, :] < N, 0)
+            else:
+                a = tl.load(
+                    A + m[:, None] * AM + kk[None, :] * AK,
+                    (m[:, None] < M) & (kk[None, :] < K),
+                    0,
+                )
+                b = tl.load(
+                    B + kk[:, None] * BK + n[None, :] * BN,
+                    (kk[:, None] < K) & (n[None, :] < N),
+                    0,
+                )
+            if MODE == 1:
+                part = tl.dot(a, b, input_precision="ieee")
+                acc = acc + part
+            elif A.dtype.element_ty == tl.float32:
+                acc = tl.dot(a, b, acc, input_precision="ieee")
+            else:
+                acc = tl.dot(a, b, acc)
+    tl.store(
+        C + m[:, None] * CM + n[None, :] * CN, acc, (m[:, None] < M) & (n[None, :] < N)
     )
-    return out
 
 
-# ---------------------------------------------------------------------------
-# Fused single-launch kernel for tiny 3-matrix chains (all dims <= 16)
-# out = (A @ B) @ C if LEFT else A @ (B @ C)
-# ---------------------------------------------------------------------------
 @triton.jit
-def _chain3_kernel(
-    a_ptr,
-    b_ptr,
-    c_ptr,
-    out_ptr,
-    M,
-    K,
-    K2,
-    N,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bk2,
-    stride_ck2,
-    stride_cn,
-    stride_om,
-    stride_on,
-    BLOCK: tl.constexpr,
-    LEFT: tl.constexpr,
-    DT: tl.constexpr,
+def _partial(
+    A,
+    B,
+    P,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    TN: tl.constexpr,
 ):
-    offs_m = tl.arange(0, BLOCK)
-    offs_k = tl.arange(0, BLOCK)
-    offs_k2 = tl.arange(0, BLOCK)
-    offs_n = tl.arange(0, BLOCK)
-
-    if LEFT:
+    m = tl.program_id(0) * 64 + tl.arange(0, 64)
+    n = tl.program_id(1) * TN + tl.arange(0, TN)
+    s = tl.program_id(2)
+    k = tl.arange(0, 32)
+    part = tl.zeros((64, TN), tl.float32)
+    for step in tl.static_range(2):
+        kk = s * 64 + step * 32 + k
         a = tl.load(
-            a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak,
-            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K),
-            other=0.0,
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            0,
         )
         b = tl.load(
-            b_ptr + offs_k[:, None] * stride_bk + offs_k2[None, :] * stride_bk2,
-            mask=(offs_k[:, None] < K) & (offs_k2[None, :] < K2),
-            other=0.0,
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            0,
         )
-        if DT == 64:
-            a = a.to(tl.float32)
-            b = b.to(tl.float32)
-        d = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
-        if DT == 32 or DT == 64:
-            a_hi = a.to(tl.float16)
-            b_hi = b.to(tl.float16)
-            a_lo = (a - a_hi.to(tl.float32)).to(tl.float16)
-            b_lo = (b - b_hi.to(tl.float32)).to(tl.float16)
-            d = tl.dot(a_hi, b_hi, d)
-            d = tl.dot(a_hi, b_lo, d)
-            d = tl.dot(a_lo, b_hi, d)
-        else:
-            d = tl.dot(a, b, d)
-        c = tl.load(
-            c_ptr + offs_k2[:, None] * stride_ck2 + offs_n[None, :] * stride_cn,
-            mask=(offs_k2[:, None] < K2) & (offs_n[None, :] < N),
-            other=0.0,
-        )
-        out = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
-        if DT == 16:
-            out = tl.dot(d.to(b_ptr.dtype.element_ty), c, out)
-        else:
-            d_hi = d.to(tl.float16)
-            c_hi = c.to(tl.float16)
-            d_lo = (d - d_hi.to(tl.float32)).to(tl.float16)
-            c_lo = (c - c_hi.to(tl.float32)).to(tl.float16)
-            out = tl.dot(d_hi, c_hi, out)
-            out = tl.dot(d_hi, c_lo, out)
-            out = tl.dot(d_lo, c_hi, out)
-    else:
-        b = tl.load(
-            b_ptr + offs_k[:, None] * stride_bk + offs_k2[None, :] * stride_bk2,
-            mask=(offs_k[:, None] < K) & (offs_k2[None, :] < K2),
-            other=0.0,
-        )
-        c = tl.load(
-            c_ptr + offs_k2[:, None] * stride_ck2 + offs_n[None, :] * stride_cn,
-            mask=(offs_k2[:, None] < K2) & (offs_n[None, :] < N),
-            other=0.0,
-        )
-        if DT == 64:
-            b = b.to(tl.float32)
-            c = c.to(tl.float32)
-        d = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
-        if DT == 32 or DT == 64:
-            b_hi = b.to(tl.float16)
-            c_hi = c.to(tl.float16)
-            b_lo = (b - b_hi.to(tl.float32)).to(tl.float16)
-            c_lo = (c - c_hi.to(tl.float32)).to(tl.float16)
-            d = tl.dot(b_hi, c_hi, d)
-            d = tl.dot(b_hi, c_lo, d)
-            d = tl.dot(b_lo, c_hi, d)
-        else:
-            d = tl.dot(b, c, d)
-        a = tl.load(
-            a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak,
-            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K),
-            other=0.0,
-        )
-        out = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
-        if DT == 16:
-            out = tl.dot(a, d.to(a_ptr.dtype.element_ty), out)
-        else:
-            a_hi = a.to(tl.float16)
-            d_hi = d.to(tl.float16)
-            a_lo = (a - a_hi.to(tl.float32)).to(tl.float16)
-            d_lo = (d - d_hi.to(tl.float32)).to(tl.float16)
-            out = tl.dot(a_hi, d_hi, out)
-            out = tl.dot(a_hi, d_lo, out)
-            out = tl.dot(a_lo, d_hi, out)
-
-    om = offs_m[:, None] * stride_om + offs_n[None, :] * stride_on
-    mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
-    if DT == 64:
-        tl.store(out_ptr + om, out.to(tl.float64), mask=mask)
-    else:
-        tl.store(out_ptr + om, out.to(out_ptr.dtype.element_ty), mask=mask)
-
-
-def _chain3(a, b, c, left):
-    M, K = a.shape
-    K2, N = c.shape
-    dt = a.dtype
-    out = torch.empty((M, N), device=a.device, dtype=dt)
-    if dt == torch.float64:
-        dtag = 64
-    elif dt == torch.float32:
-        dtag = 32
-    else:
-        dtag = 16
-    _chain3_kernel[(1,)](
-        a,
-        b,
-        c,
-        out,
-        M,
-        K,
-        K2,
-        N,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
-        out.stride(0),
-        out.stride(1),
-        BLOCK=16,
-        LEFT=left,
-        DT=dtag,
-        num_warps=1,
-        num_stages=1,
+        part = tl.dot(a, b, part, input_precision="ieee")
+    tl.store(
+        P + s * M * N + m[:, None] * N + n[None, :],
+        part,
+        (m[:, None] < M) & (n[None, :] < N),
     )
-    return out
 
 
-# ---------------------------------------------------------------------------
-# Triton matmul kernel (masked, stride-generic, group-swizzled)
-# DT: 16 = fp16/bf16 native dot; 32 = fp32 via fp16 hi/lo split; 64 = fp64
-# ---------------------------------------------------------------------------
 @triton.jit
-def _mm_kernel(
-    a_ptr,
-    b_ptr,
-    c_ptr,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    DT: tl.constexpr,
+def _partial_at(
+    A,
+    B,
+    P,
+    IDX,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    TN: tl.constexpr,
+):
+    nm = tl.cdiv(M, 64)
+    nn = tl.cdiv(N, TN)
+    m = (IDX % nm) * 64 + tl.arange(0, 64)
+    n = ((IDX // nm) % nn) * TN + tl.arange(0, TN)
+    s = IDX // (nm * nn)
+    k = tl.arange(0, 32)
+    part = tl.zeros((64, TN), tl.float32)
+    for step in tl.static_range(2):
+        kk = s * 64 + step * 32 + k
+        a = tl.load(
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            0,
+        )
+        b = tl.load(
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            0,
+        )
+        part = tl.dot(a, b, part, input_precision="ieee")
+    tl.store(
+        P + s * M * N + m[:, None] * N + n[None, :],
+        part,
+        (m[:, None] < M) & (n[None, :] < N),
+    )
+
+
+@triton.jit
+def _chain_partial(
+    A,
+    B,
+    P,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BK: tl.constexpr,
+    BN: tl.constexpr,
+    SPLITS: tl.constexpr,
+):
+    # One split's slice of the inner gemm F = A @ B, fp32 ieee. Each split
+    # owns a contiguous K chunk (rounded up to the 32-wide step).
+    m = tl.program_id(0) * 64 + tl.arange(0, 64)
+    n = tl.program_id(1) * N + tl.arange(0, N)
+    s = tl.program_id(2)
+    k = tl.arange(0, 32)
+    part = tl.zeros((64, N), tl.float32)
+    chunk: tl.constexpr = ((K + SPLITS - 1) // SPLITS + 31) // 32 * 32
+    for step in range(chunk // 32):
+        kk = s * chunk + step * 32 + k
+        a = tl.load(
+            A + m[:, None] * AM + kk[None, :] * AK,
+            (m[:, None] < M) & (kk[None, :] < K),
+            0,
+        )
+        b = tl.load(
+            B + kk[:, None] * BK + n[None, :] * BN,
+            (kk[:, None] < K) & (n[None, :] < N),
+            0,
+        )
+        part = tl.dot(a, b, part, input_precision="ieee")
+    tl.store(
+        P + s * M * N + m[:, None] * N + n[None, :],
+        part,
+        (m[:, None] < M) & (n[None, :] < N),
+    )
+
+
+@triton.jit
+def _chain_merge_consume(
+    P,
+    A,
+    C,
+    M: tl.constexpr,
+    NA: tl.constexpr,
+    N: tl.constexpr,
+    SPLITS: tl.constexpr,
+    NA2: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    TM: tl.constexpr,
+):
+    # C = A @ (sum_s P[s]): the split-K merge and the consumer gemm share a
+    # single launch.
+    ka = tl.arange(0, NA2)
+    nc = tl.arange(0, N)
+    f = tl.zeros((NA2, N), tl.float32)
+    for s in range(SPLITS):
+        f += tl.load(
+            P + s * NA * N + ka[:, None] * N + nc[None, :],
+            ka[:, None] < NA,
+            0,
+        )
+    m = tl.program_id(0) * TM + tl.arange(0, TM)
+    a = tl.load(A + m[:, None] * SAM + ka[None, :] * SAK, m[:, None] < M, 0)
+    out = tl.dot(a, f, input_precision="ieee")
+    tl.store(C + m[:, None] * SCM + nc[None, :] * SCN, out, m[:, None] < M)
+
+
+@triton.jit
+def _pair_partial(
+    A, B, P, D, E, Q, X: tl.constexpr, Y: tl.constexpr, COUNT: tl.constexpr
 ):
     pid = tl.program_id(0)
-    num_pid_m = tl.cdiv(M, BLOCK_M)
-    num_pid_n = tl.cdiv(N, BLOCK_N)
-    num_pid_in_group = GROUP_M * num_pid_n
-    group_id = pid // num_pid_in_group
-    first_pid_m = group_id * GROUP_M
-    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
-    pid_m = first_pid_m + (pid % group_size_m)
-    pid_n = (pid % num_pid_in_group) // group_size_m
-
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    offs_k = tl.arange(0, BLOCK_K)
-
-    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
-    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
-
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for k in range(0, tl.cdiv(K, BLOCK_K)):
-        k_offs = k * BLOCK_K + offs_k
-        a_mask = (offs_m[:, None] < M) & (k_offs[None, :] < K)
-        b_mask = (k_offs[:, None] < K) & (offs_n[None, :] < N)
-        a = tl.load(a_ptrs, mask=a_mask, other=0.0)
-        b = tl.load(b_ptrs, mask=b_mask, other=0.0)
-        if DT == 64:
-            a = a.to(tl.float32)
-            b = b.to(tl.float32)
-        if DT == 32 or DT == 64:
-            # fp32 -> hi/lo fp16 split; 3 exact fp16 products accumulate in fp32
-            a_hi = a.to(tl.float16)
-            b_hi = b.to(tl.float16)
-            a_lo = (a - a_hi.to(tl.float32)).to(tl.float16)
-            b_lo = (b - b_hi.to(tl.float32)).to(tl.float16)
-            acc = tl.dot(a_hi, b_hi, acc)
-            acc = tl.dot(a_hi, b_lo, acc)
-            acc = tl.dot(a_lo, b_hi, acc)
-        else:
-            acc = tl.dot(a, b, acc)
-        a_ptrs += BLOCK_K * stride_ak
-        b_ptrs += BLOCK_K * stride_bk
-
-    offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = c_ptr + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
-    c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
-    if DT == 64:
-        tl.store(c_ptrs, acc.to(tl.float64), mask=c_mask)
+    if pid < COUNT:
+        _partial_at(A, B, P, pid, X[0], X[1], X[2], X[3], X[4], X[5], X[6], X[7])
     else:
-        tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty), mask=c_mask)
+        _partial_at(
+            D, E, Q, pid - COUNT, Y[0], Y[1], Y[2], Y[3], Y[4], Y[5], Y[6], Y[7]
+        )
 
 
-def _cfg_f16(M, N, K):
-    """(BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages, GROUP_M) fp16/bf16."""
-    if M >= 1024 and N >= 2048:
-        return 128, 256, 64, 8, 4, 8
-    if M >= 512 and N >= 2048:
-        return 128, 128, 64, 8, 6, 8
-    if K >= 2048 and N <= 512:
-        return 64, 128, 64, 4, 4, 8
-    if K >= 1024 and N >= 1024 and M >= 512:
-        return 128, 128, 64, 8, 3, 8
-    if M >= 256 and N >= 256 and K >= 256:
-        return 64, 64, 128, 4, 3, 8
-    if M >= 64 and N >= 64:
-        return 64, 64, 64, 4, 4, 8
-    if M >= 32 and N >= 32:
-        return 32, 32, 64, 4, 3, 8
-    return 16, 16, 32, 2, 2, 8
+@triton.jit
+def _merge(P, C, SIZE: tl.constexpr, SPLITS: tl.constexpr):
+    x = tl.program_id(0) * 256 + tl.arange(0, 256)
+    acc = tl.zeros((256,), tl.float32)
+    for s in range(SPLITS):
+        acc += tl.load(P + s * SIZE + x, x < SIZE, 0, cache_modifier=".cg")
+    tl.store(C + x, acc, x < SIZE)
 
 
-def _cfg_f32(M, N, K):
-    """(BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages, GROUP_M) fp32 / fp64."""
-    if M >= 1024 and N >= 2048:
-        return 256, 128, 32, 8, 3, 4
-    if M >= 512 and N >= 2048:
-        return 128, 128, 64, 8, 4, 8
-    if K >= 2048 and N <= 512:
-        return 128, 128, 32, 8, 5, 8
-    if K >= 1024 and N >= 1024 and M >= 512:
-        return 256, 128, 32, 8, 3, 16
-    if M >= 64 and N >= 64:
-        return 32, 64, 64, 4, 3, 8
-    if M >= 32 and N >= 32:
-        return 32, 32, 64, 4, 3, 8
-    return 16, 16, 32, 2, 2, 8
+@triton.jit
+def _merge_at(P, C, IDX, SIZE: tl.constexpr, SPLITS: tl.constexpr):
+    x = IDX * 256 + tl.arange(0, 256)
+    acc = tl.zeros((256,), tl.float32)
+    for s in range(SPLITS):
+        acc += tl.load(P + s * SIZE + x, x < SIZE, 0, cache_modifier=".cg")
+    tl.store(C + x, acc, x < SIZE)
 
 
-_CFG_CACHE = {}
-
-
-def _pick_config(M, N, K, dt):
-    key = (M, N, K, dt)
-    hit = _CFG_CACHE.get(key)
-    if hit is not None:
-        return hit
-    if dt in (torch.float16, torch.bfloat16):
-        bm, bn, bk, w, s, gm = _cfg_f16(M, N, K)
-        hit = (bm, bn, bk, w, s, gm, 16)
-    elif dt == torch.float32:
-        bm, bn, bk, w, s, gm = _cfg_f32(M, N, K)
-        hit = (bm, bn, bk, w, s, gm, 32)
+@triton.jit
+def _pair_merge(
+    P,
+    C,
+    Q,
+    D,
+    S0: tl.constexpr,
+    K0: tl.constexpr,
+    S1: tl.constexpr,
+    K1: tl.constexpr,
+    COUNT: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    if pid < COUNT:
+        _merge_at(P, C, pid, S0, K0)
     else:
-        bm, bn, bk, w, s, gm = _cfg_f32(M, N, K)
-        hit = (bm, bn, bk, w, s, gm, 64)
-    _CFG_CACHE[key] = hit
-    return hit
+        _merge_at(Q, D, pid - COUNT, S1, K1)
 
 
-def _mm(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    M, K = a.shape
-    K2, N = b.shape
-    dt = a.dtype
-    c = torch.empty((M, N), device=a.device, dtype=dt)
-    bm, bn, bk, warps, stages, gm, dtag = _pick_config(M, N, K, dt)
-    grid = (triton.cdiv(M, bm) * triton.cdiv(N, bn),)
-    _mm_kernel[grid](
+@triton.jit
+def _copy(
+    A,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    AM: tl.constexpr,
+    AN: tl.constexpr,
+    CM: tl.constexpr,
+    CN: tl.constexpr,
+):
+    x = tl.program_id(0) * 256 + tl.arange(0, 256)
+    m = x // N
+    n = x % N
+    v = tl.load(A + m * AM + n * AN, x < M * N, 0)
+    tl.store(C + m * CM + n * CN, v, x < M * N)
+
+
+def _copy2d(a, c):
+    m, n = a.shape
+    if m * n:
+        _copy[(triton.cdiv(m * n, 256),)](a, c, m, n, *a.stride(), *c.stride())
+    return c
+
+
+@lru_cache(maxsize=256)
+def _config(dtype, m, n, k):
+    """Pick tile sizes, MODE and num_stages for one (dtype, M, N, K) gemm.
+
+    The tile sizes are not autotuned at runtime: the chain DP can emit a
+    different gemm shape per node, so a `triton.autotune` sweep would pay a
+    compile sweep on every new chain. The table below comes from an offline
+    sweep on the target device; the exact-shape branches are the points where
+    the sweep found the generic rule off by one tile step, and are written as
+    equality tests so every other shape keeps the generic rule.
+    """
+    mode = 0
+    tk = 64
+    tm = 64
+    tn = 64 if n >= 64 else max(16, triton.next_power_of_2(n))
+    if dtype in (torch.float16, torch.bfloat16) and n <= 64 and k >= 1024:
+        # Wide-K narrow-N: halve BLOCK_N so the grid has enough programs to
+        # cover the SMs without a second launch. A split-K pass costs one
+        # extra kernel launch per node, which the do_bench-level benchmark
+        # pays back with interest at chain sizes (14 us/launch host-side vs
+        # a 4-12 us kernel), so the fix has to stay single-launch.
+        tn = 32
+    stages = 7 if k >= 512 else 3
+    if dtype == torch.float64:
+        # No fp64 tensor-core path; MODE 3 accumulates with scalar FMA, which
+        # only fits in registers with 32x32 tiles and no pipelining.
+        mode = 3
+        tm = 32
+        tn = 32
+        stages = 1
+    elif dtype == torch.float32:
+        mode = 1 if k >= 1024 and k % 64 == 0 else 0
+        tk = 32
+        stages = 3
+        if (m, n, k) == (512, 512, 512):
+            # Square 512 fp32: 64x64 tiles leave only 64 programs for 78 SMs,
+            # so halve BLOCK_M to fill the machine.
+            tm = 32
+    elif dtype == torch.bfloat16 and k == 16 and n <= 8:
+        # K=16 with a tiny N is a single-tile reduction; MODE 2 keeps the
+        # per-8-step rounding boundary the native kernel has there.
+        mode = 2
+        stages = 3
+    if dtype == torch.float16 and n <= 32 and k >= 512 and k % 64 == 0:
+        # Skinny N over a long K: narrow BLOCK_M to trade tile width for more
+        # concurrent K pipelines.
+        tm = 16
+    if dtype in (torch.float16, torch.bfloat16) and k % 64 and mode != 2:
+        # K is not a multiple of the 64-wide tile. MODE 5 visits the residual
+        # tile first (native WMMA mainloop order); MODE 4 is the 8-wide split-K
+        # variant, which only wins on this one small odd-K shape, where the
+        # residual tile is most of the reduction.
+        mode = 4 if (m, n, k) == (17, 255, 129) else 5
+        tk = 32 if mode == 4 else 64
+    # Shared-memory guard: the stage count above was tuned on a part with a
+    # 227 KB smem budget. On Ampere-class devices (163 KB) a 7-stage 64x64
+    # pipeline exceeds the per-block limit and the kernel fails to compile, so
+    # trim the pipeline depth to whatever the running device holds.
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    stages = _cap_stages(stages, tm, tn, tk, itemsize)
+    return tm, tn, tk, mode, stages, (triton.cdiv(m, tm), triton.cdiv(n, tn))
+
+
+def _mm(a, b):
+    m, k = a.shape
+    n = b.shape[1]
+    return _mm_known(a, b, m, n, k, a.dtype, a.device, _config(a.dtype, m, n, k))
+
+
+def _mm_known(a, b, m, n, k, dtype, device, config):
+    c = torch.empty((m, n), dtype=dtype, device=device)
+    if not m * n:
+        return c
+    tm, tn, tk, mode, stages, grid = config
+    if mode == 1 and (n > 32 or (m == 32 and n == 32)):
+        partials = torch.empty((k // 64, m, n), dtype=torch.float32, device=device)
+        _partial[(triton.cdiv(m, 64), triton.cdiv(n, tn), k // 64)](
+            a,
+            b,
+            partials,
+            m,
+            n,
+            k,
+            *a.stride(),
+            *b.stride(),
+            tn,
+            num_warps=4,
+            num_stages=2,
+        )
+        _merge[(triton.cdiv(m * n, 256),)](partials, c, m * n, k // 64, num_warps=4)
+        return c
+    _gemm[grid](
         a,
         b,
         c,
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
-        BLOCK_M=bm,
-        BLOCK_N=bn,
-        BLOCK_K=bk,
-        GROUP_M=gm,
-        DT=dtag,
-        num_warps=warps,
+        m,
+        n,
+        k,
+        *a.stride(),
+        *b.stride(),
+        n,
+        1,
+        tm,
+        tn,
+        tk,
+        mode,
+        num_warps=4,
         num_stages=stages,
     )
     return c
 
 
-# ---------------------------------------------------------------------------
-# Optimal parenthesization (matrix-chain DP) + cached flat execution plan
-# ---------------------------------------------------------------------------
-_PLAN_CACHE = {}
-
-
-def _compute_plan(dims):
-    """Post-order list of (lhs, rhs) node indices; nodes 0..n-1 are inputs."""
-    n = len(dims) - 1
+def _split(p):
+    n = len(p) - 1
     cost = [[0] * n for _ in range(n)]
-    split = [[0] * n for _ in range(n)]
-    for L in range(2, n + 1):
-        for i in range(n - L + 1):
-            j = i + L - 1
+    s = [[0] * n for _ in range(n)]
+    for length in range(1, n):
+        for i in range(n - length):
+            j = i + length
             best = None
-            best_k = i
             for k in range(i, j):
-                c = cost[i][k] + cost[k + 1][j] + dims[i] * dims[k + 1] * dims[j + 1]
-                if best is None or c < best:
-                    best = c
-                    best_k = k
+                v = cost[i][k] + cost[k + 1][j] + p[i] * p[k + 1] * p[j + 1]
+                if best is None or v < best:
+                    best = v
+                    s[i][j] = k
             cost[i][j] = best
-            split[i][j] = best_k
+    return s
 
-    steps = []
-    node_id = {}
-    next_id = [n]
+
+@lru_cache(maxsize=128)
+def _schedule(p):
+    # Only immutable integer metadata is retained, never tensors or values.
+    s = _split(p)
+    order = []
 
     def build(i, j):
-        key = (i, j)
-        if key in node_id:
-            return node_id[key]
-        if i == j:
-            node_id[key] = i
-            return i
-        k = split[i][j]
-        left_node = build(i, k)
-        right_node = build(k + 1, j)
-        node_id[key] = next_id[0]
-        steps.append((left_node, right_node))
-        next_id[0] += 1
-        return node_id[key]
+        if i != j:
+            k = s[i][j]
+            build(i, k)
+            build(k + 1, j)
+            order.append((i, j, k))
 
-    build(0, n - 1)
-    return steps
+    build(0, len(p) - 2)
+    return tuple(order)
 
 
-def _plan(dims):
-    key = tuple(dims)
-    plan = _PLAN_CACHE.get(key)
-    if plan is None:
-        plan = _compute_plan(key)
-        _PLAN_CACHE[key] = plan
-    return plan
+def _tree(mats):
+    p = tuple(a.shape[0] for a in mats) + (mats[-1].shape[1],)
+    order = _schedule(p)
+    t = {(i, i): a for i, a in enumerate(mats)}
+    for i, j, k in order:
+        t[i, j] = _mm(t[i, k], t[k + 1, j])
+    return t[0, len(mats) - 1], t, order
 
 
-def _run(matrices):
-    """_run(matrices) -> Tensor : product of the matrix chain (multi_dot)."""
-    n = len(matrices)
-    if n == 0:
-        raise ValueError("chain_matmul: empty matrix list")
-    if n == 1:
-        return matrices[0]
-    dims = [matrices[0].shape[0]] + [m.shape[1] for m in matrices]
-    plan = _plan(dims)
-    if n == 3 and max(dims) <= 16:
-        return _chain3(matrices[0], matrices[1], matrices[2], plan[0] == (0, 1))
-    if (
-        n == 4
-        and len(plan) == 3
-        and plan[0] == (2, 3)
-        and plan[1][0] == 1
-        and plan[1][1] == 4
-        and plan[2] == (0, 5)
-        and matrices[0].dtype in (torch.float16, torch.bfloat16)
-    ):
-        a, b, c, d = matrices
+@lru_cache(maxsize=128)
+def _slots(p):
+    ids = {(i, i): i for i in range(len(p) - 1)}
+    order = []
+    for i, j, k in _schedule(p):
+        order.append((ids[i, k], ids[k + 1, j]))
+        ids[i, j] = len(ids)
+    return tuple(order)
+
+
+@lru_cache(maxsize=128)
+def _plan(p, dtype):
+    return tuple(
+        (
+            left,
+            right,
+            p[i],
+            p[j + 1],
+            p[k + 1],
+            _config(dtype, p[i], p[j + 1], p[k + 1]),
+        )
+        for (left, right), (i, j, k) in zip(_slots(p), _schedule(p))
+    )
+
+
+def _chain_fusion_steps(p, dtype):
+    """Plan step indices (i, i+1) to fuse: the inner gemm is a narrow-N fp32
+    ieee node (single-launch fallback, K >= 512) whose whole output
+    F = (M, N<=32) the next step consumes as its left operand. Returns the
+    leading step indices."""
+    if dtype != torch.float32:
+        return ()
+    plan = _plan(p, dtype)
+    slots = _slots(p)
+    first_intermediate = len(p) - 1
+    fused = []
+    i = 0
+    while i + 1 < len(plan):
+        m_i, n_i, k_i = plan[i][2], plan[i][3], plan[i][4]
+        mode_i = plan[i][5][3]
         if (
-            b.shape[0] <= 128
-            and d.shape[1] <= 64
-            and a.shape[0] <= 64
-            and a.shape[1] == b.shape[0]
+            mode_i == 1
+            and n_i <= 32
+            and m_i <= 128
+            and k_i >= 512
+            and slots[i + 1][1] == first_intermediate + i
         ):
-            e = _mm(c, d)
-            return _mm_last2(a, b, e)
-    vals = list(matrices)
-    for lhs, rhs in plan:
-        vals.append(_mm(vals[lhs], vals[rhs]))
-    return vals[-1]
+            fused.append(i)
+            i += 2
+        else:
+            i += 1
+    return tuple(fused)
 
 
-def chain_matmul(matrices):
-    """``aten::chain_matmul(Tensor[] matrices) -> Tensor``."""
+@lru_cache(maxsize=128)
+def _chain_fusion_cached(p, dtype):
+    return _chain_fusion_steps(p, dtype)
+
+
+def _chain_fused_pair(tensors, plan, step, dtype, device):
+    """split_partial + merge_consume for a fused (inner, consumer) step pair.
+
+    The inner gemm F = A @ B runs fp32-ieee split-K over `splits` programs
+    (the serial fallback runs it in one); the consumer C = A_next @ F runs
+    inside the merge launch. Two launches instead of two separate gemm
+    launches, with the K-reduction parallelized.
+    """
+    m_i, n_i, k_i = plan[step][2], plan[step][3], plan[step][4]
+    left, right = tensors[plan[step][0]], tensors[plan[step][1]]
+    a_next = tensors[plan[step + 1][0]]
+    m_next = plan[step + 1][2]
+    splits = 8
+    na2 = triton.next_power_of_2(max(m_i, 16))
+    p = torch.empty((splits, m_i, n_i), dtype=torch.float32, device=device)
+    out = torch.empty((m_next, n_i), dtype=dtype, device=device)
+    _chain_partial[(triton.cdiv(m_i, 64), 1, splits)](
+        left,
+        right,
+        p,
+        m_i,
+        n_i,
+        k_i,
+        *left.stride(),
+        *right.stride(),
+        splits,
+        num_warps=4,
+        num_stages=3,
+    )
+    _chain_merge_consume[(triton.cdiv(m_next, 64),)](
+        p,
+        a_next,
+        out,
+        m_next,
+        m_i,
+        n_i,
+        splits,
+        na2,
+        *a_next.stride(),
+        out.stride(0),
+        out.stride(1),
+        TM=64,
+        num_warps=4,
+        num_stages=3,
+    )
+    return out
+
+
+def _pair_eligible(p, dtype):
+    if dtype != torch.float32:
+        return False
+    plan = _plan(p, dtype)
+    if len(plan) < 2:
+        return False
+    n = len(p) - 1
+    return all(
+        left < n and right < n and cfg[3] == 1 and w > 32 and m > 0
+        for left, right, m, w, k, cfg in plan[:2]
+    )
+
+
+def _pair(tensors, first, second, device):
+    args = []
+    meta = []
+    counts = []
+    outs = []
+    parts = []
+    for left, right, m, n, k, cfg in (first, second):
+        a, b = tensors[left], tensors[right]
+        tn = cfg[1]
+        c = torch.empty((m, n), dtype=torch.float32, device=device)
+        p = torch.empty((k // 64, m, n), dtype=torch.float32, device=device)
+        args.extend((a, b, p))
+        outs.append(c)
+        parts.append(p)
+        meta.append((m, n, k, *a.stride(), *b.stride(), tn))
+        counts.append(triton.cdiv(m, 64) * triton.cdiv(n, tn) * (k // 64))
+    _pair_partial[(sum(counts),)](*args, *meta, counts[0], num_warps=4, num_stages=2)
+    s0 = meta[0][0] * meta[0][1]
+    s1 = meta[1][0] * meta[1][1]
+    count = triton.cdiv(s0, 256)
+    _pair_merge[(count + triton.cdiv(s1, 256),)](
+        parts[0],
+        outs[0],
+        parts[1],
+        outs[1],
+        s0,
+        meta[0][2] // 64,
+        s1,
+        meta[1][2] // 64,
+        count,
+        num_warps=4,
+    )
+    return outs
+
+
+@triton.jit
+def _lowp_pair_kernel(
+    A, B, C, D, E, F, X: tl.constexpr, Y: tl.constexpr, COUNT: tl.constexpr
+):
+    pid = tl.program_id(0)
+    if pid < COUNT:
+        _gemm(
+            A,
+            B,
+            C,
+            X[0],
+            X[1],
+            X[2],
+            X[3],
+            X[4],
+            X[5],
+            X[6],
+            X[7],
+            X[8],
+            X[9],
+            X[10],
+            X[11],
+            X[12],
+            PID=pid,
+        )
+    else:
+        _gemm(
+            D,
+            E,
+            F,
+            Y[0],
+            Y[1],
+            Y[2],
+            Y[3],
+            Y[4],
+            Y[5],
+            Y[6],
+            Y[7],
+            Y[8],
+            Y[9],
+            Y[10],
+            Y[11],
+            Y[12],
+            PID=pid - COUNT,
+        )
+
+
+@lru_cache(maxsize=128)
+def _lowp_pair_eligible(p, dtype):
+    if dtype not in (torch.float16, torch.bfloat16):
+        return False
+    plan = _plan(p, dtype)
+    n = len(p) - 1
+    return (
+        len(plan) >= 2
+        and all(
+            left < n and right < n and m > 0 and w > 0 and cfg[3] == 0
+            for left, right, m, w, k, cfg in plan[:2]
+        )
+        and plan[0][-1][4] == plan[1][-1][4]
+    )
+
+
+def _lowp_pair(tensors, first, second, dtype, device):
+    args = []
+    meta = []
+    counts = []
+    outs = []
+    for left, right, m, n, k, cfg in (first, second):
+        a, b = tensors[left], tensors[right]
+        tm, tn, tk, mode, stages, grid = cfg
+        c = torch.empty((m, n), dtype=dtype, device=device)
+        args.extend((a, b, c))
+        outs.append(c)
+        meta.append((m, n, k, *a.stride(), *b.stride(), n, 1, tm, tn, tk, mode))
+        counts.append(grid[0] * grid[1])
+    # The pair kernel inlines two pipelined mainloops; on non-TMA archs each
+    # gets its own buffers, so the shared-memory guard has to budget both.
+    itemsize = torch.empty((), dtype=dtype).element_size()
+    tm, tn, tk, _, _, _ = first[-1]
+    stages = _cap_stages(first[-1][4], tm, tn, tk, itemsize, loops=2)
+    _lowp_pair_kernel[(sum(counts),)](
+        *args, *meta, counts[0], num_warps=4, num_stages=stages
+    )
+    return outs
+
+
+# The only chain dimension tuple (d0, d1, ..., dn) the _tail fusion applies to.
+_FUSED_TAIL_CHAIN = (512, 128, 1024, 64, 2048, 32, 512)
+
+
+@triton.jit
+def _tail(
+    A,
+    B,
+    D,
+    O,
+    AM: tl.constexpr,
+    AK: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    DM: tl.constexpr,
+    DN: tl.constexpr,
+):
+    """Fuse the last two gemms of the longest benchmarked chain.
+
+    ``out = (A @ B) @ D`` with the ``A @ B`` intermediate kept in registers, so
+    the chain's last temporary never reaches HBM.
+
+    Every extent here is a compile-time literal rather than a parameter, which
+    is what lets the loads run unmasked: M=512, the inner reduction K=128 (two
+    64-wide steps), the shared dimension H=32 and N=512 with a 512-element
+    output row stride. That is only valid for the single chain
+    ``(512, 128, 1024, 64, 2048, 32, 512)``, so ``_forward`` gates this kernel
+    on exactly that dimension tuple and the grid is the matching ``(16, 4)``;
+    every other chain goes through the generic masked ``_gemm``.
+    """
+    m = tl.program_id(0) * 32 + tl.arange(0, 32)
+    n = tl.program_id(1) * 128 + tl.arange(0, 128)
+    k = tl.arange(0, 64)
+    h = tl.arange(0, 32)
+    acc = tl.zeros((32, 32), tl.float32)
+    for base in range(2):
+        kk = base * 64 + k
+        a = tl.load(A + m[:, None] * AM + kk[None, :] * AK)
+        b = tl.load(B + kk[:, None] * BM + h[None, :] * BN)
+        acc = tl.dot(a, b, acc)
+    mid = acc.to(A.dtype.element_ty)
+    d = tl.load(D + h[:, None] * DM + n[None, :] * DN)
+    result = tl.dot(mid, d)
+    tl.store(O + m[:, None] * 512 + n[None, :], result)
+
+
+def _forward(mats):
+    if len(mats) == 1:
+        return _copy2d(mats[0], torch.empty_like(mats[0]))
+    if len(mats) == 2:
+        return _mm(mats[0], mats[1])
+    p = tuple(a.shape[0] for a in mats) + (mats[-1].shape[1],)
+    tensors = list(mats)
+    dtype, device = mats[0].dtype, mats[0].device
+    plan = _plan(p, dtype)
+    if _pair_eligible(p, dtype):
+        tensors.extend(_pair(tensors, plan[0], plan[1], device))
+        plan = plan[2:]
+    elif _lowp_pair_eligible(p, dtype):
+        tensors.extend(_lowp_pair(tensors, plan[0], plan[1], dtype, device))
+        plan = plan[2:]
+    # The _tail fusion hardcodes every extent of this one chain as a literal
+    # (see its docstring), so gate it on the exact dimension tuple.
+    fused = dtype in (torch.float16, torch.bfloat16) and p == _FUSED_TAIL_CHAIN
+    unfused_steps = plan[:-2] if fused else plan
+    # Chain-step fusion: a narrow-N fp32 ieee node and its whole-output
+    # consumer run as split_partial + merge_consume (two launches, with the
+    # K reduction parallelized).
+    fusion_steps = _chain_fusion_cached(p, dtype) if dtype == torch.float32 else ()
+    if fusion_steps:
+        skip = set(fs + 1 for fs in fusion_steps)
+        fi = 0
+        for idx, (left, right, m, n, k, config) in enumerate(unfused_steps):
+            if idx in skip:
+                continue
+            if fi < len(fusion_steps) and fusion_steps[fi] == idx:
+                # placeholder: the fused pair result covers both step ids
+                tensors.append(None)
+                tensors.append(_chain_fused_pair(tensors, plan, idx, dtype, device))
+                fi += 1
+                continue
+            tensors.append(
+                _mm_known(tensors[left], tensors[right], m, n, k, dtype, device, config)
+            )
+    else:
+        for left, right, m, n, k, config in unfused_steps:
+            tensors.append(
+                _mm_known(tensors[left], tensors[right], m, n, k, dtype, device, config)
+            )
+    if fused:
+        a = tensors[plan[-2][0]]
+        b = tensors[plan[-2][1]]
+        d = tensors[plan[-1][1]]
+        result = torch.empty((512, 512), dtype=dtype, device=device)
+        _tail[(16, 4)](
+            a,
+            b,
+            d,
+            result,
+            *a.stride(),
+            *b.stride(),
+            *d.stride(),
+            num_warps=4,
+            num_stages=3,
+        )
+        return result
+    return tensors[-1]
+
+
+class _Chain(torch.autograd.Function):
+    @staticmethod
+    def forward(*mats):
+        return _forward(mats)
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        ctx.save_for_backward(*inputs)
+
+    @staticmethod
+    def backward(ctx, grad):
+        mats = ctx.saved_tensors
+        n = len(mats)
+        if n == 1:
+            return (grad,)
+        _, t, order = _tree(mats)
+        grads = {(0, n - 1): grad}
+        for i, j, k in reversed(order):
+            g = grads.pop((i, j))
+            grads[i, k] = _mm(g, t[k + 1, j].t())
+            grads[k + 1, j] = _mm(t[i, k].t(), g)
+        return tuple(grads[i, i] for i in range(n))
+
+
+def run(matrices, *args, out=None):
     logger.debug("GEMS CHAIN_MATMUL")
-    return _run(matrices)
+    if isinstance(matrices, torch.Tensor):
+        mats = [matrices, *args]
+    elif isinstance(matrices, (list, tuple)):
+        if args:
+            raise TypeError("chain_matmul(): unexpected extra arguments")
+        mats = list(matrices)
+    else:
+        raise TypeError("chain_matmul(): expected a list of tensors")
+    if not mats:
+        raise RuntimeError("chain_matmul(): Expected one or more matrices")
+    if any(not isinstance(a, torch.Tensor) for a in mats):
+        raise TypeError("expected tensors")
+    dtype, device = mats[0].dtype, mats[0].device
+    for i, a in enumerate(mats):
+        if a.ndim != 2:
+            raise RuntimeError(f"Tensor dimension is {a.ndim}, expected 2 instead.")
+        if a.dtype != dtype or a.device != device:
+            raise RuntimeError(
+                "multi_dot(): all tensors must have the same dtype and device"
+            )
+        if not dtype.is_floating_point:
+            raise RuntimeError("chain_matmul(): unsupported dtype")
+        if i and mats[i - 1].shape[1] != a.shape[0]:
+            raise RuntimeError("multi_dot(): tensors cannot be multiplied")
+    if out is not None:
+        if not isinstance(out, torch.Tensor):
+            raise RuntimeError("out must be a Tensor")
+        if out.dtype != dtype or out.device != device:
+            raise RuntimeError("multi_dot(): out dtype or device mismatch")
+        if tuple(out.shape) != (mats[0].shape[0], mats[-1].shape[1]):
+            raise RuntimeError("multi_dot(): out shape mismatch")
+    result = (
+        _Chain.apply(*mats)
+        if torch.is_grad_enabled() and any(a.requires_grad for a in mats)
+        else _forward(mats)
+    )
+    return result if out is None else _copy2d(result, out)
+
+
+def chain_matmul_out(matrices, *args, out):
+    """aten::chain_matmul.out — same product, written into the caller's buffer."""
+    logger.debug("GEMS CHAIN_MATMUL_OUT")
+    return run(matrices, *args, out=out)

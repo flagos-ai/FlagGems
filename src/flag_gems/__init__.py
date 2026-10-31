@@ -883,6 +883,7 @@ _FULL_CONFIG = (
     ("celu", celu),
     ("celu_", celu_),
     ("chain_matmul", chain_matmul),
+    ("chain_matmul.out", chain_matmul_out),
     ("chalf", chalf),
     ("channel_shuffle", channel_shuffle),
     ("cholesky", cholesky),
