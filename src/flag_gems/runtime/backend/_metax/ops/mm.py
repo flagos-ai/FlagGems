@@ -27,6 +27,9 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.device_info import get_l2_cache_size, get_sm_count
 
+from ._mm_tuned import tuned_mm
+from ._tuned_gemm_policy import use_tuned_gemm
+
 logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "mm_metax_expand.yaml")
@@ -1424,6 +1427,22 @@ def _select_two_step_split_k(M, N, K):
 
 def mm(a, b):
     logger.debug("GEMS_METAX MM")
+    assert a.ndim == b.ndim == 2, "mm expects two matrices"
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
+    if a.shape[1] == 0:
+        return torch.zeros(
+            (a.shape[0], b.shape[1]),
+            device=a.device,
+            dtype=get_higher_dtype(a.dtype, b.dtype),
+        )
+    if (
+        a.shape[0] >= 32
+        and b.shape[1] >= 32
+        and a.shape[0] * b.shape[1] < 2**31
+        and use_tuned_gemm(a, b)
+    ):
+        with torch_device_fn.device(a.device):
+            return tuned_mm(a, b)
     device = a.device
     # handle non-contiguous inputs if necessary
     if a.stride(0) > 1 and a.stride(1) > 1:

@@ -23,6 +23,7 @@ from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
+from .glu import glu
 from .greater_equal import greater_equal_
 from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .groupnorm import group_norm
@@ -178,6 +179,7 @@ __all__ = [
     "full",
     "full_like",
     "gcd_",
+    "glu",
     "greater_equal_",
     "group_norm",
     "grouped_mm_w8a8",
