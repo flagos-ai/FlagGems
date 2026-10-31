@@ -15,6 +15,7 @@
 import importlib
 
 from ..utils.pointwise_dynamic import ModuleGenerator
+from ._ctc_loss import _ctc_loss
 from ._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from .acos_ import acos_
@@ -124,6 +125,7 @@ __all__ = [
     "_batch_norm_no_update",
     "_cholesky_solve_helper",
     "_conv_depthwise2d",
+    "_ctc_loss",
     "_dyn_quant_matmul_4bit",
     "_native_batch_norm_legit_functional",
     "_thnn_fused_lstm_cell_backward_impl",
