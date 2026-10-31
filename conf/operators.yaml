@@ -17243,6 +17243,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
   cpp: '4.0'
+- id: reshape_as
+  description: |
+    Returns `self` with the same shape as `other`, equivalent to
+    `self.reshape(other.size())`. Any input whose target shape is
+    stride-expressible returns a zero-copy view; only layouts a view cannot
+    express are materialized with a Triton copy kernel.
+  for:
+  - reshape_as
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5.0'
 - id: resize
   description: Resizes the input tensor to the specified size.
   for:

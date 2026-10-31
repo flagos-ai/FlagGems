@@ -1757,6 +1757,18 @@ _FULL_CONFIG = (
     ("replication_pad2d_backward.grad_input", replication_pad2d_backward_grad_input),
     ("replication_pad3d", replication_pad3d),
     ("replication_pad3d_backward", replication_pad3d_backward),
+    # reshape_as is CompositeImplicitAutograd and differentiable. Registering
+    # only the backend key drops the AutogradCUDA math kernel and leaves the
+    # VariableFallbackKernel in its place, which warns on every backward. A
+    # fallthrough hands the node back to torch's own view/autograd logic, so
+    # the view branch records ViewBackward and the copy branch records the
+    # autograd.Function it already calls.
+    (
+        "reshape_as",
+        reshape_as,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("resize", resize),
     ("resize_", resize_),
     ("resize_as", resize_as),

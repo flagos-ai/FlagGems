@@ -1308,6 +1308,7 @@ from flag_gems.ops.replication_pad2d_backward import (
 )
 from flag_gems.ops.replication_pad3d import replication_pad3d
 from flag_gems.ops.replication_pad3d_backward import replication_pad3d_backward
+from flag_gems.ops.reshape_as import reshape_as
 from flag_gems.ops.resize import resize, resize_
 from flag_gems.ops.resize_as import resize_as, resize_as_
 from flag_gems.ops.resize_as_sparse_ import resize_as_sparse_
@@ -2965,6 +2966,7 @@ __all__ = [
     "replication_pad2d_out",
     "replication_pad3d",
     "replication_pad3d_backward",
+    "reshape_as",
     "resize",
     "resize_",
     "resize_as",
