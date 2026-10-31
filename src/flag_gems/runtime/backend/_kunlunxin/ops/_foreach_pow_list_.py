@@ -51,9 +51,13 @@ In-place specifics (vs. the out-of-place sibling):
 
 Everything else (non-float dtypes, mixed dtypes/shapes, non-contiguous
 operands, sizes not divisible by the block, empty lists) falls back to the
-generic implementation verbatim, including all error semantics (notably the
-bool refusal). ``has_internal_overlap`` and the dtype checks run on the host
-only, so a skip costs nothing on the device.
+vendor binary table's ``_foreach_pow__List`` verbatim, including all error
+semantics (notably the bool refusal).  The vendor ``_pow_fn`` uses the real
+``powf`` (``_ZN3xpu3powEff``) with full C99 corner semantics.  Note that the
+sibling ``_foreach_pow_list`` module installs the xpu libdevice stub repair
+on ``tl_extra_shim`` at import time; the ``fn16``-style unary bodies see it
+too.  ``has_internal_overlap`` and the dtype checks run on the host only, so
+a skip costs nothing on the device.
 """
 
 import logging
@@ -62,8 +66,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_binary import _foreach_pow__List as _generic_pow_list
 from flag_gems.utils.foreach import check_tensor_list, has_internal_overlap, tl_dtype
+
+from ._foreach_binary import _foreach_pow__List as _vendor_pow_list
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +187,7 @@ def _foreach_pow__List(self, other):
             # In-place schemas return ``()``; returning the list would make the
             # dispatcher reject the kernel.
             return None
-    return _generic_pow_list(self, other)
+    return _vendor_pow_list(self, other)
 
 
 __all__ = ["_foreach_pow__List"]
