@@ -62,6 +62,54 @@ Check the [features](https://flagos-ai.github.io/FlagGems/overview/features/) do
 - Refer to the [Getting Started](https://flagos-ai.github.io/FlagGems/getting-started/) for a quick start.
 - Refer to the [usage](https://flagos-ai.github.io/FlagGems/usage/) documentation for some details on using the software.
 
+## Explicit BF16 small-M linear
+
+`flag_gems.fused.bf16_small_m_linear(input, weight, *, device_sm, out=None)`
+computes a forward-only dense projection for contiguous CUDA BF16 input
+`[M, 6144]` and weight `[1024, 6144]`, `1 <= M <= 16`, on SM90. Call with
+gradients disabled and pass `device_sm=90`, resolved before graph capture.
+The optional `out` is contiguous BF16 `[M, 1024]` on the same device and must
+have independent storage from the input and weight. Unsupported metadata raises
+before launch; callers select their original linear path before invoking the API.
+This explicit API does not replace aten linear or select a framework provider.
+
+## Packed INT8 indexer primitives
+
+`flag_gems.fused` exports `int8_indexer_quantize`, `int8_indexer_cache_store`
+and `int8_indexer_paged_logits`. They operate on tensors, with no framework
+objects or provider selection. The shared implementation uses Triton; no
+TileLang implementation is moved into this library.
+
+Quantization accepts finite FP16/BF16/FP32 unit-stride D128 heads whose leading
+dimensions collapse to rows without a copy. It returns signed INT8 values and
+FP32 power-of-two scales, using nearest-even rounding and a symmetric +/-127
+range. The scale uses correctly rounded FP32 `max(amax, 1e-10) / 127`, then
+rounds upward to a power of two using its exponent and mantissa bits. The floor
+applies before division, so all-zero rows retain scale `2^-40`.
+Cache-store consumes `[tokens,128]` keys and contiguous INT32/INT64
+physical slots; negative slots are ignored. Nonnegative write slots must be
+unique and smaller than cache capacity. A contiguous UINT8 cache page contains
+`page_size*128` signed key bytes followed by `page_size` FP32 scales, rather
+than interleaved records. The scale section must be FP32-aligned.
+
+Paged logits accept INT8 `[tokens,heads,128]`, FP32 weights `[tokens,heads]`,
+an integer page table and contiguous integer row-map/length vectors. The caller
+folds query scales into the weights. The operator computes the INT32 dot,
+ReLU, weighted head sum and then key scale, in that order. It returns fresh
+FP32 `[tokens,max_model_len]` logits; masked positions, negative page IDs and
+negative row mappings produce `-inf`. Nonnegative IDs and lengths must be
+within supplied storage. Request mapping, cache capacity, write ordering,
+causal lengths and TopK remain with the caller. Metadata failures raise before
+launch; launch failures propagate. These are inference-only GPU APIs.
+
+Query quantization and cache-store share this scale arithmetic. Paged-logits
+math and the packed-cache layout are unchanged. The public wheel at
+`b3cb254c55b52c450131ada0ba87109ca18c6c25` passed all 72 component-packet tests
+on H100/SM90 with Torch 2.13.0+cu129 and Triton 3.6.0. This mixed CPU/metadata/GPU
+suite covers the three INT8 APIs, strict FP16/BF16/FP32 scale boundaries and
+ordinary graph replay with refreshed inputs and cache state. It does not qualify
+RMSNorm/small-M on this package, framework integration or whole-model behavior.
+
 ## Sample models for testing
 
 - Bert-base-uncased

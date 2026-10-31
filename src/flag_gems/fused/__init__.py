@@ -17,6 +17,7 @@ from flag_gems.fused.add_rms_norm import add_rms_norm
 from flag_gems.fused.apply_repetition_penalties import apply_repetition_penalties
 from flag_gems.fused.beam_search_score import beam_search_score, beam_search_score_
 from flag_gems.fused.bf16_paged_mqa_logits import bf16_paged_mqa_logits
+from flag_gems.fused.bf16_small_m_linear import bf16_small_m_linear
 from flag_gems.fused.bincount import bincount
 from flag_gems.fused.chunk_gated_delta_rule import chunk_gated_delta_rule
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
@@ -71,6 +72,11 @@ from flag_gems.fused.gelu_and_mul import gelu_and_mul
 from flag_gems.fused.grouped_topk import grouped_topk
 from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
+from flag_gems.fused.int8_sparse_indexer import (
+    int8_indexer_cache_store,
+    int8_indexer_paged_logits,
+    int8_indexer_quantize,
+)
 from flag_gems.fused.matmul_bias_activation import matmul_bias_activation
 from flag_gems.fused.matmuladd import matmuladd
 from flag_gems.fused.mhc import (
@@ -117,13 +123,14 @@ from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
 __all__ = [
-    "add_rms_norm",
     "act_quant_triton",
+    "add_rms_norm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "beam_search_score",
     "beam_search_score_",
     "bf16_paged_mqa_logits",
+    "bf16_small_m_linear",
     "bincount",
     "bucket_sort_topk",
     "chunk_gated_delta_rule",
@@ -162,6 +169,9 @@ __all__ = [
     "indexer_k_quant_and_cache",
     "inplace_fused_experts",
     "instance_norm",
+    "int8_indexer_cache_store",
+    "int8_indexer_paged_logits",
+    "int8_indexer_quantize",
     "invoke_fused_moe_triton_kernel",
     "matmul_bias_activation",
     "matmuladd",

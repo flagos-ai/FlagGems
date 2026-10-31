@@ -2491,6 +2491,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: bf16_small_m_linear
+  description: 'Experimental SM90 BF16 linear specialization for one to sixteen
+    rows, 1024 output columns and 6144 input columns. Direct opt-in API;
+    unsupported metadata raises ValueError. No bias or training contract.'
+  for:
+  - bf16_small_m_linear
+  labels:
+  - fused
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: bilinear
   description: 'Applies a bilinear transformation to the incoming data: y = x1^T A
     x2 + b.
@@ -10887,6 +10899,36 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - stable: '2.2'
   - removed: '3.0'
   - beta: '5.3'
+- id: int8_indexer_cache_store
+  description: Quantizes floating D128 keys with nearest-even signed INT8 power-of-two scales and updates selected packed cache slots in place.
+  for:
+  - int8_indexer_cache_store
+  labels:
+  - fused
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
+- id: int8_indexer_paged_logits
+  description: Computes FP32 weighted ReLU INT32 query/key dot products through a packed INT8 paged cache with explicit row maps and lengths.
+  for:
+  - int8_indexer_paged_logits
+  labels:
+  - fused
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
+- id: int8_indexer_quantize
+  description: Quantizes floating D128 heads to signed INT8 values and FP32 power-of-two row scales without materializing leading dimensions.
+  for:
+  - int8_indexer_quantize
+  labels:
+  - fused
+  kind:
+  - Quantization
+  stages:
+  - alpha: '5.5'
 - id: int_mm
   description: Performs matrix multiplication of two two-dimensional int8 tensors
     and returns a contiguous int32 tensor.
