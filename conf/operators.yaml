@@ -20756,6 +20756,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: squeeze
+  description: |
+    Returns a tensor with all specified dimensions of input of size 1 removed.
+  for:
+  - squeeze
+  - squeeze.dim
+  - squeeze.dims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: squeeze_copy
   description: Triton kernel implementation for squeeze_copy.
   for:
