@@ -31,6 +31,7 @@ from .gt_scalar_ import gt_scalar_
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .index import index
+from .index_add import index_add, index_add_
 from .index_put import index_put, index_put_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
@@ -187,6 +188,8 @@ __all__ = [
     "gt_tensor_",
     "hadamard_transform",
     "index",
+    "index_add",
+    "index_add_",
     "index_put",
     "index_put_",
     "index_reduce",
