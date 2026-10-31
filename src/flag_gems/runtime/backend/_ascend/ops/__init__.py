@@ -110,6 +110,7 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
 from .mul import mul
 from .multinomial import multinomial
@@ -311,6 +312,8 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mode",
     "mul",
     "multinomial",
