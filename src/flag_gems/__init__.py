@@ -972,6 +972,8 @@ _FULL_CONFIG = (
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
     ("cudnn_convolution", cudnn_convolution),
+    ("cudnn_convolution_relu", cudnn_convolution_relu),
+    ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
     ("cummax", cummax),
     ("cummaxmin_backward", cummaxmin_backward),
