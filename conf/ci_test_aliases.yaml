@@ -278,3 +278,6 @@ fused_adamw__tensor_lr: test_fused_adamw_
 # conf/operators.yaml cannot find its test.
 underscore_linalg_det: test__linalg_det
 underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
+
+# The out overload shares correctness tests with the functional overload.
+upsample_nearest_exact2d_out: test_upsample_nearest_exact2d

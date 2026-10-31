@@ -22718,6 +22718,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: upsample_nearest_exact2d_out
+  description: The out variant of _upsample_nearest_exact2d.
+  for:
+  - _upsample_nearest_exact2d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - stable: '5.3'
 - id: upsample_nearest_exact3d
   description: 'Increases the depth, height, and width of a 3D tensor using nearest-neighbor
     interpolation,
