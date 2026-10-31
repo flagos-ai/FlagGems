@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -43,7 +41,7 @@ def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    return (inp)
+    return (inp,)
 
 
 @pytest.mark.linalg_svdvals
@@ -51,7 +49,6 @@ def test_linalg_svdvals():
     OperatorCaseBenchmark(
         op_name="linalg_svdvals",
         torch_op=torch.linalg.svdvals,
-        gems_op=flag_gems.linalg_svdvals,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
