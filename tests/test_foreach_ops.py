@@ -782,7 +782,7 @@ def test_foreach_pow_list_rejects_bool():
     inp = [torch.tensor([True, False], dtype=torch.bool, device=device)]
     with pytest.raises(NotImplementedError):
         _gems("_foreach_pow.List")(inp, [torch.tensor([True, True], device=device)])
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError):
         torch._foreach_pow([t.cpu() for t in inp], [torch.tensor([True, True])])
 
 

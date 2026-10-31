@@ -282,13 +282,11 @@ def test_accuracy_foreach_unary_bool(name):
     inp = [torch.tensor([True, False, True], device=flag_gems.device)]
     ref_inp = [to_reference(t) for t in inp]
 
-    try:
+    if name == "abs" and ref_inp[0].device.type == "cpu":
+        # CPU bool abs is unavailable; integer abs has the same exact bool result.
+        ref_out = [torch.abs(t.to(torch.int32)).to(torch.bool) for t in ref_inp]
+    else:
         ref_out = _torch_op(name)(ref_inp)
-    except NotImplementedError:
-        # ``_foreach_abs`` accepts bool on CUDA but the CPU kernel does not
-        # ("abs_cpu" not implemented for 'Bool'), so under ``--ref cpu`` there is
-        # no reference to compare against.  The CUDA-reference run still covers it.
-        pytest.skip(f"no CPU reference for _foreach_{name} on bool")
     res_out = _gems_op(name)(inp)
 
     _assert_lists_close(res_out, ref_out, name)
@@ -461,14 +459,12 @@ def test_accuracy_foreach_unary_inplace_writes_through_views(name):
 def test_accuracy_foreach_unary_inplace_rejects_overlap():
     """``expand`` aliases one element many times; ATen refuses to write it."""
     src = torch.randn(1, 8, device=flag_gems.device).expand(4, 8)
-    if IS_KUNLUNXIN:
-        with pytest.raises(RuntimeError):
-            _gems_op("cos", inplace=True)([src])
-        with pytest.raises(RuntimeError):
-            _gems_op("neg", inplace=True)([src])
-        return
+    reference = torch.randn(1, 8).expand(4, 8)
     with pytest.raises(RuntimeError):
-        torch._foreach_neg_([src])
+        torch._foreach_neg_([reference])
+    for name in ("cos", "neg"):
+        with pytest.raises(RuntimeError):
+            _gems_op(name, inplace=True)([src])
 
 
 @pytest.mark.foreach_unary
