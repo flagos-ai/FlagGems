@@ -19329,6 +19329,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_compressed_tensor_with_dims
+  description: 'Allocates an empty compressed (CSR/CSC/BSR/BSC) tensor shell directly
+    from the layout geometry: nnz stored entries, dense_dim trailing dense axes, the
+    logical size, the blocksize and the index dtype; the index and payload buffers are
+    left uninitialised for the caller to fill.
+
+    '
+  for:
+  - _sparse_compressed_tensor_with_dims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_csc_tensor_unsafe
   description: 'Assembles a torch.sparse_csc layout tensor from already-materialised
     ccol/row indices and values without validating the compressed indices; the
