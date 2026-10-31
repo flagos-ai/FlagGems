@@ -1519,6 +1519,7 @@ from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze_ import squeeze_, squeeze__dim, squeeze__dims
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.sspaddmm import sspaddmm, sspaddmm_out
 from flag_gems.ops.stack import stack
@@ -3186,6 +3187,9 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze_",
+    "squeeze__dim",
+    "squeeze__dims",
     "squeeze_copy",
     "sspaddmm",
     "sspaddmm_out",

@@ -20756,6 +20756,42 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - beta: '5.3'
+- id: squeeze_
+  description: |
+    Removes all dimensions of size 1 from the tensor, in place, and returns the same tensor.
+  for:
+  - squeeze_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: squeeze__dim
+  description: |
+    Removes the given dimension of the tensor in place, but only if that dimension has size 1.
+  for:
+  - squeeze_.dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: squeeze__dims
+  description: |
+    Removes all the given dimensions of the tensor in place, but only those that have size 1.
+  for:
+  - squeeze_.dims
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: squeeze_copy
   description: Triton kernel implementation for squeeze_copy.
   for:
