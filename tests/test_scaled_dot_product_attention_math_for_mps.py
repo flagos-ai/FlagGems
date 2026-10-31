@@ -48,18 +48,29 @@ def test_scaled_dot_product_attention_math_for_mps(
     # full softmax attention-weight matrix. The aten op only dispatches on
     # MPS/Meta, so compute the reference math directly.
     scale = 1.0 / (head_dim**0.5)
-    scores = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
+    ref_q, ref_k, ref_v = (utils.to_reference(x).float() for x in (q, k, v))
+    scores = torch.matmul(ref_q, ref_k.transpose(-2, -1)) * scale
     if is_causal:
-        mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()
+        mask = torch.ones(seq_len, seq_len, dtype=torch.bool, device=ref_q.device).tril()
         scores = scores.masked_fill(~mask, float("-inf"))
     ref_weights = torch.softmax(scores, dim=-1)
-    ref_output = torch.matmul(ref_weights, v.float())
+    ref_output = torch.matmul(ref_weights, ref_v)
     ref_output = utils.to_reference(ref_output.to(dtype), True)
     ref_weights = utils.to_reference(ref_weights.to(dtype), True)
 
+    expected_inputs = tuple((x.device, x.dtype, tuple(x.shape)) for x in (q, k, v))
     output, attn_weights = flag_gems._scaled_dot_product_attention_math_for_mps(
         q, k, v, is_causal=is_causal
     )
+
+    for inp, expected in zip((q, k, v), expected_inputs):
+        assert (inp.device, inp.dtype, tuple(inp.shape)) == expected
+    device, expected_dtype, query_shape = expected_inputs[0]
+    key_shape = expected_inputs[1][2]
+    assert output.device == device and output.dtype == expected_dtype
+    assert output.shape == query_shape
+    assert attn_weights.device == device and attn_weights.dtype == expected_dtype
+    assert attn_weights.shape == (*query_shape[:-1], key_shape[-2])
 
     # output and attn_weights both reduce over the key/sequence dimension
     # (softmax normalization + weighted value sum), so scale atol accordingly.
