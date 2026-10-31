@@ -77,6 +77,7 @@ from .mvlgamma import run as mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
 from .randperm import randperm
@@ -194,6 +195,7 @@ __all__ = [
     "nanmedian_out",
     "narrow_copy",
     "nonzero_numpy",
+    "not_equal",
     "pad_sequence",
     "permute_copy",
     "randperm",
