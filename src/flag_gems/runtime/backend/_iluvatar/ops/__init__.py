@@ -40,6 +40,7 @@ from .conv_transpose2d import conv_transpose2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
+from .expand_copy import expand_copy
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
 from .gru import gru, gru_data
@@ -149,6 +150,7 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "expand_copy",
     "fractional_max_pool2d_backward",
     "gcd_",
     "gru",
