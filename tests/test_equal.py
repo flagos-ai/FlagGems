@@ -38,3 +38,18 @@ def test_equal(shape, dtype):
     ref_out = torch.equal(ref_inp1 + 1, ref_inp2)
     res_out = flag_gems.equal(inp1 + 1, inp2)
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.equal
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_equal_integer_precision(dtype):
+    # Issue #7584: equal() inherits eq(), so distinct integers beyond the
+    # fp32 mantissa (2**24) must still compare unequal. A pair whose every
+    # element collides after an fp32 cast (2**24 vs 2**24 + 1) is the case
+    # where the bug flips the final boolean answer.
+    inp1 = torch.arange(2**24, 2**24 + 2, device=flag_gems.device, dtype=dtype).unsqueeze(0)
+    inp2 = inp1.clone()
+    inp3 = inp1 + 1
+
+    assert flag_gems.equal(inp1, inp2) is True
+    assert flag_gems.equal(inp1, inp3) is False

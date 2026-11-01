@@ -53,3 +53,36 @@ def test_eq_scalar_(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)
     assert res_out is inp
+
+
+@pytest.mark.eq_
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_eq_integer_precision_(dtype):
+    # Issue #7584: distinct integers beyond the fp32 mantissa (2**24) must
+    # not collapse to the same fp32 value and compare equal.
+    inp1 = torch.arange(2**24 - 2, 2**24 + 3, device=flag_gems.device, dtype=dtype).unsqueeze(0)
+    inp2 = inp1 + 1
+
+    ref_inp1 = utils.to_reference(inp1.clone())
+    ref_inp2 = utils.to_reference(inp2)
+    ref_out = ref_inp1.eq_(ref_inp2)
+
+    res_out = flag_gems.eq_(inp1, inp2)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out is inp1
+
+
+@pytest.mark.eq_scalar_
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_eq_scalar_integer_precision_(dtype):
+    inp = torch.arange(2**24, 2**24 + 4, device=flag_gems.device, dtype=dtype).unsqueeze(0)
+    scalar = 2**24 + 1  # collides with 2**24 after an fp32 cast
+
+    ref_inp = utils.to_reference(inp.clone())
+    ref_out = ref_inp.eq_(scalar)
+
+    res_out = flag_gems.eq_scalar_(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    assert res_out is inp

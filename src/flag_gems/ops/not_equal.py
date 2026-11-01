@@ -28,7 +28,7 @@ device = device.name
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def not_equal_func(x, y):
-    return x.to(tl.float32) != y.to(tl.float32)
+    return x != y
 
 
 def not_equal(A, B):
@@ -44,7 +44,7 @@ def not_equal(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def not_equal_func_scalar(x, y):
-    return x.to(tl.float32) != y.to(tl.float32)
+    return x != y
 
 
 def not_equal_scalar(A, B):

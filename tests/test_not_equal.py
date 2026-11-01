@@ -47,3 +47,36 @@ def test_accuracy_not_equal_scalar(shape, dtype):
     res_out = flag_gems.not_equal_scalar(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.not_equal
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_accuracy_not_equal_integer_precision(dtype):
+    # Issue #7584: distinct integers beyond the fp32 mantissa (2**24) must
+    # not collapse to the same fp32 value and compare equal.
+    base = torch.arange(2**24 - 2, 2**24 + 3, device=flag_gems.device, dtype=dtype)
+    inp1 = torch.cat([base, -base], dim=0).unsqueeze(1)
+    inp2 = inp1 + 1
+
+    ref_inp1 = utils.to_reference(inp1)
+    ref_inp2 = utils.to_reference(inp2)
+
+    ref_out = torch.not_equal(ref_inp1, ref_inp2)
+    res_out = flag_gems.not_equal(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.all().item()
+
+
+@pytest.mark.not_equal_scalar
+@pytest.mark.parametrize("dtype", [torch.int32, torch.int64])
+def test_accuracy_not_equal_scalar_integer_precision(dtype):
+    inp = torch.arange(2**24, 2**24 + 4, device=flag_gems.device, dtype=dtype).unsqueeze(0)
+    scalar = 2**24 + 1  # collides with 2**24 after an fp32 cast
+
+    ref_inp = utils.to_reference(inp)
+    ref_out = torch.not_equal(ref_inp, scalar)
+    res_out = flag_gems.not_equal_scalar(inp, scalar)
+
+    utils.gems_assert_equal(res_out, ref_out)
+    assert res_out.sum().item() == inp.numel() - 1

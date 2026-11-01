@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    return x == y
 
 
 def eq_(A, B):
@@ -38,7 +38,7 @@ def eq_(A, B):
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
 @triton.jit
 def eq_func_scalar(x, y):
-    return x.to(tl.float32) == y.to(tl.float32)
+    return x == y
 
 
 def eq_scalar_(A, B):
