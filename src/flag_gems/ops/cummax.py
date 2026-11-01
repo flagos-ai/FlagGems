@@ -199,9 +199,9 @@ def scan_part_max_abc_kernel(
     NEED_PARTIAL: tl.constexpr,
     USE_OUT_INDICES: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
+    pid_a = ext.program_id(0) // C
     pid_b = ext.program_id(1)
-    pid_c = ext.program_id(2)
+    pid_c = ext.program_id(0) % C
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -263,9 +263,9 @@ def add_base_max_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
+    pid_a = ext.program_id(0) // C
     pid_b = ext.program_id(1)
-    pid_c = ext.program_id(2)
+    pid_c = ext.program_id(0) % C
 
     a_idx = pid_a
     b_idx = pid_b * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -312,7 +312,7 @@ def scan_then_fan(inp, out, out_indices, A, B, C, dtype, use_out_indices=False):
         partial_max = None
         partial_max_indices = None
 
-    grid = (A, part_num, C)
+    grid = (A*C, part_num)
     with torch_device_fn.device(inp.device):
         scan_part_max_abc_kernel[grid](
             inp,
