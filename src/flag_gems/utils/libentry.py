@@ -988,10 +988,10 @@ class LibTuner(triton.runtime.Autotuner):
         # Direct LibTuner callers must also honor the operator fuse before a
         # best-config cache hit can bypass policy execution.
         if (
-            cost_model.is_auto_disabled(
+            cost_model.auto_failure_state(
                 getattr(self, "_flagtune_op_id", None),
                 getattr(self, "_flagtune_variant", None),
-            )
+            )[0]
             and runtime.resolve_cost_model_intent(
                 supports_cost_model=_supports_flagtune_cost_model(self)
             )
@@ -1447,7 +1447,7 @@ class LibEntry(triton.KernelInterface):
             device,
             _flagtune_state_key(),
             tuple(
-                cost_model.is_auto_disabled(*key) for key in self._flagtune_model_ids
+                cost_model.auto_failure_state(*key) for key in self._flagtune_model_ids
             ),
         )
         if state == self._flagtune_state:
@@ -1459,7 +1459,7 @@ class LibEntry(triton.KernelInterface):
                 device,
                 _flagtune_state_key(),
                 tuple(
-                    cost_model.is_auto_disabled(*key)
+                    cost_model.auto_failure_state(*key)
                     for key in self._flagtune_model_ids
                 ),
             )

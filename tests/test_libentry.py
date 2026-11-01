@@ -57,8 +57,9 @@ requires_flagtree_flagtune = pytest.mark.skipif(
 @pytest.fixture(autouse=True)
 def isolate_cost_model_state(monkeypatch):
     """Mode resolution must not probe; each test owns independent fuse state."""
-    # Test-only isolation: production fuses last until the process restarts.
+    # Each test owns independent AUTO cooldown state.
     monkeypatch.setattr(cost_model_mod, "_COST_MODEL_DISABLED_OPS", set())
+    monkeypatch.setattr(cost_model_mod, "_COST_MODEL_RETRY_AFTER", {})
     monkeypatch.setattr(cost_model_mod, "_COST_MODEL_IDENTITIES", {})
     monkeypatch.setattr(cost_model_mod, "_FLAGTUNE_AVAILABILITY", None)
 
@@ -1315,7 +1316,7 @@ def test_cost_model_failures_fuse_only_auto(monkeypatch, capsys, phase, setting)
         assert f"phase={phase}" in output
         assert "caused_by=" in output
 
-        # Repairing the model path does not re-enable AUTO in this process.
+        # Repairing the source does not retry until the cooldown expires.
         def repaired_load(*args):
             calls["load"] += 1
             return object()
@@ -1331,6 +1332,85 @@ def test_cost_model_failures_fuse_only_auto(monkeypatch, capsys, phase, setting)
             ("flaggems/mm", "general_tma")
         }
     assert not getattr(tuner, "_flagtune_strict_benchmark", False)
+
+
+@requires_flagtree_flagtune
+@pytest.mark.parametrize(
+    "failure_name",
+    ["ModelSourceError", "ModelUnavailableError", "ModelValidationError"],
+)
+def test_auto_source_failure_warns_once_retries_and_recovers(
+    monkeypatch, caplog, failure_name
+):
+    errors = pytest.importorskip("triton.flagtune.runtime.errors")
+    failure = getattr(errors, failure_name)
+    monkeypatch.delenv("USE_FLAGTUNE", raising=False)
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL", raising=False)
+    monkeypatch.delenv("FLAGTUNE_INCLUDE", raising=False)
+    monkeypatch.setattr(flagtune_runtime_mod, "_include_ops", None)
+    monkeypatch.setattr(libentry_mod, "_HAS_FLAGTREE_FLAGTUNE", True)
+    now, attempts = [0.0], []
+    monkeypatch.setattr(cost_model_mod.time, "monotonic", lambda: now[0])
+    candidates = [triton.Config({"BLOCK": 1}), triton.Config({"BLOCK": 2})]
+    tuner = SimpleNamespace(
+        _flagtune_op_name="mm",
+        _flagtune_op_id="flaggems/mm",
+        _flagtune_variant="general_tma",
+        nargs={},
+        arg_names=[],
+    )
+    repaired = [False]
+
+    def load(*args):
+        attempts.append(1)
+        if not repaired[0]:
+            raise failure(
+                "manifest 404 at https://user:password@example.invalid/file?token=secret"
+            )
+        return object()
+
+    monkeypatch.setattr(cost_model_mod, "runtime_candidates", lambda *a: candidates)
+    monkeypatch.setattr(cost_model_mod, "load_model", load)
+    monkeypatch.setattr(cost_model_mod, "run_proposer", lambda *a: (candidates[1], {}))
+    monkeypatch.setattr(
+        libentry_mod, "_flagtune_legacy_fallback", lambda *a: (candidates[0], {})
+    )
+    policy = LibTuner.get("flagtune").policy
+    for _ in range(3):
+        assert policy(tuner, None, candidates, (), {})[0] is candidates[0]
+    assert len(attempts) == 1
+    assert cost_model_mod.is_auto_disabled("flaggems/mm", "general_tma")
+    warnings = [
+        record
+        for record in caplog.records
+        if "FlagTune model unavailable" in record.message
+    ]
+    assert len(warnings) == 1
+    assert "using default tuning" in warnings[0].message
+    assert (
+        "password" not in warnings[0].message
+        and "token=secret" not in warnings[0].message
+    )
+
+    # Explicit REQUIRED mode must report the original error during AUTO cooldown.
+    monkeypatch.setenv("USE_FLAGTUNE_COST_MODEL", "1")
+    with pytest.raises(failure, match="manifest 404"):
+        policy(tuner, None, candidates, (), {})
+    assert len(attempts) == 2
+    monkeypatch.delenv("USE_FLAGTUNE_COST_MODEL")
+
+    now[0] = cost_model_mod._AUTO_RETRY_SECONDS
+    assert policy(tuner, None, candidates, (), {})[0] is candidates[0]
+    assert len(attempts) == 3
+    assert (
+        len([r for r in caplog.records if "FlagTune model unavailable" in r.message])
+        == 1
+    )
+    repaired[0] = True
+    now[0] += cost_model_mod._AUTO_RETRY_SECONDS
+    assert policy(tuner, None, candidates, (), {})[0] is candidates[1]
+    assert len(attempts) == 4
+    assert not cost_model_mod.auto_failure_state("flaggems/mm", "general_tma")[0]
 
 
 @requires_flagtree_flagtune

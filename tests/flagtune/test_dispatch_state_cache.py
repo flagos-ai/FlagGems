@@ -46,6 +46,36 @@ def test_stable_state_skips_mode_resolution_and_device_changes_recheck():
     assert entry.kernel_cache[0] == {"old": 1}
 
 
+@pytest.mark.parametrize("observe_cooldown", [False, True])
+def test_expired_auto_failure_invalidates_dispatch_even_after_idle(
+    monkeypatch, observe_cooldown
+):
+    key = ("flaggems/mm", "general_tma")
+    now = [0.0]
+    monkeypatch.setattr(lib.cost_model.time, "monotonic", lambda: now[0])
+    monkeypatch.setattr(lib.cost_model, "_COST_MODEL_DISABLED_OPS", set())
+    monkeypatch.setattr(lib.cost_model, "_COST_MODEL_RETRY_AFTER", {})
+    states = []
+    entry = entry_with(
+        lambda: states.append(lib.cost_model.auto_failure_state(*key)) or True
+    )
+    entry._flagtune_model_ids = (key,)
+    entry._apply_flagtune(0)
+    lib.cost_model._COST_MODEL_DISABLED_OPS.add(key)
+    lib.cost_model._COST_MODEL_RETRY_AFTER[key] = 60.0
+    if observe_cooldown:
+        entry._apply_flagtune(0)
+        assert states[-1] == (True, True)
+    entry.kernel_cache[0]["fallback"] = 1
+    now[0] = 60.0
+    entry._apply_flagtune(0)
+    assert states[-1] == (True, False)
+    assert not entry.kernel_cache[0]
+    count = len(states)
+    entry._apply_flagtune(0)
+    assert len(states) == count
+
+
 @pytest.mark.parametrize(
     "name",
     ["USE_FLAGTUNE", "USE_FLAGTUNE_COST_MODEL", "FLAGTUNE_INCLUDE"],

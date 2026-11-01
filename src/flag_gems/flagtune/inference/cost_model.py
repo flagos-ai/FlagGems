@@ -20,8 +20,10 @@ never imports libentry or takes ownership of ordinary tuner caches.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
@@ -34,8 +36,11 @@ from flag_gems.flagtune.inference.status import exception_reason, print_status
 _FLAGTUNE_PROPOSER_POOL: Dict[Any, Any] = {}
 _FLAGTUNE_VARIANT_INFO_POOL: Dict[Any, Any] = {}
 _FLAGTUNE_AVAILABILITY: Optional[Tuple[bool, Optional[BaseException]]] = None
-# One AUTO failure disables the affected operator variant in this process.
+# AUTO failures temporarily disable only the affected operator variant.
 _COST_MODEL_DISABLED_OPS: set[tuple[Optional[str], Optional[str]]] = set()
+_COST_MODEL_RETRY_AFTER: Dict[Any, float] = {}
+_AUTO_RETRY_SECONDS = 60
+logger = logging.getLogger(__name__)
 _COST_MODEL_IDENTITIES: Dict[Any, Any] = {}
 _MODEL_LOAD_STARTED: set[Any] = set()
 _MODEL_SOURCE_CONFIGURED = False
@@ -66,8 +71,19 @@ def _configure_flagtune_model_source() -> None:
 
 
 def is_auto_disabled(op_id: Optional[str], variant: Optional[str] = None) -> bool:
-    """Return whether AUTO is fused for this variant until process restart."""
-    return (op_id, variant) in _COST_MODEL_DISABLED_OPS
+    """Return whether an AUTO failure is still within its retry cooldown."""
+    key = (op_id, variant)
+    if key not in _COST_MODEL_DISABLED_OPS:
+        return False
+    return time.monotonic() < _COST_MODEL_RETRY_AFTER.get(key, float("inf"))
+
+
+def auto_failure_state(op_id: Optional[str], variant: Optional[str] = None):
+    """Invalidate dispatch even if no call observed the cooldown while active."""
+    return (
+        (op_id, variant) in _COST_MODEL_DISABLED_OPS,
+        is_auto_disabled(op_id, variant),
+    )
 
 
 @contextmanager
@@ -394,7 +410,7 @@ def run_policy(
     default_policy: Callable,
     legacy_fallback: Callable,
 ) -> Tuple[triton.Config, Dict[str, float]]:
-    """Run Cost Model; an AUTO failure fuses this op_id across the process."""
+    """Run Cost Model, with a bounded AUTO cooldown and strict REQUIRED mode."""
     op_name = (
         getattr(self, "_flagtune_op_name", None)
         or getattr(self, "_flagtune_expand_op_name", None)
@@ -404,10 +420,7 @@ def run_policy(
     intent = runtime.resolve_cost_model_intent(supports_cost_model=supports_cost_model)
     variant = getattr(self, "_flagtune_variant", None)
     disabled_key = (op_id, variant)
-    if (
-        intent is runtime.CostModelIntent.AUTO
-        and disabled_key in _COST_MODEL_DISABLED_OPS
-    ):
+    if intent is runtime.CostModelIntent.AUTO and is_auto_disabled(op_id, variant):
         # Check before tensor inspection, candidate resolution or model loading.
         return legacy_fallback(self, bench_fn, args, kwargs, op_name)
     mode = runtime.resolve_tuning_mode(op_name, supports_cost_model=supports_cost_model)
@@ -434,7 +447,10 @@ def run_policy(
             self._flagtune_strict_benchmark = True
             try:
                 with cost_model_boundary(phase):
-                    return run_proposer(self, bench_fn, candidates, arguments, loaded)
+                    result = run_proposer(self, bench_fn, candidates, arguments, loaded)
+                _COST_MODEL_DISABLED_OPS.discard(disabled_key)
+                _COST_MODEL_RETRY_AFTER.pop(disabled_key, None)
+                return result
             finally:
                 self._flagtune_strict_benchmark = previous_strict
     except flagtune_error_types() as exc:
@@ -447,6 +463,7 @@ def run_policy(
                 action="raising; no fallback",
             )
             raise
+        _COST_MODEL_RETRY_AFTER[disabled_key] = time.monotonic() + _AUTO_RETRY_SECONDS
         if disabled_key not in _COST_MODEL_DISABLED_OPS:
             _COST_MODEL_DISABLED_OPS.add(disabled_key)
             fallback_mode = runtime.resolve_tuning_mode(
@@ -458,8 +475,20 @@ def run_policy(
                 phase=phase,
                 reason=exception_reason(exc),
                 fallback_mode=fallback_mode.value,
-                action="AUTO disabled for this variant in this process until restart",
+                action=f"AUTO retry after {_AUTO_RETRY_SECONDS}s",
+            )
+            logger.warning(
+                "FlagTune model unavailable for %s/%s: %s; using %s tuning. "
+                "AUTO will retry after %ss; set USE_FLAGTUNE_COST_MODEL=1 "
+                "to require a model.",
+                op_id,
+                variant,
+                exception_reason(exc),
+                fallback_mode.value,
+                _AUTO_RETRY_SECONDS,
             )
     else:
+        _COST_MODEL_DISABLED_OPS.discard(disabled_key)
+        _COST_MODEL_RETRY_AFTER.pop(disabled_key, None)
         return default_policy(self, bench_fn, candidates, args, kwargs)
     return legacy_fallback(self, bench_fn, args, kwargs, op_name)
