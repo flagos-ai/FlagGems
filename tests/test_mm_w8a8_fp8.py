@@ -174,6 +174,11 @@ def test_mm_w8a8_fp8_mthreads_large_k_scales(M, N, K, scalar_a):
         (64, 4, 16384),
         (64, 1536, 4096),
         (100, 1536, 4096),
+        (1, 4096, 256),
+        (1, 512, 4096),
+        (2, 4096, 256),
+        (1, 8192, 1024),
+        (2, 4096, 1024),
     ],
 )
 @pytest.mark.parametrize("rowwise", [False, True])

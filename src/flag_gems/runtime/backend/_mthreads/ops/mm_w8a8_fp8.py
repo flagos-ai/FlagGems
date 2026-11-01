@@ -925,6 +925,7 @@ def _gemv_fp8(
     HAS_SR: tl.constexpr,
     SR_STRIDE: tl.constexpr,
     TRANSPOSE: tl.constexpr,
+    NATIVE_DOT: tl.constexpr,
     BLOCK_V: tl.constexpr,
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
@@ -933,38 +934,72 @@ def _gemv_fp8(
     outer = tl.program_id(1)
     split = tl.program_id(2)
     rk = tl.arange(0, BLOCK_K)
-    acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
-    for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
-        kk = (block * SPLIT_K + split) * BLOCK_K + rk
-        if TRANSPOSE:
+    if NATIVE_DOT:
+        # B^T @ A^T keeps the wide N tile on the native FP8 dot's left side.
+        DOT_M: tl.constexpr = 16 if K <= 512 else 32
+        rows = tl.arange(0, DOT_M)
+        acc = tl.zeros((BLOCK_V, DOT_M), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K)):
+            kk = block * BLOCK_K + rk
             aa = tl.load(
-                A + v[:, None].to(tl.int64) * AM + kk[None, :],
-                (v[:, None] < M) & (kk[None, :] < K),
+                A + rows[:, None].to(tl.int64) * AM + kk[None, :],
+                (rows[:, None] < M) & (kk[None, :] < K),
                 0.0,
-            ).to(tl.float32)
-            bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(tl.float32)
-            acc += aa * bb[None, :]
-        else:
-            aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(tl.float32)
+            )
             bb = tl.load(
                 B + v[:, None].to(tl.int64) * BN + kk[None, :],
                 (v[:, None] < N) & (kk[None, :] < K),
                 0.0,
-            ).to(tl.float32)
-            acc += aa[None, :] * bb
-    rm = v if TRANSPOSE else outer
-    rn = outer if TRANSPOSE else v
+            )
+            acc = tl.dot(bb, tl.trans(aa), acc)
+        value = acc
+        rm, rn = rows[None, :], v[:, None]
+    else:
+        acc = tl.zeros((BLOCK_V, BLOCK_K), tl.float32)
+        for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            kk = (block * SPLIT_K + split) * BLOCK_K + rk
+            if TRANSPOSE:
+                aa = tl.load(
+                    A + v[:, None].to(tl.int64) * AM + kk[None, :],
+                    (v[:, None] < M) & (kk[None, :] < K),
+                    0.0,
+                ).to(tl.float32)
+                bb = tl.load(B + outer.to(tl.int64) * BN + kk, kk < K, 0.0).to(
+                    tl.float32
+                )
+                acc += aa * bb[None, :]
+            else:
+                aa = tl.load(A + outer.to(tl.int64) * AM + kk, kk < K, 0.0).to(
+                    tl.float32
+                )
+                bb = tl.load(
+                    B + v[:, None].to(tl.int64) * BN + kk[None, :],
+                    (v[:, None] < N) & (kk[None, :] < K),
+                    0.0,
+                ).to(tl.float32)
+                acc += aa[None, :] * bb
+        value = tl.sum(acc, axis=1)
+        rm = v if TRANSPOSE else outer
+        rn = outer if TRANSPOSE else v
     mask = (rm < M) & (rn < N)
-    value = tl.sum(acc, axis=1)
-    value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
-    value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
+    if SA_STRIDE == 0:
+        value *= tl.load(SA)
+    else:
+        value *= tl.load(SA + rm * SA_STRIDE, rm < M, 0.0)
+    if SB_STRIDE == 0:
+        value *= tl.load(SB)
+    else:
+        value *= tl.load(SB + rn * SB_STRIDE, rn < N, 0.0)
     if SPLIT_K > 1:
         ptr = C + split * M * N + rm.to(tl.int64) * N + rn
     else:
         if HAS_BIAS:
             value += tl.load(Bias + rn * BIAS_STRIDE, rn < N, 0.0).to(tl.float32)
         if HAS_SR:
-            value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
+            if SR_STRIDE == 0:
+                value /= tl.load(SR)
+            else:
+                value /= tl.load(SR + rm * SR_STRIDE, rm < M, 1.0)
         ptr = C + rm.to(tl.int64) * CM + rn.to(tl.int64) * CN
     tl.store(ptr, value, mask)
 
@@ -1035,16 +1070,33 @@ def _select_split_k(m, n, k, descriptor):
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    native_dot = (
+        m <= 2
+        and 1024 <= n <= 8192
+        and 256 <= k <= 2048
+        and (m == 2 or (n > 4096 and k > 512))
+    )
     if (
-        (n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
+        (native_dot or n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
         and k >= 256
         and a.dtype == b.dtype == torch.float8_e4m3fn
         and a.stride(1) == b.stride(0) == 1
     ):
-        # Avoid padded MMA work for vector-shaped outputs.
+        # Choose native transposed dots or vector reductions for skinny grids.
         # Very small output grids split K to expose independent CTAs.
         split = 1
-        if m * n <= 128:
+        warps = 4
+        stages = 1
+        if native_dot:
+            bv, bk = (64 if k <= 512 else 32), 256
+            stages = 3 if k <= 512 else 1
+        elif m == 1 and 64 <= n <= 512 and 2048 <= k <= 4096:
+            # A full-K reduction avoids the partial buffer and second launch.
+            bv, bk = (1 if n < 256 else 4), triton.next_power_of_2(k)
+            warps = 4 if n < 256 else 8
+        elif m == 1 and n >= 1024 and k <= 1024:
+            bv, bk, warps = 16, min(256, max(128, k // 2)), 8
+        elif m * n <= 128:
             bv, bk = 1, 1024 if k >= 8192 else 512
             split = min(16, max(1, triton.cdiv(k, bk)))
         elif n == 1:
@@ -1068,9 +1120,8 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             SR_STRIDE=sr_stride,
         )
         transpose = n <= 4
-        _gemv_fp8[
-            (triton.cdiv(m if transpose else n, bv), n if transpose else m, split)
-        ](
+        outer = 1 if native_dot else (n if transpose else m)
+        _gemv_fp8[(triton.cdiv(m if transpose else n, bv), outer, split)](
             a,
             b,
             partial,
@@ -1089,11 +1140,13 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             sb_stride,
             **epilogue,
             TRANSPOSE=transpose,
+            NATIVE_DOT=native_dot,
             BLOCK_V=bv,
             BLOCK_K=bk,
             SPLIT_K=split,
-            num_warps=4,
-            num_stages=1,
+            num_warps=warps,
+            num_stages=stages,
+            **({"enable_backend_opt": True} if native_dot else {}),
         )
         if split > 1:
             _reduce_split_k[(triton.cdiv(m * n, 512),)](
