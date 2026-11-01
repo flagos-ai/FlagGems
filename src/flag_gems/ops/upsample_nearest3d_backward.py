@@ -66,13 +66,20 @@ def _upsample_nearest3d_backward_kernel(
     id_ = tmp // IH
 
     # Starting candidate output index for each dimension (one before the
-    # nominal start to stay robust to rounding).
-    od_start = (id_.to(tl.float32) / reciprocal_scale_d).to(tl.int32) - 1
-    oh_start = (ih.to(tl.float32) / reciprocal_scale_h).to(tl.int32) - 1
-    ow_start = (iw.to(tl.float32) / reciprocal_scale_w).to(tl.int32) - 1
-    od_start = tl.maximum(od_start, 0)
-    oh_start = tl.maximum(oh_start, 0)
-    ow_start = tl.maximum(ow_start, 0)
+    # nominal start to stay robust to rounding).  The "not below zero" clamp is
+    # evaluated in float and truncated once: clamping an int index vector with
+    # tl.maximum lowers to arith.maxsi, which the Enflame (GCU) pointer-analysis
+    # pass rejects ("add logic to support op arith.maxsi") and aborts the
+    # compile of the whole kernel.  Same values on every backend.
+    od_start = tl.maximum(id_.to(tl.float32) / reciprocal_scale_d - 1.0, 0.0).to(
+        tl.int32
+    )
+    oh_start = tl.maximum(ih.to(tl.float32) / reciprocal_scale_h - 1.0, 0.0).to(
+        tl.int32
+    )
+    ow_start = tl.maximum(iw.to(tl.float32) / reciprocal_scale_w - 1.0, 0.0).to(
+        tl.int32
+    )
 
     acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
 
