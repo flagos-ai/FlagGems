@@ -91,6 +91,14 @@ def slice_backward(
 
     numel = grad_output.numel()
 
+    if numel > 0 and not grad_output.is_contiguous():
+        # The kernel addresses grad_output with linear offsets over its
+        # (outer, slice, inner) layout, so a non-contiguous gradient must be
+        # materialized first. Without this, a zero-stride broadcast gradient
+        # (as produced by SumBackward0 for `x[...].sum().backward()`) reads
+        # past the tensor's storage and returns wrong values. See issue #7396.
+        grad_output = grad_output.contiguous()
+
     BLOCK = 1024
 
     grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)

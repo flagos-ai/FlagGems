@@ -139,3 +139,39 @@ def test_slice_backward_oob_start(shape, dtype):
     res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice_backward
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_slice_backward_non_contiguous_grad(dtype):
+    # Issue #7396: slice_backward used linear offsets for grad_output, so a
+    # broadcast (zero-stride) gradient — as produced by SumBackward0 for
+    # x[...].sum().backward() — read past the tensor's storage. A transposed
+    # (permuted) gradient must also stay correct.
+    device = flag_gems.device
+    shape = [4, 8]
+    dim, start, end, step = 0, 0, 2, 1
+
+    # 1) zero-stride broadcast gradient (single materialized element)
+    scalar = torch.randn((), dtype=dtype, device=device)
+    grad_output = scalar.expand(2, 8)
+    ref_grad_output = utils.to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
+    utils.gems_assert_equal(res_out, ref_out)
+
+    # 2) transposed gradient (non-contiguous, fully materialized)
+    grad_output = torch.randn(8, 2, dtype=dtype, device=device).t()
+    ref_grad_output = utils.to_reference(grad_output)
+
+    ref_out = torch.ops.aten.slice_backward(
+        ref_grad_output, shape, dim, start, end, step
+    )
+    res_out = flag_gems.slice_backward(grad_output, shape, dim, start, end, step)
+    utils.gems_assert_equal(res_out, ref_out)
