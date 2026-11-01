@@ -440,7 +440,7 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         BLOCK_SIZE = triton.next_power_of_2(B)
     loop_num = math.ceil(B / BLOCK_SIZE)
 
-    grid = (A*C)
+    grid = (A*C,)
     with torch_device_fn.device(inp.device):
         scan_part_min_abc_loop_kernel[grid](
             inp,
