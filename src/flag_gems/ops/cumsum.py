@@ -115,7 +115,7 @@ def scan_part_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0) / C
+    pid_a = ext.program_id(0) // C
     pid_b = ext.program_id(1)
     pid_c = ext.program_id(0) % C
 
@@ -160,7 +160,7 @@ def add_base_sum_abc_kernel(
     part_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0) / C
+    pid_a = ext.program_id(0) // C
     pid_b = ext.program_id(1)
     pid_c = ext.program_id(0) % C
 
