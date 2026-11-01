@@ -46,13 +46,10 @@ import torch
 import triton
 import triton.language as tl
 
-# The registration-liveness test asserts the "GEMS _FOREACH_COPY" record under
-# the generic logger name (see tests/test_foreach_ops.py), so the record must
-# be emitted from this logger rather than the module's own.
 from flag_gems.ops._foreach_binary import _foreach_copy as _generic_foreach_copy
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
-logger = logging.getLogger("flag_gems.ops._foreach_binary")
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

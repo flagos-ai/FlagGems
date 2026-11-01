@@ -757,7 +757,9 @@ def test_model_bundle_missing_error_supports_older_flagtree(
 def test_libentry_key_without_vendor_hook(monkeypatch):
     """Tensor-like arguments key on dtype and pointer alignment."""
     monkeypatch.setattr(libentry_mod, "device", SimpleNamespace(vendor_name="nvidia"))
-    entry = SimpleNamespace(divisibility=16)
+    entry = SimpleNamespace(
+        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
+    )
 
     aligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     misaligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 33)
@@ -771,7 +773,7 @@ def test_libentry_key_without_vendor_hook(monkeypatch):
 
 @pytest.mark.parametrize("backend_state", ["missing", "no_hook", "with_hook"])
 def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
-    """Preserve optional Hygon tensor specialization without a helper cache."""
+    """Resolve optional Hygon tensor specialization when creating the entry."""
     backend = SimpleNamespace()
     if backend_state == "with_hook":
         backend.get_tensor_specialization = lambda arg: "hcu"
@@ -782,7 +784,9 @@ def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
         "triton.backends.hcu.compiler",
         None if backend_state == "missing" else SimpleNamespace(HIPBackend=backend),
     )
-    entry = SimpleNamespace(divisibility=16)
+    entry = SimpleNamespace(
+        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
+    )
     tensor = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     tensor_key = ("f32", True, "hcu") if backend_state == "with_hook" else ("f32", True)
 

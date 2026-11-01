@@ -22,6 +22,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+@pytest.mark.bitwise_xor
 @pytest.mark.bitwise_xor_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
@@ -44,6 +45,7 @@ def test_bitwise_xor_scalar(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
+@pytest.mark.bitwise_xor_
 @pytest.mark.bitwise_xor_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)

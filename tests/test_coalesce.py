@@ -341,3 +341,145 @@ def test_coalesce_rejects_fp8_input():
         torch.ops.aten.coalesce(inp)
     with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
         torch.ops.aten.coalesce(inp)
+
+
+def _make_empty_out(shape, dtype, device):
+    indices = torch.empty((len(shape), 0), dtype=torch.long, device=device)
+    values = torch.empty((0,), dtype=dtype, device=device)
+    return torch.sparse_coo_tensor(indices, values, shape, device=device)
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("case", _COALESCE_CASES)
+@pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
+def test__coalesce(case, dtype):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    shape, nnz = case
+    inp = _make_sparse_input(shape, nnz, dtype)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten._coalesce(ref_inp)
+    res_out = flag_gems._coalesce(inp)
+
+    _assert_coalesced(res_out, ref_out, dtype)
+    # Coalescing returns a fresh tensor and must not mutate the input.
+    assert res_out is not inp
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("value_range,dtype,case", _VALUE_CASES)
+def test__coalesce_value_ranges(value_range, dtype, case):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    shape, nnz = case
+    inp = _make_sparse_input(shape, nnz, dtype, value_range=value_range)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten._coalesce(ref_inp)
+    res_out = flag_gems._coalesce(inp)
+
+    _assert_coalesced(res_out, ref_out, dtype)
+    assert res_out is not inp
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce
+@pytest.mark.parametrize("case", _COALESCE_CASES)
+@pytest.mark.parametrize("dtype,scenario", _special_value_cases(_COALESCE_DTYPES))
+def test__coalesce_nan_inf(case, dtype, scenario):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    shape, nnz = case
+    inp = _make_sparse_input(shape, nnz, dtype)
+    # Keep duplicate indices and vary the special-value scenario independently.
+    inp = torch.sparse_coo_tensor(
+        inp._indices(),
+        _make_special_values(nnz, dtype, scenario),
+        shape,
+        device=flag_gems.device,
+    )
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten._coalesce(ref_inp)
+    res_out = flag_gems._coalesce(inp)
+
+    _assert_coalesced(res_out, ref_out, dtype, equal_nan=True)
+    assert res_out is not inp
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce_out
+@pytest.mark.parametrize("case", _COALESCE_CASES)
+@pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
+def test__coalesce_out(case, dtype):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    shape, nnz = case
+    inp = _make_sparse_input(shape, nnz, dtype)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+    out = _make_empty_out(shape, dtype, flag_gems.device)
+    ref_out = _make_empty_out(shape, dtype, ref_inp.device)
+
+    ref_ret = torch.ops.aten._coalesce.out(ref_inp, out=ref_out)
+    res_ret = flag_gems._coalesce(inp, out=out)
+
+    # The .out variant must write into and return the out tensor itself.
+    assert res_ret is out
+    _assert_coalesced(res_ret, ref_ret, dtype)
+    assert not inp.is_coalesced()
+
+
+@pytest.mark.underscore_coalesce
+def test__coalesce_rejects_dense_input():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._coalesce(inp)
+    with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
+        flag_gems._coalesce(inp)
+
+
+@pytest.mark.underscore_coalesce
+def test__coalesce_rejects_csr_input():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    inp = torch.randn(4, 4, dtype=torch.float32, device=flag_gems.device)
+    inp = inp.to_sparse_csr()
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._coalesce(inp)
+    with pytest.raises((NotImplementedError, RuntimeError, TypeError)):
+        flag_gems._coalesce(inp)
+
+
+@pytest.mark.underscore_coalesce
+def test__coalesce_rejects_fp8_input():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    indices = torch.zeros((1, 3), dtype=torch.long, device=flag_gems.device)
+    values = torch.zeros(3, dtype=torch.float8_e4m3fn, device=flag_gems.device)
+    inp = torch.sparse_coo_tensor(indices, values, (4,), device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._coalesce(inp)
+    with pytest.raises((RuntimeError, NotImplementedError)):
+        flag_gems._coalesce(inp)

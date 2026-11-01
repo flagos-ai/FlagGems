@@ -81,6 +81,14 @@ def addr(input, vec1, vec2, *, beta=1, alpha=1):
     if vec1.dim() != 1 or vec2.dim() != 1:
         raise ValueError("addr: expected 1-D vectors")
 
+    # ATen types alpha/beta as Scalar: a 0-dim tensor argument must behave as a
+    # python number. Passing the tensor straight through also trips a Triton
+    # 3.5 compile error (fp16 pointer vs fp32 scalar operand).
+    if torch.is_tensor(beta) and beta.numel() == 1:
+        beta = beta.item()
+    if torch.is_tensor(alpha) and alpha.numel() == 1:
+        alpha = alpha.item()
+
     M = vec1.shape[0]
     N = vec2.shape[0]
     output_shape = (M, N)

@@ -95,7 +95,6 @@ CUSTOMIZED_UNUSED_OPS = (
     "tril_",
     "tril_out",
     "unique_consecutive",
-    "broadcast_to",
     "expand",
     "expand_",
     "repeat_interleave_self_int",

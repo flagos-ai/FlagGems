@@ -75,6 +75,7 @@ def entry(monkeypatch, request):
     e.specialize_indices = [0, 1]
     e.do_not_specialize_indices = [2]
     e.divisibility = 16
+    e._tensor_spec_fn = None
     e._has_flagtune_tuner = True
     e._apply_flagtune = lambda device: None
     e.kernel_cache = ({},)
@@ -185,6 +186,14 @@ def test_alignment_and_dtype_changes_do_not_reuse_wrong_entry(entry):
     seed_from_generic(entry, (a, 8), kwargs)
     assert entry._run_cached((torch.ones(9)[1:], 8), kwargs) is None
     assert entry._run_cached((a.to(torch.bfloat16), 8), kwargs) is None
+
+
+def test_cached_binding_preserves_backend_tensor_specialization(entry):
+    entry._tensor_spec_fn = lambda tensor: tensor.numel() < 16
+    kwargs = {"grid": (1,)}
+    seed_from_generic(entry, (torch.ones(8), 8), kwargs)
+    assert entry._run_cached((torch.ones(8), 8), kwargs) is not None
+    assert entry._run_cached((torch.ones(32), 8), kwargs) is None
 
 
 def test_custom_constexpr_uses_generic_fallback(entry):

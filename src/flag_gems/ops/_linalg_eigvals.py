@@ -16,64 +16,42 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems.utils import libentry
+from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
 
-_FALLBACK_KEYSET = torch._C.DispatchKeySet(
-    torch._C.DispatchKey.CompositeExplicitAutograd
-)
+# Eigenvalue computation is an iterative LAPACK algorithm (Hessenberg
+# reduction + shifted QR) with no feasible Triton formulation; delegate to the
+# native cuSOLVER kernel captured before any use_gems registration so the
+# solve stays on the device and nested calls cannot re-enter FlagGems.  See
+# linalg_matrix_sqrth.py for the same capture pattern.
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
 
-
-@libentry()
-@triton.jit
-def _linalg_eigvals_proxy_kernel(
-    input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
-    """A simple Triton kernel that copies data - acts as a proxy for the operation."""
-    pid = tl.program_id(0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    # Load and store the input (no computation, just buffer management)
-    val = tl.load(input_ptr + offsets, mask=mask, other=0.0)
-    tl.store(output_ptr + offsets, val, mask=mask)
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    _NATIVE_EIGVALS = torch.library.get_kernel(
+        torch.ops.aten._linalg_eigvals.default, runtime.device.dispatch_key
+    )
 
 
 def _linalg_eigvals(inp):
-    """FlagGems implementation of _linalg_eigvals.
+    """Eigenvalues of a square matrix (aten entry).
 
-    Computes the eigenvalues of a square matrix.
-    Uses torch.linalg.eigvals which dispatches to cuSOLVER.
-    The Triton kernel serves as a buffer management layer.
+    Delegates to the native device kernel captured at import time. All dtype
+    and shape validation stays with the native op, so behaviour (including the
+    float64/complex128 paths and the complex64 output dtype for real input)
+    matches the un-overloaded operator exactly.
     """
     logger.debug("GEMS _LINALG_EIGVALS")
-
-    # _linalg_eigvals only supports float32 and complex types in cuSOLVER
-    assert inp.dtype in (
-        torch.float32,
-        torch.complex64,
-        torch.complex128,
-    ), f"_linalg_eigvals only supports float32/complex64/complex128, got {inp.dtype}"
-
-    # Use Triton kernel to copy data to output buffer (for proper memory management)
-    # This ensures the operation goes through Triton runtime
-    output = torch.empty_like(inp)
-    n_elements = inp.numel()
-
-    # BLOCK_SIZE=128 balances occupancy and parallelism for typical matrix sizes
-    BLOCK_SIZE = 128
-    grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
-
-    with torch.cuda.device(inp.device):
-        _linalg_eigvals_proxy_kernel[grid](inp, output, n_elements, BLOCK_SIZE)
-
-    # Compute eigenvalues via PyTorch's public linalg API, which dispatches
-    # to cuSOLVER for real/complex eigenvalue computation.
-    # Route through CPU to avoid our overridden CUDA kernel, then move
-    # result back to the original device.
-    return torch.linalg.eigvals(inp.cpu()).to(inp.device)
+    if _CAN_CAPTURE_NATIVE_KERNEL:
+        return _NATIVE_EIGVALS.call_boxed(
+            torch._C.DispatchKeySet(
+                getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+            ),
+            inp,
+        )
+    # Older PyTorch without torch.library.get_kernel: fall back to the public
+    # API. The aten registration is temporarily suspended so this does not
+    # re-enter FlagGems.
+    with torch._C._DisableTorchDispatch():
+        return torch.linalg.eigvals(inp)

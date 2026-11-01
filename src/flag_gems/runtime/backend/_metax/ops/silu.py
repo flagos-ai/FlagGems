@@ -34,7 +34,7 @@ _SILU_CONFIG = CodeGenConfig(
 
 # MetaX backend modules are dynamically imported under ``_metax`` while the
 # record handler listens to the ``flag_gems`` logger hierarchy.
-logger = logging.getLogger("flag_gems.runtime.backend._metax.ops.silu")
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

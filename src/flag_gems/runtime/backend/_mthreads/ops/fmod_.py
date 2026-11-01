@@ -22,9 +22,7 @@ from flag_gems.ops.fmod import fmod_scalar_ as default_fmod_scalar_
 from flag_gems.ops.fmod import fmod_tensor_ as default_fmod_tensor_
 from flag_gems.utils import tl_extra_shim
 
-logger = logging.getLogger(
-    f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
-)
+logger = logging.getLogger(__name__)
 
 _fmod = tl_extra_shim.fmod
 

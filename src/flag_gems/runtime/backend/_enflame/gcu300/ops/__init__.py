@@ -78,6 +78,8 @@ from .clip import clip, clip_
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .contiguous import contiguous
+from .conv1d import conv1d
+from .conv2d import conv2d
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out
@@ -121,6 +123,7 @@ from .fill import (
     fill_tensor_out,
 )
 from .flip import flip
+from .floor import floor, floor_, floor_out
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -153,7 +156,12 @@ from .linspace import linspace
 from .log import log
 from .log10 import log10, log10_, log10_out
 from .log_sigmoid import log_sigmoid
-from .log_softmax import log_softmax
+from .log_softmax import (
+    log_softmax,
+    log_softmax_backward,
+    log_softmax_backward_out,
+    log_softmax_out,
+)
 from .logaddexp import logaddexp
 from .logical_and import logical_and
 from .logical_not import logical_not
@@ -183,7 +191,7 @@ from .mv import mv
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .native_layer_norm import native_layer_norm
-from .ne import ne, ne_scalar
+from .ne import ne, ne_scalar, not_equal_scalar
 from .neg import neg, neg_
 from .nllloss import (
     nll_loss2d_backward,
@@ -206,6 +214,7 @@ from .ones_like import ones_like
 from .outer import outer
 from .pad import constant_pad_nd, pad
 from .per_token_group_quant_fp8 import per_token_group_quant_fp8
+from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .poisson import poisson
 from .polar import polar
 from .pow import (
@@ -224,6 +233,8 @@ from .randn import randn
 from .randn_like import randn_like
 from .randperm import randperm
 from .reciprocal import reciprocal, reciprocal_
+from .reflection_pad1d import reflection_pad1d, reflection_pad1d_out
+from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .repeat import repeat
 from .repeat_interleave import (
@@ -258,6 +269,7 @@ from .special_modified_bessel_k0 import (
     special_modified_bessel_k0_out,
 )
 from .sqrt import sqrt, sqrt_
+from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .take import take, take_out
@@ -362,6 +374,8 @@ __all__ = [
     "conj_physical",
     "constant_pad_nd",
     "contiguous",
+    "conv1d",
+    "conv2d",
     "copy",
     "copy_",
     "cos",
@@ -410,8 +424,11 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "floor",
+    "floor_",
     "floor_divide",
     "floor_divide_",
+    "floor_out",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
     "full",
@@ -463,6 +480,9 @@ __all__ = [
     "log10_out",
     "log_sigmoid",
     "log_softmax",
+    "log_softmax_backward",
+    "log_softmax_backward_out",
+    "log_softmax_out",
     "logaddexp",
     "logical_and",
     "logical_not",
@@ -521,12 +541,15 @@ __all__ = [
     "normal_tensor_float",
     "normal_tensor_tensor",
     "normed_cumsum",
+    "not_equal_scalar",
     "one_hot",
     "ones",
     "ones_like",
     "outer",
     "pad",
     "per_token_group_quant_fp8",
+    "pixel_unshuffle",
+    "pixel_unshuffle_out",
     "poisson",
     "polar",
     "pow_scalar",
@@ -545,6 +568,10 @@ __all__ = [
     "randperm",
     "reciprocal",
     "reciprocal_",
+    "reflection_pad1d",
+    "reflection_pad1d_out",
+    "reflection_pad2d",
+    "reflection_pad2d_out",
     "relu",
     "relu_",
     "remainder",
@@ -597,6 +624,7 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "sqrt",
     "sqrt_",
+    "std",
     "sub",
     "sub_",
     "sum",
