@@ -364,8 +364,8 @@ def scan_part_min_abc_loop_kernel(
     loop_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = ext.program_id(0)
-    pid_c = ext.program_id(1)
+    pid_a = ext.program_id(0) // C
+    pid_c = ext.program_id(0) % C
 
     a_idx = pid_a
     c_idx = pid_c
@@ -440,7 +440,7 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         BLOCK_SIZE = triton.next_power_of_2(B)
     loop_num = math.ceil(B / BLOCK_SIZE)
 
-    grid = (A, C)
+    grid = (A*C)
     with torch_device_fn.device(inp.device):
         scan_part_min_abc_loop_kernel[grid](
             inp,
