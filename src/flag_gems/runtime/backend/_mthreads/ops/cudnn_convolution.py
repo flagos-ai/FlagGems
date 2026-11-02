@@ -14,12 +14,42 @@
 
 import logging
 
+import torch
+
 from flag_gems.ops.conv1d import conv1d as shared_conv1d
 from flag_gems.ops.conv3d import conv3d as shared_conv3d
 
-from .conv2d import conv2d
+from .conv2d import (
+    Conv2d,
+    conv2d_would_convert_input_to_channels_last,
+    conv2d_would_use_3x3_fused_cl_full_output,
+    conv2d_would_use_tme_3x3s1,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _conv2d_output_layout(input, out, weight, stride, padding, dilation, groups):
+    """Return torch's conv output layout for the cudnn entry point.
+
+    The MUSA conv2d op always allocates channels_last because its kernels
+    store in that layout. cudnn_convolution must match torch instead:
+    channels_last only when the input is channels_last or when the fast path
+    internally converts the input; otherwise a contiguous NCHW tensor.
+    """
+    if input.is_contiguous(memory_format=torch.channels_last):
+        return out
+    if (
+        conv2d_would_use_tme_3x3s1(input, weight, stride, padding, dilation, groups)
+        or conv2d_would_use_3x3_fused_cl_full_output(
+            input, weight, stride, padding, dilation, groups
+        )
+        or conv2d_would_convert_input_to_channels_last(
+            input, weight, stride, padding, dilation, groups
+        )
+    ):
+        return out
+    return out.contiguous()
 
 
 def cudnn_convolution(
@@ -61,14 +91,11 @@ def cudnn_convolution(
             groups=groups,
         )
     if ndim == 2:
-        return conv2d(
-            input,
-            weight,
-            bias=None,
-            stride=stride,
-            padding=padding,
-            dilation=dilation,
-            groups=groups,
+        # Inlined from _mthreads/ops/conv2d.py::conv2d so this entry point can
+        # fix up the output layout without changing the conv2d operator.
+        out = Conv2d.apply(input, weight, None, stride, padding, dilation, groups)
+        return _conv2d_output_layout(
+            input, out, weight, stride, padding, dilation, groups
         )
     if ndim == 3:
         return shared_conv3d(

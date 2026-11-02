@@ -18,7 +18,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
-from .conftest import QUICK_MODE
+from .conftest import QUICK_MODE, TO_CPU
 
 vendor_name = flag_gems.vendor_name
 
@@ -212,8 +212,18 @@ def _to_list(param, ndim):
 
 def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
     ndim = inp.ndim - 2
-    ref_inp = utils.to_reference(inp, True)
-    ref_weight = utils.to_reference(weight, True)
+    if vendor_name == "mthreads":
+        # MUDNN is not a usable reference on torch_musa 2.9.1 / MUSA 5.2.0:
+        # grouped fp16 convolutions fail in
+        # mudnnGetConvolutionForwardWorkspaceSize, and its fp32 convolution is
+        # not fp32-exact (the device has no fp64). Compute the reference in
+        # fp64 on the CPU, then move it back for the on-device comparison
+        # unless --ref cpu already keeps everything on the CPU.
+        ref_inp = inp.cpu().double()
+        ref_weight = weight.cpu().double()
+    else:
+        ref_inp = utils.to_reference(inp, True)
+        ref_weight = utils.to_reference(weight, True)
     out = _CONV_REF_FN[ndim](
         ref_inp,
         ref_weight,
@@ -223,7 +233,10 @@ def _reference_output(inp, weight, padding, stride, dilation, groups, dtype):
         dilation=dilation,
         groups=groups,
     )
-    return out.to(dtype)
+    out = out.to(dtype)
+    if vendor_name == "mthreads" and not TO_CPU:
+        out = out.to(inp.device)
+    return out
 
 
 def _gem_output(inp, weight, padding, stride, dilation, groups):
