@@ -153,6 +153,7 @@ from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
+from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv
 from .stack import stack
 from .swiglu import swiglu
@@ -372,6 +373,7 @@ __all__ = [
     "sort",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "special_erfc",
     "special_erfinv",
     "stack",
     "swiglu",
