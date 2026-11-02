@@ -21129,31 +21129,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - stable: '5.0'
-- id: sym_constrain_range
-  description: Constrains the range of a symbolic integer value. Used for torch.compile
-    symbolic tracing to provide bounds information.
-  for:
-  - sym_constrain_range
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: sym_numel
-  description: Returns the total number of elements of the input tensor.
-  for:
-  - sym_numel
-  marks:
-  - sym_numel
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: sym_size
   description: 'Returns the size of the input tensor as a list of integers.
 
@@ -21164,30 +21139,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - sym_size.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: sym_storage_offset
-  description: Returns the storage offset of the input tensor as an integer. Used
-    for torch.compile symbolic tracing.
-  for:
-  - sym_storage_offset
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: sym_stride
-  description: Returns the stride of the input tensor as a tuple of integers. Used
-    for torch.compile symbolic tracing.
-  for:
-  - sym_stride.int
   labels:
   - aten
   - KernelGen
