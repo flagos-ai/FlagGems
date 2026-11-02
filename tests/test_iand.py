@@ -6,7 +6,18 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.bitwise_and_tensor_
+def _candidate_iand(inp, other):
+    candidate = getattr(flag_gems, "__iand__", None)
+    if candidate is None:
+        candidate = (
+            flag_gems.__iand___tensor
+            if isinstance(other, torch.Tensor)
+            else flag_gems.__iand___scalar
+        )
+    return candidate(inp, other)
+
+
+@pytest.mark.iand
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_iand(shape, dtype):
@@ -39,7 +50,7 @@ def test_iand(shape, dtype):
         inp2.data_ptr(),
     )
     other_bytes = inp2.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
-    res_out = flag_gems.bitwise_and_tensor_(inp1, inp2)
+    res_out = _candidate_iand(inp1, inp2)
     assert isinstance(res_out, torch.Tensor)
     assert res_out is inp1
     assert (
@@ -63,7 +74,7 @@ def test_iand(shape, dtype):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.bitwise_and_scalar_
+@pytest.mark.iand
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
 @pytest.mark.parametrize("scalar", [0, 0x00FF, -1])
@@ -81,7 +92,7 @@ def test_iand_scalar_int(shape, dtype, scalar):
         inp1.stride(),
         inp1.data_ptr(),
     )
-    res_out = flag_gems.bitwise_and_scalar_(inp1, scalar)
+    res_out = _candidate_iand(inp1, scalar)
     assert isinstance(res_out, torch.Tensor)
     assert res_out is inp1
     assert (
@@ -95,7 +106,7 @@ def test_iand_scalar_int(shape, dtype, scalar):
     utils.gems_assert_equal(res_out, ref_out)
 
 
-@pytest.mark.bitwise_and_scalar_
+@pytest.mark.iand
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", [False, True])
 def test_iand_scalar_bool(shape, scalar):
@@ -110,7 +121,7 @@ def test_iand_scalar_bool(shape, scalar):
         inp1.stride(),
         inp1.data_ptr(),
     )
-    res_out = flag_gems.bitwise_and_scalar_(inp1, scalar)
+    res_out = _candidate_iand(inp1, scalar)
     assert isinstance(res_out, torch.Tensor)
     assert res_out is inp1
     assert (

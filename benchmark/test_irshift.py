@@ -4,10 +4,10 @@ import torch
 from . import base, consts
 
 
-@pytest.mark.bitwise_right_shift_
+@pytest.mark.irshift
 def test_irshift__():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="bitwise_right_shift_",
+        op_name="__irshift__",
         torch_op=torch.ops.aten.__irshift__,
         dtypes=consts.INT_DTYPES,
     )

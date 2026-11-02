@@ -14,7 +14,7 @@ INPLACE_BITWISE_SHAPES = [
 ]
 
 
-@pytest.mark.bitwise_right_shift_
+@pytest.mark.irshift
 @pytest.mark.parametrize("shapes", INPLACE_BITWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES + [torch.uint8])
 def test_irshift(shapes, dtype):
@@ -48,7 +48,7 @@ def test_irshift(shapes, dtype):
         res_b.data_ptr(),
     )
     other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    ret = flag_gems.__irshift__(res_a, res_b)
     assert isinstance(ret, torch.Tensor)
     assert ret is res_a
     assert (
@@ -74,7 +74,7 @@ def test_irshift(shapes, dtype):
     utils.gems_assert_close(res_a, ref_a, dtype)
 
 
-@pytest.mark.bitwise_right_shift_
+@pytest.mark.irshift
 @pytest.mark.parametrize("dtype", [torch.int8, torch.int16, torch.int32, torch.int64])
 def test_irshift_edge_cases(dtype):
     # Signed values cover negative-number right shift behavior.
@@ -112,7 +112,7 @@ def test_irshift_edge_cases(dtype):
         res_b.data_ptr(),
     )
     other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    ret = flag_gems.__irshift__(res_a, res_b)
     assert isinstance(ret, torch.Tensor)
     assert ret is res_a
     assert (
