@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -230,6 +231,9 @@ def put_stage_narrow_kernel(
         tl.store(dst_ptr + dst_offsets, value, mask=mask)
 
 
+_TRAP_AMDGCN = tl.constexpr(runtime.device.vendor_name == "amd")
+
+
 @triton.jit
 def _trap_if(cond):
     """Trap the device unconditionally when ``cond`` is true.
@@ -239,14 +243,25 @@ def _trap_if(cond):
     ``trap`` instruction directly keeps the check active in every build while
     still reporting the failure asynchronously, the way ATen's CUDA kernel does.
     """
-    tl.inline_asm_elementwise(
-        asm="{ .reg .pred p; setp.ne.b32 p, $1, 0; @p trap; mov.u32 $0, 0; }",
-        constraints="=r,r",
-        args=[cond.to(tl.int32)],
-        dtype=tl.int32,
-        is_pure=False,
-        pack=1,
-    )
+    if _TRAP_AMDGCN:
+        # AMDGCN has no PTX; cond is uniform (a reduction), so test one lane.
+        tl.inline_asm_elementwise(
+            asm="v_readfirstlane_b32 $0, $1\n s_cmp_lg_u32 $0, 0\n s_cbranch_scc0 1f\n s_trap 2\n1:",
+            constraints="=s,v,~{scc}",
+            args=[cond.to(tl.int32)],
+            dtype=tl.int32,
+            is_pure=False,
+            pack=1,
+        )
+    else:
+        tl.inline_asm_elementwise(
+            asm="{ .reg .pred p; setp.ne.b32 p, $1, 0; @p trap; mov.u32 $0, 0; }",
+            constraints="=r,r",
+            args=[cond.to(tl.int32)],
+            dtype=tl.int32,
+            is_pure=False,
+            pack=1,
+        )
 
 
 @libentry()

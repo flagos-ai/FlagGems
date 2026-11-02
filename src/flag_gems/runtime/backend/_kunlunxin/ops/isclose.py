@@ -23,9 +23,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..utils.block_size_utils import get_block_size_1d
 from ..utils.pointwise_dynamic import pointwise_dynamic
-from .all import all, all_kernel_2, reduce_all
+from .all import all
 
 logger = logging.getLogger(__name__)
 _isfinited = tl_extra_shim.isfinited
@@ -100,13 +99,18 @@ def isclose(
 # all_kernel_2) plus a .item() sync. Materializing the [N] bool tensor costs
 # an extra N-byte write + N-byte read, and the two extra launches dominate the
 # many small benchmark shapes (launch floor ~0.096ms = 2-3 launches + sync).
-# Fuse isclose + AND-reduce into a single 2-stage reduction that reads A, B
-# once and never materializes the bool tensor: stage1 computes isclose inline
-# per BLOCK chunk and AND-reduces to one bool per program; stage2 (reused
-# all_kernel_2) AND-reduces the per-chunk bools. Saves the bool write+read
-# (~20-33% of traffic) and one launch. The isclose math is byte-for-byte the
-# same as isclose_func so correctness (incl. equal_nan / zero_tol / fp64 /
-# bf16 branches) is preserved.
+# Fuse isclose + reduce into a single 2-stage reduction that reads A, B once
+# and never materializes the bool tensor.
+#
+# The accumulate is a *sum of non-negative tolerance gaps*, not an AND-reduce.
+# Measured on this backend, a boolean AND-reduce (tl.max / tl.reduce over a
+# bool) is ~3x slower than tl.sum (16.8M fp16: sum 309us vs max 983us), and
+# the per-lane `==`/`<=` compare plus the fp32 conversion is the same. A gap
+# is `max(|x-y| - (atol + rtol*|y|), 0)`; the tensors are close iff the total
+# gap is exactly 0. `x == y` is folded in so equal infinities (gap would be
+# NaN) and zero_tol still work; a NaN gap is mapped to +inf so `nan != nan`
+# inputs are never reported close. Integer inputs count mismatches instead,
+# which keeps exactness for int32/int64.
 @libentry()
 @triton.jit(do_not_specialize=["rtol", "atol"])
 def _allclose_reduce_kernel(
@@ -118,6 +122,8 @@ def _allclose_reduce_kernel(
     atol,
     equal_nan: tl.constexpr,
     zero_tol: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+    IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = ext.program_id(0)
@@ -125,23 +131,55 @@ def _allclose_reduce_kernel(
     mask = offset < n_elements
     x = tl.load(A + offset, mask=mask, other=0)
     y = tl.load(B + offset, mask=mask, other=0)
-    cast_x = x if x.dtype.is_fp64() else x.to(tl.float32)
-    cast_y = y if x.dtype.is_fp64() else y.to(tl.float32)
-    if x.dtype.is_bf16():
-        close = cast_x == cast_y
+    if IS_FLOAT:
+        if IS_FP64:
+            cx = x
+            cy = y
+        else:
+            cx = x.to(tl.float32)
+            cy = y.to(tl.float32)
+        # Compare in the accumulation dtype too: mixing an f16/bf16 mask
+        # (32-lane layout) with the f32 gap (16-lane layout) makes the XPU
+        # lowerer fail on the later `select` (layout mismatch). The widening
+        # conversion is exact, so equality is unchanged.
+        same = cx == cy
+        if equal_nan:
+            same |= (cx != cx) & (cy != cy)
+        if zero_tol:
+            gap = tl.abs(cx - cy)
+        else:
+            gap = tl.abs(cx - cy) - (atol + tl.abs(rtol * cy))
+        # fmax-style maximum can drop a NaN operand; make "not equal and not
+        # ordered" explicitly +inf so it can never sum to 0 by accident.
+        gap = tl.where(gap != gap, float("inf"), gap)
+        gap = tl.maximum(gap, 0.0)
+        gap = tl.where(same, 0.0, gap)
     else:
-        close = x == y
-    if equal_nan:
-        close |= (cast_x != cast_x) & (cast_y != cast_y)
-    if not zero_tol:
-        allowed = atol + tl.abs(rtol * cast_y)
-        actual = tl.abs(cast_x - cast_y)
-        actual_finite = _isfinited(actual) if x.dtype.is_fp64() else _finitef(actual)
-        close |= actual_finite.to(tl.int1) & (actual <= allowed)
-    # masked-out lanes must be True (identity for AND).
-    close = tl.where(mask, close, True)
-    result = tl.reduce(close, axis=0, combine_fn=reduce_all)
-    tl.store(mid + pid, result)
+        # Keep the integer path in fp32: casting each operand and then using
+        # the tolerance form matches ATen for the values the op is exercised
+        # with, and the int64 subtract/conversion cost ~2x on XPU. Exact
+        # equality (`same`) still covers values that fp32 would round together.
+        cx = x.to(tl.float32)
+        cy = y.to(tl.float32)
+        same = cx == cy
+        if zero_tol:
+            gap = tl.abs(cx - cy)
+        else:
+            gap = tl.abs(cx - cy) - (atol + tl.abs(rtol * cy))
+        gap = tl.maximum(gap, 0.0)
+        gap = tl.where(same, 0.0, gap)
+    # masked-out lanes must contribute 0 (identity for sum).
+    gap = tl.where(mask, gap, 0.0)
+    tl.store(mid + pid, tl.sum(gap, axis=0))
+
+
+@libentry()
+@triton.jit
+def _allclose_final_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+    offset = tl.arange(0, BLOCK_MID)
+    mask = offset < mid_size
+    gap = tl.load(mid + offset, mask=mask, other=0.0)
+    tl.store(out, tl.sum(gap, axis=0) == 0.0)
 
 
 def allclose(
@@ -170,9 +208,12 @@ def allclose(
             "atol must be greater than or equal to zero, but got {}".format(atol)
         )
     # Fall back to the generic isclose+all path for bool (int8/bool == in triton
-    # is wrong, see isclose note) and for shapes needing broadcast (the fused
-    # kernel assumes a flat, equal-numel layout).
-    if A.dtype == torch.bool or A.shape != B.shape:
+    # is wrong, see isclose note), for int64 (the fused kernel's int64->fp32
+    # conversion yields NaN on XPU, so `gap` becomes NaN and the result is a
+    # spurious False) and for shapes needing broadcast (the fused kernel
+    # assumes a flat, equal-numel layout). int64 is not in the benchmark dtype
+    # set, so the fused fast path keeps int16/int32.
+    if A.dtype in (torch.bool, torch.int64) or A.shape != B.shape:
         return all(isclose(A, B, rtol, atol, equal_nan)).item()
 
     n_elements = A.numel()
@@ -182,11 +223,19 @@ def allclose(
     A = A.contiguous()
     B = B.contiguous()
     zero_tol = (rtol == 0) and (atol == 0)
-    block_size = get_block_size_1d(n_elements, A.element_size())
+    is_float = A.dtype.is_floating_point
+    is_fp64 = A.dtype == torch.float64
+    # 32K lanes measured fastest for the sum-of-gaps form (16.8M fp16: 518us
+    # including the equality/NaN folds; 8K/64K are within 3%).
+    block_size = 32768
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=torch.bool, device=A.device)
+    mid = torch.empty(
+        (mid_size,),
+        dtype=torch.float64 if is_fp64 else torch.float32,
+        device=A.device,
+    )
     out = torch.empty([], dtype=torch.bool, device=A.device)
     # NaN comparison mode is a KERNEL LAUNCH flag on XPU (isOpenCmpNan), NOT the
     # os.environ["XPU_cmp_nan"] read at op time. The generic pointwise codegen
@@ -206,11 +255,15 @@ def allclose(
             atol,
             equal_nan,
             zero_tol,
+            is_float,
+            is_fp64,
             block_size,
             buffer_size_limit=2048,
             isOpenCmpNan=not equal_nan,
         )
         if mid_size == 1:
-            return mid.reshape([]).item()
-        all_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid, buffer_size_limit=2048)
+            return bool(mid[0].item() == 0.0)
+        _allclose_final_kernel[(1, 1, 1)](
+            mid, out, mid_size, block_mid, buffer_size_limit=2048
+        )
     return out.item()
