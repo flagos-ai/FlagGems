@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 _ACT_MAP = {"none": 0, None: 0, "relu": 1, "silu": 2}
 
 
+@libentry()
 @triton.jit
 def _mixed_dtypes_linear_kernel(
     x_ptr,

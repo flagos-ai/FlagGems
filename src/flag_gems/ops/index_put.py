@@ -94,14 +94,25 @@ def generate_index_put_kernel(
     with code.indent():
         code.writeline("pid0 = ext.program_id(axis=0)")
         code.writeline("pid1 = ext.program_id(axis=1)")
+        # Address arithmetic must stay in int64. With int32 indices,
+        # `index * input_stride` can exceed 2**31 on large strided tensors and
+        # wrap before it reaches the store, silently redirecting the write to a
+        # wrapped address. Casting only the final pointer offset is too late,
+        # so the program offsets are widened before the coordinates derived
+        # from them. See Issue #6411.
         code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            "offset0 = pid0.to(tl.int64) * BLOCK_SIZE0 + "
+            "tl.arange(0, BLOCK_SIZE0).to(tl.int64)[:, None]"
         )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
+            code.writeline(
+                "offset1 = pid1.to(tl.int64) * 1 + "
+                "tl.arange(0, 1).to(tl.int64)[None, :]"
+            )
         else:
             code.writeline(
-                "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
+                "offset1 = pid1.to(tl.int64) * BLOCK_SIZE1 + "
+                "tl.arange(0, BLOCK_SIZE1).to(tl.int64)[None, :]"
             )
         code.newline()
         code.writeline("cur_idx = offset0")
@@ -117,8 +128,12 @@ def generate_index_put_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            # The index tensor may be int32; widen the loaded index before it is
+            # multiplied by input_stride so the product cannot wrap.
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.load("
+                f"indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0"
+                ").to(tl.int64)"
             )
         code.newline()
         index_mask = [

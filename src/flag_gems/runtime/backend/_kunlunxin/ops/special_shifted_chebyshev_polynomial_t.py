@@ -48,7 +48,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 # The accuracy test asserts on the generic module's logger/message, so keep both.
-logger = logging.getLogger("flag_gems.ops.special_shifted_chebyshev_polynomial_t")
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,

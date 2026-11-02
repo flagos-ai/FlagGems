@@ -110,3 +110,4 @@ params:
   BookTheme: "auto"
   BookToC: true
   BookLastChangeLink: 'https://github.com/flagos-ai/FlagGems/commit/{{ .GitInfo.Hash }}'
+  BookPortableLinks: true

@@ -67,8 +67,9 @@ def test_special_log1p_nan_inf():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support fp64",
+    not utils.fp64_is_supported,
+    reason="device reports no fp64 support (support_fp64=False): an fp64 tensor "
+    "silently materializes as fp32, so the fp64 dtype/value contract cannot hold",
 )
 @pytest.mark.special_log1p
 def test_special_log1p_small_values():

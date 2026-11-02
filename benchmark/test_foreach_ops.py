@@ -112,6 +112,18 @@ def _marker_name(key):
     return ident
 
 
+def _aggregate_mark(key):
+    """The operator-level mark for a key: the per-overload mark minus the
+    overload suffix (``_foreach_add.Scalar`` -> ``foreach_add``). Selecting
+    with ``-m foreach_add`` picks every overload of that operator at once.
+    """
+    core, _, inplace = _parts(key)
+    ident = f"foreach_{core}"
+    if inplace:
+        ident += "_"
+    return ident
+
+
 def _torch_op(key):
     base_name, _, overload = key.partition(".")
     op = getattr(torch.ops.aten, base_name)
@@ -120,8 +132,18 @@ def _torch_op(key):
 
 BENCH_KEYS = [k for k in ALL_KEYS if not k.endswith(".ScalarAndTensor")]
 
+# The specific mark must stay first: conftest keys its JSON report off the
+# first non-control mark (``marks[0]``), and an aggregate in that slot would
+# merge every overload of an operator into one report key.
 PARAMS = [
-    pytest.param(k, marks=getattr(pytest.mark, _marker_name(k))) for k in BENCH_KEYS
+    pytest.param(
+        k,
+        marks=[
+            getattr(pytest.mark, _marker_name(k)),
+            getattr(pytest.mark, _aggregate_mark(k)),
+        ],
+    )
+    for k in BENCH_KEYS
 ]
 
 
@@ -155,6 +177,7 @@ class ForeachPowScalarAndTensorBenchmark(ForeachOpsBenchmark):
             yield (2.0, tensors)
 
 
+@pytest.mark.foreach_pow
 @pytest.mark.foreach_pow_scalar_and_tensor
 def test_perf_foreach_pow_scalar_and_tensor():
     bench = ForeachPowScalarAndTensorBenchmark(

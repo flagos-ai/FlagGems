@@ -82,6 +82,7 @@ def _run_benchmark(op_name, input_fn, torch_op, gems_op=None):
     bench.run()
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 def test_float_power_tensor_tensor():
     _run_benchmark(
@@ -91,6 +92,7 @@ def test_float_power_tensor_tensor():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar
 def test_float_power_tensor_scalar():
     _run_benchmark(
@@ -100,6 +102,7 @@ def test_float_power_tensor_scalar():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor
 def test_float_power_scalar_tensor():
     _run_benchmark(
@@ -109,6 +112,7 @@ def test_float_power_scalar_tensor():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 def test_float_power_tensor_tensor_out():
     _run_benchmark(
@@ -123,6 +127,7 @@ def test_float_power_tensor_tensor_out():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 def test_float_power_tensor_scalar_out():
     _run_benchmark(
@@ -137,6 +142,7 @@ def test_float_power_tensor_scalar_out():
     )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor_out
 def test_float_power_scalar_tensor_out():
     _run_benchmark(

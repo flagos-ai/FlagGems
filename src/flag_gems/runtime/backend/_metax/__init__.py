@@ -14,6 +14,7 @@
 
 from backend_utils import VendorDescriptor
 
+# Native FP8 scaling limits must not disable the generic scaled_mm candidate.
 vendor_info = VendorDescriptor(
     vendor_name="metax", device_name="cuda", device_query_cmd="mx-smi"
 )

@@ -668,3 +668,102 @@ def test_values_copy_out_rejects_mismatched_dtype(mismatched):
 
     with pytest.raises((RuntimeError, TypeError, NotImplementedError)):
         flag_gems.values_copy(inp, out=out)
+
+
+# Sparse COO shapes for the values copy: (n_sparse_dims, nnz, dense_tail).
+# The op copies the (nnz,) + dense_tail values tensor; nnz drives the workload
+# and a non-empty dense tail exercises the nd kernel.
+SPARSE_VALUES_SHAPES = (
+    [
+        (1, 8, (16,), ()),
+        (2, 4, (2, 2), ()),
+        (2, 8, (4, 4, 2), (2,)),
+        (2, 16, (8, 8), ()),
+        (3, 32, (5, 7, 9, 3), (3,)),
+    ]
+    if utils.QUICK_MODE
+    else [
+        (1, 8, (16,), ()),
+        (1, 64, (64, 2), (2,)),
+        (2, 4, (2, 2), ()),
+        (2, 8, (4, 4, 2), (2,)),
+        (2, 64, (16, 16), ()),
+        (2, 1024, (32, 32, 2, 2), (2, 2)),
+        (3, 32, (5, 7, 9, 3), (3,)),
+        (3, 128, (16, 16, 16), ()),
+        (4, 64, (8, 8, 8, 8, 2), (2,)),
+    ]
+)
+
+
+def _make_coo(nnd, nnz, size, dense_tail, dtype, device, seed=0):
+    """Build a sparse COO tensor with distinct, sorted coordinates."""
+    gen = torch.Generator(device="cpu").manual_seed(seed)
+    numel = 1
+    for s in size[:nnd]:
+        numel *= s
+    flat = torch.randperm(numel, generator=gen)[:nnz]
+    indices = torch.empty((nnd, nnz), dtype=torch.int64)
+    work = flat.clone()
+    for d in reversed(range(nnd)):
+        indices[d] = work % size[d]
+        work = work // size[d]
+    perm = torch.arange(nnz)
+    for d in reversed(range(nnd)):
+        perm = perm[torch.argsort(indices[d][perm], stable=True)]
+    indices = indices[:, perm].contiguous()
+    values = torch.randn((nnz,) + tuple(dense_tail), dtype=dtype, generator=gen)
+    return torch.sparse_coo_tensor(indices.to(device), values.to(device), size)
+
+
+@pytest.mark.underscore_values_copy
+@pytest.mark.parametrize("nnd, nnz, size, dense_tail", SPARSE_VALUES_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test__values_copy(nnd, nnz, size, dense_tail, dtype):
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    # The native CUDA op has no sparse-COO kernel, so the reference is the
+    # plain values accessor cloned on device.
+    res_inp = _make_coo(nnd, nnz, size, dense_tail, dtype, flag_gems.device, seed=3)
+    ref_values = torch.clone(res_inp._values())
+
+    res_out = flag_gems._values_copy(res_inp)
+
+    assert res_out.shape == (nnz,) + tuple(dense_tail)
+    # The copy must not alias the input storage.
+    assert res_out.data_ptr() != res_inp._values().data_ptr()
+    utils.gems_assert_close(res_out, ref_values, dtype)
+
+
+@pytest.mark.underscore_values_copy
+def test__values_copy_empty():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = torch.sparse_coo_tensor(
+        torch.zeros((2, 0), dtype=torch.int64, device=flag_gems.device),
+        torch.zeros((0,), device=flag_gems.device),
+        (4, 4),
+    )
+    res_out = flag_gems._values_copy(res_inp)
+
+    assert res_out.shape == (0,)
+
+
+@pytest.mark.underscore_values_copy_out
+def test__values_copy_out():
+    # The op output is device-independent, but --ref=cpu moves the native
+    # reference to CPU; this suite is validated on the device path.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    res_inp = _make_coo(2, 16, (8, 8, 2), (2,), torch.float32, flag_gems.device, seed=5)
+    vals = res_inp._values()
+    res_out = torch.empty_like(vals)
+
+    res_ret = flag_gems._values_copy_out(res_inp, out=res_out)
+
+    assert res_ret is res_out
+    utils.gems_assert_close(res_out, vals, torch.float32)

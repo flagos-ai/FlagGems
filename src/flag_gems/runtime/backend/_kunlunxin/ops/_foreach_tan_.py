@@ -52,10 +52,7 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
-# The registration-liveness test asserts the "GEMS _FOREACH_TAN_" record under
-# the *generic* logger name (see tests/test_foreach_unary.py), so the record
-# must be emitted from this logger rather than the module's own.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # tan rejects complex32 but accepts complex64/complex128, all ints and bool
 # (matching the generic ``UNARY_OPS["tan"].allowed``).

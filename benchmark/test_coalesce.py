@@ -68,3 +68,40 @@ def test_coalesce():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_coalesce
+def test__coalesce():
+    bench = CoalesceBenchmark(
+        op_name="_coalesce",
+        torch_op=torch.ops.aten._coalesce,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+class CoalesceOutBenchmark(CoalesceBenchmark):
+    """``.out`` variant: yields the sparse input plus an out buffer."""
+
+    def get_input_iter(self, cur_dtype):
+        for sparse_shape, nnz in self.shapes:
+            inp = _make_uncoalesced_coo(sparse_shape, nnz, cur_dtype, self.device)
+            out = torch.sparse_coo_tensor(
+                torch.zeros(
+                    (len(sparse_shape), 1), dtype=torch.long, device=self.device
+                ),
+                torch.zeros((1,), dtype=cur_dtype, device=self.device),
+                sparse_shape,
+                is_coalesced=True,
+            )
+            yield inp, {"out": out}
+
+
+@pytest.mark.underscore_coalesce_out
+def test__coalesce_out():
+    bench = CoalesceOutBenchmark(
+        op_name="_coalesce_out",
+        torch_op=torch.ops.aten._coalesce.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

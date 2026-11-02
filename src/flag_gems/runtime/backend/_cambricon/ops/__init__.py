@@ -77,7 +77,6 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
-from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_
 from .ceil import ceil, ceil_, ceil_out
@@ -407,7 +406,6 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
-    "broadcast_to",
     "cat",
     "cat_out",
     "cauchy",

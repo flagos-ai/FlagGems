@@ -25,9 +25,9 @@ class ArgsortBenchmark(base.GenericBenchmark2DOnly):
         super().__init__(*args, **kwargs)
         self.accuracy_failures = []
 
-    def _measure_input(self, input, case_id=None):
+    def _measure_input(self, input, case_id=None, dtype=None):
         # Complete timing independently before checking this exact input shape.
-        metric = super()._measure_input(input, case_id=case_id)
+        metric = super()._measure_input(input, case_id=case_id, dtype=dtype)
         args, kwargs = self.unpack_to_args_kwargs(input)
         inp = args[0]
         try:
