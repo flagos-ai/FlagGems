@@ -41,6 +41,7 @@ from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
+from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
@@ -106,6 +107,7 @@ __all__ = [
     "_compute_linear_combination",
     "_conv_depthwise2d",
     "_flash_attention_forward",
+    "_fused_rms_norm_backward",
     "_resize_output_",
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
