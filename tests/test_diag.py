@@ -47,7 +47,6 @@ def test_diag(shape, diagonal, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.diag(ref_inp, diagonal)
-    with flag_gems.use_gems():
-        res_out = torch.diag(inp, diagonal)
+    res_out = flag_gems.diag(inp, diagonal)
 
     utils.gems_assert_equal(res_out, ref_out)

@@ -46,8 +46,7 @@ def test_roll_single_dim(shape, dtype, shifts_dims):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -76,8 +75,7 @@ def test_roll_multi_dims(shape, dtype, shifts_dims):
     ref_inp = utils.to_reference(inp, False)
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -95,8 +93,7 @@ def test_roll_flatten(shape, dtype, shifts):
 
     # Roll without specifying dims (flatten case)
     ref_out = torch.roll(ref_inp, shifts)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts)
+    res_out = flag_gems.roll(inp, shifts)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -117,7 +114,6 @@ def test_roll_with_non_dense_input(shape, dtype):
     dims = 0
 
     ref_out = torch.roll(ref_inp, shifts, dims)
-    with flag_gems.use_gems():
-        res_out = torch.roll(inp, shifts, dims)
+    res_out = flag_gems.roll(inp, shifts, dims)
 
     utils.gems_assert_equal(res_out, ref_out)

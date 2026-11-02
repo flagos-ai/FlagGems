@@ -125,7 +125,7 @@ def any(inp):
 
 
 def any_dim(inp, dim=None, keepdim=False):
-    logger.debug("GEMS ANY DIM")
+    logger.debug("GEMS ANY_DIM")
     shape = list(inp.shape)
     if dim is None:
         out = any(inp)
@@ -374,7 +374,7 @@ def any_dims(
     dim=None,
     keepdim=False,
 ):
-    logger.debug("GEMS ANY DIMS")
+    logger.debug("GEMS ANY_DIMS")
     if dim is None or isinstance(dim, int):
         return any_dim(inp, dim=dim, keepdim=keepdim)
 

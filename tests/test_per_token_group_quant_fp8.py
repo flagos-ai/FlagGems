@@ -64,10 +64,9 @@ def test_per_token_group_quant_fp8(num_tokens, d, dtype, group_size, seed, scale
     ref_out, ref_scale = native_per_token_group_quant_fp8(
         ref_x, group_size, scale_ue8m0=scale_ue8m0
     )
-    with flag_gems.use_gems():
-        out, scale = flag_gems.per_token_group_quant_fp8(
-            x, group_size, scale_ue8m0=scale_ue8m0
-        )
+    out, scale = flag_gems.per_token_group_quant_fp8(
+        x, group_size, scale_ue8m0=scale_ue8m0
+    )
 
     utils.gems_assert_close(scale, ref_scale, dtype=torch.float32)
 

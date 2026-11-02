@@ -26,6 +26,24 @@ from .conftest import QUICK_MODE
 
 random.seed(42)
 
+
+def _quantized_weight_moe_supported():
+    if flag_gems.vendor_name != "kunlunxin":
+        return True
+    return bool(getattr(flag_gems.runtime.device, "support_quantized_moe", False))
+
+
+QUANTIZED_WEIGHT_MOE_SUPPORTED = _quantized_weight_moe_supported()
+
+QUANTIZED_WEIGHT_MOE_SKIP_REASON = (
+    "this backend's fused_experts_impl has no quantized-weight path: the "
+    "Kunlunxin backend op raises NotImplementedError for INT8 W8A8 / INT8 "
+    "W8A16 / INT4 W4A16, and the generic implementation faults on this XPU "
+    "stack. Coverage narrowing, recorded: quantized-weight fused_experts_impl "
+    "is exercised by zero cases on this device."
+)
+
+
 FUSED_MOE_CONFIGS = [
     # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
     (1, 8, 128, 256, 2),
@@ -268,10 +286,10 @@ def test_fused_moe_vs_ref(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -311,12 +329,35 @@ except ImportError:
     HAS_VLLM_FUSED_MOE = False
 
 
+def _vllm_fused_moe_reference_unusable():
+    if flag_gems.vendor_name != "kunlunxin" or not HAS_VLLM_FUSED_MOE:
+        return False
+    try:
+        from vllm.platforms import current_platform
+
+        current_platform.get_device_name()
+    except Exception:
+        return True
+    return False
+
+
+VLLM_FUSED_MOE_REFERENCE_UNUSABLE = _vllm_fused_moe_reference_unusable()
+
+
 @pytest.mark.fused_experts_impl
 @pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+@pytest.mark.skipif(
+    VLLM_FUSED_MOE_REFERENCE_UNUSABLE,
+    reason="vLLM fused_experts_impl is not usable as a reference on this platform: "
+    "vllm.platforms.interface.UnspecifiedPlatform.get_device_name() raises "
+    "NotImplementedError, so the MoE tuning-config lookup cannot complete and no "
+    "kernel is ever reached. test_fused_moe_vs_ref covers the same configs and "
+    "dtypes against a device reference.",
 )
 def test_fused_moe_vs_vllm(config, dtype):
     """Test FlagGems fused_moe against a pure PyTorch reference."""
@@ -329,10 +370,10 @@ def test_fused_moe_vs_vllm(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Generate routing
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
@@ -389,10 +430,10 @@ def test_accuracy_fused_moe_fp8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     # Per-tensor quantization of weights
     finfo = torch.finfo(torch.float8_e4m3fn)
@@ -762,6 +803,10 @@ def test_fused_moe_fp8_blockwise(config, block_shape):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
+)
 def test_fused_moe_int8(config):
     """Test FlagGems fused_moe with INT8 W8A8 per-channel quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -779,10 +824,10 @@ def test_fused_moe_int8(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
 
@@ -877,6 +922,10 @@ def torch_fused_moe_weight_only_reference(
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
+)
 def test_fused_moe_int8_w8a16(config):
     """Test FlagGems fused_moe with INT8 W8A16 (weight-only) quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -894,10 +943,10 @@ def test_fused_moe_int8_w8a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     # Per-channel quantization
@@ -955,6 +1004,10 @@ def test_fused_moe_int8_w8a16(config):
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
+@pytest.mark.skipif(
+    not QUANTIZED_WEIGHT_MOE_SUPPORTED,
+    reason=QUANTIZED_WEIGHT_MOE_SKIP_REASON,
+)
 def test_fused_moe_int4_w4a16(config):
     """Test FlagGems fused_moe with INT4 W4A16 (weight-only) quantization."""
     num_tokens, num_experts, hidden_size, intermediate_size, topk = config
@@ -972,10 +1025,10 @@ def test_fused_moe_int4_w4a16(config):
         hidden_size,
         device=device,
         dtype=torch.float32,
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2_fp32 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=torch.float32
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     eps = 1e-10
     int4_max = 7
@@ -1051,10 +1104,10 @@ def test_fused_moe_inplace(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
@@ -1111,10 +1164,10 @@ def test_fused_moe_apply_router_weight_on_input(config, dtype):
     hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
     w1 = torch.randn(
         num_experts, intermediate_size * 2, hidden_size, device=device, dtype=dtype
-    ) * (1.0 / hidden_size**0.5)
+    ).mul_(1.0 / hidden_size**0.5)
     w2 = torch.randn(
         num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
-    ) * (1.0 / intermediate_size**0.5)
+    ).mul_(1.0 / intermediate_size**0.5)
 
     gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
     topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)

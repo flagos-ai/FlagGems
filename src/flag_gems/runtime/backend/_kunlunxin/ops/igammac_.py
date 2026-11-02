@@ -1,14 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Kunlunxin (XPU) override of igammac_.
-#
-# Root cause: generic `flag_gems/ops/igammac_.py` calls a `@use_tl_extra`
-# `lgamma` shim. On XPU that shim's attribute exists but links to
-# `undefined symbol: Unsupported`, so every case crashes at compile.
-#
-# Fix: inline Lanczos g=7 lgamma (`_lgamma_pos`, same helper as
-# lgamma / special_gammainc / mvlgamma_ overrides). Test inputs are
-# `torch.rand + 0.1` for both a and x, so a > 0 → no reflection needed.
 import logging
 
 import torch
@@ -16,7 +5,7 @@ import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +46,6 @@ def igammac_func(a, x):
 
     log_gamma_a = _lgamma_pos(a_f32)
 
-    # Lower incomplete gamma series: sum_{n=0} x^n / prod_{k=0..n}(a+k)
     term = 1.0 / a_f32
     sum_val = term
     term = term * x_f32 / (a_f32 + 1.0)

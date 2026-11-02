@@ -31,10 +31,9 @@ def test_binary_cross_entropy_backward(shape, dtype, reduction):
         None,
         reduction,
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.binary_cross_entropy_backward(
-            grad_output, self, target, None, reduction
-        )
+    res_out = flag_gems.binary_cross_entropy_backward(
+        grad_output, self, target, None, reduction
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -66,9 +65,8 @@ def test_binary_cross_entropy_backward_weighted(shape, dtype, reduction):
         ref_weight,
         reduction,
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.binary_cross_entropy_backward(
-            grad_output, self, target, weight, reduction
-        )
+    res_out = flag_gems.binary_cross_entropy_backward(
+        grad_output, self, target, weight, reduction
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

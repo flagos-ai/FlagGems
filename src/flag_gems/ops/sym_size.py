@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 def sym_size(A: torch.Tensor):
     """Return the size of a tensor as a list of integers.
 
+    Matches the ``aten::sym_size`` default-overload semantics
+    (``Tensor self`` -> ``SymInt[]``).
+
     Args:
         A: Input tensor
 
@@ -36,3 +39,13 @@ def sym_size(A: torch.Tensor):
     """
     logger.debug("GEMS SYM_SIZE")
     return list(A.shape)
+
+
+def sym_size_int(A: torch.Tensor, dim: int):
+    """Return the size of one dimension.
+
+    Matches the ``aten::sym_size.int`` overload
+    (``Tensor self, int dim`` -> ``SymInt``).
+    """
+    logger.debug("GEMS SYM_SIZE_INT")
+    return A.shape[dim]

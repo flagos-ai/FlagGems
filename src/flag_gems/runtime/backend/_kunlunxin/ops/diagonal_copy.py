@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # Gather offset lookup tables; per-(shape, stride) caches kept alive across calls.
 #   _col_tab_cache:   (in_diag_stride, pad_len) -> j * in_diag_stride for j in [0, pad)
@@ -128,7 +128,7 @@ def diagonal_copy(
     self: torch.Tensor, offset: int = 0, dim1: int = 0, dim2: int = 1
 ) -> torch.Tensor:
     """Performs the same operation as torch.diagonal, but returns a copy."""
-    logger.debug("GEMS DIAGONAL_COPY")
+    logger.debug("GEMS_KUNLUNXIN DIAGONAL_COPY")
 
     ndim = self.ndim
     dim1 = dim1 if dim1 >= 0 else dim1 + ndim

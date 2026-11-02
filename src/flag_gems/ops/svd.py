@@ -2391,14 +2391,16 @@ def _cyclic_jacobi_svd(input):
                 BLOCK_R=triton.next_power_of_2(projected_rows),
                 num_warps=1,
             )
-            if batch > 1 and k <= 16:
-                _thin_reorthogonalize_kernel[(batch,)](
-                    projected,
-                    ROWS=projected_rows,
-                    K=k,
-                    BLOCK_R=triton.next_power_of_2(projected_rows),
-                    num_warps=1,
-                )
+            # The projected factor is recomputed as A @ basis / s; for small
+            # singular values this loses orthogonality in fp32, so always
+            # reorthogonalize it before returning.
+            _thin_reorthogonalize_kernel[(batch,)](
+                projected,
+                ROWS=projected_rows,
+                K=k,
+                BLOCK_R=triton.next_power_of_2(projected_rows),
+                num_warps=1,
+            )
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),
@@ -3395,29 +3397,47 @@ def _some_false_svd_via_thin(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     thin_u, s, thin_v = svd(input, some=True, compute_uv=True)
-    u = torch.empty((*input.shape[:-2], m, m), dtype=input.dtype, device=input.device)
-    v = torch.empty((*input.shape[:-2], n, n), dtype=input.dtype, device=input.device)
-    with torch_device_fn.device(input.device):
-        _complete_svd_factor_kernel[(batch,)](
-            thin_u,
-            u,
-            ROWS=m,
-            THIN_COLS=k,
-            FULL_COLS=m,
-            BLOCK_ROWS=triton.next_power_of_2(m),
-            BLOCK_COLS=triton.next_power_of_2(m),
-            num_warps=4,
+
+    if m == k:
+        u = thin_u
+    else:
+        u = torch.empty(
+            (*input.shape[:-2], m, m),
+            dtype=input.dtype,
+            device=input.device,
         )
-        _complete_svd_factor_kernel[(batch,)](
-            thin_v,
-            v,
-            ROWS=n,
-            THIN_COLS=k,
-            FULL_COLS=n,
-            BLOCK_ROWS=triton.next_power_of_2(n),
-            BLOCK_COLS=triton.next_power_of_2(n),
-            num_warps=4,
+        with torch_device_fn.device(input.device):
+            _complete_svd_factor_kernel[(batch,)](
+                thin_u,
+                u,
+                ROWS=m,
+                THIN_COLS=k,
+                FULL_COLS=m,
+                BLOCK_ROWS=triton.next_power_of_2(m),
+                BLOCK_COLS=triton.next_power_of_2(m),
+                num_warps=4,
+            )
+
+    if n == k:
+        v = thin_v
+    else:
+        v = torch.empty(
+            (*input.shape[:-2], n, n),
+            dtype=input.dtype,
+            device=input.device,
         )
+        with torch_device_fn.device(input.device):
+            _complete_svd_factor_kernel[(batch,)](
+                thin_v,
+                v,
+                ROWS=n,
+                THIN_COLS=k,
+                FULL_COLS=n,
+                BLOCK_ROWS=triton.next_power_of_2(n),
+                BLOCK_COLS=triton.next_power_of_2(n),
+                num_warps=4,
+            )
+
     return u, s, v
 
 
@@ -3434,9 +3454,15 @@ def _singular_values_only(input):
     largest = max(m, n)
     if k == 2 and largest <= _RANK2_BLOCK_R_MAX:
         return _rank2_singular_values(input)
-    if k <= 16 and largest <= 1024:
+    # The small Jacobi kernel fully unrolls its SWEEPS * K * (K-1) / 2
+    # rotations, and Triton's ttgir pass takes minutes on the resulting IR for
+    # even modest k (measured cold-cache compile: k=4 5s, k=8 72s, k=15 997s,
+    # k=16 1273s). Route k >= 8 through the blocked implementation, which
+    # drives the same Jacobi sweep from Python-side runtime loops and compiles
+    # in well under a second. This mirrors the k=16 reroute in svd().
+    if k <= 4 and largest <= 1024:
         return _small_jacobi_singular_values(input)
-    if 16 < k <= 512 and largest <= 1024:
+    if 4 < k <= 512 and largest <= 1024:
         return _blocked_jacobi_singular_values(input)
     return _unsupported_svd(input, True, False)
 
@@ -3497,11 +3523,11 @@ def svd(input, some=True, compute_uv=True):
             return SVDResult(*_small4_square_svd(input))
         if _can_use_tall_wide_gram_jacobi_kernel(input, some, compute_uv):
             return SVDResult(*_gram_jacobi_svd(input))
-        use_batched_cyclic16 = k == 16 and batch >= 8 and max(m, n) <= 64
-        if (
-            _can_use_small_jacobi_kernel(input, some, compute_uv)
-            and not use_batched_cyclic16
-        ):
+        # k=16 is already too large for the fully static-unrolled small
+        # Jacobi kernel. Route it through the cyclic Jacobi implementation,
+        # including the single-matrix case.
+        use_cyclic16 = k == 16 and max(m, n) <= 64
+        if _can_use_small_jacobi_kernel(input, some, compute_uv) and not use_cyclic16:
             return SVDResult(*_small_jacobi_svd(input))
         if _can_use_tsqr_cholesky_kernel(input, some, compute_uv):
             return SVDResult(*_tsqr_cholesky_svd(input))

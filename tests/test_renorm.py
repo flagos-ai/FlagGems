@@ -30,6 +30,10 @@ RENORM_SHAPES = (
         (5, 32, 20),
         (4, 8, 16),
         (2, 4, 8, 16),
+        # Along dim=0 this reduces over N = 2*64 = 128 elements per row;
+        # keeping a case whose N differs from the other shapes guards the
+        # segmented loop over N against shape-specific indexing errors.
+        (5, 2, 64),
     ]
 )
 
@@ -46,8 +50,7 @@ def test_renorm(shape, dtype, p, dim):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.renorm(ref_inp, p, dim, maxnorm)
-    with flag_gems.use_gems():
-        res_out = torch.renorm(inp, p, dim, maxnorm)
+    res_out = flag_gems.renorm(inp, p, dim, maxnorm)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -66,7 +69,6 @@ def test_renorm_(shape, dtype, p, dim):
     maxnorm = 1.0
 
     ref_out = ref_inp.renorm_(p, dim, maxnorm)
-    with flag_gems.use_gems():
-        res_out = inp.renorm_(p, dim, maxnorm)
+    res_out = flag_gems.renorm_(inp, p, dim, maxnorm)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

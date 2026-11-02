@@ -22,7 +22,7 @@ from . import accuracy_utils as utils
 RSHIFT_DTYPES = utils.ALL_INT_DTYPES + [torch.uint8]
 
 
-@pytest.mark.rshift
+@pytest.mark.rshift_tensor
 # Covers one-, two-, and three-dimensional pointwise inputs.
 @pytest.mark.parametrize("shape", [(1024,), (7, 13), (2, 3, 5)])
 @pytest.mark.parametrize("dtype", RSHIFT_DTYPES)
@@ -33,25 +33,24 @@ def test_rshift_tensor(dtype, shape):
         utils.to_reference(value), utils.to_reference(shift)
     )
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.__rshift__.Tensor(value, shift)
+    actual = flag_gems.__rshift__(value, shift)
 
     utils.gems_assert_equal(actual, expected)
 
 
-@pytest.mark.rshift
+@pytest.mark.rshift_scalar
 @pytest.mark.parametrize("dtype", RSHIFT_DTYPES)
 def test_rshift_scalar(dtype):
     value = torch.randint(0, 100, (11, 17), dtype=dtype, device=flag_gems.device)
     expected = torch.ops.aten.__rshift__.Scalar(utils.to_reference(value), 3)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.__rshift__.Scalar(value, 3)
+    actual = flag_gems.__rshift__(value, 3)
 
     utils.gems_assert_equal(actual, expected)
 
 
-@pytest.mark.rshift_out
+@pytest.mark.rshift_tensor_out
+@pytest.mark.rshift_scalar_out
 @pytest.mark.parametrize("dtype", RSHIFT_DTYPES)
 def test_rshift_output_overloads(dtype):
     value = torch.randint(0, 100, (9, 13), dtype=dtype, device=flag_gems.device)
@@ -63,11 +62,8 @@ def test_rshift_output_overloads(dtype):
     tensor_out = torch.empty_like(value)
     scalar_out = torch.empty_like(value)
 
-    with flag_gems.use_gems():
-        tensor_result = torch.ops.aten.__rshift__.Tensor_out(
-            value, shift, out=tensor_out
-        )
-        scalar_result = torch.ops.aten.__rshift__.Scalar_out(value, 2, out=scalar_out)
+    tensor_result = flag_gems.__rshift__(value, shift, out=tensor_out)
+    scalar_result = flag_gems.__rshift__(value, 2, out=scalar_out)
 
     assert tensor_result is tensor_out
     assert scalar_result is scalar_out

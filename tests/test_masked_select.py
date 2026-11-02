@@ -43,7 +43,6 @@ def test_masked_select(shape, dtype, threshold):
     ref_inp = utils.to_reference(inp)
     ref_mask = utils.to_reference(mask)
     ref_out = torch.masked_select(ref_inp, ref_mask)
-    with flag_gems.use_gems():
-        res_out = torch.masked_select(inp, mask)
+    res_out = flag_gems.masked_select(inp, mask)
 
     utils.gems_assert_equal(res_out, ref_out)

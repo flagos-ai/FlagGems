@@ -5,8 +5,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
-from .conftest import Config
+from . import base
 
 DEVICE = flag_gems.device
 VENDOR = flag_gems.vendor_name
@@ -24,8 +23,6 @@ else:
 
 _CHECK_ERRORS_VALUES = [False, True]
 
-if VENDOR == "ascend":
-    Config.mode = consts.BenchMode.OPERATOR
 
 # Use the same shapes as linalg_lu_factor for consistency
 LU_FACTOR_EX_SHAPES = [

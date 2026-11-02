@@ -28,8 +28,7 @@ def test_pdist_forward(shape, dtype):
 
     p = 2.0
     ref_out = torch.ops.aten._pdist_forward(ref_inp, p)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_forward(inp, p)
+    res_out = flag_gems._pdist_forward(inp, p)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,8 +45,7 @@ def test_pdist_forward_p1(shape, dtype):
 
     p = 1.0
     ref_out = torch.ops.aten._pdist_forward(ref_inp, p)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_forward(inp, p)
+    res_out = flag_gems._pdist_forward(inp, p)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -64,8 +62,7 @@ def test_pdist_forward_pinf(shape, dtype):
 
     p = float("inf")
     ref_out = torch.ops.aten._pdist_forward(ref_inp, p)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_forward(inp, p)
+    res_out = flag_gems._pdist_forward(inp, p)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -82,7 +79,6 @@ def test_pdist_forward_general_p(shape, dtype):
 
     p = 3.0
     ref_out = torch.ops.aten._pdist_forward(ref_inp, p)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._pdist_forward(inp, p)
+    res_out = flag_gems._pdist_forward(inp, p)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

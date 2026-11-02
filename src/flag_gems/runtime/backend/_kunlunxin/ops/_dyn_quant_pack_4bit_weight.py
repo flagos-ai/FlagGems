@@ -169,7 +169,7 @@ def _dyn_quant_pack_4bit_weight(
     out_features: int,
 ) -> torch.Tensor:
     """Pack dynamic INT4 weights in ATen's portable fallback format."""
-    logger.debug("GEMS _DYN_QUANT_PACK_4BIT_WEIGHT (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN _DYN_QUANT_PACK_4BIT_WEIGHT")
     if weights.dtype != torch.uint8:
         raise RuntimeError("_dyn_quant_pack_4bit_weight expects uint8 weights")
     if block_size != in_features and (

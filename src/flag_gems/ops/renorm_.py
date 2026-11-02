@@ -33,18 +33,25 @@ logger = logging.getLogger(__name__)
 @triton.jit(do_not_specialize=["p", "maxnorm"])
 def renorm_kernel(X, N, p, maxnorm, BLOCK_SIZE: tl.constexpr):
     pid = tl.program_id(0).to(tl.int64)
+    row_start = X + pid * N
 
-    offset = tl.arange(0, BLOCK_SIZE)
-    mask = offset < N
+    # Process the row in segments of BLOCK_SIZE so every element in [0, N)
+    # is covered even when autotune picks a BLOCK_SIZE smaller than N.
+    _sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for off in range(0, N, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        _sum += tl_extra_shim.pow(tl.abs(x), p)
 
-    x = tl.load(X + pid * N + offset, mask=mask, other=0.0).to(tl.float32)
-    _sum = tl.sum(tl_extra_shim.pow(tl.abs(x), p))
-
-    norm = tl_extra_shim.pow(_sum, 1.0 / p)
+    norm = tl_extra_shim.pow(tl.sum(_sum), 1.0 / p)
     scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
 
-    x = x * scale
-    tl.store(X + pid * N + offset, x, mask=mask)
+    for off in range(0, N, BLOCK_SIZE):
+        cols = off + tl.arange(0, BLOCK_SIZE)
+        mask = cols < N
+        x = tl.load(row_start + cols, mask=mask, other=0.0).to(tl.float32)
+        tl.store(row_start + cols, x * scale, mask=mask)
 
 
 def renorm_(x, p, dim, maxnorm):

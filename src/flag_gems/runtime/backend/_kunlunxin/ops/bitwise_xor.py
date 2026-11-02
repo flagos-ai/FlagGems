@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import logging
 
 import torch
@@ -51,6 +37,14 @@ def bitwise_xor_func(x, y):
 
 def bitwise_xor_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_XOR_TENSOR")
+    if (
+        A.dtype == B.dtype
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+    ):
+        out = torch.empty_strided(A.shape, A.stride(), dtype=A.dtype, device=A.device)
+        return bitwise_xor_func(A, B, out0=out)
     return bitwise_xor_func(A, B)
 
 
@@ -138,6 +132,14 @@ def bitwise_xor_scalar_(A, B):
 
 def bitwise_xor_scalar_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_XOR_SCALAR_TENSOR")
+    pack = _packed_scalar(B, A)
+    if pack is not None:
+        word_val, denom = pack
+        B_word = _word_view(B, denom)
+        if B_word is not None:
+            out = torch.empty_like(B)
+            bitwise_xor_func_scalar(B_word, word_val, out0=_word_view(out, denom))
+            return out
     return bitwise_xor_func_scalar(B, A)
 
 

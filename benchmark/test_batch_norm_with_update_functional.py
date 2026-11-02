@@ -72,7 +72,7 @@ def test__batch_norm_with_update_functional():
 
     bench = NormBenchmark(
         input_fn=batch_norm_with_update_functional_input_fn_wrapper,
-        op_name="_batch_norm_with_update_functional",
+        op_name="batch_norm_with_update_functional",
         torch_op=torch.ops.aten._batch_norm_with_update_functional,
         dtypes=consts.FLOAT_DTYPES,
     )
