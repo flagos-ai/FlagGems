@@ -362,7 +362,10 @@ def less_equal_scalar_native_kernel(
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid)
-    r = x <= scalar.to(DTYPE)
+    # NaN correctness: with TRITONXPU_COMPARE_FUSION=1 the ordered `<=`
+    # predicate mis-lowers (NaN compares True), while `>=` is correct. `x <= s`
+    # and `s >= x` are the same IEEE comparison, so put the scalar on the left.
+    r = scalar.to(DTYPE) >= x
     tl.store(out_ptr + tid, r.to(tl.int8))
 
 
@@ -374,7 +377,8 @@ def less_equal_scalar_native_masked_kernel(
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
     x = tl.load(x_ptr + tid, mask=mask)
-    r = x <= scalar.to(DTYPE)
+    # Same NaN-safe `>=` form as the unmasked kernel above.
+    r = scalar.to(DTYPE) >= x
     tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
 
 

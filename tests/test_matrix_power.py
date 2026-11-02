@@ -32,6 +32,20 @@ def _make_input(shape, dim, dtype):
     return torch.randn(shape, dtype=dtype, device=flag_gems.device) * 0.1 + eye
 
 
+def _matrix_power_golden(inp, n):
+    """Reference result for matrix_power.
+
+    ``n == 0`` is the identity matrix, but torch's on-device kernel for that
+    case is unreliable once the input is batched: on the kunlunxin/xmlir stack
+    it only fills the first batch and leaves the remaining ones as a copy of the
+    input. Compute the identity golden on the host, where it is always exact.
+    """
+    if n == 0:
+        ref = torch.matrix_power(inp.cpu(), n)
+        return ref if utils.TO_CPU else ref.to(inp.device)
+    return torch.matrix_power(inp, n)
+
+
 @pytest.mark.matrix_power
 @pytest.mark.parametrize("batch_shape, dim", MATRIX_POWER_SHAPES)
 @pytest.mark.parametrize("n", MATRIX_POWER_EXPONENTS)
@@ -44,7 +58,7 @@ def test_matrix_power(batch_shape, dim, n, dtype):
     # rounding than the low-precision gems path.
     ref_inp = utils.to_reference(res_inp)
 
-    ref_out = torch.matrix_power(ref_inp, n)
+    ref_out = _matrix_power_golden(ref_inp, n)
     res_out = flag_gems.matrix_power(res_inp, n)
 
     # Accumulated error scales with the matrix dimension and the number of products.
@@ -77,8 +91,7 @@ def test_matrix_power_out(batch_shape, dim, n, dtype):
     res_inp = _make_input(shape, dim, dtype)
     ref_inp = utils.to_reference(res_inp)
 
-    ref_out = torch.empty_like(ref_inp)
-    torch.matrix_power(ref_inp, n, out=ref_out)
+    ref_out = _matrix_power_golden(ref_inp, n)
 
     res_out = torch.empty_like(res_inp)
     flag_gems.matrix_power_out(res_inp, n, out=res_out)
