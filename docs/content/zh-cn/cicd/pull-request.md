@@ -192,10 +192,16 @@ matching label:
 |---|---|---|
 | `build-doc` | `documentation`（且 PR 已合并） | 通过 `sync-docs.yaml` 同步文档 |
 | `cpp-op` | `ops/cpp` | 构建并运行 C++ 扩展测试套件（`cpp-op-test.yaml`） |
-| `python-op` | `tests` | 对变更算子运行 `tools/test-op.sh`（NVIDIA runner） |
+| `python-op` | `tests` | 运行在 NVIDIA A100-40G 服务器上（安装官方 upstream triton 编译器而非 flagtree），对变更算子运行 `tools/test-op.sh` 进行单元测试 |
 | `examples` | `examples` | 运行 `tools/test-examples.sh`（端到端模型测试） |
 | `backend-tests` | 任意 `vendor/*` 标签 | 针对每个匹配的后端/runner 运行一次 `backend-test.yaml` |
 | `alpha-ops` | `ops/alpha` | 在 NVIDIA 上运行实验性算子的测试脚本 |
+
+#### `python-op` 运行环境与编译器选型
+
+`python-op` 是验证公版算子正确性与兼容性的核心门禁作业：
+- **硬件基础设施**：该作业部署并运行在标签为 `jiuding` 的专用自托管 Runner 上，底层硬件为配备 **NVIDIA A100-40G** GPU 的高性能服务器；
+- **编译器选型**：在 `python-op` 测试环境中，**默认安装并使用的是官方上游原生 Triton 编译器，而非 FlagTree 编译器**。这一策略用于严格检验所有公版算子实现（位于 `src/flag_gems/ops`、`src/flag_gems/fused` 以及 `src/flag_gems/experimental_ops`）与官方社区 Triton 语义及 NVIDIA Ampere 架构的基线兼容性，防止依赖特定编译器衍生分支的代码合入公版目录。
 
 <!--
 `backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR,

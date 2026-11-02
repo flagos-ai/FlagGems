@@ -186,6 +186,7 @@ linalg_eigvals_out: test_linalg_eigvals
 lu_unpack_out: test_lu_unpack
 multi_margin_loss_out: test_multi_margin_loss
 nanmedian_out: test_nanmedian
+nnpack_spatial_convolution_out: test_nnpack_spatial_convolution
 scaled_mm_out: test_scaled_mm
 searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
@@ -224,6 +225,7 @@ linalg_matrix_rank_hermitian: test_linalg_matrix_rank
 ctc_loss_backward: test_ctc_loss
 margin_ranking_loss_backward: test_margin_ranking_loss
 mm_self_transpose: test_mm
+grouped_mm_w8a8: test_scaled_grouped_mm
 special_zeta_scalar_tensor: test_special_zeta
 special_zeta_tensor_scalar: test_special_zeta
 
