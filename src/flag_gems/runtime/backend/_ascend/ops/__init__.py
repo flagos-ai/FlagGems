@@ -36,6 +36,7 @@ from .baddbmm import baddbmm
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .clamp_max import clamp_max
 from .concat import concat
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
@@ -209,6 +210,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "clamp_max",
     "concat",
     "count_nonzero",
     "cudnn_convolution",
