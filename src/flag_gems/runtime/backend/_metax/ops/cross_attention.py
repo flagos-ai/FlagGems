@@ -329,7 +329,7 @@ def cross_attention_metax_kernel(
 
 def cross_attention(query, key, value, attn_mask=None, scale=None):
     """Compute forward cross attention for BNSD tensors on MetaX GPUs."""
-    logger.debug("GEMS_METAX CROSS ATTENTION")
+    logger.debug("GEMS_METAX CROSS_ATTENTION")
     _validate_inputs(query, key, value, attn_mask, scale)
     batch, query_heads, query_len, qk_dim = query.shape
     kv_heads, key_len, value_dim = key.shape[1], key.shape[2], value.shape[3]
