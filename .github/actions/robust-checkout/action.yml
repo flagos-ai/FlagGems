@@ -47,7 +47,7 @@ inputs:
       connect-stage hang (TLS / proxy-CONNECT stall), where no bytes flow and the
       low-speed check never triggers.
     required: false
-    default: "15"
+    default: "60"
   probe-seconds:
     description: >-
       low-speed window for the transfer stage: git aborts a fetch that stays below

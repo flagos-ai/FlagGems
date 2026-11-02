@@ -49,11 +49,7 @@ from flag_gems.utils.foreach import check_tensor_list, foreach_unary, real_dtype
 
 from ._foreach_direct import _launch_fast, _select_ptr
 
-# The registration-liveness test (tests/test_foreach_unary.py) captures the
-# record under the *generic* logger name, so it must be emitted from this
-# logger rather than the module-local one.  The message carries the vendor
-# prefix "GEMS_KUNLUNXIN", per the operator-log convention.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 
 @triton.jit

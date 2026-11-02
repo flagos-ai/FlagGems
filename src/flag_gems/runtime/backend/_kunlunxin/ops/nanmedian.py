@@ -1804,10 +1804,95 @@ def nmdim_single_kernel(
         lo = tl.where((~go_left) & active, mid + 1, lo)
     hit = inb & (keys == lo)
     ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
-    dst = tl.arange(0, 8)
-    keep = dst < 1
-    tl.store(out_values + pid + dst, tl.load(inp + base + ridx), mask=keep)
-    tl.store(out_indices + pid + dst, ridx.to(tl.int64), mask=keep)
+    tl.store(out_values + pid, tl.load(inp + base + ridx))
+    tl.store(out_indices + pid, ridx.to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def nmdim_single_i64_kernel(
+    inp,
+    inp32,
+    out_values,
+    out_indices,
+    N: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    # int64-only variant of `nmdim_single_kernel`.  Selecting directly on a
+    # uint64 key tile aborts this backend at run time with
+    # `KL_XID_KERNEL_EXCEPTION` / `reason[26] sm rdwr conflict` (measured on
+    # (2, 3, 129) dim=1 and equivalent int64 shapes, status 719, dmesg names
+    # `nmdim_single_kernel`); the 32-bit pipelines never hit it.  This kernel
+    # therefore splits every raw int64 into its two little-endian 32-bit halves,
+    # builds the order-preserving key (high ^ 0x80000000, low) and runs the
+    # selected-order bisection on 32-bit lanes only:
+    #   * phase 1 finds the high key half H* of the k-th smallest entry,
+    #   * phase 2 finds the low key half L* among the lanes with that H*.
+    # Every vector reduction (`tl.min` / `tl.max` / `tl.sum`) is uint32/int32;
+    # only the final value fetch uses the int64 pointer.
+    pid = ext.program_id(0)
+    cols = tl.arange(0, BLOCK_N)
+    inb = cols < N
+    base32 = pid.to(tl.int64) * (2 * N)
+    # Clamped, maskless lane addressing: out-of-range lanes repeat the last
+    # 32-bit word and are removed by `inb` (masked loads with `other=` are not
+    # honoured on this backend).
+    c2 = tl.minimum(2 * cols, 2 * N - 2)
+    lo = tl.load(inp32 + base32 + c2).to(tl.uint32, bitcast=True)
+    hi = tl.load(inp32 + base32 + c2 + 1).to(tl.uint32, bitcast=True)
+    hkey = hi ^ tl.full((), 0x80000000, dtype=tl.uint32)
+
+    top = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    bottom = tl.full((), 0, dtype=tl.uint32)
+    nvalid = tl.sum(inb.to(tl.int32), axis=0)
+    target = tl.maximum((nvalid - 1) // 2, 0)
+
+    lo_h = tl.min(tl.where(inb, hkey, top), axis=0)
+    hi_h = tl.max(tl.where(inb, hkey, bottom), axis=0)
+    for _step in tl.range(0, 32):
+        mid_h = lo_h + ((hi_h - lo_h) >> 1)
+        cnt = tl.sum((inb & (hkey <= mid_h)).to(tl.int32), axis=0)
+        go_left = cnt > target
+        active = lo_h < hi_h
+        hi_h = tl.where(go_left & active, mid_h, hi_h)
+        lo_h = tl.where((~go_left) & active, mid_h + 1, lo_h)
+
+    sel = inb & (hkey == lo_h)
+    below = tl.sum((inb & (hkey < lo_h)).to(tl.int32), axis=0)
+    target_lo = target - below
+
+    lo_l = tl.min(tl.where(sel, lo, top), axis=0)
+    hi_l = tl.max(tl.where(sel, lo, bottom), axis=0)
+    for _step in tl.range(0, 32):
+        mid_l = lo_l + ((hi_l - lo_l) >> 1)
+        cnt = tl.sum((sel & (lo <= mid_l)).to(tl.int32), axis=0)
+        go_left = cnt > target_lo
+        active = lo_l < hi_l
+        hi_l = tl.where(go_left & active, mid_l, hi_l)
+        lo_l = tl.where((~go_left) & active, mid_l + 1, lo_l)
+
+    hit = sel & (lo == lo_l)
+    ridx = tl.minimum(tl.min(tl.where(hit, cols, BLOCK_N), axis=0), N - 1)
+    tl.store(out_values + pid, tl.load(inp + pid.to(tl.int64) * N + ridx))
+    tl.store(out_indices + pid, ridx.to(tl.int64))
+
+
+# The chunked path is a partial + combine pipeline of loop-free kernels rather
+# than one kernel with a tile loop.  Three independent lowering failures were
+# measured for the loop form once a row spans more than one tile (NTILES >= 2;
+# NTILES == 1 compiles and is correct):
+#   * `tl.reduce` inside the tile loop -> "failed to legalize operation
+#     'tt.reduce'";
+#   * a scalar `tt.addptr` (row base, or the final scalar value fetch) next to
+#     CHUNK-wide tiles -> "'tt.addptr' op all non-scalar operands/results must
+#     have the same shape and base type";
+#   * after folding the base into the pointer outside the loops, the nested
+#     `tl.range` bisection still died in `arith.addi`, and full `tl.static_range`
+#     unrolling of the inner loop died in `ConvertTritonXPUToLLVM`.
+# Every kernel below therefore handles exactly one tile (or one row of tile
+# partials) with no loop at all, which is the same shape as the proven
+# `nmflat_*` flat pipeline.  The bisection state lives in device memory, so the
+# whole reduction still needs zero host synchronizations.
 
 
 @libentry()
@@ -2034,12 +2119,37 @@ def _nmdim_launch(rows, M, N, out_values, out_indices):
     kw = dict(num_warps=4, num_stages=1, buffer_size_limit=2048)
     lanes = _nmdim_tile_lanes(key_bits)
     block_n = max(64, triton.next_power_of_2(N))
+    # int64 (8-byte keys) fuses into a broken tile when the width is exactly
+    # 64 lanes: the generated access reads a full 64-lane int64 vector past
+    # the end of a short row, which raises KL_XID_KERNEL_EXCEPTION (status
+    # 719) whenever the over-read leaves the allocated page.  Measured with
+    # the same input/data: block_n=64 crashed in 5/10 fresh processes while
+    # an over-allocated input buffer crashed 0/8, and block_n=128 crashed
+    # 0/40 across N in {3,33,64,65,127,128} and M in {2,258}.  Bumping the
+    # 64-lane case to 128 keeps the exact same kernel semantics (the tile is
+    # clamped and lane-predicated, so N <= 64 still works) and costs nothing
+    # measurable for int64, which is not part of any benchmark matrix.
+    if key64 and block_n == 64:
+        block_n = 128
     dev = rows.device
     if block_n <= lanes:
         with torch_device_fn.device(dev):
-            nmdim_single_kernel[(M,)](
-                rows, out_values, out_indices, N, block_n, key_bits, key64, **kw
-            )
+            if rows.dtype is torch.int64:
+                # uint64 key-tile reductions abort the device (see the kernel
+                # docstring); use the 32-bit-halves selection for int64 rows.
+                nmdim_single_i64_kernel[(M,)](
+                    rows,
+                    rows.view(torch.int32),
+                    out_values,
+                    out_indices,
+                    N,
+                    block_n,
+                    **kw,
+                )
+            else:
+                nmdim_single_kernel[(M,)](
+                    rows, out_values, out_indices, N, block_n, key_bits, key64, **kw
+                )
         return
 
     # Wide rows: partial + combine.  Rows whose width is not a multiple of the

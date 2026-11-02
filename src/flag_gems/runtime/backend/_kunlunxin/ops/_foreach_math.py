@@ -43,17 +43,14 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops._foreach_unary import UNARY_OPS, _scalar_fn
-from flag_gems.utils.foreach import foreach_unary, real_dtype_of
 
+from ..utils.foreach import foreach_unary, real_dtype_of
 from .acos import _acos_body
 from .asin import _asin_body
 from .lgamma import lgamma_func
 from .log2 import log2_func
 
-# The registration-liveness test captures the record under the generic logger
-# name, so emit from it rather than from the module-local logger.  The message
-# carries the vendor prefix "GEMS_KUNLUNXIN", per the operator-log convention.
-logger = logging.getLogger("flag_gems.ops._foreach_unary")
+logger = logging.getLogger(__name__)
 
 # The vendor bodies compute in fp32; the executor hands them the *output* dtype
 # (fp16/bf16 stay narrow for a dtype-preserving op), so upcast here and cast the

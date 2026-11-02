@@ -20,7 +20,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems.ops.special_chebyshev_polynomial_t")
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,

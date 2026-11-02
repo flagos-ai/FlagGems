@@ -25,7 +25,7 @@ from flag_gems.runtime import torch_device_fn
 
 from ..utils.tle_copy import tle_copy
 
-logger = logging.getLogger("flag_gems.ops.special_scaled_modified_bessel_k1")
+logger = logging.getLogger(__name__)
 
 
 def _launch_special_scaled_modified_bessel_k1(out: torch.Tensor, x: torch.Tensor):
