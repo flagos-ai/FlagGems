@@ -14,6 +14,8 @@
 
 import logging
 import math
+import operator
+import os
 
 import torch
 import triton
@@ -24,6 +26,55 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+# SIMD store-only arange fast path for large fp32/fp16: a float32x16 ramp
+# generates 16/32 values per instruction and a contiguous LM2GM writes each
+# tile, hitting ~bandwidth (fp32 ~0.92x, fp16 ~1.05x of torch at 16M). The
+# kernels are loaded from the precompiled device library arange_simd.o in the
+# payload/obj directory; the two stubs below just bind to its entry symbols.
+# Optional: only usable where the xpu3 cluster tle.raw pipeline is available.
+try:
+    import triton.experimental.tle as tle
+
+    _PAY_OBJ = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "payload", "obj"
+    )
+    _ARANGE_OBJ = os.path.join(_PAY_OBJ, "arange_simd.o")
+
+    @tle.raw.dialect("xpu3", object=_ARANGE_OBJ, arch=3)
+    def arange_f32(out, n, start, step, pid, npid): ...
+
+    @tle.raw.dialect("xpu3", object=_ARANGE_OBJ, arch=3)
+    def arange_f16(out, n, start, step, pid, npid): ...
+
+    @triton.jit(do_not_specialize=["n", "npid"])
+    def _arange_f32_raw(out, n, start, step, npid):
+        tle.raw.call(arange_f32, (out, n, start, step, tl.program_id(0), npid))
+
+    @triton.jit(do_not_specialize=["n", "npid"])
+    def _arange_f16_raw(out, n, start, step, npid):
+        tle.raw.call(arange_f16, (out, n, start, step, tl.program_id(0), npid))
+
+    _HAS_ARANGE_RAW = True
+except Exception:  # pragma: no cover - tle.raw not available on this build
+    _HAS_ARANGE_RAW = False
+
+# Below this element count the ~30us raw launch floor is not worth it, so the
+# Triton path (which is ~1x for small shapes) is kept. npid=12 is the measured
+# sweet spot on this part.
+_ARANGE_RAW_MIN = 1 << 20
+_ARANGE_RAW_NPID = 12
+
+
+def _is_integral_scalar(x):
+    """True for scalars that behave as integers (int/bool/numpy ints)."""
+    if isinstance(x, (int, bool)):
+        return True
+    try:
+        operator.index(x)
+        return True
+    except TypeError:
+        return False
 
 
 @libentry()
@@ -55,12 +106,6 @@ def arange_func_float(
     size,
     BLOCK_SIZE: tl.constexpr,
 ):
-    # For floating output dtypes: computing the whole value in int32 then
-    # casting a large-magnitude integer to float is the XPU bottleneck (~85 GB/s
-    # fp16 / 160 GB/s fp32). Instead convert only the small per-block `cols`
-    # (0..BLOCK_SIZE) to fp32 and add a precomputed fp32 base scalar, which halves
-    # the runtime (~170 GB/s fp16 / ~330 GB/s fp32). Results are bit-identical to
-    # the int kernel on all shapes.
     pid = ext.program_id(0)
     offset = pid * BLOCK_SIZE
     cols = tl.arange(0, BLOCK_SIZE)
@@ -74,6 +119,11 @@ def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
     logger.debug("GEMS_KUNLUNXIN ARANGE")
+    if dtype is None:
+        if all(_is_integral_scalar(x) for x in (start, end, step)):
+            dtype = torch.int64
+        else:
+            dtype = torch.float32
     if dtype is torch.int64:
         start = int(start)
         end = int(end)
@@ -83,19 +133,8 @@ def arange_start(
         sgn = (step > 0) - (step < 0)
         size = (end - start + step - sgn) // step
     else:
-        if dtype is torch.int64 and (
-            isinstance(step, float)
-            or isinstance(start, float)
-            or isinstance(end, float)
-        ):
-            int_step = int(step)
-            if int_step == 0:
-                raise RuntimeError("step must be nonzero")
         size = math.ceil((end - start) / step)
     size = int(size)
-
-    if dtype is None:
-        dtype = torch.int64
 
     if pin_memory is None:
         pin_memory = False
@@ -120,6 +159,18 @@ def arange_start(
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     result = torch.empty((size,), device=device, dtype=dtype, pin_memory=pin_memory)
+
+    # Large fp32/fp16 store-only arange -> hand-written SIMD tle.raw (near-BW).
+    if (
+        _HAS_ARANGE_RAW
+        and size >= _ARANGE_RAW_MIN
+        and dtype in (torch.float32, torch.float16)
+    ):
+        npid = _ARANGE_RAW_NPID
+        raw = _arange_f32_raw if dtype is torch.float32 else _arange_f16_raw
+        raw[(npid,)](result, size, float(start), float(step), npid)
+        return result
+
     if dtype in (torch.float16, torch.float32, torch.bfloat16):
         # fp32-base fast path (avoids slow large-int -> float conversion)
         arange_func_float[grid,](

@@ -35,8 +35,7 @@ def test_clamp(shape, maxi, mini, isnone, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.clamp(ref_inp, min=mini, max=maxi)
-    with flag_gems.use_gems():
-        res_out = torch.clamp(inp, min=mini, max=maxi)
+    res_out = flag_gems.clamp(inp, mini=mini, maxi=maxi)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -56,7 +55,6 @@ def test_clamp_(shape, maxi, mini, isnone, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.clamp_(ref_inp, min=mini, max=maxi)
-    with flag_gems.use_gems():
-        res_out = torch.clamp_(inp, min=mini, max=maxi)
+    res_out = flag_gems.clamp_(inp, mini=mini, maxi=maxi)
 
     utils.gems_assert_equal(res_out, ref_out)

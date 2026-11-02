@@ -27,6 +27,11 @@ from flag_gems.utils.codegen_config_utils import CodeGenConfig
 
 logger = logging.getLogger(__name__)
 
+# ``tl.map_elementwise`` is a Triton >= 3.6 API; backends on the Triton 3.5 line
+# (flagtree-based national platforms) do not provide it. Gate the kernel and the
+# registration on its availability so importing flag_gems does not crash there.
+_HAS_MAP_ELEMENTWISE = hasattr(tl, "map_elementwise")
+
 
 # ---------------------------------------------------------------------------
 # Math helpers
@@ -482,25 +487,32 @@ def _dirichlet_grad_one(x, alpha, total):
     return _div_rn(p, q) * approx
 
 
-@pointwise_dynamic(
-    is_tensor=[True, True, True],
-    promotion_methods=[(0, 1, 2, "DEFAULT")],
-    config=_DIRICHLET_GRAD_CONFIG,
-)
-@triton.jit
-def _dirichlet_grad_func(x, alpha, total):
-    # ``pointwise_dynamic`` provides the tensor tile (load / store / mask);
-    # the piecewise implementation runs element by element inside
-    # ``tl.map_elementwise`` so the scalar ``if`` cascade is lazy, matching
-    # ATen's ``gpu_kernel(... dirichlet_grad_one(...))`` structure.  The
-    # reference ``dirichlet_grad_one`` accumulates in ``accscalar_t`` which
-    # equals the input dtype (float for float, double for double); the inputs
-    # are already promoted to that dtype by ``pointwise_dynamic``.
-    return tl.map_elementwise(_dirichlet_grad_one, x, alpha, total).to(x.dtype)
+if _HAS_MAP_ELEMENTWISE:
+
+    @pointwise_dynamic(
+        is_tensor=[True, True, True],
+        promotion_methods=[(0, 1, 2, "DEFAULT")],
+        config=_DIRICHLET_GRAD_CONFIG,
+    )
+    @triton.jit
+    def _dirichlet_grad_func(x, alpha, total):
+        # ``pointwise_dynamic`` provides the tensor tile (load / store / mask);
+        # the piecewise implementation runs element by element inside
+        # ``tl.map_elementwise`` so the scalar ``if`` cascade is lazy, matching
+        # ATen's ``gpu_kernel(... dirichlet_grad_one(...))`` structure.  The
+        # reference ``dirichlet_grad_one`` accumulates in ``accscalar_t`` which
+        # equals the input dtype (float for float, double for double); the inputs
+        # are already promoted to that dtype by ``pointwise_dynamic``.
+        return tl.map_elementwise(_dirichlet_grad_one, x, alpha, total).to(x.dtype)
 
 
 def _dirichlet_grad(x, alpha, total):
     logger.debug("GEMS DIRICHLET_GRAD")
+    if not _HAS_MAP_ELEMENTWISE:
+        raise NotImplementedError(
+            "_dirichlet_grad requires tl.map_elementwise (Triton >= 3.6); "
+            "not available on this backend."
+        )
     # The ATen reference only implements the AT_DISPATCH_FLOATING_TYPES path
     # (float32 / float64); reject other dtypes explicitly to match the CUDA
     # dispatcher behaviour.
@@ -513,6 +525,11 @@ def _dirichlet_grad(x, alpha, total):
 
 def _dirichlet_grad_into(x, alpha, total, *, out):
     logger.debug("GEMS DIRICHLET_GRAD_OUT")
+    if not _HAS_MAP_ELEMENTWISE:
+        raise NotImplementedError(
+            "_dirichlet_grad requires tl.map_elementwise (Triton >= 3.6); "
+            "not available on this backend."
+        )
     assert x.dtype in (
         torch.float32,
         torch.float64,

@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -28,44 +29,41 @@ config_ = CodeGenConfig(
     32,
     True,
     prefer_1d_tile=True,
-    # Without an explicit config the codegen falls back to buffer_size_limit=2048
-    # (pointwise_dynamic.py). For this bool op ConvertTritonXPUToLLVM then
-    # materializes a 2048-wide llvm.struct<(i64, ...)> that is re-printed on every
-    # insert/extractvalue, blowing the compiled IR up to ~16GB (see
-    # benchmark/ir_dump/ir-logical_and-dev6.log). unroll_num=8 breaks the buffer
-    # into unrolled chunks so the monolithic struct is never formed; keep
-    # isCloseMemoryAsync at its default (True) to avoid the async-copy explosion
-    # documented for bitwise_and.
+    # unroll_num=8 breaks the bool-op buffer into unrolled chunks so the
+    # monolithic 2048-wide llvm.struct is never formed (avoids ~16GB IR);
+    # isCloseMemoryAsync stays at its default True (see bitwise_and).
     kunlunAutoGrid=True,
     unroll_num=8,
 )
 
 
+# int1 path: direct logical_and on int1 is fast for bool input, but the
+# int->int1 conversion is slow for integer/float input.
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_)
 @triton.jit
-def logical_and_func(x, y):
+def logical_and_bool_kernel(x, y):
     return x.to(tl.int1).logical_and(y.to(tl.int1))
+
+
+# int32 path: tl.where avoids the int->int1 materialization, fast for
+# integer/float input but slow for bool (int32->bool store).
+@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_)
+@triton.jit
+def logical_and_int_kernel(x, y):
+    return tl.where((x != 0) & (y != 0), 1, 0)
 
 
 def logical_and(A, B):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_AND")
-    return logical_and_func(A, B)
-
-
-# In-place variant. Without a kunlunxin override the ATen `logical_and_` falls
-# back to the generic op (`ops/logical_and.py`, default buffer_size_limit=2048,
-# no XPU tuning), which is catastrophic on XPU: every gm2lm/lm2gm is judged
-# discrete (offsetState=-1) so large shapes run at ~0.001-0.003 speedup
-# (60-1085ms). Reusing the same config_ as the out-of-place variant
-# (unroll_num=8, kunlunAutoGrid, 1d-tile, async closed) restores block-DMA
-# contiguous access. out0=A writes in place.
-@pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")], config=config_)
-@triton.jit
-def logical_and_func_(x, y):
-    return tl.where((x != 0) & (y != 0), 1, 0)
+    if A.dtype == torch.bool:
+        return logical_and_bool_kernel(A, B)
+    return logical_and_int_kernel(A, B)
 
 
 def logical_and_(A, B):
     logger.debug("GEMS_KUNLUNXIN LOGICAL_AND_")
-    logical_and_func_(A, B, out0=A)
+    if A.dtype == torch.bool:
+        logical_and_bool_kernel(A, B, out0=A)
+    else:
+        logical_and_int_kernel(A, B, out0=A)
     return A

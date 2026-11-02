@@ -29,19 +29,56 @@ _SAMPLED_ADDMM_DTYPES = {
 # _DENSE_ALIGN has to be adjusted too, otherwise the unmasked GEMM store runs
 # past the end of `dense`.
 _DENSE_ALIGN = 256
-# Tile widths for the two auxiliary passes.  Both were swept on device; the pos
-# pass follows the average row occupancy, the combine pass is nearly flat.
-_POS_BLOCK_MIN = 256
-_POS_BLOCK_MAX = 1024
+# Block width for the combine pass, which is a flat 1-D sweep over nnz.
 _COMBINE_BLOCK_SMALL = 2048
 _COMBINE_BLOCK_LARGE = 8192
 _COMBINE_LARGE_NNZ = 4 * 1024 * 1024
 
 
-def _pos_block(nnz_per_batch, M):
+def _pos_plan(nnz_per_batch, M):
+    """(ROWS_PER_PROGRAM, BLOCK) for the row-grouped position pass.
+
+    The original per-row launch used `(B * M,)` programs, i.e. one program per
+    matrix row.  On this backend a program costs ~0.10 us of fixed overhead
+    regardless of how little work it does, and the BlasBenchmark core shapes
+    average only 38..410 nnz per row, so that fixed cost dominated the whole op
+    (at M=N=384 the pos pass was 0.65 ms out of a 0.71 ms total).
+
+    Grouping `R` rows into one program divides the program count by `R`; the row
+    of each nnz is recovered by comparing its index against the `R` crow
+    boundaries of the group (scalar loads shared by every lane, so no per-lane
+    gather).
+
+    The table below is the re-swept optimum for the *int32* kernel
+    `_ssa_pos_group_kernel_narrow` (sweep_pos32.py, R in {4..64} x BLOCK in
+    {512..4096}).  int32 arithmetic and a 4-byte `pos` element roughly halve both
+    the address arithmetic and the pos traffic, which shifts the optimum to a
+    larger R / larger BLOCK than the int64 kernel used (see `_pos_plan_wide`).
+    """
     avg = max(1, nnz_per_batch // max(1, M))
-    blk = triton.next_power_of_2(2 * avg)
-    return max(_POS_BLOCK_MIN, min(_POS_BLOCK_MAX, blk))
+    if avg <= 64:
+        return 32, 2048
+    if avg <= 128:
+        return 16, 2048
+    if avg <= 256:
+        return 16, 4096
+    return 8, 4096
+
+
+def _pos_plan_wide(nnz_per_batch, M):
+    """int64 fallback table (the pre-existing, already-validated shape).
+
+    Used only when the flat dense scratch does not fit in int32; kept exactly as
+    the int64 kernel was tuned so the fallback keeps its measured performance.
+    """
+    avg = max(1, nnz_per_batch // max(1, M))
+    if avg <= 64:
+        return 8, 512
+    if avg <= 128:
+        return 8, 1024
+    if avg <= 256:
+        return 4, 1024
+    return 4, 2048
 
 
 def _combine_block(nnz):
@@ -176,7 +213,7 @@ def _ssa_gemm_kernel(
 
 @libentry()
 @triton.jit
-def _ssa_pos_kernel(
+def _ssa_pos_group_kernel(
     crow_ptr,
     col_ptr,
     pos_ptr,
@@ -184,20 +221,22 @@ def _ssa_pos_kernel(
     nnz_per_batch,
     OUT_ROW_STRIDE,
     OUT_BATCH_STRIDE,
+    R: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    pid = ext.program_id(0)
-    b = pid // M
-    r = pid % M
+    pid_g = ext.program_id(0)
+    b = ext.program_id(1)
+    r0 = pid_g * R
+    r1 = tl.minimum(r0 + R, M)
     b64 = b.to(tl.int64)
 
     crow_base = crow_ptr + b64 * (M + 1)
-    row_start = tl.load(crow_base + r).to(tl.int64)
-    row_end = tl.load(crow_base + r + 1).to(tl.int64)
+    row_start = tl.load(crow_base + r0).to(tl.int64)
+    row_end = tl.load(crow_base + r1).to(tl.int64)
 
     col_base = col_ptr + b64 * nnz_per_batch
     out_base = pos_ptr + b64 * nnz_per_batch
-    dense_base = b64 * OUT_BATCH_STRIDE + r.to(tl.int64) * OUT_ROW_STRIDE
+    dense_base = b64 * OUT_BATCH_STRIDE + r0.to(tl.int64) * OUT_ROW_STRIDE
 
     for start in range(row_start, row_end, BLOCK):
         e = start + tl.arange(0, BLOCK)
@@ -208,7 +247,57 @@ def _ssa_pos_kernel(
         # DMA into a per-lane gather and costs 1.7x on this backend
         # (27.18 ms vs 15.95 ms measured at B=16, M=N=4096, BLOCK=256).
         c = tl.load(col_base + e, mask=keep, other=0).to(tl.int64)
-        tl.store(out_base + e, dense_base + c, mask=keep)
+        row = tl.zeros([BLOCK], dtype=tl.int64)
+        for j in tl.static_range(R):
+            bnd = tl.load(crow_base + tl.minimum(r0 + 1 + j, M)).to(tl.int64)
+            row += (e >= bnd).to(tl.int64)
+        tl.store(out_base + e, dense_base + row * OUT_ROW_STRIDE + c, mask=keep)
+
+
+@libentry()
+@triton.jit
+def _ssa_pos_group_kernel_narrow(
+    crow_ptr,
+    col_ptr,
+    pos_ptr,
+    M,
+    nnz_per_batch,
+    OUT_ROW_STRIDE,
+    OUT_BATCH_STRIDE,
+    R: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """int32 twin of `_ssa_pos_group_kernel` (see `_pos_plan`).
+
+    Same math, but every index is int32: the row counter, the crow boundaries
+    and the flat dense offset all stay below 2**31 (guaranteed by the caller's
+    `B * Mp * Np < 2**31` guard), and `pos` itself is an int32 buffer.  That
+    removes the 64-bit integer address arithmetic which dominates this pass on
+    this backend, and halves the `pos` traffic.  The stored value is a pure
+    integer function of the CSR structure, so the two kernels produce
+    bit-identical `pos` (verified in check_narrow.py Part A).
+    """
+    pid_g = ext.program_id(0)
+    b = ext.program_id(1)
+    r0 = pid_g * R
+    r1 = tl.minimum(r0 + R, M)
+    crow_base = crow_ptr + b * (M + 1)
+    row_start = tl.load(crow_base + r0).to(tl.int32)
+    row_end = tl.load(crow_base + r1).to(tl.int32)
+
+    col_base = col_ptr + b * nnz_per_batch
+    out_base = pos_ptr + b * nnz_per_batch
+    dense_base = b * OUT_BATCH_STRIDE + r0 * OUT_ROW_STRIDE
+
+    for start in range(row_start, row_end, BLOCK):
+        e = start + tl.arange(0, BLOCK)
+        keep = e < row_end
+        c = tl.load(col_base + e, mask=keep, other=0).to(tl.int32)
+        row = tl.zeros([BLOCK], dtype=tl.int32)
+        for j in tl.static_range(R):
+            bnd = tl.load(crow_base + tl.minimum(r0 + 1 + j, M)).to(tl.int32)
+            row += (e >= bnd).to(tl.int32)
+        tl.store(out_base + e, dense_base + row * OUT_ROW_STRIDE + c, mask=keep)
 
 
 @libentry()
@@ -349,9 +438,13 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
     # pos[b * nnz_per_batch + e] = flat offset of value e inside `dense`.
     # Over-allocated by one block so that the row-tail store can never touch
     # memory outside this buffer.
-    pos_block = _pos_block(nnz_per_batch, M)
-    combine_block = _combine_block(nnz)
-    pos = torch.empty(nnz + pos_block, dtype=torch.int64, device=input.device)
+    narrow = B * Mp * Np < (1 << 31) and B * (M + 1) < (1 << 31)
+    if narrow:
+        pos_rows, pos_block = _pos_plan(nnz_per_batch, M)
+        pos = torch.empty(nnz + pos_block, dtype=torch.int32, device=input.device)
+    else:
+        pos_rows, pos_block = _pos_plan_wide(nnz_per_batch, M)
+        pos = torch.empty(nnz + pos_block, dtype=torch.int64, device=input.device)
 
     logger.debug(
         "GEMS_KUNLUNXIN SPARSE_SAMPLED_ADDMM, [shape info]: batch=%s, M=%s, N=%s, "
@@ -370,11 +463,14 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
         triton.cdiv(N, meta["TILE_N"]),
         B,
     )
+    combine_block = _combine_block(nnz)
     n_full = nnz // combine_block
     tail = n_full * combine_block
 
+    pos_kernel = _ssa_pos_group_kernel_narrow if narrow else _ssa_pos_group_kernel
+
     with torch_device_fn.device(input.device):
-        _ssa_pos_kernel[(B * M,)](
+        pos_kernel[(triton.cdiv(M, pos_rows), B)](
             crow_2d,
             col_2d,
             pos,
@@ -382,6 +478,7 @@ def _sparse_sampled_addmm_impl(input, mat1, mat2, *, beta=1.0, alpha=1.0, out=No
             nnz_per_batch,
             Np,
             Mp * Np,
+            R=pos_rows,
             BLOCK=pos_block,
         )
         _ssa_gemm_kernel[grid_gemm](

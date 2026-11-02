@@ -75,7 +75,7 @@ def upsample_linear1d(
     align_corners: bool,
     scales: float = None,
 ):
-    logger.debug("GEMS UPSAMPLE LINEAR1D OPTIMIZED")
+    logger.debug("GEMS UPSAMPLE_LINEAR1D_OPTIMIZED")
     assert self.ndim == 3, "Input must be [N, C, W]"
     assert self.device.type == flag_gems.device
 

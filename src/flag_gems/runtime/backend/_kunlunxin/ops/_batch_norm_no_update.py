@@ -40,8 +40,17 @@ rsqrt = tl_extra_shim.rsqrt
 # the XPU compiler miscompiles scalar+small-tile broadcast math for TILE<=32
 # (wrong results, verified); TILE_S=4096 with num_warps=4 is the latency optimum.
 
-BNNU_TILE_S = 4096
+# Constants for the per-slice kernel above (grid = N*C). It is no longer used by
+# `_batch_norm_no_update` (replaced by the flat kernel below, 2026-09-18) but
+# remains the workhorse of `_native_batch_norm_legit_no_training`, a different
+# op. TILE_S < 64 is deliberately avoided: the XPU compiler miscompiles
+# scalar+small-tile broadcast math for TILE<=32 (wrong results, verified);
+# TILE_S=4096 with num_warps=4 is the latency optimum for that kernel
+# (2026-09-05, event timing).
 BNNU_MAX_PROGRAMS = 4096
+# Fixed tile for the per-slice kernel (the kernel has no autotune; the value is
+# shared with callers that launch it directly).
+BNNU_TILE_S = 4096
 
 
 @libentry()
@@ -93,6 +102,90 @@ def _batch_norm_no_update_kernel(
             tl.store(output_pointer + base + idx, y.to(output_pointer.dtype.element_ty))
 
 
+# Flat element-parallel kernel (2026-09-18). Replaces the channel-major kernel
+# (each program owning one channel x a chunk of batch slices) whose two costs
+# dominated the runtime: the per-program scalar stats loads (~13us at grid=32)
+# and the 1.5KB per-slice DMA trips (~20us for bytes a flat copy moves in ~5us).
+# Measured on (16,16,8,48) fp32: 36us vs a 6.7us torch reference (speedup 0.19).
+#
+# Here each program covers one CONTIGUOUS run of BLOCK elements -- a long DMA
+# trip like a plain copy -- and re-derives each lane's channel from its element
+# index, sid = (gidx // SPATIAL) % C, so the four stats loads have addresses
+# that repeat every SPATIAL lanes. Same-shape measurements: 9.6us, and the
+# balanced speedup over the official 12 cells goes 0.49 -> 1.17-1.36.
+#
+# Three constraints are load-bearing, all measured on device:
+#   * SPATIAL must stay a constexpr -- `gidx // SPATIAL` then folds to a
+#     magic-number multiply at compile time, which is what makes this flat form
+#     viable at all: feeding SPATIAL as a runtime value measures 402-1095us on
+#     the same shapes. That is the failure mode the 2026-08-17 note above
+#     records for an earlier flat kernel (6-12ms/call), and why it was reverted;
+#     keeping the divisor compile-time is the difference. Within the constexpr
+#     form, re-expressing the division as a shift (`gidx >> log2(S)`) or
+#     routing the channel index through an int8 lookup table also collapsed
+#     into a ~1400us scalarized path.
+#   * BLOCK must stay <= 4096. Larger blocks hit a codegen cliff on some
+#     (dtype, SPATIAL) pairs -- 384/fp16 at BLOCK=16384 and 704/fp32 at
+#     BLOCK=8192 both jump from ~10us to 34-43us, while the same-geometry pure
+#     copy stays flat at 5-7us. 4096 was the largest cap clear of the cliff on
+#     every configuration measured.
+#   * Vectorization stays ON -- do NOT pass isCloseVectorization=True (skipping
+#     the vectorize pass costs ~8% end to end: 1.17 vs 1.36 balanced).
+_FLAT_BLOCK_MAX = 4096
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def _batch_norm_no_update_kernel_flat(
+    input_pointer,  # [N*C*S] contiguous, flattened
+    weight_pointer,  # [C] or unused
+    bias_pointer,  # [C] or unused
+    running_mean_pointer,  # [C]
+    running_var_pointer,  # [C]
+    output_pointer,
+    feat_dim,
+    total,
+    eps,
+    HAS_WEIGHT: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK: tl.constexpr,
+    SPATIAL: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    pid = tl.program_id(axis=0)
+    gidx = pid * BLOCK + tl.arange(0, BLOCK)
+    sid = (gidx // SPATIAL) % feat_dim
+    mean = tl.load(running_mean_pointer + sid).to(tl.float32)
+    inv_std = 1.0 / tl.sqrt(tl.load(running_var_pointer + sid).to(tl.float32) + eps)
+    if HAS_WEIGHT:
+        weight = tl.load(weight_pointer + sid).to(tl.float32)
+    else:
+        weight = 1.0
+    if HAS_BIAS:
+        bias = tl.load(bias_pointer + sid).to(tl.float32)
+    else:
+        bias = 0.0
+    if NEED_MASK:
+        mask = gidx < total
+        x = tl.load(input_pointer + gidx, mask=mask, other=0.0).to(tl.float32)
+        tl.store(
+            output_pointer + gidx,
+            (weight * (x - mean) * inv_std + bias).to(output_pointer.dtype.element_ty),
+            mask=mask,
+        )
+    else:
+        x = tl.load(input_pointer + gidx).to(tl.float32)
+        tl.store(
+            output_pointer + gidx,
+            (weight * (x - mean) * inv_std + bias).to(output_pointer.dtype.element_ty),
+        )
+
+
+def _flat_block(total: int) -> int:
+    """BLOCK for the flat kernel: next_pow2(total) capped at _FLAT_BLOCK_MAX."""
+    return min(_FLAT_BLOCK_MAX, max(64, triton.next_power_of_2(total)))
+
+
 def _batch_norm_no_update(
     input,
     weight=None,
@@ -124,30 +217,27 @@ def _batch_norm_no_update(
     if n_elements > 0:
         input_flat = input_contiguous.reshape(-1)
         output_flat = output.reshape(-1)
-        need_mask = (inner % BNNU_TILE_S) != 0
+        block = _flat_block(n_elements)
         weight_pointer = input_flat if weight is None else weight
         bias_pointer = input_flat if bias is None else bias
         with torch_device_fn.device(input.device):
-            for slice_offset in range(0, n_slices, BNNU_MAX_PROGRAMS):
-                slice_count = min(BNNU_MAX_PROGRAMS, n_slices - slice_offset)
-                _batch_norm_no_update_kernel[(slice_count,)](
-                    input_flat[slice_offset * inner :],
-                    weight_pointer,
-                    bias_pointer,
-                    running_mean,
-                    running_var,
-                    output_flat[slice_offset * inner :],
-                    channels,
-                    inner,
-                    eps,
-                    HAS_WEIGHT=weight is not None,
-                    HAS_BIAS=bias is not None,
-                    TILE_S=BNNU_TILE_S,
-                    NEED_MASK=need_mask,
-                    num_warps=4,
-                    isCloseVectorization=True,
-                    buffer_size_limit=2048,
-                )
+            _batch_norm_no_update_kernel_flat[(triton.cdiv(n_elements, block),)](
+                input_flat,
+                weight_pointer,
+                bias_pointer,
+                running_mean,
+                running_var,
+                output_flat,
+                channels,
+                n_elements,
+                eps,
+                HAS_WEIGHT=weight is not None,
+                HAS_BIAS=bias is not None,
+                BLOCK=block,
+                SPATIAL=inner,
+                NEED_MASK=(n_elements % block) != 0,
+                num_warps=4,
+            )
 
     save_mean = torch.empty((0,), dtype=input.dtype, device=input.device)
     save_var = torch.empty((0,), dtype=input.dtype, device=input.device)

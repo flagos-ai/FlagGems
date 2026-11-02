@@ -77,7 +77,6 @@ from .bitwise_or import (
 )
 from .bitwise_right_shift import bitwise_right_shift
 from .bmm import bmm, bmm_out
-from .broadcast_to import broadcast_to
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_
 from .ceil import ceil, ceil_, ceil_out
@@ -199,6 +198,7 @@ from .max_pool3d_with_indices import max_pool3d_backward, max_pool3d_with_indice
 from .max_unpool2d import max_unpool2d
 from .maximum import maximum
 from .mean import mean, mean_dim
+from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
 from .mish_backward import mish_backward
@@ -215,6 +215,7 @@ from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .negative import negative, negative_out
 from .new_ones import new_ones
+from .nll_loss2d import nll_loss2d
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .normal import (
@@ -405,7 +406,6 @@ __all__ = [
     "bitwise_right_shift",
     "bmm",
     "bmm_out",
-    "broadcast_to",
     "cat",
     "cat_out",
     "cauchy",
@@ -585,6 +585,10 @@ __all__ = [
     "maximum",
     "mean",
     "mean_dim",
+    "median",
+    "median_dim",
+    "median_dim_values",
+    "median_out",
     "min",
     "min_dim",
     "minimum",
@@ -610,6 +614,7 @@ __all__ = [
     "negative",
     "negative_out",
     "new_ones",
+    "nll_loss2d",
     "nonzero",
     "nonzero_numpy",
     "normal_",

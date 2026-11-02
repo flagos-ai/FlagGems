@@ -279,6 +279,7 @@ def test_accuracy_linalg_matrix_rank_matches_adjoint(dtype, shape, expected_rank
     _assert_equal(rank, adjoint_rank)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_aah_svd_matches_hermitian(dtype):
@@ -431,6 +432,7 @@ def test_accuracy_linalg_matrix_rank_broadcast_tolerance(dtype):
     _assert_equal(result, expected)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_hermitian_false(dtype):
@@ -445,6 +447,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_false(dtype):
     _assert_equal(result, expected)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_hermitian_true(dtype):
@@ -459,6 +462,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_true(dtype):
     _assert_equal(result, expected)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_hermitian_uses_lower_triangle(dtype):
@@ -473,6 +477,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_uses_lower_triangle(dtype):
     _assert_equal(result, expected)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 @pytest.mark.parametrize(
@@ -511,6 +516,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_ignores_strict_upper(dtype, order
         _assert_equal(result, expected.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_hermitian_order_33(dtype):
@@ -521,6 +527,7 @@ def test_accuracy_linalg_matrix_rank_hermitian_order_33(dtype):
     _assert_equal(result, expected)
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 @pytest.mark.parametrize(
@@ -604,6 +611,7 @@ def test_accuracy_linalg_matrix_rank_general_dense_low_rank(dtype):
     _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPE_CASES)
 def test_accuracy_linalg_matrix_rank_hermitian_dense_low_rank(dtype):
@@ -929,6 +937,7 @@ def test_accuracy_linalg_matrix_rank_nonsquare_lowrank(dtype, shape, rank):
     _assert_equal(result, reference.to(device=matrix.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 # Include representative Hermitian orders on each supported backend.
 @pytest.mark.parametrize(
@@ -1126,6 +1135,7 @@ def test_accuracy_linalg_matrix_rank_ascend_long_rectangular(shape):
     _assert_equal(result, reference.to(device=matrix.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.parametrize("k,expect_rank", [(65, 1), (128, 1), (257, 1), (513, 1)])
 def test_accuracy_linalg_matrix_rank_hermitian_deflated_spectrum(k, expect_rank):
@@ -1205,6 +1215,7 @@ def test_accuracy_linalg_matrix_rank_ascend_shape_boundaries(
     _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(not IS_ASCEND, reason="Ascend-specific numerical coverage")
 @pytest.mark.parametrize("k", [300, 513])
@@ -1343,6 +1354,7 @@ def _make_rotated_hermitian_spectrum(k, values, seed):
     return ((basis * spectrum) @ basis.mT).float()
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 def test_accuracy_linalg_matrix_rank_large_hermitian_ignores_strict_upper():
@@ -1369,6 +1381,7 @@ def test_accuracy_linalg_matrix_rank_large_hermitian_ignores_strict_upper():
     _assert_equal(garbage_rank, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 @pytest.mark.parametrize("rank", [1, 7])
@@ -1385,6 +1398,7 @@ def test_accuracy_linalg_matrix_rank_large_hermitian_deflated(rank):
     _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 @pytest.mark.parametrize("log10_scale", [20, -30], ids=lambda s: f"1e{s}")
@@ -1402,6 +1416,7 @@ def test_accuracy_linalg_matrix_rank_large_hermitian_extreme_scales(log10_scale)
     _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 def test_accuracy_linalg_matrix_rank_large_hermitian_critical_spectrum():
@@ -1422,6 +1437,7 @@ def test_accuracy_linalg_matrix_rank_large_hermitian_critical_spectrum():
         _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 def test_accuracy_linalg_matrix_rank_large_hermitian_batched():
@@ -1439,6 +1455,7 @@ def test_accuracy_linalg_matrix_rank_large_hermitian_batched():
     _assert_equal(result, reference.to(flag_gems.device))
 
 
+@pytest.mark.linalg_matrix_rank_hermitian
 @pytest.mark.linalg_matrix_rank
 @pytest.mark.skipif(IS_ASCEND, reason="Ascend backend has its own implementation")
 def test_accuracy_linalg_matrix_rank_large_hermitian_repeatable():

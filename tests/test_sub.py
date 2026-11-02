@@ -34,8 +34,7 @@ def test_sub_tensor_tensor(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.sub(ref_inp1, ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.sub(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -51,8 +50,7 @@ def test_sub_tensor_scalar(shape, scalar, alpha, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.sub(ref_inp1, inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.sub(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -68,8 +66,7 @@ def test_sub_tensor_tensor_(shape, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.sub_(ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = inp1.sub_(inp2, alpha=alpha)
+    res_out = flag_gems.sub_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -85,8 +82,7 @@ def test_sub_tensor_scalar_(shape, scalar, alpha, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.sub_(inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = inp1.sub_(inp2, alpha=alpha)
+    res_out = flag_gems.sub_(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -128,8 +124,7 @@ def test_sub_scalar_tensor(shape, scalar, alpha, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.sub(inp1, ref_inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.sub(inp1, inp2, alpha=alpha)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -147,8 +142,7 @@ def test_sub_scalar_scalar(dtype):
         alpha = random.randint(0, 100)
 
     ref_out = torch.sub(inp1, inp2, alpha=alpha)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2, alpha=alpha)
+    res_out = flag_gems.sub(inp1, inp2, alpha=alpha)
 
     if dtype == torch.int64:
         utils.gems_assert_equal(res_out, ref_out)
@@ -175,8 +169,7 @@ def test_sub_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.sub(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2)
+    res_out = flag_gems.sub(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
@@ -207,8 +200,7 @@ def test_sub_complex_float_tensor(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.sub(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2)
+    res_out = flag_gems.sub(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
@@ -232,8 +224,7 @@ def test_sub_complex_int_tensor(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.sub(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2)
+    res_out = flag_gems.sub(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
@@ -259,7 +250,6 @@ def test_sub_complex_int_scalar(shape, complex_dtype):
     )
 
     ref_out = torch.sub(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.sub(inp1, inp2)
+    res_out = flag_gems.sub(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, complex_dtype)

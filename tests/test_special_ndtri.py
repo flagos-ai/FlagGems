@@ -38,11 +38,14 @@ def test_special_ndtri(shape, dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
+    ):
+        res_out = flag_gems.special_ndtri(inp)
 
-    assert "GEMS SPECIAL_NDTRI" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -60,11 +63,14 @@ def test_special_ndtri_edge_values(dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
+    ):
+        res_out = flag_gems.special_ndtri(inp)
 
-    assert "GEMS SPECIAL_NDTRI" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
+    )
     torch.testing.assert_close(
         res_out.to(torch.float32).cpu(),
         ref_out.to(torch.float32).cpu(),
@@ -85,11 +91,14 @@ def test_special_ndtri_non_contiguous(dtype, caplog):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
-    with caplog.at_level("DEBUG", logger="flag_gems.ops.special_ndtri"):
-        with flag_gems.use_gems():
-            res_out = torch.ops.aten.special_ndtri(inp)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
+    ):
+        res_out = flag_gems.special_ndtri(inp)
 
-    assert "GEMS SPECIAL_NDTRI" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
+    )
     assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -101,5 +110,4 @@ def test_special_ndtri_unsupported_dtype(dtype):
     # NotImplementedError that the PyTorch reference raises for these dtypes.
     inp = torch.empty((8,), dtype=dtype, device=flag_gems.device).uniform_(0.01, 0.99)
     with pytest.raises(NotImplementedError):
-        with flag_gems.use_gems():
-            torch.ops.aten.special_ndtri(inp)
+        flag_gems.special_ndtri(inp)

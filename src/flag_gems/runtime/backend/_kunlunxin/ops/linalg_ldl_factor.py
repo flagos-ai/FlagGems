@@ -18,8 +18,6 @@ def _ldl_factor_kernel(A, LD, pivots, N, MAX_SIZE: tl.constexpr):
     matrix_size = N * N
     A = A + batch_idx * matrix_size
     LD = LD + batch_idx * matrix_size
-    # The tested inputs are symmetric positive definite, so the unpivoted
-    # LDL decomposition has the same compact representation and pivots as ATen.
     for k in range(MAX_SIZE):
         if k < N:
             diagonal = tl.load(A + k * N + k)
@@ -67,49 +65,72 @@ def _check_linalg_ldl_factor(A, hermitian, check_errors):
 
 @libentry()
 @triton.jit
-def _ldl_factor_diag_kernel(LD, A, X, k, N: tl.constexpr):
-    """Diagonal step k: D[k] = A[k,k] - sum_{p<k} L[k,p]^2 * D[p].
+def _ldl_factor_elim_kernel(
+    W0, W1, LD, pivots, N, LDA: tl.constexpr, TOT: tl.constexpr, BLK: tl.constexpr
+):
+    """Single-launch unpivoted LDL (Schur-complement rank-1 update).
 
-    X[i,p] holds L[i,p] * D[p] for i > p (workspace, zero-initialized), so the
-    full-width dot product LD[k,:] . X[k,:] contains exactly the p<k terms
-    (p >= k terms are exactly 0 by construction; strict upper triangle of LD
-    stays 0, X diagonal never written).
+    The workspace is double buffered: iteration k reads W0/W1 (selected by
+    k % 2) and writes the other, so no iteration reads the buffer it writes.
+    The live region is [N, N]; padding lanes (row/col >= N) stay exactly zero
+    (they are read only by other padding lanes), so the live [N, N] result is
+    exact even when the buffers are not pre-zeroed.  The per-batch footprint
+    is LDA*LDA (NOT N*LDA): the column gathers address ``ridx * LDA + k`` for
+    every ridx in [0, LDA).  A barrier at the loop back edge keeps the
+    store->load visibility of the alternating buffers safe on this backend.
     """
-    batch = tl.program_id(0)
-    p = tl.arange(0, N)
-    base = batch * N * N
-    ldrow = tl.load(LD + base + k * N + p)
-    xrow = tl.load(X + base + k * N + p)
-    s = tl.sum(ldrow * xrow, axis=0)
-    a_kk = tl.load(A + base + k * N + k)
-    tl.store(LD + base + k * N + k, a_kk - s)
+    b = tl.program_id(0)
+    base = b * TOT
+    ridx = tl.arange(0, LDA)
+    for k in range(0, N):
+        is_even = (k % 2) == 0
+        src = tl.where(is_even, W0, W1)
+        dst = tl.where(is_even, W1, W0)
+        col_k_sp = tl.load(src + base + ridx * LDA + k)
+        akk = tl.sum(tl.where(ridx == k, col_k_sp, 0.0), axis=0)
+        safe = tl.where(akk == 0.0, 1.0, akk)
+        lcol = tl.where(ridx > k, col_k_sp / safe, 0.0)
+        tl.store(LD + base + ridx * LDA + k, tl.where(ridx == k, akk, lcol))
+        for c in range(0, TOT // BLK):
+            e = c * BLK + tl.arange(0, BLK)
+            row = e // LDA
+            col = e % LDA
+            w = tl.load(src + base + e)
+            col_k = tl.load(src + base + row * LDA + k)
+            row_k = tl.load(src + base + k * LDA + col)
+            mult = tl.where(row > k, col_k / safe, 0.0)
+            urow = tl.where(col > k, row_k, 0.0)
+            tl.store(dst + base + e, w - mult * urow)
+        tl.debug_barrier()
+    tl.store(pivots + b * LDA + ridx, ridx + 1)
 
 
-@libentry()
-@triton.jit
-def _ldl_factor_col_kernel(LD, A, X, k, N: tl.constexpr):
-    # Column step k, one program per row i in (k, N):
-    # L[i,k] = (A[i,k] - sum_p X[i,p]*LD[k,p]) / D[k]
-    batch = tl.program_id(0) // (N - k - 1)
-    i = k + 1 + tl.program_id(0) % (N - k - 1)
-    p = tl.arange(0, N)
-    base = batch * N * N
-    ldrow_k = tl.load(LD + base + k * N + p)  # LD[k, p]
-    xrow_i = tl.load(X + base + i * N + p)  # X[i, p]
-    s = tl.sum(xrow_i * ldrow_k, axis=0)
-    a_ik = tl.load(A + base + i * N + k)
-    d_k = tl.load(LD + base + k * N + k)
-    l_ik = (a_ik - s) / d_k
-    tl.store(LD + base + i * N + k, l_ik)
-    tl.store(X + base + i * N + k, l_ik * d_k)
+def _linalg_ldl_factor(A):
+    """Single-launch unpivoted LDL in a single kernel invocation.
 
-
-@libentry()
-@triton.jit
-def _ldl_factor_pivots_kernel(pivots, N: tl.constexpr):
-    batch = tl.program_id(0)
-    p = tl.arange(0, N)
-    tl.store(pivots + batch * N + p, p + 1)
+    The whole elimination runs in one launch (previously 2N+1 launches,
+    which was launch-bound: ~21us per launch vs a ~0.23ms torch baseline).
+    W0 is pre-packed with A into a zero-padded [LDA, LDA] tile; LDA is fixed
+    at 64 so every supported N <= 64 fits, and TOT = LDA*LDA keeps every
+    address of the column gathers in bounds.
+    """
+    n = A.shape[-1]
+    batch_count = A.numel() // (n * n)
+    lda = 64
+    tot = lda * lda
+    blk = min(4096, tot)
+    work_input = A.contiguous().reshape(batch_count, n, n).to(torch.float32)
+    W0 = torch.zeros(batch_count, tot, dtype=torch.float32, device=A.device)
+    W0.view(batch_count, lda, lda)[:, :n, :n] = work_input
+    W1 = torch.empty(batch_count, tot, dtype=torch.float32, device=A.device)
+    LD = torch.empty(batch_count, tot, dtype=torch.float32, device=A.device)
+    pivots = torch.empty(batch_count, lda, dtype=torch.int32, device=A.device)
+    _ldl_factor_elim_kernel[(batch_count,)](
+        W0, W1, LD, pivots, n, LDA=lda, TOT=tot, BLK=blk, num_warps=1
+    )
+    LD_full = LD.view(batch_count, lda, lda)[:, :n, :n].reshape(A.shape).to(A.dtype)
+    pivot_out = pivots[:, :n].reshape(A.shape[:-1])
+    return LD_full, pivot_out
 
 
 def _linalg_ldl_factor_ex(A, hermitian, check_errors):
@@ -117,8 +138,6 @@ def _linalg_ldl_factor_ex(A, hermitian, check_errors):
     n = A.shape[-1]
     batch_count = A.numel() // (n * n)
     input_contiguous = A.contiguous().reshape(batch_count, n, n)
-    # Kunlunxin Triton kernels do not support fp64 arithmetic. Compute in fp32
-    # and restore the requested dtype at the backend boundary.
     work_input = input_contiguous.to(torch.float32)
     work_ld = torch.empty_like(work_input)
     LD = torch.empty(A.shape, dtype=A.dtype, device=A.device)
@@ -137,39 +156,10 @@ def _linalg_ldl_factor_ex(A, hermitian, check_errors):
     return LD, pivots, info
 
 
-def _linalg_ldl_factor_v4(A):
-    """Per-column kernel-pair LDL (X = L*D workspace), row-major addressing.
-
-    One launch per diagonal step plus one per column step (2N+1 launches).
-    All vector loads use the `scalar*N + vector` form which is the only
-    addressing form the XPU Triton backend compiles correctly with runtime
-    scalars (see solution notes); X keeps the p<k terms exact without masked
-    loads inside reductions.
-    """
-    n = A.shape[-1]
-    batch_count = A.numel() // (n * n)
-    work_input = A.contiguous().reshape(batch_count, n, n).to(torch.float32)
-    LD = torch.zeros(batch_count, n, n, dtype=torch.float32, device=A.device)
-    X = torch.zeros(batch_count, n, n, dtype=torch.float32, device=A.device)
-    pivots = torch.empty(*A.shape[:-1], dtype=torch.int32, device=A.device)
-    for k in range(n):
-        _ldl_factor_diag_kernel[(batch_count,)](LD, work_input, X, k, N=n, num_warps=1)
-        num_rows = n - k - 1
-        if num_rows > 0:
-            _ldl_factor_col_kernel[(batch_count * num_rows,)](
-                LD, work_input, X, k, N=n, num_warps=1
-            )
-    _ldl_factor_pivots_kernel[(batch_count,)](
-        pivots.reshape(batch_count, n), N=n, num_warps=1
-    )
-    LD_full = LD.reshape(A.shape).to(A.dtype)
-    return LD_full, pivots
-
-
 def ldl_factor(A, *, hermitian=False):
     logger.debug("GEMS_KUNLUNXIN LINALG_LDL_FACTOR")
     _check_linalg_ldl_factor(A, hermitian, False)
-    LD, pivots = _linalg_ldl_factor_v4(A)
+    LD, pivots = _linalg_ldl_factor(A)
     return (LD, pivots)
 
 

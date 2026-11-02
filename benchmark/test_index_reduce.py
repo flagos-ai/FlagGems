@@ -16,17 +16,28 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.utils import shape_utils
 
-from . import base, consts, utils
+from . import base, consts
+
+_ASCEND_NATIVE_BASELINE_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason=(
+        "missing direct native kernel: schema=aten::index_reduce.out, "
+        "vendor=ascend, device=npu, dispatch_key=PrivateUse1; "
+        "torch-npu falls back to CPU"
+    ),
+)
 
 
 class IndexReduceBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(1024, 1024), (4096, 256), (64, 512, 256)]
     DEFAULT_SHAPE_DESC = "(B), M, N"
 
-    def __init__(self, *args, reduce, **kwargs):
+    def __init__(self, *args, reduce, use_out=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.reduce = reduce
+        self.use_out = use_out
 
     def set_more_metrics(self):
         return ["gbps"]
@@ -38,7 +49,9 @@ class IndexReduceBenchmark(base.Benchmark):
         inp = args[0]
         index = args[2]
         source = args[3]
-        io_amount = sum(utils.size_in_bytes(item) for item in [inp, index, source, inp])
+        io_amount = sum(
+            shape_utils.size_in_bytes(item) for item in [inp, index, source, inp]
+        )
         return io_amount * 1e-9 / (latency * 1e-3)
 
     def get_input_iter(self, dtype):
@@ -55,12 +68,21 @@ class IndexReduceBenchmark(base.Benchmark):
             else:
                 source = torch.randn(source_shape, dtype=dtype, device=self.device)
 
-            yield inp, dim, index, source, {"reduce": self.reduce}
+            kwargs = {"reduce": self.reduce}
+            if self.use_out:
+                kwargs["out"] = torch.empty_like(inp)
+            yield inp, dim, index, source, kwargs
 
 
-def _run_index_reduce_benchmark(reduce):
+@pytest.mark.index_reduce_
+@_ASCEND_NATIVE_BASELINE_SKIP
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_reduce_(reduce):
     bench = IndexReduceBenchmark(
-        op_name=f"index_reduce_.{reduce}",
+        op_name="index_reduce_",
         torch_op=torch.Tensor.index_reduce_,
         dtypes=consts.FLOAT_DTYPES,
         reduce=reduce,
@@ -68,33 +90,34 @@ def _run_index_reduce_benchmark(reduce):
     bench.run()
 
 
-@pytest.mark.index_reduce_
+@pytest.mark.index_reduce
+@_ASCEND_NATIVE_BASELINE_SKIP
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_index_reduce_prod():
-    _run_index_reduce_benchmark("prod")
+def test_index_reduce(reduce):
+    bench = IndexReduceBenchmark(
+        op_name="index_reduce",
+        torch_op=torch.index_reduce,
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+    )
+    bench.run()
 
 
-@pytest.mark.index_reduce_
+@pytest.mark.index_reduce_out
+@_ASCEND_NATIVE_BASELINE_SKIP
+@pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
-def test_index_reduce_mean():
-    _run_index_reduce_benchmark("mean")
-
-
-@pytest.mark.index_reduce_
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_index_reduce_amax():
-    _run_index_reduce_benchmark("amax")
-
-
-@pytest.mark.index_reduce_
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
-)
-def test_index_reduce_amin():
-    _run_index_reduce_benchmark("amin")
+def test_index_reduce_out(reduce):
+    bench = IndexReduceBenchmark(
+        op_name="index_reduce_out",
+        torch_op=torch.ops.aten.index_reduce.out,
+        dtypes=consts.FLOAT_DTYPES,
+        reduce=reduce,
+        use_out=True,
+    )
+    bench.run()

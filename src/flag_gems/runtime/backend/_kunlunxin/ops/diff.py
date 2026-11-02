@@ -10,51 +10,39 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
-# The generic diff uses @libtuner (key=["M","N"] with 45 configs on kunlunxin)
-# so every distinct (M, N) shape re-autotunes all configs -> huge compile +
-# IR explosion (13.6M-line dump). Worse, its diff_kernel_2d addresses a 2D
-# strided tile `M_offsets[:,None]*M_STRIDE + offs` whose runtime row stride
-# defeats XPU contiguity analysis -> fully discrete access (0.003-0.03x torch
-# on every 2D/3D shape).
-#
-# Fix (no libtuner, fixed BLOCK): drive one program per (row, chunk) with a
-# pre-offset base pointer so each program does a purely contiguous 1D block-DMA
-# `out[row, j:j+BLOCK] = in[row, j+1:...] - in[row, j:...]`. A fixed BLOCK=8192
-# beats an N-adaptive block on XPU (large tiles stay well utilized; smaller
-# tiles regress small-N cases). 1D inputs keep the fast flat-DMA path.
 BLOCK = 1024
+BIG_BLOCK = 16384
+TINY_NUMEL = 65536
 
 
 @libentry()
 @triton.jit
-def diff_kernel_1d(in_ptr, out_ptr, N_OUT, BLOCK: tl.constexpr):
-    pid = tle.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N_OUT
-    a = tl.load(in_ptr + offs, mask)
-    b = tl.load(in_ptr + offs + 1, mask)
-    tl.store(out_ptr + offs, b - a, mask)
-
-
-@libentry()
-@triton.jit
-def diff_kernel_2d(
+def diff_row_kernel(
     in_ptr,
     out_ptr,
-    N_OUT,
-    M_STRIDE_IN,
-    M_STRIDE_OUT,
+    NCOMP,
     BLOCK: tl.constexpr,
+    CAST16: tl.constexpr,
+    RNE_BF16: tl.constexpr,
 ):
-    pid_m = tle.program_id(0)
-    pid_c = tle.program_id(1)
-    row_in = in_ptr + pid_m * M_STRIDE_IN
-    row_out = out_ptr + pid_m * M_STRIDE_OUT
-    offs = pid_c * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < N_OUT
-    a = tl.load(row_in + offs, mask)
-    b = tl.load(row_in + offs + 1, mask)
-    tl.store(row_out + offs, b - a, mask)
+    pid_row = tle.program_id(0)
+    pid_chunk = tle.program_id(1)
+    in_base = pid_row.to(tl.int64) * (NCOMP + 1)
+    out_base = pid_row.to(tl.int64) * NCOMP
+    offs = pid_chunk * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < NCOMP
+    a = tl.load(in_ptr + in_base + offs, mask=mask)
+    b = tl.load(in_ptr + in_base + offs + 1, mask=mask)
+    if CAST16:
+        d = (b.to(tl.int32) - a.to(tl.int32)).to(a.dtype)
+    elif RNE_BF16:
+        t = b.to(tl.float32) - a.to(tl.float32)
+        tbits = t.to(tl.uint32, bitcast=True)
+        tbits = (tbits + 0x7FFF + ((tbits >> 16) & 1)) & 0xFFFF0000
+        d = tbits.to(tl.float32, bitcast=True).to(tl.bfloat16)
+    else:
+        d = b - a
+    tl.store(out_ptr + out_base + offs, d, mask=mask)
 
 
 def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
@@ -76,34 +64,44 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
         empty_tensor = torch.tensor([], dtype=input.dtype, device=input.device)
         return torch.reshape(empty_tensor, shape[:dim] + [0] + shape[(dim + 1) :])
 
+    if (
+        n == 1 or (n == 2 and input.dtype != torch.bfloat16)
+    ) and input.numel() > TINY_NUMEL:
+        out = input
+        for _ in range(n):
+            idx_hi = [slice(None)] * out.ndim
+            idx_hi[dim] = slice(1, None)
+            idx_lo = [slice(None)] * out.ndim
+            idx_lo[dim] = slice(0, -1)
+            out = out[tuple(idx_hi)] - out[tuple(idx_lo)]
+        return out
+
     input = dim_compress(input, dim)
     N = reduce_len
     M = input.numel() // N
+    block = BIG_BLOCK if N >= 4096 else BLOCK
 
-    is_1d = len(shape) == 1
-
-    def _launch(src, dst, in_stride_m, out_stride_m, n_bound):
-        n_out = n_bound - 1
+    def _launch(src, dst, n_comp):
+        grid = (M, triton.cdiv(n_comp, block))
         with torch_device_fn.device(src.device):
-            if is_1d:
-                grid = (triton.cdiv(n_out, BLOCK),)
-                diff_kernel_1d[grid](src, dst, n_out, BLOCK=BLOCK)
-            else:
-                grid = (M, triton.cdiv(n_out, BLOCK))
-                diff_kernel_2d[grid](
-                    src, dst, n_out, in_stride_m, out_stride_m, BLOCK=BLOCK
-                )
+            diff_row_kernel[grid](
+                src,
+                dst,
+                n_comp,
+                BLOCK=block,
+                CAST16=bool(src.dtype == torch.int16),
+                RNE_BF16=bool(src.dtype == torch.bfloat16),
+                buffer_size_limit=2048,
+            )
 
     out_shape = list(input.shape)
     out_shape[-1] = N - n
     output = torch.empty(out_shape, device=input.device, dtype=input.dtype)
 
     if n == 1:
-        _launch(input, output, N, N - 1, N)
+        _launch(input, output, N - 1)
         return torch.moveaxis(output, -1, dim)
 
-    # n >= 2: ping-pong between two scratch buffers, writing the last iteration
-    # directly into `output` (size N-n).
     scratch_a_shape = list(input.shape)
     scratch_a_shape[-1] = N - 1
     scratch_a = torch.empty(scratch_a_shape, device=input.device, dtype=input.dtype)
@@ -112,19 +110,17 @@ def diff(input, n=1, dim=-1, prepend=None, append=None) -> torch.Tensor:
         scratch_b_shape[-1] = N - 2
         scratch_b = torch.empty(scratch_b_shape, device=input.device, dtype=input.dtype)
 
-    _launch(input, scratch_a, N, N - 1, N)
-    torch_device_fn.synchronize()
-    src, src_stride = scratch_a, N - 1
+    _launch(input, scratch_a, N - 1)
+    src = scratch_a
 
     for k in range(1, n):
         if k == n - 1:
-            dst, dst_stride = output, N - n
+            dst = output
         elif k % 2 == 1:
-            dst, dst_stride = scratch_b, N - 2
+            dst = scratch_b
         else:
-            dst, dst_stride = scratch_a, N - 1
-        _launch(src, dst, src_stride, dst_stride, N - k)
-        torch_device_fn.synchronize()
-        src, src_stride = dst, dst_stride
+            dst = scratch_a
+        _launch(src, dst, N - k - 1)
+        src = dst
 
     return torch.moveaxis(output, -1, dim)

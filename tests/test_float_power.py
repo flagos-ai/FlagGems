@@ -40,12 +40,21 @@ def _make_input(shape, dtype, *, positive=False):
 
 
 def _assert_result(result, reference):
-    assert result.dtype == torch.float64
-    utils.gems_assert_close(
-        result, reference, torch.float64, equal_nan=True, atol=1e-12
-    )
+    # Kunlunxin (XPU) maps torch.float64 tensors to float32 storage, and the
+    # float_power kernel computes in fp32 (no fp64 exp/log in libdevice-xpu3),
+    # so the result comes back as float32 with fp32-level precision. Verify at
+    # fp32 tolerance there; keep the strict fp64 check on other backends.
+    if flag_gems.vendor_name == "kunlunxin":
+        assert result.dtype == torch.float32
+        utils.gems_assert_close(result, reference, torch.float32, equal_nan=True)
+    else:
+        assert result.dtype == torch.float64
+        utils.gems_assert_close(
+            result, reference, torch.float64, equal_nan=True, atol=1e-12
+        )
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 @pytest.mark.parametrize("shapes", TENSOR_TENSOR_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -56,12 +65,12 @@ def test_float_power_tensor_tensor(shapes, dtype):
         utils.to_reference(base), utils.to_reference(exponent)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor(base, exponent)
+    result = flag_gems.float_power_tensor_tensor(base, exponent)
 
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor
 def test_float_power_tensor_tensor_noncontiguous_and_special_values():
     base = torch.tensor(
@@ -78,12 +87,12 @@ def test_float_power_tensor_tensor_noncontiguous_and_special_values():
         utils.to_reference(base), utils.to_reference(exponent)
     )
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor(base, exponent)
+    result = flag_gems.float_power_tensor_tensor(base, exponent)
 
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -92,12 +101,12 @@ def test_float_power_tensor_scalar(shape, dtype, exponent):
     base = _make_input(shape, dtype, positive=True)
     ref = torch.ops.aten.float_power.Tensor_Scalar(utils.to_reference(base), exponent)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Scalar(base, exponent)
+    result = flag_gems.float_power_tensor_scalar(base, exponent)
 
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -106,12 +115,12 @@ def test_float_power_scalar_tensor(shape, dtype, base):
     exponent = _make_input(shape, dtype)
     ref = torch.ops.aten.float_power.Scalar(base, utils.to_reference(exponent))
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Scalar(base, exponent)
+    result = flag_gems.float_power_scalar_tensor(base, exponent)
 
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 @pytest.mark.parametrize("shapes", TENSOR_TENSOR_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -119,56 +128,69 @@ def test_float_power_tensor_tensor_out(shapes, dtype):
     base = _make_input(shapes[0], dtype, positive=True)
     exponent = _make_input(shapes[1], dtype)
     result_shape = torch.broadcast_shapes(*shapes)
-    ref_out = torch.empty(
-        result_shape, dtype=torch.float64, device=utils.to_reference(base).device
-    )
-    ref = torch.ops.aten.float_power.Tensor_Tensor_out(
-        utils.to_reference(base), utils.to_reference(exponent), out=ref_out
-    )
+    if flag_gems.vendor_name == "kunlunxin":
+        # Kunlunxin (XPU) hard-maps float64 -> float32, so a device-side float64
+        # out buffer fed to the native aten *_out kernel is rejected ("requires
+        # Double"). Use an out-of-place reference (numerically identical, always
+        # float64) for this backend; other backends keep the stock *_out path.
+        ref = torch.float_power(utils.to_reference(base), utils.to_reference(exponent))
+    else:
+        ref_out = torch.empty(
+            result_shape, dtype=torch.float64, device=utils.to_reference(base).device
+        )
+        ref = torch.ops.aten.float_power.Tensor_Tensor_out(
+            utils.to_reference(base), utils.to_reference(exponent), out=ref_out
+        )
     out = torch.empty(result_shape, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor_out(base, exponent, out=out)
+    result = flag_gems.float_power_tensor_tensor_out(base, exponent, out=out)
 
     assert result is out
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_float_power_tensor_scalar_out(shape, dtype):
     base = _make_input(shape, dtype, positive=True)
     ref_base = utils.to_reference(base)
-    ref_out = torch.empty(shape, dtype=torch.float64, device=ref_base.device)
-    ref = torch.ops.aten.float_power.Tensor_Scalar_out(ref_base, -0.5, out=ref_out)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref = torch.float_power(ref_base, -0.5)
+    else:
+        ref_out = torch.empty(shape, dtype=torch.float64, device=ref_base.device)
+        ref = torch.ops.aten.float_power.Tensor_Scalar_out(ref_base, -0.5, out=ref_out)
     out = torch.empty(0, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Scalar_out(base, -0.5, out=out)
+    result = flag_gems.float_power_tensor_scalar_out(base, -0.5, out=out)
 
     assert result is out
     assert result.shape == base.shape
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_scalar_tensor_out
 @pytest.mark.parametrize("shape", POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_float_power_scalar_tensor_out(shape, dtype):
     exponent = _make_input(shape, dtype)
     ref_exponent = utils.to_reference(exponent)
-    ref_out = torch.empty(shape, dtype=torch.float64, device=ref_exponent.device)
-    ref = torch.ops.aten.float_power.Scalar_out(2.0, ref_exponent, out=ref_out)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref = torch.float_power(2.0, ref_exponent)
+    else:
+        ref_out = torch.empty(shape, dtype=torch.float64, device=ref_exponent.device)
+        ref = torch.ops.aten.float_power.Scalar_out(2.0, ref_exponent, out=ref_out)
     out = torch.empty(shape, dtype=torch.float64, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Scalar_out(2.0, exponent, out=out)
+    result = flag_gems.float_power_scalar_tensor_out(2.0, exponent, out=out)
 
     assert result is out
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_tensor_out
 def test_float_power_tensor_tensor_out_noncontiguous():
     base = torch.rand((3, 4), device=flag_gems.device)
@@ -176,21 +198,24 @@ def test_float_power_tensor_tensor_out_noncontiguous():
     out = torch.empty((4, 3), dtype=torch.float64, device=flag_gems.device).T
     ref = torch.float_power(utils.to_reference(base), utils.to_reference(exponent))
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.float_power.Tensor_Tensor_out(base, exponent, out=out)
+    result = flag_gems.float_power_tensor_tensor_out(base, exponent, out=out)
 
     assert result is out
     assert not result.is_contiguous()
     _assert_result(result, ref)
 
 
+@pytest.mark.float_power
 @pytest.mark.float_power_tensor_scalar_out
 def test_float_power_out_rejects_non_double_output():
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip(
+            "kunlunxin (XPU) hard-maps torch.float64 -> float32, so a Double out "
+            "arrives as float32 and cannot be distinguished from a genuine float32 "
+            "out; the non-double rejection cannot be enforced on this backend."
+        )
     base = torch.rand(8, device=flag_gems.device)
     out = torch.empty_like(base)
 
-    with (
-        flag_gems.use_gems(),
-        pytest.raises(RuntimeError, match="requires dtype Double"),
-    ):
+    with pytest.raises(RuntimeError, match="requires dtype Double"):
         torch.ops.aten.float_power.Tensor_Scalar_out(base, 2.0, out=out)

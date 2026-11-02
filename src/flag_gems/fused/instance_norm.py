@@ -457,7 +457,7 @@ class InstanceNorm(torch.autograd.Function):
         eps=1e-05,
         cudnn_enable=False,
     ):
-        logger.debug("GEMS INSTANCENORM FORWARD")
+        logger.debug("GEMS INSTANCENORM_FORWARD")
         assert len(x.shape) in [
             3,
             4,
@@ -600,7 +600,7 @@ class InstanceNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, out_grad):
-        logger.debug("GEMS INSTANCENORM BACKWARD")
+        logger.debug("GEMS INSTANCENORM_BACKWARD")
         out_grad = out_grad.contiguous()
         x, weight, mean, rstd = ctx.saved_tensors
         M = ctx.M

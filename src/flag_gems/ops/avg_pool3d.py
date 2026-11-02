@@ -425,7 +425,7 @@ def avg_pool3d(
     Returns:
         5D tensor of shape (N, C, D_out, H_out, W_out).
     """
-    logger.debug("GEMS AVG_POOL3D FORWARD")
+    logger.debug("GEMS AVG_POOL3D_FORWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
@@ -530,7 +530,7 @@ def avg_pool3d_backward(
     Returns:
         Gradient with respect to the input tensor.
     """
-    logger.debug("GEMS AVG_POOL3D BACKWARD")
+    logger.debug("GEMS AVG_POOL3D_BACKWARD")
 
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")

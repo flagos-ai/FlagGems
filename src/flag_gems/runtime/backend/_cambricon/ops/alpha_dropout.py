@@ -87,11 +87,12 @@ def alpha_dropout_forward_kernel(
 
     for block_offset in range(block_start, N, step):
         r = _philox(BLOCK, sl, sh, c0_base + i4_start, c1, 0, 0, 10)
-        r0 = uint_to_uniform_float(r[:, 0])
-        r1 = uint_to_uniform_float(r[:, 1])
-        r2 = uint_to_uniform_float(r[:, 2])
-        r3 = uint_to_uniform_float(r[:, 3])
-
+        # philox (libdevice v1) returns [4, BLOCK] (lane-major): row i is the
+        # i-th lane across every block element.
+        r0 = uint_to_uniform_float(r[0, :])
+        r1 = uint_to_uniform_float(r[1, :])
+        r2 = uint_to_uniform_float(r[2, :])
+        r3 = uint_to_uniform_float(r[3, :])
         mask0 = r0 > p
         mask1 = r1 > p
         mask2 = r2 > p

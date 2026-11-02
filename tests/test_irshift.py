@@ -33,8 +33,7 @@ def test_irshift(shapes, dtype):
 
     data_ptr = res_a.data_ptr()
 
-    with flag_gems.use_gems():
-        ret = res_a.__irshift__(res_b)
+    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr
@@ -64,8 +63,7 @@ def test_irshift_edge_cases(dtype):
 
     data_ptr = res_a.data_ptr()
 
-    with flag_gems.use_gems():
-        ret = res_a.__irshift__(res_b)
+    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr

@@ -31,8 +31,7 @@ def test_atan2(shape, dtype):
     ref_y = utils.to_reference(y, True)
     ref_out = torch.atan2(ref_x, ref_y)
 
-    with flag_gems.use_gems():
-        res_out = torch.atan2(x, y)
+    res_out = flag_gems.atan2(x, y)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -50,7 +49,6 @@ def test_atan2_out(shape, dtype):
     ref_out = torch.ops.aten.atan2.out(ref_x, ref_y, out=ref_out_buf)
 
     res_out_buf = torch.empty(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.atan2.out(x, y, out=res_out_buf)
+    res_out = flag_gems.atan2_out(x, y, out=res_out_buf)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -40,7 +40,7 @@ def test__list_to_tensor():
     # intercepted by flag_gems.use_gems(); we bench the GEMS implementation
     # directly via the gems_op hook.
     bench = base.GenericBenchmark(
-        op_name="_list_to_tensor",
+        op_name="list_to_tensor",
         input_fn=_input_fn,
         torch_op=torch.ops.aten._list_to_tensor,
         gems_op=flag_gems._list_to_tensor,

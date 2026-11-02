@@ -44,10 +44,9 @@ def test_gather_block_quantized(shape, block_size, dtype):
     )  # scales in [0.5, 2.5]
 
     # Test without indices (dequantize all)
-    with flag_gems.use_gems():
-        res_out = flag_gems.ops.gather_block_quantized(
-            quantized_data, scales, None, block_size
-        )
+    res_out = flag_gems.ops.gather_block_quantized(
+        quantized_data, scales, None, block_size
+    )
 
     # Reference implementation
     ref_quantized_data = utils.to_reference(quantized_data)

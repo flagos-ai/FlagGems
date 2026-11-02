@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Kunlunxin(XPU) specialization of ``aten::roll``.
 
 The generic implementation gathers every output element with a runtime
@@ -60,13 +46,9 @@ logger = logging.getLogger(__name__)
 
 IntOrInts = int | Sequence[int]
 
-# aten::_copy_from on XPU only reaches peak bandwidth with a 32B aligned dst.
 _DST_ALIGN_BYTES = 32
-# Below this payload the four _copy_from launches cost more than one gather.
 _TRITON_MAX_BYTES = 1 << 16
-# Padding the output only pays off once the copy is bandwidth bound.
 _ALIGN_MIN_BYTES = 1 << 18
-# Number of wrap dims the fused gather kernel understands.
 _MAX_WRAP_DIMS = 4
 _TRITON_BLOCK = 512
 
@@ -101,7 +83,6 @@ def roll(inp: torch.Tensor, shifts, dims=None) -> torch.Tensor:
     wrap_dims = [dim for dim, _ in active if dim != 0]
 
     if not wrap_dims:
-        # dim-0 rolls are exactly a flat rotation, no fix-up needed.
         return _rotate_flat(src.reshape(-1), delta).view(shape)
 
     if (
@@ -193,7 +174,6 @@ def _roll_gather(
             params.extend((src.size(dim), strides[dim], effective[dim]))
         else:
             params.extend((1, 1, 0))
-    need_mask = numel % _TRITON_BLOCK != 0
     grid = (triton.cdiv(numel, _TRITON_BLOCK),)
     _roll_gather_kernel[grid](
         src.reshape(-1),
@@ -203,7 +183,6 @@ def _roll_gather(
         *params,
         NWRAP=len(wrap_dims),
         BLOCK=_TRITON_BLOCK,
-        NEED_MASK=need_mask,
     )
     return out
 
@@ -229,7 +208,6 @@ def _roll_gather_kernel(
     shift3,
     NWRAP: tl.constexpr,
     BLOCK: tl.constexpr,
-    NEED_MASK: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     source = offsets - delta
@@ -242,13 +220,8 @@ def _roll_gather_kernel(
     if NWRAP >= 4:
         source += tl.where((offsets // stride3) % size3 < shift3, size3 * stride3, 0)
     source = tl.where(source < 0, source + numel, source)
-    if NEED_MASK:
-        # Clamp instead of relying on masked loads: XPU ignores `other=` on
-        # some paths, and the store mask already discards the tail lanes.
-        source = tl.minimum(tl.maximum(source, 0), numel - 1)
-        tl.store(out_ptr + offsets, tl.load(in_ptr + source), mask=offsets < numel)
-    else:
-        tl.store(out_ptr + offsets, tl.load(in_ptr + source))
+    source = tl.minimum(tl.maximum(source, 0), numel - 1)
+    tl.store(out_ptr + offsets, tl.load(in_ptr + source), mask=offsets < numel)
 
 
 def _contiguous(inp: torch.Tensor) -> torch.Tensor:

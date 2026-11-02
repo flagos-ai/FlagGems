@@ -1,8 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-
 import logging
 
 import torch
@@ -26,6 +21,59 @@ def _parse_2tuple(value, name):
     ):
         return int(value[0]), int(value[1])
     raise ValueError(f"{name} must be an int or a tuple/list of two ints")
+
+
+@libentry()
+@triton.jit
+def _im2col_affine_kernel(
+    input_ptr,
+    output_ptr,
+    C,
+    H,
+    W: tl.constexpr,
+    L: tl.constexpr,
+    ROWS: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    DH: tl.constexpr,
+    DW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    BLOCK: tl.constexpr,
+    BND: tl.constexpr,
+):
+    """Affine fast path for stride==1 and OUT_W == W.
+
+    For a fixed output row ``(batch, channel, kh, kw)`` the input address is
+    ``base + pos`` with ``base = (n*C + c)*H*W + (kh*DH - PH)*W + (kw*DW - PW)``
+    a *program-level scalar*, so the whole read is unit-stride and contiguous.
+    ``pos`` is the flat location ``oh*OUT_W + ow`` in ``[0, L)``.
+
+    ``BND`` is False only when ``PH == PW == 0 and KH == KW == 1``, in which case
+    every read is in bounds and the kernel is a pure maskless block copy (this
+    is the fastest form this backend supports).  Otherwise the padding lanes
+    are masked out and zeroed explicitly, because ``tl.load(other=0.0)`` is not
+    honoured here.
+    """
+    pid_row = ext.program_id(0).to(tl.int32)
+    pid_loc = ext.program_id(1).to(tl.int32)
+    n = pid_row // ROWS
+    row = pid_row % ROWS
+    c = row // (KH * KW)
+    kp = row % (KH * KW)
+    kh = kp // KW
+    kw = kp % KW
+    loc = pid_loc * BLOCK + tl.arange(0, BLOCK)
+    base = (n * C + c) * H * W + (kh * DH - PH) * W + (kw * DW - PW)
+    if BND:
+        ih = loc // W - PH + kh * DH
+        iw = loc % W - PW + kw * DW
+        m = (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W)
+        values = tl.load(input_ptr + base + loc, mask=m, other=0.0)
+        values = tl.where(m, values, 0.0)
+    else:
+        values = tl.load(input_ptr + base + loc)
+    tl.store(output_ptr + pid_row * L + loc, values)
 
 
 @libentry()
@@ -102,7 +150,39 @@ def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
     total = output.numel()
     if total:
         x = x.contiguous()
-        block = 256
+        bounded = not (
+            padding_h == 0 and padding_w == 0 and kernel_h == 1 and kernel_w == 1
+        )
+        affine = (
+            stride_h == 1
+            and stride_w == 1
+            and output_w == width
+            and locations == (1 << (locations.bit_length() - 1))
+            and 256 <= locations <= 16384
+            and (locations >= 512 or not bounded)
+        )
+        if affine:
+            with torch_device_fn.device(input.device):
+                _im2col_affine_kernel[(batch * rows,)](
+                    x,
+                    output,
+                    channels,
+                    height,
+                    W=width,
+                    L=locations,
+                    ROWS=rows,
+                    KH=kernel_h,
+                    KW=kernel_w,
+                    DH=dilation_h,
+                    DW=dilation_w,
+                    PH=padding_h,
+                    PW=padding_w,
+                    BLOCK=locations,
+                    BND=bounded,
+                    num_warps=min(16, max(2, locations // 512)),
+                )
+            return output.squeeze(0) if was_unbatched else output
+        block = 2048 if total >= 4096 else 256
         with torch_device_fn.device(input.device):
             _im2col_kernel[(triton.cdiv(total, block),)](
                 x,
