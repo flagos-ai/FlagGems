@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Ascend zero_ registration, exact zero values, storage safety and launch limits.
+"""Ascend zero_ exact zero values, storage safety and launch limits.
 
 Run with the Ascend environment loaded from the repository root::
 
@@ -53,7 +53,6 @@ DTYPES = [
     torch.float32,
 ]
 FLOAT_DTYPES = [torch.float16, torch.bfloat16, torch.float32]
-APIS = ["direct", "torch"]
 
 
 @pytest.fixture
@@ -87,20 +86,13 @@ def checked_launches(zeros_ops, monkeypatch):
     return launches
 
 
-def _run_zero(inp, api):
-    if api == "direct":
-        return flag_gems.zero_(inp)
-    with flag_gems.use_gems(include=["zero_"]):
-        return inp.zero_()
-
-
 def _assert_exact(actual, expected):
     assert actual.shape == expected.shape
     assert actual.dtype == expected.dtype
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
 
 
-def _check_inplace(base_cpu, view, api):
+def _check_inplace(base_cpu, view):
     expected_base = base_cpu.clone()
     expected_view = view(expected_base)
     expected_view.zero_()
@@ -109,7 +101,7 @@ def _check_inplace(base_cpu, view, api):
     base = base_cpu.to(flag_gems.device)
     inp = view(base)
     pointer, offset, strides = inp.data_ptr(), inp.storage_offset(), inp.stride()
-    result = _run_zero(inp, api)
+    result = flag_gems.zero_(inp)
     torch.npu.synchronize()
     assert result is inp
     assert result.data_ptr() == pointer
@@ -124,7 +116,6 @@ def _check_inplace(base_cpu, view, api):
         assert not torch.signbit(result.cpu()).any().item()
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize(
     "shape",
@@ -143,13 +134,13 @@ def _check_inplace(base_cpu, view, api):
         (3, 5, 1371),
     ],
 )
-def test_zero_inplace_boundaries_exact(checked_launches, api, dtype, shape):
+def test_zero_inplace_boundaries_exact(checked_launches, dtype, shape):
     numel = math.prod(shape)
     base_cpu = torch.full(
         (numel + 2 * GUARD,), 1 if dtype == torch.bool else 7, dtype=dtype
     )
     view = lambda x: x[GUARD : GUARD + numel].view(shape)
-    _check_inplace(base_cpu, view, api)
+    _check_inplace(base_cpu, view)
     assert checked_launches
     assert all(
         grid == (max(math.ceil(numel / BLOCK_SIZE), 1),)
@@ -161,9 +152,8 @@ def test_zero_inplace_boundaries_exact(checked_launches, api, dtype, shape):
     )
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_zero_overwrites_special_values_exact(checked_launches, api, dtype):
+def test_zero_overwrites_special_values_exact(checked_launches, dtype):
     info = torch.finfo(dtype)
     values = [
         float("nan"),
@@ -181,16 +171,15 @@ def test_zero_overwrites_special_values_exact(checked_launches, api, dtype):
     payload = torch.tensor(values, dtype=dtype).repeat(4000)[:40977]
     base_cpu = torch.full((payload.numel() + 2 * GUARD,), 7, dtype=dtype)
     base_cpu[GUARD:-GUARD] = payload
-    _check_inplace(base_cpu, lambda x: x[GUARD:-GUARD], api)
+    _check_inplace(base_cpu, lambda x: x[GUARD:-GUARD])
     assert checked_launches
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
 @pytest.mark.parametrize(
     "layout", ["transpose", "permute", "step", "column_slice", "diagonal"]
 )
-def test_zero_noncontiguous_storage_exact(checked_launches, api, dtype, layout):
+def test_zero_noncontiguous_storage_exact(checked_launches, dtype, layout):
     base_cpu = torch.full(
         (5 * 7 * 11 + 2 * GUARD,), 1 if dtype == torch.bool else 7, dtype=dtype
     )
@@ -208,7 +197,7 @@ def test_zero_noncontiguous_storage_exact(checked_launches, api, dtype, layout):
         return tensor.diagonal(dim1=1, dim2=2)
 
     assert not view(base_cpu).is_contiguous()
-    _check_inplace(base_cpu, view, api)
+    _check_inplace(base_cpu, view)
     assert checked_launches
 
 
@@ -221,18 +210,17 @@ def test_zero_repeated_calls_exact(checked_launches, dtype):
         device=flag_gems.device,
     )
     expected = torch.zeros(inp.shape, dtype=dtype)
-    for api in ("direct", "torch", "direct"):
-        assert _run_zero(inp, api) is inp
+    for _ in range(3):
+        assert flag_gems.zero_(inp) is inp
         torch.npu.synchronize()
         _assert_exact(inp, expected)
     assert len(checked_launches) == 3
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("dtype", [None] + DTYPES)
 @pytest.mark.parametrize("shape", [(), (0,), (2, 0, 3), (20481,)])
 def test_zeros_factory_poisoned_allocation_exact(
-    zeros_ops, checked_launches, monkeypatch, api, dtype, shape
+    zeros_ops, checked_launches, monkeypatch, dtype, shape
 ):
     expected = torch.zeros(shape, dtype=dtype)
     native = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
@@ -248,13 +236,8 @@ def test_zeros_factory_poisoned_allocation_exact(
     # Nonzero allocation contents ensure an unwritten output cannot pass.
     with monkeypatch.context() as patch:
         patch.setattr(zeros_ops.torch, "empty", poisoned_empty)
-        if api == "direct":
-            result = flag_gems.zeros(list(shape), dtype=dtype, device=flag_gems.device)
-        else:
-            with flag_gems.use_gems(include=["zeros"]):
-                result = torch.zeros(shape, dtype=dtype, device=flag_gems.device)
+        result = flag_gems.zeros(list(shape), dtype=dtype, device=flag_gems.device)
     torch.npu.synchronize()
-    # The dispatcher can return a new Python Tensor wrapper for the same storage.
     assert allocations
     assert any(result.data_ptr() == allocation.data_ptr() for allocation in allocations)
     assert result.device == native.device
@@ -328,7 +311,7 @@ def test_zero_real_large_input_exact(checked_launches, length, dtype):
         device=flag_gems.device,
     )
     inp = base[GUARD:-GUARD]
-    result = _run_zero(inp, "torch")
+    result = flag_gems.zero_(inp)
     torch.npu.synchronize()
     assert result is inp
     # Compare every output element, with bounded host-memory use.
@@ -340,11 +323,10 @@ def test_zero_real_large_input_exact(checked_launches, length, dtype):
     assert checked_launches
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("dtype", [torch.bool, torch.int64, torch.float32])
 @pytest.mark.parametrize("layout", ["contiguous", "step", "diagonal"])
 def test_zero_capped_grid_covers_all_tiles_exact(
-    zeros_ops, checked_launches, monkeypatch, api, dtype, layout
+    zeros_ops, checked_launches, monkeypatch, dtype, layout
 ):
     # Force several rounds on small tensors; checking the whole storage catches
     # both missing tiles and writes into gaps/guards after wrapping the grid.
@@ -362,16 +344,13 @@ def test_zero_capped_grid_covers_all_tiles_exact(
             return payload.view(12345, 7, 11).diagonal(dim1=1, dim2=2)
         return payload
 
-    _check_inplace(base_cpu, view, api)
+    _check_inplace(base_cpu, view)
     assert checked_launches
     assert all(grid == (2,) for grid, _, _ in checked_launches)
 
 
-@pytest.mark.parametrize("api", APIS)
 @pytest.mark.parametrize("op", ["zeros", "zeros_like"])
-def test_zeros_factory_capped_grid_exact(
-    zeros_ops, checked_launches, monkeypatch, api, op
-):
+def test_zeros_factory_capped_grid_exact(zeros_ops, checked_launches, monkeypatch, op):
     monkeypatch.setattr(zeros_ops, "_MAX_CORE_DIM", 2)
     shape = (9 * 32768 + 17,)
     original_allocate = torch.empty if op == "zeros" else torch.empty_like
@@ -386,15 +365,7 @@ def test_zeros_factory_capped_grid_exact(
     allocator = "empty" if op == "zeros" else "empty_like"
     with monkeypatch.context() as patch:
         patch.setattr(torch, allocator, poisoned_allocate)
-        if api == "direct":
-            result = getattr(flag_gems, op)(
-                argument, device=inp.device, dtype=inp.dtype
-            )
-        else:
-            with flag_gems.use_gems(include=[op]):
-                result = getattr(torch, op)(
-                    argument, device=inp.device, dtype=inp.dtype
-                )
+        result = getattr(flag_gems, op)(argument, device=inp.device, dtype=inp.dtype)
     torch.npu.synchronize()
     _assert_exact(result, torch.zeros(shape, dtype=inp.dtype))
     assert checked_launches

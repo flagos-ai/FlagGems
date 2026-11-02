@@ -118,8 +118,12 @@ def _check_all(
     # use its boolean reduction as the second oracle, keeping the unmodified
     # CPU input as the primary oracle. Both comparisons remain exact.
     native = torch.all(inp != 0 if native_nonzero else inp, **kwargs)
-    with flag_gems.use_gems(include=["all", "all_dim", "all_dims"]):
-        result = torch.all(inp, **kwargs)
+    if global_reduce:
+        result = flag_gems.all(inp)
+    elif dim is None or isinstance(dim, int):
+        result = flag_gems.all_dim(inp, dim=dim, keepdim=keepdim)
+    else:
+        result = flag_gems.all_dims(inp, dim=dim, keepdim=keepdim)
     _assert_exact(result, expected, native)
 
 

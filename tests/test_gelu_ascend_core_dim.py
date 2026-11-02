@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Ascend GELU accuracy, layout safety, dispatch and bounded launch regression.
+"""Ascend GELU accuracy, layout safety and bounded launch regression.
 
 Run from the repository root with the Ascend environment loaded::
 
@@ -140,14 +140,7 @@ def _reference(x, dy, operation, approximate):
     return F.gelu(x.double(), approximate=approximate)
 
 
-def _run(x, dy, operation, approximate, api="direct"):
-    if api == "torch":
-        with flag_gems.use_gems(include=["gelu", "gelu_", "gelu_backward"]):
-            if operation == "backward":
-                return torch.ops.aten.gelu_backward(dy, x, approximate=approximate)
-            if operation == "inplace":
-                return torch.ops.aten.gelu_.default(x, approximate=approximate)
-            return F.gelu(x, approximate=approximate)
+def _run(x, dy, operation, approximate):
     if operation == "backward":
         return flag_gems.gelu_backward(dy, x, approximate=approximate)
     if operation == "inplace":
@@ -288,12 +281,11 @@ def test_gelu_finite_edge_accuracy(
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("approximate", APPROXIMATIONS)
 @pytest.mark.parametrize("operation", OPERATIONS)
-@pytest.mark.parametrize("api", ["direct", "torch"])
 @pytest.mark.parametrize(
     "layout", ["transpose", "strided_offset", "strided_loop", "permuted_offset"]
 )
 def test_gelu_layout_and_storage(
-    gelu_ops, launches, dtype, approximate, operation, layout, api, record_property
+    gelu_ops, launches, dtype, approximate, operation, layout, record_property
 ):
     shapes = {
         "transpose": (37, 53),
@@ -326,7 +318,7 @@ def test_gelu_layout_and_storage(
     dy_base = dy_base_cpu.to(flag_gems.device)
     dy, dy_cpu = dy_base[..., 1], dy_base_cpu[..., 1]
     expected = _reference(x_cpu, dy_cpu, operation, approximate)
-    actual = _run(x, dy, operation, approximate, api=api)
+    actual = _run(x, dy, operation, approximate)
     record_property("max_abs_error_fp64", _assert_accuracy(actual, expected, dtype))
     if operation == "inplace":
         _assert_alias(actual, x)
@@ -344,11 +336,13 @@ def test_gelu_layout_and_storage(
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("approximate", APPROXIMATIONS)
 @pytest.mark.parametrize("operation", OPERATIONS)
-def test_gelu_torch_dispatch(launches, dtype, approximate, operation, record_property):
+def test_gelu_public_api_accuracy(
+    launches, dtype, approximate, operation, record_property
+):
     x_cpu, dy_cpu = _inputs((17, 257), dtype)
     expected = _reference(x_cpu, dy_cpu, operation, approximate)
     x, dy = x_cpu.to(flag_gems.device), dy_cpu.to(flag_gems.device)
-    actual = _run(x, dy, operation, approximate, api="torch")
+    actual = _run(x, dy, operation, approximate)
     record_property("max_abs_error_fp64", _assert_accuracy(actual, expected, dtype))
     if operation == "inplace":
         _assert_alias(actual, x)
@@ -357,15 +351,16 @@ def test_gelu_torch_dispatch(launches, dtype, approximate, operation, record_pro
 
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("approximate", APPROXIMATIONS)
-def test_gelu_autograd_accuracy(launches, dtype, approximate, record_property):
+def test_gelu_forward_backward_against_autograd(
+    launches, dtype, approximate, record_property
+):
     x_cpu, dy_cpu = _inputs((4097,), dtype)
     reference = x_cpu.double().requires_grad_()
     expected_y = F.gelu(reference, approximate=approximate)
     expected_dx = torch.autograd.grad(expected_y, reference, dy_cpu.double())[0]
-    x = x_cpu.to(flag_gems.device).requires_grad_()
-    with flag_gems.use_gems(include=["gelu", "gelu_backward"]):
-        actual_y = F.gelu(x, approximate=approximate)
-        actual_dx = torch.autograd.grad(actual_y, x, dy_cpu.to(x.device))[0]
+    x = x_cpu.to(flag_gems.device)
+    actual_y = flag_gems.gelu(x, approximate=approximate)
+    actual_dx = flag_gems.gelu_backward(dy_cpu.to(x.device), x, approximate=approximate)
     _assert_accuracy(actual_y, expected_y.detach(), dtype)
     record_property(
         "max_abs_error_fp64", _assert_accuracy(actual_dx, expected_dx, dtype)

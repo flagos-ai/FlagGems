@@ -24,6 +24,7 @@ import flag_gems
 
 pytestmark = [
     pytest.mark.sum,
+    pytest.mark.sum_out,
     pytest.mark.sum_dim,
     pytest.mark.sum_dim_out,
     pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend coreDim limit"),
@@ -80,12 +81,12 @@ def _check_sum(inp_cpu, dim, keepdim, use_out, output_dtype=None):
     native = torch.sum(inp, dim=dim, keepdim=keepdim, dtype=dtype)
     if use_out:
         out = torch.empty(0, dtype=dtype, device=inp.device)
-        with flag_gems.use_gems():
-            result = torch.sum(inp, dim=dim, keepdim=keepdim, dtype=dtype, out=out)
+        result = flag_gems.sum_dim_out(
+            inp, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+        )
         assert result is out
     else:
-        with flag_gems.use_gems():
-            result = torch.sum(inp, dim=dim, keepdim=keepdim, dtype=dtype)
+        result = flag_gems.sum_dim(inp, dim=dim, keepdim=keepdim, dtype=dtype)
     # Force asynchronous launch errors to surface at the test that caused them.
     torch.npu.synchronize()
     assert result.shape == expected.shape
@@ -183,19 +184,18 @@ def test_sum_dim_grid_stride_noncontiguous_dtype(
 
 
 @pytest.mark.parametrize("dtype", DTYPES)
-def test_sum_dim_broadcast_backward_core_dim(checked_launches, dtype):
-    # ExpandBackward reduces a broadcast gradient using the failing non-inner
-    # path from training. Its original grid was (65536, 2, 1), i.e. 131072.
+def test_sum_dim_broadcast_gradient_core_dim(checked_launches, dtype):
+    # Explicitly run the reduction used by ExpandBackward through the public
+    # API. Its original grid was (65536, 2, 1), i.e. 131072.
     generator = torch.Generator().manual_seed(20261020)
     grad_cpu = torch.randn((65536, 3, 5), generator=generator).to(dtype)
-    bias = torch.zeros((65536, 1, 5), dtype=dtype, device=flag_gems.device)
-    bias.requires_grad_()
+    bias = torch.zeros((65536, 1, 5), dtype=torch.float64, requires_grad=True)
     output = bias.expand(grad_cpu.shape)
     grad = grad_cpu.to(flag_gems.device)
-    with flag_gems.use_gems(include=["sum", "sum_dim"]):
-        (result,) = torch.autograd.grad(output, bias, grad_outputs=grad)
+    (expected,) = torch.autograd.grad(output, bias, grad_outputs=grad_cpu.double())
+    result = flag_gems.sum_dim(grad, dim=[1], keepdim=True)
     torch.npu.synchronize()
-    expected = grad_cpu.double().sum(dim=1, keepdim=True).to(dtype)
+    expected = expected.to(dtype)
     rtol, atol = TOLERANCES[dtype]
     torch.testing.assert_close(result.cpu(), expected, rtol=rtol, atol=atol)
     assert any(name == "sum_dim_kernel_non_inner" for name, _ in checked_launches)
@@ -214,12 +214,10 @@ def test_sum_full_reduction_forced_grid_stride(
     expected = inp_cpu.double().sum().float()
     if use_out:
         out = torch.empty((), device=inp.device)
-        with flag_gems.use_gems():
-            result = torch.ops.aten.sum.out(inp, out=out)
+        result = flag_gems.sum_out(inp, out=out)
         assert result is out
     else:
-        with flag_gems.use_gems():
-            result = torch.sum(inp)
+        result = flag_gems.sum(inp)
     torch.npu.synchronize()
     torch.testing.assert_close(result.cpu(), expected, rtol=1e-5, atol=1e-4)
     assert {name for name, _ in checked_launches} == {"sum_kernel_1", "sum_kernel_2"}
