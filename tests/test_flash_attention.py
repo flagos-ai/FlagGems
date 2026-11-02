@@ -245,7 +245,12 @@ def test__flash_attention_forward(
             False,
             scale=scale,
         )
-        ref_out, ref_lse = ref_result[0], ref_result[1]
+        ref_out = ref_result[0]
+        # The vendor-native op is not a trustworthy reference for softmax_lse:
+        # some backends (e.g. Iluvatar corex) return it in a different
+        # base/sign convention (-log2 instead of ln). Use the dense reference,
+        # which follows the FlashAttention convention (natural log).
+        _, ref_lse = dense_flash_attention_ref(ref_q, ref_k, ref_v, scale, is_causal)
     with caplog.at_level(
         "DEBUG", logger=utils.gems_log_logger(flag_gems._flash_attention_forward)
     ):
