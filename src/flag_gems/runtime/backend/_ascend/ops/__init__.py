@@ -48,6 +48,7 @@ from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
 from .dot import dot
+from .dropout_ import dropout_
 from .embedding import embedding
 from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
@@ -221,6 +222,7 @@ __all__ = [
     "diff",
     "dist",
     "dot",
+    "dropout_",
     "embedding",
     "embedding_spmdm",
     "exponential",
