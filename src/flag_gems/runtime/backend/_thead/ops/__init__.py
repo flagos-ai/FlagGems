@@ -68,6 +68,7 @@ from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .nuclear_norm import nuclear_norm
+from .poisson_nll_loss import poisson_nll_loss
 from .quantized_lstm import quantized_lstm
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
@@ -175,6 +176,7 @@ __all__ = [
     "nll_loss_backward",
     "nonzero_numpy",
     "nuclear_norm",
+    "poisson_nll_loss",
     "quantized_lstm",
     "reflection_pad3d_backward",
     "renorm",
