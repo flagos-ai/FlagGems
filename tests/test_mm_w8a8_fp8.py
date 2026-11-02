@@ -210,6 +210,52 @@ def test_mm_w8a8_fp8_mthreads_skinny_epilogue(M, N, K, rowwise):
 
 @pytest.mark.mm_w8a8
 @pytest.mark.skipif(not mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize(
+    "M,N,K", [(1, 64, 4096), (2, 512, 4096), (4, 16160, 7168), (64, 1, 2048)]
+)
+def test_mm_w8a8_fp8_mthreads_warm_launch_inputs(M, N, K):
+    for padded in (False, True):
+        for seed in (7, 13):
+            torch.manual_seed(seed)
+            pad = int(padded)
+            a = torch.randn((M, K + pad), device=flag_gems.device).to(
+                torch.float8_e4m3fn
+            )[:, pad:]
+            b = torch.randn((N, K + pad), device=a.device).to(a.dtype)[:, pad:].T
+            sa = torch.full((), seed / 16, device=a.device)
+            sb = torch.full((), seed / 8, device=a.device)
+            bias = torch.randn((N,), device=a.device)
+            sr = torch.linspace(0.75, 1.25, M, device=a.device)
+            storage = torch.empty((M, N * 2), device=a.device)
+            out = storage[:, ::2]
+            for _ in range(2):
+                result = flag_gems.mm_w8a8_fp8_out(
+                    a, b, sa, sb, bias=bias, scale_result=sr, out=out
+                )
+                assert result is out
+                ref = (_scaled_fp8_reference(a, b, sa, sb) + bias) / sr[:, None]
+                torch.testing.assert_close(result, ref, rtol=5e-4, atol=0.003)
+
+
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
+@pytest.mark.parametrize("M,N,K", [(4, 62080, 2048), (8, 20480, 7168)])
+def test_mm_w8a8_fp8_mthreads_async_b(M, N, K):
+    for seed in (0, 42):
+        torch.manual_seed(seed)
+        a = torch.randn((M, K), device=flag_gems.device).to(torch.float8_e4m3fn)
+        b = torch.randn((N, K), device=a.device).to(a.dtype).T
+        sa, sb = _external_scales(a, b)
+        out = torch.empty((M, N), device=a.device, dtype=torch.bfloat16)
+        ref = _scaled_fp8_reference(a, b, sa, sb).to(out.dtype)
+        for _ in range(20):
+            result = flag_gems.mm_w8a8_fp8_out(a, b, sa, sb, out=out)
+            assert result is out
+        torch.testing.assert_close(result, ref, rtol=0.016, atol=0.01)
+
+
+@pytest.mark.mm_w8a8
+@pytest.mark.skipif(not mthreads_w8a8_fp8_available(), reason="MThreads FP8 backend")
 @pytest.mark.parametrize("N", [384, 1024, 2048, 4096])
 def test_mm_w8a8_fp8_mthreads_dense_reuse(N):
     torch.manual_seed(42)

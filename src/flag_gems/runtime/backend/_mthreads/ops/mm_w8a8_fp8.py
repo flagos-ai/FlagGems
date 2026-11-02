@@ -177,6 +177,118 @@ if _HAS_WS:
             (rm[:, None] < M) & (rn[None, :] < N),
         )
 
+    @triton.jit
+    def _produce_skinny(
+        writer,
+        A,
+        B,
+        M: tl.constexpr,
+        K: tl.constexpr,
+        AM: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+    ):
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            slot = writer.acquire(block)
+            rm = tl.arange(0, DM)
+            kk = block * BK + tl.arange(0, BK)
+            av = tl.load(
+                A + rm[:, None].to(tl.int64) * AM + kk[None, :],
+                (rm[:, None] < M) & (kk[None, :] < K),
+                0.0,
+            )
+            slot.a.store(av)
+            tle.gpu.copy(B, slot.b, (BV, BK), (tl.program_id(0) * BV, block * BK))
+            writer.commit(block)
+
+    @triton.jit
+    def _consume_skinny(
+        reader,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+    ):
+        acc = tl.zeros((BV, DM), tl.float32)
+        for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
+            ready = reader.wait(block)
+            acc = tle.gpu.wgmma(ready.slot.b, ready.slot.a, acc, trans_b=True)
+            acc = tle.gpu.wgmma_wait(0, acc)
+            reader.release(block)
+        rn = tl.program_id(0) * BV + tl.arange(0, BV)
+        rm = tl.arange(0, DM)
+        tl.store(
+            C + rm[None, :].to(tl.int64) * N + rn[:, None],
+            acc * tl.load(SA) * tl.load(SB),
+            (rm[None, :] < M) & (rn[:, None] < N),
+        )
+
+    @libentry()
+    @triton.jit
+    def _skinny_tme_kernel(
+        A,
+        B,
+        C,
+        SA,
+        SB,
+        M: tl.constexpr,
+        N: tl.constexpr,
+        K: tl.constexpr,
+        AM: tl.constexpr,
+        BV: tl.constexpr,
+        BK: tl.constexpr,
+        DM: tl.constexpr,
+        ST: tl.constexpr,
+    ):
+        aa = tle.gpu.alloc(
+            (ST, DM, BK),
+            A.dtype.element_ty,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        bb = tle.gpu.alloc(
+            (ST, BV, BK),
+            B.dtype,
+            scope=tle.gpu.smem,
+            nv_mma_shared_layout=True,
+        )
+        pipe = tle.pipe(
+            capacity=ST,
+            scope="cta",
+            name="ab",
+            readers=("r",),
+            a=aa,
+            b=bb,
+        )
+        tle.gpu.warp_specialize(
+            [
+                (
+                    _consume_skinny,
+                    (
+                        pipe.reader("r", fields=("a", "b")),
+                        C,
+                        SA,
+                        SB,
+                        M,
+                        N,
+                        K,
+                        BV,
+                        BK,
+                        DM,
+                    ),
+                ),
+                (_produce_skinny, (pipe.writer(), A, B, M, K, AM, BV, BK, DM)),
+            ],
+            worker_num_warps=[4],
+            worker_num_regs=[64],
+        )
+
     @libentry()
     @libtuner(
         configs=runtime.ops_get_configs(
@@ -1084,9 +1196,88 @@ _SKINNY_CONFIGS = {
 }
 
 
+_GEMV_LAUNCH_CACHE = OrderedDict()
+
+# Block V, block K, physical dot M, pipe stages, consumer warps.
+_SKINNY_TME_CONFIGS = {
+    (4, 62080, 2048): (64, 128, 16, 3, 4),
+    (8, 20480, 7168): (64, 256, 32, 2, 8),
+}
+
+
+def _launch_gemv(grid, args, meta, warps, stages):
+    tail = tuple(meta[name] for name in _gemv_fp8.arg_names[len(args) :])
+    key = (
+        args[0].device,
+        grid,
+        tuple(
+            (
+                (arg.dtype, arg.data_ptr() % 16 == 0)
+                if isinstance(arg, torch.Tensor)
+                else arg
+            )
+            for arg in args
+        ),
+        tail,
+        warps,
+        stages,
+    )
+    launch = _GEMV_LAUNCH_CACHE.get(key)
+    if launch is None:
+        options = {"enable_backend_opt": True} if meta["NATIVE_DOT"] else {}
+        compiled, _ = _gemv_fp8[grid](
+            *args, **meta, num_warps=warps, num_stages=stages, **options
+        )
+        # Keep executable metadata only; pointers and scale contents stay live.
+        _GEMV_LAUNCH_CACHE[key] = compiled[grid]
+        if len(_GEMV_LAUNCH_CACHE) > 128:
+            _GEMV_LAUNCH_CACHE.popitem(last=False)
+    else:
+        _GEMV_LAUNCH_CACHE.move_to_end(key)
+        launch(*args, *tail)
+
+
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
+    tme_config = _SKINNY_TME_CONFIGS.get((m, n, k))
+    if (
+        tme_config is not None
+        and _HAS_WS
+        and a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == b.stride(0) == 1
+        and a.stride(0) > 0
+        and b.stride(1) > 0
+        and a.stride(0) % 16 == b.stride(1) % 16 == 0
+        and a.data_ptr() % 16 == b.data_ptr() % 16 == 0
+        and sa_stride == sb_stride == 0
+        and bias is None
+        and sr is None
+        and out.dtype == torch.bfloat16
+        and out.is_contiguous()
+    ):
+        bv, bk, dm, stages, warps = tme_config
+        bb = TensorDescriptor(b, [n, k], [b.stride(1), 1], [bv, bk])
+        # Only B uses asynchronous TME; the tiny A tile is explicitly padded.
+        _skinny_tme_kernel[(triton.cdiv(n, bv),)](
+            a,
+            bb,
+            out,
+            sa,
+            sb,
+            m,
+            n,
+            k,
+            a.stride(0),
+            bv,
+            bk,
+            dm,
+            stages,
+            num_warps=warps,
+            num_stages=1,
+            enable_backend_opt=True,
+        )
+        return out
     native_dot = (
         m <= 2
         and 1024 <= n <= 8192
@@ -1150,33 +1341,37 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         )
         transpose = n <= 4
         outer = 1 if native_dot else (n if transpose else m)
-        _gemv_fp8[(triton.cdiv(m if transpose else n, bv), outer, split)](
-            a,
-            b,
-            partial,
-            sa,
-            sb,
-            bias,
-            sr,
-            m,
-            n,
-            k,
-            a.stride(0),
-            b.stride(1),
-            out.stride(0),
-            out.stride(1),
-            sa_stride,
-            sb_stride,
-            **epilogue,
-            TRANSPOSE=transpose,
-            NATIVE_DOT=native_dot,
-            DOT_M=dot_m,
-            BLOCK_V=bv,
-            BLOCK_K=bk,
-            SPLIT_K=split,
-            num_warps=warps,
-            num_stages=stages,
-            **({"enable_backend_opt": True} if native_dot else {}),
+        _launch_gemv(
+            (triton.cdiv(m if transpose else n, bv), outer, split),
+            (
+                a,
+                b,
+                partial,
+                sa,
+                sb,
+                bias,
+                sr,
+                m,
+                n,
+                k,
+                a.stride(0),
+                b.stride(1),
+                out.stride(0),
+                out.stride(1),
+                sa_stride,
+                sb_stride,
+            ),
+            dict(
+                **epilogue,
+                TRANSPOSE=transpose,
+                NATIVE_DOT=native_dot,
+                DOT_M=dot_m,
+                BLOCK_V=bv,
+                BLOCK_K=bk,
+                SPLIT_K=split,
+            ),
+            warps,
+            stages,
         )
         if split > 1:
             _reduce_split_k[(triton.cdiv(m * n, 512),)](
