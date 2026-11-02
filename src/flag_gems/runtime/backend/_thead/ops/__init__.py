@@ -37,6 +37,7 @@ from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
+from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
@@ -95,6 +96,7 @@ from .unbind_copy import unbind_copy
 __all__ = [
     "_conv_depthwise2d",
     "_flash_attention_forward",
+    "_fused_rms_norm_backward",
     "_resize_output_",
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
