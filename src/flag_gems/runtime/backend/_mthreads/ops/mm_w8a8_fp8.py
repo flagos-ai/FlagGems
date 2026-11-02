@@ -1037,6 +1037,9 @@ def _reduce_split_k(
 
 
 def _select_split_k(m, n, k, descriptor):
+    if descriptor and m in (496, 512) and n == 256 and k == 2048:
+        # Two descriptor partitions beat the WS setup even with FP32 reduction.
+        return 2
     if descriptor and 32 <= m < 128 and 512 < n <= 2048 and 4096 <= k < 8192:
         # Two K partitions shorten long TME loops without large reductions.
         return 2
@@ -1074,6 +1077,10 @@ _SKINNY_CONFIGS = {
     (2, 64, 4096): (False, 1, 4096, 8, 16, 1),
     (2, 512, 4096): (True, 32, 256, 4, 32, 8),
     (2, 1536, 4096): (True, 64, 256, 8, 32, 4),
+    (4, 16160, 7168): (True, 64, 256, 4, 16, 1),
+    (4, 248320, 2048): (True, 128, 256, 8, 16, 1),
+    (8, 16160, 7168): (True, 64, 256, 4, 16, 1),
+    (8, 248320, 2048): (True, 128, 256, 8, 16, 1),
 }
 
 
