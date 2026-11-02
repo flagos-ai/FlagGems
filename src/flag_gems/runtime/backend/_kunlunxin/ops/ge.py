@@ -15,6 +15,7 @@
 import logging
 import os
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -44,8 +45,82 @@ def ge_func(x, y):
     return x.to(tl.float32) >= y
 
 
+# ---------------------------------------------------------------------------
+# Flat fast path for same-dtype contiguous tensors.
+#
+# Measured problem with the generic pointwise_dynamic route: its wrapper caps
+# tile_size with `lane_limit = 32 * 1024` (see _kunlunxin/utils/pointwise_dynamic.py),
+# so a 16.7M-element tensor is split into 512+ tiles -> ~1032 CTAs.  The P800
+# schedules pointwise work over 12 clusters, so those CTAs execute in ~86 waves
+# and the kernel lands at ~0.61x of torch.ge (fp16) even though the work is
+# purely bandwidth bound.
+#
+# A flat kernel that takes one monolithic tile per CTA needs only
+# numel/131072 == 128 CTAs for the same tensor and reaches ~0.99x.  The
+# sweep over (tile, num_warps, buffer_size_limit, unroll_num) put the optimum at
+# TILE = 131072 with num_warps=16 for large shapes; below TILE the measured best
+# is a single CTA that hugs numel (tile = next_pow2(numel)), which is what the
+# small-shape branch below produces.
+#
+# bf16 note: XPU3 has no native bf16 compare, so the widening chain bounds the
+# op at ~0.78x regardless of tiling.  Integer-key and bitcast-to-fp32 compare
+# substitutes were both tried and blow the uni_sram budget
+# (`OutOfResources: out of resource: uni_sram`), so bf16 accepts the native
+# compare.  The fp16/fp32 paths are near parity.
+_GE_FLAT_TILE = 131072
+_GE_FLAT_WARPS_LARGE = 16
+
+
+@triton.jit
+def ge_flat_kernel(out_ptr, x_ptr, y_ptr, numel, TILE: tl.constexpr):
+    pid = tl.program_id(0)
+    off = pid * TILE + tl.arange(0, TILE)
+    mask = off < numel
+    x = tl.load(x_ptr + off, mask=mask)
+    y = tl.load(y_ptr + off, mask=mask)
+    tl.store(out_ptr + off, x.to(tl.float32) >= y, mask=mask)
+
+
+def _ge_flat(A, B):
+    numel = A.numel()
+    out = torch.empty(A.shape, dtype=torch.bool, device=A.device)
+    if numel == 0:
+        return out
+    tile = min(_GE_FLAT_TILE, max(128, triton.next_power_of_2(numel)))
+    grid = (triton.cdiv(numel, tile),)
+    ge_flat_kernel[grid](
+        out,
+        A.reshape(-1),
+        B.reshape(-1),
+        numel,
+        TILE=tile,
+        num_warps=_GE_FLAT_WARPS_LARGE if tile >= 65536 else 4,
+        buffer_size_limit=8192,
+        unroll_num=16,
+        isCloseMemoryAsync=False,
+    )
+    return out
+
+
 def ge(A, B):
     logger.debug("GEMS_KUNLUNXIN GE")
+    if (
+        A.dtype == B.dtype
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and A.shape == B.shape
+        and A.device == B.device
+    ):
+        # Env must be set before the (first) launch so the fusion pass sees it
+        # at compile time -- same set/del pattern as the generic path below.
+        os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
+        os.environ["TRITONXPU_FP16_FAST"] = "1"
+        try:
+            return _ge_flat(A, B)
+        finally:
+            del os.environ["TRITONXPU_COMPARE_FUSION"]
+            del os.environ["TRITONXPU_FP16_FAST"]
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = ge_func(A, B)
