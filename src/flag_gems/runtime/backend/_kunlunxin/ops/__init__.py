@@ -644,6 +644,7 @@ from .normal import (
 )
 from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
+from .nuclear_norm import nuclear_norm  # noqa: F401
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
@@ -1568,6 +1569,7 @@ __all__ = [
     "normed_cumsum",
     "not_equal",
     "not_equal_scalar",
+    "nuclear_norm",
     "one_hot",
     "ones",
     "ones_like",
