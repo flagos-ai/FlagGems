@@ -30,9 +30,9 @@ For [`vector_add` in Triton](https://triton-lang.org/main/getting-started/tutori
 it is simple to implement a task partitioning schema that each CTA reads a contiguous range
 from each input vector and writes to a contiguous range of the output vector.
 
-However, actual use caes for pointwise operators may be more complicated.
+However, actual use cases for pointwise operators may be more complicated.
 
-- The input tensors might be contiguous: they may be contiguous in memory
+- The input tensors might not be contiguous: they may be contiguous in memory
   but not in a row-major order;
   or they may not be dense; or they may have internal overlapping.
 - The input tensors may have arbitrary and/or different number of dimensions.
@@ -54,7 +54,7 @@ The principles of our design are:
 
 The result is a decorator `@pointwise_dynamic`.
 It provides a common wrapper for pointwise operator and a mechanism to generate triton kernels
-and corresponding wrappers based on the operation and the input configureations.
+and corresponding wrappers based on the operation and the input configurations.
 
 ## 2. Code generation
 
@@ -100,13 +100,13 @@ and is ready for the computation.
 
 ## 3. Metadata Computation
 
-Since pointwise operators shares similar logic at meta data computation,
+Since pointwise operators share similar logic at meta data computation,
 which has been implemented as a common function used by all `PointwiseDynamicFunction`s.
-It involes:
+It involves:
 
 - *shape inference*: infer the output shape by broadcasting input tensor shape;
 
-- *ouput layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
+- *output layout inference*: infer an appropriate layout (stride order) for output tensors if necessary;
 
 - *type promotion*: infer output dtypes according to prescribed rules;
 
@@ -116,13 +116,13 @@ It involes:
 
 - *infer the rank of the task-space*.
   This is a factor related to the code generation which depends on the arguments.
-  It also involes trying to reduce the dimension of task-space to `1`
+  It also involves trying to reduce the dimension of task-space to `1`
   when all pre-allocated tensors are dense and non-overlapping and have the same size
   and stride for each dimension.
 
 Pre-allocated output tensors can also be passed into `PointwiseDynamicFunctions`.
 In the cases where there are pre-allocated tensors in output tensors, the shape, layout,
-dtype and device of theses pre-allocated tensors are respected and checked.
+dtype and device of these pre-allocated tensors are respected and checked.
 
 The metadata computation can also be skipped, but when doing so you should ensure that
 the outputs have correct metadata and are pre-allocated, and you have to provide the rank of the task-space.
@@ -130,8 +130,8 @@ the outputs have correct metadata and are pre-allocated, and you have to provide
 ## 4. Caching and dispatching
 
 The decorator `@pointwise_dynamic` returns a `PointwiseDynamicFunction` object,
-which servers as the proxy to all the decorated function.
-It caches call the generated python modules and dispatches to them.
+which serves as the proxy to all the decorated functions.
+It caches all the generated python modules and dispatches to them.
 
 The dispatch result depends only on the rank of the task-space, rather than the shape of the task-space.
 
@@ -145,7 +145,7 @@ non-contiguous storage, type promotion, etc.
 
 For example, in the following code, you only need to provide a Triton JIT function
 describing the computational logic (the Payload), the decorated function can then
-take torch tesors as inputs and outputs, and support broadcasting, type-promotion, etc.
+take torch tensors as inputs and outputs, and support broadcasting, type-promotion, etc.
 
 ```python
 @pointwise_dynamic(promotion_methods=[(0, "COMPLEX_TO_FLOAT")])
@@ -155,15 +155,15 @@ def abs_func(x):
 ```
 
 Since the decorated function does not provide enough information for the code generation,
-we supply other necessary information by passing arguemnts to `pointwise_dynamic`.
+we supply other necessary information by passing arguments to `pointwise_dynamic`.
 
 ### 5.2 Tensor/Non-Tensor
 
-By default, `@pointwise_dynamic` treats each arguemnt as tensor, and generates code to load/store them.
+By default, `@pointwise_dynamic` treats each argument as a tensor, and generates code to load/store them.
 But it can be configured by passing a list of boolean values to the parameter `is_tensor`
-to indicate whether the corresponding argument is tensor or nor.
+to indicate whether the corresponding argument is a tensor or not.
 
-For non-tensor arguments, its type can be specfied by passing `dtypes` to the decorator, although not required.
+For non-tensor arguments, its type can be specified by passing `dtypes` to the decorator, although not required.
 For tensor arguments, the corresponding value in `dtypes` is ignored, since its dtype is dynamic
 and Triton can dispatch according to it.
 
@@ -174,11 +174,12 @@ while the `x` and `y` parameters are defined as tensors.
 @pointwise_dynamic(
     is_tensor=[True, True, False],
     dtypes=[None, None, float],
-    promotion_methods=[(0,"DEFAULT")]
+    promotion_methods=[(0, "DEFAULT")],
 )
 @triton.jit
 def add_func(x, y, alpha):
     return x + y * alpha
+
 
 a = torch.randn(128, 256, device="cuda")
 b = torch.randn(256, device="cuda")
@@ -188,13 +189,13 @@ add_func(a, b, 0.2)
 ### 5.3 Output dtypes
 
 For pointwise operators to allocate outputs with correct dtype, `promotion_methods` is required.
-Since the output dtype may be depedent on the input dtypes with some rules,
+Since the output dtype may be dependent on the input dtypes with some rules,
 specifying the rule is more expressive than providing output dtypes directly.
 
 `promotion_methods` is a list of tuples (one per output), each of which consists of
 several argument indices and a promotion method.
 An argument index (an integer) is used to indicate the position of the argument,
-which is dependent by the promotion method.
+which is depended on by the promotion method.
 The promotion method (an enum or string) denotes the method of type promotion.
 
 - `DEFAULT` is the default rule for type promotion, which is suitable for most numeric operations;
@@ -214,7 +215,7 @@ class ELEMENTWISE_TYPE_PROMOTION_KIND(Enum):
     BOOL_TO_LONG = (5,)
 ```
 
-Examples：
+Examples:
 
 | Promotion Method   | Sample operators              |
 | ------------------ | ----------------------------- |
