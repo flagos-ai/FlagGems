@@ -96,6 +96,7 @@ from .linalg_solve_triangular import (
 )
 from .linear import linear
 from .linspace import linspace
+from .log1p import log1p
 from .log_ import log_
 from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
@@ -289,6 +290,7 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linear",
     "linspace",
+    "log1p",
     "log_",
     "log_normal",
     "log_sigmoid_backward",
