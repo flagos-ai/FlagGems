@@ -90,6 +90,7 @@ from .linalg_matrix_rank import (
 )
 from .linalg_norm import linalg_norm
 from .linalg_qr import linalg_qr, linalg_qr_out
+from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
@@ -285,6 +286,7 @@ __all__ = [
     "linalg_norm",
     "linalg_qr",
     "linalg_qr_out",
+    "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linear",
