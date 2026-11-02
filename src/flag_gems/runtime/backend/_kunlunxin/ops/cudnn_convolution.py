@@ -14,6 +14,8 @@
 
 import logging
 
+import torch
+
 from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
@@ -51,8 +53,34 @@ def cudnn_convolution(
     padding = _spatial_tuple(padding, dimensions, "padding")
     stride = _spatial_tuple(stride, dimensions, "stride")
     dilation = _spatial_tuple(dilation, dimensions, "dilation")
-    if dimensions == 1:
-        return conv1d(input, weight, None, stride, padding, dilation, groups)
-    if dimensions == 2:
-        return conv2d(input, weight, None, stride, padding, dilation, groups)
-    return conv3d(input, weight, None, stride, padding, dilation, groups)
+
+    orig_dtype = input.dtype
+    # bfloat16 runs natively on the 2D and 3D paths. The 1D path, a strided 2D
+    # convolution, and geometries without a working kernel are computed in
+    # float32 and cast back.
+    up_front = orig_dtype == torch.bfloat16 and (
+        dimensions == 1 or (dimensions == 2 and (stride[0] != 1 or stride[1] != 1))
+    )
+    retry_fp32 = orig_dtype == torch.bfloat16 and not up_front
+    if up_front:
+        input = input.to(torch.float32)
+        weight = weight.to(torch.float32)
+    while True:
+        try:
+            if dimensions == 1:
+                out = conv1d(input, weight, None, stride, padding, dilation, groups)
+            elif dimensions == 2:
+                out = conv2d(input, weight, None, stride, padding, dilation, groups)
+            else:
+                out = conv3d(input, weight, None, stride, padding, dilation, groups)
+            break
+        except RuntimeError:
+            if not retry_fp32:
+                raise
+            retry_fp32 = False
+            input = input.to(torch.float32)
+            weight = weight.to(torch.float32)
+
+    if out.dtype != orig_dtype:
+        out = out.to(orig_dtype)
+    return out
