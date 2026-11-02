@@ -23,6 +23,32 @@ _LU_FACTOR_ENABLE_FUSED_PIVOT = False
 _LU_FACTOR_ENABLE_FUSED_NO_PIVOT = False
 
 
+@triton.jit
+def _lu_scale_col(col_vals, pivot, cond):
+    """Divide ``col_vals`` by ``pivot`` wherever ``cond`` holds.
+
+    A plain ``tl.where(cond, col_vals / pivot, col_vals)`` is not safe: ``where``
+    is a select, so the division is evaluated in *every* lane, and a zero pivot
+    makes it ``0/0 = NaN`` (or ``±inf``).  ``NaN * 0 = NaN`` then poisons the
+    whole trailing submatrix through the rank-1 update, even though the zero
+    column carries no information — turning a singular-but-factorable matrix
+    into a NaN-filled factor and destroying the columns past the zero pivot.
+
+    An exactly-zero pivot instead produces zero multipliers, which is what ATen
+    does (measured on CUDA for both ``pivot=True`` and ``pivot=False``): the
+    factorization stays finite and the zero pivot is reported through ``info``
+    rather than contaminating anything.  Note the column below a zero pivot is
+    *not* necessarily zero when ``pivot=False``, so zeroing beats skipping here.
+
+    Non-finite pivots keep propagating: ATen reports ``info == 0`` for a NaN/Inf
+    pivot, so only an exact zero is rewritten.
+    """
+    safe_pivot = tl.where(pivot != 0.0, pivot, 1.0)
+    scaled = col_vals / safe_pivot
+    scaled = tl.where(pivot != 0.0, scaled, 0.0)
+    return tl.where(cond, scaled, col_vals)
+
+
 @libentry()
 @triton.jit
 def _linalg_lu_factor_kernel(
@@ -81,7 +107,7 @@ def _linalg_lu_factor_kernel(
         )
 
         col_vals = tl.sum(tl.where(cols[:, None] == j_ind, tl.trans(work), 0.0), axis=0)
-        multipliers = tl.where(rows > j_ind, col_vals / pivot, col_vals)
+        multipliers = _lu_scale_col(col_vals, pivot, rows > j_ind)
         work = tl.where(
             (rows[:, None] > j_ind) & (cols[None, :] == j_ind),
             multipliers[:, None],
@@ -128,7 +154,7 @@ def _lu_factor_panel_no_pivot_kernel(
             axis=0,
         )
         col_vals = tl.sum(tl.where(bcols[:, None] == jj, tl.trans(panel), 0.0), axis=0)
-        col_vals = tl.where(rows > j, col_vals / pivot, col_vals)
+        col_vals = _lu_scale_col(col_vals, pivot, rows > j)
         panel = tl.where(
             (rows[:, None] > j) & (bcols[None, :] == jj),
             col_vals[:, None],
@@ -211,7 +237,7 @@ def _lu_factor_panel_kernel(
 
         # scale column below diagonal
         col_vals = tl.sum(tl.where(bcols[:, None] == jj, tl.trans(panel), 0.0), axis=0)
-        col_vals = tl.where(rows > j, col_vals / pivot, col_vals)
+        col_vals = _lu_scale_col(col_vals, pivot, rows > j)
         panel = tl.where(
             (rows[:, None] > j) & (bcols[None, :] == jj),
             col_vals[:, None],
@@ -460,7 +486,7 @@ def _lu_factor_panel_swap_right_and_solve_kernel(
         col_vals = tl.sum(
             tl.where(bcols[:, None] == jj, tl.trans(panel_vals), 0.0), axis=0
         )
-        col_vals = tl.where(rows > j, col_vals / pivot, col_vals)
+        col_vals = _lu_scale_col(col_vals, pivot, rows > j)
         panel_vals = tl.where(
             (rows[:, None] > j) & (bcols[None, :] == jj),
             col_vals[:, None],
@@ -544,7 +570,7 @@ def _lu_factor_panel_solve_no_pivot_kernel(
         col_vals = tl.sum(
             tl.where(bcols[:, None] == jj, tl.trans(panel_vals), 0.0), axis=0
         )
-        col_vals = tl.where(rows > j, col_vals / pivot, col_vals)
+        col_vals = _lu_scale_col(col_vals, pivot, rows > j)
         panel_vals = tl.where(
             (rows[:, None] > j) & (bcols[None, :] == jj),
             col_vals[:, None],
@@ -642,7 +668,7 @@ def _lu_factor_fused_iter_no_pivot_kernel(
         pivot = tl.sum(tl.where(rows == j_local, col_vals, 0.0), axis=0)
 
         # Scale column below diagonal
-        scaled_col = tl.where(rows > j_local, col_vals / pivot, col_vals)
+        scaled_col = _lu_scale_col(col_vals, pivot, rows > j_local)
 
         # Write scaled column back to panel
         panel_vals = tl.where(
@@ -732,7 +758,7 @@ def _lu_factor_fused_iter_no_pivot_kernel(
             pivot = tl.sum(tl.where(trail_local_rows == jj, col_vals, 0.0), axis=0)
 
             # Scale column below diagonal
-            scaled_col = tl.where(trail_local_rows > jj, col_vals / pivot, col_vals)
+            scaled_col = _lu_scale_col(col_vals, pivot, trail_local_rows > jj)
 
             # Write L column
             trail = tl.where(
@@ -858,7 +884,7 @@ def _lu_factor_fused_iter_pivot_kernel(
 
         # Scale column below diagonal
         col_vals = tl.sum(tl.where(bcols[None, :] == jj, panel_vals, 0.0), axis=1)
-        col_vals = tl.where(rows > j, col_vals / pivot, col_vals)
+        col_vals = _lu_scale_col(col_vals, pivot, rows > j)
         panel_vals = tl.where(
             (rows[:, None] > j) & (bcols[None, :] == jj),
             col_vals[:, None],
@@ -970,7 +996,7 @@ def _lu_factor_fused_iter_pivot_kernel(
             pivot = tl.sum(tl.where(trail_local_rows == jj2, col_vals, 0.0), axis=0)
 
             # Scale column below diagonal
-            scaled_col = tl.where(trail_local_rows > jj2, col_vals / pivot, col_vals)
+            scaled_col = _lu_scale_col(col_vals, pivot, trail_local_rows > jj2)
 
             # Write L column
             trail = tl.where(
@@ -1395,7 +1421,23 @@ def linalg_lu_factor(input, *, pivot=True):
     return _linalg_lu_factor_impl(input, pivot=pivot)
 
 
-def _resolve_linalg_lu_factor_out_args(LU, pivots):
+def _resolve_linalg_lu_factor_out_args(LU, pivots, out):
+    # Two spellings reach here, and they must not be mixed:
+    #   * ``out=(LU, pivots)``, the one ``torch.linalg`` documents and the only
+    #     one a *direct* call needs -- the dispatcher never passes ``out`` (it
+    #     binds the schema's ``LU``/``pivots`` arguments instead), so this form
+    #     is invisible to the ``linalg_lu_factor.out`` registration;
+    #   * explicit ``LU=``/``pivots=``, which is what that registration uses.
+    # Mirrors ``_resolve_linalg_lu_factor_ex_out_args`` and the ascend backend.
+    if out is not None:
+        if LU is not None or pivots is not None:
+            raise TypeError("linalg_lu_factor(): out and LU/pivots cannot both be set")
+        if len(out) != 2:
+            raise TypeError(
+                "linalg_lu_factor(): out must be a tuple of 2 tensors, "
+                f"got {len(out)}"
+            )
+        return out
     if LU is None or pivots is None:
         raise TypeError(
             "linalg_lu_factor(): LU and pivots must both be provided " "for out variant"
@@ -1403,7 +1445,7 @@ def _resolve_linalg_lu_factor_out_args(LU, pivots):
     return LU, pivots
 
 
-def linalg_lu_factor_out(input, *, pivot=True, LU=None, pivots=None):
+def linalg_lu_factor_out(input, *, pivot=True, LU=None, pivots=None, out=None):
     logger.debug("GEMS LINALG_LU_FACTOR_OUT")
-    lu_out, pivots_out = _resolve_linalg_lu_factor_out_args(LU, pivots)
+    lu_out, pivots_out = _resolve_linalg_lu_factor_out_args(LU, pivots, out)
     return _linalg_lu_factor_impl(input, pivot=pivot, LU=lu_out, pivots=pivots_out)

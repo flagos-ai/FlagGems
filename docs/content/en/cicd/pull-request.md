@@ -101,15 +101,31 @@ matching label:
 |---|---|---|
 | `build-doc` | `documentation` (and PR merged) | Syncs docs via `sync-docs.yaml` |
 | `cpp-op` | `ops/cpp` | Builds and runs the C++ extension test suite (`cpp-op-test.yaml`) |
-| `python-op` | `tests` | Runs `tools/test-op.sh` on the changed operators (NVIDIA runner) |
+| `python-op` | `tests` | Runs `tools/test-op.sh` on changed operators on an NVIDIA A100-40G runner with official upstream triton (not flagtree) |
 | `examples` | `examples` | Runs `tools/test-examples.sh` (end-to-end model tests) |
 | `backend-tests` | any `vendor/*` label | Runs `backend-test.yaml` once per matched backend/runner |
 | `alpha-ops` | `ops/alpha` | Runs the experimental-ops test script on NVIDIA |
+
+#### `python-op` Execution Environment and Compiler Policy
+
+The `python-op` job is the gatekeeper for generic operator correctness and baseline compatibility:
+- **Hardware Runner**: Deployed on a dedicated self-hosted runner (`runs-on: jiuding`) equipped with **NVIDIA A100-40G** GPUs.
+- **Compiler Stack**: The environment installs and uses the **official upstream Triton compiler rather than the FlagTree compiler**. This guarantees that all generic baseline implementations in `src/flag_gems/ops`, `src/flag_gems/fused`, and `src/flag_gems/experimental_ops` adhere strictly to standard community Triton semantics and maintain guaranteed compatibility with NVIDIA Ampere architecture.
 
 `backend-test.yaml` (a reusable `workflow_call` workflow) checks out the PR,
 runs the vendor's GPU-availability check, sets up the environment via the
 `setup-flaggems` composite action, then runs `tools/test-op.sh` (or an
 alternate `test_script` for `alpha-ops`) scoped to the PR's changed files.
+
+Five vendors (Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin) only have their
+driver/runtime available inside a vendor container, so those jobs run inside
+that container. The container image, `docker run` options, volume mounts, and
+runner labels all come from the `container` block of each backend's entry in
+`.github/backends.json`: `unittest.yaml` reads them into the test matrix and
+passes them through to `backend-test.yaml` as `workflow_call` inputs. This
+keeps the container configuration in a single source of truth
+(`.github/backends.json`) shared with the on-demand `command.yaml` workflow
+below.
 
 Because these jobs are skipped when the corresponding label is absent, a
 `unittest-required` gate job aggregates `preprocess`, `cpp-op`, `python-op`,
@@ -129,6 +145,23 @@ can trigger them by commenting:
 - **`fix-sort.yaml`** (`/fix-sort`) — runs `tools/ci_checks/sort_exports.py
   --fix` from the trusted `master` copy against the PR branch, commits and
   pushes the fix if anything changed, and comments the outcome.
+
+`command.yaml` has one generic job plus one job per containerized vendor
+(Hygon, MetaX, MooreThreads, Iluvatar, Kunlunxin). Because the workflow is
+triggered by `issue_comment` rather than `pull_request`, the default checkout
+doesn't land on the PR branch, so each job checks it out explicitly via the
+`gh pr checkout` in the `checkout-pr` composite action. The per-vendor jobs
+resolve their container image, options, and runner labels from the same
+`container` block in `.github/backends.json` (looked up in `preprocess`), so
+the container configuration is not duplicated between `command.yaml` and
+`backend-test.yaml`. The shared step logic lives in composite actions under
+`.github/actions/`:
+
+| Composite action | Used for |
+|---|---|
+| `checkout-pr` | Install the `gh` CLI if missing (picking the binary matching the runner's CPU arch), then `gh pr checkout` the PR branch |
+| `setup-flaggems` | Run `setup.sh` for the backend and the GPU-availability check |
+| `ondemand-test` | Run the single-operator accuracy/perf comparison, upload the result artifact, and post the PR comment |
 
 ## Setting required status checks
 

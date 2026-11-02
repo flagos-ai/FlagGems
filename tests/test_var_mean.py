@@ -56,10 +56,11 @@ def test_var_mean(shape, dim, correction, keepdim, dtype):
     ref_var, ref_mean = torch.var_mean(
         ref_inp, dim, correction=correction, keepdim=keepdim
     )
-    with flag_gems.use_gems():
-        res_var, res_mean = torch.var_mean(
-            inp, dim, correction=correction, keepdim=keepdim
-        )
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList.
+    dims = dim if isinstance(dim, (list, tuple)) or dim is None else [dim]
+    res_var, res_mean = flag_gems.var_mean(
+        inp, dims, correction=correction, keepdim=keepdim
+    )
 
     utils.gems_assert_close(res_mean, ref_mean, dtype)
     utils.gems_assert_close(res_var, ref_var, dtype)

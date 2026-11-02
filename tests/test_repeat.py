@@ -39,7 +39,6 @@ def test_repeat(shape, sizes, dtype):
     sizes = utils.unsqueeze_tuple(sizes, inp.ndim)
 
     ref_out = ref_inp.repeat(*sizes)
-    with flag_gems.use_gems():
-        res_out = inp.repeat(*sizes)
+    res_out = flag_gems.repeat(inp, sizes)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

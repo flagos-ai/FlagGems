@@ -55,10 +55,9 @@ def test_accuracy_fake_quantize_per_channel_affine(
         ref_inp, ref_scale, ref_zero_point, axis, quant_min, quant_max
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.fake_quantize_per_channel_affine(
-            inp, scale, zero_point, axis, quant_min, quant_max
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine(
+        inp, scale, zero_point, axis, quant_min, quant_max
+    )
 
     gems_assert_close(res_out, ref_out, dtype=dtype)
 
@@ -85,10 +84,9 @@ def test_accuracy_fake_quantize_per_channel_affine_multi_dim(shape, axis):
         ref_inp, ref_scale, ref_zero_point, axis, 0, 255
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.fake_quantize_per_channel_affine(
-            inp, scale, zero_point, axis, 0, 255
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine(
+        inp, scale, zero_point, axis, 0, 255
+    )
 
     gems_assert_close(res_out, ref_out, dtype=torch.float32)
 
@@ -106,10 +104,9 @@ def test_accuracy_fake_quantize_per_channel_affine_half_to_even():
         to_reference(inp), to_reference(scale), to_reference(zero_point), 1, -128, 127
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.fake_quantize_per_channel_affine(
-            inp, scale, zero_point, 1, -128, 127
-        )
+    res_out = flag_gems.fake_quantize_per_channel_affine(
+        inp, scale, zero_point, 1, -128, 127
+    )
 
     gems_assert_close(res_out, ref_out, dtype=torch.float32)
 
@@ -120,10 +117,9 @@ def test_accuracy_fake_quantize_per_channel_affine_empty():
     scale = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     zero_point = torch.empty(0, dtype=torch.int32, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        result = torch.fake_quantize_per_channel_affine(
-            inp, scale, zero_point, 1, 0, 255
-        )
+    result = flag_gems.fake_quantize_per_channel_affine(
+        inp, scale, zero_point, 1, 0, 255
+    )
 
     assert result.shape == inp.shape
     assert result.dtype == inp.dtype

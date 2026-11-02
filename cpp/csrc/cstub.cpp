@@ -135,6 +135,20 @@ PYBIND11_MODULE(c_operators, m) {
   m.def("softmax_backward", &flag_gems::softmax_backward);
   m.def("reshape_and_cache_flash", &flag_gems::reshape_and_cache_flash);
   m.def("flash_attn_varlen_func", &flag_gems::flash_attn_varlen_func);
+  m.def(
+      "cross_attention",
+      [](const at::Tensor& query,
+         const at::Tensor& key,
+         const at::Tensor& value,
+         const std::optional<at::Tensor>& attn_mask,
+         const std::optional<double>& scale) {
+        return flag_gems::cross_attention(query, key, value, attn_mask, scale);
+      },
+      py::arg("query"),
+      py::arg("key"),
+      py::arg("value"),
+      py::arg("attn_mask") = py::none(),
+      py::arg("scale") = py::none());
   m.def("rwkv_mm_sparsity", &flag_gems::rwkv_mm_sparsity);
   m.def("rwkv_ka_fusion", &flag_gems::rwkv_ka_fusion);
   m.def("copy_", &flag_gems::copy_);
@@ -282,6 +296,9 @@ TORCH_LIBRARY(flag_gems, m) {
       "Tensor? v_descale=None, Tensor? s_aux=None, SymInt num_splits=0, SymInt cp_world_size=1, "
       "SymInt cp_rank=0, Tensor? cp_tot_seqused_k=None, SymInt fa_version=2) -> (Tensor, Tensor)");
 
+  m.def(
+      "cross_attention(Tensor query, Tensor key, Tensor value, Tensor? attn_mask=None, "
+      "float? scale=None) -> Tensor");
   m.def("rwkv_mm_sparsity(Tensor k, Tensor v) -> Tensor");
   m.def("rwkv_ka_fusion(Tensor k, Tensor kk, Tensor a, Tensor ka, int H, int N) -> (Tensor, Tensor, Tensor)");
   m.def("copy_(Tensor(a!) dst, Tensor src, bool non_blocking=False) -> Tensor(a!)");
@@ -378,6 +395,7 @@ TORCH_LIBRARY_IMPL(flag_gems, FLAGGEMS_DISPATCH_KEY, m) {
   m.impl("softmax_backward", TORCH_FN(softmax_backward));
   m.impl("reshape_and_cache_flash", TORCH_FN(reshape_and_cache_flash));
   m.impl("flash_attn_varlen_func", TORCH_FN(flash_attn_varlen_func));
+  m.impl("cross_attention", TORCH_FN(cross_attention));
   m.impl("rwkv_mm_sparsity", TORCH_FN(rwkv_mm_sparsity));
   m.impl("rwkv_ka_fusion", TORCH_FN(rwkv_ka_fusion));
   m.impl("to_copy", TORCH_FN(to_copy));

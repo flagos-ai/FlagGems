@@ -35,11 +35,11 @@ This convenience allows developers to engage in the development of *FlagGems* wi
 
 ## Next step
 
-- Review [features highlighted](/FlagGems/overview/features/)
-- Review [platforms supported](/FlagGems/overview/platforms/)
-- [Getting started with FlagGems](/FlagGems/getting-started/)
-- Check the project [changelog](/FlagGems/references/changelog/)
-- Review the list of [operators suppored](/FlagGems/references/changelog/)
+- Review [features highlighted](overview/features.md)
+- Review [platforms supported](overview/platforms.md)
+- [Getting started with FlagGems](getting-started/_index.md)
+- Check the project [changelog](references/changelog.md)
+- Review the list of [supported operators](references/operators.md)
 
 ## Supported models
 
@@ -50,7 +50,7 @@ This convenience allows developers to engage in the development of *FlagGems* wi
 ## Contribution
 
 If you are interested in contributing to the FlagGems project, please refer to
-the [contributing guide](/FlagGems/contribution/) page.
+the [contributing guide](contribution/_index.md) page.
 Any kind of contributions would be highly appreciated.
 
 ## Contact us

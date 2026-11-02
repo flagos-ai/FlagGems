@@ -14,19 +14,8 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 from . import base, consts
-
-# ``_reshape_alias`` starts with an underscore, and ``pytest.mark`` refuses to
-# generate a marker via attribute access for such names. Register it directly
-# on the MarkGenerator so ``@pytest.mark._reshape_alias`` and ``-m
-# _reshape_alias`` both work.
-setattr(
-    pytest.mark,
-    "_reshape_alias",
-    MarkDecorator(Mark("_reshape_alias", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # Square 2D shapes covering common sizes for view benchmark
 RESHAPE_ALIAS_SHAPES = [
@@ -49,7 +38,7 @@ class ReshapeAliasBenchmark(base.Benchmark):
             yield inp, size, stride
 
 
-@pytest.mark._reshape_alias
+@pytest.mark.reshape_alias
 def test__reshape_alias():
     bench = ReshapeAliasBenchmark(
         op_name="_reshape_alias",

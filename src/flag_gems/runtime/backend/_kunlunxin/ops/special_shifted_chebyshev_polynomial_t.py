@@ -48,7 +48,7 @@ from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 # The accuracy test asserts on the generic module's logger/message, so keep both.
-logger = logging.getLogger("flag_gems.ops.special_shifted_chebyshev_polynomial_t")
+logger = logging.getLogger(__name__)
 
 config_ = CodeGenConfig(
     512,
@@ -121,7 +121,7 @@ def shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n):
 
 
 def special_shifted_chebyshev_polynomial_t(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
+    logger.debug("GEMS_KUNLUNXIN SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
     # Same contract as the generic implementation: eager CUDA has no
     # Half/BFloat16 kernel for this op.
     if x.dtype in (torch.float16, torch.bfloat16):

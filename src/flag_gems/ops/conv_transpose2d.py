@@ -26,9 +26,16 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+# The AMD backend rejects tf32x3 (it only accepts ieee/bf16x3/bf16x6), so fall
+# back to full-precision ieee there; every other backend keeps tf32x3.
+_DOT_PRECISION = tl.constexpr(
+    "ieee" if runtime.device.vendor_name == "amd" else "tf32x3"
+)
 
 _TRITON_DIRECT_LOWP_DTYPES = (torch.float16, torch.bfloat16)
 
@@ -482,7 +489,7 @@ def _conv_transpose2d_direct_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = (
@@ -602,7 +609,7 @@ def _conv_transpose2d_stride2_pad1_3x3_kernel(
                 accum += tl.dot(
                     input_block,
                     weight_block,
-                    input_precision="tf32x3",
+                    input_precision=_DOT_PRECISION,
                 )
 
     output_offsets = (
@@ -685,13 +692,13 @@ def _conv_transpose2d_residue_kernel(
     ci_blocks: tl.constexpr = tl.cdiv(input_channels_per_group, BLOCK_CI)
     height_residue = (output_residue_h + padding_height) % stride_height
     width_residue = (output_residue_w + padding_width) % stride_width
-    for kh in range(weight_height):
+    for kh in tl.static_range(0, weight_height):
         kh_residue = (kh * dilation_height) % stride_height
         if kh_residue == height_residue:
             ih_unstrided = oh + padding_height - kh * dilation_height
             ih = ih_unstrided // stride_height
             valid_h = (n < batch_size) & (ih_unstrided >= 0) & (ih < input_height)
-            for kw in range(weight_width):
+            for kw in tl.static_range(0, weight_width):
                 kw_residue = (kw * dilation_width) % stride_width
                 if kw_residue == width_residue:
                     iw_unstrided = ow + padding_width - kw * dilation_width
@@ -732,7 +739,7 @@ def _conv_transpose2d_residue_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
@@ -933,7 +940,7 @@ def _conv_transpose2d_residue_static_kernel(
                         accum += tl.dot(
                             input_block,
                             weight_block,
-                            input_precision="tf32x3",
+                            input_precision=_DOT_PRECISION,
                         )
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
@@ -1054,7 +1061,7 @@ def _conv_transpose2d_scatter_no_overlap_kernel(
         accum += tl.dot(
             input_block,
             weight_block,
-            input_precision="tf32x3",
+            input_precision=_DOT_PRECISION,
         )
 
     if has_bias:
@@ -1141,7 +1148,7 @@ def _conv_transpose2d_1x1_kernel(
             mask=ci_mask[:, None] & co_mask[None, :],
             other=0.0,
         )
-        accum += tl.dot(input_block, weight_block, input_precision="tf32x3")
+        accum += tl.dot(input_block, weight_block, input_precision=_DOT_PRECISION)
 
     output_offsets = n[:, None] * output_channels + co_offsets[None, :]
     output_offsets = (output_offsets * input_height + ih[:, None]) * input_width

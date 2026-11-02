@@ -120,7 +120,7 @@ def poisson(input, generator=None):
     from a Poisson distribution with rate parameter given by the corresponding
     element in input.
     """
-    logger.debug("GEMS POISSON")
+    logger.debug("GEMS_HYGON POISSON")
 
     assert input.dtype in (
         torch.float16,

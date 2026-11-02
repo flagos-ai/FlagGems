@@ -30,12 +30,18 @@ except ImportError:
     TE_OP = None
 
 
+def _te_dswiglu(grad_output, inp, quantizer=None):
+    if flag_gems.vendor_name == "kunlunxin":
+        return TE_OP(grad_output, inp)
+    return TE_OP(grad_output, inp, quantizer)
+
+
 @pytest.mark.dswiglu
 @pytest.mark.skipif(TE_OP is None, reason="'dswiglu' not found in TransformerEngine")
 def test_dswiglu():
     bench = base.TexGluBackwardBenchmark(
         op_name="dswiglu",
-        torch_op=TE_OP,
+        torch_op=_te_dswiglu,
         gems_op=flag_gems.dswiglu,
         dtypes=consts.FLOAT_DTYPES,
     )

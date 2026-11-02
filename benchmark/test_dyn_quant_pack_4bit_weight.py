@@ -17,19 +17,9 @@ from typing import Generator
 import pytest
 import torch
 
-from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
+import flag_gems
 
 from . import base
-
-
-def torch_pack_reference(
-    weights, scales_zeros, bias, block_size, in_features, out_features
-):
-    del block_size, in_features, out_features
-    parts = [weights.flatten().float(), scales_zeros.flatten().float()]
-    if bias is not None:
-        parts.append(bias.flatten().float())
-    return torch.cat(parts)
 
 
 class DynQuantPack4BitWeightBenchmark(base.Benchmark):
@@ -56,12 +46,17 @@ class DynQuantPack4BitWeightBenchmark(base.Benchmark):
 
 
 @pytest.mark.dyn_quant_pack_4bit_weight
+@pytest.mark.skipif(
+    flag_gems.vendor_name
+    in ("nvidia", "hygon", "iluvatar", "ascend", "mthreads", "metax"),
+    reason="aten::_dyn_quant_pack_4bit_weight has no native device kernel; CPU fallback is not a performance baseline",
+)
 def test_dyn_quant_pack_4bit_weight():
     bench = DynQuantPack4BitWeightBenchmark(
         op_name="dyn_quant_pack_4bit_weight",
-        torch_op=torch_pack_reference,
-        # The portable packed representation stores float32 scale/zero and bias values.
+        torch_op=torch.ops.aten._dyn_quant_pack_4bit_weight.default,
+        gems_op=flag_gems._dyn_quant_pack_4bit_weight,
+        # The portable packed representation stores float32 scales and bias values.
         dtypes=[torch.float32],
     )
-    bench.set_gems(_dyn_quant_pack_4bit_weight)
     bench.run()

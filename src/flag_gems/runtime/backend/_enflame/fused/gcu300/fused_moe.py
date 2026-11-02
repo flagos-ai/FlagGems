@@ -1846,7 +1846,7 @@ def fused_experts_impl(
     w1_bias: Optional[torch.Tensor] = None,
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME FUSED MOE")
+    logger.debug("GEMS_ENFLAME FUSED_MOE")
     assert (
         activation == "silu"
     ), f"Only 'silu' activation is supported, got {activation}"

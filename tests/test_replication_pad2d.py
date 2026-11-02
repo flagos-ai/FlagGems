@@ -45,8 +45,7 @@ def test_replication_pad2d(shape, padding, dtype):
 
     ref_out = torch.ops.aten.replication_pad2d(ref_inp, padding)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.replication_pad2d(inp, padding)
+    res_out = flag_gems.replication_pad2d(inp, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -68,8 +67,7 @@ def test_replication_pad2d_out(shape, padding, dtype):
 
     torch.ops.aten.replication_pad2d.out(ref_inp, padding, out=ref_out)
 
-    with flag_gems.use_gems():
-        torch.ops.aten.replication_pad2d.out(inp, padding, out=out)
+    flag_gems.replication_pad2d_out(inp, padding, out)
 
     utils.gems_assert_close(out, ref_out, dtype)
 
@@ -87,7 +85,6 @@ def test_replication_pad2d_3d_input(dtype):
 
     ref_out = torch.ops.aten.replication_pad2d(ref_inp, padding)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.replication_pad2d(inp, padding)
+    res_out = flag_gems.replication_pad2d(inp, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -47,10 +47,9 @@ def test_amp_foreach_non_finite_check_and_unscale_(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
-    with flag_gems.use_gems():
-        getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-            res_tensors, res_found_inf, inv_scale
-        )
+    flag_gems._amp_foreach_non_finite_check_and_unscale_(
+        res_tensors, res_found_inf, inv_scale
+    )
 
     # Compare mutated inputs (in-place operation)
     for i, (inp, ref_inp) in enumerate(zip(res_tensors, ref_tensors)):
@@ -86,10 +85,9 @@ def test_amp_foreach_non_finite_check_and_unscale__inf(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
-    with flag_gems.use_gems():
-        getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-            res_tensors, res_found_inf, inv_scale
-        )
+    flag_gems._amp_foreach_non_finite_check_and_unscale_(
+        res_tensors, res_found_inf, inv_scale
+    )
 
     # Compare mutated inputs (in-place operation)
     # Note: inf values remain unchanged, only finite values are scaled
@@ -126,10 +124,9 @@ def test_amp_foreach_non_finite_check_and_unscale__nan(dtype):
     # GEMS
     res_tensors = [t.clone() for t in tensors]
     res_found_inf = found_inf.clone()
-    with flag_gems.use_gems():
-        getattr(torch, "_amp_foreach_non_finite_check_and_unscale_")(
-            res_tensors, res_found_inf, inv_scale
-        )
+    flag_gems._amp_foreach_non_finite_check_and_unscale_(
+        res_tensors, res_found_inf, inv_scale
+    )
 
     # Compare mutated inputs with equal_nan=True since tensors contain NaN
     for i, (inp, ref_inp) in enumerate(zip(res_tensors, ref_tensors)):

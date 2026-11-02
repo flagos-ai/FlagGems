@@ -12,59 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
-
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import broadcastable_to, libentry
 
-logger = logging.getLogger(__name__)
-
-_DTYPE_CONFIGS = {
-    torch.float16: {
-        "BLOCK_SIZE_M": 256,
-        "BLOCK_SIZE_N": 256,
-        "BLOCK_SIZE_K": 32,
-        "num_warps": 16,
-        "num_stages": 2,
-    },
-    torch.bfloat16: {
-        "BLOCK_SIZE_M": 256,
-        "BLOCK_SIZE_N": 256,
-        "BLOCK_SIZE_K": 32,
-        "num_warps": 16,
-        "num_stages": 2,
-    },
-    torch.float32: {
-        "BLOCK_SIZE_M": 128,
-        "BLOCK_SIZE_N": 128,
-        "BLOCK_SIZE_K": 32,
-        "num_warps": 8,
-        "num_stages": 2,
-    },
-}
-
-
-def _mba_config(args):
-    return _DTYPE_CONFIGS.get(args["a_ptr"].dtype, _DTYPE_CONFIGS[torch.float16])
-
-
-@libentry()
-@triton.heuristics(
-    {
-        "BLOCK_SIZE_M": lambda args: _mba_config(args)["BLOCK_SIZE_M"],
-        "BLOCK_SIZE_N": lambda args: _mba_config(args)["BLOCK_SIZE_N"],
-        "BLOCK_SIZE_K": lambda args: _mba_config(args)["BLOCK_SIZE_K"],
-        "num_warps": lambda args: _mba_config(args)["num_warps"],
-        "num_stages": lambda args: _mba_config(args)["num_stages"],
-        "EVEN_K": lambda args: args["K"] % args["BLOCK_SIZE_K"] == 0,
-    }
-)
 @triton.jit
-def matmul_bias_activation_kernel(
+def _dot_accum(a, b, acc, FP32_IEEE: tl.constexpr):
+    if FP32_IEEE:
+        return tl.dot(a, b, acc, out_dtype=tl.float32, input_precision="ieee")
+    else:
+        return tl.dot(a, b, acc, out_dtype=tl.float32)
+
+
+@triton.jit
+def _mba_kernel(
     a_ptr,
     b_ptr,
     bias_ptr,
@@ -79,107 +41,136 @@ def matmul_bias_activation_kernel(
     stride_bias,
     stride_cm,
     stride_cn,
-    BLOCK_SIZE_M: tl.constexpr,
-    BLOCK_SIZE_N: tl.constexpr,
-    BLOCK_SIZE_K: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
     EVEN_K: tl.constexpr,
+    MASK_M: tl.constexpr,
+    MASK_N: tl.constexpr,
+    FP32_IEEE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    grid_n = tl.cdiv(N, BLOCK_SIZE_N)
-    pid_m = pid // grid_n
-    pid_n = pid % grid_n
+    num_pid_m = tl.cdiv(M, BLOCK_M)
+    num_pid_n = tl.cdiv(N, BLOCK_N)
+    num_pid_in_group = GROUP_M * num_pid_n
+    group_id = pid // num_pid_in_group
+    first_pid_m = group_id * GROUP_M
+    group_size_m = min(num_pid_m - first_pid_m, GROUP_M)
+    pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+    pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_am = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
-    offs_bn = pid_n * BLOCK_SIZE_N + tl.arange(0, BLOCK_SIZE_N)
-    offs_k = tl.arange(0, BLOCK_SIZE_K)
-    # Wrap M/N indices so full-tile loads can omit masks without OOB
-    ram = tl.max_contiguous(tl.multiple_of(offs_am % M, BLOCK_SIZE_M), BLOCK_SIZE_M)
-    rbn = tl.max_contiguous(tl.multiple_of(offs_bn % N, BLOCK_SIZE_N), BLOCK_SIZE_N)
-    a_ptrs = a_ptr + (ram[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = b_ptr + (offs_k[:, None] * stride_bk + rbn[None, :] * stride_bn)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    a_ptrs = a_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak
+    b_ptrs = b_ptr + offs_k[:, None] * stride_bk + offs_n[None, :] * stride_bn
 
-    accumulator = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    if EVEN_K:
-        for k in range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    if EVEN_K and (not MASK_M) and (not MASK_N):
+        for k in range(0, tl.cdiv(K, BLOCK_K)):
             a = tl.load(a_ptrs)
             b = tl.load(b_ptrs)
-            accumulator += tl.dot(a, b, allow_tf32=False)
-            a_ptrs += BLOCK_SIZE_K * stride_ak
-            b_ptrs += BLOCK_SIZE_K * stride_bk
+            acc = _dot_accum(a, b, acc, FP32_IEEE)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
+    elif EVEN_K:
+        m_mask = offs_m[:, None] < M
+        n_mask = offs_n[None, :] < N
+        for k in range(0, tl.cdiv(K, BLOCK_K)):
+            a = tl.load(a_ptrs, mask=m_mask, other=0.0)
+            b = tl.load(b_ptrs, mask=n_mask, other=0.0)
+            acc = _dot_accum(a, b, acc, FP32_IEEE)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
     else:
-        # Only the last (partial) K tile needs a mask
-        loop_num = tl.cdiv(K, BLOCK_SIZE_K) - 1
-        for k in range(0, loop_num):
-            a = tl.load(a_ptrs)
-            b = tl.load(b_ptrs)
-            accumulator += tl.dot(a, b, allow_tf32=False)
-            a_ptrs += BLOCK_SIZE_K * stride_ak
-            b_ptrs += BLOCK_SIZE_K * stride_bk
+        m_mask = offs_m[:, None] < M
+        n_mask = offs_n[None, :] < N
+        for k in range(0, tl.cdiv(K, BLOCK_K)):
+            k_off = k * BLOCK_K + offs_k
+            a = tl.load(a_ptrs, mask=m_mask & (k_off[None, :] < K), other=0.0)
+            b = tl.load(b_ptrs, mask=(k_off[:, None] < K) & n_mask, other=0.0)
+            acc = _dot_accum(a, b, acc, FP32_IEEE)
+            a_ptrs += BLOCK_K * stride_ak
+            b_ptrs += BLOCK_K * stride_bk
 
-        k_remaining = K - loop_num * BLOCK_SIZE_K
-        a = tl.load(a_ptrs, mask=offs_k[None, :] < k_remaining, other=0.0)
-        b = tl.load(b_ptrs, mask=offs_k[:, None] < k_remaining, other=0.0)
-        accumulator += tl.dot(a, b, allow_tf32=False)
-
-    c_ptrs = c_ptr + stride_cm * offs_am[:, None] + stride_cn * offs_bn[None, :]
-    c_mask = (offs_am[:, None] < M) & (offs_bn[None, :] < N)
-    bias_ptrs = bias_ptr + offs_bn * stride_bias
-    bias = tl.load(bias_ptrs, mask=offs_bn < N, other=0.0)
-    accumulator = accumulator + bias[None, :]
-
-    # Apply ReLU activation
-    accumulator = tl.where(accumulator > 0, accumulator, 0.0)
-
-    c = accumulator.to(bias.dtype)
+    c_mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    bias = tl.load(bias_ptr + offs_n * stride_bias, mask=offs_n < N, other=0.0)
+    acc = acc + bias[None, :]
+    acc = tl.where(acc > 0, acc, 0.0)
+    c = acc.to(c_ptr.dtype.element_ty)
+    c_ptrs = c_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
     tl.store(c_ptrs, c, mask=c_mask)
 
 
 def matmul_bias_activation(input, weight, bias):
-    """
-    Fused matmul + bias + ReLU activation.
-
-    Args:
-        input: Input tensor of shape (M, K)
-        weight: Weight matrix of shape (K, N)
-        bias: Bias vector of shape (N,) or (1, N)
-
-    Returns:
-        Output tensor of shape (M, N) with ReLU activation applied
-    """
-    assert input.shape[1] == weight.shape[0], "Incompatible dimensions"
-    assert broadcastable_to(
-        bias.shape, (input.shape[0], weight.shape[1])
-    ), "Incompatible input shape"
     M, K = input.shape
-    _, N = weight.shape
+    K2, N = weight.shape
+    assert K2 == K
 
-    logger.debug("GEMS_ILUVATAR MATMUL_BIAS_ACTIVATION")
-    if input.stride(0) > 1 and input.stride(1) > 1:
-        input = input.contiguous()
-    if weight.stride(0) > 1 and weight.stride(1) > 1:
-        weight = weight.contiguous()
     if bias.dim() > 1:
         bias = bias.reshape(-1)
-    out = torch.empty((M, N), device=input.device, dtype=input.dtype)
+    assert bias.numel() == N
 
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
+    a = input
+    b = weight
+    stride_am, stride_ak = a.stride(0), a.stride(1)
+    stride_bk, stride_bn = b.stride(0), b.stride(1)
+    stride_bias = bias.stride(0)
+
+    out = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    stride_cm, stride_cn = out.stride(0), out.stride(1)
+
+    dtype = a.dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        if M > 2048 and N > 2048:
+            BLOCK_M, BLOCK_N, BLOCK_K = 128, 256, 32
+            num_warps, num_stages = 16, 2
+        elif M > 1024 and N > 1024:
+            BLOCK_M, BLOCK_N, BLOCK_K = 256, 128, 32
+            num_warps, num_stages = 16, 2
+        else:
+            BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 32
+            num_warps, num_stages = 8, 2
+        fp32_ieee = False
+    elif dtype == torch.float32:
+        if M <= 512 and N <= 512:
+            BLOCK_M, BLOCK_N, BLOCK_K = 64, 64, 32
+            num_warps, num_stages = 4, 2
+        else:
+            BLOCK_M, BLOCK_N, BLOCK_K = 128, 128, 32
+            num_warps, num_stages = 8, 2
+        fp32_ieee = True
+    else:
+        raise NotImplementedError(f"unsupported dtype {dtype}")
+
+    GROUP_M = 8
+    grid = (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+    _mba_kernel[grid](
+        a,
+        b,
+        bias,
+        out,
+        M,
+        N,
+        K,
+        stride_am,
+        stride_ak,
+        stride_bk,
+        stride_bn,
+        stride_bias,
+        stride_cm,
+        stride_cn,
+        BLOCK_M=BLOCK_M,
+        BLOCK_N=BLOCK_N,
+        BLOCK_K=BLOCK_K,
+        GROUP_M=GROUP_M,
+        EVEN_K=(K % BLOCK_K == 0),
+        MASK_M=(M % BLOCK_M != 0),
+        MASK_N=(N % BLOCK_N != 0),
+        FP32_IEEE=fp32_ieee,
+        num_warps=num_warps,
+        num_stages=num_stages,
     )
-    with torch_device_fn.device(input.device):
-        matmul_bias_activation_kernel[grid](
-            input,
-            weight,
-            bias,
-            out,
-            M,
-            N,
-            K,
-            input.stride(0),
-            input.stride(1),
-            weight.stride(0),
-            weight.stride(1),
-            bias.stride(0),
-            out.stride(0),
-            out.stride(1),
-        )
     return out

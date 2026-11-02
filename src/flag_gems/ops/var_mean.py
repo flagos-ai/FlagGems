@@ -137,7 +137,7 @@ def var_mean_kernel_2(
 
 
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
-    logger.debug("GEMS VAR MEAN")
+    logger.debug("GEMS VAR_MEAN")
     if correction is None:
         correction = 1.0
 

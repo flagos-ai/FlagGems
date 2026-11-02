@@ -56,9 +56,6 @@ def test_col2im(config, dtype):
     ref_out = torch.ops.aten.col2im(
         ref_inp, output_size, kernel_size, dilation, padding, stride
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.col2im(
-            inp, output_size, kernel_size, dilation, padding, stride
-        )
+    res_out = flag_gems.col2im(inp, output_size, kernel_size, dilation, padding, stride)
 
     gems_assert_close(res_out, ref_out, dtype, reduce_dim=kernel_h * kernel_w)

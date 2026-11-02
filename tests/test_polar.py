@@ -36,8 +36,7 @@ def test_polar(shape, dtype):
     ref_abs = utils.to_reference(abs)
     ref_angle = utils.to_reference(angle)
     ref_out = torch.polar(ref_abs, ref_angle)
-    with flag_gems.use_gems():
-        res_out = torch.polar(abs, angle)
+    res_out = flag_gems.polar(abs, angle)
 
     utils.gems_assert_close(res_out.real, ref_out.real, dtype)
     utils.gems_assert_close(res_out.imag, ref_out.imag, dtype)

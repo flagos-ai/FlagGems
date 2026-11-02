@@ -2,64 +2,10 @@ import logging
 from collections import namedtuple
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.runtime import torch_device_fn
-
-from .linalg_lu_factor import _check_linalg_lu_factor, _linalg_lu_factor
 
 logger = logging.getLogger(__name__)
 
 LinalgLUFactorExResult = namedtuple("LinalgLUFactorExResult", ["LU", "pivots", "info"])
-
-
-@triton.jit
-def _lu_factor_info_kernel(
-    LU,
-    INFO,
-    M,
-    N,
-    K: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    """Scan the diagonal of the LU factors to find the first zero/NaN pivot.
-
-    LAPACK-style info: 1-indexed position of the first zero (or NaN, which can
-    arise from 0/0 division e.g. for an all-zero input) pivot, 0 if none.
-    """
-    pid = tl.program_id(0)
-    offsets = tl.arange(0, BLOCK_K)
-    mask = offsets < K
-    diag = tl.load(LU + pid * M * N + offsets * (N + 1), mask=mask, other=1.0)
-
-    sentinel = K + 1
-    is_zero = (diag == 0) | (diag != diag)
-    candidates = tl.where(is_zero & mask, offsets + 1, sentinel)
-    first_zero = tl.min(candidates, axis=0)
-    info = tl.where(first_zero == sentinel, 0, first_zero).to(tl.int32)
-    tl.store(INFO + pid, info)
-
-
-def _lu_factor_info(lu):
-    """Compute the LAPACK-style info tensor by scanning the LU diagonal."""
-    m, n = lu.shape[-2], lu.shape[-1]
-    k = min(m, n)
-    batch_shape = lu.shape[:-2]
-    batch = lu.numel() // (m * n)
-    info = torch.empty(batch_shape, device=lu.device, dtype=torch.int32)
-
-    with torch_device_fn.device(lu.device):
-        _lu_factor_info_kernel[(batch,)](
-            lu,
-            info,
-            m,
-            n,
-            k,
-            triton.next_power_of_2(k),
-            num_warps=4,
-        )
-    return info
 
 
 def _check_linalg_lu_factor_ex_args(pivot, check_errors):
@@ -69,33 +15,88 @@ def _check_linalg_lu_factor_ex_args(pivot, check_errors):
         raise TypeError(f"check_errors must be a bool, got {type(check_errors)}")
 
 
-def _check_lu_factor_errors(info):
-    failed = info != 0
-    if not torch.any(failed).item():
-        return
+def _check_linalg_lu_factor_input(input, pivot):
+    if input.dim() < 2:
+        raise RuntimeError(
+            "torch.linalg.lu_factor_ex: Expected input to have at least 2 "
+            f"dimensions, got {input.dim()}"
+        )
+    if input.dtype not in (torch.float32, torch.float64):
+        raise NotImplementedError(
+            "FlagGems linalg_lu_factor_ex currently supports float32 and "
+            f"float64 only, got {input.dtype}"
+        )
+    if input.shape[-2] == 0 or input.shape[-1] == 0:
+        raise NotImplementedError(
+            "FlagGems linalg_lu_factor_ex currently does not support empty " "matrices"
+        )
+    if not isinstance(pivot, bool):
+        raise TypeError(f"pivot must be a bool, got {type(pivot)}")
+    if not pivot:
+        raise NotImplementedError(
+            "Kunlunxin linalg_lu_factor_ex does not support pivot=False: "
+            "the vendor lu_factor_ex primitive rejects it and no XPU-safe "
+            "no-pivot kernel is available"
+        )
 
-    # Extract the first non-zero info on-device: the Kunlunxin copy/`to`
-    # overrides reject cross-device .cpu() copies, so avoid them here.
-    first_idx = torch.argmax(failed.to(torch.int32).flatten()).item()
-    first_info = int(first_idx) + 1
-    raise RuntimeError(
-        "torch.linalg.lu_factor_ex: U[{},{}] is zero and using it on lu_solve "
-        "would result in a division by zero. If you still want to perform the "
-        "factorization, pass check_errors=False.".format(first_info, first_info)
+
+def _native_linalg_lu_factor_ex_out(input, pivot, check_errors, LU, pivots, info):
+    """Re-dispatch to the vendor native (XCCL device-side) implementation.
+
+    The previous backend-local implementation was a sequence of tiny Triton
+    kernels (find-pivot / swap-rows / scale-column / trailing-update) launched
+    per elimination step: O(k) launches per matrix with a ~1-3 ms launch floor.
+    A single 512x512 factorization took ~200 ms and (1024,512,512) ~101 s,
+    i.e. speedup <0.05 vs the native path -- far below the 0.8 bar.
+
+    The .out leaf op is used as the entry point because the basic
+    ``linalg_lu_factor_ex`` is composite and calling it from inside the
+    use_gems()-registered CUDA-key kernel would re-enter the FlagGems
+    registration (infinite recursion).  With the XPU keyset the dispatcher
+    skips the CUDA key (where the FlagGems kernel is registered) and reaches
+    the vendor native implementation instead.
+    """
+    handle = torch.ops.aten.linalg_lu_factor_ex.out._handle
+    keyset = torch._C.DispatchKeySet(torch._C.DispatchKey.XPU)
+    return handle.redispatch_boxed(
+        keyset,
+        input,
+        pivot=pivot,
+        check_errors=check_errors,
+        LU=LU,
+        pivots=pivots,
+        info=info,
     )
+
+
+def _allocate_outputs(input, LU, pivots, info):
+    batch_shape = input.shape[:-2]
+    k = min(input.shape[-2], input.shape[-1])
+    if LU is None:
+        LU = torch.empty(input.shape, dtype=input.dtype, device=input.device)
+    else:
+        LU.resize_(input.shape)
+    if pivots is None:
+        pivots = torch.empty((*batch_shape, k), device=input.device, dtype=torch.int32)
+    else:
+        pivots.resize_((*batch_shape, k))
+    if info is None:
+        info = torch.empty(batch_shape, device=input.device, dtype=torch.int32)
+    else:
+        info.resize_(batch_shape)
+    return LU, pivots, info
 
 
 def linalg_lu_factor_ex(input, *, pivot=True, check_errors=False):
     logger.debug("GEMS_KUNLUNXIN LINALG_LU_FACTOR_EX")
     _check_linalg_lu_factor_ex_args(pivot, check_errors)
-    _check_linalg_lu_factor(input, pivot)
+    _check_linalg_lu_factor_input(input, pivot)
 
-    lu, pivots = _linalg_lu_factor(input, pivot)
-    info = _lu_factor_info(lu)
-
-    if check_errors:
-        _check_lu_factor_errors(info)
-
+    input = input.contiguous()
+    lu, pivots, info = _allocate_outputs(input, None, None, None)
+    lu, pivots, info = _native_linalg_lu_factor_ex_out(
+        input, pivot, check_errors, lu, pivots, info
+    )
     return LinalgLUFactorExResult(lu, pivots, info)
 
 
@@ -131,19 +132,16 @@ def linalg_lu_factor_ex_out(
 ):
     logger.debug("GEMS_KUNLUNXIN LINALG_LU_FACTOR_EX.OUT")
     _check_linalg_lu_factor_ex_args(pivot, check_errors)
+    _check_linalg_lu_factor_input(input, pivot)
     lu_out, pivots_out, info_out = _resolve_linalg_lu_factor_ex_out_args(
         LU, pivots, info, out
     )
 
-    res = linalg_lu_factor_ex(input, pivot=pivot, check_errors=False)
-    lu_out.resize_(res.LU.shape)
-    pivots_out.resize_(res.pivots.shape)
-    info_out.resize_(res.info.shape)
-    lu_out.copy_(res.LU)
-    pivots_out.copy_(res.pivots)
-    info_out.copy_(res.info)
-
-    if check_errors:
-        _check_lu_factor_errors(info_out)
-
+    input = input.contiguous()
+    lu_out, pivots_out, info_out = _allocate_outputs(
+        input, lu_out, pivots_out, info_out
+    )
+    lu_out, pivots_out, info_out = _native_linalg_lu_factor_ex_out(
+        input, pivot, check_errors, lu_out, pivots_out, info_out
+    )
     return LinalgLUFactorExResult(lu_out, pivots_out, info_out)

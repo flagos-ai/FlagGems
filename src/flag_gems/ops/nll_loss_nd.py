@@ -172,7 +172,7 @@ def nll_loss_nd_forward(
     reduction: int = 1,
     ignore_index: int = -100,
 ):
-    logger.debug("GEMS NLL LOSS ND FWD")
+    logger.debug("GEMS NLL_LOSS_ND_FWD")
     if input.dim() < 3:
         out, total_weight = nll_loss_2d(
             input, target, weight=weight, reduction=reduction, ignore_index=ignore_index
@@ -281,7 +281,7 @@ def nll_loss_nd_backward(
     ignore_index: int = -100,
     total_weight: torch.Tensor = None,
 ):
-    logger.debug("GEMS NLL LOSS ND BWD")
+    logger.debug("GEMS NLL_LOSS_ND_BWD")
 
     if input.dim() < 3:
         return nll_loss_2d_backward(

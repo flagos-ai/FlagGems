@@ -19,6 +19,7 @@ vendor_info = VendorDescriptor(
     device_name="cuda",
     device_query_cmd="hy-smi",
     triton_extra_name="hip",
+    tle_enabled=True,
 )
 
 CUSTOMIZED_UNUSED_OPS = ()

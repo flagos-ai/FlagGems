@@ -28,8 +28,7 @@ def test_log1p(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.log1p(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log1p(inp)
+    res_out = flag_gems.log1p(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -41,6 +40,5 @@ def test_log1p_(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.log1p_()
-    with flag_gems.use_gems():
-        res_out = inp.log1p_()
+    res_out = flag_gems.log1p_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)

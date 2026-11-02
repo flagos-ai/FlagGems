@@ -32,8 +32,7 @@ def test_copysign_(shape, dtype):
     ref_other = utils.to_reference(other, True)
     ref_out = ref_input.copysign_(ref_other)
 
-    with flag_gems.use_gems():
-        res_out = input.copysign_(other)
+    res_out = flag_gems.copysign_(input, other)
 
     assert res_out.data_ptr() == input.data_ptr()
     utils.gems_assert_close(res_out, ref_out, dtype)
