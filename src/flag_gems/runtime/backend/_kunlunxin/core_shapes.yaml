@@ -464,6 +464,15 @@ conv_transpose1d:
     - [8, 16, 1024, 32, 3, 2, 1, 2]
     - [4, 8, 2048, 16, 5, 1, 2, 1]
 
+# scaled_dot_product_fused_attention_overrideable benchmark shapes (B, H, S, D).
+scaled_dot_product_fused_attention_overrideable:
+  shapes:
+    - [2, 8, 64, 64]
+    - [4, 8, 128, 64]
+    - [2, 8, 128, 128]
+    - [1, 16, 256, 64]
+  shape_desc: "B, H, S, D"
+
 # conv_depthwise2d benchmark shapes; order matches
 # benchmark/test_conv_depthwise2d.py _input_fn unpack.
 conv_depthwise2d:
