@@ -18,8 +18,6 @@ import logging
 
 import torch
 
-from flag_gems.utils.shape_utils import c_contiguous_stride
-
 logger = logging.getLogger(__name__)
 
 # Both are call-invariant; building them per call costs ~0.6us (keyset) and
@@ -49,6 +47,42 @@ def _resolve_device(device):
     return resolved
 
 
+# Per-size layout cache. A ZeroTensor's strides and logical storage span are
+# pure functions of its shape, so each distinct shape is validated and reduced
+# exactly once; repeated factories skip the per-dim loops entirely. The cache
+# is bounded to keep pathological callers from growing it without limit.
+_LAYOUT_CACHE = {}
+_LAYOUT_CACHE_MAX = 4096
+
+
+def _layout(size):
+    cached = _LAYOUT_CACHE.get(size)
+    if cached is not None:
+        return cached
+    # Validate extents up front with the native wording; a negative dimension
+    # must be rejected before the span multiplication below overflows.
+    for dim in size:
+        if dim < 0:
+            raise RuntimeError(
+                f"Trying to create tensor with negative dimension {dim}: {list(size)}"
+            )
+    # Compute contiguous strides without allocating. The stride rule treats a
+    # 0-dim as 1, matching both the native factory and meta empty on every
+    # edge shape; the logical storage span instead uses the true product, so a
+    # tensor containing a zero dim reports 0 bytes exactly as the native
+    # factory does.
+    span, stride, reversed_strides = 1, 1, []
+    for dim in reversed(size):
+        reversed_strides.append(stride)
+        stride *= max(dim, 1)
+        span *= dim
+    reversed_strides.reverse()
+    cached = (tuple(reversed_strides), span)
+    if len(_LAYOUT_CACHE) < _LAYOUT_CACHE_MAX:
+        _LAYOUT_CACHE[size] = cached
+    return cached
+
+
 def _efficientzerotensor(
     size, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
@@ -60,22 +94,7 @@ def _efficientzerotensor(
     if layout is not None and layout != torch.strided:
         raise RuntimeError("_efficientzerotensor requires strided layout")
     size = tuple(size)
-    # Validate extents up front with the native wording; a negative dimension
-    # must be rejected before the span multiplication below overflows.
-    for dim in size:
-        if dim < 0:
-            raise RuntimeError(
-                f"Trying to create tensor with negative dimension {dim}: {list(size)}"
-            )
-    # Compute contiguous strides without allocating. The stride rule treats a
-    # 0-dim as 1 (c_contiguous_stride), matching both the native factory and
-    # meta empty on every edge shape; the logical storage span instead uses the
-    # true product, so a tensor containing a zero dim reports 0 bytes exactly
-    # as the native factory does.
-    strides = c_contiguous_stride(size)
-    numel = 1
-    for dim in size:
-        numel *= dim
+    strides, numel = _layout(size)
     if device is not None:
         device = _resolve_device(device)
     else:
