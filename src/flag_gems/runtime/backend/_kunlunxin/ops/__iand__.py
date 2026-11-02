@@ -16,10 +16,7 @@ import logging
 
 from .bitwise_and import bitwise_and_scalar_, bitwise_and_tensor_
 
-# Use the generic op's logger name for consistency with the other dunder
-# overrides (the functional test has no caplog assertion for __iand__, but the
-# record still carries the vendor prefix for the dispatch liveness probe).
-logger = logging.getLogger("flag_gems.ops.__iand__")
+logger = logging.getLogger(__name__)
 
 
 def __iand___tensor(self, other):

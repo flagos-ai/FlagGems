@@ -436,9 +436,13 @@ def test_put__index_out_of_range(bad):
         "an out-of-range index was silently accepted; "
         f"stdout={proc.stdout!r} stderr={proc.stderr[-300:]!r}"
     )
-    assert "device-side assert" in proc.stderr or "trap" in proc.stderr.lower(), (
-        "expected a device-side failure, got: " + proc.stderr[-300:]
-    )
+    # CUDA reports a device-side assert/trap; ROCm surfaces the s_trap as an
+    # HSA hardware exception.
+    assert (
+        "device-side assert" in proc.stderr
+        or "trap" in proc.stderr.lower()
+        or "HSA_STATUS_ERROR_EXCEPTION" in proc.stderr
+    ), ("expected a device-side failure, got: " + proc.stderr[-300:])
 
 
 @pytest.mark.put_

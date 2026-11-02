@@ -80,25 +80,13 @@ _WIDE_MV_CONFIGS = {
 
 
 def _prune_mv_configs(configs, named_args, **kwargs):
-    """Remove configurations that are a poor fit for the GEMV occupancy class.
+    """Bound cold-start tuning for contiguous GEMVs in both tuning modes.
 
-    The expanded Hygon search space is intentionally broad so it can cover
-    arbitrary layouts and reduction lengths.  For the contiguous model GEMVs,
-    profiling shows that narrower output tiles and smaller workgroups avoid
-    register/LDS overhead.  Keep this fast path limited to the dtypes and two
-    reduction lengths measured here; all other shapes and layouts retain the
-    complete search space.  FlagTune deliberately bypasses this shortcut so
-    its proposer can rank the full YAML configuration space.
+    Retain the measured candidate families for reduction lengths 2048/4096.
+    For other lengths, explore at most two reduction tiles, three row tiles
+    and small workgroups instead of the full Cartesian product. Strided
+    layouts retain the original search space.
     """
-
-    # Do not encode a second, hand-picked search space in FlagTune.  In that
-    # mode the expanded YAML candidates are the contract and FlagTune owns the
-    # trade-off between tuning time and the selected kernel configuration.
-    if (
-        runtime.resolve_tuning_mode("mv", supports_cost_model=False)
-        is not runtime.TuningMode.DEFAULT
-    ):
-        return configs
 
     try:
         matrix = named_args["A"]
@@ -116,17 +104,30 @@ def _prune_mv_configs(configs, named_args, **kwargs):
     # contiguous output.  Strided views continue to use the full tuner space.
     if dtype not in (torch.float16, torch.bfloat16, torch.float32):
         return configs
-    if strides != (m, 1, 1, 1) or m not in (2048, 4096):
+    if strides != (m, 1, 1, 1) or m <= 0 or n <= 0:
         return configs
 
-    # The compact sets are the winning families from sweeps across the real
-    # model shapes for fp16, bf16 and fp32.
-    if n < 64:
-        candidates = _SMALL_MV_CONFIGS
-    elif n <= 2048:
-        candidates = _MID_MV_CONFIGS
+    if m in (2048, 4096):
+        # Preserve the families measured on the representative model shapes.
+        if n < 64:
+            candidates = _SMALL_MV_CONFIGS
+        elif n <= 2048:
+            candidates = _MID_MV_CONFIGS
+        else:
+            candidates = _WIDE_MV_CONFIGS
     else:
-        candidates = _WIDE_MV_CONFIGS
+        tile_m = min(4096, max(32, triton.next_power_of_2(m)))
+        reduction_tiles = {tile_m, max(32, tile_m // 2)}
+        candidates = {
+            (block_m, block_n, warps, loop_stages, 2)
+            for block_m in reduction_tiles
+            for block_n in (1, 2, 4)
+            if block_n <= n
+            for warps in (1, 2, 4)
+            if warps <= max(1, block_m * block_n // 64)
+            for loop_stages in (1, 2)
+            if loop_stages == 1 or m > block_m
+        }
 
     pruned = []
     for config in configs:
@@ -216,6 +217,37 @@ def mv_kernel(
     tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=n_mask)
 
 
+# Pointer specialization is disabled so the kernel accepts contiguous views
+# with different alignment or backing-storage sizes.
+@triton.jit(
+    do_not_specialize=["A", "B", "C"],
+    do_not_specialize_on_alignment=["A", "B", "C"],
+)
+def _mv_small_kernel(A, B, C, N: tl.constexpr, M: tl.constexpr):
+    row = tl.program_id(0)
+    k = tl.arange(0, M)
+    a = tl.load(A + row * M + k).to(tl.float32)
+    b = tl.load(B + k).to(tl.float32)
+    value = tl.sum(a * b, axis=0)
+    tl.store(C + row, value)
+
+
+def _launch_small_mv(inp, vec, out, n, m):
+    if inp.device.index != torch_device_fn.current_device():
+        with torch_device_fn.device(inp.device):
+            _launch_small_mv(inp, vec, out, n, m)
+        return
+    _mv_small_kernel[(n,)](
+        inp,
+        vec,
+        out,
+        n,
+        m,
+        num_warps=2 if m == 2048 else 4,
+        num_stages=2,
+    )
+
+
 def mv(inp, vec):
     """Hygon ``mv`` entry point matching the ATen signature."""
 
@@ -225,8 +257,20 @@ def mv(inp, vec):
 
     N, M = inp.shape
     out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
-    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
+    if (
+        0 < N <= 2048
+        and M in (2048, 4096)
+        and inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and inp.dtype == vec.dtype
+        and inp.is_contiguous()
+        and vec.is_contiguous()
+        and runtime.resolve_tuning_mode("mv", supports_cost_model=False)
+        is runtime.TuningMode.DEFAULT
+    ):
+        _launch_small_mv(inp, vec, out, N, M)
+        return out
 
+    grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
     with torch_device_fn.device(inp.device):
         mv_kernel[grid](
             inp,
