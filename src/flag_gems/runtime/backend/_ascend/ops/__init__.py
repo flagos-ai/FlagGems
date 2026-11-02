@@ -63,6 +63,7 @@ from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
+from .hinge_embedding_loss import hinge_embedding_loss
 from .hstack import hstack
 from .igammac import igammac, igammac_out
 from .index import index
@@ -245,6 +246,7 @@ __all__ = [
     "gru",
     "gru_data",
     "hadamard_transform",
+    "hinge_embedding_loss",
     "hstack",
     "igammac",
     "igammac_out",
