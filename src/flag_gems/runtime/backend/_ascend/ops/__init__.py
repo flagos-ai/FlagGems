@@ -42,6 +42,7 @@ from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
+from .deg2rad_out import deg2rad_out
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -215,6 +216,7 @@ __all__ = [
     "cummax",
     "cummin",
     "cumsum",
+    "deg2rad_out",
     "diag",
     "diag_embed",
     "diagonal_backward",
