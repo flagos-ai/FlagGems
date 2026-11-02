@@ -33,6 +33,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .bitwise_xor_scalar_tensor import bitwise_xor_scalar_tensor
 from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
@@ -204,6 +205,7 @@ __all__ = [
     "argmin",
     "argsort",
     "baddbmm",
+    "bitwise_xor_scalar_tensor",
     "bmm",
     "cat",
     "cat_out",
