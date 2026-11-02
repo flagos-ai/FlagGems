@@ -52,6 +52,7 @@ from .embedding import embedding
 from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
+from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
@@ -225,6 +226,7 @@ __all__ = [
     "embedding_spmdm",
     "exponential",
     "exponential_",
+    "feature_dropout",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
