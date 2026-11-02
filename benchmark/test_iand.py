@@ -3,10 +3,10 @@ import pytest
 from . import base, consts, utils
 
 
-@pytest.mark.bitwise_and_tensor_
+@pytest.mark.iand
 def test_iand_inplace():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="bitwise_and_tensor_",
+        op_name="__iand__",
         torch_op=lambda a, b: a.__iand__(b),
         dtypes=consts.INT_DTYPES + consts.BOOL_DTYPES,
         is_inplace=True,
@@ -36,10 +36,10 @@ def _build_inputs_fn_scalar(plan, cur_dtype, device):
     return next(_input_fn_scalar(plan.builder_args[0], cur_dtype, device))
 
 
-@pytest.mark.bitwise_and_scalar_
+@pytest.mark.iand
 def test_iand_scalar_inplace():
     bench = base.GenericBenchmark(
-        op_name="bitwise_and_scalar_",
+        op_name="__iand__",
         case_fn=_case_fn_scalar,
         build_inputs_fn=_build_inputs_fn_scalar,
         torch_op=lambda a, b: a.__iand__(b),

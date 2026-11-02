@@ -16,7 +16,7 @@ def _candidate_ixor(inp, other):
     expected_device, expected_dtype = inp.device, inp.dtype
     expected_shape = tuple(inp.shape)
     original_pointer = inp.data_ptr()
-    candidate = getattr(flag_gems, "ixor", None)
+    candidate = getattr(flag_gems, "__ixor__", None)
     if candidate is None:
         candidate = (
             flag_gems.xor_ if isinstance(other, torch.Tensor) else flag_gems.xor_scalar_

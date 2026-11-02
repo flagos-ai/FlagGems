@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "__irshift__",
+  "requires_triton_kernel": true,
+  "description": "In-place right shift. Derived from the existing test_irshift.py suite and native aten::__irshift__ contract; not a recovered historical Definition. The candidate returns self and preserves its storage geometry.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}

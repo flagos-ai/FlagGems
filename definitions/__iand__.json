@@ -1,0 +1,31 @@
+{
+  "api_version": "v6.0",
+  "name": "__iand__",
+  "requires_triton_kernel": true,
+  "description": "In-place bitwise AND. Derived from the existing test_iand.py suite and native aten::__iand__ contract; not a recovered historical Definition. The candidate returns self and preserves its storage geometry.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor | Scalar"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [
+      "self"
+    ],
+    "returns_alias_of": {
+      "out": "self"
+    }
+  }
+}
