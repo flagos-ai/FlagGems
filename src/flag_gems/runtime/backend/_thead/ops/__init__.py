@@ -31,13 +31,17 @@ from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .bmm import bmm, bmm_out
 from .cholesky_inverse import cholesky_inverse
+from .compute_linear_combination import _compute_linear_combination
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cross_attention import cross_attention
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
+from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd, gcd_
+from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
 from .index_copy_ import index_copy, index_copy_
@@ -59,6 +63,7 @@ from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .poisson_nll_loss import poisson_nll_loss
+from .quantized_lstm import quantized_lstm
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
@@ -91,14 +96,18 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unbind_copy import unbind_copy
+from .upsample_lanczos2d_aa_vec import _upsample_lanczos2d_aa_vec
 
 __all__ = [
+    "_compute_linear_combination",
     "_conv_depthwise2d",
     "_flash_attention_forward",
     "_resize_output_",
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
+    "_upsample_lanczos2d_aa_vec",
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
@@ -117,11 +126,14 @@ __all__ = [
     "conv_transpose1d_output_size",
     "cross_attention",
     "cudnn_batch_norm_backward",
+    "cudnn_convolution",
     "diagonal_scatter",
     "embedding_dense_backward",
     "erfc",
+    "fractional_max_pool2d_backward",
     "gcd",
     "gcd_",
+    "greater_",
     "grid_sampler_3d_backward",
     "gru",
     "index_copy",
@@ -152,6 +164,7 @@ __all__ = [
     "nll_loss_backward",
     "nonzero_numpy",
     "poisson_nll_loss",
+    "quantized_lstm",
     "reflection_pad3d_backward",
     "renorm",
     "renorm_",
@@ -183,5 +196,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "unbind_copy",
 ]
