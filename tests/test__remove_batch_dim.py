@@ -16,22 +16,11 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-# ``_remove_batch_dim`` starts with an underscore, and ``pytest.mark`` refuses
-# to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._remove_batch_dim`` and
-# ``-m _remove_batch_dim`` both work.
-setattr(
-    pytest.mark,
-    "_remove_batch_dim",
-    MarkDecorator(Mark("_remove_batch_dim", (), {}, _ispytest=True), _ispytest=True),
-)
 
 # ``(shape, level, batch_size, out_dim)`` cases. The operator inserts a new
 # ``batch_size`` axis at ``out_dim`` and broadcasts along it, so the target
@@ -111,7 +100,6 @@ def _assert_view_of(res_out, inp):
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 @pytest.mark.parametrize("shape, level, batch_size, out_dim", VIEW_CASES)
 def test_accuracy__remove_batch_dim_view(shape, level, batch_size, out_dim):
     inp = torch.randn(shape, device=flag_gems.device)
@@ -142,7 +130,6 @@ def test_accuracy__remove_batch_dim_view(shape, level, batch_size, out_dim):
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 @pytest.mark.parametrize("shape, level, batch_size, out_dim", SIZED_CASES)
 def test_accuracy__remove_batch_dim_axis_not_broadcast(
     shape, level, batch_size, out_dim
@@ -161,7 +148,6 @@ def test_accuracy__remove_batch_dim_axis_not_broadcast(
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 @pytest.mark.parametrize("shape, level, batch_size, out_dim", INVALID_CASES)
 def test_accuracy__remove_batch_dim_invalid_expand(shape, level, batch_size, out_dim):
     inp = torch.randn(shape, device=flag_gems.device)
@@ -179,7 +165,6 @@ def test_accuracy__remove_batch_dim_invalid_expand(shape, level, batch_size, out
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_accuracy__remove_batch_dim_dtypes(dtype):
     inp = _make_input((1, 3, 4), dtype)
@@ -195,7 +180,6 @@ def test_accuracy__remove_batch_dim_dtypes(dtype):
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 def test_accuracy__remove_batch_dim_dispatch_stability():
     inp = torch.randn((1, 3, 4), device=flag_gems.device)
     ref_out = torch.ops.aten._remove_batch_dim(utils.to_reference(inp), 0, 6, 1)
@@ -211,7 +195,6 @@ def test_accuracy__remove_batch_dim_dispatch_stability():
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 def test_accuracy__remove_batch_dim_ignores_level():
     # Native ignores ``level`` entirely: every value, including out-of-range
     # and negative ones, yields the identical view.
@@ -225,7 +208,6 @@ def test_accuracy__remove_batch_dim_ignores_level():
 
 
 @pytest.mark.remove_batch_dim
-@pytest.mark._remove_batch_dim
 def test_accuracy__remove_batch_dim_alias_write_through():
     # True storage aliasing, not merely a copy that reports ``_is_view``:
     # writing through the view must be observed by the input tensor.
