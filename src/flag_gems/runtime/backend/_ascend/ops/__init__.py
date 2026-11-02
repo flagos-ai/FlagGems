@@ -37,6 +37,7 @@ from .bmm import bmm
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
+from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -210,6 +211,7 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "concat",
+    "cosh_",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
