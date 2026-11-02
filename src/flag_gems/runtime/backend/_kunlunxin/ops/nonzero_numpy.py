@@ -393,22 +393,7 @@ _RAW_DTYPES = {
 }
 
 
-def _nznp_raw(inp, n_elements, counts_h, counts, total):
-    """2-D path via a raw cluster payload: cub-style block compaction, any
-    density, for 1/2/4-byte dtypes.
-
-    Each program compacts one `_NZNP_RAW_BLOCK`-block by scattering into on-chip
-    memory (`__shared__` cross-core scan + `__local__` per-core compact) and
-    writing out with one contiguous LM2GM per core, so the global write is
-    affine instead of the triton gather store. Returns None when the raw path
-    does not apply, so callers fall back.
-
-    `counts`/`counts_h` are the same per-`_NZNP_BLOCK` count vector, still on the
-    device and copied to the host. When the block grid is small enough for the
-    payload to scan itself (`_NZNP_SCAN_MAX_BLOCKS`), the device copy is handed
-    straight to the kernel and no host-side base vector is built or copied over;
-    above that cap the exclusive scan runs on the host as before.
-    """
+def _nznp_raw(inp, n_elements, counts_h, counts, total): 
     info = _RAW_DTYPES.get(inp.dtype)
     if info is None or not _TLE_OK or total == 0:
         return None
@@ -641,38 +626,6 @@ def _nznp_compact(inp, n_elements, n_full, rem, counts_h, total):
 
 
 def nonzero_numpy(inp):
-    """
-    Returns a tuple of 1D tensors, one for each dimension of the input,
-    containing the indices of the non-zero elements in that dimension.
-
-    This is equivalent to torch.nonzero(...) / numpy.nonzero() semantics and
-    matches the ATen op `nonzero_numpy` (Tensor[] of per-dim index vectors).
-
-    Backend chain (all Kunlunxin/XPU Triton, no fallback):
-
-    * one mask-free read pass produces the per-block nonzero counts; they give
-      the exact total, every block's output base and the clean/dirty split.
-    * `total == numel` (dense: `randn` in fp32, wide-range `randint`) reuses the
-      closed `_dense_result` args kernel -- purely affine int64 stores.
-    * NEAR-DENSE inputs, i.e. the zeros dirty at most a quarter of the blocks
-      (fp16/bf16 `randn` rounds a handful of samples of a 655M-element tensor to
-      exactly 0; full-range int16 `randint` hits 0 about once per 65536) go
-      through a dim-major block compaction. A clean block writes its whole slot
-      run with mask-free affine stores and never reads the input, so the run
-      costs dense-path time instead of full-scatter time.
-    * genuinely sparse inputs (a dense bool mask) would dirty every block,
-      where the in-block rank scan does not pay for itself, so they keep the
-      previously closed prefix-sum scatter -- with the total taken from the
-      counts above, so no second counting pass is needed.
-    * 0-dim scalars are special-cased as in ATen: treated as a 1-element 1-D
-      tensor (index [0] when nonzero, empty index when zero).
-
-    `ndim > 8` and outputs at/over the int32 index ceiling keep the previously
-    closed chain (`_count_nonzero` + `_dense_result` / `_sparse_result`); the
-    closed `nonzero` small-input branch is still never entered, because its
-    fallback dense kernel (`nonzero_dense_flat_kernel`, per-lane masked
-    metadata loads) fails to compile on this backend at BLOCK_SIZE >= 128.
-    """
     logger.debug("GEMS_KUNLUNXIN NONZERO_NUMPY")
 
     if inp.ndim == 0:

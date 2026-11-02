@@ -9,32 +9,6 @@ from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
-# The GENERIC ops/_thnn_fused_lstm_cell_backward_impl.py is a PURE-TORCH composite:
-# it slices the workspace into 4 gate views, then runs ~10 elementwise ops
-# (tanh / mul / rsub / add), a torch.cat and a sum(dim=0). Under use_gems every one
-# of those decomposes into a separate gems Triton launch, and on the tiny
-# (batch<=16, hidden<=64) benchmark shapes the per-launch overhead dominates.
-#
-# Fix: fuse the WHOLE elementwise backward (10 pointwise ops + the torch.cat) into ONE
-# @libentry Triton kernel that reads all inputs and the 4 gate slices in a single pass
-# and writes grad_input_gates (the cat result, straight into the 4 column bands) +
-# grad_cx. The bias gradient used to be a single grad_input_gates.sum(dim=0) (one
-# cached gems reduction); it is now a dedicated lean @libentry reduction kernel
-# (`_bias_grad_kernel`, one masked BLOCK_M=128 tile, fp32 accumulation, B-row
-# serial loop): single launch, no aten `sum` dispatch. @libentry caches the compiled
-# kernel and BLOCK/num_warps are passed EXPLICITLY (never via @triton.heuristics) so
-# there is no per-launch recompile. Algorithm is byte-identical to the generic chain
-# rule.
-#
-# The op is launch-bound. Two dominant costs inside the kernel were found and
-# removed: (1) integer div/mod (`b = offs // H`, `h = offs % H`) is expensive on
-# XPU when H is a runtime scalar, so the small-batch kernels and the general bwd
-# kernel now take H as a constexpr; (2) the bias reduction cannot be lowered by
-# this compiler (a 2D `tl.reduce` after `tl.trans` hits UNREACHABLE, and axis-0
-# reduce is rejected). So batch==1 (bias == the grads themselves) and batch==2
-# (bias == one elementwise add of the two rows) are specialized kernels with NO
-# reduction; batch>=3 keeps the grid-parallel bwd + the serial-fold bias kernel.
-
 _tanh = tl_extra_shim.tanh
 
 # Lane width of the batch==1/2 single-program kernels. They cover one row with
@@ -275,47 +249,48 @@ def _thnn_fused_lstm_cell_backward_impl(
         grad_biases = torch.empty((4 * hidden_size,), device=cx.device, dtype=cx.dtype)
     else:
         grad_biases = torch.zeros(0, dtype=cx.dtype, device=cx.device)
-    with torch_device_fn.device(cx.device):
-        if N > 0 and batch_size == 1 and hidden_size <= _SMALL_BATCH_BLOCK:
-            # Single-row fast path: no div/mod, no reduction, no accumulators.
-            # Gated on H: the kernel is one program over `tl.arange(0, BLOCK)`,
-            # so a wider row would silently drop every lane past BLOCK.
-            _lstm_cell_bwd_b1[(1,)](
-                grad_hy,
-                grad_cy,
-                cx,
-                cy,
-                workspace,
-                grad_input_gates,
-                grad_cx,
-                grad_biases,
-                H=hidden_size,
-                BLOCK=_SMALL_BATCH_BLOCK,
-                has_bias=has_bias,
-                num_warps=4,
-            )
-        elif N > 0 and batch_size == 2 and hidden_size <= _SMALL_BATCH_BLOCK:
-            # Two-row fast path: manual unroll, bias is a single elementwise add.
-            # Same H gate as the single-row kernel above.
-            _lstm_cell_bwd_b2[(1,)](
-                grad_hy,
-                grad_cy,
-                cx,
-                cy,
-                workspace,
-                grad_input_gates,
-                grad_cx,
-                grad_biases,
-                H=hidden_size,
-                BLOCK=_SMALL_BATCH_BLOCK,
-                has_bias=has_bias,
-                num_warps=4,
-            )
-        else:
-            if N > 0:
-                # BLOCK is tl.constexpr. Keep it fixed so all shapes reuse one compiled
-                # specialization instead of compiling once per shape-dependent block.
+
+    N = batch_size * hidden_size
+    use_guard = torch_device_fn.current_device() != cx.device.index
+    with torch_device_fn.device(cx.device) if use_guard else contextlib.nullcontext():
+        # For batch_size == 1 the bias is just grad_input_gates row 0, so fuse the
+        # per-element backward and the bias copy into a single launch (saves a launch).
+        fuse_b1 = has_bias and batch_size == 1 and N < 256
+        if N > 0:
+            if fuse_b1:
+                # A 256-lane masked tile measured cheaper than 512 on this backend.
                 BLOCK = 256
+                grid = (triton.cdiv(N, BLOCK),)
+                _lstm_cell_bwd_b1_kernel[grid](
+                    grad_hy,
+                    grad_cy,
+                    cx,
+                    cy,
+                    workspace,
+                    grad_input_gates,
+                    grad_cx,
+                    grad_biases,
+                    N,
+                    hidden_size,
+                    BLOCK,
+                    num_warps=4,
+                )
+            elif 256 <= N <= 2048 and (N & (N - 1)) == 0:
+                grid = (1,)
+                _lstm_cell_bwd_kernel_exact[grid](
+                    grad_hy,
+                    grad_cy,
+                    cx,
+                    cy,
+                    workspace,
+                    grad_input_gates,
+                    grad_cx,
+                    hidden_size,
+                    N,
+                    num_warps=4,
+                )
+            else:
+                BLOCK = 512
                 grid = (triton.cdiv(N, BLOCK),)
                 _lstm_cell_bwd_kernel[grid](
                     grad_hy,
@@ -330,11 +305,22 @@ def _thnn_fused_lstm_cell_backward_impl(
                     BLOCK=BLOCK,
                     num_warps=4,
                 )
-            if has_bias and batch_size > 0:
-                # BLOCK_M=128 OOMs the XPU uni_sram at compile time, so
-                # BLOCK_M=64 is used (verified correct for the supported shapes
-                # and dtypes).
-                BLOCK_M = 64
+        # batch_size == 0 still needs grad_biases filled (ATen returns zeros);
+        # both bias kernels reduce an empty batch to a zero accumulator.
+        if has_bias and not fuse_b1:
+            if 4 * hidden_size == 256:
+                grid = (1,)
+                _bias_grad_kernel_exact[grid](
+                    grad_input_gates,
+                    grad_biases,
+                    batch_size,
+                    4 * hidden_size,
+                    num_warps=4,
+                )
+            else:
+                # One 256-column program covers every bias width this op sees;
+                # the wider masked tile only added empty lanes.
+                BLOCK_M = 256
                 grid = (triton.cdiv(4 * hidden_size, BLOCK_M),)
                 _bias_grad_kernel[grid](
                     grad_input_gates,

@@ -117,7 +117,11 @@ def le_scalar_native_kernel(
     pid = tl.program_id(0)
     tid = pid * TILE + tl.arange(0, TILE)
     x = tl.load(x_ptr + tid)
-    r = x <= scalar.to(DTYPE)
+    # NaN-safety: under TRITONXPU_COMPARE_FUSION=1 the backend lowers ordered
+    # `x <= s` (OLE) as NOT(OLT), which is true for NaN, while aten returns
+    # False. IEEE `x <= s` == `s >= x`, and OGE lowers correctly (same trick
+    # as less_equal_scalar), so swap the operands.
+    r = scalar.to(DTYPE) >= x
     tl.store(out_ptr + tid, r.to(tl.int8))
 
 
@@ -129,7 +133,8 @@ def le_scalar_native_masked_kernel(
     tid = pid * TILE + tl.arange(0, TILE)
     mask = tid < numel
     x = tl.load(x_ptr + tid, mask=mask)
-    r = x <= scalar.to(DTYPE)
+    # Same NaN-safe operand swap as the unmasked kernel above.
+    r = scalar.to(DTYPE) >= x
     tl.store(out_ptr + tid, r.to(tl.int8), mask=mask)
 
 

@@ -34,6 +34,7 @@ from .cholesky_inverse import cholesky_inverse
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cross_attention import cross_attention
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
+from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
@@ -90,6 +91,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 )
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unbind_copy import unbind_copy
 
 __all__ = [
@@ -116,6 +118,7 @@ __all__ = [
     "conv_transpose1d_output_size",
     "cross_attention",
     "cudnn_batch_norm_backward",
+    "cudnn_convolution",
     "diagonal_scatter",
     "embedding_dense_backward",
     "erfc",
@@ -181,5 +184,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "unbind_copy",
 ]

@@ -26,11 +26,11 @@ This section documents the GitHub Actions workflows that make up FlagGems'
 continuous integration and delivery pipeline: what runs on a pull request,
 what runs on a schedule, and what runs on release.
 
-- [Pull request checks](pull-request/) — workflows triggered by opening,
+- [Pull request checks](pull-request.md) — workflows triggered by opening,
   updating, or commenting on a pull request
-- [Scheduled and on-demand testing](scheduled/) — daily full-suite tests,
+- [Scheduled and on-demand testing](scheduled.md) — daily full-suite tests,
   coverage reporting, multi-vendor QA acceptance testing, and the manually
   dispatched tools (`random-test.yaml`, `probe-node.yaml`, `review-stats.yaml`)
-- [Release and sync](release-sync/) — building/publishing wheels and
+- [Release and sync](release-sync.md) — building/publishing wheels and
   distribution packages, uploading artifacts to Nexus, and mirroring the
   repository to other remotes
