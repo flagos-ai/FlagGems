@@ -73,6 +73,7 @@ from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .layernorm import layer_norm, native_layer_norm
+from .leaky_relu_out import leaky_relu_out
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_lstsq import linalg_lstsq
@@ -261,6 +262,7 @@ __all__ = [
     "index_select",
     "isin",
     "layer_norm",
+    "leaky_relu_out",
     "linalg_cross",
     "linalg_cross_out",
     "linalg_det",
