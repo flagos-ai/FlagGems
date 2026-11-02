@@ -91,6 +91,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .unbind_copy import unbind_copy
+from .upsample_lanczos2d_aa_vec import _upsample_lanczos2d_aa_vec
 
 __all__ = [
     "_conv_depthwise2d",
@@ -98,6 +99,7 @@ __all__ = [
     "_resize_output_",
     "_scaled_dot_product_fused_attention_overrideable",
     "_unsafe_masked_index_put_accumulate",
+    "_upsample_lanczos2d_aa_vec",
     "_upsample_nearest_exact2d_backward",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d_backward",
