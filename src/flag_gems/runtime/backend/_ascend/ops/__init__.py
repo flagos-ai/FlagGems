@@ -149,6 +149,7 @@ from .segment_reduce import _segment_reduce_backward, _segment_reduce_backward_o
 from .select_backward import select_backward
 from .select_scatter import select_scatter
 from .silu import silu, silu_
+from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
@@ -364,6 +365,7 @@ __all__ = [
     "select_scatter",
     "silu",
     "silu_",
+    "silu_backward",
     "slice_scatter",
     "softmax",
     "softmax_backward",
