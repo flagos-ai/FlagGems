@@ -72,6 +72,16 @@ config_ = CodeGenConfig(
     isCloseVectorization=False,
     unroll_num=8,
     isCloseMemoryAsync=False,
+    # A 64^2 tile is one CTA's worth of work, yet the fixed target_ctas=12 splits
+    # it into 12 CTAs of 512 lanes. At that size the kernel is launch-bound, not
+    # bandwidth-bound, so the extra CTAs only add scheduling cost: fp16 goes from
+    # 0.0085 to 0.0054ms (0.78 -> 1.11 of torch), bf16 0.0076 -> 0.0059 (0.79 ->
+    # 1.03). kunlunAutoGrid collapses the grid to a single CTA while num_tasks is
+    # under buffer_size_limit*64 (262144 elements) and keeps target_ctas=12 above
+    # it, so the two 16.7M-element core shapes are bit-for-bit unchanged
+    # (fp16 0.0997 both ways, bf16 0.212 both ways). Mean over the core
+    # shape/dtype grid 0.82 -> 0.88.
+    kunlunAutoGrid=True,
 )
 
 
