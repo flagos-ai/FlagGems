@@ -24,6 +24,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
+from .atan2_ import atan2_
 from .attention import (
     ScaleDotProductAttention,
     flash_attention_forward,
@@ -203,6 +204,7 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "atan2_",
     "baddbmm",
     "bmm",
     "cat",
