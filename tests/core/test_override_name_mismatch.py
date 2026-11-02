@@ -53,7 +53,7 @@ def _register(registry, impl_file, name):
 
 def test_unused_overrides_lists_injected_but_never_called(impl_file):
     registry = DynamicOpOverride()
-    full_name = _register(registry, impl_file, "NOT_AN_OPERATOR")
+    _register(registry, impl_file, "NOT_AN_OPERATOR")
     try:
         assert registry.unused_overrides() == ["NOT_AN_OPERATOR"]
         # restore_all() raises for exactly this case; the read-only view must
