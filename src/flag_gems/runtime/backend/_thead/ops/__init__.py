@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._conv_depthwise2d import _conv_depthwise2d
 from ._flash_attention_forward import _flash_attention_forward
 from ._resize_output_ import _resize_output_
@@ -106,6 +107,7 @@ from .unbind_copy import unbind_copy
 from .upsample_lanczos2d_aa_vec import _upsample_lanczos2d_aa_vec
 
 __all__ = [
+    "_adaptive_avg_pool3d_backward",
     "_compute_linear_combination",
     "_conv_depthwise2d",
     "_flash_attention_forward",
