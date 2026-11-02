@@ -284,7 +284,11 @@ def _le_tensor_large(A, B, numel):
     try:
         if bulk:
             le_tensor_native_kernel[(bulk // _LE_TENSOR_FAST_TILE,)](
-                out, x, y, TILE=_LE_TENSOR_FAST_TILE, num_warps=4,
+                out,
+                x,
+                y,
+                TILE=_LE_TENSOR_FAST_TILE,
+                num_warps=4,
                 **unmasked_opts,
             )
         if tail:

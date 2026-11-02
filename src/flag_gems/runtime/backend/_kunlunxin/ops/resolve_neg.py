@@ -58,8 +58,9 @@ _SIGN_FLIP = tl.constexpr(0x80000000)
 
 
 @triton.jit
-def _neg_imag_xor_kernel(fin, fout, N, BLOCK: tl.constexpr, NEED_MASK: tl.constexpr,
-                         SIGN: tl.constexpr):
+def _neg_imag_xor_kernel(
+    fin, fout, N, BLOCK: tl.constexpr, NEED_MASK: tl.constexpr, SIGN: tl.constexpr
+):
     # fin points at the raw storage viewed as int64 words (each word = one
     # (real, imag) fp32 pair). imag bits = high 32 of the word; -imag = flip
     # the sign bit. out is the same buffer viewed as int32/uint32.
@@ -119,7 +120,12 @@ def resolve_neg(A: torch.Tensor):
     grid = (triton.cdiv(N, BLOCK),)
     with torch_device_fn.device(A.device):
         _neg_imag_xor_kernel[grid](
-            fin, fout, N, BLOCK=BLOCK, NEED_MASK=(N % BLOCK != 0),
-            SIGN=_SIGN_FLIP, num_warps=num_warps,
+            fin,
+            fout,
+            N,
+            BLOCK=BLOCK,
+            NEED_MASK=(N % BLOCK != 0),
+            SIGN=_SIGN_FLIP,
+            num_warps=num_warps,
         )
     return out
