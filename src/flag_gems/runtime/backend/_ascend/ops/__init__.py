@@ -109,6 +109,7 @@ from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .mish_ import mish_
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
@@ -310,6 +311,7 @@ __all__ = [
     "mean_dim",
     "min",
     "min_dim",
+    "mish_",
     "mm",
     "mm_out",
     "mm_w8a8_int8",
