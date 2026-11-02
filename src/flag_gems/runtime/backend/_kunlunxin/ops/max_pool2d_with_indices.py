@@ -166,6 +166,19 @@ def _extract32_wide(raw, sub):
     )
 
 
+@triton.jit
+def _extract16_wide(raw, sub, IS_BF16: tl.constexpr):
+    # ``raw`` holds two packed 16-bit elements.  bf16 is just the high half of
+    # the fp32 bit pattern, so it is rebuilt entirely in the integer domain
+    # (no bf16 arithmetic/loads, which are the known miscompile hazards on
+    # this backend); fp16 needs a 16-bit bitcast.
+    bits = ((raw >> (16 * sub)) & 0xFFFF).to(tl.uint32)
+    if IS_BF16:
+        return (bits << 16).to(tl.float32, bitcast=True)
+    else:
+        return bits.to(tl.uint16).to(tl.float16, bitcast=True).to(tl.float32)
+
+
 @libentry()
 @triton.jit
 def max_pool2d_forward_wide_kernel(
@@ -184,6 +197,8 @@ def max_pool2d_forward_wide_kernel(
     stride_w: tl.constexpr,
     padding_h: tl.constexpr,
     padding_w: tl.constexpr,
+    ELEM16: tl.constexpr,
+    IS_BF16: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     MIS: tl.constexpr = padding_w % 2
@@ -197,7 +212,10 @@ def max_pool2d_forward_wide_kernel(
     oh = rem // out_w
     ow = rem % out_w
     nc_safe = tl.where(output_mask, nc_idx, 0)
-    p64 = input_ptr.to(tl.pointer_type(tl.int64))
+    if ELEM16:
+        ptr = input_ptr.to(tl.pointer_type(tl.int32))
+    else:
+        ptr = input_ptr.to(tl.pointer_type(tl.int64))
 
     max_val = tl.full((BLOCK,), float("-inf"), tl.float32)
     max_idx = tl.full((BLOCK,), -1, tl.int64)
@@ -211,12 +229,15 @@ def max_pool2d_forward_wide_kernel(
         b0 = e0 >> 1
         for k in tl.static_range(NLOAD):
             bk = tl.minimum(tl.maximum(b0 + k, 0), total64 - 1)
-            raw = tl.load(p64 + bk)
+            raw = tl.load(ptr + bk)
             for s in tl.static_range(kernel_w):
                 if (s + MIS) // 2 != k:
                     pass
                 else:
-                    v = _extract32_wide(raw, (s + MIS) % 2)
+                    if ELEM16:
+                        v = _extract16_wide(raw, (s + MIS) % 2, IS_BF16)
+                    else:
+                        v = _extract32_wide(raw, (s + MIS) % 2)
                     e = ow_base + s
                     valid = output_mask & h_ok & (e >= 0) & (e < in_w)
                     is_new = valid & (v > max_val)
@@ -628,7 +649,8 @@ def max_pool2d_with_indices(
     grid = (triton.cdiv(total, block),)
 
     if (
-        input.dtype == torch.float32
+        input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and dilation_h == 1
         and dilation_w == 1
         and stride_w % 2 == 0
         and in_w % 2 == 0
@@ -650,6 +672,8 @@ def max_pool2d_with_indices(
                 stride_w,
                 padding_h,
                 padding_w,
+                input.dtype != torch.float32,
+                input.dtype == torch.bfloat16,
                 block,
                 num_warps=1,
                 buffer_size_limit=2048,

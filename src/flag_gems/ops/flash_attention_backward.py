@@ -59,7 +59,13 @@ def _disable_aabs_for_small_seqlen(seqlen_q, seqlen_k):
         _autotuning_knobs.adjust_block_size = previous
 
 
-def _parse_rng_state(rng_state: torch.Tensor) -> Tuple[int, int]:
+def _parse_rng_state(
+    rng_state: torch.Tensor, offset: torch.Tensor = None
+) -> Tuple[int, int]:
+    if rng_state.dim() == 0 and offset is not None:
+        # ROCm (AOTriton) passes philox seed and offset as two 0-dim tensors
+        # instead of one packed [seed, offset] tensor.
+        return int(rng_state.item()), int(offset.item())
     rng_state = rng_state.cpu()
     return int(rng_state[0].item()), int(rng_state[1].item())
 
@@ -1361,7 +1367,7 @@ def flash_attention_backward(
 ):
     logger.debug("GEMS FLASH_ATTENTION_BACKWARD")
     is_dropout = dropout_p > 0.0
-    rng_tuple = _parse_rng_state(rng_state) if is_dropout else None
+    rng_tuple = _parse_rng_state(rng_state, unused) if is_dropout else None
     wl = -1 if window_size_left is None else int(window_size_left)
     wr = -1 if window_size_right is None else int(window_size_right)
     dQ, dK, dV, _ = flash_attn_backward(

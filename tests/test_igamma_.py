@@ -10,6 +10,8 @@ from . import accuracy_utils as utils
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_igamma_(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
     other = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
     ref_inp = utils.to_reference(inp.clone())

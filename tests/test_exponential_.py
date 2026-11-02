@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from contextlib import nullcontext
 
 import pytest
 import torch
@@ -56,12 +55,9 @@ def test_exponential_fast(shape, dtype):
 def _exponential_samples(backend, seed, size):
     x = torch.empty(size, device=flag_gems.device, dtype=torch.float32)
     generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
-    context = (
-        flag_gems.use_gems(include=["exponential_"])
-        if backend == "flaggems"
-        else nullcontext()
-    )
-    with context:
+    if backend == "flaggems":
+        flag_gems.exponential_(x, generator=generator)
+    else:
         x.exponential_(generator=generator)
     return x
 
