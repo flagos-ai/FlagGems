@@ -116,6 +116,7 @@ from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
+from .ne_ import ne_
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
@@ -324,6 +325,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "native_layer_norm",
+    "ne_",
     "nonzero_static",
     "nonzero_static_out",
     "normed_cumsum",
