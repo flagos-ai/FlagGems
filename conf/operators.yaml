@@ -2912,10 +2912,10 @@ tensor into the caller-supplied `out` buffer.
   - stable: '5.0'
   cpp: '4.0'
 - id: bmm_w8a8
-  description: Channel-wise INT8 batched matrix multiplication with INT32 accumulation
-    and FP32 per-row activation and per-channel weight scales.
+  description: Channel-wise signed INT8 batched matrix multiplication with FP32 row
+    and output-channel scales.
   for:
-  - bmm_w8a8_int8
+  - bmm_w8a8
   labels:
   - NoCPU
   - non-aten

@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pathlib import Path
-
 import pytest
 import torch
 
 import flag_gems
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
-from tests.test_bmm import make_channel_int8_bmm_inputs
 
 from . import base, consts
 
@@ -225,94 +222,4 @@ def test_bmm_w8a8_fp8_vs_triton_bf16():
         dtypes=[torch.bfloat16],
     )
     bench.set_gems(_gems_bmm_w8a8_fp8)
-    bench.run()
-
-
-def bf16_bmm(
-    activation: torch.Tensor,
-    weight: torch.Tensor,
-    activation_scale: torch.Tensor,
-    weight_scale: torch.Tensor,
-    baseline_activation: torch.Tensor,
-    baseline_weight: torch.Tensor,
-) -> torch.Tensor:
-    return torch.bmm(baseline_activation, baseline_weight)
-
-
-def native_int8_bmm(
-    activation: torch.Tensor,
-    weight: torch.Tensor,
-    activation_scale: torch.Tensor,
-    weight_scale: torch.Tensor,
-    baseline_activation: torch.Tensor,
-    baseline_weight: torch.Tensor,
-) -> list[torch.Tensor]:
-    import torch_npu
-
-    return [
-        torch_npu.npu_quant_matmul(
-            activation[index],
-            weight[index],
-            weight_scale[index],
-            pertoken_scale=activation_scale[index],
-            output_dtype=torch.bfloat16,
-        )
-        for index in range(activation.shape[0])
-    ]
-
-
-def channel_int8_bmm(
-    activation: torch.Tensor,
-    weight: torch.Tensor,
-    activation_scale: torch.Tensor,
-    weight_scale: torch.Tensor,
-    baseline_activation: torch.Tensor,
-    baseline_weight: torch.Tensor,
-) -> torch.Tensor:
-    return flag_gems.bmm_w8a8_int8(activation, weight, activation_scale, weight_scale)
-
-
-class ChannelInt8BmmBenchmark(base.Benchmark):
-    """Time BMM on prepared INT8 and BF16 inputs with the shared timer."""
-
-    DEFAULT_SHAPE_DESC = "B, M, N, K"
-    DEFAULT_SHAPE_FILES = str(Path(__file__).with_name("core_shapes.yaml"))
-
-    def get_input_iter(self, dtype):
-        for shape in self.shapes:
-            activation, weight, activation_scale, weight_scale = (
-                make_channel_int8_bmm_inputs(shape, self.device, dtype)
-            )
-            # Both timed APIs receive prepared inputs; conversion stays outside timing.
-            baseline_activation = (
-                activation.float() * activation_scale[:, :, None]
-            ).to(torch.bfloat16)
-            baseline_weight = (
-                weight.transpose(1, 2).float() * weight_scale[:, :, None]
-            ).to(torch.bfloat16)
-            yield (
-                activation,
-                weight,
-                activation_scale,
-                weight_scale,
-                baseline_activation,
-                baseline_weight.transpose(1, 2),
-            )
-
-
-@pytest.mark.bmm_w8a8
-@pytest.mark.parametrize(
-    "baseline",
-    ["bf16", "native_int8"] if flag_gems.vendor_name == "ascend" else ["bf16"],
-)
-@pytest.mark.skipif(
-    "bmm_w8a8_int8" not in vars(flag_gems),
-    reason="backend does not export channel-wise INT8 BMM",
-)
-def test_perf_bmm_w8a8_int8(baseline):
-    torch_op = native_int8_bmm if baseline == "native_int8" else bf16_bmm
-    bench = ChannelInt8BmmBenchmark(
-        op_name="bmm_w8a8", torch_op=torch_op, dtypes=[torch.int8]
-    )
-    bench.set_gems(channel_int8_bmm)
     bench.run()

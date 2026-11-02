@@ -38,26 +38,9 @@ else:
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 
 
-def make_channel_int8_bmm_inputs(
-    shape: tuple[int, int, int, int], device: str, dtype: torch.dtype = torch.int8
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    batch, rows, columns, reduction = shape
-    torch.manual_seed(0)
-    activation = torch.randint(
-        -128, 128, (batch, rows, reduction), device=device, dtype=dtype
-    )
-    weight = torch.randint(
-        -128, 128, (batch, columns, reduction), device=device, dtype=dtype
-    ).transpose(1, 2)
-    activation_scale = torch.rand((batch, rows), device=device) / 127
-    weight_scale = torch.rand((batch, columns), device=device) / 127
-    return activation, weight, activation_scale, weight_scale
-
-
-@pytest.mark.bmm_w8a8
 @pytest.mark.bmm
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES + [torch.int8])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_bmm(monkeypatch, M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
@@ -69,33 +52,15 @@ def test_bmm(monkeypatch, M, N, K, dtype):
         random.seed(0)
 
     batch = 4
-    if dtype == torch.int8:
-        if "bmm_w8a8_int8" not in vars(flag_gems):
-            pytest.skip("backend does not export channel-wise INT8 BMM")
-        mat1, mat2, scale_a, scale_b = make_channel_int8_bmm_inputs(
-            (batch, M, N, K), flag_gems.device, dtype
-        )
-        ref_mat1 = utils.to_reference(mat1.float(), True)
-        ref_mat2 = utils.to_reference(mat2.float(), True)
-        ref_scale_a = utils.to_reference(scale_a)
-        ref_scale_b = utils.to_reference(scale_b)
-        ref_out = (
-            torch.bmm(ref_mat1, ref_mat2)
-            * ref_scale_a[:, :, None]
-            * ref_scale_b[:, None, :]
-        ).to(torch.bfloat16)
-        res_out = flag_gems.bmm_w8a8_int8(mat1, mat2, scale_a, scale_b)
-        output_dtype = torch.bfloat16
-    else:
-        mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-        mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
-        ref_mat1 = utils.to_reference(mat1, True)
-        ref_mat2 = utils.to_reference(mat2, True)
-        ref_out = torch.bmm(ref_mat1, ref_mat2)
-        res_out = flag_gems.bmm(mat1, mat2)
-        output_dtype = dtype
+    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    ref_mat1 = utils.to_reference(mat1, True)
+    ref_mat2 = utils.to_reference(mat2, True)
 
-    utils.gems_assert_close(res_out, ref_out, output_dtype, reduce_dim=K)
+    ref_out = torch.bmm(ref_mat1, ref_mat2)
+    res_out = flag_gems.bmm(mat1, mat2)
+
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.bmm
