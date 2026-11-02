@@ -49,6 +49,11 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 def _out_build_inputs_fn(plan, dtype, device):
+    if flag_gems.vendor_name == "ascend" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "Ascend binomial.out falls back to CPU, "
+            "which does not support Half/BFloat16"
+        )
     (shape,) = plan.builder_args
     torch.manual_seed(0)
     count = torch.randint(1, 100, shape, device=device).to(dtype)
@@ -79,7 +84,7 @@ def test_binomial():
 def test_binomial_out():
     bench = base.GenericBenchmark2DOnly(
         op_name="binomial_out",
-        torch_op=torch.binomial,
+        torch_op=torch.ops.aten.binomial.out,
         case_fn=_out_case_fn,
         build_inputs_fn=_out_build_inputs_fn,
         dtypes=consts.FLOAT_DTYPES,
