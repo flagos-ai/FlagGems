@@ -672,6 +672,7 @@ from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
+from flag_gems.ops.cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
@@ -1133,6 +1134,7 @@ from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss_backward_out,
     multi_margin_loss_out,
 )
+from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
 from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
@@ -1379,6 +1381,10 @@ from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
+from flag_gems.ops.slow_conv_dilated2d import (
+    slow_conv_dilated2d,
+    slow_conv_dilated2d_out,
+)
 from flag_gems.ops.slow_conv_transpose2d import slow_conv_transpose2d
 from flag_gems.ops.slow_conv_transpose3d import slow_conv_transpose3d
 from flag_gems.ops.smm import smm
@@ -1539,12 +1545,7 @@ from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
-from flag_gems.ops.swapdims_ import swapdims_
-from flag_gems.ops.sym_constrain_range import sym_constrain_range
-from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
-from flag_gems.ops.sym_storage_offset import sym_storage_offset
-from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
@@ -2289,7 +2290,9 @@ __all__ = [
     "ctc_loss",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
+    "cudnn_batch_norm",
     "cudnn_batch_norm_backward",
+    "cudnn_batch_norm_out",
     "cudnn_convolution",
     "cudnn_convolution_transpose",
     "cudnn_rnn",
@@ -2793,6 +2796,7 @@ __all__ = [
     "multi_margin_loss_backward",
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
+    "multilabel_margin_loss",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
@@ -3063,6 +3067,8 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv_dilated2d",
+    "slow_conv_dilated2d_out",
     "slow_conv_transpose2d",
     "slow_conv_transpose3d",
     "smm",
@@ -3214,14 +3220,8 @@ __all__ = [
     "svd",
     "swapaxes_",
     "swapdims",
-    "swapdims_",
-    "sym_constrain_range",
-    "sym_numel",
     "sym_size",
     "sym_size_int",
-    "sym_storage_offset",
-    "sym_stride",
-    "sym_stride_int",
     "t_",
     "t_copy",
     "t_copy_out",
