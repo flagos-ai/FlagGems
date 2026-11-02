@@ -18,6 +18,8 @@ def _candidate_ixor(inp, other):
     original_pointer = inp.data_ptr()
     candidate = getattr(flag_gems, "ixor", None)
     if candidate is None:
+        candidate = getattr(flag_gems, "__ixor__", None)
+    if candidate is None:
         candidate = (
             flag_gems.xor_ if isinstance(other, torch.Tensor) else flag_gems.xor_scalar_
         )

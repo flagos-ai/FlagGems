@@ -48,7 +48,7 @@ def test_irshift(shapes, dtype):
         res_b.data_ptr(),
     )
     other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    ret = flag_gems.__irshift__(res_a, res_b)
     assert isinstance(ret, torch.Tensor)
     assert ret is res_a
     assert (
@@ -112,7 +112,7 @@ def test_irshift_edge_cases(dtype):
         res_b.data_ptr(),
     )
     other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    ret = flag_gems.__irshift__(res_a, res_b)
     assert isinstance(ret, torch.Tensor)
     assert ret is res_a
     assert (
