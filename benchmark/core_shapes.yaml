@@ -1273,19 +1273,16 @@ bmm_w8a8:
 
 grouped_gemm_w8a8:
   shapes:
-    # Unpadded tails and empty experts.
-    - [45, 512, 6144, 257]
-    - [45, 6144, 256, 257]
-    # Representative FlagOSTune 7173d21 GLM-5.2-W8A8-INT8 shapes.
-    # Cover small, intermediate, sparse and dense expert batches in both layouts.
-    - [8, 256, 6144, 256]
-    - [8, 6144, 128, 256]
-    - [512, 256, 6144, 256]
-    - [512, 6144, 128, 256]
-    - [1024, 256, 6144, 256]
-    - [1024, 6144, 128, 256]
-    - [30728, 256, 6144, 256]
-    - [30728, 6144, 128, 256]
-    - [131072, 256, 6144, 256]
-    - [131072, 6144, 128, 256]
+    # Top 10 FlagOSTune 7173d21 GLM shapes by count summed across all three captures.
+    # Sort by descending count, then lexicographically by (M, N, K, E).
+    - [512, 256, 6144, 256]  # count: 25200
+    - [512, 6144, 128, 256]  # count: 25200
+    - [8, 256, 6144, 256]  # count: 10800
+    - [8, 6144, 128, 256]  # count: 10800
+    - [16, 256, 6144, 256]  # count: 10800
+    - [16, 6144, 128, 256]  # count: 10800
+    - [32, 256, 6144, 256]  # count: 10800
+    - [32, 6144, 128, 256]  # count: 10800
+    - [64, 256, 6144, 256]  # count: 10800
+    - [64, 6144, 128, 256]  # count: 10800
   shape_desc: "M,N,K,E"
