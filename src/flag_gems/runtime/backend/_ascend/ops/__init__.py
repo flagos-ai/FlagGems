@@ -158,6 +158,7 @@ from .stack import stack
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
+from .threshold_ import threshold_
 from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
@@ -377,6 +378,7 @@ __all__ = [
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
+    "threshold_",
     "threshold_backward",
     "topk",
     "topk_w8a16_fp8",
