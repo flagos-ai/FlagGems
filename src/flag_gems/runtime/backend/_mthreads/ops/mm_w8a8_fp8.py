@@ -151,9 +151,12 @@ if _HAS_WS:
         NC: tl.constexpr,
         GM: tl.constexpr,
         ROLE: tl.constexpr,
+        FRAGMENTED: tl.constexpr,
     ):
-        pm, pn = _tile_index(tl.program_id(0), M, N, BM, BN * NC, GM)
-        acc = tl.zeros((BM, BN), tl.float32)
+        TN: tl.constexpr = BN + BN // 4 if FRAGMENTED else BN * NC
+        CN: tl.constexpr = BN // 4 if FRAGMENTED and ROLE == 1 else BN
+        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
+        acc = tl.zeros((BM, CN), tl.float32)
         for block in tl.range(0, tl.cdiv(K, BK), num_stages=1):
             ready = reader.wait(block)
             if ROLE == 0:
@@ -168,7 +171,7 @@ if _HAS_WS:
             acc = tle.gpu.wgmma_wait(0, acc)
             reader.release(block)
         rm = pm * BM + tl.arange(0, BM)
-        rn = pn * BN * NC + ROLE * BN + tl.arange(0, BN)
+        rn = pn * TN + ROLE * BN + tl.arange(0, CN)
         acc *= tl.load(SA)
         acc *= tl.load(SB)
         tl.store(
@@ -397,6 +400,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -423,6 +427,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -441,6 +446,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -467,6 +473,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -485,6 +492,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (
@@ -503,6 +511,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             2,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -529,6 +538,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             0,
+                            False,
                         ),
                     ),
                     (
@@ -547,6 +557,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             1,
+                            False,
                         ),
                     ),
                     (
@@ -565,6 +576,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             2,
+                            False,
                         ),
                     ),
                     (
@@ -583,6 +595,7 @@ if _HAS_WS:
                             NC,
                             GM,
                             3,
+                            False,
                         ),
                     ),
                     (_produce, (pipe.writer(), A, B, M, N, K, BM, BN, BK, NC, GM)),
@@ -613,42 +626,6 @@ if _HAS_WS:
             tle.gpu.copy(B, slot.b0, (BN, BK), (pn * TN, block * BK))
             tle.gpu.copy(Bsmall, slot.b1, (BN // 4, BK), (pn * TN + BN, block * BK))
             writer.commit(block)
-
-    @triton.jit
-    def _consume_fragmented(
-        reader,
-        C,
-        SA,
-        SB,
-        M: tl.constexpr,
-        N: tl.constexpr,
-        K: tl.constexpr,
-        BM: tl.constexpr,
-        BN: tl.constexpr,
-        BK: tl.constexpr,
-        GM: tl.constexpr,
-        ROLE: tl.constexpr,
-    ):
-        TN: tl.constexpr = BN + BN // 4
-        CN: tl.constexpr = BN if ROLE == 0 else BN // 4
-        pm, pn = _tile_index(tl.program_id(0), M, N, BM, TN, GM)
-        acc = tl.zeros((BM, CN), tl.float32)
-        for block in range(tl.cdiv(K, BK)):
-            ready = reader.wait(block)
-            if ROLE == 0:
-                b = ready.slot.b0
-            else:
-                b = ready.slot.b1
-            acc = tle.gpu.wgmma(ready.slot.a, b, acc, trans_b=True)
-            acc = tle.gpu.wgmma_wait(0, acc)
-            reader.release(block)
-        rm = pm * BM + tl.arange(0, BM)
-        rn = pn * TN + ROLE * BN + tl.arange(0, CN)
-        tl.store(
-            C + rm[:, None] * N + rn[None, :],
-            acc * tl.load(SA) * tl.load(SB),
-            (rm[:, None] < M) & (rn[None, :] < N),
-        )
 
     _BASE_WS_JIT = ws_multi_kernel.fn.fn
 
@@ -737,7 +714,7 @@ if _HAS_WS:
             tle.gpu.warp_specialize(
                 [
                     (
-                        _consume_fragmented,
+                        _consume,
                         (
                             pipe.reader("r0", fields=("a", "b0")),
                             C,
@@ -749,12 +726,14 @@ if _HAS_WS:
                             BM,
                             BN,
                             BK,
+                            2,
                             GM,
                             0,
+                            True,
                         ),
                     ),
                     (
-                        _consume_fragmented,
+                        _consume,
                         (
                             pipe.reader("r1", fields=("a", "b1")),
                             C,
@@ -766,8 +745,10 @@ if _HAS_WS:
                             BM,
                             BN,
                             BK,
+                            2,
                             GM,
                             1,
+                            True,
                         ),
                     ),
                     (
@@ -1196,8 +1177,6 @@ _SKINNY_CONFIGS = {
 }
 
 
-_GEMV_LAUNCH_CACHE = OrderedDict()
-
 # Block V, block K, physical dot M, pipe stages, consumer warps.
 _SKINNY_TME_CONFIGS = {
     (4, 62080, 2048): (64, 128, 16, 3, 4),
@@ -1205,36 +1184,35 @@ _SKINNY_TME_CONFIGS = {
 }
 
 
-def _launch_gemv(grid, args, meta, warps, stages):
-    tail = tuple(meta[name] for name in _gemv_fp8.arg_names[len(args) :])
-    key = (
-        args[0].device,
-        grid,
-        tuple(
-            (
-                (arg.dtype, arg.data_ptr() % 16 == 0)
-                if isinstance(arg, torch.Tensor)
-                else arg
-            )
-            for arg in args
-        ),
-        tail,
-        warps,
-        stages,
+def _supports_tme_layout(a, b):
+    return (
+        a.dtype == b.dtype == torch.float8_e4m3fn
+        and a.stride(1) == b.stride(0) == 1
+        and a.stride(0) > 0
+        and b.stride(1) > 0
+        and a.stride(0) % 16 == b.stride(1) % 16 == 0
+        and a.data_ptr() % 16 == b.data_ptr() % 16 == 0
     )
-    launch = _GEMV_LAUNCH_CACHE.get(key)
-    if launch is None:
-        options = {"enable_backend_opt": True} if meta["NATIVE_DOT"] else {}
-        compiled, _ = _gemv_fp8[grid](
-            *args, **meta, num_warps=warps, num_stages=stages, **options
+
+
+def _finish_split_k(partial, out, bias, sr, split, epilogue):
+    if split > 1:
+        m, n = out.shape
+        _reduce_split_k[(triton.cdiv(m * n, 512),)](
+            partial,
+            out,
+            bias,
+            sr,
+            m,
+            n,
+            out.stride(0),
+            out.stride(1),
+            SPLIT_K=split,
+            BLOCK=512,
+            **epilogue,
+            num_warps=4,
         )
-        # Keep executable metadata only; pointers and scale contents stay live.
-        _GEMV_LAUNCH_CACHE[key] = compiled[grid]
-        if len(_GEMV_LAUNCH_CACHE) > 128:
-            _GEMV_LAUNCH_CACHE.popitem(last=False)
-    else:
-        _GEMV_LAUNCH_CACHE.move_to_end(key)
-        launch(*args, *tail)
+    return out
 
 
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
@@ -1244,12 +1222,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     if (
         tme_config is not None
         and _HAS_WS
-        and a.dtype == b.dtype == torch.float8_e4m3fn
-        and a.stride(1) == b.stride(0) == 1
-        and a.stride(0) > 0
-        and b.stride(1) > 0
-        and a.stride(0) % 16 == b.stride(1) % 16 == 0
-        and a.data_ptr() % 16 == b.data_ptr() % 16 == 0
+        and _supports_tme_layout(a, b)
         and sa_stride == sb_stride == 0
         and bias is None
         and sr is None
@@ -1278,6 +1251,12 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             enable_backend_opt=True,
         )
         return out
+    epilogue = dict(
+        HAS_BIAS=bias is not None,
+        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
+        HAS_SR=sr is not None,
+        SR_STRIDE=sr_stride,
+    )
     native_dot = (
         m <= 2
         and 1024 <= n <= 8192
@@ -1333,77 +1312,40 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             if split > 1
             else out
         )
-        epilogue = dict(
-            HAS_BIAS=bias is not None,
-            BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
-            HAS_SR=sr is not None,
-            SR_STRIDE=sr_stride,
-        )
         transpose = n <= 4
         outer = 1 if native_dot else (n if transpose else m)
-        _launch_gemv(
-            (triton.cdiv(m if transpose else n, bv), outer, split),
-            (
-                a,
-                b,
-                partial,
-                sa,
-                sb,
-                bias,
-                sr,
-                m,
-                n,
-                k,
-                a.stride(0),
-                b.stride(1),
-                out.stride(0),
-                out.stride(1),
-                sa_stride,
-                sb_stride,
-            ),
-            dict(
-                **epilogue,
-                TRANSPOSE=transpose,
-                NATIVE_DOT=native_dot,
-                DOT_M=dot_m,
-                BLOCK_V=bv,
-                BLOCK_K=bk,
-                SPLIT_K=split,
-            ),
-            warps,
-            stages,
+        _gemv_fp8[(triton.cdiv(m if transpose else n, bv), outer, split)](
+            a,
+            b,
+            partial,
+            sa,
+            sb,
+            bias,
+            sr,
+            m,
+            n,
+            k,
+            a.stride(0),
+            b.stride(1),
+            out.stride(0),
+            out.stride(1),
+            sa_stride,
+            sb_stride,
+            **epilogue,
+            TRANSPOSE=transpose,
+            NATIVE_DOT=native_dot,
+            DOT_M=dot_m,
+            BLOCK_V=bv,
+            BLOCK_K=bk,
+            SPLIT_K=split,
+            num_warps=warps,
+            num_stages=stages,
+            **({"enable_backend_opt": True} if native_dot else {}),
         )
-        if split > 1:
-            _reduce_split_k[(triton.cdiv(m * n, 512),)](
-                partial,
-                out,
-                bias,
-                sr,
-                m,
-                n,
-                out.stride(0),
-                out.stride(1),
-                SPLIT_K=split,
-                BLOCK=512,
-                **epilogue,
-                num_warps=4,
-            )
-        return out
+        return _finish_split_k(partial, out, bias, sr, split, epilogue)
     # E5M2 descriptor loads fail S5000 accuracy checks. Masked FP8 loads also
     # cover unaligned and non-contiguous inputs without BF16 dequantization.
-    descriptor = (
-        a.dtype == b.dtype == torch.float8_e4m3fn
-        and a.stride(1) == 1
-        and b.stride(0) == 1
-        and a.stride(0) > 0
-        and b.stride(1) > 0
-        and a.stride(0) % 16 == 0
-        and b.stride(1) % 16 == 0
-        and a.data_ptr() % 16 == 0
-        and b.data_ptr() % 16 == 0
-        and min(m, n) >= 16
-        and k >= 16
-    )
+    descriptor = min(m, n) >= 16 and k >= 16 and _supports_tme_layout(a, b)
     split = _select_split_k(m, n, k, descriptor)
     if (
         _HAS_WS
@@ -1458,12 +1400,6 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         if split > 1
         else out
     )
-    epilogue = dict(
-        HAS_BIAS=bias is not None,
-        BIAS_STRIDE=bias.stride(0) if bias is not None else 0,
-        HAS_SR=sr is not None,
-        SR_STRIDE=sr_stride,
-    )
     # SQMMA instruction scheduling improves dense TME tiles on S5000.
     compiler_options = {"enable_backend_opt": True} if descriptor else {}
     num_sms = torch_device_fn.get_device_properties(a.device).multi_processor_count
@@ -1506,22 +1442,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         **epilogue,
         **compiler_options,
     )
-    if split > 1:
-        _reduce_split_k[(triton.cdiv(m * n, 512),)](
-            partial,
-            out,
-            bias,
-            sr,
-            m,
-            n,
-            out.stride(0),
-            out.stride(1),
-            SPLIT_K=split,
-            BLOCK=512,
-            **epilogue,
-            num_warps=4,
-        )
-    return out
+    return _finish_split_k(partial, out, bias, sr, split, epilogue)
 
 
 def _scale_stride(scale, x, axis, name):
