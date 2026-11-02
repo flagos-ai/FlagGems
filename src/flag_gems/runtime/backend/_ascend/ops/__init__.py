@@ -155,6 +155,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
+from .subtract import subtract
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
@@ -374,6 +375,7 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfinv",
     "stack",
+    "subtract",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
