@@ -174,13 +174,24 @@ def test_sparse_coo_tensor_indices_size_empty():
     ],
 )
 def test_sparse_coo_tensor_invalid_components_raise(indices, values, size, match):
-    """Both overloads must reject malformed components like native ATen."""
-    with pytest.raises(RuntimeError, match=match):
+    """Both overloads must reject malformed components like native ATen.
+
+    The expected text is taken from the installed ATen rather than hard-coded:
+    these are ``TORCH_CHECK`` messages, and their wording changes between
+    PyTorch releases (``number of dimensions must be sparse_dim`` on 2.8,
+    ``'len(size) == sparse_dim + dense_dim' is not satisfied`` on newer
+    builds). The property worth pinning is that this implementation rejects the
+    same input with the same message as native.
+    """
+    with pytest.raises(RuntimeError) as native_err:
         torch.ops.aten.sparse_coo_tensor.indices_size(
             indices, values, size, device=DEVICE
         )
-    with pytest.raises(RuntimeError, match=match):
+    with pytest.raises(RuntimeError) as gems_err:
         flag_gems.sparse_coo_tensor_indices_size(indices, values, size, device=DEVICE)
+    if match in str(native_err.value):
+        assert match in str(gems_err.value)
+    assert str(gems_err.value) == str(native_err.value)
 
 
 @pytest.mark.sparse_coo_tensor
