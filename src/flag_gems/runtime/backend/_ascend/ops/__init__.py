@@ -17,6 +17,7 @@ from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
+from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
@@ -193,6 +194,7 @@ __all__ = [
     "all",
     "all_dim",
     "all_dims",
+    "alpha_dropout_",
     "amax",
     "angle",
     "any",
