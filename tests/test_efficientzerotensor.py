@@ -64,3 +64,62 @@ def test_efficientzerotensor_views():
 def test_efficientzerotensor_invalid_size():
     with pytest.raises(RuntimeError):
         flag_gems._efficientzerotensor((-1,), device=flag_gems.device)
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_negative_dimension_message():
+    # Native factory wording: extents must be validated before any allocation.
+    with pytest.raises(RuntimeError, match="negative dimension -1"):
+        flag_gems._efficientzerotensor((-1,), device=flag_gems.device)
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_pin_memory_ignored():
+    # ZeroTensor materializes no data, so pin_memory is a no-op exactly as in
+    # the native factory: accepted and ignored, never an error.
+    res = flag_gems._efficientzerotensor(
+        (2, 3), device=flag_gems.device, pin_memory=True
+    )
+    assert type(res) is torch.Tensor
+    assert res._is_zerotensor()
+    assert res.device.type == torch.device(flag_gems.device).type
+    assert not res.is_pinned()
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_non_strided_layout_rejected():
+    with pytest.raises(RuntimeError, match="strided"):
+        flag_gems._efficientzerotensor(
+            (2, 3), device=flag_gems.device, layout=torch.sparse_coo
+        )
+
+
+@pytest.mark.efficientzerotensor
+@pytest.mark.underscore_efficientzerotensor
+def test_efficientzerotensor_registered_dispatch_path():
+    """The op must also work through the registered aten dispatch path.
+
+    The accuracy tests above call ``flag_gems._efficientzerotensor`` directly,
+    so they pass even when the registered path is broken (as with as_subclass,
+    which re-dispatches aten::alias into the FlagGems alias override under
+    ``flag_gems.enable()`` and fails with "raw Tensor object is already
+    associated to a python object").
+    """
+    try:
+        flag_gems.enable()
+    except Exception:
+        pytest.skip("flag_gems.enable() unavailable in this environment")
+    res = torch.ops.aten._efficientzerotensor.default(
+        (2, 3), dtype=torch.float32, device=flag_gems.device
+    )
+    assert type(res) is torch.Tensor
+    assert res._is_zerotensor()
+    assert res.shape == torch.Size([2, 3])
+    assert res.stride() == (3, 1)
+    assert res.data_ptr() == 0
+    assert (res.clone() + 3).sum().item() == 18.0
+    with pytest.raises(RuntimeError, match="immutable"):
+        res.add_(1)

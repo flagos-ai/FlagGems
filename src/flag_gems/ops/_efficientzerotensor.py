@@ -18,15 +18,35 @@ import logging
 
 import torch
 
+from flag_gems.utils.shape_utils import c_contiguous_stride
+
 logger = logging.getLogger(__name__)
+
+# Both are call-invariant; building them per call costs ~0.6us (keyset) and
+# ~1.6us (device index resolution through a probe allocation).
+_ZERO_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.ZeroTensor)
+_RESOLVED_DEVICE = {}
 
 
 class _ZeroMetadata(torch.Tensor):
     @classmethod
     def __torch_dispatch__(cls, func, types, args=(), kwargs=None):
-        # The temporary wrapper only creates TensorImpl metadata. It must be
+        # The temporary wrapper only carries TensorImpl metadata. It must be
         # converted to an ordinary Tensor before any user operation is run.
         raise RuntimeError("unexpected dispatch on temporary ZeroTensor metadata")
+
+
+def _resolve_device(device):
+    # Resolve an unspecified accelerator index exactly as a native factory
+    # does: a probe meta allocation on the target device. Results are cached
+    # because torch.device values are immutable and index assignment is fixed
+    # for the process lifetime.
+    key = str(device)
+    resolved = _RESOLVED_DEVICE.get(key)
+    if resolved is None:
+        resolved = torch.empty(0, device=device).device
+        _RESOLVED_DEVICE[key] = resolved
+    return resolved
 
 
 def _efficientzerotensor(
@@ -34,29 +54,47 @@ def _efficientzerotensor(
 ):
     logger.debug("GEMS _EFFICIENTZEROTENSOR")
     dtype = torch.get_default_dtype() if dtype is None else dtype
-    layout = torch.strided if layout is None else layout
-    device = torch.get_default_device() if device is None else torch.device(device)
-    # Resolve an unspecified accelerator index exactly as a native factory does.
-    device = torch.empty(0, device=device).device
-    if pin_memory:
-        raise RuntimeError("Only dense CPU tensors can be pinned")
-    # A ZeroTensor is an immutable lazy value, not a zero-filled allocation.
-    # Meta allocation validates extents/dtype and computes contiguous strides
-    # and the logical storage span without allocating or filling device data.
-    meta = torch.empty(size, dtype=dtype, layout=layout, device="meta")
-    if layout != torch.strided:
+    # A ZeroTensor is an immutable lazy value, not a zero-filled allocation, so
+    # pinning is a no-op; accept it and ignore it exactly as the native factory
+    # does (pin_memory=True on a ZeroTensor returns a plain non-pinned tensor).
+    if layout is not None and layout != torch.strided:
         raise RuntimeError("_efficientzerotensor requires strided layout")
+    size = tuple(size)
+    # Validate extents up front with the native wording; a negative dimension
+    # must be rejected before the span multiplication below overflows.
+    for dim in size:
+        if dim < 0:
+            raise RuntimeError(
+                f"Trying to create tensor with negative dimension {dim}: {list(size)}"
+            )
+    # Compute contiguous strides without allocating. The stride rule treats a
+    # 0-dim as 1 (c_contiguous_stride), matching both the native factory and
+    # meta empty on every edge shape; the logical storage span instead uses the
+    # true product, so a tensor containing a zero dim reports 0 bytes exactly
+    # as the native factory does.
+    strides = c_contiguous_stride(size)
+    numel = 1
+    for dim in size:
+        numel *= dim
+    if device is not None:
+        device = _resolve_device(device)
+    else:
+        import flag_gems.runtime as _rt
+
+        device = _resolve_device(torch.device(_rt.device.name))
     wrapper = torch.Tensor._make_wrapper_subclass(
         _ZeroMetadata,
-        meta.shape,
-        strides=meta.stride(),
+        size,
+        strides=strides,
         dtype=dtype,
         device=device,
-        storage_size=meta.untyped_storage().nbytes(),
-        _extra_dispatch_keys=torch._C.DispatchKeySet(torch._C.DispatchKey.ZeroTensor),
+        storage_size=numel * dtype.itemsize,
+        _extra_dispatch_keys=_ZERO_KEYSET,
     )
-    # Drop Python subclass dispatch while retaining ZeroTensor and the device
-    # keys. The returned object is exactly torch.Tensor, with a null data pointer
-    # and native ZeroTensor dispatch for reads, views, and immutable writes.
-    with torch._C._DisableTorchDispatch():
-        return wrapper.as_subclass(torch.Tensor)
+    # as_strided rebinds the TensorImpl into a plain torch.Tensor with the
+    # ZeroTensor key retained and the Python subclass dropped. Do NOT use
+    # as_subclass here: it dispatches aten::alias, and the FlagGems alias
+    # override on the backend key re-enters the temporary wrapper's dispatch,
+    # which breaks under flag_gems.enable() with "raw Tensor object is already
+    # associated to a python object" and makes every registered call fail.
+    return wrapper.as_strided(size, strides, 0)
