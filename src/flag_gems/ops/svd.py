@@ -245,20 +245,14 @@ def _small_jacobi_svd_kernel(
 ):
     pid = tl.program_id(0)
     rows = tl.arange(0, BLOCK_R)
-    # Keep exactly one predicate -- and one vector width -- in this program.
-    # The backend applies the active-lane count of the smallest predicate to
-    # unrelated accesses: the former ``cols < K`` mask (BLOCK_K lanes) truncated
-    # the BLOCK_R-lane stores to K lanes, so the Jacobi only ever ran on A's
-    # leading K x K sub-block, and mixing BLOCK_K-lane V_WORK accesses with a
-    # BLOCK_R-lane row mask still corrupted the basis for rows > K.  Now every
-    # vector here is BLOCK_R wide (the K x K basis is stored as K rows of
-    # BLOCK_R, padded with zeros) and ``row_mask`` is the only mask.
+    cols = tl.arange(0, BLOCK_K)
     row_mask = rows < ROWS
+    col_mask = cols < K
     eps = 1.0e-20
 
     a_base = A + pid * M * N
     aw_base = A_WORK + pid * K * ROWS
-    vw_base = V_WORK + pid * K * BLOCK_R
+    vw_base = V_WORK + pid * K * K
 
     for j in tl.static_range(0, K):
         if TALL:
@@ -270,8 +264,8 @@ def _small_jacobi_svd_kernel(
                 tl.float32
             )
         tl.store(aw_base + j * ROWS + rows, vals, mask=row_mask)
-        ident_col = tl.where(rows == j, 1.0, 0.0)
-        tl.store(vw_base + j * BLOCK_R + rows, ident_col, mask=row_mask)
+        ident_col = tl.where(cols == j, 1.0, 0.0)
+        tl.store(vw_base + j * K + cols, ident_col, mask=col_mask)
 
     for _ in tl.static_range(0, SWEEPS):
         for p in tl.static_range(0, K):
@@ -299,12 +293,12 @@ def _small_jacobi_svd_kernel(
                 tl.store(aw_base + p * ROWS + rows, new_ap, mask=row_mask)
                 tl.store(aw_base + q * ROWS + rows, new_aq, mask=row_mask)
 
-                vp = tl.load(vw_base + p * BLOCK_R + rows, mask=row_mask, other=0.0)
-                vq = tl.load(vw_base + q * BLOCK_R + rows, mask=row_mask, other=0.0)
+                vp = tl.load(vw_base + p * K + cols, mask=col_mask, other=0.0)
+                vq = tl.load(vw_base + q * K + cols, mask=col_mask, other=0.0)
                 new_vp = c * vp - s_rot * vq
                 new_vq = s_rot * vp + c * vq
-                tl.store(vw_base + p * BLOCK_R + rows, new_vp, mask=row_mask)
-                tl.store(vw_base + q * BLOCK_R + rows, new_vq, mask=row_mask)
+                tl.store(vw_base + p * K + cols, new_vp, mask=col_mask)
+                tl.store(vw_base + q * K + cols, new_vq, mask=col_mask)
 
     s_idx = tl.arange(0, BLOCK_K)
     s_vals = tl.full((BLOCK_K,), 0.0, dtype=tl.float32)
@@ -326,29 +320,13 @@ def _small_jacobi_svd_kernel(
         inv_norm = tl.where(norm > eps, 1.0 / norm, 0.0)
         tl.store(S + pid * K + rank, norm)
 
-        basis = tl.load(vw_base + j * BLOCK_R + rows, mask=row_mask, other=0.0)
+        basis = tl.load(vw_base + j * K + cols, mask=col_mask, other=0.0)
         if TALL:
-            tl.store(
-                U + pid * BLOCK_R * BLOCK_K + rows * BLOCK_K + rank,
-                col * inv_norm,
-                mask=row_mask,
-            )
-            tl.store(
-                V + pid * BLOCK_R * BLOCK_K + rows * BLOCK_K + rank,
-                basis,
-                mask=row_mask,
-            )
+            tl.store(U + pid * M * K + rows * K + rank, col * inv_norm, mask=row_mask)
+            tl.store(V + pid * N * K + cols * K + rank, basis, mask=col_mask)
         else:
-            tl.store(
-                U + pid * BLOCK_R * BLOCK_K + rows * BLOCK_K + rank,
-                basis,
-                mask=row_mask,
-            )
-            tl.store(
-                V + pid * BLOCK_R * BLOCK_K + rows * BLOCK_K + rank,
-                col * inv_norm,
-                mask=row_mask,
-            )
+            tl.store(U + pid * M * K + cols * K + rank, basis, mask=col_mask)
+            tl.store(V + pid * N * K + rows * K + rank, col * inv_norm, mask=row_mask)
 
 
 @libentry()
@@ -1573,19 +1551,13 @@ def _small_jacobi_svd(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    v_work = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
+    u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
+    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
+    v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
     block_r = triton.next_power_of_2(rows)
     block_k = triton.next_power_of_2(k)
-    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
-    # V_WORK/U/V are padded to the block shapes so the row-masked stores always
-    # stay inside the allocation and no BLOCK_K-lane predicate is needed.
-    v_work = torch.zeros((batch, k, block_r), dtype=torch.float32, device=input.device)
-    u_buf = torch.zeros(
-        (batch, block_r, block_k), dtype=torch.float32, device=input.device
-    )
-    v_buf = torch.zeros(
-        (batch, block_r, block_k), dtype=torch.float32, device=input.device
-    )
-    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
     # One-sided Jacobi needs enough sweeps for the smallest singular values to
     # converge; the trailing singular values are the slowest. Use 8 sweeps for
     # all sizes up to 16, which leaves atol=1e-3 margin on the smallest value.
@@ -1595,9 +1567,9 @@ def _small_jacobi_svd(input):
             a,
             a_work,
             v_work,
-            u_buf,
+            u,
             s,
-            v_buf,
+            v,
             M=m,
             N=n,
             K=k,
@@ -1608,8 +1580,6 @@ def _small_jacobi_svd(input):
             SWEEPS=sweeps,
             num_warps=1 if block_r <= 64 else 4,
         )
-    u = u_buf[:, :m, :k].to(input.dtype).contiguous()
-    v = v_buf[:, :n, :k].to(input.dtype).contiguous()
     return (
         u.reshape(*input.shape[:-2], m, k),
         s.reshape(*input.shape[:-2], k),
@@ -1949,7 +1919,6 @@ def _blocked_jacobi_pair_svals_kernel(
     ROUND: tl.constexpr,
     ROWS: tl.constexpr,
     BLOCK_R: tl.constexpr,
-    VALID: tl.constexpr,
 ):
     batch = tl.program_id(0)
     pair = tl.program_id(1)
@@ -1960,23 +1929,11 @@ def _blocked_jacobi_pair_svals_kernel(
     pos_q = ROUND - 1 - pair
     p = tl.where(pos_p == 0, 0, ((pos_p + ring - STEP - 1) % ring) + 1)
     q = tl.where(pos_q == 0, 0, ((pos_q + ring - STEP - 1) % ring) + 1)
-    # ``valid_pair`` is only kept for wide tiles.  ``A_WORK + batch * K * ROWS``
-    # is a runtime base and ``valid_pair`` a runtime scalar; a vector mask ANDed
-    # with the latter is miscompiled on this backend when BLOCK_R <= 512 -- the
-    # stores escape the program's own two columns and the sweep stops preserving
-    # the Frobenius norm (measured: 8x8/16x16/32x32 return 8x..60x the true
-    # nuclear norm, or NaN).  Below 1024 rows the out-of-range pair is instead
-    # made harmless by pointing it at a zeroed phantom column (see the caller),
-    # which makes it an identity.  At BLOCK_R = 1024 the predicate must stay:
-    # dropping it fails the launch outright after a handful of sweeps.
-    valid_pair = (p < K) & (q < K) if VALID else p >= 0
+    valid_pair = (p < K) & (q < K)
     swap = p > q
     p2 = tl.where(swap, q, p)
     q2 = tl.where(swap, p, q)
-    if VALID:
-        row_mask = (rows < ROWS) & valid_pair
-    else:
-        row_mask = rows < ROWS
+    row_mask = (rows < ROWS) & valid_pair
 
     aw_base = A_WORK + batch * K * ROWS
     ap = tl.load(aw_base + p2 * ROWS + rows, mask=row_mask, other=0.0)
@@ -1994,12 +1951,8 @@ def _blocked_jacobi_pair_svals_kernel(
     t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
     c = tl.rsqrt(1.0 + t * t)
     s_rot = t * c
-    if VALID:
-        c = tl.where(active & valid_pair, c, 1.0)
-        s_rot = tl.where(active & valid_pair, s_rot, 0.0)
-    else:
-        c = tl.where(active, c, 1.0)
-        s_rot = tl.where(active, s_rot, 0.0)
+    c = tl.where(active & valid_pair, c, 1.0)
+    s_rot = tl.where(active & valid_pair, s_rot, 0.0)
 
     new_ap = c * ap - s_rot * aq
     new_aq = s_rot * ap + c * aq
@@ -2875,22 +2828,14 @@ def _blocked_jacobi_singular_values(input):
     k = min(m, n)
     rows = max(m, n)
     a = input.contiguous().reshape(batch, m, n)
-    # One extra column for odd k: the pair schedule runs on `round_size` columns
-    # and parks its out-of-range pair there, so that column must be zero.
-    round_size = k if k % 2 == 0 else k + 1
-    a_work = torch.empty(
-        (batch, round_size, rows), dtype=torch.float32, device=input.device
-    )
-    s_work = torch.empty((batch, round_size), dtype=torch.float32, device=input.device)
-    ranks = torch.empty((batch, round_size), dtype=torch.int32, device=input.device)
-    s = torch.empty((batch, round_size), dtype=input.dtype, device=input.device)
-    if round_size > k:
-        a_work[:, k:].zero_()
-        # The rank kernel scans all `round_size` columns of s_work.
-        s_work[:, k:].zero_()
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    s_work = torch.empty((batch, k), dtype=torch.float32, device=input.device)
+    ranks = torch.empty((batch, k), dtype=torch.int32, device=input.device)
+    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
 
     block_r = triton.next_power_of_2(rows)
     sweeps = 14 if k > 256 else 10
+    round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
     with torch_device_fn.device(input.device):
         _cyclic_jacobi_init_a_kernel[(batch, k)](
@@ -2898,7 +2843,7 @@ def _blocked_jacobi_singular_values(input):
             a_work,
             M=m,
             N=n,
-            K=round_size,
+            K=k,
             ROWS=rows,
             TALL=m >= n,
             BLOCK_R=block_r,
@@ -2909,17 +2854,16 @@ def _blocked_jacobi_singular_values(input):
                 _blocked_jacobi_pair_svals_kernel[(batch, half_round)](
                     a_work,
                     step,
-                    K=round_size,
+                    K=k,
                     ROUND=round_size,
                     ROWS=rows,
                     BLOCK_R=block_r,
-                    VALID=block_r >= 1024,
                     num_warps=1 if block_r <= 64 else 4,
                 )
         _cyclic_jacobi_norm_kernel[(batch, k)](
             a_work,
             s_work,
-            K=round_size,
+            K=k,
             ROWS=rows,
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
@@ -2928,11 +2872,11 @@ def _blocked_jacobi_singular_values(input):
             s_work,
             ranks,
             s,
-            round_size,
+            k,
             num_warps=1,
         )
 
-    return s[:, :k].reshape(*input.shape[:-2], k)
+    return s.reshape(*input.shape[:-2], k)
 
 
 def _small4_square_svd(input):
