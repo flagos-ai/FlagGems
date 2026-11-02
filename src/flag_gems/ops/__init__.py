@@ -1939,7 +1939,6 @@ __all__ = [
     "_make_dual_copy",
     "_make_dual_copy_out",
     "_make_per_channel_quantized_tensor",
-    "_make_per_channel_quantized_tensor",
     "_make_per_channel_quantized_tensor_out",
     "_make_per_tensor_quantized_tensor",
     "_make_per_tensor_quantized_tensor_out",
