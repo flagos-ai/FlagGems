@@ -32,6 +32,7 @@ from .baddbmm_ import baddbmm_
 from .bmm import bmm, bmm_out
 from .cholesky_inverse import cholesky_inverse
 from .compute_linear_combination import _compute_linear_combination
+from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose3d import conv_transpose3d
 from .cross_attention import cross_attention
@@ -126,6 +127,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "cholesky_inverse",
+    "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose3d",
