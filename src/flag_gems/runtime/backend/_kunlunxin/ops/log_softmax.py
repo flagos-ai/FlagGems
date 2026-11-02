@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.pointwise_dynamic import pointwise_dynamic
+
 try:
     import triton.experimental.tle as _tle
     import triton.experimental.tle.language as tle
@@ -58,8 +60,6 @@ if _HAS_TLE:
     except (TypeError, AttributeError):
         # Older flagtree builds ship a tle.raw that cannot register this.
         _HAS_LOGSM_MID = False
-from ..utils.pointwise_dynamic import pointwise_dynamic
-from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 

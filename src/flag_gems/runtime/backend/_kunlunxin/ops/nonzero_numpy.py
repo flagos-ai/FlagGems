@@ -393,7 +393,7 @@ _RAW_DTYPES = {
 }
 
 
-def _nznp_raw(inp, n_elements, counts_h, counts, total): 
+def _nznp_raw(inp, n_elements, counts_h, counts, total):
     info = _RAW_DTYPES.get(inp.dtype)
     if info is None or not _TLE_OK or total == 0:
         return None

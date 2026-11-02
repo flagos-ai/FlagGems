@@ -71,8 +71,8 @@ try:
             so the payload names are built from the (path, dtype, idx) table
             instead of 12 hand-written stubs.
             """
-            def _payload(y, inp, idx, src, a, b, c, src_rs, idx_rs):
-                ...
+
+            def _payload(y, inp, idx, src, a, b, c, src_rs, idx_rs): ...
 
             _payload.__name__ = name
             return _tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)(_payload)
@@ -88,84 +88,84 @@ try:
         @triton.jit
         def _sa_lm_f32_i32(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_f32_i32,
+                scatter_add_lm_f32_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_lm_f32_i64(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_f32_i64,
+                scatter_add_lm_f32_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_lm_f16_i32(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_f16_i32,
+                scatter_add_lm_f16_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_lm_f16_i64(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_f16_i64,
+                scatter_add_lm_f16_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_lm_bf16_i32(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_bf16_i32,
+                scatter_add_lm_bf16_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_lm_bf16_i64(Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_lm_bf16_i64,
+                scatter_add_lm_bf16_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, NROW, NCOL, K, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_f32_i32(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_f32_i32,
+                scatter_add_atomic_f32_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_f32_i64(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_f32_i64,
+                scatter_add_atomic_f32_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_f16_i32(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_f16_i32,
+                scatter_add_atomic_f16_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_f16_i64(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_f16_i64,
+                scatter_add_atomic_f16_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_bf16_i32(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_bf16_i32,
+                scatter_add_atomic_bf16_i32,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
         @triton.jit
         def _sa_atomic_bf16_i64(Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS):
             _tle_lang.raw.call(
-                scatter_add_atomic_bf16_i64,
+                scatter_add_atomic_bf16_i64,  # noqa: F821
                 (Y, INP, IDX, SRC, BATCH, IDXLEN, YLEN, SRC_RS, IDX_RS),
             )
 
@@ -335,9 +335,7 @@ def _contiguous_copy(src: torch.Tensor, dst: torch.Tensor) -> None:
     if n % COPY_BLOCK == 0:
         _copy_cast_kernel_aligned[(n // COPY_BLOCK,)](src, dst, BLOCK=COPY_BLOCK)
     else:
-        _copy_cast_kernel[(triton.cdiv(n, COPY_BLOCK),)](
-            src, dst, n, BLOCK=COPY_BLOCK
-        )
+        _copy_cast_kernel[(triton.cdiv(n, COPY_BLOCK),)](src, dst, n, BLOCK=COPY_BLOCK)
 
 
 def _metadata(index, src_strided, out, dim, device):
@@ -492,9 +490,27 @@ def _fold_scatter_dims(inp, dim, index, src):
         src_2d = src.contiguous().view(m, t_idx)
     else:
         # Move scatter axis to last position, then collapse.
-        inp_2d = inp.contiguous().view(m, t_inp, n).permute(0, 2, 1).contiguous().view(m * n, t_inp)
-        idx_2d = index.contiguous().view(m, t_idx, n).permute(0, 2, 1).contiguous().view(m * n, t_idx)
-        src_2d = src.contiguous().view(m, t_idx, n).permute(0, 2, 1).contiguous().view(m * n, t_idx)
+        inp_2d = (
+            inp.contiguous()
+            .view(m, t_inp, n)
+            .permute(0, 2, 1)
+            .contiguous()
+            .view(m * n, t_inp)
+        )
+        idx_2d = (
+            index.contiguous()
+            .view(m, t_idx, n)
+            .permute(0, 2, 1)
+            .contiguous()
+            .view(m * n, t_idx)
+        )
+        src_2d = (
+            src.contiguous()
+            .view(m, t_idx, n)
+            .permute(0, 2, 1)
+            .contiguous()
+            .view(m * n, t_idx)
+        )
 
     return inp_2d, idx_2d, src_2d, t_inp, n > 1, m, n
 

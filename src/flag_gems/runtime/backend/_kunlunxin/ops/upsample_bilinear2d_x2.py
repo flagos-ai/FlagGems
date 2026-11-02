@@ -40,7 +40,6 @@ import os
 
 import torch
 import triton
-import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 
@@ -68,16 +67,13 @@ try:
         )
 
         @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
-        def upsample_bilinear2d_x2_f32(inp, out, NC, IH, IW):
-            ...
+        def upsample_bilinear2d_x2_f32(inp, out, NC, IH, IW): ...
 
         @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
-        def upsample_bilinear2d_x2_f16(inp, out, NC, IH, IW):
-            ...
+        def upsample_bilinear2d_x2_f16(inp, out, NC, IH, IW): ...
 
         @_tle_ext.raw.dialect("xpu3", object=_OBJ_FILE, arch=3)
-        def upsample_bilinear2d_x2_bf16(inp, out, NC, IH, IW):
-            ...
+        def upsample_bilinear2d_x2_bf16(inp, out, NC, IH, IW): ...
 
         # The scalar params must stay runtime `i32` operands: tle.raw.call only
         # accepts tensors, and Triton would otherwise specialise values equal
