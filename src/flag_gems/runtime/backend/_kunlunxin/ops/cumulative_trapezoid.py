@@ -28,6 +28,9 @@ _TILE_LANES = {
 }
 _MAX_TM = 8
 _PACK_BLK = 16384
+# Rows whose padded scan tile reaches this width are staged through an fp32
+# increment buffer, so the scan reads one plain fp32 stream.
+_STAGE_MIN_LANES = 2048
 
 # ---------------------------------------------------------------------------
 # Prefix sum as a matmul: a row's running integral is t @ U with
@@ -207,12 +210,47 @@ def _is_pow2(x):
     return x > 0 and (x & (x - 1)) == 0
 
 
+@triton.jit
+def _cumtrapz_incr_kernel(y_ptr, t_ptr, N: tl.constexpr, BLOCK: tl.constexpr):
+    """Materialise one row's trapezoid increments as fp32, padded to BLOCK.
+
+    Padding lanes keep the zero they were allocated with, so the following scan
+    needs no mask.  The staging also keeps the scan's summation order that of a
+    plain per-element scan."""
+    pid = tl.program_id(0)
+    k = tl.arange(0, BLOCK)
+    m = k < (N - 1)
+    a = tl.load(y_ptr + pid * N + k, mask=m, other=0.0).to(tl.float32)
+    b = tl.load(y_ptr + pid * N + k + 1, mask=m, other=0.0).to(tl.float32)
+    tl.store(t_ptr + pid * BLOCK + k, (a + b) * 0.5, mask=m)
+
+
+@triton.jit
+def _cumtrapz_stage_scan_kernel(t_ptr, out_ptr, ROW: tl.constexpr, BLOCK: tl.constexpr):
+    """Inclusive scan of one staged fp32 row into the (rows, ROW) result."""
+    pid = tl.program_id(0)
+    k = tl.arange(0, BLOCK)
+    g = tl.cumsum(tl.load(t_ptr + pid * BLOCK + k), axis=0)
+    tl.store(out_ptr + pid * ROW + k, g.to(out_ptr.dtype.element_ty), mask=k < ROW)
+
+
+def _cumtrapz_staged(yv, outv, M, N):
+    """Scan M rows through an fp32 increment buffer, one row per program."""
+    block = triton.next_power_of_2(max(N - 1, 1))
+    incr = torch.zeros(M * block, dtype=torch.float32, device=yv.device)
+    _cumtrapz_incr_kernel[(M,)](yv, incr, N=N, BLOCK=block)
+    _cumtrapz_stage_scan_kernel[(M,)](incr, outv, ROW=N - 1, BLOCK=block)
+
+
 def _mm_run_into(yv, outv, M, N, dtype):
     """Scan M whole rows of yv into outv, re-planning the row tail narrower."""
     plan = _mm_plan(M, N, dtype)
     if plan is None:
         block = triton.next_power_of_2(max(N - 1, 1))
-        _cumtrapz_generic_kernel[(M,)](yv, outv, N, 1, N, N - 1, BLOCK=block)
+        if block >= _STAGE_MIN_LANES:
+            _cumtrapz_staged(yv, outv, M, N)
+        else:
+            _cumtrapz_generic_kernel[(M,)](yv, outv, N, 1, N, N - 1, BLOCK=block)
         return
     G, BM = plan
     nfull = (M // BM) * BM
@@ -266,12 +304,23 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
             output = output * dx
         return output
 
+    if inner == 1 and triton.next_power_of_2(max(N - 1, 1)) >= _STAGE_MIN_LANES:
+        _cumtrapz_staged(yc.view(outer, N), output.view(outer, N - 1), outer, N)
+        if dx != 1:
+            output = output * dx
+        return output
+
     tm = 0
     if inner == 1 and _is_pow2(N) and y.dtype in _TILE_LANES:
         tm = min(max(_TILE_LANES[y.dtype] // N, 1), _MAX_TM)
         tm = min(tm, outer & (-outer))
         if tm < 1 or N * tm < 64:
             tm = 0
+    if tm and N * tm >= _STAGE_MIN_LANES:
+        _cumtrapz_staged(yc.view(outer, N), output.view(outer, N - 1), outer, N)
+        if dx != 1:
+            output = output * dx
+        return output
     if tm:
         B = N * tm
         tmp = torch.empty(outer * N, dtype=y.dtype, device=y.device)
