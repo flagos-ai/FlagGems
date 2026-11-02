@@ -58,6 +58,7 @@ from .mv import mv
 from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
+from .quantized_lstm import quantized_lstm
 from .reflection_pad3d_backward import reflection_pad3d_backward
 from .renorm import renorm, renorm_
 from .repeat import repeat
@@ -150,6 +151,7 @@ __all__ = [
     "mvlgamma",
     "nll_loss_backward",
     "nonzero_numpy",
+    "quantized_lstm",
     "reflection_pad3d_backward",
     "renorm",
     "renorm_",
