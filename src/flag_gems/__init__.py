@@ -625,6 +625,7 @@ _FULL_CONFIG = (
     ("_trilinear", _trilinear),
     ("_trilinear.out", _trilinear_out),
     ("_unique2", _unique2),
+    ("_unpack_dual", _unpack_dual, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("_unsafe_index.Tensor", unsafe_index),
     ("_unsafe_index_put", unsafe_index_put),
     ("_unsafe_masked_index", _unsafe_masked_index),
