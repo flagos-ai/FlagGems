@@ -20,9 +20,9 @@ import torch
 import flag_gems
 from flag_gems.ops.bmm import bmm_out as triton_bmm_out
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
+from tests.test_bmm import make_channel_int8_bmm_inputs
 
 from . import base, consts
-from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 def _input_fn(b, m, n, k, dtype, device, b_column_major):
@@ -228,22 +228,6 @@ def test_bmm_w8a8_fp8_vs_triton_bf16():
     bench.run()
 
 
-def make_channel_int8_bmm_inputs(
-    shape: tuple[int, int, int, int], device: str, dtype: torch.dtype = torch.int8
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    batch, rows, columns, reduction = shape
-    torch.manual_seed(0)
-    activation = torch.randint(
-        -128, 128, (batch, rows, reduction), device=device, dtype=dtype
-    )
-    weight = torch.randint(
-        -128, 128, (batch, columns, reduction), device=device, dtype=dtype
-    ).transpose(1, 2)
-    activation_scale = torch.rand((batch, rows), device=device) / 127
-    weight_scale = torch.rand((batch, columns), device=device) / 127
-    return activation, weight, activation_scale, weight_scale
-
-
 def bf16_bmm(
     activation: torch.Tensor,
     weight: torch.Tensor,
@@ -316,14 +300,6 @@ class ChannelInt8BmmBenchmark(base.Benchmark):
             )
 
 
-class ParallelChannelInt8BmmBenchmark(ParallelBenchmarkMixin, ChannelInt8BmmBenchmark):
-    RECORD_PARALLEL_RESULTS = True
-
-    def should_forward_parallel_dtype(self, dtype_name):
-        # Workers select their INT8 default without extending the shared CLI choices.
-        return False
-
-
 @pytest.mark.bmm_w8a8
 @pytest.mark.parametrize(
     "baseline",
@@ -335,7 +311,7 @@ class ParallelChannelInt8BmmBenchmark(ParallelBenchmarkMixin, ChannelInt8BmmBenc
 )
 def test_perf_bmm_w8a8_int8(baseline):
     torch_op = native_int8_bmm if baseline == "native_int8" else bf16_bmm
-    bench = ParallelChannelInt8BmmBenchmark(
+    bench = ChannelInt8BmmBenchmark(
         op_name="bmm_w8a8", torch_op=torch_op, dtypes=[torch.int8]
     )
     bench.set_gems(channel_int8_bmm)
