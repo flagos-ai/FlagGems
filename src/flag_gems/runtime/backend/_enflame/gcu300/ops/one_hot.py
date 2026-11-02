@@ -42,8 +42,23 @@ def one_hot(tensor: torch.Tensor, num_classes: int = -1) -> torch.Tensor:
     if not tensor.is_contiguous():
         tensor = tensor.contiguous()
     numel = tensor.numel()
+    lo = hi = 0
+    if numel > 0:
+        lo = int(tensor.min().item())
+        hi = int(tensor.max().item())
     if num_classes == -1:
-        num_classes = int(tensor.max().item()) + 1
+        if numel == 0:
+            raise RuntimeError(
+                "Can not infer total number of classes from empty tensor."
+            )
+        num_classes = hi + 1
+    # `torch.one_hot` rejects out-of-range classes instead of emitting an
+    # all-zero row, so the range is checked before the kernel runs.
+    if numel > 0:
+        if lo < 0:
+            raise RuntimeError("Class values must be non-negative.")
+        if hi >= num_classes:
+            raise RuntimeError("Class values must be smaller than num_classes.")
 
     # GCU300 does not support 64-bit data types. torch.one_hot returns int64,
     # so allocate an int32 output for the kernel and cast back to int64 after.
