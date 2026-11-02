@@ -40,6 +40,7 @@ from .erfc import erfc
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
+from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
 from .lcm import lcm, lcm_
@@ -123,6 +124,7 @@ __all__ = [
     "gcd_",
     "grid_sampler_3d_backward",
     "gru",
+    "igamma",
     "index_copy",
     "index_copy_",
     "index_select_backward",
