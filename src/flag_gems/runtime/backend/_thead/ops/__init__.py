@@ -38,6 +38,7 @@ from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .gcd_ import gcd, gcd_
+from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
 from .index_copy_ import index_copy, index_copy_
@@ -121,6 +122,7 @@ __all__ = [
     "erfc",
     "gcd",
     "gcd_",
+    "greater_",
     "grid_sampler_3d_backward",
     "gru",
     "index_copy",
