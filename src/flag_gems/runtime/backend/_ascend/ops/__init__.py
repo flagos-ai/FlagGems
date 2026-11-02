@@ -53,6 +53,7 @@ from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .fill_diagonal_ import fill_diagonal_
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -225,6 +226,7 @@ __all__ = [
     "embedding_spmdm",
     "exponential",
     "exponential_",
+    "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
