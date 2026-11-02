@@ -41,6 +41,7 @@ from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd, gcd_
+from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
 from .index_copy_ import index_copy, index_copy_
@@ -131,6 +132,7 @@ __all__ = [
     "fractional_max_pool2d_backward",
     "gcd",
     "gcd_",
+    "greater_",
     "grid_sampler_3d_backward",
     "gru",
     "index_copy",
