@@ -926,21 +926,21 @@ def _gemv_fp8(
     SR_STRIDE: tl.constexpr,
     TRANSPOSE: tl.constexpr,
     NATIVE_DOT: tl.constexpr,
+    DOT_M: tl.constexpr,
     BLOCK_V: tl.constexpr,
     BLOCK_K: tl.constexpr,
     SPLIT_K: tl.constexpr,
 ):
     v = tl.program_id(0) * BLOCK_V + tl.arange(0, BLOCK_V)
     outer = tl.program_id(1)
-    split = tl.program_id(2)
+    split = tl.program_id(2) if SPLIT_K > 1 else 0
     rk = tl.arange(0, BLOCK_K)
     if NATIVE_DOT:
         # B^T @ A^T keeps the wide N tile on the native FP8 dot's left side.
-        DOT_M: tl.constexpr = 16 if K <= 512 else 32
         rows = tl.arange(0, DOT_M)
         acc = tl.zeros((BLOCK_V, DOT_M), tl.float32)
-        for block in range(tl.cdiv(K, BLOCK_K)):
-            kk = block * BLOCK_K + rk
+        for block in range(tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            kk = (block * SPLIT_K + split) * BLOCK_K + rk
             aa = tl.load(
                 A + rows[:, None].to(tl.int64) * AM + kk[None, :],
                 (rows[:, None] < M) & (kk[None, :] < K),
@@ -1067,6 +1067,16 @@ def _select_split_k(m, n, k, descriptor):
     return 1
 
 
+# Native dot, block V, block K, warps, physical dot M, split K.
+_SKINNY_CONFIGS = {
+    (1, 64, 4096): (False, 1, 4096, 8, 16, 1),
+    (1, 4096, 1024): (True, 32, 256, 8, 64, 1),
+    (2, 64, 4096): (False, 1, 4096, 8, 16, 1),
+    (2, 512, 4096): (True, 32, 256, 4, 32, 8),
+    (2, 1536, 4096): (True, 64, 256, 8, 32, 4),
+}
+
+
 def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
     m, k = a.shape
     n = b.shape[1]
@@ -1076,8 +1086,17 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         and 256 <= k <= 2048
         and (m == 2 or (n > 4096 and k > 512))
     )
+    config = _SKINNY_CONFIGS.get((m, n, k))
+    if config is not None:
+        native_dot = config[0]
     if (
-        (native_dot or n == 1 or (m <= 2 and n <= 4) or (m == 1 and n <= 4096))
+        (
+            config is not None
+            or native_dot
+            or n == 1
+            or (m <= 2 and n <= 4)
+            or (m == 1 and n <= 4096)
+        )
         and k >= 256
         and a.dtype == b.dtype == torch.float8_e4m3fn
         and a.stride(1) == b.stride(0) == 1
@@ -1087,7 +1106,10 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
         split = 1
         warps = 4
         stages = 1
-        if native_dot:
+        dot_m = 16 if k <= 512 else 32
+        if config is not None:
+            native_dot, bv, bk, warps, dot_m, split = config
+        elif native_dot:
             bv, bk = (64 if k <= 512 else 32), 256
             stages = 3 if k <= 512 else 1
         elif m == 1 and 64 <= n <= 512 and 2048 <= k <= 4096:
@@ -1141,6 +1163,7 @@ def _launch(a, b, out, sa, sb, sa_stride, sb_stride, bias, sr, sr_stride):
             **epilogue,
             TRANSPOSE=transpose,
             NATIVE_DOT=native_dot,
+            DOT_M=dot_m,
             BLOCK_V=bv,
             BLOCK_K=bk,
             SPLIT_K=split,
