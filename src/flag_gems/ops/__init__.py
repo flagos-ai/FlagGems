@@ -1121,6 +1121,7 @@ from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.moveaxis import moveaxis
+from flag_gems.ops.movedim import movedim
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
@@ -1536,12 +1537,9 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
-from flag_gems.ops.sym_constrain_range import sym_constrain_range
-from flag_gems.ops.sym_numel import sym_numel
 from flag_gems.ops.sym_size import sym_size, sym_size_int
-from flag_gems.ops.sym_storage_offset import sym_storage_offset
-from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
@@ -2778,6 +2776,7 @@ __all__ = [
     "mm_out",
     "mode",
     "moveaxis",
+    "movedim",
     "mse_loss",
     "mse_loss_backward",
     "msort",
@@ -3208,14 +3207,10 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapaxes_",
     "swapdims",
-    "sym_constrain_range",
-    "sym_numel",
     "sym_size",
     "sym_size_int",
-    "sym_storage_offset",
-    "sym_stride",
-    "sym_stride_int",
     "t_",
     "t_copy",
     "t_copy_out",

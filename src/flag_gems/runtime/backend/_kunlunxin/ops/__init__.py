@@ -87,6 +87,7 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_expm1 import _foreach_expm1, _foreach_expm1_  # noqa: F401
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
 from ._foreach_log import _foreach_log, _foreach_log_  # noqa: F401
@@ -122,6 +123,7 @@ from ._foreach_sqrt import _foreach_sqrt
 from ._foreach_sub_list_ import _foreach_sub__List
 from ._foreach_tan import _foreach_tan  # noqa: F401
 from ._foreach_tan_ import _foreach_tan_  # noqa: F401
+from ._foreach_tanh_ import _foreach_tanh_  # noqa: F401
 from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_addcmul_Scalar,
     _foreach_lerp__Scalar,
@@ -143,7 +145,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_sin_,
     _foreach_sqrt_,
     _foreach_tanh,
-    _foreach_tanh_,
 )
 from ._foreach_zero import _foreach_zero, _foreach_zero_  # noqa: F401
 from ._functional_sym_constrain_range import _functional_sym_constrain_range
@@ -297,6 +298,7 @@ from .celu import celu, celu_
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .choose_qparams_optimized import choose_qparams_optimized
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -311,6 +313,7 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .clone import clone  # noqa: F401
 from .col2im import col2im
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
@@ -321,6 +324,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv3d import conv3d
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy, copy_
@@ -333,6 +337,7 @@ from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
 from .cummax import cummax
+from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
@@ -569,6 +574,7 @@ from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
+from .matrix_power import matrix_power, matrix_power_out
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -955,6 +961,8 @@ __all__ = [
     "_foreach_erfc_",
     "_foreach_exp",
     "_foreach_exp_",
+    "_foreach_expm1",
+    "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
     "_foreach_lerp__Scalar",
@@ -1002,6 +1010,7 @@ __all__ = [
     "_foreach_sub_ScalarList",
     "_foreach_tan",
     "_foreach_tan_",
+    "_foreach_tanh_",
     "_foreach_zero",
     "_foreach_zero_",
     "_functional_assert_async",
@@ -1165,6 +1174,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "choose_qparams_optimized",
     "chunk_cat",
     "chunk_gated_delta_rule_fwd",
     "clamp",
@@ -1177,6 +1187,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "column_stack",
     "column_stack_out",
@@ -1187,6 +1198,8 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv3d",
+    "conv_tbc",
+    "conv_tbc_out",
     "conv_transpose1d",
     "conv_transpose2d",
     "copy",
@@ -1198,6 +1211,7 @@ __all__ = [
     "cos_",
     "count_nonzero",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
@@ -1465,6 +1479,8 @@ __all__ = [
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
+    "matrix_power",
+    "matrix_power_out",
     "max",
     "max_dim",
     "max_pool2d_backward",
