@@ -39,6 +39,7 @@ from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .embedding_dense_backward import embedding_dense_backward
 from .erfc import erfc
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd, gcd_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .gru import gru
@@ -124,6 +125,7 @@ __all__ = [
     "diagonal_scatter",
     "embedding_dense_backward",
     "erfc",
+    "fractional_max_pool2d_backward",
     "gcd",
     "gcd_",
     "grid_sampler_3d_backward",
