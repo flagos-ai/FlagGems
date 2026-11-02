@@ -99,14 +99,14 @@ def validate_inputs(A, B, A_scale, B_scale, out_dtype, out):
 
 
 def bmm_w8a8(
-    A: torch.Tensor,
-    B: torch.Tensor,
-    A_scale: torch.Tensor,
-    B_scale: torch.Tensor,
-    block_size=(128, 128, 128),
+    activation: torch.Tensor,
+    weight: torch.Tensor,
+    activation_scale: torch.Tensor,
+    weight_scale: torch.Tensor,
     out_dtype: torch.dtype = torch.bfloat16,
     out: torch.Tensor | None = None,
     *,
+    block_size=(128, 128, 128),
     config=None,
 ) -> torch.Tensor:
     """Channel-wise batched W8A8 matrix multiplication.
@@ -117,6 +117,8 @@ def bmm_w8a8(
     casting to out_dtype.
     block_size is retained for API compatibility and is unused here.
     """
+    A, B = activation, weight
+    A_scale, B_scale = activation_scale, weight_scale
     out = validate_inputs(A, B, A_scale, B_scale, out_dtype, out)
     batch, M, K = A.shape
     N = B.shape[2]

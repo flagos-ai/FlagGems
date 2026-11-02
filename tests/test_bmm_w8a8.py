@@ -1,7 +1,109 @@
+# Copyright 2026 FlagOS Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from itertools import product
+
 import pytest
 import torch
 
 import flag_gems
+from benchmark.test_bmm_w8a8 import make_channel_int8_bmm_inputs
+
+from .accuracy_utils import gems_assert_close, gems_assert_equal
+
+CONTRACT_SHAPES = [
+    (1, 1, 1, 1),
+    (2, 33, 65, 129),
+    (4, 64, 128, 256),
+    (2, 129, 17, 257),
+    (1, 1, 1024, 4096),
+    (1, 4, 1024, 4096),
+    (1, 16, 1024, 4096),
+    (1, 32, 1024, 4096),
+    (1, 64, 1024, 4096),
+    (1, 65, 1024, 4096),
+    (1, 71, 1024, 4096),
+    (1, 72, 1024, 4096),
+    (1, 160, 1024, 4096),
+    (1, 161, 1024, 4096),
+    (1, 224, 1024, 4096),
+    (1, 225, 1024, 4096),
+    (1, 321, 1024, 4096),
+    (1, 512, 1024, 4096),
+    (1, 513, 1024, 4096),
+]
+BMM_CASES = list(
+    product(
+        CONTRACT_SHAPES,
+        (torch.bfloat16, torch.float16, torch.float32),
+        (2, 3),
+        (False, True),
+    )
+)
+
+
+requires_channel_int8_bmm = pytest.mark.skipif(
+    "bmm_w8a8" not in vars(flag_gems),
+    reason="backend does not export channel-wise INT8 BMM",
+)
+
+
+@pytest.mark.parametrize("shape,dtype,scale_rank,use_out", BMM_CASES)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+def test_channel_int8_bmm(shape, dtype, scale_rank, use_out):
+    batch, rows, columns = shape[:3]
+    activation, weight, activation_scale, weight_scale = make_channel_int8_bmm_inputs(
+        shape, flag_gems.device
+    )
+    reference = torch.bmm(activation.cpu().long(), weight.cpu().long()).float()
+    reference *= activation_scale.cpu()[:, :, None]
+    reference *= weight_scale.cpu()[:, None, :]
+    activation_scale = (
+        activation_scale[:, :, None] if scale_rank == 3 else activation_scale
+    )
+    weight_scale = weight_scale[:, None, :] if scale_rank == 3 else weight_scale
+    output = (
+        torch.empty((batch, rows, columns), device=activation.device, dtype=dtype)
+        if use_out
+        else None
+    )
+    actual = flag_gems.bmm_w8a8(
+        activation, weight, activation_scale, weight_scale, out_dtype=dtype, out=output
+    )
+    gems_assert_close(actual.cpu(), reference.to(dtype), dtype, atol=0)
+
+
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize(
+    "shape", [(0, 5, 7, 131072), (2, 0, 7, 32), (2, 5, 0, 32), (2, 5, 7, 0)]
+)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+def test_channel_int8_bmm_empty(shape, use_out):
+    batch, rows, columns, reduction = shape
+    activation = torch.empty(
+        shape[:2] + (reduction,), device=flag_gems.device, dtype=torch.int8
+    )
+    weight = torch.empty(
+        (batch, columns, reduction), device=activation.device, dtype=torch.int8
+    ).transpose(1, 2)
+    activation_scale = torch.ones((batch, rows), device=activation.device)
+    weight_scale = torch.ones((batch, columns), device=activation.device)
+    output = (
+        torch.empty(
+            (batch, rows, columns), device=activation.device, dtype=torch.bfloat16
+        )
+        if use_out
+        else None
+    )
+    actual = flag_gems.bmm_w8a8(
+        activation, weight, activation_scale, weight_scale, out=output
+    )
+    reference = torch.zeros(
+        (batch, rows, columns), device=activation.device, dtype=torch.bfloat16
+    )
+    gems_assert_equal(actual.cpu(), reference.cpu())
 
 
 @pytest.mark.parametrize("out_dtype", [torch.float16, torch.bfloat16, torch.float32])
@@ -17,6 +119,10 @@ import flag_gems
 )
 @pytest.mark.parametrize("transpose", [False, True])
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "metax", reason="MetaX strided layout extension"
+)
 def test_bmm_w8a8(out_dtype, shape, transpose):
     torch.manual_seed(20261019)
     batch, m, n, k = shape
@@ -53,6 +159,7 @@ def test_bmm_w8a8(out_dtype, shape, transpose):
     ],
 )
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
 def test_bmm_w8a8_aligned(shape):
     torch.manual_seed(20261020)
     batch, m, n, k = shape
@@ -73,6 +180,7 @@ def test_bmm_w8a8_aligned(shape):
 
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX graph fast path")
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
 def test_bmm_w8a8_graph_replay():
     torch.manual_seed(20261020)
     a = torch.randint(
@@ -174,6 +282,7 @@ EINSUM_SHAPES = [
 
 
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
 @pytest.mark.parametrize("shape", EINSUM_SHAPES)
 def test_bmm_w8a8_einsum_shapes(shape, monkeypatch):
     torch.manual_seed(20261027)
@@ -199,6 +308,7 @@ def test_bmm_w8a8_einsum_shapes(shape, monkeypatch):
 
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX graph fast paths")
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
 @pytest.mark.parametrize("m", [1, 2, 4, 8, 16, 64, 128, 256, 512])
 def test_bmm_w8a8_einsum_graph_full_range(m):
     torch.manual_seed(20261027)
@@ -242,6 +352,7 @@ def test_bmm_w8a8_einsum_graph_full_range(m):
 
 
 @pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
 @pytest.mark.parametrize("operand", ["a", "b"])
 def test_bmm_w8a8_rejects_non_int8(operand):
     a = torch.zeros((1, 2, 32), device=flag_gems.device, dtype=torch.int8)
@@ -254,3 +365,65 @@ def test_bmm_w8a8_rejects_non_int8(operand):
         b = b.float()
     with pytest.raises(TypeError, match="INT8"):
         flag_gems.bmm_w8a8(a, b, sa, sb)
+
+
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+@pytest.mark.parametrize("out_dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("call_style", ["positional", "keyword"])
+def test_channel_int8_bmm_output_arguments(out_dtype, call_style):
+    activation, weight, activation_scale, weight_scale = make_channel_int8_bmm_inputs(
+        (1, 3, 16, 32), flag_gems.device
+    )
+    out = torch.empty((1, 3, 16), device=flag_gems.device, dtype=out_dtype)
+    if call_style == "positional":
+        actual = flag_gems.bmm_w8a8(
+            activation, weight, activation_scale, weight_scale, out_dtype, out
+        )
+    else:
+        actual = flag_gems.bmm_w8a8(
+            activation=activation,
+            weight=weight,
+            activation_scale=activation_scale,
+            weight_scale=weight_scale,
+            out_dtype=out_dtype,
+            out=out,
+        )
+    expected = (
+        torch.bmm(activation.double(), weight.double())
+        * activation_scale[:, :, None]
+        * weight_scale[:, None, :]
+    ).to(out_dtype)
+    assert actual is out
+    torch.testing.assert_close(
+        actual, expected, atol=1e-5, rtol=0.002 if out_dtype == torch.float16 else 0.01
+    )
+
+
+@pytest.mark.bmm_w8a8
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX generic fallback")
+@pytest.mark.parametrize("out_dtype", [torch.float16, torch.bfloat16, torch.float32])
+def test_channel_int8_bmm_keyword_config(out_dtype):
+    activation, weight, activation_scale, weight_scale = make_channel_int8_bmm_inputs(
+        (1, 3, 17, 33), flag_gems.device
+    )
+    out = torch.empty((1, 3, 17), device=flag_gems.device, dtype=out_dtype)
+    actual = flag_gems.bmm_w8a8(
+        activation,
+        weight,
+        activation_scale,
+        weight_scale,
+        out_dtype,
+        out,
+        block_size=(128, 128, 128),
+        config=(16, 32, 32, 4, 1, 1),
+    )
+    expected = (
+        torch.bmm(activation.double(), weight.double())
+        * activation_scale[:, :, None]
+        * weight_scale[:, None, :]
+    ).to(out_dtype)
+    assert actual is out
+    torch.testing.assert_close(
+        actual, expected, atol=1e-5, rtol=0.002 if out_dtype == torch.float16 else 0.01
+    )
