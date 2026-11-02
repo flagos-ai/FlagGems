@@ -132,6 +132,7 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .randperm import randperm
+from .renorm import renorm
 from .repeat_interleave import repeat_interleave_self_int
 from .replication_pad2d_backward import (
     replication_pad2d_backward,
@@ -340,6 +341,7 @@ __all__ = [
     "pow_tensor_tensor",
     "pow_tensor_tensor_",
     "randperm",
+    "renorm",
     "repeat_interleave_self_int",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
