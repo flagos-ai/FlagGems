@@ -32,6 +32,7 @@ from .baddbmm_ import baddbmm_
 from .bmm import bmm, bmm_out
 from .cholesky_inverse import cholesky_inverse
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .conv_transpose3d import conv_transpose3d
 from .cross_attention import cross_attention
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward, make_3d_for_bn
 from .diagonal_scatter import diagonal_scatter
@@ -114,6 +115,7 @@ __all__ = [
     "cholesky_inverse",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "conv_transpose3d",
     "cross_attention",
     "cudnn_batch_norm_backward",
     "diagonal_scatter",
