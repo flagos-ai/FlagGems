@@ -45,8 +45,15 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.shape_utils import computeStride
+
 # Logical copy tile; small enough for irregular strided gathers.
 _BLOCK = 1024
+# Register-tile transpose: the collapsed non-contiguous side is held whole in
+# registers (its size is small in the common transpose cases).
+_TILED_ROWS = 16
+_BLOCK_J = 128
 logger = logging.getLogger(__name__)
 _MAX_RANK = 8
 
@@ -92,6 +99,101 @@ def _rft_store(
         if NEG:
             v = -v
         tl.store(dst_ptr + offs, v, mask=mask)
+
+
+@triton.jit
+def _rft_flat2_tiled_kernel(
+    src_ptr,
+    dst_ptr,
+    rows,
+    cols,
+    src_rstride,
+    src_cstride,
+    BLOCK_C: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    KIND: tl.constexpr,
+    NEG: tl.constexpr,
+    CONJ: tl.constexpr,
+):
+    """Rank-2 collapse via a register-tile transpose.
+
+    ``rows``/``cols`` describe the collapsed source layout in logical order
+    (row-major, so the destination's flat index is ``i * cols + j``) and
+    ``src_rstride == 1``: the source's contiguous axis is the outer logical dim,
+    which becomes the tile's innermost (coalesced) load axis.  The store walks
+    the destination's contiguous (row-major) inner axis likewise; ``tl.trans``
+    bridges the two layouts.
+    """
+    pid_c = tl.program_id(0)
+    offs_r = tl.arange(0, BLOCK_R).to(tl.int64)
+    offs_c = (pid_c * BLOCK_C + tl.arange(0, BLOCK_C)).to(tl.int64)
+    # Tile indexed [c, r] so the source-contiguous rows are the load's inner axis.
+    mask = (offs_c[:, None] < cols) & (offs_r[None, :] < rows)
+    acc = offs_c[:, None] * src_cstride + offs_r[None, :] * src_rstride
+    if KIND == 3:
+        # Complex elements move as separate (re, im) real registers, so the lazy
+        # bits apply per plane before the transpose.
+        re = tl.load(src_ptr + acc * 2, mask=mask, other=0.0)
+        im = tl.load(src_ptr + acc * 2 + 1, mask=mask, other=0.0)
+        if NEG:
+            re, im = -re, -im
+        if CONJ:
+            im = -im
+        re, im = tl.trans(re), tl.trans(im)
+        out = offs_r[:, None] * cols + offs_c[None, :]
+        mout = (offs_r[:, None] < rows) & (offs_c[None, :] < cols)
+        tl.store(dst_ptr + out * 2, re, mask=mout)
+        tl.store(dst_ptr + out * 2 + 1, im, mask=mout)
+    else:
+        tile = tl.load(src_ptr + acc, mask=mask, other=0.0)
+        if NEG:
+            tile = -tile
+        tile = tl.trans(tile)  # [c, r] -> [r, c], destination-contiguous
+        mout = (offs_r[:, None] < rows) & (offs_c[None, :] < cols)
+        tl.store(dst_ptr + offs_r[:, None] * cols + offs_c[None, :], tile, mask=mout)
+
+
+@triton.jit
+def _rft_flat2_plain_kernel(
+    src_ptr,
+    dst_ptr,
+    rows,
+    cols,
+    src_rstride,
+    src_cstride,
+    BLOCK_C: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    KIND: tl.constexpr,
+    NEG: tl.constexpr,
+    CONJ: tl.constexpr,
+):
+    """Rank-2 collapse when the source's contiguous axis is the inner dim.
+
+    Here ``src_cstride == 1``: both the load and the store walk their
+    contiguous axes innermost with the same orientation, so the tile moves
+    without a transpose.
+    """
+    pid_r = tl.program_id(0)
+    pid_c = tl.program_id(1)
+    offs_r = (pid_r * BLOCK_R + tl.arange(0, BLOCK_R)).to(tl.int64)
+    offs_c = (pid_c * BLOCK_C + tl.arange(0, BLOCK_C)).to(tl.int64)
+    mask = (offs_r[:, None] < rows) & (offs_c[None, :] < cols)
+    acc = offs_r[:, None] * src_rstride + offs_c[None, :] * src_cstride
+    if KIND == 3:
+        re = tl.load(src_ptr + acc * 2, mask=mask, other=0.0)
+        im = tl.load(src_ptr + acc * 2 + 1, mask=mask, other=0.0)
+        if NEG:
+            re, im = -re, -im
+        if CONJ:
+            im = -im
+        out = offs_r[:, None] * cols + offs_c[None, :]
+        tl.store(dst_ptr + out * 2, re, mask=mask)
+        tl.store(dst_ptr + out * 2 + 1, im, mask=mask)
+    else:
+        tile = tl.load(src_ptr + acc, mask=mask, other=0.0)
+        if NEG:
+            tile = -tile
+        tl.store(dst_ptr + offs_r[:, None] * cols + offs_c[None, :], tile, mask=mask)
 
 
 @triton.jit
@@ -311,13 +413,13 @@ def _make_target(shape, ref_numel):
     if inferred >= 0:
         if known == 0 or ref_numel % known != 0:
             raise RuntimeError(
-                "shape %s is invalid for input of size %d" % (dims, ref_numel)
+                "shape '%s' is invalid for input of size %d" % (dims, ref_numel)
             )
         dims[inferred] = ref_numel // known
 
     if _numel(dims) != ref_numel:
         raise RuntimeError(
-            "shape %s is invalid for input of size %d" % (dims, ref_numel)
+            "shape '%s' is invalid for input of size %d" % (dims, ref_numel)
         )
     return dims
 
@@ -357,117 +459,163 @@ def _launch_copy(phys, out, conj, neg):
     else:
         src, dst = phys, out
 
-    if rank > _MAX_RANK:
-        _rft_high_rank_kernel[grid](
-            src,
-            dst,
-            n,
-            tuple(cs),
-            tuple(ct),
-            BLOCK=_BLOCK,
-            KIND=kind,
-            NEG=neg_f,
-            CONJ=conj_f,
-        )
-        return
+    with torch_device_fn.device(phys.device):
+        # When the collapsed source is rank 2, a register-tile copy keeps every
+        # transaction coalesced on both ends; the flat gather kernels below read
+        # the source at the destination's contiguity and pay for it at large
+        # shapes.  The contiguous source axis is held whole in registers (or
+        # re-indexed per tile), so only small extents of that axis take these
+        # paths.
+        if rank == 2 and ct[0] == 1 and cs[0] <= _TILED_ROWS and kind != _K_COMPLEX:
+            _rft_flat2_tiled_kernel[(triton.cdiv(cs[1], _BLOCK_J),)](
+                src,
+                dst,
+                cs[0],
+                cs[1],
+                ct[0],
+                ct[1],
+                BLOCK_C=_BLOCK_J,
+                BLOCK_R=_TILED_ROWS,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
+        if rank == 2 and ct[1] == 1 and cs[1] <= _TILED_ROWS and kind != _K_COMPLEX:
+            _rft_flat2_plain_kernel[(triton.cdiv(cs[0], _TILED_ROWS), 1)](
+                src,
+                dst,
+                cs[0],
+                cs[1],
+                ct[0],
+                ct[1],
+                BLOCK_C=_TILED_ROWS,
+                BLOCK_R=_TILED_ROWS,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
 
-    if rank == 1 and kind != _K_COMPLEX:
-        _rft_flat1_kernel[grid](
-            src, dst, n, cs[0], ct[0], BLOCK=_BLOCK, KIND=kind, NEG=neg_f, CONJ=conj_f
-        )
-        return
-    if rank == 2 and kind != _K_COMPLEX:
-        _rft_flat2_kernel[grid](
-            src,
-            dst,
-            n,
-            cs[0],
-            ct[0],
-            cs[1],
-            ct[1],
-            BLOCK=_BLOCK,
-            KIND=kind,
-            NEG=neg_f,
-            CONJ=conj_f,
-        )
-        return
-    if rank == 3 and kind != _K_COMPLEX:
-        _rft_flat3_kernel[grid](
-            src,
-            dst,
-            n,
-            cs[0],
-            ct[0],
-            cs[1],
-            ct[1],
-            cs[2],
-            ct[2],
-            BLOCK=_BLOCK,
-            KIND=kind,
-            NEG=neg_f,
-            CONJ=conj_f,
-        )
-        return
-    if rank == 4 and kind != _K_COMPLEX:
-        _rft_flat4_kernel[grid](
-            src,
-            dst,
-            n,
-            cs[0],
-            ct[0],
-            cs[1],
-            ct[1],
-            cs[2],
-            ct[2],
-            cs[3],
-            ct[3],
-            BLOCK=_BLOCK,
-            KIND=kind,
-            NEG=neg_f,
-            CONJ=conj_f,
-        )
-        return
+        if rank > _MAX_RANK:
+            _rft_high_rank_kernel[grid](
+                src,
+                dst,
+                n,
+                tuple(cs),
+                tuple(ct),
+                BLOCK=_BLOCK,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
 
-    q = []
-    tail = 1
-    for d in reversed(cs):
-        q.append(tail)
-        tail *= d
-    q.reverse()
-    _rft_flatn_kernel[grid](
-        src,
-        dst,
-        n,
-        _at(q, 0, 1),
-        _at(q, 1, 1),
-        _at(q, 2, 1),
-        _at(q, 3, 1),
-        _at(q, 4, 1),
-        _at(q, 5, 1),
-        _at(q, 6, 1),
-        _at(q, 7, 1),
-        _at(cs, 0, 1),
-        _at(cs, 1, 1),
-        _at(cs, 2, 1),
-        _at(cs, 3, 1),
-        _at(cs, 4, 1),
-        _at(cs, 5, 1),
-        _at(cs, 6, 1),
-        _at(cs, 7, 1),
-        _at(ct, 0, 0),
-        _at(ct, 1, 0),
-        _at(ct, 2, 0),
-        _at(ct, 3, 0),
-        _at(ct, 4, 0),
-        _at(ct, 5, 0),
-        _at(ct, 6, 0),
-        _at(ct, 7, 0),
-        R=rank,
-        BLOCK=_BLOCK,
-        KIND=kind,
-        NEG=neg_f,
-        CONJ=conj_f,
-    )
+        if rank == 1 and kind != _K_COMPLEX:
+            _rft_flat1_kernel[grid](
+                src,
+                dst,
+                n,
+                cs[0],
+                ct[0],
+                BLOCK=_BLOCK,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
+        if rank == 2 and kind != _K_COMPLEX:
+            _rft_flat2_kernel[grid](
+                src,
+                dst,
+                n,
+                cs[0],
+                ct[0],
+                cs[1],
+                ct[1],
+                BLOCK=_BLOCK,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
+        if rank == 3 and kind != _K_COMPLEX:
+            _rft_flat3_kernel[grid](
+                src,
+                dst,
+                n,
+                cs[0],
+                ct[0],
+                cs[1],
+                ct[1],
+                cs[2],
+                ct[2],
+                BLOCK=_BLOCK,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
+        if rank == 4 and kind != _K_COMPLEX:
+            _rft_flat4_kernel[grid](
+                src,
+                dst,
+                n,
+                cs[0],
+                ct[0],
+                cs[1],
+                ct[1],
+                cs[2],
+                ct[2],
+                cs[3],
+                ct[3],
+                BLOCK=_BLOCK,
+                KIND=kind,
+                NEG=neg_f,
+                CONJ=conj_f,
+            )
+            return
+
+        q = []
+        tail = 1
+        for d in reversed(cs):
+            q.append(tail)
+            tail *= d
+        q.reverse()
+        _rft_flatn_kernel[grid](
+            src,
+            dst,
+            n,
+            _at(q, 0, 1),
+            _at(q, 1, 1),
+            _at(q, 2, 1),
+            _at(q, 3, 1),
+            _at(q, 4, 1),
+            _at(q, 5, 1),
+            _at(q, 6, 1),
+            _at(q, 7, 1),
+            _at(cs, 0, 1),
+            _at(cs, 1, 1),
+            _at(cs, 2, 1),
+            _at(cs, 3, 1),
+            _at(cs, 4, 1),
+            _at(cs, 5, 1),
+            _at(cs, 6, 1),
+            _at(cs, 7, 1),
+            _at(ct, 0, 0),
+            _at(ct, 1, 0),
+            _at(ct, 2, 0),
+            _at(ct, 3, 0),
+            _at(ct, 4, 0),
+            _at(ct, 5, 0),
+            _at(ct, 6, 0),
+            _at(ct, 7, 0),
+            R=rank,
+            BLOCK=_BLOCK,
+            KIND=kind,
+            NEG=neg_f,
+            CONJ=conj_f,
+        )
 
 
 @triton.jit
@@ -527,13 +675,15 @@ class _ReshapeFromTensor(torch.autograd.Function):
 def _reshape_from_tensor(self, shape):
     logger.debug("GEMS _RESHAPE_FROM_TENSOR")
     dims = _make_target(shape, self.numel())
-    try:
+    # computeStride is the port of the ATen helper behind view: consulting it in
+    # Python first keeps the frequent "not viewable" case from paying for the
+    # RuntimeError a failing self.view() raises across the C++ boundary.
+    if computeStride(self.shape, self.stride(), dims) is not None:
         return self.view(dims)
-    except RuntimeError:
-        pass
     conj, neg = self.is_conj(), self.is_neg()
     if self.requires_grad:
         return _ReshapeFromTensor.apply(self, dims, conj, neg)
     out = torch.empty(dims, dtype=self.dtype, device=self.device)
-    _launch_copy(_physical_view(self), out, conj, neg)
+    with torch_device_fn.device(self.device):
+        _launch_copy(_physical_view(self), out, conj, neg)
     return out

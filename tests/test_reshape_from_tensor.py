@@ -93,3 +93,42 @@ def test_reshape_from_tensor_invalid_shape(dims):
     inp = torch.empty((4, 6), device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._reshape_from_tensor(inp, torch.tensor(dims, dtype=torch.int64))
+
+
+@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
+@pytest.mark.parametrize("transpose", [False, True])
+def test_reshape_from_tensor_multi_device(transpose):
+    """The copy kernels launch under the operand's device, not the current one."""
+    if utils.TO_CPU:
+        # The test needs a second device operand, which has no CPU counterpart.
+        pytest.skip("multi-device operands have no CPU reference")
+    if torch.cuda.device_count() < 2:
+        pytest.skip("needs at least two devices")
+    other = torch.device(flag_gems.device, 1)
+    if transpose:
+        inp = torch.randn((256, 16), dtype=torch.float16, device=other).t()
+    else:
+        inp = torch.randn((16, 256), dtype=torch.float16, device=other).t()
+    shape = torch.tensor([inp.numel()], dtype=torch.int64)
+    ref = torch.ops.aten._reshape_from_tensor.default(inp, shape)
+    res = flag_gems._reshape_from_tensor(inp, shape)
+    assert res.device == ref.device
+    utils.gems_assert_equal(res, ref)
+
+
+@pytest.mark.reshape_from_tensor
+@pytest.mark.underscore_reshape_from_tensor
+@pytest.mark.parametrize("rows,cols", [(16, 4096), (4096, 16), (8, 4096), (4096, 8)])
+def test_reshape_from_tensor_tiled_copy(rows, cols):
+    """Rank-2 collapses take a tiled copy for either source-contiguity side."""
+    # (rows, cols) with the contiguous axis on one side or the other, flattened
+    # to 1-D, exercise both tiled kernels.
+    base = torch.randn((rows, cols), dtype=torch.float32, device=flag_gems.device)
+    for inp in (base, base.t()):
+        shape = torch.tensor([inp.numel()], dtype=torch.int64)
+        ref = torch.ops.aten._reshape_from_tensor.default(
+            utils.to_reference(inp), shape
+        )
+        res = flag_gems._reshape_from_tensor(inp, shape)
+        utils.gems_assert_equal(res, ref)
