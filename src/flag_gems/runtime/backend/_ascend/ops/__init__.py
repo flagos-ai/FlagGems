@@ -72,6 +72,7 @@ from .index_fill import index_fill, index_fill_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
+from .kl_div import kl_div
 from .layernorm import layer_norm, native_layer_norm
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
@@ -260,6 +261,7 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "isin",
+    "kl_div",
     "layer_norm",
     "linalg_cross",
     "linalg_cross_out",
