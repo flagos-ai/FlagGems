@@ -342,6 +342,7 @@ from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
+from flag_gems.ops._remove_batch_dim import _remove_batch_dim
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
@@ -1972,6 +1973,7 @@ __all__ = [
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_remove_batch_dim",
     "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",

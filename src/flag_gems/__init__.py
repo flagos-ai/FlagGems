@@ -505,6 +505,7 @@ _FULL_CONFIG = (
     ("_pin_memory", _pin_memory, None, ["CPU"]),
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
+    ("_remove_batch_dim", _remove_batch_dim),
     ("_reshape_alias", _reshape_alias),
     ("_reshape_alias_copy", _reshape_alias_copy),
     ("_reshape_copy", _reshape_copy),
