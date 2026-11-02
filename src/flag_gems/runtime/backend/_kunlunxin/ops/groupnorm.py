@@ -27,28 +27,6 @@ logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 
-# Forward is split into TWO @libentry kernels, one program per (n, group):
-#
-#   1) group_norm_reduce_kernel  -> flat 1D contiguous reduction => Mean/Rstd
-#   2) group_norm_normalize_kernel -> per-channel affine write => Y
-#
-# WHY split + per-channel: the previous single kernel combined the reduction
-# with a normalize pass that recovered each element's channel via a PER-ELEMENT
-# gather `ch = ch_base + idx // HW` + masked `tl.load(W + ch)`. On the XPU triton
-# fork that integer-div + gather in the pointwise store loop was pathologically
-# slow (measured 9.5ms vs 0.16ms for a scalar-per-channel write on
-# [16,8,128,128] group=4), and fusing it with the reduce loop tripped the XPU
-# codegen into the same slow path even after removing the giant 2D tile.
-#
-# A group is `group_size` channels x HW CONTIGUOUS elements. The reduction is a
-# flat 1D inner reduction over a BOUNDED BLOCK (loops), killing the old
-# tensor<2x16384> giant-tile IR explosion (449K lines / 891 modules in
-# ir-group_norm-dev3.log). The normalize walks the group ONE CHANNEL AT A TIME
-# (`GROUP_SIZE` is a constexpr so the channel loop statically unrolls), loading
-# a SCALAR weight/bias per channel and doing a contiguous HW block DMA -> no
-# per-element div/gather. This is ~40x faster than the fused gather kernel.
-
-
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def group_norm_reduce_kernel(
@@ -147,60 +125,66 @@ def group_norm_backward_kernel(
     group_size,
     grad_x,
     C,
-    HW: tl.constexpr,
-    BLOCK_GROUP_SIZE: tl.constexpr,
+    HW,
+    GROUP_SIZE: tl.constexpr,
     BLOCK_HW_SIZE: tl.constexpr,
 ):
+    # One program per (n, group); the group is `group_size` channels x HW
+    # CONTIGUOUS elements. The reduction is a FLAT 1D per-channel loop over
+    # bounded BLOCK_HW_SIZE chunks (GROUP_SIZE is constexpr so the channel
+    # loop unrolls statically) with a SCALAR weight per channel -- no 2D
+    # [G, HW] tiles. The old 2D form had two XPU pathologies: tiles >= 2x8192
+    # hit UNREACHABLE at TritonXPU/Transforms/Legalize.cpp:201 (uni_sram) or
+    # silently dropped tl.sum lanes past 8192, and tiles with heavily masked
+    # lanes (HxW=4098 -> tail chunk with 2/2048 valid) cost ~90ms of
+    # masked-memory-path time. Same structure as native_group_norm_kernel,
+    # which is the proven-fast shape on this backend.
     pid = ext.program_id(0)
     group = pid % num_groups
     num_elements = group_size * HW
-
-    group_offset = tl.arange(0, BLOCK_GROUP_SIZE)
-    wb_offset = group * group_size + group_offset
-
-    wb_mask = wb_offset < C
+    base = pid * num_elements
+    ch_base = group * group_size
 
     rstd = tl.load(Rstd + pid).to(tl.float32)
     mean = tl.load(Mean + pid).to(tl.float32)
-    if W is None:
-        weight = 1
-    else:
-        weight = tl.load(W + wb_offset, mask=wb_mask, other=0.0).to(tl.float32)[:, None]
 
-    dx_part2 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
-    dx_part3 = tl.zeros([BLOCK_GROUP_SIZE, BLOCK_HW_SIZE], dtype=tl.float32)
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        hw_mask = hw_offset < HW
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_mask[:, None] & hw_mask[None, :]
+    part2 = tl.zeros([BLOCK_HW_SIZE], dtype=tl.float32)
+    part3 = tl.zeros([BLOCK_HW_SIZE], dtype=tl.float32)
+    for c in range(0, GROUP_SIZE):
+        cbase = base + c * HW
+        if W is None:
+            weight = 1.0
+        else:
+            weight = tl.load(W + ch_base + c).to(tl.float32)
+        for off in range(0, HW, BLOCK_HW_SIZE):
+            idx = off + tl.arange(0, BLOCK_HW_SIZE)
+            m = idx < HW
+            dy = tl.load(grad_y + cbase + idx, mask=m, other=0.0).to(tl.float32)
+            x = tl.load(X + cbase + idx, mask=m, other=0.0).to(tl.float32)
+            x_hat = rstd * (x - mean)
+            dx_hat = weight * dy
+            part2 += dx_hat
+            part3 += dx_hat * x_hat
 
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
+    dx_2 = tl.sum(part2)
+    dx_3 = tl.sum(part3)
 
-        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
-        dx_hat = weight * dY_val
-        dx_part2 += dx_hat
-        dx_part3 += dx_hat * x_hat
-
-    dx_2 = tl.sum(dx_part2)
-    dx_3 = tl.sum(dx_part3)
-
-    for off in range(0, HW, BLOCK_HW_SIZE):
-        hw_offset = off + tl.arange(0, BLOCK_HW_SIZE)
-        hw_mask = hw_offset < HW
-        xy_offset = pid * num_elements + group_offset[:, None] * HW + hw_offset[None, :]
-        xy_mask = wb_mask[:, None] & hw_mask[None, :]
-
-        dY_val = tl.load(grad_y + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-        X_val = tl.load(X + xy_offset, mask=xy_mask, other=0.0).to(tl.float32)
-
-        x_hat = tl.where(xy_mask, rstd * (X_val - mean), 0.0)
-        dx_hat = weight * dY_val
-        dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / num_elements)
-        grad_x_offset = tl.where(xy_mask, xy_offset, -1)
-
-        tl.store(grad_x + grad_x_offset, dx, xy_mask)
+    for c in range(0, GROUP_SIZE):
+        cbase = base + c * HW
+        if W is None:
+            weight = 1.0
+        else:
+            weight = tl.load(W + ch_base + c).to(tl.float32)
+        for off in range(0, HW, BLOCK_HW_SIZE):
+            idx = off + tl.arange(0, BLOCK_HW_SIZE)
+            m = idx < HW
+            dy = tl.load(grad_y + cbase + idx, mask=m, other=0.0).to(tl.float32)
+            x = tl.load(X + cbase + idx, mask=m, other=0.0).to(tl.float32)
+            x_hat = rstd * (x - mean)
+            dx_hat = weight * dy
+            dx = rstd * (dx_hat - (dx_2 + x_hat * dx_3) / num_elements)
+            grad_x_ptr = tl.where(m, cbase + idx, -1)
+            tl.store(grad_x + grad_x_ptr, dx, m)
 
 
 @libentry()
@@ -224,27 +208,39 @@ def weight_bias_backward_kernel(
     group = pid // group_size
     n_offset = tl.arange(0, BLOCK_N)
     hw_offset = tl.arange(0, BLOCK_HW)
-    xy_mask = n_offset[:, None] < N and hw_offset[None, :] < HW
     mr_mask = n_offset < N
 
     mean_ptr = Mean + group + n_offset * num_groups
     rstd_ptr = Rstd + group + n_offset * num_groups
 
-    dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-    x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_offset[None, :]
-
-    grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
-    x = tl.load(x_ptr, mask=xy_mask, other=0.0)
-    x_f32 = x.to(tl.float32)
     mean = tl.load(mean_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
     rstd = tl.load(rstd_ptr, mask=mr_mask, other=0.0).to(tl.float32)[:, None]
 
+    # Loop over HW in BLOCK_HW chunks: the accumulator tiles stay bounded at
+    # BLOCK_N x BLOCK_HW (<= 4096 elements). Without the loop, HxW=4098/16384
+    # materialized 16x8192 / 16x16384 tiles -> uni_sram / slow, and the final
+    # tl.sum exceeded the 8192-lane safe point (silently dropped lanes).
+    dw_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)
+    db_acc = tl.zeros([BLOCK_N, BLOCK_HW], dtype=tl.float32)
+    for off in range(0, HW, BLOCK_HW):
+        hw_off = off + hw_offset
+        xy_mask = n_offset[:, None] < N and hw_off[None, :] < HW
+
+        dY_ptr = dY + pid * HW + n_offset[:, None] * C * HW + hw_off[None, :]
+        x_ptr = X + pid * HW + n_offset[:, None] * C * HW + hw_off[None, :]
+
+        grad_y = tl.load(dY_ptr, mask=xy_mask, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr, mask=xy_mask, other=0.0)
+        x_f32 = x.to(tl.float32)
+        dw_acc += (x_f32 - mean) * rstd * grad_y
+        db_acc += grad_y
+
     if dW is not None:
-        dw = tl.sum((x_f32 - mean) * rstd * grad_y)
-        tl.store(dW + pid, dw.to(x.dtype))
+        dw = tl.sum(dw_acc)
+        tl.store(dW + pid, dw)
     if dB is not None:
-        db = tl.sum(grad_y)
-        tl.store(dB + pid, db.to(x.dtype))
+        db = tl.sum(db_acc)
+        tl.store(dB + pid, db)
 
 
 @libentry()
@@ -381,6 +377,10 @@ def group_norm_backward(
 
             os.environ["TRITONXPU_OTHER_SIM"] = "1"
             os.environ["TRITONXPU_STORE_MASK_SIM"] = "1"
+            # Flat 1D per-channel reduction (see kernel docstring): bounded
+            # BLOCK_HW_SIZE=1024 chunks, same discipline as the proven
+            # native_group_norm_kernel.
+            block_hw = min(triton.next_power_of_2(HxW), 1024)
             group_norm_backward_kernel[grid](
                 grad_out,
                 input,
@@ -392,8 +392,8 @@ def group_norm_backward(
                 grad_inp,
                 C,
                 HxW,
-                BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
-                BLOCK_HW_SIZE=triton.next_power_of_2(HxW),
+                GROUP_SIZE=group_size,
+                BLOCK_HW_SIZE=block_hw,
                 isCloseUnrollControl=True,
             )
             if "TRITONXPU_OTHER_SIM" in os.environ:
@@ -431,6 +431,18 @@ def group_norm_backward(
         else:
             if output_mask[1] is True and output_mask[2] is True:
                 isCloseUnrollControl = True
+            block_n = triton.next_power_of_2(N)
+            # Keep BLOCK_N * BLOCK_HW <= 4096 (same XPU tile-size discipline as
+            # the grad-inp kernel above): the kernel loops over HW in chunks.
+            # The min 64 pads narrow tiles out of the XPU <=32 BAD interval
+            # (2D tiles with inner width <= 32 silently drop stores).
+            block_hw = max(
+                64,
+                min(
+                    triton.next_power_of_2(HxW),
+                    1 << (max(1, 4096 // block_n).bit_length() - 1),
+                ),
+            )
             weight_bias_backward_kernel[(C, 1, 1)](
                 grad_out,
                 input,
@@ -443,8 +455,8 @@ def group_norm_backward(
                 N,
                 C,
                 HxW,
-                BLOCK_N=triton.next_power_of_2(N),
-                BLOCK_HW=triton.next_power_of_2(HxW),
+                BLOCK_N=block_n,
+                BLOCK_HW=block_hw,
                 isCloseUnrollControl=isCloseUnrollControl,
             )
     return grad_inp, weight_grad, bias_grad

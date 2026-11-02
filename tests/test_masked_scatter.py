@@ -47,8 +47,7 @@ def test_accuracy_masked_scatter(shape, dtype, threshold):
     ref_mask = utils.to_reference(mask)
     ref_src = utils.to_reference(src)
     ref_out = torch.masked_scatter(ref_inp, ref_mask, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.masked_scatter(inp, mask, src)
+    res_out = flag_gems.masked_scatter(inp, mask, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -66,7 +65,6 @@ def test_accuracy_masked_scatter_(shape, dtype, threshold):
     ref_mask = utils.to_reference(mask)
     ref_src = utils.to_reference(src)
     ref_inp.masked_scatter_(ref_mask, ref_src)
-    with flag_gems.use_gems():
-        inp.masked_scatter_(mask, src)
+    flag_gems.masked_scatter_(inp, mask, src)
 
     utils.gems_assert_equal(inp, ref_inp)

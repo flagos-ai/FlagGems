@@ -28,8 +28,7 @@ def test_arccosh(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 1.0
     ref_inp = utils.to_reference(inp)
     ref_out = torch.arccosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arccosh(inp)
+    res_out = flag_gems.arccosh(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -44,8 +43,7 @@ def test_arccosh_special_values(dtype):
     )
     ref_inp = utils.to_reference(inp)
     ref_out = torch.arccosh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.arccosh(inp)
+    res_out = flag_gems.arccosh(inp)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -58,7 +56,6 @@ def test_arccosh_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp)
     torch.arccosh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp)
-        torch.arccosh(inp, out=res_out)
+    res_out = torch.empty_like(inp)
+    flag_gems.arccosh_out(inp, out=res_out)
     utils.gems_assert_close(res_out, ref_out, dtype)

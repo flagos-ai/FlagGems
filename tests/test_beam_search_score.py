@@ -41,8 +41,7 @@ def test_beam_search_score(shape, dtype):
     ref_beam_scores = utils.to_reference(beam_scores, True)
     ref_out = ref_log_probs + ref_beam_scores.unsqueeze(-1)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.beam_search_score(log_probs, beam_scores)
+    res_out = flag_gems.beam_search_score(log_probs, beam_scores)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -63,8 +62,7 @@ def test_beam_search_score_(shape, dtype):
     ref_beam_scores = utils.to_reference(beam_scores, True)
     ref_out = ref_inp + ref_beam_scores.unsqueeze(-1)
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.beam_search_score_(inp, beam_scores)
+    res_out = flag_gems.beam_search_score_(inp, beam_scores)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_out, dtype)

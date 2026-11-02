@@ -319,7 +319,7 @@ class MkldnnRnnLayerFunction(torch.autograd.Function):
         hidden_size,
         has_biases,
     ):
-        logger.debug("GEMS MKLDNN_RNN_LAYER FUNCTION FORWARD")
+        logger.debug("GEMS MKLDNN_RNN_LAYER_FUNCTION_FORWARD")
 
         output, hy, cy = _mkldnn_rnn_layer_forward(
             input,
@@ -347,7 +347,7 @@ class MkldnnRnnLayerFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output, grad_hy, grad_cy, grad_workspace):
-        logger.debug("GEMS MKLDNN_RNN_LAYER FUNCTION BACKWARD")
+        logger.debug("GEMS MKLDNN_RNN_LAYER_FUNCTION_BACKWARD")
 
         input, w_ih, w_hh, b_ih, b_hh, hx, cx = ctx.saved_tensors
         reverse = ctx.reverse

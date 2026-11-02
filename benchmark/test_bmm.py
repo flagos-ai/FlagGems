@@ -217,7 +217,7 @@ class BmmW8A8Fp8Benchmark(base.Benchmark):
 )
 def test_bmm_w8a8_fp8_vs_triton_bf16():
     bench = BmmW8A8Fp8Benchmark(
-        op_name="bmm_w8a8_fp8_vs_triton_bf16",
+        op_name="bmm_w8a8_fp8",
         torch_op=_triton_bmm_bf16_block_scale_baseline,
         dtypes=[torch.bfloat16],
     )

@@ -12,38 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kunlunxin (XPU) lu_unpack backend override.
-
-Two backend-local deviations from the generic
-``flag_gems/ops/lu_unpack.py`` implementation:
-
-1. Empty-input short-circuit. When ``m == 0`` or ``n == 0`` (so ``k == 0``),
-   ``triton.next_power_of_2(0) == 0`` makes ``tl.arange(0, BLOCK)`` fail to
-   compile (assert arange end > start). The short-circuit mirrors the ATen
-   native semantics for empty inputs:
-
-   - P: ``(..., m, m)`` identity (no swap with k == 0); when m == 0 it is
-     ``(0, 0)`` empty.
-   - L: ``(..., m, k)`` empty; U: ``(..., k, n)`` empty.
-
-2. Permutation-matrix (P) construction for ``m > 512``. The generic
-   ``lu_unpack_p_kernel_large`` launches one program per row and replays the
-   whole ``k``-step pivot loop inside every one of them, i.e. ``O(m * k)``
-   serialized scalar pivot loads. On XPU that single kernel is ~82% of the
-   whole operator at 1024x1024 / 4096x4096. Here the permutation is built
-   once in ``O(k)`` (a single program applying the LAPACK ``ipiv`` swaps to a
-   scratch index vector held in global memory) and then materialized with an
-   ``O(m)`` vectorized scatter.
-
-Everything else (L / U extraction, and the whole ``m <= 512`` P path) is
-delegated to the generic implementation - same Triton kernels, no
-CPU/ATen/native fallback involved.
-"""
-
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.ops.lu_unpack import lu_unpack as _general_lu_unpack
 from flag_gems.ops.lu_unpack import lu_unpack_out as _general_lu_unpack_out
 from flag_gems.utils import libentry
@@ -163,6 +136,30 @@ def _lu_unpack_permutation(LU_data, LU_pivots, batch_dims, batch_size, m, k):
     return P
 
 
+def _materialize_contiguous(t, batch_dims):
+    """Return ``t`` unchanged when the batch dims can be flattened safely.
+
+    The generic and vendor kernels address batch ``b`` as ``base = b *
+    stride(-3)`` (``stride(-2)`` for pivots), which is valid iff the batch
+    dims are packed row-major relative to each other
+    (``stride(k) == stride(k+1) * shape(k+1)``).  The last ``batch_dims``
+    tensor dims are free: the kernels index them with their real strides, so
+    e.g. the column-major matrices produced by ``torch.linalg.lu_factor`` need
+    no copy.  A non-contiguous *batch* view (e.g. ``lu.permute(1, 0, 2, 3)``)
+    breaks the flattening and the kernels read out of bounds (observed:
+    status 700 on XPU); materialize just that case with a gems Triton copy.
+    """
+    if t.dim() <= batch_dims:
+        return t
+    num_batch_dims = t.dim() - batch_dims
+    for k in range(num_batch_dims - 1):
+        if t.stride(k) != t.stride(k + 1) * t.shape[k + 1]:
+            out = torch.empty(t.shape, dtype=t.dtype, device=t.device)
+            _gems_copy_(out, t)
+            return out
+    return t
+
+
 def _empty_lu_unpack_result(LU_data, LU_pivots, unpack_data, unpack_pivots):
     m, n = LU_data.shape[-2], LU_data.shape[-1]
     batch_dims = LU_data.shape[:-2]
@@ -189,6 +186,9 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
     m, n = LU_data.shape[-2], LU_data.shape[-1]
     if m == 0 or n == 0:
         return _empty_lu_unpack_result(LU_data, LU_pivots, unpack_data, unpack_pivots)
+    LU_data = _materialize_contiguous(LU_data, 2)
+    if unpack_pivots:
+        LU_pivots = _materialize_contiguous(LU_pivots, 1)
     if unpack_pivots and m > _P_SMALL_M:
         batch_dims = LU_data.shape[:-2]
         batch_size = 1
@@ -208,31 +208,33 @@ def lu_unpack_out(
     LU_data, LU_pivots, unpack_data=True, unpack_pivots=True, *, P=None, L=None, U=None
 ):
     m, n = LU_data.shape[-2], LU_data.shape[-1]
-    if m == 0 or n == 0 or (unpack_pivots and m > _P_SMALL_M):
-        if m == 0 or n == 0:
-            P_result, L_result, U_result = _empty_lu_unpack_result(
-                LU_data, LU_pivots, unpack_data, unpack_pivots
+    if m == 0 or n == 0:
+        P_result, L_result, U_result = _empty_lu_unpack_result(
+            LU_data, LU_pivots, unpack_data, unpack_pivots
+        )
+    else:
+        LU_data = _materialize_contiguous(LU_data, 2)
+        if unpack_pivots:
+            LU_pivots = _materialize_contiguous(LU_pivots, 1)
+        if not (unpack_pivots and m > _P_SMALL_M):
+            return _general_lu_unpack_out(
+                LU_data, LU_pivots, unpack_data, unpack_pivots, P=P, L=L, U=U
             )
-        else:
-            P_result, L_result, U_result = lu_unpack(
-                LU_data, LU_pivots, unpack_data, unpack_pivots
-            )
-        # Write back through the raw native strided-copy engine
-        # (``aten::_copy_from``) instead of the gems-registered ``copy_``
-        # to avoid a nested dispatch through the overridden operator.
-        if P is not None and P_result.numel() > 0:
-            torch.ops.aten._copy_from(P_result, P, False)
-        else:
-            P = P_result
-        if L is not None and L_result.numel() > 0:
-            torch.ops.aten._copy_from(L_result, L, False)
-        else:
-            L = L_result
-        if U is not None and U_result.numel() > 0:
-            torch.ops.aten._copy_from(U_result, U, False)
-        else:
-            U = U_result
-        return (P, L, U)
-    return _general_lu_unpack_out(
-        LU_data, LU_pivots, unpack_data, unpack_pivots, P=P, L=L, U=U
-    )
+        P_result, L_result, U_result = lu_unpack(
+            LU_data, LU_pivots, unpack_data, unpack_pivots
+        )
+    # Write back with the gems Triton copy (raw call by reference, outside the
+    # dispatcher) instead of the banned ``aten::_copy_from``.
+    if P is not None and P_result.numel() > 0:
+        _gems_copy_(P, P_result)
+    else:
+        P = P_result
+    if L is not None and L_result.numel() > 0:
+        _gems_copy_(L, L_result)
+    else:
+        L = L_result
+    if U is not None and U_result.numel() > 0:
+        _gems_copy_(U, U_result)
+    else:
+        U = U_result
+    return (P, L, U)

@@ -41,5 +41,5 @@ def less_equal_func_scalar(x, y):
 
 
 def less_equal_scalar(A, B):
-    logger.debug("GEMS LESS_EQUAL SCALAR")
+    logger.debug("GEMS LESS_EQUAL_SCALAR")
     return less_equal_func_scalar(A, B)

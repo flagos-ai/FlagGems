@@ -51,7 +51,7 @@ def _linalg_eigvals(inp):
     Uses torch.linalg.eigvals which dispatches to cuSOLVER.
     The Triton kernel serves as a buffer management layer.
     """
-    logger.debug("GEMS _LINALG_EIGVALS")
+    logger.debug("GEMS_SUNRISE _LINALG_EIGVALS")
 
     # _linalg_eigvals only supports float32 and complex types in cuSOLVER
     assert inp.dtype in (

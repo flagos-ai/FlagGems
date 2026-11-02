@@ -21,6 +21,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.inplace
+@pytest.mark.gt_
 @pytest.mark.gt_scalar_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -30,7 +31,6 @@ def test_gt_scalar_(shape, dtype):
     inp2 = 0
 
     ref_out = ref_inp1.gt_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.gt_(inp2)
+    res_out = flag_gems.gt_scalar_(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)

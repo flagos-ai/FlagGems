@@ -568,7 +568,7 @@ def fused_recurrent_gated_delta_rule_fwd(
     num_accepted_tokens: torch.Tensor | None = None,
     use_qk_l2norm_in_kernel: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    logger.debug("GEMS_CAMBRICON FUSED RECURRENT GATED DELTA RULE FWD")
+    logger.debug("GEMS_CAMBRICON FUSED_RECURRENT_GATED_DELTA_RULE_FWD")
     if not use_qk_l2norm_in_kernel:
         q = q.contiguous()
         k = k.contiguous()

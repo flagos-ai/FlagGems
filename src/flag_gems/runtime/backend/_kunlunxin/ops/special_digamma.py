@@ -1,25 +1,10 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Kunlunxin (XPU) override of special_digamma.
-#
-# Root cause: generic `flag_gems/ops/special_digamma.py` aliases the raw-pointer
-# `digamma` kernel from `flag_gems/ops/digamma_.py`, whose `for _ in range(8)`
-# recurrence + reflection cot term crashes the TritonXPUVectorize pass on bf16.
-#
-# Fix: full-domain digamma via `pointwise_dynamic` (isCloseVectorization=True
-# avoids the vectorizer crash). special_digamma is exercised across x>=1,
-# small positive (0.05,0.45), mid (0.5,1.0) and negative (-4.9,-0.1) inputs, so
-# both the recurrence and reflection paths are needed:
-#   psi(x) = psi(1-x) - pi*cot(pi*x)  for x < 0.5.
-# The cot argument is period-reduced to [-0.5, 0.5] (cot(pi*x)=cot(pi*r),
-# r = x - round(x)) so XPU sin/cos stays accurate for large |x|.
 import logging
 
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
-from flag_gems.utils import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +23,6 @@ config_ = CodeGenConfig(
 
 @triton.jit
 def _digamma_pos(xr):
-    # xr >= 0.5: shift up to y >= 8 via recurrence psi(x) = psi(x+1) - 1/x,
-    # then asymptotic expansion. 8 unconditional steps (tl.where masked).
     s = tl.zeros_like(xr)
     y = xr
     m0 = y < 8.0
@@ -89,8 +72,6 @@ def special_digamma_func(x):
     reflect = xf < 0.5
     xr = tl.where(reflect, 1.0 - xf, xf)
     psi_pos = _digamma_pos(xr)
-    # cot(pi*xf) = cot(pi*r), r = xf - round(xf) in [-0.5, 0.5] keeps the
-    # trig argument bounded (accurate on XPU for large |xf|).
     rr = xf - tl.floor(xf + 0.5)
     arg = pi * rr
     cot = tl.cos(arg) / tl.sin(arg)

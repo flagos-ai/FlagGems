@@ -36,7 +36,6 @@ def test_hardtanh_backward(shape, dtype, min_val, max_val):
     ref_out = torch.ops.aten.hardtanh_backward(
         ref_grad_output, ref_inp, min_val, max_val
     )
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.hardtanh_backward(grad_output, inp, min_val, max_val)
+    res_out = flag_gems.hardtanh_backward(grad_output, inp, min_val, max_val)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -18,6 +18,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+from triton.tools.tensor_descriptor import TensorDescriptor
 
 from flag_gems import runtime
 from flag_gems.ops.add import add, add_func
@@ -26,9 +27,40 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
-from .bmm import bmm, bmm_sqmma, is_sqmma_compatible
+# Reuse the warp-specialized bmm pipeline: baddbmm is a batched GEMM whose
+# consumer only gains the extra beta * bias term before the store, so it shares
+# the TME producer, the tile shape and the column-panel rasterization with bmm.
+from .bmm import (  # noqa: E402
+    _WS_BLOCK_K,
+    _WS_BLOCK_M,
+    _WS_BLOCK_N,
+    _WS_NUM_WARPS,
+    _WS_PANEL_WIDTH,
+    _WS_STAGES,
+    TLE_WS_ON,
+    _ws_bmm_producer,
+    bmm,
+    bmm_sqmma,
+    is_sqmma_compatible,
+)
+from .mm import _ws_rasterization_2d_column  # noqa: E402
+
+try:
+    import triton.experimental.tle.language as tle
+except ImportError:  # pragma: no cover - depends on the installed Triton build
+    tle = None
 
 logger = logging.getLogger(__name__)
+
+# A bias that varies along M forces one block_m x block_n epilogue staging
+# buffer in shared memory, which does not fit next to the 3-stage 256x256x64
+# TME ring on a 192 KiB part; a bias broadcast along M loads as a cheap 1-D
+# vector and keeps that ring.  The narrower, deeper-K ring below measured
+# fastest for the M-varying case while keeping the epilogue fused.
+_WS_FULLBIAS_BLOCK_M = 256
+_WS_FULLBIAS_BLOCK_N = 128
+_WS_FULLBIAS_BLOCK_K = 32
+_WS_FULLBIAS_STAGES = 5
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "baddbmm_mthreads_expand.yaml")
@@ -198,8 +230,272 @@ def _baddbmm_sqmma(bias, A, B, beta, alpha):
     )
 
 
+# ---------------------------------------------------------------------------
+# Warp-specialized SQMMA for baddbmm.  Same TLE producer/consumer tile pipeline
+# as bmm, with the beta * bias + alpha * (A @ B) epilogue folded into the
+# consumer, so the fused op costs one launch instead of a batched GEMM plus
+# three full-tensor elementwise passes.
+# ---------------------------------------------------------------------------
+
+
+@triton.jit
+def _ws_baddbmm_consumer(
+    a_reader,
+    b_reader,
+    c_ptr,
+    bias_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    alpha,
+    beta,
+    batch_index,
+    stride_ib,
+    stride_im,
+    stride_in,
+    pid_m,
+    pid_n,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    BIAS_M_BROADCAST: tl.constexpr,
+):
+    offset_m = pid_m * block_m + tl.arange(0, block_m)
+    offset_n = pid_n * block_n + tl.arange(0, block_n)
+    mask = (offset_m[:, None] < M) & (offset_n[None, :] < N)
+    k_tiles: tl.constexpr = tl.cdiv(K, block_k)
+
+    acc = tl.zeros((block_m, block_n), dtype=tl.float32)
+    for k_iter in tl.range(
+        0,
+        k_tiles,
+        num_stages=1,
+        loop_unroll_factor=k_tiles,
+    ):
+        a_wait = a_reader.wait(k_iter)
+        b_wait = b_reader.wait(k_iter)
+        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc)
+        acc = tle.gpu.wgmma_wait(0, acc)
+        a_reader.release(k_iter)
+        b_reader.release(k_iter)
+
+    bias_base = bias_ptr + batch_index * stride_ib
+    if BIAS_M_BROADCAST:
+        bias = tl.load(
+            bias_base + offset_n * stride_in,
+            mask=offset_n < N,
+            other=0.0,
+        )[None, :]
+    else:
+        bias_ptrs = (
+            bias_base + offset_m[:, None] * stride_im + offset_n[None, :] * stride_in
+        )
+        bias = tl.load(bias_ptrs, mask=mask, other=0.0)
+
+    result = (alpha * acc + beta * bias).to(c_ptr.dtype.element_ty)
+    c_block_ptr = (
+        c_ptr + batch_index * (M * N) + N * offset_m[:, None] + offset_n[None, :]
+    )
+    tl.store(c_block_ptr, result, mask=mask)
+
+
+@triton.jit
+def baddbmm_sqmma_ws_kernel(
+    a_desc,
+    b_desc,
+    c_ptr,
+    bias_ptr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    alpha,
+    beta,
+    stride_ib,
+    stride_im,
+    stride_in,
+    block_m: tl.constexpr,
+    block_n: tl.constexpr,
+    block_k: tl.constexpr,
+    panel_width: tl.constexpr,
+    pipeline_stages: tl.constexpr,
+    full_panel: tl.constexpr,
+    BIAS_M_BROADCAST: tl.constexpr,
+):
+    raw_bx = tl.program_id(axis=0)
+    raw_by = tl.program_id(axis=1)
+    batch_index = tl.program_id(axis=2)
+    grid_x = tl.num_programs(axis=0)
+    grid_y = tl.num_programs(axis=1)
+    block_idx = raw_bx + raw_by * grid_x
+    pid_n, pid_m = _ws_rasterization_2d_column(
+        block_idx,
+        grid_x,
+        grid_y,
+        panel_width,
+        full_panel,
+    )
+
+    a_smem = tle.gpu.alloc(
+        (pipeline_stages, block_m, block_k),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    b_smem = tle.gpu.alloc(
+        (pipeline_stages, block_k, block_n),
+        dtype=c_ptr.dtype.element_ty,
+        scope=tle.gpu.smem,
+        nv_mma_shared_layout=True,
+    )
+    a_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="baddbmm_a", a=a_smem)
+    b_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="baddbmm_b", b=b_smem)
+
+    tle.gpu.warp_specialize(
+        [
+            (
+                _ws_baddbmm_consumer,
+                (
+                    a_pipe.reader(),
+                    b_pipe.reader(),
+                    c_ptr,
+                    bias_ptr,
+                    M,
+                    N,
+                    K,
+                    alpha,
+                    beta,
+                    batch_index,
+                    stride_ib,
+                    stride_im,
+                    stride_in,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                    BIAS_M_BROADCAST,
+                ),
+            ),
+            (
+                _ws_bmm_producer,
+                (
+                    a_pipe.writer(),
+                    b_pipe.writer(),
+                    a_desc,
+                    b_desc,
+                    M,
+                    K,
+                    batch_index,
+                    pid_m,
+                    pid_n,
+                    block_m,
+                    block_n,
+                    block_k,
+                ),
+            ),
+        ],
+        worker_num_warps=[4],
+        worker_num_regs=[24],
+    )
+
+
+def baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta, C=None):
+    logger.debug("GEMS_MTHREADS BADDBMM_SQMMA_WS")
+    device = A.device
+    if not A.is_contiguous():
+        A = A.contiguous()
+    if not B.is_contiguous():
+        B = B.contiguous()
+    assert A.dtype == B.dtype, "Mat A and Mat B should have the same dtype"
+    if C is None:
+        C = torch.empty((batch, M, N), dtype=A.dtype, device=device)
+    bbias = torch.broadcast_to(bias, (batch, M, N))
+    stride_ib, stride_im, stride_in = bbias.stride()
+    # A bias broadcast along M loads as a 1-D vector and leaves room for the
+    # mm/bmm 3-stage ring; a bias that varies along M needs a block_m x block_n
+    # epilogue staging buffer, so the narrower deeper-K ring is used instead.
+    if stride_im == 0:
+        block_m, block_n, block_k, stages = (
+            _WS_BLOCK_M,
+            _WS_BLOCK_N,
+            _WS_BLOCK_K,
+            _WS_STAGES,
+        )
+    else:
+        block_m, block_n, block_k, stages = (
+            _WS_FULLBIAS_BLOCK_M,
+            _WS_FULLBIAS_BLOCK_N,
+            _WS_FULLBIAS_BLOCK_K,
+            _WS_FULLBIAS_STAGES,
+        )
+    # The SQMMA consumer stores straight into a row-major buffer of the operand
+    # dtype, so `C` must already match the operands; callers gate on that.
+    desc_a = TensorDescriptor.from_tensor(A.reshape(batch * M, K), [block_m, block_k])
+    desc_b = TensorDescriptor.from_tensor(B.reshape(batch * K, N), [block_k, block_n])
+    grid = (triton.cdiv(N, block_n), triton.cdiv(M, block_m), batch)
+    with torch_device_fn.device(A.device):
+        baddbmm_sqmma_ws_kernel[grid](
+            desc_a,
+            desc_b,
+            C,
+            bbias,
+            M,
+            N,
+            K,
+            alpha,
+            beta,
+            stride_ib,
+            stride_im,
+            stride_in,
+            block_m,
+            block_n,
+            block_k,
+            _WS_PANEL_WIDTH,
+            stages,
+            grid[0] % _WS_PANEL_WIDTH == 0,
+            stride_im == 0,
+            num_warps=_WS_NUM_WARPS,
+            num_stages=stages,
+        )
+    return C
+
+
 # sqmma has a fixed launch/memory floor; measured crossover on MTT S5000 is ~3.2 GFLOPs.
 _SQMMA_MIN_FLOPS = 3.2e9
+
+# The warp-specialized pipeline costs more per launch than it saves whenever
+# the launch is too small -- fewer than a 2x2 grid of tiles, fewer than eight
+# 64-wide K tiles or fewer than 16 CTAs (the same bounds measured for bmm).
+# These are the scalar bounds; the M-varying bias uses the narrower 128-column
+# ring and may run on half as many N tiles.
+_WS_MIN_M = 2 * _WS_BLOCK_M
+_WS_MIN_N = 2 * _WS_BLOCK_N
+_WS_FULLBIAS_MIN_N = 2 * _WS_FULLBIAS_BLOCK_N
+_WS_MIN_K = 512
+_WS_MIN_OUTPUT_TILES = 16
+
+
+def _use_ws(bias, A, B, M, N, K):
+    """Warp-specialized fused baddbmm needs TLE plus enough work per launch."""
+    # Reject on scalars first: small shapes must not pay for the bias view or
+    # the operand layout checks below.
+    if not (
+        TLE_WS_ON
+        and A.dtype in (torch.float16, torch.bfloat16)
+        and M >= _WS_MIN_M
+        and N >= _WS_FULLBIAS_MIN_N
+        and K >= _WS_MIN_K
+    ):
+        return False
+    if not is_sqmma_compatible(A, B, N, K):
+        return False
+    batch = A.shape[0]
+    if N < _WS_MIN_N and torch.broadcast_to(bias, (batch, M, N)).stride(1) == 0:
+        return False
+    return (
+        triton.cdiv(M, _WS_BLOCK_M) * triton.cdiv(N, _WS_BLOCK_N) * batch
+        >= _WS_MIN_OUTPUT_TILES
+    )
 
 
 def _use_sqmma(A, B, N, K):
@@ -220,6 +516,8 @@ class BaddbmmFunction(torch.autograd.Function):
 
         batch, M, K = A.shape
         _, _, N = B.shape
+        if _use_ws(bias, A, B, M, N, K):
+            return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta)
         if _use_sqmma(A, B, N, K):
             return _baddbmm_sqmma(bias, A, B, beta, alpha)
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
@@ -291,6 +589,11 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
     assert (
         out.shape == (batch, M, N) and out.dtype == A.dtype
     ), "Incompatible output shape or dtype for baddbmm.out"
+    # The SQMMA consumer stores straight into a row-major buffer of the operand
+    # dtype, so a contiguous `out` of that dtype can be the destination itself
+    # instead of paying for a temporary product plus three elementwise passes.
+    if out.is_contiguous() and _use_ws(bias, A, B, M, N, K):
+        return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta, C=out)
     if _use_sqmma(A, B, N, K):
         A, B = A.contiguous(), B.contiguous()
         product = bmm_sqmma(A, B, A.dtype, batch, M, N, K)

@@ -32,8 +32,7 @@ def test_conj_copy(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._conj_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch._conj_copy(inp)
+    res_out = flag_gems._conj_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -50,8 +49,7 @@ def test_conj_copy_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.ops.aten._conj_copy.out(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.ops.aten._conj_copy.out(inp, out=out)
+    flag_gems._conj_copy_out(inp, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
 
@@ -69,7 +67,6 @@ def test_conj_copy_with_conj_bit(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch._conj_copy(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch._conj_copy(inp)
+    res_out = flag_gems._conj_copy(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

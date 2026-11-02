@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pytest
+import torch
 
 import flag_gems
 
@@ -25,13 +26,30 @@ from . import base, consts
 try:
     from transformer_engine.pytorch import cpp_extensions as tex
 
+    try:
+        from transformer_engine.pytorch import DType as TEDType
+    except ImportError:
+        from transformer_engine.pytorch.cpp_extensions import DType as TEDType
+
     TE_OP = getattr(tex, "geglu", None)
     TE_AVAILABLE = True
     GEMS_OP = getattr(flag_gems, "geglu", None)
+    TORCH_TO_TE_DTYPE = {
+        torch.float32: TEDType.kFloat32,
+        torch.float16: TEDType.kFloat16,
+        torch.bfloat16: TEDType.kBFloat16,
+    }
 except ImportError:
     TE_AVAILABLE = False
     TE_OP = None
     GEMS_OP = None
+    TORCH_TO_TE_DTYPE = {}
+
+
+def te_geglu(inp, quantizer=None):
+    if base.vendor_name == "kunlunxin":
+        return TE_OP(inp, None, None, TORCH_TO_TE_DTYPE[inp.dtype])
+    return TE_OP(inp, None)
 
 
 @pytest.mark.geglu
@@ -41,7 +59,7 @@ except ImportError:
 def test_geglu():
     bench = base.TexGluForwardBenchmark(
         op_name="geglu",
-        torch_op=TE_OP,
+        torch_op=te_geglu,
         gems_op=GEMS_OP,
         dtypes=consts.FLOAT_DTYPES,
     )

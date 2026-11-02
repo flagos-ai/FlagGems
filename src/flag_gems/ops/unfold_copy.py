@@ -144,7 +144,7 @@ def _unfold_copy_kernel_3d_dim1(
 def unfold_copy(
     input: torch.Tensor, dimension: int, size: int, step: int
 ) -> torch.Tensor:
-    logger.debug("GEMS UNFOLD COPY")
+    logger.debug("GEMS UNFOLD_COPY")
 
     if step <= 0:
         raise ValueError("step must be > 0")

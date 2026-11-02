@@ -201,7 +201,7 @@ def topk_w8a16_fp8(
     Noncontiguous inputs are copied on each invocation. ``sorted=False``
     also returns sorted results. No input contents are cached. Forward only.
     """
-    logger.debug("GEMS_HYGON TOPK W8A16 FP8")
+    logger.debug("GEMS_HYGON TOPK_W8A16_FP8")
     if not isinstance(x_fp8, torch.Tensor) or not isinstance(x_scale, torch.Tensor):
         raise TypeError("x_fp8 and x_scale must be tensors")
     if x_fp8.dtype != torch.float8_e4m3fn:

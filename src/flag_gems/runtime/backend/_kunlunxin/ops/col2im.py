@@ -15,9 +15,17 @@
 # elements. Decode (n, c, h, w) via div/mod (all non-negative). Loop kh, kw
 # with tl.static_range and accumulate gathers into a fp32 accumulator.
 # All arithmetic on valid contributions is over non-negative indices, so
-# `h_num % stride_h` and `h_num // stride_h` are safe. Fixed BLOCK=1024
+# `h_num % stride_h` and `h_num // stride_h` are safe. Fixed BLOCK
 # + CodeGenConfig(isCloseVectorization, buffer_size_limit=2048) avoids the
 # XPU tiling/vectorize pipelines that miscompile.
+#
+# Performance note (2026-09-14, XPU measurements): BLOCK is chosen by
+# kernel_h*kernel_w. With a fully unrolled `tl.static_range` loop the
+# register pressure grows with the number of (kh, kw) iterations; a
+# 5x5 kernel (25 iterations) with BLOCK=1024 spills and runs ~2x slower
+# than BLOCK=256 (6.38ms -> 3.14ms for 2x(5x5)x64x64 f32). For kernel
+# sizes up to 3x3 (9 iterations) BLOCK=1024 remains the fastest. The
+# kernel logic is identical either way (masks do not depend on BLOCK).
 import logging
 from typing import List
 
@@ -161,7 +169,12 @@ def col2im(
     HW_out = out_h * out_w
     CHW_out = channels * HW_out
 
-    BLOCK = 1024
+    # See the performance note in the module docstring: larger unrolled
+    # (kh, kw) loops prefer a smaller BLOCK to stay within registers.
+    if kernel_h * kernel_w >= 16:
+        BLOCK = 256
+    else:
+        BLOCK = 1024
     grid = (triton.cdiv(total_out, BLOCK),)
     with torch_device_fn.device(input.device):
         col2im_kernel_flat[grid](

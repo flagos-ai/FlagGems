@@ -28,7 +28,6 @@ def test_special_expit(shape, dtype):
     ref_inp = utils.to_reference(res_inp, True)
 
     ref_out = torch.special.expit(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.expit(res_inp)
+    res_out = flag_gems.special_expit(res_inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

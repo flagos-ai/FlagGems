@@ -17,12 +17,13 @@ import logging
 import torch
 import triton
 import triton.language as tl
+import triton.language.extra.cann.extension as extension
 
 from flag_gems import runtime
 from flag_gems.ops.mul import mul
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
-from flag_gems.utils import libentry, libtuner
+from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 from .bmm import bmm
@@ -30,13 +31,67 @@ from .bmm import bmm
 logger = logging.getLogger(__name__)
 
 
+_BADDBMM_CONFIGS = runtime.get_tuned_config("baddbmm")
+
+
+def _prune_baddbmm_configs(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    A = args["A"]
+    M, N, K = args["M"], args["N"], args["K"]
+    if (
+        A.dtype != torch.bfloat16
+        or A.shape[0] != 1
+        or not args["BIAS_IS_VECTOR"]
+        or M < 256
+        or K < 256
+    ):
+        return configs
+
+    target = None
+    if N >= 4096:
+        target = (128, 256, 256)
+    elif N >= 1024 and K >= 4096:
+        target = (256, 128, 256)
+    if target is None:
+        return configs
+
+    selected = [
+        config
+        for config in configs
+        if (
+            config.kwargs["TILE_M"],
+            config.kwargs["TILE_N"],
+            config.kwargs["TILE_K"],
+        )
+        == target
+    ]
+    return selected or configs
+
+
+def _broadcast_strides(tensor, shape):
+    """Return strides for a broadcast view without materializing the output."""
+    if tensor.ndim > len(shape):
+        raise RuntimeError("bias cannot be broadcast to the baddbmm output shape")
+    padded_shape = (1,) * (len(shape) - tensor.ndim) + tuple(tensor.shape)
+    padded_strides = (0,) * (len(shape) - tensor.ndim) + tensor.stride()
+    strides = []
+    for source_size, source_stride, target_size in zip(
+        padded_shape, padded_strides, shape
+    ):
+        if source_size == target_size:
+            strides.append(source_stride)
+        elif source_size == 1:
+            strides.append(0)
+        else:
+            raise RuntimeError("bias cannot be broadcast to the baddbmm output shape")
+    return tuple(strides)
+
+
 @libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
+@triton.autotune(
+    configs=_BADDBMM_CONFIGS,
+    key=["M", "N", "K", "DOT_PAD_ONLY_K", "BIAS_IS_VECTOR"],
+    prune_configs_by={"early_config_prune": _prune_baddbmm_configs},
 )
 @triton.heuristics(_hcu.HEURISTICS_CONFIGS["baddbmm"])
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -54,6 +109,8 @@ def baddbmm_kernel(
     TILE_N: tl.constexpr,
     TILE_K: tl.constexpr,
     GROUP_M: tl.constexpr,
+    DOT_PAD_ONLY_K: tl.constexpr,
+    BIAS_IS_VECTOR: tl.constexpr,
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
     DIVISIBLE_K: tl.constexpr,
@@ -123,12 +180,13 @@ def baddbmm_kernel(
                 mask_b = mask_k[:, None] & mask_n[None, :]
         a = tl.load(a_ptrs, mask=mask_a)
         b = tl.load(b_ptrs, mask=mask_b)
+        if DOT_PAD_ONLY_K:
+            extension.compile_hint(a, "dot_pad_only_k")
+            extension.compile_hint(b, "dot_pad_only_k")
         accumulator += tl.dot(a, b, allow_tf32=False)
         offs_k += TILE_K
         a_ptrs += TILE_K
         b_ptrs += TILE_K * N
-
-    bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
 
     if DIVISIBLE_M and DIVISIBLE_N:
         mask_c = None
@@ -139,7 +197,17 @@ def baddbmm_kernel(
         if not DIVISIBLE_N:
             mask_c &= offs_n[None, :] < N
 
-    bi = tl.load(bias_ptrs, mask=mask_c)
+    if BIAS_IS_VECTOR:
+        bias_ptrs = bias + offs_n * bias_N_stride
+        if DIVISIBLE_N:
+            bi = tl.load(bias_ptrs)[None, :]
+        else:
+            bi = tl.load(bias_ptrs, mask=offs_n < N, other=0.0)[None, :]
+    else:
+        bias_ptrs = (
+            bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
+        )
+        bi = tl.load(bias_ptrs, mask=mask_c)
     out = accumulator * alpha + bi * beta
     o = out.to(bi.dtype)
     tl.store(o_ptrs, o, mask=mask_c)
@@ -160,10 +228,18 @@ class BaddbmmFunction(torch.autograd.Function):
         B = B.contiguous()
         out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
 
-        bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
-        bias_batch_stride = bbias.stride(0)
-        bias_M_stride = bbias.stride(1)
-        bias_N_stride = bbias.stride(-1)
+        bias_batch_stride, bias_M_stride, bias_N_stride = _broadcast_strides(
+            bias, (batch, M, N)
+        )
+        bias_is_vector = bias.ndim == 1 and bias.shape[0] == N
+        dot_pad_only_k = (
+            A.dtype == torch.bfloat16
+            and batch == 1
+            and M >= 256
+            and N >= 128
+            and N % 16 == 0
+            and K >= 128
+        )
 
         grid = lambda meta: (
             triton.cdiv(meta["M"], meta["TILE_M"]),
@@ -175,7 +251,7 @@ class BaddbmmFunction(torch.autograd.Function):
                 A,
                 B,
                 out,
-                bbias,
+                bias,
                 alpha,
                 beta,
                 M,
@@ -184,6 +260,8 @@ class BaddbmmFunction(torch.autograd.Function):
                 bias_batch_stride=bias_batch_stride,
                 bias_M_stride=bias_M_stride,
                 bias_N_stride=bias_N_stride,
+                DOT_PAD_ONLY_K=dot_pad_only_k,
+                BIAS_IS_VECTOR=bias_is_vector,
             )
         return out
 

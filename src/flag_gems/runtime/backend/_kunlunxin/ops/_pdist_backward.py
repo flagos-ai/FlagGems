@@ -136,8 +136,7 @@ def _pdist_backward_p1_kernel(
             tl.float32
         )
 
-        diff = x_vals - xj_vals
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         pdist_idx = pid_n * N - (pid_n * (pid_n + 1)) // 2 + (j - pid_n - 1)
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
@@ -151,8 +150,7 @@ def _pdist_backward_p1_kernel(
             tl.float32
         )
 
-        diff = x_vals - xj_vals
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         pdist_idx = j * N - (j * (j + 1)) // 2 + (pid_n - j - 1)
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
@@ -200,7 +198,7 @@ def _pdist_backward_general_kernel(
 
         diff = x_vals - xj_vals
         abs_diff = tl.abs(diff)
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         pdist_idx = pid_n * N - (pid_n * (pid_n + 1)) // 2 + (j - pid_n - 1)
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
@@ -226,7 +224,7 @@ def _pdist_backward_general_kernel(
 
         diff = x_vals - xj_vals
         abs_diff = tl.abs(diff)
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         pdist_idx = j * N - (j * (j + 1)) // 2 + (pid_n - j - 1)
         g = tl.load(grad_ptr + pdist_idx).to(tl.float32)
@@ -288,7 +286,7 @@ def _pdist_backward_inf_kernel(
         c = tl.load(pdist_ptr + pdist_idx).to(tl.float32)
 
         is_max = tl.where(abs_diff == c, 1.0, 0.0)
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         acc += g * sign * is_max
 
@@ -307,7 +305,7 @@ def _pdist_backward_inf_kernel(
         c = tl.load(pdist_ptr + pdist_idx).to(tl.float32)
 
         is_max = tl.where(abs_diff == c, 1.0, 0.0)
-        sign = tl.where(diff > 0, 1.0, tl.where(diff < 0, -1.0, 0.0))
+        sign = tl.where(x_vals > xj_vals, 1.0, tl.where(x_vals < xj_vals, -1.0, 0.0))
 
         acc += g * sign * is_max
 
@@ -316,7 +314,7 @@ def _pdist_backward_inf_kernel(
 
 def _pdist_backward(grad, x, p, pdist):
     """Compute gradient of pdist forward pass."""
-    logger.debug("GEMS _PDIST_BACKWARD")
+    logger.debug("GEMS_KUNLUNXIN _PDIST_BACKWARD")
 
     assert x.ndim == 2, "pdist only supports 2D input"
     assert x.dtype == torch.float32, "_pdist_backward only supports float32"
@@ -329,7 +327,10 @@ def _pdist_backward(grad, x, p, pdist):
 
     out = torch.empty_like(x)
 
-    BLOCK_M = min(triton.next_power_of_2(M), 128)
+    # Cap BLOCK_M: the backward kernels loop over all N rows and keep an
+    # accumulator plus per-iteration temporaries of BLOCK_M floats; BLOCK_M > 64
+    # exhausts uni_sram on XPU for large N (shape4/5), so keep the working set small.
+    BLOCK_M = min(triton.next_power_of_2(M), 64)
     grid = (triton.cdiv(M, BLOCK_M), N)
 
     with torch_device_fn.device(x.device):

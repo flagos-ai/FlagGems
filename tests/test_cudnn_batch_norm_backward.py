@@ -12,6 +12,10 @@ from . import accuracy_utils as utils
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "amd",
+    reason="ROCm torch has no aten.cudnn_batch_norm reference (MIOpen backend)",
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -84,22 +88,21 @@ def test_cudnn_batch_norm_backward(shape, dtype, affine):
     )
 
     # Run FlagGems implementation
-    with flag_gems.use_gems():
-        (
-            res_in_grad,
-            res_weight_grad,
-            res_bias_grad,
-        ) = torch.ops.aten.cudnn_batch_norm_backward(
-            res_inp,
-            grad_output,
-            res_weight,
-            None,  # running_mean
-            None,  # running_var
-            save_mean,
-            save_var,
-            eps,
-            reserve_space,
-        )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.cudnn_batch_norm_backward(
+        res_inp,
+        grad_output,
+        res_weight,
+        None,  # running_mean
+        None,  # running_var
+        save_mean,
+        save_var,
+        eps,
+        reserve_space,
+    )
 
     reduce_dim = math.prod(shape) // C
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)

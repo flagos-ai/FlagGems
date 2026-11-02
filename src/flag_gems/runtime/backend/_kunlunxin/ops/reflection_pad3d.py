@@ -1,18 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Kunlunxin (XPU) override of reflection_pad3d / reflection_pad3d_out.
-#
-# Root cause: the generic kernel (flag_gems/ops/reflection_pad3d.py) computes the
-# reflected input index with a runtime modulo:
-#     m = tl.abs(coord) % (2*(dim-1)); idx = where(m<dim, m, 2*(dim-1)-m)
-# On XPU that runtime `%` miscompiles at the reflection boundaries (0.5% of
-# elements wrong, max abs diff ~3.1) -- the same modulo that the reflection_pad2d
-# XPU override already had to remove (see reflection_pad2d.py header).
-#
-# Fix: because the host validates pad < dim on every axis, |coord| never exceeds
-# one period 2*(dim-1), so a SINGLE-period `abs + where` is mathematically exact
-# and needs no modulo. Flatten (b, d, h, w) into one linear output index, decode
-# with div/mod, gather the reflected input, mask-based contiguous store.
 import logging
 
 import torch

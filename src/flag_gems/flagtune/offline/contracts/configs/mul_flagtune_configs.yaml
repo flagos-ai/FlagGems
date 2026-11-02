@@ -1,0 +1,112 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# FlagTree model schema plus FlagGems Pretune execution schema for torch.mul.
+# The workload format matches FlagTune shape files:
+#   broadcast: [broadcast, lhs_shape, rhs_shape, optional Count]
+#   scalar:    [scalar, lhs_shape, optional Count]
+schema_version: 3
+op_id: flaggems/mul
+
+pretune:
+  shape:
+    fields:
+      kind: {type: str, choices: [broadcast, scalar]}
+      lhs_shape: {type: shape}
+      rhs_shape: {type: shape, required: false, default: null}
+      Count: {type: int, required: false, min: 0, role: count}
+      has_rhs:
+        type: int
+        default: {op: nonempty, args: [rhs_shape]}
+      n_elements:
+        type: int
+        min: 1
+        default: {op: broadcast_numel, args: [lhs_shape, rhs_shape]}
+      n_cols:
+        type: int
+        min: 1
+        default: {op: broadcast_last_dim, args: [lhs_shape, rhs_shape]}
+      output_rank:
+        type: int
+        min: 0
+        default: {op: broadcast_rank, args: [lhs_shape, rhs_shape]}
+      same_shape:
+        type: int
+        min: 0
+        max: 1
+        default: {op: shape_equal, args: [lhs_shape, rhs_shape]}
+    identity: [kind, lhs_shape, rhs_shape]
+  dispatch:
+    policy: first_match
+    order: [broadcast_2d, scalar]
+  benchmark:
+    tensors:
+      lhs: {factory: randn, shape: lhs_shape, dtype: runtime}
+      rhs: {factory: randn, shape: rhs_shape, dtype: runtime}
+    scalars:
+      factor: 1.25
+    invoke:
+      kind: flag_gems_public
+      args:
+        broadcast_2d: [lhs, rhs]
+        scalar: [lhs, factor]
+
+variants:
+  broadcast_2d:
+    inputs:
+      n_elements: {min: 1}
+      n_cols: {min: 1}
+      has_rhs: {default: 1}
+      output_rank: {default: 2}
+      same_shape: {default: 0}
+    when:
+      op: all
+      args:
+        - {op: eq, args: [has_rhs, 1]}
+        - {op: eq, args: [output_rank, 2]}
+        - {op: eq, args: [same_shape, 0]}
+    params: &mul_params
+      BLOCK_SIZE: {values: [128, 256, 512, 1024, 2048, 4096, 8192]}
+      num_warps: {values: [1, 2, 4, 8, 16]}
+      num_stages: {values: [1, 2, 3, 4, 5, 6, 7, 8]}
+    features:
+      - {name: n_elements, op: ident, args: [n_elements]}
+      - {name: n_cols, op: ident, args: [n_cols]}
+      - {name: BLOCK_SIZE, op: ident, args: [BLOCK_SIZE]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: log2_n_elements, op: log2, args: [n_elements]}
+      - {name: log2_n_cols, op: log2, args: [n_cols]}
+      - {name: log2_BLOCK_SIZE, op: log2, args: [BLOCK_SIZE]}
+      - {name: grid_size, op: cdiv, args: [n_elements, BLOCK_SIZE]}
+      - {name: log2_grid_size, op: log2, args: [grid_size]}
+      - {name: tail_elements, op: mod, args: [n_elements, BLOCK_SIZE]}
+      - {name: block_to_cols, op: fdiv, args: [BLOCK_SIZE, n_cols]}
+
+  scalar:
+    inputs:
+      n_elements: {min: 1}
+      has_rhs: {default: 0}
+    when: {op: eq, args: [has_rhs, 0]}
+    params: *mul_params
+    features:
+      - {name: n_elements, op: ident, args: [n_elements]}
+      - {name: BLOCK_SIZE, op: ident, args: [BLOCK_SIZE]}
+      - {name: num_warps, op: ident, args: [num_warps]}
+      - {name: num_stages, op: ident, args: [num_stages]}
+      - {name: log2_n_elements, op: log2, args: [n_elements]}
+      - {name: log2_BLOCK_SIZE, op: log2, args: [BLOCK_SIZE]}
+      - {name: grid_size, op: cdiv, args: [n_elements, BLOCK_SIZE]}
+      - {name: log2_grid_size, op: log2, args: [grid_size]}
+      - {name: tail_elements, op: mod, args: [n_elements, BLOCK_SIZE]}

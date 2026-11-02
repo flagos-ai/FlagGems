@@ -415,11 +415,11 @@ def matmul_get_configs(pre_hook=matmul_tma_set_block_size_hook):
     configs=matmul_get_configs(),
     key=["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     strategy=["align32", "align32", "align32", "align32", "align32", "default"],
-    policy="flagtune",
     warmup=5,
     rep=5,
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_general_tma",
+    policy="flagtune",
     flagtune_op_id="flaggems/mm",
     flagtune_variant="general_tma",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -771,9 +771,19 @@ def _get_tma_transposed_direct_tuned_configs():
 
 class _TmaTransposedStableTuner(LibTuner):
     def policy(self, bench_fn, configs, args, kwargs):
-        del args, kwargs
-        timings = {config: bench_fn(config) for config in configs}
-        p50 = {config: float(values[0]) for config, values in timings.items()}
+        if (
+            getattr(self, "_flagtune_mode", runtime.TuningMode.DEFAULT)
+            is runtime.TuningMode.COST_MODEL
+        ):
+            _, timings = LibTuner.get("flagtune").policy(
+                self, bench_fn, configs, args, kwargs
+            )
+        else:
+            timings = {config: bench_fn(config) for config in configs}
+        p50 = {
+            config: float(values[0] if isinstance(values, (tuple, list)) else values)
+            for config, values in timings.items()
+        }
         fastest = min(p50.values())
         near_ties = [config for config in timings if p50[config] <= fastest * 1.005]
         best_config = max(
@@ -797,6 +807,8 @@ mm_kernel_tma_transposed_direct_tuned = libentry()(
         rep=20,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_tma_transposed_direct",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="tma_transposed_direct",
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
         flagtune_pre_hook=_tma_transposed_direct_set_block_size_hook,
     )(mm_kernel_tma_transposed_direct)
@@ -1188,11 +1200,11 @@ def tma_transposed_mm(a, b, c, M, N, K, config, reduce_block=None):
     ],
     key=["M", "K", "stride_am", "stride_bk"],
     strategy=["align32", "align32", "align32", "default"],
-    policy="flagtune",
     warmup=5,
     rep=10,
     flagtune_op_name="mm",
     flagtune_expand_op_name="gemv",
+    policy="flagtune",
     flagtune_op_id="flaggems/mm",
     flagtune_variant="gemv",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -1476,9 +1488,9 @@ mm_kernel_splitk = libentry()(
         strategy=["align32", "align32", "align32", "align32", "align32"],
         warmup=5,
         rep=10,
-        policy="flagtune",
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_splitk",
+        policy="flagtune",
         flagtune_op_id="flaggems/mm",
         flagtune_variant="splitk",
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -1504,8 +1516,11 @@ mm_kernel_splitk_partials = libentry()(
         prune_configs_by={"early_config_prune": _prune_mm_splitk_two_step_configs},
         warmup=5,
         rep=10,
+        policy="flagtune",
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_splitk_two_step",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="splitk_two_step_partial",
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )(_mm_kernel_splitk)
 )
@@ -2234,7 +2249,6 @@ if HAS_TLE_WARP_SPECIALIZATION:
         key=["M", "N", "K", "stride_bk"],
         prune_configs_by={"early_config_prune": _prune_warp_specialized_configs},
         strategy=["default", "default", "default", "default"],
-        policy="flagtune",
         warmup=5,
         rep=10,
         flagtune_op_name="mm",

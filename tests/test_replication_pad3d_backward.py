@@ -43,8 +43,7 @@ def test_replication_pad3d_backward(shape, padding, dtype):
         padding,
     )
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten.replication_pad3d_backward(grad_output, inp, padding)
+    actual = flag_gems.replication_pad3d_backward(grad_output, inp, padding)
 
     utils.gems_assert_close(actual, expected, dtype, reduce_dim=max(output_shape[-3:]))
 
@@ -53,5 +52,5 @@ def test_replication_pad3d_backward(shape, padding, dtype):
 def test_replication_pad3d_backward_rejects_mismatched_leading_shape():
     inp = torch.randn((2, 3, 4, 5, 6), device=flag_gems.device)
     grad_output = torch.randn((1, 3, 6, 7, 8), device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(ValueError, match="leading dimensions"):
-        torch.ops.aten.replication_pad3d_backward(grad_output, inp, (1, 1, 1, 1, 1, 1))
+    with pytest.raises(ValueError, match="leading dimensions"):
+        flag_gems.replication_pad3d_backward(grad_output, inp, (1, 1, 1, 1, 1, 1))
