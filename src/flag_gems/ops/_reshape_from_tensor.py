@@ -413,13 +413,13 @@ def _make_target(shape, ref_numel):
     if inferred >= 0:
         if known == 0 or ref_numel % known != 0:
             raise RuntimeError(
-                "shape %s is invalid for input of size %d" % (dims, ref_numel)
+                "shape '%s' is invalid for input of size %d" % (dims, ref_numel)
             )
         dims[inferred] = ref_numel // known
 
     if _numel(dims) != ref_numel:
         raise RuntimeError(
-            "shape %s is invalid for input of size %d" % (dims, ref_numel)
+            "shape '%s' is invalid for input of size %d" % (dims, ref_numel)
         )
     return dims
 

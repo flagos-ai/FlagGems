@@ -100,6 +100,9 @@ def test_reshape_from_tensor_invalid_shape(dims):
 @pytest.mark.parametrize("transpose", [False, True])
 def test_reshape_from_tensor_multi_device(transpose):
     """The copy kernels launch under the operand's device, not the current one."""
+    if utils.TO_CPU:
+        # The test needs a second device operand, which has no CPU counterpart.
+        pytest.skip("multi-device operands have no CPU reference")
     if torch.cuda.device_count() < 2:
         pytest.skip("needs at least two devices")
     other = torch.device(flag_gems.device, 1)
