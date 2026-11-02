@@ -62,6 +62,12 @@ def _compute_linear_combination_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
+    # NOTE: accepted and unused. This kernel shares the "mm" tune configs
+    # (see the libtuner decorator above), and on the backends whose own mm
+    # kernel implements split-K those configs carry SPLIT_K. Declaring it
+    # keeps the shared config list usable here; a kernel that reduces the
+    # whole K extent in one pass IS the SPLIT_K == 1 case.
+    SPLIT_K: tl.constexpr = 1,
 ):
     pid_m = ext.program_id(0)
     pid_n = ext.program_id(1)

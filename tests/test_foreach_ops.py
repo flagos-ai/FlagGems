@@ -32,6 +32,22 @@ BINARY_WRAPPERS = registered_wrappers()
 REDUCTION_WRAPPERS = reduction_wrappers()
 ALL_WRAPPERS = {**BINARY_WRAPPERS, **REDUCTION_WRAPPERS}
 
+# On Kunlunxin the scalar-family foreach ops have backend overrides.  Overlay
+# them so the accuracy test exercises the code that actually dispatches at
+# runtime, rather than the generic baseline (whose fp16 pow uses fast_log2f,
+# which the XPU compiler does not lower).
+try:
+    from flag_gems.runtime.backend.device_finder import DeviceDetector
+
+    if DeviceDetector().vendor_name == "kunlunxin":
+        from flag_gems.runtime.backend._kunlunxin.ops._foreach_binary_scalar import (
+            registered_wrappers as kunlunxin_binary_wrappers,
+        )
+
+        ALL_WRAPPERS.update(kunlunxin_binary_wrappers())
+except ImportError:
+    pass
+
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
 # Operators whose ``.List`` form takes a second tensor list only; the ternary
