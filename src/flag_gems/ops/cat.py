@@ -347,12 +347,14 @@ def _cat_impl(
     return out
 
 
+@torch._dynamo.allow_in_graph
 class Cat(torch.autograd.Function):
     @staticmethod
     def forward(ctx, first_tensor, remaining_tensors, dim):
         return _cat_impl((first_tensor, *remaining_tensors), dim)
 
 
+@torch._dynamo.allow_in_graph
 class CatOut(torch.autograd.Function):
     @staticmethod
     def forward(ctx, out, first_tensor, remaining_tensors, dim):
