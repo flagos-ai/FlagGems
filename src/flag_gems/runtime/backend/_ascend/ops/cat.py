@@ -276,7 +276,7 @@ class CatOut(torch.autograd.Function):
         return _cat_out_impl(tensors, dim, out=out)
 
 
-@trident.jit
+@trident.jit(dynamic=False)
 def cat(
     A: Union[
         Tuple[torch.Tensor, ...],
@@ -287,7 +287,7 @@ def cat(
     return Cat.apply(dim, *A)
 
 
-@trident.jit
+@trident.jit(dynamic=False)
 def cat_out(
     A: Union[
         Tuple[torch.Tensor, ...],
