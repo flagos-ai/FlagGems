@@ -293,6 +293,12 @@ def _sparse_mm_reduce_impl_backward(
     mask0 = bool(output_mask[0])
     mask1 = bool(output_mask[1])
 
+    # Scope note (review P1-6): only this backward is registered — the forward
+    # (aten::_sparse_mm_reduce_impl) has no FlagGems CUDA kernel, and aten has
+    # no native CUDA kernel either (CPU-only), so an end-to-end autograd path
+    # does not exist regardless. Reach the backward through
+    # ``torch.ops.aten._sparse_mm_reduce_impl_backward`` on CSR inputs.
+
     if self.layout == torch.strided:
         raise NotImplementedError(
             f"Could not run '_sparse_mm_reduce_impl_backward' with arguments "
