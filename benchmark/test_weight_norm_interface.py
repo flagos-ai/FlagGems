@@ -173,6 +173,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def weight_norm_input_fn(shape, dtype, device):
     v = torch.randn(shape, dtype=dtype, device=device)
     if vendor_name in ["cambricon", "enflame"]:
@@ -290,22 +321,29 @@ class _AscendWeightBackwardStaticReference:
                 path,
                 expected,
                 records,
-                dict(
-                    artifact=str(path),
-                    artifact_sha256=expected,
-                    operator=name,
-                    collection_task=task,
-                    environment=env,
-                    environment_qualification=(
-                        "Historical per-device environment is the last task, not a per-op worker receipt"
-                        if legacy
-                        else "Actual four-case native H800 worker; standard collector "
-                        "default do_bench, no explicit median"
+                _aten_qualify_metadata(
+                    dict(
+                        artifact=str(path),
+                        artifact_sha256=expected,
+                        operator=name,
+                        collection_task=task,
+                        environment=env,
+                        environment_qualification=(
+                            "Historical per-device environment is the last task, not a per-op worker receipt"
+                            if legacy
+                            else "Actual four-case native H800 worker; standard collector "
+                            "default do_bench, no explicit median"
+                        ),
+                        baseline="Literal native CUDA H800; no target NPU-native or CPU timing claim",
+                        input_identity="Exact original recipe/configuration; independently random payload bytes differ",
+                        saved_norms="Actual provided saved_norms is an input; no norm recomputation",
+                        timing="Raw H800/local candidate ratio; shared functional timing, no isolated performance claim",
                     ),
-                    baseline="Literal native CUDA H800; no target NPU-native or CPU timing claim",
-                    input_identity="Exact original recipe/configuration; independently random payload bytes differ",
-                    saved_norms="Actual provided saved_norms is an input; no norm recomputation",
-                    timing="Raw H800/local candidate ratio; shared functional timing, no isolated performance claim",
+                    (
+                        "legacy:pytorch-h800-primary"
+                        if legacy
+                        else "pr73:op_weight_norm_backward_extra_four_h800_baseline"
+                    ),
                 ),
             )
         return artifacts
