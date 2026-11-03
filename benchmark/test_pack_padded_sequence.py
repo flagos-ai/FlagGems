@@ -156,6 +156,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _PackMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -242,17 +273,20 @@ class _PackBaseline:
             raise ValueError(
                 "Pack baseline requires a completed, traceable native H800 run"
             )
-        return data[key]["shapes"], {
-            "kind": "external_nvidia",
-            "operator": key,
-            "artifact": str(path),
-            "artifact_sha256": hashlib.sha256(payload).hexdigest(),
-            "environment": environment,
-            "reference_implementation": "pytorch_native_operator",
-            "input_identity": "same distribution and exact input contract; random payloads are not byte-identical",
-            "ratio": "raw H800 latency / target latency; no peak normalization",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return data[key]["shapes"], _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "operator": key,
+                "artifact": str(path),
+                "artifact_sha256": hashlib.sha256(payload).hexdigest(),
+                "environment": environment,
+                "reference_implementation": "pytorch_native_operator",
+                "input_identity": "same distribution and exact input contract; random payloads are not byte-identical",
+                "ratio": "raw H800 latency / target latency; no peak normalization",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("pr32:op_inspect216_h800_perf_baseline"),
+        )
 
     def _import_nvidia_latency(self, args, kwargs):
         if kwargs or self.is_backward or "tflops" in self.to_bench_metrics:

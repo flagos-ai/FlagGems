@@ -163,6 +163,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _ExternalBaselineMetrics(base.consts.BenchmarkMetrics):
     baseline_source: dict = None
@@ -236,16 +267,19 @@ class _ExternalH800Baseline:
             raise ValueError(
                 "Baseline must be a completed, traceable native H800 collection"
             )
-        return data[baseline_operator]["shapes"], {
-            "kind": "external_nvidia",
-            "operator": self.op_name,
-            "native_operator": baseline_operator,
-            "artifact": str(path),
-            "artifact_sha256": hashlib.sha256(payload).hexdigest(),
-            "environment": environment,
-            "input_identity": "same distribution and full input contract, not byte-identical random payloads",
-            "ratio": "raw H800 latency / locally measured target candidate latency",
-        }
+        return data[baseline_operator]["shapes"], _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "operator": self.op_name,
+                "native_operator": baseline_operator,
+                "artifact": str(path),
+                "artifact_sha256": hashlib.sha256(payload).hexdigest(),
+                "environment": environment,
+                "input_identity": "same distribution and full input contract, not byte-identical random payloads",
+                "ratio": "raw H800 latency / locally measured target candidate latency",
+            },
+            ("pr32:op_inspect216_h800_perf_baseline"),
+        )
 
     def get_latency(self, op, *args, **kwargs):
         if os.environ.get("FLAGGEMS_NV_BASELINE") and getattr(
