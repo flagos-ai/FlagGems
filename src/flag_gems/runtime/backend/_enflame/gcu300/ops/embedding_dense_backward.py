@@ -124,21 +124,23 @@ def embedding_dense_backward(
     assert go.shape[0] == N, "indices number must match grad_output rows."
 
     if num_weights > 0 and N > 0 and D > 0:
-        # `padding_idx` rows accumulate nothing.  Move those occurrences out of
-        # the valid range in a private copy so the kernel needs no per-row
-        # branch; the positions (and hence `order`) stay aligned with
-        # `grad_output` rows.
+        # Both of the rewrites below happen on the host, because neither device
+        # call works on this backend's runner: `idx == pad` goes through
+        # `topsatenEq` and `torch.sort` dispatches into `at::_ops::sort_stable`
+        # whatever the `stable` argument, and both abort there with
+        # `Check failed: 0`. `idx` is one integer per row, so the round trip is
+        # O(N) against the O(N * D) gradient the kernel then streams.
+        #
+        # The padding rewrite has to come first: it moves those rows out of the
+        # valid range in the copy the kernel sees, and the positions (hence
+        # `order`) must stay aligned with `grad_output` rows.
+        idx_host = idx.to("cpu")
         pad = padding_idx if padding_idx is not None else -1
         if pad >= 0:
-            idx = torch.where(idx == pad, torch.full_like(idx, num_weights), idx)
-
-        # `torch.sort` is not usable on this backend at all: it dispatches
-        # through `at::native::sort()` into `at::_ops::sort_stable` regardless
-        # of the `stable` argument, and the runner's `topsatenSort` rejects
-        # that with TOPSATEN_STATUS_BAD_PARAM. Sorting on the host avoids it.
-        # `idx` is one integer per row, so the transfer is O(N) int32 against
-        # the O(N * D) gradient the kernel then streams.
-        idx_host = idx.to("cpu").to(torch.int32)
+            idx_host = torch.where(
+                idx_host == pad, torch.full_like(idx_host, num_weights), idx_host
+            )
+        idx_host = idx_host.to(torch.int32)
         index_sorted, order = torch.sort(idx_host)
         index_sorted = index_sorted.to(device)
         order = order.to(torch.int32).to(device)
