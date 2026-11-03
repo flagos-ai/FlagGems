@@ -170,6 +170,12 @@ from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
 from ._masked_scale import _masked_scale  # noqa: F401
+from ._native_batch_norm_legit import (
+    _native_batch_norm_legit,
+    _native_batch_norm_legit_no_stats,
+    _native_batch_norm_legit_no_stats_out,
+    _native_batch_norm_legit_out,
+)
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -1052,8 +1058,12 @@ __all__ = [
     "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
+    "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_stats",
+    "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
+    "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_enum",
