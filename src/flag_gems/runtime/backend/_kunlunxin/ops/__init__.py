@@ -71,7 +71,9 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__ScalarList,
     _foreach_pow__Scalar,
     _foreach_pow__ScalarList,
+    _foreach_pow_Scalar,
     _foreach_pow_ScalarAndTensor,
+    _foreach_pow_ScalarList,
     _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
 )
@@ -103,6 +105,11 @@ from ._foreach_mul_list_ import _foreach_mul__List
 from ._foreach_neg import _foreach_neg, _foreach_neg_
 from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
+from ._foreach_reduction import (  # noqa: F401
+    _foreach_max,
+    _foreach_norm,
+    _foreach_norm_Scalar,
+)
 from ._foreach_round import _foreach_round
 from ._foreach_round_ import _foreach_round_
 from ._foreach_scalar_out import (  # noqa: F401

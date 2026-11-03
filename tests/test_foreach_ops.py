@@ -581,9 +581,11 @@ def _gems(key):
 
     Public names spell the overload with an underscore suffix rather than
     ATen's dot (``_foreach_add_List``, not ``_foreach_add.List``), so the key is
-    rewritten rather than looked up verbatim.
+    rewritten rather than looked up verbatim.  ``ALL_WRAPPERS`` carries the
+    vendor overlay (see above), so these named cases exercise the same wrapper
+    a ``use_gems()`` dispatch would reach instead of the generic baseline.
     """
-    return BINARY_WRAPPERS[key] if key in BINARY_WRAPPERS else REDUCTION_WRAPPERS[key]
+    return ALL_WRAPPERS[key]
 
 
 @pytest.mark.parametrize("core", ["add", "sub", "mul"])
