@@ -46,7 +46,9 @@ def test_gems_rms_forward_inplace_many_rows():
         * torch.rsqrt(ref_residual.pow(2).mean(-1, keepdim=True) + 1e-5)
         * ref_weight
     )
-    utils.gems_assert_close(new_residual, ref_residual.to(new_residual.device), torch.float32)
+    utils.gems_assert_close(
+        new_residual, ref_residual.to(new_residual.device), torch.float32
+    )
     utils.gems_assert_close(out, ref_out.to(out.device), torch.float32)
 
 
@@ -73,10 +75,16 @@ def test_gems_rope_inplace_matches_out_of_place():
     key = torch.randn(
         (batch, seq_len, heads, head_dim), dtype=torch.float32, device=flag_gems.device
     )
-    cos = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device)
-    sin = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device)
+    cos = torch.rand(
+        seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device
+    )
+    sin = torch.rand(
+        seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device
+    )
 
-    ref_q, ref_k = gems_rope_forward(query.clone(), key.clone(), cos, sin, inplace=False)
+    ref_q, ref_k = gems_rope_forward(
+        query.clone(), key.clone(), cos, sin, inplace=False
+    )
     q_in, k_in = query.clone(), key.clone()
     out_q, out_k = gems_rope_forward(q_in, k_in, cos, sin, inplace=True)
 
