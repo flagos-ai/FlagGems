@@ -222,9 +222,15 @@ class MaxPool2dWithIndicesBackwardBenchmark(base.GenericBenchmark):
         shape, variant_idx = plan.builder_args
         inp = utils.generate_tensor_input(shape, case.dtype, self.device)
         params = _max_pool2d_param_variants(shape)[variant_idx]
-        # Use FlagGems forward to produce indices compatible with FlagGems backward
-        # Note: FlagGems indices format differs from PyTorch's format
-        output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
+        if flag_gems.vendor_name == "ascend":
+            # Preserve canonical flat int64 indices instead of NPU's packed ABI.
+            output, indices = torch.ops.aten.max_pool2d_with_indices(
+                inp.detach().to(device="cpu", dtype=torch.float32), **params
+            )
+            output = output.to(device=inp.device, dtype=inp.dtype)
+            indices = indices.to(device=inp.device)
+        else:
+            output, indices = flag_gems.max_pool2d_with_indices(inp, **params)
         grad_output = torch.randn_like(output)
         return (
             grad_output,

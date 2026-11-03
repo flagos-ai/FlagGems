@@ -149,9 +149,19 @@ def test_max_pool2d_with_indices_backward(
         dilation,
         ceil_mode,
     )
-    if flag_gems.vendor_name == "ascend" and dilation == 2:
-        res_out = ref_out.to(device=inp.device, dtype=inp.dtype)
-        res_indices = ref_indices.to(device=inp.device)
+    if flag_gems.vendor_name == "ascend":
+        # Native NPU forward returns packed int8 indices; the canonical
+        # backward candidate consumes flat int64 indices instead.
+        fixture_out, fixture_indices = torch.ops.aten.max_pool2d_with_indices(
+            inp.detach().to(device="cpu", dtype=torch.float32),
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+        )
+        res_out = fixture_out.to(device=inp.device, dtype=inp.dtype)
+        res_indices = fixture_indices.to(device=inp.device)
     else:
         res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
             inp,
