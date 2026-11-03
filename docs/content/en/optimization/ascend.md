@@ -96,6 +96,50 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - **UB Budgeting**: If a single tile occupied the 910B's 192 KiB UB, its theoretical capacity would be 98,304 FP16/BF16 elements or 49,152 FP32 elements. However, in practice, simultaneously live inputs, outputs, temporaries, alignment padding, and multibuffering all consume space. If a `ub overflow` compilation error occurs (often reported in bits), reduce `BLOCK_*` or use an internal `BLOCK_SIZE_SUB` loop.
 - **Cube Alignment**: The Cube path requires careful attention to row-width and trailing-axis alignment. A 512 B row corresponds to 256 FP16/BF16 or 128 FP32 elements; unaligned dimensions may trigger compiler padding and redundant memory transfers.
 
+### 1.3 910C and 950DT SKU Details
+
+> [!WARNING]
+> SKU core counts, clock rates, and memory sizes are fused per chip at the factory and MUST be read from each device's own `platform_config/<SoC_version>.ini` (or `acl.get_soc_name()` / `npu-smi`) rather than assumed from the chip family name. The tables below summarize the SKUs observed in `platform_config` on CANN; always re-verify against the running device.
+
+**Ascend910C** (A3, dual-die package, `ascend910b_list` family, SIMD-only — no SIMT path) ships as six `Ascend910_93xx` SKU variants. All six share `ai_cpu_cnt=6` and `l1_size=512 KiB`; HBM capacity, L2, and UB track Vector core count rather than frequency:
+
+| SoC version | AI Core (Cube) | Vector Core | Cube clock | HBM capacity | L2 cache | UB / AI Core |
+| :---------- | :-------------- | :----------- | :---------- | :------------ | :-------- | :------------- |
+| `Ascend910_9362` | 20 | 40 | 1.5 GHz | 32 GiB | 168 MiB | 192 KiB |
+| `Ascend910_9372` | 20 | 40 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9381` | 24 | 48 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9382` | 24 | 48 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9391` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9392` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
+
+- `Ascend910_9362` / `_9372` are the 20-core variants (lower HBM capacity on `_9362`).
+- `Ascend910_9381` / `_9382` share an identical 24-core, 1.8 GHz configuration; `Ascend910_9382` is the most commonly deployed SKU in the field.
+- `Ascend910_9391` / `_9392` are also 24-core but clocked higher, at 1.85 GHz.
+
+**Ascend950DT** (A5 decode-oriented product mode, shares the 950PR die, up to 36 AI subsystems per SPEC before SKU fuse-down) — the `Ascend950DT_9582` SKU observed on CANN 9.0.0/9.1.0 reports:
+
+| Field | Value | Source |
+| :---- | :---- | :----- |
+| `cube_core_cnt` / `vector_core_cnt` | 32 / 64 | `platform_config/Ascend950DT_9582.ini` |
+| `l1_size` | 512 KiB | ini |
+| `l2_size` | 128 MiB | ini |
+| `ub_size` | 248 KiB (253,952 B) usable | ini |
+| `cube_freq` / `vec_freq` | 1.65 GHz | ini |
+| `memory_size` | 96 GiB | ini |
+
+This places `Ascend950DT_9582` in the 32-Cube-core SKU tier ([SPEC p13 Table 3-1] lists 36/32/28-core tiers for 950DT). Measured single-host throughput (CANN 9.1.0, `torch_npu`, device self-reported `Ascend950DT_9582`; see references) — treat as host/driver-specific, **not** a guaranteed ceiling:
+
+| Measured quantity | Value | Method |
+| :----------------- | :----- | :------ |
+| `matmul` FP16 / BF16 | 430.4 TFLOP/s | `torch.matmul`, 8192³, median of 30 runs |
+| `matmul` FP32 (no HF32) | 27.0 TFLOP/s | same shape |
+| HBM bandwidth (large-buffer plateau) | ≈2.7–3.1 TB/s | ≥1024 MiB copy/triad/read |
+| `conv2d` FP16 | 353–364 TFLOP/s | `F.conv2d`, large 1x1 shapes |
+| `conv2d` FP32, HF32 on/off | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
+
+> [!NOTE]
+> Don't use a small-buffer bandwidth number (e.g. a 64 MiB copy) as the headline HBM figure — it can read ~1.8x higher than the large-buffer plateau due to cache residency. Don't use FP16 `matmul` as the reference denominator for `conv2d` efficiency either; the two instructions saturate at different throughputs on this hardware.
+
 ## 2. Triton Compiler & Launch Options
 
 *FlagGems* designates Ascend as an NPU backend (`device_name="npu"`), utilizing the installed Triton-Ascend / FlagTree extension. Options can be passed as keyword arguments to `kernel[grid](...)` or through a `triton.Config`:
@@ -143,6 +187,9 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - [cannbot-knowledge: scalar lowering](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/scalar_degradation_avoidance.md)
 - [cannbot-knowledge: `care_padding` conditions](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/care_padding.md)
 - [cannbot-knowledge: NPU dtypes and alignment](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/data_types_ascend.md)
+- [cannbot-knowledge: Ascend950DT measured observations](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_measured_observations.md)
+- [cannbot-knowledge: Ascend950DT target platform](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/target_ascend950dt.md)
+- [cannbot-knowledge: Ascend950DT vs 950PR SKU overrides](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_vs_pr_overrides.md)
 - [cannbot-skills: Ascend compilation options](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/04-Compilation-Pipeline/07-compile-options.md)
 - [cannbot-skills: Ascend memory model and extension API](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/01-Programming-Model/03-memory-model.md)
 - [Triton-Ascend backend compiler (`NPUOptions`)](https://github.com/triton-lang/triton-ascend/blob/main/third_party/ascend/backend/compiler.py)
