@@ -246,6 +246,9 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mv_hygon":
+            # gfx936 uses lane-first wave64 tiles. Keep the minimum owner
+            # waves and one replicated tier: workgroup occupancy can matter
+            # even when the extra waves do not own independent elements.
             return [
                 triton.Config(
                     {
@@ -262,6 +265,7 @@ class TunedConfigLoader(object):
                 for loop_stages in ranges["LOOP_STAGES"]
                 for s in ranges["s"]
                 for w in ranges["w"]
+                if w <= 2 * max(1, block_m * block_n // 64)
             ]
 
         if op_name in ("mv", "mv_row", "mv_column"):

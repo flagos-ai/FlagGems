@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# gfx936 MV Expanded: a regular geometry domain, 672 candidates.
+# gfx936 MV Expanded: a regular geometry domain, 645 candidates.
 # The loop's explicit LOOP_STAGES controls pipelining. For this non-dot kernel,
 # global num_stages=2/3/4 reaches the same loop-stage policy; keep one value.
 # BLOCK_M is the reduction tile, BLOCK_N the output tile. All powers of two
 # in each declared interval participate, including column-major output widths.
+# The mv_hygon generator retains the minimum owner waves and one replicated
+# occupancy tier for every geometry and loop stage.
 mv:
   - param_map:
       META:
