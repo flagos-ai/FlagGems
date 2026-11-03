@@ -682,6 +682,10 @@ from flag_gems.ops.cudnn_convolution_relu import (
     cudnn_convolution_relu_out,
 )
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_grid_sampler_backward import (
+    cudnn_grid_sampler_backward,
+    cudnn_grid_sampler_backward_out,
+)
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
@@ -2313,6 +2317,8 @@ __all__ = [
     "cudnn_convolution_relu",
     "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
+    "cudnn_grid_sampler_backward",
+    "cudnn_grid_sampler_backward_out",
     "cudnn_rnn",
     "cudnn_rnn_backward",
     "cummax",

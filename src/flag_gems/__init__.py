@@ -985,6 +985,8 @@ _FULL_CONFIG = (
     ("cudnn_convolution_relu", cudnn_convolution_relu),
     ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
     ("cudnn_convolution_transpose", cudnn_convolution_transpose),
+    ("cudnn_grid_sampler_backward", cudnn_grid_sampler_backward),
+    ("cudnn_grid_sampler_backward.out", cudnn_grid_sampler_backward_out),
     ("cummax", cummax),
     ("cummaxmin_backward", cummaxmin_backward),
     ("cummin", cummin),
