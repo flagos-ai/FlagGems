@@ -52,6 +52,7 @@ from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_det import linalg_det
 from .linalg_householder_product import run as linalg_householder_product
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
@@ -165,6 +166,7 @@ __all__ = [
     "ldl_factor_ex",
     "lift_out",
     "linalg_cholesky",
+    "linalg_det",
     "linalg_householder_product",
     "linalg_lstsq",
     "linalg_matrix_norm",
