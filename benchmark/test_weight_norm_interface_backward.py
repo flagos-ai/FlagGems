@@ -19,11 +19,14 @@ import flag_gems
 
 from . import base
 from .generated_operator_utils import OperatorBenchmark
+from .test_weight_norm_interface import _AscendWeightBackwardStaticReference
 
 CASES = [((4096, 256), 0), ((4096, 256), 1), ((4, 256, 3), 0), ((4, 256, 3), 2)]
 
 
-class WeightNormBackwardBenchmark(OperatorBenchmark):
+class WeightNormBackwardBenchmark(
+    _AscendWeightBackwardStaticReference, OperatorBenchmark
+):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(CASES)
         self.shape_desc = "shape, dim"

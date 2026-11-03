@@ -19,7 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-
 FLOAT_DTYPES = [torch.float32]
 _SHAPES = [*utils.POINTWISE_SHAPES, (2, 0, 3)]
 _SCALES = [-1.0, 0.0, 0.5, 2.0]
@@ -36,9 +35,25 @@ def _make_mask(shape):
 def _reference(inp, mask, scale):
     ref_inp = utils.to_reference(inp, True)
     ref_mask = utils.to_reference(mask, False)
+    if flag_gems.vendor_name == "enflame":
+        ref_inp, ref_mask = ref_inp.cpu(), ref_mask.cpu()
     return torch.where(
         ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
     )
+
+
+def _assert_masked_scale_close(result, reference, inp, mask, dtype, **kwargs):
+    assert result.device == inp.device
+    assert result.dtype == dtype and result.shape == inp.shape
+    assert result is not inp and result is not mask
+    if result.numel():
+        assert result.untyped_storage().data_ptr() not in {
+            inp.untyped_storage().data_ptr(),
+            mask.untyped_storage().data_ptr(),
+        }
+    if flag_gems.vendor_name == "enflame":
+        result = result.cpu()
+    utils.gems_assert_close(result, reference, dtype, **kwargs)
 
 
 @pytest.mark.masked_scale
@@ -50,15 +65,15 @@ def test_masked_scale(shape, dtype, scale):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = _make_mask(shape)
-    inp_before = inp.clone()
-    mask_before = mask.clone()
+    inp_before = utils.to_reference(inp.clone())
+    mask_before = utils.to_reference(mask.clone())
     ref_out = _reference(inp, mask, scale)
 
     res_out = flag_gems._masked_scale(inp, mask, scale)
 
     assert res_out.shape == inp.shape
     assert res_out.dtype == dtype
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    _assert_masked_scale_close(res_out, ref_out, inp, mask, dtype, equal_nan=True)
     utils.gems_assert_equal(inp, inp_before)
     utils.gems_assert_equal(mask, mask_before)
 
@@ -67,7 +82,9 @@ def test_masked_scale(shape, dtype, scale):
 @pytest.mark.underscore_masked_scale
 def test_masked_scale_noncontiguous():
     torch.manual_seed(0)
-    inp = torch.randn((4, 7, 9), dtype=torch.float32, device=flag_gems.device).transpose(0, 2)
+    inp = torch.randn(
+        (4, 7, 9), dtype=torch.float32, device=flag_gems.device
+    ).transpose(0, 2)
     mask = _make_mask((4, 7, 9)).transpose(0, 2)
     assert not inp.is_contiguous()
     assert not mask.is_contiguous()
@@ -75,7 +92,7 @@ def test_masked_scale_noncontiguous():
 
     res_out = flag_gems._masked_scale(inp, mask, 2.0)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    _assert_masked_scale_close(res_out, ref_out, inp, mask, torch.float32)
 
 
 @pytest.mark.masked_scale
@@ -91,4 +108,6 @@ def test_masked_scale_special_values():
 
     res_out = flag_gems._masked_scale(inp, mask, -0.5)
 
-    utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
+    _assert_masked_scale_close(
+        res_out, ref_out, inp, mask, torch.float32, equal_nan=True
+    )

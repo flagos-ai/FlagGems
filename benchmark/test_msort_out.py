@@ -16,9 +16,10 @@ import pytest
 import torch
 
 from . import base, consts, utils
+from .test_msort import _MsortH800Reference
 
 
-class MsortOutBenchmark(base.Benchmark):
+class MsortOutBenchmark(_MsortH800Reference, base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = [
             (8, 1024),
@@ -54,6 +55,10 @@ class MsortOutBenchmark(base.Benchmark):
 
 
 @pytest.mark.msort_out
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="S60 native msort_out aborts; consume exact native H800 core records",
+)
 def test_msort_out():
     MsortOutBenchmark(
         op_name="msort_out",

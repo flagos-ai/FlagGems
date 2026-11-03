@@ -59,17 +59,23 @@ WINDOW_LENGTHS = [
 def test_kaiser_window(window_length, dtype):
     # periodic defaults to True and beta to 12.0; exercises the plain
     # aten::kaiser_window overload.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    target = torch.empty(0, device=flag_gems.device).device
+    device = (
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
+        else flag_gems.device
+    )
     ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(
         window_length, dtype=dtype, device=flag_gems.device
     )
 
+    assert res_out.device == target
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
     if window_length == 0:
         return
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
 
 
 @pytest.mark.kaiser_window_periodic
@@ -130,15 +136,21 @@ def test_kaiser_window_beta(window_length, periodic, beta, dtype):
 def test_kaiser_window_degenerate_lengths(dtype):
     # window_length == 1 is documented to return a single 1.0, and 0 an empty
     # tensor, regardless of periodic / beta.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    target = torch.empty(0, device=flag_gems.device).device
+    device = (
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
+        else flag_gems.device
+    )
     for periodic in (True, False):
         ref_one = torch.kaiser_window(1, periodic=periodic, dtype=dtype, device=device)
         res_one = flag_gems.kaiser_window(
             1, periodic=periodic, dtype=dtype, device=flag_gems.device
         )
+        assert res_one.device == target
         assert res_one.shape == (1,)
         assert res_one.dtype == dtype
-        utils.gems_assert_close(res_one, ref_one, dtype=dtype)
+        utils.gems_assert_close(res_one.cpu(), ref_one.cpu(), dtype=dtype)
 
         ref_empty = torch.kaiser_window(
             0, periodic=periodic, dtype=dtype, device=device
@@ -146,6 +158,7 @@ def test_kaiser_window_degenerate_lengths(dtype):
         res_empty = flag_gems.kaiser_window(
             0, periodic=periodic, dtype=dtype, device=flag_gems.device
         )
+        assert res_empty.device == target
         assert res_empty.shape == (0,)
         assert res_empty.dtype == dtype
         assert res_empty.numel() == ref_empty.numel()
@@ -159,13 +172,19 @@ def test_kaiser_window_degenerate_lengths(dtype):
 def test_kaiser_window_default_device(window_length, dtype):
     # dtype=None resolves to the global default dtype, and the window is written
     # onto the default flag_gems device.
-    device = "cpu" if cfg.TO_CPU else flag_gems.device
+    target = torch.empty(0, device=flag_gems.device).device
+    device = (
+        "cpu"
+        if cfg.TO_CPU or flag_gems.vendor_name in ("enflame", "ascend", "kunlunxin")
+        else flag_gems.device
+    )
     ref_out = torch.kaiser_window(window_length, dtype=dtype, device=device)
     res_out = flag_gems.kaiser_window(window_length, dtype=dtype)
 
-    assert res_out.device.type == torch.device(flag_gems.device).type
+    assert res_out.device == target
+    assert res_out.shape == (window_length,)
     assert res_out.dtype == dtype
-    utils.gems_assert_close(res_out, ref_out, dtype=dtype)
+    utils.gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype=dtype)
 
 
 @pytest.mark.kaiser_window

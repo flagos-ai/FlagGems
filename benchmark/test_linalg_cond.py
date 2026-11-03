@@ -1,9 +1,391 @@
+import hashlib
+import json
+import math
+import os
+from dataclasses import asdict, dataclass
+from functools import cached_property, lru_cache
+from pathlib import Path
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base
+
+_MUSA_CORE_SHAPES = {
+    "linalg_cond": [(n, n) for n in (4, 8, 16, 32, 64, 128)],
+    "linalg_pinv": [(b, n, n) for b in (1, 4, 8, 16, 32) for n in (4, 8)],
+    "linalg_svd": [(n, n) for n in (8, 16, 32, 64)],
+    "linalg_svdvals": [(n, n) for n in (16, 32, 64, 128, 256, 512)],
+}
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr72:op_musa_linalg_current_core_h800_baseline": {
+        "sha256": "8ba73fbe61042343df6d84dcebcd9c087a882ed5b678b7867f531100ce2a5c77",
+        "artifact": "op_musa_linalg_current_core_h800_baseline.json",
+        "operators": [
+            "linalg_cond_current_core",
+            "linalg_svd_current_core",
+            "linalg_svdvals_current_core",
+            "pinverse_current_core",
+        ],
+        "provenance": {},
+    },
+    "legacy:pytorch-h800-primary": {
+        "legacy_primary": True,
+        "artifact": "op_pytorch_h800_perf_baseline.json",
+        "sha256": "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3",
+    },
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("legacy_primary"):
+        if manifest["base_artifact_sha256"] != spec["sha256"]:
+            raise ValueError("Unexpected historical native H800 snapshot")
+        original = {
+            key: value for key, value in data.items() if key != "_aten_consolidation"
+        }
+        copied = set()
+        for source in manifest["sources"].values():
+            for operator, entry in source["operators"].items():
+                if operator not in copied:
+                    original[operator] = dict(original[operator])
+                    original[operator]["shapes"] = dict(original[operator]["shapes"])
+                    copied.add(operator)
+                for new_key in entry["shape_keys"].values():
+                    del original[operator]["shapes"][new_key]
+        for operator in copied:
+            if not original[operator]["shapes"]:
+                del original[operator]
+        raw = (
+            json.dumps(
+                original, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            )
+            + "\n"
+        ).encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Historical native snapshot could not be restored exactly")
+        return raw, None
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
+@dataclass
+class _MusaLinalgMetrics(base.BenchmarkMetrics):
+    baseline_source: dict | None = None
+
+
+class _MusaLinalgStaticBaseline:
+    @cached_property
+    def _h800_baseline(self):
+        historical = self.op_name == "linalg_pinv"
+        path = Path(
+            os.environ[
+                (
+                    "FLAGGEMS_LINALG_PINV_H800_BASELINE"
+                    if historical
+                    else "FLAGGEMS_MUSA_LINALG_H800_BASELINE"
+                )
+            ]
+        ).resolve(strict=True)
+        payload = _aten_read_bytes(
+            path,
+            (
+                "legacy:pytorch-h800-primary"
+                if self.op_name == "linalg_pinv"
+                else "pr72:op_musa_linalg_current_core_h800_baseline"
+            ),
+        )
+        expected = (
+            "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3"
+            if historical
+            else "8ba73fbe61042343df6d84dcebcd9c087a882ed5b678b7867f531100ce2a5c77"
+        )
+        if hashlib.sha256(payload).hexdigest() != expected:
+            raise ValueError("Expected the exact qualified native H800 artifact")
+        data = json.loads(payload)
+        key = self.op_name if historical else self.op_name + "_current_core"
+        task = data["_collection"]["tasks"][key]
+        environment = data["_environments"][str(task["device"])]
+        collected = (
+            "ccc0508d81b3b10283a62dab73fc05e256093848"
+            if historical
+            else "6b674c0daf4ea87fd44dd2ed5fb6436880df1bb2"
+        )
+        if (
+            data[key]["native_api"] != "ops." + key
+            or task["status"] != "completed"
+            or task["returncode"] != 0
+            or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
+            or environment["source"]["git_commit"] != collected
+            or environment["source"]["git_dirty"] is not False
+            or data["_collection"]["configuration"]["repo"] != "pytorch"
+        ):
+            raise ValueError("Native H800 provenance does not match this operator")
+        return data[key]["shapes"], _aten_qualify_metadata(
+            {
+                "artifact": str(path),
+                "artifact_sha256": expected,
+                "operator": key,
+                "collection_task": task,
+                "environment": environment,
+                "environment_qualification": (
+                    "Historical per-device environment is the last task, not an operator-specific receipt"
+                    if historical
+                    else "Actual shared H800 collection; latency only, no NCU"
+                ),
+                "input_identity": "Exact native API/full configuration/recipe; random payloads differ across devices",
+                "ratio": "Raw H800 latency / actual local candidate latency; no peak normalization",
+            },
+            (
+                "legacy:pytorch-h800-primary"
+                if self.op_name == "linalg_pinv"
+                else "pr72:op_musa_linalg_current_core_h800_baseline"
+            ),
+        )
+
+    def get_latency(self, op, *args, **kwargs):
+        if flag_gems.vendor_name != "mthreads" or op is not self.torch_op:
+            return super().get_latency(op, *args, **kwargs)
+        if (
+            self.is_backward
+            or base.Config.skip_native
+            or "tflops" in self.to_bench_metrics
+        ):
+            raise ValueError(
+                "Static linalg reference supports original forward latency only"
+            )
+        if self.op_name not in _MUSA_CORE_SHAPES:
+            raise ValueError("This artifact does not cover the requested operator")
+        positional_none = self.op_name == "linalg_cond"
+        if len(args) != (2 if positional_none else 1) or (
+            positional_none and args[1] is not None
+        ):
+            raise ValueError(
+                "Native linalg positional ABI differs from the collected recipe"
+            )
+        expected_kwargs = (
+            {"full_matrices": False} if self.op_name == "linalg_svd" else {}
+        )
+        if kwargs != expected_kwargs or (
+            self.op_name == "linalg_svd" and type(kwargs["full_matrices"]) is not bool
+        ):
+            raise ValueError("Native linalg kwargs differ from the collected recipe")
+        inp = args[0]
+        if (
+            not isinstance(inp, torch.Tensor)
+            or tuple(inp.shape) not in _MUSA_CORE_SHAPES[self.op_name]
+            or inp.dtype != torch.float32
+            or not inp.is_contiguous()
+            or inp.storage_offset() != 0
+            or inp.requires_grad
+            or inp.device.type != torch.device(self.device).type
+        ):
+            raise ValueError(
+                "Native linalg tensor contract differs from the collected recipe"
+            )
+        historical = self.op_name == "linalg_pinv"
+        tensors = [
+            {
+                "shape": list(inp.shape),
+                "dtype": str(inp.dtype),
+                "stride": list(inp.stride()),
+                "requires_grad": False,
+            }
+        ]
+        if positional_none:
+            tensors.append(None)
+        config = {
+            "inputs": {"args": tensors, "kwargs": kwargs},
+            "source_commit": (
+                "9d57a23b4386bd669152a935fe88a96db907da7c"
+                if historical
+                else "2a3a455fa9eef530dc11a6b96ff333ffb47235fd"
+            ),
+            "benchmark": "benchmark/test_" + self.op_name + ".py",
+            "descriptor": list(inp.shape),
+            "scope": "core",
+            "variant": 0,
+        }
+        if not historical:
+            config["input_recipe"] = {"seed": 0, "input": "torch.randn"}
+            if positional_none:
+                config["input_recipe"]["diagonal_shift"] = "n*eye(n)"
+        records, provenance = self._h800_baseline
+        matches = [
+            r
+            for dtypes in records.values()
+            for dtype, r in dtypes.items()
+            if dtype == str(inp.dtype) and r["config"] == config
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                "Expected one native H800 record for the full input identity"
+            )
+        record = matches[0]
+        us = record["T_us"]
+        if (
+            isinstance(us, bool)
+            or not isinstance(us, (int, float))
+            or not math.isfinite(us)
+            or us <= 0
+        ):
+            raise ValueError("H800 latency must be finite and positive")
+        ms = us / 1000
+        if not math.isclose(record["latency_ms"], ms, rel_tol=1e-9, abs_tol=1e-12):
+            raise ValueError("H800 latency units disagree")
+        self._imported_baseline = {
+            **provenance,
+            "config": config,
+            "target_timing_mode": base.Config.mode.value,
+        }
+        return ms
+
+    def _candidate_call(self):
+        op, dispatch, overridden = super()._candidate_call()
+        if flag_gems.vendor_name == "mthreads" and op is self.torch_op:
+            raise ValueError("Missing native MUSA linalg needs an explicit candidate")
+        return op, dispatch, overridden
+
+    def _measure_input(self, input, case_id=None):
+        self._imported_baseline = None
+        metric = super()._measure_input(input, case_id)
+        if self._imported_baseline is None:
+            return metric
+        if metric.latency is not None and (
+            not math.isfinite(metric.latency) or metric.latency <= 0
+        ):
+            raise ValueError(
+                "Local linalg candidate latency must be finite and positive"
+            )
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        return _MusaLinalgMetrics(
+            **asdict(metric), baseline_source=self._imported_baseline
+        )
 
 
 LINALG_COND_SHAPES = [
@@ -16,7 +398,7 @@ LINALG_COND_SHAPES = [
 ]
 
 
-class LinalgCondBenchmark(base.Benchmark):
+class LinalgCondBenchmark(_MusaLinalgStaticBaseline, base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = LINALG_COND_SHAPES
         self.shape_desc = "N, N"

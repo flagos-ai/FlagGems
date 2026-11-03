@@ -37,6 +37,17 @@ CASES = [
 
 # Each operator keeps its reader local; the shared benchmark framework is unchanged.
 _ATEN_SNAPSHOT_SPECS = {
+    "pr46:op_pytorch_h800_flash_suiyuan_core_20261028": {
+        "sha256": "ffbb929aed78076a539976fbf09f8c4533ec32af14e2d6f75d084f69fbbab11a",
+        "artifact": "op_pytorch_h800_flash_suiyuan_core_20261028.json",
+        "operators": ["_scaled_dot_product_flash_attention"],
+        "provenance": {
+            "op_pytorch_h800_flash_suiyuan_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_flash_suiyuan_core_20261028.provenance.json",
+                "sha256": "cbafe4f8f3c4db126cd127035df6941257b2d00a2a9df91842274a1125d743ce",
+            }
+        },
+    },
     "pr32:op_inspect216_h800_sdpa_baseline": {
         "sha256": "0404d0ee2411965ea4ccd62c662d2a539f5bbc318bf04fd80d99a89a8f0f83c8",
         "artifact": "op_inspect216_h800_sdpa_baseline.json",
@@ -179,6 +190,15 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+def _aten_digest_matches(payload, path, expected):
+    # Preserve old snapshot receipts and also allow a receipt for the new
+    # container file. The selected original source is pinned independently.
+    return (
+        hashlib.sha256(payload).hexdigest() == expected
+        or hashlib.sha256(Path(path).read_bytes()).hexdigest() == expected
+    )
+
+
 @lru_cache(maxsize=1)
 def _aten_container_sha(raw):
     return (
@@ -254,6 +274,11 @@ class _ExternalH800Baseline:
                 )
             ),
         )
+        expected_sha = os.environ.get("FLAGGEMS_NV_BASELINE_SHA256")
+        if expected_sha is not None and not _aten_digest_matches(
+            payload, path, expected_sha
+        ):
+            raise ValueError("H800 baseline SHA256 differs from its frozen receipt")
 
         def unique(pairs):
             result = {}

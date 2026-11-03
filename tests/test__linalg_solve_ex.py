@@ -53,6 +53,77 @@ def _rhs_shape(batch, n, m, left):
     return batch + (n, m) if left else batch + (m, n)
 
 
+def _cpu_complex_fixture(dtype):
+    return flag_gems.vendor_name in ("ascend", "kunlunxin") and dtype.is_complex
+
+
+def _fixture_device(dtype):
+    return "cpu" if _cpu_complex_fixture(dtype) else flag_gems.device
+
+
+def _make_input(dtype, shape, value_range):
+    if not _cpu_complex_fixture(dtype):
+        return tu.make_input(dtype, shape, value_range)
+    low, high = (tu.resolve_bound(bound, dtype) for bound in value_range)
+    if low == high:
+        return torch.full(shape, low, dtype=dtype, device="cpu")
+    return torch.testing.make_tensor(
+        shape, dtype=dtype, device="cpu", low=low, high=high
+    )
+
+
+def _target_layout(inp):
+    if inp.device.type != "cpu" or flag_gems.vendor_name not in ("ascend", "kunlunxin"):
+        return inp
+    elements = inp.untyped_storage().nbytes() // inp.element_size()
+    storage = torch.as_strided(inp, (elements,), (1,), 0)
+    raw = storage.detach().view(torch.uint8).to(flag_gems.device)
+    result = torch.as_strided(
+        raw.view(inp.dtype), inp.size(), inp.stride(), inp.storage_offset()
+    )
+    assert result.dtype == inp.dtype and result.shape == inp.shape
+    assert (
+        result.stride() == inp.stride()
+        and result.storage_offset() == inp.storage_offset()
+    )
+    device = torch.device(flag_gems.device)
+    assert result.device == torch.device(device.type, 0)
+    return result.requires_grad_(inp.requires_grad)
+
+
+def _target_pair(a, b):
+    return _target_layout(a), _target_layout(b)
+
+
+def _make_special_input(dtype, scenario):
+    if flag_gems.vendor_name not in ("ascend", "kunlunxin"):
+        return tu.make_special_input(dtype, scenario)
+    payloads = {
+        "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+        "inf": [float("inf"), -float("inf"), 0.0, -0.0, 1.0],
+        "mixed": [float("nan"), float("inf"), -float("inf"), 0.0, -0.0],
+    }
+    return torch.tensor(payloads[scenario], dtype=torch.float32).to(dtype)
+
+
+def _full(shape, value, *, dtype, device):
+    if _cpu_complex_fixture(dtype) and torch.device(device).type != "cpu":
+        return _target_layout(torch.full(shape, value, dtype=dtype, device="cpu"))
+    return torch.full(shape, value, dtype=dtype, device=device)
+
+
+def _full_like(inp, value):
+    if _cpu_complex_fixture(inp.dtype):
+        return _target_layout(torch.full_like(_copy_to_cpu_preserve_layout(inp), value))
+    return torch.full_like(inp, value)
+
+
+def _finite(inp):
+    if _cpu_complex_fixture(inp.dtype):
+        return torch.isfinite(inp.detach().cpu())
+    return torch.isfinite(inp)
+
+
 def _conditioned_pair(dtype, shape, value_range, left=True):
     """Dominant-diagonal system generated from the requested value range.
 
@@ -65,8 +136,8 @@ def _conditioned_pair(dtype, shape, value_range, left=True):
     overflow, which is why the magnitude is bounded by the range bound itself.
     """
     batch, n, m = _system_shapes(shape)
-    a = tu.make_input(dtype, batch + (n, n), value_range)
-    b = tu.make_input(dtype, _rhs_shape(batch, n, m, left), value_range)
+    a = _make_input(dtype, batch + (n, n), value_range)
+    b = _make_input(dtype, _rhs_shape(batch, n, m, left), value_range)
     scale = 8 * n
     high = max(
         abs(tu.resolve_bound(value_range[0], dtype)),
@@ -92,8 +163,8 @@ def _raw_pair(dtype, shape, value_range, left=True):
     """
     batch, n, m = _system_shapes(shape)
     return (
-        tu.make_input(dtype, batch + (n, n), value_range),
-        tu.make_input(dtype, _rhs_shape(batch, n, m, left), value_range),
+        _make_input(dtype, batch + (n, n), value_range),
+        _make_input(dtype, _rhs_shape(batch, n, m, left), value_range),
     )
 
 
@@ -111,6 +182,70 @@ def _full_precision_matmul():
         torch.backends.cuda.matmul.allow_tf32 = previous
 
 
+def _copy_to_cpu_preserve_layout(inp):
+    """Copy full dense storage, retaining view geometry and autograd links."""
+    conjugated, negated = inp.is_conj(), inp.is_neg()
+    raw = inp.conj() if conjugated else inp
+    raw = torch._neg_view(raw) if negated else raw
+    elements = raw.untyped_storage().nbytes() // raw.element_size()
+    storage = torch.as_strided(raw, (elements,), (1,), 0).to("cpu").clone()
+    result = torch.as_strided(storage, inp.size(), inp.stride(), inp.storage_offset())
+    result = result.conj() if conjugated else result
+    return torch._neg_view(result) if negated else result
+
+
+def _reference_input(inp):
+    if flag_gems.vendor_name not in ("thead", "ascend", "kunlunxin") or (
+        flag_gems.vendor_name != "thead" and not inp.is_complex()
+    ):
+        return tu.to_reference(inp)
+    reference = _copy_to_cpu_preserve_layout(inp.detach())
+    reference.requires_grad_(inp.requires_grad)
+    return reference
+
+
+def _comparison_actual(actual, reference):
+    if flag_gems.vendor_name not in ("thead", "ascend", "kunlunxin"):
+        return actual
+    if flag_gems.vendor_name != "thead" and reference.device.type != "cpu":
+        assert (
+            actual.device == reference.device
+            and actual.dtype == reference.dtype
+            and actual.shape == reference.shape
+        )
+        return actual.cpu() if actual.is_complex() else actual
+    device = torch.device(flag_gems.device)
+    device = device if device.index is not None else torch.device(device.type, 0)
+    # Validate target ABI before observing values on CPU in either ref mode.
+    assert actual.device == device and reference.device.type == "cpu"
+    assert actual.dtype == reference.dtype and actual.shape == reference.shape
+    return actual.cpu()
+
+
+def _assert_result_close(actual, reference):
+    tu.assert_result_close(
+        _comparison_actual(actual, reference),
+        (
+            reference.cpu()
+            if flag_gems.vendor_name in ("ascend", "kunlunxin")
+            and reference.is_complex()
+            else reference
+        ),
+    )
+
+
+def _assert_result_equal(actual, reference):
+    tu.assert_result_equal(
+        _comparison_actual(actual, reference),
+        (
+            reference.cpu()
+            if flag_gems.vendor_name in ("ascend", "kunlunxin")
+            and reference.is_complex()
+            else reference
+        ),
+    )
+
+
 def _reference_solve(a, b, *, left=True, overflow=False):
     """Freeze backend-specific tuples before the candidate can mutate inputs.
 
@@ -118,15 +253,23 @@ def _reference_solve(a, b, *, left=True, overflow=False):
     backend-specific. CPU-reference mode compares these native artifacts on
     CPU; finite low-precision systems also get independent CPU double checks.
     """
+    if flag_gems.vendor_name == "thead":
+        return torch.ops.aten._linalg_solve_ex(
+            _reference_input(a), _reference_input(b), left=left
+        )
     if utils.TO_CPU and (
         a.dtype in (torch.float32, torch.complex64)
         or overflow
         or not (a.isfinite().all() and b.isfinite().all())
     ):
-        native = torch.ops.aten._linalg_solve_ex(a.clone(), b.clone(), left=left)
-        return tuple(tu.to_reference(value) for value in native)
+        native = torch.ops.aten._linalg_solve_ex(
+            a if flag_gems.vendor_name in ("ascend", "kunlunxin") else a.clone(),
+            b if flag_gems.vendor_name in ("ascend", "kunlunxin") else b.clone(),
+            left=left,
+        )
+        return tuple(_reference_input(value) for value in native)
     return torch.ops.aten._linalg_solve_ex(
-        tu.to_reference(a), tu.to_reference(b), left=left
+        _reference_input(a), _reference_input(b), left=left
     )
 
 
@@ -136,10 +279,10 @@ def _assert_outputs(res_out, ref_out, *, a=None, b=None, left=True):
     for actual, expected in zip(res_out, ref_out):
         assert actual.shape == expected.shape
         assert actual.dtype == expected.dtype
-    tu.assert_result_close(res_out[0], ref_out[0])
-    tu.assert_result_close(res_out[1], ref_out[1])
-    tu.assert_result_equal(res_out[2], ref_out[2])
-    tu.assert_result_equal(res_out[3], ref_out[3])
+    _assert_result_close(res_out[0], ref_out[0])
+    _assert_result_close(res_out[1], ref_out[1])
+    _assert_result_equal(res_out[2], ref_out[2])
+    _assert_result_equal(res_out[3], ref_out[3])
 
     if not (
         utils.TO_CPU and a is not None and a.dtype in (torch.float32, torch.complex64)
@@ -200,8 +343,8 @@ def _assert_outputs(res_out, ref_out, *, a=None, b=None, left=True):
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_conditioned_grid(shape, value_range, dtype):
     a, b = _conditioned_pair(dtype, shape, value_range)
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
-
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
@@ -215,7 +358,8 @@ def test__linalg_solve_ex_conditioned_grid(shape, value_range, dtype):
 def test__linalg_solve_ex_raw_grid(shape, value_range, dtype):
     a, b = _raw_pair(dtype, shape, value_range)
     overflow = value_range in (["0", "max"], ["min", "0"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
     ref_out = _reference_solve(a, b, overflow=overflow)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
@@ -228,9 +372,10 @@ def test__linalg_solve_ex_nontrivial_pivots(dtype):
     # Scaled anti-diagonal identity: the leading column pivot is the last row,
     # so the returned pivot vector is a real permutation rather than 1..n.
     n = 8
-    a = torch.flip(torch.eye(n, dtype=dtype, device=flag_gems.device), [0]) * 3
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a = torch.flip(torch.eye(n, dtype=dtype, device=_fixture_device(dtype)), [0]) * 3
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     res_out = flag_gems._linalg_solve_ex(a, b)
@@ -248,7 +393,8 @@ _FLAG_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_flag_combinations(left, check_errors, dtype):
     a, b = _conditioned_pair(dtype, (20, 320, 15), ["-1", "1"], left=left)
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(
         ref_a, ref_b, left=left, check_errors=check_errors
@@ -262,7 +408,8 @@ def test__linalg_solve_ex_flag_combinations(left, check_errors, dtype):
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_default_arguments(dtype):
     a, b = _conditioned_pair(dtype, (20, 320, 15), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     # Schema defaults are left=True / check_errors=False; omitting both keywords
     # must reach the same result as passing them explicitly.
@@ -278,11 +425,12 @@ def test__linalg_solve_ex_default_arguments(dtype):
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_mixed_batch_info(dtype):
     n, m = 3, 2
-    a = tu.make_input(dtype, (3, n, n), ["-1", "1"])
-    a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 4
+    a = _make_input(dtype, (3, n, n), ["-1", "1"])
+    a = a + torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 4
     a[1] = 0  # one singular lane between two healthy ones
-    b = tu.make_input(dtype, (3, n, m), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    b = _make_input(dtype, (3, n, m), ["-1", "1"])
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     res_out = flag_gems._linalg_solve_ex(a, b)
@@ -307,10 +455,11 @@ _BROADCAST_CASES = tu.selected_cases(
 @pytest.mark.parametrize("a_shape,b_shape,left,dtype", _BROADCAST_CASES)
 def test__linalg_solve_ex_broadcast(a_shape, b_shape, left, dtype):
     n = a_shape[-1]
-    a = tu.make_input(dtype, a_shape, ["-1", "1"])
-    a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 4
-    b = tu.make_input(dtype, b_shape, ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a = _make_input(dtype, a_shape, ["-1", "1"])
+    a = a + torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 4
+    b = _make_input(dtype, b_shape, ["-1", "1"])
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = _reference_solve(a, b, left=left)
     res_out = flag_gems._linalg_solve_ex(a, b, left=left)
@@ -330,31 +479,33 @@ _BACKWARD_CASES = tu.selected_cases(
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_backward(left, batch, dtype):
     n, m = 12, 3
-    a = tu.make_input(dtype, batch + (n, n), ["-1", "1"])
-    a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 6
-    b = tu.make_input(dtype, _rhs_shape(batch, n, m, left), ["-1", "1"])
+    a = _make_input(dtype, batch + (n, n), ["-1", "1"])
+    a = a + torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 6
+    b = _make_input(dtype, _rhs_shape(batch, n, m, left), ["-1", "1"])
+    a, b = _target_pair(a, b)
     a = a.detach().requires_grad_(True)
     b = b.detach().requires_grad_(True)
-    ref_a = tu.to_reference(a).detach().requires_grad_(True)
-    ref_b = tu.to_reference(b).detach().requires_grad_(True)
+    ref_a = _reference_input(a).detach().requires_grad_(True)
+    ref_b = _reference_input(b).detach().requires_grad_(True)
 
     # Same-valued, nonconstant upstream gradient for both sides.
-    upstream = tu.make_input(dtype, _rhs_shape(batch, n, m, left), ["-1", "1"])
+    upstream = _make_input(dtype, _rhs_shape(batch, n, m, left), ["-1", "1"])
 
+    upstream = _target_layout(upstream)
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b, left=left)
     res_out = flag_gems._linalg_solve_ex(a, b, left=left)
     # The forward tuple must agree before the gradients are taken.
     _assert_outputs(res_out, ref_out)
 
     ref_grad_a, ref_grad_b = torch.autograd.grad(
-        ref_out[0], (ref_a, ref_b), grad_outputs=tu.to_reference(upstream)
+        ref_out[0], (ref_a, ref_b), grad_outputs=_reference_input(upstream)
     )
     res_grad_a, res_grad_b = torch.autograd.grad(
         res_out[0], (a, b), grad_outputs=upstream
     )
 
-    tu.assert_result_close(res_grad_a, ref_grad_a)
-    tu.assert_result_close(res_grad_b, ref_grad_b)
+    _assert_result_close(res_grad_a, ref_grad_a)
+    _assert_result_close(res_grad_b, ref_grad_b)
 
 
 # Real payloads come straight from the shared special-value generator; complex
@@ -374,11 +525,12 @@ _SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _make_special_input(dtype, scenario)
     n = payload.numel()
-    a = tu.make_input(dtype, (n, n), ["-1", "1"])
+    a = _make_input(dtype, (n, n), ["-1", "1"])
     torch.diagonal(a).copy_(payload)
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
@@ -388,12 +540,13 @@ def test__linalg_solve_ex_special_dense_diagonal(dtype, scenario):
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_rhs_column(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _make_special_input(dtype, scenario)
     n = 4
-    a = tu.make_input(dtype, (n, n), ["-1", "1"])
-    a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 5
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
+    a = _make_input(dtype, (n, n), ["-1", "1"])
+    a = a + torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 5
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
     b[:, 0] = payload[:n]
+    a, b = _target_pair(a, b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
@@ -417,35 +570,37 @@ _RHS_POISON_SLOTS = {
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_single_rhs_position(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _make_special_input(dtype, scenario)
     n = 4
-    a = tu.make_input(dtype, (n, n), ["-1", "1"])
-    a = a + torch.eye(n, dtype=dtype, device=flag_gems.device) * 5
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
+    a = _make_input(dtype, (n, n), ["-1", "1"])
+    a = a + torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 5
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
     for row, payload_index in _RHS_POISON_SLOTS[scenario]:
         b[row, 0] = payload[payload_index]
+    a, b = _target_pair(a, b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
     # Only the polluted column is contaminated; the other column stays finite.
-    assert bool(torch.isfinite(res_out[0][:, 1]).all())
+    assert bool(_finite(res_out[0][:, 1]).all())
 
 
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype,scenario", _SPECIAL_CASES)
 def test__linalg_solve_ex_special_isolated_batch_lane(dtype, scenario):
-    payload = tu.make_special_input(dtype, scenario)
+    payload = _make_special_input(dtype, scenario)
     n = payload.numel()
-    a = tu.make_input(dtype, (2, n, n), ["-1", "1"])
+    a = _make_input(dtype, (2, n, n), ["-1", "1"])
     torch.diagonal(a, dim1=-2, dim2=-1)[1].copy_(payload)
-    b = tu.make_input(dtype, (2, n, 2), ["-1", "1"])
+    b = _make_input(dtype, (2, n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
     # The untouched lane must not be contaminated by the special lane.
-    assert bool(torch.isfinite(res_out[0][0]).all())
+    assert bool(_finite(res_out[0][0]).all())
 
 
 _IMAGINARY_SPECIAL_CASES = tu.selected_cases(
@@ -464,11 +619,12 @@ def test__linalg_solve_ex_special_imaginary_diagonal(dtype, scenario):
     # Imaginary-only payload: a real component plus 1j*inf would smear NaN
     # across the whole entry, so the real and imaginary parts are built
     # separately with known intended values.
-    payload = tu.make_special_input(torch.float32, scenario)
+    payload = _make_special_input(torch.float32, scenario)
     n = payload.numel()
-    a = tu.make_input(dtype, (n, n), ["-1", "1"])
+    a = _make_input(dtype, (n, n), ["-1", "1"])
     torch.diagonal(a).copy_(torch.complex(torch.zeros_like(payload), payload).to(dtype))
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
     ref_out = _reference_solve(a, b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
@@ -491,9 +647,10 @@ _MINIMAL_SYSTEM_RHS = [1.0, 2.0, -3.0]
 @pytest.mark.parametrize("a_shape,b_shape", _ZERO_EXTENT_CASES)
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_zero_extents(a_shape, b_shape, dtype):
-    a = tu.make_input(dtype, a_shape, ["-1", "1"])
-    b = tu.make_input(dtype, b_shape, ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a = _make_input(dtype, a_shape, ["-1", "1"])
+    b = _make_input(dtype, b_shape, ["-1", "1"])
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     res_out = flag_gems._linalg_solve_ex(a, b)
@@ -510,9 +667,10 @@ def test__linalg_solve_ex_minimal_1x1_system(dtype):
     # well posed by construction instead of being an occasional singular random
     # sample, and the nonconstant right-hand side makes the result a real
     # division rather than 0/0.
-    a = torch.full((1, 1), 4, dtype=dtype, device=flag_gems.device)
-    b = torch.tensor([_MINIMAL_SYSTEM_RHS], dtype=dtype, device=flag_gems.device)
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a = _full((1, 1), 4, dtype=dtype, device=_fixture_device(dtype))
+    b = torch.tensor([_MINIMAL_SYSTEM_RHS], dtype=dtype, device=_fixture_device(dtype))
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     res_out = flag_gems._linalg_solve_ex(a, b)
@@ -526,26 +684,28 @@ def test__linalg_solve_ex_minimal_1x1_system(dtype):
 @pytest.mark.parametrize("dtype", tu.selected_cases(SUPPORTED_DTYPES, quick=[]))
 def test__linalg_solve_ex_singular_info(dtype):
     n = 4
-    a = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    a = torch.eye(n, dtype=dtype, device=_fixture_device(dtype))
     a[2] = 0  # singular: the third row is entirely zero
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
     assert int(res_out[3]) > 0
-    assert bool(torch.isfinite(res_out[1]).all())
+    assert bool(_finite(res_out[1]).all())
 
 
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_check_errors_raises(dtype):
     n = 4
-    a = torch.eye(n, dtype=dtype, device=flag_gems.device)
+    a = torch.eye(n, dtype=dtype, device=_fixture_device(dtype))
     a[2] = 0
-    b = tu.make_input(dtype, (n, 2), ["-1", "1"])
+    b = _make_input(dtype, (n, 2), ["-1", "1"])
+    a, b = _target_pair(a, b)
     with pytest.raises(RuntimeError):
         flag_gems._linalg_solve_ex(a, b, check_errors=True)
 
@@ -555,7 +715,8 @@ def test__linalg_solve_ex_check_errors_raises(dtype):
 def test__linalg_solve_ex_result_overload(dtype):
     a, b = _conditioned_pair(dtype, (2, 19, 7), ["-1", "1"])
     batch, n, m = _system_shapes((2, 19, 7))
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     # The .result overload is exercised through the same public operator name.
     # The output geometry is statically known, so the reference buffers are
@@ -592,10 +753,10 @@ def test__linalg_solve_ex_result_overload(dtype):
     assert res_out[1] is res_buf_lu
     assert res_out[2] is res_buf_pivots
     assert res_out[3] is res_buf_info
-    tu.assert_result_close(res_buf_result, ref_result)
-    tu.assert_result_close(res_buf_lu, ref_lu)
-    tu.assert_result_equal(res_buf_pivots, ref_pivots)
-    tu.assert_result_equal(res_buf_info, ref_info)
+    _assert_result_close(res_buf_result, ref_result)
+    _assert_result_close(res_buf_lu, ref_lu)
+    _assert_result_equal(res_buf_pivots, ref_pivots)
+    _assert_result_equal(res_buf_info, ref_info)
 
 
 def _view_state(tensor):
@@ -613,7 +774,8 @@ def _view_state(tensor):
 def test__linalg_solve_ex_result_overload_strided_views(dtype):
     a, b = _conditioned_pair(dtype, (2, 8, 4), ["-1", "1"])
     batch, n, m = _system_shapes((2, 8, 4))
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_result = ref_a.new_empty(batch + (n, m))
     ref_lu = ref_a.new_empty(batch + (n, n))
@@ -633,16 +795,12 @@ def test__linalg_solve_ex_result_overload_strided_views(dtype):
     # required shape: result (batch, n, m), LU (batch, n, n), pivots (batch, n)
     # and info (batch,) via a collapsed second column. The interleaved elements
     # are guard regions that must stay untouched.
-    result_buf = torch.full(
+    result_buf = _full(
         batch + (n, 2 * m), sentinel, dtype=dtype, device=flag_gems.device
     )
-    lu_buf = torch.full(
-        batch + (n, 2 * n), sentinel, dtype=dtype, device=flag_gems.device
-    )
-    pivots_buf = torch.full(
-        batch + (2 * n,), 7, dtype=torch.int32, device=flag_gems.device
-    )
-    info_buf = torch.full(batch + (2,), 7, dtype=torch.int32, device=flag_gems.device)
+    lu_buf = _full(batch + (n, 2 * n), sentinel, dtype=dtype, device=flag_gems.device)
+    pivots_buf = _full(batch + (2 * n,), 7, dtype=torch.int32, device=flag_gems.device)
+    info_buf = _full(batch + (2,), 7, dtype=torch.int32, device=flag_gems.device)
 
     result_view = result_buf[..., ::2]
     lu_view = lu_buf[..., ::2]
@@ -661,10 +819,10 @@ def test__linalg_solve_ex_result_overload_strided_views(dtype):
     assert res_out[3] is info_view
     # Writes must neither reallocate nor re-stride the caller's views.
     assert [_view_state(view) for view in views] == before
-    tu.assert_result_close(result_view, ref_result)
-    tu.assert_result_close(lu_view, ref_lu)
-    tu.assert_result_equal(pivots_view, ref_pivots)
-    tu.assert_result_equal(info_view, ref_info)
+    _assert_result_close(result_view, ref_result)
+    _assert_result_close(lu_view, ref_lu)
+    _assert_result_equal(pivots_view, ref_pivots)
+    _assert_result_equal(info_view, ref_info)
     # Interleaved guard regions stay at their sentinel values.
     for guard, sentinel_value in (
         (result_buf[..., 1::2], sentinel),
@@ -672,8 +830,8 @@ def test__linalg_solve_ex_result_overload_strided_views(dtype):
         (pivots_buf[..., 1::2], 7),
         (info_buf[:, 1], 7),
     ):
-        expected = tu.to_reference(torch.full_like(guard, sentinel_value))
-        tu.assert_result_equal(guard, expected)
+        expected = _reference_input(_full_like(guard, sentinel_value))
+        _assert_result_equal(guard, expected)
 
 
 _NONCONTIG_KINDS = tu.selected_cases(["offset", "transposed"], quick=[])
@@ -684,33 +842,38 @@ _NONCONTIG_KINDS = tu.selected_cases(["offset", "transposed"], quick=[])
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__linalg_solve_ex_noncontiguous_layouts(kind, dtype):
     n = 4
-    eye = torch.eye(n, dtype=dtype, device=flag_gems.device) * 8
+    eye = torch.eye(n, dtype=dtype, device=_fixture_device(dtype)) * 8
     if kind == "offset":
         # A and B are views with a nonzero storage offset. The conditioning is
         # applied in place so the operand keeps its offset and stride; building
         # a fresh tensor would compact the layout. Transfer the full bases
         # before slicing so CPU reference inputs retain the same geometry.
-        a_base = tu.make_input(dtype, (n + 4, n + 4), ["-1", "1"])
+        a_base = _make_input(dtype, (n + 4, n + 4), ["-1", "1"])
         a = a_base[2 : n + 2, 2 : n + 2]
         a.copy_(a + eye)
-        b_base = tu.make_input(dtype, (n + 4, 4), ["-1", "1"])
+        b_base = _make_input(dtype, (n + 4, 4), ["-1", "1"])
         b = b_base[2 : n + 2, 1:4]
-        ref_a = tu.to_reference(a_base)[2 : n + 2, 2 : n + 2]
-        ref_b = tu.to_reference(b_base)[2 : n + 2, 1:4]
+        ref_a = _reference_input(a_base)[2 : n + 2, 2 : n + 2]
+        ref_b = _reference_input(b_base)[2 : n + 2, 1:4]
     else:
         # Transposed A (column-major stride) and a stride-2 right-hand side.
-        a_base = tu.make_input(dtype, (n, n), ["-1", "1"]) + eye
+        a_base = _make_input(dtype, (n, n), ["-1", "1"]) + eye
         a = a_base.t()
-        b_base = tu.make_input(dtype, (n, 6), ["-1", "1"])
+        b_base = _make_input(dtype, (n, 6), ["-1", "1"])
         b = b_base[:, ::2]
-        ref_a = tu.to_reference(a_base).t()
-        ref_b = tu.to_reference(b_base)[:, ::2]
+        ref_a = _reference_input(a_base).t()
+        ref_b = _reference_input(b_base)[:, ::2]
 
+    a, b = _target_pair(a, b)
     for actual, reference in ((a, ref_a), (b, ref_b)):
         assert reference.stride() == actual.stride()
         assert reference.storage_offset() == actual.storage_offset()
 
-    ref_out = torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    ref_out = (
+        _reference_solve(a, b)
+        if flag_gems.vendor_name in ("ascend", "kunlunxin") and utils.TO_CPU
+        else torch.ops.aten._linalg_solve_ex(ref_a, ref_b)
+    )
     res_out = flag_gems._linalg_solve_ex(a, b)
 
     _assert_outputs(res_out, ref_out)
@@ -744,8 +907,8 @@ if flag_gems.runtime.device.vendor_name == "nvidia":
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("dtype", _NATIVE_REJECTED_DTYPES)
 def test__linalg_solve_ex_rejects_unsupported_dtype(dtype):
-    a = tu.make_input(dtype, (4, 4), ["-1", "1"])
-    b = tu.make_input(dtype, (4, 2), ["-1", "1"])
+    a = _make_input(dtype, (4, 4), ["-1", "1"])
+    b = _make_input(dtype, (4, 2), ["-1", "1"])
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems._linalg_solve_ex(a, b)
 
@@ -759,15 +922,15 @@ _NEGATIVE_SHAPE_CASES = [
 @pytest.mark.underscore_linalg_solve_ex
 @pytest.mark.parametrize("a_shape,b_shape", _NEGATIVE_SHAPE_CASES)
 def test__linalg_solve_ex_rejects_invalid_shapes(a_shape, b_shape):
-    a = tu.make_input(torch.float32, a_shape, ["-1", "1"])
-    b = tu.make_input(torch.float32, b_shape, ["-1", "1"])
+    a = _make_input(torch.float32, a_shape, ["-1", "1"])
+    b = _make_input(torch.float32, b_shape, ["-1", "1"])
     with pytest.raises(RuntimeError):
         flag_gems._linalg_solve_ex(a, b)
 
 
 @pytest.mark.underscore_linalg_solve_ex
 def test__linalg_solve_ex_requires_rhs():
-    a = tu.make_input(torch.float32, (4, 4), ["-1", "1"])
+    a = _make_input(torch.float32, (4, 4), ["-1", "1"])
     # B is a required positional argument. The candidate surfaces the missing
     # operand through the operator schema, which raises RuntimeError here
     # ('missing value for argument B'); some backends report TypeError instead.
@@ -788,7 +951,8 @@ def test__linalg_solve_ex_vector_rhs(n, dtype, check_errors, batch, broadcast_ve
     b = b.squeeze(-1)
     if broadcast_vector:
         b = b.reshape(-1, n)[0]
-    ref_a, ref_b = tu.to_reference(a), tu.to_reference(b)
+    a, b = _target_pair(a, b)
+    ref_a, ref_b = _reference_input(a), _reference_input(b)
 
     ref_out = torch.ops.aten._linalg_solve_ex(
         ref_a, ref_b, left=True, check_errors=check_errors
@@ -796,8 +960,8 @@ def test__linalg_solve_ex_vector_rhs(n, dtype, check_errors, batch, broadcast_ve
     res_out = flag_gems._linalg_solve_ex(a, b, left=True, check_errors=check_errors)
 
     _assert_outputs(res_out, ref_out)
-    tu.assert_result_equal(a, ref_a)
-    tu.assert_result_equal(b, ref_b)
+    _assert_result_equal(a, ref_a)
+    _assert_result_equal(b, ref_b)
 
 
 @pytest.mark.underscore_linalg_solve_ex

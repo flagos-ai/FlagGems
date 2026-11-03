@@ -74,7 +74,7 @@ def test_addmm_activation_out(M, N, K, scalar, dtype, use_gelu):
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
     ref_bias = utils.to_reference(bias, True)
-    ref_out = utils.to_reference(out, True)
+    ref_out = utils.to_reference(out, True).clone()
 
     alpha = beta = scalar
 
