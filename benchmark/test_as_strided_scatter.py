@@ -43,7 +43,8 @@ class AsStridedScatterBenchmark(base.Benchmark):
 
     def build_inputs(self, case):
         plan = case.builder_args[0]
-        rows, cols, row_stride, col_stride, offset, storage_size = plan.builder_args
+        (shape,) = plan.builder_args
+        rows, cols, row_stride, col_stride, offset, storage_size = shape
         inp = torch.randn(storage_size, dtype=case.dtype, device=self.device)
         src = torch.randn((rows, cols), dtype=case.dtype, device=self.device)
         return inp, src, (rows, cols), (row_stride, col_stride), offset
