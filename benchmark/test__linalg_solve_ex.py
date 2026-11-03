@@ -158,6 +158,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _validate_descriptor(shape):
     """Reject anything that cannot describe an A of shape (batch..., n, n).
 
@@ -272,19 +303,22 @@ class _HiddenSolveH800Baseline:
             or data["_collection"]["configuration"]["repo"] != "pytorch"
         ):
             raise ValueError("Expected a completed native hidden four-output H800 run")
-        return data[key]["shapes"], {
-            "artifact": str(path),
-            "artifact_sha256": _H800_ARTIFACT_SHA256,
-            "operator": key,
-            "collection_task": task,
-            "environment": environment,
-            "input_identity": "Exact original geometry, flags, dtype and recipe; random payloads differ",
-            "ratio": "raw H800 latency / locally timed candidate; no peak normalization",
-            "environment_qualification": (
-                "Functional latency collection with sharing allowed; "
-                "no isolated performance claim"
-            ),
-        }
+        return data[key]["shapes"], _aten_qualify_metadata(
+            {
+                "artifact": str(path),
+                "artifact_sha256": _H800_ARTIFACT_SHA256,
+                "operator": key,
+                "collection_task": task,
+                "environment": environment,
+                "input_identity": "Exact original geometry, flags, dtype and recipe; random payloads differ",
+                "ratio": "raw H800 latency / locally timed candidate; no peak normalization",
+                "environment_qualification": (
+                    "Functional latency collection with sharing allowed; "
+                    "no isolated performance claim"
+                ),
+            },
+            ("pr64:op_hidden_linalg_solve_ex_h800_perf_baseline"),
+        )
 
     def get_latency(self, op, *args, **kwargs):
         ascend_native = (
