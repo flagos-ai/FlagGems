@@ -120,10 +120,6 @@ def embedding_dense_backward(
     D = grad_output.shape[-1]
     go = grad_output.contiguous().view(-1, D)  # (N, D)
     idx = indices.contiguous().view(-1)
-    if idx.dtype != torch.int32:
-        # Row indices are < num_weights, so int32 is exact.  GCU300 miscompiles
-        # lane-varying 64-bit arithmetic, and the sort order must be int32 too.
-        idx = idx.to(torch.int32)
     N = idx.numel()
 
     assert go.shape[0] == N, "indices number must match grad_output rows."
@@ -137,7 +133,14 @@ def embedding_dense_backward(
         if pad >= 0:
             idx = torch.where(idx == pad, torch.full_like(idx, num_weights), idx)
 
+        # Sort in the caller's dtype: the runner's `topsatenSort` rejects an
+        # int32 input (TOPSATEN_STATUS_BAD_PARAM) but handles int64, and the
+        # ordering is identical either way since indices are non-negative and
+        # below `num_weights`.  Only the results are narrowed, so the kernel
+        # below still works entirely in int32 (GCU300 miscompiles lane-varying
+        # 64-bit arithmetic).
         index_sorted, order = torch.sort(idx, stable=True)
+        index_sorted = index_sorted.to(torch.int32)
         if order.dtype != torch.int32:
             order = order.to(torch.int32)
 
