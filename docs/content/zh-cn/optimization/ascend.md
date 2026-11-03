@@ -127,15 +127,19 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 | `cube_freq` / `vec_freq` | 1.65 GHz | ini |
 | `memory_size` | 96 GiB | ini |
 
-据此 `Ascend950DT_9582` 属于 32-Cube-core 这一 SKU 档位（[SPEC p13 表 3-1] 中 950DT 列出 36/32/28 核三档）。以下为单台主机的实测吞吐（CANN 9.1.0、`torch_npu`，设备自报 `Ascend950DT_9582`；详见参考资料）——这些数字与主机/驱动强相关，**不代表硬件上限**：
+据此 `Ascend950DT_9582` 属于 32-Cube-core 这一 SKU 档位（[SPEC p13 表 3-1] 中 950DT 列出 36/32/28 核三档）。下表将该 SKU 档位的理论值（白皮书规格）与单台主机的实测吞吐（CANN 9.1.0、`torch_npu`，设备自报 `Ascend950DT_9582`；详见参考资料）并列对照。实测列与主机/驱动强相关，**不代表硬件上限**；且理论列与实测列并非逐项同一测量仪器可比（例如 `matmul` 并非 `conv2d` 的正确参照仪器）：
 
-| 实测量 | 数值 | 方法 |
-| :----- | :--- | :--- |
-| `matmul` FP16 / BF16 | 430.4 TFLOP/s | `torch.matmul`，8192³，30 次取中位数 |
-| `matmul` FP32（未走 HF32） | 27.0 TFLOP/s | 同形状 |
-| HBM 带宽（大缓冲平台期） | ≈2.7–3.1 TB/s | ≥1024 MiB copy / triad / read |
-| `conv2d` FP16 | 353–364 TFLOP/s | `F.conv2d`，大尺寸 1x1 卷积 |
-| `conv2d` FP32，HF32 开/关 | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
+| 指标 | 理论值（32 核 SKU，[SPEC]） | 实测值 | 方法 |
+| :--- | :--------------------------- | :----- | :--- |
+| `matmul` / Cube+Vector BF16 或 FP16 | 486 TFLOP/s [SPEC p13 表 3-1] | 430.4 TFLOP/s | `torch.matmul`，8192³，30 次取中位数 |
+| `matmul` / Cube+Vector TF32 | 243 TFLOP/s [SPEC p13 表 3-1] | 27.0 TFLOP/s（FP32，未走 HF32 路径） | 同形状 |
+| `matmul` / Cube+Vector FP8、HiF8、MXFP8 | 919 TFLOP/s [SPEC p13 表 3-1] | 未实测 | — |
+| `matmul` / Cube+Vector MXFP4 | 1784 TFLOP/s [SPEC p13 表 3-1] | 未实测 | — |
+| `matmul` / Cube+Vector INT8 | 919 TOPS [SPEC p13 表 3-1] | 未实测 | — |
+| 片上内存带宽（headline） | 4 TB/s [SPEC p13 表 3-1] | ≈2.7–3.1 TB/s（大缓冲平台期） | ≥1024 MiB copy / triad / read |
+| 片上内存容量 | 最高 144 GB（本 SKU 档位 96 GB）[SPEC p13 表 3-1] | 96 GiB（`memory_size`，ini） | `platform_config/Ascend950DT_9582.ini` |
+| `conv2d` FP16 | [SPEC] 未给出（仅 matmul 口径） | 353–364 TFLOP/s | `F.conv2d`，大尺寸 1x1 卷积 |
+| `conv2d` FP32，HF32 开/关 | [SPEC] 未给出 | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
 
 > [!NOTE]
 > 不要把小缓冲下的带宽数字（例如 64 MiB copy）当作 HBM 带宽的代表值——由于缓存驻留效应，它可能比大缓冲平台期高出约 1.8 倍。同样不要拿 FP16 `matmul` 的吞吐去估算 `conv2d` 的效率上限，这两类指令在该硬件上的饱和吞吐并不相同。
@@ -190,6 +194,7 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - [cannbot-knowledge：Ascend950DT 实测观测](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_measured_observations.md)
 - [cannbot-knowledge：Ascend950DT 目标平台](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/target_ascend950dt.md)
 - [cannbot-knowledge：Ascend950DT 与 950PR SKU 差异](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_vs_pr_overrides.md)
+- [华为昇腾 950 NPU 架构白皮书（PDF）](https://public-download.obs.cn-east-2.myhuaweicloud.com/ascend/%E6%98%87%E8%85%BE950%20NPU%E6%9E%B6%E6%9E%84%E7%99%BD%E7%9A%AE%E4%B9%A6.pdf)
 - [cannbot-skills：Ascend 编译选项](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/04-Compilation-Pipeline/07-compile-options.md)
 - [cannbot-skills：Ascend 内存模型与扩展 API](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/01-Programming-Model/03-memory-model.md)
 - [Triton-Ascend 后端编译器（`NPUOptions`）](https://github.com/triton-lang/triton-ascend/blob/main/third_party/ascend/backend/compiler.py)

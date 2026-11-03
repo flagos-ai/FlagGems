@@ -127,15 +127,19 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 | `cube_freq` / `vec_freq` | 1.65 GHz | ini |
 | `memory_size` | 96 GiB | ini |
 
-This places `Ascend950DT_9582` in the 32-Cube-core SKU tier ([SPEC p13 Table 3-1] lists 36/32/28-core tiers for 950DT). Measured single-host throughput (CANN 9.1.0, `torch_npu`, device self-reported `Ascend950DT_9582`; see references) — treat as host/driver-specific, **not** a guaranteed ceiling:
+This places `Ascend950DT_9582` in the 32-Cube-core SKU tier ([SPEC p13 Table 3-1] lists 36/32/28-core tiers for 950DT). The table below lines up that SKU's theoretical (whitepaper) peaks against measured single-host throughput (CANN 9.1.0, `torch_npu`, device self-reported `Ascend950DT_9582`; see references). Treat the measured column as host/driver-specific, **not** a guaranteed ceiling — and note it is not directly comparable to the theoretical column instrument-for-instrument (e.g. `matmul` is not the correct reference instrument for `conv2d`):
 
-| Measured quantity | Value | Method |
-| :----------------- | :----- | :------ |
-| `matmul` FP16 / BF16 | 430.4 TFLOP/s | `torch.matmul`, 8192³, median of 30 runs |
-| `matmul` FP32 (no HF32) | 27.0 TFLOP/s | same shape |
-| HBM bandwidth (large-buffer plateau) | ≈2.7–3.1 TB/s | ≥1024 MiB copy/triad/read |
-| `conv2d` FP16 | 353–364 TFLOP/s | `F.conv2d`, large 1x1 shapes |
-| `conv2d` FP32, HF32 on/off | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
+| Quantity | Theoretical (32-core SKU, [SPEC]) | Measured | Method |
+| :------- | :---------------------------------- | :-------- | :------ |
+| `matmul` / Cube+Vector BF16 or FP16 | 486 TFLOP/s [SPEC p13 Table 3-1] | 430.4 TFLOP/s | `torch.matmul`, 8192³, median of 30 runs |
+| `matmul` / Cube+Vector TF32 | 243 TFLOP/s [SPEC p13 Table 3-1] | 27.0 TFLOP/s (FP32, no HF32 path) | same shape |
+| `matmul` / Cube+Vector FP8, HiF8, MXFP8 | 919 TFLOP/s [SPEC p13 Table 3-1] | not measured | — |
+| `matmul` / Cube+Vector MXFP4 | 1784 TFLOP/s [SPEC p13 Table 3-1] | not measured | — |
+| `matmul` / Cube+Vector INT8 | 919 TOPS [SPEC p13 Table 3-1] | not measured | — |
+| On-chip memory bandwidth (headline) | 4 TB/s [SPEC p13 Table 3-1] | ≈2.7–3.1 TB/s (large-buffer plateau) | ≥1024 MiB copy/triad/read |
+| On-chip memory capacity | Up to 144 GB (96 GB at this SKU tier) [SPEC p13 Table 3-1] | 96 GiB (`memory_size`, ini) | `platform_config/Ascend950DT_9582.ini` |
+| `conv2d` FP16 | not in [SPEC] (matmul instrument only) | 353–364 TFLOP/s | `F.conv2d`, large 1x1 shapes |
+| `conv2d` FP32, HF32 on/off | not in [SPEC] | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
 
 > [!NOTE]
 > Don't use a small-buffer bandwidth number (e.g. a 64 MiB copy) as the headline HBM figure — it can read ~1.8x higher than the large-buffer plateau due to cache residency. Don't use FP16 `matmul` as the reference denominator for `conv2d` efficiency either; the two instructions saturate at different throughputs on this hardware.
@@ -190,6 +194,7 @@ This places `Ascend950DT_9582` in the 32-Cube-core SKU tier ([SPEC p13 Table 3-1
 - [cannbot-knowledge: Ascend950DT measured observations](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_measured_observations.md)
 - [cannbot-knowledge: Ascend950DT target platform](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/target_ascend950dt.md)
 - [cannbot-knowledge: Ascend950DT vs 950PR SKU overrides](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_vs_pr_overrides.md)
+- [Huawei Ascend 950 NPU Architecture Whitepaper (PDF, Chinese)](https://public-download.obs.cn-east-2.myhuaweicloud.com/ascend/%E6%98%87%E8%85%BE950%20NPU%E6%9E%B6%E6%9E%84%E7%99%BD%E7%9A%AE%E4%B9%A6.pdf)
 - [cannbot-skills: Ascend compilation options](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/04-Compilation-Pipeline/07-compile-options.md)
 - [cannbot-skills: Ascend memory model and extension API](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/01-Programming-Model/03-memory-model.md)
 - [Triton-Ascend backend compiler (`NPUOptions`)](https://github.com/triton-lang/triton-ascend/blob/main/third_party/ascend/backend/compiler.py)
