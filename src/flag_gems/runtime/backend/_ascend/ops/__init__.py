@@ -54,6 +54,7 @@ from .embedding import embedding
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
+from .erfinv_ import erfinv_
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -232,6 +233,7 @@ __all__ = [
     "dot",
     "embedding",
     "embedding_spmdm",
+    "erfinv_",
     "exponential",
     "exponential_",
     "fill_scalar",
