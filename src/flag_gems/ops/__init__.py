@@ -823,6 +823,7 @@ from flag_gems.ops.functional_assert_async import _functional_assert_async
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
+from flag_gems.ops._fw_primal import _fw_primal
 from flag_gems.ops.fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gather_block_quantized import gather_block_quantized
@@ -1907,6 +1908,7 @@ __all__ = [
     "_fused_rms_norm_forward",
     "_fused_sgd_",
     "_fused_sgd__tensor_lr",
+    "_fw_primal",
     "_fw_primal_copy",
     "_fw_primal_copy_out",
     "_gather_sparse_backward",
