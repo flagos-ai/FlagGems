@@ -95,6 +95,11 @@ def test_binomial_generator_contract():
 @pytest.mark.parametrize("shape", utils.DISTRIBUTION_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_binomial_out_contract(shape, dtype):
+    if flag_gems.vendor_name == "ascend" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip(
+            "Ascend binomial.out falls back to CPU, "
+            "which does not support Half/BFloat16"
+        )
     count = torch.full(shape, 20.0, dtype=dtype, device=flag_gems.device)
     prob = torch.full(shape, 0.4, dtype=dtype, device=flag_gems.device)
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device)
