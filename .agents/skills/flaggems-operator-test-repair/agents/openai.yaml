@@ -1,0 +1,4 @@
+interface:
+  display_name: "FlagGems 本机算子测试修复"
+  short_description: "在当前后端修复算子测试、benchmark 与 Definition，保留原参数并完整验收"
+  default_prompt: "使用 $flaggems-operator-test-repair 修复当前机器上的算子测试、benchmark 和 Definition；reference 整体不可用的算子先记录并跳过处理。"
