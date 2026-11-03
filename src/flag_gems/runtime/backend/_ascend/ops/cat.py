@@ -135,7 +135,7 @@ def _prepare_cat_inputs(A, dim):
 
 def _cat_fill_triton(out, A, dim):
     if len(A) == 0 or out.numel() == 0:
-        return
+        return out
 
     BLOCK_SIZE = 256
 
@@ -187,11 +187,13 @@ def _cat_fill_triton(out, A, dim):
 
             cat_offset += input_cat_size
 
+    return out
+
 
 import trident
 
-@trident.jit
-def cat(
+
+def _cat_impl(
     A: Union[
         Tuple[torch.Tensor, ...],
         List[torch.Tensor],
@@ -221,8 +223,7 @@ def cat(
     return out
 
 
-@trident.jit
-def cat_out(
+def _cat_out_impl(
     A: Union[
         Tuple[torch.Tensor, ...],
         List[torch.Tensor],
@@ -261,3 +262,39 @@ def cat_out(
         out.copy_(tmp)
 
     return out
+
+
+class Cat(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, dim, *tensors):
+        return _cat_impl(tensors, dim)
+
+
+class CatOut(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, dim, out, *tensors):
+        return _cat_out_impl(tensors, dim, out=out)
+
+
+@trident.jit
+def cat(
+    A: Union[
+        Tuple[torch.Tensor, ...],
+        List[torch.Tensor],
+    ],
+    dim: int = 0,
+):
+    return Cat.apply(dim, *A)
+
+
+@trident.jit
+def cat_out(
+    A: Union[
+        Tuple[torch.Tensor, ...],
+        List[torch.Tensor],
+    ],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+):
+    return CatOut.apply(dim, out, *A)

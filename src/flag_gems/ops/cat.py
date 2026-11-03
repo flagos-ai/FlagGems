@@ -259,8 +259,7 @@ def _cat_build_working_list(
 
 import trident
 
-@trident.jit
-def cat_out(
+def _cat_out_impl(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
     dim: int = 0,
     *,
@@ -319,8 +318,7 @@ def cat_out(
     return out
 
 
-@trident.jit
-def cat(
+def _cat_impl(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
     logger.debug("GEMS CAT")
@@ -347,3 +345,32 @@ def cat(
     out = torch.empty(out_shape, dtype=dtype, device=device)
     _cat_run_kernel(A, dim, out_shape, out)
     return out
+
+
+class Cat(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, dim, *tensors):
+        return _cat_impl(tensors, dim)
+
+
+class CatOut(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, dim, out, *tensors):
+        return _cat_out_impl(tensors, dim, out=out)
+
+
+@trident.jit
+def cat_out(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]],
+    dim: int = 0,
+    *,
+    out: torch.Tensor,
+) -> torch.Tensor:
+    return CatOut.apply(dim, out, *A)
+
+
+@trident.jit
+def cat(
+    A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
+) -> torch.Tensor:
+    return Cat.apply(dim, *A)
