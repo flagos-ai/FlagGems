@@ -596,7 +596,7 @@ def _launch_nt_cube_packet(a, b, c, *, variant):
             or c.stride() != (n, 1) or b.shape[0] != k
             or tuple(c.shape) != (m, n)):
         raise ValueError("NT cube requires contiguous A/C and transposed contiguous B")
-    from .mm_packet_nt_kernel import _mm_packet_rect_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel
     group_m, wait_mode = _NT_CUBE_MODES[variant]
     options = dict(
         _NT_CUBE_OPTIONS, mma_phase_schedule=bool(wait_mode),
@@ -630,7 +630,7 @@ def _nt_large_packet_variants(*, nt):
 
 
 def _launch_nt_large_k16_packet(a, b, c):
-    from .mm_packet_nt_kernel import _mm_packet_rect_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel
 
     m, k = a.shape
     n = b.shape[1]
@@ -696,10 +696,7 @@ def _launch_packet(a, b, c, *, variant="rect"):
         raise ValueError("Unsupported packet tile/layout combination")
     bm, bn, bk = ((32, 64, 64) if small else
                   (128, 128, 32) if square else (64, 128, 32))
-    if nt:
-        from .mm_packet_nt_kernel import _mm_packet_rect_kernel
-    else:
-        from .mm_packet_kernel import _mm_packet_rect_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel
     b_source_basis = (
         (1, 2, 4, 8, 16, 32, 256, 512, 1024, 64, 128, 2048)
         if nt else (1, 2, 4, 8, 16, 32, 128, 512, 1024, 64, 256, 2048)

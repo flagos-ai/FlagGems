@@ -1,4 +1,4 @@
-"""Parameterized dense BF16 NN packet matmul; rectangular source charts from Torch ISA."""
+"""Four-slot BF16 packet matmul for contiguous NN or transposed-B storage."""
 from flag_gems.utils import libentry
 
 from .mm_packet_mapping import grouped_program_coordinates
@@ -10,6 +10,7 @@ from triton.experimental.gluon.language.amd import AMDMFMALayout
 from triton.language import range as pipeline_range
 from triton.experimental.gluon.language.hcu import (
     WholePacketLayout as _WholePacketLayout, PacketPrefixLayout as _PacketPrefixLayout,
+    PacketStorageLayout as _PacketStorageLayout,
     whole_packet_owner, packet_copy,
     packet_read, packet_commit, packet_wait, packet_sched_barrier,
     packet_buffer_store,
@@ -20,6 +21,7 @@ from triton.experimental.gluon.language.hcu import (
 # These map logical producer layout to hardware F. F itself is not GF(2).
 WholePacketLayout = gl.constexpr(_WholePacketLayout)
 PacketPrefixLayout = gl.constexpr(_PacketPrefixLayout)
+PacketStorageLayout = gl.constexpr(_PacketStorageLayout)
 
 
 @g.jit
@@ -33,7 +35,7 @@ def packet_views(owner, slot, LA: gl.constexpr, LB: gl.constexpr):
 @g.jit
 def issue_pair(A, B, av, bv, row_m, col_n, k_origin,
                M: gl.constexpr, N: gl.constexpr, K: gl.constexpr,
-               STRIDE_AM: gl.constexpr, STRIDE_BK: gl.constexpr,
+               STRIDE_AM: gl.constexpr, STRIDE_BK: gl.constexpr, STRIDE_BN: gl.constexpr,
                A_SOURCE_BASIS: gl.constexpr, B_SOURCE_BASIS: gl.constexpr):
     # Disabling a copy still writes a complete zero packet via NR=0. Never
     # skip a DMA and leave a prior ring slot's contents visible.
@@ -41,8 +43,12 @@ def issue_pair(A, B, av, bv, row_m, col_n, k_origin,
     a = packet_copy(A, av, (M, K), (STRIDE_AM, 1),
                     (row_m, k_origin, enabled), A_SOURCE_BASIS)
     ac = packet_commit((a,))
-    b = packet_copy(B, bv, (K, N), (STRIDE_BK, 1),
-                    (k_origin, col_n, enabled), B_SOURCE_BASIS)
+    if STRIDE_BK == 1:
+        b = packet_copy(B, bv, (N, K), (STRIDE_BN, 1),
+                        (col_n, k_origin, enabled), B_SOURCE_BASIS)
+    else:
+        b = packet_copy(B, bv, (K, N), (STRIDE_BK, 1),
+                        (k_origin, col_n, enabled), B_SOURCE_BASIS)
     bc = packet_commit((b,))
     return ac, bc
 
@@ -66,9 +72,12 @@ def _mm_packet_rect_kernel(
     # dispatch. Unsupported inputs retain the ordinary host path.
     gl.static_assert(M > 0 and N > 0 and K >= 256 and K <= 4096)
     gl.static_assert((K & (K - 1)) == 0 and K % 16 == 0)
-    gl.static_assert(N % 16 == 0)
     gl.static_assert(STRIDE_AM == K and STRIDE_AK == 1)
-    gl.static_assert(STRIDE_BK == N and STRIDE_BN == 1)
+    if STRIDE_BK == 1:
+        gl.static_assert(STRIDE_BN == K)
+    else:
+        gl.static_assert(N % 16 == 0)
+        gl.static_assert(STRIDE_BK == N and STRIDE_BN == 1)
     gl.static_assert(STRIDE_CM == N and STRIDE_CN == 1)
     gl.static_assert(2 * M * K < 2147483648 and 2 * K * N < 2147483648)
     gl.static_assert(2 * M * N < 2147483648)
@@ -79,14 +88,18 @@ def _mm_packet_rect_kernel(
     db: gl.constexpr = gl.DotOperandLayout(1, mma, dot_k_width)
     gl.static_assert(BM * BK <= 4096 and BK * BN <= 4096)
     gl.static_assert(K % (4 * BK) == 0)
-    if BM * BK == 4096:
-        la: gl.constexpr = WholePacketLayout(0, (BM, BK))
+    if STRIDE_BK == 1:
+        la: gl.constexpr = PacketStorageLayout(0, (BM, BK), 1, (0, 1))
+        lb: gl.constexpr = PacketStorageLayout(1, (BK, BN), 1, (1, 0))
     else:
-        la: gl.constexpr = PacketPrefixLayout(0, (BM, BK))
-    if BK * BN == 4096:
-        lb: gl.constexpr = WholePacketLayout(1, (BK, BN))
-    else:
-        lb: gl.constexpr = PacketPrefixLayout(1, (BK, BN))
+        if BM * BK == 4096:
+            la: gl.constexpr = WholePacketLayout(0, (BM, BK))
+        else:
+            la: gl.constexpr = PacketPrefixLayout(0, (BM, BK))
+        if BK * BN == 4096:
+            lb: gl.constexpr = WholePacketLayout(1, (BK, BN))
+        else:
+            lb: gl.constexpr = PacketPrefixLayout(1, (BK, BN))
     pid = gl.program_id(0)
     count_m: gl.constexpr = (M + BM - 1) // BM
     count_n: gl.constexpr = (N + BN - 1) // BN
@@ -102,16 +115,16 @@ def _mm_packet_rect_kernel(
     # Prefix: three tile pairs, publish/read tile0, then issue tile3. This is
     # the original mode7 prefix, not a new stage count or pipeline schedule.
     ta0, tb0 = issue_pair(A, B, a0, b0, row_m, col_n, 0,
-                          M, N, K, STRIDE_AM, STRIDE_BK, A_SOURCE_BASIS, B_SOURCE_BASIS)
+                          M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     ta1, tb1 = issue_pair(A, B, a1, b1, row_m, col_n, BK,
-                          M, N, K, STRIDE_AM, STRIDE_BK, A_SOURCE_BASIS, B_SOURCE_BASIS)
+                          M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     ta2, tb2 = issue_pair(A, B, a2, b2, row_m, col_n, 2 * BK,
-                          M, N, K, STRIDE_AM, STRIDE_BK, A_SOURCE_BASIS, B_SOURCE_BASIS)
+                          M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     packet_wait((ta0, tb0), 4)
     acurrent = packet_read(a0, da, A_SOURCE_BASIS)
     bcurrent = packet_read(b0, db, B_SOURCE_BASIS)
     ta3, tb3 = issue_pair(A, B, a3, b3, row_m, col_n, 3 * BK,
-                          M, N, K, STRIDE_AM, STRIDE_BK, A_SOURCE_BASIS, B_SOURCE_BASIS)
+                          M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     accumulator = gl.full((BM, BN), 0, gl.float32, mma)
     last_slot = gl.cast(3, gl.int32)
 
@@ -126,7 +139,7 @@ def _mm_packet_rect_kernel(
         anew, bnew = packet_views(owner, last_slot, la, lb)
         packet_sched_barrier()
         tanew, tbnew = issue_pair(A, B, anew, bnew, row_m, col_n, start_k + 4 * BK,
-                                  M, N, K, STRIDE_AM, STRIDE_BK, A_SOURCE_BASIS, B_SOURCE_BASIS)
+                                  M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
         accumulator = mfma(acurrent, bcurrent, accumulator)
         ta1, ta2, ta3 = ta2, ta3, tanew
         tb1, tb2, tb3 = tb2, tb3, tbnew
