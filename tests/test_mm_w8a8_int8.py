@@ -53,6 +53,7 @@ SHAPES = [
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 @pytest.mark.mm_w8a8
+@pytest.mark.mm_w8a8_out
 def test_mm_w8a8_int8(shape, dtype):
     m, n, k = shape
     a = torch.randint(-128, 128, (m, k), device=flag_gems.device, dtype=torch.int8)
@@ -400,6 +401,7 @@ _PREQUANTIZED = ("hygon", "metax")
     [(False, False, False), (False, True, True), (True, True, False)],
 )
 @pytest.mark.mm_w8a8
+@pytest.mark.mm_w8a8_out
 def test_prequantized(shape, dtype, scalar, bias_on, layout):
     if flag_gems.vendor_name == "metax" and dtype == torch.float32:
         pytest.skip("MetaX scaled_mm output is FP16 or BF16")
