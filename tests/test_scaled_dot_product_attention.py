@@ -149,9 +149,16 @@ def test_scaled_dot_product_flash_attention(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    # Ascend has no native ATen FlashAttention kernel; use independent math
-    # on the selected reference device instead of its unsupported CPU fallback.
-    if cfg.TO_CPU or flag_gems.vendor_name == "ascend":
+    # These backends have no native ATen FlashAttention kernel (or a broken
+    # one): use independent CPU math instead of the native reference.
+    if cfg.TO_CPU or flag_gems.vendor_name in {
+        "ascend",
+        "mthreads",
+        "kunlunxin",
+        "iluvatar",
+        "enflame",
+    }:
+        ref_q, ref_k, ref_v = (x.cpu() for x in (ref_q, ref_k, ref_v))
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -160,13 +167,28 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
+    input_specs = tuple(
+        (x.device, x.dtype, tuple(x.shape), x.untyped_storage().data_ptr())
+        for x in (q, k, v)
+    )
     result = flag_gems._scaled_dot_product_flash_attention(
         q, k, v, 0.0, is_causal, False, scale=scale
     )
 
+    for tensor, spec in zip((q, k, v), input_specs):
+        assert (
+            tensor.device,
+            tensor.dtype,
+            tuple(tensor.shape),
+            tensor.untyped_storage().data_ptr(),
+        ) == spec
     assert len(result) == 9
-    utils.gems_assert_close(result[0], ref_out, dtype)
-    utils.gems_assert_close(result[1], ref_lse, torch.float)
+    assert result[0].device == q.device and result[0].dtype == q.dtype
+    assert tuple(result[0].shape) == input_specs[0][2]
+    assert result[1].device == q.device and result[1].dtype == torch.float32
+    assert tuple(result[1].shape) == input_specs[0][2][:-1]
+    utils.gems_assert_close(result[0].cpu(), ref_out.cpu(), dtype)
+    utils.gems_assert_close(result[1].cpu(), ref_lse.cpu(), torch.float)
     assert result[2] is None
     assert result[3] is None
     assert result[4:6] == (q_seq_len, kv_seq_len)
