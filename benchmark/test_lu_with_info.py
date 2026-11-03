@@ -17,7 +17,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import pytest
@@ -26,7 +26,6 @@ import torch
 import flag_gems
 
 from . import base
-
 
 _TEST_DTYPES = (
     [torch.float32, torch.float64]
@@ -38,8 +37,143 @@ _TEST_DTYPES = (
 _H800_COLLECTION_SOURCE = "95847c9f7040152cb774fe56183eb280c5764c97"
 _H800_ARTIFACT_URL = "https://raw.githubusercontent.com/zhaojs12345/ops-baseline/10a2775cd3674d2029cfeea37cc16b0bf3970949/op_pytorch_h800_lu_with_info_current_core_20261028.json"
 _H800_PROVENANCE_URL = "https://raw.githubusercontent.com/zhaojs12345/ops-baseline/10a2775cd3674d2029cfeea37cc16b0bf3970949/op_pytorch_h800_lu_with_info_current_core_20261028.provenance.json"
-_H800_ARTIFACT_SHA256 = "ca1f3375753e7397acf29b944f85a8443ebb50a1956e924d81f989057f5e5923"
-_H800_PROVENANCE_SHA256 = "bf68536d95d3d96ae1b2da12239d434b756884d3a80bcc60cd19cad1e31c5567"
+_H800_ARTIFACT_SHA256 = (
+    "ca1f3375753e7397acf29b944f85a8443ebb50a1956e924d81f989057f5e5923"
+)
+_H800_PROVENANCE_SHA256 = (
+    "bf68536d95d3d96ae1b2da12239d434b756884d3a80bcc60cd19cad1e31c5567"
+)
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr55:op_pytorch_h800_lu_with_info_current_core_20261028": {
+        "sha256": "ca1f3375753e7397acf29b944f85a8443ebb50a1956e924d81f989057f5e5923",
+        "artifact": "op_pytorch_h800_lu_with_info_current_core_20261028.json",
+        "operators": ["lu_with_info_current_core"],
+        "provenance": {
+            "op_pytorch_h800_lu_with_info_current_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_lu_with_info_current_core_20261028.provenance.json",
+                "sha256": "bf68536d95d3d96ae1b2da12239d434b756884d3a80bcc60cd19cad1e31c5567",
+            }
+        },
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+def _aten_provenance_bytes(path, source_id, sidecar_path, *, explicit=False):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    _, source = _aten_cached_payload(raw, source_id)
+    if source is None or explicit or Path(sidecar_path).exists():
+        return Path(sidecar_path).read_bytes()
+    name = Path(sidecar_path).name
+    specs = _ATEN_SNAPSHOT_SPECS[source_id]["provenance"]
+    if name not in specs:
+        name = (
+            Path(_ATEN_SNAPSHOT_SPECS[source_id]["artifact"])
+            .with_suffix(".provenance.json")
+            .name
+        )
+    if name not in specs:
+        raise ValueError("No pinned provenance for this native snapshot")
+    entry = source["adjacent_provenance"][specs[name]["key"]]
+    payload = entry["raw_json"].encode("utf-8")
+    if hashlib.sha256(payload).hexdigest() != specs[name]["sha256"]:
+        raise ValueError("Consolidated native provenance digest differs")
+    return payload
 
 
 @dataclass
@@ -59,12 +193,21 @@ class LuWithInfoBenchmark(base.Benchmark):
     @cached_property
     def _h800_reference(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-        payload = path.read_bytes()
-        sidecar_path = Path(os.environ.get(
-            "FLAGGEMS_NV_BASELINE_PROVENANCE",
-            str(path.with_suffix(".provenance.json")),
-        )).resolve(strict=True)
-        sidecar_payload = sidecar_path.read_bytes()
+        payload = _aten_read_bytes(
+            path, ("pr55:op_pytorch_h800_lu_with_info_current_core_20261028")
+        )
+        sidecar_path = Path(
+            os.environ.get(
+                "FLAGGEMS_NV_BASELINE_PROVENANCE",
+                str(path.with_suffix(".provenance.json")),
+            )
+        ).resolve(strict=False)
+        sidecar_payload = _aten_provenance_bytes(
+            path,
+            ("pr55:op_pytorch_h800_lu_with_info_current_core_20261028"),
+            sidecar_path,
+            explicit=bool(os.environ.get("FLAGGEMS_NV_BASELINE_PROVENANCE")),
+        )
 
         def unique(pairs):
             result = {}
@@ -78,7 +221,9 @@ class LuWithInfoBenchmark(base.Benchmark):
             raise ValueError("Non-finite LU baseline value: " + value)
 
         data = json.loads(payload, object_pairs_hook=unique, parse_constant=reject)
-        proof = json.loads(sidecar_payload, object_pairs_hook=unique, parse_constant=reject)
+        proof = json.loads(
+            sidecar_payload, object_pairs_hook=unique, parse_constant=reject
+        )
         key = "lu_with_info_current_core"
         task = data["_collection"]["tasks"][key]
         environment = data["_environments"][str(task["device"])]
@@ -102,19 +247,23 @@ class LuWithInfoBenchmark(base.Benchmark):
         ):
             raise ValueError("LU requires its verified clean native H800 snapshot")
         records = [
-            row for values in data[key]["shapes"].values()
-            for dtype, row in values.items() if dtype == "torch.float32"
+            row
+            for values in data[key]["shapes"].values()
+            for dtype, row in values.items()
+            if dtype == "torch.float32"
         ]
         if len(records) != 5:
             raise ValueError("LU baseline must contain all five original FP32 cases")
         expected = [self._reference_config(shape) for shape in self.DEFAULT_SHAPES]
-        if sorted(json.dumps(row["config"], sort_keys=True) for row in records) != sorted(
-            json.dumps(config, sort_keys=True) for config in expected
-        ):
+        if sorted(
+            json.dumps(row["config"], sort_keys=True) for row in records
+        ) != sorted(json.dumps(config, sort_keys=True) for config in expected):
             raise ValueError("LU baseline differs from the original core input recipe")
         return records, {
-            "kind": "external_nvidia", "operator": "_lu_with_info",
-            "artifact_url": _H800_ARTIFACT_URL, "provenance_url": _H800_PROVENANCE_URL,
+            "kind": "external_nvidia",
+            "operator": "_lu_with_info",
+            "artifact_url": _H800_ARTIFACT_URL,
+            "provenance_url": _H800_PROVENANCE_URL,
             "artifact_sha256": hashlib.sha256(payload).hexdigest(),
             "provenance_sha256": hashlib.sha256(sidecar_payload).hexdigest(),
             "collection_source_commit": _H800_COLLECTION_SOURCE,
