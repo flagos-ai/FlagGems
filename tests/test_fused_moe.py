@@ -22,6 +22,11 @@ import flag_gems
 
 from . import conftest as cfg
 
+# "--ref cpu" is too slow for the big shapes on sunrise, so it always runs quick.
+QUICK_MODE = True if flag_gems.vendor_name == "sunrise" else cfg.QUICK_MODE
+
+random.seed(42)
+
 moe = importlib.import_module("flag_gems.fused.fused_moe")
 pytestmark = pytest.mark.fused_experts_impl
 
@@ -240,24 +245,6 @@ def test_w8a8_large_m_accuracy(monkeypatch, num_tokens, dtype, execution_mode):
     changed_ref = _w8a8_reference(x, w1, w2, weights, ids, s1, s2)
     torch.testing.assert_close(out.cpu(), changed_ref, atol=0.003, rtol=0.04)
 
-
-# "--ref cpu" is too slow for the big shapes on sunrise, so it always runs quick.
-QUICK_MODE = True if flag_gems.vendor_name == "sunrise" else cfg.QUICK_MODE
-
-random.seed(42)
-
-
-import pytest
-import torch
-
-import flag_gems
-
-if flag_gems.vendor_name == "sunrise":
-    QUICK_MODE = True  # "--ref cpu" too slow for big shape.
-else:
-    from .conftest import QUICK_MODE
-
-random.seed(42)
 
 FUSED_MOE_CONFIGS = [
     # (num_tokens, num_experts, hidden_size, intermediate_size, topk)
