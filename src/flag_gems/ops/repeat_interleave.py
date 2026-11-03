@@ -101,7 +101,13 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
     repeats = repeats.contiguous()
     cumsum = repeats.cumsum(axis=0)
-    result_size = cumsum[-1].item()
+    if output_size is None:
+        # the one device→host sync on this path: discovering the output length
+        result_size = cumsum[-1].item()
+    else:
+        # #7241: a caller-supplied output_size is the same hint ATen takes —
+        # trust it and skip the sync entirely
+        result_size = output_size
 
     assert result_size >= 0, "repeats can not be negative"
 
@@ -157,7 +163,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
         )
 
-    indices = repeat_interleave_tensor(repeats)
+    indices = repeat_interleave_tensor(repeats, output_size=output_size)
     res = torch.index_select(inp, dim, indices)
 
     return res
