@@ -14,8 +14,7 @@ def test_chalf_real(shape, dtype):
     ref_inp = utils.to_reference(res_inp)
 
     ref_out = ref_inp.chalf()
-    with flag_gems.use_gems():
-        res_out = res_inp.chalf()
+    res_out = flag_gems.chalf(res_inp)
 
     assert res_out.dtype == torch.complex32
     # Compare via view_as_real (complex32 -> float16 pairs). Leave ref_out on the
@@ -38,8 +37,7 @@ def test_chalf_complex(shape, dtype):
     ref_inp = utils.to_reference(res_inp)
 
     ref_out = ref_inp.chalf()
-    with flag_gems.use_gems():
-        res_out = res_inp.chalf()
+    res_out = flag_gems.chalf(res_inp)
 
     assert res_out.dtype == torch.complex32
     utils.gems_assert_close(

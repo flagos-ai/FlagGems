@@ -42,7 +42,7 @@ def silu_forward(x):
 
 
 def silu(self):
-    logger.debug("GEMS_ASCEND SILU FORWARD")
+    logger.debug("GEMS_ASCEND SILU_FORWARD")
     if self.is_contiguous():
         return silu_forward(self)
     # Ascend empty_like may not preserve a transposed input's strides. Providing
@@ -52,5 +52,5 @@ def silu(self):
 
 
 def silu_(self):
-    logger.debug("GEMS_ASCEND SILU_ FORWARD")
+    logger.debug("GEMS_ASCEND SILU__FORWARD")
     return silu_forward(self, out0=self)

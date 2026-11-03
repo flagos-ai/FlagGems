@@ -52,8 +52,7 @@ def test_select_scatter(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_src = utils.to_reference(src)
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+    res_out = flag_gems.select_scatter(inp, src, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -72,7 +71,6 @@ def test_select_scatter_with_self_overlapping_input():
     ref_inp = utils.to_reference(inp)
     ref_src = utils.to_reference(src)
     ref_out = torch.select_scatter(ref_inp, dim=dim, index=index, src=ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.select_scatter(inp, dim=dim, index=index, src=src)
+    res_out = flag_gems.select_scatter(inp, src, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)

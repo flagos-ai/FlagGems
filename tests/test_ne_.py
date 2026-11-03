@@ -31,8 +31,7 @@ def test_ne_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
     ref_out = ref_inp1.ne_(ref_inp2)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.ne_.Tensor(inp1, inp2)
+    res_out = flag_gems.ne_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp1, ref_inp1, dtype)
@@ -49,8 +48,7 @@ def test_ne_scalar_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_out = ref_inp.ne_(scalar)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.ne_.Scalar(inp, scalar)
+    res_out = flag_gems.ne_scalar_(inp, scalar)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_inp, dtype)

@@ -30,8 +30,7 @@ def test_silu_and_mul(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
-    with flag_gems.use_gems():
-        res_out = flag_gems.silu_and_mul(inp1, inp2)
+    res_out = flag_gems.silu_and_mul(inp1, inp2)
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
@@ -53,14 +52,13 @@ def test_silu_and_mul(shape, dtype):
 def test_silu_and_mul_out(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1, False)
-    ref_inp2 = utils.to_reference(inp2, False)
+    ref_inp1 = utils.to_reference(inp1, True)
+    ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.mul(torch.nn.functional.silu(ref_inp1), ref_inp2)
 
     out = torch.empty_like(inp1)
-    with flag_gems.use_gems():
-        ret = flag_gems.silu_and_mul_out(inp1, inp2, out)
+    ret = flag_gems.silu_and_mul_out(inp1, inp2, out)
 
     assert ret is out
     utils.gems_assert_close(out, ref_out, dtype)

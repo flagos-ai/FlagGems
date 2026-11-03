@@ -66,10 +66,13 @@ def test_nll_loss_nd_forward(shape, dtype, ignore_index, reduction, weight):
     ref_out = torch.nn.functional.nll_loss(
         ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.nll_loss(
-            inp, target, weight, reduction=reduction, ignore_index=ignore_index
-        )
+    res_out, _ = flag_gems.nll_loss_nd_forward(
+        inp,
+        target,
+        weight,
+        {"none": 0, "mean": 1, "sum": 2}[reduction],
+        ignore_index,
+    )
     reduce_dim = 1 if reduction == "none" else target.numel()
     utils.gems_assert_close(
         res_out, ref_out, dtype, reduce_dim=reduce_dim, equal_nan=True
@@ -108,16 +111,26 @@ def test_nll_loss_nd_backward(shape, dtype, ignore_index, reduction, weight):
     ref_out = torch.nn.functional.nll_loss(
         ref_inp, ref_target, ref_weight, reduction=reduction, ignore_index=ignore_index
     )
-    with flag_gems.use_gems():
-        res_out = torch.nn.functional.nll_loss(
-            inp, target, weight, reduction=reduction, ignore_index=ignore_index
-        )
+    res_out, total_weight = flag_gems.nll_loss_nd_forward(
+        inp,
+        target,
+        weight,
+        {"none": 0, "mean": 1, "sum": 2}[reduction],
+        ignore_index,
+    )
 
     out_grad = torch.randn_like(res_out)
     ref_grad = utils.to_reference(out_grad, True)
     (ref_in_grad,) = torch.autograd.grad(ref_out, ref_inp, ref_grad)
 
-    with flag_gems.use_gems():
-        (res_in_grad,) = torch.autograd.grad(res_out, inp, out_grad)
+    res_in_grad = flag_gems.nll_loss_nd_backward(
+        out_grad,
+        inp,
+        target,
+        weight,
+        {"none": 0, "mean": 1, "sum": 2}[reduction],
+        ignore_index,
+        total_weight,
+    )
 
     utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim])

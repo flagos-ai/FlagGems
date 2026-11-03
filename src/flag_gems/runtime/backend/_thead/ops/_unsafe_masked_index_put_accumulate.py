@@ -21,12 +21,17 @@ import triton
 import triton.language as tl
 
 # ---------------------------------------------------------------------------
-# PPU (thead ZW810) toolchain compatibility fix.
-# The installed Triton "ppu" backend emits PTX-style inline assembly with a
-# "ppu." opcode prefix (e.g. "ppu.mov.u32", "ppu.ld.global.v4.b32"), but the
-# installed PPU SDK assembler (ppu-llc) parses the bare dialect ("mov.u32",
-# "ld.global.v4.b32").  Stripping the prefix in the emitted LLVM IR restores
-# the dialect the assembler expects (verified on this backend).
+# PPU (thead ZW810) toolchain compatibility shim.
+# The Triton "ppu" backend emits inline assembly carrying a "ppu." dialect
+# prefix (e.g. "ppu.mov.u32", "ppu.ld.global.v4.b32"), while some PPU SDK
+# assembler builds (ppu-llc 2.0.0-715aa1) only accept the bare dialect
+# ("mov.u32", "ld.global.v4.b32").
+# Stripping the prefix unconditionally is NOT safe: tensor-core kernels use
+# PPU-only mnemonics ("m16n16k16" mma, "ldmatrix ... m16n16.x1.trans") whose
+# bare forms are not valid CUDA PTX, so ppu-llc rejects them with
+# "unsupported modifier combination of mma/ldmatrix" and every tl.dot kernel
+# fails to build.  Try the emitted (prefixed) IR first and only retry with the
+# prefix stripped when the assembler rejects the native form.
 # ---------------------------------------------------------------------------
 try:
     from triton.backends.ppu import compiler as _ppu_compiler_mod
@@ -34,12 +39,26 @@ try:
     if not getattr(_ppu_compiler_mod.PPUBackend, "_ppu_prefix_patched", False):
         _orig_make_hgbin = _ppu_compiler_mod.PPUBackend.make_hgbin
 
-        def _make_hgbin_no_ppu_prefix(self, src, metadata, opt, capability):
-            return _orig_make_hgbin(
-                self, src.replace("ppu.", ""), metadata, opt, capability
-            )
+        def _make_hgbin_ppu_prefix_fallback(self, src, metadata, opt, capability):
+            try:
+                return _orig_make_hgbin(self, src, metadata, opt, capability)
+            except Exception as native_error:
+                stripped_src = src.replace("ppu.", "")
+                if stripped_src == src:
+                    raise
+                try:
+                    return _orig_make_hgbin(
+                        self, stripped_src, metadata, opt, capability
+                    )
+                except Exception as stripped_error:
+                    raise RuntimeError(
+                        "PPU hgbin assembly failed for both the native 'ppu.' "
+                        "dialect and the legacy prefix-stripped fallback.\n"
+                        f"  [native]   {native_error}\n"
+                        f"  [stripped] {stripped_error}"
+                    ) from stripped_error
 
-        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_no_ppu_prefix
+        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_ppu_prefix_fallback
         _ppu_compiler_mod.PPUBackend._ppu_prefix_patched = True
 except Exception:
     pass

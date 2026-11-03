@@ -37,6 +37,14 @@ def bitwise_xor_func(x, y):
 
 def bitwise_xor_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN BITWISE_XOR_TENSOR")
+    if (
+        A.dtype == B.dtype
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+    ):
+        out = torch.empty_strided(A.shape, A.stride(), dtype=A.dtype, device=A.device)
+        return bitwise_xor_func(A, B, out0=out)
     return bitwise_xor_func(A, B)
 
 

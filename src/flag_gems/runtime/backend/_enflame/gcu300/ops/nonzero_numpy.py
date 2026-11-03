@@ -26,7 +26,7 @@ def nonzero_numpy(inp):
 
     This is equivalent to torch.nonzero(...).T or numpy.nonzero() behavior.
     """
-    logger.debug("GEMS_ENFLAME GCU300 NONZERO_NUMPY")
+    logger.debug("GEMS_ENFLAME GCU300_NONZERO_NUMPY")
 
     out = nonzero(inp, as_tuple=False)
 

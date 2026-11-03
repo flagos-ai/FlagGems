@@ -49,7 +49,6 @@ def test_bitwise_right_shift_(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.bitwise_right_shift_(ref_b)
-    with flag_gems.use_gems():
-        res_a.bitwise_right_shift_(res_b)
+    flag_gems.bitwise_right_shift_(res_a, res_b)
 
     utils.gems_assert_close(res_a, ref_a, dtype)

@@ -29,8 +29,7 @@ BERNOULLI_P_VALUES = [0.0, 0.7] if cfg.QUICK_MODE else [0.0, 0.3, 0.7, 1.0]
 def test_bernoulli_(shape, dtype):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
     p = 0.5
-    with flag_gems.use_gems():
-        x.bernoulli_(p)
+    flag_gems.bernoulli_(x, p)
 
     # Check that all values are 0 or 1
     assert ((x == 0) | (x == 1)).all()
@@ -46,8 +45,7 @@ def test_bernoulli_(shape, dtype):
 @pytest.mark.parametrize("p", BERNOULLI_P_VALUES)
 def test_bernoulli_various_p(shape, dtype, p):
     x = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        x.bernoulli_(p)
+    flag_gems.bernoulli_(x, p)
 
     # Check that all values are 0 or 1
     assert ((x == 0) | (x == 1)).all()
@@ -68,8 +66,7 @@ def test_bernoulli_various_p(shape, dtype, p):
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_bernoulli(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = torch.bernoulli(inp)
+    res_out = flag_gems.bernoulli(inp)
 
     # Check that all values are 0 or 1
     assert ((res_out == 0) | (res_out == 1)).all()

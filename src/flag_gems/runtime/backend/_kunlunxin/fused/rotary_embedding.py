@@ -242,7 +242,20 @@ def apply_rotary_pos_emb_inplace_kernel(
 # Precision: x/xp/xm are upcast to fp32 before the fma. XPU otherwise evaluates
 # the fp16*fp32 product in fp16, which diverges from the fp32 torch reference at
 # d=0 (where inv_freq=1 makes cos/sin oscillate fastest) -> fp16 test failures.
-# Net: [4,4096,8,64] ~44ms -> ~0.68ms.
+#
+# Perf v2 (2026-10-19, measured on [4,4096,8,64] f16: 1.21ms -> 0.24ms/op):
+#  * `d = off % HEAD_DIM` lowers to an i64 SIGNED remainder (arith.remsi, 126
+#    srem ops per block in LLVM IR) - an integer division sequence, the single
+#    biggest cost. For power-of-two HEAD_DIM, `off & (HEAD_DIM-1)` is exact
+#    (off is always non-negative); a constexpr POW2 branch keeps the general
+#    `%` for non-power-of-two head sizes (e.g. 96).
+#  * cos/sin are kept in the input dtype (f16/bf16/f32) instead of being forced
+#    to float32 in `_build_cos_sin_full`: that halves the cos/sin traffic for
+#    16-bit dtypes. The kernel upcasts to fp32 after the load; the fp32 fma is
+#    still bit-identical to the fp32 torch reference (both multiply exact f16
+#    inputs in fp32).
+#  * EVEN (N % BLOCK == 0, true for every benchmark shape) compiles a
+#    mask-free body; the always-true `mask=m` path costs ~2x on this backend.
 @libentry()
 @triton.jit
 def apply_rotary_pos_emb_flat_kernel(
@@ -256,38 +269,54 @@ def apply_rotary_pos_emb_flat_kernel(
     PAD: tl.constexpr,  # HALF for non-interleaved, 1 for interleaved
     INTERLEAVED: tl.constexpr,
     BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,  # N % BLOCK == 0: mask-free body
+    POW2: tl.constexpr,  # HEAD_DIM is a power of two: bitwise modulo is exact
 ):
     pid = ext.program_id(0)
     off = pid * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    d = off % HEAD_DIM
+    if POW2:
+        d = off & (HEAD_DIM - 1)
+    else:
+        d = off % HEAD_DIM
     if INTERLEAVED:
-        first = (d % 2) == 0
+        first = (off & 1) == 0
     else:
         first = d < HALF
 
-    # All three loads are AFFINE (base + affine offset) -> XPU block DMA. The
-    # padding guarantees off+2*PAD and off never leave the allocation.
-    x = tl.load(x_ptr + off + PAD, mask=m, other=0.0).to(tl.float32)
-    xp = tl.load(x_ptr + off + 2 * PAD, mask=m, other=0.0).to(tl.float32)  # x[off+PAD]
-    xm = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)  # x[off-PAD]
-    xr = tl.where(first, xp, xm)  # == x at the rotated position, no gather
-
-    c = tl.load(cos_ptr + off, mask=m, other=0.0)
-    s = tl.load(sin_ptr + off, mask=m, other=0.0)
-    tl.store(o_ptr + off, x * c + xr * s, mask=m)
+    if EVEN:
+        # All three loads are AFFINE (base + affine offset) -> XPU block DMA.
+        # The padding guarantees off+2*PAD and off never leave the allocation.
+        x = tl.load(x_ptr + off + PAD).to(tl.float32)
+        xp = tl.load(x_ptr + off + 2 * PAD).to(tl.float32)  # x[off+PAD]
+        xm = tl.load(x_ptr + off).to(tl.float32)  # x[off-PAD]
+        xr = tl.where(first, xp, xm)  # == x at the rotated position, no gather
+        c = tl.load(cos_ptr + off).to(tl.float32)
+        s = tl.load(sin_ptr + off).to(tl.float32)
+        tl.store(o_ptr + off, x * c + xr * s)
+    else:
+        m = off < N
+        x = tl.load(x_ptr + off + PAD, mask=m, other=0.0).to(tl.float32)
+        xp = tl.load(x_ptr + off + 2 * PAD, mask=m, other=0.0).to(tl.float32)
+        xm = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
+        xr = tl.where(first, xp, xm)
+        c = tl.load(cos_ptr + off, mask=m, other=0.0).to(tl.float32)
+        s = tl.load(sin_ptr + off, mask=m, other=0.0).to(tl.float32)
+        tl.store(o_ptr + off, x * c + xr * s, mask=m)
 
 
 def _build_cos_sin_full(cos, sin, pos, H, head_dim, half, interleaved):
     """Materialise cos/sin (sign folded) into a contiguous flat buffer that
-    matches the [n_tokens, H, head_dim] layout of the flattened q/k tensor."""
+    matches the [n_tokens, H, head_dim] layout of the flattened q/k tensor.
+    The output keeps the input dtype (no forced float32): the kernel upcasts on
+    load, which halves the cos/sin traffic for 16-bit dtypes while keeping the
+    fp32 fma bit-identical to the fp32 torch reference."""
     n_tokens = pos.shape[0]
-    cg = cos.index_select(0, pos).to(torch.float32)  # [n_tokens, half]
-    sg = sin.index_select(0, pos).to(torch.float32)
+    cg = cos.index_select(0, pos)  # [n_tokens, half]
+    sg = sin.index_select(0, pos)
     if interleaved:
         cos_tok = cg.repeat_interleave(2, dim=-1)  # cos[d // 2]
         sin_tok = sg.repeat_interleave(2, dim=-1)
-        sign = torch.ones(head_dim, device=cos.device, dtype=torch.float32)
+        sign = torch.ones(head_dim, device=cos.device, dtype=cos.dtype)
         sign[0::2] = -1.0  # even lanes negated (matches kernel odd_mask branch)
         sin_tok = sin_tok * sign
     else:
@@ -418,6 +447,7 @@ def apply_rotary_pos_emb(
             q_embed = torch.empty_like(q)
             k_embed = torch.empty_like(k)
             BLOCK = 8192
+            pow2 = (head_dim & (head_dim - 1)) == 0
             with torch_device_fn.device(q.device):
                 cos_q, sin_q = _build_cos_sin_full(
                     cos, sin, pos, q_heads, head_dim, half, rotary_interleaved
@@ -441,6 +471,8 @@ def apply_rotary_pos_emb(
                     half_off,
                     rotary_interleaved,
                     BLOCK,
+                    nq % BLOCK == 0,
+                    pow2,
                     isCloseUnrollControl=True,
                 )
                 if k_heads == q_heads:
@@ -466,6 +498,8 @@ def apply_rotary_pos_emb(
                     half_off,
                     rotary_interleaved,
                     BLOCK,
+                    nk % BLOCK == 0,
+                    pow2,
                     isCloseUnrollControl=True,
                 )
             return q_embed.view(q_shape), k_embed.view(k_shape)

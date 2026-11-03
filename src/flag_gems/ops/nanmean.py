@@ -302,7 +302,7 @@ def _squeeze_dims(result, dims):
 
 
 def nanmean_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS NANMEAN DIM")
+    logger.debug("GEMS NANMEAN_DIM")
     if dtype is None:
         dtype = inp.dtype
 

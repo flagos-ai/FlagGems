@@ -19,7 +19,15 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# The AMD backend rejects tf32/tf32x3 (it only accepts ieee/bf16x3/bf16x6), so
+# fall back to full-precision ieee there; every other backend keeps tf32/tf32x3.
+_IS_AMD = runtime.device.vendor_name == "amd"
+_DOT_PRECISION_HIGH = tl.constexpr("ieee" if _IS_AMD else "tf32x3")
+_DOT_PRECISION = tl.constexpr("ieee" if _IS_AMD else "tf32")
 
 
 @triton.jit
@@ -154,9 +162,13 @@ def _cov_kernel(
         xj_centered = tl.where(mask_m[None, :], xj_centered, 0.0)
 
         if HIGH_PRECISION:
-            acc += tl.dot(xi_centered, tl.trans(xj_centered), input_precision="tf32x3")
+            acc += tl.dot(
+                xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION_HIGH
+            )
         else:
-            acc += tl.dot(xi_centered, tl.trans(xj_centered), input_precision="tf32")
+            acc += tl.dot(
+                xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION
+            )
 
     c = acc / fact
 

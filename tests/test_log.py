@@ -28,7 +28,6 @@ def test_log(shape, dtype):
 
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.log(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.log(inp)
+    res_out = flag_gems.log(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

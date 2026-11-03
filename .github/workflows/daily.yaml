@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
 
       - shell: bash
         run: tools/gpu_check_nvidia.sh
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         continue-on-error: true
-      - uses: ./.github/actions/checkout-retry
+      - uses: flagos-ai/FlagOps/actions/checkout-retry@main
 
       - shell: bash
         run: tools/gpu_check_nvidia.sh

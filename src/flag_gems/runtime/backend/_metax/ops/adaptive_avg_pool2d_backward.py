@@ -21,6 +21,7 @@ import triton.language as tl
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
 def _adaptive_avg_pool2d_backward_rows(
     gptr,
     optr,

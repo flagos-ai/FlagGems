@@ -42,18 +42,23 @@ device = flag_gems.device
 # Since triton only target to GPU, pin_memory only used in CPU tensors.
 @pytest.mark.parametrize("pin_memory", [False] if cfg.QUICK_MODE else [False, None])
 def test_arange(start, step, end, dtype, device, pin_memory):
+    # flag_gems.arange_start resolves device=None to the FlagGems device, while
+    # ATen's default for device=None is CPU. Compute the reference on the same
+    # device the wrapper targets so the comparison is device-consistent (in
+    # TO_CPU mode both sides stay on CPU).
+    target_device = "cpu" if cfg.TO_CPU else (device or flag_gems.device)
+
     ref_out = torch.arange(
         start,
         end,
         step,
         dtype=dtype,
-        device="cpu" if cfg.TO_CPU else device,
+        device=target_device,
         pin_memory=pin_memory,
     )
 
-    with flag_gems.use_gems():
-        res_out = torch.arange(
-            start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
-        )
+    res_out = flag_gems.arange_start(
+        start, end, step, dtype=dtype, device=device, pin_memory=pin_memory
+    )
 
     utils.gems_assert_equal(res_out, ref_out)

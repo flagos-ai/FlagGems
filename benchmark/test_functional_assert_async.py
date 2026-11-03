@@ -41,13 +41,31 @@ class FunctionalAssertAsyncBenchmark(base.Benchmark):
             yield tensor, "Benchmark functional_assert_async", dep_token
 
 
+# aten::_functional_assert_async.msg has no CUDA kernel in stock PyTorch
+# (CPU/Meta only), so there is no native aten baseline to measure against.
+def _aten_cuda_supported():
+    if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return False
+    try:
+        torch.ops.aten._functional_assert_async.msg(
+            torch.ones(1, dtype=torch.int32, device=flag_gems.device),
+            "probe",
+            torch.empty(0, dtype=torch.int32, device=flag_gems.device),
+        )
+        return True
+    except NotImplementedError:
+        return False
+
+
 @pytest.mark.functional_assert_async
+@pytest.mark.skipif(
+    not _aten_cuda_supported(),
+    reason="aten::_functional_assert_async.msg has no CUDA kernel; no native baseline available",
+)
 def test_functional_assert_async():
     bench = FunctionalAssertAsyncBenchmark(
         op_name="functional_assert_async",
-        # Use flag_gems._functional_assert_async for both baseline and gems
-        # since there is no native PyTorch CUDA implementation for this op.
-        torch_op=flag_gems._functional_assert_async,
+        torch_op=torch.ops.aten._functional_assert_async.msg,
         dtypes=[torch.int32, torch.float32, torch.float16],
     )
     bench.set_gems(flag_gems._functional_assert_async)

@@ -53,24 +53,29 @@ repos:
 
 - repo: local
   hooks:
+    # language: system (not python) so these hooks run under the interpreter
+    # already on PATH — which has pyyaml preinstalled (cpu-runner image and dev
+    # machines alike) — instead of pre-commit building an isolated venv and
+    # `pip install`ing deps at run time. That run-time install needs network and
+    # fails on fork PRs, which get no CI_HTTP_PROXY secret (observed: pre-commit
+    # retrying `pip install . pyyaml` with an empty proxy -> "No matching
+    # distribution found for pyyaml"). pyyaml is the only third-party import in
+    # tools/ci_checks/*.py, so the system interpreter covers it.
     - id: sort-exports
       name: auto-sort __all__ and operators.yaml
-      language: python
+      language: system
       entry: python tools/ci_checks/sort_exports.py --fix
       files: ^(src/flag_gems/__init__\.py|src/flag_gems/ops/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py|conf/operators\.yaml)$
-      additional_dependencies: [pyyaml]
       pass_filenames: false
     - id: check-init-exports
       name: check __init__.py exports
-      language: python
+      language: system
       entry: python tools/ci_checks/check_init_exports.py
       files: ^(src/flag_gems/__init__\.py|src/flag_gems/runtime/backend/.*/ops/__init__\.py)$
-      additional_dependencies: []
       pass_filenames: false
     - id: check-operators-yaml
       name: check operators.yaml duplicates
-      language: python
+      language: system
       entry: python tools/ci_checks/check_operators_yaml.py --operators '[]'
       files: ^conf/operators\.yaml$
-      additional_dependencies: [pyyaml]
       pass_filenames: false

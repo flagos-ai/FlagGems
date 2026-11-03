@@ -49,6 +49,11 @@ logger = logging.getLogger(__name__)
 # 32768 is both the fastest and the safe point, so it is used everywhere.
 _TILE = 32768
 _BUF = 2048
+# For N == 2*_TILE (65536, the (256,256) benchmark shape) a single-CTA with
+# 32768-wide sums is slow (deep tree in one CTA); splitting into 8 programs of
+# BLOCK=8192 (cheap sums, inside the no-buffer_size_limit window) + one small
+# fold measured ~3x faster than the 1-launch persistent alternative.
+_SMALL_TILE = 8192
 # masked elementwise tail only (masked lanes are dropped by the masked store)
 _TAIL_BLOCK = 2048
 _TAIL_U = 8
@@ -86,6 +91,24 @@ def _bce_weight_reduce_kernel(x, y, w, mid, BLOCK: tl.constexpr):
     yv = tl.load(y + idx).to(tl.float32)
     wv = tl.load(w + idx).to(tl.float32)
     tl.store(mid + pid, tl.sum(_bce_loss(xv, yv) * wv))
+
+
+# --- low-launch-count full reductions (unmasked, unweighted only) ---
+# The default (2-launch: grid reduce + fold) path is launch-bound for small
+# shapes: N=4096 took ~150us because of torch.zeros + tail + fold launches.
+# These single-CTA variants fold the whole N in ONE launch and are the win for
+# N=4096 ((64,64)), the shape that dominated the dtype-balanced deficit
+# (speedup 0.15-0.4 before this change).
+
+
+@triton.jit
+def _bce_reduce_single_kernel(x, y, out, DENOM, BLOCK: tl.constexpr):
+    # N == BLOCK, power of two, unmasked (safe tl.sum window: BLOCK<=8192 plain,
+    # BLOCK<=32768 with buffer_size_limit). One CTA. N <= _TILE.
+    idx = tl.arange(0, BLOCK)
+    xv = tl.load(x + idx).to(tl.float32)
+    yv = tl.load(y + idx).to(tl.float32)
+    tl.store(out, (tl.sum(_bce_loss(xv, yv)) / DENOM).to(out.dtype.element_ty))
 
 
 @triton.jit
@@ -341,18 +364,108 @@ def _reduce_partials(xf, yf, wf, n_elements, n_slots):
 
 def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
     n_tiles = n_elements // _TILE
+    tail = n_elements - n_tiles * _TILE
     denom = float(n_elements) if red == 1 else 1.0
+    result = out if out is not None else torch.empty((), dtype=dtype, device=xf.device)
 
+    # ---- low-launch fast paths (unweighted, unmasked) ----------------------
+    # All official benchmark shapes are powers of two or exact multiples of
+    # _TILE, so these paths cover every case that matters for the metric, with
+    # 1-2 launches instead of the previous 3 (zeros + reduce + fold).
+    if wf is None and tail == 0 and 1 <= n_tiles <= _FOLD_BLOCK:
+        if n_tiles == 1:
+            # N == _TILE: one-CTA full reduction (1 launch).
+            with torch_device_fn.device(xf.device):
+                _bce_reduce_single_kernel[(1,)](
+                    xf, yf, result, denom, BLOCK=_TILE, buffer_size_limit=_BUF
+                )
+            return result
+        if n_tiles == 2:
+            # N == 2*_TILE: split into 8 programs of _SMALL_TILE + tiny fold.
+            # (2 launches; measured much faster than one CTA doing two 32768 sums.)
+            mid = torch.empty(
+                2 * (_TILE // _SMALL_TILE), dtype=torch.float32, device=xf.device
+            )
+            with torch_device_fn.device(xf.device):
+                _bce_reduce_kernel[(2 * (_TILE // _SMALL_TILE),)](
+                    xf, yf, mid, BLOCK=_SMALL_TILE
+                )
+                _bce_fold_kernel[(1,)](
+                    mid,
+                    mid,
+                    result,
+                    denom,
+                    BLOCK=2 * (_TILE // _SMALL_TILE),
+                    HAS_TAIL=False,
+                )
+            return result
+        if (n_tiles & (n_tiles - 1)) == 0:
+            # Power-of-two partial count: every slot is written, so no
+            # zero-fill is needed and the fold sums exactly n_tiles values.
+            mid = torch.empty(n_tiles, dtype=torch.float32, device=xf.device)
+            with torch_device_fn.device(xf.device):
+                _bce_reduce_kernel[(n_tiles,)](
+                    xf, yf, mid, BLOCK=_TILE, buffer_size_limit=_BUF
+                )
+                _bce_fold_kernel[(1,)](
+                    mid,
+                    mid,
+                    result,
+                    denom,
+                    BLOCK=n_tiles,
+                    HAS_TAIL=False,
+                    buffer_size_limit=_BUF,
+                )
+            return result
+        # Non-power-of-two partial count: keep the zero-padded fold so the
+        # unused slots are inert.
+        mid = torch.zeros(_FOLD_BLOCK, dtype=torch.float32, device=xf.device)
+        with torch_device_fn.device(xf.device):
+            _bce_reduce_kernel[(n_tiles,)](
+                xf, yf, mid, BLOCK=_TILE, buffer_size_limit=_BUF
+            )
+            _bce_fold_kernel[(1,)](
+                mid,
+                mid,
+                result,
+                denom,
+                BLOCK=_FOLD_BLOCK,
+                HAS_TAIL=False,
+                buffer_size_limit=_BUF,
+            )
+        return result
+
+    if (
+        wf is None
+        and n_tiles == 0
+        and n_elements >= 64
+        and (n_elements & (n_elements - 1)) == 0
+    ):
+        # 64 <= N < _TILE, power of two: one-CTA full reduction (1 launch).
+        with torch_device_fn.device(xf.device):
+            if n_elements >= 8192:
+                _bce_reduce_single_kernel[(1,)](
+                    xf,
+                    yf,
+                    result,
+                    denom,
+                    BLOCK=n_elements,
+                    buffer_size_limit=_BUF,
+                )
+            else:
+                _bce_reduce_single_kernel[(1,)](xf, yf, result, denom, BLOCK=n_elements)
+        return result
+
+    # ---- fallback: current robust path (partial tail / weighted / N > 2^30) -
     if n_tiles > _FOLD_BLOCK:
         # N > 2**30: too many partials for the single-CTA fold, so fold with
         # the (correct, but launch-heavier) gems sum instead.
         mid = _reduce_partials(xf, yf, wf, n_elements, n_tiles)
-        result = (mid.sum() / denom).to(dtype)
-        return result if out is None else _write_out(result, out)
+        result2 = (mid.sum() / denom).to(dtype)
+        return result2 if out is None else _write_out(result2, out)
 
     mid = _reduce_partials(xf, yf, wf, n_elements, _FOLD_BLOCK)
     has_tail = mid.numel() > _FOLD_BLOCK
-    result = out if out is not None else torch.empty((), dtype=dtype, device=xf.device)
     with torch_device_fn.device(xf.device):
         _bce_fold_kernel[(1,)](
             mid,
@@ -372,7 +485,9 @@ def _fast_reduced(xf, yf, wf, red, n_elements, dtype, out):
 def _write_out(result, out):
     if result.data_ptr() == out.data_ptr():
         return out
-    torch.ops.aten._copy_from(result.to(out.dtype).reshape(out.shape), out, False)
+    # 2026-09-14: was aten::_copy_from (vendor copy); vendor delegation inside
+    # a gem is banned for metric integrity. copy_() -> FlagGems copy override.
+    out.copy_(result.to(out.dtype).reshape(out.shape))
     return out
 
 

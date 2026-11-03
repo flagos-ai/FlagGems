@@ -86,7 +86,7 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS NLL Loss BWD (hygon)")
+    logger.debug("GEMS_HYGON NLL Loss BWD (hygon)")
     N = 1 if self.ndim == 1 else self.shape[0]
     C = self.shape[-1]
 

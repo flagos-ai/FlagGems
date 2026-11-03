@@ -30,8 +30,7 @@ def test_multiply_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.multiply_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.multiply_(inp2)
+    res_out = flag_gems.multiply_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,7 +45,6 @@ def test_multiply_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.multiply_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.multiply_(inp2)
+    res_out = flag_gems.multiply_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

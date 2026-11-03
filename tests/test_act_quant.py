@@ -23,6 +23,13 @@ from flag_gems.utils.device_info import get_device_capability
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
+
 device = flag_gems.device
 
 if cfg.QUICK_MODE:

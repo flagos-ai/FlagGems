@@ -20,9 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 
 # NOTE: aten::_list_to_tensor is a JIT-only prim operator without a c10
-# dispatcher kernel. Keep the standard use_gems call for registration-path
-# coverage, and call the GEMS implementation directly to verify the Triton
-# implementation itself.
+# dispatcher kernel, so the GEMS implementation is called directly to verify
+# the Triton implementation itself.
 
 
 @pytest.mark.list_to_tensor
@@ -40,8 +39,7 @@ from . import accuracy_utils as utils
 def test_accuracy__list_to_tensor(self_list):
     ref_out = torch.ops.aten._list_to_tensor(self_list)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._list_to_tensor(self_list)
+    res_out = flag_gems._list_to_tensor(self_list)
 
     gems_out = flag_gems._list_to_tensor(self_list)
 

@@ -31,13 +31,12 @@ def test_signbit():
     bench.run()
 
 
-@pytest.mark.skip(reason="No support to non-boolean outputs: issue #2689.")
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 @pytest.mark.signbit_out
 def test_signbit_out():
-    bench = base.UnaryPointwiseOutBenchmark(
+    bench = base.BoolUnaryPointwiseOutBenchmark(
         op_name="signbit_out",
         torch_op=torch.signbit,
         dtypes=consts.FLOAT_DTYPES,

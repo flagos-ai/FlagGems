@@ -41,8 +41,10 @@ def test_amin(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.amin(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.amin(inp, dim=dim, keepdim=keepdim)
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList, so normalise
+    # it here to match amin's own contract.
+    dims = dim if isinstance(dim, (list, tuple)) else [dim]
+    res_out = flag_gems.amin(inp, dim=dims, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -56,8 +58,9 @@ def test_amin_(shape, dim, keepdim, dtype):
 
     ref_out = torch.amin(ref_inp, dim=dim, keepdim=True)
     ref_out = ref_out.expand_as(inp)
-    with flag_gems.use_gems():
-        res_out = flag_gems.amin_(inp, dim=dim, keepdim=keepdim)
+    # Direct GEMS call: the dispatcher lifts an int dim to IntList.
+    dims = dim if isinstance(dim, (list, tuple)) else [dim]
+    res_out = flag_gems.amin_(inp, dim=dims, keepdim=keepdim)
 
     assert res_out is inp
     utils.gems_assert_equal(res_out, ref_out)

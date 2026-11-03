@@ -14,6 +14,9 @@
 
 from .add_rms_norm import add_rms_norm
 from .beam_search_score import beam_search_score, beam_search_score_
+from .bf16_paged_mqa_logits import (  # noqa: F401  (import triggers _install)
+    bf16_paged_mqa_logits,
+)
 from .bin_topk import bucket_sort_topk_xpu  # noqa: F401  (import triggers _install)
 from .bincount import bincount
 from .concat_and_cache_mla import concat_and_cache_mla
@@ -33,9 +36,11 @@ from .instance_norm import instance_norm
 from .matmul_bias_activation import matmul_bias_activation
 from .matmuladd import matmuladd
 from .mhc_bwd import mhc_bwd  # noqa: F401  (import triggers _install)
+from .mhc_post import mhc_post  # noqa: F401  (import triggers _install)
 from .mhc_pre import mhc_pre  # noqa: F401  (import triggers _install)
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
+from .post_layer_norm_residual import post_layer_norm_residual
 from .reglu import dreglu, reglu
 from .reshape_and_cache import reshape_and_cache
 from .reshape_and_cache_flash import reshape_and_cache_flash
@@ -74,6 +79,7 @@ __all__ = [
     "hc_split_sinkhorn",
     "cross_entropy_loss",
     "outer",
+    "post_layer_norm_residual",
     "instance_norm",
     "weight_norm",
     "concat_and_cache_mla",

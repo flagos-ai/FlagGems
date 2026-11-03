@@ -56,6 +56,12 @@ def tensordot_mm_kernel(
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
     IS_FP64: tl.constexpr = False,
+    # NOTE: accepted and unused. This kernel shares the "mm" tune configs
+    # (see the libtuner decorator above), and on the backends whose own mm
+    # kernel implements split-K those configs carry SPLIT_K. Declaring it
+    # keeps the shared config list usable here; a kernel that reduces the
+    # whole K extent in one pass IS the SPLIT_K == 1 case.
+    SPLIT_K: tl.constexpr = 1,
 ):
     # Tiled matrix multiplication C = A @ B, where A is (M, K) and B is (K, N).
     # The contracted axes of tensordot are collapsed into K before launch.
@@ -301,7 +307,7 @@ def _tensordot_impl(self, other, dims_self, dims_other, out=None):
 class TensordotFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, self, other, dims_self, dims_other):
-        logger.debug("GEMS TENSORDOT FORWARD")
+        logger.debug("GEMS TENSORDOT_FORWARD")
 
         # Save the raw inputs and their original contracted-dim sizes so the
         # backward pass can broadcast for the matmul and then reduce the
@@ -317,7 +323,7 @@ class TensordotFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS TENSORDOT BACKWARD")
+        logger.debug("GEMS TENSORDOT_BACKWARD")
 
         self, other = ctx.saved_tensors
         dims_self = ctx.dims_self

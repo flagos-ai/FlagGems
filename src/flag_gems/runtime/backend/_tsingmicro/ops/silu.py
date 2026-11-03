@@ -94,19 +94,19 @@ def silu_backward_kernel(x, dy):
 
 
 def silu(self):
-    logger.debug("GEMS_TSINGMICRO SILU FORWARD")
+    logger.debug("GEMS_TSINGMICRO SILU_FORWARD")
     collapsed = _collapse_contiguous_dims(self)
     output = silu_forward_sigmoid(collapsed)
     return output.view(self.shape)
 
 
 def silu_backward(grad_output, self):
-    logger.debug("GEMS_TSINGMICRO SILU BACKWARD")
+    logger.debug("GEMS_TSINGMICRO SILU_BACKWARD")
     grad_input = silu_backward_kernel(self, grad_output)
     return grad_input
 
 
 def silu_(A):
-    logger.debug("GEMS_TSINGMICRO SILU_ FORWARD")
+    logger.debug("GEMS_TSINGMICRO SILU__FORWARD")
     out = silu_forward(A, out0=A)
     return out

@@ -100,6 +100,7 @@ def _torch_rmsnorm_bwd(dz, x, weight, eps, zero_centered_gamma=False):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -142,11 +143,44 @@ def test_te_rmsnorm_fwd(shape, dtype, zero_centered_gamma, use_ln_out):
     utils.gems_assert_close(res_rsigma, ref_rsigma, torch.float32)
 
 
+@pytest.mark.te_rmsnorm
+@pytest.mark.te_rmsnorm_fwd
+@pytest.mark.parametrize("M", [10000, 4097])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_te_rmsnorm_fwd_n1(M, dtype):
+    """N == 1 flat-path coverage with M not divisible by BLOCK (4096).
+
+    The flat kernel is bound-masked; M chosen here (10000 % 4096 = 1808,
+    4097 % 4096 = 1) exercises the masked tail so an OOB would be caught.
+    """
+    shape = (M, 1)
+    eps = 1e-5
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(1, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp)
+    ref_weight = utils.to_reference(weight)
+    ref_out, ref_rsigma = _torch_rmsnorm_fwd(ref_inp, ref_weight, eps)
+
+    res_out, _, res_rsigma = te_rmsnorm_fwd(
+        inp,
+        weight,
+        eps,
+        ln_out=None,
+        quantizer=None,
+        otype=dtype,
+        sm_margin=0,
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype)
+    utils.gems_assert_close(res_rsigma, ref_rsigma, torch.float32)
+
+
 # =============================================================================
 # Forward Tests with TransformerEngine reference
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_fwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")
@@ -207,6 +241,7 @@ def test_te_rmsnorm_fwd_vs_te(shape, dtype, zero_centered_gamma, use_ln_out):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
@@ -255,6 +290,7 @@ def test_te_rmsnorm_bwd(shape, dtype, zero_centered_gamma):
 # =============================================================================
 
 
+@pytest.mark.te_rmsnorm
 @pytest.mark.te_rmsnorm_bwd
 @pytest.mark.skipif(not HAS_TE, reason="TransformerEngine not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="TransformerEngine not available on CPU")

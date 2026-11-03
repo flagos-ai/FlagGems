@@ -89,6 +89,156 @@ def _weighted_row_kernel(
     tl.store(out_ptr + pid * H + offs, acc.to(tl.bfloat16), mask=m)
 
 
+@triton.jit
+def _hc_head_fused_singlepass_kernel(
+    residual_ptr,
+    fn_ptr,
+    hc_scale_ptr,
+    hc_base_ptr,
+    out_ptr,
+    H: tl.constexpr,
+    rms_eps,
+    hc_eps,
+    HC: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+):
+    """Single-pass per-token fusion: sqrsum + mix dot-products + weighted sum.
+
+    Reads the residual exactly twice (once in the accumulation pass, once in the
+    weighted-sum pass) and ``fn`` once, so it avoids the redundant fp32 upcast /
+    standalone mm / intermediate tensors of the 4-kernel pipeline. HC is a
+    constexpr in {2, 4} and each head is handled by a dedicated accumulator to
+    keep the reduction simple on XPU (no dynamic indexing into an accumulator).
+
+    ``fn`` loads are always in-bounds (the accumulation loop bounds h_off to
+    [0, H) and every fn index ``k*HC*H + hc*H + h_off`` stays < K = HC*H), so
+    they are unmasked regardless of NEED_MASK; only the residual loads/stores
+    take the masked path when H is not a multiple of BLOCK_H.
+    """
+    pid = tl.program_id(0)
+    x_base = pid * (HC * H)
+
+    sqr_acc = tl.zeros([BLOCK_H], dtype=tl.float32)
+    mix0 = tl.zeros([BLOCK_H], dtype=tl.float32)
+    mix1 = tl.zeros([BLOCK_H], dtype=tl.float32)
+    mix2 = tl.zeros([BLOCK_H], dtype=tl.float32)
+    mix3 = tl.zeros([BLOCK_H], dtype=tl.float32)
+
+    for h_start in range(0, H, BLOCK_H):
+        h_off = h_start + tl.arange(0, BLOCK_H)
+
+        if NEED_MASK:
+            h_mask = h_off < H
+            r0 = tl.load(
+                residual_ptr + x_base + 0 * H + h_off, mask=h_mask, other=0.0
+            ).to(tl.float32)
+            r1 = tl.load(
+                residual_ptr + x_base + 1 * H + h_off, mask=h_mask, other=0.0
+            ).to(tl.float32)
+        else:
+            r0 = tl.load(residual_ptr + x_base + 0 * H + h_off).to(tl.float32)
+            r1 = tl.load(residual_ptr + x_base + 1 * H + h_off).to(tl.float32)
+        sqr_acc += r0 * r0 + r1 * r1
+
+        mix0 += r0 * tl.load(fn_ptr + 0 * (HC * H) + 0 * H + h_off) + r1 * tl.load(
+            fn_ptr + 0 * (HC * H) + 1 * H + h_off
+        )
+        mix1 += r0 * tl.load(fn_ptr + 1 * (HC * H) + 0 * H + h_off) + r1 * tl.load(
+            fn_ptr + 1 * (HC * H) + 1 * H + h_off
+        )
+
+        if HC > 2:
+            if NEED_MASK:
+                r2 = tl.load(
+                    residual_ptr + x_base + 2 * H + h_off, mask=h_mask, other=0.0
+                ).to(tl.float32)
+                r3 = tl.load(
+                    residual_ptr + x_base + 3 * H + h_off, mask=h_mask, other=0.0
+                ).to(tl.float32)
+            else:
+                r2 = tl.load(residual_ptr + x_base + 2 * H + h_off).to(tl.float32)
+                r3 = tl.load(residual_ptr + x_base + 3 * H + h_off).to(tl.float32)
+            sqr_acc += r2 * r2 + r3 * r3
+
+            mix0 += r2 * tl.load(fn_ptr + 0 * (HC * H) + 2 * H + h_off) + r3 * tl.load(
+                fn_ptr + 0 * (HC * H) + 3 * H + h_off
+            )
+            mix1 += r2 * tl.load(fn_ptr + 1 * (HC * H) + 2 * H + h_off) + r3 * tl.load(
+                fn_ptr + 1 * (HC * H) + 3 * H + h_off
+            )
+
+            mix2 += r0 * tl.load(fn_ptr + 2 * (HC * H) + 0 * H + h_off) + r1 * tl.load(
+                fn_ptr + 2 * (HC * H) + 1 * H + h_off
+            )
+            mix2 += r2 * tl.load(fn_ptr + 2 * (HC * H) + 2 * H + h_off) + r3 * tl.load(
+                fn_ptr + 2 * (HC * H) + 3 * H + h_off
+            )
+
+            mix3 += r0 * tl.load(fn_ptr + 3 * (HC * H) + 0 * H + h_off) + r1 * tl.load(
+                fn_ptr + 3 * (HC * H) + 1 * H + h_off
+            )
+            mix3 += r2 * tl.load(fn_ptr + 3 * (HC * H) + 2 * H + h_off) + r3 * tl.load(
+                fn_ptr + 3 * (HC * H) + 3 * H + h_off
+            )
+
+    K = HC * H
+    sqr_total = tl.sum(sqr_acc)
+    rsqrt_val = tl.math.rsqrt(sqr_total / K + rms_eps)
+    hc_scale = tl.load(hc_scale_ptr)
+
+    mix0 = tl.sum(mix0)
+    mix1 = tl.sum(mix1)
+    pre_mix0 = (
+        tl.sigmoid(mix0 * rsqrt_val * hc_scale + tl.load(hc_base_ptr + 0)) + hc_eps
+    )
+    pre_mix1 = (
+        tl.sigmoid(mix1 * rsqrt_val * hc_scale + tl.load(hc_base_ptr + 1)) + hc_eps
+    )
+
+    if HC > 2:
+        mix2 = tl.sum(mix2)
+        mix3 = tl.sum(mix3)
+        pre_mix2 = (
+            tl.sigmoid(mix2 * rsqrt_val * hc_scale + tl.load(hc_base_ptr + 2)) + hc_eps
+        )
+        pre_mix3 = (
+            tl.sigmoid(mix3 * rsqrt_val * hc_scale + tl.load(hc_base_ptr + 3)) + hc_eps
+        )
+
+    out_base = pid * H
+    for h_start in range(0, H, BLOCK_H):
+        h_off = h_start + tl.arange(0, BLOCK_H)
+        if NEED_MASK:
+            h_mask = h_off < H
+            r0 = tl.load(
+                residual_ptr + x_base + 0 * H + h_off, mask=h_mask, other=0.0
+            ).to(tl.float32)
+            r1 = tl.load(
+                residual_ptr + x_base + 1 * H + h_off, mask=h_mask, other=0.0
+            ).to(tl.float32)
+        else:
+            r0 = tl.load(residual_ptr + x_base + 0 * H + h_off).to(tl.float32)
+            r1 = tl.load(residual_ptr + x_base + 1 * H + h_off).to(tl.float32)
+        acc = pre_mix0 * r0 + pre_mix1 * r1
+        if HC > 2:
+            if NEED_MASK:
+                r2 = tl.load(
+                    residual_ptr + x_base + 2 * H + h_off, mask=h_mask, other=0.0
+                ).to(tl.float32)
+                r3 = tl.load(
+                    residual_ptr + x_base + 3 * H + h_off, mask=h_mask, other=0.0
+                ).to(tl.float32)
+            else:
+                r2 = tl.load(residual_ptr + x_base + 2 * H + h_off).to(tl.float32)
+                r3 = tl.load(residual_ptr + x_base + 3 * H + h_off).to(tl.float32)
+            acc += pre_mix2 * r2 + pre_mix3 * r3
+        if NEED_MASK:
+            tl.store(out_ptr + out_base + h_off, acc.to(tl.bfloat16), mask=h_mask)
+        else:
+            tl.store(out_ptr + out_base + h_off, acc.to(tl.bfloat16))
+
+
 def hc_head_fused_kernel(
     hs_flat: torch.Tensor,
     fn: torch.Tensor,
@@ -133,8 +283,37 @@ def hc_head_fused_kernel(
         )
 
     residual_c = hs_flat.contiguous()
+    fn_c = fn.contiguous()
     out_c = out if out.is_contiguous() else torch.empty_like(out)
 
+    if HC in (2, 4):
+        # Single-pass fusion: reads residual twice + fn once, no fp32 upcast of
+        # the whole [N, K] tensor and no standalone mm. `isCloseUnrollControl`
+        # skips the TritonXPUUnrollControl pass that overflows uni_sram on the
+        # large unrolled HC=4 body (same workaround as linalg_householder_product
+        # / bincount / rms_norm_backward).
+        block_h = 1024
+        _hc_head_fused_singlepass_kernel[(num_tokens,)](
+            residual_c,
+            fn_c,
+            hc_scale,
+            hc_base,
+            out_c,
+            H=H,
+            rms_eps=rms_eps,
+            hc_eps=hc_eps,
+            HC=HC,
+            BLOCK_H=block_h,
+            NEED_MASK=(H % block_h != 0),
+            num_warps=4,
+            num_stages=1,
+            isCloseUnrollControl=True,
+        )
+        if out.data_ptr() != out_c.data_ptr():
+            out.copy_(out_c)
+        return out
+
+    # Fallback for HC > 4: the original 4-kernel pipeline.
     x2d = residual_c.reshape(num_tokens, K)
 
     part = torch.empty(num_tokens, T, dtype=torch.float32, device=hs_flat.device)
@@ -151,7 +330,7 @@ def hc_head_fused_kernel(
 
     from flag_gems.runtime.backend._kunlunxin.ops.mm import mm as _gems_mm
 
-    mixes = _gems_mm(x2d.to(torch.float32), fn.t())
+    mixes = _gems_mm(x2d.to(torch.float32), fn_c.t())
 
     pre_mix = torch.empty(num_tokens, HC, dtype=torch.float32, device=hs_flat.device)
     _head_mix_kernel[(num_tokens,)](

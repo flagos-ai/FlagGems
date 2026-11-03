@@ -164,7 +164,7 @@ def upsample_trilinear3d(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE_TRILINEAR3D")
+    logger.debug("GEMS_HYGON UPSAMPLE_TRILINEAR3D")
     assert (
         self.device.type == runtime_device.name
     ), f"Expected device {runtime_device.name}, got {self.device.type}"

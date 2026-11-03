@@ -80,6 +80,12 @@ def test_take_along_dim(dtype, inp_shape, idx_shape, dim):
 @pytest.mark.take_along_dim
 @pytest.mark.parametrize("dtype", REAL_DTYPES)
 def test_take_along_dim_dtypes(dtype):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and not utils.TO_CPU
+        and dtype in (torch.uint8, torch.int16)
+    ):
+        pytest.skip("torch.take_along_dim (XPU reference) does not support uint8/int16")
     inp = _make_input((16, 24), dtype)
     index = _make_index((16, 24), (16, 8), 1)
     ref_inp = utils.to_reference(inp)

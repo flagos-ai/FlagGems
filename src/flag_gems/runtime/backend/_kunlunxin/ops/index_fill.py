@@ -32,9 +32,10 @@ _COPY_BLOCK = 8192
 # innermost, so every selected position is a contiguous run of `inner_size`
 # elements). Capped to keep the materialized tile small and avoid IR explosion.
 _SLICE_BLOCK = 4096
-# Scatter tile for the "indexed dim is the innermost" path.
-_SCATTER_BLOCK_M = 4
-_SCATTER_BLOCK_N = 256
+# Scatter block for the "indexed dim is the innermost" path. 1-D (one position
+# per lane): the 2-D tile is mis-lowered on XPU when outer < BLOCK_M (drops
+# lanes) and 1-D is slightly faster (7-20%).
+_SCATTER_BLOCK = 256
 # Threshold below which the "indexed dim is not innermost" path switches from
 # the per-position slice kernel to a position-blocked kernel. For short inner
 # runs (e.g. shape [200, 40999, 3], dim=1 -> inner=3) the slice kernel launches
@@ -42,6 +43,9 @@ _SCATTER_BLOCK_N = 256
 # blocking positions amortizes the launch cost (~22x). The static inner loop is
 # unrolled, so the threshold caps the unroll to avoid IR explosion.
 _SMALL_INNER_LIMIT = 32
+# Position block for the small-inner kernel. 512 beats 128 under cold-cache
+# do_bench (fewer programs: ~16k vs ~64k); the 128 advantage only shows in
+# hot-cache micro-benchmarks, an artifact.
 _SMALL_INNER_BLOCK = 512
 
 _FALLBACK_KEYSET = torch._C.DispatchKeySet(
@@ -58,7 +62,8 @@ def _native_clone(inp):
 @triton.jit
 def index_fill_copy_kernel(out, inp, N, BLOCK: tl.constexpr):
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    # i64 offsets: i32 `pid * BLOCK` wraps for numel > 2^31 (OOB store).
+    offsets = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     mask = offsets < N
     tl.store(out + offsets, tl.load(inp + offsets, mask=mask), mask=mask)
 
@@ -127,7 +132,7 @@ def index_fill_small_inner_kernel(
     m_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)
     # Clamp the position read instead of using a masked load: a masked load with
     # other=0 is lowered unreliably on XPU when the load mask differs from the
-    # store mask.
+    # store mask. (i32 positions; i64 is applied below at the `base` multiply.)
     m_clamped = tl.minimum(m_offsets, total_pos - 1)
     outer_coord = m_clamped // index_len
     index_coord = m_clamped % index_len
@@ -143,12 +148,9 @@ def index_fill_small_inner_kernel(
     else:
         fill = value
     base = outer_coord.to(tl.int64) * dim_size * INNER + idx * INNER
-    # Fold per-lane validity into the position index instead of AND-ing `valid`
-    # into the store mask: `m_mask & valid` (i1 & i1) is mis-lowered on XPU and
-    # leaks the clamped position into the buffer. `tl.where` keeps the mask a
-    # pure vector comparison, mirroring the slice kernel.
-    eff_pos = tl.where(valid, m_offsets, total_pos)
-    store_mask = eff_pos < total_pos
+    # OOB entries are clamped in-bounds and skipped by `valid`. Non-uniform
+    # masked stores mis-lower on XPU (the tl.where alternative drops valid lanes).
+    store_mask = (m_offsets < total_pos) & valid
     for c in tl.static_range(INNER):
         tl.store(out + base + c, fill, mask=store_mask)
 
@@ -159,35 +161,37 @@ def index_fill_scatter_kernel(
     out,
     index,
     value,
-    outer,
+    total_pos,
     index_len,
     dim_size,
     VALUE_IS_TENSOR: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_N: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    # Indexed dim is the innermost: out[o, idx[j]] = value. 2-D grid over outer
-    # rows and index blocks; each program scatters a BLOCK_M x BLOCK_N tile.
-    pid_m = tl.program_id(axis=0)
-    pid_n = tl.program_id(axis=1)
-    o_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    j_offsets = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    o_mask = o_offsets < outer
-    j_mask = j_offsets < index_len
-    # Clamp the index read instead of using a masked load: a masked load with
-    # other=0 is lowered unreliably on XPU when the load mask differs from the
-    # store mask (the "valid" other value leaks into the scatter).
-    j_clamped = tl.minimum(j_offsets, index_len - 1)
-    idx = tl.load(index + j_clamped).to(tl.int64)
+    # Indexed dim is the innermost: out[o, idx[j]] = value. One position per
+    # lane, 1-D gather-store (a 2-D tile mis-lowers on XPU when outer < BLOCK_M).
+    pid = tl.program_id(axis=0)
+    pos = pid * BLOCK + tl.arange(0, BLOCK)
+    # Clamp the position instead of a masked load (other=0 is unreliable on XPU
+    # when load/store masks differ). i32 pos; i64 is applied at `base` below.
+    pos_clamped = tl.minimum(pos, total_pos - 1)
+    o = pos_clamped // index_len
+    j = pos_clamped % index_len
+    idx = tl.load(index + j).to(tl.int64)
     valid = (idx >= -dim_size) & (idx < dim_size)
     idx = tl.where(idx < 0, idx + dim_size, idx)
+    # Clamp out-of-range indices so pointer arithmetic stays in-bounds; the
+    # store mask skips them via `valid`.
+    idx = tl.maximum(idx, 0)
+    idx = tl.minimum(idx, dim_size - 1)
     if VALUE_IS_TENSOR:
         fill = tl.load(value)
     else:
         fill = value
-    out_offsets = o_offsets[:, None].to(tl.int64) * dim_size + idx[None, :]
-    mask = o_mask[:, None] & j_mask[None, :] & valid[None, :]
-    tl.store(out + out_offsets, fill, mask=mask)
+    base = o.to(tl.int64) * dim_size + idx
+    # OOB handling: out-of-range entries are clamped in-bounds and skipped by
+    # `valid`. Non-uniform masked stores mis-lower on XPU, so an OOB entry may
+    # leak `value` to its clamped position (still UB: CPU raises, xdnn garbage).
+    tl.store(out + base, fill, mask=(pos < total_pos) & valid)
 
 
 def _fill_contiguous(out, dim, index, value, value_is_tensor):
@@ -198,20 +202,17 @@ def _fill_contiguous(out, dim, index, value, value_is_tensor):
     outer = out.numel() // (dim_size * inner_size)
 
     if inner_size == 1:
-        grid = (
-            triton.cdiv(outer, _SCATTER_BLOCK_M),
-            triton.cdiv(index.numel(), _SCATTER_BLOCK_N),
-        )
+        total_pos = outer * index.numel()
+        grid = (triton.cdiv(total_pos, _SCATTER_BLOCK),)
         index_fill_scatter_kernel[grid](
             out,
             index,
             value,
-            outer,
+            total_pos,
             index.numel(),
             dim_size,
             VALUE_IS_TENSOR=value_is_tensor,
-            BLOCK_M=_SCATTER_BLOCK_M,
-            BLOCK_N=_SCATTER_BLOCK_N,
+            BLOCK=_SCATTER_BLOCK,
             num_warps=4,
         )
     elif inner_size <= _SMALL_INNER_LIMIT:

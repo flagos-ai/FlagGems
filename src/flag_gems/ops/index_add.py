@@ -232,7 +232,7 @@ _index_add_func = IndexAddFunction()
 
 
 def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD")
+    logger.debug("GEMS INDEX_ADD")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
@@ -283,7 +283,7 @@ def index_add(inp, dim, index, src, alpha=1):
 
 
 def index_add_(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX ADD_")
+    logger.debug("GEMS INDEX_ADD_")
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"

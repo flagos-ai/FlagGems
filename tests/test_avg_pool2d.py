@@ -134,16 +134,15 @@ def test_avg_pool2d_backward(
         divisor_override,
     )
 
-    with flag_gems.use_gems():
-        res_inp_grad = torch.ops.aten.avg_pool2d_backward(
-            out_grad,
-            inp,
-            kernel_size,
-            stride,
-            padding,
-            ceil_mode,
-            count_include_pad,
-            divisor_override,
-        )
+    res_inp_grad = flag_gems.avg_pool2d_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        ceil_mode,
+        count_include_pad,
+        divisor_override,
+    )
 
     utils.gems_assert_close(res_inp_grad, ref_inp_grad, dtype)

@@ -28,8 +28,7 @@ def test_tan(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.tan(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.tan(inp)
+    res_out = flag_gems.tan(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,6 @@ def test_tan_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.tan_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.tan_(inp)
+    res_out = flag_gems.tan_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

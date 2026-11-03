@@ -14,8 +14,7 @@ def test_acos_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.acos_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.acos_(inp)
+    res_out = flag_gems.acos_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype, True)
     # Verify the mutated input matches the returned result

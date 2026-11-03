@@ -28,8 +28,7 @@ def test_sin(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.sin(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sin(inp)
+    res_out = flag_gems.sin(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -42,7 +41,6 @@ def test_sin_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone(), True)
 
     ref_out = torch.sin_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sin_(inp)
+    res_out = flag_gems.sin_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

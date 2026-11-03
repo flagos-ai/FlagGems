@@ -304,7 +304,7 @@ def rms_norm_int8_w8a16_gather_kernel(
 def rms_norm_w8a16_int8(
     x, normalized_shape, weight_int8, weight_scale, eps=1e-5, group_size=128
 ):
-    logger.debug("GEMS_ASCEND RMS_NORM W8A16 INT8 FORWARD")
+    logger.debug("GEMS_ASCEND RMS_NORM_W8A16_INT8_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)

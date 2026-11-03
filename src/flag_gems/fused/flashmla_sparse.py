@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils.triton_version_utils import has_triton_tle
 
 if has_triton_tle(3, 6, 0):
@@ -39,12 +40,21 @@ TLE_FLASHMLA_PREFILL_BH = 64
 TLE_FLASHMLA_PREFILL_PAIR_BLOCKS = 2
 TLE_FLASHMLA_PREFILL_WORKER_NUM_WARPS = 4
 
+_FLASH_MLA_SPARSE_CONFIGS = [
+    triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=2),
+    triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=4),
+]
+if runtime.device.vendor_name == "amd":
+    # The BK=64/BH=64 tiles need 80KB of shared memory; RDNA has 64KB. The
+    # autotuner skips configs that do not fit, so offer smaller tiles too.
+    _FLASH_MLA_SPARSE_CONFIGS += [
+        triton.Config({"BK": 32, "BH": 64}, num_warps=8, num_stages=1),
+        triton.Config({"BK": 32, "BH": 32}, num_warps=4, num_stages=1),
+    ]
+
 
 @triton.autotune(
-    configs=[
-        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=2),
-        triton.Config({"BK": 64, "BH": 64}, num_warps=8, num_stages=4),
-    ],
+    configs=_FLASH_MLA_SPARSE_CONFIGS,
     key=["SQ", "HQ", "DQK", "SKV", "TOPK", "HAVE_ATTN_SINK", "HAVE_TOPK_LENGTH"],
 )
 @triton.jit

@@ -23,7 +23,7 @@ from flag_gems.utils import broadcastable_to
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Generic pointwise path (fallback for non-contiguous inputs, broadcastable
@@ -175,8 +175,25 @@ def _use_fast_path(inp, mask, value):
     return inp.numel() >= _FAST_MIN_NUMEL
 
 
+def _normalize_bool_scalar(value):
+    """Hoist a Python ``bool`` value to ``int`` before it reaches any kernel.
+
+    ``value`` is carried into the Triton kernels as an untyped scalar under
+    ``do_not_specialize`` (both the generated ``pointwise_dynamic`` kernels and
+    ``masked_fill_small_kernel``).  Its element type is bound once per process,
+    on the first call: a leading Python ``bool`` binds it to ``i1`` and every
+    later integer scalar is then silently truncated with ``& 1``
+    (``masked_fill_(mask, True)`` followed by ``masked_fill_(mask, 3)`` fills
+    ``1.0`` instead of ``3.0``; ``-7`` and ``2`` give ``1.0`` and ``0.0``).
+    ``bool`` is exactly representable as ``int`` 0/1, so hoisting it removes the
+    poisoned binding without changing any result.
+    """
+    return int(value) if isinstance(value, bool) else value
+
+
 def masked_fill(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL")
+    value = _normalize_bool_scalar(value)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -185,9 +202,12 @@ def masked_fill(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # A 0-dim tensor value is a single element; ATen reads it as a scalar.
+        # Read it once and take the scalar kernel: the tensor-value pointwise
+        # kernel lowers a 0-dim value tensor in a form the FlagTree MLIR->LLVM
+        # translation rejects, and the scalar path is bit-identical.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"
@@ -237,6 +257,7 @@ def masked_fill(inp, mask, value):
 
 def masked_fill_(inp, mask, value):
     logger.debug("GEMS_KUNLUNXIN MASKED_FILL_")
+    value = _normalize_bool_scalar(value)
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -245,9 +266,9 @@ def masked_fill_(inp, mask, value):
     if torch.is_tensor(value):
         if value.device != inp.device:
             raise RuntimeError("masked_fill value must be on the input device")
-        kernel = masked_fill_tensor_value_kernel
-    else:
-        kernel = masked_fill_kernel
+        # Same scalar-isation as in ``masked_fill``.
+        value = value.item()
+    kernel = masked_fill_kernel
     assert broadcastable_to(
         mask.shape, inp.shape
     ), "The shape of mask must be broadcastable with the shape of the underlying tensor"

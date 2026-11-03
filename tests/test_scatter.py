@@ -67,8 +67,7 @@ def test_scatter_src(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src)
+    res_out = flag_gems.scatter(inp, dim, index, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -107,8 +106,7 @@ def test_scatter_reduce_add(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="add")
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src, reduce="add")
+    res_out = flag_gems.scatter(inp, dim, index, src, reduce="add")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -147,8 +145,7 @@ def test_scatter_add_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = ref_inp.scatter_add_(dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = inp.scatter_add_(dim, index, src)
+    res_out = flag_gems.scatter_add_(inp, dim, index, src)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -187,8 +184,7 @@ def test_scatter_add(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = torch.scatter_add(ref_inp, dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.scatter_add(inp, dim, index, src)
+    res_out = flag_gems.scatter_add(inp, dim, index, src)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -228,8 +224,7 @@ def test_scatter_add_2d(inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = torch.scatter_add(ref_inp, dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = torch.scatter_add(inp, dim, index, src)
+    res_out = flag_gems.scatter_add(inp, dim, index, src)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -266,8 +261,7 @@ def test_scatter_reduce_multiply(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = torch.scatter(ref_inp, dim, ref_index, ref_src, reduce="multiply")
-    with flag_gems.use_gems():
-        res_out = torch.scatter(inp, dim, index, src, reduce="multiply")
+    res_out = flag_gems.scatter(inp, dim, index, src, reduce="multiply")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -304,8 +298,7 @@ def test_scatter_src_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src)
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src)
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -345,8 +338,7 @@ def test_scatter_reduce_add_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src, upcast=True)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="add")
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src, reduce="add")
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src, reduce="add")
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -383,7 +375,6 @@ def test_scatter_reduce_multiply_(src_shape, inp_shape, dim, dtype):
     ref_index = utils.to_reference(index)
     ref_src = utils.to_reference(src)
     ref_out = ref_inp.clone().scatter_(dim, ref_index, ref_src, reduce="multiply")
-    with flag_gems.use_gems():
-        res_out = inp.clone().scatter_(dim, index, src, reduce="multiply")
+    res_out = flag_gems.scatter_(inp.clone(), dim, index, src, reduce="multiply")
 
     utils.gems_assert_close(res_out, ref_out, dtype)

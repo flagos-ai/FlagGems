@@ -28,6 +28,7 @@ from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
 from .any import any, any_dim, any_dims
+from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
 from .attention import (
     ScaleDotProductAttention,
@@ -42,10 +43,12 @@ from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .block_diag import block_diag
+from .bmm_w8a8 import bmm_w8a8
 from .broadcast_tensors import broadcast_tensors
 from .broadcast_to import broadcast_to
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
+from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
@@ -105,6 +108,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linear import linear
 from .log_normal_ import log_normal_
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
@@ -121,6 +125,7 @@ from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .mv import mv
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -183,6 +188,7 @@ from .special_shifted_chebyshev_polynomial_v import (
 from .split_with_sizes_copy import split_with_sizes_copy
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
@@ -214,16 +220,19 @@ __all__ = [
     "any",
     "any_dim",
     "any_dims",
+    "argsort",
     "as_strided_scatter",
     "avg_pool3d_backward",
     "baddbmm_",
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
+    "bmm_w8a8",
     "broadcast_tensors",
     "broadcast_to",
     "cholesky_inverse",
     "conj_physical",
+    "conv2d",
     "conv_depthwise2d",
     "cudnn_convolution",
     "diagonal_scatter",
@@ -280,6 +289,7 @@ __all__ = [
     "linalg_matrix_power_out",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linear",
     "log_normal_",
     "masked_scale",
     "masked_scatter_backward",
@@ -296,6 +306,7 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "mv",
     "mvlgamma",
     "nanmedian",
     "nanmedian_dim",
@@ -366,6 +377,8 @@ __all__ = [
     "SUPPORTED_FP8_DTYPE",
     "tile",
     "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "true_divide",
     "true_divide_",
     "true_divide_out",

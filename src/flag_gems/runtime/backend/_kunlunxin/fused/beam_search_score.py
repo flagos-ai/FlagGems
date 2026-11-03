@@ -16,6 +16,7 @@ def _beam_search_score_kernel(
     V: tl.constexpr,
     BLOCK: tl.constexpr,
     NEED_MASK: tl.constexpr,
+    UPCAST_F32: tl.constexpr,
 ):
     """Flat 1D beam search score kernel: out[i] = log_probs[i] + beam_scores[i // V]."""
     pid = tl.program_id(0)
@@ -23,13 +24,20 @@ def _beam_search_score_kernel(
     if NEED_MASK:
         mask = offs < N
         row = offs // V
-        v = tl.load(log_probs + offs, mask=mask, other=0.0).to(tl.float32)
-        b = tl.load(beam_scores + row, mask=mask, other=0.0).to(tl.float32)
+        v = tl.load(log_probs + offs, mask=mask, other=0.0)
+        b = tl.load(beam_scores + row, mask=mask, other=0.0)
     else:
         row = offs // V
-        v = tl.load(log_probs + offs).to(tl.float32)
-        b = tl.load(beam_scores + row).to(tl.float32)
-    acc = v + b
+        v = tl.load(log_probs + offs)
+        b = tl.load(beam_scores + row)
+    if UPCAST_F32:
+        # Floating dtypes: accumulate in fp32 (the upcast/downcast round trip is
+        # what the tuned block sizes below were measured with).
+        acc = v.to(tl.float32) + b.to(tl.float32)
+    else:
+        # Integer dtypes: an fp32 accumulator silently rounds every value above
+        # 2**24, while ATen's broadcast add is exact.  Add in the element type.
+        acc = v + b
     if NEED_MASK:
         tl.store(output + offs, acc, mask=mask)
     else:
@@ -37,29 +45,41 @@ def _beam_search_score_kernel(
 
 
 def _block_and_warps(numel, dtype):
+    """Tile/launch choice per element count and dtype.
+
+    Retuned on the XPU3 (P800) card together with
+    :data:`_XPU_LAUNCH_OPTIONS`: once the per-core staging buffer is big enough
+    to keep the block DMA fed, the kernel stops being DMA-issue bound and the
+    optimum moves to much larger 1D tiles than the stock table used.
+    """
     if dtype == torch.float32:
-        if numel <= 131072:
-            return 8192, 4
+        if numel <= 16384:
+            return 8192, 8
+        if numel <= 65536:
+            return 16384, 4
+        if numel <= 262144:
+            return 32768, 4
         if numel <= 1048576:
             return 65536, 4
-        return 262144, 8
+        return 262144, 4
     if dtype == torch.float16:
-        if numel <= 32768:
+        if numel <= 16384:
             return 8192, 8
-        if numel <= 131072:
-            return 16384, 8
-        if numel <= 524288:
+        if numel <= 65536:
             return 16384, 4
+        if numel <= 262144:
+            return 65536, 4
         if numel <= 1048576:
-            return 65536, 8
-        return 262144, 8
-    if numel <= 32768:
+            return 131072, 4
+        return 262144, 4
+    if numel <= 65536:
         return 8192, 8
-    if numel <= 131072:
-        return 16384, 8
-    if numel <= 524288:
-        return 16384, 2
-    return 262144, 8
+    if numel <= 262144:
+        return 16384, 4
+    return 65536, 4
+
+
+_XPU_LAUNCH_OPTIONS = {"buffer_size_limit": 4096}
 
 
 def _launch_beam_search_score(log_probs, beam_scores, outputs):
@@ -90,7 +110,9 @@ def _launch_beam_search_score(log_probs, beam_scores, outputs):
         V=vocab_size,
         BLOCK=block,
         NEED_MASK=need_mask,
+        UPCAST_F32=_upcast_f32(log_probs.dtype),
         num_warps=num_warps,
+        **_XPU_LAUNCH_OPTIONS,
     )
     return outputs
 
@@ -104,12 +126,32 @@ def _flat_beam_scores(beam_scores, batch_size):
     return beam_scores.reshape(batch_size)
 
 
+_EXACT_ACC_DTYPES = (
+    torch.int8,
+    torch.uint8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+)
+
+
+def _upcast_f32(dtype):
+    """Whether the kernel should accumulate in fp32 for this element type."""
+    return dtype not in _EXACT_ACC_DTYPES
+
+
 def beam_search_score(log_probs, beam_scores):
     """Out-of-place beam search score: log_probs [B, V] + beam_scores [B]."""
     logger.debug("GEMS_KUNLUNXIN BEAM_SEARCH_SCORE")
     batch_size = log_probs.shape[0]
     beam_flat = _flat_beam_scores(beam_scores, batch_size)
-    outputs = torch.empty_like(log_probs)
+    # The kernel is flat 1-D and assumes the output is contiguous.  Plain
+    # `empty_like` would propagate a transposed / permuted input's strides
+    # (native `add` does preserve them), and the flat store would then write
+    # every value to the wrong logical position.  Allocate contiguous so the
+    # values are always right; the returned layout is contiguous instead of
+    # `preserve_format`.
+    outputs = torch.empty_like(log_probs, memory_format=torch.contiguous_format)
     return _launch_beam_search_score(log_probs, beam_flat, outputs)
 
 

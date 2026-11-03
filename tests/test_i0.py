@@ -33,8 +33,7 @@ def test_i0(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.i0(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.i0(inp)
+    res_out = flag_gems.i0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -45,8 +44,7 @@ def test_i0_(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.ops.aten.i0_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.i0_(inp)
+    res_out = flag_gems.i0_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -61,8 +59,7 @@ def test_i0_out(shape, dtype):
     torch.i0(ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    with flag_gems.use_gems():
-        res_out = torch.i0(inp, out=out)
+    res_out = flag_gems.i0_out(inp, out=out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype)

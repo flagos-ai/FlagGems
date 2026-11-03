@@ -86,7 +86,9 @@ def _reference(input_gates, hidden_gates, hx, input_bias=None, hidden_bias=None)
     ref_hidden_bias = (
         utils.to_reference(hidden_bias) if hidden_bias is not None else None
     )
-    if args[0].device.type == "cpu":
+    if args[0].device.type == "cpu" or (
+        flag_gems.vendor_name == "kunlunxin" and args[0].numel() == 0
+    ):
         return _manual_reference(
             *args, input_bias=ref_input_bias, hidden_bias=ref_hidden_bias
         )
@@ -199,7 +201,10 @@ def test_thnn_fused_gru_cell_rejects_unsupported_dtype(dtype):
     hidden_gates = torch.zeros_like(input_gates)
     hx = torch.zeros((2, 7), dtype=dtype, device=flag_gems.device)
 
-    with pytest.raises(RuntimeError):
+    native_error = RuntimeError
+    if flag_gems.vendor_name == "kunlunxin":
+        native_error = (RuntimeError, ValueError)
+    with pytest.raises(native_error):
         torch.ops.aten._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
     with pytest.raises(RuntimeError):
         flag_gems._thnn_fused_gru_cell(input_gates, hidden_gates, hx)
@@ -281,7 +286,9 @@ def test_thnn_fused_gru_cell_out_rejects_invalid_dtype(output_index):
         torch.empty((2, 7), dtype=torch.float32, device=flag_gems.device),
         torch.empty((2, 35), dtype=torch.float32, device=flag_gems.device),
     ]
-    outputs[output_index] = outputs[output_index].to(torch.float64)
+    outputs[output_index] = outputs[output_index].to(
+        torch.float16 if flag_gems.vendor_name == "kunlunxin" else torch.float64
+    )
     with pytest.raises(RuntimeError):
         flag_gems._thnn_fused_gru_cell_out(
             input_gates,
@@ -325,6 +332,16 @@ def test_thnn_fused_gru_cell_out_rejects_overlapping_outputs():
         )
 
 
+def _defined_or_none(value):
+    if value is None:
+        return None
+    try:
+        value.dtype
+    except RuntimeError:
+        return None
+    return value
+
+
 @pytest.mark.skipif(TO_CPU, reason="native fused GRU cell is CUDA-only")
 @pytest.mark.thnn_fused_gru_cell
 @pytest.mark.parametrize("dtype", DTYPES)
@@ -352,6 +369,9 @@ def test_thnn_fused_gru_cell_backward_end_to_end(dtype, with_bias):
 
     utils.gems_assert_close(hy, ref_hy, dtype)
     for actual, expected in zip(result, reference):
+        if flag_gems.vendor_name == "kunlunxin":
+            actual = _defined_or_none(actual)
+            expected = _defined_or_none(expected)
         if expected is None:
             assert actual is None
         else:

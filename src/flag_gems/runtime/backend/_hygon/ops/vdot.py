@@ -201,7 +201,7 @@ def vdot_c128_kernel_multi(
 
 
 def vdot(input: Tensor, other: Tensor):
-    logger.debug("GEMS VDOT")
+    logger.debug("GEMS_HYGON VDOT")
 
     assert (
         input.dtype == other.dtype

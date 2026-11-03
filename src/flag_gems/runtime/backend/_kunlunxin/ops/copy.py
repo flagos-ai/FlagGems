@@ -7,6 +7,7 @@ import triton.language as tl
 
 from ..utils.codegen_config_utils import CodeGenConfig
 from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,18 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
                 unroll_num=8,
                 buffer_size_limit=1024,
             )
+        return dst
+
+    # [KT2 2026-09-17] Strided / broadcast layouts: try the TLE DMA path before
+    # the elementwise fallback below. The upstream rewrite dropped the
+    # tle_copy branch here; on a transposed source (e.g. dim_compress's
+    # permute().contiguous()) the elementwise `copy_slice` path below measures
+    # ~28 ms for a [64, 512, 512] f16 transpose vs 247 us for tle_copy (which
+    # moves it as an SDNN 2D row transfer / TMA tile). That cascaded into a
+    # 55x regression on logsumexp's mid-dim reduce (regression_0917).
+    # tle_copy self-checks layout/dtype/alignment and returns False when it
+    # cannot express the copy -> falls through unchanged.
+    if not aliases and tle_copy(expanded_src, dst):
         return dst
 
     overload = copy_slice.instantiate(expanded_src.ndim)

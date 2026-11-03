@@ -67,3 +67,17 @@ def test_stack():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.underscore_stack
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test__stack():
+    bench = StackBenchmark(
+        op_name="_stack",
+        input_fn=_input_fn,
+        torch_op=torch._stack,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

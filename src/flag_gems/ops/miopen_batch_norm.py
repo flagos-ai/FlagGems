@@ -73,7 +73,7 @@ def miopen_batch_norm(
     Returns:
         Tuple of (output, save_mean, save_var)
     """
-    logger.debug("GEMS MIOPEN_BATCH_NORM FORWARD")
+    logger.debug("GEMS MIOPEN_BATCH_NORM_FORWARD")
 
     input_3d = make_3d_for_bn(input)
 
@@ -143,7 +143,7 @@ def miopen_batch_norm_backward(
     Returns:
         Tuple of (input_grad, weight_grad, bias_grad)
     """
-    logger.debug("GEMS MIOPEN_BATCH_NORM BACKWARD")
+    logger.debug("GEMS MIOPEN_BATCH_NORM_BACKWARD")
 
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)

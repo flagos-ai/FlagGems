@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "packages": {
+    "hygon-bw": {
+      "versions": {
+        "1.0.0": {
+          "sha256": "5af5202f9354b9a09f34ff5c8e35ffce5868462def9a70729cb050a68bb0db33",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-hygon-bw_v1.0.0.tar.gz"
+        }
+      }
+    },
+    "metax-c550": {
+      "versions": {
+        "1.1.1": {
+          "sha256": "9ed44a3701e0b0b2fc0d966130ad5f2f6254d79029f3c8c33bc7acff828ae99b",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-metax-c550_v1.1.1.tar.gz"
+        }
+      }
+    },
+    "mthreads-s5000": {
+      "versions": {
+        "1.0.0": {
+          "sha256": "7e8ab01abedded60c7d564b550e094fea2497e45b3cad92038b7dde64b8ad8d9",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-mthreads-s5000_v1.0.0.tar.gz"
+        }
+      }
+    },
+    "nvidia-h20": {
+      "versions": {
+        "1.1.1": {
+          "sha256": "7d27f04a55dffd4f916120355d6df496c1335b5e4256bc7c7bef021cc4ed3d33",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-nvidia-h20_v1.1.1.tar.gz"
+        }
+      }
+    },
+    "thead-zw810e": {
+      "versions": {
+        "1.1.0": {
+          "sha256": "0a089ab5cba39867a0ce57992a65e7991e33ca26549dcf893e736bcff3feb0cc",
+          "url": "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/flagtune-xgb-thead-zw810e_v1.1.0.tar.gz"
+        }
+      }
+    }
+  }
+}

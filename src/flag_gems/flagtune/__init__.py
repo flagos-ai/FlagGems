@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Offline FlagTune collection, training, and reporting for FlagGems.
+"""FlagTune integration split into online inference and offline tooling.
 
-This package is intentionally separate from :mod:`flag_gems.utils`: it owns a
-complete offline workflow rather than a reusable low-level helper.  Import the
-library API from :mod:`flag_gems.flagtune.collection`; invoke user-facing
-commands through the three ``flaggems-flagtune-*`` console scripts.
+The :mod:`flag_gems.flagtune.inference` package is the small runtime dependency
+used by Cost Model prediction.  Expanded collection, training, packaging, and
+comparison live under :mod:`flag_gems.flagtune.offline`.
 """
