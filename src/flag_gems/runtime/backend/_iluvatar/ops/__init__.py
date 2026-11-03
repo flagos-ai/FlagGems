@@ -88,6 +88,7 @@ from .repeat_interleave import repeat_interleave_self_int
 from .replication_pad1d_backward import replication_pad1d_backward
 from .resolve_neg import resolve_neg
 from .scatter_add import scatter_add_
+from .smm import smm
 from .softplus import softplus_backward
 from .sort import sort, sort_stable
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
@@ -216,6 +217,7 @@ __all__ = [
     "resolve_neg",
     "run",
     "scatter_add_",
+    "smm",
     "softplus_backward",
     "sort",
     "sort_stable",
