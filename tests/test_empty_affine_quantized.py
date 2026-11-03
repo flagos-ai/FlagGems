@@ -19,8 +19,6 @@ import torch
 
 import flag_gems
 
-from . import accuracy_utils as utils
-
 
 @pytest.mark.empty_affine_quantized
 @pytest.mark.underscore_empty_affine_quantized

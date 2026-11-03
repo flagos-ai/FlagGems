@@ -40,7 +40,9 @@ def _attach_storage(out, size, dtype, layout, device, pin_memory, memory_format)
     # PyTorch < 2.8 without torch.library.get_kernel).
     shape = tuple(size)
     storage_dtype = _integer_dtype(dtype)
-    meta = torch.empty(shape, dtype=storage_dtype, device="meta", memory_format=memory_format)
+    meta = torch.empty(
+        shape, dtype=storage_dtype, device="meta", memory_format=memory_format
+    )
     raw = torch.empty_strided(
         shape,
         meta.stride(),
