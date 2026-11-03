@@ -23,7 +23,7 @@ class NormBenchmark(base.GenericBenchmark):
     # TODO: add new metric
 
     def set_more_shapes(self):
-        return [
+        shapes = [
             # 3D shapes represented as [batch_size, channels, hidden_size]
             (16, 16, 64),
             (16, 16, 1024),
@@ -37,15 +37,26 @@ class NormBenchmark(base.GenericBenchmark):
             (4096, 512),
             (2048, 1024),
             (1024, 2048),
+            (1025, 1152),
+            (256, 4096),
         ]
+        if self.op_name == "layer_norm":
+            return shapes + [(65536, 1, 1152)]
+        else:
+            return shapes
 
 
 def input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
-    layer_shape = shape[1:]
+    if shape == (65536, 1, 1152):
+        layer_shape = (1152,)
+        eps = 1e-6
+    else:
+        layer_shape = shape[1:]
+        eps = 1e-5
     weight = torch.randn(layer_shape, dtype=dtype, device=device)
     bias = torch.randn(layer_shape, dtype=dtype, device=device)
-    yield inp, layer_shape, weight, bias
+    yield inp, layer_shape, weight, bias, eps
 
 
 def native_layer_norm_input_fn(shape, dtype, device):

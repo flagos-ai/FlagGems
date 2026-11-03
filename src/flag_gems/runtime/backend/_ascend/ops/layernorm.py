@@ -24,17 +24,33 @@ from flag_gems.ops.layernorm import (
     layer_norm_persistent_kernel_multiline,
 )
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils.libentry import LibEntry
+
+from .mm import _blockified
 
 logger = logging.getLogger(__name__)
+
+
+class BlockifiedLayerNormEntry(LibEntry):
+    def _first_run(self, *args, **kwargs):
+        # The compiler needs the flag; cached launches use the kernel metadata.
+        with _blockified():
+            return super()._first_run(*args, **kwargs)
+
+
+layer_norm_persistent_kernel = BlockifiedLayerNormEntry(layer_norm_persistent_kernel.fn)
+layer_norm_persistent_kernel_multiline = BlockifiedLayerNormEntry(
+    layer_norm_persistent_kernel_multiline.fn
+)
 
 
 def _select_tile_m(M, N, tile_n):
     if N <= 128:
         return triton.cdiv(1024, tile_n)
-    if M < 256:
+    if M < 256 or tile_n > 2048:
         return 1
-    # Pack adjacent rows while keeping the one-pass tile bounded.
-    return max(1, min(8, 4096 // tile_n))
+    # Larger row tiles amortize scheduling while fitting the vector-core UB.
+    return max(1, min(16, 8192 // tile_n))
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
@@ -57,6 +73,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     mean = torch.empty(M, dtype=input.dtype, device=input.device)
     rstd = torch.empty(M, dtype=input.dtype, device=input.device)
 
+    # Explicit block mapping makes scheduling independent of other operator imports.
     with torch_device_fn.device(input.device):
         tile_n = triton.next_power_of_2(N)
         tile_m = _select_tile_m(M, N, tile_n)
@@ -74,6 +91,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 eps,
                 tile_m,
                 tile_n,
+                enable_auto_blockify=True,
             )
         else:
             grid = (M, 1, 1)
@@ -88,6 +106,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 N,
                 eps,
                 tile_n,
+                enable_auto_blockify=True,
             )
     return y, mean, rstd
 

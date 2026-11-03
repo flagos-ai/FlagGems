@@ -35,6 +35,8 @@ else:
         (4096, 512),
         (2048, 1024),
         (1024, 2048),
+        (1025, 1152),
+        (256, 4096),
     ]
 
 LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
@@ -151,6 +153,27 @@ def test_native_layer_norm_statistics(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_mean, ref_mean, dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_rstd, ref_rstd, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.layer_norm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_layer_norm_real_shape(dtype):
+    torch.manual_seed(0)
+    normalized_shape = (1152,)
+    inp = torch.randn((65536, 1, 1152), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.randn_like(weight)
+    reference = torch.ops.aten.native_layer_norm.default(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        1e-6,
+    )
+    actual = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, 1e-6)
+    utils.gems_assert_close(actual[0], reference[0], dtype)
+    for output, expected in zip(actual[1:], reference[1:]):
+        utils.gems_assert_close(output, expected, dtype, reduce_dim=1152)
 
 
 @pytest.mark.layer_norm_backward
