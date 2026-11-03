@@ -14,8 +14,10 @@
 
 from .cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward
+from .embedding_bag_backward import _embedding_bag_backward
 
 __all__ = [
+    "_embedding_bag_backward",
     "cudnn_batch_norm",
     "cudnn_batch_norm_backward",
     "cudnn_batch_norm_out",
