@@ -16,6 +16,7 @@ import hashlib
 import inspect
 import json
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -59,6 +60,163 @@ _SOFTPLUS_SOURCE_BINDINGS = {
         "generic_framework_source_sha256": "ba10830841e14f4bc59460a3dd59eab51a00ada5a0e1593299ff092f00fcedd5",
     },
 }
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr50:op_pytorch_h800_softplus_backward_direct_core_20261028": {
+        "sha256": "291f480e59163b6a61f8ec75ac70aeab78f4b3b5985613a347effd6684f59083",
+        "artifact": "op_pytorch_h800_softplus_backward_direct_core_20261028.json",
+        "operators": ["softplus_backward"],
+        "provenance": {
+            "op_pytorch_h800_softplus_backward_direct_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_softplus_backward_direct_core_20261028.provenance.json",
+                "sha256": "6cee0ced8b98f157d192fda9558da29f1094b0d5b49135a472fa41d81db6b901",
+            },
+            "op_pytorch_h800_softplus_backward_main_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_softplus_backward_main_core_20261028.provenance.json",
+                "sha256": "958d832de8958ca32e88d3b4068373197ac4e60cddacac903ffb5997aa197b57",
+            },
+        },
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+@lru_cache(maxsize=8)
+def _aten_cached_view(baseline, source_id, payload):
+    data = _aten_load_json(payload)
+    for alias, original in (
+        _ATEN_SNAPSHOT_SPECS[source_id].get("operator_aliases", {}).items()
+    ):
+        data[alias] = data[original]
+    return type(baseline)(data, _aten_existing_path(baseline.source, source_id))
+
+
+def _aten_baseline_view(baseline, source_id):
+    if baseline is None or source_id is None:
+        return baseline
+    if "_aten_consolidation" not in baseline.data:
+        aliases = _ATEN_SNAPSHOT_SPECS[source_id].get("operator_aliases", {})
+        if not aliases or not all(
+            original in baseline.data for original in aliases.values()
+        ):
+            return baseline
+        payload = Path(baseline.source).read_bytes()
+        if (
+            hashlib.sha256(payload).hexdigest()
+            != _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+        ):
+            raise ValueError("Standalone native profile digest differs")
+        return _aten_cached_view(baseline, source_id, payload)
+    payload, _ = _aten_project_snapshot(baseline.data, source_id)
+    return _aten_cached_view(baseline, source_id, payload)
+
+
+def _aten_capture_context(context, operator, source_id):
+    if context is None or source_id is None:
+        return context
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    allowed = spec.get("canonical_operators")
+    if allowed is None:
+        allowed = tuple(spec.get("operators", ())) + tuple(
+            spec.get("operator_aliases", ())
+        )
+    if allowed and operator not in allowed:
+        return context
+    return _aten_baseline_view(context[0], source_id), context[1], context[2]
 
 
 class _SoftplusStaticReference:
@@ -250,8 +408,22 @@ class _SoftplusStaticReference:
             ):
                 raise ValueError("Direct inputs must have independent storage")
         self._verify_static_recipe()
-        baseline = base.Config.base_data
-        payload = Path(baseline.source).read_bytes()
+        baseline = _aten_baseline_view(
+            base.Config.base_data,
+            (
+                "pr50:op_pytorch_h800_softplus_backward_direct_core_20261028"
+                if self._H800_PROFILE == "direct"
+                else None
+            ),
+        )
+        payload = _aten_read_bytes(
+            Path(baseline.source),
+            (
+                "pr50:op_pytorch_h800_softplus_backward_direct_core_20261028"
+                if self._H800_PROFILE == "direct"
+                else None
+            ),
+        )
 
         def unique(pairs):
             result = {}
@@ -352,7 +524,16 @@ class _SoftplusStaticReference:
             if (
                 baseline is not checked
                 or json.dumps(call, sort_keys=True, separators=(",", ":")) != captured
-                or hashlib.sha256(Path(baseline.source).read_bytes()).hexdigest()
+                or hashlib.sha256(
+                    _aten_read_bytes(
+                        Path(baseline.source),
+                        (
+                            "pr50:op_pytorch_h800_softplus_backward_direct_core_20261028"
+                            if self._H800_PROFILE == "direct"
+                            else None
+                        ),
+                    )
+                ).hexdigest()
                 != artifact
             ):
                 raise ValueError(
@@ -391,6 +572,18 @@ class _SoftplusStaticReference:
                 )
         finally:
             self._softplus_external_checked = None
+
+    def _capture_external_baseline(self, args, kwargs):
+        context = super()._capture_external_baseline(args, kwargs)
+        return _aten_capture_context(
+            context,
+            self.op_name,
+            (
+                "pr50:op_pytorch_h800_softplus_backward_direct_core_20261028"
+                if self._H800_PROFILE == "direct"
+                else None
+            ),
+        )
 
 
 @pytest.mark.softplus

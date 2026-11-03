@@ -17,6 +17,7 @@ import hashlib
 import inspect
 import json
 import math
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,181 @@ import flag_gems
 from . import base, consts, utils
 from .baseline import BaselineData, describe_call, positive_number
 from .generated_operator_utils import OperatorBenchmark
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr61:op_pytorch_h800_sgn_out_suiyuan_fresh_core_20261028": {
+        "sha256": "cc7d62cc4b48052fbcdc1b58930e5c9aa22538b6120df7173d04b8d80232e4ef",
+        "artifact": "op_pytorch_h800_sgn_out_suiyuan_fresh_core_20261028.json",
+        "operators": ["sgn_out"],
+        "provenance": {
+            "op_pytorch_h800_sgn_out_suiyuan_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_sgn_out_suiyuan_core_20261028.provenance.json",
+                "sha256": "a5d66083d45d0fe9c09d36d3453e4c67e2ea9e5f16593ba70df51d0a1ec51c25",
+            }
+        },
+    },
+    "pr61:op_pytorch_h800_sgn_out_suiyuan_shared_core_20261028": {
+        "sha256": "ec637fb78f0308257ff3d159907961af3d9a297f892173fdba497982fd688991",
+        "artifact": "op_pytorch_h800_sgn_out_suiyuan_shared_core_20261028.json",
+        "operators": ["sgn_out"],
+        "provenance": {
+            "op_pytorch_h800_sgn_out_suiyuan_core_20261028.provenance.json": {
+                "key": "op_pytorch_h800_sgn_out_suiyuan_core_20261028.provenance.json",
+                "sha256": "a5d66083d45d0fe9c09d36d3453e4c67e2ea9e5f16593ba70df51d0a1ec51c25",
+            }
+        },
+    },
+    "pr61:profile-manifest": {
+        "auxiliary": "op_pytorch_h800_sgn_out_suiyuan_profiles_20261028.json",
+        "sha256": "90f778b405de31a012c0344afc54357b1e96b74973042c69b5a82ab1636ad86c",
+        "canonical_operators": ["sgn_out"],
+    },
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+@lru_cache(maxsize=8)
+def _aten_cached_view(baseline, source_id, payload):
+    data = _aten_load_json(payload)
+    for alias, original in (
+        _ATEN_SNAPSHOT_SPECS[source_id].get("operator_aliases", {}).items()
+    ):
+        data[alias] = data[original]
+    return type(baseline)(data, _aten_existing_path(baseline.source, source_id))
+
+
+def _aten_baseline_view(baseline, source_id):
+    if baseline is None or source_id is None:
+        return baseline
+    if "_aten_consolidation" not in baseline.data:
+        aliases = _ATEN_SNAPSHOT_SPECS[source_id].get("operator_aliases", {})
+        if not aliases or not all(
+            original in baseline.data for original in aliases.values()
+        ):
+            return baseline
+        payload = Path(baseline.source).read_bytes()
+        if (
+            hashlib.sha256(payload).hexdigest()
+            != _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+        ):
+            raise ValueError("Standalone native profile digest differs")
+        return _aten_cached_view(baseline, source_id, payload)
+    payload, _ = _aten_project_snapshot(baseline.data, source_id)
+    return _aten_cached_view(baseline, source_id, payload)
+
+
+def _aten_capture_context(context, operator, source_id):
+    if context is None or source_id is None:
+        return context
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    allowed = spec.get("canonical_operators")
+    if allowed is None:
+        allowed = tuple(spec.get("operators", ())) + tuple(
+            spec.get("operator_aliases", ())
+        )
+    if allowed and operator not in allowed:
+        return context
+    return _aten_baseline_view(context[0], source_id), context[1], context[2]
+
+
+def _aten_baseline_load(path, source_id):
+    return BaselineData(
+        _aten_load_json(_aten_read_bytes(path, source_id)),
+        _aten_existing_path(path, source_id),
+    )
 
 
 def _case_fn(shape, dtype):
@@ -325,9 +501,9 @@ class _SgnOutCurrentNativeReference:
             path = Path(__file__).resolve().parent.parent / relative
             if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                 raise ValueError("Original SGNOut timer/core-shape framework differs")
-        manifest = base.Config.base_data
+        manifest = _aten_baseline_view(base.Config.base_data, ("pr61:profile-manifest"))
         manifest_path = Path(manifest.source)
-        manifest_payload = manifest_path.read_bytes()
+        manifest_payload = _aten_read_bytes(manifest_path, ("pr61:profile-manifest"))
         if hashlib.sha256(manifest_payload).hexdigest() != _SGN_PROFILE_MANIFEST_SHA256:
             raise ValueError("Exact SGNOut H800 profile manifest required")
         if manifest.data != json.loads(manifest_payload):
@@ -341,10 +517,24 @@ class _SgnOutCurrentNativeReference:
         ):
             raise ValueError("SGNOut static profile/source differs")
         raw_path = manifest_path.parent / spec["file"]
-        raw_payload = raw_path.read_bytes()
+        raw_payload = _aten_read_bytes(
+            raw_path,
+            (
+                "pr61:op_pytorch_h800_sgn_out_suiyuan_fresh_core_20261028"
+                if self._sgn_profile == "current-fresh"
+                else "pr61:op_pytorch_h800_sgn_out_suiyuan_shared_core_20261028"
+            ),
+        )
         if hashlib.sha256(raw_payload).hexdigest() != spec["sha256"]:
             raise ValueError("SGNOut native profile artifact bytes differ")
-        baseline = BaselineData.load(raw_path)
+        baseline = _aten_baseline_load(
+            raw_path,
+            (
+                "pr61:op_pytorch_h800_sgn_out_suiyuan_fresh_core_20261028"
+                if self._sgn_profile == "current-fresh"
+                else "pr61:op_pytorch_h800_sgn_out_suiyuan_shared_core_20261028"
+            ),
+        )
         if baseline is None or baseline.data != json.loads(raw_payload):
             raise ValueError("SGNOut native profile could not be loaded")
         task = baseline.data["_collection"]["tasks"]["sgn_out"]
@@ -407,11 +597,23 @@ class _SgnOutCurrentNativeReference:
                 context is None
                 or context[0] is not manifest
                 or context[1] is None
-                or base.Config.base_data is not manifest
+                or _aten_baseline_view(base.Config.base_data, ("pr61:profile-manifest"))
+                is not manifest
                 or _sgn_canonical_call(context[1]) != captured
-                or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+                or hashlib.sha256(
+                    _aten_read_bytes(manifest_path, ("pr61:profile-manifest"))
+                ).hexdigest()
                 != _SGN_PROFILE_MANIFEST_SHA256
-                or hashlib.sha256(raw_path.read_bytes()).hexdigest()
+                or hashlib.sha256(
+                    _aten_read_bytes(
+                        raw_path,
+                        (
+                            "pr61:op_pytorch_h800_sgn_out_suiyuan_fresh_core_20261028"
+                            if self._sgn_profile == "current-fresh"
+                            else "pr61:op_pytorch_h800_sgn_out_suiyuan_shared_core_20261028"
+                        ),
+                    )
+                ).hexdigest()
                 != _SGN_PROFILE_ARTIFACTS[self._sgn_profile]["sha256"]
             ):
                 raise ValueError(
@@ -449,6 +651,10 @@ class _SgnOutCurrentNativeReference:
                 raise ValueError("SGNOut candidate/static comparison metric incomplete")
         finally:
             self._sgn_checked = None
+
+    def _capture_external_baseline(self, args, kwargs):
+        context = super()._capture_external_baseline(args, kwargs)
+        return _aten_capture_context(context, self.op_name, ("pr61:profile-manifest"))
 
 
 class SgnBenchmark(
