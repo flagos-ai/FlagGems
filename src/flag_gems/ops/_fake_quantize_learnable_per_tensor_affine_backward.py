@@ -19,9 +19,17 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+# XPU cannot legalize ``tt.clampf``, and with the clamp lowered to a
+# ``tl.minimum``/``tl.maximum`` pair this kernel's per-program buffer request
+# exceeds what the backend can tune for 512 lanes or more. Both are XPU-only
+# concerns: other backends keep the original ``tl.clamp`` and 1024-element tile.
+_NEEDS_CLAMP_WORKAROUND = runtime.device.vendor_name == "kunlunxin"
+_XPU_BLOCK_SIZE = 256
 
 
 @triton.jit
@@ -37,6 +45,8 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
     quant_min,
     quant_max,
     grad_factor,
+    PARTIAL_REDUCE: tl.constexpr,
+    MINMAX_CLAMP: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -61,7 +71,10 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
     # raw pre-quantization value matches the ATen reference, which allows a
     # small neighborhood beyond the range that rounds back into range.
     in_range = (q >= quant_min) & (q <= quant_max)
-    q = tl.clamp(q, quant_min, quant_max)
+    if MINMAX_CLAMP:
+        q = tl.minimum(tl.maximum(q, quant_min), quant_max)
+    else:
+        q = tl.clamp(q, quant_min, quant_max)
     in_range_f = in_range.to(tl.float32)
 
     # grad w.r.t self: grad * mask (STE gradient, gradient is zeroed for clamped elements)
@@ -78,8 +91,14 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
     block_sum_scale = tl.sum(grad_scale_contrib, axis=0)
     block_sum_zp = tl.sum(grad_zero_point_contrib, axis=0)
 
-    tl.atomic_add(grad_scale_ptr, block_sum_scale)
-    tl.atomic_add(grad_zero_point_ptr, block_sum_zp)
+    if PARTIAL_REDUCE:
+        # XPU's float atomics silently drop updates from some programs, so each
+        # program writes its own partial sum and the host combines them.
+        tl.store(grad_scale_ptr + pid, block_sum_scale)
+        tl.store(grad_zero_point_ptr + pid, block_sum_zp)
+    else:
+        tl.atomic_add(grad_scale_ptr, block_sum_scale)
+        tl.atomic_add(grad_zero_point_ptr, block_sum_zp)
 
 
 def _fake_quantize_learnable_per_tensor_affine_backward(
@@ -120,9 +139,20 @@ def _fake_quantize_learnable_per_tensor_affine_backward(
     if n_elements == 0:
         return grad_self, grad_scale, grad_zero_point
 
-    # Tile size for the per-element backward kernel; 1024 elements per block.
-    BLOCK_SIZE = 1024
+    # Tile size for the per-element backward kernel; 1024 elements per block,
+    # and 256 on XPU where the clamp workaround raises the buffer demand.
+    BLOCK_SIZE = _XPU_BLOCK_SIZE if _NEEDS_CLAMP_WORKAROUND else 1024
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
+    if _NEEDS_CLAMP_WORKAROUND:
+        # The reduction target is a single element on XPU, so give each program
+        # a slot and combine on the host.
+        partial_scale = torch.zeros(grid[0], dtype=torch.float32, device=self.device)
+        partial_zp = torch.zeros(grid[0], dtype=torch.float32, device=self.device)
+        scale_out = partial_scale
+        zp_out = partial_zp
+    else:
+        scale_out = grad_scale
+        zp_out = grad_zero_point
 
     _fake_quantize_learnable_per_tensor_affine_backward_kernel[grid](
         grad,
@@ -130,14 +160,19 @@ def _fake_quantize_learnable_per_tensor_affine_backward(
         scale,
         zero_point,
         grad_self,
-        grad_scale,
-        grad_zero_point,
+        scale_out,
+        zp_out,
         n_elements,
         quant_min,
         quant_max,
         float(grad_factor),
+        PARTIAL_REDUCE=_NEEDS_CLAMP_WORKAROUND,
+        MINMAX_CLAMP=_NEEDS_CLAMP_WORKAROUND,
         BLOCK_SIZE=BLOCK_SIZE,
     )
+    if _NEEDS_CLAMP_WORKAROUND:
+        grad_scale.copy_(partial_scale.sum().reshape(scale.shape))
+        grad_zero_point.copy_(partial_zp.sum().reshape(zero_point.shape))
 
     # All three gradients are float32, matching the ATen reference output dtype.
     return grad_self, grad_scale, grad_zero_point
