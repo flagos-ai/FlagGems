@@ -15,15 +15,14 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
+from .test_linalg_cond import _MusaLinalgStaticBaseline
 
 SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64)]
 
 
-class OperatorCaseBenchmark(OperatorBenchmark):
+class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "(*B), M, N"
