@@ -208,7 +208,7 @@ all_dims: test_all
 any_dim: test_any
 any_dims: test_any
 and_scalar: test_bitwise_and_scalar
-and_tensor: test_bitwise_and
+and_tensor: test_bitwise_and_tensor
 arctan: test_atan
 nanmedian_dim: test_nanmedian
 nanmedian_dim_values: test_nanmedian
@@ -267,6 +267,7 @@ _linalg_eigh: test_linalg_eigh
 _linalg_eigvals: test_linalg_eigvals
 _flash_attention_forward: test_flash_attention
 
+cudnn_batch_norm_out: test_cudnn_batch_norm
 convolution_backward_out: test_convolution_backward
 fused_adamw_: test_fused_adamw_
 fused_adamw__tensor_lr: test_fused_adamw_
