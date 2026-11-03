@@ -2,6 +2,7 @@
 from flag_gems.utils import libentry
 
 from .mm_packet_mapping import grouped_program_coordinates
+from .mm_packet_column_layout import column_layout, read_b_column_chart
 
 from triton.experimental import gluon as g
 from triton.experimental.gluon import language as gl
@@ -10,11 +11,17 @@ from triton.experimental.gluon.language.amd import AMDMFMALayout
 from triton.language import range as pipeline_range
 from triton.experimental.gluon.language.hcu import (
     WholePacketLayout as _WholePacketLayout, PacketPrefixLayout as _PacketPrefixLayout,
-    PacketStorageLayout as _PacketStorageLayout,
     whole_packet_owner, packet_copy,
     packet_read, packet_commit, packet_wait, packet_sched_barrier,
     packet_buffer_store,
 )
+
+
+# NN still works with compilers predating the optional NT storage API.
+try:
+    from triton.experimental.gluon.language.hcu import PacketStorageLayout as _PacketStorageLayout
+except ImportError:
+    _PacketStorageLayout = None
 
 
 # Exact existing source chart: ordinal=((copy*warps+wave)*64+lane)*8+element.
@@ -67,7 +74,11 @@ def _mm_packet_rect_kernel(
     GROUP_M: gl.constexpr = 8,
     TILES_PER_WARP: gl.constexpr = (2, 2),
     WAIT_MODE: gl.constexpr = 0,
+    ENTRY_FAMILY: gl.constexpr = 0,
+    OUTPUT_LAYOUT: gl.constexpr = 0,
 ):
+    # 0: absolute MMA stores; 1: tile-base MMA stores; 2: column-chart stores.
+    gl.static_assert(OUTPUT_LAYOUT == 0 or OUTPUT_LAYOUT == 1 or OUTPUT_LAYOUT == 2)
     # Existing whole-packet and StructuredDomain semantics, not a model-shape
     # dispatch. Unsupported inputs retain the ordinary host path.
     gl.static_assert(M > 0 and N > 0 and K >= 256 and K <= 4096)
@@ -122,7 +133,10 @@ def _mm_packet_rect_kernel(
                           M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     packet_wait((ta0, tb0), 4)
     acurrent = packet_read(a0, da, A_SOURCE_BASIS)
-    bcurrent = packet_read(b0, db, B_SOURCE_BASIS)
+    if OUTPUT_LAYOUT == 2:
+        bcurrent = read_b_column_chart(b0, db, B_SOURCE_BASIS, BK, BN)
+    else:
+        bcurrent = packet_read(b0, db, B_SOURCE_BASIS)
     ta3, tb3 = issue_pair(A, B, a3, b3, row_m, col_n, 3 * BK,
                           M, N, K, STRIDE_AM, STRIDE_BK, STRIDE_BN, A_SOURCE_BASIS, B_SOURCE_BASIS)
     accumulator = gl.full((BM, BN), 0, gl.float32, mma)
@@ -134,7 +148,10 @@ def _mm_packet_rect_kernel(
     for start_k in pipeline_range(0, K - 4 * BK, BK, loop_unroll_factor=4):
         packet_wait((ta1, tb1), 4)
         anext = packet_read(a1, da, A_SOURCE_BASIS)
-        bnext = packet_read(b1, db, B_SOURCE_BASIS)
+        if OUTPUT_LAYOUT == 2:
+            bnext = read_b_column_chart(b1, db, B_SOURCE_BASIS, BK, BN)
+        else:
+            bnext = packet_read(b1, db, B_SOURCE_BASIS)
         last_slot = (last_slot + 1) & 3
         anew, bnew = packet_views(owner, last_slot, la, lb)
         packet_sched_barrier()
@@ -152,21 +169,56 @@ def _mm_packet_rect_kernel(
     # counted-tail predicates are compile-time true, not runtime assumptions.
     packet_wait((ta1, tb1), 0)
     anext = packet_read(a1, da, A_SOURCE_BASIS)
-    bnext = packet_read(b1, db, B_SOURCE_BASIS)
+    if OUTPUT_LAYOUT == 2:
+        bnext = read_b_column_chart(b1, db, B_SOURCE_BASIS, BK, BN)
+    else:
+        bnext = packet_read(b1, db, B_SOURCE_BASIS)
     accumulator = mfma(acurrent, bcurrent, accumulator)
     packet_wait((ta2, tb2), 0)
     anext2 = packet_read(a2, da, A_SOURCE_BASIS)
-    bnext2 = packet_read(b2, db, B_SOURCE_BASIS)
+    if OUTPUT_LAYOUT == 2:
+        bnext2 = read_b_column_chart(b2, db, B_SOURCE_BASIS, BK, BN)
+    else:
+        bnext2 = packet_read(b2, db, B_SOURCE_BASIS)
     accumulator = mfma(anext, bnext, accumulator)
     packet_wait((ta3, tb3), 0)
     anext3 = packet_read(a3, da, A_SOURCE_BASIS)
-    bnext3 = packet_read(b3, db, B_SOURCE_BASIS)
+    if OUTPUT_LAYOUT == 2:
+        bnext3 = read_b_column_chart(b3, db, B_SOURCE_BASIS, BK, BN)
+    else:
+        bnext3 = packet_read(b3, db, B_SOURCE_BASIS)
     accumulator = mfma(anext2, bnext2, accumulator)
     accumulator = mfma(anext3, bnext3, accumulator)
     owner._keep_alive()
 
-    cr = row_m + gl.arange(0, BM, layout=gl.SliceLayout(1, mma))
-    cn = col_n + gl.arange(0, BN, layout=gl.SliceLayout(0, mma))
-    offsets = (cr[:, None] * STRIDE_CM + cn[None, :] * STRIDE_CN).to(gl.int32)
-    mask = (cr[:, None] < M) & (cn[None, :] < N)
-    packet_buffer_store(accumulator.to(gl.bfloat16), C, offsets, mask)
+    if OUTPUT_LAYOUT == 2:
+        gl.static_assert(BN >= 32 and BN % 32 == 0)
+        output_layout: gl.constexpr = column_layout(gl.to_linear_layout(mma, [BM, BN]), True)
+        output = gl.reshape(accumulator, [BM, BN // 32, 2, 16])
+        output = gl.permute(output, [0, 1, 3, 2])
+        output = gl.convert_layout(gl.reshape(output, [BM, BN]), output_layout).to(gl.bfloat16)
+        local_r = gl.arange(0, BM, layout=gl.SliceLayout(1, output_layout))
+        local_c = gl.arange(0, BN, layout=gl.SliceLayout(0, output_layout))
+        cr = row_m + local_r
+        cn = col_n + local_c
+        base = C + row_m * STRIDE_CM + col_n * STRIDE_CN
+        offsets = (local_r[:, None] * STRIDE_CM + local_c[None, :] * STRIDE_CN).to(gl.int32)
+        if M % BM == 0 and N % BN == 0:
+            packet_buffer_store(output, base, offsets)
+        else:
+            packet_buffer_store(output, base, offsets, (cr[:, None] < M) & (cn[None, :] < N))
+    elif OUTPUT_LAYOUT == 1:
+        local_r = gl.arange(0, BM, layout=gl.SliceLayout(1, mma))
+        local_c = gl.arange(0, BN, layout=gl.SliceLayout(0, mma))
+        cr = row_m + local_r
+        cn = col_n + local_c
+        output_base = C + row_m * STRIDE_CM + col_n * STRIDE_CN
+        offsets = (local_r[:, None] * STRIDE_CM + local_c[None, :] * STRIDE_CN).to(gl.int32)
+        mask = (cr[:, None] < M) & (cn[None, :] < N)
+        packet_buffer_store(accumulator.to(gl.bfloat16), output_base, offsets, mask)
+    else:
+        cr = row_m + gl.arange(0, BM, layout=gl.SliceLayout(1, mma))
+        cn = col_n + gl.arange(0, BN, layout=gl.SliceLayout(0, mma))
+        offsets = (cr[:, None] * STRIDE_CM + cn[None, :] * STRIDE_CN).to(gl.int32)
+        mask = (cr[:, None] < M) & (cn[None, :] < N)
+        packet_buffer_store(accumulator.to(gl.bfloat16), C, offsets, mask)

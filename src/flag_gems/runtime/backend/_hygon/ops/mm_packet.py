@@ -19,6 +19,13 @@ _choices = {}
 _choice_measurements = {}
 _choice_lock = threading.RLock()
 
+# Full-packet geometry, shared by the normal and column output layouts.
+_LARGE_PACKET_GEOMETRY = (
+    256, 256, 16, 4, 2,
+    (1, 2, 4, 8, 16, 32, 512, 1024, 2048, 64, 128, 256),
+    (1, 2, 4, 8, 16, 32, 64, 128, 512, 256, 1024, 2048),
+)
+
 
 def _packet_supported(*, storage_layout=False):
     # Import lazily: released Triton builds need not contain the packet API.
@@ -104,12 +111,13 @@ def _large_packet_variants():
 def _launch_large_packet(a, b, c, *, variant):
     if variant not in ("large_safe", "large_overlap", "large_overlap_group1") or b.stride() == (1, a.shape[1]):
         raise ValueError("Large packet modes require eligible contiguous NN storage")
-    from .mm_packet_large_kernel import _mm_packet_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
     m, k = a.shape
     n = b.shape[1]
     traversal = {"GROUP_M": 1} if variant == "large_overlap_group1" else {}
     return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
+        *_LARGE_PACKET_GEOMETRY,
         # LibEntry keys signature constexprs, not compiler-option kwargs.
         # This unused constexpr separates the two measured native modes.
         ENTRY_FAMILY=0 if variant == "large_safe" else 1,
@@ -453,24 +461,25 @@ def _codegen_nn_dimensions(a, b, c):
 
 def _launch_codegen_square_packet(a, b, c):
     """The measured compact square tile with local output byte offsets."""
-    from .mm_packet_tilebase_kernel import _mm_packet_rect_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel
     m, n, k = _codegen_nn_dimensions(a, b, c)
     return _mm_packet_rect_kernel[(triton.cdiv(m, 128) * triton.cdiv(n, 128),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
         128, 128, 16, 2, 2,
         (1, 2, 4, 8, 16, 32, 256, 512, 1024, 64, 128, 0),
         (1, 2, 4, 8, 16, 32, 64, 128, 512, 256, 1024, 0),
-        GROUP_M=8, TILES_PER_WARP=(2, 2), WAIT_MODE=0, ENTRY_FAMILY=0,
+        GROUP_M=8, TILES_PER_WARP=(2, 2), WAIT_MODE=0, ENTRY_FAMILY=0, OUTPUT_LAYOUT=1,
         **_CODEGEN_SQUARE_OPTIONS,
     )
 
 
 def _launch_codegen_large_packet(a, b, c, *, variant):
-    from .mm_packet_large_kernel import _mm_packet_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
     group_m, entry_family, fold = _CODEGEN_LARGE_MODES[variant]
     m, n, k = _codegen_nn_dimensions(a, b, c)
     return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
+        *_LARGE_PACKET_GEOMETRY,
         GROUP_M=group_m, ENTRY_FAMILY=entry_family,
         combine_shifted_disjoint_or=fold, **_CODEGEN_LARGE_OPTIONS,
     )
@@ -508,7 +517,7 @@ def _column_packet_variants(*, nt):
 
 def _launch_wide_column_packet(a, b, c, *, overlap=False):
     """Apply the compiler-derived column chart to the existing wide geometry."""
-    from .mm_packet_column_rect_kernel import _mm_packet_rect_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel
     config = _NN_GEOMETRIES["wide"]
     m, n, k = _codegen_nn_dimensions(a, b, c)
     bm, bn, bk = config["tile"]
@@ -528,19 +537,20 @@ def _launch_wide_column_packet(a, b, c, *, overlap=False):
     return _mm_packet_rect_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
         bm, bn, bk, wm, wn, config["A_SOURCE_BASIS"], config["B_SOURCE_BASIS"],
-        TILES_PER_WARP=config["tiles_per_warp"], **options,
+        TILES_PER_WARP=config["tiles_per_warp"], OUTPUT_LAYOUT=2, **options,
     )
 
 
 def _launch_column_packet(a, b, c, *, variant):
     """Select the adjacent output chart; retain all original memory-domain gates."""
-    from .mm_packet_column_kernel import _mm_packet_kernel
+    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
     m, n, k = _codegen_nn_dimensions(a, b, c)
     vector_offsets = variant in _COLUMN_VECTOR_OFFSET_MODES
     modes = _COLUMN_VECTOR_OFFSET_MODES if vector_offsets else _COLUMN_PACKET_MODES
     return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        GROUP_M=modes[variant], ENTRY_FAMILY=4 if vector_offsets else 3,
+        *_LARGE_PACKET_GEOMETRY,
+        GROUP_M=modes[variant], ENTRY_FAMILY=4 if vector_offsets else 3, OUTPUT_LAYOUT=2,
         combine_shifted_disjoint_or=True,
         buffer_store_scalar_offset=not vector_offsets, buffer_store_split_immediate=True,
         buffer_store_preserve_masked_base=True,
