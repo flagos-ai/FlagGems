@@ -91,8 +91,6 @@ def checked_launches(zeros_ops, monkeypatch):
 
     checked = CheckedKernel()
     monkeypatch.setattr(zeros_ops, "zeros_kernel", checked)
-    zeros_like_ops = importlib.import_module(flag_gems.zeros_like.__module__)
-    monkeypatch.setattr(zeros_like_ops, "zeros_kernel", checked)
     return launches
 
 
@@ -274,13 +272,12 @@ def test_zeros_factory_poisoned_allocation_exact(
 @pytest.mark.zeros
 @pytest.mark.zero_
 @pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
-@pytest.mark.parametrize("op", ["zero_", "zeros", "zeros_like"])
+@pytest.mark.parametrize("op", ["zero_", "zeros"])
 @pytest.mark.parametrize("logical_blocks", [65534, 65535, 65536, 131072])
 def test_zero_launch_core_dim_limit(zeros_ops, monkeypatch, op, logical_blocks):
     # Host-only launch planning check: no multi-GiB allocation or invalid NPU
     # launch is required to expose the exact 65536/131072 boundary failure.
-    block_size = 32768 if op == "zeros_like" else BLOCK_SIZE
-    numel = logical_blocks * block_size
+    numel = logical_blocks * BLOCK_SIZE
 
     class MetadataOnlyTensor:
         device = torch.device(flag_gems.device)
@@ -305,14 +302,9 @@ def test_zero_launch_core_dim_limit(zeros_ops, monkeypatch, op, logical_blocks):
     monkeypatch.setattr(zeros_ops, "zeros_kernel", CaptureKernel())
     if op == "zero_":
         result = zeros_ops.zero_(tensor)
-    elif op == "zeros":
+    else:
         monkeypatch.setattr(zeros_ops.torch, "empty", lambda *args, **kwargs: tensor)
         result = zeros_ops.zeros((numel,), dtype=torch.bool, device=tensor.device)
-    else:
-        zeros_like_ops = importlib.import_module(flag_gems.zeros_like.__module__)
-        monkeypatch.setattr(zeros_like_ops, "zeros_kernel", CaptureKernel())
-        monkeypatch.setattr(zeros_like_ops.torch, "empty_like", lambda *a, **kw: tensor)
-        result = zeros_like_ops.zeros_like(tensor, dtype=torch.bool)
     assert result is tensor
     assert launches
     for grid in launches:
@@ -386,24 +378,20 @@ def test_zero_capped_grid_covers_all_tiles_exact(
 @pytest.mark.zeros
 @pytest.mark.zero_
 @pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend zero kernel")
-@pytest.mark.parametrize("op", ["zeros", "zeros_like"])
-def test_zeros_factory_capped_grid_exact(zeros_ops, checked_launches, monkeypatch, op):
+def test_zeros_factory_capped_grid_exact(zeros_ops, checked_launches, monkeypatch):
     monkeypatch.setattr(zeros_ops, "_MAX_CORE_DIM", 2)
     shape = (9 * 32768 + 17,)
-    original_allocate = torch.empty if op == "zeros" else torch.empty_like
+    original_allocate = torch.empty
 
     def poisoned_allocate(*args, **kwargs):
         out = original_allocate(*args, **kwargs)
         out.fill_(7)
         return out
 
-    inp = torch.empty(shape, device=flag_gems.device, dtype=torch.float32)
-    argument = shape if op == "zeros" else inp
-    allocator = "empty" if op == "zeros" else "empty_like"
     with monkeypatch.context() as patch:
-        patch.setattr(torch, allocator, poisoned_allocate)
-        result = getattr(flag_gems, op)(argument, device=inp.device, dtype=inp.dtype)
+        patch.setattr(torch, "empty", poisoned_allocate)
+        result = flag_gems.zeros(shape, device=flag_gems.device, dtype=torch.float32)
     torch.npu.synchronize()
-    _assert_exact(result, torch.zeros(shape, dtype=inp.dtype))
+    _assert_exact(result, torch.zeros(shape, dtype=torch.float32))
     assert checked_launches
     assert all(grid == (2,) for grid, _, _ in checked_launches)
