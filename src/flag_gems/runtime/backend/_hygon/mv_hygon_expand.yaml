@@ -51,6 +51,60 @@ mv:
       - 2
       - 4
       - 8
+  # A wider output tile coalesces column-major loads across more output rows.
+  # Keep the original ordered search prefix; tune this addition for every layout.
+  - param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        LOOP_STAGES: loop_stages
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 64
+    block_n:
+      - 64
+    loop_stages:
+      - 2
+      - 1
+    stages:
+      - 2
+    warps:
+      - 4
+  - param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        LOOP_STAGES: loop_stages
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 32
+    block_n:
+      - 64
+    loop_stages:
+      - 2
+    stages:
+      - 2
+    warps:
+      - 4
+  - param_map:
+      META:
+        BLOCK_M: block_m
+        BLOCK_N: block_n
+        LOOP_STAGES: loop_stages
+      num_warps: warps
+      num_stages: stages
+    block_m:
+      - 64
+    block_n:
+      - 64
+    loop_stages:
+      - 2
+    stages:
+      - 2
+    warps:
+      - 8
   - strategy:
       M: default
       N: default

@@ -1,0 +1,483 @@
+# Hygon small-output MM: primary Expanded4990 + independent post Expanded2.
+# Every old primary parameter remains; post128/post256 now cover all global splits.
+# Sync CTA layout false/true is a compiler tuning option, never a forced policy.
+mm_hygon_splitk:
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  - 64
+  bn:
+  - 16
+  - 32
+  - 64
+  bk:
+  - 16
+  - 32
+  - 64
+  splits:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  - 64
+  kind:
+  - 0
+  load_mode:
+  - 0
+  warps:
+  - 2
+  - 4
+  stages:
+  - 1
+  - 2
+  wave_private_sync:
+  - false
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  - 64
+  bn:
+  - 16
+  - 32
+  - 64
+  bk:
+  - 16
+  - 32
+  - 64
+  splits:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  - 32
+  - 64
+  kind:
+  - 0
+  load_mode:
+  - 1
+  - 2
+  - 3
+  warps:
+  - 2
+  - 4
+  stages:
+  - 2
+  - 3
+  wave_private_sync:
+  - false
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  - 64
+  bn:
+  - 16
+  - 32
+  - 64
+  bk:
+  - 16
+  - 32
+  - 64
+  splits:
+  - 2
+  - 4
+  - 8
+  kind:
+  - 1
+  load_mode:
+  - 0
+  warps:
+  - 4
+  - 8
+  stages:
+  - 1
+  - 2
+  wave_private_sync:
+  - false
+  - true
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  - 64
+  bn:
+  - 16
+  - 32
+  - 64
+  bk:
+  - 16
+  - 32
+  - 64
+  splits:
+  - 2
+  - 4
+  - 8
+  kind:
+  - 1
+  load_mode:
+  - 1
+  - 2
+  - 3
+  warps:
+  - 4
+  - 8
+  stages:
+  - 2
+  - 3
+  wave_private_sync:
+  - false
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  bn:
+  - 16
+  - 32
+  bk:
+  - 32
+  - 64
+  splits:
+  - 1
+  - 8
+  - 16
+  - 32
+  kind:
+  - 0
+  load_mode:
+  - 0
+  warps:
+  - 1
+  stages:
+  - 1
+  - 2
+  wave_private_sync:
+  - false
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+    num_warps: warps
+    num_stages: stages
+  bm:
+  - 16
+  - 32
+  bn:
+  - 16
+  - 32
+  bk:
+  - 32
+  - 64
+  splits:
+  - 1
+  - 8
+  - 16
+  - 32
+  kind:
+  - 0
+  load_mode:
+  - 1
+  - 2
+  - 3
+  warps:
+  - 1
+  stages:
+  - 2
+  - 3
+  wave_private_sync:
+  - false
+# Optional direct writeback for the full small wave-private reduction family.
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [4]
+  kind: [1]
+  load_mode: [0]
+  warps: [4]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [4]
+  kind: [1]
+  load_mode: [1, 2, 3]
+  warps: [4]
+  stages: [2, 3]
+  wave_private_sync: [false]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [0]
+  warps: [4]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [1, 2, 3]
+  warps: [4]
+  stages: [2, 3]
+  wave_private_sync: [false]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [0]
+  warps: [8]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [16]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [1, 2, 3]
+  warps: [8]
+  stages: [2, 3]
+  wave_private_sync: [false]
+  optimize_epilogue: [true]
+# Optional owner-reduction epilogue across the existing synchronous CTA family.
+# Keep every original configuration first; no async or unequal SPLITS/warps added.
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [32, 64]
+  bn: [16, 32, 64]
+  bk: [16, 32, 64]
+  splits: [4]
+  kind: [1]
+  load_mode: [0]
+  warps: [4]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [32, 64]
+  bk: [16, 32, 64]
+  splits: [4]
+  kind: [1]
+  load_mode: [0]
+  warps: [4]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [32, 64]
+  bn: [16, 32, 64]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [0]
+  warps: [8]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+- param_map:
+    META:
+      BM: bm
+      BN: bn
+      BK: bk
+      SPLITS: splits
+      KIND: kind
+      LOAD_MODE: load_mode
+      wave_private_sync: wave_private_sync
+      optimize_epilogue: optimize_epilogue
+    num_warps: warps
+    num_stages: stages
+  bm: [16]
+  bn: [32, 64]
+  bk: [16, 32, 64]
+  splits: [8]
+  kind: [1]
+  load_mode: [0]
+  warps: [8]
+  stages: [1, 2]
+  wave_private_sync: [false, true]
+  optimize_epilogue: [true]
+mm_hygon_splitk_post:
+- param_map:
+    META:
+      BLOCK: block
+    num_warps: warps
+    num_stages: stages
+  block:
+  - 128
+  - 256
+  warps:
+  - 4
+  stages:
+  - 1

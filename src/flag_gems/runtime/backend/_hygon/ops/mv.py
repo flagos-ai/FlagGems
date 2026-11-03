@@ -156,7 +156,7 @@ def _prune_mv_configs(configs, named_args, **kwargs):
     configs=runtime.get_tuned_config("mv"),
     key=["M", "N", "stride_an", "stride_am", "stride_bm"],
     strategy=runtime.common.DEFAULT_STRATEGIES["mv_hygon"],
-    benchmark_mode="event",
+    benchmark_mode="replay",
     warmup=5,
     rep=50,
     prune_configs_by={"early_config_prune": _prune_mv_configs},
@@ -223,8 +223,32 @@ def mv(inp, vec):
     assert inp.dim() == 2 and vec.dim() == 1, "mv expects a matrix and a vector"
     assert inp.shape[1] == vec.shape[0], "incompatible dimensions"
 
+    out = torch.empty((inp.shape[0],), device=inp.device, dtype=inp.dtype)
+    return _mv_out(inp, vec, out)
+
+
+def _mv_out(inp, vec, out):
+    """Launch the same reduction into an existing, possibly strided vector."""
+    assert inp.dim() == 2 and vec.dim() == out.dim() == 1
     N, M = inp.shape
-    out = torch.empty((N,), device=inp.device, dtype=inp.dtype)
+    assert vec.shape[0] == M and out.shape[0] == N
+    from .mv_mmac import try_mv_mmac
+
+    mv_kernel._apply_flagtune()
+    tuner = mv_kernel.fn
+    if tuner._run_mode == "normal":
+        tuning_key = (tuner.config_table_name, id(tuner.configs),
+                      tuple(tuner._benchmark_protocol))
+        if try_mv_mmac(inp, vec, out,
+                       lambda output: _launch_ordinary_mv(inp, vec, output),
+                       tuning_key=tuning_key):
+            return out
+    _launch_ordinary_mv(inp, vec, out)
+    return out
+
+
+def _launch_ordinary_mv(inp, vec, out):
+    N, M = inp.shape
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
 
     with torch_device_fn.device(inp.device):
