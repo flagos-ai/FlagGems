@@ -140,6 +140,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _ActivationMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -283,23 +314,26 @@ class _ActivationH800Reference:
             raise ValueError(
                 "Original independent bias/matrices/output storage required"
             )
-        self._activation_imported_source = dict(
-            artifact=str(path),
-            artifact_sha256=_ACTIVATION_H800_SHA256,
-            operator=module,
-            original_case_id=case.case_id,
-            shape_key=key,
-            config=config,
-            collection_task=task,
-            hardware=env["hardware"],
-            software=env["software"],
-            source=env["source"],
-            actual_native_math_flags=observations,
-            baseline="literal native CUDA API on H800; not local GCU or CPU timing",
-            candidate="locally timed explicit candidate; bootstrap runs may use a CPU oracle",
-            input_identity="Exact original recipe/configuration; random cross-machine payload bytes differ",
-            timing="raw H800 median / local functional candidate timer; no normalization or isolated performance claim",
-            target_timing_mode=base.Config.mode.value,
+        self._activation_imported_source = _aten_qualify_metadata(
+            dict(
+                artifact=str(path),
+                artifact_sha256=_ACTIVATION_H800_SHA256,
+                operator=module,
+                original_case_id=case.case_id,
+                shape_key=key,
+                config=config,
+                collection_task=task,
+                hardware=env["hardware"],
+                software=env["software"],
+                source=env["source"],
+                actual_native_math_flags=observations,
+                baseline="literal native CUDA API on H800; not local GCU or CPU timing",
+                candidate="locally timed explicit candidate; bootstrap runs may use a CPU oracle",
+                input_identity="Exact original recipe/configuration; random cross-machine payload bytes differ",
+                timing="raw H800 median / local functional candidate timer; no normalization or isolated performance claim",
+                target_timing_mode=base.Config.mode.value,
+            ),
+            ("pr71:op_activation_current75_h800_baseline"),
         )
         return record["T_us"] / 1000
 
