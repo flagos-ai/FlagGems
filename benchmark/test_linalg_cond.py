@@ -162,6 +162,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _MusaLinalgMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -214,20 +245,27 @@ class _MusaLinalgStaticBaseline:
             or data["_collection"]["configuration"]["repo"] != "pytorch"
         ):
             raise ValueError("Native H800 provenance does not match this operator")
-        return data[key]["shapes"], {
-            "artifact": str(path),
-            "artifact_sha256": expected,
-            "operator": key,
-            "collection_task": task,
-            "environment": environment,
-            "environment_qualification": (
-                "Historical per-device environment is the last task, not an operator-specific receipt"
-                if historical
-                else "Actual shared H800 collection; latency only, no NCU"
+        return data[key]["shapes"], _aten_qualify_metadata(
+            {
+                "artifact": str(path),
+                "artifact_sha256": expected,
+                "operator": key,
+                "collection_task": task,
+                "environment": environment,
+                "environment_qualification": (
+                    "Historical per-device environment is the last task, not an operator-specific receipt"
+                    if historical
+                    else "Actual shared H800 collection; latency only, no NCU"
+                ),
+                "input_identity": "Exact native API/full configuration/recipe; random payloads differ across devices",
+                "ratio": "Raw H800 latency / actual local candidate latency; no peak normalization",
+            },
+            (
+                "legacy:pytorch-h800-primary"
+                if self.op_name == "linalg_pinv"
+                else "pr72:op_musa_linalg_current_core_h800_baseline"
             ),
-            "input_identity": "Exact native API/full configuration/recipe; random payloads differ across devices",
-            "ratio": "Raw H800 latency / actual local candidate latency; no peak normalization",
-        }
+        )
 
     def get_latency(self, op, *args, **kwargs):
         if flag_gems.vendor_name != "mthreads" or op is not self.torch_op:
