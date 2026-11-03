@@ -31,8 +31,7 @@ def test_unsafe_view(shape, dtype):
     # Test reshape to 1D
     new_shape = (inp.numel(),)
     ref_out = torch.ops.aten._unsafe_view.default(ref_inp, new_shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._unsafe_view.default(inp, new_shape)
+    res_out = flag_gems._unsafe_view(inp, new_shape)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -56,8 +55,7 @@ def test_unsafe_view_2d(shape, dtype):
         new_shape = (numel, 1)
 
     ref_out = torch.ops.aten._unsafe_view.default(ref_inp, new_shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._unsafe_view.default(inp, new_shape)
+    res_out = flag_gems._unsafe_view(inp, new_shape)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -80,7 +78,6 @@ def test_unsafe_view_infer_dim(shape, dtype):
         new_shape = (-1, 1)
 
     ref_out = torch.ops.aten._unsafe_view.default(ref_inp, new_shape)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._unsafe_view.default(inp, new_shape)
+    res_out = flag_gems._unsafe_view(inp, new_shape)
 
     utils.gems_assert_equal(res_out, ref_out)

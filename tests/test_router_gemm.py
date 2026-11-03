@@ -51,8 +51,7 @@ def test_router_gemm_accuracy(M, N, K, in_dtype):
     ref_weight = utils.to_reference(weight, True)
     ref_out = torch.mm(ref_x, ref_weight.t())
 
-    with flag_gems.use_gems():
-        res_out = flag_gems.router_gemm(x, weight)
+    res_out = flag_gems.router_gemm(x, weight)
 
     assert res_out.shape == (M, N)
     assert res_out.dtype == torch.float32
@@ -66,6 +65,5 @@ def test_router_gemm_output_dtype(M, N, K):
     x = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
     weight = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device)
 
-    with flag_gems.use_gems():
-        out_fp32 = flag_gems.router_gemm(x, weight)
-        assert out_fp32.dtype == torch.float32
+    out_fp32 = flag_gems.router_gemm(x, weight)
+    assert out_fp32.dtype == torch.float32

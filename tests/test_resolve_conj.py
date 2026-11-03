@@ -34,8 +34,7 @@ def test_resolve_conj(shape, dtype):
 
     assert y.is_conj()
 
-    with flag_gems.use_gems():
-        res_y = y.to(device=flag_gems.device)
-        z = res_y.resolve_conj()
+    res_y = y.to(device=flag_gems.device)
+    z = flag_gems.resolve_conj(res_y)
 
     assert not z.is_conj()

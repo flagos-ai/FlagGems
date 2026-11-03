@@ -26,6 +26,7 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+_ASCEND_MAX_PROGRAMS = 65535
 
 
 @triton.jit
@@ -81,6 +82,7 @@ def _mode_sort_histogram(
 def _mode_sort_histogram_by_bucket(
     arr_ptr,
     out_ptr,
+    M: tl.constexpr,
     N: tl.constexpr,
     PASSES: tl.constexpr,
     BINS: tl.constexpr,
@@ -88,19 +90,19 @@ def _mode_sort_histogram_by_bucket(
     DESCENDING: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    row = tl.program_id(0)
     bucket = tl.program_id(1)
     offsets = tl.arange(0, BLOCK)
-    for p in range(PASSES):
-        count = tl.full((), 0, tl.int32)
-        for start in range(tl.cdiv(N, BLOCK)):
-            pos = start * BLOCK + offsets
-            arr = tl.load(arr_ptr + row * N + pos, pos < N, other=0)
-            key = convert_to_uint_preverse_order(arr, DESCENDING)
-            digit = (key >> (p * BITS)) & (BINS - 1)
-            match = (pos < N) & (digit == bucket)
-            count += tl.sum(match.to(tl.int32), 0)
-        tl.store(out_ptr + (row * PASSES + p) * BINS + bucket, count)
+    for row in range(tl.program_id(0), M, tl.num_programs(0)):
+        for p in range(PASSES):
+            count = tl.full((), 0, tl.int32)
+            for start in range(tl.cdiv(N, BLOCK)):
+                pos = start * BLOCK + offsets
+                arr = tl.load(arr_ptr + row * N + pos, pos < N, other=0)
+                key = convert_to_uint_preverse_order(arr, DESCENDING)
+                digit = (key >> (p * BITS)) & (BINS - 1)
+                match = (pos < N) & (digit == bucket)
+                count += tl.sum(match.to(tl.int32), 0)
+            tl.store(out_ptr + (row * PASSES + p) * BINS + bucket, count)
 
 
 @triton.jit
@@ -229,8 +231,10 @@ def _mode_radix_sort(arr, k_bits=8, descending=False):
         )
         if runtime.device.vendor_name == "ascend":
             # Independent buckets avoid large UB tiles and inter-program atomics.
-            _mode_sort_histogram_by_bucket[(m, num_bins)](
-                arr, global_hist, n, n_passes, num_bins, k_bits, descending, 512
+            # Ascend limits the product of grid dimensions to 65535 programs.
+            histogram_rows = min(m, _ASCEND_MAX_PROGRAMS // num_bins)
+            _mode_sort_histogram_by_bucket[(histogram_rows, num_bins)](
+                arr, global_hist, m, n, n_passes, num_bins, k_bits, descending, 512
             )
         else:
             _mode_sort_histogram[grid_for_global_hist](
@@ -372,35 +376,43 @@ def mode_kernel(
 @libentry()
 @triton.jit
 def _mode_byte_count(
-    inp, counts, indices, N: tl.constexpr, LOW: tl.constexpr, B: tl.constexpr
+    inp,
+    counts,
+    indices,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    LOW: tl.constexpr,
+    B: tl.constexpr,
 ):
-    row = tl.program_id(0)
     bucket = tl.program_id(1)
     value = bucket + LOW
     i = tl.arange(0, B)
-    count = tl.full((), 0, tl.int32)
-    index = tl.full((), 0, tl.int32)
-    for start in range(tl.cdiv(N, B)):
-        pos = start * B + i
-        val = tl.load(inp + row * N + pos, pos < N, other=0).to(tl.int32)
-        match = (pos < N) & (val == value)
-        count += tl.sum(match.to(tl.int32), 0)
-        index = tl.maximum(index, tl.max(tl.where(match, pos, 0), 0))
-    tl.store(counts + row * 256 + bucket, count)
-    tl.store(indices + row * 256 + bucket, index)
+    for row in range(tl.program_id(0), M, tl.num_programs(0)):
+        count = tl.full((), 0, tl.int32)
+        index = tl.full((), 0, tl.int32)
+        for start in range(tl.cdiv(N, B)):
+            pos = start * B + i
+            val = tl.load(inp + row * N + pos, pos < N, other=0).to(tl.int32)
+            match = (pos < N) & (val == value)
+            count += tl.sum(match.to(tl.int32), 0)
+            index = tl.maximum(index, tl.max(tl.where(match, pos, 0), 0))
+        tl.store(counts + row * 256 + bucket, count)
+        tl.store(indices + row * 256 + bucket, index)
 
 
 @libentry()
 @triton.jit
-def _mode_byte_select(counts, indices, values, out_indices, LOW: tl.constexpr):
-    row = tl.program_id(0)
+def _mode_byte_select(
+    counts, indices, values, out_indices, M: tl.constexpr, LOW: tl.constexpr
+):
     bucket = tl.arange(0, 256)
-    count = tl.load(counts + row * 256 + bucket)
-    largest = tl.max(count, 0)
-    winner = tl.min(tl.where(count == largest, bucket, 256), 0)
-    index = tl.load(indices + row * 256 + winner)
-    tl.store(values + row, winner + LOW)
-    tl.store(out_indices + row, index)
+    for row in range(tl.program_id(0), M, tl.num_programs(0)):
+        count = tl.load(counts + row * 256 + bucket)
+        largest = tl.max(count, 0)
+        winner = tl.min(tl.where(count == largest, bucket, 256), 0)
+        index = tl.load(indices + row * 256 + winner)
+        tl.store(values + row, winner + LOW)
+        tl.store(out_indices + row, index)
 
 
 def _mode_byte(inp, dim, keepdim):
@@ -415,8 +427,15 @@ def _mode_byte(inp, dim, keepdim):
     if rows:
         low = torch.iinfo(x.dtype).min
         with torch_device_fn.device(inp.device):
-            _mode_byte_count[(rows, 256)](x, counts, indices, n, low, 512)
-            _mode_byte_select[(rows,)](counts, indices, values, out_indices, low)
+            count_rows = rows
+            select_rows = rows
+            if runtime.device.vendor_name == "ascend":
+                count_rows = min(rows, _ASCEND_MAX_PROGRAMS // 256)
+                select_rows = min(rows, _ASCEND_MAX_PROGRAMS)
+            _mode_byte_count[(count_rows, 256)](x, counts, indices, rows, n, low, 512)
+            _mode_byte_select[(select_rows,)](
+                counts, indices, values, out_indices, rows, low
+            )
     if keepdim:
         values = values.unsqueeze(dim)
         out_indices = out_indices.unsqueeze(dim)

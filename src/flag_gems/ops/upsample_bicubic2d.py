@@ -175,7 +175,7 @@ def upsample_bicubic2d(
     scales_h: float | None = None,
     scales_w: float | None = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS UPSAMPLE BICUBIC2D")
+    logger.debug("GEMS UPSAMPLE_BICUBIC2D")
     scale_factors = (scales_h, scales_w)
 
     if input.dim() != 4:

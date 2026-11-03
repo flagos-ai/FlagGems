@@ -46,8 +46,7 @@ def test_renorm_(shape, dtype, dim, p, maxnorm):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.ops.aten.renorm_(ref_inp, p, dim, maxnorm)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.renorm_(inp, p, dim, maxnorm)
+    res_out = flag_gems.renorm_(inp, p, dim, maxnorm)
 
     # renorm_ is in-place, so both tensors should be modified
     # Compare the modified tensors

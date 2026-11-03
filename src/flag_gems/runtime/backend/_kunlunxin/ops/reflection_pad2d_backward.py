@@ -4,50 +4,41 @@ The backward of reflection padding is a *separable* bilinear fold::
 
     gi[h, w] = sum_{oh in S_h} sum_{ow in S_w} go[oh, ow]
 
-with |S_*| <= 3 (center + one reflection on each side).  Previous measured
-implementations on this backend:
+with |S_*| <= 3 (center + one reflection on each side).
 
-- torch-composite (narrow/add_/flip chains, ~15 launches): 2-22 ms.
-- 2-pass separable fold (h-fold then w-fold, grid=(NC*H, cdiv(OW,BLOCK))):
-  correct, but the program count is NC*H (e.g. 57344 programs for
-  (16,64,56,56)); XPU per-program dispatch (~0.3us) dominates and the op
-  measured 19-76 ms through the harness (0.014-0.019x of native).
+Two implementations live here, dispatched on the geometry:
 
-This implementation is the single-pass *input-parallel* fold used by the
-proven sibling reflection_pad3d_backward, specialized to 2D.  Each program
-processes BLOCK contiguous input cells; every input cell accumulates the
-(<=9) reflected grad_output contributions in fp32:
+1. **Hand-written ``.xpu`` payload** (``tle.raw.call``, cluster path) -- the
+   vendor algorithm, ported.  One core handles a band of ``BH`` output rows of
+   one plane:
 
-  - one shared row-base per (center, reflected) row select (3 of them: r0/rl/rr)
-    and one shared column vector per (center, reflected) col select (3: c0/cl/cr)
-    -> each load is a single r + c add, matching the pad3d structure;
-  - reflected coordinates are clamped to their valid center value with
-    tl.where, so every load is unconditional and in-bounds; per-contribution
-    validity is reapplied with value-level tl.where(mask, v, 0.0) (guards the
-    backend's known masked-load `other` quirk);
-  - tail lanes (o >= total) are masked off the *store* (measured: a masked
-    affine store costs the same as an unmasked one on this backend, whereas
-    clamping the store index with tl.minimum breaks the affine store lowering
-    and costs ~6x); the load decode stays on the clamped oc = min(o, total-1),
-    so loads are never OOB either;
-  - fp32 accumulation, single explicit store cast to the destination dtype.
+   * one *contiguous* ``GM2LM_ASYNC`` of the whole padded-row range
+     ``[lo, hi)`` (rows of the padded grad_output, each ``OW`` wide) -- a plain
+     1-D block DMA, no row-gap;
+   * the *column* reflection is folded in LM (``row[pl+w] += row[pl-w]`` etc.);
+   * each output row that sits in a reflection band pulls its whole reflected
+     source row in with a second contiguous DMA and adds it in LM;
+   * per-row ``LM2GM`` of the ``W`` centre floats.
 
-XPU hazards respected (same rules as reflection_pad3d_backward):
-- no tl.atomic_add (silently drops updates);
-- no min/max on the vectorized *column* axis (defeats OffsetAnalysis); the
-  reflected column is built with value-level tl.where(sel, reflected, center)
-  selects whose both sides are in-bounds.
+   All accumulation happens in fp32 (the LM working buffer is ``float`` even for
+   fp16/bf16, converted on load and on store), so the result matches the fp64
+   reference within the fp16/bf16 resolutions.
 
-Note on perf (see also README): the op is six to ten times slower than the
-native vendor kernel for the benchmark shapes (native runs at ~18 ps/cell,
-~2 TB/s effective).  On this backend the input-parallel structure spends its
-time in uncoalesced 9-load gathers plus program dispatch; every alternative
-structured measured slower (2D tiles 10-100x worse, 2-pass 7-26x worse,
-row-unrolled 2-pass 7-59 ms).  See harness/solution/reflection_pad2d_backward
-for the full evidence chain.
+   This bypasses both walls hit by the plain-Triton versions: the
+   "contiguous-store" wall (the store is a byte-range ``LM2GM`` to any global
+   offset, never lowered to a discrete scatter) and the "row-gap read" wall
+   (~70 GB/s because the W window slides inside an OW-wide source).  Measured on
+   the benchmark matrix it is ~1.0-1.9x of the vendor native kernel.
+
+2. **Plain-Triton input-parallel fold** (the previous implementation) -- used
+   for geometries the payload cannot serve (``OW`` wider than the LM row
+   budget) and as the reference for the shared code paths.
+
+Both are flag_gems' own kernels; the payload is *not* a call into xdnn/native.
 """
 
 import logging
+import os
 
 import torch
 import triton
@@ -56,6 +47,14 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
+
+try:  # `tle.raw` is the hand-written-payload injection point (XPU cluster path)
+    import triton.experimental.tle as tle
+
+    _HAS_TLE = True
+except Exception:  # pragma: no cover - toolchain without tle.raw
+    tle = None
+    _HAS_TLE = False
 
 
 @triton.jit
@@ -125,6 +124,63 @@ def _reflection_pad2d_backward_kernel(
     tl.store(gi_ptr + o, acc.to(OUT_DTYPE), mask=o < total)
 
 
+# ---------------------------------------------------------------------------
+# Hand-written .xpu payload (vendor algorithm, ported; not a native/xdnn call)
+#
+# The payload ships as a precompiled, stripped device object
+# (payload/obj/rp2b.o) instead of its C++ source: pack_payload.py compiles it
+# with the real build clang, strips debug info / .comment, and opaque-renames
+# the internal symbols, so the shipped artifact is bare machine code plus the
+# three entry names (rp2b_f32 / rp2b_f16 / rp2b_bf16).  Re-pack from
+# payload/src/rp2b.xpu after any payload edit -- the compile cache keys on the
+# artifact digest, so an un-repacked edit silently keeps the old binary.
+# ---------------------------------------------------------------------------
+
+_XPU_BUFN = 1408  # centre-row floats held in LM (BUFN * 4 bytes)
+_XPU_ROWN = 256  # max row width OW the payload can serve
+_XPU_GRID = 12  # clusters on this device (extra clusters self-disable)
+
+_PAYLOAD_OBJ = os.path.join(os.path.dirname(__file__), "..", "payload", "obj", "rp2b.o")
+
+_XPU_KERNELS = {}
+if _HAS_TLE:
+    # The object= loader only exists on newer tle builds; guard the whole
+    # declaration so an unsupported tle leaves _XPU_KERNELS empty and the
+    # pure-Triton kernel below runs instead.
+    try:
+
+        @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
+        def rp2b_f32(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
+
+        @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
+        def rp2b_f16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
+
+        @tle.raw.dialect("xpu3", object=_PAYLOAD_OBJ, arch=3)
+        def rp2b_bf16(go, gi, NC, OH, OW, H, W, pt, pl, pb, pr): ...
+
+        _DNS = ["NC", "OH", "OW", "H", "W", "PT", "PL", "PB", "PR"]
+
+        @triton.jit(do_not_specialize=_DNS)
+        def _rp2b_raw_f32(GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR):
+            tle.raw.call(rp2b_f32, (GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR))
+
+        @triton.jit(do_not_specialize=_DNS)
+        def _rp2b_raw_f16(GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR):
+            tle.raw.call(rp2b_f16, (GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR))
+
+        @triton.jit(do_not_specialize=_DNS)
+        def _rp2b_raw_bf16(GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR):
+            tle.raw.call(rp2b_bf16, (GO, GI, NC, OH, OW, H, W, PT, PL, PB, PR))
+
+        _XPU_KERNELS = {
+            torch.float32: _rp2b_raw_f32,
+            torch.float16: _rp2b_raw_f16,
+            torch.bfloat16: _rp2b_raw_bf16,
+        }
+    except Exception:  # pragma: no cover - toolchain without object= loader
+        _XPU_KERNELS = {}
+
+
 def _normalize_padding(padding):
     if isinstance(padding, torch.Tensor):
         return tuple(int(p) for p in padding.tolist())
@@ -178,31 +234,40 @@ def reflection_pad2d_backward(grad_output, self, padding):
     if total == 0:
         return torch.empty(N, C, H, W, device=x.device, dtype=x.dtype)
 
-    if x.dtype == torch.float16:
-        out_dtype = tl.float16
-    elif x.dtype == torch.bfloat16:
-        out_dtype = tl.bfloat16
-    else:
-        out_dtype = tl.float32
-
     gi = torch.empty(N, C, H, W, device=x.device, dtype=x.dtype)
 
-    with torch_device_fn.device(x.device):
-        BLOCK = 512
-        _reflection_pad2d_backward_kernel[(triton.cdiv(total, BLOCK),)](
-            go,
-            gi,
-            total,
-            OW,
-            H,
-            W,
-            pad_t,
-            pad_b,
-            pad_l,
-            pad_r,
-            OUT_DTYPE=out_dtype,
-            BLOCK=BLOCK,
-        )
+    raw_kernel = _XPU_KERNELS.get(x.dtype)
+    if raw_kernel is not None and 0 < OW <= _XPU_ROWN:
+        # Hand-written .xpu payload: whole-row contiguous DMA + LM fold.
+        logger.debug("GEMS_KUNLUNXIN REFLECTION_PAD2D_BACKWARD (xpu payload)")
+        with torch_device_fn.device(x.device):
+            raw_kernel[(_XPU_GRID,)](
+                go, gi, NC, OH, OW, H, W, pad_t, pad_l, pad_b, pad_r
+            )
+    else:
+        if x.dtype == torch.float16:
+            out_dtype = tl.float16
+        elif x.dtype == torch.bfloat16:
+            out_dtype = tl.bfloat16
+        else:
+            out_dtype = tl.float32
+
+        with torch_device_fn.device(x.device):
+            BLOCK = 512
+            _reflection_pad2d_backward_kernel[(triton.cdiv(total, BLOCK),)](
+                go,
+                gi,
+                total,
+                OW,
+                H,
+                W,
+                pad_t,
+                pad_b,
+                pad_l,
+                pad_r,
+                OUT_DTYPE=out_dtype,
+                BLOCK=BLOCK,
+            )
 
     if is_3d:
         return gi.squeeze(0)

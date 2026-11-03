@@ -14,26 +14,13 @@
 
 import pytest
 import torch
-from _pytest.mark.structures import Mark, MarkDecorator
 
 import flag_gems
 
 from . import accuracy_utils as utils
 
-# ``_transformer_encoder_layer_fwd`` starts with an underscore, and ``pytest.mark``
-# refuses to generate a marker via attribute access for such names. Register it
-# directly on the MarkGenerator so ``@pytest.mark._transformer_encoder_layer_fwd``
-# and ``-m _transformer_encoder_layer_fwd`` both work.
-setattr(
-    pytest.mark,
-    "_transformer_encoder_layer_fwd",
-    MarkDecorator(
-        Mark("_transformer_encoder_layer_fwd", (), {}, _ispytest=True), _ispytest=True
-    ),
-)
 
-
-@pytest.mark._transformer_encoder_layer_fwd
+@pytest.mark.transformer_encoder_layer_fwd
 @pytest.mark.parametrize("batch_size", [2])
 @pytest.mark.parametrize("seq_len", [16])
 @pytest.mark.parametrize("embed_dim", [64])

@@ -28,8 +28,7 @@ def test_sinh(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.sinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sinh(inp)
+    res_out = flag_gems.sinh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -46,8 +45,7 @@ def test_sinh_large_values(dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.sinh(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.sinh(inp)
+    res_out = flag_gems.sinh(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -60,7 +58,6 @@ def test_sinh_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.sinh_()
-    with flag_gems.use_gems():
-        res_out = inp.sinh_()
+    res_out = flag_gems.sinh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

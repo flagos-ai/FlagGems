@@ -189,6 +189,9 @@ b = cfg['backends']['${BACKEND}']
 cmake_backend = b.get('cmake_backend', '')
 print(f'CMAKE_BACKEND={cmake_backend}')
 
+extra_index = b.get('extra_index', '')
+print(f'EXTRA_INDEX={extra_index}')
+
 ft = b.get('flagtree', '')
 if isinstance(ft, list):
     ft = ' '.join(ft)
@@ -236,6 +239,7 @@ printf "Installing FlagGems [${BACKEND}] ..."
 uv pip install --no-build-isolation ".[${BACKEND}]" \
   --default-index "${FLAGOS_PYPI}" \
   --index "${MIRROR}" \
+  ${EXTRA_INDEX:+--index "${EXTRA_INDEX}"} \
   || fail
 ok
 
@@ -279,7 +283,8 @@ if [ "${COMPILER}" = "flagtree" ]; then
     for attempt in 1 2 3; do
       printf "Installing FlagTree (attempt ${attempt}) ..."
       if uv pip install -q --reinstall ${FLAGTREE_PKGS} \
-           --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+           --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" \
+           ${EXTRA_INDEX:+--index "${EXTRA_INDEX}"} && verify_triton_install; then
         ok
         break
       fi
@@ -300,7 +305,8 @@ if [ "${COMPILER}" = "triton" ] && [ -n "${TRITON_PKGS}" ]; then
   for attempt in 1 2 3; do
     printf "Installing Triton (attempt ${attempt}) ..."
     if uv pip install -q --reinstall ${TRITON_PKGS} \
-         --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" && verify_triton_install; then
+         --default-index "${FLAGOS_PYPI}" --index "${MIRROR}" \
+         ${EXTRA_INDEX:+--index "${EXTRA_INDEX}"} && verify_triton_install; then
       ok
       break
     fi

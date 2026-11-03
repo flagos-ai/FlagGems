@@ -89,8 +89,6 @@ def _mqa_logits_combine_kernel(
             + (hh + h_range)[None, :]
         )
         scores = tl.load(scores_ptr + s_offs)
-        # Synthesized zero tensor as the second operand: the rank-0 scalar
-        # constant form aborts the SDNN maximum lowering on XPU.
         scores = tl.maximum(scores, scores * 0.0)
         w = tl.load(weights_ptr + pid_row * H + hh + h_range)
         acc = acc + tl.sum(scores * w[None, :], axis=1)

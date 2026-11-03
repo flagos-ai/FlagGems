@@ -45,12 +45,26 @@ class LinearBackwardBenchmark(base.Benchmark):
             yield input, grad_output, weight, (True, True, True)
 
 
+class _AtenLinearBackwardAdapter:
+    """aten::linear_backward has no CUDA kernel in stock PyTorch (Meta-only
+    registration); PyTorch's own linear autograd composes the backward from
+    basic ops. Adapt the benchmark args to that native composition so the
+    baseline measures real aten CUDA kernels."""
+
+    def __call__(self, input, grad_output, weight, output_mask):
+        grad_input = torch.mm(grad_output, weight) if output_mask[0] else None
+        grad_weight = (
+            torch.mm(grad_output.transpose(-2, -1), input) if output_mask[1] else None
+        )
+        grad_bias = grad_output.sum(dim=0) if output_mask[2] else None
+        return grad_input, grad_weight, grad_bias
+
+
 @pytest.mark.linear_backward
 def test_linear_backward():
     bench = LinearBackwardBenchmark(
         op_name="linear_backward",
-        # Use flag_gems.linear_backward for both baseline and gems since there's no native PyTorch CUDA impl
-        torch_op=flag_gems.linear_backward,
+        torch_op=_AtenLinearBackwardAdapter(),
         # Keep the worktree benchmark dtype set; this backward benchmark uses only fp32/fp16 core cases.
         dtypes=[torch.float32, torch.float16],
     )

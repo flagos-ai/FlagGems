@@ -1,0 +1,68 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: "Checkout PR (on-demand)"
+description: >-
+  Install the gh CLI if missing, then check out the PR branch. Needed because
+  the ondemand workflow is triggered by issue_comment (not pull_request), so the
+  default checkout doesn't land on the PR branch. Contains only bash steps and no
+  local action references, so it can be consumed via a fully-qualified @master ref
+  from containerized runners where local ./ refs can't be resolved.
+
+inputs:
+  pull:
+    description: "PR number to check out"
+    required: true
+  github-token:
+    description: "Token used by gh to check out the PR"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: setup-gh
+      shell: bash
+      env:
+        GH_VERSION: "2.95.0"
+      run: |
+        GH_DIR="${HOME}/.local/bin"
+        # Map uname -m to the gh release arch suffix. Servers differ: ascend is
+        # aarch64, the rest are x86_64. Downloading the wrong arch produces a
+        # binary that fails with "Exec format error" (exit 126).
+        case "$(uname -m)" in
+          x86_64)          GH_ARCH="amd64" ;;
+          aarch64|arm64)   GH_ARCH="arm64" ;;
+          *) echo "::error::Unsupported CPU arch for gh install: $(uname -m)"; exit 1 ;;
+        esac
+        # Verify the binary actually runs, not just that it exists: a cached gh
+        # of the wrong arch has the execute bit set but can't be executed.
+        if command -v gh &>/dev/null && gh --version &>/dev/null; then
+          echo "gh already available: $(gh --version | head -1)"
+        elif "${GH_DIR}/gh" --version &>/dev/null; then
+          echo "gh found at ${GH_DIR}: $("${GH_DIR}/gh" --version | head -1)"
+          echo "${GH_DIR}" >> $GITHUB_PATH
+        else
+          mkdir -p "${GH_DIR}"
+          curl -fsSL "https://resource.flagos.net/repository/flagos-filestore/github/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz" \
+            | tar -xz --strip-components=2 -C "${GH_DIR}" "gh_${GH_VERSION}_linux_${GH_ARCH}/bin/gh"
+          echo "Installed gh ${GH_VERSION} (${GH_ARCH}) to ${GH_DIR}"
+          echo "${GH_DIR}" >> $GITHUB_PATH
+        fi
+    - id: checkout-pr
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        echo "checking out ${{ inputs.pull }}"
+        gh pr checkout ${{ inputs.pull }}

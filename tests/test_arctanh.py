@@ -56,7 +56,6 @@ def test_arctanh_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.arctanh(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.arctanh(inp, out=out)
+    flag_gems.arctanh_out(inp, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
