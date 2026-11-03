@@ -25,6 +25,37 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
+def _kunlun_double_cpu(tensor):
+    raw = torch.empty(0, dtype=torch.uint8).set_(
+        tensor.untyped_storage().cpu(), 0, (tensor.untyped_storage().nbytes(),), (1,)
+    )
+    return raw.view(tensor.dtype).as_strided(
+        tensor.shape, tensor.stride(), tensor.storage_offset()
+    )
+
+
+def _double_fixture(tensor):
+    if flag_gems.vendor_name == "kunlunxin":
+        result = (
+            tensor.contiguous()
+            .view(torch.uint8)
+            .to(flag_gems.device)
+            .view(torch.float64)
+            .reshape(tensor.shape)
+        )
+        assert result.dtype == torch.float64
+        assert result.device == torch.empty(0, device=flag_gems.device).device
+        assert result.shape == tensor.shape
+        return result
+    return tensor.to(flag_gems.device)
+
+
+def _double_snapshot(tensor):
+    if flag_gems.vendor_name == "kunlunxin" and tensor.dtype == torch.float64:
+        return _double_fixture(_kunlun_double_cpu(tensor))
+    return tensor.clone()
+
+
 def _reference_inplace(inp, exponent):
     result = torch.float_power(inp, exponent)
     inp.copy_(result)
@@ -42,6 +73,17 @@ def _assert_inplace(result, inp, pointer, reference, dtype):
 def _assert_tensor_unchanged(tensor, snapshot, pointer):
     assert tensor.data_ptr() == pointer
     assert tensor.device == snapshot.device
+    if flag_gems.vendor_name == "kunlunxin" and tensor.dtype == torch.float64:
+        assert tensor.dtype == snapshot.dtype and tensor.shape == snapshot.shape
+        assert tensor.stride() == snapshot.stride()
+        torch.testing.assert_close(
+            _kunlun_double_cpu(tensor),
+            _kunlun_double_cpu(snapshot),
+            rtol=0,
+            atol=0,
+            equal_nan=True,
+        )
+        return
     utils.gems_assert_equal(tensor, utils.to_reference(snapshot, False))
 
 
@@ -75,7 +117,9 @@ def test_float_power_tensor_equal_shape_(shape, dtype):
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_float_power_tensor_broadcast_(self_shape, exponent_shape, dtype):
-    inp = torch.empty(self_shape, dtype=dtype, device=flag_gems.device).uniform_(0.25, 2.0)
+    inp = torch.empty(self_shape, dtype=dtype, device=flag_gems.device).uniform_(
+        0.25, 2.0
+    )
     exponent = torch.empty(
         exponent_shape, dtype=dtype, device=flag_gems.device
     ).uniform_(-2.0, 3.0)
@@ -112,7 +156,9 @@ def test_float_power_scalar_(shape, exponent, dtype):
 @pytest.mark.float_power_
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_float_power_noncontiguous_(dtype):
-    base = torch.empty((4, 7, 9), dtype=dtype, device=flag_gems.device).uniform_(0.25, 2.0)
+    base = torch.empty((4, 7, 9), dtype=dtype, device=flag_gems.device).uniform_(
+        0.25, 2.0
+    )
     inp = base.transpose(0, 2)
     exponent = torch.full(inp.shape, 2.0, dtype=dtype, device=flag_gems.device)
     exponent_before = exponent.clone()
@@ -133,7 +179,11 @@ def test_float_power_noncontiguous_(dtype):
 @pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_special_values_():
-    inp = torch.tensor([0.0, 1.0, float("inf"), float("nan")], dtype=torch.float32, device=flag_gems.device)
+    inp = torch.tensor(
+        [0.0, 1.0, float("inf"), float("nan")],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
     exponent = torch.tensor(
         [2.0, -1.0, 0.0, 1.0], dtype=torch.float32, device=flag_gems.device
     )
@@ -153,7 +203,15 @@ def test_float_power_special_values_():
 @pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_backward_():
-    leaf = torch.empty((4, 7), dtype=torch.float64, device=flag_gems.device).uniform_(0.5, 2.0).requires_grad_(True)
+    if flag_gems.vendor_name == "kunlunxin":
+        pytest.skip(
+            "Kunlun float_power_ does not implement Float64 arithmetic required by this backward graph"
+        )
+    leaf = (
+        torch.empty((4, 7), dtype=torch.float64, device=flag_gems.device)
+        .uniform_(0.5, 2.0)
+        .requires_grad_(True)
+    )
     exponent = (
         torch.empty((4, 7), dtype=torch.float64, device=flag_gems.device)
         .uniform_(0.5, 2.0)
@@ -163,17 +221,19 @@ def test_float_power_backward_():
     exponent_pointer = exponent.data_ptr()
     inp = leaf + 0
     ref_leaf = utils.to_reference(leaf.detach().clone(), False).requires_grad_(True)
-    ref_exponent = utils.to_reference(exponent.detach().clone(), False).requires_grad_(True)
+    ref_exponent = utils.to_reference(exponent.detach().clone(), False).requires_grad_(
+        True
+    )
     ref_inp = ref_leaf + 0
     ref_out = ref_inp.float_power_(ref_exponent)
 
     result = flag_gems.float_power_tensor_tensor_(inp, exponent)
 
-    _assert_tensor_unchanged(
-        exponent.detach(), exponent_before, exponent_pointer
-    )
+    _assert_tensor_unchanged(exponent.detach(), exponent_before, exponent_pointer)
     upstream = torch.randn_like(result)
-    ref_grads = torch.autograd.grad(ref_out, (ref_leaf, ref_exponent), utils.to_reference(upstream, False))
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_leaf, ref_exponent), utils.to_reference(upstream, False)
+    )
     result_grads = torch.autograd.grad(result, (leaf, exponent), upstream)
 
     assert result is inp
@@ -184,9 +244,14 @@ def test_float_power_backward_():
 @pytest.mark.float_power_tensor_tensor_
 @pytest.mark.float_power_
 def test_float_power_rejects_nonbroadcastable_shape_():
-    inp = torch.ones((2, 3), dtype=torch.float64, device=flag_gems.device)
-    exponent = torch.ones((4,), dtype=torch.float64, device=flag_gems.device)
-    exponent_before = exponent.clone()
+    if flag_gems.vendor_name == "kunlunxin":
+        inp = _double_fixture(torch.ones((2, 3), dtype=torch.float64))
+        exponent = _double_fixture(torch.ones((4,), dtype=torch.float64))
+        exponent_before = _double_snapshot(exponent)
+    else:
+        inp = torch.ones((2, 3), dtype=torch.float64, device=flag_gems.device)
+        exponent = torch.ones((4,), dtype=torch.float64, device=flag_gems.device)
+        exponent_before = exponent.clone()
     exponent_pointer = exponent.data_ptr()
 
     with pytest.raises(RuntimeError):
