@@ -18,7 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -41,189 +41,90 @@ def round_half_to_even_impl(x):
     return tl.where((d > 0.5) | ((tl.abs(d - 0.5) < 1e-10) & is_odd), r + 1.0, r)
 
 
+# the kernel used to require a contiguous tensor and raised otherwise, which
+# rejects layouts ATen accepts (a transposed matrix, a strided slice).
+# pointwise_dynamic addresses through the tensor's own strides, so any layout
+# works; fp64 keeps its width, narrower floats still compute in fp32.
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
 @triton.jit
-def round_kernel(
-    x_ptr,
-    out_ptr,
-    n_elements,
-    decimals: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-    IS_FP32: tl.constexpr,
-    IS_FP16: tl.constexpr,
-    IS_BF16: tl.constexpr,
-):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-
-    x = tl.load(x_ptr + offsets, mask=mask)
-
-    # Apply round with "round half to even" rule
-    if decimals == 0:
-        out = x
-        if IS_FP32:
-            out = round_half_to_even_impl(x)
-        elif IS_FP16:
-            x_fp32 = tl.cast(x, tl.float32)
-            out = tl.cast(round_half_to_even_impl(x_fp32), tl.float16)
-        elif IS_BF16:
-            x_fp32 = tl.cast(x, tl.float32)
-            out = tl.cast(round_half_to_even_impl(x_fp32), tl.bfloat16)
-    else:
-        # For non-zero decimals, use scaling approach
-        scale = 10.0**decimals
-        if IS_FP32:
-            x_scaled = x * scale
-            out = round_half_to_even_impl(x_scaled) / scale
-        elif IS_FP16:
-            x_fp32 = tl.cast(x, tl.float32)
-            x_scaled = x_fp32 * scale
-            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.float16)
-        elif IS_BF16:
-            x_fp32 = tl.cast(x, tl.float32)
-            x_scaled = x_fp32 * scale
-            out = tl.cast(round_half_to_even_impl(x_scaled) / scale, tl.bfloat16)
-        else:
-            out = x
-
-    tl.store(out_ptr + offsets, out, mask=mask)
+def round_func(x):
+    if x.dtype == tl.float64:
+        return round_half_to_even_impl(x)
+    return round_half_to_even_impl(x.to(tl.float32)).to(x.dtype)
 
 
-def round_func(input, decimals=0):
+@pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def round_decimals_func(x, scale):
+    # scale = 10 ** decimals is computed on the host, so the kernel never
+    # branches on decimals
+    if x.dtype == tl.float64:
+        return round_half_to_even_impl(x * scale) / scale
+    return (round_half_to_even_impl(x.to(tl.float32) * scale) / scale).to(x.dtype)
+
+
+_INTEGER_DTYPES = (torch.int32, torch.int64, torch.int16, torch.int8)
+
+
+def _check_round_args(input):
     if not isinstance(input, torch.Tensor):
         raise TypeError("round expects a torch.Tensor.")
 
     if input.is_complex():
         raise TypeError("round is not supported for complex tensors.")
 
-    # For integer types, return a copy (array-api convention)
-    if input.dtype in [torch.int32, torch.int64, torch.int16, torch.int8]:
-        return input.clone()
-
-    if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
-
-    n_elements = input.numel()
-    if n_elements == 0:
-        return input
-
-    dtype = input.dtype
-    IS_FP32 = dtype == torch.float32
-    IS_FP16 = dtype == torch.float16
-    IS_BF16 = dtype == torch.bfloat16
-
-    output = torch.empty_like(input)
-
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    with torch_device_fn.device(input.device):
-        round_kernel[grid](
-            input,
-            output,
-            n_elements,
-            decimals,
-            BLOCK_SIZE=BLOCK_SIZE,
-            IS_FP32=IS_FP32,
-            IS_FP16=IS_FP16,
-            IS_BF16=IS_BF16,
-        )
-    return output
-
 
 def round(input, decimals=0):
     logger.debug("GEMS ROUND")
-    return round_func(input, decimals=decimals)
+    _check_round_args(input)
+
+    # For integer types, return a copy (array-api convention)
+    if input.dtype in _INTEGER_DTYPES:
+        return input.clone()
+
+    if input.numel() == 0:
+        return input
+
+    if decimals == 0:
+        return round_func(input)
+    return round_decimals_func(input, 10.0**decimals)
 
 
 def round_out(input, *, decimals=0, out=None):
     logger.debug("GEMS ROUND_OUT")
     if out is None:
-        return round_func(input, decimals=decimals)
+        return round(input, decimals=decimals)
 
-    if not isinstance(input, torch.Tensor):
-        raise TypeError("round expects a torch.Tensor.")
-
-    if input.is_complex():
-        raise TypeError("round is not supported for complex tensors.")
+    _check_round_args(input)
 
     # For integer types, return a copy
-    if input.dtype in [torch.int32, torch.int64, torch.int16, torch.int8]:
+    if input.dtype in _INTEGER_DTYPES:
         out.copy_(input)
         return out
 
-    if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
-
-    n_elements = input.numel()
-    if n_elements == 0:
+    if input.numel() == 0:
         return out
 
-    dtype = input.dtype
-    IS_FP32 = dtype == torch.float32
-    IS_FP16 = dtype == torch.float16
-    IS_BF16 = dtype == torch.bfloat16
-
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    with torch_device_fn.device(input.device):
-        round_kernel[grid](
-            input,
-            out,
-            n_elements,
-            decimals,
-            BLOCK_SIZE=BLOCK_SIZE,
-            IS_FP32=IS_FP32,
-            IS_FP16=IS_FP16,
-            IS_BF16=IS_BF16,
-        )
+    if decimals == 0:
+        round_func(input, out0=out)
+    else:
+        round_decimals_func(input, 10.0**decimals, out0=out)
     return out
 
 
 def round_(input, *, decimals=0):
     logger.debug("GEMS ROUND_")
-    if not isinstance(input, torch.Tensor):
-        raise TypeError("round expects a torch.Tensor.")
-
-    if input.is_complex():
-        raise TypeError("round is not supported for complex tensors.")
+    _check_round_args(input)
 
     # For integer types, return input unchanged (array-api convention for integer round)
-    if input.dtype in [torch.int32, torch.int64, torch.int16, torch.int8]:
+    if input.dtype in _INTEGER_DTYPES:
         return input
 
-    if not input.is_contiguous():
-        raise ValueError(
-            "round Triton kernel currently supports only contiguous tensors."
-        )
-
-    n_elements = input.numel()
-    if n_elements == 0:
+    if input.numel() == 0:
         return input
 
-    dtype = input.dtype
-    IS_FP32 = dtype == torch.float32
-    IS_FP16 = dtype == torch.float16
-    IS_BF16 = dtype == torch.bfloat16
-
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-
-    with torch_device_fn.device(input.device):
-        round_kernel[grid](
-            input,
-            input,
-            n_elements,
-            decimals,
-            BLOCK_SIZE=BLOCK_SIZE,
-            IS_FP32=IS_FP32,
-            IS_FP16=IS_FP16,
-            IS_BF16=IS_BF16,
-        )
+    if decimals == 0:
+        round_func(input, out0=input)
+    else:
+        round_decimals_func(input, 10.0**decimals, out0=input)
     return input
