@@ -107,3 +107,52 @@ def test_mm_out():
     )
 
     bench.run()
+
+
+# Public shape metadata from scientific inference workloads; no model data.
+HYGON_SCIENTIFIC_MM_SHAPES = [
+    (303, 320, 320),
+    (303, 33, 320),
+    (29403, 1, 120),
+    (1220, 128, 128),
+    (2806, 128, 128),
+    (1220, 256, 128),
+    (1220, 128, 256),
+    (2806, 256, 128),
+    (2806, 128, 256),
+    (4819, 128, 128),
+    (126636, 128, 128),
+    (4819, 256, 128),
+    (4819, 128, 256),
+    (126636, 256, 128),
+    (126636, 128, 256),
+]
+
+
+class HygonScientificMmBenchmark(base.Benchmark):
+    DEFAULT_SHAPE_DESC = "M, N, K"
+
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = HYGON_SCIENTIFIC_MM_SHAPES
+
+    def get_input_iter(self, dtype):
+        for m, n, k in self.shapes:
+            a = torch.randn((m, k), dtype=dtype, device=self.device)
+            b = torch.randn((n, k), dtype=dtype, device=self.device).t()
+            yield a, b
+
+    def get_tflops(self, op, *args, **kwargs):
+        m, k = args[0].shape
+        n = args[1].shape[1]
+        return 2 * m * n * k
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon scientific matrix schedules"
+)
+def test_hygon_scientific_mm():
+    bench = HygonScientificMmBenchmark(
+        op_name="mm", torch_op=torch.mm, dtypes=[torch.float32]
+    )
+    bench.run()
