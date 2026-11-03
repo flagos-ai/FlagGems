@@ -18,7 +18,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import pytest
@@ -30,6 +30,146 @@ from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
 _INPUT_CONTRACT = "cudnn-batch-norm-backward-training-invstd/v1"
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr35:op_pytorch_h800_cudnn_batch_norm_backward_core_20261027": {
+        "sha256": "2e803d267c55e6fa4ecd928af2e584aeb18c2dae9475345078e31c3ad35a2c05",
+        "artifact": "op_pytorch_h800_cudnn_batch_norm_backward_core_20261027.json",
+        "operators": ["cudnn_batch_norm_backward"],
+        "provenance": {
+            "op_pytorch_h800_cudnn_batch_norm_backward_core_20261027.provenance.json": {
+                "key": "op_pytorch_h800_cudnn_batch_norm_backward_core_20261027.provenance.json",
+                "sha256": "d64091616ac1da202b0e956353fc5f40297370d5c80fa94ec224c7173f7ad0dd",
+            }
+        },
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
 
 
 @dataclass
@@ -93,7 +233,9 @@ class OperatorCaseBenchmark(OperatorBenchmark):
     def _nvidia_baseline(self):
         # Explicit local input; listing/preflight/profile never load this file.
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-        payload = path.read_bytes()
+        payload = _aten_read_bytes(
+            path, ("pr35:op_pytorch_h800_cudnn_batch_norm_backward_core_20261027")
+        )
 
         def unique_keys(pairs):
             result = {}
@@ -125,14 +267,17 @@ class OperatorCaseBenchmark(OperatorBenchmark):
             or environment["source"]["git_dirty"] is not False
         ):
             raise ValueError("External baseline needs a completed, traceable H800 run")
-        return data[self.op_name]["shapes"], {
-            "kind": "external_nvidia",
-            "artifact": str(path),
-            "artifact_sha256": hashlib.sha256(payload).hexdigest(),
-            "environment": environment,
-            "ratio": "raw NVIDIA latency / target latency; no peak normalization",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return data[self.op_name]["shapes"], _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "artifact": str(path),
+                "artifact_sha256": hashlib.sha256(payload).hexdigest(),
+                "environment": environment,
+                "ratio": "raw NVIDIA latency / target latency; no peak normalization",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("pr35:op_pytorch_h800_cudnn_batch_norm_backward_core_20261027"),
+        )
 
     def _import_nvidia_latency(self, args, kwargs):
         if kwargs or self.is_backward or "tflops" in self.to_bench_metrics:
