@@ -3,8 +3,7 @@ import logging
 
 import torch
 
-from flag_gems.ops.bmm import bmm
-from flag_gems.ops.mm import mm
+import flag_gems
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +84,10 @@ def _linalg_matmul_forward(input, other):
 
     # Handle 2D case: (M, K) @ (K, N) -> (M, N)
     if input.dim() == 2 and other.dim() == 2:
-        out = mm(input, other)
+        # go through the public namespace so a vendor-provided mm override is
+        # used when the backend has one (its tune configs may carry knobs,
+        # e.g. SPLIT_K, that the generic kernel does not accept)
+        out = flag_gems.mm(input, other)
         if fold_first and fold_last:
             return out.reshape(())
         if fold_first:
@@ -116,7 +118,7 @@ def _linalg_matmul_forward(input, other):
         if fold_last:
             out = out.squeeze(-1)
         return out
-    out = bmm(a.reshape(nbatch, M, K), b.reshape(nbatch, K, N))
+    out = flag_gems.bmm(a.reshape(nbatch, M, K), b.reshape(nbatch, K, N))
     out = out.reshape(bshape + (M, N))
     if fold_first:
         out = out.squeeze(-2)
