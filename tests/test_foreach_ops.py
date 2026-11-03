@@ -25,12 +25,30 @@ import torch
 import flag_gems
 from flag_gems.ops._foreach_binary import BINARY_OPS, registered_wrappers
 from flag_gems.ops._foreach_reduction import registered_wrappers as reduction_wrappers
+from flag_gems.runtime.backend import SpecOpRegistrar
 
 from .accuracy_utils import gems_assert_close, to_reference
 
 BINARY_WRAPPERS = registered_wrappers()
 REDUCTION_WRAPPERS = reduction_wrappers()
 ALL_WRAPPERS = {**BINARY_WRAPPERS, **REDUCTION_WRAPPERS}
+
+# Some vendors override select ``_foreach_*`` overloads (e.g. Kunlunxin's
+# scalar-family ops avoid a device function the XPU compiler can't lower --
+# see #8047). ``flag_gems/__init__.py`` overlays those overrides onto the
+# generic registration via ``SpecOpRegistrar`` before anything dispatches, so
+# mirror that here: run the same registrar and pull in whichever of our keys
+# it touched. This way the accuracy test exercises the code path that
+# actually runs for the current vendor, on every vendor, without a
+# per-vendor special case in this file.
+_spec_registry = {}
+SpecOpRegistrar(registry=_spec_registry, vendor=flag_gems.vendor_name).apply()
+for _key in list(ALL_WRAPPERS):
+    _core, _, _overload = _key.partition(".")
+    _attr = f"{_core}_{_overload}" if _overload else _core
+    if _attr in _spec_registry:
+        ALL_WRAPPERS[_key] = _spec_registry[_attr]
+del _spec_registry, _key, _core, _overload, _attr
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
 
@@ -350,10 +368,14 @@ def test_foreach_ops_registration_is_live(key, caplog):
     device = flag_gems.device
     inp = [_sample(s, torch.float32, device) for s in shapes]
     args = _build_args(core, overload, shapes, torch.float32, device)
-    loggers = (
+    # The wrapper's own module is the one that logs its debug record. This is
+    # normally one of the two generic modules, but a vendor override (see the
+    # ``ALL_WRAPPERS`` overlay above) logs through its backend module instead.
+    loggers = {
         "flag_gems.ops._foreach_binary",
         "flag_gems.ops._foreach_reduction",
-    )
+        ALL_WRAPPERS[key].__module__,
+    }
     aten = _aten(key)
 
     def call():
@@ -766,7 +788,7 @@ def test_foreach_pow_list_rejects_bool():
     inp = [torch.tensor([True, False], dtype=torch.bool, device=device)]
     with pytest.raises(NotImplementedError):
         _gems("_foreach_pow.List")(inp, [torch.tensor([True, True], device=device)])
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(RuntimeError):
         torch._foreach_pow([t.cpu() for t in inp], [torch.tensor([True, True])])
 
 
