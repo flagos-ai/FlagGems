@@ -33,6 +33,7 @@ as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
 binary_cross_entropy_out: test_binary_cross_entropy
 ccol_indices_copy_out: test_ccol_indices_copy
+chain_matmul_out: test_chain_matmul
 conv_tbc_out: test_conv_tbc
 foreach_abs: test_foreach_unary
 foreach_abs_: test_foreach_unary
