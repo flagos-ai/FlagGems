@@ -608,7 +608,7 @@ _FULL_CONFIG = (
         "_sparse_mm",
         _sparse_mm,
         None,
-        (SPARSE_CSR_DISPATCH_KEY,),
+        (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
     (
         "_sparse_mm.reduce",

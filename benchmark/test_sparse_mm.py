@@ -50,6 +50,11 @@ def _make_sparse_csr(shape, dtype, device, sparsity=SPARSITY):
 def _torch_sparse_mm(mat1, mat2):
     """Torch baseline.
 
+    NOTE for reading results: the native CUDA kernel only implements fp32/fp64,
+    so the fp16/bf16 rows compare the FlagGems kernel against an upcast fp32
+    baseline (the upcast runs inside the timed region); the fp32 rows are the
+    like-for-like kernel comparison.
+
     The native CUDA kernel only implements fp32/fp64; fp16/bf16 run through an
     fp32 upcast of the sparse triple, mirroring the reference used in tests.
     """
