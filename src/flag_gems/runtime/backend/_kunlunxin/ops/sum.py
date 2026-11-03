@@ -441,6 +441,21 @@ def _tle_sum_flat(inp, out, acc_dtype, scale=1.0):
             # A single element (or none) is a copy; `out` is 0-d or (1,).
             out.view(-1).copy_(cur.view(-1))
             return True
+        # The last stage addresses `cur` as a [1, n] descriptor, whose only
+        # non-innermost stride is the row pitch `n`. The flagtree mainline's
+        # `TensorDescriptor` requires every non-innermost stride to be 16-byte
+        # aligned (the internal toolchain does not -- see the same constraint in
+        # `searchsorted`), and the residues that reach here are arbitrary: 2 for
+        # a fp16 (1, 2) reduce, 735 for a (200, 40999, 3) one. Pad with zeros to
+        # the alignment; adding zeros leaves the sum exact, and SCALE is the
+        # caller's 1/M (not 1/padded_n), so the mean is unchanged too. The pad is
+        # at most 15 elements, since `n` is a residue of at most _TLE_FLAT_ONESHOT.
+        align = 16 // cur.element_size()
+        if n % align:
+            padded_n = -(-n // align) * align
+            padded = torch.zeros(padded_n, dtype=cur.dtype, device=inp.device)
+            padded[:n].copy_(cur)
+            cur, n = padded, padded_n
         geom = _tle_row_geom(1, n, cur.element_size())
         plan = _tle_row_plan(1, n, n, cur.dtype, out.dtype, geom, scale)
         _tle_row_reduce(cur.view(1, n), out.view(1), plan)
