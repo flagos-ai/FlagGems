@@ -242,6 +242,7 @@ from .repeat_interleave import (
     repeat_interleave_self_tensor,
     repeat_interleave_tensor,
 )
+from .replication_pad1d import replication_pad1d, replication_pad1d_out
 from .replication_pad2d import replication_pad2d, replication_pad2d_out
 from .replication_pad3d import replication_pad3d
 from .rsqrt import rsqrt, rsqrt_
@@ -580,6 +581,8 @@ __all__ = [
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
+    "replication_pad1d",
+    "replication_pad1d_out",
     "replication_pad2d",
     "replication_pad2d_out",
     "replication_pad3d",
