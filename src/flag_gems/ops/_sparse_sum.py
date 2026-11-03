@@ -89,11 +89,21 @@ ACC_I64 = tl.constexpr(2)
 
 
 def _acc_mode(dtype):
-    """Return ``(mode, accumulator_dtype)`` used to fold values of ``dtype``."""
+    """Return ``(mode, accumulator_dtype)`` used to fold values of ``dtype``.
+
+    Dtypes the Triton kernels cannot fold (complex: values would need
+    complex accumulation) raise instead of silently routing through the
+    integer path.
+    """
     if dtype in _ACC_F32_DTYPES:
         return ACC_F32, torch.float32
     if dtype == torch.float64:
         return ACC_F64, torch.float64
+    if dtype.is_complex:
+        raise NotImplementedError(
+            f"_sparse_sum: complex accumulation is not supported by the "
+            f"Triton kernels, got {dtype}"
+        )
     return ACC_I64, torch.int64
 
 
@@ -419,8 +429,17 @@ def _check_coo(self, op_name):
 
 
 def _project(self, dims, dtype, op_name):
-    """Shared body of ``.dim`` and ``.dim_dtype``."""
-    _check_coo(self, op_name)
+    """Shared body of ``.dim`` and ``.dim_dtype``.
+
+    Known limitations (documented per the review):
+    - the input is coalesced on entry (``self.coalesce()``), so the kernels
+      assume a coalesced COO — the "replaces ATen sort" claim holds only for
+      the already-coalesced case;
+    - the ``acc``/``flag`` scratch is dense over
+      ``key_space x dense_num`` (key_space = product of kept sparse dims),
+      i.e. O(key_space) rather than ATen's O(nnz) — inputs whose kept
+      sparse dims are much larger than their nnz can exceed memory.
+    """
     ndim = self.dim()
     sparse_dim = self.sparse_dim()
     dims = _normalize_dims(dims, ndim)
@@ -562,12 +581,13 @@ def _sparse_sum_dim_out(self, dim, *, out):
         )
     if tuple(out.shape) != tuple(result.shape):
         # aten resizes a dense ``out`` in place (a deprecated behaviour); the
-        # sparse backends have no resize_.  Allocate the correctly shaped
-        # tensor instead of mutating the caller's storage.
+        # sparse backends have no resize_.  Dense: resize the caller's tensor
+        # in place so the values land in the caller's storage (native
+        # semantics).  Sparse: raise, matching the missing resize_ backend.
         if out.layout == torch.sparse_coo:
             raise NotImplementedError(
                 "Could not run 'aten::resize_' with arguments from the "
                 "'Sparse" + str(out.device.type).upper() + "' backend."
             )
-        out = torch.empty_like(result)
+        out.resize_(result.shape)
     return out.copy_(result)
