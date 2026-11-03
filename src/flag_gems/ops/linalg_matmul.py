@@ -3,9 +3,6 @@ import logging
 
 import torch
 
-from flag_gems.ops.bmm import bmm
-from flag_gems.ops.mm import mm
-
 logger = logging.getLogger(__name__)
 
 
@@ -73,6 +70,9 @@ class LinalgMatmulFunction(torch.autograd.Function):
 
 def _linalg_matmul_forward(input, other):
     logger.debug("GEMS LINALG_MATMUL")
+    # Dispatch through the registered operators: a backend override ships its
+    # own tuned config, which the generic kernels cannot consume.
+    from flag_gems import bmm, mm
 
     # Fold 1D inputs into 2D per torch.matmul semantics:
     # (K,) @ (K, N) -> (N,) and (M, K) @ (K,) -> (M,), (K,) @ (K,) -> scalar
@@ -82,6 +82,27 @@ def _linalg_matmul_forward(input, other):
         input = input.unsqueeze(0)
     if fold_last:
         other = other.unsqueeze(1)
+
+    assert input.dim() >= 2 and other.dim() >= 2, "incompatible dimensions"
+    M, K = input.shape[-2], input.shape[-1]
+    N = other.shape[-1]
+    assert K == other.shape[-2], "incompatible dimensions"
+    bshape = torch.broadcast_shapes(input.shape[:-2], other.shape[:-2])
+    if not all(bshape) or M == 0 or N == 0 or K == 0:
+        # Degenerate product: an empty batch, an empty operand dimension, or an
+        # empty contraction. A kernel launch is invalid here, and the tuner's
+        # log-strategy key would be 0. A sum over no terms is 0, so K == 0
+        # yields zeros; the other cases have no elements at all.
+        shape = bshape + (M, N)
+        if K == 0 and M and N:
+            out = torch.zeros(shape, dtype=input.dtype, device=input.device)
+        else:
+            out = torch.empty(shape, dtype=input.dtype, device=input.device)
+        if fold_first:
+            out = out.squeeze(-2)
+        if fold_last:
+            out = out.squeeze(-1)
+        return out
 
     # Handle 2D case: (M, K) @ (K, N) -> (M, N)
     if input.dim() == 2 and other.dim() == 2:
@@ -97,25 +118,11 @@ def _linalg_matmul_forward(input, other):
     # Handle batched cases: broadcast the batch dims, then run a single bmm
     # over the flattened batch. expand produces stride-0 views which the
     # bmm kernel handles natively.
-    assert input.dim() >= 2 and other.dim() >= 2, "incompatible dimensions"
-    bshape = torch.broadcast_shapes(input.shape[:-2], other.shape[:-2])
-    M, K = input.shape[-2], input.shape[-1]
-    N = other.shape[-1]
-    assert K == other.shape[-2], "incompatible dimensions"
     a = input.expand(bshape + (M, K))
     b = other.expand(bshape + (K, N))
     nbatch = 1
     for s in bshape:
         nbatch *= s
-    if nbatch == 0:
-        # empty batch: no kernel launch (grid of 0 is invalid), just an empty
-        # output with the folded 1-D dims restored
-        out = torch.empty(bshape + (M, N), dtype=input.dtype, device=input.device)
-        if fold_first:
-            out = out.squeeze(-2)
-        if fold_last:
-            out = out.squeeze(-1)
-        return out
     out = bmm(a.reshape(nbatch, M, K), b.reshape(nbatch, K, N))
     out = out.reshape(bshape + (M, N))
     if fold_first:
