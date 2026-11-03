@@ -17,14 +17,14 @@
 # @global-owner1 and @global-owner2 will be requested for
 # review when someone opens a pull request.
 
-/src/flag_gems/*     @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @tengqm
+/src/flag_gems/*     @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @tengqm @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
 /src/flag_gems/runtime/backend/*
 
-/benchmark/*         @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/tests/*             @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/modules_tests/*     @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/docs/*              @0x45f @huangyiqun @103yiran
-/tools/*             @0x45f @huangyiqun @103yiran
+/benchmark/*         @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
+/tests/*             @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
+/modules_tests/*     @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
+/docs/*              @0x45f @huangyiqun @103yiran @kayzee3327 @CLYtou @lyujheng @modao1234 @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
+/tools/*             @0x45f @huangyiqun @103yiran @kayzee3327 @CLYtou @lyujheng @modao1234 @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
 
-/cpp/*               @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann
-/triton_src/*        @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann
+/cpp/*               @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
+/triton_src/*        @0x45f @huangyiqun @103yiran @modao1234 @bin913 @w1120029931-bit @hellojack163 @Caeruleann @kayzee3327 @CLYtou @lyujheng @zhangjieBaai @jia-heng @tao-ye-1995 @gavin0x01 @qcxl99
