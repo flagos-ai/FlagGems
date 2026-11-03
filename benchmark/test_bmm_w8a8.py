@@ -39,6 +39,28 @@ def bf16_bmm(
     return torch.bmm(baseline_activation, baseline_weight)
 
 
+def native_int8_bmm(
+    activation: torch.Tensor,
+    weight: torch.Tensor,
+    activation_scale: torch.Tensor,
+    weight_scale: torch.Tensor,
+    baseline_activation: torch.Tensor,
+    baseline_weight: torch.Tensor,
+) -> list[torch.Tensor]:
+    import torch_npu
+
+    return [
+        torch_npu.npu_quant_matmul(
+            activation[index],
+            weight[index],
+            weight_scale[index],
+            pertoken_scale=activation_scale[index],
+            output_dtype=torch.bfloat16,
+        )
+        for index in range(activation.shape[0])
+    ]
+
+
 def channel_int8_bmm(
     activation: torch.Tensor,
     weight: torch.Tensor,
@@ -84,13 +106,18 @@ class ChannelInt8BmmBenchmark(ParallelBenchmarkMixin, base.Benchmark):
 
 
 @pytest.mark.bmm_w8a8
+@pytest.mark.parametrize(
+    "baseline",
+    ["bf16", "native_int8"] if "bmm_w8a8_int8" in vars(flag_gems) else ["bf16"],
+)
 @pytest.mark.skipif(
     "bmm_w8a8" not in vars(flag_gems),
     reason="backend does not export channel-wise INT8 BMM",
 )
-def test_perf_bmm_w8a8():
+def test_perf_bmm_w8a8(baseline):
+    torch_op = native_int8_bmm if baseline == "native_int8" else bf16_bmm
     bench = ChannelInt8BmmBenchmark(
-        op_name="bmm_w8a8", torch_op=bf16_bmm, dtypes=[torch.int8]
+        op_name="bmm_w8a8", torch_op=torch_op, dtypes=[torch.int8]
     )
     bench.set_gems(channel_int8_bmm)
     bench.run()
