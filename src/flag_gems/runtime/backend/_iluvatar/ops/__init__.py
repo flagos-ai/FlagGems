@@ -117,6 +117,7 @@ from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_i
 from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
 
@@ -235,6 +236,7 @@ __all__ = [
     "tile",
     "triangular_solve",
     "triangular_solve_out",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",
