@@ -157,9 +157,18 @@ def _float_div_quotients(x, y):
     q = tl.where(y == 0.0, q0, q)
 
     trunc_q = trunc(q)
-    remainder = x - y * trunc_q
+    # fma keeps the residual exact; `x - y * trunc_q` loses the low bits when
+    # |q| is large, which flips the floor decision for quotients that sit within
+    # half an ulp of an integer.
+    remainder = tl.math.fma(-y, trunc_q, x)
     different_sign = (remainder < 0) != (y < 0)
     floor_q = tl.where((remainder != 0.0) & different_sign, trunc_q - 1.0, trunc_q)
+    # The rounded quotient can also land one representable step *below* the true
+    # one, which happens once |q| exceeds 2**24 and the step becomes 2. The
+    # residual is exact, so `|remainder| >= |y|` proves the true quotient is at
+    # least `trunc_q + 1`.
+    overshoot = (remainder * y > 0.0) & (tl.abs(remainder) >= tl.abs(y))
+    floor_q = tl.where(overshoot, trunc_q + 1.0, floor_q)
     return floor_q, trunc_q
 
 
