@@ -5,7 +5,6 @@ import flag_gems
 
 from . import base
 
-
 INVERSE_DTYPES = [torch.float32] + (
     [torch.float64] if flag_gems.runtime.device.support_fp64 else []
 )
@@ -43,6 +42,12 @@ class InverseBenchmark(base.Benchmark):
     def build_inputs(self, case):
         plan = case.builder_args[0]
         (shape,) = plan.builder_args
+        needs_native = getattr(base.Config, "reference_only", False) or (
+            "latency_base" in self.to_bench_metrics and not base.Config.skip_native
+        )
+        if flag_gems.vendor_name == "kunlunxin" and shape[-1] >= 64 and needs_native:
+            base.Config.skipped_case_ids.add(case.case_id)
+            pytest.skip("Kunlun native inverse reference rejects matrix sides >=64")
         torch.manual_seed(0)
         n = shape[-1]
         identity = torch.eye(n, dtype=case.dtype, device=self.device)

@@ -66,6 +66,8 @@ def _make_well_conditioned(shape, dtype, device):
 @pytest.mark.parametrize("shape", INVERSE_SHAPES)
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
 def test_inverse(shape, dtype):
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU and shape[-1] >= 64:
+        pytest.skip("Kunlun native inverse reference rejects matrix sides >=64")
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
@@ -129,6 +131,8 @@ def test_inverse_identity_product(dtype):
 @pytest.mark.inverse
 @pytest.mark.parametrize("dtype", INVERSE_DTYPES)
 def test_inverse_noncontiguous(dtype):
+    if flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU:
+        pytest.skip("Kunlun native inverse reference rejects the original 64x64 view")
     # A transposed view has non-unit row strides; the wrapper must materialize
     # it before the kernel reads the tile.
     A = _make_well_conditioned((64, 64), dtype, flag_gems.device)
