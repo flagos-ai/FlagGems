@@ -256,8 +256,9 @@ def linear_gemv_kernel(
 
 import trident
 
+
 @trident.jit
-def linear(input, weight, bias=None):
+def _linear_impl(input, weight, bias=None):
     """
     Applies a linear transformation to the incoming data: y = xA^T + b
 
@@ -319,37 +320,35 @@ def linear(input, weight, bias=None):
         and N * K * input_flat.element_size() >= _GEMV_MIN_WEIGHT_BYTES
     ):
         grid = (triton.cdiv(N, _GEMV_BLOCK_N),)
-        with torch_device_fn.device(input.device), _blockified():
-            linear_gemv_kernel[grid](
-                input_flat,
-                weight,
-                bias_arg,
-                output,
-                N,
-                K,
-                BIAS=bias_is_vector,
-                BLOCK_N=_GEMV_BLOCK_N,
-                BLOCK_K=_GEMV_BLOCK_K,
-                enable_auto_blockify=True,
-                num_warps=4,
-                num_stages=2,
-            )
+        linear_gemv_kernel[grid](
+            input_flat,
+            weight,
+            bias_arg,
+            output,
+            N,
+            K,
+            BIAS=bias_is_vector,
+            BLOCK_N=_GEMV_BLOCK_N,
+            BLOCK_K=_GEMV_BLOCK_K,
+            enable_auto_blockify=True,
+            num_warps=4,
+            num_stages=2,
+        )
     else:
         grid = lambda META: (
             triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
         )
-        with torch_device_fn.device(input.device), _blockified():
-            linear_kernel[grid](
-                input_flat,
-                weight,
-                bias_arg,
-                output,
-                M,
-                N,
-                K,
-                BIAS=bias_is_vector,
-                enable_auto_blockify=True,
-            )
+        linear_kernel[grid](
+            input_flat,
+            weight,
+            bias_arg,
+            output,
+            M,
+            N,
+            K,
+            BIAS=bias_is_vector,
+            enable_auto_blockify=True,
+        )
 
     output = output.view(*batch_dims, N)
 
@@ -361,3 +360,8 @@ def linear(input, weight, bias=None):
         output = output.squeeze(0)
 
     return output
+
+
+def linear(input, weight, bias=None):
+    with torch_device_fn.device(input.device), _blockified():
+        return _linear_impl(input, weight, bias)
