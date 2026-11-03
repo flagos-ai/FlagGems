@@ -51,7 +51,7 @@ def _launch_mmac(inp, vec, out):
         num_warps=4, num_stages=1, waves_per_eu=1,
         loop_unroll_stage="post-pipeline", wave_private_sync=True,
         loop_carried_store_refill=True,
-        async_local_prefetch=False, mma_phase_schedule=False,
+        mma_phase_schedule=False,
         packet_operand_overlap_diagnostic=False, packet_post_mma_wait=False,
         packet_wait_rotation=False, optimize_epilogue=False,
         kpack=2, mmac_transposed=False,
