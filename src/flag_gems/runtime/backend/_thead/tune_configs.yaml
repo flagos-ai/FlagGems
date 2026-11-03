@@ -508,6 +508,20 @@ naive_reduction:
       - 8
     block_n:
       - 1024
+layer_norm_rows:
+  - gen: true
+    param_map:
+      META:
+        TILE_M: rows
+      num_warps: warps
+    rows:
+      - 1
+      - 2
+    warps:
+      - 1
+      - 2
+      - 4
+      - 8
 layer_norm_persistent:
   - gen: true
     param_map:

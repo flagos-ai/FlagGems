@@ -41,6 +41,12 @@ OPERATORS_YAML = "conf/operators.yaml"
 OPS_DIR = "src/flag_gems/ops"
 TESTS_DIR = "tests"
 INIT_FILE = "src/flag_gems/__init__.py"
+OPERATOR_FILE_ALIASES = {
+    "src/flag_gems/runtime/backend/_thead/ops/layernorm.py": [
+        "layer_norm",
+        "native_layer_norm",
+    ],
+}
 
 # Patterns that map file paths to operator IDs
 OPS_FILE_RE = re.compile(r"^src/flag_gems/ops/(.+)\.py$")
@@ -244,6 +250,8 @@ def resolve_impl_operators(stem: str, filepath: str, all_operators: dict) -> lis
     nested generic ops keep the ``sub_file`` id form. Falls back to the raw stem
     when nothing can be resolved, leaving behavior for unknown files unchanged.
     """
+    if filepath in OPERATOR_FILE_ALIASES:
+        return OPERATOR_FILE_ALIASES[filepath]
     # Handle subdirectory ops like ops/sub/file.py -> sub/file
     # But most ops are flat: ops/abs.py -> abs
     op_id = stem.replace("/", "_")

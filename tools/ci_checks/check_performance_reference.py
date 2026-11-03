@@ -36,6 +36,7 @@ import yaml
 
 OPERATORS_YAML = Path("conf/operators.yaml")
 BENCHMARK_DIR = Path("benchmark")
+BENCHMARK_ALIASES = {"native_layer_norm": "test_layer_norm.py"}
 
 
 def load_operators_yaml() -> dict[str, dict]:
@@ -50,7 +51,7 @@ def load_operators_yaml() -> dict[str, dict]:
 
 def find_benchmark_file(op_id: str) -> Path | None:
     """Find the benchmark file for an operator."""
-    direct = BENCHMARK_DIR / f"test_{op_id}.py"
+    direct = BENCHMARK_DIR / BENCHMARK_ALIASES.get(op_id, f"test_{op_id}.py")
     if direct.exists():
         return direct
 
