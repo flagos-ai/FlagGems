@@ -124,6 +124,7 @@ from .fill import (
 )
 from .flip import flip
 from .floor import floor, floor_, floor_out
+from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -429,6 +430,10 @@ __all__ = [
     "floor_divide",
     "floor_divide_",
     "floor_out",
+    "fmod_scalar",
+    "fmod_scalar_",
+    "fmod_tensor",
+    "fmod_tensor_",
     "fractional_max_pool2d",
     "fractional_max_pool2d_backward",
     "full",
