@@ -2,6 +2,7 @@ import math
 from typing import List, Tuple, Union
 
 import torch
+import trident
 import triton
 import triton.language as tl
 
@@ -133,6 +134,7 @@ def _prepare_cat_inputs(A, dim):
     return A, dim, device, dtype, out_shape
 
 
+@trident.jit
 def _cat_fill_triton(out, A, dim):
     if len(A) == 0 or out.numel() == 0:
         return
@@ -144,53 +146,49 @@ def _cat_fill_triton(out, A, dim):
 
     cat_offset = 0
 
-    with torch_device_fn.device(out.device):
-        for a in A:
-            input_cat_size = a.shape[dim]
+    for a in A:
+        input_cat_size = a.shape[dim]
 
-            if a.numel() == 0:
-                cat_offset += input_cat_size
-                continue
+        if a.numel() == 0:
+            cat_offset += input_cat_size
+            continue
 
-            if not a.is_contiguous():
-                a = a.contiguous()
+        if not a.is_contiguous():
+            a = a.contiguous()
 
-            n_elements = a.numel()
+        n_elements = a.numel()
 
-            # CANN limits the flattened launch grid (coreDim) to 65535.
-            grid = (
-                min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),
+        # CANN limits the flattened launch grid (coreDim) to 65535.
+        grid = (
+            min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),
+        )
+
+        if dim == 0:
+            output_offset = cat_offset * inner_size
+
+            _cat_copy_flat_kernel[grid](
+                a,
+                out,
+                n_elements,
+                OUTPUT_OFFSET=output_offset,
+                BLOCK_SIZE=BLOCK_SIZE,
             )
 
-            if dim == 0:
-                output_offset = cat_offset * inner_size
+        else:
+            _cat_copy_strided_kernel[grid](
+                a,
+                out,
+                n_elements,
+                INNER_SIZE=inner_size,
+                INPUT_CAT_SIZE=input_cat_size,
+                OUTPUT_CAT_SIZE=output_cat_size,
+                CAT_OFFSET=cat_offset,
+                BLOCK_SIZE=BLOCK_SIZE,
+            )
 
-                _cat_copy_flat_kernel[grid](
-                    a,
-                    out,
-                    n_elements,
-                    OUTPUT_OFFSET=output_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
-                )
-
-            else:
-                _cat_copy_strided_kernel[grid](
-                    a,
-                    out,
-                    n_elements,
-                    INNER_SIZE=inner_size,
-                    INPUT_CAT_SIZE=input_cat_size,
-                    OUTPUT_CAT_SIZE=output_cat_size,
-                    CAT_OFFSET=cat_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
-                )
-
-            cat_offset += input_cat_size
+        cat_offset += input_cat_size
 
 
-import trident
-
-@trident.jit
 def cat(
     A: Union[
         Tuple[torch.Tensor, ...],
@@ -216,12 +214,12 @@ def cat(
         device=device,
     )
 
-    _cat_fill_triton(out, A, dim)
+    with torch_device_fn.device(out.device):
+        _cat_fill_triton(out, A, dim)
 
     return out
 
 
-@trident.jit
 def cat_out(
     A: Union[
         Tuple[torch.Tensor, ...],
@@ -249,7 +247,8 @@ def cat_out(
         return out
 
     if out.is_contiguous():
-        _cat_fill_triton(out, A, dim)
+        with torch_device_fn.device(out.device):
+            _cat_fill_triton(out, A, dim)
     else:
         tmp = torch.empty(
             out_shape,
@@ -257,7 +256,8 @@ def cat_out(
             device=out.device,
         )
 
-        _cat_fill_triton(tmp, A, dim)
+        with torch_device_fn.device(tmp.device):
+            _cat_fill_triton(tmp, A, dim)
         out.copy_(tmp)
 
     return out
