@@ -30,9 +30,7 @@ def cleanup_env(monkeypatch):
 
 
 def test_keeps_declared_name_when_backend_is_available(cleanup_env):
-    cleanup_env.setattr(
-        torch, "cuda", types.SimpleNamespace(is_available=lambda: True)
-    )
+    cleanup_env.setattr(torch, "cuda", types.SimpleNamespace(is_available=lambda: True))
     assert resolve_guard_device_name("cuda") == "cuda"
 
 
