@@ -39,10 +39,9 @@ def _embedding_dense_backward_kernel(
 ):
     # GCU300 cannot legalize `tt.atomic_rmw`, so the scatter is inverted into a
     # segmented sum: `grad_weight[i] += sum_{j : indices[j] == i} grad_output[j]`.
-    # `index_sorted`/`order` come from a stable `torch.sort` in the wrapper, so
-    # each output row binary-searches the contiguous run of source rows that
-    # maps to it and accumulates them.  The result is bit-identical to a
-    # sequential scatter and needs no atomics.
+    # `index_sorted`/`order` come from a `torch.sort` in the wrapper, so each
+    # output row binary-searches the contiguous run of source rows that maps to
+    # it and accumulates them. No atomics are involved anywhere.
     pid_r = tl.program_id(0)
     pid_t = tl.program_id(1)
     num_r = tl.num_programs(0)
@@ -133,13 +132,15 @@ def embedding_dense_backward(
         if pad >= 0:
             idx = torch.where(idx == pad, torch.full_like(idx, num_weights), idx)
 
-        # Sort in the caller's dtype: the runner's `topsatenSort` rejects an
-        # int32 input (TOPSATEN_STATUS_BAD_PARAM) but handles int64, and the
-        # ordering is identical either way since indices are non-negative and
-        # below `num_weights`.  Only the results are narrowed, so the kernel
-        # below still works entirely in int32 (GCU300 miscompiles lane-varying
-        # 64-bit arithmetic).
-        index_sorted, order = torch.sort(idx, stable=True)
+        # `stable=True` is not usable here: the CI runner's `topsatenSort`
+        # rejects `at::_ops::sort_stable` with TOPSATEN_STATUS_BAD_PARAM. Only
+        # `order` is narrowed afterwards, so the kernel below still works
+        # entirely in int32 (GCU300 miscompiles lane-varying 64-bit
+        # arithmetic). A plain sort leaves the order of equal keys unspecified,
+        # which changes only the summation order within one destination row and
+        # hence only its float rounding -- the same freedom aten's own atomic
+        # scatter has.
+        index_sorted, order = torch.sort(idx)
         index_sorted = index_sorted.to(torch.int32)
         if order.dtype != torch.int32:
             order = order.to(torch.int32)
