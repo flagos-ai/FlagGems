@@ -23,7 +23,7 @@ from . import accuracy_utils as utils
 
 
 @pytest.mark.dunder_or_tensor
-@pytest.mark.bitwise_or_tensor
+@pytest.mark.or_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES + utils.BOOL_TYPES)
 def test_dunder_or(shape, dtype):
@@ -45,7 +45,8 @@ def test_dunder_or(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = ref_inp1 | ref_inp2
-    res_out = flag_gems.bitwise_or_tensor(inp1, inp2)
+    candidate = getattr(flag_gems, "or_tensor", flag_gems.bitwise_or_tensor)
+    res_out = candidate(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
