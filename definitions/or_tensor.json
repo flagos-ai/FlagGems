@@ -1,0 +1,27 @@
+{
+  "api_version": "v6.0",
+  "name": "or_tensor",
+  "requires_triton_kernel": true,
+  "description": "ATen schema: aten::__or__.Tensor(Tensor self, Tensor other) -> Tensor. Computes elementwise bitwise OR of two integral or boolean tensors. The output does not mutate or alias either input. This Definition binds the existing __or__.Tensor correctness and benchmark suites.",
+  "parameters": [
+    {
+      "name": "self",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    },
+    {
+      "name": "other",
+      "kind": "positional_or_keyword",
+      "required": true,
+      "type_hint": "Tensor"
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "effects": {
+    "mutates": [],
+    "returns_alias_of": {}
+  }
+}
