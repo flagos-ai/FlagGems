@@ -8636,6 +8636,22 @@ tensor into the caller-supplied `out` buffer.
   - PointWise
   stages:
   - alpha: '5.4'
+- id: fp8_einsum
+  description: |
+    Block-scaled bhr,hdr->bhd contraction. Precisions: FP8 (NVIDIA Hopper,
+    vLLM DeepGEMM fp8_einsum) and INT8 with per-token-group activation scales
+    (Hygon, MetaX, PPU).
+  for:
+  - vllm.utils.deep_gemm.fp8_einsum
+  labels:
+  - fused
+  - vLLM
+  - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  - Quantization
+  stages:
+  - alpha: '5.4'
 - id: fp8_fp4_mega_moe
   description: 'Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
 
@@ -11657,6 +11673,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - stable: '3.0'
+- id: less
+  description: Computes that `input` is less than `other` element-wise.
+  for:
+  - less.Tensor
+  - lt.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.0'
 - id: less_
   description: The in-place version of `less()`.
   for:
