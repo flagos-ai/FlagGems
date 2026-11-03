@@ -149,6 +149,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _MaskedScaleMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -166,14 +197,17 @@ class _H800Latency:
         data = json.loads(payload)
         if data["masked_scale"]["native_api"] != "ops.masked_scale":
             raise ValueError("Expected native aten::_masked_scale collection")
-        return data, dict(
-            kind="external_nvidia",
-            artifact=str(path),
-            artifact_sha256=_H800_SHA256,
-            artifact_git_commit=_H800_ARTIFACT_COMMIT,
-            collection_source_commit=_H800_COLLECTION,
-            ratio="H800 native latency_ms / locally timed target candidate latency_ms",
-            input_identity="Original builders, seed0 Gaussian/uint8 draw order and scale2; backend random payloads are not identical.",
+        return data, _aten_qualify_metadata(
+            dict(
+                kind="external_nvidia",
+                artifact=str(path),
+                artifact_sha256=_H800_SHA256,
+                artifact_git_commit=_H800_ARTIFACT_COMMIT,
+                collection_source_commit=_H800_COLLECTION,
+                ratio="H800 native latency_ms / locally timed target candidate latency_ms",
+                input_identity="Original builders, seed0 Gaussian/uint8 draw order and scale2; backend random payloads are not identical.",
+            ),
+            ("pr42:op_pytorch_h800_masked_scale_core_baseline"),
         )
 
     def _import_latency(self, args, kwargs):
