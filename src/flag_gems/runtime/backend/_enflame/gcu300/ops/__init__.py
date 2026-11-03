@@ -75,6 +75,7 @@ from .celu import celu, celu_
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
 from .clamp_min import clamp_min, clamp_min_
 from .clip import clip, clip_
+from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
 from .conj_physical import conj_physical
 from .contiguous import contiguous
@@ -370,6 +371,8 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "column_stack",
+    "column_stack_out",
     "concatenate",
     "conj_physical",
     "constant_pad_nd",
