@@ -137,6 +137,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _LuSolveMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -177,15 +208,18 @@ class LinalgLuSolveBenchmark(OperatorBenchmark):
             raise ValueError(
                 "Expected the complete ten-record native H800 LU solve collection"
             )
-        return data[key]["shapes"], dict(
-            artifact=str(path),
-            artifact_sha256=expected_sha,
-            operator=key,
-            collection_task=task,
-            environment=environment,
-            input_identity="Exact current configuration/seed recipe; not cross-device random-byte identity",
-            ratio="Raw H800 native latency / locally timed target candidate; no scaling",
-            timing_qualification="Shared functional collection, latency only; no NCU metrics",
+        return data[key]["shapes"], _aten_qualify_metadata(
+            dict(
+                artifact=str(path),
+                artifact_sha256=expected_sha,
+                operator=key,
+                collection_task=task,
+                environment=environment,
+                input_identity="Exact current configuration/seed recipe; not cross-device random-byte identity",
+                ratio="Raw H800 native latency / locally timed target candidate; no scaling",
+                timing_qualification="Shared functional collection, latency only; no NCU metrics",
+            ),
+            ("pr75:op_linalg_lu_solve_current_core_h800_baseline"),
         )
 
     def get_latency(self, op, *args, **kwargs):
