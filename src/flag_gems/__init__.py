@@ -595,6 +595,24 @@ _FULL_CONFIG = (
     ("_sparse_bsc_tensor_unsafe", sparse_bsc_tensor_unsafe),
     ("_sparse_csc_tensor_unsafe", sparse_csc_tensor_unsafe),
     (
+        "_sparse_csr_prod",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype",
+        sparse_csr_prod,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
+        "_sparse_csr_prod.dim_dtype_out",
+        sparse_csr_prod_out,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY,),
+    ),
+    (
         "_sparse_mm_reduce_impl",
         _sparse_mm_reduce_impl,
         None,
