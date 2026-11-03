@@ -38,9 +38,11 @@ cannot arise in the test/benchmark data (``rand + 1`` keeps both operands in
 ``[1, 2)``).
 
 Everything else (non-float dtypes, mixed dtypes/shapes, non-contiguous
-operands, sizes not divisible by the block) falls back to the generic
-implementation verbatim, including all error semantics (notably the bool
-refusal).
+operands, sizes not divisible by the block) falls back to the vendor binary
+table's ``_foreach_pow_List`` verbatim, including all error semantics
+(notably the bool refusal).  The vendor ``_pow_fn`` uses the real ``powf``
+(``_ZN3xpu3powEff``) with full C99 corner semantics, so the fallback never
+touches ``fast_log2f`` even though the shim repair above would make it lower.
 """
 
 import logging
@@ -49,10 +51,52 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_binary import _foreach_pow_List as _generic_pow_list
+from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import check_tensor_list, tl_dtype
 
+from ._foreach_binary import _foreach_pow_List as _vendor_pow_list
+
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# xpu libdevice "Unsupported" stub repair
+# ---------------------------------------------------------------------------
+#
+# The xpu libdevice (``triton.language.extra.xpu.libdevice``) declares the
+# symbols below as a stub whose *only* mapping is a symbol literally named
+# ``Unsupported``, so any kernel that calls one fails to link
+# (``xpu3-elfconv-triton: undefined symbol: Unsupported``).  The shim's
+# ``_patch_missing_symbols`` only fills in *missing* symbols and cannot see
+# these stubs, so they are rebound here to the pure-triton core math, which
+# lowers to the real ``_ZN3xpu*`` functions.  This module is always imported
+# by the ops registry at ``import flag_gems`` -- before any kernel is traced
+# -- which makes it a reliable home for a vendor-wide repair (the 16-bit
+# ``_pow_fn`` path, the unary ``fn16`` bodies, ``gelu``'s backward, ... all
+# see the fixed symbols).  ``tl.tan`` has no core implementation on this
+# backend, so ``fast_tanf`` folds to ``sin``/``cos``.
+@triton.jit
+def _xpu_fast_log10f(x):
+    return tl.log(x) * 0.4342944819032518
+
+
+@triton.jit
+def _xpu_fast_tanf(x):
+    return tl.sin(x) / tl.cos(x)
+
+
+for _name, _impl in (
+    ("exp", tl.exp),
+    ("log", tl.log),
+    ("fast_cosf", tl.cos),
+    ("fast_log10f", _xpu_fast_log10f),
+    ("fast_log2f", tl.log2),
+    ("fast_logf", tl.log),
+    ("fast_sinf", tl.sin),
+    ("fast_tanf", _xpu_fast_tanf),
+):
+    setattr(tl_extra_shim, _name, _impl)
+
 
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -167,7 +211,7 @@ def _foreach_pow_List(self, other):
         outs = _try_fast(tensors, others)
         if outs is not None:
             return outs
-    return _generic_pow_list(self, other)
+    return _vendor_pow_list(self, other)
 
 
 __all__ = ["_foreach_pow_List"]

@@ -143,13 +143,13 @@ enflame-tops1910 = [
     "flagtree==0.6.0+enflame3.6",
 ]
 
-hygon = [
+hygon-dtk2604 = [
     "torch==2.9.0+das.opt1.dtk2604",
     "flash_attn==2.8.3+das.opt1.dtk2604.torch290",
     "flagtree==0.7.0+hcu3.6",
 ]
 
-iluvatar = [
+iluvatar-corex450 = [
     "torch==2.10.0+corex.4.5.0.20260804",
     "torchaudio==2.10.0+corex.4.5.0.20260804",
     "torchvision==0.25.0+corex.4.5.0.20260804",
@@ -157,7 +157,7 @@ iluvatar = [
     "flagtree==0.7.0+iluvatar3.6",
 ]
 
-kunlunxin = [
+kunlunxin-xre5371 = [
     "apex==0.1",
     "benchflow==1.0.0",
     "colorama==0.4.6",
@@ -228,12 +228,12 @@ nvidia-cuda133 = [
     "flagtree==0.7.0",
 ]
 
-spacemit = [
+spacemit-xxx = [
     "torch==2.8.0+spacemit.0",
     "triton==3.6.0+spacemit.a5",
 ]
 
-sunrise = [
+sunrise-tangrt120 = [
     "torch==2.11.0+cpu",
     "torchaudio==2.11.0+cpu",
     "torchvision==0.26.0+cpu",
@@ -241,12 +241,12 @@ sunrise = [
     "triton==3.6.0.1+git0a5cfb35",
 ]
 
-thead = [
+thead-ppu210 = [
     "torch==2.10.0+v0.1.0.ppu2.1.1",
     "flagtree==0.7.0+ppu3.6",
 ]
 
-tsingmicro = [
+tsingmicro-tsm260610 = [
     "torch==2.7.0+cpu",
     "torchvision==0.22.0+cpu",
     "torchaudio==2.7.0+cpu",
