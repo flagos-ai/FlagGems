@@ -257,17 +257,13 @@ def _row_indices(crow, nnz, device):
 
 
 def _to_csr(sparse):
+    # aten implements this backward for CSR only (the COO/CSC/BSR/BSC branches
+    # here were unreachable through dispatch anyway: the op is registered on
+    # SPARSE_CSR_DISPATCH_KEY and aten itself rejects the other layouts).
     if sparse.layout == torch.sparse_csr:
         return sparse
-    if sparse.layout in (
-        torch.sparse_coo,
-        torch.sparse_csc,
-        torch.sparse_bsr,
-        torch.sparse_bsc,
-    ):
-        return sparse.to_sparse_csr()
     raise RuntimeError(
-        f"_sparse_mm_reduce_impl_backward: Expected self to have a sparse "
+        f"_sparse_mm_reduce_impl_backward: Expected self to have a sparse CSR "
         f"layout, but got {sparse.layout}"
     )
 

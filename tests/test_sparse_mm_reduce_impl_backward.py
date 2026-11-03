@@ -55,7 +55,7 @@ else:
         (8, 256, 8),  # N > 1024: the n-block split must cover the whole row
     ]
     SPARSITIES = [0.0, 0.5, 0.9, 1.0]
-    LAYOUTS = ["csr", "coo", "csc"]
+    LAYOUTS = ["csr"]
     # max/min are aliases of amax/amin (the same code path), so the distinct
     # backward behaviours are covered by these four.
     REDUCES = ["sum", "mean", "amax", "amin"]
