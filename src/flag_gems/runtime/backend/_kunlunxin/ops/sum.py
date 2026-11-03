@@ -460,6 +460,99 @@ def _row_reduce_kernel(
     tl.store(out + pid, total.to(out.dtype.element_ty))
 
 
+@libentry()
+@triton.jit(
+    do_not_specialize=["N"],
+)
+def _sum_row_pointer_kernel(
+    inp,
+    out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    NEED_MASK: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    SCALE: tl.constexpr = 1.0,
+):
+    """`out[m] = sum(inp[m, :]) * SCALE` for a contiguous [M, N] input.
+
+    Pointer counterpart of `_tle_sum_row_kernel`, for toolchains that cannot lower
+    the tle local_ptr `tt.make_range`. It keeps the `mean_dim` shape -- a persisted
+    [BLOCK_M, BLOCK_N] accumulator, elementwise adds in the loop and a single narrow
+    `tl.sum` after it -- rather than reducing inside the loop, which miscompiles for
+    converted 16-bit tiles on this backend (see `mean_dim_kernel`).
+    """
+    pid = tl.program_id(0)
+    rows = pid * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    x = inp + rows * N
+    o = out + rows
+    row_mask = rows < M
+
+    acc = tl.zeros([BLOCK_M, BLOCK_N], ACC_DTYPE)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        if NEED_MASK:
+            mask = row_mask & (cols < N)
+            a = tl.load(x + cols, mask, other=0)
+        else:
+            a = tl.load(x + cols)
+        acc += a.to(ACC_DTYPE)
+    res = tl.sum(acc, axis=1)[:, None]
+    if SCALE != 1.0:
+        res = res * SCALE
+    if NEED_MASK:
+        tl.store(o, res.to(out.dtype.element_ty), row_mask)
+    else:
+        tl.store(o, res.to(out.dtype.element_ty))
+
+
+# One program's tile, in lanes; same budget the other pointer kernels keep.
+_SUM_POINTER_TILE_LANES = 65536
+# Accumulator per input dtype, matching `_resolve_acc_dtype`.
+_SUM_POINTER_ACC = {
+    torch.float16: tl.float32,
+    torch.bfloat16: tl.float32,
+    torch.float32: tl.float32,
+    torch.int8: tl.int64,
+    torch.int16: tl.int64,
+    torch.int32: tl.int64,
+    torch.int64: tl.int64,
+    torch.uint8: tl.int64,
+}
+
+
+def _sum_row_pointer(inp, out, M, N, scale=1.0):
+    """`out[m] = sum(inp[m, :]) * scale` on the pointer path.
+
+    Reached when the tle row kernel is unavailable (dtype/layout) or fails to
+    compile on the installed toolchain, so `sum_dim` keeps working there.
+    """
+    acc_dtype = _SUM_POINTER_ACC.get(inp.dtype)
+    if acc_dtype is None or not inp.is_contiguous() or not out.is_contiguous():
+        raise NotImplementedError(
+            f"kunlunxin sum: no pointer path for {inp.dtype} -> {out.dtype}"
+        )
+    a = inp if inp.ndim == 2 and inp.shape[0] == M else inp.view(M, N)
+    c = out if out.ndim == 1 else out.view(M)
+    block_n = min(_npo2(N), 2048)
+    block_m = max(1, min(_npo2(M), _SUM_POINTER_TILE_LANES // block_n))
+    need_mask = (M % block_m != 0) or (N % block_n != 0)
+    with torch_device_fn.device(inp.device):
+        _sum_row_pointer_kernel[(triton.cdiv(M, block_m),)](
+            a,
+            c,
+            M,
+            N,
+            block_m,
+            block_n,
+            need_mask,
+            acc_dtype,
+            scale,
+            buffer_size_limit=2048,
+        )
+
+
 def _tle_sum_dim(inp, out, M, N, scale=1.0):
     """Row-reduce `inp` into `out` with tle; False if tle cannot express it."""
     global _TLE_BROKEN
@@ -918,17 +1011,10 @@ def _launch_sum_dim(inp, out, M, N, scale=1.0):
             raise NotImplementedError(
                 f"kunlunxin sum: no tle path for dtype {inp.dtype} -> {out.dtype}"
             )
-        # The tle row kernel failed to compile (or is absent): the pointer kernel is
-        # the faithful replacement -- one program per row, streaming the reduced dim.
-        with torch_device_fn.device(inp.device):
-            _row_reduce_kernel[(M,)](
-                inp,
-                out,
-                N,
-                scale,
-                min(_npo2(N), _TLE_FLAT_COLS),
-                _TLE_ACC_DTYPE[inp.dtype],
-            )
+        # The tle row kernel failed to compile (or is absent): the pointer kernel
+        # `_sum_row_pointer` is the faithful replacement -- it keeps the mean_dim
+        # persisted [BLOCK_M, BLOCK_N] accumulator with a single post-loop reduce.
+        _sum_row_pointer(inp, out, M, N, scale)
 
 
 def _reduce_view(inp, dims):
