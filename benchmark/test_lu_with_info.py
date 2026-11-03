@@ -12,13 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
+import json
+import math
+import os
+from dataclasses import asdict, dataclass
+from functools import cached_property, lru_cache
+from pathlib import Path
+
 import pytest
 import torch
 
 import flag_gems
 
 from . import base
-
 
 _TEST_DTYPES = (
     [torch.float32, torch.float64]
@@ -27,7 +34,326 @@ _TEST_DTYPES = (
 )
 
 
-class LuWithInfoBenchmark(base.Benchmark):
+_H800_ARTIFACT_SHA256 = (
+    "83290005fa78033935a0fb806843739a41e533741c4611c1239796ae2467f0f3"
+)
+_H800_OPS_COMMIT = "9b60ea86a30e3ca27fe47abd7efd655499afe791"
+_H800_BAD_SHAPES = {(256, 256), (512, 512), (1024, 1024)}
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr65:op_lu_with_info_h800_perf_baseline": {
+        "sha256": "83290005fa78033935a0fb806843739a41e533741c4611c1239796ae2467f0f3",
+        "artifact": "op_lu_with_info_h800_perf_baseline.json",
+        "operators": ["_lu_with_info"],
+        "provenance": {},
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
+@dataclass
+class _LuMetrics(base.BenchmarkMetrics):
+    baseline_source: dict | None = None
+
+
+class _LuH800PartialBaseline:
+
+    @cached_property
+    def _h800_baseline(self):
+        path = Path(os.environ["FLAGGEMS_LU_WITH_INFO_H800_BASELINE"]).resolve(
+            strict=True
+        )
+        payload = _aten_read_bytes(path, ("pr65:op_lu_with_info_h800_perf_baseline"))
+        if hashlib.sha256(payload).hexdigest() != _H800_ARTIFACT_SHA256:
+            raise ValueError(
+                "Expected the reviewed deprecated LU three-output H800 artifact"
+            )
+        data = json.loads(payload)
+        key = "_lu_with_info"
+        task = data["_collection"]["tasks"][key]
+        environment = data["_environments"][str(task["device"])]
+        if (
+            data[key]["native_api"] != "ops._lu_with_info"
+            or task["status"] != "completed"
+            or task["returncode"] != 0
+            or (environment["hardware"]["gpu"]["name"] != "NVIDIA H800")
+            or (environment["source"]["git_commit"] != _H800_OPS_COMMIT)
+            or (environment["source"]["git_dirty"] is not False)
+            or (data["_collection"]["configuration"]["repo"] != "pytorch")
+        ):
+            raise ValueError(
+                "Expected a completed native deprecated LU three-output H800 run"
+            )
+        return (
+            data[key]["shapes"],
+            _aten_qualify_metadata(
+                {
+                    "artifact": str(path),
+                    "artifact_sha256": _H800_ARTIFACT_SHA256,
+                    "operator": key,
+                    "collection_task": task,
+                    "environment": environment,
+                    "input_identity": "Exact original geometry, flags, dtype and recipe; random payloads differ",
+                    "ratio": "raw H800 latency / locally timed candidate; no peak normalization",
+                    "environment_qualification": (
+                        "Functional latency collection with sharing allowed; "
+                        "no isolated performance claim"
+                    ),
+                },
+                ("pr65:op_lu_with_info_h800_perf_baseline"),
+            ),
+        )
+
+    def get_latency(self, op, *args, **kwargs):
+        if (
+            flag_gems.vendor_name != "thead"
+            or op is not self.torch_op
+            or not args
+            or args[0].dtype != torch.float32
+            or tuple(args[0].shape) not in _H800_BAD_SHAPES
+        ):
+            return super().get_latency(op, *args, **kwargs)
+        if args[0].device.type != torch.device(self.device).type:
+            raise ValueError("H800 comparison requires actual target-device inputs")
+        if (
+            self.is_backward
+            or base.Config.skip_native
+            or "tflops" in self.to_bench_metrics
+        ):
+            raise ValueError(
+                "LU-with-info H800 baseline requires original forward core timing"
+            )
+        config = _h800_input_config(args, kwargs)
+        shapes, provenance = self._h800_baseline
+        matches = [
+            record
+            for by_dtype in shapes.values()
+            for (dtype, record) in by_dtype.items()
+            if dtype == str(args[0].dtype) and record.get("config") == config
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                "Expected one three-output H800 record for the full core identity"
+            )
+        record = matches[0]
+        us = record["T_us"]
+        if (
+            isinstance(us, bool)
+            or not isinstance(us, (float, int))
+            or (not math.isfinite(us))
+            or (us <= 0)
+        ):
+            raise ValueError("H800 latency must be finite and positive")
+        ms = us / 1000
+        if not math.isclose(record["latency_ms"], ms, rel_tol=1e-09, abs_tol=1e-12):
+            raise ValueError("H800 latency units disagree")
+        self._imported_baseline = {
+            **provenance,
+            "config": config,
+            "target_timing_mode": base.Config.mode.value,
+        }
+        return ms
+
+    def _measure_input(self, input, case_id=None):
+        self._imported_baseline = None
+        metric = super()._measure_input(input, case_id)
+        if self._imported_baseline is None:
+            return metric
+        if metric.latency is not None and (
+            not math.isfinite(metric.latency) or metric.latency <= 0
+        ):
+            raise ValueError("Target candidate latency must be finite and positive")
+        if "speedup" in self.to_bench_metrics:
+            metric.speedup = metric.latency_base / metric.latency
+        return _LuMetrics(**asdict(metric), baseline_source=self._imported_baseline)
+
+
+def _h800_input_config(args, kwargs):
+    if (
+        len(args) != 1
+        or set(kwargs) != {"pivot", "check_errors"}
+        or kwargs["pivot"] is not True
+        or kwargs["check_errors"] is not False
+    ):
+        raise ValueError("Expected original LU core pivot/check_errors flags")
+    inp = args[0]
+    shape, dtype = tuple(inp.shape), inp.dtype
+    if (
+        shape not in _H800_BAD_SHAPES
+        or dtype != torch.float32
+        or not inp.is_contiguous()
+        or inp.storage_offset() != 0
+        or inp.requires_grad
+    ):
+        raise ValueError("Expected original failing PPU LU core input identity")
+    stride = [1] * len(shape)
+    for i in range(len(shape) - 2, -1, -1):
+        stride[i] = stride[i + 1] * shape[i + 1]
+    return {
+        "native_expression": "torch._lu_with_info",
+        "native_schema": (
+            "aten::_lu_with_info(Tensor self, bool pivot=True, bool check_errors=True) "
+            "-> (Tensor LU, Tensor pivots, Tensor info)"
+        ),
+        "source_commit": "2a3a455fa9eef530dc11a6b96ff333ffb47235fd",
+        "source_benchmark_sha256": "9d3c5f655d248422d67371653b93d0d8d64c08f3570ca91cce29f190f8f7be49",
+        "source_builder_ast_sha256": "62e04bcce6bc7da3aa44e0fe9f7664402d68457fff63fca0bc2490f0dedae2d5",
+        "benchmark": "benchmark/test_lu_with_info.py",
+        "builder": "LuWithInfoBenchmark.build_inputs",
+        "scope": "core",
+        "descriptor": list(shape),
+        "recipe": {"seed": 0, "input": "torch.randn on requested device"},
+        "inputs": {
+            "args": [
+                {
+                    "shape": list(shape),
+                    "stride": stride,
+                    "storage_offset": 0,
+                    "dtype": str(dtype),
+                    "requires_grad": False,
+                }
+            ],
+            "kwargs": {"pivot": True, "check_errors": False},
+        },
+        "outputs": [
+            {"name": "LU", "shape": list(shape), "dtype": str(dtype)},
+            {
+                "name": "pivots",
+                "shape": list(shape[:-2]) + [min(shape[-2:])],
+                "dtype": "torch.int32",
+            },
+            {"name": "info", "shape": list(shape[:-2]), "dtype": "torch.int32"},
+        ],
+        "effects": {"mutates": [], "returns_alias_of": {}},
+    }
+
+
+class LuWithInfoBenchmark(_LuH800PartialBaseline, base.Benchmark):
     DEFAULT_SHAPES = [
         (64, 64),
         (256, 256),
