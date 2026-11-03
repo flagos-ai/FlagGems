@@ -60,6 +60,7 @@ def _cat_build_working_list_uint8_view(
 def _cat_copy_one(
     out_ptr,
     in_ptr,
+    pid_x,
     dim_size_in,
     dim_size_out,
     dim_prod_post,
@@ -67,7 +68,6 @@ def _cat_copy_one(
     total_elements,
     BLOCK_X: tl.constexpr,
 ):
-    pid_x = tl.program_id(0)
     dim_size_in = tl.cast(dim_size_in, tl.int64)
     dim_offset = tl.cast(dim_offset, tl.int64)
     total_elements = tl.cast(total_elements, tl.int64)
@@ -112,14 +112,18 @@ def cat_copy_func_kernel_4(
     total_elements_b,
     total_elements_c,
     total_elements_d,
+    num_tensors,
     BLOCK_X: tl.constexpr,
 ):
-    pid_y = tl.program_id(1)
+    linear_pid = tl.program_id(0)
+    pid_x = linear_pid // num_tensors
+    pid_y = linear_pid % num_tensors
 
     if pid_y == 0:
         _cat_copy_one(
             out_ptr,
             in_ptr_a,
+            pid_x,
             dim_size_in_a,
             dim_size_out,
             dim_prod_post,
@@ -131,6 +135,7 @@ def cat_copy_func_kernel_4(
         _cat_copy_one(
             out_ptr,
             in_ptr_b,
+            pid_x,
             dim_size_in_b,
             dim_size_out,
             dim_prod_post,
@@ -142,6 +147,7 @@ def cat_copy_func_kernel_4(
         _cat_copy_one(
             out_ptr,
             in_ptr_c,
+            pid_x,
             dim_size_in_c,
             dim_size_out,
             dim_prod_post,
@@ -153,6 +159,7 @@ def cat_copy_func_kernel_4(
         _cat_copy_one(
             out_ptr,
             in_ptr_d,
+            pid_x,
             dim_size_in_d,
             dim_size_out,
             dim_prod_post,
@@ -204,7 +211,7 @@ def _cat_run_kernel(
 
         grid_y = num_tensors_in_batch
         max_elements_in_batch = max(total_elements_list) if total_elements_list else 0
-        grid = (triton.cdiv(max_elements_in_batch, BLOCK), grid_y)
+        grid = (triton.cdiv(max_elements_in_batch, BLOCK) * grid_y,)
 
         (
             tensor_a,
@@ -250,6 +257,7 @@ def _cat_run_kernel(
                 "total_elements_b": total_elements_b,
                 "total_elements_c": total_elements_c,
                 "total_elements_d": total_elements_d,
+                "num_tensors": num_tensors_in_batch,
             },
         )
 
