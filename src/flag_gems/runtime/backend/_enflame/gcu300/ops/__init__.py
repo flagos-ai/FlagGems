@@ -92,6 +92,8 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import (
+    div_mode,
+    div_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -392,6 +394,8 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "elu",
     "embedding",
