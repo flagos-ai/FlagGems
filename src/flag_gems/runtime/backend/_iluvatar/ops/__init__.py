@@ -28,8 +28,6 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
 from .concatenate import run as concatenate
@@ -38,9 +36,12 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d
+from .conv_transpose2d import conv_transpose2d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
 from .gru import gru, gru_data
@@ -71,6 +72,7 @@ from .log_normal import log_normal
 from .log_normal_ import log_normal_
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
+from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .median import median
 from .mm import mm, mm_out
@@ -78,25 +80,30 @@ from .mvlgamma import run as mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .narrow_copy import narrow_copy
 from .nonzero_numpy import nonzero_numpy
+from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
+from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
 from .repeat_interleave import repeat_interleave_self_int
+from .replication_pad1d_backward import replication_pad1d_backward
 from .resolve_neg import resolve_neg
 from .scatter_add import scatter_add_
+from .smm import smm
 from .softplus import softplus_backward
 from .sort import sort, sort_stable
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_bessel_j0 import run as special_bessel_j0
+from .special_chebyshev_polynomial_t_out import special_chebyshev_polynomial_t_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
 )
 from .special_gammainc import special_gammainc
-from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_hermite_polynomial_h import run as special_hermite_polynomial_h
 from .special_hermite_polynomial_he import special_hermite_polynomial_he
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_modified_bessel_k0 import special_modified_bessel_k0
@@ -108,6 +115,9 @@ from .special_modified_bessel_k1 import (
 from .special_multigammaln import run as special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
+from .special_shifted_chebyshev_polynomial_t import (
+    special_shifted_chebyshev_polynomial_t,
+)
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
@@ -115,7 +125,9 @@ from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_i
 from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
+from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
+from .xlogy_tensor_scalar import xlogy_tensor_scalar
 
 _pointwise_dynamic = importlib.import_module("flag_gems.utils.pointwise_dynamic")
 _pointwise_dynamic.ModuleGenerator = ModuleGenerator
@@ -126,6 +138,9 @@ __all__ = [
     "_cholesky_solve_helper",
     "_conv_depthwise2d",
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_native_batch_norm_legit_functional",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unsafe_masked_index_put_accumulate",
@@ -138,8 +153,6 @@ __all__ = [
     "arccosh_",
     "as_strided_scatter",
     "avg_pool3d_backward",
-    "broadcast_tensors",
-    "broadcast_to",
     "cholesky_solve",
     "cholesky_solve_out",
     "concatenate",
@@ -147,6 +160,7 @@ __all__ = [
     "conv1d",
     "conv2d",
     "conv_transpose1d",
+    "conv_transpose2d",
     "cudnn_convolution",
     "diagonal_scatter",
     "div_mode",
@@ -185,6 +199,7 @@ __all__ = [
     "log_normal_",
     "matmul_bf16",
     "matmul_int8",
+    "max_pool2d_with_indices_backward",
     "max_pool3d_with_indices_backward",
     "median",
     "mm",
@@ -196,21 +211,26 @@ __all__ = [
     "nanmedian_out",
     "narrow_copy",
     "nonzero_numpy",
+    "not_equal",
     "pad_sequence",
     "permute_copy",
+    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
     "repeat_interleave_self_int",
+    "replication_pad1d_backward",
     "resolve_neg",
     "run",
     "scatter_add_",
+    "smm",
     "softplus_backward",
     "sort",
     "sort_stable",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_bessel_j0",
+    "special_chebyshev_polynomial_t_out",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
@@ -225,11 +245,14 @@ __all__ = [
     "special_multigammaln",
     "special_round",
     "special_round_out",
+    "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_w",
     "tile",
     "triangular_solve",
     "triangular_solve_out",
+    "upsample_trilinear3d_backward",
     "var",
     "var_correction",
     "var_dim",
+    "xlogy_tensor_scalar",
 ]

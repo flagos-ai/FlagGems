@@ -22,9 +22,11 @@ def test_norm(shape, ord, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.norm(ref_inp, ord)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp, ord)
+    # flag_gems.norm registers aten::norm.Scalar, so the reference is the
+    # native kernel behind that overload (torch.norm is a composite that
+    # decomposes to linalg.vector_norm instead).
+    ref_out = torch.ops.aten.norm.Scalar(ref_inp, ord)
+    res_out = flag_gems.norm(inp, ord)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -36,9 +38,8 @@ def test_norm_scalar(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.norm(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.norm(inp)
+    ref_out = torch.ops.aten.norm.Scalar(ref_inp)
+    res_out = flag_gems.norm_scalar(inp)
 
     gems_assert_close(res_out, ref_out, dtype)
 
@@ -56,7 +57,8 @@ def test_norm_scalaropt_dim(shape, ord, dim, keepdim, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = to_reference(inp, True)
 
-    ref_out = torch.norm(ref_inp, ord, dim, keepdim)
+    # flag_gems.norm_scalaropt_dim registers aten::norm.ScalarOpt_dim.
+    ref_out = torch.ops.aten.norm.ScalarOpt_dim(ref_inp, ord, dim, keepdim)
     res_out = flag_gems.norm_scalaropt_dim(inp, ord, dim, keepdim)
 
     gems_assert_close(res_out, ref_out, dtype)

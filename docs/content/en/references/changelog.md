@@ -129,7 +129,7 @@ weight: 90
 
 **Release date**: 2026-01-04
 
-- This release contains 216 operators, see [Operator List](/FlagGems/reference/operators/)
+- This release contains 216 operators, see [Operator List](operators.md)
 - Added neural network operators:
   `avg_pool2d`,
   `avg_pool2d_backward`,

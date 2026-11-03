@@ -20,6 +20,13 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="the device does not support FP8 (no FP8 hardware)",
+)
+
 if QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
