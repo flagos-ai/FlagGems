@@ -6,6 +6,9 @@
 """Select a whole-packet kernel against the ordinary, fully tuned MM family."""
 
 import logging
+from dataclasses import dataclass
+from functools import lru_cache
+from types import MappingProxyType
 import statistics
 import threading
 
@@ -77,7 +80,6 @@ def _packet_eligible(a, b, c):
     return target.backend == "hip" and target.arch == "gfx936"
 
 
-
 def _large_packet_variants():
     """Add only modes supported by this compiler/API; no model-shape selector."""
     try:
@@ -106,34 +108,6 @@ def _large_packet_variants():
         # tall matrices, while the original order can win for wider matrices.
         modes.append("large_overlap_group1")
     return tuple(modes)
-
-
-def _launch_large_packet(a, b, c, *, variant):
-    if variant not in ("large_safe", "large_overlap", "large_overlap_group1") or b.stride() == (1, a.shape[1]):
-        raise ValueError("Large packet modes require eligible contiguous NN storage")
-    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
-    m, k = a.shape
-    n = b.shape[1]
-    traversal = {"GROUP_M": 1} if variant == "large_overlap_group1" else {}
-    return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        *_LARGE_PACKET_GEOMETRY,
-        # LibEntry keys signature constexprs, not compiler-option kwargs.
-        # This unused constexpr separates the two measured native modes.
-        ENTRY_FAMILY=0 if variant == "large_safe" else 1,
-        num_warps=8, num_stages=5, waves_per_eu=1,
-        loop_unroll_stage="post-pipeline", schedule_hint="local-prefetch",
-        lds_dma_alias_workaround=True,
-        mmac_transposed=True, mmac_warps_m=4,
-        packet_matrix_read_partition=True,
-        mma_phase_schedule=True, packet_wait_rotation=False,
-        packet_post_mma_wait=variant == "large_safe",
-        packet_operand_overlap_diagnostic=variant in ("large_overlap", "large_overlap_group1"),
-        packet_reuse_wait="none", packet_redundant_lgkm_cleanup=False,
-        rebase_buffer_store=False,
-        **traversal,
-    )
-
 
 
 def _raw_nt_packet_variants():
@@ -359,29 +333,6 @@ def _post_mma_packet_variants(*, nt):
     return tuple(name + "_post_mma" for name in geometries)
 
 
-def _packet_wait_options(wait_mode):
-    # Compiler kwargs do not enter LibEntry's key. The source constexpr also
-    # distinguishes these native modes, without changing the runtime pointers.
-    return dict(WAIT_MODE=1, mma_phase_schedule=True, packet_post_mma_wait=True,
-                packet_wait_rotation=False, packet_redundant_lgkm_cleanup=True) if wait_mode else {}
-
-
-def _launch_nn_geometry_packet(a,b,c,*,geometry,wait_mode=False):
-    config=_NN_GEOMETRIES[geometry];m,k=a.shape;n=b.shape[1]
-    if a.stride()!=(k,1)or b.stride()!=(n,1)or c.stride()!=(n,1):
-        raise ValueError('Wide/cube packet modes require contiguous NN storage')
-    if b.shape[0]!=k or tuple(c.shape)!=(m,n):raise ValueError('Mismatched matrix dimensions')
-    from .mm_packet_kernel import _mm_packet_rect_kernel
-    fn = _mm_packet_rect_kernel
-    bm,bn,bk=config['tile'];wm,wn=config['warps']
-    options = dict(_NN_GEOMETRY_OPTIONS, **_packet_wait_options(wait_mode))
-    return fn[((m+bm-1)//bm*((n+bn-1)//bn),)](
-        a,b,c,m,n,k,*a.stride(),*b.stride(),*c.stride(),bm,bn,bk,wm,wn,
-        config['A_SOURCE_BASIS'],config['B_SOURCE_BASIS'],
-        TILES_PER_WARP=config['tiles_per_warp'],**options,
-    )
-
-
 # New measured code-generation modes follow the complete original family list.
 # Compiler kwargs do not enter LibEntry's cache key: each options combination
 # has its own source constexpr ENTRY_FAMILY (and traversal has GROUP_M).
@@ -441,43 +392,6 @@ def _codegen_packet_variants(*, nt):
     return tuple(modes)
 
 
-def _codegen_nn_dimensions(a, b, c):
-    m, k = a.shape
-    n = b.shape[1]
-    if (a.stride() != (k, 1) or b.stride() != (n, 1)
-            or c.stride() != (n, 1)):
-        raise ValueError("Code-generation packet modes require contiguous NN storage")
-    if b.shape[0] != k or tuple(c.shape) != (m, n):
-        raise ValueError("Mismatched matrix dimensions")
-    return m, n, k
-
-
-def _launch_codegen_square_packet(a, b, c):
-    """The measured compact square tile with local output byte offsets."""
-    from .mm_packet_kernel import _mm_packet_rect_kernel
-    m, n, k = _codegen_nn_dimensions(a, b, c)
-    return _mm_packet_rect_kernel[(triton.cdiv(m, 128) * triton.cdiv(n, 128),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        128, 128, 16, 2, 2,
-        (1, 2, 4, 8, 16, 32, 256, 512, 1024, 64, 128, 0),
-        (1, 2, 4, 8, 16, 32, 64, 128, 512, 256, 1024, 0),
-        GROUP_M=8, TILES_PER_WARP=(2, 2), WAIT_MODE=0, ENTRY_FAMILY=0, OUTPUT_LAYOUT=1,
-        **_CODEGEN_SQUARE_OPTIONS,
-    )
-
-
-def _launch_codegen_large_packet(a, b, c, *, variant):
-    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
-    group_m, entry_family, fold = _CODEGEN_LARGE_MODES[variant]
-    m, n, k = _codegen_nn_dimensions(a, b, c)
-    return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        *_LARGE_PACKET_GEOMETRY,
-        GROUP_M=group_m, ENTRY_FAMILY=entry_family,
-        combine_shifted_disjoint_or=fold, **_CODEGEN_LARGE_OPTIONS,
-    )
-
-
 _COLUMN_PACKET_MODES = {
     "large_column_chart": 8,
     "large_column_chart_group1": 1,
@@ -506,49 +420,6 @@ def _column_packet_variants(*, nt):
         return ()
     return (tuple(_COLUMN_PACKET_MODES) + ("wide_column_chart", "wide_column_overlap")
             + tuple(_COLUMN_VECTOR_OFFSET_MODES))
-
-
-def _launch_wide_column_packet(a, b, c, *, overlap=False):
-    """Apply the compiler-derived column chart to the existing wide geometry."""
-    from .mm_packet_kernel import _mm_packet_rect_kernel
-    config = _NN_GEOMETRIES["wide"]
-    m, n, k = _codegen_nn_dimensions(a, b, c)
-    bm, bn, bk = config["tile"]
-    wm, wn = config["warps"]
-    options = dict(_NN_GEOMETRY_OPTIONS, coalesce_lgkm_waits=True,
-                   combine_shifted_disjoint_or=True,
-                   buffer_store_scalar_offset=True,
-                   buffer_store_split_immediate=True,
-                   buffer_store_preserve_masked_base=True)
-    if overlap:
-        # As for large_overlap, partial-LGKM hardware ordering remains an
-        # explicitly unproved boundary. Keep the original measured family.
-        # WAIT_MODE distinguishes LibEntry keys from compiler-option kwargs.
-        options.update(WAIT_MODE=4, mma_phase_schedule=True,
-                       packet_operand_overlap_diagnostic=True,
-                       packet_redundant_lgkm_cleanup=True)
-    return _mm_packet_rect_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        bm, bn, bk, wm, wn, config["A_SOURCE_BASIS"], config["B_SOURCE_BASIS"],
-        TILES_PER_WARP=config["tiles_per_warp"], OUTPUT_LAYOUT=2, **options,
-    )
-
-
-def _launch_column_packet(a, b, c, *, variant):
-    """Select the adjacent output chart; retain all original memory-domain gates."""
-    from .mm_packet_kernel import _mm_packet_rect_kernel as _mm_packet_kernel
-    m, n, k = _codegen_nn_dimensions(a, b, c)
-    vector_offsets = variant in _COLUMN_VECTOR_OFFSET_MODES
-    modes = _COLUMN_VECTOR_OFFSET_MODES if vector_offsets else _COLUMN_PACKET_MODES
-    return _mm_packet_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        *_LARGE_PACKET_GEOMETRY,
-        GROUP_M=modes[variant], ENTRY_FAMILY=4 if vector_offsets else 3, OUTPUT_LAYOUT=2,
-        combine_shifted_disjoint_or=True,
-        buffer_store_scalar_offset=not vector_offsets, buffer_store_split_immediate=True,
-        buffer_store_preserve_masked_base=True,
-        **_CODEGEN_LARGE_OPTIONS,
-    )
 
 
 # NT cube geometries append to the complete existing family sequence. All
@@ -589,30 +460,6 @@ def _nt_cube_packet_variants(*, nt):
     return tuple(modes)
 
 
-def _launch_nt_cube_packet(a, b, c, *, variant):
-    """Existing NT22 ABI with the measured full 4096-element producer charts."""
-    if variant not in _NT_CUBE_MODES:
-        raise ValueError("Unsupported NT cube packet mode")
-    m, k = a.shape
-    n = b.shape[1]
-    if (a.stride() != (k, 1) or b.stride() != (1, k)
-            or c.stride() != (n, 1) or b.shape[0] != k
-            or tuple(c.shape) != (m, n)):
-        raise ValueError("NT cube requires contiguous A/C and transposed contiguous B")
-    from .mm_packet_kernel import _mm_packet_rect_kernel
-    group_m, wait_mode = _NT_CUBE_MODES[variant]
-    options = dict(
-        _NT_CUBE_OPTIONS, mma_phase_schedule=bool(wait_mode),
-        packet_post_mma_wait=bool(wait_mode),
-        packet_redundant_lgkm_cleanup=bool(wait_mode),
-    )
-    return _mm_packet_rect_kernel[(triton.cdiv(m, 64) * triton.cdiv(n, 64),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        64, 64, 64, 2, 2, _NT_CUBE_SOURCE_BASIS, _NT_CUBE_SOURCE_BASIS,
-        group_m, (2, 2), wait_mode, **options,
-    )
-
-
 _NT_LARGE_K16_OPTIONS = dict(
     _NN_GEOMETRY_OPTIONS, num_warps=8,
     coalesce_lgkm_waits=True, combine_shifted_disjoint_or=True,
@@ -632,104 +479,149 @@ def _nt_large_packet_variants(*, nt):
     return ("nt_large_k16",)
 
 
-def _launch_nt_large_k16_packet(a, b, c):
-    from .mm_packet_kernel import _mm_packet_rect_kernel
+@dataclass(frozen=True)
+class _PacketProfile:
+    # Runtime shapes never enter this registry. Geometry and code-generation
+    # options describe the entire existing synchronous candidate family.
+    geometry: tuple
+    options: object
 
-    m, k = a.shape
-    n = b.shape[1]
-    if (a.stride() != (k, 1) or b.stride() != (1, k)
-            or c.stride() != (n, 1) or b.shape[0] != k
-            or tuple(c.shape) != (m, n)):
-        raise ValueError("Large NT packet requires contiguous A/C and transposed B")
-    # Explicit geometry and traversal constexprs also distinguish LibEntry keys.
-    return _mm_packet_rect_kernel[(triton.cdiv(m, 256) * triton.cdiv(n, 256),)](
-        a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        256, 256, 16, 4, 2, _NT_CUBE_SOURCE_BASIS, _NT_CUBE_SOURCE_BASIS,
-        1, (2, 2), 0, **_NT_LARGE_K16_OPTIONS,
-    )
+
+@lru_cache(maxsize=None)
+def _synchronous_packet_profile(variant, *, nt):
+    """Resolve one measured candidate to geometry, layouts and compiler options.
+
+    ENTRY_FAMILY/WAIT_MODE/GROUP_M remain source constexprs because LibEntry
+    does not include compiler-option kwargs in its cache key.
+    """
+    full_row = _NT_CUBE_SOURCE_BASIS
+    prefix_row = full_row[:-1] + (0,)
+    group = 8
+    tiles = (2, 2)
+    wait = 0
+    entry = 0
+    output = 0
+    options = dict(_NN_GEOMETRY_OPTIONS)
+    tile = None
+    warps = (2, 2)
+    a_basis = prefix_row
+    b_basis = full_row
+    nn_only = False
+    nt_only = False
+    if variant in ("large_safe", "large_overlap", "large_overlap_group1"):
+        nn_only = True
+        bm, bn, bk, wm, wn, a_basis, b_basis = _LARGE_PACKET_GEOMETRY
+        tile, warps = (bm, bn, bk), (wm, wn)
+        group = 1 if variant == "large_overlap_group1" else 8
+        entry = 0 if variant == "large_safe" else 1
+        options.update(num_warps=8, packet_post_mma_wait=variant == "large_safe",
+                       mma_phase_schedule=True,
+                       packet_operand_overlap_diagnostic=variant != "large_safe")
+    elif variant in _CODEGEN_LARGE_MODES:
+        nn_only = True
+        bm, bn, bk, wm, wn, a_basis, b_basis = _LARGE_PACKET_GEOMETRY
+        tile, warps = (bm, bn, bk), (wm, wn)
+        group, entry, fold = _CODEGEN_LARGE_MODES[variant]
+        options = dict(_CODEGEN_LARGE_OPTIONS, combine_shifted_disjoint_or=fold)
+    elif variant in _COLUMN_PACKET_MODES or variant in _COLUMN_VECTOR_OFFSET_MODES:
+        nn_only = True
+        bm, bn, bk, wm, wn, a_basis, b_basis = _LARGE_PACKET_GEOMETRY
+        tile, warps = (bm, bn, bk), (wm, wn)
+        vector = variant in _COLUMN_VECTOR_OFFSET_MODES
+        modes = _COLUMN_VECTOR_OFFSET_MODES if vector else _COLUMN_PACKET_MODES
+        group, entry, output = modes[variant], 4 if vector else 3, 2
+        options = dict(_CODEGEN_LARGE_OPTIONS, combine_shifted_disjoint_or=True,
+                       buffer_store_scalar_offset=not vector,
+                       buffer_store_split_immediate=True,
+                       buffer_store_preserve_masked_base=True)
+    elif variant == _CODEGEN_SQUARE_LABEL:
+        nn_only = True
+        tile = (128, 128, 16)
+        b_basis = (1, 2, 4, 8, 16, 32, 64, 128, 512, 256, 1024, 0)
+        output = 1
+        options = dict(_CODEGEN_SQUARE_OPTIONS)
+    elif variant in ("wide_column_chart", "wide_column_overlap"):
+        nn_only = True
+        config = _NN_GEOMETRIES["wide"]
+        tile, warps = config['tile'], config['warps']
+        a_basis, b_basis = config['A_SOURCE_BASIS'], config['B_SOURCE_BASIS']
+        tiles, output = config['tiles_per_warp'], 2
+        options.update(coalesce_lgkm_waits=True, combine_shifted_disjoint_or=True,
+                       buffer_store_scalar_offset=True, buffer_store_split_immediate=True,
+                       buffer_store_preserve_masked_base=True)
+        if variant == "wide_column_overlap":
+            wait = 4
+            options.update(mma_phase_schedule=True, packet_operand_overlap_diagnostic=True,
+                           packet_redundant_lgkm_cleanup=True)
+    elif variant in _NT_CUBE_MODES:
+        nt_only = True
+        tile, a_basis = (64, 64, 64), full_row
+        group, wait = _NT_CUBE_MODES[variant]
+        options = dict(_NT_CUBE_OPTIONS, mma_phase_schedule=bool(wait),
+                       packet_post_mma_wait=bool(wait),
+                       packet_redundant_lgkm_cleanup=bool(wait))
+    elif variant == "nt_large_k16":
+        nt_only = True
+        tile, warps, a_basis, group = (256, 256, 16), (4, 2), full_row, 1
+        options = dict(_NT_LARGE_K16_OPTIONS)
+    else:
+        wait = int(variant.endswith("_post_mma"))
+        geometry = variant.removesuffix("_post_mma") if wait else variant
+        if geometry in _NN_GEOMETRIES:
+            nn_only = True
+            config = _NN_GEOMETRIES[geometry]
+            tile, warps = config['tile'], config['warps']
+            a_basis, b_basis = config['A_SOURCE_BASIS'], config['B_SOURCE_BASIS']
+            tiles = config['tiles_per_warp']
+        elif geometry in ("rect", "small", "square"):
+            tile = {'rect': (64, 128, 32), 'small': (32, 64, 64),
+                    'square': (128, 128, 32)}[geometry]
+            if geometry == "small":
+                tiles = (1, 2)
+            if geometry == "square":
+                a_basis = full_row
+            if not nt:
+                b_basis = (_NN_GEOMETRIES['cube']['B_SOURCE_BASIS'] if geometry == 'small'
+                           else (1, 2, 4, 8, 16, 32, 64, 256, 1024, 128, 2048, 512))
+        else:
+            raise ValueError("Unsupported synchronous packet candidate")
+        options.update(mma_phase_schedule=bool(wait), packet_post_mma_wait=bool(wait),
+                       packet_redundant_lgkm_cleanup=bool(wait))
+    if (nt and nn_only) or (not nt and nt_only):
+        raise ValueError("Packet candidate does not support this B storage layout")
+    options.update(GROUP_M=group, TILES_PER_WARP=tiles, WAIT_MODE=wait,
+                   ENTRY_FAMILY=entry, OUTPUT_LAYOUT=output)
+    return _PacketProfile((*tile, *warps, a_basis, b_basis), MappingProxyType(options))
 
 
 def _launch_packet(a, b, c, *, variant="rect"):
-    if variant == "nt_large_k16":
-        return _launch_nt_large_k16_packet(a, b, c)
     if variant == "splitu_nt_multi_row_k256":
         return _launch_multi_row_nt_k256_packet(a, b, c)
-    if variant in ("wide_column_chart", "wide_column_overlap"):
-        return _launch_wide_column_packet(
-            a, b, c, overlap=variant == "wide_column_overlap")
-    if variant in _COLUMN_PACKET_MODES or variant in _COLUMN_VECTOR_OFFSET_MODES:
-        return _launch_column_packet(a, b, c, variant=variant)
-    if variant in _NT_CUBE_MODES:
-        return _launch_nt_cube_packet(a, b, c, variant=variant)
-    if variant == _CODEGEN_SQUARE_LABEL:
-        return _launch_codegen_square_packet(a, b, c)
-    if variant in _CODEGEN_LARGE_MODES:
-        return _launch_codegen_large_packet(a, b, c, variant=variant)
-    wait_mode = variant in (
-        "rect_post_mma", "small_post_mma", "square_post_mma",
-        "wide_post_mma", "cube_post_mma", "cube_tpw2_post_mma")
-    if wait_mode:
-        variant = variant.removesuffix("_post_mma")
-    if variant in ("wide", "cube", "cube_tpw2"):
-        return _launch_nn_geometry_packet(a, b, c, geometry=variant, wait_mode=wait_mode)
+    if variant == "splitu_nt":
+        return _launch_splitu_nt_packet(a, b, c)
     if variant in (
         "splitu_nt_k256", "splitu_nt_k256_peeled",
         "splitu_nt_k256_16", "splitu_nt_k256_peeled_16",
         "splitu_nt_k256_rotated", "splitu_nt_k256_rotated_16",
     ):
-        # Tail peeling helps some tile occupancies and costs others a few
-        # registers. Keep both in the existing measured family comparison.
         return _launch_splitu_nt_k256_packet(
             a, b, c, peel_tail="_peeled" in variant,
             tile=16 if variant.endswith("_16") else 32,
-            rotate_inputs="_rotated" in variant,
-        )
-    if variant == "splitu_nt":
-        return _launch_splitu_nt_packet(a, b, c)
+            rotate_inputs="_rotated" in variant)
     if variant in ("raw_nt", "raw_nt_wgm4_c4"):
         return _launch_raw_nt_packet(a, b, c, variant=variant)
-    if variant in ("large_safe", "large_overlap", "large_overlap_group1"):
-        return _launch_large_packet(a, b, c, variant=variant)
     m, k = a.shape
     n = b.shape[1]
     nt = b.stride() == (1, k)
-    small = variant == "small"
-    square = variant == "square"
-    if variant not in ("rect", "small", "square"):
-        raise ValueError("Unsupported packet tile/layout combination")
-    bm, bn, bk = ((32, 64, 64) if small else
-                  (128, 128, 32) if square else (64, 128, 32))
+    if (a.stride() != (k, 1) or (not nt and b.stride() != (n, 1))
+            or c.stride() != (n, 1) or b.shape[0] != k or tuple(c.shape) != (m, n)):
+        raise ValueError("Packet candidate requires contiguous A/C and NN or NT B")
+    profile = _synchronous_packet_profile(variant, nt=nt)
+    bm, bn = profile.geometry[:2]
     from .mm_packet_kernel import _mm_packet_rect_kernel
-    b_source_basis = (
-        (1, 2, 4, 8, 16, 32, 256, 512, 1024, 64, 128, 2048)
-        if nt else (1, 2, 4, 8, 16, 32, 128, 512, 1024, 64, 256, 2048)
-        if small else
-        (1, 2, 4, 8, 16, 32, 64, 256, 1024, 128, 2048, 512)
-    )
-    layout_options = ({"TILES_PER_WARP": (1, 2)} if small else
-                      {"TILES_PER_WARP": (2, 2)} if square else {})
-    if wait_mode:
-        layout_options["WAIT_MODE"] = 1
-    # The square A tile uses the full 4096-element chart; existing prefix
-    # tiles retain their original zero final basis. No shape-specific route.
-    a_source_basis = (1, 2, 4, 8, 16, 32, 256, 512, 1024, 64, 128,
-                      2048 if square else 0)
     return _mm_packet_rect_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
         a, b, c, m, n, k, *a.stride(), *b.stride(), *c.stride(),
-        bm, bn, bk, 2, 2,
-        a_source_basis,
-        b_source_basis,
-        num_warps=4, num_stages=5, waves_per_eu=1,
-        loop_unroll_stage="post-pipeline", schedule_hint="local-prefetch",
-        lds_dma_alias_workaround=True,
-        mmac_transposed=True, mmac_warps_m=4,
-        packet_matrix_read_partition=True,
-        mma_phase_schedule=wait_mode, packet_wait_rotation=False,
-        packet_post_mma_wait=wait_mode, packet_operand_overlap_diagnostic=False,
-        packet_reuse_wait="none", packet_redundant_lgkm_cleanup=wait_mode,
-        rebase_buffer_store=False,
-        **layout_options,
-    )
+        *profile.geometry, **profile.options)
 
 
 def clear_mm_packet_choices():
@@ -737,6 +629,15 @@ def clear_mm_packet_choices():
     with _choice_lock:
         _choices.clear()
         _choice_measurements.clear()
+
+
+def _packet_variants(*, nt):
+    """One ordered capability-filtered registry for the measured MM families."""
+    return (
+            ("rect", "small", "square") + _raw_nt_packet_variants() + _splitu_nt_packet_variants() + _multi_row_nt_packet_variants()
+            if nt
+            else ("rect", "small", "square", "wide", "cube", "cube_tpw2") + _large_packet_variants()
+        ) + _post_mma_packet_variants(nt=nt) + _codegen_packet_variants(nt=nt) + _nt_cube_packet_variants(nt=nt) + _column_packet_variants(nt=nt) + _nt_large_packet_variants(nt=nt)
 
 
 def try_mm_packet(a, b, c, ordinary, *, tuning_key, ordinary_with_output=None,
@@ -754,11 +655,7 @@ def try_mm_packet(a, b, c, ordinary, *, tuning_key, ordinary_with_output=None,
         return False
     nt = b.stride() == (1, a.shape[1])
     if variants is None:
-        variants = (
-            ("rect", "small", "square") + _raw_nt_packet_variants() + _splitu_nt_packet_variants() + _multi_row_nt_packet_variants()
-            if nt
-            else ("rect", "small", "square", "wide", "cube", "cube_tpw2") + _large_packet_variants()
-        ) + _post_mma_packet_variants(nt=nt) + _codegen_packet_variants(nt=nt) + _nt_cube_packet_variants(nt=nt) + _column_packet_variants(nt=nt) + _nt_large_packet_variants(nt=nt)
+        variants = _packet_variants(nt=nt)
     else:
         variants = tuple(variants)
         if not nt or not variants or any(
