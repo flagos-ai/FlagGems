@@ -349,16 +349,18 @@ def _cat_impl(
 
 class Cat(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, *tensor_args):
-        *tensors, dim = tensor_args
-        return _cat_impl(tensors, dim)
+    def forward(ctx, first_tensor, remaining_tensors, dim):
+        return _cat_impl((first_tensor, *remaining_tensors), dim)
 
 
 class CatOut(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, out, *tensor_args):
-        *tensors, dim = tensor_args
-        return _cat_out_impl(tensors, dim, out=out)
+    def forward(ctx, out, first_tensor, remaining_tensors, dim):
+        return _cat_out_impl(
+            (first_tensor, *remaining_tensors),
+            dim,
+            out=out,
+        )
 
 
 @trident.jit
@@ -368,11 +370,15 @@ def cat_out(
     *,
     out: torch.Tensor,
 ) -> torch.Tensor:
-    return CatOut.apply(out, *A, dim)
+    if len(A) == 0:
+        return _cat_out_impl(A, dim, out=out)
+    return CatOut.apply(out, A[0], tuple(A[1:]), dim)
 
 
 @trident.jit
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
-    return Cat.apply(*A, dim)
+    if len(A) == 0:
+        return _cat_impl(A, dim)
+    return Cat.apply(A[0], tuple(A[1:]), dim)
