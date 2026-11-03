@@ -59,8 +59,8 @@ def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
     t_steps, batch, classes, max_target = shape
     torch.manual_seed(0)
-    if flag_gems.vendor_name == "kunlunxin" and dtype == torch.float64:
-        pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
+    if flag_gems.vendor_name in ("kunlunxin", "ascend") and dtype == torch.float64:
+        pytest.skip(f"{flag_gems.vendor_name} native CTC does not preserve float64 inputs/outputs")
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
     log_probs = raw.log_softmax(-1).to(dtype)
     targets = torch.randint(1, classes, (batch, max_target), dtype=torch.long, device=device)
