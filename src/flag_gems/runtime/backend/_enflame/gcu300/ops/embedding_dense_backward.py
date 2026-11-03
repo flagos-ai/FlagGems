@@ -132,18 +132,16 @@ def embedding_dense_backward(
         if pad >= 0:
             idx = torch.where(idx == pad, torch.full_like(idx, num_weights), idx)
 
-        # `stable=True` is not usable here: the CI runner's `topsatenSort`
-        # rejects `at::_ops::sort_stable` with TOPSATEN_STATUS_BAD_PARAM. Only
-        # `order` is narrowed afterwards, so the kernel below still works
-        # entirely in int32 (GCU300 miscompiles lane-varying 64-bit
-        # arithmetic). A plain sort leaves the order of equal keys unspecified,
-        # which changes only the summation order within one destination row and
-        # hence only its float rounding -- the same freedom aten's own atomic
-        # scatter has.
-        index_sorted, order = torch.sort(idx)
-        index_sorted = index_sorted.to(torch.int32)
-        if order.dtype != torch.int32:
-            order = order.to(torch.int32)
+        # `torch.sort` is not usable on this backend at all: it dispatches
+        # through `at::native::sort()` into `at::_ops::sort_stable` regardless
+        # of the `stable` argument, and the runner's `topsatenSort` rejects
+        # that with TOPSATEN_STATUS_BAD_PARAM. Sorting on the host avoids it.
+        # `idx` is one integer per row, so the transfer is O(N) int32 against
+        # the O(N * D) gradient the kernel then streams.
+        idx_host = idx.to("cpu").to(torch.int32)
+        index_sorted, order = torch.sort(idx_host)
+        index_sorted = index_sorted.to(device)
+        order = order.to(torch.int32).to(device)
 
         BLOCK_D = min(1024, max(32, triton.next_power_of_2(D)))
         grid = (
