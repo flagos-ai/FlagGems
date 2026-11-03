@@ -57,8 +57,7 @@ def test_linalg_matrix_sqrth(dtype, shape):
     inp = _make_hpd(shape, dtype, flag_gems.device)
     reference = _reference(inp)
 
-    with flag_gems.use_gems():
-        result = torch.ops.aten.linalg_matrix_sqrth(inp)
+    result = flag_gems.linalg_matrix_sqrth(inp)
 
     utils.gems_assert_close(
         result,
@@ -77,8 +76,7 @@ def test_linalg_matrix_sqrth_noncontiguous_and_lower_triangle(dtype):
     inp = torch.tril(inp) + torch.triu(upper_noise, diagonal=1)
     reference = _reference(inp)
 
-    with flag_gems.use_gems():
-        result = flag_gems.linalg_matrix_sqrth(inp)
+    result = flag_gems.linalg_matrix_sqrth(inp)
 
     utils.gems_assert_close(result, reference, dtype, reduce_dim=8)
 
@@ -103,8 +101,7 @@ def test_linalg_matrix_sqrth_out(dtype, shape):
     out = torch.empty(shape, dtype=dtype, device=flag_gems.device).mH
     assert not out.is_contiguous()
 
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.linalg_matrix_sqrth.out(inp, out=out)
+    returned = flag_gems.linalg_matrix_sqrth_out(inp, out=out)
 
     assert returned is out
     utils.gems_assert_close(out, reference, dtype, reduce_dim=shape[-1])
@@ -116,8 +113,7 @@ def test_linalg_matrix_sqrth_out_resize():
     reference = _reference(inp)
     out = torch.empty(0, dtype=inp.dtype, device=inp.device)
 
-    with flag_gems.use_gems():
-        returned = torch.ops.aten.linalg_matrix_sqrth.out(inp, out=out)
+    returned = flag_gems.linalg_matrix_sqrth_out(inp, out=out)
 
     assert returned is out
     assert out.shape == inp.shape

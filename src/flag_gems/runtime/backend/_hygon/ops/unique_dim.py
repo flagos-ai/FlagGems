@@ -1449,7 +1449,7 @@ def unique_dim(
     slices, an optional inverse mapping of shape ``(input.size(dim),)`` and an
     optional per-unique count tensor of shape ``(output.size(dim),)``.
     """
-    logger.debug("GEMS UNIQUE_DIM")
+    logger.debug("GEMS_HYGON UNIQUE_DIM")
 
     ndim = input.ndim if input.ndim > 0 else 1
     if dim < 0:

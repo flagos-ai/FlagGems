@@ -39,6 +39,7 @@ def range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
     if dtype == torch.bfloat16:
         raise RuntimeError("torch.range does not support bfloat16 on XPU")
     if dtype not in (
+        torch.int16,
         torch.int32,
         torch.int64,
         torch.float16,
@@ -47,7 +48,7 @@ def range(start, end, *, dtype=None, layout=None, device=None, pin_memory=None):
     ):
         raise RuntimeError(f"torch.range does not support dtype {dtype}")
 
-    integer_output = dtype in (torch.int32, torch.int64)
+    integer_output = dtype in (torch.int16, torch.int32, torch.int64)
     start_value = int(start) if integer_output else float(start)
     end_value = int(end) if integer_output else float(end)
     size = (

@@ -31,7 +31,7 @@ def masked_fill_kernel(inp, expand_mask, value):
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)
@@ -57,7 +57,7 @@ def masked_fill(inp, mask, value):
 
 
 def masked_fill_(inp, mask, value):
-    logger.debug("GEMS MASKED FILL")
+    logger.debug("GEMS MASKED_FILL")
     assert (
         (torch.is_tensor(value) and value.ndim == 0)
         or isinstance(value, int)

@@ -49,7 +49,6 @@ def test_index_select(shape, dim, dtype):
     ref_inp = utils.to_reference(inp)
     ref_index = utils.to_reference(index)
     ref_out = torch.index_select(ref_inp, dim, ref_index)
-    with flag_gems.use_gems():
-        res_out = torch.index_select(inp, dim, index)
+    res_out = flag_gems.index_select(inp, dim, index)
 
     utils.gems_assert_equal(res_out, ref_out)

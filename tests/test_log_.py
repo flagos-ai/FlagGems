@@ -29,8 +29,7 @@ def test_log_(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.log_()
-    with flag_gems.use_gems():
-        res_out = inp.log_()
+    res_out = flag_gems.log_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -66,8 +65,7 @@ def test_log_special_values(dtype):
     )
     ref_inp = utils.to_reference(inp.clone())
     ref_out = ref_inp.log_()
-    with flag_gems.use_gems():
-        res_out = inp.log_()
+    res_out = flag_gems.log_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -80,8 +78,7 @@ def test_log_noncontiguous(dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.log_()
-    with flag_gems.use_gems():
-        res_out = inp.log_()
+    res_out = flag_gems.log_(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -90,8 +87,7 @@ def test_log_noncontiguous(dtype):
 def test_log_empty(dtype):
     """Empty tensor should return immediately without error."""
     inp = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        res_out = inp.log_()
+    res_out = flag_gems.log_(inp)
     assert res_out.numel() == 0
 
 
@@ -109,6 +105,5 @@ def test_log_unsupported_dtype_raises(dtype):
     # without recursion). Both prevent silent truncation.
     with pytest.raises(RuntimeError):
         inp.clone().log_()
-    with flag_gems.use_gems():
-        with pytest.raises((RuntimeError, TypeError)):
-            inp.log_()
+    with pytest.raises((RuntimeError, TypeError)):
+        flag_gems.log_(inp)

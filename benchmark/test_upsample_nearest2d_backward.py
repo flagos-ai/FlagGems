@@ -12,16 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import csv
-import json
-import math
-import os
-import tempfile
-from pathlib import Path
-
 import pytest
 import torch
-import triton
 
 import flag_gems
 
@@ -176,87 +168,6 @@ DTYPES = [
 
 
 class UpsampleNearest2dBackwardBenchmark(base.Benchmark):
-    def get_latency(self, op, *args, **kwargs):
-        if flag_gems.vendor_name != "ascend":
-            return super().get_latency(op, *args, **kwargs)
-
-        from torch_npu.npu.utils import get_cann_version
-
-        cann_version = get_cann_version()
-        if cann_version != "9.0.0":
-            raise RuntimeError(
-                "The 35-call profiler contract is validated only for CANN 9.0.0; "
-                f"installed version is {cann_version}"
-            )
-        if base.Config.mode != base.consts.BenchMode.KERNEL:
-            return super().get_latency(op, *args, **kwargs)
-
-        # A backward call can launch compute kernels and SDMA copies.
-        # Aggregate every device task belonging to each complete call.
-        profile_root = Path(
-            os.environ.get("FLAGGEMS_ASCEND_PROFILE_DIR", "outputs/ascend_profiles")
-        )
-        profile_root.mkdir(parents=True, exist_ok=True)
-        implementation = "native" if op is self.torch_op else "gems"
-        prefix = (
-            f"{self.op_name}-{self.case_name}-{args[0].dtype}-" f"{implementation}-"
-        )
-        profile_dir = Path(tempfile.mkdtemp(prefix=prefix, dir=profile_root))
-        triton.backends.ascend.testing.do_bench_npu(
-            lambda: op(*args, **kwargs),
-            warmup=5,
-            active=30,
-            prof_dir=str(profile_dir),
-            keep_res=True,
-        )
-        csv_paths = list(profile_dir.rglob("task_time_*.csv"))
-        if len(csv_paths) != 1:
-            raise RuntimeError(f"Expected one device task_time CSV in {profile_dir}")
-        with csv_paths[0].open(newline="") as stream:
-            raw_rows = list(csv.DictReader(stream))
-            rows = sorted(
-                (
-                    row
-                    for row in raw_rows
-                    if row["kernel_type"]
-                    not in ("PROFILING_ENABLE", "PROFILING_DISABLE")
-                ),
-                key=lambda row: float(row["task_start(us)"]),
-            )
-        if not rows or len(rows) % 35:
-            raise RuntimeError(f"Incomplete 35-call profile: {csv_paths[0]}")
-        width = len(rows) // 35
-        sequence = [(row["kernel_name"], row["kernel_type"]) for row in rows[:width]]
-        durations = []
-        for start in range(0, len(rows), width):
-            group = rows[start : start + width]
-            if [(row["kernel_name"], row["kernel_type"]) for row in group] != sequence:
-                raise RuntimeError(f"Device task sequence changed: {csv_paths[0]}")
-            task_durations = [float(row["task_time(us)"]) for row in group]
-            if any(not math.isfinite(value) or value <= 0 for value in task_durations):
-                raise RuntimeError(f"Invalid device task duration: {csv_paths[0]}")
-            duration = math.fsum(task_durations)
-            durations.append(duration)
-        latency = math.fsum(durations[5:]) / 30 / 1000
-        (profile_dir / "aggregation.json").write_text(
-            json.dumps(
-                {
-                    "csv": str(csv_paths[0]),
-                    "tasks_per_call": width,
-                    "task_sequence": sequence,
-                    "raw_rows": len(raw_rows),
-                    "excluded_profiler_events": len(raw_rows) - len(rows),
-                    "call_duration_us": durations,
-                    "warmup_calls": 5,
-                    "active_calls": 30,
-                    "latency_ms": latency,
-                },
-                indent=2,
-            )
-            + "\n"
-        )
-        return latency
-
     def set_shapes(self, shape_file_path=None):
         self.shapes = CASES
         self.shape_desc = (
@@ -311,7 +222,7 @@ class UpsampleNearest2dBackwardBenchmark(base.Benchmark):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.skipif(
     _CANN850_ACCURACY_ONLY,
-    reason="CANN 8.5.0 is accuracy-only: its profiler does not guarantee the 35-call timing contract",
+    reason="CANN 8.5 benchmark execution has not been validated",
 )
 def test_upsample_nearest2d_backward_perf(dtype):
     bench = UpsampleNearest2dBackwardBenchmark(
@@ -328,7 +239,7 @@ def test_upsample_nearest2d_backward_perf(dtype):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.skipif(
     _CANN850_ACCURACY_ONLY,
-    reason="CANN 8.5.0 is accuracy-only: its profiler does not guarantee the 35-call timing contract",
+    reason="CANN 8.5 benchmark execution has not been validated",
 )
 def test_upsample_nearest2d_backward_grad_input_perf(dtype):
     bench = UpsampleNearest2dBackwardBenchmark(

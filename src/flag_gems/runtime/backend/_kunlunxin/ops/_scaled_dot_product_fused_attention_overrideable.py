@@ -262,7 +262,7 @@ def _scaled_dot_product_fused_attention_overrideable(
     return_debug_mask: bool = False,
     scale: float = None,
 ):
-    logger.debug("GEMS_KUNLUNXIN SCALED DOT PRODUCT FUSED ATTENTION OVERRIDEABLE")
+    logger.debug("GEMS_KUNLUNXIN SCALED_DOT_PRODUCT_FUSED_ATTENTION_OVERRIDEABLE")
     assert dropout_p == 0.0, "Only dropout_p=0.0 is supported"
     assert (
         query.ndim == key.ndim == value.ndim == 4

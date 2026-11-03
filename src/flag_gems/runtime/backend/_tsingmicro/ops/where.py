@@ -20,7 +20,7 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 
 @pointwise_dynamic(

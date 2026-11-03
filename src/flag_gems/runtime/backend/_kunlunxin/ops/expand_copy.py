@@ -20,7 +20,7 @@ import triton.language as tl
 
 from .copy import copy_
 
-logger = logging.getLogger("flag_gems").getChild(__name__.lstrip("."))
+logger = logging.getLogger(__name__)
 
 # Packed (uint64-wide) flat-copy tile for the identity/contiguous expand path.
 # Measured 2026-09-05 on P800/KL3 (dev6): per-element flat loads cap at

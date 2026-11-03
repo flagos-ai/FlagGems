@@ -38,8 +38,7 @@ def test_mean(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp)
+    res_out = flag_gems.mean(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -56,8 +55,7 @@ def test_mean_dim(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
+    res_out = flag_gems.mean_dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -84,8 +82,7 @@ def test_mean_dim_large_k(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
+    res_out = flag_gems.mean_dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -109,7 +106,6 @@ def test_mean_dim_large_innerdim(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.mean(ref_inp, dim, keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.mean(inp, dim, keepdim)
+    res_out = flag_gems.mean_dim(inp, dim, keepdim)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

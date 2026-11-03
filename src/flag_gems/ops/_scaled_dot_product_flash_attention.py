@@ -20,6 +20,19 @@ from flag_gems.ops.attention import flash_attention_forward
 logger = logging.getLogger(__name__)
 
 
+def _materialize_bhsd(t):
+    """Return ``t`` in the (B, H, S, D)-contiguous layout.
+
+    The FlashAttention kernel receives explicit strides, but it does not
+    produce correct results for every stride pattern: a value tensor that is
+    a transposed view of a (B, S, H, D) buffer (the layout transformers
+    produces via ``k_proj(x).view(...).transpose(1, 2)``) is read wrongly
+    (see #5896). Materialising non-contiguous inputs keeps the kernel on the
+    layout it is validated against; contiguous inputs are passed through.
+    """
+    return t if t.is_contiguous() else t.contiguous()
+
+
 def _scaled_dot_product_flash_attention(
     query,
     key,
@@ -32,6 +45,9 @@ def _scaled_dot_product_flash_attention(
 ):
     """Run scaled dot product FlashAttention through the existing implementation."""
     logger.debug("GEMS _SCALED_DOT_PRODUCT_FLASH_ATTENTION")
+    query = _materialize_bhsd(query)
+    key = _materialize_bhsd(key)
+    value = _materialize_bhsd(value)
     max_q = query.shape[2]
     max_k = key.shape[2]
     output, logsumexp, rng_state, unused, debug_mask = flash_attention_forward(

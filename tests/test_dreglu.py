@@ -42,6 +42,5 @@ def test_dreglu(shape, dtype):
 
     ref_out = TE_OP(grad_output, input_tensor, None)
     ref_out = utils.to_reference(ref_out)
-    with flag_gems.use_gems():
-        res_out = flag_gems.dreglu(grad_output, input_tensor, None)
+    res_out = flag_gems.dreglu(grad_output, input_tensor, None)
     utils.gems_assert_close(res_out, ref_out, dtype)

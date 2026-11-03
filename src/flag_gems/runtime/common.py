@@ -32,6 +32,7 @@ class vendors(Enum):
     SPACEMIT = 13
     THEAD = 14
     ARM = 15
+    BIREN = 16
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -273,6 +274,7 @@ _VENDOR_TORCH_ATTR = {
     "mthreads": "musa",
     "sunrise": "ptpu",
     "tsingmicro": "txda",
+    "biren": "supa",
 }
 
 __all__ = [

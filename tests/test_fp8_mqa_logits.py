@@ -116,15 +116,14 @@ def test_fp8_mqa_logits(clean_logits: bool):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1
@@ -166,15 +165,14 @@ def test_fp8_mqa_logits_param(M: int, N: int, H: int, D: int):
         q, (k_fp8, k_scales), weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits
     )
 
-    with flag_gems.use_gems():
-        res_out = fp8_mqa_logits(
-            q=q,
-            kv=(k_fp8, k_scales),
-            weights=weights,
-            cu_seqlen_ks=cu_seqlen_ks,
-            cu_seqlen_ke=cu_seqlen_ke,
-            clean_logits=clean_logits,
-        )
+    res_out = flag_gems.fp8_mqa_logits(
+        q=q,
+        kv=(k_fp8, k_scales),
+        weights=weights,
+        cu_seqlen_ks=cu_seqlen_ks,
+        cu_seqlen_ke=cu_seqlen_ke,
+        clean_logits=clean_logits,
+    )
 
     gems_assert_close(
         res_out, ref_out, res_out.dtype, equal_nan=True, atol=5e-2, reduce_dim=1

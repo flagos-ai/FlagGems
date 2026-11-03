@@ -38,6 +38,7 @@ add_library(operators
 	          exponential_.cpp
             reshape_and_cache_flash.cpp
             flash_attn_varlen_func.cpp
+            cross_attention.cpp
             rwkv_mm_sparsity.cpp
             rwkv_ka_fusion.cpp
             copy.cpp
@@ -113,6 +114,10 @@ if (FLAGGEMS_INSTALL)
   install(
     DIRECTORY "${PROJECT_SOURCE_DIR}/include/flag_gems"
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+  install(
+    DIRECTORY "${PROJECT_SOURCE_DIR}/triton_src"
+    DESTINATION triton_src
+    FILES_MATCHING PATTERN "*.py")
   install(TARGETS operators
     EXPORT FlagGemsTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR})

@@ -89,7 +89,7 @@ def _mqa_logits_combine_kernel(
             + (hh + h_range)[None, :]
         )
         scores = tl.load(scores_ptr + s_offs)
-        scores = tl.maximum(scores, 0.0)
+        scores = tl.maximum(scores, scores * 0.0)
         w = tl.load(weights_ptr + pid_row * H + hh + h_range)
         acc = acc + tl.sum(scores * w[None, :], axis=1)
 
