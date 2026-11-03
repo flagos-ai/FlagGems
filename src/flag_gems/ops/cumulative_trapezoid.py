@@ -35,7 +35,17 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
+
 logger = logging.getLogger(__name__)
+
+# The vectorized `tl.cumsum` scan below is the original implementation and stays
+# in charge on every backend that can compile it. Kunlunxin (TritonXPU) cannot:
+# its scan input is an elementwise combination of two vectorized loads, which
+# lowers to a `triton_xpu.unpack` that fails to legalize ("reached lowering
+# without a bufPtr"). Only on that backend is the scan replaced by a sequential
+# fp32 accumulator, which is what the on-device reference computes there.
+_SERIAL_SCAN = runtime.device.vendor_name == "kunlunxin"
 
 
 @triton.jit
@@ -63,6 +73,35 @@ def _cumtrapz_kernel(
     cs = tl.cumsum(t, axis=0)
 
     tl.store(out_ptr + out_base + k * inner, cs, mask=mask)
+
+
+@triton.jit
+def _cumtrapz_serial_kernel(
+    y_ptr,
+    out_ptr,
+    N,
+    inner,
+    stride_row_in,
+    stride_row_out,
+):
+    """One program per (outer, inner) pair, walking the row one element at a time.
+
+    Used on XPU only. The reference there accumulates the scan serially in fp32,
+    so this reproduces it bit-for-bit.
+    """
+    pid = tl.program_id(0)
+    o = pid // inner
+    i = pid % inner
+    in_base = o * stride_row_in + i
+    out_base = o * stride_row_out + i
+
+    acc = tl.zeros((), dtype=tl.float32)
+    prev = tl.load(y_ptr + in_base).to(tl.float32)
+    for j in range(0, N - 1):
+        nxt = tl.load(y_ptr + in_base + (j + 1) * inner).to(tl.float32)
+        acc = acc + (prev + nxt) * 0.5
+        prev = nxt
+        tl.store(out_ptr + out_base + j * inner, acc)
 
 
 def cumulative_trapezoid(y, *, dx=1, dim=-1):
@@ -100,18 +139,28 @@ def cumulative_trapezoid(y, *, dx=1, dim=-1):
     stride_row_in = N * inner
     stride_row_out = (N - 1) * inner
 
-    BLOCK = triton.next_power_of_2(max(N - 1, 1))
     grid = (outer * inner,)
 
-    _cumtrapz_kernel[grid](
-        yc,
-        output,
-        N,
-        inner,
-        stride_row_in,
-        stride_row_out,
-        BLOCK=BLOCK,
-    )
+    if _SERIAL_SCAN:
+        _cumtrapz_serial_kernel[grid](
+            yc,
+            output,
+            N,
+            inner,
+            stride_row_in,
+            stride_row_out,
+        )
+    else:
+        BLOCK = triton.next_power_of_2(max(N - 1, 1))
+        _cumtrapz_kernel[grid](
+            yc,
+            output,
+            N,
+            inner,
+            stride_row_in,
+            stride_row_out,
+            BLOCK=BLOCK,
+        )
 
     if dx != 1:
         output = output * dx
