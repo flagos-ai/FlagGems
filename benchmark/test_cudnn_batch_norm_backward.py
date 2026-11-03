@@ -141,6 +141,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _CrossMachineMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -236,14 +267,17 @@ class OperatorCaseBenchmark(OperatorBenchmark):
             or environment["source"]["git_dirty"] is not False
         ):
             raise ValueError("External baseline needs a completed, traceable H800 run")
-        return data[self.op_name]["shapes"], {
-            "kind": "external_nvidia",
-            "artifact": str(path),
-            "artifact_sha256": hashlib.sha256(payload).hexdigest(),
-            "environment": environment,
-            "ratio": "raw NVIDIA latency / target latency; no peak normalization",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return data[self.op_name]["shapes"], _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "artifact": str(path),
+                "artifact_sha256": hashlib.sha256(payload).hexdigest(),
+                "environment": environment,
+                "ratio": "raw NVIDIA latency / target latency; no peak normalization",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("pr35:op_pytorch_h800_cudnn_batch_norm_backward_core_20261027"),
+        )
 
     def _import_nvidia_latency(self, args, kwargs):
         if kwargs or self.is_backward or "tflops" in self.to_bench_metrics:

@@ -140,6 +140,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _aten_provenance_bytes(path, source_id, sidecar_path, *, explicit=False):
     raw = _aten_existing_path(path, source_id).read_bytes()
     _, source = _aten_cached_payload(raw, source_id)
@@ -271,16 +302,19 @@ class OperatorCaseBenchmark(OperatorBenchmark):
                 raise ValueError(
                     "Every H800 core latency must be finite with valid units"
                 )
-        return rows, {
-            "kind": "external_nvidia",
-            "artifact": str(path),
-            "artifact_sha256": artifact_hash,
-            "environment": environment,
-            "reference_implementation": "torch.nuclear_norm",
-            "input_identity": "same seeded distribution/configuration, not identical device RNG payloads",
-            "ratio": "raw H800 native nuclear_norm latency / local target candidate latency",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return rows, _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "artifact": str(path),
+                "artifact_sha256": artifact_hash,
+                "environment": environment,
+                "reference_implementation": "torch.nuclear_norm",
+                "input_identity": "same seeded distribution/configuration, not identical device RNG payloads",
+                "ratio": "raw H800 native nuclear_norm latency / local target candidate latency",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("pr33:op_pytorch_h800_nuclear_norm_core_20261027"),
+        )
 
     def _import_nvidia_latency(self, args, kwargs):
         if len(args) != 1 or kwargs != {"keepdim": False}:
