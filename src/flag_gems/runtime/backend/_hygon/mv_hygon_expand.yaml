@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Legacy FlagTune expanded search space for the Hygon MV implementation.
-# The kernel's autotune key also contains the input strides, hence the
-# mv_hygon contract in runtime.common.py.
+# gfx936 MV Expanded: a regular geometry domain, 672 candidates.
+# The loop's explicit LOOP_STAGES controls pipelining. For this non-dot kernel,
+# global num_stages=2/3/4 reaches the same loop-stage policy; keep one value.
+# BLOCK_M is the reduction tile, BLOCK_N the output tile. All powers of two
+# in each declared interval participate, including column-major output widths.
 mv:
   - param_map:
       META:
@@ -23,88 +25,11 @@ mv:
         LOOP_STAGES: loop_stages
       num_warps: warps
       num_stages: stages
-    block_m:
-      - 32
-      - 64
-      - 128
-      - 256
-      - 512
-      - 1024
-      - 2048
-      - 4096
-    block_n:
-      - 1
-      - 2
-      - 4
-      - 8
-      - 16
-    loop_stages:
-      - 1
-      - 2
-      - 3
-    stages:
-      - 2
-      - 3
-      - 4
-    warps:
-      - 1
-      - 2
-      - 4
-      - 8
-  # A wider output tile coalesces column-major loads across more output rows.
-  # Keep the original ordered search prefix; tune this addition for every layout.
-  - param_map:
-      META:
-        BLOCK_M: block_m
-        BLOCK_N: block_n
-        LOOP_STAGES: loop_stages
-      num_warps: warps
-      num_stages: stages
-    block_m:
-      - 64
-    block_n:
-      - 64
-    loop_stages:
-      - 2
-      - 1
-    stages:
-      - 2
-    warps:
-      - 4
-  - param_map:
-      META:
-        BLOCK_M: block_m
-        BLOCK_N: block_n
-        LOOP_STAGES: loop_stages
-      num_warps: warps
-      num_stages: stages
-    block_m:
-      - 32
-    block_n:
-      - 64
-    loop_stages:
-      - 2
-    stages:
-      - 2
-    warps:
-      - 4
-  - param_map:
-      META:
-        BLOCK_M: block_m
-        BLOCK_N: block_n
-        LOOP_STAGES: loop_stages
-      num_warps: warps
-      num_stages: stages
-    block_m:
-      - 64
-    block_n:
-      - 64
-    loop_stages:
-      - 2
-    stages:
-      - 2
-    warps:
-      - 8
+    block_m: [32, 64, 128, 256, 512, 1024, 2048, 4096]
+    block_n: [1, 2, 4, 8, 16, 32, 64]
+    loop_stages: [1, 2, 3]
+    stages: [2]
+    warps: [1, 2, 4, 8]
   - strategy:
       M: default
       N: default
