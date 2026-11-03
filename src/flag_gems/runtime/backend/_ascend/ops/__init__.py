@@ -58,6 +58,7 @@ from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
+from .floor import floor
 from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
@@ -241,6 +242,7 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "floor",
     "full",
     "full_like",
     "fused_adam_",
