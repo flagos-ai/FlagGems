@@ -120,6 +120,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 class OrgqrBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = ORGQR_SHAPES
@@ -166,15 +197,18 @@ class _OrgqrH800Baseline:
             or sum(len(values) for values in records.values()) != 10
         ):
             raise ValueError("Expected all ten traceable native H800 orgqr records")
-        return records, dict(
-            artifact=str(path),
-            artifact_sha256=digest,
-            operator=key,
-            collection_task=task,
-            environment=environment,
-            input_identity="Same unseeded caller-RNG factory and complete configuration; not cross-device random-byte identity",
-            ratio="Raw native H800 latency / locally timed candidate; no scaling",
-            timing_qualification="Shared functional collection, mean latency only; no NCU metrics",
+        return records, _aten_qualify_metadata(
+            dict(
+                artifact=str(path),
+                artifact_sha256=digest,
+                operator=key,
+                collection_task=task,
+                environment=environment,
+                input_identity="Same unseeded caller-RNG factory and complete configuration; not cross-device random-byte identity",
+                ratio="Raw native H800 latency / locally timed candidate; no scaling",
+                timing_qualification="Shared functional collection, mean latency only; no NCU metrics",
+            ),
+            ("pr77:op_orgqr_current_core_h800_perf_baseline"),
         )
 
     def get_latency(self, op, *args, **kwargs):
