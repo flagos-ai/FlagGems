@@ -47,6 +47,12 @@ def _torch_sparse_addmm(self, mat1, mat2, *, beta=1.0, alpha=1.0, out=None):
 
     The native CUDA kernel only implements fp32/fp64; fp16/bf16 run through an
     fp32 upcast of the sparse triple, mirroring the reference used in tests.
+
+    NOTE for reading results: the low-precision rows therefore compare the
+    FlagGems kernel against an upcast fp32 baseline (all inside the timed
+    region on both sides of the ratio). Treat fp16/bf16 speedups as
+    "kernel vs upcast-aten", and read the fp32 rows as the like-for-like
+    kernel comparison.
     """
     if mat1.dtype in (torch.float16, torch.bfloat16):
         # aten::_sparse_addmm has no low-precision CUDA kernel and its cuSPARSE
@@ -87,11 +93,14 @@ class SparseAddmmBenchmark(base.BlasBenchmark):
             yield from self.input_fn(m, n, k, dtype, self.device, False)
 
     def get_tflops(self, op, *args, **kwargs):
+        # SpMM: each stored entry contributes one multiply-add per output column,
+        # i.e. 2 FLOPs * nnz * N (not nnz * K * 2 — that is only right for
+        # cubic shapes).
         mat1 = args[1]
         mat2 = args[2]
         nnz = mat1._nnz()
-        k = mat2.shape[0]
-        return nnz * k * 2
+        n = mat2.shape[1]
+        return 2 * nnz * n
 
 
 @pytest.mark.sparse_addmm
