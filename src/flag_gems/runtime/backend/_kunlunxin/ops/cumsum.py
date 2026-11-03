@@ -275,9 +275,8 @@ def _scan_rows_into(inp, out, M, N, allow_mm=True):
     # dst data type"), so these shapes are served by the row kernel instead of
     # the flat/group sweeps; see _ROW_WIDE_N / _INT_ROW_MIN_N.
     int_like = (
-        (is_integer_dtype(inp.dtype) or is_boolean_dtype(inp.dtype))
-        and out.dtype is torch.int64
-    )
+        is_integer_dtype(inp.dtype) or is_boolean_dtype(inp.dtype)
+    ) and out.dtype is torch.int64
     if N == 1:
         n_elements = inp.numel()
         BLOCK = 1024

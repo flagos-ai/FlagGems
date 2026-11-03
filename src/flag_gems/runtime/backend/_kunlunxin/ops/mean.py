@@ -24,7 +24,8 @@ from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 from ..utils.block_size_utils import get_block_size_1d
-from .sum import _resolve_acc_dtype, _tle_sum_flat, sum_dim as _sum_dim_tle
+from .sum import _resolve_acc_dtype, _tle_sum_flat
+from .sum import sum_dim as _sum_dim_tle
 
 logger = logging.getLogger(__name__)
 
