@@ -14,9 +14,9 @@
 
 import pytest
 import torch
-from packaging import version
 
 import flag_gems
+from packaging import version
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
