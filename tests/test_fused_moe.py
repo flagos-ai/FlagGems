@@ -13,11 +13,14 @@
 # limitations under the License.
 
 import importlib
+import random
 
 import pytest
 import torch
 
 import flag_gems
+
+from . import conftest as cfg
 
 moe = importlib.import_module("flag_gems.fused.fused_moe")
 pytestmark = pytest.mark.fused_experts_impl
@@ -238,12 +241,8 @@ def test_w8a8_large_m_accuracy(monkeypatch, num_tokens, dtype, execution_mode):
     torch.testing.assert_close(out.cpu(), changed_ref, atol=0.003, rtol=0.04)
 
 
-import random  # noqa: E402
-
-if flag_gems.vendor_name == "sunrise":
-    QUICK_MODE = True  # "--ref cpu" too slow for big shape.
-else:
-    from .conftest import QUICK_MODE
+# "--ref cpu" is too slow for the big shapes on sunrise, so it always runs quick.
+QUICK_MODE = True if flag_gems.vendor_name == "sunrise" else cfg.QUICK_MODE
 
 random.seed(42)
 
