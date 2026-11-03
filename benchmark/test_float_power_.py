@@ -136,6 +136,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _ku_double_input(tensor, device):
     result = (
         tensor.contiguous()
@@ -207,17 +238,20 @@ class _FloatPowerBenchmark(OperatorBenchmark):
             raise ValueError(
                 "Expected twelve traceable native H800 prepared-input records"
             )
-        return records, dict(
-            artifact=str(path),
-            artifact_sha256=digest,
-            operator=operator,
-            collection_task=task,
-            environment=environment,
-            input_identity=(
-                "Original shape/dtype/params/uniform recipe and seed0 policy; "
-                "no cross-device random-byte identity"
+        return records, _aten_qualify_metadata(
+            dict(
+                artifact=str(path),
+                artifact_sha256=digest,
+                operator=operator,
+                collection_task=task,
+                environment=environment,
+                input_identity=(
+                    "Original shape/dtype/params/uniform recipe and seed0 policy; "
+                    "no cross-device random-byte identity"
+                ),
+                ratio="Raw native H800 latency / locally timed candidate; no scaling",
             ),
-            ratio="Raw native H800 latency / locally timed candidate; no scaling",
+            ("pr79:op_float_power_inplace_kunlun_h800_baseline"),
         )
 
     def get_latency(self, op, *args, **kwargs):
