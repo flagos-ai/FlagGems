@@ -35,6 +35,20 @@ else:
     FLOAT_DTYPES = ORIG_FLOAT_DTYPES
 
 
+def _reference_input(value):
+    # PPU lacks native inplace BLAS, and Enflame native baddbmm_ can return
+    # incorrect values. CPU ATen supplies an independent numerical oracle;
+    # cloning keeps reference mutation separate from candidate inputs.
+    if flag_gems.vendor_name in {"thead", "enflame"}:
+        return value.cpu().double().clone()
+    reference = to_reference(value, True)
+    # This is an independent value reference, so its output need not share
+    # the candidate's strided layout. muDNN requires a contiguous output.
+    if flag_gems.vendor_name == "mthreads":
+        return reference.clone(memory_format=torch.contiguous_format)
+    return reference.clone()
+
+
 @pytest.mark.baddbmm_
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
@@ -47,9 +61,9 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
     inp = torch.randn((batch, M, N), dtype=dtype, device=flag_gems.device)
-    ref_mat1 = to_reference(mat1, True)
-    ref_mat2 = to_reference(mat2, True)
-    ref_inp = to_reference(inp, True)
+    ref_mat1 = _reference_input(mat1)
+    ref_mat2 = _reference_input(mat2)
+    ref_inp = _reference_input(inp)
 
     alpha = beta = scalar
 
@@ -58,6 +72,7 @@ def test_baddbmm_(M, N, K, scalar, dtype):
     inp1 = inp.clone()
     res_out = flag_gems.baddbmm_(inp1, mat1, mat2, alpha=alpha, beta=beta)
 
-    gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-    gems_assert_close(inp1, ref_inp, dtype, reduce_dim=K)
+    assert res_out.device == inp.device and res_out.dtype == dtype
+    gems_assert_close(res_out.cpu() if ref_out.device.type == "cpu" else res_out, ref_out, dtype, reduce_dim=K)
+    gems_assert_close(inp1.cpu() if ref_inp.device.type == "cpu" else inp1, ref_inp, dtype, reduce_dim=K)
     assert res_out is inp1
