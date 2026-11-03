@@ -17,7 +17,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import pytest
@@ -25,8 +25,8 @@ import torch
 
 import flag_gems
 
-from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
+from .generated_operator_utils import OperatorBenchmark
 
 # (sparse shape, nnz) workload descriptors. Coalescing work scales with nnz, so
 # the tensors are sized for a meaningful measurement while staying small enough
@@ -127,6 +127,136 @@ _NV_ORIGINAL = {
 }
 
 
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "legacy:pytorch-h800-primary": {
+        "legacy_primary": True,
+        "artifact": "op_pytorch_h800_perf_baseline.json",
+        "sha256": "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3",
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("legacy_primary"):
+        if manifest["base_artifact_sha256"] != spec["sha256"]:
+            raise ValueError("Unexpected historical native H800 snapshot")
+        original = {
+            key: value for key, value in data.items() if key != "_aten_consolidation"
+        }
+        copied = set()
+        for source in manifest["sources"].values():
+            for operator, entry in source["operators"].items():
+                if operator not in copied:
+                    original[operator] = dict(original[operator])
+                    original[operator]["shapes"] = dict(original[operator]["shapes"])
+                    copied.add(operator)
+                for new_key in entry["shape_keys"].values():
+                    del original[operator]["shapes"][new_key]
+        for operator in copied:
+            if not original[operator]["shapes"]:
+                del original[operator]
+        raw = (
+            json.dumps(
+                original, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            )
+            + "\n"
+        ).encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Historical native snapshot could not be restored exactly")
+        return raw, None
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
 def _cpu_oracle(inp):
     """CPU-native ref-as-candidate bootstrap for the original no-grad cases."""
     assert inp.layout == torch.sparse_coo and not inp.requires_grad
@@ -193,7 +323,7 @@ class CoalesceBenchmark(OperatorBenchmark):
     @cached_property
     def _nvidia_baseline(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-        payload = path.read_bytes()
+        payload = _aten_read_bytes(path, ("legacy:pytorch-h800-primary"))
         if hashlib.sha256(payload).hexdigest() != _NV_ARTIFACT_SHA256:
             raise ValueError("Expected the reviewed ops-baseline H800 snapshot")
 
