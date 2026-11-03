@@ -144,6 +144,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _ExternalMetrics(base.BenchmarkMetrics):
     baseline_source: dict | None = None
@@ -178,13 +209,16 @@ class ConvDepthwise2dBenchmark(OperatorBenchmark):
         records = data[_COLLECTION_OP]["shapes"]
         if sum(len(ds) for ds in records.values()) != 12:
             raise ValueError("Expected all twelve current-core H800 records")
-        return records, dict(
-            kind="external_nvidia",
-            artifact=str(path),
-            artifact_sha256=_H800_SHA,
-            collection_task=task,
-            device_environment=environment,
-            ratio="H800 native latency_ms / target candidate latency_ms",
+        return records, _aten_qualify_metadata(
+            dict(
+                kind="external_nvidia",
+                artifact=str(path),
+                artifact_sha256=_H800_SHA,
+                collection_task=task,
+                device_environment=environment,
+                ratio="H800 native latency_ms / target candidate latency_ms",
+            ),
+            ("pr43:op_depthwise_current_core_h800_baseline"),
         )
 
     def _import_latency(self, args, kwargs):
