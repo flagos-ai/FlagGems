@@ -132,6 +132,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
@@ -310,17 +341,20 @@ class _AscendNextafterBaseline:
             raise ValueError(
                 "Nextafter H800 latency units must be positive and consistent"
             )
-        self._imported_nextafter = dict(
-            kind="external_nvidia",
-            artifact=str(path),
-            artifact_sha256=digest,
-            config=expected,
-            environment=environment,
-            environment_scope="artifact last-worker environment header; per-profile selected-op provenance is retained in the original worker results",
-            input_identity="exact recipes and joint configuration; independent random payloads",
-            target_timing_mode=base.Config.mode.value,
-            target_implementation="injected/default candidate timed locally; implementation not inferred",
-            ratio="raw H800 milliseconds / target milliseconds; no normalization",
+        self._imported_nextafter = _aten_qualify_metadata(
+            dict(
+                kind="external_nvidia",
+                artifact=str(path),
+                artifact_sha256=digest,
+                config=expected,
+                environment=environment,
+                environment_scope="artifact last-worker environment header; per-profile selected-op provenance is retained in the original worker results",
+                input_identity="exact recipes and joint configuration; independent random payloads",
+                target_timing_mode=base.Config.mode.value,
+                target_implementation="injected/default candidate timed locally; implementation not inferred",
+                ratio="raw H800 milliseconds / target milliseconds; no normalization",
+            ),
+            ("pr74:nextafter_prepared_h800_perf_baseline"),
         )
         return latency / 1000
 
