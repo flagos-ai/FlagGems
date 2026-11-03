@@ -57,6 +57,7 @@ def generate_index_copy_kernel(
             code.writeline("src,")
             code.writeline("out,")
             code.writeline("N,")
+            code.writeline("index_numel,")
             code.writeline("inp_numel: tl.constexpr,")
             code.writeline("inp_stride_dim: tl.constexpr,")
             code.writeline("inp_shape_dim: tl.constexpr,")
@@ -106,6 +107,22 @@ def generate_index_copy_kernel(
                 '"index value out of bounds: 0 <= index < self.size(dim)")'
             )
 
+            # CPU ATen applies the copies in order, so with a repeated
+            # index the LAST source position wins. A parallel kernel cannot
+            # order programs, so each element abstains when any LATER index
+            # position maps to the same destination. Vectorized: load the
+            # entire index vector as a block and test in one shot.
+            code.writeline("BLOCK_INDEX: tl.constexpr = 1024")
+            code.writeline("is_last = mask & valid_index")
+            code.writeline("for j_start in range(0, index_numel, BLOCK_INDEX):")
+            with code.indent():
+                code.writeline("j_off = j_start + tl.arange(0, BLOCK_INDEX)")
+                code.writeline("j_mask = j_off < index_numel")
+                code.writeline("j_idx = tl.load(index + j_off, mask=j_mask, other=-1).to(tl.int64)")
+                code.writeline("dup_later = (j_off[None, :] > dim_idx[:, None]) & (j_idx[None, :] == src_dim_idx[:, None]) & j_mask[None, :]")
+                code.writeline("has_dup = tl.sum(dup_later.to(tl.int32), axis=1) > 0")
+                code.writeline("is_last = is_last & (~has_dup)")
+
             code.writeline(
                 "input_idx = (src_offset + "
                 "(delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim"
@@ -113,7 +130,7 @@ def generate_index_copy_kernel(
             )
 
             code.writeline("input_mask = (input_idx >= 0) & (input_idx < inp_numel)")
-            code.writeline("store_mask = mask & valid_index & input_mask")
+            code.writeline("store_mask = mask & valid_index & input_mask & is_last")
             code.writeline("src_val = tl.load(src + src_offset, mask=mask, other=0)")
             code.writeline("tl.store(out + input_idx, src_val, mask=store_mask)")
 
@@ -167,7 +184,7 @@ def generate_destination_passing_wrapper(
         code.writeline(kernel_launch)
         with code.indent():
             code.writeline(
-                "index, src, out, N, inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, "
+                "index, src, out, N, index.numel(), inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, "
             )
             if rank > 0:
                 s = ", ".join(f"src_strides[{i}]" for i in range(rank))
