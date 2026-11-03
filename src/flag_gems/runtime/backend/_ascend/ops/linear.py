@@ -129,7 +129,7 @@ def _prune_configs_by_ub(configs, named_args, **kwargs):
 @libtuner(
     configs=_TUNED_CONFIGS,
     key=["M", "N", "K"],
-    prune_configs_by={"early_config_prune": _prune_configs_by_ub},
+    #prune_configs_by={"early_config_prune": _prune_configs_by_ub},
 )
 @triton.jit
 def linear_kernel(
