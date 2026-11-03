@@ -174,6 +174,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _embedding_bag
+  description: Reduce indexed embedding rows into sum, mean, or maximum bags and return
+    backward metadata.
+  for:
+  - _embedding_bag
+  labels:
+  - aten
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
 - id: _flash_attention_forward
   description: Run the canonical FlashAttention forward operator.
   for:
@@ -2913,7 +2925,7 @@ tensor into the caller-supplied `out` buffer.
   cpp: '4.0'
 - id: bmm_w8a8
   description: Channel-wise signed INT8 batched matrix multiplication with FP32 row
-    and output-channel scales on Hygon DCU.
+    and output-channel scales.
   for:
   - bmm_w8a8
   labels:
@@ -4684,6 +4696,29 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_grid_sampler_backward
+  description: Triton kernel implementation for cudnn_grid_sampler_backward.
+  for:
+  - cudnn_grid_sampler_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: cudnn_grid_sampler_backward_out
+  description: A variant of cudnn_grid_sampler_backward() that writes the result
+    into the out0 and out1 tensors.
+  for:
+  - cudnn_grid_sampler_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: cudnn_rnn
   description: 'Vendor-agnostic RNN forward pass using Triton kernels that replaces
     the cuDNN-backed _cudnn_rnn operator.  Supports RNN_RELU, RNN_TANH, LSTM and
@@ -5575,15 +5610,24 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '3.0'
 - id: embedding_bag
-  description: 'Compute sums, means, or maxes of bags of embeddings, without instantiating
-    the intermediate embeddings.
-
-    '
+  description: Reduce indexed embedding rows into bags using the shared embedding bag implementation.
   for:
   - embedding_bag
   labels:
   - aten
-  - KernelGen
+  - NoCPU
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: embedding_bag_backward
+  description: Compute dense or sparse embedding bag gradients with optional frequency
+    and per-sample scaling.
+  for:
+  - _embedding_bag_backward
+  labels:
+  - aten
+  - NoCPU
   kind:
   - NeuralNetwork
   stages:
@@ -5598,6 +5642,17 @@ tensor into the caller-supplied `out` buffer.
   labels:
   - aten
   - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: embedding_bag_forward_only
+  description: Compute embedding bag reductions with the target auxiliary tensor interface.
+  for:
+  - _embedding_bag_forward_only
+  labels:
+  - aten
+  - NoCPU
   kind:
   - NeuralNetwork
   stages:
