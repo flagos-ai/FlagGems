@@ -46,6 +46,7 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .clip_ import clip_
+from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
@@ -139,7 +140,6 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
-from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -206,6 +206,7 @@ __all__ = [
     "cholesky_inverse",
     "clip_",
     "constant_pad_nd",
+    "conv1d",
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
@@ -443,6 +444,7 @@ if get_device_capability(current_device()) >= (3, 1):
 
     __all__.extend(["mm_w8a8_fp8", "mm_w8a8_fp8_out"])
 
+from .resolve_conj import resolve_conj
 from .scaled_mm import scaled_mm, scaled_mm_out  # noqa: F401
 
 __all__.extend(["scaled_mm", "scaled_mm_out"])

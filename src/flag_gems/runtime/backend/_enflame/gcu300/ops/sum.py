@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import logging
-import math
 
 import torch
 import triton
@@ -27,11 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["M"])
 def sum_kernel_1(
     inp,
     mid,
     M,
+    GRID_DIM: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
@@ -42,14 +42,113 @@ def sum_kernel_1(
         cdtype = inp.dtype.element_ty
 
     pid = tl.program_id(0)
-    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    inp_ptrs = inp + offset
-    mask = offset < M
+    acc = tl.zeros((), dtype=cdtype)
+    num_blocks = tl.cdiv(M, BLOCK_SIZE)
+    in_block = tl.make_block_ptr(
+        base=inp,
+        shape=(M,),
+        strides=(1,),
+        offsets=(pid * BLOCK_SIZE,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
+    )
+    for _ in tl.range(pid, num_blocks, GRID_DIM):
+        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
+        acc += tl.sum(inp_val)
+        in_block = tl.advance(in_block, (GRID_DIM * BLOCK_SIZE,))
+    tl.store(mid + pid, acc)
 
-    inp_val = tl.load(inp_ptrs, mask=mask, other=0).to(cdtype)
-    sum_val = tl.sum(inp_val)
-    mid_ptr = mid + pid
-    tl.store(mid_ptr, sum_val)
+
+@libentry()
+@triton.jit(do_not_specialize=["M"])
+def sum_kernel_1_dual(
+    inp,
+    mid,
+    M,
+    GRID_DIM: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    pid = tl.program_id(0)
+    # Dual accumulators: break serial dependency chain between iterations.
+    # acc0 and acc1 are independent, allowing load_1 to overlap with
+    # reduction of load_0 within the same SIP's warp scheduler.
+    acc0 = tl.zeros((), dtype=cdtype)
+    acc1 = tl.zeros((), dtype=cdtype)
+    num_blocks = tl.cdiv(M, BLOCK_SIZE)
+    in_block_0 = tl.make_block_ptr(
+        base=inp,
+        shape=(M,),
+        strides=(1,),
+        offsets=(pid * BLOCK_SIZE,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
+    )
+    in_block_1 = tl.make_block_ptr(
+        base=inp,
+        shape=(M,),
+        strides=(1,),
+        offsets=((pid + GRID_DIM) * BLOCK_SIZE,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
+    )
+    stride = GRID_DIM * 2 * BLOCK_SIZE
+    for _ in tl.range(pid, num_blocks, GRID_DIM * 2):
+        inp_val_0 = tl.load(in_block_0, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
+        inp_val_1 = tl.load(in_block_1, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
+        acc0 += tl.sum(inp_val_0)
+        acc1 += tl.sum(inp_val_1)
+        in_block_0 = tl.advance(in_block_0, (stride,))
+        in_block_1 = tl.advance(in_block_1, (stride,))
+    tl.store(mid + pid, acc0 + acc1)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["M"])
+def sum_atomic_kernel(
+    inp,
+    out,
+    M,
+    GRID_DIM: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    if tl.constexpr(inp.dtype.element_ty == tl.float16) | tl.constexpr(
+        inp.dtype.element_ty == tl.bfloat16
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = inp.dtype.element_ty
+
+    pid = tl.program_id(0)
+    acc = tl.zeros((), dtype=cdtype)
+    num_blocks = tl.cdiv(M, BLOCK_SIZE)
+    in_block = tl.make_block_ptr(
+        base=inp,
+        shape=(M,),
+        strides=(1,),
+        offsets=(pid * BLOCK_SIZE,),
+        block_shape=(BLOCK_SIZE,),
+        order=(0,),
+    )
+    for _ in tl.range(pid, num_blocks, GRID_DIM):
+        inp_val = tl.load(in_block, boundary_check=(0,), padding_option="zero").to(
+            cdtype
+        )
+        acc += tl.sum(inp_val)
+        in_block = tl.advance(in_block, (GRID_DIM * BLOCK_SIZE,))
+    tl.atomic_add(out, acc, sem="relaxed")
 
 
 @libentry()
@@ -124,41 +223,67 @@ def sum(inp, *, dtype=None):
     if dtype == torch.int64:
         dtype = torch.int32
 
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
             inp = inp.to(torch.int32)
             dtype = torch.int32
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    GRID_DIM = 6
+    BLOCK_SIZE = 32768
+    DUAL_THRESHOLD = 4 * 1024 * 1024  # 4M elements
+    kernel = sum_kernel_1_dual if M > DUAL_THRESHOLD else sum_kernel_1
+    mid = torch.empty((GRID_DIM,), dtype=dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
 
     with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        kernel[(GRID_DIM,)](
+            inp,
+            mid,
+            M,
+            GRID_DIM=GRID_DIM,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=4,
+        )
+        sum_kernel_2[(1,)](mid, out, GRID_DIM, triton.next_power_of_2(GRID_DIM))
     return out
 
 
 def sum_out(inp, *, dtype=None, out):
     logger.debug("GEMS_ENFLAME SUM_OUT")
+    if inp.dtype == torch.int64:
+        inp = inp.to(torch.int32)
+    if dtype == torch.int64:
+        dtype = torch.int32
+    inp = inp.contiguous()
     M = inp.numel()
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
             inp = inp.to(torch.int32)
             dtype = torch.int32
-    block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
-    mid_size = triton.cdiv(M, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
+    if M == 0:
+        out.resize_([])
+        out.zero_()
+        return out
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    GRID_DIM = 6
+    BLOCK_SIZE = 32768
+    DUAL_THRESHOLD = 4 * 1024 * 1024  # 4M elements
+    kernel = sum_kernel_1_dual if M > DUAL_THRESHOLD else sum_kernel_1
+    mid = torch.empty((GRID_DIM,), dtype=dtype, device=inp.device)
     with torch_device_fn.device(inp.device):
-        sum_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
-        sum_kernel_2[(1, 1, 1)](mid, out, mid_size, block_mid)
+        kernel[(GRID_DIM,)](
+            inp,
+            mid,
+            M,
+            GRID_DIM=GRID_DIM,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=4,
+        )
+        sum_kernel_2[(1,)](mid, out, GRID_DIM, triton.next_power_of_2(GRID_DIM))
     return out
 
 
@@ -168,6 +293,23 @@ def sum_dim(inp, dim=None, keepdim=False, *, dtype=None):
         dtype = inp.dtype
         if dtype is torch.bool:
             dtype = torch.int32
+
+    if inp.numel() == 0:
+        out_shape = list(inp.shape)
+        if dim is not None:
+            dims = dim if isinstance(dim, (list, tuple)) else [dim]
+        if dim is None or (isinstance(dim, (list, tuple)) and len(dim) == 0):
+            out_shape = [1] * inp.ndim if keepdim else []
+        else:
+            if keepdim:
+                for d in dims:
+                    out_shape[d % inp.ndim] = 1
+            else:
+                for d in sorted([d % inp.ndim for d in dims], reverse=True):
+                    out_shape.pop(d)
+        out = torch.empty(out_shape, dtype=dtype, device=inp.device)
+        out.zero_()
+        return out
 
     if dim == []:
         if not keepdim:

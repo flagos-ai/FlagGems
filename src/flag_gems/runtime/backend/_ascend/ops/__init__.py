@@ -110,6 +110,7 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
 from .mul import mul
 from .multinomial import multinomial
@@ -158,6 +159,7 @@ from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
 from .unique import _unique2
@@ -310,6 +312,8 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
     "mode",
     "mul",
     "multinomial",
@@ -375,6 +379,7 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "topk_w8a16_fp8",
     "triangular_solve",
     "triangular_solve_out",
     "triu",

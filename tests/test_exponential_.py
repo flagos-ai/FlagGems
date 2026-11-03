@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from contextlib import nullcontext
 
 import pytest
 import torch
@@ -56,12 +55,9 @@ def test_exponential_fast(shape, dtype):
 def _exponential_samples(backend, seed, size):
     x = torch.empty(size, device=flag_gems.device, dtype=torch.float32)
     generator = torch.Generator(device=flag_gems.device).manual_seed(seed)
-    context = (
-        flag_gems.use_gems(include=["exponential_"])
-        if backend == "flaggems"
-        else nullcontext()
-    )
-    with context:
+    if backend == "flaggems":
+        flag_gems.exponential_(x, generator=generator)
+    else:
         x.exponential_(generator=generator)
     return x
 
@@ -94,3 +90,25 @@ def test_exponential_no_repeated_blocks(backend, seed):
         f"{backend} seed={seed}: repeated-block fractions={fractions}; "
         "different output coordinates must not reuse entire random blocks"
     )
+
+
+@pytest.mark.exponential_
+@pytest.mark.parametrize("seed", [260828, 2026, 7])
+def test_exponential_far_left_tail(seed):
+    """The far left tail must not carry an inflated atom (Issue #7040).
+
+    The fast transform pinned every sample with ``u >= 1 - 1e-4`` to
+    ``y == 0.5 * eps(float32) = 5.96e-8``, so ~1e-4 of the mass sat just above
+    zero: ``P(X < 1e-5)`` measured ~1e-4 instead of ~1e-5. That atom is what
+    breaks exponential-race / Gumbel-max sampling in vLLM.
+    """
+    x = _exponential_samples("flaggems", seed, 1 << 22)
+
+    assert x.min().item() > 0, "exponential_ must not produce non-positive values"
+    # Exp(1): P(X < t) = 1 - exp(-t) ~= t for small t. Bound each point by a few
+    # times the true mass; the buggy atom overshoots by ~90x.
+    for t, bound in ((1e-6, 5e-6), (1e-5, 3e-5)):
+        observed = (x < t).float().mean().item()
+        assert (
+            observed < bound
+        ), f"seed={seed}: P(X < {t:.0e}) = {observed:.3e}, expected ~{t:.0e}"
