@@ -36,9 +36,37 @@ def _make_mask(shape):
 def _reference(inp, mask, scale):
     ref_inp = utils.to_reference(inp, True)
     ref_mask = utils.to_reference(mask, False)
-    return torch.where(
-        ref_mask.to(torch.bool), ref_inp * scale, torch.zeros_like(ref_inp)
-    )
+    if flag_gems.vendor_name == "enflame":
+        result = ref_inp.cpu() * ref_mask.cpu().to(ref_inp.dtype) * scale
+        return result.to(ref_inp.device)
+    return ref_inp * ref_mask.to(ref_inp.dtype) * scale
+
+
+def _capture_inputs(inp, mask):
+    return [
+        (x, x.device, x.dtype, tuple(x.shape), x.stride(), x.storage_offset(),
+         x.data_ptr(), utils.to_reference(x.clone()))
+        for x in (inp, mask)
+    ]
+
+
+def _assert_result_and_inputs(result, saved):
+    assert isinstance(result, torch.Tensor)
+    assert result.device == saved[0][1]
+    assert result.dtype == saved[0][2]
+    assert tuple(result.shape) == saved[0][3]
+    for inp, device, dtype, shape, stride, offset, pointer, before in saved:
+        assert inp.device == device and inp.dtype == dtype
+        assert tuple(inp.shape) == shape and inp.stride() == stride
+        assert inp.storage_offset() == offset and inp.data_ptr() == pointer
+        assert result is not inp
+        if result.numel() and inp.numel():
+            assert result.untyped_storage().data_ptr() != inp.untyped_storage().data_ptr()
+        # Byte comparison preserves readonly NaN payloads and signed zeros too.
+        utils.gems_assert_equal(
+            inp.contiguous().reshape(-1).view(torch.uint8),
+            before.contiguous().reshape(-1).view(torch.uint8)
+        )
 
 
 @pytest.mark.masked_scale
@@ -50,11 +78,12 @@ def test_masked_scale(shape, dtype, scale):
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = _make_mask(shape)
-    inp_before = inp.clone()
-    mask_before = mask.clone()
+    saved_abi = _capture_inputs(inp, mask)
+    inp_before, mask_before = (x[-1] for x in saved_abi)
     ref_out = _reference(inp, mask, scale)
 
     res_out = flag_gems._masked_scale(inp, mask, scale)
+    _assert_result_and_inputs(res_out, saved_abi)
 
     assert res_out.shape == inp.shape
     assert res_out.dtype == dtype
@@ -72,8 +101,10 @@ def test_masked_scale_noncontiguous():
     assert not inp.is_contiguous()
     assert not mask.is_contiguous()
     ref_out = _reference(inp, mask, 2.0)
+    saved_abi = _capture_inputs(inp, mask)
 
     res_out = flag_gems._masked_scale(inp, mask, 2.0)
+    _assert_result_and_inputs(res_out, saved_abi)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32)
 
@@ -88,7 +119,28 @@ def test_masked_scale_special_values():
     )
     mask = torch.tensor([1, 1, 1, 0, 1, 0], dtype=torch.uint8, device=flag_gems.device)
     ref_out = _reference(inp, mask, -0.5)
+    saved_abi = _capture_inputs(inp, mask)
 
     res_out = flag_gems._masked_scale(inp, mask, -0.5)
+    _assert_result_and_inputs(res_out, saved_abi)
 
     utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
+
+
+@pytest.mark.masked_scale
+@pytest.mark.underscore_masked_scale
+@pytest.mark.parametrize("scale", _SCALES)
+def test_masked_scale_native_mask_values(scale):
+    inp = torch.tensor(
+        [float("nan"), float("inf"), -float("inf"), -0.0, 0.0, 1.0, -2.0, 0.5],
+        dtype=torch.float32, device=flag_gems.device,
+    )
+    mask = torch.tensor([0, 0, 0, 0, 0, 0, 2, 255], dtype=torch.uint8, device=inp.device)
+    ref_out = _reference(inp, mask, scale)
+    saved_abi = _capture_inputs(inp, mask)
+    res_out = flag_gems._masked_scale(inp, mask, scale)
+    _assert_result_and_inputs(res_out, saved_abi)
+    utils.gems_assert_close(res_out, ref_out, torch.float32, equal_nan=True)
+    result_cpu, reference_cpu = res_out.detach().cpu(), ref_out.detach().cpu()
+    zeros = reference_cpu == 0
+    assert torch.equal(torch.signbit(result_cpu)[zeros], torch.signbit(reference_cpu)[zeros])
