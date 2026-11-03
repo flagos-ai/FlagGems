@@ -437,6 +437,7 @@ _FULL_CONFIG = (
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
     ("_make_dep_token", _make_dep_token),
+    ("_make_dual", _make_dual),
     ("_make_dual_copy", _make_dual_copy),
     ("_make_dual_copy.out", _make_dual_copy_out),
     ("_make_per_tensor_quantized_tensor", _make_per_tensor_quantized_tensor),

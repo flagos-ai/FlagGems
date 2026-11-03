@@ -294,6 +294,7 @@ from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
+from flag_gems.ops._make_dual import _make_dual
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
@@ -1933,6 +1934,7 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_dual",
     "_make_dual_copy",
     "_make_dual_copy_out",
     "_make_per_tensor_quantized_tensor",
