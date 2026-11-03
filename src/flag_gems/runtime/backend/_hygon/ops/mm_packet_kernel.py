@@ -81,8 +81,8 @@ def _mm_packet_rect_kernel(
     gl.static_assert(OUTPUT_LAYOUT == 0 or OUTPUT_LAYOUT == 1 or OUTPUT_LAYOUT == 2)
     # Existing whole-packet and StructuredDomain semantics, not a model-shape
     # dispatch. Unsupported inputs retain the ordinary host path.
-    gl.static_assert(M > 0 and N > 0 and K >= 256 and K <= 4096)
-    gl.static_assert((K & (K - 1)) == 0 and K % 16 == 0)
+    gl.static_assert(M > 0 and N > 0 and K >= 256)
+    gl.static_assert(K % 256 == 0 and 2 * K < 0x4000)
     gl.static_assert(STRIDE_AM == K and STRIDE_AK == 1)
     if STRIDE_BK == 1:
         gl.static_assert(STRIDE_BN == K)

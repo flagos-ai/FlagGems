@@ -29,6 +29,9 @@ _LARGE_PACKET_GEOMETRY = (
     (1, 2, 4, 8, 16, 32, 64, 128, 512, 256, 1024, 2048),
 )
 
+# Structured buffer descriptors have a 14-bit byte-stride field; BF16 uses 2B.
+_STRUCTURED_STRIDE_LIMIT = 1 << 13
+
 
 def _packet_supported(*, storage_layout=False):
     # Import lazily: released Triton builds need not contain the packet API.
@@ -59,8 +62,8 @@ def _packet_eligible(a, b, c):
     if not _packet_supported(storage_layout=nt):
         return False
     if not (
-        m > 1 and n > 1 and 256 <= k <= 4096
-        and k & (k - 1) == 0 and (nt or n % 16 == 0)
+        m > 1 and n > 1 and k >= 256 and k % 256 == 0
+        and (nt or (n % 16 == 0 and k < _STRUCTURED_STRIDE_LIMIT))
         and b.shape[0] == k and c.shape == (m, n)
         and a.dtype == b.dtype == c.dtype == torch.bfloat16
         and a.device == b.device == c.device and a.device.type == "cuda"
@@ -631,8 +634,12 @@ def clear_mm_packet_choices():
         _choice_measurements.clear()
 
 
-def _packet_variants(*, nt):
+def _packet_variants(*, nt, k=None):
     """One ordered capability-filtered registry for the measured MM families."""
+    if k is not None and k >= _STRUCTURED_STRIDE_LIMIT:
+        # These local-split entries use byte-addressed loads. The other
+        # entries require a structured descriptor for at least one operand.
+        return (_splitu_nt_packet_variants() + _multi_row_nt_packet_variants()) if nt else ()
     return (
             ("rect", "small", "square") + _raw_nt_packet_variants() + _splitu_nt_packet_variants() + _multi_row_nt_packet_variants()
             if nt
@@ -655,7 +662,7 @@ def try_mm_packet(a, b, c, ordinary, *, tuning_key, ordinary_with_output=None,
         return False
     nt = b.stride() == (1, a.shape[1])
     if variants is None:
-        variants = _packet_variants(nt=nt)
+        variants = _packet_variants(nt=nt, k=a.shape[1])
     else:
         variants = tuple(variants)
         if not nt or not variants or any(
