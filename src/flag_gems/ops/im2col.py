@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+import flag_gems
 from flag_gems import runtime
 from flag_gems.utils import libentry
 
@@ -131,7 +132,9 @@ def im2col_kernel(
 
 
 def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
-    assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
+    assert (
+        x.device.type == flag_gems.device and out.device.type == flag_gems.device
+    ), "Inputs must be on the accelerator device"
     x = x.contiguous()
     out = out.contiguous()
 
