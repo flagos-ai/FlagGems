@@ -2911,6 +2911,19 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '5.0'
   cpp: '4.0'
+- id: bmm_w8a8
+  description: Channel-wise signed INT8 batched matrix multiplication with FP32 row
+    and output-channel scales on Hygon DCU.
+  for:
+  - bmm_w8a8
+  labels:
+  - NoCPU
+  - non-aten
+  - Quantization
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: bmm_w8a8_fp8
   description: 'Performs batched matrix multiplication with block-wise FP8 E4M3
 
@@ -4565,6 +4578,16 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.5'
+- id: cudnn_batch_norm
+  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  for:
+  - cudnn_batch_norm
+  labels:
+  - aten
+  kind:
+  - Normalization
+  stages:
+  - alpha: '5.5'
 - id: cudnn_batch_norm_backward
   description: Triton kernel implementation for cudnn_batch_norm_backward.
   for:
@@ -4576,6 +4599,16 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: cudnn_batch_norm_out
+  description: Batch normalization with paired Gems backward and saved inverse standard deviation.
+  for:
+  - cudnn_batch_norm.out
+  labels:
+  - aten
+  kind:
+  - Normalization
+  stages:
+  - alpha: '5.5'
 - id: cudnn_convolution
   description: 'A wrapper for cuDNN convolution backend.
 
@@ -14346,6 +14379,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: multilabel_margin_loss
+  description: 'Multi-label margin (hinge) loss between an (N, C) input and an int64
+    target listing the active class ids of each row, terminated by the first -1.
+
+    '
+  for:
+  - multilabel_margin_loss
+  - multilabel_margin_loss.out
+  labels:
+  - aten
+  - KernelGen
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multilabel_margin_loss_forward
   description: 'Computes the forward multi-label margin loss and returns both the
     loss and the per-class target membership mask.'
@@ -18915,6 +18964,34 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     kernel.
   for:
   - _slow_conv2d_forward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_dilated2d
+  description: Applies a 2D dilated convolution over an input signal composed of
+    several input planes, using the slow (non-cuDNN) reference path. The operator
+    takes `kernel_size`, `stride`, `padding` and `dilation` as two-element pairs
+    and supports an optional bias.
+  for:
+  - slow_conv_dilated2d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
+- id: slow_conv_dilated2d_out
+  description: 'A variant of slow_conv_dilated2d() that writes the result into the
+    out tensor.
+
+    '
+  for:
+  - slow_conv_dilated2d.out
   labels:
   - aten
   - KernelGen
