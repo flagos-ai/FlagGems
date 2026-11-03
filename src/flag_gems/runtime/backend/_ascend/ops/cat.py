@@ -183,6 +183,7 @@ def _cat_fill_triton(out, A, dim):
                     kernel_idx=_CAT_FLAT_KERNEL_IDX,
                     constant_args_idx=_CAT_FLAT_CONSTANT_ARGS_IDX,
                     grid=[grid],
+                    tma_descriptor_metadata={},
                     kwargs={
                         "input_ptr": a,
                         "output_ptr": out,
@@ -196,6 +197,7 @@ def _cat_fill_triton(out, A, dim):
                     kernel_idx=_CAT_STRIDED_KERNEL_IDX,
                     constant_args_idx=_CAT_STRIDED_CONSTANT_ARGS_IDX,
                     grid=[grid],
+                    tma_descriptor_metadata={},
                     kwargs={
                         "input_ptr": a,
                         "output_ptr": out,

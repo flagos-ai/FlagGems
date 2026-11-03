@@ -190,6 +190,7 @@ def _cat_run_kernel(
             kernel_idx=_CAT_KERNEL_IDX,
             constant_args_idx=_CAT_CONSTANT_ARGS_IDX,
             grid=[grid],
+            tma_descriptor_metadata={},
             kwargs={
                 "out_ptr": out,
                 "in_ptr_a": tensor_a,
