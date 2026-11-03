@@ -2913,7 +2913,7 @@ tensor into the caller-supplied `out` buffer.
   cpp: '4.0'
 - id: bmm_w8a8
   description: Channel-wise signed INT8 batched matrix multiplication with FP32 row
-    and output-channel scales on Hygon DCU.
+    and output-channel scales.
   for:
   - bmm_w8a8
   labels:

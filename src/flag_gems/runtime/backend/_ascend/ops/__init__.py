@@ -34,6 +34,8 @@ from .attention import (
 )
 from .baddbmm import baddbmm
 from .bmm import bmm
+from .bmm_w8a8_int8 import bmm_w8a8_int8
+from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
@@ -205,6 +207,8 @@ __all__ = [
     "argsort",
     "baddbmm",
     "bmm",
+    "bmm_w8a8",
+    "bmm_w8a8_int8",
     "cat",
     "cat_out",
     "cholesky_solve",
