@@ -448,6 +448,8 @@ def test_index_put__bf16_strided_boundary(op_name, index_dtype):
         assert storage[:guard].eq(17).all().item()
     finally:
         del storage
+
+
 # #4020 / #4280: an index tensor holding a single element used to abort the
 # Ascend MLIR pipeline. The generated kernel receives the index extent as a
 # scalar argument, and triton specializes such an argument whose value is 1 into
@@ -464,6 +466,8 @@ SINGLE_ELEMENT_INDEX_CASES = (
     ((256,), 0),
     ((4,), 0),
 )
+
+
 @pytest.mark.parametrize("input_shape, index_dim", SINGLE_ELEMENT_INDEX_CASES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_index_put__single_element_index(input_shape, index_dim, dtype):
