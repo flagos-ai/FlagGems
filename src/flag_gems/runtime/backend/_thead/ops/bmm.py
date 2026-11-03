@@ -1203,7 +1203,7 @@ def _can_use_ppu_bmm_inputs(A: torch.Tensor, B: torch.Tensor) -> bool:
         and B.dtype == A.dtype
         and A.device == B.device
         and A.is_contiguous()
-        and (B.is_contiguous() or (_b_transposed_layout(B) and A.shape[-1] % 128 == 0))
+        and (B.is_contiguous() or _b_transposed_layout(B))
     ):
         return False
 
