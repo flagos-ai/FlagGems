@@ -17,7 +17,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import pytest
@@ -35,6 +35,142 @@ vendor_name = flag_gems.vendor_name
 #    v = torch.randn(shape, dtype=dtype, device=device)
 #    g = torch.randn(shape[dim], dtype=dtype, device=device)
 #    yield v, g, dim
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr73:op_weight_norm_backward_extra_four_h800_baseline": {
+        "sha256": "63e7b4f7cf14d9f0fff0e28014cf4a5680c9235088e26445e63e6fd415e6d8a4",
+        "artifact": "op_weight_norm_backward_extra_four_h800_baseline.json",
+        "operators": ["weight_norm_backward_current_extra_core"],
+        "provenance": {},
+    },
+    "legacy:pytorch-h800-primary": {
+        "legacy_primary": True,
+        "artifact": "op_pytorch_h800_perf_baseline.json",
+        "sha256": "ed09649e4b5e64b94c6c610cc01422117f792ee8316524f3222711e4c5f3f4c3",
+    },
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("legacy_primary"):
+        if manifest["base_artifact_sha256"] != spec["sha256"]:
+            raise ValueError("Unexpected historical native H800 snapshot")
+        original = {
+            key: value for key, value in data.items() if key != "_aten_consolidation"
+        }
+        copied = set()
+        for source in manifest["sources"].values():
+            for operator, entry in source["operators"].items():
+                if operator not in copied:
+                    original[operator] = dict(original[operator])
+                    original[operator]["shapes"] = dict(original[operator]["shapes"])
+                    copied.add(operator)
+                for new_key in entry["shape_keys"].values():
+                    del original[operator]["shapes"][new_key]
+        for operator in copied:
+            if not original[operator]["shapes"]:
+                del original[operator]
+        raw = (
+            json.dumps(
+                original, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            )
+            + "\n"
+        ).encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Historical native snapshot could not be restored exactly")
+        return raw, None
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
 
 
 def weight_norm_input_fn(shape, dtype, device):
@@ -111,7 +247,14 @@ class _AscendWeightBackwardStaticReference:
             ),
         ]:
             path = Path(os.environ[variable]).resolve(strict=True)
-            payload = path.read_bytes()
+            payload = _aten_read_bytes(
+                path,
+                (
+                    "legacy:pytorch-h800-primary"
+                    if legacy
+                    else "pr73:op_weight_norm_backward_extra_four_h800_baseline"
+                ),
+            )
             if hashlib.sha256(payload).hexdigest() != expected:
                 raise ValueError("Exact reviewed weight-norm H800 artifact required")
             data = json.loads(payload)
@@ -331,7 +474,16 @@ class _AscendWeightBackwardStaticReference:
                     "Actual local candidate latency must be finite and positive"
                 )
             if (
-                hashlib.sha256(Path(source["artifact"]).read_bytes()).hexdigest()
+                hashlib.sha256(
+                    _aten_read_bytes(
+                        Path(source["artifact"]),
+                        (
+                            "legacy:pytorch-h800-primary"
+                            if source["operator"] == "weight_norm_interface_backward"
+                            else "pr73:op_weight_norm_backward_extra_four_h800_baseline"
+                        ),
+                    )
+                ).hexdigest()
                 != source["artifact_sha256"]
             ):
                 raise ValueError("Native H800 artifact changed around candidate timing")
