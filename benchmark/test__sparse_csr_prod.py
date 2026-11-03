@@ -168,6 +168,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _seed(shape, dtype):
     data = json.dumps(
         {"recipe": RECIPE, "shape": list(shape), "dtype": str(dtype)},
@@ -423,15 +454,18 @@ class SparseCsrProdBenchmark(OperatorBenchmark):
             or sum(len(dtypes) for dtypes in entry["shapes"].values()) != 54
         ):
             raise ValueError("Incomplete or inconsistent H800 CSR product collection")
-        return entry["shapes"], {
-            "kind": "external_nvidia",
-            "artifact": str(path),
-            "artifact_sha256": _NV_ARTIFACT_SHA256,
-            "published_revision": _NV_PUBLISHED_REVISION,
-            "environment": environment,
-            "ratio": "(H800 latency_ms + EPS) / (target latency_ms + EPS); no peak normalization",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return entry["shapes"], _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "artifact": str(path),
+                "artifact_sha256": _NV_ARTIFACT_SHA256,
+                "published_revision": _NV_PUBLISHED_REVISION,
+                "environment": environment,
+                "ratio": "(H800 latency_ms + EPS) / (target latency_ms + EPS); no peak normalization",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("pr28:op_pytorch_sparse_csr_prod_h800_perf_baseline"),
+        )
 
     def _external_input_config(self, args, kwargs):
         if len(args) != 1 or not isinstance(args[0], torch.Tensor):

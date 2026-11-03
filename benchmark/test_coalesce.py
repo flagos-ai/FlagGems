@@ -257,6 +257,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _cpu_oracle(inp):
     """CPU-native ref-as-candidate bootstrap for the original no-grad cases."""
     assert inp.layout == torch.sparse_coo and not inp.requires_grad
@@ -361,16 +392,19 @@ class CoalesceBenchmark(OperatorBenchmark):
         shapes = data[self.op_name]["shapes"]
         if sum(len(dtypes) for dtypes in shapes.values()) != 18:
             raise ValueError("Expected the original eighteen H800 core records")
-        return shapes, {
-            "kind": "external_nvidia",
-            "artifact": str(path),
-            "artifact_sha256": _NV_ARTIFACT_SHA256,
-            "published_revision": "7d43707757d04910585b0b97f9bdcb56faa1e56e",
-            "original_partial_sha256": _NV_ORIGINAL["original_partial_sha256"],
-            "environment": original,
-            "ratio": "(H800 latency_ms + EPS) / (target latency_ms + EPS); no peak normalization",
-            "target_timing_mode": base.Config.mode.value,
-        }
+        return shapes, _aten_qualify_metadata(
+            {
+                "kind": "external_nvidia",
+                "artifact": str(path),
+                "artifact_sha256": _NV_ARTIFACT_SHA256,
+                "published_revision": "7d43707757d04910585b0b97f9bdcb56faa1e56e",
+                "original_partial_sha256": _NV_ORIGINAL["original_partial_sha256"],
+                "environment": original,
+                "ratio": "(H800 latency_ms + EPS) / (target latency_ms + EPS); no peak normalization",
+                "target_timing_mode": base.Config.mode.value,
+            },
+            ("legacy:pytorch-h800-primary"),
+        )
 
     def _external_input_config(self, args):
         if len(args) != 1 or not isinstance(args[0], torch.Tensor):
