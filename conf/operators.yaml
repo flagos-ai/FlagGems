@@ -2963,7 +2963,7 @@ tensor into the caller-supplied `out` buffer.
   kind:
   - Tensor
   stages:
-  - alpha: '5.5.0'
+  - alpha: '5.5'
 - id: cartesian_prod
   description: Returns the cartesian product of the given sequence of 1-D tensors.
   for:
