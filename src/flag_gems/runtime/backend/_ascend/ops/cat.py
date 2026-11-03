@@ -4,6 +4,7 @@ from typing import List, Tuple, Union
 import torch
 import triton
 import triton.language as tl
+from torch._subclasses.fake_tensor import FakeTensor
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -134,6 +135,12 @@ def _prepare_cat_inputs(A, dim):
 
 
 def _cat_fill_triton(out, A, dim):
+    # Dynamo evaluates the opaque autograd Function once with FakeTensors to
+    # infer its output metadata.  Avoid entering the Ascend Triton launcher in
+    # that pass because argument specialization calls ``data_ptr()``.
+    if isinstance(out, FakeTensor):
+        return out
+
     if len(A) == 0 or out.numel() == 0:
         return out
 

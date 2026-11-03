@@ -18,6 +18,7 @@ from typing import List, Tuple, Union
 import torch
 import triton
 import triton.language as tl
+from torch._subclasses.fake_tensor import FakeTensor
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,13 @@ def _cat_run_kernel(
     out_shape: List[int],
     out: torch.Tensor,
 ):
+    # ``Cat`` is opaque to Dynamo, but its forward is still evaluated once
+    # with FakeTensors to infer output metadata.  The output has already been
+    # allocated with the correct symbolic shape, so do not enter the Triton
+    # launcher (which specializes arguments via ``data_ptr()``) in that pass.
+    if isinstance(out, FakeTensor):
+        return out
+
     BLOCK = 1024
     dim_offset = 0
     i = 0
