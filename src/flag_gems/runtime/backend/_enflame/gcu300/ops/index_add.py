@@ -200,19 +200,15 @@ def generate_destination_passing_wrapper(
         code.writeline("out_strides = list(out.stride())")
         code.newline()
 
-        # `stable=True` is not usable here: the CI runner's `topsatenSort`
-        # rejects `at::_ops::sort_stable` with TOPSATEN_STATUS_BAD_PARAM. A
-        # plain sort leaves the order of equal index values unspecified, which
-        # only changes the summation order inside one destination row -- the
-        # same freedom aten's atomic scatter has.
-        code.writeline("index_sorted, order = torch.sort(index)")
-        code.writeline("index_sorted = index_sorted.to(torch.int32)")
-        code.writeline("if order.dtype != torch.int32:")
-        with code.indent():
-            code.writeline("order = order.to(torch.int32)")
-        code.writeline("if order.dtype != torch.int32:")
-        with code.indent():
-            code.writeline("order = order.to(torch.int32)")
+        # `torch.sort` is unusable here: torch_gcu dispatches it through
+        # `at::native::sort()` into `at::_ops::sort_stable` whatever the
+        # `stable` argument, and the CI runner's `topsatenSort` rejects that
+        # with TOPSATEN_STATUS_BAD_PARAM. Sort on the host instead; `index` is
+        # one integer per scatter row against the `src` elements each row moves.
+        code.writeline("index_host = index.to('cpu').to(torch.int32)")
+        code.writeline("index_sorted, order = torch.sort(index_host)")
+        code.writeline("index_sorted = index_sorted.to(out.device)")
+        code.writeline("order = order.to(torch.int32).to(out.device)")
         code.newline()
 
         code.writeline("M = index.numel()")
