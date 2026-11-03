@@ -253,6 +253,11 @@ def _sparse_sparse_matmul(self, other):
         )
 
     # ---- accumulate products into dense (M x N) count/value buffers ----
+    # NOTE (documented per the review): the scratch is dense over M*N — two
+    # buffers of 4 bytes * MN each — so inputs whose product of sparse dims is
+    # far larger than the output nnz can exceed memory. ATen's SpGEMM uses an
+    # O(nnz) hash-based scheme; this kernel trades memory for a simpler
+    # exact-count pipeline. Keep (M, N) within available device memory.
     cdense = torch.zeros(MN, dtype=torch.int32, device=dev)
     vdense = torch.zeros(MN, dtype=acc_dtype, device=dev)
     if nnzA > 0 and nnzB > 0:
