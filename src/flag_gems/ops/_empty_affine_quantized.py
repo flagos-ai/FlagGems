@@ -17,29 +17,8 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
 logger = logging.getLogger(__name__)
-
-# Byte stores support packed and unpacked quantized storage uniformly.
-_BLOCK = 1024
-
-
-@triton.jit
-def _initialize_storage(ptr, n, BLOCK: tl.constexpr):
-    idx = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    tl.store(ptr + idx, tl.full((BLOCK,), 0, tl.uint8), mask=idx < n)
-
-
-def _initialize(out):
-    n = out.untyped_storage().nbytes()
-    if n:
-        raw = torch.empty(0, dtype=torch.uint8, device=out.device).set_(
-            out.untyped_storage()
-        )
-        _initialize_storage[(triton.cdiv(n, _BLOCK),)](raw, n, BLOCK=_BLOCK)
-    return out
 
 
 def _integer_dtype(dtype):
@@ -55,13 +34,20 @@ def _integer_dtype(dtype):
 def _attach_storage(out, size, dtype, layout, device, pin_memory, memory_format):
     # Allocate ordinary integer storage, then attach it to the quantizer-only
     # tensor. set_ changes metadata; it neither quantizes nor copies payload.
-    raw = torch.empty(
-        size,
-        dtype=_integer_dtype(dtype),
+    # Allocate via empty_strided instead of torch.empty to avoid self-recursion
+    # through aten::empty.memory_format, which flag_gems also overrides. Meta is
+    # used only to get strides for the requested memory_format (compatible with
+    # PyTorch < 2.8 without torch.library.get_kernel).
+    shape = tuple(size)
+    storage_dtype = _integer_dtype(dtype)
+    meta = torch.empty(shape, dtype=storage_dtype, device="meta", memory_format=memory_format)
+    raw = torch.empty_strided(
+        shape,
+        meta.stride(),
+        dtype=storage_dtype,
         layout=layout,
         device=device,
         pin_memory=pin_memory,
-        memory_format=memory_format,
     )
     return out.set_(raw.untyped_storage(), 0, raw.shape, raw.stride())
 
@@ -93,5 +79,7 @@ def _empty_affine_quantized(
         zero_point,
         dtype,
     )
-    out = _attach_storage(out, size, dtype, layout, device, pin_memory, memory_format)
-    return _initialize(out)
+    # Native ``_empty_affine_quantized`` leaves the storage uninitialized
+    # (``new_qtensor`` allocates without writing), so no fill pass is launched
+    # here either -- the tensor is returned right after the storage is attached.
+    return _attach_storage(out, size, dtype, layout, device, pin_memory, memory_format)
