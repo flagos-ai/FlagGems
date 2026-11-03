@@ -68,7 +68,9 @@ def test_inverse(shape, dtype):
     # Inversion is ill conditioned by nature: the reference is upcast to fp64
     # so the comparison measures our error, not the reference's.
     A = _make_well_conditioned(shape, dtype, flag_gems.device)
-    use_cpu_oracle = flag_gems.vendor_name == "thead" and shape == (128, 128)
+    use_cpu_oracle = (flag_gems.vendor_name == "thead" and shape == (128, 128)) or (
+        flag_gems.vendor_name == "kunlunxin" and shape[-1] >= 64
+    )
     if use_cpu_oracle:
         ref_A = A.to(device="cpu", dtype=torch.float64)
     else:
@@ -140,7 +142,12 @@ def test_inverse_noncontiguous(dtype):
     A = _make_well_conditioned((64, 64), dtype, flag_gems.device)
     A_t = A.t()
 
-    ref_A = utils.to_reference(A_t, upcast=True)
+    # The vendor ATen solver rejects this 64x64 view. Keep the test input on
+    # the target device and move only the reference to CPU.
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_A = A_t.to(device="cpu", dtype=torch.float64)
+    else:
+        ref_A = utils.to_reference(A_t, upcast=True)
 
     res_out = flag_gems.inverse(A_t)
     ref_out = torch.inverse(ref_A).to(dtype)
