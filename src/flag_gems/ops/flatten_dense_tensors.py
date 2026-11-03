@@ -17,37 +17,33 @@
 
 ``flatten_dense_tensors`` concatenates the flattened views of every tensor in a
 list into one dense 1-D tensor, in list order.  It is pure data movement: the
-result element ``j`` is the ``j``-th element of the concatenation, so a single
-kernel per input slice is enough.
+result element ``j`` is the ``j``-th element of the concatenation.
 
-Three layouts cover the op:
-
-* A single contiguous input is returned as a zero-copy ``view(-1)``, exactly
-  like the reference, which avoids any kernel launch.
-* Small contiguous uniform-dtype lists (two to four inputs) pass the data
-  pointers and packed ``(numel, offset)`` pairs as scalar kernel arguments and
-  use a 2-D grid of ``(tensor, chunk)``.  Every program copies one ``BLOCK``
-  sized chunk that lies fully inside one tensor, so no per-call device metadata
-  tensor is built.
-* Everything else (one non-contiguous input, mixed dtypes, more than four
-  inputs, totals above 2**32 elements, or non-contiguous inputs) falls back to
-  a metadata tensor holding the element offsets, a chunk prefix sum and the
-  data pointers.  Each input group of equal dtype runs one kernel that finds
-  its owning tensor with a binary search and either copies the contiguous
-  storage or decomposes the logical index through the shape/strides.
+Fast paths avoid per-call device metadata entirely: a single contiguous input
+is a zero-copy ``view(-1)``, and small uniform-dtype lists go through 2-D
+``(tensor, chunk)`` grid kernels whose metadata travels as scalar kernel
+arguments (data pointers, packed ``(numel, offset)`` pairs, and shape/stride
+scalars for strided inputs).  Everything else (mixed dtypes, more than eight
+inputs, totals above 2**32 elements, or strided tensors deeper than four
+dimensions) falls back to a metadata tensor holding the element offsets, a
+chunk prefix sum, the data pointers and the shape/stride rows; each input
+group of equal dtype runs one kernel that finds its owning tensor with a
+binary search and either copies the contiguous storage or decomposes the
+logical index through the shape/strides.
 
 Integer offsets use int64 because the element offsets of large lists exceed
 int32.  Dtypes without a Triton scalar type (complex, fp8) raise an explicit
 unsupported-dtype error rather than silently mis-copying the storage.
 """
 
-from __future__ import annotations
-
 import logging
 
 import torch
 import triton
 import triton.language as tl
+
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +61,7 @@ _TL_DTYPE = {
     torch.bool: tl.int8,
 }
 
+# Copy tiles balance launch overhead and memory bandwidth.
 _BLOCK = 2048
 _NUM_WARPS = 8
 _LOG2N = 12  # fixed constexpr: binary search converges for N <= 4096
@@ -78,14 +75,7 @@ _MAX_DIM = 8
 # ---------------------------------------------------------------------------
 @triton.jit
 def _flatten_n2(
-    out_ptr,
-    p0,
-    p1,
-    v0,
-    v1,
-    BLOCK: tl.constexpr,
-    DT: tl.constexpr,
-    MASKED: tl.constexpr,
+    out_ptr, p0, p1, v0, v1, BLOCK: tl.constexpr, DT: tl.constexpr, MASKED: tl.constexpr
 ):
     t = tl.program_id(0)
     k = tl.program_id(1)
@@ -170,6 +160,285 @@ def _flatten_n4(
     else:
         x = tl.load(pp + local)
         tl.store(out_ptr + offs, x)
+
+
+# Eight-slot variant for medium lists (5 <= N <= 8).  Slots beyond N carry
+# v=0 (numel 0), so their bounds mask is always false and they copy nothing;
+# the bounds mask is therefore always on.
+@libentry()
+@triton.jit
+def _flatten_n8(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    p3,
+    p4,
+    p5,
+    p6,
+    p7,
+    v0,
+    v1,
+    v2,
+    v3,
+    v4,
+    v5,
+    v6,
+    v7,
+    BLOCK: tl.constexpr,
+    DT: tl.constexpr,
+):
+    t = tl.program_id(0)
+    k = tl.program_id(1)
+    ptr_t = tl.where(
+        t == 0,
+        p0,
+        tl.where(
+            t == 1,
+            p1,
+            tl.where(
+                t == 2,
+                p2,
+                tl.where(
+                    t == 3,
+                    p3,
+                    tl.where(
+                        t == 4, p4, tl.where(t == 5, p5, tl.where(t == 6, p6, p7))
+                    ),
+                ),
+            ),
+        ),
+    )
+    v = tl.where(
+        t == 0,
+        v0,
+        tl.where(
+            t == 1,
+            v1,
+            tl.where(
+                t == 2,
+                v2,
+                tl.where(
+                    t == 3,
+                    v3,
+                    tl.where(
+                        t == 4, v4, tl.where(t == 5, v5, tl.where(t == 6, v6, v7))
+                    ),
+                ),
+            ),
+        ),
+    )
+    off_t = v & 0xFFFFFFFF
+    numel_t = v >> 32
+    start = off_t + k.to(tl.int64) * BLOCK
+    offs = start + tl.arange(0, BLOCK)
+    mask = offs < off_t + numel_t
+    local = offs - off_t
+    pp = ptr_t.to(tl.pointer_type(DT))
+    x = tl.load(pp + local, mask=mask)
+    tl.store(out_ptr + offs, x, mask=mask)
+
+
+# ---------------------------------------------------------------------------
+# Small-N strided kernels: same 2D (tensor, chunk) grid as above, but shape and
+# strides travel as scalar kernel arguments instead of device metadata, so a
+# strided copy needs no H2D transfer at all.  Arguments are grouped per tensor
+# as (d0, s0, d1, s1, d2, s2, ...): logical size and stride of each dimension
+# in row-major order, padded with d=1, s=0 up to MAXD.
+# ---------------------------------------------------------------------------
+@libentry()
+@triton.jit
+def _flatten_n2_strided(
+    out_ptr,
+    p0,
+    p1,
+    v0,
+    v1,
+    D00,
+    S00,
+    D01,
+    S01,
+    D02,
+    S02,
+    D03,
+    S03,
+    D10,
+    S10,
+    D11,
+    S11,
+    D12,
+    S12,
+    D13,
+    S13,
+    BLOCK: tl.constexpr,
+    DT: tl.constexpr,
+):
+    t = tl.program_id(0)
+    k = tl.program_id(1)
+    ptr_t = tl.where(t == 0, p0, p1)
+    v = tl.where(t == 0, v0, v1)
+    s0 = tl.where(t == 0, S00, S10)
+    d1 = tl.where(t == 0, D01, D11)
+    s1 = tl.where(t == 0, S01, S11)
+    d2 = tl.where(t == 0, D02, D12)
+    s2 = tl.where(t == 0, S02, S12)
+    d3 = tl.where(t == 0, D03, D13)
+    s3 = tl.where(t == 0, S03, S13)
+    off_t = v & 0xFFFFFFFF
+    numel_t = v >> 32
+    start = off_t + k.to(tl.int64) * BLOCK
+    offs = start + tl.arange(0, BLOCK)
+    mask = offs < off_t + numel_t
+    local = offs - off_t
+    i3 = local % d3
+    local = local // d3
+    i2 = local % d2
+    local = local // d2
+    phys = (local // d1).to(tl.int64) * s0 + (local % d1).to(tl.int64) * s1
+    phys += i2.to(tl.int64) * s2 + i3.to(tl.int64) * s3
+    pp = ptr_t.to(tl.pointer_type(DT))
+    x = tl.load(pp + phys, mask=mask)
+    tl.store(out_ptr + offs, x, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _flatten_n3_strided(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    v0,
+    v1,
+    v2,
+    D00,
+    S00,
+    D01,
+    S01,
+    D02,
+    S02,
+    D03,
+    S03,
+    D10,
+    S10,
+    D11,
+    S11,
+    D12,
+    S12,
+    D13,
+    S13,
+    D20,
+    S20,
+    D21,
+    S21,
+    D22,
+    S22,
+    D23,
+    S23,
+    BLOCK: tl.constexpr,
+    DT: tl.constexpr,
+):
+    t = tl.program_id(0)
+    k = tl.program_id(1)
+    ptr_t = tl.where(t == 0, p0, tl.where(t == 1, p1, p2))
+    v = tl.where(t == 0, v0, tl.where(t == 1, v1, v2))
+    s0 = tl.where(t == 0, S00, tl.where(t == 1, S10, S20))
+    d1 = tl.where(t == 0, D01, tl.where(t == 1, D11, D21))
+    s1 = tl.where(t == 0, S01, tl.where(t == 1, S11, S21))
+    d2 = tl.where(t == 0, D02, tl.where(t == 1, D12, D22))
+    s2 = tl.where(t == 0, S02, tl.where(t == 1, S12, S22))
+    d3 = tl.where(t == 0, D03, tl.where(t == 1, D13, D23))
+    s3 = tl.where(t == 0, S03, tl.where(t == 1, S13, S23))
+    off_t = v & 0xFFFFFFFF
+    numel_t = v >> 32
+    start = off_t + k.to(tl.int64) * BLOCK
+    offs = start + tl.arange(0, BLOCK)
+    mask = offs < off_t + numel_t
+    local = offs - off_t
+    i3 = local % d3
+    local = local // d3
+    i2 = local % d2
+    local = local // d2
+    phys = (local // d1).to(tl.int64) * s0 + (local % d1).to(tl.int64) * s1
+    phys += i2.to(tl.int64) * s2 + i3.to(tl.int64) * s3
+    pp = ptr_t.to(tl.pointer_type(DT))
+    x = tl.load(pp + phys, mask=mask)
+    tl.store(out_ptr + offs, x, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _flatten_n4_strided(
+    out_ptr,
+    p0,
+    p1,
+    p2,
+    p3,
+    v0,
+    v1,
+    v2,
+    v3,
+    D00,
+    S00,
+    D01,
+    S01,
+    D02,
+    S02,
+    D03,
+    S03,
+    D10,
+    S10,
+    D11,
+    S11,
+    D12,
+    S12,
+    D13,
+    S13,
+    D20,
+    S20,
+    D21,
+    S21,
+    D22,
+    S22,
+    D23,
+    S23,
+    D30,
+    S30,
+    D31,
+    S31,
+    D32,
+    S32,
+    D33,
+    S33,
+    BLOCK: tl.constexpr,
+    DT: tl.constexpr,
+):
+    t = tl.program_id(0)
+    k = tl.program_id(1)
+    ptr_t = tl.where(t == 0, p0, tl.where(t == 1, p1, tl.where(t == 2, p2, p3)))
+    v = tl.where(t == 0, v0, tl.where(t == 1, v1, tl.where(t == 2, v2, v3)))
+    s0 = tl.where(t == 0, S00, tl.where(t == 1, S10, tl.where(t == 2, S20, S30)))
+    d1 = tl.where(t == 0, D01, tl.where(t == 1, D11, tl.where(t == 2, D21, D31)))
+    s1 = tl.where(t == 0, S01, tl.where(t == 1, S11, tl.where(t == 2, S21, S31)))
+    d2 = tl.where(t == 0, D02, tl.where(t == 1, D12, tl.where(t == 2, D22, D32)))
+    s2 = tl.where(t == 0, S02, tl.where(t == 1, S12, tl.where(t == 2, S22, S32)))
+    d3 = tl.where(t == 0, D03, tl.where(t == 1, D13, tl.where(t == 2, D23, D33)))
+    s3 = tl.where(t == 0, S03, tl.where(t == 1, S13, tl.where(t == 2, S23, S33)))
+    off_t = v & 0xFFFFFFFF
+    numel_t = v >> 32
+    start = off_t + k.to(tl.int64) * BLOCK
+    offs = start + tl.arange(0, BLOCK)
+    mask = offs < off_t + numel_t
+    local = offs - off_t
+    i3 = local % d3
+    local = local // d3
+    i2 = local % d2
+    local = local // d2
+    phys = (local // d1).to(tl.int64) * s0 + (local % d1).to(tl.int64) * s1
+    phys += i2.to(tl.int64) * s2 + i3.to(tl.int64) * s3
+    pp = ptr_t.to(tl.pointer_type(DT))
+    x = tl.load(pp + phys, mask=mask)
+    tl.store(out_ptr + offs, x, mask=mask)
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +531,12 @@ def _flatten_general_kernel(
 
 
 def _launch_group(out, group, group_offsets, tl_dt):
+    # Metadata is packed on the host into ONE int64 tensor and transferred with
+    # a single H2D copy.  Layout: [offsets (N+1), chunk-prefix (N+1), ptrs (N),
+    # shapes (N*max_dim), strides (N*max_dim)].  Assigning scalars directly to
+    # CUDA tensors instead would issue one H2D transfer per element, which
+    # dominates the latency of small/strided workloads (see block_diag.py for
+    # the same host-packing pattern).
     dev = out.device
     N = len(group)
     numels = [group_offsets[k + 1] - group_offsets[k] for k in range(N)]
@@ -273,42 +548,47 @@ def _launch_group(out, group, group_offsets, tl_dt):
     coff = [0] * (N + 1)
     for i, c in enumerate(chunks):
         coff[i + 1] = coff[i] + c
-    meta = torch.tensor(
-        group_offsets + coff + [t.data_ptr() for t in group],
-        dtype=torch.int64,
-        device=dev,
-    )
-    if all(t.is_contiguous() for t in group):
-        _flatten_contig_kernel[(total_chunks,)](
-            out,
-            meta,
-            N,
-            BLOCK=_BLOCK,
-            LOG2N=LOG2N,
-            DT=tl_dt,
-            num_warps=_NUM_WARPS,
-        )
-    else:
-        nd = max(t.dim() for t in group)
-        max_dim = max(_MAX_DIM, nd)
-        shapes = torch.ones(N, max_dim, dtype=torch.int64, device=dev)
-        strides = torch.zeros(N, max_dim, dtype=torch.int64, device=dev)
+    flat = group_offsets + coff + [t.data_ptr() for t in group]
+    contig = all(t.is_contiguous() for t in group)
+    if not contig:
+        max_dim = max(_MAX_DIM, max(t.dim() for t in group))
+        shapes_base = len(flat)
+        # Shape padding is 1 (so the index decomposition is a no-op for padded
+        # dims) while stride padding is 0.
+        flat += [1] * (N * max_dim) + [0] * (N * max_dim)
         for i, t in enumerate(group):
+            sbase = shapes_base + i * max_dim
+            rbase = sbase + N * max_dim
             for d in range(t.dim()):
-                shapes[i, t.dim() - 1 - d] = t.shape[d]
-                strides[i, t.dim() - 1 - d] = t.stride(d)
-        _flatten_general_kernel[(total_chunks,)](
-            out,
-            meta,
-            shapes,
-            strides,
-            N,
-            BLOCK=_BLOCK,
-            LOG2N=LOG2N,
-            DT=tl_dt,
-            MAX_DIM=max_dim,
-            num_warps=_NUM_WARPS,
-        )
+                flat[sbase + t.dim() - 1 - d] = t.shape[d]
+                flat[rbase + t.dim() - 1 - d] = t.stride(d)
+    meta = torch.tensor(flat, dtype=torch.int64, device=dev)
+    with torch_device_fn.device(dev):
+        if contig:
+            _flatten_contig_kernel[(total_chunks,)](
+                out,
+                meta,
+                N,
+                BLOCK=_BLOCK,
+                LOG2N=LOG2N,
+                DT=tl_dt,
+                num_warps=_NUM_WARPS,
+            )
+        else:
+            shapes = meta[shapes_base : shapes_base + N * max_dim].view(N, max_dim)
+            strides = meta[shapes_base + N * max_dim :].view(N, max_dim)
+            _flatten_general_kernel[(total_chunks,)](
+                out,
+                meta,
+                shapes,
+                strides,
+                N,
+                BLOCK=_BLOCK,
+                LOG2N=LOG2N,
+                DT=tl_dt,
+                MAX_DIM=max_dim,
+                num_warps=_NUM_WARPS,
+            )
 
 
 def flatten_dense_tensors(tensors):
@@ -326,6 +606,17 @@ def flatten_dense_tensors(tensors):
             raise TypeError(
                 "flatten_dense_tensors(): expected Tensor as element, but got "
                 f"{type(item).__name__}"
+            )
+    tensors = list(tensors)
+    if tensors:
+        device = tensors[0].device
+        if any(t.device != device for t in tensors):
+            raise RuntimeError("all tensors must be on the same device")
+        if any(t.layout != torch.strided for t in tensors):
+            raise RuntimeError("flatten_dense_tensors requires dense tensors")
+        if any(t.is_conj() or t.is_neg() for t in tensors):
+            raise NotImplementedError(
+                "lazy conjugate/negative tensors are not supported"
             )
     n = len(tensors)
     if n == 0:
@@ -382,9 +673,17 @@ def flatten_dense_tensors(tensors):
     if total == 0:
         return out
 
-    # Fast path 2: small-N contiguous uniform-dtype list -> 2D-grid kernel with
-    # scalar (packed) metadata, avoiding per-call device metadata construction.
-    if uniform and 2 <= n <= 4 and total < (1 << 32) and contig:
+    # Fast path 2: small-N uniform-dtype list -> 2D-grid kernel with scalar
+    # (packed) metadata, avoiding per-call device metadata construction.  A
+    # strided list of at most 4 dims per tensor and at most 4 tensors takes
+    # the same route with shape/stride scalars; deeper strided tensors and
+    # lists beyond 8 tensors fall through to the metadata path below.
+    if (
+        uniform
+        and 2 <= n <= 8
+        and total < (1 << 32)
+        and (contig or (n <= 4 and max(t.dim() for t in ts) <= 4))
+    ):
         tl_dt = _TL_DTYPE[out_dtype]
         # Launch-config specialization by element size: 16-bit dtypes prefer
         # smaller blocks / fewer warps (more, finer-grained programs); 32-bit
@@ -403,46 +702,143 @@ def flatten_dense_tensors(tensors):
         masked = not (all(m == numels[0] for m in numels) and numels[0] % block == 0)
         vs = [(numels[i] << 32) | offs[i] for i in range(n)]
         ps = [t.data_ptr() for t in ts]
+        # Strided fast path: only when every tensor has at most 4 dims (the
+        # scalar-argument kernels cover up to 4); deeper tensors fall through
+        # to the metadata path.  The kernel is picked by the maximum dim in
+        # the group; lower-dim tensors are padded with d=1, s=0.
+        group_nd = max(t.dim() for t in ts)
+        strided_ok = not contig and group_nd <= 4
+        strided_args = []
+        if strided_ok:
+            for t in ts:
+                dims = list(t.shape)
+                strs = list(t.stride())
+                for _ in range(4 - t.dim()):
+                    dims.append(1)
+                    strs.append(0)
+                # Interleave as (d0, s0, d1, s1, ...), matching the kernels'
+                # per-dimension argument order; all three strided kernels
+                # expand to a fixed 4 dims per tensor slot.
+                strided_args.extend(v for pair in zip(dims, strs) for v in pair)
         if n == 2:
-            _flatten_n2[(2, max_chunks)](
-                out,
-                ps[0],
-                ps[1],
-                vs[0],
-                vs[1],
-                BLOCK=block,
-                DT=tl_dt,
-                MASKED=masked,
-                num_warps=nw,
-            )
+            if strided_ok:
+                _flatten_n2_strided[(2, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    vs[0],
+                    vs[1],
+                    *strided_args[0:8],
+                    *strided_args[8:16],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    num_warps=nw,
+                )
+            else:
+                _flatten_n2[(2, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    vs[0],
+                    vs[1],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    MASKED=masked,
+                    num_warps=nw,
+                )
         elif n == 3:
-            _flatten_n3[(3, max_chunks)](
-                out,
-                ps[0],
-                ps[1],
-                ps[2],
-                vs[0],
-                vs[1],
-                vs[2],
-                BLOCK=block,
-                DT=tl_dt,
-                MASKED=masked,
-                num_warps=nw,
-            )
+            if strided_ok:
+                _flatten_n3_strided[(3, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    ps[2],
+                    vs[0],
+                    vs[1],
+                    vs[2],
+                    *strided_args[0:8],
+                    *strided_args[8:16],
+                    *strided_args[16:24],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    num_warps=nw,
+                )
+            else:
+                _flatten_n3[(3, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    ps[2],
+                    vs[0],
+                    vs[1],
+                    vs[2],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    MASKED=masked,
+                    num_warps=nw,
+                )
+        elif n == 4:
+            if strided_ok:
+                _flatten_n4_strided[(4, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    ps[2],
+                    ps[3],
+                    vs[0],
+                    vs[1],
+                    vs[2],
+                    vs[3],
+                    *strided_args[0:8],
+                    *strided_args[8:16],
+                    *strided_args[16:24],
+                    *strided_args[24:32],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    num_warps=nw,
+                )
+            else:
+                _flatten_n4[(4, max_chunks)](
+                    out,
+                    ps[0],
+                    ps[1],
+                    ps[2],
+                    ps[3],
+                    vs[0],
+                    vs[1],
+                    vs[2],
+                    vs[3],
+                    BLOCK=block,
+                    DT=tl_dt,
+                    MASKED=masked,
+                    num_warps=nw,
+                )
         else:
-            _flatten_n4[(4, max_chunks)](
+            # 5 <= n <= 8, contiguous only (this branch implies contig).
+            # Zero numel/ptr for the unused slots so their always-on bounds
+            # mask excludes them.
+            vs8 = vs + [0] * (8 - n)
+            ps8 = ps + [ps[0]] * (8 - n)
+            _flatten_n8[(n, max_chunks)](
                 out,
-                ps[0],
-                ps[1],
-                ps[2],
-                ps[3],
-                vs[0],
-                vs[1],
-                vs[2],
-                vs[3],
+                ps8[0],
+                ps8[1],
+                ps8[2],
+                ps8[3],
+                ps8[4],
+                ps8[5],
+                ps8[6],
+                ps8[7],
+                vs8[0],
+                vs8[1],
+                vs8[2],
+                vs8[3],
+                vs8[4],
+                vs8[5],
+                vs8[6],
+                vs8[7],
                 BLOCK=block,
                 DT=tl_dt,
-                MASKED=masked,
                 num_warps=nw,
             )
         return out
@@ -461,11 +857,3 @@ def flatten_dense_tensors(tensors):
         _launch_group(out, ts[cur:j], offs[cur : j + 1], tl_dt)
         cur = j
     return out
-
-
-# ``use_gems(include=[...])`` indexes ops by the implementation's ``__name__``,
-# so the public function carries the operator name; ``run`` is kept as the
-# conventional alias.
-run = flatten_dense_tensors
-
-__all__ = ["run", "flatten_dense_tensors"]

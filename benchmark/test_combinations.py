@@ -21,14 +21,15 @@ from . import base, consts
 
 # Each entry is (input length, r, with_replacement), i.e. the output has
 # C(n, r) (or C(n + r - 1, r)) rows and r columns. The sizes stay below a few
-# million rows: r == 2 and r == 3 take the closed-form kernels, the higher
-# ranks take the generic binary-search unranking kernel.
+# million rows: r == 2 and r == 3 take the closed-form kernels, r == 4 the
+# closed-form r == 4 kernel, and the higher ranks the generic binary-search
+# unranking kernel.
 COMBINATIONS_CASES = [
     (1024, 2, False),
     (1024, 2, True),
     (256, 3, False),
     (256, 3, True),
-    (64, 4, False),
+    (128, 4, False),
     (32, 5, False),
     (16, 6, True),
 ]
