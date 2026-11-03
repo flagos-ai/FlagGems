@@ -17,7 +17,7 @@ import json
 import math
 import os
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 from pathlib import Path
 
 import pytest
@@ -37,6 +37,110 @@ _COLLECTION_OP = "cudnn_batch_norm_backward_current_core"
 _PROVEN_CUDA_VERSIONS = {"2.8.0a0+5228986c39.nv25.05", "2.8.0a0+5228986c39.nv25.06"}
 
 
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr45:op_cudnn_batch_norm_backward_current_core_h800_baseline": {
+        "sha256": "a4d208fd94e726bcbdcea7b247d80707d30f57ba4747b4a60d2e79454a776740",
+        "artifact": "op_cudnn_batch_norm_backward_current_core_h800_baseline.json",
+        "operators": ["cudnn_batch_norm_backward_current_core"],
+        "provenance": {},
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
+
+
 def _original_scope():
     return [dict(case_id="benchmark/test_cudnn_batch_norm_backward.py::test_cudnn_batch_norm_backward::core::"
                          + dtype.removeprefix("torch.") + "::" + str(i),
@@ -47,55 +151,89 @@ def _original_scope():
 
 def _read_h800():
     path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-    payload = path.read_bytes()
+    payload = _aten_read_bytes(
+        path, ("pr45:op_cudnn_batch_norm_backward_current_core_h800_baseline")
+    )
     if hashlib.sha256(payload).hexdigest() != _H800_SHA:
         raise ValueError("Expected the reviewed six-scope native H800 BN snapshot")
     data = json.loads(payload)
     task = data["_collection"]["tasks"][_COLLECTION_OP]
     environment = data["_environments"][str(task["device"])]
-    if (task["status"] != "completed" or task["returncode"] != 0
-            or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
-            or environment["source"]["git_commit"] != _H800_SOURCE
-            or environment["source"]["git_dirty"] is not False
-            or environment["run"]["ncu_enabled"] is not False
-            or data[_COLLECTION_OP]["native_api"] != "ops." + _COLLECTION_OP):
+    if (
+        task["status"] != "completed"
+        or task["returncode"] != 0
+        or environment["hardware"]["gpu"]["name"] != "NVIDIA H800"
+        or environment["source"]["git_commit"] != _H800_SOURCE
+        or environment["source"]["git_dirty"] is not False
+        or environment["run"]["ncu_enabled"] is not False
+        or data[_COLLECTION_OP]["native_api"] != "ops." + _COLLECTION_OP
+    ):
         raise ValueError("Incomplete clean native H800 BN provenance")
     expected = _original_scope()
     scope = data["_reference_scope"]
     unsupported = scope["unsupported_cases"]
-    if (scope["native_torch_op"] != "aten::cudnn_batch_norm_backward.default"
-            or scope["original_case_count"] != 6 or scope["cases"] != expected
-            or scope["supported_case_ids"] != [x["case_id"] for x in expected[:4]]
-            or [x["case"] for x in unsupported] != expected[4:]):
+    if (
+        scope["native_torch_op"] != "aten::cudnn_batch_norm_backward.default"
+        or scope["original_case_count"] != 6
+        or scope["cases"] != expected
+        or scope["supported_case_ids"] != [x["case_id"] for x in expected[:4]]
+        or [x["case"] for x in unsupported] != expected[4:]
+    ):
         raise ValueError("Native BN original six-case/unsupported identity mismatch")
     proof = data["_native_capability_evidence"]
     current = proof["gpu5_original_six_controls"]
-    if (current["physical_device_index"] != int(task["device"])
-            or current["hardware"]["uuid"] != environment["hardware"]["gpu"]["uuid"]
-            or len(current["supported_controls"]) != 4
-            or len(current["unsupported_controls"]) != 2):
+    if (
+        current["physical_device_index"] != int(task["device"])
+        or current["hardware"]["uuid"] != environment["hardware"]["gpu"]["uuid"]
+        or len(current["supported_controls"]) != 4
+        or len(current["unsupported_controls"]) != 2
+    ):
         raise ValueError("Missing same-device native capability controls")
     variants = proof["gpu3_dtype_variants"]["rows"]
     for item in unsupported:
         native = item["native_probe"]
         shape = item["case"]["shape"]["input"]
-        if (native["shape"] != shape or native["dtype"] != "torch.bfloat16"
-                or native["operator"] != "aten::cudnn_batch_norm_backward.default"
-                or native["status"] != "NATIVE_EXCEPTION" or native["error"] != "RuntimeError"
-                or "BFloat16" not in native["message"]):
-            raise ValueError("Unsupported BN identity lacks an actual matching native failure")
+        if (
+            native["shape"] != shape
+            or native["dtype"] != "torch.bfloat16"
+            or native["operator"] != "aten::cudnn_batch_norm_backward.default"
+            or native["status"] != "NATIVE_EXCEPTION"
+            or native["error"] != "RuntimeError"
+            or "BFloat16" not in native["message"]
+        ):
+            raise ValueError(
+                "Unsupported BN identity lacks an actual matching native failure"
+            )
         matched = [x for x in variants if x["shape"] == shape]
-        if (len(matched) != 4 or any(x["status"] != "NATIVE_EXCEPTION" for x in matched)
-                or {(x["operator"], x["weight_statistics_dtype"]) for x in matched}
-                != {(op, dtype) for op in ("forward", "backward")
-                    for dtype in ("torch.float32", "torch.bfloat16")}):
+        if (
+            len(matched) != 4
+            or any(x["status"] != "NATIVE_EXCEPTION" for x in matched)
+            or {(x["operator"], x["weight_statistics_dtype"]) for x in matched}
+            != {
+                (op, dtype)
+                for op in ("forward", "backward")
+                for dtype in ("torch.float32", "torch.bfloat16")
+            }
+        ):
             raise ValueError("Missing original BF16 same/mixed dtype native controls")
     records = data[_COLLECTION_OP]["shapes"]
-    if sum(len(ds) for ds in records.values()) != 4 or any("torch.bfloat16" in ds for ds in records.values()):
+    if sum(len(ds) for ds in records.values()) != 4 or any(
+        "torch.bfloat16" in ds for ds in records.values()
+    ):
         raise ValueError("Expected four measurements and no invented BF16 latency")
-    return records, dict(kind="external_nvidia", artifact=str(path), artifact_sha256=_H800_SHA,
-                         collection_task=task, device_environment=environment,
-                         reference_scope=scope, ratio="H800 native cuDNN latency_ms / target candidate latency_ms"), scope
+    return (
+        records,
+        dict(
+            kind="external_nvidia",
+            artifact=str(path),
+            artifact_sha256=_H800_SHA,
+            collection_task=task,
+            device_environment=environment,
+            reference_scope=scope,
+            ratio="H800 native cuDNN latency_ms / target candidate latency_ms",
+        ),
+        scope,
+    )
 
 
 @dataclass
@@ -107,7 +245,6 @@ class OperatorCaseBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "operator-specific shape"
-
 
     @cached_property
     def _external_records(self):
@@ -177,6 +314,7 @@ class OperatorCaseBenchmark(OperatorBenchmark):
                 return metric
             finally:
                 self._import_reference_pending = False
+
 
 def _case_fn(shape, dtype):
     del dtype
