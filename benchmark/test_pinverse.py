@@ -142,6 +142,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 @dataclass
 class _PinverseMetrics(consts.BenchmarkMetrics):
     baseline_source: dict = None
@@ -174,19 +205,22 @@ class _PinverseH800Reference:
             raise ValueError(
                 "Expected a completed, clean native H800 pinverse collection"
             )
-        return data[name]["shapes"], {
-            "artifact": str(path),
-            "artifact_sha256": digest,
-            "operator": name,
-            "collection_task": task,
-            "environment": environment,
-            "environment_qualification": (
-                "Shared collection per-device envelope; "
-                "not an operator-specific startup receipt"
-            ),
-            "input_identity": "Same full input contract and seed recipe; not identical cross-device payloads",
-            "ratio": "Raw H800 latency / actual local candidate latency",
-        }
+        return data[name]["shapes"], _aten_qualify_metadata(
+            {
+                "artifact": str(path),
+                "artifact_sha256": digest,
+                "operator": name,
+                "collection_task": task,
+                "environment": environment,
+                "environment_qualification": (
+                    "Shared collection per-device envelope; "
+                    "not an operator-specific startup receipt"
+                ),
+                "input_identity": "Same full input contract and seed recipe; not identical cross-device payloads",
+                "ratio": "Raw H800 latency / actual local candidate latency",
+            },
+            ("pr72:op_musa_linalg_current_core_h800_baseline"),
+        )
 
     def get_latency(self, op, *args, **kwargs):
         if not getattr(self, "_pinverse_native_pending", False):
