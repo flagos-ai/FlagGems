@@ -18,7 +18,10 @@ from typing import List, Tuple, Union
 import torch
 import triton
 import triton.language as tl
-from torch._subclasses.fake_tensor import FakeTensor
+from torch._higher_order_ops.triton_kernel_wrap import (
+    kernel_side_table,
+    triton_kernel_wrapper_mutation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,19 +123,16 @@ def cat_copy_func_kernel_4(
     tl.store(out_ptr + out_idx, data, mask=mask)
 
 
+_CAT_KERNEL_IDX = kernel_side_table.add_kernel(cat_copy_func_kernel_4)
+_CAT_CONSTANT_ARGS_IDX = kernel_side_table.add_constant_args({"BLOCK_X": 1024})
+
+
 def _cat_run_kernel(
     A: List[torch.Tensor],
     dim: int,
     out_shape: List[int],
     out: torch.Tensor,
 ):
-    # ``Cat`` is opaque to Dynamo, but its forward is still evaluated once
-    # with FakeTensors to infer output metadata.  The output has already been
-    # allocated with the correct symbolic shape, so do not enter the Triton
-    # launcher (which specializes arguments via ``data_ptr()``) in that pass.
-    if isinstance(out, FakeTensor):
-        return out
-
     BLOCK = 1024
     dim_offset = 0
     i = 0
@@ -186,27 +186,31 @@ def _cat_run_kernel(
             total_elements_d,
         ) = args
 
-        cat_copy_func_kernel_4[grid](
-            out,
-            tensor_a,
-            tensor_b,
-            tensor_c,
-            tensor_d,
-            dim_size_in_a,
-            dim_size_in_b,
-            dim_size_in_c,
-            dim_size_in_d,
-            dim_size_out,
-            dim_prod_post,
-            dim_offset_a,
-            dim_offset_b,
-            dim_offset_c,
-            dim_offset_d,
-            total_elements_a,
-            total_elements_b,
-            total_elements_c,
-            total_elements_d,
-            BLOCK_X=BLOCK,
+        triton_kernel_wrapper_mutation(
+            kernel_idx=_CAT_KERNEL_IDX,
+            constant_args_idx=_CAT_CONSTANT_ARGS_IDX,
+            grid=[grid],
+            kwargs={
+                "out_ptr": out,
+                "in_ptr_a": tensor_a,
+                "in_ptr_b": tensor_b,
+                "in_ptr_c": tensor_c,
+                "in_ptr_d": tensor_d,
+                "dim_size_in_a": dim_size_in_a,
+                "dim_size_in_b": dim_size_in_b,
+                "dim_size_in_c": dim_size_in_c,
+                "dim_size_in_d": dim_size_in_d,
+                "dim_size_out": dim_size_out,
+                "dim_prod_post": dim_prod_post,
+                "dim_offset_a": dim_offset_a,
+                "dim_offset_b": dim_offset_b,
+                "dim_offset_c": dim_offset_c,
+                "dim_offset_d": dim_offset_d,
+                "total_elements_a": total_elements_a,
+                "total_elements_b": total_elements_b,
+                "total_elements_c": total_elements_c,
+                "total_elements_d": total_elements_d,
+            },
         )
 
         dim_offset = current_dim_offset

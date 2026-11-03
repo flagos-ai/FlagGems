@@ -4,7 +4,10 @@ from typing import List, Tuple, Union
 import torch
 import triton
 import triton.language as tl
-from torch._subclasses.fake_tensor import FakeTensor
+from torch._higher_order_ops.triton_kernel_wrap import (
+    kernel_side_table,
+    triton_kernel_wrapper_mutation,
+)
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -18,7 +21,7 @@ def _cat_copy_flat_kernel(
     input_ptr,
     output_ptr,
     n_elements,
-    OUTPUT_OFFSET: tl.constexpr,
+    output_offset,
     BLOCK_SIZE: tl.constexpr,
 ):
     lanes = tl.arange(0, BLOCK_SIZE)
@@ -34,7 +37,7 @@ def _cat_copy_flat_kernel(
         )
 
         tl.store(
-            output_ptr + OUTPUT_OFFSET + offsets,
+            output_ptr + output_offset + offsets,
             values,
             mask=mask,
         )
@@ -46,10 +49,10 @@ def _cat_copy_strided_kernel(
     input_ptr,
     output_ptr,
     n_elements,
-    INNER_SIZE: tl.constexpr,
-    INPUT_CAT_SIZE: tl.constexpr,
-    OUTPUT_CAT_SIZE: tl.constexpr,
-    CAT_OFFSET: tl.constexpr,
+    inner_size,
+    input_cat_size,
+    output_cat_size,
+    cat_offset,
     BLOCK_SIZE: tl.constexpr,
 ):
     lanes = tl.arange(0, BLOCK_SIZE)
@@ -59,15 +62,15 @@ def _cat_copy_strided_kernel(
         offsets = block * BLOCK_SIZE + lanes
         mask = offsets < n_elements
 
-        inner_idx = offsets % INNER_SIZE
-        tmp = offsets // INNER_SIZE
+        inner_idx = offsets % inner_size
+        tmp = offsets // inner_size
 
-        cat_idx = tmp % INPUT_CAT_SIZE
-        outer_idx = tmp // INPUT_CAT_SIZE
+        cat_idx = tmp % input_cat_size
+        outer_idx = tmp // input_cat_size
 
         output_offsets = (
-            outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
-        ) * INNER_SIZE + inner_idx
+            outer_idx * output_cat_size + cat_offset + cat_idx
+        ) * inner_size + inner_idx
 
         values = tl.load(
             input_ptr + offsets,
@@ -79,6 +82,16 @@ def _cat_copy_strided_kernel(
             values,
             mask=mask,
         )
+
+
+_CAT_FLAT_KERNEL_IDX = kernel_side_table.add_kernel(_cat_copy_flat_kernel)
+_CAT_FLAT_CONSTANT_ARGS_IDX = kernel_side_table.add_constant_args(
+    {"BLOCK_SIZE": 256}
+)
+_CAT_STRIDED_KERNEL_IDX = kernel_side_table.add_kernel(_cat_copy_strided_kernel)
+_CAT_STRIDED_CONSTANT_ARGS_IDX = kernel_side_table.add_constant_args(
+    {"BLOCK_SIZE": 256}
+)
 
 
 def _prepare_cat_inputs(A, dim):
@@ -135,12 +148,6 @@ def _prepare_cat_inputs(A, dim):
 
 
 def _cat_fill_triton(out, A, dim):
-    # Dynamo evaluates the opaque autograd Function once with FakeTensors to
-    # infer its output metadata.  Avoid entering the Ascend Triton launcher in
-    # that pass because argument specialization calls ``data_ptr()``.
-    if isinstance(out, FakeTensor):
-        return out
-
     if len(A) == 0 or out.numel() == 0:
         return out
 
@@ -172,24 +179,32 @@ def _cat_fill_triton(out, A, dim):
             if dim == 0:
                 output_offset = cat_offset * inner_size
 
-                _cat_copy_flat_kernel[grid](
-                    a,
-                    out,
-                    n_elements,
-                    OUTPUT_OFFSET=output_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
+                triton_kernel_wrapper_mutation(
+                    kernel_idx=_CAT_FLAT_KERNEL_IDX,
+                    constant_args_idx=_CAT_FLAT_CONSTANT_ARGS_IDX,
+                    grid=[grid],
+                    kwargs={
+                        "input_ptr": a,
+                        "output_ptr": out,
+                        "n_elements": n_elements,
+                        "output_offset": output_offset,
+                    },
                 )
 
             else:
-                _cat_copy_strided_kernel[grid](
-                    a,
-                    out,
-                    n_elements,
-                    INNER_SIZE=inner_size,
-                    INPUT_CAT_SIZE=input_cat_size,
-                    OUTPUT_CAT_SIZE=output_cat_size,
-                    CAT_OFFSET=cat_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
+                triton_kernel_wrapper_mutation(
+                    kernel_idx=_CAT_STRIDED_KERNEL_IDX,
+                    constant_args_idx=_CAT_STRIDED_CONSTANT_ARGS_IDX,
+                    grid=[grid],
+                    kwargs={
+                        "input_ptr": a,
+                        "output_ptr": out,
+                        "n_elements": n_elements,
+                        "inner_size": inner_size,
+                        "input_cat_size": input_cat_size,
+                        "output_cat_size": output_cat_size,
+                        "cat_offset": cat_offset,
+                    },
                 )
 
             cat_offset += input_cat_size
