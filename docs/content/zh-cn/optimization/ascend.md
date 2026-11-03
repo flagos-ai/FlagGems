@@ -96,12 +96,12 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - **UB 预算**：910B 的 192 KiB UB 若存放单个分块，理论上限约为 FP16/BF16 98,304 个元素或 FP32 49,152 个元素。但实际计算中，输入、输出、中间变量、内存对齐填充与多缓冲（Multibuffer）会同时占用空间。若遇到 `ub overflow` 错误（通常以 bit 为单位报警），应主动缩减 `BLOCK_*` 或在核内使用 `BLOCK_SIZE_SUB` 循环切分。
 - **Cube 对齐**：Cube 路径需关注尾轴和矩阵行宽对齐。512 B 行宽对应 FP16/BF16 256 个元素或 FP32 128 个元素；不足时硬件或编译器可能引入自动 Padding 并增加无效搬运。
 
-### 1.3 910C 与 950DT 的 SKU 详情
+### 1.3 910C 与 950DT SKU 规格
 
 > [!WARNING]
-> SKU 的核心数、主频与存储容量均在芯片出厂时按型号熔断固化，必须以每台设备自身的 `platform_config/<SoC_version>.ini`（或 `acl.get_soc_name()` / `npu-smi`）读数为准，不能按芯片系列名称假设。下表汇总了 CANN `platform_config` 中观测到的各 SKU 信息，实际使用时请以运行设备的回读结果校验。
+> 不同 SKU 的核心数、主频及显存配置存在差异，具体规格以各设备实际的 `platform_config/<SoC_version>.ini`（或通过 `acl.get_soc_name()` / `npu-smi` 查询）为准，切勿仅凭系列名称推断。以下汇总了 CANN `platform_config` 中的常见 SKU 配置供参考。
 
-**Ascend910C**（A3，双 die 封装，归属 `ascend910b_list` 家族，SIMD-only，无 SIMT 路径）共衍生出 6 种 `Ascend910_93xx` SKU 型号。六种型号均为 `ai_cpu_cnt=6`、`l1_size=512 KiB`；HBM 容量与 L2 跟随 Vector 核心数变化，与主频无关：
+**Ascend910C**（A3 架构，双 Die 封装，在 CANN 中归属于 `ascend910b_list`，仅支持 SIMD 模式）包含 6 种常见的 `Ascend910_93xx` SKU。各型号的 `ai_cpu_cnt`（6）与 `l1_size`（512 KiB）均相同，HBM 容量和 L2 Cache 则随 Vector 核心数而变：
 
 | SoC 版本 | AI Core（Cube） | Vector Core | Cube 主频 | HBM 容量 | L2 Cache | UB / AI Core |
 | :------- | :---------------- | :----------- | :--------- | :-------- | :-------- | :------------- |
@@ -112,37 +112,42 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 | `Ascend910_9391` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
 | `Ascend910_9392` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
 
-- `Ascend910_9362` / `_9372`为 20 核衍生型号（`_9362` 的 HBM 容量较小）。
-- `Ascend910_9381` / `_9382` 配置相同，均为 24 核、1.8 GHz 主频；其中 `Ascend910_9382` 是现网部署中最常见的型号。
-- `Ascend910_9391` / `_9392` 同为 24 核，但主频提升至 1.85 GHz。
+- `Ascend910_9362` / `_9372`：20 核（Cube）配置，其中 `_9362` HBM 容量为 32 GiB。
+- `Ascend910_9381` / `_9382`：24 核（Cube）、1.8 GHz 主频，配置相同；其中 `_9382` 是目前最常见的部署型号。
+- `Ascend910_9391` / `_9392`：24 核（Cube），主频提升至 1.85 GHz。
 
-**Ascend950DT**（A5 架构下偏重 Decode 的产品形态，与 950PR 共用同一颗芯片，按 SPEC 整片最多 36 个 AI 子系统、按 SKU 熔断降档）——在 CANN 9.0.0/9.1.0 上观测到的 `Ascend950DT_9582` SKU 回读如下：
+**Ascend950DT**（A5 架构，面向解码场景，与 950PR 同源，完整芯片包含最多 36 个 AI 子系统）。以 CANN 9.0.0/9.1.0 环境中的 `Ascend950DT_9582` 为例，其配置文件（`platform_config/Ascend950DT_9582.ini`）参数如下：
 
-| 字段 | 值 | 来源 |
-| :--- | :-- | :--- |
-| `cube_core_cnt` / `vector_core_cnt` | 32 / 64 | `platform_config/Ascend950DT_9582.ini` |
-| `l1_size` | 512 KiB | ini |
-| `l2_size` | 128 MiB | ini |
-| `ub_size` | 248 KiB（253,952 B）可用 | ini |
-| `cube_freq` / `vec_freq` | 1.65 GHz | ini |
-| `memory_size` | 96 GiB | ini |
+| 配置项 | 参数值 | 说明 |
+| :--- | :--- | :--- |
+| `cube_core_cnt` / `vector_core_cnt` | 32 / 64 | Cube / Vector 核心数 |
+| `l1_size` | 512 KiB | L1 Cache 容量 |
+| `l2_size` | 128 MiB | L2 Cache 容量 |
+| `ub_size` | 248 KiB（253,952 B） | Unified Buffer 可用容量 |
+| `cube_freq` / `vec_freq` | 1.65 GHz | Cube / Vector 运行频率 |
+| `memory_size` | 96 GiB | HBM 容量 |
 
-据此 `Ascend950DT_9582` 属于 32-Cube-core 这一 SKU 档位（[SPEC p13 表 3-1] 中 950DT 列出 36/32/28 核三档）。下表将该 SKU 档位的理论值（白皮书规格）与单台主机的实测吞吐（CANN 9.1.0、`torch_npu`，设备自报 `Ascend950DT_9582`；详见参考资料）并列对照。实测列与主机/驱动强相关，**不代表硬件上限**；且理论列与实测列并非逐项同一测量仪器可比（例如 `matmul` 并非 `conv2d` 的正确参照仪器）：
+#### Ascend950DT_9582 理论峰值与实测性能对比
 
-| 指标 | 理论值（32 核 SKU，[SPEC]） | 实测值 | 方法 |
-| :--- | :--------------------------- | :----- | :--- |
-| `matmul` / Cube+Vector BF16 或 FP16 | 486 TFLOP/s [SPEC p13 表 3-1] | 430.4 TFLOP/s | `torch.matmul`，8192³，30 次取中位数 |
-| `matmul` / Cube+Vector TF32 | 243 TFLOP/s [SPEC p13 表 3-1] | 27.0 TFLOP/s（FP32，未走 HF32 路径） | 同形状 |
-| `matmul` / Cube+Vector FP8、HiF8、MXFP8 | 919 TFLOP/s [SPEC p13 表 3-1] | 未实测 | — |
-| `matmul` / Cube+Vector MXFP4 | 1784 TFLOP/s [SPEC p13 表 3-1] | 未实测 | — |
-| `matmul` / Cube+Vector INT8 | 919 TOPS [SPEC p13 表 3-1] | 未实测 | — |
-| 片上内存带宽（headline） | 4 TB/s [SPEC p13 表 3-1] | ≈2.7–3.1 TB/s（大缓冲平台期） | ≥1024 MiB copy / triad / read |
-| 片上内存容量 | 最高 144 GB（本 SKU 档位 96 GB）[SPEC p13 表 3-1] | 96 GiB（`memory_size`，ini） | `platform_config/Ascend950DT_9582.ini` |
-| `conv2d` FP16 | [SPEC] 未给出（仅 matmul 口径） | 353–364 TFLOP/s | `F.conv2d`，大尺寸 1x1 卷积 |
-| `conv2d` FP32，HF32 开/关 | [SPEC] 未给出 | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
+`Ascend950DT_9582` 对应 32 核（Cube）规格。下表对比了 `Ascend950DT_9582` 的理论峰值与单机实测性能（实测环境基于 CANN 9.1.0 与 `torch_npu`）：
+
+| 算子 / 指标 | 理论峰值 | 实测值 | 测试方法 / 备注 |
+| :--- | :--- | :--- | :--- |
+| `matmul`（Cube+Vector BF16 / FP16） | 486 TFLOP/s | 430.4 TFLOP/s | `torch.matmul`，8192³，30 次取中位数 |
+| `matmul`（Cube+Vector TF32） | 243 TFLOP/s | 27.0 TFLOP/s | FP32，未启用 HF32，8192³ |
+| `matmul`（Cube+Vector FP8 / HiF8 / MXFP8） | 919 TFLOP/s | — | — |
+| `matmul`（Cube+Vector MXFP4） | 1784 TFLOP/s | — | — |
+| `matmul`（Cube+Vector INT8） | 919 TOPS | — | — |
+| 内存带宽 | 4 TB/s | ≈2.7–3.1 TB/s | ≥1024 MiB copy / triad / read（大缓冲区） |
+| 内存容量 | 96 GB | 96 GiB | `platform_config/Ascend950DT_9582.ini` (`memory_size`) |
+| `conv2d` FP16 | — | 353–364 TFLOP/s | `F.conv2d`，大尺寸 1x1 卷积 |
+| `conv2d` FP32（HF32 开 / 关） | — | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
 
 > [!NOTE]
-> 不要把小缓冲下的带宽数字（例如 64 MiB copy）当作 HBM 带宽的代表值——由于缓存驻留效应，它可能比大缓冲平台期高出约 1.8 倍。同样不要拿 FP16 `matmul` 的吞吐去估算 `conv2d` 的效率上限，这两类指令在该硬件上的饱和吞吐并不相同。
+> 1. **数据来源**：理论峰值数据来源于《昇腾 950 NPU 架构白皮书》（p13 表 3-1 中 950DT 32 核规格）。
+> 2. **实测说明**：实测数据与主机环境、驱动及软件栈版本相关，仅供参考，不代表硬件绝对上限。
+> 3. **带宽测量**：小缓冲区测试（如 64 MiB copy）受 Cache 驻留效应影响测得带宽偏高（可能达到大缓冲区稳定值的 1.8 倍），应以大缓冲区（≥1024 MiB）测得的稳定吞吐为准。
+> 4. **算子差异**：不同算子（如 `conv2d` 与 `matmul`）在硬件上的指令流水与执行单元饱和吞吐不同，不可直接混用估算。
 
 ## 2. Triton 编译与启动参数
 
