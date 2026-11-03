@@ -16,9 +16,9 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path
 from dataclasses import asdict, dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
+from pathlib import Path
 
 import pytest
 import torch
@@ -27,12 +27,126 @@ import flag_gems
 
 from . import base, utils
 
-
 _H800_SHA256 = "3c1a2aa51388456441036b15450002e9e7e936ef405acae3d748c8f30d07c3fa"
 _H800_COLLECTION = "335d9a9179c04034d5a1e77c291666857984a922"
 _H800_ARTIFACT_COMMIT = "c817c23c999aa22845bc3622d85a2ef68f442336"
 _RECIPE_SOURCE = "ac9a1f703757537a3d54cc1ac1febeca410316c0"
-_CORE_SHAPES = [(1073741824,), (64, 64), (4096, 4096), (64, 512, 512), (1024, 1024, 1024)]
+_CORE_SHAPES = [
+    (1073741824,),
+    (64, 64),
+    (4096, 4096),
+    (64, 512, 512),
+    (1024, 1024, 1024),
+]
+
+
+# Each operator keeps its reader local; the shared benchmark framework is unchanged.
+_ATEN_SNAPSHOT_SPECS = {
+    "pr42:op_pytorch_h800_masked_scale_core_baseline": {
+        "sha256": "3c1a2aa51388456441036b15450002e9e7e936ef405acae3d748c8f30d07c3fa",
+        "artifact": "op_pytorch_h800_masked_scale_core_baseline.json",
+        "operators": ["masked_scale"],
+        "provenance": {
+            "op_pytorch_h800_masked_scale_core_baseline.provenance.json": {
+                "key": "op_pytorch_h800_masked_scale_core_baseline.provenance.json",
+                "sha256": "71d31ecda6bb0909790b3a10dc72c36982407ae6d749d6d2af94e3105f8dca40",
+            }
+        },
+    }
+}
+
+
+def _aten_unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate consolidated baseline key: " + key)
+        result[key] = value
+    return result
+
+
+def _aten_load_json(raw):
+    def reject(value):
+        raise ValueError("Nonfinite consolidated baseline constant: " + value)
+
+    return json.loads(raw, object_pairs_hook=_aten_unique_keys, parse_constant=reject)
+
+
+def _aten_project_snapshot(data, source_id):
+    spec = _ATEN_SNAPSHOT_SPECS[source_id]
+    manifest = data["_aten_consolidation"]
+    if spec.get("auxiliary"):
+        entry = manifest["auxiliary_artifacts"][spec["auxiliary"]]
+        raw = entry["raw_json"].encode("utf-8")
+        if hashlib.sha256(raw).hexdigest() != spec["sha256"]:
+            raise ValueError("Consolidated baseline manifest digest differs")
+        if _aten_load_json(raw) != entry["content"]:
+            raise ValueError(
+                "Consolidated manifest content differs from original bytes"
+            )
+        return raw, None
+    source = manifest["sources"][source_id]
+    raw = source["raw_json"].encode("utf-8")
+    if (
+        hashlib.sha256(raw).hexdigest() != spec["sha256"]
+        or source["artifact_sha256"] != spec["sha256"]
+    ):
+        raise ValueError("Consolidated native snapshot digest differs")
+    original = _aten_load_json(raw)
+    original_ops = {
+        key
+        for key, value in original.items()
+        if isinstance(value, dict) and "shapes" in value
+    }
+    if set(source["operators"]) != set(spec["operators"]):
+        raise ValueError("Consolidated native operator scope differs")
+    if source["original_metadata"] != {
+        key: value for key, value in original.items() if key not in original_ops
+    }:
+        raise ValueError("Consolidated collection metadata differs")
+    for operator in spec["operators"]:
+        entry = source["operators"][operator]
+        expected = original[operator]
+        if entry["entry_metadata"] != {
+            key: value for key, value in expected.items() if key != "shapes"
+        } or set(entry["shape_keys"]) != set(expected["shapes"]):
+            raise ValueError("Consolidated native entry or case scope differs")
+        seen = set()
+        for old_key, new_key in entry["shape_keys"].items():
+            if (
+                new_key in seen
+                or new_key != source_id + ":" + old_key
+                or data[operator]["shapes"][new_key] != expected["shapes"][old_key]
+            ):
+                raise ValueError("Consolidated native timing/input record differs")
+            seen.add(new_key)
+    return raw, source
+
+
+@lru_cache(maxsize=4)
+def _aten_cached_payload(raw, source_id):
+    if source_id is None:
+        return raw, None
+    data = _aten_load_json(raw)
+    if "_aten_consolidation" not in data:
+        return raw, None
+    return _aten_project_snapshot(data, source_id)
+
+
+def _aten_existing_path(path, source_id=None):
+    path = Path(path)
+    spec = _ATEN_SNAPSHOT_SPECS.get(source_id, {})
+    original_name = Path(spec.get("artifact", spec.get("auxiliary", ""))).name
+    if not path.exists() and path.name == original_name:
+        unified = path.parent / "op_pytorch_h800_perf_baseline.json"
+        if unified.is_file():
+            return unified
+    return path
+
+
+def _aten_read_bytes(path, source_id):
+    raw = _aten_existing_path(path, source_id).read_bytes()
+    return _aten_cached_payload(raw, source_id)[0]
 
 
 @dataclass
@@ -44,14 +158,18 @@ class _H800Latency:
     @cached_property
     def _h800(self):
         path = Path(os.environ["FLAGGEMS_NV_BASELINE"]).resolve(strict=True)
-        payload = path.read_bytes()
+        payload = _aten_read_bytes(
+            path, ("pr42:op_pytorch_h800_masked_scale_core_baseline")
+        )
         if hashlib.sha256(payload).hexdigest() != _H800_SHA256:
             raise ValueError("Expected the reviewed native H800 masked-scale snapshot")
         data = json.loads(payload)
         if data["masked_scale"]["native_api"] != "ops.masked_scale":
             raise ValueError("Expected native aten::_masked_scale collection")
         return data, dict(
-            kind="external_nvidia", artifact=str(path), artifact_sha256=_H800_SHA256,
+            kind="external_nvidia",
+            artifact=str(path),
+            artifact_sha256=_H800_SHA256,
             artifact_git_commit=_H800_ARTIFACT_COMMIT,
             collection_source_commit=_H800_COLLECTION,
             ratio="H800 native latency_ms / locally timed target candidate latency_ms",
