@@ -46,9 +46,9 @@ def generate_index_add_kernel(
 ) -> IndentedBuffer:
     # GCU300 cannot legalize `tt.atomic_rmw`, so the scatter has to be
     # inverted into a segmented sum: for every output row `i` along `dim`,
-    # binary-search the stably sorted index for the contiguous run that maps
+    # binary-search the sorted index for the contiguous run that maps
     # to `i`, then accumulate `other[order[j]]` over that run.  `index_sorted`
-    # and `order` come from `torch.sort(index, stable=True)` in the wrapper.
+    # and `order` come from a `torch.sort(index)` in the wrapper.
     other_dims = [k for k in range(rank) if k != dim]
 
     # the decorators
@@ -200,14 +200,16 @@ def generate_destination_passing_wrapper(
         code.writeline("out_strides = list(out.stride())")
         code.newline()
 
-        # `index` is int32 here (the caller asserts on the original tensor,
-        # whose values are < inp.size(dim)).  A stable sort keeps equal index
-        # values in their original order, so every destination row accumulates
-        # in the same order as the reference implementation.
-        code.writeline("if index.dtype != torch.int32:")
+        # `stable=True` is not usable here: the CI runner's `topsatenSort`
+        # rejects `at::_ops::sort_stable` with TOPSATEN_STATUS_BAD_PARAM. A
+        # plain sort leaves the order of equal index values unspecified, which
+        # only changes the summation order inside one destination row -- the
+        # same freedom aten's atomic scatter has.
+        code.writeline("index_sorted, order = torch.sort(index)")
+        code.writeline("index_sorted = index_sorted.to(torch.int32)")
+        code.writeline("if order.dtype != torch.int32:")
         with code.indent():
-            code.writeline("index = index.to(torch.int32)")
-        code.writeline("index_sorted, order = torch.sort(index, stable=True)")
+            code.writeline("order = order.to(torch.int32)")
         code.writeline("if order.dtype != torch.int32:")
         with code.indent():
             code.writeline("order = order.to(torch.int32)")
