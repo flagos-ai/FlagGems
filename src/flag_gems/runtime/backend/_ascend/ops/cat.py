@@ -190,7 +190,7 @@ def _cat_fill_triton(out, A, dim):
 
 import trident
 
-@trident.jit
+#@trident.jit
 def cat(
     A: Union[
         Tuple[torch.Tensor, ...],
@@ -221,7 +221,7 @@ def cat(
     return out
 
 
-@trident.jit
+#@trident.jit
 def cat_out(
     A: Union[
         Tuple[torch.Tensor, ...],
