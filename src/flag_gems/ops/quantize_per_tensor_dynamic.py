@@ -38,9 +38,11 @@ MIN_SCALE = 6.0999998822808266e-05
 NEAR_HALF = 0.499
 
 # Beyond this quotient magnitude both the fp32 and the fp64 path clamp to the
-# same endpoint (|y| > 200 saturates every supported [qmin, qmax] range), so
-# such lanes never need the fp64 repair pass.
-BIG_Q = 200.0
+# same endpoint. The bound must cover the worst-case zero point: q = a + zp
+# with |zp| <= 128 stays inside every supported [qmin, qmax] range while
+# |a| <= 256 (e.g. q = a - 128 <= 127 needs a >= 256 to saturate), so
+# |y| > 256 saturates and such lanes never need the fp64 repair pass.
+BIG_Q = 256.0
 
 # Mapping from a quantized dtype to its integer storage dtype and the
 # representable range (qmin, qmax) -- the full range; ``reduce_range`` halves
@@ -117,8 +119,6 @@ def _qptd_quant_kernel(
     out_ptr,
     scale_ptr,
     zp_ptr,
-    fix_ptr,
-    cnt_ptr,
     n_elements,
     QMIN: tl.constexpr,
     QMAX: tl.constexpr,
@@ -156,55 +156,20 @@ def _qptd_quant_kernel(
     a = libdevice.rint(y)
     frac = y - a
     ambiguous = (tl.abs(frac) > NEAR_HALF) & (tl.abs(y) <= BIG_Q) & mask
-    # Offset + clamp in fp32: a is an integer in [-200, 200] and |zp| <= 255,
-    # so a + zp is exact in fp32 and equals the reference's int64 arithmetic.
-    q = a + zp
+    # Lanes near a rounding boundary are recomputed with the exact fp64
+    # quotient inline (per-lane math, no cross-lane dependency) — no repair
+    # queue, no second launch, no extra device memory.
+    q64 = libdevice.rint(x.to(tl.float64) * (1.0 / tl.load(scale_ptr))) + zp.to(
+        tl.float64
+    )
+    q64 = tl.minimum(tl.maximum(q64, float(QMIN)), float(QMAX))
+    q = tl.where(ambiguous, q64, a + zp)
     q = tl.minimum(tl.maximum(q, float(QMIN)), float(QMAX))
     qi = q.to(tl.int32)
     if UINT8:
         tl.store(out_ptr + offs, qi.to(tl.uint8), mask=mask)
     else:
         tl.store(out_ptr + offs, qi.to(tl.int8), mask=mask)
-    nfix = tl.sum(ambiguous.to(tl.int32), axis=0)
-    if nfix > 0:
-        base = tl.atomic_add(cnt_ptr, nfix)
-        pos = tl.cumsum(ambiguous.to(tl.int32), axis=0) - 1
-        tl.store(fix_ptr + base + pos, offs, mask=ambiguous)
-
-
-@triton.jit
-def _qptd_fix_kernel(
-    x_ptr,
-    out_ptr,
-    scale_ptr,
-    zp_ptr,
-    fix_ptr,
-    cnt_ptr,
-    QMIN: tl.constexpr,
-    QMAX: tl.constexpr,
-    UINT8: tl.constexpr,
-    BS: tl.constexpr,
-    NPROG: tl.constexpr,
-):
-    """Recompute the ambiguous lanes with the exact fp64 quotient."""
-    total = tl.load(cnt_ptr)
-    step = BS * NPROG
-    i = tl.program_id(0) * BS
-    while i < total:
-        k = i + tl.arange(0, BS)
-        m = k < total
-        offs = tl.load(fix_ptr + k, mask=m, other=0)
-        scale = tl.load(scale_ptr)
-        zp = tl.load(zp_ptr).to(tl.float64)
-        x = tl.load(x_ptr + offs, mask=m, other=0.0)
-        q = libdevice.rint(x.to(tl.float64) * (1.0 / scale)) + zp
-        q = tl.minimum(tl.maximum(q, float(QMIN)), float(QMAX))
-        qi = q.to(tl.int32)
-        if UINT8:
-            tl.store(out_ptr + offs, qi.to(tl.uint8), mask=m)
-        else:
-            tl.store(out_ptr + offs, qi.to(tl.int8), mask=m)
-        i += step
 
 
 def _suggest_memory_format(t):
@@ -281,12 +246,6 @@ def _quantize_impl(self, dtype, reduce_range):
         # kernel (a Python float kernel argument would be narrowed to fp32).
         scale_tensor = torch.tensor(scale, dtype=torch.float64, device=self.device)
         zp_tensor = torch.tensor(zero_point, dtype=torch.int64, device=self.device)
-        # Flag queue: at most one entry per element; in practice ~0.2% of
-        # lanes land near a rounding boundary and need the fp64 repair. The
-        # counter must start at zero (the SimpleOpt kernel stored the reset in
-        # its qparam stage; here the host allocator does it).
-        fix = torch.empty(n, dtype=torch.int32, device=self.device)
-        cnt = torch.zeros(1, dtype=torch.int32, device=self.device)
         # BLOCK=4096 / 4 warps: measured best in the KernelGen SimpleOpt
         # tuning for this operator (bandwidth-bound elementwise pass).
         BLOCK = 4096
@@ -296,8 +255,6 @@ def _quantize_impl(self, dtype, reduce_range):
             out,
             scale_tensor,
             zp_tensor,
-            fix,
-            cnt,
             n,
             QMIN=qmin,
             QMAX=qmax,
@@ -305,23 +262,6 @@ def _quantize_impl(self, dtype, reduce_range):
             NEAR_HALF=NEAR_HALF,
             BIG_Q=BIG_Q,
             BLOCK=BLOCK,
-            num_warps=4,
-        )
-        # Repair the ambiguous lanes in exact fp64 (a tiny fraction of lanes).
-        BS = 1024
-        NPROG = 64
-        _qptd_fix_kernel[(NPROG,)](
-            x,
-            out,
-            scale_tensor,
-            zp_tensor,
-            fix,
-            cnt,
-            QMIN=qmin,
-            QMAX=qmax,
-            UINT8=dtype is not torch.qint8,
-            BS=BS,
-            NPROG=NPROG,
             num_warps=4,
         )
     return out, scale, zero_point
@@ -365,6 +305,20 @@ def quantize_per_tensor_dynamic(self, dtype, reduce_range=False):
     return _make_per_tensor_from_int(int_repr, scale, zero_point)
 
 
+def _int_view_of(qtensor):
+    """Alias a quantized tensor's storage as a writable int tensor (master
+    ``quantize_per_tensor._int_view`` pattern): ``int_repr()`` returns a
+    copy and cannot be a kernel destination."""
+    return torch.empty(0, dtype=qtensor.int_repr().dtype, device=qtensor.device).set_(
+        qtensor.untyped_storage(), 0, tuple(qtensor.int_repr().shape)
+    )
+
+
+def _copy_int_to_int_view(dst_view, src):
+    if dst_view.numel() != 0:
+        dst_view.copy_(src.view(dst_view.dtype))
+
+
 def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None):
     logger.debug("GEMS QUANTIZE_PER_TENSOR_DYNAMIC_OUT")
     _validate(self, dtype)
@@ -392,7 +346,28 @@ def quantize_per_tensor_dynamic_out(self, dtype, reduce_range=False, *, out=None
             "selective/custom build process."
         )
     result, scale, zero_point = _quantize_impl(self, dtype, reduce_range)
-    # Quantized ``copy_`` overwrites the integers and adopts the source
-    # quantizer -- the same landing ATen reaches, minus its staging copy.
-    out.copy_(_make_per_tensor_from_int(result, scale, zero_point))
+    # Write the integers straight through an int view of ``out``'s storage
+    # (``int_repr()`` returns a copy, so it cannot be a kernel destination)
+    # and adopt the source quantizer by rebuilding the quantized tensor over
+    # the same storage — the landing a quantized ``copy_`` reaches, without
+    # its extra full O(n) native pass.
+    _copy_int_to_int_view(_int_view_of(out), result)
+    # Re-point ``out`` at the new quantizer in place (master's
+    # ``_adopt_quantizer`` pattern): a .data assignment of an alias sharing
+    # out's storage/offset/strides swaps the quantizer without copying values
+    # or breaking the caller's ``res_out is out`` identity.
+    alias = torch._empty_affine_quantized(
+        0,
+        scale=float(scale),
+        zero_point=int(zero_point),
+        dtype=out.dtype,
+        device=out.device,
+    )
+    alias.set_(
+        out.untyped_storage(),
+        out.storage_offset(),
+        tuple(out.shape),
+        out.stride(),
+    )
+    out.data = alias
     return out

@@ -263,3 +263,23 @@ def test_quantize_per_tensor_dynamic_out_shape_mismatch():
     )
     with pytest.raises(NotImplementedError):
         flag_gems.quantize_per_tensor_dynamic_out(x, torch.qint8, False, out=out)
+
+
+@pytest.mark.quantize_per_tensor_dynamic
+def test_big_q_boundary_band():
+    # Quotients in (200, 256] saturate nowhere: q = round(y) + zp with
+    # |zp| <= 128 stays inside [qmin, qmax] up to |y| = 256, so these lanes
+    # still need the fp64 repair (the old BIG_Q=200 bound skipped them).
+    device = flag_gems.device
+    # mn=-1, mx=1000 puts a band of activations at y in (200, 256).
+    base = torch.linspace(770.0, 1010.0, 64, device=device, dtype=torch.float32)
+    x = torch.cat(
+        [base, base * -0.37, torch.tensor([787.06, 788.0, 800.0], device=device)]
+    )
+    res = flag_gems.quantize_per_tensor_dynamic(x, torch.qint8)
+    ref = torch.quantize_per_tensor_dynamic(
+        utils.to_reference(x), torch.qint8, reduce_range=False
+    )
+    # int8 has 256 levels over [0, 1010] — the band maps to codes that must
+    # match the fp64 reference exactly (not just within one level).
+    utils.gems_assert_equal(res.int_repr(), utils.to_reference(ref).int_repr())
