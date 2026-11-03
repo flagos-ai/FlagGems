@@ -210,7 +210,9 @@ def upsample_bicubic2d(
 
     device = input.device
     if input.device.type != flag_gems.device:
-        raise ValueError("This Triton kernel requires CUDA tensors")
+        raise ValueError(
+            "This Triton kernel requires tensors on the accelerator device"
+        )
 
     if align_corners:
         scale_h = 0.0 if H_out <= 1 else (H_in - 1.0) / (H_out - 1.0)
