@@ -4,6 +4,12 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .test_linalg_svd import (
+    _for_comparison,
+    _reference_input,
+    _reference_svd,
+    _reference_svdvals,
+)
 
 # Small shapes for linalg_svdvals tests to avoid SVD kernel compilation timeouts
 SVD_SHAPES = [
@@ -26,7 +32,7 @@ def _make_well_conditioned_matrix(m, n, dtype, device):
     g.manual_seed(42)
     k = min(m, n)
     A = torch.randn(m, n, generator=g, dtype=torch.float64, device="cpu")
-    U, _, Vh = torch.linalg.svd(A, full_matrices=False)
+    U, _, Vh = _reference_svd(A, full_matrices=False)
     # Assign well-spaced singular values k, k-1, ..., 1 to bound condition number
     S = torch.linspace(float(k), 1.0, k, dtype=torch.float64, device="cpu")
     result = (U * S) @ Vh
@@ -48,15 +54,19 @@ def test_linalg_svdvals(M, N, dtype):
         pytest.skip("Skipping fp32 linalg_svdvals test on tsingmicro platform")
 
     A = _make_well_conditioned_matrix(M, N, dtype, flag_gems.device)
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.svdvals(ref_A)
+    ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
     gems_out = flag_gems.linalg_svdvals(A)
-    utils.gems_assert_close(gems_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(gems_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
 
 @pytest.mark.linalg_svdvals
@@ -72,12 +82,14 @@ def test_linalg_svdvals_batch(M, N, dtype):
     A = torch.stack(
         [_make_well_conditioned_matrix(M, N, dtype, "cpu") for _ in range(batch_size)]
     ).to(flag_gems.device)
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.svdvals(ref_A)
+    ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
 
 
 @pytest.mark.linalg_svdvals
@@ -93,9 +105,11 @@ def test_linalg_svdvals_non_contiguous(M, N, dtype):
     big = A0.T
     A = big[:M, :N]
     assert not A.is_contiguous(), "Expected non-contiguous input"
-    ref_A = utils.to_reference(A, True)
+    ref_A = _reference_input(A, True)
 
-    ref_out = torch.linalg.svdvals(ref_A)
+    ref_out = _reference_svdvals(ref_A)
     res_out = flag_gems.linalg_svdvals(A)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=SVD_ATOL)
+    utils.gems_assert_close(
+        _for_comparison(res_out, ref_out, A), ref_out, dtype, atol=SVD_ATOL
+    )
