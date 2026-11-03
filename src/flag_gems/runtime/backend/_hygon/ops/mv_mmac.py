@@ -42,11 +42,11 @@ def _eligible(inp, vec, out):
 
 
 def _launch_mmac(inp, vec, out):
-    from .mm_splitu_nn_k256_kernel import _small_nn_splitu_k256
+    from .mm_local_splitk_kernel import _mm_local_splitk_kernel
 
     n, k = inp.shape
-    return _small_nn_splitu_k256[(1, triton.cdiv(n, 16), 1)](
-        vec.view(1, k), inp.t(), out.view(1, n), 1, n, k, 16, 16,
+    return _mm_local_splitk_kernel[(1, triton.cdiv(n, 16), 1)](
+        vec.view(1, k), inp.t(), out.view(1, n), 1, n, k, 16, 16, INPUT_LAYOUT=1,
         padded_slot_intervals=True, disable_llvm_loop_unroll=True,
         num_warps=4, num_stages=1, waves_per_eu=1,
         loop_unroll_stage="post-pipeline", wave_private_sync=True,

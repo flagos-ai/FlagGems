@@ -218,15 +218,15 @@ def _multi_row_nt_packet_variants():
 
 
 def _launch_multi_row_nt_k256_packet(a, b, c):
-    from .mm_splitu_nt_multi_row_k256_kernel import _small_nt_multi_row_k256
+    from .mm_local_splitk_kernel import _mm_local_splitk_kernel
 
     m, k = a.shape
     n = b.shape[1]
     if (k < 256 or k % 256 or a.stride() != (k, 1)
             or b.stride() != (1, k) or c.stride() != (n, 1)):
         raise ValueError("Multi-row K256 requires contiguous A/C and transposed B")
-    return _small_nt_multi_row_k256[(triton.cdiv(m, 80), triton.cdiv(n, 32), 1)](
-        a, b.t(), c, m, n, k, 16, 32, 5,
+    return _mm_local_splitk_kernel[(triton.cdiv(m, 80), triton.cdiv(n, 32), 1)](
+        a, b.t(), c, m, n, k, 16, 32, M_TILES=5, LOOP_SCHEDULE=3,
         padded_slot_intervals=True, disable_llvm_loop_unroll=True,
         num_warps=4, num_stages=1, waves_per_eu=1,
         loop_unroll_stage="post-pipeline", wave_private_sync=True,
@@ -258,14 +258,14 @@ def _splitu_nt_packet_variants():
 
 
 def _launch_splitu_nt_packet(a, b, c):
-    from .mm_splitu_nt_kernel import _small_nt_splitu
+    from .mm_local_splitk_kernel import _mm_local_splitk_kernel
     m, k = a.shape
     n = b.shape[1]
     if b.stride() != (1, k):
         raise ValueError("Split-U NT requires contiguous transposed B storage")
-    return _small_nt_splitu[(triton.cdiv(m, 16), triton.cdiv(n, 32), 1)](
+    return _mm_local_splitk_kernel[(triton.cdiv(m, 16), triton.cdiv(n, 32), 1)](
         a, b, c, m, n, k, 16, 32,
-        PADDED=True, ROW_WARP_STRIDE=1, DOUBLE_BUFFER=True,
+        INPUT_LAYOUT=2, PADDED=True, ROW_WARP_STRIDE=1, DOUBLE_BUFFER=True,
         padded_slot_intervals=True,
         num_warps=4, num_stages=1, waves_per_eu=1,
         loop_unroll_stage="post-pipeline", wave_private_sync=False,
@@ -278,22 +278,14 @@ def _launch_splitu_nt_packet(a, b, c):
 def _launch_splitu_nt_k256_packet(a, b, c, *, peel_tail=False, tile=32,
                                      rotate_inputs=False):
     """Four K64 waves share one tile with wave-private padded input storage."""
+    from .mm_local_splitk_kernel import _mm_local_splitk_kernel
+
     schedule = {}
     if rotate_inputs:
-        from .mm_splitu_nt_k256_rotated_kernel import _small_nt_splitu_k256_rotated
-
         if not _loop_carried_refill_supported():
             raise ValueError("Rotated inputs require loop-carried refill support")
-        kernel = _small_nt_splitu_k256_rotated
         schedule["loop_carried_store_refill"] = True
-    elif peel_tail:
-        from .mm_splitu_nt_k256_peeled_kernel import _small_nt_splitu_k256_peeled
-
-        kernel = _small_nt_splitu_k256_peeled
-    else:
-        from .mm_splitu_nt_k256_kernel import _small_nt_splitu_k256
-
-        kernel = _small_nt_splitu_k256
+    kernel = _mm_local_splitk_kernel
 
     m, k = a.shape
     n = b.shape[1]
@@ -304,6 +296,7 @@ def _launch_splitu_nt_k256_packet(a, b, c, *, peel_tail=False, tile=32,
         raise ValueError("Unsupported K256 NT output tile")
     return kernel[(triton.cdiv(m, tile), triton.cdiv(n, tile), 1)](
         a, b.t(), c, m, n, k, tile, tile,
+        LOOP_SCHEDULE=2 if rotate_inputs else 1 if peel_tail else 0,
         padded_slot_intervals=True, disable_llvm_loop_unroll=True,
         num_warps=4, num_stages=1, waves_per_eu=1,
         loop_unroll_stage="post-pipeline", wave_private_sync=True,
