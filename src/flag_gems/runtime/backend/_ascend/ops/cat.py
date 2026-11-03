@@ -266,13 +266,15 @@ def _cat_out_impl(
 
 class Cat(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, dim, *tensors):
+    def forward(ctx, *tensor_args):
+        *tensors, dim = tensor_args
         return _cat_impl(tensors, dim)
 
 
 class CatOut(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, dim, out, *tensors):
+    def forward(ctx, out, *tensor_args):
+        *tensors, dim = tensor_args
         return _cat_out_impl(tensors, dim, out=out)
 
 
@@ -284,7 +286,7 @@ def cat(
     ],
     dim: int = 0,
 ):
-    return Cat.apply(dim, *A)
+    return Cat.apply(*A, dim)
 
 
 @trident.jit
@@ -297,4 +299,4 @@ def cat_out(
     *,
     out: torch.Tensor,
 ):
-    return CatOut.apply(dim, out, *A)
+    return CatOut.apply(out, *A, dim)
