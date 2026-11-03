@@ -117,6 +117,37 @@ def _aten_read_bytes(path, source_id):
     return _aten_cached_payload(raw, source_id)[0]
 
 
+@lru_cache(maxsize=1)
+def _aten_container_sha(raw):
+    return (
+        hashlib.sha256(raw).hexdigest()
+        if "_aten_consolidation" in _aten_load_json(raw)
+        else None
+    )
+
+
+def _aten_qualify_metadata(metadata, source_id):
+    if source_id is None:
+        return metadata
+    path = _aten_existing_path(metadata["artifact"], source_id)
+    container_sha = _aten_container_sha(path.read_bytes())
+    if container_sha is None:
+        return metadata
+    selected_sha = _ATEN_SNAPSHOT_SPECS[source_id]["sha256"]
+    reported_sha = metadata["artifact_sha256"]
+    if reported_sha not in (selected_sha, container_sha):
+        raise ValueError("Reported native baseline digest has no matching scope")
+    return {
+        **metadata,
+        "artifact_sha256_scope": (
+            "container_file" if reported_sha == container_sha else "selected_snapshot"
+        ),
+        "snapshot_source_id": source_id,
+        "snapshot_sha256": selected_sha,
+        "container_sha256": container_sha,
+    }
+
+
 def _fractional_backward_forward_fixture(
     inp, kernel_size, output_size, random_samples=None
 ):
@@ -202,14 +233,17 @@ class _FractionalBackwardH800Mixin:
             )
         ):
             raise ValueError("Expected all 24 original shared/split native H800 cases")
-        return records, dict(
-            artifact=str(path),
-            artifact_sha256=digest,
-            collection_task=task,
-            environment=environment,
-            producer_source="f83d67187e11d6f09dbaeedc8a9763e4b1032981",
-            input_identity="Original input/sample/gradient recipe, shared caller RNG and split seed0; no cross-device random-byte identity",
-            ratio="Raw native H800 latency / locally timed candidate; no scaling",
+        return records, _aten_qualify_metadata(
+            dict(
+                artifact=str(path),
+                artifact_sha256=digest,
+                collection_task=task,
+                environment=environment,
+                producer_source="f83d67187e11d6f09dbaeedc8a9763e4b1032981",
+                input_identity="Original input/sample/gradient recipe, shared caller RNG and split seed0; no cross-device random-byte identity",
+                ratio="Raw native H800 latency / locally timed candidate; no scaling",
+            ),
+            ("pr80:op_fractional_max_pool2d_backward_h800_baseline"),
         )
 
     def get_latency(self, op, *args, **kwargs):
