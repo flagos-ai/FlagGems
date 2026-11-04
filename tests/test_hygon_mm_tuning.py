@@ -154,47 +154,77 @@ def _expanded_configs(module):
     )
 
 
-def test_hygon_mm_expanded_space_and_default_coverage(hygon_mm):
+def test_hygon_mm_expanded_regular_geometry_and_schema(hygon_mm):
+    from itertools import product
+
     configs = _expanded_configs(hygon_mm)
-    assert len(configs) == 5000
+    identities = {
+        (tuple(sorted(c.kwargs.items())), c.num_warps, c.num_stages) for c in configs
+    }
+    assert configs and len(identities) == len(configs)
     assert len({frozenset(c.kwargs) for c in configs}) == 1
+    assert all("PROFILE" not in c.kwargs for c in configs)
     assert {c.kwargs["LOAD_MODE"] for c in configs} == {0, 1, 2, 3}
     assert {c.num_warps for c in configs} == {1, 2, 4, 8}
     assert {c.num_stages for c in configs} == {1, 2, 3, 4}
     assert {c.kwargs["kpack"] for c in configs} == {1, 2}
-    assert {c.kwargs["sched_latency"] for c in configs} == {
-        "none", "mmac5-ds6", "mmac5-ds10"
+    assert {c.kwargs["sched_latency"] for c in configs} == {"none"}
+    # Every geometry retains a plain synchronous fallback. The profile space
+    # replaces the old winner-preserving Cartesian grid; it is not its subset.
+    fallback = {
+        (
+            c.kwargs["BLOCK_M"],
+            c.kwargs["BLOCK_N"],
+            c.kwargs["BLOCK_K"],
+            c.kwargs["GROUP_M"],
+        )
+        for c in configs
+        if c.num_stages == 1 and c.kwargs["LOAD_MODE"] == 0
     }
-
-    def key(config, *, legacy=False):
-        meta = dict(config.kwargs)
-        meta.setdefault("sched_latency", "none")
-        meta.setdefault("sync_lds_buffers", 1)
-        if legacy:
-            meta["LOAD_MODE"] = 3 if meta["ASYNC_LOAD"] else 0
-            meta["ASYNC_LOAD"] = False
-        return (tuple(sorted(meta.items())), config.num_warps, config.num_stages)
-
-    expanded = {key(c) for c in configs}
-    assert len(expanded) == len(configs) <= 5000
-    # Existing winners remain eligible for the exhaustive search as well.
-    assert all(key(c, legacy=True) in expanded for c in hygon_mm._hygon_mm_configs())
+    assert fallback == set(
+        product(
+            (16, 32, 64, 128, 256), (16, 32, 64, 128, 256), (16, 32, 64, 128), (1, 4, 8)
+        )
+    )
 
 
-@pytest.mark.parametrize("load_mask,expected", [(0, {0}), (1, {0, 1}), (3, {0, 1, 2, 3})])
+@pytest.mark.parametrize(
+    "load_mask,expected", [(0, {0}), (1, {0, 1}), (3, {0, 1, 2, 3})]
+)
 def test_hygon_mm_expanded_load_modes_not_shape_ranked(hygon_mm, load_mask, expected):
     configs = _expanded_configs(hygon_mm)
-    for M, N, K, masked in [(64, 128, 48, False), (4096, 4096, 4096, False), (257, 129, 144, True)]:
+    for M, N, K, masked in [
+        (64, 128, 48, False),
+        (4096, 4096, 4096, False),
+        (257, 129, 144, True),
+    ]:
         pruned = hygon_mm._hygon_mm_edge_prune(
-            configs, dict(M=M, N=N, K=K, ASYNC_LOAD_MASK=load_mask),
-            LARGE_TILE_CONFIGS=False, MASK_EDGES=masked,
+            configs,
+            dict(M=M, N=N, K=K, ASYNC_LOAD_MASK=load_mask),
+            LARGE_TILE_CONFIGS=False,
+            MASK_EDGES=masked,
         )
-        matched = [c for c in pruned if c.num_warps == 4 and c.num_stages == 2
-            and all(c.kwargs[k] == v for k, v in dict(
-                BLOCK_M=64, BLOCK_N=128, BLOCK_K=32, GROUP_M=1,
-                mmac_warps_m=0, mmac_transposed=False, optimize_epilogue=True,
-                schedule_hint="none", kpack=1, waves_per_eu=1,
-            ).items())]
+        matched = [
+            c
+            for c in pruned
+            if c.num_warps == 4
+            and c.num_stages == 2
+            and c.kwargs.get("sync_lds_buffers", 1) == 1
+            and all(
+                c.kwargs[k] == v
+                for k, v in dict(
+                    BLOCK_M=64,
+                    BLOCK_N=128,
+                    BLOCK_K=32,
+                    GROUP_M=1,
+                    mmac_transposed=True,
+                    optimize_epilogue=True,
+                    schedule_hint="local-prefetch",
+                    kpack=1,
+                    waves_per_eu=1,
+                ).items()
+            )
+        ]
         assert {c.kwargs["LOAD_MODE"] for c in matched} == expected
 
 
@@ -208,7 +238,7 @@ def test_hygon_mm_expanded_prune_tail_and_async_contracts(hygon_mm):
         c = config.kwargs
         assert 256 % c["BLOCK_M"] == 256 % c["BLOCK_N"] == 0
         assert not c["LOAD_MODE"] or config.num_stages in (2, 3, 4)
-    assert {c.kwargs["LOAD_MODE"] for c in shallow if c.num_stages == 3} == {0, 1, 2, 3}
+    assert any(c.num_stages == 3 for c in shallow)
 
 
 def test_hygon_mm_expanded_resolver_and_capability_cache_key(hygon_mm):
@@ -221,7 +251,9 @@ def test_hygon_mm_expanded_resolver_and_capability_cache_key(hygon_mm):
     configs, strategy = tuner._flagtune_configs_for_mode(
         "mm", hygon_mm.runtime.TuningMode.EXPANDED
     )
-    assert len(configs) == 5000
+    assert [c.all_kwargs() for c in configs] == [
+        c.all_kwargs() for c in _expanded_configs(hygon_mm)
+    ]
     assert len(strategy) == len(tuner.keys) == 8
     assert strategy == ["default"] * 8
 
@@ -247,9 +279,7 @@ def cpu_mv_raw_write(monkeypatch):
 
 
 @pytest.mark.parametrize("M,N", [(1, 4), (4, 1)])
-def test_hygon_mm_mv_out_updates_saved_tensor_version(
-    hygon_mm, cpu_mv_raw_write, M, N
-):
+def test_hygon_mm_mv_out_updates_saved_tensor_version(hygon_mm, cpu_mv_raw_write, M, N):
     a = torch.ones(M, 8, device="cpu", dtype=torch.float32)
     b = torch.ones(8, N, device="cpu", dtype=torch.float32)
     out = torch.zeros(M, N, device="cpu", dtype=torch.float32)
@@ -274,9 +304,7 @@ def test_hygon_mm_mv_out_preserves_grad_rejection(
     if view:
         out = base.view(M, N)
     else:
-        out = torch.zeros(
-            M, N, device="cpu", dtype=torch.float32, requires_grad=True
-        )
+        out = torch.zeros(M, N, device="cpu", dtype=torch.float32, requires_grad=True)
     before = out.detach().clone()
     with pytest.raises(RuntimeError):
         hygon_mm.mm_out(a, b, out=out)
@@ -284,9 +312,7 @@ def test_hygon_mm_mv_out_preserves_grad_rejection(
 
 
 @pytest.mark.parametrize("M,N", [(1, 4), (4, 1)])
-def test_hygon_mm_mv_out_preserves_inference_rules(
-    hygon_mm, cpu_mv_raw_write, M, N
-):
+def test_hygon_mm_mv_out_preserves_inference_rules(hygon_mm, cpu_mv_raw_write, M, N):
     a = torch.ones(M, 8, device="cpu", dtype=torch.float32)
     b = torch.ones(8, N, device="cpu", dtype=torch.float32)
     with torch.inference_mode():
@@ -302,102 +328,125 @@ def hygon_splitk(hygon_mm):
     return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_splitk")
 
 
-def test_hygon_small_mm_expanded_registry_matches_generic_products(hygon_splitk):
-    import yaml
-    from pathlib import Path
-    from flag_gems.runtime.configs_loader import TunedConfigLoader
+def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
+    from itertools import product
 
     configs = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
-    declared = yaml.safe_load(Path(hygon_splitk.EXPAND_CONFIG_FILENAME).read_text())
-    generic = [
-        config
-        for section in declared["mm_hygon_splitk"]
-        for config in TunedConfigLoader().to_gen_config(section)
-    ]
 
-    def key(config):
-        values = dict(config.all_kwargs())
-        values.setdefault("wave_private_sync", False)
-        values.setdefault("optimize_epilogue", False)
-        for name in ("schedule_hint", "num_ldmatrixes", "maxnreg"):
-            values.pop(name, None)
-        return tuple(sorted(values.items()))
+    def key(c):
+        meta = dict(c.kwargs)
+        meta.setdefault("wave_private_sync", False)
+        return tuple(sorted(meta.items())), c.num_warps, c.num_stages
 
-    assert len(configs) == len({key(c) for c in configs}) == 4990
-    assert {key(c) for c in configs} == {key(c) for c in generic}
+    assert len(configs) == len({key(c) for c in configs})
+    assert len({frozenset(c.kwargs) for c in configs}) == 1
+    assert all("PROFILE" not in c.kwargs for c in configs)
     assert {key(c) for c in hygon_splitk._splitk_default_configs()} <= {
         key(c) for c in configs
     }
-    assert len({frozenset(c.kwargs) for c in configs}) == 1
-    baseline = [c for c in configs if not c.kwargs["optimize_epilogue"]]
-    epilogue = [c for c in configs if c.kwargs["optimize_epilogue"]]
-    assert len(baseline) == 4900 and len(epilogue) == 90
-    eligible = [c for c in baseline if c.kwargs["KIND"] == 1
-                and c.kwargs["BM"] == c.kwargs["BN"] == 16
-                and c.kwargs["SPLITS"] >= c.num_warps]
-    assert len(eligible) == 90
-
-    def without_epilogue(config):
-        values = dict(key(config))
-        values.pop("optimize_epilogue")
-        return tuple(sorted(values.items()))
-
-    assert {without_epilogue(c) for c in epilogue} == {
-        without_epilogue(c) for c in eligible
+    geometry = set(product((16, 32, 64), (16, 32, 64), (16, 32, 64)))
+    global_configs = [c for c in configs if c.kwargs["KIND"] == 0]
+    local_configs = [c for c in configs if c.kwargs["KIND"] == 1]
+    assert {
+        (c.kwargs["BM"], c.kwargs["BN"], c.kwargs["BK"], c.kwargs["SPLITS"])
+        for c in global_configs
+    } == {(*tile, splits) for tile in geometry for splits in (1, 2, 4, 8, 16, 32, 64)}
+    assert {
+        (
+            c.kwargs["BM"],
+            c.kwargs["BN"],
+            c.kwargs["BK"],
+            c.kwargs["SPLITS"],
+            c.num_stages,
+        )
+        for c in local_configs
+    } == {
+        (*tile, splits, stages)
+        for tile in geometry
+        for splits in (2, 4, 8)
+        for stages in (1, 2)
     }
+    assert all(
+        c.num_warps == c.kwargs["SPLITS"]
+        and c.kwargs["wave_private_sync"]
+        and c.kwargs["optimize_epilogue"]
+        and c.kwargs["LOAD_MODE"] == 0
+        for c in local_configs
+    )
+    assert all(
+        not c.kwargs["wave_private_sync"] and not c.kwargs["optimize_epilogue"]
+        for c in global_configs
+    )
+    # FP32 global partial stores and FP16/BF16 local reductions have different
+    # epilogue policies. Keep both synchronous global producer tiers and async B.
+    for bm, bn, bk in geometry:
+        for splits in (1, 2, 4, 8, 16, 32, 64):
+            members = [
+                c
+                for c in global_configs
+                if tuple(c.kwargs[k] for k in ("BM", "BN", "BK", "SPLITS"))
+                == (bm, bn, bk, splits)
+            ]
+            assert {
+                (c.kwargs["LOAD_MODE"], c.num_stages, c.num_warps) for c in members
+            } == {(0, 1, 1 if bm * bn == 256 else 2), (0, 2, 2), (0, 2, 4), (2, 3, 2)}
     assert all(c.kwargs["schedule_hint"] == "local-prefetch" for c in configs)
 
-    sync = [c for c in baseline if c.kwargs["KIND"] == 1 and c.kwargs["LOAD_MODE"] == 0]
-    assert len(sync) == 648
-    policies = {}
-    for flag in (False, True):
-        policies[flag] = {
-            key(c) for c in sync if c.kwargs["wave_private_sync"] is flag
-        }
-    assert len(policies[False]) == len(policies[True]) == 324
-    def without_policy(config):
-        values = dict(key(config))
-        values.pop("wave_private_sync")
-        return tuple(sorted(values.items()))
-    assert {without_policy(c) for c in sync if c.kwargs["wave_private_sync"]} == {
-        without_policy(c) for c in sync if not c.kwargs["wave_private_sync"]
-    }
 
-
-@pytest.mark.parametrize("mask,count", [(0, 1504), (1, 2666), (2, 2666), (3, 4990)])
-def test_hygon_small_mm_prunes_capability_only(hygon_splitk, mask, count):
+@pytest.mark.parametrize(
+    "mask,expected_modes", [(0, {0}), (1, {0}), (2, {0, 2}), (3, {0, 2})]
+)
+def test_hygon_small_mm_prunes_capability_only(hygon_splitk, mask, expected_modes):
     configs = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
     tail = hygon_splitk._splitk_prune(
-        configs, dict(M=33, N=48, K=4112), ASYNC_LOAD_MASK=mask,
-        WAVE_PRIVATE_SYNC_SUPPORTED=True
+        configs,
+        dict(M=33, N=48, K=4112),
+        ASYNC_LOAD_MASK=mask,
+        WAVE_PRIVATE_SYNC_SUPPORTED=True,
     )
     deep = hygon_splitk._splitk_prune(
-        configs, dict(M=128, N=64, K=16384, ASYNC_LOAD_MASK=mask,
-                      WAVE_PRIVATE_SYNC_SUPPORTED=True)
+        configs,
+        dict(
+            M=128, N=64, K=16384, ASYNC_LOAD_MASK=mask, WAVE_PRIVATE_SYNC_SUPPORTED=True
+        ),
     )
-    assert len(tail) == len(deep) == count
     assert [c.all_kwargs() for c in tail] == [c.all_kwargs() for c in deep]
     assert {c.kwargs["KIND"] for c in tail} == {0, 1}
-    assert {c.kwargs["LOAD_MODE"] for c in tail} == {
-        mode for mode in range(4) if not mode & ~mask
-    }
+    assert {c.kwargs["LOAD_MODE"] for c in tail} == expected_modes
+    assert [c.all_kwargs() for c in tail] == [
+        c.all_kwargs() for c in configs if c.kwargs["LOAD_MODE"] in expected_modes
+    ]
 
 
 def test_hygon_small_mm_resolver_and_timed_post(hygon_splitk):
     tuner = hygon_splitk._mm_splitk_partial.fn
     assert tuner._flagtune_op_name == "mm"
     assert tuner._flagtune_expand_op_name == "mm_hygon_splitk"
-    assert tuner.keys == ["M", "N", "K", "stride_bk", "stride_bn", "B_K_CONTIGUOUS",
-                          "ASYNC_LOAD_MASK", "WAVE_PRIVATE_SYNC_SUPPORTED",
-                          "M_ALIGNMENT", "N_ALIGNMENT"]
+    assert tuner.keys == [
+        "M",
+        "N",
+        "K",
+        "stride_bk",
+        "stride_bn",
+        "B_K_CONTIGUOUS",
+        "ASYNC_LOAD_MASK",
+        "WAVE_PRIVATE_SYNC_SUPPORTED",
+        "M_ALIGNMENT",
+        "N_ALIGNMENT",
+    ]
     configs, strategy = tuner._flagtune_configs_for_mode(
         "mm", hygon_splitk.runtime.TuningMode.EXPANDED
     )
-    assert len(configs) == 4990
+    assert [c.all_kwargs() for c in configs] == [
+        c.all_kwargs()
+        for c in hygon_splitk.runtime.ops_get_configs(
+            "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
+        )
+    ]
     assert strategy == ["default"] * len(tuner.keys)
     # Exercise normalization after the actual Expanded mode switch.
     assert len(tuner._normalize_strategy(strategy)) == len(tuner.keys)
@@ -405,16 +454,22 @@ def test_hygon_small_mm_resolver_and_timed_post(hygon_splitk):
 
 
 @pytest.mark.parametrize("transpose_b", [False, True])
-def test_hygon_small_mm_uses_launch_metadata_for_cached_post(hygon_splitk, monkeypatch, transpose_b):
+def test_hygon_small_mm_uses_launch_metadata_for_cached_post(
+    hygon_splitk, monkeypatch, transpose_b
+):
     import contextlib
+
     m = hygon_splitk
-    hy = importlib.import_module('flag_gems.runtime.backend._hygon.ops.mm')
+    hy = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
     calls = []
     posts = []
-    monkeypatch.setattr(m, '_splitk_parameters', lambda a, b, c: (32, 32, 32, 16))
-    monkeypatch.setattr(hy, '_hygon_mm_async_load_mask', lambda *a: 1)
-    monkeypatch.setattr(m.torch_device_fn, 'device', lambda d: contextlib.nullcontext())
-    metas = [dict(BM=16, BN=16, SPLITS=4, KIND=1, POST_BLOCK=256), dict(BM=32, BN=32, SPLITS=32, KIND=0, POST_BLOCK=128)]
+    monkeypatch.setattr(m, "_splitk_parameters", lambda a, b, c: (32, 32, 32, 16))
+    monkeypatch.setattr(hy, "_hygon_mm_async_load_mask", lambda *a: 1)
+    monkeypatch.setattr(m.torch_device_fn, "device", lambda d: contextlib.nullcontext())
+    metas = [
+        dict(BM=16, BN=16, SPLITS=4, KIND=1, POST_BLOCK=256),
+        dict(BM=32, BN=32, SPLITS=32, KIND=0, POST_BLOCK=128),
+    ]
 
     class Entry:
         best_config = object()
@@ -425,26 +480,46 @@ def test_hygon_small_mm_uses_launch_metadata_for_cached_post(hygon_splitk, monke
                 meta = metas[len(calls)]
                 calls.append((grid(meta), args, kw))
                 return (object(), meta)
+
             return launch
-    monkeypatch.setattr(m, '_mm_splitk_partial', Entry())
-    monkeypatch.setattr(m, '_splitk_post_hook', lambda args, exc: posts.append((args, exc)))
+
+    monkeypatch.setattr(m, "_mm_splitk_partial", Entry())
+    monkeypatch.setattr(
+        m, "_splitk_post_hook", lambda args, exc: posts.append((args, exc))
+    )
     a = torch.empty((33, 4112), dtype=torch.bfloat16)
-    b = (torch.empty((48, 4112), dtype=torch.bfloat16).t() if transpose_b
-         else torch.empty((4112, 48), dtype=torch.bfloat16))
+    b = (
+        torch.empty((48, 4112), dtype=torch.bfloat16).t()
+        if transpose_b
+        else torch.empty((4112, 48), dtype=torch.bfloat16)
+    )
     c = torch.empty((33, 48), dtype=torch.bfloat16)
     assert m.try_mm_splitk(a, b, c) and m.try_mm_splitk(a, b, c)
     assert calls[0][0] == (3, 3, 1) and calls[1][0] == (2, 2, 32)
-    for (i, (grid, args, kw)) in enumerate(calls):
-        assert args[0] is a and args[1] is b and (args[3] is c) and (tuple(args[2].shape) == (64, 33, 48))
+    for i, (grid, args, kw) in enumerate(calls):
+        assert (
+            args[0] is a
+            and args[1] is b
+            and (args[3] is c)
+            and (tuple(args[2].shape) == (64, 33, 48))
+        )
         assert args[7:] == b.stride()
-        assert kw == dict(B_K_CONTIGUOUS=transpose_b, ASYNC_LOAD_MASK=1,
-                          WAVE_PRIVATE_SYNC_SUPPORTED=m._SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED,
-                          M_ALIGNMENT=1, N_ALIGNMENT=16)
-        assert posts[i][0]['SPLITS'] == metas[i]['SPLITS'] and posts[i][0]['KIND'] == metas[i]['KIND'] and (posts[i][1] is None)
+        assert kw == dict(
+            B_K_CONTIGUOUS=transpose_b,
+            ASYNC_LOAD_MASK=1,
+            WAVE_PRIVATE_SYNC_SUPPORTED=m._SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED,
+            M_ALIGNMENT=1,
+            N_ALIGNMENT=16,
+        )
+        assert (
+            posts[i][0]["SPLITS"] == metas[i]["SPLITS"]
+            and posts[i][0]["KIND"] == metas[i]["KIND"]
+            and (posts[i][1] is None)
+        )
 
 
-@pytest.mark.parametrize("mask,count", [(0, 1162), (3, 4648)])
-def test_hygon_small_mm_older_backend_keeps_all_primary_configs(hygon_splitk, mask, count):
+@pytest.mark.parametrize("mask", [0, 3])
+def test_hygon_small_mm_older_backend_keeps_global_profiles(hygon_splitk, mask):
     configs = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
@@ -452,8 +527,16 @@ def test_hygon_small_mm_older_backend_keeps_all_primary_configs(hygon_splitk, ma
     pruned = hygon_splitk._splitk_prune(
         configs, {}, ASYNC_LOAD_MASK=mask, WAVE_PRIVATE_SYNC_SUPPORTED=False
     )
-    assert len(pruned) == count
-    assert all("wave_private_sync" not in c.kwargs for c in pruned)
+    expected = []
+    for c in configs:
+        if c.kwargs["KIND"] == 0 and not c.kwargs["LOAD_MODE"] & ~mask:
+            meta = dict(c.all_kwargs())
+            meta.pop("wave_private_sync")
+            expected.append(meta)
+    assert [c.all_kwargs() for c in pruned] == expected
+    assert all(
+        c.kwargs["KIND"] == 0 and "wave_private_sync" not in c.kwargs for c in pruned
+    )
     assert before == [c.all_kwargs() for c in configs]
 
 
@@ -473,11 +556,14 @@ def test_hygon_small_mm_post_is_independently_expanded(hygon_splitk):
 
 def test_hygon_small_mm_timed_post_grid_uses_post_metadata(hygon_splitk, monkeypatch):
     calls = []
+
     class Entry:
         def __getitem__(self, grid):
             def launch(*args, **kwargs):
                 calls.append((grid({"BLOCK": 128}), grid({"BLOCK": 256}), args, kwargs))
+
             return launch
+
     monkeypatch.setattr(hygon_splitk, "_mm_splitk_post", Entry())
     args = dict(W=object(), C=object(), M=33, N=48, KIND=0, SPLITS=16)
     hygon_splitk._splitk_post_hook(args, None)
@@ -488,25 +574,53 @@ def test_hygon_small_mm_timed_post_grid_uses_post_metadata(hygon_splitk, monkeyp
     assert len(calls) == 1
 
 
-def test_hygon_mm_expanded_preserves_native_latency_options(hygon_mm):
-    configs = _expanded_configs(hygon_mm)
-    baseline = {frozenset(c.all_kwargs().items()) for c in configs
-                if c.kwargs["sched_latency"] == "none"}
-    assert len(baseline) == 4984
-    variants = [c for c in configs if c.kwargs["sched_latency"] != "none"]
-    assert len(variants) == 16
-    for latency in ("mmac5-ds6", "mmac5-ds10"):
-        members = [c for c in variants if c.kwargs["sched_latency"] == latency]
-        assert len(members) == 8
-        assert {c.kwargs["LOAD_MODE"] for c in members} == {0, 3}
-        for c in members:
-            old = c.all_kwargs()
-            old["sched_latency"] = "none"
-            assert frozenset(old.items()) in baseline
+def test_hygon_mm_named_profiles_have_distinct_representatives(hygon_mm):
+    from triton.backends.hcu.compiler import HIPOptions
+
+    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+
+    names = [
+        "generic_min",
+        "generic_pipe",
+        "sync",
+        "packed",
+        "register_prefetch",
+        "shared_prefetch",
+        "async_a",
+        "async_b",
+        "async_pair",
+        "async_deep",
+    ]
+    if "sync_lds_buffers" not in HIPOptions.__dataclass_fields__:
+        names.remove("shared_prefetch")
+
+    def hook(values):
+        return None
+
+    representatives = []
+    for name in names:
+        configs = build_mm_configs(
+            dict(
+                PROFILE=[name],
+                BLOCK_M=[64],
+                BLOCK_N=[64],
+                BLOCK_K=[32],
+                GROUP_M=[1],
+                s=[1, 2, 3, 4],
+                w=[1, 2, 4, 8],
+            ),
+            pre_hook=hook,
+        )
+        assert len(configs) == 1 and configs[0].pre_hook is hook
+        representatives.append(tuple(sorted(configs[0].all_kwargs().items())))
+    assert len(set(representatives)) == len(names)
 
 
 def test_hygon_mm_expanded_older_compiler_omits_ring_option(hygon_mm, monkeypatch):
     from triton.backends.hcu.compiler import HIPOptions
+
+    if "sync_lds_buffers" not in HIPOptions.__dataclass_fields__:
+        pytest.skip("Compiler already lacks the optional ring setting")
 
     modern = _expanded_configs(hygon_mm)
     expected = []
@@ -520,40 +634,57 @@ def test_hygon_mm_expanded_older_compiler_omits_ring_option(hygon_mm, monkeypatc
     with monkeypatch.context() as patch:
         patch.setattr(HIPOptions, "__dataclass_fields__", fields)
         legacy = _expanded_configs(hygon_mm)
-    assert len(legacy) == 4956
+    assert len(legacy) == len(expected)
     assert [config.all_kwargs() for config in legacy] == expected
     assert all("sync_lds_buffers" not in config.kwargs for config in legacy)
 
 
-def test_hygon_mm_expanded_rectangular_and_small_tiles(hygon_mm):
-    configs = _expanded_configs(hygon_mm)
-    for bm, bn, bk, warps in (
-        (128, 256, 16, 4), (64, 256, 32, 2),
-        (16, 32, 64, 1), (16, 16, 128, 1),
-    ):
-        members = [c for c in configs if
-                   (c.kwargs["BLOCK_M"], c.kwargs["BLOCK_N"],
-                    c.kwargs["BLOCK_K"], c.num_warps) == (bm, bn, bk, warps)]
-        assert {(c.kwargs["LOAD_MODE"], c.num_stages) for c in members} >= {
-            (mode, stages) for mode in range(4) for stages in (2, 4)
-        }
-    assert all(not (
-        c.num_stages == 4 and c.kwargs["LOAD_MODE"] != 0
-        and c.kwargs["kpack"] == 2
-        and c.kwargs["schedule_hint"] == "local-prefetch"
-        and 6 * c.kwargs["BLOCK_K"]
-        * (c.kwargs["BLOCK_M"] + c.kwargs["BLOCK_N"]) > 65536
-    ) for c in configs)
+def test_hygon_mm_scalar_copy_alias_needs_retained_control(hygon_mm):
+    from triton.backends.hcu.compiler import HIPOptions
+
+    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+
+    ranges = dict(BLOCK_M=[16], BLOCK_N=[64], BLOCK_K=[16], GROUP_M=[1], s=[2], w=[4])
+    cases = [
+        (["async_a"], 1),
+        (["sync", "async_a"], 0),
+        (["async_pair"], 3),
+        (["async_b", "async_pair"], 2),
+    ]
+    for names, mode in cases:
+        configs = build_mm_configs(dict(ranges, PROFILE=names))
+        assert len(configs) == 1 and configs[0].kwargs["LOAD_MODE"] == mode
+    if "sync_lds_buffers" in HIPOptions.__dataclass_fields__:
+        assert len(build_mm_configs(dict(ranges, PROFILE=["shared_prefetch"]))) == 1
+        assert (
+            len(build_mm_configs(dict(ranges, PROFILE=["sync", "shared_prefetch"])))
+            == 1
+        )
 
 
-def test_hygon_mm_expanded_preserves_ragged_sync_s4(hygon_mm):
+def test_hygon_mm_avoids_uniform_buffer_footprint_pruning(hygon_mm):
     configs = _expanded_configs(hygon_mm)
-    retained = [c for c in configs if
-                c.num_stages == 4 and c.kwargs["LOAD_MODE"] == 0
-                and c.kwargs["kpack"] == 2
-                and c.kwargs["schedule_hint"] == "local-prefetch"
-                and 6 * c.kwargs["BLOCK_K"]
-                * (c.kwargs["BLOCK_M"] + c.kwargs["BLOCK_N"]) > 65536]
-    # An actual ragged specialization uses only 16/32 KiB for these choices.
-    # A full-tile aligned capacity estimate cannot exclude them globally.
-    assert len(retained) == 43
+    # Large synchronous tiles can use single-buffer or non-pipelined fallback
+    # on irregular inputs; the async allocation bound must not prune them.
+    large = [
+        c
+        for c in configs
+        if c.kwargs["BLOCK_M"] == c.kwargs["BLOCK_N"] == 256
+        and c.kwargs["BLOCK_K"] == 128
+        and c.kwargs["LOAD_MODE"] == 0
+        and c.kwargs.get("sync_lds_buffers", 1) == 1
+    ]
+    assert {c.num_stages for c in large} == {1, 2, 3}
+    # With weak N, async A can retain two A planes and one B conversion plane.
+    # A uniform two-plane estimate for both operands would wrongly remove it.
+    pruned = hygon_mm._hygon_mm_edge_prune(
+        configs, dict(M=35, N=81, K=2048, ASYNC_LOAD_MASK=1), MASK_EDGES=True
+    )
+    assert any(
+        c.kwargs["BLOCK_M"] == 16
+        and c.kwargs["BLOCK_N"] == 128
+        and c.kwargs["BLOCK_K"] == 128
+        and c.kwargs["LOAD_MODE"] == 1
+        and c.num_stages == 2
+        for c in pruned
+    )
