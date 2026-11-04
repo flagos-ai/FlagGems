@@ -15,6 +15,34 @@ logger = logging.getLogger(__name__)
 device = device.name
 
 
+# Widest 1D per-row tile the scan path may use: row programs are the only
+# `tl.cumsum` shape this backend lowers at a useful rate, and 4096 int32 lanes
+# is the widest tile that still fits uni_sram.
+_ROW_WIDE_N = 4096
+# Integer inputs scan into an int64 output, and the per-row 4096-lane tile is
+# what makes that scan worth its launch: `(4096,4096)` int16 is 0.70 ms with the
+# row kernel against 4.04 ms on the 1024-wide group path (0.69x of torch instead
+# of 0.12x, measured 2026-11-02). Below N=256 the flat multi-row sweep still
+# owns the shape (`(64,64)` 0.98x / `(256,256)` 0.46x flat vs 0.25x / 0.34x row),
+# so only [256, 4096] (power-of-two N, so the row tile needs no mask) moves.
+_INT_ROW_MIN_N = 256
+# Long-row integer scans: the group *count* is the cost, not the group work.
+# The same (1024, 65536) int16 scan takes 15.3 ms at GROUP=1024 (65536 CTAs of
+# 1024 lanes), 9.2 ms at 2048, 6.3 ms at 4096, 4.47 ms at 16384 (4096 CTAs), and
+# back up at 32768 (a 16384-wide row loses) -- so trade width against CTA count.
+_INT_GROUP_MAX = 16384
+
+
+def _int_group(N):
+    """Widest power-of-two group <= _INT_GROUP_MAX that divides N (else _GROUP)."""
+    g = _INT_GROUP_MAX
+    while g > _GROUP:
+        if N % g == 0:
+            return g
+        g //= 2
+    return _GROUP
+
+
 _ROW_MAX_N = 1024
 
 _FLAT_TM = {
@@ -242,6 +270,13 @@ def _scan_rows_into(inp, out, M, N, allow_mm=True):
         if allow_mm and inp.dtype in _MM_DTYPES and out.dtype in _MM_DTYPES
         else None
     )
+    # Integer/bool inputs scan into int64. The matmul path cannot carry that
+    # output (the XPU DMA lowering rejects a 2D i64 store -- "Unsupported dma
+    # dst data type"), so these shapes are served by the row kernel instead of
+    # the flat/group sweeps; see _ROW_WIDE_N / _INT_ROW_MIN_N.
+    int_like = (
+        is_integer_dtype(inp.dtype) or is_boolean_dtype(inp.dtype)
+    ) and out.dtype is torch.int64
     if N == 1:
         n_elements = inp.numel()
         BLOCK = 1024
@@ -256,6 +291,21 @@ def _scan_rows_into(inp, out, M, N, allow_mm=True):
         )
     elif mm_plan is not None:
         _scan_rows_mm_into(inp, out, M, N, *mm_plan)
+    elif int_like and _INT_ROW_MIN_N < N <= _ROW_WIDE_N and (N & (N - 1)) == 0:
+        # Power-of-two N in (256, 4096] for an int64 output: one unmasked row
+        # program per row (see _ROW_WIDE_N). Non-powers-of-two stay on the
+        # group path below, whose zero-padded buffer avoids a masked wide load.
+        TILE_N = triton.next_power_of_2(N)
+        grid = (M, 1, 1)
+        cumsum_row_kernel[grid](
+            inp,
+            out,
+            N=N,
+            TILE_N=TILE_N,
+            NEED_MASK=0,
+            num_warps=8 if TILE_N > 2048 else 4,
+            buffer_size_limit=2048,
+        )
     elif N in _FLAT_TM and _FLAT_TM[N] * N >= 64 and M >= _FLAT_TM[N]:
         tm = _FLAT_TM[N]
         n_full = (M // tm) * tm
@@ -290,7 +340,7 @@ def _scan_rows_into(inp, out, M, N, allow_mm=True):
             buffer_size_limit=2048,
         )
     else:
-        _scan_rows_group_into(inp, out, M, N)
+        _scan_rows_group_into(inp, out, M, N, _int_group(N) if int_like else _GROUP)
 
 
 _GROUP = 1024
@@ -349,7 +399,7 @@ def scan_group_add_kernel(
     tl.store(out + pid_r * N + offs, r)
 
 
-def _scan_rows_group_into(inp, out, M, N):
+def _scan_rows_group_into(inp, out, M, N, GROUP=_GROUP):
     """K == 1, N > _ROW_MAX_N: two-stage group scan.
 
     Replaces the former chunk-scan + prefix-add path (``cumsum_chunk_*``).
@@ -370,7 +420,6 @@ def _scan_rows_group_into(inp, out, M, N):
     kernels up-cast then the fp32 result is cast back on store to ``out``)."""
     inp = inp.reshape(M, N)
     out = out.reshape(M, N)
-    GROUP = _GROUP
     n_groups = (N + GROUP - 1) // GROUP
     Np = n_groups * GROUP
     sums_dtype = torch.float32 if inp.dtype.is_floating_point else torch.int64
