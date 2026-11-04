@@ -35,8 +35,11 @@ def test_normal_pvalue(shape, dtype):
     if flag_gems.vendor_name == "cambricon":
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
-    res_out = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    flag_gems.normal_(res_out, 3.0, 10.0)
+    loc = torch.full(size=shape, fill_value=3.0, dtype=dtype, device=flag_gems.device)
+    scale = torch.full(
+        size=shape, fill_value=10.0, dtype=dtype, device=flag_gems.device
+    )
+    res_out = flag_gems.normal_tensor_tensor(loc, scale)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(),
         lambda x: scipy.stats.norm.cdf(x, loc=3.0, scale=10.0),
