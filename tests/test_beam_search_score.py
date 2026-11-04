@@ -66,3 +66,66 @@ def test_beam_search_score_(shape, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(inp, ref_out, dtype)
+
+
+@pytest.mark.beam_search_score
+@pytest.mark.parametrize("shape", [(3, 0), (0, 5), (0, 0)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_beam_search_score_empty(shape, dtype):
+    # (B, 0) used to divide by zero while (0, V) produced a zero-sized grid.
+    log_probs = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    beam_scores = torch.randn(shape[0], dtype=dtype, device=flag_gems.device)
+
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_beam_scores = utils.to_reference(beam_scores, True)
+    ref_out = ref_log_probs + ref_beam_scores.unsqueeze(-1)
+
+    res_out = flag_gems.beam_search_score(log_probs, beam_scores)
+
+    assert res_out.shape == ref_out.shape
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.beam_search_score
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_beam_search_score_non_contiguous(dtype):
+    # A transposed input is not densely row-major, so the row * vocab_size
+    # addressing used to read the wrong elements.
+    base = torch.randn((8, 6), dtype=dtype, device=flag_gems.device)
+    log_probs = base.t()
+    assert not log_probs.is_contiguous()
+    beam_scores = torch.randn(log_probs.shape[0], dtype=dtype, device=flag_gems.device)
+
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_beam_scores = utils.to_reference(beam_scores, True)
+    ref_out = ref_log_probs + ref_beam_scores.unsqueeze(-1)
+
+    res_out = flag_gems.beam_search_score(log_probs, beam_scores)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.beam_search_score
+@pytest.mark.parametrize(
+    "log_probs_dtype, beam_scores_dtype",
+    [
+        (torch.float16, torch.float32),
+        (torch.float32, torch.float16),
+        (torch.bfloat16, torch.float32),
+    ],
+)
+def test_beam_search_score_mixed_dtype(log_probs_dtype, beam_scores_dtype):
+    # DEFAULT promotion: the result dtype is promote_types of both inputs, so
+    # FP16 log probs plus FP32 beam scores must return FP32.
+    log_probs = torch.randn((4, 8), dtype=log_probs_dtype, device=flag_gems.device)
+    beam_scores = torch.randn(4, dtype=beam_scores_dtype, device=flag_gems.device)
+    expected_dtype = torch.promote_types(log_probs_dtype, beam_scores_dtype)
+
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_beam_scores = utils.to_reference(beam_scores, True)
+    ref_out = ref_log_probs + ref_beam_scores.unsqueeze(-1)
+
+    res_out = flag_gems.beam_search_score(log_probs, beam_scores)
+
+    assert res_out.dtype == expected_dtype
+    utils.gems_assert_close(res_out, ref_out, expected_dtype)

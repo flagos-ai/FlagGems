@@ -33,6 +33,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .beam_search_score import beam_search_score
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
@@ -211,6 +212,7 @@ __all__ = [
     "argmin",
     "argsort",
     "baddbmm",
+    "beam_search_score",
     "bmm",
     "bmm_w8a8",
     "bmm_w8a8_int8",
