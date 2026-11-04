@@ -300,7 +300,7 @@ def gemv_long_kernel(
     )
 
 
-def mm_fma(a, b):
+def mm_fma(a, b, c=None):
     logger.debug("GEMS_MTHREADS MM_FMA")
     device = a.device
     # handle non-contiguous inputs if necessary
@@ -313,7 +313,8 @@ def mm_fma(a, b):
     M, K = a.shape
     _, N = b.shape
     # allocates output
-    c = torch.empty((M, N), device=device, dtype=a.dtype)
+    if c is None:
+        c = torch.empty((M, N), device=device, dtype=a.dtype)
     # launch kernel
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -391,46 +392,7 @@ def mm_out(a, b, *, out):
         b = b.contiguous()
     # checks constraints
     assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
-    # allocates output
-    c = out
-    if N == 1:
-        return gemv_mm(a, b, c, M, K)
-    # The warp-specialized kernel stores straight into a row-major buffer whose
-    # dtype matches the operands, so the SQMMA tiles and the output agree.  Any
-    # other output layout or dtype keeps the portable FMA kernel.
-    if (
-        is_tle_ws_compatible(a, b, M, N, K)
-        and out.is_contiguous()
-        and out.dtype == a.dtype
-        and out.shape == (M, N)
-    ):
-        with torch_device_fn.device(a.device):
-            return mm_sqmma_ws(a, b, M, N, K, C=out)
-    # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-    )
-    with torch_device_fn.device(a.device):
-        mm_kernel[grid](
-            a,
-            b,
-            c,
-            M,
-            N,
-            K,
-            a.stride(0),
-            a.stride(1),
-            b.stride(0),
-            b.stride(1),
-            c.stride(0),
-            c.stride(1),
-            dtype=str(a.dtype).split(".")[-1],
-            GROUP_M=8,
-            IS_FP64=a.dtype == torch.float64,
-        )
-    return c
+    return _mm_impl(a, b, out)
 
 
 def sqmma_descriptor_pre_hook(nargs):
@@ -513,7 +475,7 @@ def mm_sqmma_kernel(
     tl.store_tensor_descriptor(c_desc, [offs_am, offs_bn], accumulator.to(c_desc.dtype))
 
 
-def mm_sqmma(A, B, M, N, K):
+def mm_sqmma(A, B, M, N, K, C=None):
     logger.debug("GEMS_MTHREADS MM_SQMMA")
     device = A.device
     if not A.is_contiguous():
@@ -523,7 +485,8 @@ def mm_sqmma(A, B, M, N, K):
     a_type = A.dtype
     b_type = B.dtype
     assert a_type == b_type, "Mat A and Mat B should have the same dtype"
-    C = torch.empty((M, N), dtype=a_type, device=device)
+    if C is None:
+        C = torch.empty((M, N), dtype=a_type, device=device)
     desc_a = TensorDescriptor.from_tensor(A, [1, 1])
     desc_b = TensorDescriptor.from_tensor(B, [1, 1])
     desc_c = TensorDescriptor.from_tensor(C, [1, 1])
@@ -602,10 +565,11 @@ def mm_splitk_reduce_kernel(
     tl.store(C + offsets, tl.sum(values, axis=0), offsets < SIZE)
 
 
-def mm_small(a, b):
+def mm_small(a, b, c=None):
     M, K = a.shape
     N = b.shape[1]
-    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    if c is None:
+        c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     # Populate the S5000 MPs even for small output grids. Keep partials in
     # FP32 and reduce once, avoiding low-precision atomics and an output memset.
     split_k = 32
@@ -1068,10 +1032,11 @@ def mm_vector_fp32_kernel(
     tl.store(P + pid_k * N + rn, values, rn < N)
 
 
-def mm_fp32(a, b):
+def mm_fp32(a, b, c=None):
     M, K = a.shape
     N = b.shape[1]
-    c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    if c is None:
+        c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     trans_b = b.stride(0) == 1
     vector = M == 1 and a.is_contiguous() and is_supported_sqmma_layout(b)
     transpose_output = False
@@ -1246,9 +1211,10 @@ def mm_pipe_kernel(
     )
 
 
-def gemv_nt_mm(a, b, N, K):
+def gemv_nt_mm(a, b, N, K, c=None):
     batches = a.shape[0]
-    c = torch.empty((batches, N), device=a.device, dtype=a.dtype)
+    if c is None:
+        c = torch.empty((batches, N), device=a.device, dtype=a.dtype)
     with torch_device_fn.device(a.device):
         gemv_long_kernel[(triton.cdiv(N, 2) * batches,)](
             b,
@@ -2385,12 +2351,13 @@ def mm_single_consumer_kernel(
     )
 
 
-def mm_tme_narrow(a, b):
+def mm_tme_narrow(a, b, c=None):
     """Use enough narrow tiles to fill the device without an extra launch."""
     m, k = a.shape
     n = b.shape[1]
     trans_b = b.stride(0) == 1
-    c = torch.empty((m, n), dtype=a.dtype, device=a.device)
+    if c is None:
+        c = torch.empty((m, n), dtype=a.dtype, device=a.device)
     stream = k >= 512 and (
         (m <= 8 and (trans_b or n > 512)) or (8 < m <= 128 and n <= 512)
     )
@@ -2755,18 +2722,19 @@ def mm_tme_kernel(
         )
 
 
-def mm_tme(a, b):
+def mm_tme(a, b, c=None):
     m, k = a.shape
     n = b.shape[1]
     if n <= 1024:
-        return mm_tme_narrow(a, b)
+        return mm_tme_narrow(a, b, c)
     trans_b = b.stride(0) == 1
     # A long reduction with fewer than two column waves benefits from Split-K.
     if m <= 8:
         split_k = 2 if trans_b and k >= 16384 and n <= 8192 else 1
     else:
         split_k = 2 + int(trans_b and k < 4 * n) if k >= 8192 and n <= 8192 else 1
-    c = torch.empty((m, n), dtype=a.dtype, device=a.device)
+    if c is None:
+        c = torch.empty((m, n), dtype=a.dtype, device=a.device)
     partial = (
         torch.empty((split_k, m, n), dtype=torch.float32, device=a.device)
         if split_k > 1
@@ -2861,11 +2829,12 @@ mm_large_tle_tuned = libentry()(
 )
 
 
-def mm_large_half(a, b, M, N, K, trans_b):
+def mm_large_half(a, b, M, N, K, trans_b, c=None):
     """Launch an aligned, row-major-A half GEMM from the large-output family."""
     dtype = a.dtype
     num_sms = torch.musa.get_device_properties(a.device.index).multi_processor_count
-    c = torch.empty((M, N), device=a.device, dtype=dtype)
+    if c is None:
+        c = torch.empty((M, N), device=a.device, dtype=dtype)
 
     # Keep the measured wave decomposition: tile lifetime spans the C epilogue.
     if M == 8192 and N == K == 3584:
@@ -3147,14 +3116,24 @@ def mm_large_half(a, b, M, N, K, trans_b):
 
 
 def mm(a, b):
+    return _mm_impl(a, b)
+
+
+def _mm_impl(a, b, out=None):
     a_dtype, b_dtype = a.dtype, b.dtype
     M, K = a.shape
     N = b.shape[1]
     if N == 1:
-        c = torch.empty((M, N), device=a.device, dtype=a_dtype)
+        c = torch.empty((M, N), device=a.device, dtype=a_dtype) if out is None else out
         return gemv_mm(a, b, c, M, K)
+    # The optimized stores use a row-major destination with the input dtype.
+    # Preserve the upstream strided/different-dtype out path through mm_kernel.
+    if out is not None and not (
+        out.is_contiguous() and out.dtype == a_dtype and out.shape == (M, N)
+    ):
+        return mm_fma(a, b, out)
     if a_dtype == b_dtype == torch.float32:
-        return mm_fp32(a, b)
+        return mm_fp32(a, b, out)
 
     if a_dtype == b_dtype and a_dtype in (torch.float16, torch.bfloat16):
         if a.is_contiguous() and is_supported_sqmma_layout(b):
@@ -3183,9 +3162,9 @@ def mm(a, b):
                     and 2048 <= K <= 4096
                     and (M == 1 or (a_dtype == torch.float16 and M <= 3))
                 ):
-                    return gemv_nt_mm(a, b, N, K)
+                    return gemv_nt_mm(a, b, N, K, out)
                 if TLE_MM_ON:
-                    return mm_tme(a, b)
+                    return mm_tme(a, b, out)
             if (
                 TLE_MM_ON
                 and M > 1024
@@ -3200,8 +3179,8 @@ def mm(a, b):
                     and not trans_b
                     and ((N == 6144 and K == 4096) or (N == 3584 and K == 18944))
                 ):
-                    return mm_sqmma_ws(a, b, M, N, K)
-                return mm_large_half(a, b, M, N, K, trans_b)
+                    return mm_sqmma_ws(a, b, M, N, K, C=out)
+                return mm_large_half(a, b, M, N, K, trans_b, out)
 
         # Split-K supplies parallelism for tiny outputs, including [T,3584] x
         # [3584,64]. Bound its workspace and amortize the separate reduction.
@@ -3211,10 +3190,11 @@ def mm(a, b):
             and 512 <= K <= 32768
             and triton.cdiv(M, 32) * triton.cdiv(N, 32) <= min(64, K // 16)
         ):
-            return mm_small(a, b)
+            return mm_small(a, b, out)
 
     if is_tle_ws_compatible(a, b, M, N, K):
-        return mm_sqmma_ws(a, b, M, N, K)
-    if is_sqmma_compatible(a, b, N, K):
-        return mm_sqmma(a, b, M, N, K)
-    return mm_fma(a, b)
+        return mm_sqmma_ws(a, b, M, N, K, C=out)
+    # The descriptor-store path requires a 16-byte aligned output base.
+    if is_sqmma_compatible(a, b, N, K) and (out is None or out.data_ptr() % 16 == 0):
+        return mm_sqmma(a, b, M, N, K, C=out)
+    return mm_fma(a, b, out)
