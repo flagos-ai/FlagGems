@@ -43,30 +43,28 @@ def test_standard_gamma_grad_regimes(shape, dtype, alpha_range, output_range):
     alpha_lo, alpha_hi = alpha_range
     out_lo, out_hi = output_range
     alpha = (
-        torch.rand(shape, dtype=dtype, device=flag_gems.device)
-        * (alpha_hi - alpha_lo)
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) * (alpha_hi - alpha_lo)
         + alpha_lo
     )
     if alpha_lo >= 10.0:
         output = alpha * (
-            torch.rand(shape, dtype=dtype, device=flag_gems.device)
-            * (out_hi - out_lo)
+            torch.rand(shape, dtype=dtype, device=flag_gems.device) * (out_hi - out_lo)
             + out_lo
         )
     else:
         output = (
-            torch.rand(shape, dtype=dtype, device=flag_gems.device)
-            * (out_hi - out_lo)
+            torch.rand(shape, dtype=dtype, device=flag_gems.device) * (out_hi - out_lo)
             + out_lo
         )
-    alpha_before = alpha.clone()
-    output_before = output.clone()
+    alpha_before = utils.to_reference(alpha.clone())
+    output_before = utils.to_reference(output.clone())
     ref_alpha = utils.to_reference(alpha, True)
     ref_output = utils.to_reference(output, True)
 
     reference = torch._standard_gamma_grad(ref_alpha, ref_output)
     result = flag_gems.standard_gamma_grad(alpha, output)
 
+    assert result.device == alpha.device
     assert result.shape == shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, reference, dtype)
@@ -87,13 +85,20 @@ def test_standard_gamma_grad_noncontiguous(dtype):
     reference = torch._standard_gamma_grad(ref_alpha, ref_output)
     result = flag_gems.standard_gamma_grad(alpha, output)
 
+    assert result.device == alpha.device
+    assert result.dtype == alpha.dtype
+    assert result.shape == alpha.shape
     utils.gems_assert_close(result, reference, dtype)
 
 
 @pytest.mark.standard_gamma_grad
 def test_standard_gamma_grad_rejects_mismatched_dtype():
     alpha = torch.rand((8,), dtype=torch.float32, device=flag_gems.device) + 0.5
-    output = torch.rand((8,), dtype=torch.float64, device=flag_gems.device) + 0.5
+    output_dtype = (
+        torch.float16 if flag_gems.vendor_name == "kunlunxin" else torch.float64
+    )
+    output = torch.rand((8,), dtype=output_dtype, device=flag_gems.device) + 0.5
+    assert alpha.dtype != output.dtype
 
     with pytest.raises(RuntimeError):
         flag_gems.standard_gamma_grad(alpha, output)
