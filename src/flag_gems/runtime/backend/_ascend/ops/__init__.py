@@ -187,10 +187,10 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
-    "_flash_attention_forward",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
+    "_flash_attention_forward",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
