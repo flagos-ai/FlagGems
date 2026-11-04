@@ -22,9 +22,12 @@ removed here. Compilation checks all remaining resource limits; mixed loads
 must not be assigned a uniform buffer count.
 """
 
+from functools import lru_cache
 from itertools import product
+from pathlib import Path
 
 import triton
+import yaml
 
 # name, load mode, stages, K packing, transposed MMAC, epilogue, base waves, LDS slots
 MM_PROFILES = (
@@ -107,8 +110,68 @@ def _append(configs, seen, meta, waves, stages, ranges, pre_hook):
     )
 
 
+@lru_cache(maxsize=1)
+def _default_mm_launches():
+    """Reuse the backend's default geometry and launch coverage."""
+    path = Path(__file__).with_name("tune_configs.yaml")
+    recipes = yaml.safe_load(path.read_text())["mm"]
+    return tuple(
+        sorted(
+            {
+                (
+                    recipe["META"]["BLOCK_M"],
+                    recipe["META"]["BLOCK_N"],
+                    recipe["META"]["BLOCK_K"],
+                    recipe["META"].get("GROUP_M", 8),
+                    recipe.get("num_warps", 4),
+                    recipe.get("num_stages", 1),
+                )
+                for recipe in recipes
+            }
+        )
+    )
+
+
+def _append_default_mm_baselines(configs, seen, ranges, supports_ring, pre_hook):
+    # A minimal-wave profile does not replace the default launch choices:
+    # operand registers can spill even when the accumulator fits one wave.
+    # Keep the existing default geometry/launch recipes, with an ordinary
+    # untransposed pipeline, as independent controls for the optimized profiles.
+    for bm, bn, bk, group, waves, stages in _default_mm_launches():
+        if any(
+            value not in ranges[key]
+            for key, value in (
+                ("BLOCK_M", bm),
+                ("BLOCK_N", bn),
+                ("BLOCK_K", bk),
+                ("GROUP_M", group),
+            )
+        ):
+            continue
+        meta = {
+            "BLOCK_M": bm,
+            "BLOCK_N": bn,
+            "BLOCK_K": bk,
+            "GROUP_M": group,
+            "LOAD_MODE": 0,
+            "ASYNC_LOAD": False,
+            "mmac_warps_m": 0,
+            "mmac_transposed": False,
+            "optimize_epilogue": False,
+            "schedule_hint": "none",
+            "kpack": 1,
+            "waves_per_eu": 1,
+            "sched_latency": "none",
+        }
+        if supports_ring:
+            meta["sync_lds_buffers"] = 1
+        _append(configs, seen, meta, waves, stages, ranges, pre_hook)
+
+
 def build_mm_configs(ranges, pre_hook=None):
-    selected = _profiles(ranges, (p[0] for p in MM_PROFILES))
+    selected = _profiles(
+        ranges, tuple(p[0] for p in MM_PROFILES) + ("default_baselines",)
+    )
     try:
         from triton.backends.hcu.compiler import HIPOptions
     except ImportError:
@@ -168,6 +231,8 @@ def build_mm_configs(ranges, pre_hook=None):
             if supports_ring:
                 meta["sync_lds_buffers"] = slots
             _append(configs, seen, meta, waves, stages, ranges, pre_hook)
+    if "default_baselines" in selected:
+        _append_default_mm_baselines(configs, seen, ranges, supports_ring, pre_hook)
     return configs
 
 

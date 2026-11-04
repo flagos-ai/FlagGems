@@ -166,7 +166,10 @@ def test_hygon_mm_expanded_regular_geometry_and_schema(hygon_mm):
     assert all("PROFILE" not in c.kwargs for c in configs)
     assert {c.kwargs["LOAD_MODE"] for c in configs} == {0, 1, 2, 3}
     assert {c.num_warps for c in configs} == {1, 2, 4, 8}
-    assert {c.num_stages for c in configs} == {1, 2, 3, 4}
+    default_stages = {
+        config.num_stages for config in hygon_mm.runtime.get_tuned_config("mm")
+    }
+    assert {c.num_stages for c in configs} == {1, 2, 3, 4} | default_stages
     assert {c.kwargs["kpack"] for c in configs} == {1, 2}
     assert {c.kwargs["sched_latency"] for c in configs} == {"none"}
     # Every geometry retains a plain synchronous fallback. The profile space
@@ -614,6 +617,64 @@ def test_hygon_mm_named_profiles_have_distinct_representatives(hygon_mm):
         assert len(configs) == 1 and configs[0].pre_hook is hook
         representatives.append(tuple(sorted(configs[0].all_kwargs().items())))
     assert len(set(representatives)) == len(names)
+
+
+def _mm_baseline_launch(config):
+    meta = config.kwargs
+    return (
+        meta["BLOCK_M"],
+        meta["BLOCK_N"],
+        meta["BLOCK_K"],
+        meta.get("GROUP_M", 8),
+        config.num_warps,
+        config.num_stages,
+    )
+
+
+def test_hygon_mm_expanded_covers_default_baseline_launches(hygon_mm):
+    defaults = hygon_mm.runtime.get_tuned_config("mm")
+    before = [copy.deepcopy(config.all_kwargs()) for config in defaults]
+    baselines = [
+        config
+        for config in _expanded_configs(hygon_mm)
+        if config.kwargs["LOAD_MODE"] == 0
+        and not config.kwargs["ASYNC_LOAD"]
+        and not config.kwargs["mmac_transposed"]
+        and not config.kwargs["optimize_epilogue"]
+        and config.kwargs["schedule_hint"] == "none"
+        and config.kwargs["kpack"] == 1
+    ]
+    assert {_mm_baseline_launch(config) for config in defaults} <= {
+        _mm_baseline_launch(config) for config in baselines
+    }
+    assert [config.all_kwargs() for config in defaults] == before
+
+
+def test_hygon_mm_default_baselines_respect_launch_ranges(hygon_mm):
+    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+
+    launches = {
+        _mm_baseline_launch(config)
+        for config in hygon_mm.runtime.get_tuned_config("mm")
+    }
+    ranges = {
+        "PROFILE": ["default_baselines"],
+        "BLOCK_M": sorted({launch[0] for launch in launches}),
+        "BLOCK_N": sorted({launch[1] for launch in launches}),
+        "BLOCK_K": sorted({launch[2] for launch in launches}),
+        "GROUP_M": sorted({launch[3] for launch in launches}),
+        "w": sorted({launch[4] for launch in launches}),
+        "s": [1],
+    }
+
+    def hook(values):
+        return None
+
+    configs = build_mm_configs(ranges, pre_hook=hook)
+    assert {_mm_baseline_launch(config) for config in configs} == {
+        launch for launch in launches if launch[-1] == 1
+    }
+    assert all(config.pre_hook is hook for config in configs)
 
 
 def test_hygon_mm_expanded_older_compiler_omits_ring_option(hygon_mm, monkeypatch):

@@ -13,10 +13,11 @@
 # limitations under the License.
 
 
-# Regular gfx936 MM geometry, 2460 candidates after copy/layout alias and
-# profile-specific LDS allocation checks.
+# Regular gfx936 MM geometry and the existing default launch baselines,
+# 2486 candidates after copy/layout alias and profile-specific allocation checks.
 # Launch ranges are allowed values; each named profile derives one stage/wave
-# choice per tile. All ten scheduling mechanisms are retained.
+# choice per tile. All ten scheduling mechanisms and the default geometry/launch
+# coverage are retained; the default table is reused rather than duplicated.
 # The generator checks proven allocation bounds for these scheduling profiles.
 # Compilation handles remaining limits. Uniform LDS-slot estimates cannot
 # exclude configurations with scalar fallback or scratch reuse.
@@ -35,6 +36,7 @@ mm:
     block_k: [16, 32, 64, 128]
     group_m: [1, 4, 8]
     profile: [generic_min, generic_pipe, sync, packed, register_prefetch,
-              shared_prefetch, async_a, async_b, async_pair, async_deep]
-    stages: [1, 2, 3, 4]
+              shared_prefetch, async_a, async_b, async_pair, async_deep,
+              default_baselines]
+    stages: [1, 2, 3, 4, 5]
     warps: [1, 2, 4, 8]
