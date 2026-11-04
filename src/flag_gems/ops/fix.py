@@ -20,7 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
+from flag_gems.runtime import device
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,8 @@ def _copy_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 def _launch_fix_kernel(x: torch.Tensor, out: torch.Tensor, block_size: int = 1024):
     assert (
-        x.device.type == flag_gems.device and out.device.type == flag_gems.device
-    ), "Input and output must be on the accelerator device"
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Input and output must be on the {device.name} device"
     assert (
         x.numel() == out.numel()
     ), "Input and output must have the same number of elements"

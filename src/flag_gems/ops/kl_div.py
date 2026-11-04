@@ -20,8 +20,7 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
-from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +102,9 @@ def _kl_div_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     if input.device != target.device:
         raise AssertionError("kl_div: input and target must be on the same device.")
-    if input.device.type != flag_gems.device:
+    if input.device.type != device.name:
         raise AssertionError(
-            f"kl_div: input and target must be on the {flag_gems.device} device."
+            f"kl_div: input and target must be on the {device.name} device."
         )
     input, target = torch.broadcast_tensors(input, target)
     return input.contiguous(), target.contiguous()
