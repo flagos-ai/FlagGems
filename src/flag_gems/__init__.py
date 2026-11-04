@@ -932,12 +932,7 @@ _FULL_CONFIG = (
         "clone",
         clone,
         None,
-        # Ascend needs ATen's native Autograd rules for FakeTensor/compile.
-        (
-            ()
-            if vendor_name == "ascend"
-            else (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel)
-        ),
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
     ),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),

@@ -38,6 +38,7 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .clone import clone
 from .concat import concat
 from .conv3d import conv3d
 from .copy import copy, copy_
@@ -226,6 +227,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "clone",
     "concat",
     "constant_pad_nd",
     "conv3d",
