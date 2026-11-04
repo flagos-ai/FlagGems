@@ -99,7 +99,16 @@ def _fdiv(a, s):
 def _fpow(a, s):
     if a.dtype == tl.float64:
         return tl.exp2(tl.log2(a) * s)
-    return tl.exp2(tl.log2(a.to(tl.float32)) * s.to(tl.float32))
+    a32 = a.to(tl.float32)
+    r = tl.exp2(tl.log2(a32) * s.to(tl.float32))
+    # ``exp2(log2(a) * s)`` is NaN when the product is ``0 * inf`` (``a == 1``
+    # with an infinite ``s``); ATen's ``pow`` returns 1 (``pow(1, x) == 1`` for
+    # every x).  The base is tested through its int bit pattern: the XPU
+    # backend rejects a 16-wide f32 ``setcc`` and a ``splat``-ed scalar compare
+    # inside ``arith.select`` (UnrollControl), while the i64 compare + select
+    # pattern the other kernels here use compiles.  The ``s == 0`` identity
+    # (``pow(x, 0) == 1``) is handled on the host, where the scalar is visible.
+    return tl.where(a32.to(tl.int32, bitcast=True).to(tl.int64) != 0x3F800000, r, 1.0)
 
 
 @triton.jit
@@ -476,6 +485,9 @@ _FLOAT = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
 _INT = (torch.int8, torch.int16, torch.int32, torch.int64, torch.uint8)
 ARITH = frozenset(_FLOAT + _INT + (torch.bool,))
 NO_BOOL = frozenset(_FLOAT + _INT)
+# ``pow`` accepts a bool base (``bool ** float`` is computed in floating
+# point; ``False ** -1`` is ``inf``), which is why it is not ``NO_BOOL``.
+_POW_ALLOWED = frozenset(_FLOAT + (torch.bool,))
 
 # ATen's wording for the one operator that refuses bool with a dedicated
 # message rather than the generic "not implemented" text.
@@ -494,12 +506,18 @@ _OPS = {
     "mul": (_fmul, ARITH, None),
     "add": (_fadd, ARITH, None),
     "div": (_fdiv, NO_BOOL, None),
-    "pow": (_fpow, _FLOAT, None),
+    "pow": (_fpow, _POW_ALLOWED, None),
 }
 
 
-def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[float]:
-    """Normalise the ``.Scalar`` / ``.ScalarList`` forms into a per-tensor list."""
+def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[Any]:
+    """Normalise the ``.Scalar`` / ``.ScalarList`` forms into a per-tensor list.
+
+    The scalar keeps its original type (``int`` stays ``int``) so
+    ``torch.result_type`` can tell ``bool ** 2`` (int64 result) from
+    ``bool ** 2.0`` (float32); the kernel arguments are float-ised by the
+    caller and cast per-element by ``.to(OT)`` anyway.
+    """
     if isinstance(scalars, torch.Tensor):
         if scalars.numel() == 1:
             return [scalars.item()] * len(tensors)
@@ -508,15 +526,15 @@ def _resolve_scalars(tensors: Sequence[torch.Tensor], scalars: Any) -> List[floa
                 "Tensor list must have same number of elements as scalar list, "
                 f"got {len(tensors)} and {scalars.numel()}"
             )
-        return [float(v) for v in scalars.detach().cpu().tolist()]
+        return [v for v in scalars.detach().cpu().tolist()]
     if isinstance(scalars, (list, tuple)):
         if len(tensors) != len(scalars):
             raise RuntimeError(
                 "Tensor list must have same number of elements as scalar list, "
                 f"got {len(tensors)} and {len(scalars)}"
             )
-        return [float(v) for v in scalars]
-    return [float(scalars)] * len(tensors)
+        return [v for v in scalars]
+    return [scalars] * len(tensors)
 
 
 def _apply_scalar(name: str, self, scalars, inplace: bool):
@@ -556,6 +574,14 @@ def _apply_scalar(name: str, self, scalars, inplace: bool):
         else:
             dst = torch.empty_like(src, dtype=out_dtype)
             results[i] = dst
+        if fn is _fpow and v == 0:
+            # ``pow(x, 0) == 1`` for every x (IEEE, including ``0**0``,
+            # ``inf**0`` and ``nan**0``), but ``exp2(log2(a) * 0)`` is NaN for
+            # ``a == 0``/``a == inf`` -- and the scalar compare cannot be
+            # splat-ed into the kernel (see ``_fpow``).  Pin the identity here
+            # where the scalar is visible.
+            dst.fill_(1.0)
+            continue
         key = (t.device, src.dtype, out_dtype)
         bucket = buckets.get(key)
         if bucket is None:
@@ -614,7 +640,9 @@ _ENTRIES = [
     ("add", "ScalarList", True),
     ("div", "Scalar", True),
     ("div", "ScalarList", True),
+    ("pow", "Scalar", False),
     ("pow", "Scalar", True),
+    ("pow", "ScalarList", False),
     ("pow", "ScalarList", True),
 ]
 
