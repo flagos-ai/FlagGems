@@ -42,6 +42,15 @@ os.environ.setdefault("TRITONXPU_TLE_PIPELINE", "1")
 
 logger = logging.getLogger(__name__)
 
+
+def _empty_dim_result(shape, dim, keepdim, device):
+    """Return the reduction result without launching a kernel for an empty output."""
+    for i in dim:
+        shape[i] = 1
+    out = torch.ones(shape, dtype=torch.bool, device=device)
+    return out if keepdim else out.squeeze(dim=dim)
+
+
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if all elements in input evaluate to non-zero value
 
