@@ -44,6 +44,7 @@ from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
+from .grid_sampler_3d import grid_sampler_3d
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
 from .histc import histc
@@ -172,6 +173,7 @@ __all__ = [
     "div_mode_",
     "fractional_max_pool2d_backward",
     "gcd_",
+    "grid_sampler_3d",
     "gru",
     "gru_data",
     "hadamard_transform",
