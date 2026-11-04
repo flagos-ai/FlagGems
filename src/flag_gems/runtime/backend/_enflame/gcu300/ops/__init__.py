@@ -16,6 +16,7 @@ from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
+from ._philox_uniform_ import _philox_uniform_
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._unsafe_masked_index import _unsafe_masked_index
 from .abs import abs, abs_
@@ -300,6 +301,7 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_per_sample_weights_backward",
     "_index_put_impl_",
+    "_philox_uniform_",
     "_scaled_dot_product_flash_attention",
     "_unique2",
     "_unsafe_masked_index",
