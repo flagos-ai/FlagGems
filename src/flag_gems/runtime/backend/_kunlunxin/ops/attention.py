@@ -751,6 +751,17 @@ def scaled_dot_product_attention_forward(
     padded_dv = triton.next_power_of_2(value_dim)
     q_in = _fa_pad_d(query, padded_dq) if padded_dq != head_dim else query
     v_in = _fa_pad_d(value, padded_dv) if padded_dv != value_dim else value
+    v_padded = k_pad != kv_len
+    if v_padded:
+        v_in = torch.cat(
+            (
+                v_in,
+                v_in.new_zeros(
+                    v_in.shape[0], v_in.shape[1], k_pad - kv_len, v_in.shape[3]
+                ),
+            ),
+            dim=2,
+        )
 
     # Build the (B, H, Q, K_PAD) cmask: cm = -bias for allowed cells, +1e30
     # for masked cells.  n >= K cells are never stored by kernel A (they stay
@@ -828,6 +839,7 @@ def scaled_dot_product_attention_forward(
         PADDED_D=padded_dv,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
+        V_PADDED=v_padded,
     )
     with torch_device_fn.device(device):
         _fa_qk_m_kernel[grid](
@@ -1508,6 +1520,7 @@ def _fa_lout_kernel(
     D_WIDTH: tl.constexpr,
     D_OFF: tl.constexpr,
     STORE_LSE: tl.constexpr,
+    V_PADDED: tl.constexpr,
 ):
     """Pass 2: ``p = exp2((qk' - m) * LOG2E) = e^(qk' - m)``, ``out = p @ V / sum``.
 
@@ -1547,7 +1560,11 @@ def _fa_lout_kernel(
         p = tl.exp2((qk - m_i[:, None]) * _LOG2E)
         p = tl.where((qk - m_i[:, None]) > -12.0, p, 0.0)
         v_ptrs = v_base + offs_n[:, None] * stride_vs + offs_d[None, :] * stride_vd
-        value = tl.load(v_ptrs, mask=kv_mask[:, None], other=0.0)
+        # V is pre-padded to K_PAD when V_PADDED, so the tail block loads unmasked.
+        if V_PADDED:
+            value = tl.load(v_ptrs)
+        else:
+            value = tl.load(v_ptrs, mask=kv_mask[:, None], other=0.0)
         acc = tl.dot(p.to(value.dtype), value, acc=acc)
         l_i = l_i + tl.sum(p, 1)
     l_safe = tl.maximum(l_i, 1e-30)
@@ -1657,6 +1674,18 @@ def flash_attention_forward(
     else:
         q_in, k_in, v_in = query, key, value
 
+    v_padded = k_pad != k_len
+    if v_padded:
+        v_in = torch.cat(
+            (
+                v_in,
+                v_in.new_zeros(
+                    v_in.shape[0], k_pad - k_len, v_in.shape[2], v_in.shape[3]
+                ),
+            ),
+            dim=1,
+        )
+
     # cmask (B*H, Q, K_PAD): 0.0 = valid, 50.0 = masked (causal bound
     # n <= row+off, window bounds, and the n >= k_len padding).  Kernel A
     # folds it into the stored qk (qk' = qk - 50); kernel B zeroes cells with
@@ -1744,6 +1773,7 @@ def flash_attention_forward(
                 D_WIDTH=min(128, padded_d - d_off),
                 D_OFF=d_off,
                 STORE_LSE=(d_off == 0),
+                V_PADDED=v_padded,
                 num_warps=8,
                 num_stages=1,
                 **common,
