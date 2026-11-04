@@ -318,7 +318,7 @@ def _global_aminmax_view(dtype, layout):
 @pytest.mark.parametrize("keepdim", [False, True])
 def test_aminmax_global_views(dtype, layout, keepdim):
     storage, inp = _global_aminmax_view(dtype, layout)
-    before = storage.clone()
+    before = utils.to_reference(storage).clone()
     metadata = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
     ref_min, ref_max = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     res_min, res_max = flag_gems.aminmax(inp, keepdim=keepdim)
@@ -338,7 +338,7 @@ def test_aminmax_global_int64_index_holes(hole):
         [hole, 0, hole, 55, hole, 1, hole], dtype=torch.int64, device=flag_gems.device
     )
     inp = storage[1:6:2]
-    before = storage.clone()
+    before = utils.to_reference(storage).clone()
     assert inp.stride() == (2,) and inp.storage_offset() == 1
     result = flag_gems.aminmax(inp)
     reference = torch.aminmax(utils.to_reference(inp))
@@ -356,7 +356,7 @@ def test_aminmax_global_stride_boundaries(n, keepdim):
     inp = storage[1 : 2 * n + 1 : 2]
     inp.fill_(1)
     inp[-1] = -7
-    before = storage.clone()
+    before = utils.to_reference(storage).clone()
     expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     actual = flag_gems.aminmax(inp, keepdim=keepdim)
     for result, reference in zip(actual, expected):
@@ -373,7 +373,7 @@ def test_aminmax_global_nan_holes_out(keepdim):
         device=flag_gems.device,
     )
     inp = storage[1::2]
-    before = storage.clone()
+    before = utils.to_reference(storage).clone()
     shape = (1,) if keepdim else ()
     out = tuple(
         torch.empty(shape, dtype=inp.dtype, device=inp.device) for _ in range(2)
@@ -400,6 +400,7 @@ def test_aminmax_global_scalar(keepdim):
 @pytest.mark.xfail(
     strict=True,
     reason="Existing public global NaN propagation defect; independent of strides",
+    raises=AssertionError,
 )
 @pytest.mark.parametrize("strided", [False, True])
 def test_aminmax_global_logical_nan_contract(strided):
@@ -414,7 +415,8 @@ def test_aminmax_global_logical_nan_contract(strided):
 @pytest.mark.aminmax
 @pytest.mark.xfail(
     strict=True,
-    reason="Existing public global empty reduction lacks ATen no-identity error",
+    reason="Observed host divide-by-zero in public global empty aminmax",
+    raises=ZeroDivisionError,
 )
 @pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
 def test_aminmax_global_empty_contract(shape):
@@ -434,7 +436,7 @@ def test_aminmax_global_int64_preserves_wide_values():
         device=flag_gems.device,
     )
     inp = storage[1:6:2]
-    before = storage.clone()
+    before = utils.to_reference(storage).clone()
     actual = flag_gems.aminmax(inp)
     expected = torch.aminmax(utils.to_reference(inp))
     for result, reference in zip(actual, expected):
