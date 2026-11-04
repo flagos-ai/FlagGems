@@ -143,7 +143,11 @@ def cudnn_ctc_loss_forward_kernel(
         )
 
     if input_len <= 0:
-        loss = tl.where(target_len == 0, 0.0, float("inf"))
+        # Matches cuDNN: an empty input with an empty target is the one case it
+        # reports as infinite; an empty input with a non-empty target (nothing
+        # to align) is reported as a zero loss, like any other infeasible
+        # alignment.
+        loss = tl.where(target_len == 0, float("inf"), 0.0)
     elif target_len == 0:
         # Nothing to align: cuDNN reports a zero loss for the empty label
         # sequence and attributes no probability mass to any target state.
@@ -169,7 +173,11 @@ def cudnn_ctc_loss_forward_kernel(
             axis=0,
         )
         log_likelihood = _logaddexp(last, prev_last)
-        loss = -log_likelihood
+        # An infeasible alignment also yields -inf, but cuDNN reports it as a
+        # zero loss rather than +inf (verified for `input_len < target_len`,
+        # e.g. two time steps for three labels). Only the empty-input /
+        # empty-target combination above is infinite.
+        loss = tl.where(log_likelihood == -float("inf"), 0.0, -log_likelihood)
 
     tl.store(neg_log_likelihood + batch, loss)
 
@@ -179,12 +187,15 @@ def cudnn_ctc_loss_forward_kernel(
 def cudnn_ctc_loss_init_grad_kernel(
     log_probs,
     input_lengths,
+    target_lengths,
+    log_alpha,
     grad_output,
     grad_input,
     total,
     T: tl.constexpr,
     N: tl.constexpr,
     C: tl.constexpr,
+    BLOCK_S: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -193,9 +204,31 @@ def cudnn_ctc_loss_init_grad_kernel(
     t = offsets // (N * C)
 
     input_len = tl.load(input_lengths + batch, mask=mask, other=0)
+    target_len = tl.load(target_lengths + batch, mask=mask, other=0)
     scale = tl.load(grad_output + batch, mask=mask, other=0.0).to(tl.float32)
     logp = tl.load(log_probs + offsets, mask=mask, other=-float("inf")).to(tl.float32)
-    grad = tl.where((t < input_len) & mask, tl.exp(logp) * scale, 0.0)
+    # A finite `log_alpha` at either terminal state means at least one
+    # alignment exists (the forward pass sums both, exactly as
+    # `_logaddexp(last, prev_last)` does). When the label sequence cannot fit
+    # into `input_len` steps (e.g. three labels into two steps, or adjacent
+    # repeated labels with no room for the separating blank), cuDNN reports a
+    # zero loss and a zero gradient rather than `exp(log_probs)`. An empty
+    # target is still alignable, so it keeps the `exp(log_probs)` seed that the
+    # backward pass leaves untouched.
+    last_t = tl.maximum(input_len - 1, 0)
+    row = log_alpha + batch * T * BLOCK_S + last_t * BLOCK_S
+    last_state = tl.load(
+        row + 2 * target_len,
+        mask=mask & (input_len > 0),
+        other=-float("inf"),
+    )
+    prev_state = tl.load(
+        row + tl.maximum(2 * target_len - 1, 0),
+        mask=mask & (input_len > 0),
+        other=-float("inf"),
+    )
+    aligned = tl.maximum(last_state, prev_state) > -float("inf")
+    grad = tl.where((t < input_len) & aligned & mask, tl.exp(logp) * scale, 0.0)
     tl.store(grad_input + offsets, grad, mask=mask)
 
 
@@ -268,6 +301,11 @@ def cudnn_ctc_loss_backward_kernel(
     )
     beta_init = tl.where(valid_state, beta_init, -float("inf"))
     log_likelihood = tl.where(scale != 0.0, -nll, 0.0)
+    # `-nll` is `+inf` only for the empty-input/empty-target case; an infeasible
+    # alignment reports a zero loss instead (see the forward kernel), so the
+    # posterior is identically zero there and the subtraction below must not
+    # turn into inf - inf.
+    aligned = log_likelihood > -float("inf")
 
     next1_valid = (states + 1 < state_count) & stored_state
     skip_allowed = (
@@ -292,9 +330,10 @@ def cudnn_ctc_loss_backward_kernel(
         ).to(tl.float32)
         log_post = alpha_t + beta - log_likelihood
         # An empty label sequence has no state to accumulate the posterior
-        # mass into, so the gradient stays at `exp(log_probs)`.
+        # mass into, so the gradient stays at `exp(log_probs)`; an infeasible
+        # alignment has no posterior at all, so its gradient is zero.
         posterior = tl.where(
-            active & valid_state & (target_len > 0) & (scale != 0.0),
+            active & valid_state & (target_len > 0) & aligned & (scale != 0.0),
             tl.exp(log_post),
             0.0,
         )
@@ -302,7 +341,7 @@ def cudnn_ctc_loss_backward_kernel(
             grad_input + safe_t * N * C + batch * C + labels,
             -scale * posterior,
             sem="relaxed",
-            mask=active & valid_state & (target_len > 0) & stored_state,
+            mask=active & valid_state & (target_len > 0) & aligned & stored_state,
         )
 
         stay = beta + tl.load(
@@ -432,12 +471,15 @@ def _launch_backward(
             cudnn_ctc_loss_init_grad_kernel[grid](
                 work_log_probs,
                 work_input_lengths,
+                work_target_lengths,
+                log_alpha,
                 grad_output,
                 grad_input,
                 total,
                 T,
                 batch_size,
                 num_classes,
+                block_s,
                 block,
             )
         cudnn_ctc_loss_backward_kernel[(batch_size,)](

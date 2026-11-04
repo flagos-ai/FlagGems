@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import flag_gems
 
 from . import accuracy_utils as utils
+from .conftest import TO_CPU
 
 # `cudnn_ctc_loss` only accepts float32 `log_probs` (cuDNN restriction).
 CTC_DTYPES = [torch.float32]
@@ -311,3 +312,161 @@ def test_cudnn_ctc_loss_invalid_blank():
         flag_gems.cudnn_ctc_loss(
             log_probs, targets, input_lengths, target_lengths, 1, False, False
         )
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_tensor_lengths_dispatch():
+    """The `.Tensor` overload must be reachable through dispatch, not only via
+    the Python wrapper.
+
+    `_cudnn_ctc_loss.Tensor` has to be in `_FULL_CONFIG` with an Autograd
+    fallthrough; a registration regression is otherwise silent because
+    `register_error` only logs. Calling the real schema under `only_enable`
+    exercises the same path `use_gems()` would take.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    shape = (16, 4, 16, 5)
+    log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    inp_len = torch.tensor(input_lengths, dtype=torch.int32, device=device)
+    tgt_len = torch.tensor(target_lengths, dtype=torch.int32, device=device)
+
+    direct_loss, direct_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, inp_len, tgt_len, 0, False, False
+    )
+
+    flag_gems.only_enable(include=["cudnn_ctc_loss"])
+    try:
+        dispatch_loss, dispatch_grad = torch.ops.aten._cudnn_ctc_loss.Tensor(
+            log_probs, targets, inp_len, tgt_len, 0, False, False
+        )
+    finally:
+        flag_gems.enable()
+
+    utils.gems_assert_close(dispatch_loss, direct_loss, torch.float32)
+    utils.gems_assert_close(dispatch_grad, direct_grad, torch.float32)
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_zero_infinity():
+    """`zero_infinity` must not change the reported loss.
+
+    cuDNN ignores the flag: an infeasible alignment already comes back as a
+    zero loss with a zero gradient whether it is set or not, unlike
+    `F.ctc_loss`, which reports `inf` and needs the flag to zero it. This pins
+    the cuDNN contract so a future "fix" toward the `F.ctc_loss` convention
+    cannot land silently.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    t_steps, batch, classes = 8, 2, 6
+    raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
+    log_probs = torch.log_softmax(raw, dim=-1)
+    # Three labels into two time steps can never be aligned: each label needs a
+    # step, and adjacent repeats need a separating blank on top.
+    targets = torch.tensor([1, 2, 3, 4, 5], dtype=torch.int32)
+    input_lengths = [2, 8]
+    target_lengths = [3, 2]
+
+    ref = torch.ops.aten._cudnn_ctc_loss(
+        log_probs,
+        targets.to(device),
+        torch.tensor(input_lengths, dtype=torch.int32, device=device),
+        torch.tensor(target_lengths, dtype=torch.int32, device=device),
+        0,
+        True,
+        False,
+    )
+
+    for zero_infinity in (False, True):
+        res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            0,
+            True,
+            zero_infinity,
+        )
+        # Infeasible alignment: zero loss, zero gradient, no NaN.
+        assert res_loss[0].item() == 0.0
+        assert res_grad[:, 0].count_nonzero().item() == 0
+        assert not torch.isnan(res_grad).any()
+        utils.gems_assert_close(res_loss, ref[0], torch.float32)
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_infeasible_alignment():
+    """An infeasible alignment yields zero loss and zero gradient.
+
+    Both shapes below reach the terminal-state reduction with every state still
+    `-inf`: a label sequence longer than the input, and adjacent repeated
+    labels with no time step left for the separating blank. The loss must come
+    back as zero (not `inf`), and the gradient must be all zeros (not `NaN`
+    from `inf - inf`, and not the `exp(log_probs)` seed the empty-target path
+    leaves in place).
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    t_steps, batch, classes = 8, 2, 6
+    raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
+    log_probs = torch.log_softmax(raw, dim=-1)
+
+    cases = [
+        # (targets, input_lengths, target_lengths)
+        ([1, 2, 3, 4, 5], [2, 8], [3, 2]),
+        ([2, 2, 4], [2, 8], [2, 1]),
+    ]
+    for targets, input_lengths, target_lengths in cases:
+        tgt = torch.tensor(targets, dtype=torch.int32)
+        inp_len = torch.tensor(input_lengths, dtype=torch.int32, device=device)
+        tgt_len = torch.tensor(target_lengths, dtype=torch.int32, device=device)
+        ref_loss, ref_grad = torch.ops.aten._cudnn_ctc_loss(
+            log_probs, tgt.to(device), inp_len, tgt_len, 0, True, False
+        )
+
+        res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+            log_probs, tgt, input_lengths, target_lengths, 0, True, False
+        )
+
+        assert res_loss[0].item() == 0.0, (targets, res_loss.tolist())
+        assert res_grad[:, 0].count_nonzero().item() == 0
+        assert not torch.isnan(res_grad).any()
+        utils.gems_assert_close(res_loss, ref_loss, torch.float32)
+        utils.gems_assert_close(res_grad[:, 0], ref_grad[:, 0], torch.float32)
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_empty_input():
+    """An empty input with an empty target is the one infinite-loss case."""
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    t_steps, batch, classes = 8, 2, 6
+    raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
+    log_probs = torch.log_softmax(raw, dim=-1)
+    targets = torch.tensor([1], dtype=torch.int32)
+    input_lengths = [0, 8]
+    target_lengths = [0, 1]
+
+    res_loss, res_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, True, False
+    )
+
+    assert torch.isinf(res_loss[0])
+    assert res_grad[:, 0].count_nonzero().item() == 0
