@@ -57,7 +57,7 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams_kernel(
     in_range = (q >= QUANT_MIN) & (q <= QUANT_MAX)
     q_clamped = tl.minimum(tl.maximum(q, QUANT_MIN), QUANT_MAX)
     # NaN does not propagate through ATen's clamp; it lands on QUANT_MIN.
-    q_clamped = tl.where(x != x, QUANT_MIN, q_clamped)
+    q_clamped = tl.where(x != x, QUANT_MIN * 1.0, q_clamped)
     quantized = scale * (q_clamped - zero_point)
     # When fake quantization is disabled, pass through the input and report
     # the whole tensor as in-range (mask all True).

@@ -130,6 +130,10 @@ MAXPOOL1D_EDGE_CONFIGS = [
 ]
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="exact NaN/signed-zero matching is kunlunxin-only",
+)
 @pytest.mark.max_pool1d_with_indices
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("layout", ["contiguous", "offset", "strided", "unbatched"])
@@ -175,6 +179,10 @@ def test_max_pool1d_with_indices_special_values(
     )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="exact NaN/signed-zero/bit-pattern matching is kunlunxin-only",
+)
 @pytest.mark.max_pool1d_with_indices
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("length", [255, 256])
