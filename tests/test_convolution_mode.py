@@ -58,9 +58,15 @@ def _run_and_assert(
     ref_out = torch.ops.aten._convolution_mode(
         ref_inp, ref_weight, ref_bias, stride, padding, dil, groups
     ).to(dtype)
+    expected_device = inp.device
+    expected_shape = tuple(ref_out.shape)
+    expected_dtype = dtype
     res_out = flag_gems._convolution_mode(
         inp, weight, bias, stride, padding, dil, groups
     )
+    assert res_out.device == expected_device
+    assert res_out.shape == expected_shape
+    assert res_out.dtype == expected_dtype
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -156,7 +162,7 @@ def test_convolution_mode_invalid_padding(dtype):
     torch.manual_seed(0)
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, RuntimeError), match="Invalid padding string"):
         flag_gems._convolution_mode(inp, weight, None, (1, 1), "reflect", (1, 1), 1)
 
 
@@ -167,5 +173,8 @@ def test_convolution_mode_same_strided_raises(dtype):
     torch.manual_seed(0)
     inp = torch.randn(1, 3, 8, 8, dtype=dtype, device=flag_gems.device)
     weight = torch.randn(6, 3, 3, 3, dtype=dtype, device=flag_gems.device)
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        (ValueError, RuntimeError),
+        match="padding='same' is not supported for strided convolutions",
+    ):
         flag_gems._convolution_mode(inp, weight, None, (2, 2), "same", (1, 1), 1)
