@@ -46,6 +46,8 @@ def _case_fn_factory(p, weighted, reduction):
 
 def _build_inputs(plan, dtype, device):
     (n, classes), p, weighted, reduction = plan.builder_args
+    if flag_gems.vendor_name == "enflame" and dtype in (torch.float16, torch.bfloat16):
+        pytest.skip("Enflame native multi_margin_loss backward does not support float16 or bfloat16")
     if flag_gems.vendor_name == "kunlunxin" and dtype == torch.bfloat16:
         pytest.skip("Kunlunxin native multi_margin_loss backward does not support bfloat16")
     torch.manual_seed(0)
