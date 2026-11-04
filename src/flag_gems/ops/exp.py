@@ -25,7 +25,13 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def exp_func(x):
-    return tl.exp(x.to(tl.float32))
+    if x.dtype == tl.float64:
+        # keep double range (#6967): fp32 overflows at exp(88.7), double not
+        # until exp(709.8), so a cast-first compute turned finite results into
+        # inf. else: every other dtype keeps the fp32 compute unchanged.
+        return tl.exp(x)
+    else:
+        return tl.exp(x.to(tl.float32))
 
 
 def exp(A):
