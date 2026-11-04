@@ -1,3 +1,4 @@
+# src/flag_gems/ops/__init__.py
 from flag_gems.ops._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -330,6 +331,14 @@ from flag_gems.ops.where import (
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+# import triton kernels for flagtree backend dispatch
+from ...triton_src import addmm as triton_addmm
+from ...triton_src import bmm as triton_bmm
+from ...triton_src import conv2d as triton_conv2d
+from ...triton_src import glu as triton_glu
+from ...triton_src import mm as triton_mm
+from ..runtime import get_compiler_backend
 
 __all__ = [
     "_assert_async",
