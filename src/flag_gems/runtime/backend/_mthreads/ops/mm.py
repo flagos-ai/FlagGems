@@ -649,6 +649,9 @@ def _ws_mm_consumer(
     block_m: tl.constexpr,
     block_n: tl.constexpr,
     block_k: tl.constexpr,
+    TRANS_B: tl.constexpr = False,
+    COMBINED_PIPE: tl.constexpr = False,
+    UNROLL_K: tl.constexpr = True,
 ):
     offset_m = pid_m * block_m + tl.arange(0, block_m)
     offset_n = pid_n * block_n + tl.arange(0, block_n)
@@ -660,14 +663,18 @@ def _ws_mm_consumer(
         0,
         k_tiles,
         num_stages=1,
-        loop_unroll_factor=k_tiles,
+        loop_unroll_factor=k_tiles if UNROLL_K else 1,
     ):
         a_wait = a_reader.wait(k_iter)
-        b_wait = b_reader.wait(k_iter)
-        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc)
+        if COMBINED_PIPE:
+            b_wait = a_wait
+        else:
+            b_wait = b_reader.wait(k_iter)
+        acc = tle.gpu.wgmma(a_wait.slot.a, b_wait.slot.b, acc, trans_b=TRANS_B)
         acc = tle.gpu.wgmma_wait(0, acc)
         a_reader.release(k_iter)
-        b_reader.release(k_iter)
+        if not COMBINED_PIPE:
+            b_reader.release(k_iter)
 
     c_block_ptr = c_ptr + N * offset_m[:, None] + offset_n[None, :]
     tl.store(c_block_ptr, acc.to(c_ptr.dtype.element_ty), mask=mask)
@@ -685,6 +692,9 @@ def _ws_mm_producer(
     block_m: tl.constexpr,
     block_n: tl.constexpr,
     block_k: tl.constexpr,
+    TRANS_B: tl.constexpr = False,
+    COMBINED_PIPE: tl.constexpr = False,
+    UNROLL_K: tl.constexpr = True,
 ):
     offset_m = pid_m * block_m
     offset_n = pid_n * block_n
@@ -694,25 +704,37 @@ def _ws_mm_producer(
         0,
         k_tiles,
         num_stages=1,
-        loop_unroll_factor=k_tiles,
+        loop_unroll_factor=k_tiles if UNROLL_K else 1,
     ):
         offset_k = k_iter * block_k
         a_slot = a_writer.acquire(k_iter)
-        b_slot = b_writer.acquire(k_iter)
+        if COMBINED_PIPE:
+            b_slot = a_slot
+        else:
+            b_slot = b_writer.acquire(k_iter)
         tle.gpu.copy(
             a_desc,
             a_slot.a,
             (block_m, block_k),
             (offset_m, offset_k),
         )
-        tle.gpu.copy(
-            b_desc,
-            b_slot.b,
-            (block_k, block_n),
-            (offset_k, offset_n),
-        )
+        if TRANS_B:
+            tle.gpu.copy(
+                b_desc,
+                b_slot.b,
+                (block_n, block_k),
+                (offset_n, offset_k),
+            )
+        else:
+            tle.gpu.copy(
+                b_desc,
+                b_slot.b,
+                (block_k, block_n),
+                (offset_k, offset_n),
+            )
         a_writer.commit(k_iter)
-        b_writer.commit(k_iter)
+        if not COMBINED_PIPE:
+            b_writer.commit(k_iter)
 
 
 @triton.jit
@@ -729,19 +751,27 @@ def mm_sqmma_ws_kernel(
     panel_width: tl.constexpr,
     pipeline_stages: tl.constexpr,
     full_panel: tl.constexpr,
+    TRANS_B: tl.constexpr = False,
+    COMBINED_PIPE: tl.constexpr = False,
+    UNROLL_K: tl.constexpr = True,
+    PRODUCER_REGS: tl.constexpr = 24,
 ):
-    raw_bx = tl.program_id(axis=0)
-    raw_by = tl.program_id(axis=1)
-    grid_x = tl.num_programs(axis=0)
-    grid_y = tl.num_programs(axis=1)
-    block_idx = raw_bx + raw_by * grid_x
-    pid_n, pid_m = _ws_rasterization_2d_column(
-        block_idx,
-        grid_x,
-        grid_y,
-        panel_width,
-        full_panel,
-    )
+    if panel_width > 0:
+        raw_bx = tl.program_id(axis=0)
+        raw_by = tl.program_id(axis=1)
+        grid_x = tl.num_programs(axis=0)
+        grid_y = tl.num_programs(axis=1)
+        block_idx = raw_bx + raw_by * grid_x
+        pid_n, pid_m = _ws_rasterization_2d_column(
+            block_idx,
+            grid_x,
+            grid_y,
+            panel_width,
+            full_panel,
+        )
+    else:
+        pid_m = tl.program_id(axis=0)
+        pid_n = tl.program_id(axis=1)
 
     a_smem = tle.gpu.alloc(
         (pipeline_stages, block_m, block_k),
@@ -749,22 +779,34 @@ def mm_sqmma_ws_kernel(
         scope=tle.gpu.smem,
         nv_mma_shared_layout=True,
     )
+    b_shape: tl.constexpr = (
+        (pipeline_stages, block_n, block_k)
+        if TRANS_B
+        else (pipeline_stages, block_k, block_n)
+    )
     b_smem = tle.gpu.alloc(
-        (pipeline_stages, block_k, block_n),
+        b_shape,
         dtype=c_ptr.dtype.element_ty,
         scope=tle.gpu.smem,
         nv_mma_shared_layout=True,
     )
-    a_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_a", a=a_smem)
-    b_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_b", b=b_smem)
+    if COMBINED_PIPE:
+        pipe = tle.pipe(capacity=pipeline_stages, a=a_smem, b=b_smem)
+        a_reader, a_writer = pipe.reader(), pipe.writer()
+        b_reader, b_writer = a_reader, a_writer
+    else:
+        a_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_a", a=a_smem)
+        b_pipe = tle.pipe(capacity=pipeline_stages, scope="cta", name="mm_b", b=b_smem)
+        a_reader, a_writer = a_pipe.reader(), a_pipe.writer()
+        b_reader, b_writer = b_pipe.reader(), b_pipe.writer()
 
     tle.gpu.warp_specialize(
         [
             (
                 _ws_mm_consumer,
                 (
-                    a_pipe.reader(),
-                    b_pipe.reader(),
+                    a_reader,
+                    b_reader,
                     c_ptr,
                     M,
                     N,
@@ -774,13 +816,16 @@ def mm_sqmma_ws_kernel(
                     block_m,
                     block_n,
                     block_k,
+                    TRANS_B,
+                    COMBINED_PIPE,
+                    UNROLL_K,
                 ),
             ),
             (
                 _ws_mm_producer,
                 (
-                    a_pipe.writer(),
-                    b_pipe.writer(),
+                    a_writer,
+                    b_writer,
                     a_desc,
                     b_desc,
                     K,
@@ -789,11 +834,14 @@ def mm_sqmma_ws_kernel(
                     block_m,
                     block_n,
                     block_k,
+                    TRANS_B,
+                    COMBINED_PIPE,
+                    UNROLL_K,
                 ),
             ),
         ],
         worker_num_warps=[4],
-        worker_num_regs=[24],
+        worker_num_regs=[PRODUCER_REGS],
     )
 
 
@@ -1124,91 +1172,8 @@ def mm_fp32(a, b, c=None):
     return c
 
 
-@triton.jit
-def mm_pipe_producer(
-    a_desc,
-    b_desc,
-    writer,
-    K: tl.constexpr,
-    TRANS_B: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    row = tl.program_id(0) * BLOCK_M
-    col = tl.program_id(1) * BLOCK_N
-    for i in range(triton.cdiv(K, BLOCK_K)):
-        slot = writer.acquire(i)
-        tle.gpu.copy(a_desc, slot.a, (BLOCK_M, BLOCK_K), offsets=(row, i * BLOCK_K))
-        if TRANS_B:
-            tle.gpu.copy(b_desc, slot.b, (BLOCK_N, BLOCK_K), offsets=(col, i * BLOCK_K))
-        else:
-            tle.gpu.copy(b_desc, slot.b, (BLOCK_K, BLOCK_N), offsets=(i * BLOCK_K, col))
-        writer.commit(i)
-
-
-@triton.jit
-def mm_pipe_consumer(
-    C,
-    reader,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    TRANS_B: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_M: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for i in range(triton.cdiv(K, BLOCK_K)):
-        ready = reader.wait(i)
-        acc = tle.gpu.wgmma(ready.slot.a, ready.slot.b, acc, trans_b=TRANS_B)
-        acc = tle.gpu.wgmma_wait(0, acc)
-        reader.release(i)
-    rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
-    cols = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)
-    tl.store(
-        C + rows[:, None] * N + cols[None, :],
-        acc,
-        (rows[:, None] < M) & (cols[None, :] < N),
-    )
-
-
-@libentry()
-@triton.jit
-def mm_pipe_kernel(
-    a_desc,
-    b_desc,
-    C,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    K: tl.constexpr,
-    TRANS_B: tl.constexpr,
-    BLOCK_N: tl.constexpr,
-    BLOCK_M: tl.constexpr = 64,
-    BLOCK_K: tl.constexpr = 128,
-    CAPACITY: tl.constexpr = 4,
-):
-    a = tle.gpu.alloc((CAPACITY, BLOCK_M, BLOCK_K), a_desc.dtype)
-    if TRANS_B:
-        b = tle.gpu.alloc((CAPACITY, BLOCK_N, BLOCK_K), b_desc.dtype)
-    else:
-        b = tle.gpu.alloc((CAPACITY, BLOCK_K, BLOCK_N), b_desc.dtype)
-    pipe = tle.pipe(capacity=CAPACITY, a=a, b=b)
-    tle.gpu.warp_specialize(
-        (
-            (
-                mm_pipe_consumer,
-                (C, pipe.reader(), M, N, K, TRANS_B, BLOCK_N, BLOCK_M, BLOCK_K),
-            ),
-            (
-                mm_pipe_producer,
-                (a_desc, b_desc, pipe.writer(), K, TRANS_B, BLOCK_N, BLOCK_M, BLOCK_K),
-            ),
-        ),
-        (4,),
-        (64,),
-    )
+# Reuse the vendor WS kernel for small tiles with a combined operand pipe.
+mm_pipe_kernel = libentry()(mm_sqmma_ws_kernel)
 
 
 def gemv_nt_mm(a, b, N, K, c=None):
@@ -2411,11 +2376,16 @@ def mm_tme_narrow(a, b, c=None):
                 m,
                 n,
                 k,
-                trans_b,
+                bm,
                 bn,
-                BLOCK_M=bm,
-                BLOCK_K=bk,
-                CAPACITY=4,
+                bk,
+                0,
+                4,
+                False,
+                TRANS_B=trans_b,
+                COMBINED_PIPE=True,
+                UNROLL_K=False,
+                PRODUCER_REGS=64,
                 num_warps=8 if bm == 128 else 4,
                 num_stages=1,
                 enable_backend_opt=True,
