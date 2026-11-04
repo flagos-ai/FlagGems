@@ -678,6 +678,10 @@ from flag_gems.ops.cross_attention import cross_attention
 from flag_gems.ops.crow_indices import crow_indices
 from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_affine_grid_generator import (
+    cudnn_affine_grid_generator,
+    cudnn_affine_grid_generator_out,
+)
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
@@ -2340,6 +2344,8 @@ __all__ = [
     "crow_indices",
     "crow_indices_copy",
     "ctc_loss",
+    "cudnn_affine_grid_generator",
+    "cudnn_affine_grid_generator_out",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
     "cudnn_batch_norm",

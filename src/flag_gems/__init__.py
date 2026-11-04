@@ -2168,6 +2168,8 @@ _FULL_CONFIG = (
         "upsample_nearest3d_backward.grad_input",
         upsample_nearest3d_backward_grad_input,
     ),
+    ("cudnn_affine_grid_generator", cudnn_affine_grid_generator),
+    ("cudnn_affine_grid_generator.out", cudnn_affine_grid_generator_out),
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
