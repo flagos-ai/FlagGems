@@ -20,30 +20,7 @@ from . import base, consts
 
 # TODO(Qiming): Extract this to a base class
 class NormBenchmark(base.GenericBenchmark):
-    # TODO: add new metric
-
-    def set_more_shapes(self):
-        shapes = [
-            # 3D shapes represented as [batch_size, channels, hidden_size]
-            (16, 16, 64),
-            (16, 16, 1024),
-            (16, 16, 4098),
-            # 4D shapes represented as [batch_size, channels, H, W]
-            (1, 8, 4, 4),
-            (16, 8, 128, 128),
-            # Medium normalized dimensions across representative row counts
-            (256, 512),
-            (4096, 256),
-            (4096, 512),
-            (2048, 1024),
-            (1024, 2048),
-            (1025, 1152),
-            (256, 4096),
-        ]
-        if self.op_name == "layer_norm":
-            return shapes + [(65536, 1, 1152)]
-        else:
-            return shapes
+    pass
 
 
 def input_fn(shape, dtype, device):
@@ -61,10 +38,15 @@ def input_fn(shape, dtype, device):
 
 def native_layer_norm_input_fn(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
-    normalized_shape = shape[1:]
+    if shape == (65536, 1, 1152):
+        normalized_shape = (1152,)
+        eps = 1e-6
+    else:
+        normalized_shape = shape[1:]
+        eps = 1e-5
     weight = torch.randn(normalized_shape, dtype=dtype, device=device)
     bias = torch.randn(normalized_shape, dtype=dtype, device=device)
-    yield inp, normalized_shape, weight, bias, 1e-5
+    yield inp, normalized_shape, weight, bias, eps
 
 
 @pytest.mark.native_layer_norm
