@@ -268,7 +268,7 @@ def _det_panel_kernel(
 
 
 def linalg_det(A):
-    logger.debug("GEMS LINALG_DET")
+    logger.debug("GEMS_ILUVATAR LINALG_DET")
     return _linalg_det_impl(A)
 
 
