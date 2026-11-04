@@ -112,6 +112,7 @@ from .linear import linear
 from .log_normal_ import log_normal_
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
+from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
@@ -294,6 +295,7 @@ __all__ = [
     "log_normal_",
     "masked_scale",
     "masked_scatter_backward",
+    "masked_select",
     "matmul_bf16",
     "matmul_int8",
     "max_pool3d_backward",
