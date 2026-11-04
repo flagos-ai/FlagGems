@@ -273,7 +273,7 @@ def linalg_det(A):
 
 
 def linalg_det_out(A, *, out=None):
-    logger.debug("GEMS LINALG_DET_OUT")
+    logger.debug("GEMS_ILUVATAR LINALG_DET_OUT")
     if out is None:
         raise TypeError("linalg_det(): out must be provided for out variant")
     if out.dtype != A.dtype:
