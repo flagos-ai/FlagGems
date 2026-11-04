@@ -19,10 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.linalg_multi_dot import (
-    _matrix_chain_order,
-    _validate_and_prepare,
-)
+from flag_gems.ops.linalg_multi_dot import _matrix_chain_order, _validate_and_prepare
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
