@@ -78,11 +78,18 @@ ENV PRE_COMMIT_HOME=/opt/pre-commit-cache
 # repo file (build is context-independent). The hook repos are gitcode.com
 # mirrors, which the build host CAN reach.
 #
-# KEEP THE repo+rev LIST BELOW IN SYNC WITH .pre-commit-config.yaml. If a rev
-# drifts, pre-commit incrementally rebuilds only the changed hook at run time
-# (correct but slower); rebuild this image to restore the fast path. The
-# local-repo hooks (sort-exports/check-*) use the system python + pyyaml already
-# installed above, so they need no prebuilt venv and are omitted here.
+# KEEP THE repo+rev LIST BELOW IN SYNC WITH .pre-commit-config.yaml, and rebuild
+# this image whenever a rev there changes. If a rev drifts, pre-commit rebuilds
+# the changed hook at run time: fine on branches that have the CI_HTTP_PROXY
+# secret (slower but works), but it needs network, and FORK PRs get no secrets
+# -> empty proxy -> the rebuild can't reach gitcode.com and the code-style check
+# FAILS for outside contributors. A matching baked cache is what keeps fork PRs
+# green, so treat a rev bump as requiring an image rebuild, not just a config
+# edit. The local-repo hooks (sort-exports/check-*) are declared language:system
+# in .pre-commit-config.yaml, so they run under the system python + pyyaml
+# installed above with no prebuilt venv and no run-time install, and are omitted
+# here on purpose. (Do not give them additional_dependencies / language:python —
+# that reintroduces a run-time pip install that breaks fork PRs the same way.)
 RUN set -eux; \
     mkdir -p /tmp/hookbuild; \
     cd /tmp/hookbuild; \
