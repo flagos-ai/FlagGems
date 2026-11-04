@@ -790,12 +790,11 @@ def scaled_dot_product_attention_forward(
         else:
             cmask[..., :kv_len] = 0.0
         if is_causal:
-            # Bottom-right alignment: n <= m + (K - Q) (matches torch SDPA).
             # Build a (Q, K) pattern instead of a 4D broadcast where: the 4D
             # form materializes a B*H-sized f32 temp just to pick entries.
             rows = torch.arange(q_len, device=device)[:, None]
             cols = torch.arange(kv_len, device=device)[None, :]
-            allowed = cols <= (rows + kv_len - q_len)  # (Q, K)
+            allowed = cols <= rows  # (Q, K)
             cmask[..., :kv_len] = torch.where(allowed[None, None], 0.0, 1e30).expand(
                 batch, q_head_num, q_len, kv_len
             )
