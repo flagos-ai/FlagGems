@@ -148,6 +148,24 @@ def _run_kernel(tensors, output, row_width, out_row_stride):
     return output
 
 
+def _kernel_can_address(dtype):
+    """Whether the copy kernel can be compiled for ``dtype`` on GCU300."""
+    return dtype not in (torch.float64, torch.complex128)
+
+
+def _stack_by_copy(tensors, output):
+    """Concatenate along dim 0 with aten's strided copy.
+
+    Used for the dtypes whose loads the Triton kernel cannot lower here.
+    """
+    row = 0
+    for tensor in tensors:
+        n = tensor.shape[0]
+        output[row : row + n].copy_(tensor)
+        row += n
+    return output
+
+
 def row_stack(tensors: list):
     logger.debug("GEMS_ENFLAME ROW_STACK")
 
@@ -161,6 +179,11 @@ def row_stack(tensors: list):
     strides = _strides_for(output_shape, memory_format)
     output = _allocate(output_shape, strides, dtype, device)
     c_tensors = _cast_tensors(tensors, dtype, memory_format)
+    if not _kernel_can_address(dtype):
+        # float64 has no addressable gather on this backend (the kernel fails
+        # to link on `tops_gather_load_fp64`), so fall back to aten's strided
+        # copy, which does work for 64-bit values.
+        return _stack_by_copy(c_tensors, output)
     return _run_kernel(c_tensors, output, row_width, strides[0])
 
 
@@ -179,6 +202,8 @@ def row_stack_out(tensors: list, *, out):
         _strides_for(list(out.shape), memory_format)
     )
     if fast:
+        if not _kernel_can_address(dtype):
+            return _stack_by_copy(c_tensors, out)
         return _run_kernel(c_tensors, out, row_width, out.stride(0))
 
     strides = _strides_for(output_shape, memory_format)
