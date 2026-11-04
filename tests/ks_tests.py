@@ -36,8 +36,7 @@ def test_normal_pvalue(shape, dtype):
         torch.manual_seed(42)
         torch.mlu.manual_seed_all(42)
     res_out = torch.empty(size=shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.normal_(res_out, 3.0, 10.0)
+    flag_gems.normal_(res_out, 3.0, 10.0)
     pvalue = scipy.stats.kstest(
         res_out.cpu().numpy().flatten(),
         lambda x: scipy.stats.norm.cdf(x, loc=3.0, scale=10.0),
