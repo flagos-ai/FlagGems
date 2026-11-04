@@ -63,7 +63,7 @@ def hygon_neg_module():
 )
 def test_neg_hygon_contiguous(hygon_neg_module, monkeypatch, shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
-    before = inp.clone()
+    before = utils.to_reference(inp.clone())
     reference = torch.neg(utils.to_reference(inp))
     assert hygon_neg_module._can_use_fast_path(inp)
 
@@ -219,7 +219,7 @@ def test_neg_hygon_autograd(hygon_neg_module):
         result = torch.neg(inp)
     (grad,) = torch.autograd.grad(result, inp, torch.ones_like(result))
     utils.gems_assert_equal(result, torch.neg(utils.to_reference(inp.detach())))
-    utils.gems_assert_equal(grad, -torch.ones_like(inp))
+    utils.gems_assert_equal(grad, utils.to_reference(-torch.ones_like(inp)))
 
 
 @pytest.mark.neg
