@@ -19,8 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems import runtime
+from flag_gems.runtime import device
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -133,8 +133,8 @@ def im2col_kernel(
 
 def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
     assert (
-        x.device.type == flag_gems.device and out.device.type == flag_gems.device
-    ), "Inputs must be on the accelerator device"
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Inputs must be on the {device.name} device"
     x = x.contiguous()
     out = out.contiguous()
 

@@ -208,6 +208,17 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: _fw_primal
+  description: Returns the forward-AD primal view of the input at the given level.
+  for:
+  - _fw_primal
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _indices
   description: Returns the coordinate (indices) tensor of a sparse COO tensor as a
     zero-copy alias of the internal indices storage, shaped (sparse_dim, nnz).
@@ -376,6 +387,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: _remove_batch_dim
+  description: Removes a batch dimension by returning an expanded zero-copy view
+    of the input.
+  for:
+  - _remove_batch_dim
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _reshape_alias
   description: 'Creates a view of the input tensor with the given size and stride,
 
@@ -477,6 +500,20 @@ ops:
   - KernelGen
   kind:
   - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: _unpack_dual
+  description: 'Unpacks a dual tensor into its forward-mode AD primal and tangent
+    pair, mirroring `aten::_unpack_dual`. The primal is a zero-copy aliasing view
+    of the input and the tangent is the input''s stored forward gradient (or None
+    for a non-dual tensor), so the operator is pure metadata: no kernel is launched.'
+  for:
+  - _unpack_dual
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
   stages:
   - alpha: '5.5'
 - id: _values_copy
@@ -2974,6 +3011,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: can_cast
+  description: 'Returns whether a cast from one ScalarType to another is permitted.
+    This is a category test (bool < integral < floating < complex), not a losslessness
+    check: narrowing inside a category is allowed.
+
+    '
+  for:
+  - can_cast
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: cartesian_prod
   description: Returns the cartesian product of the given sequence of 1-D tensors.
   for:
@@ -3201,16 +3253,29 @@ tensor into the caller-supplied `out` buffer.
   stages:
   - stable: '4.0'
 - id: chain_matmul
-  description: Computes the product of a chain of 2-D matrices using an optimal
-    (minimum-flop) parenthesization, mirroring `torch.linalg.multi_dot` and
-    `aten::chain_matmul` semantics.
+  description: Computes the product of a chain of 2-D matrices using an optimal (minimum-flop)
+    parenthesization.
   for:
   - chain_matmul
   labels:
   - aten
   - KernelGen
   kind:
-  - Tensor
+  - LinearAlg
+  stages:
+  - alpha: '5.5'
+- id: chain_matmul_out
+  description: 'A variant of `chain_matmul` that assigns to the output to the provided
+    `out` parameter.
+
+    '
+  for:
+  - chain_matmul.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - LinearAlg
   stages:
   - alpha: '5.5'
 - id: chalf
@@ -5753,6 +5818,21 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
+- id: empty_affine_quantized
+  description: 'Tensor factory operator — allocates an uninitialized per-tensor
+    affine quantized tensor carrying the supplied scale and zero point.
+
+    '
+  for:
+  - _empty_affine_quantized
+  labels:
+  - aten
+  - KernelGen
+  - skip_precision_check
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: empty_per_channel_affine_quantized
   description: 'Tensor factory operator — allocates an uninitialized per-channel
     affine quantized tensor carrying the supplied scales, zero points and channel
@@ -19154,6 +19234,34 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5.0'
+- id: slow_conv_dilated3d
+  description: |
+    Applies a 3D dilated convolution operator over an input image composed of
+    several input planes, using the slow (im2col-free) direct algorithm.
+    The ``weight`` tensor uses the plain convolution layout
+    ``(out_channels, in_channels, kD, kH, kW)`` and no kernel flip is applied.
+  for:
+  - slow_conv_dilated3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
+- id: slow_conv_dilated3d_out
+  description: |
+    Out variant of ``slow_conv_dilated3d``: writes the 3D dilated convolution
+    result into the caller-provided ``out`` tensor and returns it.
+  for:
+  - slow_conv_dilated3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: slow_conv_transpose2d
   description: |
     Applies a 2D transposed convolution operator over an input image composed of
@@ -19544,6 +19652,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_bsr_tensor_unsafe
+  description: 'Assembles a torch.sparse_bsr layout tensor from already-materialised
+    crow/col indices and values without validating the compressed indices; the
+    payload dtype conversion requested via the dtype argument runs in a Triton
+    kernel before the native assembly.
+
+    '
+  for:
+  - _sparse_bsr_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_compressed_tensor
   description: 'Assembles a sparse compressed (CSR/CSC/BSR/BSC) tensor from its stored
     components: the compressed-axis index vector, the plain-axis index vector and
@@ -19586,6 +19710,23 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - _sparse_csc_tensor_unsafe
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_csr_tensor
+  description: 'Assembles a compressed sparse row (CSR) tensor from its stored components:
+    the row-pointer vector (crow_indices), the column indices (col_indices) and
+    the payload (values), with an explicit logical size or one inferred from
+    the component buffers.
+
+    '
+  for:
+  - sparse_csr_tensor.crow_col_value
+  - sparse_csr_tensor.crow_col_value_size
   labels:
   - aten
   - KernelGen
