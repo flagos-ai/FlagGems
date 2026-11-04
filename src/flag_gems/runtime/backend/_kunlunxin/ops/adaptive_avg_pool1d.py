@@ -133,9 +133,9 @@ def adaptive_avg_pool1d(input: torch.Tensor, output_size):
         out_size = output_size[0]
 
     input_contiguous = input.contiguous()
-    n, c, l = input_contiguous.shape
+    n, c, lin = input_contiguous.shape
     output = torch.empty((n, c, out_size), dtype=input.dtype, device=input.device)
-    if output.numel() == 0 or l == 0:
+    if output.numel() == 0 or lin == 0:
         return output
 
     is_bf16 = input_contiguous.dtype == torch.bfloat16
@@ -143,13 +143,15 @@ def adaptive_avg_pool1d(input: torch.Tensor, output_size):
     flat_output = output.view(torch.int16) if is_bf16 else output
 
     with torch_device_fn.device(input.device):
-        if l % out_size == 0:
-            kw = l // out_size
-            _adaptive_avg_pool1d_flat_kernel[(triton.cdiv(output.numel(), FLAT_BLOCK),)](
+        if lin % out_size == 0:
+            kw = lin // out_size
+            _adaptive_avg_pool1d_flat_kernel[
+                (triton.cdiv(output.numel(), FLAT_BLOCK),)
+            ](
                 flat_input,
                 flat_output,
                 output.numel(),
-                L=l,
+                L=lin,
                 OW=out_size,
                 KW=kw,
                 AREA=kw,
@@ -157,14 +159,14 @@ def adaptive_avg_pool1d(input: torch.Tensor, output_size):
                 BF16=is_bf16,
             )
         else:
-            max_kw = triton.cdiv(l, out_size) + 1
+            max_kw = triton.cdiv(lin, out_size) + 1
             _adaptive_avg_pool1d_general_kernel[
                 (triton.cdiv(output.numel(), FLAT_BLOCK),)
             ](
                 flat_input,
                 flat_output,
                 output.numel(),
-                L=l,
+                L=lin,
                 OW=out_size,
                 MAX_KW=max_kw,
                 BLOCK=FLAT_BLOCK,

@@ -399,7 +399,9 @@ def ref_upsample_nearest3d_backward(
         return torch.ops.aten.upsample_nearest3d_backward.default(
             grad_output, output_size, input_size, scales_d, scales_h, scales_w
         )
-    grad_cpu = grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    grad_cpu = (
+        grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    )
     ref = torch.ops.aten.upsample_nearest3d_backward.default(
         grad_cpu, output_size, input_size, scales_d, scales_h, scales_w
     )
@@ -429,7 +431,9 @@ def ref_upsample_nearest3d_backward_grad_input(
             scales_w,
             grad_input=grad_input,
         )
-    grad_cpu = grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    grad_cpu = (
+        grad_output.cpu() if isinstance(grad_output, torch.Tensor) else grad_output
+    )
     grad_input_cpu = (
         grad_input.cpu() if isinstance(grad_input, torch.Tensor) else grad_input
     )

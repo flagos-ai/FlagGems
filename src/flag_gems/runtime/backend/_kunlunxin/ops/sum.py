@@ -451,9 +451,9 @@ def _row_reduce_kernel(
     offs = tl.arange(0, BLOCK)
     total = tl.zeros([], dtype=ACC_DTYPE)
     for start in range(0, N, BLOCK):
-        vals = tl.load(
-            inp + base + start + offs, mask=start + offs < N, other=0
-        ).to(ACC_DTYPE)
+        vals = tl.load(inp + base + start + offs, mask=start + offs < N, other=0).to(
+            ACC_DTYPE
+        )
         total += tl.sum(vals)
     if SCALE != 1.0:
         total = total * SCALE
@@ -922,7 +922,12 @@ def _launch_sum_dim(inp, out, M, N, scale=1.0):
         # the faithful replacement -- one program per row, streaming the reduced dim.
         with torch_device_fn.device(inp.device):
             _row_reduce_kernel[(M,)](
-                inp, out, N, scale, min(_npo2(N), _TLE_FLAT_COLS), _TLE_ACC_DTYPE[inp.dtype]
+                inp,
+                out,
+                N,
+                scale,
+                min(_npo2(N), _TLE_FLAT_COLS),
+                _TLE_ACC_DTYPE[inp.dtype],
             )
 
 

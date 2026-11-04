@@ -176,12 +176,7 @@ def _upsample_nearest3d_backward_exact2x_kernel(
     for dd in tl.static_range(2):
         for hh in tl.static_range(2):
             for ww in tl.static_range(2):
-                off = (
-                    base
-                    + (od0 + dd) * (OH * OW)
-                    + (oh0 + hh) * OW
-                    + (ow0 + ww)
-                )
+                off = base + (od0 + dd) * (OH * OW) + (oh0 + hh) * OW + (ow0 + ww)
                 value = tl.load(grad_output + off, mask=mask, other=0.0)
                 acc += value.to(tl.float32)
 

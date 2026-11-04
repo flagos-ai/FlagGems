@@ -148,9 +148,7 @@ def _matrix_multiply(left, right, out=None):
     store path (fp16's store error stays within its 1e-3 tolerance).
     """
     if left.device.type == "cpu":
-        raise RuntimeError(
-            "multi_dot(): Kunlunxin backend requires device tensors"
-        )
+        raise RuntimeError("multi_dot(): Kunlunxin backend requires device tensors")
 
     rows, inner = left.shape
     columns = right.shape[1]
@@ -168,7 +166,9 @@ def _matrix_multiply(left, right, out=None):
 
     if out is None:
         out = torch.empty((rows, columns), dtype=dtype, device=left.device)
-    _launch_gemm(left, right, out, rows, columns, inner, is_fp64=(dtype == torch.float64))
+    _launch_gemm(
+        left, right, out, rows, columns, inner, is_fp64=(dtype == torch.float64)
+    )
     return out
 
 

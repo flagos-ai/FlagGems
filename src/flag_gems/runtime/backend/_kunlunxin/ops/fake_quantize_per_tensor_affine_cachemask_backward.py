@@ -97,9 +97,7 @@ def _fq_ptacmb_backward_kernel(
         prod = grad * 0.0
         prod_bits = prod.to(tl.int32, bitcast=True)
         grad_bits = grad.to(tl.int32, bitcast=True)
-        false_val = (prod_bits | (grad_bits & -2147483648)).to(
-            tl.float32, bitcast=True
-        )
+        false_val = (prod_bits | (grad_bits & -2147483648)).to(tl.float32, bitcast=True)
         out = tl.where(quant_mask != 0, grad, false_val)
     else:
         out = tl.where(quant_mask != 0, grad, grad * 0.0)
@@ -122,9 +120,7 @@ def _fq_ptacmb_backward_kernel_unmasked(
         prod = grad * 0.0
         prod_bits = prod.to(tl.int32, bitcast=True)
         grad_bits = grad.to(tl.int32, bitcast=True)
-        false_val = (prod_bits | (grad_bits & -2147483648)).to(
-            tl.float32, bitcast=True
-        )
+        false_val = (prod_bits | (grad_bits & -2147483648)).to(tl.float32, bitcast=True)
         out = tl.where(quant_mask != 0, grad, false_val)
     else:
         out = tl.where(quant_mask != 0, grad, grad * 0.0)
