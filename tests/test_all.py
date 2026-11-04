@@ -180,7 +180,7 @@ def test_all_empty_results_keep_their_device(shape, dim, dtype):
     inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
-    expected = torch.all(ref_inp, dim=dim)
+    expected = torch.all(ref_inp) if dim is None else torch.all(ref_inp, dim=dim)
     actual = getattr(flag_gems, "all" if dim is None else "all_dims")(
         inp, **({} if dim is None else {"dim": dim})
     )

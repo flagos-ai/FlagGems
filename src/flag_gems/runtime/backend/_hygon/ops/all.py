@@ -115,6 +115,14 @@ def all(inp):
     return out
 
 
+def _empty_dim_result(shape, dim, keepdim, device):
+    """Return the reduction result without launching a kernel for an empty output."""
+    for i in dim:
+        shape[i] = 1
+    out = torch.ones(shape, dtype=torch.bool, device=device)
+    return out if keepdim else out.squeeze(dim=dim)
+
+
 def all_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_HYGON ALL_DIM")
     shape = list(inp.shape)
@@ -126,15 +134,13 @@ def all_dim(inp, dim=None, keepdim=False):
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
         if inp.shape[dim] == 0:
-            shape[dim] = 1
-            out = torch.ones(shape, dtype=torch.bool, device=inp.device)
-            if not keepdim:
-                out = out.squeeze(dim=dim)
-            return out
+            return _empty_dim_result(shape, [dim], keepdim, inp.device)
         inp = dim_compress(inp, dim)
         N = shape[dim]
         shape[dim] = 1
         M = inp.numel() // N
+        if M == 0:
+            return _empty_dim_result(shape, [dim], keepdim, inp.device)
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
@@ -156,16 +162,15 @@ def all_dims(inp, dim=None, keepdim=False):
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
     if any(not shape[i] for i in dim):
-        for i in dim:
-            shape[i] = 1
-        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
-        return out.squeeze(dim=dim) if not keepdim else out
+        return _empty_dim_result(shape, dim, keepdim, inp.device)
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+    if M == 0:
+        return _empty_dim_result(shape, dim, keepdim, inp.device)
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
