@@ -90,6 +90,11 @@ def _linspace_empty(start, end, *, dtype, layout, device, pin_memory):
                 "torch.linspace(): complex endpoints require a complex dtype"
             )
 
+    # The public native API rejects sparse layouts even with meta endpoints;
+    # the meta registration's allocation body alone does not enforce this.
+    if meta_endpoint and isinstance(layout, torch.layout) and layout != torch.strided:
+        raise RuntimeError("linspace only supports strided layout")
+
     out = torch.empty(
         (0,),
         dtype=dtype,
@@ -97,7 +102,7 @@ def _linspace_empty(start, end, *, dtype, layout, device, pin_memory):
         device="meta" if meta_endpoint else device,
         pin_memory=pin_memory,
     )
-    if not meta_endpoint and out.layout != torch.strided:
+    if out.layout != torch.strided:
         raise NotImplementedError("linspace only supports strided layout")
     return out
 

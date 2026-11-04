@@ -300,3 +300,19 @@ class TestGenericLinspaceEmpty:
         assert result.shape == expected.shape == (0,)
         assert result.dtype == expected.dtype
         assert result.layout == expected.layout
+
+    @pytest.mark.parametrize(
+        "default_dtype", [torch.float16, torch.float32, torch.float64]
+    )
+    def test_meta_sparse_layout_rejected(self, default_dtype):
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            start = torch.empty((), device="meta")
+            kwargs = {"device": "cpu", "layout": torch.sparse_coo}
+            with pytest.raises(RuntimeError):
+                torch.linspace(start, 2, 0, **kwargs)
+            with pytest.raises(RuntimeError):
+                generic_linspace(start, 2, 0, **kwargs)
+        finally:
+            torch.set_default_dtype(previous)
