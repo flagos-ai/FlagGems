@@ -26,7 +26,7 @@ import torch
 import torch.distributed as dist
 
 try:
-    from flag_gems.fused.rs_norm_ag import (
+    from flag_gems.fused.fused_rs_norm_ag import (
         fused_qkv_norm_ag,
         fused_rs_add_rms_norm_ag,
         ppu810e_rings,
@@ -36,9 +36,9 @@ except ImportError:  # run against an installed flag_gems without this file
     import importlib.util
 
     _path = os.path.join(
-        os.path.dirname(__file__), "..", "src", "flag_gems", "fused", "rs_norm_ag.py"
+        os.path.dirname(__file__), "..", "src", "flag_gems", "fused", "fused_rs_norm_ag.py"
     )
-    _spec = importlib.util.spec_from_file_location("rs_norm_ag", _path)
+    _spec = importlib.util.spec_from_file_location("fused_rs_norm_ag", _path)
     _mod = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_mod)
     fused_qkv_norm_ag, fused_rs_add_rms_norm_ag = _mod.fused_qkv_norm_ag, _mod.fused_rs_add_rms_norm_ag

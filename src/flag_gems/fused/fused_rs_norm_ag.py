@@ -327,11 +327,12 @@ def rs_norm_ag_ring_bulk_kernel(
     c = pid % nchan
     p = tl.load(pos_ptr + c)
     ring = order_ptr + c * WORLD
-    succ = tl.load(ring + (p + 1) % WORLD)
+    next = tl.load(ring + (p + 1) % WORLD)
+
     my_flag = tl.load(flag_ptrs + rank).to(tl.pointer_type(tl.int32)) + pid
-    succ_flag = tl.load(flag_ptrs + succ).to(tl.pointer_type(tl.int32)) + pid
+    succ_flag = tl.load(flag_ptrs + next).to(tl.pointer_type(tl.int32)) + pid
     mine = tl.load(data_addrs + rank) + par_off.to(tl.int64)
-    nxt = tl.load(data_addrs + succ) + par_off.to(tl.int64)
+    nxt = tl.load(data_addrs + next) + par_off.to(tl.int64)
 
     # RS step 0: my partial sums of chunk order[p - 1] -> succ slot 0
     k = tl.load(ring + (p + WORLD - 1) % WORLD)
@@ -450,13 +451,14 @@ def qkv_norm_ag_ring_kernel(
     c = pid % nchan
     p = tl.load(pos_ptr + c)
     ring = order_ptr + c * WORLD
-    succ = tl.load(ring + (p + 1) % WORLD)
+    next = tl.load(ring + (p + 1) % WORLD)
+
     my_flag = tl.load(flag_ptrs + rank).to(tl.pointer_type(tl.int32)) + pid
-    succ_flag = tl.load(flag_ptrs + succ).to(tl.pointer_type(tl.int32)) + pid
+    succ_flag = tl.load(flag_ptrs + next).to(tl.pointer_type(tl.int32)) + pid
     pe = par_elems.to(tl.int64)
     se = slot_elems.to(tl.int64)
     mine = tl.load(data_addrs + rank).to(tl.pointer_type(tl.bfloat16)) + pe
-    nxt = tl.load(data_addrs + succ).to(tl.pointer_type(tl.bfloat16)) + pe
+    nxt = tl.load(data_addrs + next).to(tl.pointer_type(tl.bfloat16)) + pe
 
     wq = tl.load(qw_ptr + cols, mask=is_q, other=0.0).to(tl.float32)
     wkv = tl.load(kvw_ptr + (cols - Q), mask=is_kv, other=0.0).to(tl.float32)
@@ -846,12 +848,30 @@ class fused_rs_add_rms_norm_ag(_RingComm):
         V = min(1024, nv & -nv)  # largest power of 2 dividing the row's 16B count
         with torch.cuda.device(x.device):
             self.last_kernel = rs_norm_ag_ring_bulk_kernel[(grid,)](
-                x.data_ptr(), residual.data_ptr() if residual.numel() else x.data_ptr(),
-                weight.data_ptr(), out.data_ptr() if out.numel() else x.data_ptr(),
-                self.data_addrs, self.flag_ptrs,
-                self.order, self.pos, self.err, T, chunk, H, slot_bytes,
-                parity * (2 * W - 2) * slot_bytes, self.rank, nchan, eps, base, self.max_spin,
-                WORLD=W, V=V, NT=nv // V, DO_AG=gather, num_warps=V // 32,
+                x.data_ptr(),
+                residual.data_ptr() if residual.numel() else x.data_ptr(),
+                weight.data_ptr(),
+                out.data_ptr() if out.numel() else x.data_ptr(),
+                self.data_addrs,
+                self.flag_ptrs,
+                self.order,
+                self.pos,
+                self.err,
+                T,
+                chunk,
+                H,
+                slot_bytes,
+                parity * (2 * W - 2) * slot_bytes,
+                self.rank,
+                nchan,
+                eps,
+                base,
+                self.max_spin,
+                WORLD=W,
+                V=V,
+                NT=nv // V,
+                DO_AG=gather,
+                num_warps=V // 32,
                 extern_libs={"ppubulk": self.bulk_lib},
             )
         return out
