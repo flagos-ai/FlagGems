@@ -265,6 +265,7 @@ from flag_gems.ops._fused_rms_norm import (
     _fused_rms_norm_forward,
 )
 from flag_gems.ops._fused_sgd_ import _fused_sgd_, _fused_sgd__tensor_lr
+from flag_gems.ops._fw_primal import _fw_primal
 from flag_gems.ops._gather_sparse_backward import _gather_sparse_backward
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
@@ -342,6 +343,7 @@ from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
+from flag_gems.ops._remove_batch_dim import _remove_batch_dim
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
@@ -403,6 +405,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
 )
 from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
+from flag_gems.ops._unpack_dual import _unpack_dual
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
@@ -582,8 +585,10 @@ from flag_gems.ops.bitwise_xor import (
 from flag_gems.ops.blackman_window import blackman_window, blackman_window_periodic
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
+from flag_gems.ops.bmm_w8a8 import bmm_w8a8
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.bucketize import bucketize
+from flag_gems.ops.can_cast import can_cast
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
@@ -594,7 +599,8 @@ from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
-from flag_gems.ops.chain_matmul import chain_matmul
+from flag_gems.ops.chain_matmul import chain_matmul_out
+from flag_gems.ops.chain_matmul import run as chain_matmul
 from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky import cholesky
@@ -736,6 +742,10 @@ from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
+from flag_gems.ops.empty_affine_quantized import (
+    _empty_affine_quantized,
+    _empty_affine_quantized_out,
+)
 from flag_gems.ops.empty_per_channel_affine_quantized import (
     _empty_per_channel_affine_quantized,
 )
@@ -1404,6 +1414,10 @@ from flag_gems.ops.slow_conv_dilated2d import (
     slow_conv_dilated2d,
     slow_conv_dilated2d_out,
 )
+from flag_gems.ops.slow_conv_dilated3d import (
+    slow_conv_dilated3d,
+    slow_conv_dilated3d_out,
+)
 from flag_gems.ops.slow_conv_transpose2d import slow_conv_transpose2d
 from flag_gems.ops.slow_conv_transpose3d import slow_conv_transpose3d
 from flag_gems.ops.smm import smm
@@ -1429,9 +1443,11 @@ from flag_gems.ops.sparse_broadcast_to_copy import sparse_broadcast_to_copy
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
 from flag_gems.ops.sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
 from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
+from flag_gems.ops.sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_resize_ import sparse_resize_
 from flag_gems.ops.sparse_sampled_addmm import (
@@ -1763,6 +1779,8 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_embedding_bag_per_sample_weights_backward",
     "_embedding_bag_sparse_backward",
+    "_empty_affine_quantized",
+    "_empty_affine_quantized_out",
     "_empty_per_channel_affine_quantized",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",
@@ -1932,6 +1950,7 @@ __all__ = [
     "_fused_rms_norm_forward",
     "_fused_sgd_",
     "_fused_sgd__tensor_lr",
+    "_fw_primal",
     "_fw_primal_copy",
     "_fw_primal_copy_out",
     "_gather_sparse_backward",
@@ -1999,6 +2018,7 @@ __all__ = [
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_remove_batch_dim",
     "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
@@ -2042,6 +2062,7 @@ __all__ = [
     "_trilinear",
     "_trilinear_out",
     "_unique2",
+    "_unpack_dual",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_unsafe_view",
@@ -2224,8 +2245,10 @@ __all__ = [
     "block_diag",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
     "bmm_w8a8_fp8",
     "bucketize",
+    "can_cast",
     "cartesian_prod",
     "cast_Byte",
     "cast_Char",
@@ -2243,6 +2266,7 @@ __all__ = [
     "celu",
     "celu_",
     "chain_matmul",
+    "chain_matmul_out",
     "chalf",
     "channel_shuffle",
     "cholesky",
@@ -3103,6 +3127,8 @@ __all__ = [
     "slogdet",
     "slow_conv_dilated2d",
     "slow_conv_dilated2d_out",
+    "slow_conv_dilated3d",
+    "slow_conv_dilated3d_out",
     "slow_conv_transpose2d",
     "slow_conv_transpose3d",
     "smm",
@@ -3128,9 +3154,11 @@ __all__ = [
     "sparse_bsc_tensor",
     "sparse_bsc_tensor_unsafe",
     "sparse_bsr_tensor",
+    "sparse_bsr_tensor_unsafe",
     "sparse_compressed_tensor",
     "sparse_coo_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_tensor",
     "sparse_dim",
     "sparse_resize_",
     "sparse_sampled_addmm",
