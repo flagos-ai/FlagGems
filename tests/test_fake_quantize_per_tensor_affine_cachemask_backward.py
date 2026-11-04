@@ -44,7 +44,7 @@ def test_fake_quantize_per_tensor_affine_cachemask_backward_mask_semantics():
         device=flag_gems.device,
     )
     mask = torch.tensor([False, False, True, False, False, False], device=grad.device)
-    ref_out = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+    ref_out = utils.ref_fake_quantize_per_tensor_affine_cachemask_backward(
         utils.to_reference(grad), utils.to_reference(mask)
     )
 

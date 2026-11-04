@@ -363,6 +363,26 @@ def ref_fmod(a, b):
     return ref
 
 
+def ref_fake_quantize_per_tensor_affine_cachemask_backward(grad, mask):
+    # Kunlunxin eager computes `grad * mask` with the sign of zero lost (a
+    # masked-out negative grad collapses to +0.0), while the kernel and the CPU
+    # reference preserve -0.0. Compute the reference on CPU there so the
+    # mask_semantics signbit check compares against the IEEE-correct sign.
+    # Other backends keep the on-device reference (their eager matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+            grad, mask
+        )
+    grad_cpu = grad.cpu() if isinstance(grad, torch.Tensor) else grad
+    mask_cpu = mask.cpu() if isinstance(mask, torch.Tensor) else mask
+    ref = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+        grad_cpu, mask_cpu
+    )
+    if not TO_CPU and isinstance(grad, torch.Tensor):
+        ref = ref.to(grad.dtype).to(grad.device)
+    return ref
+
+
 def to_cpu(res, ref):
     if TO_CPU and isinstance(res, torch.Tensor) and isinstance(ref, torch.Tensor):
         res = res.to("cpu")
