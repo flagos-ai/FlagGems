@@ -45,9 +45,12 @@ def _can_use_contiguous(inp, mask, value):
     # Keep tensor values and scalar conversion/error handling in the generic op.
     if type(value) is not float:
         return False
-    if math.isfinite(value) and abs(value) > _FP32_MAX:
-        return False
     if type(inp) is not torch.Tensor or type(mask) is not torch.Tensor:
+        return False
+    # Reject scalars and broadcasts before probing more tensor metadata.
+    if not 1 <= inp.ndim <= 8 or inp.shape != mask.shape:
+        return False
+    if math.isfinite(value) and abs(value) > _FP32_MAX:
         return False
     if inp.dtype != torch.float32 or mask.dtype != torch.bool:
         return False
@@ -56,8 +59,6 @@ def _can_use_contiguous(inp, mask, value):
     if inp.device.type != device.name or mask.device != inp.device:
         return False
     if inp.requires_grad or mask.requires_grad:
-        return False
-    if inp.shape != mask.shape or not 1 <= inp.ndim <= 8:
         return False
     n = inp.numel()
     if n == 0 or n > _MAX_NUMEL or n % _BLOCK_SIZE != 0:
@@ -72,9 +73,9 @@ def _can_use_contiguous(inp, mask, value):
 
 
 def masked_fill(inp, mask, value):
-    logger.debug("GEMS_HYGON MASKED_FILL")
     if not _can_use_contiguous(inp, mask, value):
         return _masked_fill(inp, mask, value)
+    logger.debug("GEMS_HYGON MASKED_FILL")
     out = torch.empty_like(inp)
     with torch_device_fn.device(inp.device):
         _masked_fill_contiguous[(inp.numel() // _BLOCK_SIZE,)](
