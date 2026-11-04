@@ -219,6 +219,10 @@ from .addcdiv import addcdiv, addcdiv_, addcdiv_out
 from .addcmul import addcmul, addcmul_, addcmul_out
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out  # noqa: F401
 from .addmm_ import addmm_
+from .addmm_activation import (  # noqa: F401  (registered via _FULL_CONFIG)
+    _addmm_activation,
+    _addmm_activation_out,
+)
 from .addmv import addmv, addmv_, addmv_out  # noqa: F401
 from .addr import addr
 from .addr_ import addr_
@@ -940,6 +944,8 @@ __all__ = [
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
     "_adaptive_avg_pool3d_backward",
+    "_addmm_activation",
+    "_addmm_activation_out",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_assert_async",
     "_batch_norm_impl_index",
