@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -86,7 +84,6 @@ def test__nested_view_from_jagged_copy(dtype):
     bench = NestedViewFromJaggedCopyBenchmark(
         op_name="_nested_view_from_jagged_copy",
         torch_op=_torch_ref,
-        gems_op=flag_gems._nested_view_from_jagged_copy,
         dtypes=[dtype],
     )
     bench.run()
