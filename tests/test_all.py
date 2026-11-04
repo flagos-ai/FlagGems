@@ -116,6 +116,7 @@ def test_all_empty_full_reduction_returns_true(shape, dtype):
         ((0, 3), 0),
         ((3, 0), -1),
         ((0, 0), 1),
+        ((3, 0), 0),
         ((2, 0, 3), 1),
         ((2, 0, 3), 0),
     ],
