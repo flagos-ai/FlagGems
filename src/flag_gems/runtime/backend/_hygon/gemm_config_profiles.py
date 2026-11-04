@@ -17,8 +17,9 @@
 The YAML declares geometry and allowed launch dimensions. Profiles couple the
 layout, copy policy and pipeline settings that implement one scheduling choice.
 There are no runtime tensor dimensions, model names or benchmark winners here.
-Compiler resource errors remain authoritative; do not estimate shared-memory
-capacity by assuming every operand always has the same buffer count.
+Only profile-specific allocation bounds and aliases with retained controls are
+removed here. Compilation checks all remaining resource limits; mixed loads
+must not be assigned a uniform buffer count.
 """
 
 from itertools import product
@@ -72,6 +73,28 @@ def _warps_m(block_m, block_n, waves):
     return max(max(1, waves // (block_n // 16)), min(value, waves, block_m // 16))
 
 
+def _over_lds_capacity(name, bm, bn, bk, waves, stages, selected):
+    a_bytes, b_bytes = 2 * bm * bk, 2 * bn * bk
+    if name == "shared_prefetch":
+        # An active two-load ring keeps both two-plane allocations live.
+        # Otherwise its option is inactive and aliases the sync profile.
+        return "sync" in selected and 2 * (a_bytes + b_bytes) > 65536
+    if name not in ("async_a", "async_b", "async_pair", "async_deep"):
+        return False
+    # Both coalesced loads must own at least a dword per thread. Narrow
+    # operands and weak alignment can change the number of admitted streams.
+    if min(bm * bk, bn * bk) < 128 * waves:
+        return False
+    # The public async domain has contiguous, aligned half inputs. B-only
+    # and paired profiles admit both streams and retain stages full planes.
+    # A-only retains two A planes plus at least one B plane, either streamed
+    # or allocated for the dot-layout conversion. Their loop lifetimes overlap.
+    footprint = (
+        2 * a_bytes + b_bytes if name == "async_a" else stages * (a_bytes + b_bytes)
+    )
+    return footprint > 65536
+
+
 def _append(configs, seen, meta, waves, stages, ranges, pre_hook):
     if waves not in ranges["w"] or stages not in ranges["s"]:
         return
@@ -120,7 +143,13 @@ def build_mm_configs(ranges, pre_hook=None):
                     (bn * bk == 64 * waves) << 1
                 )
                 if mode & scalar_operands or (slots == 2 and scalar_operands):
-                    continue
+                    control = {0: "sync", 1: "async_a", 2: "async_b"}[
+                        mode & ~scalar_operands
+                    ]
+                    if control in selected:
+                        continue
+            if _over_lds_capacity(name, bm, bn, bk, waves, stages, selected):
+                continue
             meta = dict(
                 BLOCK_M=bm,
                 BLOCK_N=bn,

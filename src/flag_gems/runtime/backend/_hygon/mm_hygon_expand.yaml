@@ -13,11 +13,13 @@
 # limitations under the License.
 
 
-# Regular gfx936 MM geometry, 2871 candidates after scalar-copy alias removal.
+# Regular gfx936 MM geometry, 2460 candidates after copy/layout alias and
+# profile-specific LDS allocation checks.
 # Launch ranges are allowed values; each named profile derives one stage/wave
 # choice per tile. All ten scheduling mechanisms are retained.
-# Resource failures are handled by compilation. Uniform LDS-slot estimates
-# cannot exclude configurations with scalar fallback or scratch reuse.
+# The generator checks proven allocation bounds for these scheduling profiles.
+# Compilation handles remaining limits. Uniform LDS-slot estimates cannot
+# exclude configurations with scalar fallback or scratch reuse.
 mm:
   - param_map:
       META:
