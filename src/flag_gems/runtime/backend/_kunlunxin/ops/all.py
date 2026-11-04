@@ -721,6 +721,8 @@ def all_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 def all(inp):
     logger.debug("GEMS_KUNLUNXIN ALL")
+    if inp.numel() == 0:
+        return torch.ones([], dtype=torch.bool, device=inp.device)
     # NOTE (2026-09-16): a TLE flat staging path (row-min over [P, C], then one
     # more pass over the P partials) was tried here and parked: its staging shapes
     # hit `TritonXPUUnrollControl` uni_sram overflows, and a failed compile is only
@@ -824,6 +826,12 @@ def all_dim(inp, dim=None, keepdim=False):
 
     assert dim >= -orig_ndim and dim < orig_ndim, "Invalid dim"
     dim = dim % orig_ndim
+    if shape[dim] == 0:
+        shape[dim] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        if not keepdim:
+            out = out.squeeze(dim=dim)
+        return out
     N = shape[dim]
     inp = dim_compress(inp, dim)
     shape[dim] = 1
@@ -849,6 +857,11 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % orig_ndim for d in dim]
+    if any(not shape[i] for i in dim):
+        for i in dim:
+            shape[i] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        return out.squeeze(dim=dim) if not keepdim else out
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
