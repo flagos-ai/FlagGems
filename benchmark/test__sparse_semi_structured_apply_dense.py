@@ -124,7 +124,7 @@ def test__sparse_semi_structured_apply_dense():
         else [torch.float16]
     )
     bench = SparseSemiStructuredApplyDenseBenchmark(
-        op_name="_sparse_semi_structured_apply_dense",
+        op_name="sparse_semi_structured_apply_dense",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_semi_structured_apply_dense,

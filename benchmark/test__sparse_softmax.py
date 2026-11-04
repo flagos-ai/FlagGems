@@ -85,7 +85,7 @@ class SparseSoftmaxBenchmark(OperatorBenchmark):
 @pytest.mark.sparse_softmax
 def test__sparse_softmax():
     bench = SparseSoftmaxBenchmark(
-        op_name="_sparse_softmax",
+        op_name="sparse_softmax",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_softmax.default,

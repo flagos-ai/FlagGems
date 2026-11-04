@@ -189,7 +189,7 @@ class SparseLogSoftmaxBenchmark(OperatorBenchmark):
 @pytest.mark.sparse_log_softmax
 def test__sparse_log_softmax():
     bench = SparseLogSoftmaxBenchmark(
-        op_name="_sparse_log_softmax",
+        op_name="sparse_log_softmax",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_log_softmax.default,

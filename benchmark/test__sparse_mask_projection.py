@@ -351,7 +351,7 @@ class SparseMaskProjectionBenchmark(OperatorBenchmark):
 @pytest.mark.sparse_mask_projection
 def test_sparse_mask_projection():
     bench = SparseMaskProjectionBenchmark(
-        op_name="_sparse_mask_projection",
+        op_name="sparse_mask_projection",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_mask_projection,

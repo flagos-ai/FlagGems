@@ -172,7 +172,7 @@ class SparseLogSoftmaxBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.sparse_log_softmax_backward_data
 def test__sparse_log_softmax_backward_data_benchmark():
     bench = SparseLogSoftmaxBackwardBenchmark(
-        op_name="_sparse_log_softmax_backward_data",
+        op_name="sparse_log_softmax_backward_data",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_log_softmax_backward_data,

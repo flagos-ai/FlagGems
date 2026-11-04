@@ -406,7 +406,7 @@ class SparseSumBackwardBenchmark(OperatorBenchmark):
 @pytest.mark.sparse_sum_backward
 def test__sparse_sum_backward():
     bench = SparseSumBackwardBenchmark(
-        op_name="_sparse_sum_backward",
+        op_name="sparse_sum_backward",
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._sparse_sum_backward,
