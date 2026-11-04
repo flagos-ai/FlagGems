@@ -17,6 +17,8 @@ import logging
 
 import torch
 
+from flag_gems.ops.swapdims import swapdims
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,43 +33,10 @@ def swapaxes(self: torch.Tensor, axis0: int, axis1: int) -> torch.Tensor:
     int axis1) -> Tensor(a)``). Since the storage, storage offset and the
     autograd view edge are inherited from ``self``, gradients flow back
     through the swapped layout without a copy kernel.
+
+    ``aten::swapaxes`` and ``aten::swapdims`` are the same operation, so this
+    delegates to :func:`flag_gems.ops.swapdims.swapdims` rather than carrying
+    a third copy of the axis normalization and ``as_strided`` logic.
     """
     logger.debug("GEMS SWAPAXES")
-
-    ndim = self.dim()
-
-    # Normalize negative axes with aten's convention. A 0D tensor accepts only
-    # 0 and -1 (both denote the sole axis), so clamp the accepted range to
-    # [-1, 0] instead of the rank-based range used for higher ranks.
-    max_axis = max(ndim, 1)
-    if axis0 < 0:
-        axis0 += max_axis
-    if axis1 < 0:
-        axis1 += max_axis
-
-    # Match aten's IndexError message, which echoes the axis as passed in.
-    if not (0 <= axis0 < max_axis):
-        raise IndexError(
-            f"Dimension out of range (expected to be in range of "
-            f"[-{max_axis}, {max_axis - 1}], but got "
-            f"{axis0 - max_axis if axis0 < 0 else axis0})"
-        )
-    if not (0 <= axis1 < max_axis):
-        raise IndexError(
-            f"Dimension out of range (expected to be in range of "
-            f"[-{max_axis}, {max_axis - 1}], but got "
-            f"{axis1 - max_axis if axis1 < 0 else axis1})"
-        )
-
-    # 0D / 1D / same-axis: swapping an axis with itself is a no-op. aten still
-    # returns a *fresh* view of the operand (returning ``self`` is rejected by
-    # PyTorch's view-op checks), and ``view(self.shape)`` reproduces that
-    # without touching the layout of non-contiguous operands.
-    if ndim <= 1 or axis0 == axis1:
-        return self.view(self.shape)
-
-    shape = list(self.shape)
-    strides = list(self.stride())
-    shape[axis0], shape[axis1] = shape[axis1], shape[axis0]
-    strides[axis0], strides[axis1] = strides[axis1], strides[axis0]
-    return torch.as_strided(self, shape, strides)
+    return swapdims(self, axis0, axis1)

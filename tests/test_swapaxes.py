@@ -21,8 +21,6 @@ element values, and cover negative axes, non-contiguous operands, scalar/empty
 tensors, autograd and the ATen error messages.
 """
 
-import logging
-
 import pytest
 import torch
 
@@ -272,7 +270,7 @@ def test_swapaxes_invalid_axes(shape, axis0, axis1):
 
 
 @pytest.mark.swapaxes
-def test_swapaxes_dispatch_reaches_gems_impl(caplog):
+def test_swapaxes_dispatch_reaches_gems_impl(monkeypatch):
     """``aten::swapaxes`` must actually run the FlagGems implementation.
 
     ``aten::swapaxes`` is registered as CompositeImplicitAutograd, unlike
@@ -280,23 +278,38 @@ def test_swapaxes_dispatch_reaches_gems_impl(caplog):
     that the plain device-key registration in ``_FULL_CONFIG`` intercepts it
     rather than letting the native decomposition run. Every other test in this
     file calls ``flag_gems.swapaxes`` directly and therefore passes whether or
-    not registration works, so the dispatch path is verified here: register via
-    the same registrar ``use_gems()`` uses and assert the impl's own log line
-    fires for a ``torch.swapaxes`` call.
+    not registration works, so the dispatch path is verified here.
+
+    A call counter is patched onto the implementation module instead of
+    asserting on the log line: ``use_gems(record=True)`` permanently sets
+    ``propagate = False`` on the ``flag_gems`` logger and never restores it, so
+    a ``caplog``-based assertion can silently stop seeing records depending on
+    which test ran first.
     """
+    # The registrar resolves the impl from the ``flag_gems`` module attribute
+    # named after the op, so the patch has to land there (patching
+    # ``flag_gems.ops.swapaxes`` would only affect callers that reach the op
+    # through that module).
+    calls = []
+    real_swapaxes = flag_gems.swapaxes
+
+    def counting_swapaxes(*args, **kwargs):
+        calls.append(args)
+        return real_swapaxes(*args, **kwargs)
+
+    monkeypatch.setattr(flag_gems, "swapaxes", counting_swapaxes)
+
     inp = torch.randn((3, 4, 5), dtype=torch.float32, device=flag_gems.device)
     lib = torch.library.Library("aten", "IMPL")
-
-    caplog.set_level(logging.DEBUG, logger="flag_gems.ops.swapaxes")
     try:
+        # The impl is resolved when the entry is registered, so the patch has
+        # to be in place before only_enable() runs.
         flag_gems.only_enable(lib=lib, include=["swapaxes"])
-        assert "swapaxes" in flag_gems.all_registered_keys()
-
         res_out = torch.swapaxes(inp, 0, 2)
-
-        assert "GEMS SWAPAXES" in caplog.text
     finally:
         lib._destroy()
+
+    assert len(calls) == 1
 
     # The registered kernel is the FlagGems view, not a copy.
     ref_out = torch.swapaxes(inp, 0, 2)
