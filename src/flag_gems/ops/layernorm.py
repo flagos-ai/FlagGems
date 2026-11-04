@@ -14,6 +14,7 @@
 
 import logging
 import math
+from typing import Optional, Sequence, Union
 
 import torch
 import triton
@@ -452,3 +453,22 @@ def layer_norm_backward(
             grad_out, input, mean, rstd, weight_grad, bias_grad, M, N
         )
     return in_grad, weight_grad, bias_grad
+
+
+def layernorm(
+    input: torch.Tensor,
+    normalized_shape: Union[int, Sequence[int]],
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    """LayerNorm inference entry point; currently implemented for MetaX."""
+    from flag_gems import runtime
+
+    if runtime.device.vendor_name != "metax":
+        raise NotImplementedError("layernorm is currently available on MetaX only")
+    from flag_gems.runtime.backend._metax.ops.layernorm_inference import (
+        layernorm as impl,
+    )
+
+    return impl(input, normalized_shape, weight, bias, eps)

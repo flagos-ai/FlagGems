@@ -38,6 +38,7 @@ from .index_select import index_select
 from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
+from .layernorm_inference import layernorm
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lgamma_ import lgamma, lgamma_
@@ -199,6 +200,7 @@ __all__ = [
     "kthvalue",
     "layer_norm",
     "layer_norm_backward",
+    "layernorm",
     "lcm",
     "lcm_",
     "ldl_factor",

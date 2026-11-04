@@ -2391,6 +2391,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "layernorm",
     "only_enable",
     "use_gems",
 ]
