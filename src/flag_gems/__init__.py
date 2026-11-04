@@ -2168,6 +2168,8 @@ _FULL_CONFIG = (
         "upsample_nearest3d_backward.grad_input",
         upsample_nearest3d_backward_grad_input,
     ),
+    ("_cudnn_ctc_loss", cudnn_ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("_cudnn_ctc_loss.Tensor", cudnn_ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
