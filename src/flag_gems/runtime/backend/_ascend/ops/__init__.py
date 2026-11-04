@@ -34,6 +34,8 @@ from .attention import (
 )
 from .baddbmm import baddbmm
 from .bmm import bmm
+from .bmm_w8a8_int8 import bmm_w8a8_int8
+from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
@@ -49,6 +51,8 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
@@ -180,6 +184,9 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -205,6 +212,8 @@ __all__ = [
     "argsort",
     "baddbmm",
     "bmm",
+    "bmm_w8a8",
+    "bmm_w8a8_int8",
     "cat",
     "cat_out",
     "cholesky_solve",
