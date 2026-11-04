@@ -23,6 +23,7 @@ SCALAR_VALUES = (0, 1.0, -1.0, 0.5)
 
 
 @pytest.mark.less
+@pytest.mark.less_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_less(shape, dtype):
