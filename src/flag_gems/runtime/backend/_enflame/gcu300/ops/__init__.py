@@ -262,6 +262,7 @@ from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
+from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_modified_bessel_k0 import (
@@ -616,6 +617,7 @@ __all__ = [
     "softmax",
     "softmax_backward",
     "softplus",
+    "softshrink_backward",
     "sort",
     "sort_stable",
     "sorted_indices_unique_flat",
