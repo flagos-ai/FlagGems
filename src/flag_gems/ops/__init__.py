@@ -585,6 +585,7 @@ from flag_gems.ops.bitwise_xor import (
 from flag_gems.ops.blackman_window import blackman_window, blackman_window_periodic
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
+from flag_gems.ops.bmm_w8a8 import bmm_w8a8
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.bucketize import bucketize
 from flag_gems.ops.can_cast import can_cast
@@ -2244,6 +2245,7 @@ __all__ = [
     "block_diag",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
     "bmm_w8a8_fp8",
     "bucketize",
     "can_cast",
