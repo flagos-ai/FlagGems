@@ -1,8 +1,215 @@
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+
+logger = logging.getLogger(__name__)
+
+try:
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _HAS_TLE = True
+except ImportError:  # triton without the XPU tile-language extension
+    _HAS_TLE = False
+
+
+def _tle_available():
+    """`tle.gpu` exists only on the xpu3 (KL3) cluster pipeline."""
+    if not _HAS_TLE:
+        return False
+    import os
+
+    if os.environ.get("TRITON_ENABLE_XCN_BACKEND"):
+        return False
+    return os.environ.get("TRITON_XPU_ARCH", "3") == "3"
+
+
+_TLE_AVAILABLE = _tle_available()
+
+# Latched True when this toolchain cannot compile the tle row kernel. flagtree XPU
+# fails with "failed to legalize operation 'tt.make_range' that was explicitly marked
+# illegal" on its 2D local_ptr range, so the fwd falls back to the stock kernels
+# and every later call skips tle (the same latch ops/sum.py and ops/logsumexp.py
+# use). A launch that fails to compile leaves `out` untouched, so the fallback is
+# safe.
+_TLE_BROKEN = False
+
+# tle row-reduce geometry, mirroring ops/sum.py `_tle_row_geom` (see its comment
+# for the full trade-offs): XBLOCK is rows per program and must reach ~64 so the
+# core-tiling hands every core whole rows and the axis-1 reduce stays
+# core-local; YBLOCK is the LM budget divided by XBLOCK. We halve the raw
+# budget because the kernel also stages r (f32) and, for f16, keeps a YBLOCK
+# weight row in the same LM footprint.
+_TLE_CORE_NUM = 64
+_TLE_LM_BYTES_PER_CORE = 4096
+_TLE_XBLOCK = 512
+_TLE_CLUSTERS = 8
+_TLE_WIDE_ROW_BYTES = 32768
+_TLE_NARROW_ROW_BYTES = 2048
+
+_TLE_TL_DTYPE = {
+    torch.float16: tl.float16,
+    torch.float32: tl.float32,
+}
+
+
+def _tle_npo2(x):
+    """Cheap next-power-of-2 (triton.next_power_of_2 is ~3us per call)."""
+    return 1 << (x - 1).bit_length() if x > 1 else 1
+
+
+@triton.jit(
+    do_not_specialize=["N"],
+    do_not_specialize_on_alignment=["x_desc", "y_desc", "w_desc", "r_desc"],
+)
+def _tle_rmsnorm_fwd_kernel(
+    x_desc,
+    y_desc,
+    w_desc,
+    r_desc,
+    N,
+    eps,
+    XBLOCK: tl.constexpr,
+    YBLOCK: tl.constexpr,
+    DTYPE: tl.constexpr,
+    NEED_ZERO: tl.constexpr,
+):
+    """RMSNorm forward on [M, N] rows: y[m] = x[m] / sqrt(mean(x^2)+eps) * w.
+
+    Each program owns XBLOCK rows. tritonxpu-tle-core-tiling hands each of the
+    64 cores XBLOCK/64 whole rows, so the axis-1 reduction stays core-local and
+    needs no cluster barrier (the 2D-tile `tl.sum(axis=1)` path the original
+    kernel uses builds one). x is streamed in YBLOCK-column chunks through LM
+    via TMA; pass 1 accumulates sum(x^2), pass 2 recomputes y = x*rrms*w and
+    writes it back through the same LM buffer (in place). `tle.gpu.copy`
+    clamps to the descriptor extents, so partial tiles are handled by
+    zero-filling LM first (NEED_ZERO) and the output copy drops the
+    out-of-range rows/columns. The weight also goes through TMA: a plain GM
+    tl.load cannot be mixed with local_ptr loads in a TLE kernel
+    (TritonXPUTLEDtypeConvert rejects it). Only f16/f32 reach this kernel --
+    bf16 is excluded in the host guard because the bf16->f32 conversion on the
+    LM-loaded path returns wrong bits on this backend.
+    """
+    pid = tl.program_id(0)
+    row_off = pid * XBLOCK
+
+    x_lmem = tle.gpu.alloc(
+        [XBLOCK, YBLOCK], dtype=DTYPE, layout=None, scope=tle.gpu.lmem
+    )
+    w_lmem = tle.gpu.alloc([YBLOCK], dtype=DTYPE, layout=None, scope=tle.gpu.lmem)
+    row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+    col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+    x_ptrs = tle.gpu.local_ptr(x_lmem, (row_ids, col_ids))
+    w_ptrs = tle.gpu.local_ptr(w_lmem, (tl.arange(0, YBLOCK),))
+
+    # ---- pass 1: sum of squares -> rrms ----
+    acc = tl.zeros([XBLOCK], dtype=tl.float32)
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(x_ptrs, tl.zeros([XBLOCK, YBLOCK], DTYPE))
+        tle.gpu.copy(x_desc, x_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        xf = tl.load(x_ptrs).to(tl.float32)
+        acc += tl.sum(xf * xf, axis=1)
+    rrms = 1.0 / tl.sqrt(acc / N + eps)
+
+    # ---- rsigma: stage in LM and write back via TMA (clamps rows past M) ----
+    r_lmem = tle.gpu.alloc([XBLOCK], dtype=tl.float32, layout=None, scope=tle.gpu.lmem)
+    r_ptrs = tle.gpu.local_ptr(r_lmem, (tl.arange(0, XBLOCK),))
+    tl.store(r_ptrs, rrms)
+    tle.gpu.copy(r_lmem, r_desc, [XBLOCK], [row_off])
+
+    # ---- pass 2: apply y = x * rrms * w ----
+    for coff in tl.range(0, N, YBLOCK):
+        if NEED_ZERO:
+            if coff + YBLOCK > N:
+                tl.store(x_ptrs, tl.zeros([XBLOCK, YBLOCK], DTYPE))
+                tl.store(w_ptrs, tl.zeros([YBLOCK], DTYPE))
+        tle.gpu.copy(x_desc, x_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+        tle.gpu.copy(w_desc, w_lmem, [YBLOCK], [coff])
+        x = tl.load(x_ptrs)
+        wv = tl.load(w_ptrs)
+        y = (x.to(tl.float32) * rrms[:, None] * wv.to(tl.float32)[None, :]).to(DTYPE)
+        tl.store(x_ptrs, y)
+        tle.gpu.copy(x_lmem, y_desc, [XBLOCK, YBLOCK], [row_off, coff])
+
+
+def _tle_rmsnorm_geom(M, N, itemsize):
+    """Cached (xblock, yblock, row_blocks) for the TLE forward kernel."""
+    key = (M, N, itemsize)
+    geom = _TLE_RMSNORM_GEOM.get(key, _TLE_PLAN_MISS)
+    if geom is not _TLE_PLAN_MISS:
+        return geom
+    xblock = min(_TLE_XBLOCK, max(128, _tle_npo2(-(-M // _TLE_CLUSTERS))))
+    row_bytes = N * itemsize
+    if row_bytes >= _TLE_WIDE_ROW_BYTES:
+        xblock = max(_TLE_CORE_NUM, xblock // 4)
+    elif row_bytes <= _TLE_NARROW_ROW_BYTES:
+        xblock = _TLE_XBLOCK if M > _TLE_CORE_NUM else 256
+    tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
+    yblock = max(1, min(_tle_npo2(N), (tile_elems // xblock) >> 1))
+    while yblock > N and yblock > 1:
+        yblock >>= 1
+    geom = (xblock, yblock, -(-M // xblock))
+    _TLE_RMSNORM_GEOM[key] = geom
+    return geom
+
+
+_TLE_RMSNORM_GEOM = {}
+_TLE_PLAN_MISS = object()
+
+
+def _tle_rmsnorm_fwd_launch(x, y, w, rsigma, M, N, eps):
+    """Try the TLE row-reduction kernel on this toolchain.
+
+    Returns True on success; False when the kernel is out of reach (bf16,
+    zero_centered_gamma f32 weight, non-contiguous inputs, N < 64) or when the
+    toolchain cannot compile the tle.gpu payload (flagtree XPU fails to legalize
+    the 2D local_ptr `tt.make_range`), so the caller falls back to the stock
+    kernels. One failed compile per process, then the `_TLE_BROKEN` latch skips
+    it -- the same setup ops/sum.py and ops/logsumexp.py use. On toolchains
+    that compile it, the TLE row-reduction (core-local axis-1 reduce, no
+    cluster barrier, TMA staging) measures 1.3x-5.7x over the 2D-tile kernel
+    and 1.07x-2.24x over the row kernel on the benchmark shapes (see
+    harness/solution/te_rmsnorm_fwd/README.md).
+    """
+    global _TLE_BROKEN
+    if not _TLE_AVAILABLE or _TLE_BROKEN or N < 64:
+        return False
+    if x.dtype not in _TLE_TL_DTYPE or w.dtype != x.dtype:
+        return False
+    if not (
+        x.is_contiguous()
+        and y.is_contiguous()
+        and w.is_contiguous()
+        and rsigma.is_contiguous()
+    ):
+        return False
+    xb, yb, grid = _tle_rmsnorm_geom(M, N, x.element_size())
+    try:
+        _tle_rmsnorm_fwd_kernel[(grid,)](
+            TensorDescriptor.from_tensor(x, block_shape=[xb, yb]),
+            TensorDescriptor.from_tensor(y, block_shape=[xb, yb]),
+            TensorDescriptor.from_tensor(w, block_shape=[yb]),
+            TensorDescriptor.from_tensor(rsigma, block_shape=[xb]),
+            N,
+            float(eps),
+            xb,
+            yb,
+            _TLE_TL_DTYPE[x.dtype],
+            (N % yb) != 0,
+        )
+    except Exception as exc:  # noqa: BLE001 - any compile gap falls back
+        _TLE_BROKEN = True
+        logger.debug(
+            "GEMS_KUNLUNXIN RMSNORM_FWD tle unavailable (%s); fallback", exc
+        )
+        return False
+    return True
 
 
 @triton.jit
@@ -345,16 +552,17 @@ def te_rmsnorm_fwd(
                 y, rsigma, x, w, M, eps, 4096
             )
         else:
-            tile_m = _fwd_tile_m(N, M)
-            if tile_m is not None:
-                _te_rmsnorm_fwd_tile2d_kernel[(M // tile_m,)](
-                    y, rsigma, x, w, eps, tile_m, N
-                )
-            else:
-                need_mask = (N % _FWD_ROW_BLOCK) != 0
-                _te_rmsnorm_fwd_row_kernel[(M,)](
-                    y, rsigma, x, w, N, eps, _FWD_ROW_BLOCK, need_mask
-                )
+            if not _tle_rmsnorm_fwd_launch(x, y, w, rsigma, M, N, eps):
+                tile_m = _fwd_tile_m(N, M)
+                if tile_m is not None:
+                    _te_rmsnorm_fwd_tile2d_kernel[(M // tile_m,)](
+                        y, rsigma, x, w, eps, tile_m, N
+                    )
+                else:
+                    need_mask = (N % _FWD_ROW_BLOCK) != 0
+                    _te_rmsnorm_fwd_row_kernel[(M,)](
+                        y, rsigma, x, w, N, eps, _FWD_ROW_BLOCK, need_mask
+                    )
 
     if otype is not None and y.dtype != otype:
         y = y.to(otype)
