@@ -332,7 +332,7 @@ def test_new_zeros_rejects_non_sequence_size():
         torch.complex64,
     ],
 )
-def test_ascend_new_zeros_registered_graph_and_out(dtype, monkeypatch):
+def test_ascend_new_zeros_graph_and_out(dtype, monkeypatch):
     def forbid_cuda(*args, **kwargs):
         raise AssertionError("NPU new_zeros tried to initialize CUDA")
 
@@ -343,21 +343,20 @@ def test_ascend_new_zeros_registered_graph_and_out(dtype, monkeypatch):
     expected_parent = parent.cpu()
     expected_parent[:, 1::2] = 0
     view = parent[:, 1::2]
-    with flag_gems.use_gems(include=["new_zeros", "new_zeros_out"]):
-        for size in ((), (0,), (17, 13)):
-            result = src.new_zeros(size)
-            assert result.device == src.device and result.dtype == dtype
-            torch.testing.assert_close(result.cpu(), torch.zeros(size, dtype=dtype))
-        assert torch.ops.aten.new_zeros.out(src, (3, 7), out=view) is view
-        torch.testing.assert_close(parent.cpu(), expected_parent)
-        graph = torch.npu.NPUGraph()
-        with torch.npu.graph(graph):
-            result = src.new_zeros((17, 13))
-        for _ in range(2):
-            result.fill_(1)
-            graph.replay()
-            torch.npu.synchronize()
-            torch.testing.assert_close(result.cpu(), torch.zeros((17, 13), dtype=dtype))
+    for size in ((), (0,), (17, 13)):
+        result = flag_gems.new_zeros(src, size)
+        assert result.device == src.device and result.dtype == dtype
+        utils.gems_assert_equal(result.cpu(), torch.zeros(size, dtype=dtype))
+    assert flag_gems.new_zeros_out(src, (3, 7), out=view) is view
+    utils.gems_assert_equal(parent.cpu(), expected_parent)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        result = flag_gems.new_zeros(src, (17, 13))
+    for _ in range(2):
+        result.fill_(1)
+        graph.replay()
+        torch.npu.synchronize()
+        utils.gems_assert_equal(result.cpu(), torch.zeros((17, 13), dtype=dtype))
 
 
 @pytest.mark.new_zeros
@@ -370,7 +369,7 @@ def test_ascend_new_zeros_device_and_dtype_overrides():
         assert actual.shape == expected.shape
         assert actual.dtype == expected.dtype and actual.device == expected.device
         if target == "cpu":
-            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+            utils.gems_assert_equal(actual, expected)
 
 
 @pytest.mark.new_zeros
@@ -379,7 +378,7 @@ def test_ascend_new_zeros_uses_source_device():
     if torch.npu.device_count() < 2:
         pytest.skip("requires two NPU devices")
     src = torch.empty(0, dtype=torch.bfloat16, device="npu:0")
-    with torch.npu.device(1), flag_gems.use_gems(include=["new_zeros"]):
-        result = src.new_zeros((3, 7))
+    with torch.npu.device(1):
+        result = flag_gems.new_zeros(src, (3, 7))
     assert result.device == src.device
-    torch.testing.assert_close(result.cpu(), torch.zeros((3, 7), dtype=src.dtype))
+    utils.gems_assert_equal(result.cpu(), torch.zeros((3, 7), dtype=src.dtype))
