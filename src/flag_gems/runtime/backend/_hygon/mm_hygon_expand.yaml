@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-# Regular gfx936 MM geometry, 2925 parameter-unique candidates.
+# Regular gfx936 MM geometry, 2871 candidates after scalar-copy alias removal.
 # Launch ranges are allowed values; each named profile derives one stage/wave
 # choice per tile. All ten scheduling mechanisms are retained.
 # Resource failures are handled by compilation. Uniform LDS-slot estimates

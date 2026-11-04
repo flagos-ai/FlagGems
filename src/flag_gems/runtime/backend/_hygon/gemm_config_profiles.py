@@ -109,6 +109,18 @@ def build_mm_configs(ranges, pre_hook=None):
             if name not in selected or (slots == 2 and not supports_ring):
                 continue
             waves = _waves(bm, bn, base)
+            # A coalesced operand with exactly one element per thread is a
+            # layout anchor and cannot form a 32-bit copy from FP16/BF16.
+            # Its async request therefore aliases the retained sync/mixed
+            # profile. It also prevents the two-load local-prefetch schedule
+            # required by the synchronous two-slot profile. These profiles
+            # share stages, packing and wave geometry with their controls.
+            if stages == 2:
+                scalar_operands = (bm * bk == 64 * waves) | (
+                    (bn * bk == 64 * waves) << 1
+                )
+                if mode & scalar_operands or (slots == 2 and scalar_operands):
+                    continue
             meta = dict(
                 BLOCK_M=bm,
                 BLOCK_N=bn,
