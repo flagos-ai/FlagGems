@@ -772,9 +772,13 @@ def scaled_dot_product_attention_forward(
             cm_vals = cm_vals[:, None]
         elif cm_vals.dim() != 4:  # (B, H, Q, K)
             raise ValueError(f"attn_mask must be 2D/3D/4D, got {cm_vals.dim()}D")
-        if cm_vals.shape[-2] != q_len or cm_vals.shape[-1] != kv_len:
-            raise ValueError("attn_mask shape must be (Q, K) along the last dims")
-        cm_vals = cm_vals.expand(batch, q_head_num, q_len, kv_len)
+        try:
+            cm_vals = cm_vals.expand(batch, q_head_num, q_len, kv_len)
+        except RuntimeError as exc:
+            raise ValueError(
+                f"attn_mask shape {tuple(cm_vals.shape)} is not broadcastable to "
+                f"{(batch, q_head_num, q_len, kv_len)}"
+            ) from exc
 
     use_cmask = cm_vals is not None or is_causal
     if use_cmask:
