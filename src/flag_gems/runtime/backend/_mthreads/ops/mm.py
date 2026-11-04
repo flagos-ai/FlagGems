@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import logging
 import os
 
 import torch
 import triton
-import triton.experimental.tle.language as tle
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
@@ -36,8 +36,42 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
 # a constant for the entire process lifetime with no repeated parsing overhead.
 # False when Triton < 3.2 (e.g. 3.1), True when Triton >= 3.2.
 SQMMA_ON = tuple(int(x) for x in triton.__version__.split(".")[:2]) >= (3, 2)
-# Shared with the upstream addmm/bmm warp-specialized paths.
-TLE_WS_ON = SQMMA_ON
+# Keep the optional frontend import shared with upstream addmm/bmm.
+try:
+    import triton.experimental.tle as tle_api
+    import triton.experimental.tle.language as tle
+except ImportError:
+    tle_api = None
+    tle = None
+
+TLE_WS_ON = (
+    tle_api is not None
+    and hasattr(tle_api, "is_tle_supported")
+    and tle_api.is_tle_supported(
+        (
+            "gpu.alloc",
+            "gpu.copy",
+            "gpu.warp_specialize",
+            "gpu.wgmma",
+            "gpu.wgmma_wait",
+            "pipe",
+            "pipe.reader",
+            "pipe.reader.wait",
+            "pipe.reader.release",
+            "pipe.writer",
+            "pipe.writer.acquire",
+            "pipe.writer.commit",
+            "pipe.writer.close",
+        )
+    )
+)
+# The optimized MM family also uses per-copy cache policies. The primitive
+# whitelist covers gpu.copy, but does not describe its optional parameters.
+TLE_MM_ON = (
+    TLE_WS_ON
+    and hasattr(getattr(tle.gpu, "mthreads", None), "TMECachePolicy")
+    and "cache_policy" in inspect.signature(tle.gpu.copy).parameters
+)
 
 
 def is_supported_sqmma_layout(tensor):
@@ -3150,8 +3184,16 @@ def mm(a, b):
                     and (M == 1 or (a_dtype == torch.float16 and M <= 3))
                 ):
                     return gemv_nt_mm(a, b, N, K)
-                return mm_tme(a, b)
-            if M > 1024 and N >= 256 and N % 64 == 0 and K > 0 and K % 32 == 0:
+                if TLE_MM_ON:
+                    return mm_tme(a, b)
+            if (
+                TLE_MM_ON
+                and M > 1024
+                and N >= 256
+                and N % 64 == 0
+                and K > 0
+                and K % 32 == 0
+            ):
                 # Retain the upstream TLE pipeline for its measured NN wins.
                 if (
                     M == 8192
@@ -3171,6 +3213,8 @@ def mm(a, b):
         ):
             return mm_small(a, b)
 
+    if is_tle_ws_compatible(a, b, M, N, K):
+        return mm_sqmma_ws(a, b, M, N, K)
     if is_sqmma_compatible(a, b, N, K):
         return mm_sqmma(a, b, M, N, K)
     return mm_fma(a, b)
