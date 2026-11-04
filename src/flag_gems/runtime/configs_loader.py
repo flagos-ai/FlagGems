@@ -103,18 +103,11 @@ class TunedConfigLoader(object):
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
         if op_name == "mm_hygon_splitk":
-            fields = ("BM", "BN", "BK", "SPLITS", "KIND", "LOAD_MODE",
-                      "wave_private_sync", "optimize_epilogue")
-            ranges = {"OPTIMIZE_EPILOGUE": [False], **ranges}
-            return [
-                triton.Config(
-                    dict(zip(fields, values), schedule_hint="local-prefetch"),
-                    num_stages=stages, num_warps=warps, pre_hook=pre_hook,
-                )
-                for values in product(*(ranges[field.upper()] for field in fields))
-                for stages in ranges["s"]
-                for warps in ranges["w"]
-            ]
+            from flag_gems.runtime.backend._hygon.gemm_config_profiles import (
+                build_split_configs,
+            )
+
+            return build_split_configs(ranges, pre_hook=pre_hook)
 
         if op_name == "mm_hygon_splitk_post":
             return [
@@ -126,52 +119,11 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_hygon":
-            fields = (
-                "BLOCK_M", "BLOCK_N", "BLOCK_K", "GROUP_M", "LOAD_MODE",
-                "mmac_warps_m", "mmac_transposed", "optimize_epilogue",
-                "schedule_hint", "kpack", "waves_per_eu", "sched_latency",
+            from flag_gems.runtime.backend._hygon.gemm_config_profiles import (
+                build_mm_configs,
             )
-            try:
-                from triton.backends.hcu.compiler import HIPOptions
-            except ImportError:
-                HIPOptions = None
-            supports_ring = "sync_lds_buffers" in getattr(
-                HIPOptions, "__dataclass_fields__", {}
-            )
-            if supports_ring:
-                fields += ("sync_lds_buffers",)
-            elif 1 not in ranges.get("SYNC_LDS_BUFFERS", [1]):
-                return []
-            ranges = {"SCHED_LATENCY": ["none"], "SYNC_LDS_BUFFERS": [1], **ranges}
-            configs = [
-                triton.Config(
-                    dict(zip(fields, values), ASYNC_LOAD=False),
-                    num_stages=stages,
-                    num_warps=warps,
-                    pre_hook=pre_hook,
-                )
-                for values in product(*(ranges[field.upper()] for field in fields))
-                for stages in ranges["s"]
-                for warps in ranges["w"]
-            ]
-            # This is a bounded tune-space budget, not a resource substitute.
-            # Both-async generic S4 allocates four full A/B slots. Mixed loads
-            # may keep only one sync operand slot on weak-N edges; retain them.
-            # Packed layouts keep the previous conservative capacity boundary.
-            def over_budget(config):
-                meta = config.kwargs
-                generic = (meta["LOAD_MODE"] != 0 and meta["schedule_hint"] == "none"
-                           and meta["mmac_warps_m"] == 0
-                           and not meta["mmac_transposed"] and meta["kpack"] == 1)
-                packed = (meta["LOAD_MODE"] != 0
-                          and meta["schedule_hint"] == "local-prefetch"
-                          and meta["kpack"] == 2)
-                slots = 4 if generic and meta["LOAD_MODE"] == 3 else 3
-                return (config.num_stages == 4 and (generic or packed)
-                        and slots * 2 * meta["BLOCK_K"]
-                        * (meta["BLOCK_M"] + meta["BLOCK_N"]) > 65536)
 
-            return [config for config in configs if not over_budget(config)]
+            return build_mm_configs(ranges, pre_hook=pre_hook)
 
         if op_name == "bmm":
             return [
