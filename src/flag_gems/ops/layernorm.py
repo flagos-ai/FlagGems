@@ -467,8 +467,6 @@ def layernorm(
 
     if runtime.device.vendor_name != "metax":
         raise NotImplementedError("layernorm is currently available on MetaX only")
-    from flag_gems.runtime.backend._metax.ops.layernorm_inference import (
-        layernorm as impl,
-    )
+    from flag_gems.runtime.backend._metax.ops.layernorm import layernorm as impl
 
     return impl(input, normalized_shape, weight, bias, eps)

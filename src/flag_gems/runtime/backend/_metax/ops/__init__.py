@@ -37,8 +37,7 @@ from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .kthvalue import kthvalue
-from .layernorm import layer_norm, layer_norm_backward
-from .layernorm_inference import layernorm
+from .layernorm import layer_norm, layer_norm_backward, layernorm
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lgamma_ import lgamma, lgamma_
