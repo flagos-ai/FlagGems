@@ -66,6 +66,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular_out,
 )
 from .linalg_svdvals import linalg_svdvals
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .log10_ import log10_
 from .log_normal import log_normal
@@ -83,6 +84,8 @@ from .nonzero_numpy import nonzero_numpy
 from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
+from .pinverse import pinverse
+from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -123,6 +126,7 @@ from .special_shifted_chebyshev_polynomial_w import (
 from .thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .tile import tile
 from .triangular_solve import triangular_solve, triangular_solve_out
+from .triplet_margin_loss import triplet_margin_loss
 from .unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from .upsample_trilinear3d_backward import upsample_trilinear3d_backward
 from .var import var, var_correction, var_dim
@@ -192,6 +196,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svdvals",
+    "linalg_tensorinv",
     "linear",
     "log10_",
     "log_normal",
@@ -213,6 +218,8 @@ __all__ = [
     "not_equal",
     "pad_sequence",
     "permute_copy",
+    "pinverse",
+    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
@@ -248,6 +255,7 @@ __all__ = [
     "tile",
     "triangular_solve",
     "triangular_solve_out",
+    "triplet_margin_loss",
     "upsample_trilinear3d_backward",
     "var",
     "var_correction",
