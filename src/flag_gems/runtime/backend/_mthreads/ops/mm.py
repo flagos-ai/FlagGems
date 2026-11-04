@@ -2465,16 +2465,18 @@ def mm_stream_prune(configs, args, **kwargs):
     return selected
 
 
-mm_stream_tuned_kernel = libentry()(
-    libtuner(
-        configs=mm_stream_configs(),
-        key=["M", "N", "K", "TRANS_B", "DTYPE", "SPLIT_K"],
-        strategy="default",
-        prune_configs_by={"early_config_prune": mm_stream_prune},
-        warmup=5,
-        rep=15,
-    )(mm_stream_tme_kernel.fn)
-)
+# LibTuner hashes JIT dependencies during import, before host dispatch runs.
+if TLE_MM_ON:
+    mm_stream_tuned_kernel = libentry()(
+        libtuner(
+            configs=mm_stream_configs(),
+            key=["M", "N", "K", "TRANS_B", "DTYPE", "SPLIT_K"],
+            strategy="default",
+            prune_configs_by={"early_config_prune": mm_stream_prune},
+            warmup=5,
+            rep=15,
+        )(mm_stream_tme_kernel.fn)
+    )
 
 
 def mm_tme_descriptor_pre_hook(args):
@@ -2597,15 +2599,6 @@ mm_ilp_stream_device = mm_ilp_stream_kernel.fn
 mm_wide_tle_device = mm_wide_tle_kernel.fn
 
 
-@libentry()
-@libtuner(
-    configs=mm_tme_configs(),
-    key=["M", "N", "K", "TRANS_B", "DTYPE", "SPLIT_K", "NUM_SMS"],
-    strategy="default",
-    prune_configs_by={"early_config_prune": mm_tme_prune},
-    warmup=5,
-    rep=15,
-)
 @triton.jit
 def mm_tme_kernel(
     A,
@@ -2690,6 +2683,19 @@ def mm_tme_kernel(
             BLOCK_TAIL=BLOCK_TAIL,
             GROUP_M=0,
         )
+
+
+if TLE_MM_ON:
+    mm_tme_kernel = libentry()(
+        libtuner(
+            configs=mm_tme_configs(),
+            key=["M", "N", "K", "TRANS_B", "DTYPE", "SPLIT_K", "NUM_SMS"],
+            strategy="default",
+            prune_configs_by={"early_config_prune": mm_tme_prune},
+            warmup=5,
+            rep=15,
+        )(mm_tme_kernel)
+    )
 
 
 def mm_tme(a, b, c=None):
@@ -2780,23 +2786,24 @@ def _mm_large_descriptor_hook(nargs):
 
 
 # Reuse the existing TLE kernel; only validated shared-memory sizes enter tuning.
-mm_large_tle_tuned = libentry()(
-    libtuner(
-        configs=[
-            triton.Config(
-                {"BLOCK_K": bk, "STAGES": stages, "BLOCK_TAIL": tail, "GROUP_M": 4},
-                num_warps=16,
-                num_stages=1,
-                pre_hook=_mm_large_descriptor_hook,
-            )
-            for bk, stages, tail in ((64, 2, 64), (32, 4, 64), (32, 5, 32))
-        ],
-        key=["M", "N", "K", "TRANS_B", "DTYPE"],
-        strategy=["default"] * 5,
-        warmup=5,
-        rep=5,
-    )(mm_wide_tle_kernel.fn)
-)
+if TLE_MM_ON:
+    mm_large_tle_tuned = libentry()(
+        libtuner(
+            configs=[
+                triton.Config(
+                    {"BLOCK_K": bk, "STAGES": stages, "BLOCK_TAIL": tail, "GROUP_M": 4},
+                    num_warps=16,
+                    num_stages=1,
+                    pre_hook=_mm_large_descriptor_hook,
+                )
+                for bk, stages, tail in ((64, 2, 64), (32, 4, 64), (32, 5, 32))
+            ],
+            key=["M", "N", "K", "TRANS_B", "DTYPE"],
+            strategy=["default"] * 5,
+            warmup=5,
+            rep=5,
+        )(mm_wide_tle_kernel.fn)
+    )
 
 
 def mm_large_half(a, b, M, N, K, trans_b, c=None):
