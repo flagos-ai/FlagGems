@@ -20,6 +20,54 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import test_utils as tu
 
+
+def _cpu_values(tensor):
+    # Observe dense values without backend-specific complex comparison/copy
+    # kernels. Keep dtype, geometry and lazy flags until CPU observation.
+    nbytes = tensor.untyped_storage().nbytes()
+    raw = (
+        torch.empty(0, dtype=torch.uint8, device=tensor.device)
+        .set_(tensor.untyped_storage(), 0, (nbytes,), (1,))
+        .cpu()
+        .clone()
+    )
+    observed = torch.empty(0, dtype=tensor.dtype, device="cpu").set_(
+        raw.untyped_storage(), tensor.storage_offset(), tensor.size(), tensor.stride()
+    )
+    if tensor.is_conj():
+        observed = observed.conj()
+    if tensor.is_neg():
+        observed = observed._neg_view()
+    return observed
+
+
+def _comparison_values(result, reference, *, device):
+    assert result.device == device
+    assert result.dtype == reference.dtype
+    assert result.shape == reference.shape and result.layout == reference.layout
+    if utils.TO_CPU:
+        assert reference.device.type == "cpu"
+    else:
+        assert reference.device == result.device
+    return _cpu_values(result), _cpu_values(reference)
+
+
+def _assert_close(result, reference, *, device):
+    observed, expected = _comparison_values(result, reference, device=device)
+    torch.testing.assert_close(
+        observed,
+        expected,
+        rtol=flag_gems.testing.RESOLUTION[result.dtype],
+        atol=1e-4,
+        equal_nan=True,
+    )
+
+
+def _assert_equal(result, reference, *, device):
+    observed, expected = _comparison_values(result, reference, device=device)
+    torch.testing.assert_close(observed, expected, rtol=0, atol=0, equal_nan=True)
+
+
 # geqrf is the LAPACK Householder QR factorisation: an input of shape
 # (*batch, M, N) is factored into the packed reflector matrix a (*batch, M, N)
 # and the reflector scalars tau (*batch, min(M, N)). The default overload is
@@ -200,6 +248,20 @@ def make_placed_special_input(dtype, scenario):
     # The shared payload tensor is scattered with a device-side indexed
     # assignment onto isolated positions of a 6x5 matrix, so several reflector
     # rows have to be updated and the values never leave the device.
+    if dtype.is_complex and flag_gems.vendor_name in ("ascend", "kunlunxin"):
+        payloads = {
+            "nan": [float("nan"), 0.0, -0.0, 1.0, -1.0],
+            "inf": [float("inf"), float("-inf"), 0.0, -0.0, 1.0],
+            "mixed": [float("nan"), float("inf"), float("-inf"), 0.0, -0.0],
+        }
+        payload = torch.tensor(
+            payloads[scenario], dtype=torch.float32, device="cpu"
+        ).to(dtype)
+        rows = torch.tensor([row for row, _ in GEQRF_PLACEMENTS], device="cpu")
+        cols = torch.tensor([col for _, col in GEQRF_PLACEMENTS], device="cpu")
+        matrix = torch.full((6, 5), 0.5, dtype=dtype, device="cpu")
+        matrix[rows, cols] = payload
+        return matrix.to(flag_gems.device)
     payload = tu.make_special_input(dtype, scenario)
     rows = torch.tensor([row for row, _ in GEQRF_PLACEMENTS], device=flag_gems.device)
     cols = torch.tensor([col for _, col in GEQRF_PLACEMENTS], device=flag_gems.device)
@@ -214,16 +276,17 @@ def make_placed_special_input(dtype, scenario):
 @pytest.mark.parametrize("value_range", tu.selected_ranges())
 def test_geqrf_value_range(shape, value_range, dtype):
     inp = tu.make_input(dtype, shape, value_range)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
     # The default overload is not in-place.
-    tu.assert_result_equal(inp, snapshot)
+    _assert_equal(inp, tu.to_reference(snapshot), device=expected_device)
 
 
 @pytest.mark.geqrf
@@ -231,13 +294,14 @@ def test_geqrf_value_range(shape, value_range, dtype):
 @pytest.mark.parametrize("shape", GEQRF_BOUNDARY_SHAPES)
 def test_geqrf_boundary_shapes(shape, dtype):
     inp = tu.make_input(dtype, shape, GEQRF_RANGE)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
 
 
 @pytest.mark.geqrf
@@ -245,13 +309,14 @@ def test_geqrf_boundary_shapes(shape, dtype):
 @pytest.mark.parametrize("shape", GEQRF_EMPTY_SHAPES)
 def test_geqrf_empty_shapes(shape, dtype):
     inp = tu.make_input(dtype, shape, GEQRF_RANGE)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
 
 
 @pytest.mark.geqrf
@@ -259,15 +324,16 @@ def test_geqrf_empty_shapes(shape, dtype):
 @pytest.mark.parametrize("layout", GEQRF_INPUT_LAYOUTS)
 def test_geqrf_non_contiguous_input(layout, dtype):
     inp = make_strided_input(dtype, layout)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
+    _assert_equal(inp, tu.to_reference(snapshot), device=expected_device)
 
 
 @pytest.mark.geqrf
@@ -275,6 +341,7 @@ def test_geqrf_non_contiguous_input(layout, dtype):
 @pytest.mark.parametrize("shape,layout", GEQRF_OUT_CASES)
 def test_geqrf_out_buffers(shape, layout, dtype):
     inp = tu.make_input(dtype, shape, GEQRF_RANGE)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
     snapshot = inp.clone()
     ref_a, ref_tau = make_out_buffers(ref_inp, shape, "contiguous")
@@ -289,9 +356,9 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     assert returned_a is out_a
     assert returned_tau is out_tau
     assert out_buffer_metadata((out_a, out_tau)) == supplied_metadata
-    tu.assert_result_close(out_a, ref_a)
-    tu.assert_result_close(out_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    _assert_close(out_a, ref_a, device=expected_device)
+    _assert_close(out_tau, ref_tau, device=expected_device)
+    _assert_equal(inp, tu.to_reference(snapshot), device=expected_device)
 
 
 @pytest.mark.geqrf
@@ -300,19 +367,21 @@ def test_geqrf_special_values(dtype, scenario):
     # The shared payload holds five values; reshaping it to (1, 5) keeps all of
     # them and satisfies geqrf's rank >= 2 requirement.
     inp = tu.make_special_input(dtype, scenario).reshape(1, 5)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
 
 
 @pytest.mark.geqrf
 @pytest.mark.parametrize("dtype,scenario", GEQRF_PLACED_CASES)
 def test_geqrf_special_values_placed(dtype, scenario):
     inp = make_placed_special_input(dtype, scenario)
+    expected_device = inp.device
     ref_inp = tu.to_reference(inp)
 
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
@@ -322,8 +391,8 @@ def test_geqrf_special_values_placed(dtype, scenario):
     # what distinguishes this workload from the single-row case; both packed A and
     # tau are compared with matching NaNs (equal_nan) and no masking, so a
     # candidate that computes different positions still fails.
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    _assert_close(res_a, ref_a, device=expected_device)
+    _assert_close(res_tau, ref_tau, device=expected_device)
 
 
 @pytest.mark.geqrf
