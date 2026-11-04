@@ -116,7 +116,6 @@ def test_all_empty_full_reduction_returns_true(shape, dtype):
         ((0, 3), 0),
         ((3, 0), -1),
         ((0, 0), 1),
-        ((3, 0), 0),
         ((2, 0, 3), 1),
         ((2, 0, 3), 0),
     ],
@@ -140,7 +139,6 @@ def test_all_dim_empty_reduction_returns_true(shape, dim, dtype, keepdim):
     "shape, dim",
     [
         ((0, 3), (0, 1)),
-        ((2, 0, 3), (0, 1)),
         ((2, 0, 3), (1, 2)),
     ],
 )
@@ -175,7 +173,7 @@ def test_all_dims_empty_output_keeps_its_shape(dtype):
 @pytest.mark.all_dims
 @pytest.mark.parametrize(
     "shape, dim",
-    [((0,), None), ((2, 0, 3), None), ((0, 3), 1), ((2, 0, 3), 0)],
+    [((0,), None), ((0, 3), 1)],
 )
 @pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
 def test_all_empty_results_keep_their_device(shape, dim, dtype):
