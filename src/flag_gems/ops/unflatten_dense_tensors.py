@@ -17,8 +17,17 @@ import logging
 from typing import List
 
 import torch
+from packaging import version
 
 logger = logging.getLogger(__name__)
+
+# torch < 2.10 collapses a zero-numel output to a 1-D ``(0,)`` tensor,
+# while torch >= 2.10 keeps the template's shape. aten::unflatten_dense_tensors
+# changed here, so mirror whichever behaviour the running torch exposes.
+_KEEPS_EMPTY_SHAPE = version.parse(torch.__version__.split("+")[0]).release[:2] >= (
+    2,
+    10,
+)
 
 
 def unflatten_dense_tensors(
@@ -37,8 +46,9 @@ def unflatten_dense_tensors(
       inherits its strides (e.g. a strided ``flat`` yields strided views),
       and reports ``flat`` as its ``_base``.
     * A zero-numel template yields a *fresh* empty tensor (zero-size
-      storage, offset 0, no base) with the template's shape, contiguous
-      strides, and ``flat``'s dtype/device — it is not a view.
+      storage, offset 0, no base) with ``flat``'s dtype/device. Its shape
+      follows the running torch version: the template's shape on
+      torch >= 2.10, a 1-D ``(0,)`` tensor before that.
     * When ``flat`` runs out of elements, the underlying ``narrow`` raises
       the same ``RuntimeError`` as the native op.
 
@@ -47,15 +57,45 @@ def unflatten_dense_tensors(
     """
     logger.debug("GEMS UNFLATTEN_DENSE_TENSORS")
 
+    # 1-D flat buffers take a single ``as_strided`` per output, matching the
+    # zero-copy view idiom used by the other view ops in this package
+    # (``narrow``, ``unbind``, ``alias``). Non-1-D buffers keep the
+    # ``narrow(...).view(...)`` path so their error behaviour is unchanged.
+    one_d = flat.dim() == 1
+    stride0 = flat.stride(0) if one_d else 0
+    dim0 = flat.size(0)
+    base = flat.storage_offset()
+
     outputs = []
     offset = 0
     for tensor in tensors:
+        size = tensor.size()
         numel = tensor.numel()
         if numel == 0:
+            empty_shape = size if _KEEPS_EMPTY_SHAPE else (0,)
             outputs.append(
-                torch.empty(tensor.size(), dtype=flat.dtype, device=flat.device)
+                torch.empty(empty_shape, dtype=flat.dtype, device=flat.device)
             )
+        elif not one_d:
+            outputs.append(flat.narrow(0, offset, numel).view(size))
         else:
-            outputs.append(flat.narrow(0, offset, numel).view(tensor.size()))
+            if offset + numel > dim0:
+                # Delegate to narrow() so the raised RuntimeError keeps the
+                # exact native message instead of a hard-coded copy of it.
+                flat.narrow(0, offset, numel)
+            if len(size) == 1:
+                strides = (stride0,)
+            else:
+                # Row-major strides for ``size`` laid out over the flat
+                # buffer's element stride.
+                strides = []
+                acc = stride0
+                for dim_size in reversed(size):
+                    strides.append(acc)
+                    acc *= dim_size
+                strides.reverse()
+            outputs.append(
+                torch.as_strided(flat, size, tuple(strides), base + offset * stride0)
+            )
         offset += numel
     return outputs
