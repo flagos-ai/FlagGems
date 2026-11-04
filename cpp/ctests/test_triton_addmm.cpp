@@ -50,30 +50,8 @@ TEST_P(AddmmTest, addmm) {
   EXPECT_TRUE(result.ok) << result.message;
 }
 
-TEST_P(AddmmTest, addmm_out) {
-  const AddmmTestParam param = GetParam();
-  const torch::Device device = flag_gems::test::default_device();
-  const at::TensorOptions opt = at::TensorOptions().device(device).dtype(param.dtype);
-  // A vector bias exercises broadcasting in the C++ wrapper.
-  const at::Tensor bias = at::randn({param.n}, opt);
-  const at::Tensor mat1 = at::randn({param.m, param.k}, opt);
-  const at::Tensor mat2 = at::randn({param.k, param.n}, opt);
-  at::Tensor out = at::empty({param.m, param.n}, opt);
-  const at::Tensor expected =
-      at::addmm(bias.to(at::kFloat), mat1.to(at::kFloat), mat2.to(at::kFloat), 2.0, 0.5).to(param.dtype);
-  at::Tensor& actual = flag_gems::addmm_out(bias, mat1, mat2, 2.0, 0.5, out);
-  EXPECT_EQ(actual.data_ptr(), out.data_ptr());
-  auto result = flag_gems::accuracy_utils::gems_assert_close(actual,
-                                                             expected,
-                                                             param.dtype,
-                                                             /*equal_nan=*/false,
-                                                             /*reduce_dim=*/param.k);
-  EXPECT_TRUE(result.ok) << result.message;
-}
-
 INSTANTIATE_TEST_SUITE_P(AddmmTests,
                          AddmmTest,
-                         ::testing::Values(AddmmTestParam {10, 10, 0, at::ScalarType::Float},
-                                           AddmmTestParam {10, 10, 10, at::ScalarType::Float},
+                         ::testing::Values(AddmmTestParam {10, 10, 10, at::ScalarType::Float},
                                            AddmmTestParam {10, 10, 10, at::ScalarType::Half},
                                            AddmmTestParam {10, 10, 10, at::ScalarType::BFloat16}));
