@@ -38,3 +38,27 @@ def test_nan_to_num():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class NanToNumContiguousBenchmark(base.GenericBenchmark):
+    def set_more_shapes(self):
+        return super().set_more_shapes() + [
+            (511,),
+            (512,),
+            (513,),
+            (65536,),
+            (65537,),
+            (131072,),
+            (1048577,),
+        ]
+
+
+@pytest.mark.nan_to_num
+def test_nan_to_num_contiguous_launch():
+    bench = NanToNumContiguousBenchmark(
+        op_name="nan_to_num",
+        input_fn=_input_fn,
+        torch_op=torch.nan_to_num,
+        dtypes=[torch.float32],
+    )
+    bench.run()
