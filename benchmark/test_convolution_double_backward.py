@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base
 from .generated_operator_utils import OperatorBenchmark
 
@@ -49,4 +47,4 @@ def _build_inputs_fn(plan,dtype,device):
 @pytest.mark.convolution_double_backward
 @pytest.mark.underscore_convolution_double_backward
 def test_convolution_double_backward():
-    ConvDoubleBackwardBenchmark(op_name="_convolution_double_backward",torch_op=torch.ops.aten._convolution_double_backward.default,gems_op=flag_gems._convolution_double_backward,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=[torch.float32,torch.float16]).run()
+    ConvDoubleBackwardBenchmark(op_name="_convolution_double_backward",torch_op=torch.ops.aten._convolution_double_backward.default,case_fn=_case_fn,build_inputs_fn=_build_inputs_fn,dtypes=[torch.float32,torch.float16]).run()
