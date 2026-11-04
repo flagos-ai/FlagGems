@@ -67,13 +67,14 @@ from .chunk_cat import chunk_cat
 from .clamp_max import clamp_max
 from .clamp_max_ import clamp_max_
 from .clip_ import clip_
+from .clone import clone
 from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
-from .cosh_ import cosh_
-from .cosine_embedding_loss import cosine_embedding_loss
 from .conv3d import conv3d
 from .copy import copy, copy_
+from .cosh_ import cosh_
+from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .cross import cross
 from .cudnn_convolution import cudnn_convolution
@@ -387,15 +388,16 @@ __all__ = [
     "clamp_max",
     "clamp_max_",
     "clip_",
+    "clone",
     "column_stack_out",
     "concat",
     "concatenate",
-    "cosh_",
-    "cosine_embedding_loss",
     "constant_pad_nd",
     "conv3d",
     "copy",
     "copy_",
+    "cosh_",
+    "cosine_embedding_loss",
     "count_nonzero",
     "cross",
     "cudnn_convolution",
