@@ -77,3 +77,35 @@ def test_masked_fill_scalar_inplace():
         is_inplace=True,
     )
     bench.run()
+
+
+class HygonMaskedFillBenchmark(base.Benchmark):
+    """Frozen representatives: three eligible sizes and three fallback routes."""
+
+    def get_input_iter(self, dtype):
+        for shape in [(1024,), (32, 64), (1 << 20,)]:
+            n = 1
+            for extent in shape:
+                n *= extent
+            inp = torch.arange(n, dtype=dtype, device=self.device).reshape(shape)
+            mask = (torch.arange(n, device=self.device) % 3 == 0).reshape(shape)
+            yield inp, mask, 0.5
+        inp = torch.arange(2048, dtype=dtype, device=self.device).reshape(32, 64)
+        mask = torch.arange(64, device=self.device) % 3 == 0
+        yield inp, mask, 0.5  # Broadcast fallback.
+        yield inp.t(), mask.expand(32, 64).t(), 0.5  # Strided fallback.
+        yield inp, mask.expand(32, 64).contiguous(), torch.tensor(
+            0.5, dtype=dtype, device=self.device
+        )  # Tensor-value fallback (includes the generic value.item() sync).
+
+
+@pytest.mark.masked_fill
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon fast path")
+def test_masked_fill_hygon_frozen():
+    bench = HygonMaskedFillBenchmark(
+        op_name="masked_fill",
+        torch_op=torch.masked_fill,
+        gems_op=flag_gems.masked_fill,
+        dtypes=[torch.float32],
+    )
+    bench.run()
