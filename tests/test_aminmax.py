@@ -269,3 +269,174 @@ def test_underscore_aminmax_empty_matches_aten():
     inp = torch.empty(0, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems._aminmax(inp)
+
+
+_GLOBAL_VIEW_DTYPES = [
+    torch.bool,
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    *utils.ALL_FLOAT_DTYPES,
+]
+
+
+def _global_aminmax_view(dtype, layout):
+    # Construct the storage on device, THEN view it. Transferring a CPU view
+    # does not guarantee preservation of its strides, offset, or storage holes.
+    storage = torch.full((8, 12), 99, dtype=dtype, device=flag_gems.device)
+    views = {
+        "stride2": storage.reshape(-1)[1:8:2],
+        "slice": storage[1:7:2, 2:11:3],
+        "transpose": storage.t(),
+        "offset": storage[2:6, 3:10],
+        "offset_contiguous": storage.reshape(-1)[5:36],
+        "transpose_slice": storage[1:7, 2:10:2].t(),
+        "expand": storage[2:3, 3:4].expand(3, 5),
+    }
+    inp = views[layout]
+    inp.fill_(1)
+    inp[(0,) * inp.ndim] = 0
+    return storage, inp
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("dtype", _GLOBAL_VIEW_DTYPES)
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "stride2",
+        "slice",
+        "transpose",
+        "offset",
+        "offset_contiguous",
+        "transpose_slice",
+        "expand",
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_views(dtype, layout, keepdim):
+    storage, inp = _global_aminmax_view(dtype, layout)
+    before = storage.clone()
+    metadata = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
+    ref_min, ref_max = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
+    res_min, res_max = flag_gems.aminmax(inp, keepdim=keepdim)
+    utils.gems_assert_equal(res_min, ref_min)
+    utils.gems_assert_equal(res_max, ref_max)
+    utils.gems_assert_equal(storage, before)
+    assert (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr()) == metadata
+    assert res_min.dtype == res_max.dtype == dtype
+    assert res_min.device == res_max.device == inp.device
+    assert res_min.shape == res_max.shape == ((1,) * inp.ndim if keepdim else ())
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("hole", [-70, 70, 2**40])
+def test_aminmax_global_int64_index_holes(hole):
+    storage = torch.tensor(
+        [hole, 0, hole, 55, hole, 1, hole], dtype=torch.int64, device=flag_gems.device
+    )
+    inp = storage[1:6:2]
+    before = storage.clone()
+    assert inp.stride() == (2,) and inp.storage_offset() == 1
+    result = flag_gems.aminmax(inp)
+    reference = torch.aminmax(utils.to_reference(inp))
+    for actual, expected in zip(result, reference):
+        utils.gems_assert_equal(actual, expected)
+    assert result[0].item() == 0 and result[1].item() == 55
+    utils.gems_assert_equal(storage, before)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("n", [1, 31, 32, 33, 1023, 1024, 1025, 65537])
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_stride_boundaries(n, keepdim):
+    storage = torch.full((2 * n + 3,), 99, dtype=torch.int64, device=flag_gems.device)
+    inp = storage[1 : 2 * n + 1 : 2]
+    inp.fill_(1)
+    inp[-1] = -7
+    before = storage.clone()
+    expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
+    actual = flag_gems.aminmax(inp, keepdim=keepdim)
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_equal(result, reference)
+    utils.gems_assert_equal(storage, before)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_nan_holes_out(keepdim):
+    storage = torch.tensor(
+        [float("nan"), -3, float("nan"), 5, float("nan"), 1],
+        dtype=torch.float32,
+        device=flag_gems.device,
+    )
+    inp = storage[1::2]
+    before = storage.clone()
+    shape = (1,) if keepdim else ()
+    out = tuple(
+        torch.empty(shape, dtype=inp.dtype, device=inp.device) for _ in range(2)
+    )
+    expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
+    actual = flag_gems.aminmax(inp, keepdim=keepdim, out=out)
+    for result, reference, target in zip(actual, expected, out):
+        utils.gems_assert_equal(result, reference)
+        assert result.data_ptr() == target.data_ptr()
+    utils.gems_assert_equal(storage, before, equal_nan=True)
+
+
+@pytest.mark.aminmax
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_aminmax_global_scalar(keepdim):
+    inp = torch.tensor(-7, dtype=torch.int64, device=flag_gems.device)
+    expected = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
+    actual = flag_gems.aminmax(inp, keepdim=keepdim)
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_equal(result, reference)
+
+
+@pytest.mark.aminmax
+@pytest.mark.xfail(
+    strict=True,
+    reason="Existing public global NaN propagation defect; independent of strides",
+)
+@pytest.mark.parametrize("strided", [False, True])
+def test_aminmax_global_logical_nan_contract(strided):
+    storage = torch.tensor([1, 99, float("nan"), 99, -3, 99], device=flag_gems.device)
+    inp = storage[::2] if strided else storage
+    expected = torch.aminmax(utils.to_reference(inp))
+    actual = flag_gems.aminmax(inp)
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_equal(result, reference, equal_nan=True)
+
+
+@pytest.mark.aminmax
+@pytest.mark.xfail(
+    strict=True,
+    reason="Existing public global empty reduction lacks ATen no-identity error",
+)
+@pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
+def test_aminmax_global_empty_contract(shape):
+    storage = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
+    inp = storage if len(shape) == 1 else storage.transpose(0, 2)
+    with pytest.raises(RuntimeError, match="identity"):
+        torch.aminmax(utils.to_reference(inp))
+    with pytest.raises(RuntimeError, match="identity"):
+        flag_gems.aminmax(inp)
+
+
+@pytest.mark.aminmax
+def test_aminmax_global_int64_preserves_wide_values():
+    storage = torch.tensor(
+        [99, 2**40 + 3, 99, -(2**40) - 9, 99, 2**40 + 1, 99],
+        dtype=torch.int64,
+        device=flag_gems.device,
+    )
+    inp = storage[1:6:2]
+    before = storage.clone()
+    actual = flag_gems.aminmax(inp)
+    expected = torch.aminmax(utils.to_reference(inp))
+    for result, reference in zip(actual, expected):
+        utils.gems_assert_equal(result, reference)
+    utils.gems_assert_equal(storage, before)
