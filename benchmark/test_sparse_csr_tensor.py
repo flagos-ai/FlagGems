@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import flag_gems
 
 from . import base, consts
 
-# Source shapes chosen to cover small, mid, and large row/column grids; each is
+# Source shapes chosen to cover small, mid, and large compressed grids; each is
 # a 2-D compressed sparse row (CSR) matrix.
 SPARSE_CSR_TENSOR_SHAPES = [
     (256, 256),
@@ -32,7 +32,7 @@ def _make_csr(shape, dtype, device, density=0.3):
     """Build a compressed sparse row tensor on the target device."""
     x = torch.randn(shape, dtype=dtype, device=device)
     mask = torch.rand(shape, device=device) < density
-    return (x * mask).to_sparse_csr()
+    return (x * mask).to_sparse(layout=torch.sparse_csr)
 
 
 class SparseCsrTensorBenchmark(base.Benchmark):
@@ -42,9 +42,7 @@ class SparseCsrTensorBenchmark(base.Benchmark):
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
-            # The payload stays float32 so the cast to `cur_dtype` runs for
-            # every non-float32 target and the streaming kernel is timed.
-            sp = _make_csr(shape, torch.float32, self.device)
+            sp = _make_csr(shape, cur_dtype, self.device)
             yield (
                 sp.crow_indices(),
                 sp.col_indices(),

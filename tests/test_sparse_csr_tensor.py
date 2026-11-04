@@ -1,4 +1,4 @@
-# Copyright 2026, The FlagOS Contributors.
+# Copyright 2026 FlagOS Contributors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,24 +19,23 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = [
-    pytest.mark.sparse_csr_tensor,
-]
-
 
 def _make_csr(shape, dtype, density=0.3):
     """Build a compressed sparse row tensor on the device."""
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     mask = torch.rand(shape, device=flag_gems.device) < density
-    return (x * mask).to_sparse_csr()
+    return (x * mask).to_sparse(layout=torch.sparse_csr)
 
 
-def _sparse_csr_tensor_ref(crow_indices, col_indices, values, size=None, **kwargs):
+def _sparse_csr_tensor_ref(crow_indices, col_indices, values, size=None):
     """CPU reference for ``sparse_csr_tensor``."""
-    args = [crow_indices.cpu(), col_indices.cpu(), values.cpu()]
-    if size is not None:
-        args.append(list(size))
-    return torch.sparse_csr_tensor(*args, **kwargs)
+    if size is None:
+        return torch.sparse_csr_tensor(
+            crow_indices.cpu(), col_indices.cpu(), values.cpu()
+        )
+    return torch.sparse_csr_tensor(
+        crow_indices.cpu(), col_indices.cpu(), values.cpu(), list(size)
+    )
 
 
 def _assert_csr_close(res_out, ref_out, dtype):
@@ -62,7 +61,9 @@ def test_sparse_csr_tensor_explicit_size(shape, dtype):
     values = sp.values()
 
     ref_out = _sparse_csr_tensor_ref(crow_indices, col_indices, values, shape)
-    res_out = flag_gems.sparse_csr_tensor(crow_indices, col_indices, values, size=shape)
+    res_out = flag_gems.sparse_csr_tensor(
+        crow_indices, col_indices, values, size=shape, dtype=dtype
+    )
 
     _assert_csr_close(res_out, ref_out, dtype)
 
@@ -71,105 +72,98 @@ def test_sparse_csr_tensor_explicit_size(shape, dtype):
 @pytest.mark.parametrize("shape", [(256, 256), (512, 128), (1024, 1024)])
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_sparse_csr_tensor_infer_size(shape, dtype):
-    """Infer the logical shape from the pointer/index extents (size omitted)."""
+    """Infer the dense extents from the component buffers (size omitted)."""
     sp = _make_csr(shape, dtype)
     crow_indices = sp.crow_indices()
     col_indices = sp.col_indices()
     values = sp.values()
 
     ref_out = _sparse_csr_tensor_ref(crow_indices, col_indices, values)
-    res_out = flag_gems.sparse_csr_tensor(crow_indices, col_indices, values)
+    res_out = flag_gems.sparse_csr_tensor(
+        crow_indices, col_indices, values, dtype=dtype
+    )
 
     _assert_csr_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.sparse_csr_tensor
-@pytest.mark.parametrize("shape", [(256, 256), (512, 128)])
-@pytest.mark.parametrize("target_dtype", utils.FLOAT_DTYPES)
-def test_sparse_csr_tensor_dtype_cast(shape, target_dtype):
-    """A requested dtype that differs from the payload is cast by the kernel."""
-    sp = _make_csr(shape, torch.float32)
-    crow_indices = sp.crow_indices()
-    col_indices = sp.col_indices()
-    values = sp.values()
-
-    ref_out = _sparse_csr_tensor_ref(
-        crow_indices, col_indices, values, shape, dtype=target_dtype
-    )
-    res_out = flag_gems.sparse_csr_tensor(
-        crow_indices, col_indices, values, size=shape, dtype=target_dtype
-    )
-
-    assert res_out.dtype == target_dtype
-    _assert_csr_close(res_out, ref_out, target_dtype)
-
-
-@pytest.mark.sparse_csr_tensor
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_sparse_csr_tensor_explicit_options(dtype):
-    """Explicit layout/device kwargs equal to the natural defaults are accepted."""
-    shape = (128, 64)
-    sp = _make_csr(shape, dtype)
+def test_sparse_csr_tensor_infer_size_trailing_empty_columns(dtype):
+    """Columns beyond the last stored index are dropped, as in the native op."""
+    sp = _make_csr((256, 256), dtype, density=0.0)
+    sp.values()  # all-empty matrix has a valid (trivial) CSR form
+    dense = torch.zeros((256, 256), dtype=dtype, device=flag_gems.device)
+    dense[:200, :192] = torch.randn(200, 192, dtype=dtype, device=flag_gems.device)
+    sp = dense.to_sparse(layout=torch.sparse_csr)
     crow_indices = sp.crow_indices()
     col_indices = sp.col_indices()
     values = sp.values()
 
-    ref_out = _sparse_csr_tensor_ref(
-        crow_indices,
-        col_indices,
-        values,
-        shape,
-        dtype=dtype,
-        layout=torch.sparse_csr,
-    )
+    ref_out = _sparse_csr_tensor_ref(crow_indices, col_indices, values)
     res_out = flag_gems.sparse_csr_tensor(
-        crow_indices,
-        col_indices,
-        values,
-        size=shape,
-        dtype=dtype,
-        layout=torch.sparse_csr,
-        device=flag_gems.device,
-        pin_memory=False,
+        crow_indices, col_indices, values, dtype=dtype
     )
 
-    assert res_out.device == values.device
+    assert res_out.shape == ref_out.shape == (256, 192)
     _assert_csr_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.sparse_csr_tensor
-def test_sparse_csr_tensor_empty_with_cast():
-    """An empty payload skips the cast kernel but still honours the dtype."""
-    x = torch.empty((0, 4), dtype=torch.float32, device=flag_gems.device)
-    sp = x.to_sparse_csr()
-
-    res_out = flag_gems.sparse_csr_tensor(
-        sp.crow_indices(),
-        sp.col_indices(),
-        sp.values(),
-        size=(0, 4),
-        dtype=torch.float16,
-    )
-
-    assert tuple(res_out.shape) == (0, 4)
-    assert res_out.layout == torch.sparse_csr
-    assert res_out.dtype == torch.float16
-
-
-@pytest.mark.sparse_csr_tensor
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_sparse_csr_tensor_rejects_wrong_layout(dtype):
-    """An explicit non-CSR layout request is rejected, as in the native op."""
+def test_sparse_csr_tensor_aliases_values(dtype):
+    """The result keeps the caller's payload buffer by reference."""
     sp = _make_csr((256, 256), dtype)
     crow_indices = sp.crow_indices()
     col_indices = sp.col_indices()
     values = sp.values()
 
+    res_out = flag_gems.sparse_csr_tensor(
+        crow_indices, col_indices, values, size=(256, 256), dtype=dtype
+    )
+
+    assert res_out.values().data_ptr() == values.data_ptr()
+
+
+@pytest.mark.sparse_csr_tensor
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sparse_csr_tensor_rejects_dtype_mismatch(dtype):
+    """A values/dtype mismatch is rejected, as the ATen contract requires."""
+    sp = _make_csr((256, 256), dtype)
+    crow_indices = sp.crow_indices()
+    col_indices = sp.col_indices()
+    values = sp.values()
+
+    other = torch.bfloat16 if dtype is not torch.bfloat16 else torch.float32
     with pytest.raises(RuntimeError):
         flag_gems.sparse_csr_tensor(
-            crow_indices,
-            col_indices,
-            values,
-            size=(256, 256),
-            layout=torch.sparse_csc,
+            crow_indices, col_indices, values, size=(256, 256), dtype=other
         )
+
+
+@pytest.mark.sparse_csr_tensor
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sparse_csr_tensor_autograd_flows_into_values(dtype):
+    """Gradients reach the caller's values through the constructed tensor."""
+    sp = _make_csr((128, 128), dtype)
+    crow_indices = sp.crow_indices()
+    col_indices = sp.col_indices()
+
+    values = sp.values().detach().requires_grad_(True)
+    res_out = flag_gems.sparse_csr_tensor(
+        crow_indices, col_indices, values, size=(128, 128), dtype=dtype
+    )
+    (res_out.values() * 2).sum().backward()
+
+    ref_values = sp.values().detach().requires_grad_(True)
+    ref_out = torch.sparse_csr_tensor(
+        crow_indices.cpu(),
+        col_indices.cpu(),
+        ref_values.cpu(),
+        size=(128, 128),
+        dtype=dtype,
+    )
+    ref_out.values().sum().backward()
+
+    assert values.grad is not None
+    expected = (2 * torch.ones_like(ref_values)).cpu()
+    assert torch.allclose(values.grad.cpu(), expected)
