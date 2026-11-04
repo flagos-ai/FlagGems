@@ -144,7 +144,8 @@ def test_neg_hygon_layouts(hygon_neg_module, monkeypatch, layout):
     monkeypatch.setattr(hygon_neg_module, "_generic_neg", fallback)
     reference = torch.neg(utils.to_reference(inp))
     result = flag_gems.neg(inp)
-    assert len(calls) == int(not expected_fast)
+    # Both contiguous and strided FP32 routes now preserve the sign bit.
+    assert not calls
     utils.gems_assert_equal(result, reference)
 
 

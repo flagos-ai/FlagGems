@@ -20,6 +20,7 @@ import triton.language as tl
 
 from flag_gems.ops.neg import neg as _generic_neg
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,29 @@ def _neg_contiguous_kernel(input_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.con
     # subnormals, infinities and NaN payloads. No floating point arithmetic.
     bits = x.to(tl.uint32, bitcast=True) ^ tl.full((), 0x80000000, tl.uint32)
     tl.store(output_ptr + offsets, bits.to(tl.float32, bitcast=True), mask=mask)
+
+
+@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@triton.jit
+def _neg_strided_fp32_func(x):
+    # Unary minus currently lowers to +0 - x, which loses the sign of +0.
+    bits = x.to(tl.uint32, bitcast=True) ^ tl.full((), 0x80000000, tl.uint32)
+    return bits.to(tl.float32, bitcast=True)
+
+
+def _can_use_strided_fp32_path(A):
+    return (
+        type(A) is torch.Tensor
+        and A.layout == torch.strided
+        and A.device.type in _DEVICE_TYPES
+        and A.dtype == torch.float32
+        and not A.requires_grad
+        and not A.is_conj()
+        and not A.is_neg()
+        and not A.is_contiguous()
+        and A.numel() <= _INT32_MAX
+        and torch.autograd.forward_ad.unpack_dual(A).tangent is None
+    )
 
 
 def _can_use_fast_path(A):
@@ -58,6 +82,8 @@ def _can_use_fast_path(A):
 def neg(A):
     logger.debug("GEMS_HYGON NEG")
     if not _can_use_fast_path(A):
+        if _can_use_strided_fp32_path(A):
+            return _neg_strided_fp32_func(A)
         return _generic_neg(A)
     with torch_device_fn.device(A.device.index):
         output = torch.empty_like(A)
