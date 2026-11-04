@@ -33,6 +33,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .batch_norm_no_update import batch_norm_no_update
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
@@ -211,6 +212,7 @@ __all__ = [
     "argmin",
     "argsort",
     "baddbmm",
+    "batch_norm_no_update",
     "bmm",
     "bmm_w8a8",
     "bmm_w8a8_int8",
