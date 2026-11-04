@@ -58,6 +58,9 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
+from ._foreach_direct import _launch_fast as _launch_direct
+from ._foreach_direct import _select_ptr
+
 logger = logging.getLogger(__name__)
 
 # The unmasked fast path is only for the benchmark/real floating dtypes; fp64
@@ -95,6 +98,40 @@ def _foreach_floor_unmasked_kernel(
     d = tl.minimum(tl.maximum((r - x_fp32) * 1e38, 0.0), 1.0)
     y = (r - d).to(DT)
     tl.store(ptr + idx, y)
+
+
+@triton.jit
+def _foreach_floor_direct_kernel(
+    p0,
+    p1,
+    p2,
+    p3,
+    p4,
+    p5,
+    p6,
+    p7,
+    p8,
+    p9,
+    p10,
+    p11,
+    p12,
+    p13,
+    p14,
+    p15,
+    DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Direct-pointer in-place floor: scalar pointer args keep block-DMA."""
+    t = tl.program_id(0)
+    chunk = tl.program_id(1)
+    ptr = _select_ptr(
+        t, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15
+    ).to(tl.pointer_type(DT))
+    idx = chunk * BLOCK + tl.arange(0, BLOCK)
+    x = tl.load(ptr + idx).to(tl.float32)
+    r = (x + 12582912.0) - 12582912.0
+    d = tl.minimum(tl.maximum((r - x) * 1e38, 0.0), 1.0)
+    tl.store(ptr + idx, (r - d).to(DT))
 
 
 def _pick_block(n_elements, dtype):
@@ -165,6 +202,8 @@ def _try_fast(tensors):
             return False
         if has_internal_overlap(t):
             return False
+    if _launch_direct(tensors, _foreach_floor_direct_kernel):
+        return True
     return _launch_fast(tensors, dtype, device)
 
 
