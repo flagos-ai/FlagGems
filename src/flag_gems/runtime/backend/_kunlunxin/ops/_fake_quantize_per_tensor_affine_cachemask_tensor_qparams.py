@@ -29,12 +29,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
-    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams as _generic_fq,
-)
 from flag_gems.ops.contiguous import contiguous
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -43,12 +40,50 @@ logger = logging.getLogger(__name__)
 # under ../payload/obj and linked at the ELF stage via object=. This keeps the
 # test path independent of the XTDK clang (which the CI runtime image does not
 # ship). object= itself is only available on newer flagtree builds; on older
-# toolchains the decorator raises and we fall back to the generic pure-Triton
-# kernel. The three entry symbols are gems_quantize_{f32,f16,bf16} (built with
+# toolchains the decorator raises and we fall back to the pure-Triton kernel
+# below. The three entry symbols are gems_quantize_{f32,f16,bf16} (built with
 # -DFAKE_QUANT_DTYPE={0,1,2}).
 _PAY_OBJ = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "payload", "obj"
 )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements"])
+def _tensor_qparams_kernel(
+    x_ptr,
+    scale_ptr,
+    zero_point_ptr,
+    fake_quant_enabled_ptr,
+    out_ptr,
+    mask_ptr,
+    n_elements,
+    QUANT_MIN: tl.constexpr,
+    QUANT_MAX: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    load_mask = offsets < n_elements
+
+    scale = tl.load(scale_ptr).to(tl.float32)
+    inv = tl.div_rn(1.0, scale)
+    zero_point = tl.load(zero_point_ptr).to(tl.float32)
+    enabled = tl.load(fake_quant_enabled_ptr) != 0
+
+    x = tl.load(x_ptr + offsets, mask=load_mask, other=0.0).to(tl.float32)
+    # Multiply by the fp32 reciprocal of scale, matching ATen's tensor_qparams
+    # path; dividing by scale differs by an ulp on exact ties.
+    q = tl_extra_shim.nearbyint(x * inv) + zero_point
+    in_range = (q >= QUANT_MIN) & (q <= QUANT_MAX)
+    q_clamped = tl.minimum(tl.maximum(q, QUANT_MIN), QUANT_MAX)
+    # NaN does not propagate through ATen's clamp; it lands on QUANT_MIN.
+    q_clamped = tl.where(x != x, QUANT_MIN, q_clamped)
+    quantized = scale * (q_clamped - zero_point)
+    output = tl.where(enabled, quantized.to(out_ptr.dtype.element_ty), x)
+    mask = tl.where(enabled, in_range, True)
+
+    tl.store(out_ptr + offsets, output, mask=load_mask)
+    tl.store(mask_ptr + offsets, mask, mask=load_mask)
 
 
 try:
@@ -133,10 +168,6 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     logger.debug(
         "GEMS_KUNLUNXIN FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_TENSOR_QPARAMS"
     )
-    if not _HAS_TLE_RAW:
-        return _generic_fq(
-            self, scale, zero_point, fake_quant_enabled, quant_min, quant_max
-        )
     if not self.is_contiguous():
         self = contiguous(self)
     out = torch.empty_like(self)
@@ -146,24 +177,45 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
     if n_elements == 0:
         return out, mask
 
-    programs = 1 if n_elements <= 65536 else 12
-    dtype = (
-        0 if self.dtype == torch.float32 else (1 if self.dtype == torch.float16 else 2)
-    )
-    with torch_device_fn.device(self.device):
-        _simd_kernel[(programs, 1, 1)](
-            self,
-            scale,
-            zero_point,
-            fake_quant_enabled,
-            out,
-            mask,
-            n_elements,
-            QMIN=quant_min,
-            QMAX=quant_max,
-            NP=programs,
-            DTYPE=dtype,
-            num_warps=32,
-            enable_fp_fusion=False,
+    if _HAS_TLE_RAW:
+        programs = 1 if n_elements <= 65536 else 12
+        dtype = (
+            0
+            if self.dtype == torch.float32
+            else (1 if self.dtype == torch.float16 else 2)
         )
+        with torch_device_fn.device(self.device):
+            _simd_kernel[(programs, 1, 1)](
+                self,
+                scale,
+                zero_point,
+                fake_quant_enabled,
+                out,
+                mask,
+                n_elements,
+                QMIN=quant_min,
+                QMAX=quant_max,
+                NP=programs,
+                DTYPE=dtype,
+                num_warps=32,
+                enable_fp_fusion=False,
+            )
+    else:
+        block_size = 512
+        num_warps = 4 if self.dtype == torch.float32 else 8
+        grid = (triton.cdiv(n_elements, block_size),)
+        with torch_device_fn.device(self.device):
+            _tensor_qparams_kernel[grid](
+                self,
+                scale,
+                zero_point,
+                fake_quant_enabled,
+                out,
+                mask,
+                n_elements,
+                QUANT_MIN=quant_min,
+                QUANT_MAX=quant_max,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+            )
     return out, mask
