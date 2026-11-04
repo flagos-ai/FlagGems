@@ -73,17 +73,27 @@ def test_fft_ifftshift_empty(shape, dtype, dim):
 @pytest.mark.fft_ifftshift
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_fft_ifftshift_scalar(dtype):
-    # A 0-dim tensor takes the clone fast path and is returned unchanged.
-    # aten raises here ("`shifts` required" / "tensor has no dimensions"), so
-    # there is no reference to compare against: assert the clone semantics.
+    # Issue #8390: aten raises for a 0-dim input with no shifts ("`shifts`
+    # required"), so the override raises too — the old clone fast path changed
+    # the observable behaviour of torch.fft.ifftshift for scalar input.
     res_inp = torch.randn((), dtype=dtype, device=flag_gems.device)
-    # The comparison value must go through to_reference: under --ref=cpu the
-    # reference side has to live on the CPU, and res_inp is still on device.
-    ref_inp = utils.to_reference(res_inp)
 
-    res_out = flag_gems.fft_ifftshift(res_inp)
+    with pytest.raises(RuntimeError, match="`shifts` required"):
+        flag_gems.fft_ifftshift(res_inp)
 
-    assert res_out.shape == ()
-    assert res_out.dtype == dtype
-    assert res_out is not res_inp
-    utils.gems_assert_close(res_out, ref_inp, dtype)
+
+@pytest.mark.fft_ifftshift
+def test_fft_ifftshift_zero_dim_raises():
+    # Issue #8390: a 0-dim input with no shifts raises in ATen ("`shifts` required");
+    # the override used to return a clone instead
+    x = torch.tensor(3.14, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="`shifts` required"):
+        flag_gems.fft_ifftshift(x)
+
+
+@pytest.mark.fft_ifftshift
+def test_fft_ifftshift_empty_returns_clone():
+    # the empty half of the old short-circuit was already right and stays
+    x = torch.empty(0, device=flag_gems.device)
+    out = flag_gems.fft_ifftshift(x)
+    assert out.shape == (0,)
