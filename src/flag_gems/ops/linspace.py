@@ -60,8 +60,15 @@ def _linspace_empty(start, end, *, dtype, layout, device, pin_memory):
             raise TypeError(
                 "linspace start and end must be numbers or 0-dimensional tensors"
             )
-    start = start.item() if isinstance(start, torch.Tensor) else start
-    end = end.item() if isinstance(end, torch.Tensor) else end
+    # Meta dispatch never reads either endpoint, including a CPU tensor paired
+    # with a meta tensor. Match its metadata-only dtype inference below.
+    meta_endpoint = any(
+        isinstance(endpoint, torch.Tensor) and endpoint.is_meta
+        for endpoint in (start, end)
+    )
+    if not meta_endpoint:
+        start = start.item() if isinstance(start, torch.Tensor) else start
+        end = end.item() if isinstance(end, torch.Tensor) else end
     for endpoint in (start, end):
         if isinstance(endpoint, int) and not -(1 << 63) <= endpoint < (1 << 64):
             raise OverflowError("linspace scalar endpoint is out of range")
@@ -84,9 +91,13 @@ def _linspace_empty(start, end, *, dtype, layout, device, pin_memory):
             )
 
     out = torch.empty(
-        (0,), dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
+        (0,),
+        dtype=dtype,
+        layout=layout,
+        device="meta" if meta_endpoint else device,
+        pin_memory=pin_memory,
     )
-    if out.layout != torch.strided:
+    if not meta_endpoint and out.layout != torch.strided:
         raise NotImplementedError("linspace only supports strided layout")
     return out
 

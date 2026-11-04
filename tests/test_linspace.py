@@ -218,3 +218,85 @@ class TestGenericLinspaceEmpty:
         assert first is not second
         assert first.untyped_storage()._cdata != second.untyped_storage()._cdata
         assert first.shape == second.shape == (0,)
+
+    @pytest.mark.parametrize(
+        "default_dtype", [torch.float16, torch.float32, torch.float64]
+    )
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "start",
+            "end",
+            "both",
+            "complex_tensor",
+            "cpu_complex_tensor",
+            "complex_scalar",
+        ],
+    )
+    @pytest.mark.parametrize("dtype", [None, torch.float32, torch.complex128])
+    def test_meta_endpoints(self, default_dtype, kind, dtype, monkeypatch):
+        previous = torch.get_default_dtype()
+        try:
+            torch.set_default_dtype(default_dtype)
+            meta = torch.empty((), device="meta")
+            endpoints = {
+                "start": (meta, 2),
+                "end": (1, meta),
+                "both": (meta, meta),
+                "complex_tensor": (
+                    torch.empty((), device="meta", dtype=torch.complex64),
+                    2,
+                ),
+                "cpu_complex_tensor": (torch.tensor(1 + 2j, device="cpu"), meta),
+                "complex_scalar": (meta, 2 + 3j),
+            }
+            start, end = endpoints[kind]
+            kwargs = {"device": "cpu", "dtype": dtype}
+            try:
+                expected = torch.linspace(start, end, 0, **kwargs)
+            except Exception as error:
+                with pytest.raises(type(error)):
+                    generic_linspace(start, end, 0, **kwargs)
+                return
+
+            def unexpected_item(self):
+                raise AssertionError("meta linspace must not read either endpoint")
+
+            with monkeypatch.context() as patch:
+                patch.setattr(torch.Tensor, "item", unexpected_item)
+                result = generic_linspace(start, end, 0, **kwargs)
+            assert result.device == expected.device == torch.device("meta")
+            assert result.shape == expected.shape == (0,)
+            assert result.dtype == expected.dtype
+            assert result.layout == expected.layout
+            assert result.stride() == expected.stride()
+            assert result.requires_grad == expected.requires_grad
+        finally:
+            torch.set_default_dtype(previous)
+
+    @pytest.mark.parametrize("meta_first", [False, True])
+    def test_meta_endpoint_rank_validation(self, meta_first):
+        meta = torch.empty((), device="meta")
+        invalid = torch.ones((1,), device="cpu")
+        start, end = (meta, invalid) if meta_first else (invalid, meta)
+        with pytest.raises(RuntimeError):
+            torch.linspace(start, end, 0, device="cpu")
+        with pytest.raises(RuntimeError):
+            generic_linspace(start, end, 0, device="cpu")
+
+    @pytest.mark.parametrize("layout", [torch.strided, torch.sparse_coo])
+    @pytest.mark.parametrize("pin_memory", [None, False, True])
+    def test_meta_allocation_options(self, layout, pin_memory):
+        start = torch.empty((), device="meta")
+        kwargs = {"device": "cpu", "layout": layout, "pin_memory": pin_memory}
+        try:
+            expected = torch.linspace(start, 2, 0, **kwargs)
+        except Exception as error:
+            with pytest.raises(type(error)):
+                generic_linspace(start, 2, 0, **kwargs)
+            return
+        result = generic_linspace(start, 2, 0, **kwargs)
+        assert result.device == expected.device == torch.device("meta")
+        assert result.shape == expected.shape == (0,)
+        assert result.dtype == expected.dtype
+        assert result.layout == expected.layout
