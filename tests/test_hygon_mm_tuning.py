@@ -688,3 +688,57 @@ def test_hygon_mm_avoids_uniform_buffer_footprint_pruning(hygon_mm):
         and c.num_stages == 2
         for c in pruned
     )
+
+
+def test_hygon_mv_expanded_keeps_register_and_occupancy_boundaries(hygon_mm):
+    configs = hygon_mm.runtime.ops_get_configs("mv_hygon")
+    members = {(c.kwargs["BLOCK_M"], c.kwargs["BLOCK_N"], c.num_warps) for c in configs}
+    # Preserve the largest admitted accumulation state, but use more waves
+    # when doubling its geometry. Keep the independently useful extra-wave
+    # tier on small tiles even when it owns no additional elements.
+    assert (1024, 8, 1) in members
+    assert (2048, 8, 1) not in members and (2048, 8, 2) in members
+    assert (256, 1, 4) in members and (256, 1, 8) in members
+    assert (32, 1, 1) in members and (32, 1, 2) in members
+    assert (32, 1, 4) not in members
+    assert all(c.num_stages == 2 for c in configs)
+    for bm, bn, waves in members:
+        assert {
+            c.kwargs["LOOP_STAGES"]
+            for c in configs
+            if (c.kwargs["BLOCK_M"], c.kwargs["BLOCK_N"], c.num_warps)
+            == (bm, bn, waves)
+        } == {1, 2, 3}
+
+
+def test_hygon_mv_expanded_preserves_pre_hook(hygon_mm):
+    def hook(values):
+        return None
+
+    original = hygon_mm.runtime.ops_get_configs("mv_hygon")
+    hooked = hygon_mm.runtime.ops_get_configs("mv_hygon", pre_hook=hook)
+    assert [c.all_kwargs() for c in hooked] == [c.all_kwargs() for c in original]
+    assert all(c.pre_hook is hook for c in hooked)
+
+
+def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
+    packet = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_packet")
+    partial = hygon_splitk.runtime.ops_get_configs(
+        "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
+    )
+    post = hygon_splitk.runtime.ops_get_configs(
+        "mm_hygon_splitk_post", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
+    )
+    # Count the two storage layouts separately, plus MV's single MMAC family.
+    # The ordinary MM/MV candidates are already counted in their YAML pools.
+    python_candidates = (
+        sum(len(packet._packet_variants(nt=nt)) for nt in (False, True)) + 1
+    )
+    total = (
+        len(_expanded_configs(hygon_mm))
+        + len(partial)
+        + len(post)
+        + len(hygon_mm.runtime.ops_get_configs("mv_hygon"))
+        + python_candidates
+    )
+    assert total <= 4000

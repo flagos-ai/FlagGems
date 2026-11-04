@@ -16,7 +16,6 @@ import copy
 import inspect
 import os
 import warnings
-from itertools import product
 
 import triton
 
@@ -201,6 +200,9 @@ class TunedConfigLoader(object):
             # gfx936 uses lane-first wave64 tiles. Keep the minimum owner
             # waves and one replicated tier: workgroup occupancy can matter
             # even when the extra waves do not own independent elements.
+            # Leave register space for loads and addresses alongside the FP32
+            # accumulation tile. The power-of-two geometry jumps from 128 to
+            # 256 values/thread, consuming the whole VGPR budget at that tier.
             return [
                 triton.Config(
                     {
@@ -218,6 +220,7 @@ class TunedConfigLoader(object):
                 for s in ranges["s"]
                 for w in ranges["w"]
                 if w <= 2 * max(1, block_m * block_n // 64)
+                and block_m * block_n <= 128 * 64 * w
             ]
 
         if op_name in ("mv", "mv_row", "mv_column"):
