@@ -23,27 +23,17 @@ class NormBenchmark(base.GenericBenchmark):
     pass
 
 
+# The production call feeds a [65536, 1, 1152] activation with a (1152,)
+# normalized shape at eps 1e-6; every other core shape drops the trailing
+# dimension and keeps the default eps.
+REAL_CALL_OVERRIDES = {
+    (65536, 1, 1152): ((1152,), 1e-6),
+}
+
+
 def input_fn(shape, dtype, device):
+    normalized_shape, eps = REAL_CALL_OVERRIDES.get(shape, (shape[1:], 1e-5))
     inp = torch.randn(shape, dtype=dtype, device=device)
-    if shape == (65536, 1, 1152):
-        layer_shape = (1152,)
-        eps = 1e-6
-    else:
-        layer_shape = shape[1:]
-        eps = 1e-5
-    weight = torch.randn(layer_shape, dtype=dtype, device=device)
-    bias = torch.randn(layer_shape, dtype=dtype, device=device)
-    yield inp, layer_shape, weight, bias, eps
-
-
-def native_layer_norm_input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    if shape == (65536, 1, 1152):
-        normalized_shape = (1152,)
-        eps = 1e-6
-    else:
-        normalized_shape = shape[1:]
-        eps = 1e-5
     weight = torch.randn(normalized_shape, dtype=dtype, device=device)
     bias = torch.randn(normalized_shape, dtype=dtype, device=device)
     yield inp, normalized_shape, weight, bias, eps
@@ -53,7 +43,7 @@ def native_layer_norm_input_fn(shape, dtype, device):
 def test_native_layer_norm():
     bench = NormBenchmark(
         op_name="native_layer_norm",
-        input_fn=native_layer_norm_input_fn,
+        input_fn=input_fn,
         torch_op=torch.ops.aten.native_layer_norm.default,
         dtypes=consts.FLOAT_DTYPES,
     )
