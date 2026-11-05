@@ -17,6 +17,7 @@ _LEGACY_ASCEND = (
 )
 _MAX_UNROLLED_REDUCTION = 32
 _DIRECT_BLOCK_SIZE = 16
+_LAUNCH_PLAN_ALIGNMENT = 16
 
 
 @triton.jit
@@ -1811,8 +1812,15 @@ def _launch_gradient(kernel, grid, *args, pending=None, record=None):
         compiled, _ = compact[grid](*call_args)
         if record is not None:
             record.append((compiled, grid, call_args, pointers))
-    else:
+    elif record is None:
         kernel[grid](*args)
+    else:
+        compiled, _ = kernel[grid](*args)
+        pointers = 0
+        while pointers < len(args) and isinstance(args[pointers], torch.Tensor):
+            pointers += 1
+        args += tuple(p.default for p in kernel.jit_function.params[len(args) :])
+        record.append((compiled, grid, args, pointers))
 
 
 @libentry()
@@ -3002,9 +3010,27 @@ def _convolution_backward_impl(
         groups,
         output_mask,
     )
+    # Raw compiled kernels retain alignment specialization. Unaligned views
+    # keep the regular JIT path instead of replaying an aligned launch.
+    backend_plan = (
+        runtime_device.vendor_name in ("mthreads", "thead")
+        and isinstance(output_mask, (tuple, list))
+        and len(output_mask) == 3
+        and all(output_mask)
+        and all(
+            isinstance(t, torch.Tensor) and t.data_ptr() % _LAUNCH_PLAN_ALIGNMENT == 0
+            for t in (grad_output, input, weight)
+            + (() if _outputs is None else _outputs)
+        )
+    )
     if (
-        _input_gradient_config is not None
-        or runtime_device.vendor_name not in ("nvidia", "hygon")
+        (
+            not backend_plan
+            and (
+                _input_gradient_config is not None
+                or runtime_device.vendor_name not in ("nvidia", "hygon")
+            )
+        )
         or input.numel() == 0
         or grad_output.numel() == 0
     ):
@@ -3048,9 +3074,13 @@ def _convolution_backward_impl(
             (type(transposed), transposed),
             output_key,
         )
+        if backend_plan:
+            key = (key, _input_gradient_config)
         plan = _LAUNCH_PLANS.get(key)
     except (TypeError, AttributeError):
-        return _convolution_backward_uncached(*arguments, _outputs=_outputs)
+        return _convolution_backward_uncached(
+            *arguments, _outputs=_outputs, _input_gradient_config=_input_gradient_config
+        )
     if plan is not None:
         launches, workspace, bias_shape = plan
         if _outputs is None:
@@ -3070,13 +3100,24 @@ def _convolution_backward_impl(
             for shape, dtype in workspace
         )
         with torch_device_fn.device(input.device):
+            stream = (
+                triton.runtime.driver.active.get_current_stream(input.device.index)
+                if backend_plan
+                else None
+            )
             for kernel, grid, slots, metadata in launches:
                 pointers = tuple(tensors[slot] for slot in slots)
-                kernel[grid](*pointers, *metadata)
+                if backend_plan:
+                    kernel[grid](*pointers, *metadata, stream=stream)
+                else:
+                    kernel[grid](*pointers, *metadata)
         return outputs
     record = []
     outputs = _convolution_backward_uncached(
-        *arguments, _outputs=_outputs, _record=record
+        *arguments,
+        _outputs=_outputs,
+        _record=record,
+        _input_gradient_config=_input_gradient_config,
     )
     if not record:
         return outputs
