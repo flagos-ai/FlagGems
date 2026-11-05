@@ -15,6 +15,7 @@
 import logging
 import math
 
+import torch
 import triton
 import triton.language as tl
 
@@ -157,18 +158,190 @@ def _select_flat_block_size(numel, inner_size):
     return 1024
 
 
+@libentry()
+@triton.jit
+def index_copy_ascend_strided_kernel(
+    out_ptr,
+    src_ptr,
+    index_ptr,
+    numel,
+    input_dim,
+    SHAPE: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
+    SRC_STRIDES: tl.constexpr,
+    DIM: tl.constexpr,
+    INDEX_STRIDE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(0).to(tl.int64)
+    step = tle.num_programs(0).to(tl.int64) * BLOCK_SIZE
+    for start in range(pid * BLOCK_SIZE, numel, step):
+        offsets = start + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < numel
+        remaining = offsets
+        src_offset = tl.full((BLOCK_SIZE,), 0, tl.int64)
+        dst_offset = tl.full((BLOCK_SIZE,), 0, tl.int64)
+        valid_index = tl.full((BLOCK_SIZE,), True, tl.int1)
+        for axis in tl.static_range(len(SHAPE) - 1, -1, -1):
+            coordinate = remaining % SHAPE[axis]
+            remaining = remaining // SHAPE[axis]
+            src_offset += coordinate * SRC_STRIDES[axis]
+            if axis == DIM:
+                if SHAPE[axis] == 1:
+                    # A scalar load avoids a masked, repeated-address gather.
+                    index = tl.load(index_ptr).to(tl.int64)
+                else:
+                    index = tl.load(
+                        index_ptr + coordinate * INDEX_STRIDE, mask, other=0
+                    ).to(tl.int64)
+                valid_index = (index >= 0) & (index < input_dim)
+                dst_offset += index * OUT_STRIDES[axis]
+            else:
+                dst_offset += coordinate * OUT_STRIDES[axis]
+        value = tl.load(src_ptr + src_offset, mask & valid_index, other=0)
+        tl.store(out_ptr + dst_offset, value, mask & valid_index)
+
+
+@libentry()
+@triton.jit
+def _index_copy_strided_row_kernel(
+    out,
+    src,
+    indices,
+    rows,
+    columns,
+    input_dim,
+    ROW_SHAPE: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
+    SRC_STRIDES: tl.constexpr,
+    DIM: tl.constexpr,
+    SRC_INNER_STRIDE: tl.constexpr,
+    INDEX_STRIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    column_tiles = tl.cdiv(columns, BLOCK)
+    for tile in range(tle.program_id(0), rows * column_tiles, tl.num_programs(0)):
+        row = tile // column_tiles
+        src_base = tl.full((), 0, tl.int64)
+        dst_base = tl.full((), 0, tl.int64)
+        valid = tl.full((), True, tl.int1)
+        for axis in tl.static_range(len(ROW_SHAPE) - 1, -1, -1):
+            coordinate = row % ROW_SHAPE[axis]
+            row = row // ROW_SHAPE[axis]
+            src_base += coordinate * SRC_STRIDES[axis]
+            if axis == DIM:
+                index = tl.load(indices + coordinate * INDEX_STRIDE).to(tl.int64)
+                valid = (index >= 0) & (index < input_dim)
+                dst_base += tl.where(valid, index, 0) * OUT_STRIDES[axis]
+            else:
+                dst_base += coordinate * OUT_STRIDES[axis]
+        start = ((tile % column_tiles) * BLOCK).to(tl.int32)
+        cols = start + tl.arange(0, BLOCK)
+        mask = (cols < columns) & valid
+        # Decode row/index scalars once. Preserve 64-bit row bases while keeping
+        # the contiguous column traversal separate from multidimensional offsets.
+        values = tl.load((src + src_base) + cols * SRC_INNER_STRIDE, mask, other=0)
+        tl.store((out + dst_base) + cols, values, mask)
+
+
+def _strided_row_layout(out, dim, index, src):
+    if not (
+        out.dtype == src.dtype
+        and out.numel() > 0
+        and out.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and out.device == src.device == index.device
+        and index.ndim == 1
+        and index.dtype in (torch.int32, torch.int64)
+        and out.ndim == src.ndim
+        and src.size(dim) == index.numel()
+        and all(out.size(i) == src.size(i) for i in range(out.ndim) if i != dim)
+        and all(stride >= 0 for stride in src.stride())
+        and out.untyped_storage().data_ptr() != src.untyped_storage().data_ptr()
+    ):
+        return None
+    # A dense permutation has no overlapping destination lanes. Other views keep
+    # the general strided implementation, including slices with storage holes.
+    expected = 1
+    inner = None
+    for axis in sorted(range(out.ndim), key=lambda i: out.stride(i)):
+        if out.size(axis) > 1:
+            if out.stride(axis) != expected:
+                return None
+            if expected == 1:
+                inner = axis
+            expected *= out.size(axis)
+    if inner is None or inner == dim or src.size(inner) < 128:
+        return None
+    if src.stride(inner) <= 0:
+        return None
+    # Include padded column lanes in the address-width guard.
+    for tensor in (src, out):
+        span = sum(
+            (size - 1) * stride for size, stride in zip(tensor.shape, tensor.stride())
+        )
+        if span + 256 * tensor.stride(inner) >= 2**31:
+            return None
+    order = sorted(
+        (axis for axis in range(out.ndim) if axis != inner),
+        key=lambda axis: -out.stride(axis),
+    )
+    return inner, order
+
+
 def _launch_index_copy(out, dim, index, src):
     index_len = index.numel()
     inner_size = math.prod(out.shape[dim + 1 :])
     outer_size = math.prod(out.shape[:dim])
 
-    if index_len == 0 or inner_size == 0:
+    if index_len == 0 or inner_size == 0 or outer_size == 0:
         return
 
     input_dim = out.size(dim)
     numel = outer_size * index_len * inner_size
 
     with torch_device_fn.device(out.device):
+        if not (out.is_contiguous() and src.is_contiguous() and index.is_contiguous()):
+            layout = _strided_row_layout(out, dim, index, src)
+            if layout is not None:
+                inner, row_order = layout
+                rows = math.prod(src.size(axis) for axis in row_order)
+                columns = src.size(inner)
+                grid = _ascend_launch_grid(rows * triton.cdiv(columns, 256))
+                _index_copy_strided_row_kernel[grid](
+                    out,
+                    src,
+                    index,
+                    rows,
+                    columns,
+                    input_dim,
+                    ROW_SHAPE=tuple(src.size(axis) for axis in row_order),
+                    OUT_STRIDES=tuple(out.stride(axis) for axis in row_order),
+                    SRC_STRIDES=tuple(src.stride(axis) for axis in row_order),
+                    DIM=row_order.index(dim),
+                    SRC_INNER_STRIDE=src.stride(inner),
+                    INDEX_STRIDE=index.stride(0),
+                    BLOCK=256,
+                )
+                return
+            # Iterate in destination storage order for coalesced writes. Tensor
+            # pointers already include storage_offset; strides describe the view.
+            order = sorted(range(out.ndim), key=lambda axis: -out.stride(axis))
+            block_size = 256
+            grid = _ascend_launch_grid(triton.cdiv(numel, block_size))
+            index_copy_ascend_strided_kernel[grid](
+                out,
+                src,
+                index,
+                numel,
+                input_dim,
+                SHAPE=tuple(src.shape[axis] for axis in order),
+                OUT_STRIDES=tuple(out.stride(axis) for axis in order),
+                SRC_STRIDES=tuple(src.stride(axis) for axis in order),
+                DIM=order.index(dim),
+                INDEX_STRIDE=index.stride(0) if index.ndim else 1,
+                BLOCK_SIZE=block_size,
+            )
+            return
         if inner_size <= 4:
             # flat kernel for tiny suffixes
             block_size = _select_flat_block_size(numel, inner_size)

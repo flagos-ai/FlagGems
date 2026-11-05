@@ -108,6 +108,13 @@ class GeneralOpRegistrar:
 
     @staticmethod
     def _extra_dispatch_keys(item):
+        # A backend callable can replace the shared extra registrations without
+        # changing its device registration or other backends' configuration.
+        override = getattr(item[1], "_gems_extra_dispatch_keys", None)
+        if override is not None:
+            if not isinstance(override, (tuple, list)):
+                raise TypeError("_gems_extra_dispatch_keys must be a tuple or list")
+            return tuple(override)
         return tuple(item[3]) if len(item) > 3 else ()
 
     def _normalized_config(self, item):

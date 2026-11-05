@@ -322,3 +322,279 @@ def test_index_error_too_many_indices(dtype):
 
     with pytest.raises(IndexError, match="too many indices"):
         flag_gems.index(inp, indices)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend stride-aware index implementation required",
+)
+@pytest.mark.parametrize(
+    "dtype", [torch.int64, torch.int32, torch.float32, torch.bfloat16]
+)
+@pytest.mark.parametrize(
+    "case",
+    ["strided_input", "strided_indices", "negative_multi", "scalar", "separated"],
+)
+def test_ascend_index_strided(dtype, case):
+    assert flag_gems.index.__module__.endswith("_ascend.ops.index")
+    inp = torch.arange(60, device=flag_gems.device).reshape(3, 4, 5).to(dtype)
+    if case == "strided_input":
+        inp = inp.transpose(0, 1)
+        indices = [torch.tensor([0, 2, -1], device=inp.device)]
+    elif case == "strided_indices":
+        indices = [torch.tensor([0, 2, 1, 0, 2, 1], device=inp.device)[::2]]
+    elif case == "negative_multi":
+        indices = [
+            torch.tensor([0, -1], device=inp.device),
+            torch.tensor([-1, 1], device=inp.device),
+        ]
+    elif case == "scalar":
+        indices = [None, torch.tensor(-1, device=inp.device)]
+    else:
+        indices = [
+            torch.tensor([[0], [2]], device=inp.device),
+            None,
+            torch.tensor([[0, 2, 4]], device=inp.device),
+        ]
+    reference = torch.ops.aten.index.Tensor(inp, indices)
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["index"])
+        actual = torch.ops.aten.index.Tensor(inp, indices)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+    assert actual.shape == reference.shape
+    assert torch.equal(actual, reference)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend stride-aware index implementation required",
+)
+@pytest.mark.parametrize(
+    "case",
+    ["model_sampler", "mixed_broadcast", "strided_storage", "one_dim", "zero_dim"],
+)
+def test_ascend_index_singleton(case):
+    assert flag_gems.index.__module__.endswith("_ascend.ops.index")
+    if case == "model_sampler":
+        inp = torch.randn((2048, 2048), dtype=torch.bfloat16, device=flag_gems.device)
+        indices = [torch.tensor([-1], device=inp.device)]
+    elif case == "mixed_broadcast":
+        inp = torch.arange(360, device=flag_gems.device).reshape(3, 4, 5, 6)
+        indices = [
+            torch.tensor([[[-1]]], device=inp.device),
+            torch.tensor([[[0, 1, 3]], [[2, 1, 0]]], device=inp.device),
+        ]
+    elif case == "strided_storage":
+        inp = torch.arange(60, device=flag_gems.device).reshape(3, 4, 5).transpose(1, 2)
+        indices = [torch.tensor([99, -1, 88], device=inp.device)[1:2]]
+    else:
+        inp = torch.arange(7, device=flag_gems.device, dtype=torch.bfloat16)
+        indices = [
+            (
+                torch.tensor([-1], device=inp.device)
+                if case == "one_dim"
+                else torch.tensor(2, device=inp.device)
+            )
+        ]
+    reference = torch.ops.aten.index.Tensor(inp, indices)
+    previous_registrar = flag_gems.current_work_registrar
+    lib = torch.library.Library("aten", "IMPL")
+    try:
+        flag_gems.only_enable(lib=lib, include=["index"])
+        actual = torch.ops.aten.index.Tensor(inp, indices)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+    assert actual.shape == reference.shape
+    assert torch.equal(actual, reference)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend addressing")
+def test_ascend_index_scalar_plain_tile():
+    x = torch.arange(12, device=flag_gems.device).reshape(3, 4)
+    indices = [
+        torch.tensor([0, -1, 1], device=x.device),
+        torch.tensor([-1, 0, 2], device=x.device),
+    ]
+    expected = x.cpu()[indices[0].cpu(), indices[1].cpu()]
+    assert torch.equal(flag_gems.index(x, indices).cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index payloads")
+@pytest.mark.parametrize("count", [65535, 65536, 81920])
+@pytest.mark.parametrize("width", [1, 128])
+@pytest.mark.parametrize("dtype", [torch.int8, torch.bfloat16])
+@pytest.mark.parametrize("strided_negative", [False, True])
+def test_ascend_index_large_payload_graph(count, width, dtype, strided_negative):
+    storage_width = width * 2 if strided_negative else width
+    storage_cpu = (
+        (torch.arange(65 * 32 * storage_width) % 255 - 127)
+        .reshape(65, 32, storage_width)
+        .to(dtype)
+    )
+    storage = storage_cpu.to(flag_gems.device)
+    inp_cpu = storage_cpu[..., ::2] if strided_negative else storage_cpu
+    inp = storage[..., ::2] if strided_negative else storage
+    linear = torch.arange(count)
+    pages_cpu = ((linear % 8192) // 32 + 1).clamp(max=65) % 65
+    offsets_cpu = linear % 32
+    if strided_negative:
+        pages_cpu = pages_cpu - 65
+        offsets_cpu = offsets_cpu - 32
+
+    def device_index(values):
+        if strided_negative:
+            holder = torch.full((2 * count,), -999, dtype=torch.int64)
+            holder[1::2] = values
+            result = holder.to(inp.device)[1::2]
+        else:
+            result = values.to(inp.device)
+        return result.reshape(10, 8192) if count == 81920 else result
+
+    pages, offsets = device_index(pages_cpu), device_index(offsets_cpu)
+    shape = tuple(pages.shape)
+    expected = inp_cpu[pages_cpu.reshape(shape), offsets_cpu.reshape(shape)]
+    actual = flag_gems.index(inp, [pages, offsets])
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), expected)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [pages, offsets])
+    new_pages_cpu = (pages_cpu + 1) % 65
+    pages.copy_(new_pages_cpu.reshape(shape))
+    graph.replay()
+    torch.npu.synchronize()
+    expected = inp_cpu[new_pages_cpu.reshape(shape), offsets_cpu.reshape(shape)]
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index addressing")
+@pytest.mark.parametrize(
+    "count,width,row_stride,scalar_expected",
+    [
+        (65535, 1, 1, True),
+        (65536, 1, 1, False),
+        (81920, 128, 128, True),
+        (2**24 - 1, 128, 128, True),
+        (2**24, 128, 128, False),
+        (81920, 128, 2**31 - 128, True),
+        (81920, 128, 2**31 - 127, True),
+        (81920, 128, 2**32, True),
+    ],
+)
+def test_ascend_index_scalar_offset_bounds(count, width, row_stride, scalar_expected):
+    from flag_gems.runtime.backend._ascend.ops.index import _gather_function
+
+    # Exercise the generated address-width choice without allocating multi-GB
+    # inputs or outputs. A rejected scalar path retains int64 vector offsets.
+    kernel, index_tiles = _gather_function(
+        (2, width),
+        (row_stride, 1),
+        (0,),
+        ((1,),),
+        (count,),
+        (count, width),
+        ((1, 1),),
+        (0,),
+    )
+    assert (index_tiles is not None) == scalar_expected
+    if scalar_expected:
+        source = kernel.fn.src
+        narrow = row_stride + width - 1 < 2**31
+        assert ("source_base = source_base.to(tl.int32)" in source) == narrow
+
+
+@pytest.mark.index
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend index payloads")
+def test_ascend_index_large_nonleading_payload():
+    inp_cpu = torch.arange(2 * 7 * 128).reshape(2, 7, 128).to(torch.bfloat16)
+    index_cpu = torch.arange(65536) % 7
+    inp = inp_cpu.to(flag_gems.device)
+    index = index_cpu.to(inp.device)
+    expected = inp_cpu[:, index_cpu, :]
+    actual = flag_gems.index(inp, [None, index, None])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [None, index, None])
+    index.copy_(-1 - index_cpu)
+    graph.replay()
+    torch.npu.synchronize()
+    utils.gems_assert_equal(actual.cpu(), inp_cpu[:, -1 - index_cpu, :])
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend wide index addressing"
+)
+@pytest.mark.parametrize("layout", ["key", "scale", "plain"])
+def test_ascend_index_wide_source_graph(layout):
+    # Allocate real storage and read beyond 2**31 elements. A virtual stride
+    # with only low indices does not exercise the source address width.
+    if layout == "plain":
+        shape, strides, offset, dtype = (2, 3), (1, 2**30 + 16), 17, torch.int8
+    elif layout == "key":
+        shape, strides, offset, dtype = (
+            (3000, 32, 128),
+            (1496384, 128, 1),
+            1409024,
+            torch.int8,
+        )
+    else:
+        shape, strides, offset, dtype = (
+            (3000, 32, 1),
+            (748192, 1, 1),
+            747520,
+            torch.float16,
+        )
+    elements = offset + sum((n - 1) * s for n, s in zip(shape, strides)) + 1
+    required = elements * torch.empty((), dtype=dtype).element_size()
+    free, _ = torch.npu.mem_get_info()
+    if free < required + 512 * 1024**2:
+        pytest.skip("insufficient free NPU memory for real wide-offset storage")
+    storage = torch.empty(elements, dtype=dtype, device=flag_gems.device)
+    inp = storage.as_strided(shape, strides, offset)
+    if layout == "plain":
+        expected_cpu = torch.tensor([[11, 12, 13], [21, 22, 23]], dtype=dtype)
+        inp.copy_(expected_cpu)
+        values = torch.tensor([0, -1])
+        index = values.to(inp.device)
+        actual = flag_gems.index(inp, [index])
+        utils.gems_assert_equal(actual.cpu(), expected_cpu)
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = flag_gems.index(inp, [index])
+        index.copy_(torch.tensor([-1, 0]))
+        graph.replay()
+        torch.npu.synchronize()
+        utils.gems_assert_equal(actual.cpu(), expected_cpu.flip(0))
+    else:
+        payload = (torch.arange(32 * shape[-1]) % 113).reshape(shape[1:]).to(dtype)
+        for page in [0, 2998, 2999]:
+            inp[page].copy_(payload + (page % 7))
+        # Broadcast, negative, and noncontiguous indices in the wide path.
+        holder = torch.tensor([2999, 0, -3000, 0], device=inp.device)
+        pages = holder[::2].reshape(2, 1)
+        slots = torch.tensor([[0, -1, 17]], device=inp.device)
+        expected = torch.stack([payload + (2999 % 7), payload])[:, [0, 31, 17]]
+        actual = flag_gems.index(inp, [pages, slots])
+        utils.gems_assert_equal(actual.cpu(), expected)
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = flag_gems.index(inp, [pages, slots])
+        pages.copy_(torch.tensor([[-2], [-1]]))
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.stack([payload + (2998 % 7), payload + (2999 % 7)])[
+            :, [0, 31, 17]
+        ]
+        utils.gems_assert_equal(actual.cpu(), expected)
