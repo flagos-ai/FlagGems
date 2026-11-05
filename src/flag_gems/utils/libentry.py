@@ -1550,7 +1550,9 @@ class LibEntry(triton.KernelInterface):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
                 base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-                if self._tensor_spec_fn is not None:
+                # `key()` is also called with plain stand-ins in tests (see
+                # tests/test_libentry.py), which never run LibEntry.__init__.
+                if getattr(self, "_tensor_spec_fn", None) is not None:
                     return base + (self._tensor_spec_fn(arg),)
                 return base
             return (type(arg), arg)
