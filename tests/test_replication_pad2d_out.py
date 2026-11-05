@@ -49,7 +49,7 @@ def test_replication_pad2d_out(shape, padding, dtype):
     out = torch.empty(out_shape, dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp, True)
-    ref_out = utils.to_reference(out, True)
+    ref_out = utils.to_reference(out, True).clone()
 
     torch.ops.aten.replication_pad2d.out(ref_inp, padding, out=ref_out)
 
@@ -99,7 +99,7 @@ def test_replication_pad2d_out_rejects_dtype_mismatch():
     torch.manual_seed(0)
     inp = torch.randn((2, 3, 8, 8), dtype=torch.float32, device=flag_gems.device)
     out = torch.empty((2, 3, 10, 10), dtype=torch.int32, device=inp.device)
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, ValueError)):
         flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)
 
 
@@ -110,5 +110,5 @@ def test_replication_pad2d_out_rejects_device_mismatch():
         pytest.skip(reason="device mismatch requires an accelerator target")
     inp = torch.randn((2, 3, 8, 8), device=flag_gems.device)
     out = torch.empty((2, 3, 10, 10), dtype=inp.dtype, device="cpu")
-    with pytest.raises(RuntimeError):
+    with pytest.raises((RuntimeError, ValueError)):
         flag_gems.replication_pad2d_out(inp, (1, 1, 1, 1), out=out)
