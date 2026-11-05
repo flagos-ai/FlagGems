@@ -197,7 +197,7 @@ backends:
       - tops-extension==3.6.20260529+torch.2.11.0
       - topstx==1.10.6
 
-  hygon:
+  hygon-dtk2604:
     python: "3.10"
     triton: triton==3.5.1+das.opt1.dtk2604.torch290
     # Match the flagos-runtime-hygon-dtk26.04:2.2.0 image, which preinstalls
@@ -212,7 +212,7 @@ backends:
       - torch==2.9.0+das.opt1.dtk2604
       - flash_attn==2.8.3+das.opt1.dtk2604.torch290
 
-  iluvatar:
+  iluvatar-corex450:
     python: "3.12"
     cmake_backend: IX
     triton: triton==3.2.0+corex.4.5.0.20260804
@@ -231,7 +231,7 @@ backends:
       - torchvision==0.25.0+corex.4.5.0.20260804
       - numpy<2
 
-  kunlunxin:
+  kunlunxin-xre5371:
     python: "3.10"
     triton: triton==3.6.0+gitcd2d6c1b
     # Match the flagos-runtime-kunlunxin-xre5.37.1:2.2.0 image, which preinstalls
@@ -322,13 +322,13 @@ backends:
       - torch_musa==2.9.1
       - mkl==2024.0.0
 
-  spacemit:
+  spacemit-xxx:
     python: "3.12"
     triton: triton==3.6.0+spacemit.a5
     deps:
       - torch==2.8.0+spacemit.0
 
-  sunrise:
+  sunrise-tangrt120:
     python: "3.10"
     triton: triton==3.6.0.1+git0a5cfb35
     # flagtree==0.6.0+sunrise3.6 — requires GLIBC_2.39, unavailable on current runner
@@ -340,7 +340,7 @@ backends:
       - torchvision==0.26.0+cpu
       - torch-ptpu==0.2.3+torch2.11
 
-  thead:
+  thead-ppu210:
     python: "3.12"
     triton: triton==3.6.0+v0.2.0.ppu2.1.1
     flagtree: flagtree==0.7.0+ppu3.6
@@ -349,7 +349,7 @@ backends:
     deps:
       - torch==2.10.0+v0.1.0.ppu2.1.1
 
-  tsingmicro:
+  tsingmicro-tsm260610:
     python: "3.10"
     triton: triton==3.3.0+gitfe2a28fa
     flagtree: flagtree==0.5.0.post20260612+git705a4064
