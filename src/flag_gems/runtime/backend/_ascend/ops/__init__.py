@@ -39,6 +39,7 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
+from .copy import copy, copy_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -62,6 +63,7 @@ from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
+from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -116,7 +118,7 @@ from .min import min, min_dim
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
-from .mul import mul
+from .mul import mul, mul_
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
@@ -142,7 +144,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward_grad_input,
 )
 from .resolve_neg import resolve_neg
-from .rms_norm import rms_norm
+from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
 from .rnn_tanh import rnn_tanh, rnn_tanh_data
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
@@ -159,6 +161,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
+from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
@@ -179,7 +182,7 @@ from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .zero import zero
-from .zeros import zeros
+from .zeros import zero_, zeros
 from .zeros_like import zeros_like
 
 __all__ = [
@@ -219,6 +222,8 @@ __all__ = [
     "cholesky_solve",
     "cholesky_solve_out",
     "concat",
+    "copy",
+    "copy_",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
@@ -246,6 +251,9 @@ __all__ = [
     "fused_adam_",
     "gather",
     "gather_backward",
+    "gelu",
+    "gelu_",
+    "gelu_backward",
     "geometric",
     "geometric_",
     "group_norm",
@@ -325,6 +333,7 @@ __all__ = [
     "mm_w8a8_int8_out",
     "mode",
     "mul",
+    "mul_",
     "multinomial",
     "nanmedian",
     "nanmedian_dim",
@@ -354,6 +363,8 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "resolve_neg",
     "rms_norm",
+    "rms_norm_backward",
+    "rms_norm_forward",
     "rms_norm_w8a16_int8",
     "rnn_tanh",
     "rnn_tanh_data",
@@ -383,6 +394,10 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfinv",
     "stack",
+    "sum",
+    "sum_dim",
+    "sum_dim_out",
+    "sum_out",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
@@ -406,6 +421,7 @@ __all__ = [
     "where_self",
     "where_self_out",
     "zero",
+    "zero_",
     "zeros",
     "zeros_like",
 ]

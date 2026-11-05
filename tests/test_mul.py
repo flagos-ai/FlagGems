@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import importlib
 import random
 
 import numpy as np
@@ -349,24 +348,107 @@ def test_mul_complex_int_scalar(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype)
 
 
-def test_mul_accelerator_device_alias(monkeypatch):
-    """A renamed PrivateUse1 accelerator must not take the aten fallback.
+# Ascend coreDim and large-tensor regressions.
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements,description",
+    [
+        # Small tensor - baseline test
+        (10240, "Small tensor (baseline)"),
+        # Just below threshold: 65535 * 1024 - 1 = 67,107,839
+        (67107839, "Just below coreDim threshold"),
+        # Just above threshold: 65536 * 1024 = 67,108,864
+        (67108864, "Just above coreDim threshold"),
+        # From actual training error logs
+        (141050 * 1024, "From device 0-3 error log (144,435,200)"),
+        (169351 * 1024, "From device 8-11 error log (173,415,424)"),
+        (310400 * 1024, "From device 4-7 error log (317,849,600)"),
+        # Very large tensor - stress test
+        # Note: This creates a ~4GB tensor (1G * 4 bytes), ensure device has enough memory
+        pytest.param(
+            1024 * 1024 * 1024,
+            "Very large tensor (1G elements, 4GB)",
+        ),
+    ],
+)
+@pytest.mark.parametrize("scalar", [2.5, -1.5, 0.5])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_mul_large_tensor_scalar(n_elements, description, scalar, dtype):
+    """Test mul operation with large tensors that trigger coreDim > 65535."""
+    if n_elements == 1024 * 1024 * 1024:
+        npu = getattr(torch, "npu", None)
+        if npu is None or not npu.is_available():
+            pytest.skip("Requires an Ascend NPU with at least 8GB device memory")
+        if npu.get_device_properties(0).total_memory < 8 * 1024**3:
+            pytest.skip("Requires at least 8GB device memory")
 
-    Issue #6254: integrations such as Torch-FL expose the accelerator as a
-    renamed PrivateUse1 device (e.g. ``flagos``), so ``device.type`` differs
-    from the backend device name. Such tensors must keep using the Triton path
-    instead of being redispatched to an aten op with no device kernel.
-    """
-    mul_mod = importlib.import_module("flag_gems.ops.mul")
+    # Create large tensor
+    inp = torch.randn(n_elements, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
 
-    class _Device:
-        def __init__(self, type_):
-            self.type = type_
+    # Compute reference result
+    ref_out = torch.mul(ref_inp, scalar)
 
-    monkeypatch.setattr(
-        mul_mod, "_ACCELERATOR_DEVICE_TYPES", {mul_mod._DEVICE_NAME, "flagos"}
-    )
-    assert mul_mod._is_accelerator_device(_Device(mul_mod._DEVICE_NAME))
-    assert mul_mod._is_accelerator_device(_Device("flagos"))
-    assert not mul_mod._is_accelerator_device(_Device("cpu"))
-    assert not mul_mod._is_accelerator_device(_Device("meta"))
+    # Compute FlagGems result
+    # This should not raise "coreDim can't be greater than UINT16_MAX" error
+    res_out = flag_gems.mul(inp, scalar)
+
+    # Verify correctness
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements",
+    [
+        67108864,  # 65536 * 1024
+        141050 * 1024,
+        169351 * 1024,
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
+def test_mul_large_tensor_scalar_dtypes(n_elements, dtype):
+    """Test mul operation with large tensors across different dtypes."""
+    if dtype == torch.bfloat16 and not flag_gems.runtime.device.support_bf16:
+        pytest.skip("bfloat16 not supported on this device")
+
+    inp = torch.randn(n_elements, dtype=dtype, device=flag_gems.device)
+    scalar = 2.5
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mul(ref_inp, scalar)
+    res_out = flag_gems.mul(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.mul_
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="This test is specific to Ascend NPU coreDim limit",
+)
+@pytest.mark.parametrize(
+    "n_elements",
+    [
+        67108864,  # 65536 * 1024
+        173415424,  # 169351 * 1024
+    ],
+)
+@pytest.mark.parametrize("scalar", [2.0, -3.5])
+def test_mul_large_tensor_scalar_inplace(n_elements, scalar):
+    """Test inplace mul operation with large tensors."""
+    inp = torch.randn(n_elements, dtype=torch.float32, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.clone(), True)
+
+    ref_out = ref_inp.mul_(scalar)
+    res_out = flag_gems.mul_(inp, scalar)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)

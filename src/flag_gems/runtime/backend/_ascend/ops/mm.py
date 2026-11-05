@@ -131,6 +131,16 @@ def _mm_heur_divisible_n(args):
     return args["N"] % args["BLOCK_N"] == 0
 
 
+def _mm_grid(M, N, meta):
+    num_tiles = triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(N, meta["BLOCK_N"])
+    return (min(num_tiles * meta.get("SPLIT_K", 1), _MAX_CORE_DIM),)
+
+
+# Ascend's launch coreDim is uint16. Keep the grid bounded even when the
+# compiler cannot automatically map logical programs onto physical cores.
+_MAX_CORE_DIM = 65535
+
+
 _MM_HEURISTICS = {
     **_hcu.HEURISTICS_CONFIGS["mm"],
     "DIVISIBLE_M": _mm_heur_divisible_m,
@@ -169,74 +179,65 @@ def mm_kernel(
     DIVISIBLE_M: tl.constexpr,
     DIVISIBLE_N: tl.constexpr,
 ):
-    pid = tl.program_id(0)
-    pid_z = tl.program_id(1)
     grid_m = tl.cdiv(M, BLOCK_M)
     grid_n = tl.cdiv(N, BLOCK_N)
     width = GROUP_M * grid_n
-    group_id = pid // width
-    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
-    pid_m = group_id * GROUP_M + (pid % group_size)
-    pid_n = (pid % width) // (group_size)
-    ram = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rbn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
-    A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
-    B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
-    num_k_tiles = tl.cdiv(K, BLOCK_K * SPLIT_K)
-    for k in tl.range(0, num_k_tiles):
-        if EVEN_K:
-            if DIVISIBLE_M:
-                a = tl.load(A)
-            else:
+    # Preserve the base pointers before the per-tile computation advances them.
+    A_base = A
+    B_base = B
+    C_base = C
+    # Flatten both the output-tile and split-K dimensions. Capping only one
+    # axis of a 2D grid would still allow their product to exceed coreDim.
+    for task_id in range(
+        tl.program_id(0), grid_m * grid_n * SPLIT_K, tl.num_programs(0)
+    ):
+        pid = task_id // SPLIT_K
+        pid_z = task_id % SPLIT_K
+        group_id = pid // width
+        group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+        pid_m = group_id * GROUP_M + (pid % group_size)
+        pid_n = (pid % width) // (group_size)
+        ram = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rbn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        rk = pid_z * BLOCK_K + tl.arange(0, BLOCK_K)
+        A = A + (ram[:, None] * stride_am + rk[None, :] * stride_ak)
+        B = B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn)
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
+        for k in range(0, tl.cdiv(K, BLOCK_K * SPLIT_K)):
+            if EVEN_K:
                 a = tl.load(A, mask=(ram < M)[:, None], other=0.0)
-            if DIVISIBLE_N:
-                b = tl.load(B)
-            else:
                 b = tl.load(B, mask=(rbn < N)[None, :], other=0.0)
-        else:
-            k_remaining = K - k * (BLOCK_K * SPLIT_K)
-            if DIVISIBLE_M:
-                a = tl.load(A, mask=rk[None, :] < k_remaining, other=0.0)
             else:
+                k_remaining = K - k * (BLOCK_K * SPLIT_K)
                 a = tl.load(
                     A,
                     mask=(rk[None, :] < k_remaining) & (ram < M)[:, None],
                     other=0.0,
                 )
-            if DIVISIBLE_N:
-                b = tl.load(B, mask=rk[:, None] < k_remaining, other=0.0)
-            else:
                 b = tl.load(
                     B,
                     mask=(rk[:, None] < k_remaining) & (rbn < N)[None, :],
                     other=0.0,
                 )
-        al.compile_hint(a, "dot_pad_only_k")
-        al.compile_hint(b, "dot_pad_only_k")
-        if a.dtype != b.dtype:
-            a = a.to(C.dtype.element_ty)
-            b = b.to(C.dtype.element_ty)
-        acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
-        A += BLOCK_K * SPLIT_K * stride_ak
-        B += BLOCK_K * SPLIT_K * stride_bk
-    acc = acc.to(C.dtype.element_ty)
-    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
-    if DIVISIBLE_M and DIVISIBLE_N:
-        mask = None
-    elif DIVISIBLE_M:
-        mask = (rn < N)[None, :]
-    elif DIVISIBLE_N:
-        mask = (rm < M)[:, None]
-    else:
+            if a.dtype != b.dtype:
+                a = a.to(C.dtype.element_ty)
+                b = b.to(C.dtype.element_ty)
+            acc += tl.dot(a, b, out_dtype=dot_out_dtype, allow_tf32=False)
+            A += BLOCK_K * SPLIT_K * stride_ak
+            B += BLOCK_K * SPLIT_K * stride_bk
+        acc = acc.to(C.dtype.element_ty)
+        rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
         mask = (rm < M)[:, None] & (rn < N)[None, :]
-    if SPLIT_K == 1:
-        tl.store(C, acc, mask=mask)
-    else:
-        tl.atomic_add(C, acc, mask=mask)
+        if SPLIT_K == 1:
+            tl.store(C, acc, mask=mask)
+        else:
+            tl.atomic_add(C, acc, mask=mask)
+        # Restore scalar pointers so the next tile starts from the same bases.
+        A = A_base
+        B = B_base
+        C = C_base
 
 
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32]
@@ -968,10 +969,7 @@ def mm(a, b):
             return c
 
     # launch kernel
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META.get("SPLIT_K", 1),
-    )
+    grid = lambda META: _mm_grid(M, N, META)
     with torch_device_fn.device(a.device), _blockified():
         mm_kernel[grid](
             a,
@@ -1005,10 +1003,7 @@ def mm_out(a, b, *, out):
     M, K = a.shape
     _, N = b.shape
     dot_out_dtype = tl.float32
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
-        META.get("SPLIT_K", 1),
-    )
+    grid = lambda META: _mm_grid(M, N, META)
     with torch_device_fn.device(a.device), _blockified():
         mm_kernel[grid](
             a,
