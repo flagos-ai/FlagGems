@@ -67,9 +67,6 @@ else:
 
 
 def get_iter_count(fn):
-    # Keep lazy initialization and compilation out of warm-call calibration.
-    if Config.mode in (consts.BenchMode.OPERATOR, consts.BenchMode.WRAPPER):
-        fn()
     if Config.mode == consts.BenchMode.OPERATOR:
         torch_device_fn.synchronize()
         start = time.time()

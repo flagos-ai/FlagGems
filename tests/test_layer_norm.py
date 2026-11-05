@@ -255,11 +255,14 @@ def check_layer_norm_reference(
     bias: torch.Tensor | None,
     epsilon: float,
     outputs: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    native: bool = True,
 ) -> None:
     normalized_size = math.prod(normalized_shape)
     row_count = input_tensor.numel() // normalized_size
-    statistics_shape = input_tensor.shape[: -len(normalized_shape)] + (1,) * len(
-        normalized_shape
+    statistics_shape = (
+        input_tensor.shape[: -len(normalized_shape)] + (1,) * len(normalized_shape)
+        if native
+        else (row_count,)
     )
     assert outputs[0].shape == input_tensor.shape
     assert outputs[0].dtype == input_tensor.dtype
@@ -447,3 +450,73 @@ def test_layer_norm_real_startup_contract(
         input_tensor, normalized_shape, weight, bias, epsilon
     )
     utils.gems_assert_equal(direct_output, utils.to_reference(outputs[0]))
+
+
+@pytest.mark.native_layer_norm
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_mthreads_layer_norm_fp32_affine(dtype):
+    utils.init_seed(20261102)
+    x = torch.randn((7, 128), device=flag_gems.device, dtype=dtype)
+    w = torch.randn(128, device=x.device, dtype=torch.float32)
+    b = torch.randn_like(w)
+    result = flag_gems.native_layer_norm(x, (128,), w, b)
+    check_layer_norm_reference(x, (128,), w, b, 1e-5, result)
+
+
+@pytest.mark.native_layer_norm
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize(
+    "shape,norm",
+    [
+        ((2, 3, 128), (128,)),
+        ((2, 3, 128), (3, 128)),
+        ((3, 128), (3, 128)),
+        ((0, 2, 128), (128,)),
+        ((2, 65537), (65537,)),
+    ],
+)
+@pytest.mark.parametrize("native", [False, True])
+def test_stats_shape_values_and_independent_storage(dtype, shape, norm, native):
+    generator = torch.Generator().manual_seed(20261107)
+    host = torch.randn(shape + (2,), generator=generator).to(dtype)
+    x = host.to(flag_gems.device)[..., 0]
+    fn = flag_gems.native_layer_norm if native else flag_gems.layer_norm
+    first = fn(x, norm)
+    m = x.numel() // math.prod(norm)
+    expected_shape = shape[: -len(norm)] + (1,) * len(norm) if native else (m,)
+    assert first[1].shape == first[2].shape == expected_shape
+    check_layer_norm_reference(x, norm, None, None, 1e-5, first, native=native)
+    snapshots = [value.cpu().clone() for value in first]
+    second = fn(x * 2, norm)
+    for actual, saved in zip(first, snapshots):
+        utils.gems_assert_equal(actual.cpu(), saved)
+    if m:
+        assert first[1].data_ptr() != first[2].data_ptr()
+        assert first[1].data_ptr() != second[1].data_ptr()
+        assert first[2].data_ptr() != second[2].data_ptr()
+    assert first[1].is_contiguous() and first[2].is_contiguous()
+
+
+@pytest.mark.native_layer_norm
+@pytest.mark.parametrize("norm", [(256, 256), (256, 257)])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("affine", ["both", "weight", "bias", "none"])
+@pytest.mark.parametrize("strided", [False, True])
+@pytest.mark.parametrize("eps", [1e-5, 1e-3])
+def test_wide_mixed_affine_contract(norm, dtype, affine, strided, eps):
+    gen = torch.Generator().manual_seed(20261127)
+    shape = (2, 3) + norm
+    x = torch.randn(shape + ((2,) if strided else ()), generator=gen)
+    x = x.to(device=flag_gems.device, dtype=dtype)
+    if strided:
+        x = x[..., 0]
+
+    def parameter():
+        value = torch.randn(norm + ((2,) if strided else ()), generator=gen)
+        value = value.to(device=x.device, dtype=torch.float32)
+        return value[..., 0] if strided else value
+
+    w = parameter() if affine in ("both", "weight") else None
+    b = parameter() if affine in ("both", "bias") else None
+    actual = flag_gems.native_layer_norm(x, norm, w, b, eps)
+    check_layer_norm_reference(x, norm, w, b, eps, actual)

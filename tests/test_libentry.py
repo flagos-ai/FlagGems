@@ -710,7 +710,6 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
-    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
@@ -729,7 +728,6 @@ def test_descriptor_cache_key_uses_resolved_type(descriptor_module):
 
 def test_descriptor_cache_key_without_descriptor_module(monkeypatch):
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", None)
-    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     value = object()
     assert libentry_mod._descriptor_cache_key(value) is value
 
@@ -756,9 +754,7 @@ def test_model_bundle_missing_error_supports_older_flagtree(
 def test_libentry_key_without_vendor_hook(monkeypatch):
     """Tensor-like arguments key on dtype and pointer alignment."""
     monkeypatch.setattr(libentry_mod, "device", SimpleNamespace(vendor_name="nvidia"))
-    entry = SimpleNamespace(
-        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
-    )
+    entry = SimpleNamespace(divisibility=16)
 
     aligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     misaligned = SimpleNamespace(dtype="f32", data_ptr=lambda: 33)
@@ -772,7 +768,7 @@ def test_libentry_key_without_vendor_hook(monkeypatch):
 
 @pytest.mark.parametrize("backend_state", ["missing", "no_hook", "with_hook"])
 def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
-    """Preserve optional Hygon specialization resolved at entry construction."""
+    """Preserve optional Hygon tensor specialization without a helper cache."""
     backend = SimpleNamespace()
     if backend_state == "with_hook":
         backend.get_tensor_specialization = lambda arg: "hcu"
@@ -783,9 +779,7 @@ def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
         "triton.backends.hcu.compiler",
         None if backend_state == "missing" else SimpleNamespace(HIPBackend=backend),
     )
-    entry = SimpleNamespace(
-        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
-    )
+    entry = SimpleNamespace(divisibility=16)
     tensor = SimpleNamespace(dtype="f32", data_ptr=lambda: 32)
     tensor_key = ("f32", True, "hcu") if backend_state == "with_hook" else ("f32", True)
 
@@ -798,9 +792,7 @@ def test_libentry_key_with_hygon_backend(monkeypatch, backend_state):
 def test_libentry_key_normalizes_descriptor_arguments(descriptor_module):
     """Normalize descriptors before composing the public LibEntry key."""
     descriptor = ResolvedDescriptor()
-    entry = SimpleNamespace(
-        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
-    )
+    entry = SimpleNamespace(divisibility=16)
 
     key = libentry_mod.LibEntry.key(
         entry,
@@ -866,9 +858,7 @@ def test_libentry_run_normalizes_keyword_descriptors(
 
 def test_libentry_key_orders_specialization_then_dns_then_constexpr():
     """Pin the specialization, non-specialization and constexpr key order."""
-    entry = SimpleNamespace(
-        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
-    )
+    entry = SimpleNamespace(divisibility=16)
 
     assert libentry_mod.LibEntry.key(entry, ("a",), (7,), ("const", 3)) == (
         (str, "a"),
@@ -880,9 +870,7 @@ def test_libentry_key_orders_specialization_then_dns_then_constexpr():
 
 def test_libentry_key_buckets_integers_by_triton_width():
     """Reproduce Triton's integer bucketing for do-not-specialize arguments."""
-    entry = SimpleNamespace(
-        divisibility=16, _tensor_spec_fn=libentry_mod.LibEntry._resolve_tensor_spec_fn()
-    )
+    entry = SimpleNamespace(divisibility=16)
     tensor = SimpleNamespace(dtype="f16", data_ptr=lambda: 0)
     assert libentry_mod.LibEntry.key(
         entry, (), (0, 2**31 - 1, 2**31, 2**63, tensor, "text"), ()

@@ -26,6 +26,12 @@ class NormBenchmark(ParallelBenchmarkMixin, base.GenericBenchmark):
     RECORD_PARALLEL_RESULTS = True
     # TODO: add new metric
 
+    def _time_callable(self, fn, xs):
+        # Compile both candidates before the shared steady-state calibration.
+        if base.Config.mode in (consts.BenchMode.OPERATOR, consts.BenchMode.WRAPPER):
+            fn()
+        return super()._time_callable(fn, xs)
+
     def set_more_shapes(self):
         return [
             # 3D shapes represented as [batch_size, channels, hidden_size]
