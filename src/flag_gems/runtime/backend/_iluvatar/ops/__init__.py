@@ -93,7 +93,6 @@ from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
 from .pinverse import pinverse
-from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -234,7 +233,6 @@ __all__ = [
     "pad_sequence",
     "permute_copy",
     "pinverse",
-    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
