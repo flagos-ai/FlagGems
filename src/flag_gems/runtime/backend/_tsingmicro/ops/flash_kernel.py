@@ -1117,6 +1117,7 @@ def load_paged_kv_block(
     k_row_stride,
     v_block_stride,
     v_row_stride,
+    k_len,
     d: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -1134,7 +1135,13 @@ def load_paged_kv_block(
     k_offsets = k_cache_offset + offs_d[:, None] + offs_n[None, :] * k_row_stride
     v_offsets = v_cache_offset + offs_n[:, None] * v_row_stride + offs_d[None, :]
 
-    return tl.load(k_ptr_base + k_offsets), tl.load(v_ptr_base + v_offsets)
+    # Mask out KV slots beyond this sequence's valid length.  Without this the
+    # kernel loads uninitialized cache padding (NaN/Inf on txda), which leaks
+    # through the dot-product into the first (partial-block) sequence's output.
+    valid_n = (row_index + offs_n) < k_len
+    k_tile = tl.load(k_ptr_base + k_offsets, mask=valid_n[None, :], other=0.0)
+    v_tile = tl.load(v_ptr_base + v_offsets, mask=valid_n[:, None], other=0.0)
+    return k_tile, v_tile
 
 
 @triton.jit(
@@ -1328,6 +1335,7 @@ def flash_varlen_fwd_kernel(
                 k_row_stride,
                 v_batch_stride,
                 v_row_stride,
+                k_len,
                 d,
                 BLOCK_N,
             )
@@ -1421,6 +1429,7 @@ def flash_varlen_fwd_kernel(
                 k_row_stride,
                 v_batch_stride,
                 v_row_stride,
+                k_len,
                 d,
                 BLOCK_N,
             )
