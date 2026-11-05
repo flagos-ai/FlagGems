@@ -23,9 +23,14 @@ Matrix Multiplication
 ===============
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
+
+logger = logging.getLogger(__name__)
+
 
 DEV = "txda"
 
@@ -147,6 +152,7 @@ def torch_matmul(a, b):
 
 def matmul_int8(a, b):
     # Save original shape for 3D support
+    logger.debug("GEMS_TSINGMICRO MATMUL_INT8")
     a_shape = a.shape
     if a.ndim == 3:
         a = a.contiguous().reshape(-1, a.shape[-1])
