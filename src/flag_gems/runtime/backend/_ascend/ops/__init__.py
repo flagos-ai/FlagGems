@@ -60,6 +60,7 @@ from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flip import flip
 from .full import full
 from .full_like import full_like
+from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
 from .geometric import geometric, geometric_
@@ -243,6 +244,7 @@ __all__ = [
     "flip",
     "full",
     "full_like",
+    "functional_sym_constrain_range",
     "fused_adam_",
     "gather",
     "gather_backward",
