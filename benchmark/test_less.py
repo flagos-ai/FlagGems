@@ -26,9 +26,8 @@ def _input_fn_scalar(shape, cur_dtype, device):
         yield inp1, scalar
 
 
-@pytest.mark.less
 @pytest.mark.less_tensor
-def test_less():
+def test_less_tensor():
     bench = base.BinaryPointwiseBenchmark(
         op_name="less_tensor",
         torch_op=torch.ops.aten.less.Tensor,
@@ -37,7 +36,6 @@ def test_less():
     bench.run()
 
 
-@pytest.mark.less
 @pytest.mark.less_scalar
 def test_less_scalar():
     bench = base.GenericBenchmark(

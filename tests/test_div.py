@@ -24,7 +24,7 @@ from . import accuracy_utils as utils
 
 
 # div.Tensor with true_divide
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_tensor(shape, dtype):
@@ -40,7 +40,7 @@ def test_div_tensor_tensor(shape, dtype):
 
 
 # div_.Tensor with true_divide_
-@pytest.mark.div_tensor_
+@pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_tensor_(shape, dtype):
@@ -145,7 +145,7 @@ def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
 
 
 # div.Scalar_mode with rounding_mode keyword
-@pytest.mark.div_scalar_mode
+@pytest.mark.div_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
 def test_div_scalar_mode_float(shape, rounding_mode, dtype):
@@ -159,7 +159,7 @@ def test_div_scalar_mode_float(shape, rounding_mode, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_mode
+@pytest.mark.div_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
@@ -177,7 +177,7 @@ def test_div_scalar_mode_int(shape, rounding_mode, dtype):
 
 
 # div_.Scalar_mode with rounding_mode keyword
-@pytest.mark.div_scalar_mode_
+@pytest.mark.div_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
 def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
@@ -192,7 +192,7 @@ def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_mode_
+@pytest.mark.div_mode_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
@@ -211,7 +211,7 @@ def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
 
 
 # div.Tensor with true_divide
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -230,7 +230,7 @@ def test_div_tensor_scalar(shape, scalar, dtype):
 
 
 # div_.Tensor with true_divide_
-@pytest.mark.div_tensor_
+@pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -248,7 +248,7 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_
+@pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -264,7 +264,7 @@ def test_div_scalar_(shape, scalar, dtype):
 
 
 # div.Scalar with true_divide
-@pytest.mark.div_scalar
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -283,7 +283,7 @@ def test_div_scalar_tensor(shape, scalar, dtype):
 
 
 # div.Scalar with true_divide
-@pytest.mark.div_scalar
+@pytest.mark.true_divide
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_div_scalar_scalar(dtype):
     if dtype == torch.float32:
@@ -304,7 +304,7 @@ def test_div_scalar_scalar(dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -338,7 +338,7 @@ def test_div_complex_complex(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -384,7 +384,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -419,7 +419,7 @@ def test_div_tensor_int(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar
+@pytest.mark.true_divide
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -450,7 +450,7 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
-@pytest.mark.div_out
+@pytest.mark.true_divide_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_tensor_tensor(shape, dtype):
@@ -469,7 +469,7 @@ def test_div_out_tensor_tensor(shape, dtype):
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_out
+@pytest.mark.true_divide_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -487,7 +487,7 @@ def test_div_out_tensor_scalar(shape, scalar, dtype):
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_out
+@pytest.mark.true_divide_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

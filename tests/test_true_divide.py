@@ -20,7 +20,7 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
-@pytest.mark.div_tensor
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide(shape, dtype):
@@ -35,7 +35,7 @@ def test_true_divide(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_tensor_
+@pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_(shape, dtype):
@@ -50,7 +50,7 @@ def test_true_divide_(shape, dtype):
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
-@pytest.mark.div_out
+@pytest.mark.true_divide_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_out(shape, dtype):
@@ -68,7 +68,7 @@ def test_true_divide_out(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -83,7 +83,7 @@ def test_true_divide_tensor_scalar(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_
+@pytest.mark.true_divide_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -98,7 +98,7 @@ def test_true_divide_tensor_scalar_(shape, scalar, dtype):
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar
+@pytest.mark.true_divide
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -113,7 +113,7 @@ def test_true_divide_scalar_tensor(shape, scalar, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide
+@pytest.mark.true_divide_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_tensor_dispatch(shape, dtype, caplog):
@@ -123,14 +123,19 @@ def test_true_divide_tensor_dispatch(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.ops.aten.true_divide.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide)):
-        res_out = flag_gems.true_divide(inp1, inp2)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_tensor)
+    ):
+        res_out = flag_gems.true_divide_tensor(inp1, inp2)
 
-    assert f"{utils.gems_log_prefix(flag_gems.true_divide)} TRUE_DIVIDE" in caplog.text
+    assert (
+        f"{utils.gems_log_prefix(flag_gems.true_divide_tensor)} TRUE_DIVIDE"
+        in caplog.text
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide_
+@pytest.mark.true_divide_tensor_
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
@@ -140,11 +145,14 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
     ref_inp2 = utils.to_reference(inp2, False)
 
     torch.ops.aten.true_divide_.Tensor(ref_inp1, ref_inp2)
-    with caplog.at_level("DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_)):
-        res_out = flag_gems.true_divide_(inp1, inp2)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems.true_divide_tensor_)
+    ):
+        res_out = flag_gems.true_divide_tensor_(inp1, inp2)
 
     assert (
-        f"{utils.gems_log_prefix(flag_gems.true_divide_)} TRUE_DIVIDE_" in caplog.text
+        f"{utils.gems_log_prefix(flag_gems.true_divide_tensor_)} TRUE_DIVIDE_"
+        in caplog.text
     )
     assert res_out is inp1
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
