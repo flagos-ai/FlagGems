@@ -22,11 +22,12 @@ import flag_gems
 from . import base
 
 
-class SageBenchmark(base.GenericBenchmark):
+class SageBenchmark(base.Benchmark):
     DEFAULT_SHAPES = [(44, 44), (1108, 1792), (9529, 9529)]
 
-    def set_more_shapes(self):
-        return []
+    def get_input_iter(self, dtype):
+        for shape in self.shapes:
+            yield from inputs(shape, dtype, self.device)
 
 
 def inputs(shape, dtype, device):
@@ -63,6 +64,5 @@ def test_sage_attention():
         op_name="sage_attention",
         torch_op=reference,
         gems_op=candidate,
-        input_fn=inputs,
         dtypes=[torch.bfloat16],
     ).run()
