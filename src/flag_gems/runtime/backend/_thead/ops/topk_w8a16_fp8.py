@@ -1112,7 +1112,7 @@ def topk_w8a16_fp8(
     group_size=128,
     out_dtype=torch.bfloat16,
 ):
-    logger.debug("GEMS TOPK FP8E5 W8A16")
+    logger.debug("GEMS_THEAD TOPK_FP8E5_W8A16")
     if dim < 0:
         dim = dim + x_fp8.ndim
 

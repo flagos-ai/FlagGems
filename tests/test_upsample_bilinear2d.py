@@ -45,10 +45,9 @@ def test_upsample_bilinear2d(dtype, shape, scale, align_corners):
     ref_out = torch._C._nn.upsample_bilinear2d(
         ref_i, output_size=output_size, align_corners=align_corners
     )
-    with flag_gems.use_gems():
-        res_out = torch._C._nn.upsample_bilinear2d(
-            input, output_size=output_size, align_corners=align_corners
-        )
+    res_out = flag_gems.upsample_bilinear2d(
+        input, output_size=output_size, align_corners=align_corners
+    )
     if ref_out.dtype != res_out.dtype:
         ref_out = ref_out.to(res_out.dtype)
     # Bilinear interpolation uses 4 neighbors with weighted average. The source

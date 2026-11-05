@@ -56,8 +56,7 @@ def test_accuracy_hstack(shape, dtype):
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.hstack(ref_inp)
 
-    with flag_gems.use_gems():
-        res_out = torch.hstack(inp)
+    res_out = flag_gems.hstack(inp)
     utils.gems_assert_equal(res_out, ref_out)
 
 
@@ -76,5 +75,4 @@ def test_exception_hstack(shape, dtype):
         ]
 
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            _ = torch.hstack(inp)
+        _ = flag_gems.hstack(inp)

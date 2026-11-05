@@ -181,13 +181,7 @@ class MatrixNormBenchmark(base.Benchmark):
 
 
 class MatrixNormOutBenchmark(MatrixNormBenchmark):
-    """matrix_norm *.out benchmark: input tuples also carry a pre-allocated out.
-
-    Uses the same ``op_name`` as the functional benchmark so ``set_shapes``
-    reads the matrix_norm core shapes (an ``op_name`` absent from core_shapes.yaml
-    falls back to the generic DEFAULT_SHAPES, whose 1-D (2**30,) entry is invalid
-    for matrix_norm).
-    """
+    """matrix_norm *.out benchmark: input tuples also carry a pre-allocated out."""
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
@@ -225,7 +219,7 @@ def test_linalg_matrix_norm_out():
         bench_dtypes = bench_dtypes + [torch.float64]
 
     bench = MatrixNormOutBenchmark(
-        op_name="linalg_matrix_norm",
+        op_name="linalg_matrix_norm_out",
         torch_op=torch.linalg.matrix_norm,
         dtypes=bench_dtypes,
         gems_op=flag_gems.linalg_matrix_norm_out,

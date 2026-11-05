@@ -28,7 +28,6 @@ def test_digamma_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = ref_inp.digamma_()
-    with flag_gems.use_gems():
-        res_out = inp.digamma_()
+    res_out = flag_gems.digamma_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

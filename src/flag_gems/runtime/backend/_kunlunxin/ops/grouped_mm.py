@@ -7,6 +7,7 @@ import triton.language as tl
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from . import group_gemm as group_gemm_mod
 from . import mm as mm_mod
 from .mm import mm_out as vendor_mm_out
 
@@ -157,6 +158,13 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     Both kernels require K % BLOCK_K == 0 and N % BLOCK_N == 0 (no masked
     K/N loads); shapes outside that (odd K/N) fall back to the per-group
     `mm_out` loop below.
+
+    Shapes in the large-M / small-K regime (K <= 256 and M >= 65536) are routed
+    to the persistent-kernel implementation in `group_gemm.py`, which autotunes
+    one config per shape and launches NUM_SMS * 4 programs.  On such shapes the
+    many small tiles of the two kernels above do not hide memory latency well:
+    measured on P800 (M=525986, N=2048, K=128, G=64) 5.21 ms vs 6.36 ms
+    (1.05x vs 0.86x of the torch reference).
     """
     logger.debug("GEMS_KUNLUNXIN GROUP_MM")
     assert A.dim() == 2
@@ -167,6 +175,11 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
     if num_groups == 0:
         return A.new_empty(M, N)
 
+    if K <= 256 and M >= 65536:
+        # Large-M / small-K regime: persistent kernel with per-shape tuning.
+        # Dispatched before the host copy below, whose device sync would
+        # otherwise add ~1.3 ms to this path.
+        return group_gemm_mod.group_mm(A, B, offs)
     offs_cpu = offs.detach().cpu()
     offs_l = offs_cpu.tolist()
 

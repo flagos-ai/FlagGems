@@ -14,7 +14,7 @@
 
 import logging
 import math
-from functools import partial
+import os
 
 import torch
 
@@ -22,12 +22,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.config import use_c_extension
 from flag_gems.runtime import torch_device_fn
 
 from .flash_api import mha_varlan_fwd
-from .flash_kernel import keep
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +56,8 @@ def _attn_fwd_inner(
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
+    ACCUM_TYPE: tl.constexpr,
+    GEMM_TYPE: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
@@ -84,7 +84,7 @@ def _attn_fwd_inner(
         if PRE_LOAD_V:
             value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
 
-        qk = tl.dot(query, key, allow_tf32=False)
+        qk = tl.dot(query, key, allow_tf32=(GEMM_TYPE == "tf32"))
         # incase not divisible.
         qk = tl.where(kv_load_mask[None, :], qk, -float("inf"))
         # qk = qk.to(tl.float32)
@@ -130,7 +130,7 @@ def _attn_fwd_inner(
         else:
             p = p.to(query.dtype)
         p = p.to(value.dtype)
-        acc = tl.dot(p, value, acc, allow_tf32=False)
+        acc = tl.dot(p, value, acc, allow_tf32=(GEMM_TYPE == "tf32"))
         # update m_i and l_i
         m_i = m_ij
 
@@ -145,7 +145,15 @@ def _attn_fwd_inner(
 
 # NOTE: we assert BLOCK_N <= HEAD_DIM in _attn_fwd, so for small head_dim,
 # we need to generate more configs.
-configs = runtime.get_tuned_config("attention")
+# [kunlunxin] single-config: on this backend the attention kernel body compiles
+# to a launch-table stub, so multi-config autotuning would benchmark the stub on
+# every new (KV_CTX, HEAD_DIM) key and fold ~100 ms into the first call. Only
+# BLOCK_M is consumed here (it drives the grid).
+configs = [
+    triton.Config(
+        {"BLOCK_M": 128, "BLOCK_N": 16, "PRE_LOAD_V": 0}, num_stages=2, num_warps=4
+    )
+]
 SMALL_HEAD_DIM_CONFIGS = [
     triton.Config(
         {"BLOCK_M": BM, "BLOCK_N": BN, "PRE_LOAD_V": 0}, num_stages=s, num_warps=w
@@ -155,14 +163,42 @@ SMALL_HEAD_DIM_CONFIGS = [
     for s in [2, 3, 4]
     for w in [4, 8]
 ]
-configs += SMALL_HEAD_DIM_CONFIGS
+# configs += SMALL_HEAD_DIM_CONFIGS  # disabled: single-config mode (see above)
+
+
+def _prune_sdpa_cfg(configs, nargs, **kwargs):
+    hd = nargs.get("HEAD_DIM")
+    if hd is None:
+        return configs
+    return [c for c in configs if c.kwargs["BLOCK_N"] <= hd]
 
 
 @triton.autotune(
-    configs=list(filter(partial(keep, must_keep=SMALL_HEAD_DIM_CONFIGS), configs)),
+    configs=configs,  # single-config (see above)
     key=["KV_CTX", "HEAD_DIM"],
+    prune_configs_by={"early_config_prune": _prune_sdpa_cfg},
 )
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "stride_q_batch",
+        "stride_q_head",
+        "stride_q_seqlen",
+        "stride_k_batch",
+        "stride_k_head",
+        "stride_k_seqlen",
+        "stride_v_batch",
+        "stride_v_head",
+        "stride_v_seqlen",
+        "stride_o_batch",
+        "stride_o_head",
+        "stride_o_seqlen",
+        "Z",
+        "q_head_num",
+        "kv_head_num",
+        "Q_CTX",
+        "KV_CTX",
+    ]
+)
 def _attn_fwd(
     Q,
     K,
@@ -203,6 +239,8 @@ def _attn_fwd(
     STAGE: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
+    ACCUM_TYPE: tl.constexpr,
+    GEMM_TYPE: tl.constexpr,
 ):
     tl.static_assert(BLOCK_N <= HEAD_DIM)
     start_m = tl.program_id(0)
@@ -271,7 +309,9 @@ def _attn_fwd(
     # initialize pointer to m and l
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
-    acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+    acc = tl.zeros(
+        [BLOCK_M, HEAD_DIM], dtype=tl.float32 if ACCUM_TYPE == "float" else tl.float16
+    )
     # load scales
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
@@ -305,6 +345,8 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            ACCUM_TYPE,
+            GEMM_TYPE,
         )
     # stage 2: on-band
     if STAGE & 2:
@@ -334,6 +376,8 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            ACCUM_TYPE,
+            GEMM_TYPE,
         )
     # epilogue
     m_i += tl.math.log2(l_i)
@@ -1161,6 +1205,10 @@ class ScaleDotProductAttention(torch.autograd.Function):
         o = torch.empty_like(query, dtype=value.dtype)
 
         stage = 3 if is_causal else 1
+        # Precision knobs kept for parity with the vendor implementation; the
+        # defaults (fp32 accumulation, non-tf32 GEMM) preserve the existing math.
+        fa_accum_type = os.environ.get("FLAG_GEMS_FA_ACCUM_TYPE", "float")
+        fa_gemm_type = os.environ.get("FLAG_GEMS_FA_GEMM_TYPE", "float")
 
         if scale is None:
             sm_scale = 1.0 / (HEAD_DIM_K**0.5)
@@ -1239,6 +1287,8 @@ class ScaleDotProductAttention(torch.autograd.Function):
                 HEAD_DIM_K,  #
                 STAGE=stage,  #
                 HAS_ATTN_MASK=HAS_ATTN_MASK,  #
+                ACCUM_TYPE=fa_accum_type,
+                GEMM_TYPE=fa_gemm_type,
             )
 
         ctx.save_for_backward(query, key, value, o, M)

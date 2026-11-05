@@ -44,6 +44,5 @@ def test_ilshift(shapes, dtype):
     ref_b = utils.to_reference(res_b)
 
     ref_a.__ilshift__(ref_b)
-    with flag_gems.use_gems():
-        res_a.__ilshift__(res_b)
+    flag_gems.bitwise_left_shift_(res_a, res_b)
     utils.gems_assert_close(res_a, ref_a, dtype)

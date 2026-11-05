@@ -132,7 +132,7 @@ def test_ctc_loss():
     bench.run()
 
 
-@pytest.mark.ctc_loss
+@pytest.mark.ctc_loss_backward
 def test_ctc_loss_backward():
     bench = CtcLossBenchmark(
         op_name="ctc_loss",

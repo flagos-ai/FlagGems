@@ -30,8 +30,7 @@ def test_fmin(shape, dtype):
     ref_inp2 = utils.to_reference(inp2)
 
     ref_out = torch.fmin(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.fmin(inp1, inp2)
+    res_out = flag_gems.fmin(inp1, inp2)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -47,8 +46,7 @@ def test_fmin_out(shape, dtype):
 
     ref_out = torch.empty_like(ref_inp1)
     torch.fmin(ref_inp1, ref_inp2, out=ref_out)
-    with flag_gems.use_gems():
-        res_out = torch.empty_like(inp1)
-        torch.fmin(inp1, inp2, out=res_out)
+    res_out = torch.empty_like(inp1)
+    flag_gems.fmin_out(inp1, inp2, out=res_out)
 
     utils.gems_assert_equal(res_out, ref_out)

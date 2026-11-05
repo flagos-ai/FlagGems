@@ -32,8 +32,7 @@ def test_special_log_ndtr(shape, dtype):
     ref_inp = utils.to_reference(inp)
     # Reference: call outside use_gems to get PyTorch's implementation
     ref_out = torch.ops.aten.special_log_ndtr(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.special_log_ndtr(inp)
+    res_out = flag_gems.special_log_ndtr(inp)
 
     # Allow for numerical differences between our erfc-based implementation
     # and PyTorch's implementation (which uses a different algorithm)

@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import pytest
 import triton.testing as triton_testing
 
-from flag_gems.flagtune.runtime import _benchmark_protocol as benchmark_module
+from flag_gems.flagtune.offline.runtime import benchmark_protocol as benchmark_module
 
 
 class _FakeDriver:

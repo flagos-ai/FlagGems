@@ -11,6 +11,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 from ..utils.tle_copy import tle_copy
+from .copy import copy_ as _gems_copy_
+from .resize import resize_ as _gems_resize_
 
 logger = logging.getLogger(__name__)
 
@@ -127,19 +129,6 @@ def _row_reduce_kernel(
 @libentry()
 @triton.jit(do_not_specialize=["R", "XPITCH", "PITCH"])
 def _pad_col_kernel(X, PAD, R, XPITCH, PITCH, BLOCK: tl.constexpr):
-    """Scatter a one-column ``X`` into the first column of the padded buffer.
-
-    ``tle_copy`` has no layout for this destination: collapsing the shape leaves
-    a single element-wide run whose stride is the row pitch, which the copy
-    engine rejects, so the ``R`` live values are laid down by a kernel instead.
-    The buffer is sized in whole ``_BLOCK_M`` row blocks, so the grid covers it
-    exactly and no store needs a mask; the rows past ``R`` re-read the last row
-    and rewrite padding the reduction never reads.  The clamp sits on the
-    *load* -- clamping the stored row instead makes the address non-affine,
-    which costs 5x on this backend (365us vs 32us for an 8x128 buffer) -- and
-    writing only ``R`` elements beats a full-buffer pass, which the backend runs
-    at ~29GB/s against 1187GB/s for ``torch.full``.
-    """
     row = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     tl.store(PAD + row * PITCH, tl.load(X + tl.minimum(row, R - 1) * XPITCH))
 
@@ -167,24 +156,6 @@ def _native_contiguous(t):
 
 
 def _row_reduce(x, R, C, op, final_sqrt=False):
-    """Reduce a 2-D ``[R, C]`` view along ``C``.
-
-    ``x`` must have unit stride in its last dimension; the row stride is
-    honoured as-is, so strided row selections (e.g. one row out of every pair)
-    can be reduced without a copy.  Returns an fp32 tensor view of length
-    ``R``.
-
-    When ``C`` is not a multiple of ``BLOCK_N`` the rows are re-materialised
-    into an identity-padded buffer first, so the kernel itself never needs a
-    mask: a conditional tail tile inside the kernel makes TritonXPU emit an
-    ``scf.if`` yielding a tensor, which fails to lower (``triton_xpu.vvaddf op
-    requires the same type for all operands and results``), and clamping the
-    column index instead costs an extra runtime kernel argument, which is worth
-    a 15-30x slowdown here (see ``_row_reduce_kernel``).  ``C`` is additionally
-    split across a second grid axis when there are not enough rows to fill the
-    device; the per-chunk partials are transposed with a native strided copy so
-    that the follow-up fold is again an ``axis=1`` reduction.
-    """
     dev = x.device
     BM, BN = _BLOCK_M, _BLOCK_N
     RP = triton.cdiv(R, BM) * BM
@@ -310,6 +281,24 @@ def _reshape_result(res, A, dim, keepdim, out_dtype):
     out = res.reshape(shape)
     if out.dtype != out_dtype:
         out = out.to(out_dtype)
+    return out
+
+
+def _store_out(res, out):
+    if out is None:
+        return res
+    if out.dtype != res.dtype:
+        raise RuntimeError(
+            "linalg_matrix_norm expected out tensor dtype "
+            f"{res.dtype} but got: {out.dtype}"
+        )
+    if out.device != res.device:
+        raise RuntimeError(
+            "linalg_matrix_norm: expected out tensor to be on the same device "
+            f"as the result, but got {out.device} and {res.device}"
+        )
+    _gems_resize_(out, res.shape)
+    _gems_copy_(out, res)
     return out
 
 
@@ -950,7 +939,15 @@ def _absmax_norm(Ab, B, M, N, is_min, along_rows):
     return _row_reduce(sums.reshape(B, inner), B, inner, _OP_MIN if is_min else _OP_MAX)
 
 
-def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
+def linalg_matrix_norm(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """Matrix norm over ``dim``.
+
+    ``out=None`` returns a freshly-allocated result; when ``out`` is given the
+    result is written into it and the aliased tensor is returned (same contract
+    as ``linalg_matrix_norm.out`` / the generic implementation).
+    """
     logger.debug("GEMS_KUNLUNXIN LINALG_MATRIX_NORM")
 
     if A.ndim < 2:
@@ -987,8 +984,10 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
         k = min(A.size(dim[0]), A.size(dim[1]))
         if k > 2 and (k > _BD_MAX_K or max(A.size(dim[0]), A.size(dim[1])) > _BD_MAX_L):
             if is_str:
-                return _generic_nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype)
-            return _generic_ord2_norm(A, ord_val, dim, keepdim, dtype)
+                return _store_out(
+                    _generic_nuc_norm(A, dim=dim, keepdim=keepdim, dtype=dtype), out
+                )
+            return _store_out(_generic_ord2_norm(A, ord_val, dim, keepdim, dtype), out)
         out_dtype = dtype if dtype is not None else A.dtype
         if dtype is not None:
             A = A.to(dtype)
@@ -1001,7 +1000,7 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
         else:
             mode = 2 if is_str else (0 if ord_val > 0 else 1)
             res = _svd_bidiag_sturm(Ab, B, M, N, mode)
-        return _reshape_result(res, A, dim, keepdim, out_dtype)
+        return _store_out(_reshape_result(res, A, dim, keepdim, out_dtype), out)
 
     out_dtype = dtype if dtype is not None else A.dtype
     Ab, B, M, N = _batched_view(A, dim)
@@ -1011,4 +1010,25 @@ def linalg_matrix_norm(A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None):
     else:
         res = _absmax_norm(Ab, B, M, N, ord_val < 0, math.isinf(ord_val))
 
-    return _reshape_result(res, A, dim, keepdim, out_dtype)
+    return _store_out(_reshape_result(res, A, dim, keepdim, out_dtype), out)
+
+
+def linalg_matrix_norm_out(
+    A, ord="fro", dim=(-2, -1), keepdim=False, dtype=None, *, out=None
+):
+    """``linalg_matrix_norm.out`` overload for the kunlunxin backend.
+
+    Without this override the ``.out`` overload falls through to the generic
+    ``flag_gems.ops.linalg_matrix_norm.linalg_matrix_norm_out``, whose Triton
+    reduce kernel does an ``axis=0`` 2-D reduction that fails to lower on this
+    backend (``axis must not be 0 for 2D+ shapes`` / uni_sram OOR).  The vendor
+    ``linalg_matrix_norm`` already handles ``out=`` end to end (via
+    ``_store_out``), so the out variant just requires a pre-allocated ``out``
+    and delegates to it.
+    """
+    logger.debug("GEMS_KUNLUNXIN LINALG_MATRIX_NORM_OUT")
+    if out is None:
+        raise TypeError("linalg_matrix_norm(): out must be provided for out variant")
+    return linalg_matrix_norm(
+        A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype, out=out
+    )

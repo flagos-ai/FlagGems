@@ -16,7 +16,6 @@
 
 import torch
 import triton
-import triton.experimental.tle.language as tle
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
@@ -104,7 +103,7 @@ def _grouped_int8(
     rn = jn * BN + tl.arange(0, BN)
     rk = tl.arange(0, BK)
     acc = tl.zeros((BM, BN), tl.int32)
-    for start in tle.gpu.pipeline(0, tl.cdiv(K, BK), num_stages=ST):
+    for start in tl.range(0, tl.cdiv(K, BK), num_stages=ST):
         k = start * BK + rk
         a = tl.load(
             A + rm[:, None] * K + k[None, :],
@@ -151,7 +150,7 @@ def _split_mm(
     rk = tl.arange(0, BK)
     split = tl.program_id(2)
     acc = tl.zeros((BM, BN), tl.int32)
-    for start in tle.gpu.pipeline(0, tl.cdiv(CHUNK, BK), num_stages=ST):
+    for start in tl.range(0, tl.cdiv(CHUNK, BK), num_stages=ST):
         k = split * CHUNK + start * BK + rk
         a = tl.load(
             A + r[:, None].to(tl.int64) * K + k[None, :],
@@ -203,7 +202,7 @@ def _split_reduce(
 
 @libentry()
 @triton.jit
-def _gemm_tle(
+def _gemm_tl_range(
     A,
     B,
     SA,
@@ -225,17 +224,18 @@ def _gemm_tle(
     rn = tl.program_id(1) * BN + tl.arange(0, BN)
     rk = tl.arange(0, BK)
     acc = tl.zeros((BM, BN), tl.int32)
-    for start in tle.gpu.pipeline(0, tl.cdiv(K, BK), num_stages=ST):
+    for start in tl.range(0, tl.cdiv(K, BK), num_stages=ST):
         k = start * BK + rk
-        a = tle.load(
+        a = tl.load(
             A + rm[:, None] * K + k[None, :],
             (rm[:, None] < M) & (k[None, :] < K),
             other=0,
-            is_async=False,
         )
         off = rn[None, :] * K + k[:, None]
-        b = tle.load(
-            B + off, (rn[None, :] < N) & (k[:, None] < K), other=0, is_async=False
+        b = tl.load(
+            B + off,
+            (rn[None, :] < N) & (k[:, None] < K),
+            other=0,
         )
         acc = tl.dot(a, b, acc, out_dtype=tl.int32)
     sa = tl.load(SA + rm * (not A_SCALAR), rm < M, other=0)
@@ -501,7 +501,7 @@ def _launch_prequantized(aq, bq, sa, sb, out, m, n, k, bias):
     else:
         bm, bn = (64, 128) if m >= 1024 else (32, 64)
         stages = 1 if m >= 2048 else 2
-        _gemm_tle[(triton.cdiv(m, bm), triton.cdiv(n, bn))](
+        _gemm_tl_range[(triton.cdiv(m, bm), triton.cdiv(n, bn))](
             aq,
             bq,
             sa,

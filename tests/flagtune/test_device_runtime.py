@@ -18,7 +18,7 @@ if HAS_FLAGTREE_FLAGTUNE:
         DeviceProbeError,
     )
 
-    from flag_gems.flagtune.runtime.device import (  # noqa: E402
+    from flag_gems.flagtune.offline.runtime.device import (  # noqa: E402
         DeviceRuntime,
         DeviceUnavailableError,
     )
@@ -156,7 +156,7 @@ def test_runtime_rejects_missing_or_empty_device_api():
 
 def test_runtime_metadata_keeps_architecture_separate_from_platform(monkeypatch):
     runtime = DeviceRuntime(_descriptor(), _FakeTorch(_FakeDeviceAPI()))
-    device_module = importlib.import_module("flag_gems.flagtune.runtime.device")
+    device_module = importlib.import_module("flag_gems.flagtune.offline.runtime.device")
     monkeypatch.setattr(
         device_module,
         "probe_flagtune_device",

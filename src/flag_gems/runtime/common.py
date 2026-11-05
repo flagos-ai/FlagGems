@@ -32,6 +32,7 @@ class vendors(Enum):
     SPACEMIT = 13
     THEAD = 14
     ARM = 15
+    BIREN = 16
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -102,6 +103,24 @@ DEFAULT_STRATEGIES = {
     ],
     "mm_warp_specialized_tma": ["default", "default", "default", "default"],
     "mv": ["align32", "align32"],
+    "mv_row": ["align32", "align32", "default", "default", "default", "default"],
+    "mv_column": [
+        "align32",
+        "align32",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+    ],
+    "mv_reduce": ["align32", "default", "default", "default", "default"],
+    # Hygon's MV kernel keeps input strides in its autotune key.  Keep this
+    # separate from the generic two-key MV contract used by other backends.
+    "mv_hygon": ["align32", "align32", "default", "default", "default"],
     "mul": ["align32", "default"],
     "mul_broadcast_2d": ["align32", "default", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
@@ -211,6 +230,22 @@ OP_KEY_ORDERS = {
     "mm_w8a8_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_warp_specialized_tma": ["M", "N", "K", "stride_bk"],
     "mv": ["M", "N"],
+    "mv_row": ["M", "K", "SAM", "SAK", "SXK", "SYM"],
+    "mv_column": [
+        "M",
+        "K",
+        "BATCH",
+        "SAB",
+        "SAM",
+        "SAK",
+        "SXB",
+        "SXK",
+        "SYB",
+        "SYM",
+        "SPLIT_K",
+    ],
+    "mv_reduce": ["M", "BATCH", "SPLIT_K", "SYB", "SYM"],
+    "mv_hygon": ["M", "N", "stride_an", "stride_am", "stride_bm"],
     "mul": ["n_elements", "dtype"],
     "mul_broadcast_2d": ["n_elements", "n_cols", "dtype"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
@@ -239,6 +274,7 @@ _VENDOR_TORCH_ATTR = {
     "mthreads": "musa",
     "sunrise": "ptpu",
     "tsingmicro": "txda",
+    "biren": "supa",
 }
 
 __all__ = [
