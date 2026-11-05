@@ -17,8 +17,15 @@ import warnings
 
 import torch
 import triton
-import triton.experimental.tle.language as tle
 import triton.language as tl
+
+try:
+    import triton.experimental.tle.language as tle
+
+    HAS_TLE = True
+except ImportError:
+    tle = None
+    HAS_TLE = False
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -505,6 +512,22 @@ def _get_ub_blocked_config(N):
 _MAX_UB_BLOCKED_N = 1024
 
 
+def _auto_bind_sub_block_supported():
+    # bishengir-compile in CANN 9.0.0 segfaults on the UB-blocked kernel's IR
+    # when auto bind sub block is enabled. Keep the compiler default on other
+    # CANN versions; when the version cannot be determined, keep it disabled
+    # (the safe side) until the compiler bug is confirmed fixed.
+    try:
+        from torch_npu.utils import get_cann_version
+
+        return get_cann_version(module="CANN") != "9.0.0"
+    except Exception:
+        return False
+
+
+_ENABLE_AUTO_BIND_SUB_BLOCK = _auto_bind_sub_block_supported()
+
+
 # ---------------------------------------------------------------------------
 # Main dispatch function for Ascend
 # ---------------------------------------------------------------------------
@@ -531,6 +554,10 @@ def cholesky_solve(B, L, upper=False):
         X: solution tensor of shape (*, N, nrhs)
     """
     logger.debug("GEMS_ASCEND CHOLESKY_SOLVE")
+    if not HAS_TLE:
+        raise RuntimeError(
+            "Ascend cholesky_solve is unavailable: requires triton.experimental.tle."
+        )
     if L.dtype not in (torch.float32,):
         raise ValueError("cholesky_solve on Ascend only supports float32")
     assert B.dtype == L.dtype, "B and L must have the same dtype"
@@ -651,6 +678,7 @@ def cholesky_solve(B, L, upper=False):
                 stride_B,
                 BLOCK_N=block_n,
                 upper=effective_upper,
+                enable_auto_bind_sub_block=_ENABLE_AUTO_BIND_SUB_BLOCK,
                 **cfg,
             )
         # Path 3: scalar single-RHS fallback (very large N)

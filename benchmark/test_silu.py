@@ -21,13 +21,27 @@ import flag_gems
 
 from . import base, consts, utils
 
+SILU_GRID_BALANCE_SHAPES = [
+    (1024, 131073),
+    (64, 64, 40961),
+    (1024, 262145),
+    (64, 64, 81921),
+    (1024, 393217),
+    (64, 64, 131073),
+]
+
+
+class SiluBenchmark(base.UnaryPointwiseBenchmark):
+    def set_more_shapes(self):
+        return super().set_more_shapes() + SILU_GRID_BALANCE_SHAPES
+
 
 @pytest.mark.silu
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_silu():
-    bench = base.UnaryPointwiseBenchmark(
+    bench = SiluBenchmark(
         op_name="silu", torch_op=torch.nn.functional.silu, dtypes=consts.FLOAT_DTYPES
     )
     bench.run()
@@ -38,7 +52,7 @@ def test_silu():
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
 def test_silu_inplace():
-    bench = base.UnaryPointwiseBenchmark(
+    bench = SiluBenchmark(
         op_name="silu_",
         torch_op=lambda a: torch.nn.functional.silu(a, inplace=True),
         dtypes=consts.FLOAT_DTYPES,

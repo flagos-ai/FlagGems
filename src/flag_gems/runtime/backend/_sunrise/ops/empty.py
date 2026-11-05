@@ -43,7 +43,7 @@ def empty(
     Allocate through ``empty_strided`` so this implementation does not recurse
     through the registered ``zeros -> empty`` constructor path.
     """
-    logger.debug("GEMS SUNRISE EMPTY")
+    logger.debug("GEMS_SUNRISE EMPTY")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:

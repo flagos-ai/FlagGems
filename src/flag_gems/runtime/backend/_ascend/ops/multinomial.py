@@ -76,16 +76,18 @@ def multinomial(prob, n_samples, with_replacement=False, *, gen=None):
 
     # Sampling without replacement
     if (not with_replacement) or n_samples == 1:
-        # In case of with_replacement, sampling is approximated by selecing
-        # the top k indices over sorted probabilities with an exponential pertubation
-        # s = argmax( p / q ) where q ~ Exp(1)
-        q = torch.empty_like(prob).exponential_(1.0)
-        s = torch.div(prob, q, out=q)
+        prob_f32 = prob.float()
+        prob_f32.clamp_(min=1e-12)  # avoid zero probabilities producing NaN
+        q = torch.empty(
+            prob.shape, dtype=torch.float32, device=prob.device
+        ).exponential_(1.0)
+        q.clamp_(min=1e-20)  # prevent division overflow
+        s = prob_f32 / q
         if n_samples == 1:
             return torch.argmax(s, dim=-1, keepdim=True).to(torch.int64)
         else:
-            vals, indices = torch.topk(s, n_samples, dim=-1)
-            return indices.to(torch.int64)
+            _, indices = torch.sort(s, dim=-1, descending=True, stable=True)
+            return indices.narrow(-1, 0, n_samples).to(torch.int64)
 
     from flag_gems.runtime.backend._ascend import ops as asd_ops
 

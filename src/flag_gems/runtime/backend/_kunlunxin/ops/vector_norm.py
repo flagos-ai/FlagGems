@@ -13,7 +13,9 @@
 # limitations under the License.
 
 import builtins
+import functools
 import logging
+import os
 
 import torch
 import triton
@@ -33,7 +35,41 @@ def heur_block_m(args):
 
 
 def heur_block_n(args):
-    return builtins.min(args["N"], 8192)
+    # TritonXPU accepts `tl.arange(0, W)` for a NON power-of-two W but silently
+    # MIS-LOWERS it: trailing lanes are dropped from the tile and, for
+    # BLOCK_M > 1, the row pitch inside the [BLOCK_M, W] tile is wrong so lanes
+    # are attributed to the neighbouring row.  Measured on XPU 4 (2026-08-29,
+    # harness/results/functional/l2_norm_masked_tail_xpu4_20260829):
+    #   W=127  -> 126 lanes summed        W=997  -> 992 (BLOCK_M=1) / 872-875
+    #   W=1009 -> 1008                    W=1789 -> 1764-1677
+    #   W=6000 -> 5922                    W=513  -> 448-455 (BLOCK_M=128)
+    # e.g. (997, 997) dim=1 was off by maxrel 0.13-0.22 for ord=2 and 1.4e3 for
+    # ord=-inf, on every dtype, with no error reported.
+    # Power-of-two widths (64..8192) are exact, INCLUDING the masked column
+    # tail (`cols < N`) -- both over-wide single tiles (1024 over N=997) and
+    # multi-iteration tiles (512 over N=997) match the CPU fp32 reference to
+    # ~2e-7.  So force a power-of-two width:
+    #   * N >= 64  -> round DOWN (the accumulator tile never grows, and the
+    #     column loop needs at most 2 iterations).
+    #   * N <  64  -> round UP (rounding down would land on the 1..32 widths
+    #     that are a separate documented XPU mis-lowering; rounding up costs
+    #     < 2x on an already tiny tile).  Do NOT floor this at 64: for
+    #     N == 1 with M == 10000 a [1024, 64] fp16 tile fails to compile
+    #     ("size mismatch when packing elements for LLVM struct",
+    #     PassManager::run failed) -- measured on the official
+    #     benchmark/test_norm.py -m norm_scalaropt_dim (10000, 1) cell.
+    n = builtins.min(args["N"], 8192)
+    w = 1 << (int(n).bit_length() - 1)
+    if w == n:
+        return w
+    return w << 1 if n < 64 else w
+
+
+@libentry()
+@triton.jit
+def zero_workspace_kernel(X, BLOCK_SIZE: tl.constexpr):
+    offsets = tl.arange(0, BLOCK_SIZE)
+    tl.store(X + offsets, 0.0)
 
 
 @libentry()
@@ -79,6 +115,27 @@ def l2_norm_kernel_1(
     x = tl.load(X, mask=mask, other=0.0).to(tl.float32)
     mid = tl.sum(x * x)
     tl.store(Mid, mid)
+
+
+@libentry()
+@triton.jit
+def l2_norm_tail_kernel(
+    X,
+    Mid,
+    TAIL_OFFSET: tl.constexpr,
+    TAIL_SIZE: tl.constexpr,
+    MID_INDEX: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    total = 0.0
+    full_size = (TAIL_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(X + TAIL_OFFSET + offset + tl.arange(0, 8)).to(tl.float32)
+        total += tl.sum(values * values)
+    for offset in tl.static_range(TAIL_SIZE % 8):
+        value = tl.load(X + TAIL_OFFSET + full_size + offset).to(tl.float32)
+        total += value * value
+    tl.store(Mid + MID_INDEX, total)
 
 
 @libentry()
@@ -257,6 +314,27 @@ def l0_norm_kernel_1(
 
 @libentry()
 @triton.jit
+def l0_norm_tail_kernel(
+    X,
+    Mid,
+    TAIL_OFFSET: tl.constexpr,
+    TAIL_SIZE: tl.constexpr,
+    MID_INDEX: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    total = 0.0
+    full_size = (TAIL_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(X + TAIL_OFFSET + offset + tl.arange(0, 8)).to(tl.float32)
+        total += tl.sum((values != 0).to(tl.float32))
+    for offset in tl.static_range(TAIL_SIZE % 8):
+        value = tl.load(X + TAIL_OFFSET + full_size + offset).to(tl.float32)
+        total += (value != 0).to(tl.float32)
+    tl.store(Mid + MID_INDEX, total)
+
+
+@libentry()
+@triton.jit
 def l0_norm_kernel_2(
     Mid, Out, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
 ):
@@ -316,6 +394,29 @@ def l1_norm_kernel_1(
 
 @libentry()
 @triton.jit(do_not_specialize=["ord"])
+def l1_norm_tail_kernel(
+    X,
+    Mid,
+    ord,
+    TAIL_OFFSET: tl.constexpr,
+    TAIL_SIZE: tl.constexpr,
+    MID_INDEX: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    ord = ord.to(tl.float32)
+    total = 0.0
+    full_size = (TAIL_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(X + TAIL_OFFSET + offset + tl.arange(0, 8)).to(tl.float32)
+        total += tl.sum(pow(tl.abs(values), ord))
+    for offset in tl.static_range(TAIL_SIZE % 8):
+        value = tl.load(X + TAIL_OFFSET + full_size + offset).to(tl.float32)
+        total += pow(tl.abs(value), ord)
+    tl.store(Mid + MID_INDEX, total)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["ord"])
 def l1_norm_kernel_2(
     Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr, buffer_size_limit: tl.constexpr
 ):
@@ -328,21 +429,1046 @@ def l1_norm_kernel_2(
     tl.store(Out, out)
 
 
+@libentry()
+@triton.jit
+def l1_norm_rows_kernel_1(
+    X,
+    Mid,
+    M,
+    N,
+    MID_SIZE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    pid = ext.program_id(0).to(tl.int64)
+    row = pid // MID_SIZE
+    chunk = pid % MID_SIZE
+    offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    values = tl.load(
+        X + row * N + offsets,
+        mask=(row < M) & (offsets < N),
+        other=0.0,
+    ).to(tl.float32)
+    tl.store(Mid + row * MID_SIZE + chunk, tl.sum(tl.abs(values)), mask=row < M)
+
+
+@libentry()
+@triton.jit
+def l1_norm_rows_tail_kernel(
+    X,
+    Mid,
+    M,
+    N,
+    MID_SIZE: tl.constexpr,
+    TAIL_OFFSET: tl.constexpr,
+    TAIL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    row = ext.program_id(0).to(tl.int64)
+    total = 0.0
+    full_size = (TAIL_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(X + row * N + TAIL_OFFSET + offset + tl.arange(0, 8)).to(
+            tl.float32
+        )
+        total += tl.sum(tl.abs(values))
+    for offset in tl.static_range(TAIL_SIZE % 8):
+        value = tl.load(X + row * N + TAIL_OFFSET + full_size + offset).to(tl.float32)
+        total += tl.abs(value)
+    tl.store(Mid + row * MID_SIZE + MID_SIZE - 1, total, mask=row < M)
+
+
+@libentry()
+@triton.jit
+def l1_norm_rows_kernel_2(
+    Mid,
+    Next,
+    M,
+    MID_SIZE: tl.constexpr,
+    NEXT_SIZE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    pid = ext.program_id(0).to(tl.int64)
+    row = pid // NEXT_SIZE
+    chunk = pid % NEXT_SIZE
+    offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    partial = tl.load(
+        Mid + row * MID_SIZE + offsets,
+        mask=(row < M) & (offsets < MID_SIZE),
+        other=0.0,
+    ).to(tl.float32)
+    tl.store(Next + row * NEXT_SIZE + chunk, tl.sum(partial), mask=row < M)
+
+
+@libentry()
+@triton.jit
+def l1_norm_rows_reduce_tail_kernel(
+    Mid,
+    Next,
+    M,
+    MID_SIZE: tl.constexpr,
+    NEXT_SIZE: tl.constexpr,
+    TAIL_OFFSET: tl.constexpr,
+    TAIL_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    row = ext.program_id(0).to(tl.int64)
+    total = 0.0
+    full_size = (TAIL_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(
+            Mid + row * MID_SIZE + TAIL_OFFSET + offset + tl.arange(0, 8)
+        ).to(tl.float32)
+        total += tl.sum(values)
+    for offset in tl.static_range(TAIL_SIZE % 8):
+        total += tl.load(Mid + row * MID_SIZE + TAIL_OFFSET + full_size + offset).to(
+            tl.float32
+        )
+    tl.store(Next + row * NEXT_SIZE + NEXT_SIZE - 1, total, mask=row < M)
+
+
+@libentry()
+@triton.jit
+def l1_norm_rows_kernel_3(
+    Next,
+    Out,
+    M,
+    NEXT_SIZE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    row = ext.program_id(0).to(tl.int64)
+    total = 0.0
+    full_size = (NEXT_SIZE // 8) * 8
+    for offset in tl.range(0, full_size, 8):
+        values = tl.load(Next + row * NEXT_SIZE + offset + tl.arange(0, 8)).to(
+            tl.float32
+        )
+        total += tl.sum(values)
+    for offset in tl.static_range(NEXT_SIZE % 8):
+        total += tl.load(Next + row * NEXT_SIZE + full_size + offset).to(tl.float32)
+    tl.store(Out + row, total, mask=row < M)
+
+
+# ---------------------------------------------------------------------------
+# Flat L2-norm fast path (ord == 2, dim == all dims; the entry the official
+# norm / linalg_vector_norm benchmarks hit).
+#
+# The legacy path launches one tl.sum program per MID_SIZE chunk plus
+# zero-workspace + masked tail + final kernels. This path keeps the same
+# proven 1D chunk-reduce (each program reduces exactly one chunk of
+# _L2_BLOCK lanes with a single tl.sum -- 8192 plain, the documented
+# XPU-safe lane count without buffer_size_limit) but removes every masked
+# load (chunks are only launched for exact multiples of the block; the
+# non-divisible remainder is accumulated by an exact unmasked tail kernel)
+# and drops the zero-workspace pad. All accumulation is fp32; the sqrt
+# result is cast to x.dtype on store. NaN and +-inf propagate like the
+# legacy sum-of-squares path (NaN stays NaN; inf -> inf), which matches
+# torch.norm on CPU and the device for the finite matrices exercised by
+# the accuracy tests.
+_L2_BLOCK = 8192  # tl.sum-safe plain lane count (stage 2+)
+_L2_BLOCK_WIDE = 32768  # stage-1 blocks for big tensors (needs buffer_size_limit=2048)
+_L2_SMALL_LIMIT = _L2_BLOCK
+_L2_VEC = 512  # lanes per loop iteration in the small/tail/final kernels
+
+
+def _l2_pick(m, cap=8192, floor=2):
+    """Pick the VEC lane count for a chunked accumulate kernel over exactly m
+    lanes. The XPU backend only accepts ONE tl.sum width per kernel (mixed
+    widths fail in TritonXPULegalize) and scalar loop iterations are ~0.4us
+    each, so the sweet spot minimizes iters = m // VEC + m % VEC over
+    VEC in pow2 [floor, cap]; the caller then launches one kernel whose
+    scalar remainder is <= floor - 1 lanes."""
+    best, best_score = floor, 1 << 62
+    v = floor
+    while v <= cap:
+        score = m // v + m % v
+        if score < best_score:
+            best, best_score = v, score
+        v <<= 1
+    return best
+
+
+def _l2_pick2(m, p, cap=8192, floor=2):
+    """VEC for the merged tail+final kernel: minimize total iterations over
+    m tail lanes (fp32 accumulator) plus p partial lanes (fp64 accumulator)."""
+    best, best_score = floor, 1 << 62
+    v = floor
+    while v <= cap:
+        score = m // v + m % v + p // v + p % v
+        if score < best_score:
+            best, best_score = v, score
+        v <<= 1
+    return best
+
+
+# Only merge the stage-1 tail with the final kernel when the number of earlier
+# partials is small; otherwise the merged kernel's per-partial fp64 scalar
+# loops dominate and the split path stays faster (measured on XPU).
+_L2_MERGE_PREV_MAX = 8
+
+
+@libentry()
+@triton.jit
+def _l2_flat_small_kernel(X, Out, N, VEC: tl.constexpr):
+    """Exact unmasked sum-of-squares over 0 < N <= _L2_SMALL_LIMIT: VEC-wide
+    chunks plus a scalar tail for the remainder (two dynamic loops; the
+    three-loop and static-unroll variants fail to compile on this XPU)."""
+    total = tl.zeros((), dtype=tl.float32)
+    full = (N // VEC) * VEC
+    for off in tl.range(0, full, VEC):
+        v = tl.load(X + off + tl.arange(0, VEC)).to(tl.float32)
+        total += tl.sum(v * v)
+    for off in tl.range(0, N - full):
+        v = tl.load(X + full + off).to(tl.float32)
+        total += v * v
+    tl.store(Out, tl.sqrt(total))
+
+
+@libentry()
+@triton.jit
+def _l2_flat_tail_kernel(X, Out, TAIL_N, SQUARED: tl.constexpr, VEC: tl.constexpr):
+    """Exact unmasked chunk accumulation (squares when SQUARED); callers pass
+    a VIEW starting at the tail so the pointer stays affine; VEC chunks plus
+    a scalar tail for the remainder (the compilable two-loop shape)."""
+    total = tl.zeros((), dtype=tl.float32)
+    full = (TAIL_N // VEC) * VEC
+    for off in tl.range(0, full, VEC):
+        v = tl.load(X + off + tl.arange(0, VEC)).to(tl.float32)
+        if SQUARED:
+            v = v * v
+        total += tl.sum(v)
+    for off in tl.range(0, TAIL_N - full):
+        v = tl.load(X + full + off).to(tl.float32)
+        if SQUARED:
+            v = v * v
+        total += v
+    tl.store(Out, total)
+
+
+@libentry()
+@triton.jit
+def _l2_flat_blk_kernel(
+    X,
+    Partial,
+    BLOCK: tl.constexpr,
+    SQUARED: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    """One fp32 partial per contiguous BLOCK-lane chunk of the flat input.
+    Masks-free: every lane is in-bounds, the pointer stays affine
+    (X + pid * BLOCK + arange), and the tl.sum lane count is a safe size
+    (8192 plain / 32768 w/ bsl=2048)."""
+    pid = ext.program_id(0).to(tl.int64)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    v = tl.load(X + offs).to(tl.float32)
+    if SQUARED:
+        v = v * v
+    tl.store(Partial + pid, tl.sum(v))
+
+
+@libentry()
+@triton.jit
+def _l2_flat_final_kernel(Partial, Out, N, VEC: tl.constexpr):
+    """Sum <= 8192 fp32 partials in fp64 and sqrt into Out. The fp64
+    accumulation keeps the final rounding far below one output ulp for all
+    supported input dtypes, matching torch's result to within the rounding
+    of the output dtype (the fp32 mid-array rounding is ~1e-7 relative)."""
+    total = tl.zeros((), dtype=tl.float64)
+    full = (N // VEC) * VEC
+    for off in tl.range(0, full, VEC):
+        total += tl.sum(tl.load(Partial + off + tl.arange(0, VEC)).to(tl.float64))
+    for off in tl.range(0, N - full):
+        total += tl.load(Partial + full + off).to(tl.float64)
+    tl.store(Out, tl.sqrt(total))
+
+
+@libentry()
+@triton.jit
+def _l2_flat_merge_tail_final_kernel(
+    X,
+    Partial,
+    Out,
+    TAIL_N,
+    MID_PREV: tl.constexpr,
+    SQUARED: tl.constexpr,
+    VEC: tl.constexpr,
+):
+    """Fused stage-1 tail + final accumulate: adds the fp32 tail sum to the
+    earlier fp32 partials (fp64), then sqrt into Out, in ONE launch. Exact
+    and unmasked: the tail is processed in VEC-wide chunks plus the scalar
+    remainder; both loops use the single VEC tl.sum width the XPU backend
+    accepts. Only used when MID_PREV (partial count) is small."""
+    total = tl.zeros((), dtype=tl.float32)
+    full = (TAIL_N // VEC) * VEC
+    for off in tl.range(0, full, VEC):
+        v = tl.load(X + off + tl.arange(0, VEC)).to(tl.float32)
+        if SQUARED:
+            v = v * v
+        total += tl.sum(v)
+    for off in tl.range(0, TAIL_N - full):
+        v = tl.load(X + full + off).to(tl.float32)
+        if SQUARED:
+            v = v * v
+        total += v
+    ft = total.to(tl.float64)
+    fullp = (MID_PREV // VEC) * VEC
+    for off in tl.range(0, fullp, VEC):
+        ft += tl.sum(tl.load(Partial + off + tl.arange(0, VEC)).to(tl.float64))
+    for off in tl.range(0, MID_PREV - fullp):
+        ft += tl.load(Partial + fullp + off).to(tl.float64)
+    tl.store(Out, tl.sqrt(ft))
+
+
+def _l2_flat(x, out):
+    """Compute ||x||_2 over the whole flat contiguous x into scalar out."""
+    n = x.numel()
+    x1 = x if x.dim() == 1 else x.view(-1)
+    if n <= _L2_SMALL_LIMIT:
+        _l2_flat_small_kernel[(1,)](x1, out, n, VEC=_l2_pick(n))
+        return
+
+    # Stage 1: wide (32768-wide) blocks; the residue is split into 8192-lane
+    # chunks plus one exact < 8192-lane tail (views, affine pointers).
+    rows1 = n // _L2_BLOCK_WIDE
+    tail1 = n - rows1 * _L2_BLOCK_WIDE
+    t_rows = tail1 // _L2_BLOCK
+    t_rem = tail1 - t_rows * _L2_BLOCK
+    prev = rows1 + t_rows
+    mid_cnt = prev + (1 if t_rem else 0)
+    mid = torch.empty_strided((mid_cnt,), (1,), dtype=torch.float32, device=x.device)
+    if rows1:
+        _l2_flat_blk_kernel[(rows1,)](
+            x1, mid, _L2_BLOCK_WIDE, SQUARED=True, buffer_size_limit=2048
+        )
+    if t_rows:
+        _l2_flat_blk_kernel[(t_rows,)](
+            x1[rows1 * _L2_BLOCK_WIDE :],
+            mid[rows1:],
+            _L2_BLOCK,
+            SQUARED=True,
+            buffer_size_limit=2048,
+        )
+    if t_rem:
+        if prev <= _L2_MERGE_PREV_MAX:
+            # Fuse tail + final into one launch: saves the separate tail and
+            # final kernels (plus their launch latencies) for small partial
+            # counts; exact fp32 tail + fp64 partial accumulation preserves the
+            # split-path numerics.
+            _l2_flat_merge_tail_final_kernel[(1,)](
+                x1[rows1 * _L2_BLOCK_WIDE + t_rows * _L2_BLOCK :],
+                mid,
+                out,
+                t_rem,
+                MID_PREV=prev,
+                SQUARED=True,
+                VEC=_l2_pick2(t_rem, prev),
+            )
+            return
+        _l2_flat_tail_kernel[(1,)](
+            x1[rows1 * _L2_BLOCK_WIDE + t_rows * _L2_BLOCK :],
+            mid[rows1 + t_rows :],
+            t_rem,
+            SQUARED=True,
+            VEC=_l2_pick(t_rem),
+        )
+
+    # Stages 2..: reduce partials with 8192-lane blocks until a scalar.
+    while mid_cnt > _L2_BLOCK:
+        rows2 = mid_cnt // _L2_BLOCK
+        rem2 = mid_cnt - rows2 * _L2_BLOCK
+        next_cnt = rows2 + (1 if rem2 else 0)
+        nxt = torch.empty_strided(
+            (next_cnt,), (1,), dtype=torch.float32, device=x.device
+        )
+        if rows2:
+            _l2_flat_blk_kernel[(rows2,)](
+                mid, nxt, _L2_BLOCK, SQUARED=False, buffer_size_limit=2048
+            )
+        if rem2:
+            _l2_flat_tail_kernel[(1,)](
+                mid[rows2 * _L2_BLOCK :],
+                nxt[rows2:],
+                rem2,
+                SQUARED=False,
+                VEC=_l2_pick(rem2),
+            )
+        mid = nxt
+        mid_cnt = next_cnt
+
+    _l2_flat_final_kernel[(1,)](mid, out, mid_cnt, VEC=_l2_pick(mid_cnt))
+
+
+# ---------------------------------------------------------------------------
+# Trailing-dim L2 fast path (ord == 2, the reduced dims are the LAST dims of a
+# contiguous input -- the entry `torch.norm(x, 2, dim, keepdim)` /
+# `torch.linalg.vector_norm(x, 2, dim)` reaches, i.e. the official
+# norm_scalaropt_dim benchmark).
+#
+# The generic partial-dim path below runs l2_norm_kernel with the unbounded
+# heuristic BLOCK_M = next_pow2(cdiv(M, 12)) over a fully masked
+# [BLOCK_M, BLOCK_N] accumulator tile.  On the official benchmark matrix that
+# produces absurd tiles (shape (100, 65536, 100), dim=-1 -> BLOCK_M = 1048576
+# with BLOCK_N = 100) and lands at 0.03-0.11x of torch.
+#
+# Measured on this XPU (do_bench, isolated probes, 2026-08-29):
+#   * per-program cost dominates, so the program count must be small AND each
+#     program must move a large *contiguous* run.  ~65536 elements per tile is
+#     the sweet spot ([64, 512] = 8192 elements is 4.4x slower than
+#     [128, 512] / [64, 1024]; 131072 gives nothing back).
+#   * masks kill the block-DMA lowering, so where it is provably sound TILE_M is
+#     an exact divisor of M and the whole [TILE_M, N] tile is unmasked, with N as
+#     an exact constexpr column width (one stride-1 contiguous block).
+#     "Provably sound" is narrow: the unmasked tile is only trustworthy when
+#     BOTH tile extents are powers of two.  With an exact constexpr width that is
+#     not a power of two, or a TILE_M that is not a power of two, TritonXPU
+#     silently mis-lowers the tile -- lanes are dropped and/or attributed to the
+#     neighbouring row.  Measured on XPU 4, 2026-08-29
+#     (harness/results/functional/l2_dim_tile_pow2_xpu4_20260829):
+#       N=1009 TILE_M=60  -> 505 of 1009 lanes summed, bf16 maxrel 1.98e36
+#       N=1000 TILE_M=50  -> fp16/bf16 NaN
+#       N=1789 TILE_M=32  -> 1344 lanes, maxrel 0.33
+#       N=1024 TILE_M=50  -> POW2 N, still fp16 NaN / bf16 2.3e35
+#       N=4096 TILE_M=15  -> POW2 N, fp16 maxrel 593 / bf16 3.9e32
+#       N=2048 TILE_M=25  -> POW2 N, fp16 maxrel 1.04 / bf16 1.5e26
+#     A 172-config sweep over pow2 N x TILE_M found every TILE_M in
+#     {3,5,6,7,9,10,12,14,15,20,21,24,25,30,40,48,50,60} wrong and every pow2
+#     TILE_M (2..1024) exact; an 81-config sweep over non-pow2 N x TILE_M >= 64
+#     still broke at N=513/1009/1023.  Values such as N=100/300/333 or TILE_M=150
+#     happen to come out right, so no width may be extrapolated from a sample --
+#     pow2 x pow2 is the only rule that holds.
+#   * so shapes outside that window use l2_dim_mask_kernel: the *generic*
+#     l2_norm_kernel body (pow2 BLOCK_N, 2D `row_mask and col_mask`,
+#     [BLOCK_M, BLOCK_N] fp32 accumulator -- the load shape probe_tile.py proved
+#     exact to ~2e-7) but with a bounded pow2 BLOCK_M instead of the generic
+#     next_pow2(cdiv(M, 12)).  BLOCK_M = 64 (= the core count) measured fastest:
+#     (25600,100) 0.111ms vs 0.155ms at BLOCK_M=512, and BLOCK_N=next_pow2(N)
+#     beats prev_pow2(N) (one column iteration instead of two).  A 1D column-mask
+#     broadcast without the row mask is NOT equivalent and is wrong (bf16 inf) --
+#     see probe_tilefix.py in the 2026-08-29 evidence dir.
+#   * tiles below ~8192 elements are not only slow, they MIS-COMPILE: TILE_M=4
+#     with N=100 and TILE_M=25 with N=256 return silently wrong values
+#     (maxrel 0.38 / 0.32 against an fp32 ground truth) while TILE_M=80/100/125
+#     at the same N are exact.  _DIM_MIN_TILE keeps us out of that regime.
+#   * N > 8192 cannot be reduced by a single in-tile tl.sum (a [1, 20000] tile
+#     is off by ~9e-3 even in fp32), so wide rows are split into CHUNK-lane
+#     blocks (32768 with buffer_size_limit=2048 -- the documented XPU-safe
+#     width) that each stay inside one row, and a second pass adds the K
+#     partials per row.  Partials are stored TRANSPOSED ([K, M]) so the merge
+#     pass reads contiguous fp32 blocks: the natural [M, K] layout needs a
+#     stride-K gather and that mis-compiles for fp32/bf16 outputs (rows keep
+#     only one of the K partials, maxrel 0.30).
+# Everything that does not fit these windows (narrow rows, non-trailing dims,
+# non-contiguous input, N neither <= 8192 nor a multiple of a safe chunk width)
+# falls through to the untouched generic path.  Accumulation is fp32 and the
+# sqrt is cast to the output dtype on store, as in the generic path.
+_DIM_MIN_N = 64  # narrower reduces stay on the generic path
+_DIM_MAX_TILE_N = 8192  # widest row a single 2D tl.sum reduces correctly
+_DIM_TILE_BUDGET = 65536  # elements per 2D tile (measured sweet spot)
+_DIM_MIN_TILE = 8192  # below this the XPU tile reduce mis-compiles
+_DIM_MIN_WORK = 65536  # smaller tensors are launch-bound; keep generic path
+_DIM_MAX_INDEX = 1 << 31  # tile offsets are int32
+_DIM_CHUNKS = (32768, 8192)  # tl.sum-safe row chunk widths (bsl=2048)
+_DIM_MERGE_BLOCK = 1024
+_DIM_MASK_ROWS = 64
+_DIM_TILE_ROWS_WIDE = 128
+_DIM_TILE_ROWS_WIDE_SHORTN = 256
+_DIM_TILE_SHORTN = 512
+
+
+@libentry()
+@triton.jit
+def l2_dim_tile_kernel(
+    X, Out, TILE_M: tl.constexpr, N: tl.constexpr, buffer_size_limit: tl.constexpr
+):
+    """Unmasked 2D row tile: one program reduces TILE_M consecutive rows of
+    exactly N columns. Callers guarantee M % TILE_M == 0, so every lane is
+    in-bounds and the tile is a single contiguous block."""
+    pid = ext.program_id(0)
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    n_off = tl.arange(0, N)
+    x = tl.load(X + m_off[:, None] * N + n_off[None, :]).to(tl.float32)
+    tl.store(Out + m_off, tl.sqrt(tl.sum(x * x, axis=1)))
+
+
+@libentry()
+@triton.jit
+def l2_dim_mask_kernel(
+    X,
+    Out,
+    M,
+    N,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    """Masked 2D row tile for the shapes l2_dim_tile_kernel cannot express with
+    two power-of-two extents. Body is the generic l2_norm_kernel (2D
+    `row_mask and col_mask`, pow2 BLOCK_N, [BLOCK_M, BLOCK_N] fp32 accumulator),
+    the only load shape measured exact on this backend, with a bounded pow2
+    BLOCK_M instead of the generic unbounded next_pow2(cdiv(M, 12))."""
+    pid = ext.program_id(0).to(tl.int64) * BLOCK_M + tl.arange(0, BLOCK_M)[:, None]
+    Xp = X + pid * N
+    Outp = Out + pid
+    row_mask = pid < M
+    _sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    for off in range(0, N, BLOCK_N):
+        cols = off + tl.arange(0, BLOCK_N)[None, :]
+        col_mask = cols < N
+        mask = row_mask and col_mask
+        a = tl.load(Xp + cols, mask, other=0.0).to(tl.float32)
+        _sum += a * a
+    s = tl.sum(_sum, axis=1)
+    tl.store(Outp, tl.sqrt(s)[:, None], row_mask)
+
+
+@libentry()
+@triton.jit
+def l2_dim_chunk_kernel(
+    X,
+    Partial,
+    M,
+    K: tl.constexpr,
+    CHUNK: tl.constexpr,
+    buffer_size_limit: tl.constexpr,
+):
+    """One fp32 partial per CHUNK-lane block of the flat input; CHUNK divides N
+    so a block never straddles two rows. Partials go to Partial[k * M + row]
+    (transposed) so the merge pass can read them contiguously."""
+    pid = ext.program_id(0).to(tl.int64)
+    v = tl.load(X + pid * CHUNK + tl.arange(0, CHUNK)).to(tl.float32)
+    tl.store(Partial + (pid % K) * M + pid // K, tl.sum(v * v))
+
+
+@libentry()
+@triton.jit
+def l2_dim_merge_kernel(Partial, Out, M, K: tl.constexpr, BLOCK_M: tl.constexpr):
+    """Add the K transposed fp32 partials of each row and take the sqrt. The
+    per-lane accumulate (no tl.sum) keeps masked tail lanes independent, and
+    tl.static_range is required: a dynamic loop fails TritonXPUUnrollControl."""
+    pid = ext.program_id(0).to(tl.int64)
+    m_off = pid * BLOCK_M + tl.arange(0, BLOCK_M)
+    mask = m_off < M
+    acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
+    for k in tl.static_range(K):
+        acc += tl.load(Partial + k * M + m_off, mask=mask, other=0.0).to(tl.float32)
+    tl.store(Out + m_off, tl.sqrt(acc), mask=mask)
+
+
+# ---------------------------------------------------------------------------
+# tle.gpu fast path for the trailing-dim L2 (sum-of-squares row-reduce), the
+# min.py tle row-reduce pattern plus the tritonxpu-tle-pipeline pass: with
+# tl.range(..., num_stages=NS) the pass double-buffers the GM -> LM descriptor
+# copy, which is exactly what a memory-bound row-reduce needs (measured on KL3
+# [4096, 4096] f16: 37.8us vs 205us for the l2_dim path; [600, 40999] f32:
+# 92.3us).
+#
+# Short column tiles are NOT masked: the descriptor copy clamps to the tensor
+# shape and leaves the un-transferred LM bytes stale, so the last (possibly
+# partial) tile first zeroes the buffer and then re-accumulates the clamped
+# copy -- the how_to_write_reduce sum_case_study "zero-fill, not mask" recipe,
+# which also keeps the bf16 path exact.
+try:
+    # `.language` carries both surfaces: `tle.gpu` for the cluster/LM path.
+    import triton.experimental.tle.language as tle
+    from triton.tools.tensor_descriptor import TensorDescriptor
+
+    _TLE_GPU_OK = True
+except ImportError:  # triton without the XPU tile-language extension
+    tle = None
+    TensorDescriptor = None
+    _TLE_GPU_OK = False
+
+# tritonxpu-tle-pipeline (third_party/xpu/backend/compiler.py) is gated by this
+# env var: without it tl.range(num_stages=...) is left alone and the loop runs
+# synchronously (~2-3x slower, measured). setdefault so an explicit user
+# setting still wins.
+os.environ.setdefault("TRITONXPU_TLE_PIPELINE", "1")
+
+_TLE_NORM_DTYPE = {
+    torch.float16: tl.float16,
+    torch.bfloat16: tl.bfloat16,
+    torch.float32: tl.float32,
+}
+
+# Flat all-dims L2 sizes handled by the single-launch [1, n] TLE path (one
+# program, YBLOCK <= 32768 lanes): below this the whole tensor streams through
+# one program faster than the two-launch row-reduce + scalarise path (whose
+# second launch costs ~6us alone); above it one program stops saturating the
+# memory system.  Crossover measured on KL3 (see _tle_flat).
+_TLE_FLAT_SINGLE_MAX = 1 << 17  # 131072
+
+
+# ---------------------------------------------------------------------------
+# Cached scratch + descriptors for the two-launch _tle_flat path.
+#
+# Building a TensorDescriptor costs ~3us on this XPU and torch.empty_strided
+# ~4.3us (measured); with 2-3 descriptor builds and one scratch allocation per
+# call that is 10-16us of CPU, which shows up as GPU gaps in a steady-state
+# benchmark: the phase-2 launch of (1024,1024) f16 is only ~6us of GPU work,
+# so the CPU debt is comparable to the whole op (harness 24.5us vs 14.7us of
+# raw kernel time).  Both caches are bounded and keyed by value identity
+# (address/shape/...) rather than by tensor object, so a recycled allocator
+# block yields a live hit while a fresh block just rebuilds.  The scratch is
+# fully overwritten by phase 1 and consumed by phase 2 in enqueue order on one
+# stream, so reuse is race-free; descriptors only pin the tensors they were
+# built from (at most `maxsize` of them).
+_TLE_DESC_CACHE_MAX = 32
+
+
+class _TleDescCache:
+    """Bounded {key: descriptor} with FIFO eviction."""
+
+    __slots__ = ("_d", "_max")
+
+    def __init__(self, maxsize=_TLE_DESC_CACHE_MAX):
+        self._d = {}
+        self._max = maxsize
+
+    def get(self, key, build):
+        d = self._d
+        v = d.get(key)
+        if v is None:
+            v = build()
+            if len(d) >= self._max:
+                d.pop(next(iter(d)))
+            d[key] = v
+        return v
+
+
+_tle_desc_cache = _TleDescCache()
+_tle_sq_cache = _TleDescCache()
+
+
+def _tle_sq_scratch(m2, device):
+    """One f32 (m2,) sum-of-squares scratch per (size, device), reused across
+    calls (see the cache block comment above)."""
+    return _tle_sq_cache.get(
+        (m2, device),
+        lambda: torch.empty_strided((m2,), (1,), dtype=torch.float32, device=device),
+    )
+
+
+if _TLE_GPU_OK:
+
+    @triton.jit(
+        do_not_specialize=["N"],
+        do_not_specialize_on_alignment=["a_desc", "c_desc"],
+    )
+    def _tle_norm_row_kernel(
+        a_desc,
+        c_desc,
+        N,
+        XBLOCK: tl.constexpr,
+        YBLOCK: tl.constexpr,
+        NS: tl.constexpr,
+        DTYPE: tl.constexpr,
+        NEED_PAD: tl.constexpr,
+        SQ_ONLY: tl.constexpr = False,
+        SQUARE: tl.constexpr = True,
+        C_DTYPE: tl.constexpr = None,
+    ):
+        pid = tl.program_id(0)
+        row_off = pid * XBLOCK
+        if SQ_ONLY:
+            c_dtype = tl.float32
+        elif C_DTYPE is not None:
+            c_dtype = C_DTYPE
+        else:
+            c_dtype = DTYPE
+        a_lmem = tle.gpu.alloc(
+            [XBLOCK, YBLOCK], dtype=DTYPE, layout=None, scope=tle.gpu.lmem
+        )
+        c_lmem = tle.gpu.alloc([XBLOCK], dtype=c_dtype, layout=None, scope=tle.gpu.lmem)
+        row_ids = tl.broadcast_to(tl.arange(0, XBLOCK)[:, None], (XBLOCK, YBLOCK))
+        col_ids = tl.broadcast_to(tl.arange(0, YBLOCK)[None, :], (XBLOCK, YBLOCK))
+        a_ptrs = tle.gpu.local_ptr(a_lmem, (row_ids, col_ids))
+        c_ptrs = tle.gpu.local_ptr(c_lmem, (tl.arange(0, XBLOCK),))
+        acc = tl.zeros([XBLOCK], tl.float32)
+        if NEED_PAD:
+            n_full = (N // YBLOCK) * YBLOCK
+            for coff in tl.range(0, n_full, YBLOCK, num_stages=NS):
+                tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+                v = tl.load(a_ptrs).to(tl.float32)
+                if SQUARE:
+                    v = v * v
+                acc += tl.sum(v, 1)
+            # epilogue: the OOB columns of the partial tile are NOT transferred
+            # by the clamped copy, so zero the buffer first (stale LM bytes
+            # would otherwise be double-counted) and re-accumulate.
+            tl.store(a_ptrs, tl.zeros([XBLOCK, YBLOCK], DTYPE))
+            tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, n_full])
+            v = tl.load(a_ptrs).to(tl.float32)
+            if SQUARE:
+                v = v * v
+            acc += tl.sum(v, 1)
+        else:
+            for coff in tl.range(0, N, YBLOCK, num_stages=NS):
+                tle.gpu.copy(a_desc, a_lmem, [XBLOCK, YBLOCK], [row_off, coff])
+                v = tl.load(a_ptrs).to(tl.float32)
+                if SQUARE:
+                    v = v * v
+                acc += tl.sum(v, 1)
+        if SQ_ONLY:
+            nrm = acc
+        else:
+            nrm = tl.sqrt(acc)
+        tl.store(c_ptrs, nrm.to(c_dtype))
+        tle.gpu.copy(c_lmem, c_desc, [XBLOCK], [row_off])
+
+
+def _tle_norm_plan(m, n, dtype):
+    """(XBLOCK, YBLOCK, NS) for the tle.gpu row-reduce, or None when the shape
+    should stay on the tuned l2_dim path.
+
+    One stage buffer is capped at 128 KB (XBLOCK*YBLOCK*esize): that is the
+    measured sweet spot on KL3 and, with NS=2 rotated slots, sits at ~4 KB/core
+    inside the pipeline pass's 8000 B/core LM budget. Measured aspect choices:
+    [256, 256] f16 / [256, 128] f32 for wide-M; for m < 1024, m/8-row blocks
+    keep the 12 clusters busy -- [600, 40999] f32 goes 256 -> 294us, 128 ->
+    137us, 64 -> 92us. YBLOCK is a power of two (the XPU mis-lowering
+    documented above); the column tail is handled by the kernel's zero-fill
+    epilogue, so no divisibility is required.
+    """
+    if not _TLE_GPU_OK:
+        return None
+    if dtype not in _TLE_NORM_DTYPE:
+        return None
+    if m < 1 or n < 64:
+        return None
+    if m * n < _DIM_MIN_WORK or m * n >= _DIM_MAX_INDEX:
+        return None
+    esz = dtype.itemsize
+    if m >= 1024:
+        xb = 256
+    else:
+        xb = 1 << (int(max(m // 8, 16)).bit_length() - 1)
+    yb = (128 * 1024) // (xb * esz)
+    yb = 1 << (int(builtins.min(n, yb)).bit_length() - 1)
+    if yb > 1024:
+        yb = 1024
+    if yb < 64:
+        return None
+    return (xb, yb, 2)
+
+
+def _tle_norm_launch(x, m, n, xb, yb, ns, dtype):
+    """Full-precision row norms of the logical (m, n) view of `x` via the tle
+    kernel; returns a (m,) tensor. The grid is padded to a multiple of XBLOCK
+    (descriptor-clamped rows read as garbage in LM but are sliced off here)."""
+    mp = triton.cdiv(m, xb) * xb
+    out = torch.empty_strided((mp,), (1,), dtype=dtype, device=x.device)
+    _tle_norm_row_kernel[(triton.cdiv(m, xb),)](
+        TensorDescriptor.from_tensor(x.view(m, n), block_shape=[xb, yb]),
+        TensorDescriptor.from_tensor(out, block_shape=[xb]),
+        n,
+        xb,
+        yb,
+        ns,
+        _TLE_NORM_DTYPE[dtype],
+        n % yb != 0,
+        isCloseCoreTiling=False,
+    )
+    return out[:m]
+
+
+def _tle_flat(x, out, dtype):
+    """||x||_2 over the whole flat contiguous x in TLE passes; returns True when
+    handled, False when the shape should stay on the legacy _l2_flat path.
+
+    Small tensors (n <= _TLE_FLAT_SINGLE_MAX) are one program ([1, n] view,
+    XBLOCK=1: square, reduce, sqrt, store) -- a single launch.  Larger tensors
+    use the row-reduce then one scalarising pass:
+      n = R * 4096 + r
+    1. (R, 4096) per-row sum of squares  -> f32 sq[R]       (full pipelined tiles)
+    2. (1, r)    sum of squares (r tail) -> f32 sq[R]       (single row, zero-fill)
+    3. (1, R(+1)) sum of squares, sqrt   -> out             (XBLOCK=1: the
+       accumulation must be exact over EVERY row of phase-1, so the row axis
+       may not overrun -- a single-program row view is the safe shape)
+    Column tails are exact via the kernel's zero-fill epilogue (clamped
+    descriptor copy), so no divisibility of n is required.
+    """
+    if not _TLE_GPU_OK or dtype not in _TLE_NORM_DTYPE:
+        return False
+    # dtype promotion (e.g. vector_norm(x_fp16, 2, dtype=torch.float32)) would
+    # build the input descriptor from x.dtype while the LM buffer is allocated
+    # as `dtype`, so tle.gpu.copy would see mismatched element types -- bail
+    # out to _l2_flat (which accumulates in f32), same as _l2_trailing_dim.
+    if dtype != x.dtype:
+        return False
+    n = x.numel()
+    if n <= _TLE_FLAT_SINGLE_MAX:
+        # Single-launch small flat L2: ONE program streams [1, YBLOCK] tiles
+        # (XBLOCK=1 so the row axis never overruns), squares + reduces the
+        # full tensor and writes the sqrt straight into `out` -- no partials,
+        # no second launch.  Measured on (64, 64) f16: 6.1us vs 14.6us for the
+        # legacy single-program _l2_flat_small_kernel and 7.0us for torch.norm
+        # (the launch floor is ~6us, so the leftover work is sub-microsecond).
+        # Above ~128K elements one program stops saturating the memory system;
+        # the row-reduce + scalarise two-launch path below wins there.
+        x1 = x if x.dim() == 1 else x.view(-1)
+        yb = 1 << (builtins.min(32768, n).bit_length() - 1)
+        if yb < 64:
+            yb = 64  # n < 64: the zero-fill epilogue zeroes the OOB lanes
+        _tle_norm_row_kernel[(1,)](
+            TensorDescriptor.from_tensor(x1.view(1, n), block_shape=[1, yb]),
+            TensorDescriptor.from_tensor(out.view(-1), block_shape=[1]),
+            n,
+            1,
+            yb,
+            2,
+            _TLE_NORM_DTYPE[dtype],
+            n % yb != 0,
+            False,
+            True,
+            C_DTYPE=_TLE_NORM_DTYPE[dtype],
+            isCloseCoreTiling=False,
+        )
+        return True
+    if n < _DIM_MIN_WORK or n >= _DIM_MAX_INDEX:
+        return False
+    x1 = x if x.dim() == 1 else x.view(-1)
+    # phase-1 row width: pick so R = n // ncols lands in ~[1024, 8192] rows
+    # (measured: R < 1024 falls into the slow narrow-xb regime, and 2-4
+    # iterations per tile already saturate the pipelined copy at ncols=512).
+    ncols = min(4096, max(512, 1 << (int(n // 4096).bit_length() - 1)))
+    R = n // ncols
+    r = n - R * ncols
+    plan = _tle_norm_plan(R, ncols, dtype)
+    if plan is None:
+        return False
+    xb, yb, ns = plan
+    m2 = R + (1 if r else 0)
+    # Cached f32 scratch (see the cache block comment above); `empty` is NOT
+    # usable here -- it is intercepted by the gems empty op and JIT-recompiles
+    # per call on this XPU (~100ms/call class, see layernorm.py).
+    sq = _tle_sq_scratch(m2, x.device)
+    # Cached descriptors: the phase-1/2 views are byte-identical on every call
+    # of a steady-state loop, so don't rebuild them (~3us each, measured).
+    x_v = x1[: R * ncols].view(R, ncols)
+    sq_v = sq[:R]
+    a_desc = _tle_desc_cache.get(
+        (x_v.data_ptr(), (R, ncols), (ncols, 1), dtype, (xb, yb)),
+        lambda: TensorDescriptor.from_tensor(x_v, block_shape=[xb, yb]),
+    )
+    c_desc = _tle_desc_cache.get(
+        (sq_v.data_ptr(), (R,), (1,), torch.float32, (xb,)),
+        lambda: TensorDescriptor.from_tensor(sq_v, block_shape=[xb]),
+    )
+    # phase 1: row squares (output dtype f32 via SQ_ONLY), row-overrun rows of
+    # the last program are written past sq[:R] and sliced off -- safe, rows are
+    # independent.
+    _tle_norm_row_kernel[(triton.cdiv(R, xb),)](
+        a_desc,
+        c_desc,
+        ncols,
+        xb,
+        yb,
+        ns,
+        _TLE_NORM_DTYPE[dtype],
+        ncols % yb != 0,
+        True,
+        isCloseCoreTiling=False,
+    )
+    if r:
+        yb_t = 1 << (
+            int(r).bit_length() - 1
+        )  # pow2 floor, <= r: zero-fill covers the rest
+        x_t = x1[R * ncols :].view(1, r)
+        sq_t = sq[R:]
+        _tle_norm_row_kernel[(1,)](
+            _tle_desc_cache.get(
+                (x_t.data_ptr(), (1, r), (r, 1), dtype, (1, yb_t)),
+                lambda: TensorDescriptor.from_tensor(x_t, block_shape=[1, yb_t]),
+            ),
+            _tle_desc_cache.get(
+                (sq_t.data_ptr(), (1,), (1,), torch.float32, (1,)),
+                lambda: TensorDescriptor.from_tensor(sq_t, block_shape=[1]),
+            ),
+            r,
+            1,
+            yb_t,
+            2,
+            _TLE_NORM_DTYPE[dtype],
+            r % yb_t != 0,
+            True,
+            isCloseCoreTiling=False,
+        )
+    # phase 2: scalarise f32 sq straight into `out` (XBLOCK=1 so no row
+    # overrun: every row counts). C_DTYPE = the output element type, so the
+    # kernel writes the final dtype directly -- no `to`/`copy_` after the
+    # launch, whose aten calls are intercepted by use_gems and recompile per
+    # call (~40-80us each, measured on this XPU).
+    yb2 = (128 * 1024) // 4  # f32: one row per 128KB stage
+    if yb2 > m2:
+        yb2 = m2
+    yb2 = 1 << (int(yb2).bit_length() - 1)
+    if yb2 < 64:
+        yb2 = 64
+    if yb2 > 32768:
+        yb2 = 32768
+    sq_2 = sq.view(1, m2)
+    out_v = out.view(-1)
+    _tle_norm_row_kernel[(1,)](
+        _tle_desc_cache.get(
+            (sq_2.data_ptr(), (1, m2), (m2, 1), torch.float32, (1, yb2)),
+            lambda: TensorDescriptor.from_tensor(sq_2, block_shape=[1, yb2]),
+        ),
+        _tle_desc_cache.get(
+            (out_v.data_ptr(), (1,), (1,), dtype, (1,)),
+            lambda: TensorDescriptor.from_tensor(out_v, block_shape=[1]),
+        ),
+        m2,
+        1,
+        yb2,
+        2,
+        tl.float32,
+        m2 % yb2 != 0,
+        False,
+        False,
+        C_DTYPE=_TLE_NORM_DTYPE[dtype],
+        isCloseCoreTiling=False,
+    )
+    return True
+
+
+@functools.lru_cache(maxsize=1024)
+def _l2_dim_plan(m, n, wide=False):
+    if m < 1 or n < _DIM_MIN_N:
+        return None
+    if m * n < _DIM_MIN_WORK or m * n >= _DIM_MAX_INDEX:
+        return None
+    if n <= _DIM_MAX_TILE_N:
+        cap = _DIM_TILE_BUDGET // n
+        if cap > m:
+            cap = m
+        div_m = 0
+        for tile_m in range(cap, 0, -1):
+            if m % tile_m == 0:
+                div_m = tile_m
+                break
+        if div_m * n < _DIM_MIN_TILE:
+            return None
+        if n & (n - 1) == 0:
+            # largest power of two that divides m, clamped to the tile budget
+            p2 = m & (-m)
+            tile_cap = _DIM_MASK_ROWS
+            if wide:
+                tile_cap = (
+                    _DIM_TILE_ROWS_WIDE_SHORTN
+                    if n <= _DIM_TILE_SHORTN
+                    else _DIM_TILE_ROWS_WIDE
+                )
+            if p2 > tile_cap:
+                p2 = tile_cap
+            if p2 * n >= _DIM_MIN_TILE:
+                return ("tile", p2)
+        block_n = triton.next_power_of_2(n)
+        block_m = _DIM_TILE_BUDGET // block_n
+        if block_m > _DIM_MASK_ROWS:
+            block_m = _DIM_MASK_ROWS
+        if block_m < 1:
+            block_m = 1
+        if block_m > m:
+            block_m = 1 << (int(m).bit_length() - 1)
+        return ("mask", (block_m, block_n))
+    for chunk in _DIM_CHUNKS:
+        if n % chunk == 0:
+            return ("chunk", chunk)
+    return None
+
+
+def _l2_dim_launch(x, m, n, plan, dtype):
+    kind, param = plan
+    flat = x.view(-1)
+    out = torch.empty_strided((m,), (1,), dtype=dtype, device=x.device)
+    if kind == "tile":
+        l2_dim_tile_kernel[(m // param,)](flat, out, param, n, buffer_size_limit=2048)
+        return out
+    if kind == "mask":
+        block_m, block_n = param
+        l2_dim_mask_kernel[(triton.cdiv(m, block_m),)](
+            flat, out, m, n, block_m, block_n, buffer_size_limit=2048
+        )
+        return out
+    k = n // param
+    partial = torch.empty_strided((k * m,), (1,), dtype=torch.float32, device=x.device)
+    l2_dim_chunk_kernel[(m * k,)](flat, partial, m, k, param, buffer_size_limit=2048)
+    l2_dim_merge_kernel[(triton.cdiv(m, _DIM_MERGE_BLOCK),)](
+        partial, out, m, k, _DIM_MERGE_BLOCK
+    )
+    return out
+
+
+def _l2_trailing_dim(x, dim, keepdim, dtype):
+    """||x||_2 over a trailing block of dims of a contiguous x, or None when the
+    shape/dims/dtype are not eligible for the fast path. `dim` is already
+    normalized to non-negative, distinct dims with len(dim) < x.ndim."""
+    if dtype != x.dtype or not x.is_contiguous():
+        return None
+    ndim = x.ndim
+    red = sorted(dim)
+    if red != list(range(ndim - len(red), ndim)):
+        return None
+    n = 1
+    for d in red:
+        n *= x.shape[d]
+    m = 1
+    for d in range(ndim - len(red)):
+        m *= x.shape[d]
+    plan = _l2_dim_plan(m, n, x.dtype in (torch.float16, torch.bfloat16))
+    if plan is None:
+        return None
+    out = _l2_dim_launch(x, m, n, plan, dtype)
+    kept = list(x.shape[: ndim - len(red)])
+    if keepdim:
+        return out.view(kept + [1] * len(red))
+    return out.view(kept)
+
+
 def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
     logger.debug("GEMS_KUNLUNXIN VECTOR_NORM")
-    if dtype is not None:
-        dtype = torch.dtype(dtype)
-    else:
+
+    if dtype is None:
         dtype = x.dtype
     if dtype not in [torch.float16, torch.float32, torch.bfloat16]:
         raise NotImplementedError(f"vector_norm not implemented for {dtype}")
 
+    if dim is None:
+        dim = list(range(x.ndim))
+    elif isinstance(dim, int):
+        dim = [dim]
+    else:
+        dim = list(dim)
+    normalized_dim = []
+    for d in dim:
+        if d < -x.ndim or d >= x.ndim:
+            raise IndexError(
+                f"Dimension out of range (expected to be in range of [{-x.ndim}, {x.ndim - 1}], but got {d})"
+            )
+        normalized_dim.append(d % x.ndim)
+    if len(set(normalized_dim)) != len(normalized_dim):
+        raise RuntimeError("dim must contain all distinct dimensions")
+    dim = normalized_dim
+
     with torch_device_fn.device(x.device):
-        if (not dim) or len(dim) == x.ndim:
-            dim = list(range(x.ndim))
+        if len(dim) == x.ndim:
             shape = [1] * x.ndim
             x = dim_compress(x, dim)
             M = x.numel()
+            # Fast flat L2 (ord == 2, all dims, non-empty): mask-free 2D row
+            # reduce + exact tail, avoiding the legacy multi-kernel path below.
+            # Empty tensors (M == 0) keep the legacy zero-sum semantics.
+            if ord == 2 and M > 0:
+                out = torch.empty_strided(
+                    shape, [1] * len(shape), dtype=dtype, device=x.device
+                )
+                if not _tle_flat(x, out, dtype):
+                    _l2_flat(x, out)
+                if not keepdim:
+                    out = out.squeeze(dim=dim)
+                return out
             cluster_num = 12
             # XPU: tl.sum over a 1D tile is only correct up to a bounded lane
             # count. Empirically BLOCK_SIZE=32768 (bsl=2048) is the safe max;
@@ -358,12 +1484,29 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
             MID_SIZE = triton.cdiv(M, BLOCK_SIZE)
             BLOCK_MID = triton.next_power_of_2(MID_SIZE)
 
-            mid = torch.empty([MID_SIZE], dtype=dtype, device=x.device)
-            out = torch.empty(shape, dtype=dtype, device=x.device)
+            # Stage-2 reduces a power-of-two tile. Pad and explicitly clear its
+            # workspace so XPU masked loads never consume memory past MID_SIZE.
+            mid = torch.empty_strided(
+                [BLOCK_MID], [1], dtype=torch.float32, device=x.device
+            )
+            zero_workspace_kernel[(1,)](mid, BLOCK_MID)
+            out = torch.empty_strided(
+                shape, [1] * len(shape), dtype=dtype, device=x.device
+            )
             if ord == 2:
                 l2_norm_kernel_1[(MID_SIZE,)](
                     x, mid, M, BLOCK_SIZE, buffer_size_limit=2048
                 )
+                tail_size = M % BLOCK_SIZE
+                if tail_size:
+                    l2_norm_tail_kernel[(1,)](
+                        x,
+                        mid,
+                        M - tail_size,
+                        tail_size,
+                        MID_SIZE - 1,
+                        buffer_size_limit=2048,
+                    )
                 l2_norm_kernel_2[(1,)](
                     mid, out, MID_SIZE, BLOCK_MID, buffer_size_limit=2048
                 )
@@ -385,6 +1528,16 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 l0_norm_kernel_1[(MID_SIZE,)](
                     x, mid, M, BLOCK_SIZE, buffer_size_limit=2048
                 )
+                tail_size = M % BLOCK_SIZE
+                if tail_size:
+                    l0_norm_tail_kernel[(1,)](
+                        x,
+                        mid,
+                        M - tail_size,
+                        tail_size,
+                        MID_SIZE - 1,
+                        buffer_size_limit=2048,
+                    )
                 l0_norm_kernel_2[(1,)](
                     mid, out, MID_SIZE, BLOCK_MID, buffer_size_limit=2048
                 )
@@ -392,10 +1545,25 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 l1_norm_kernel_1[(MID_SIZE,)](
                     x, mid, ord, M, BLOCK_SIZE, buffer_size_limit=2048
                 )
+                tail_size = M % BLOCK_SIZE
+                if tail_size:
+                    l1_norm_tail_kernel[(1,)](
+                        x,
+                        mid,
+                        ord,
+                        M - tail_size,
+                        tail_size,
+                        MID_SIZE - 1,
+                        buffer_size_limit=2048,
+                    )
                 l1_norm_kernel_2[(1,)](
                     mid, out, ord, MID_SIZE, BLOCK_MID, buffer_size_limit=2048
                 )
         else:
+            if ord == 2:
+                fast = _l2_trailing_dim(x, dim, keepdim, dtype)
+                if fast is not None:
+                    return fast
             shape = list(x.shape)
             dim = [d % x.ndim for d in dim]
             x = dim_compress(x, dim)
@@ -414,6 +1582,80 @@ def vector_norm(x, ord=2, dim=None, keepdim=False, dtype=None):
                 min_norm_kernel[grid](x, out, M, N)
             elif ord == 0:
                 l0_norm_kernel[grid](x, out, M, N)
+            elif ord == 1 and N > 1024:
+                BLOCK_SIZE = 1024
+                MID_SIZE = triton.cdiv(N, BLOCK_SIZE)
+                mid = torch.empty_strided(
+                    (M, MID_SIZE), (MID_SIZE, 1), dtype=torch.float32, device=x.device
+                )
+                l1_norm_rows_kernel_1[(M * MID_SIZE,)](
+                    x,
+                    mid,
+                    M,
+                    N,
+                    MID_SIZE,
+                    BLOCK_SIZE,
+                    buffer_size_limit=2048,
+                )
+                tail_size = N % BLOCK_SIZE
+                if tail_size:
+                    l1_norm_rows_tail_kernel[(M,)](
+                        x,
+                        mid,
+                        M,
+                        N,
+                        MID_SIZE,
+                        N - tail_size,
+                        tail_size,
+                        buffer_size_limit=2048,
+                    )
+                if MID_SIZE <= 1024:
+                    l1_norm_rows_kernel_3[(M,)](
+                        mid,
+                        out,
+                        M,
+                        MID_SIZE,
+                        triton.next_power_of_2(MID_SIZE),
+                        buffer_size_limit=2048,
+                    )
+                else:
+                    NEXT_SIZE = triton.cdiv(MID_SIZE, BLOCK_SIZE)
+                    BLOCK_NEXT = triton.next_power_of_2(NEXT_SIZE)
+                    next_mid = torch.empty_strided(
+                        (M, NEXT_SIZE),
+                        (NEXT_SIZE, 1),
+                        dtype=torch.float32,
+                        device=x.device,
+                    )
+                    l1_norm_rows_kernel_2[(M * NEXT_SIZE,)](
+                        mid,
+                        next_mid,
+                        M,
+                        MID_SIZE,
+                        NEXT_SIZE,
+                        BLOCK_SIZE,
+                        buffer_size_limit=2048,
+                    )
+                    tail_size = MID_SIZE % BLOCK_SIZE
+                    if tail_size:
+                        l1_norm_rows_reduce_tail_kernel[(M,)](
+                            mid,
+                            next_mid,
+                            M,
+                            MID_SIZE,
+                            NEXT_SIZE,
+                            MID_SIZE - tail_size,
+                            tail_size,
+                            buffer_size_limit=2048,
+                        )
+                    l1_norm_rows_kernel_3[(M,)](
+                        next_mid,
+                        out,
+                        M,
+                        NEXT_SIZE,
+                        BLOCK_NEXT,
+                        buffer_size_limit=2048,
+                    )
             else:
                 v_norm_kernel[grid](x, out, M, N, ord, isCloseUnrollControl=True)
     if not keepdim:

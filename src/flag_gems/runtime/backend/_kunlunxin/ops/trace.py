@@ -77,11 +77,6 @@ def trace(self):
     M, N = self.shape
     stride0, stride1 = self.stride()
     num_diag = min(M, N)
-    if num_diag == 0:
-        if self.dtype.is_floating_point:
-            return torch.tensor(0.0, dtype=self.dtype, device=self.device)
-        else:
-            return torch.tensor(0, dtype=torch.int64, device=self.device)
 
     if self.dtype.is_floating_point:
         output_dtype = self.dtype

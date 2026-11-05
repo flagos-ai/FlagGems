@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -52,8 +38,6 @@ class CodeGenConfig:
 
     prefer_block_pointer: bool
     prefer_1d_tile: bool
-    # gen_configs: -> configs
-    # prune_config: (as jit function, ) cofigs -> configs
     is_scatter_slice: bool = False
     is_cat: bool = False
     isCloseVectorization: bool = False
@@ -63,6 +47,9 @@ class CodeGenConfig:
     kunlunAutoGrid: bool = False
     buffer_size_limit: int = 0
     unroll_num: int = 0
+    # Fixed 1D-tile CTA count. 0 keeps the auto-grid policy (kunlunAutoGrid).
+    # pointwise_dynamic's 1D-tile codegen reads this field (upstream #7212).
+    num_ctas_1d: int = 0
 
     def __post_init__(self):
         if self.prefer_1d_tile:

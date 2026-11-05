@@ -9,13 +9,12 @@ from .conftest import QUICK_MODE
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
-# ILUVATAR (CoreX) has no fp64 compute path; Ascend NPU BiSheng compiler
-# rejects tl.float64 operations.  Skip fp64 tests on both backends.
-if flag_gems.vendor_name in ("iluvatar", "ascend"):
-    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
-else:
+if flag_gems.vendor_name == "ascend":
+    DTYPES = [torch.float32]
+elif flag_gems.runtime.device.support_fp64:
     DTYPES = [torch.float32] if QUICK_MODE else (utils.FLOAT_DTYPES + [torch.float64])
+else:
+    DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
 
 _SEED = 0
 
@@ -112,6 +111,8 @@ def _reduce_dim(shape, ord):
 def _get_atol(dtype, ord):
     from .conftest import TO_CPU
 
+    if flag_gems.vendor_name == "iluvatar" and _is_svd(ord):
+        return 2e-3  # same as test_svd.py
     if flag_gems.vendor_name == "metax" and not TO_CPU and _is_svd(ord):
         return 2e-3  # same as test_svd.py
     if flag_gems.vendor_name == "thead" and _is_svd(ord):
@@ -181,9 +182,10 @@ def _compute_ref(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
 
 
 def _call_op(A, ord, dim=(-2, -1), keepdim=False, dtype=None):
-    return flag_gems.linalg_matrix_norm(
+    res_out = flag_gems.linalg_matrix_norm(
         A, ord=ord, dim=dim, keepdim=keepdim, dtype=dtype
     )
+    return res_out
 
 
 # ===========================================================================
@@ -317,6 +319,7 @@ def test_dtype_param(ord):
     A = _make_input((3, 4), torch.float32, flag_gems.device)
     out_dtype = (
         torch.float32
+        # The backend of ASCEND and iluvatar do not support f64
         if flag_gems.vendor_name in ("ascend", "iluvatar")
         else torch.float64
     )
@@ -389,19 +392,66 @@ def test_large(ord, shape):
 @pytest.mark.linalg_matrix_norm
 def test_1d_rejected():
     A = torch.randn(5, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A)
 
 
 @pytest.mark.linalg_matrix_norm
 def test_same_dim_rejected():
     A = torch.randn(3, 4, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A, 2, (0, 0))
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A, 2, (0, 0))
 
 
 @pytest.mark.linalg_matrix_norm
 def test_unsupported_ord_rejected():
     A = torch.randn(3, 4, device=flag_gems.device)
-    with flag_gems.use_gems(), pytest.raises(RuntimeError):
-        torch.ops.aten.linalg_matrix_norm(A, 3)
+    with pytest.raises(RuntimeError):
+        flag_gems.linalg_matrix_norm(A, 3)
+
+
+# ===========================================================================
+# Out variant — torch.linalg.matrix_norm(..., out=) must route to the
+# flag_gems linalg_matrix_norm_out impl (numeric ord → linalg_matrix_norm.out,
+# string ord → linalg_matrix_norm.str_ord_out), write into and return the
+# exact pre-allocated tensor (mirrors the lu_factor out tests).
+# ===========================================================================
+
+
+def _expected_matrix_norm_out_shape(A, keepdim):
+    """Shape torch produces for linalg_matrix_norm over the trailing two dims."""
+    if keepdim:
+        return (*A.shape[:-2], 1, 1)
+    return A.shape[:-2]
+
+
+@pytest.mark.linalg_matrix_norm_out
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("keepdim", [True, False])
+@pytest.mark.parametrize("ord", [2, -2, 1, "fro", "nuc"])
+@pytest.mark.parametrize("shape", [(3, 4), (8, 8), (2, 3, 4, 4)])
+def test_out(shape, dtype, ord, keepdim):
+    _skip_non_svd_on_ascend(ord)
+    if _is_svd(ord) and not _svd_dtype_ok(dtype):
+        pytest.skip("torch does not support fp16/bf16 SVD")
+    A = _make_input(shape, dtype, flag_gems.device)
+    ref = _compute_ref(A, ord, keepdim=keepdim)
+
+    # out dtype equals the computed result dtype: when dtype=None the result
+    # keeps A's dtype (SVD fp16/bf16 inputs are skipped above).
+    res_out = torch.empty(
+        _expected_matrix_norm_out_shape(A, keepdim),
+        dtype=A.dtype,
+        device=A.device,
+    )
+    res = flag_gems.linalg_matrix_norm(A, ord, keepdim=keepdim, out=res_out)
+
+    assert res is res_out, "out variant must return the pre-allocated tensor"
+    assert res.shape == ref.shape, f"{res.shape} vs {ref.shape}"
+    utils.gems_assert_close(
+        res,
+        ref,
+        dtype,
+        reduce_dim=_reduce_dim(shape, ord) if _is_svd(ord) else 1,
+        atol=_get_atol(dtype, ord),
+    )

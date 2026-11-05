@@ -92,6 +92,7 @@ def test_masked_scatter_backward():
     bench = TensorSelectBackwardBenchmark(
         op_name="masked_scatter_backward",
         torch_op=torch.ops.aten.masked_scatter_backward,
+        gems_op=flag_gems.masked_scatter_backward,
         input_fn=_input_fn,
         dtypes=consts.FLOAT_DTYPES,
         get_gbps=_get_gbps,

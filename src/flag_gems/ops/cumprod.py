@@ -52,8 +52,10 @@ def _get_device_index(torch_device):
 def get_prod_accum_type(out_dtype: tl.dtype) -> tl.dtype:
     if out_dtype.is_bf16() or out_dtype.is_fp16():
         return tl.float32
-    if out_dtype.is_int():
+    if out_dtype.is_int64() or out_dtype.is_uint64():
         return tl.int64
+    if out_dtype.is_int():
+        return tl.int32
     return out_dtype
 
 
@@ -81,7 +83,7 @@ def scan_part_product_kernel(
     result = tl.cumprod(inp_vals, axis=0)
     part_product = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
 
-    tl.store(out + offset, result, mask=mask)
+    tl.store(out + offset, result.to(out.type.element_ty), mask=mask)
     tl.store(partial_product + pid, part_product)
 
 
@@ -104,7 +106,7 @@ def multiply_base_product_kernel(
         acc_dtype: tl.constexpr = get_prod_accum_type(out.type.element_ty)
         base_product = tl.load(partial_product + pid - 1).to(acc_dtype)
         final_vals = out_vals.to(acc_dtype) * base_product
-        tl.store(out + offset, final_vals, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
 
 
 @libentry()
@@ -136,7 +138,7 @@ def scan_part_product_abc_kernel(
     result = tl.cumprod(inp_vals, axis=0)
     part_product = tl.reduce(inp_vals, axis=0, combine_fn=reduce_mul)
 
-    tl.store(out + offset, result, mask=mask)
+    tl.store(out + offset, result.to(out.type.element_ty), mask=mask)
     tl.store(partial_product + part_offset, part_product)
 
 
@@ -169,18 +171,21 @@ def multiply_base_product_abc_kernel(
         acc_dtype: tl.constexpr = get_prod_accum_type(out.type.element_ty)
         base_product = tl.load(partial_product + last_part_offset).to(acc_dtype)
         final_vals = out_vals.to(acc_dtype) * base_product
-        tl.store(out + offset, final_vals, mask=mask)
+        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
 
 
 def scan_then_fan_col(inp, out, n_ele, dtype):
     BLOCK_SIZE = _scan_block_size(n_ele)
     part_num = math.ceil(n_ele / BLOCK_SIZE)
     partial_product = torch.empty(part_num, dtype=dtype, device=inp.device)
+    scan_out = out
+    if part_num >= 2 and out.dtype != dtype:
+        scan_out = torch.empty_like(out, dtype=dtype)
 
     grid = (part_num,)
     with torch_device_fn.device(inp.device):
         scan_part_product_kernel[grid](
-            inp, out, partial_product, n_ele, part_num, BLOCK_SIZE
+            inp, scan_out, partial_product, n_ele, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
@@ -188,19 +193,24 @@ def scan_then_fan_col(inp, out, n_ele, dtype):
         scan_then_fan_col(partial_product, partial_prefix, part_num, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_kernel[grid](
-                out, partial_prefix, n_ele, part_num, BLOCK_SIZE
+                scan_out, partial_prefix, n_ele, part_num, BLOCK_SIZE
             )
+        if scan_out is not out:
+            out.copy_(scan_out)
 
 
 def scan_then_fan(inp, out, A, B, C, dtype):
     BLOCK_SIZE = _scan_block_size(B)
     part_num = math.ceil(B / BLOCK_SIZE)
     partial_product = torch.empty(A, part_num, C, dtype=dtype, device=inp.device)
+    scan_out = out
+    if part_num >= 2 and out.dtype != dtype:
+        scan_out = torch.empty_like(out, dtype=dtype)
 
     grid = (A, part_num, C)
     with torch_device_fn.device(inp.device):
         scan_part_product_abc_kernel[grid](
-            inp, out, partial_product, B, C, part_num, BLOCK_SIZE
+            inp, scan_out, partial_product, B, C, part_num, BLOCK_SIZE
         )
 
     if part_num >= 2:
@@ -208,8 +218,10 @@ def scan_then_fan(inp, out, A, B, C, dtype):
         scan_then_fan(partial_product, partial_prefix, A, part_num, C, dtype)
         with torch_device_fn.device(inp.device):
             multiply_base_product_abc_kernel[grid](
-                out, partial_prefix, B, C, part_num, BLOCK_SIZE
+                scan_out, partial_prefix, B, C, part_num, BLOCK_SIZE
             )
+        if scan_out is not out:
+            out.copy_(scan_out)
 
 
 def _get_output_dtype(inp, dtype):
@@ -223,8 +235,10 @@ def _get_output_dtype(inp, dtype):
 def _get_compute_dtype(dtype):
     if dtype in (torch.float16, torch.bfloat16):
         return torch.float32
-    if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+    if dtype is torch.int64:
         return torch.int64
+    if is_integer_dtype(dtype) or is_boolean_dtype(dtype):
+        return torch.int32
     return dtype
 
 
@@ -355,7 +369,7 @@ def reduce_then_scan_root_scan_kernel_row(in_ptr, out_ptr, N, TILE_SIZE: tl.cons
     acc_dtype: tl.constexpr = get_prod_accum_type(out_ptr.type.element_ty)
     x = tl.load(in_ptr + pid * N + offsets, mask=mask, other=1).to(acc_dtype)
     out = tl.cumprod(x, 0)
-    tl.store(out_ptr + pid * N + offsets, out, mask=mask)
+    tl.store(out_ptr + pid * N + offsets, out.to(out_ptr.type.element_ty), mask=mask)
 
 
 @triton.jit
@@ -386,7 +400,10 @@ def reduce_then_scan_block_scan_kernel_row(
         tile_scan = prefix * tl.cumprod(x, 0)
         prefix *= tl.reduce(x, axis=0, combine_fn=reduce_mul)
         tl.store(
-            out_ptr + pid_m * N + offsets, tile_scan, mask=mask, cache_modifier=".cg"
+            out_ptr + pid_m * N + offsets,
+            tile_scan.to(out_ptr.type.element_ty),
+            mask=mask,
+            cache_modifier=".cg",
         )
 
 
@@ -428,3 +445,359 @@ def cumprod_(inp, dim, *, dtype=None):
     out = cumprod_wrapper(inp, dim, inp.dtype)
     inp.copy_(out)
     return inp
+
+
+@triton.jit
+def _cumprod_backward_kernel(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,  # length along reduction dim
+    stride_d,  # stride along reduction dim (same for all tensors)
+    stride_b,  # batch stride (same for all tensors)
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    base = pid * stride_b
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    # Reverse cumulative sum: rev_cs[i] = sum_{j=i}^{N-1} go[j]
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+@triton.jit
+def _cumprod_backward_kernel_2d_batch(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    BLOCK: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    base = pid0 * stride_b0 + pid1 * stride_b1
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+@triton.jit
+def _cumprod_backward_kernel_3d_batch(
+    grad_ptr,
+    input_ptr,
+    output_ptr,
+    grad_input_ptr,
+    N,
+    stride_d,
+    stride_b0,
+    stride_b1,
+    stride_b2,
+    BLOCK: tl.constexpr,
+):
+    pid0 = tl.program_id(0)
+    pid1 = tl.program_id(1)
+    pid2 = tl.program_id(2)
+    base = pid0 * stride_b0 + pid1 * stride_b1 + pid2 * stride_b2
+
+    offs = tl.arange(0, BLOCK)
+    mask = offs < N
+
+    g = tl.load(
+        grad_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    inp = tl.load(
+        input_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+    out = tl.load(
+        output_ptr + base + offs * stride_d, mask=mask, other=0.0, cache_modifier=".ca"
+    ).to(tl.float32)
+
+    go = g * out
+
+    total_go = tl.sum(go, axis=0)
+    inc_cs = tl.cumsum(go, axis=0)
+    rev_cs = total_go - inc_cs + go
+
+    safe_inp = tl.where(inp == 0.0, 1.0, inp)
+    grad_input = tl.where(mask, rev_cs / safe_inp, 0.0)
+    grad_input = tl.where(inp == 0.0, 0.0, grad_input)
+
+    is_zero = (inp == 0.0) & mask
+    has_zero = tl.max(is_zero.to(tl.int32), axis=0)
+
+    if has_zero != 0:
+        large_val = 2147483647
+        zero_indices = tl.where(is_zero, offs.to(tl.int32), large_val)
+        k = tl.min(zero_indices, axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) > k, 0.0, grad_input)
+
+        inp_mod = tl.where(offs.to(tl.int32) == k, 1.0, inp)
+        inp_mod = tl.where(mask, inp_mod, 1.0)
+        cumprod_mod = tl.cumprod(inp_mod, axis=0)
+
+        gcm = g * cumprod_mod
+        zero_val = tl.sum(tl.where(offs.to(tl.int32) >= k, gcm, 0.0), axis=0)
+
+        grad_input = tl.where(offs.to(tl.int32) == k, zero_val, grad_input)
+
+    tl.store(
+        grad_input_ptr + base + offs * stride_d,
+        grad_input.to(tl.float32),
+        mask=mask,
+        cache_modifier=".cs",
+    )
+
+
+def cumprod_backward(grad, input, dim, output):
+    logger.debug("GEMS CUMPROD_BACKWARD")
+    ndim = input.ndim
+    dim = int(dim)
+    if dim < 0:
+        dim += ndim
+
+    N = input.shape[dim]
+
+    batch_size = 1
+    for i in range(ndim):
+        if i != dim:
+            batch_size *= input.shape[i]
+
+    grad_input = torch.empty_like(grad)
+
+    # aten::cumprod_backward has two regimes: when the input has no zero it
+    # trusts the supplied `output`, but as soon as any zero is present it
+    # discards `output` and recomputes cumprod internally in high precision
+    # (the passed low-precision output would otherwise inject rounding error
+    # that the reference never sees). Mirror that here: for low-precision
+    # dtypes with a zero anywhere, recompute the forward cumprod in fp32 so
+    # the reverse-cumsum below matches the reference. This is a whole-tensor
+    # decision, matching aten's global branch rather than a per-line one.
+    if output.dtype in (torch.float16, torch.bfloat16) and torch.any(input == 0):
+        output = torch.cumprod(input.to(torch.float32), dim)
+
+    grad_stride = grad.stride()
+    input_stride = input.stride()
+    output_stride = output.stride()
+    gi_stride = grad_input.stride()
+
+    batch_dims = [i for i in range(ndim) if i != dim]
+
+    BLOCK = 16
+    while BLOCK < N:
+        BLOCK *= 2
+
+    # Choose num_warps based on N to reduce overhead for small lines
+    if BLOCK <= 32:
+        num_warps = 1
+    elif BLOCK <= 64:
+        num_warps = 2
+    elif BLOCK <= 128:
+        num_warps = 4
+    else:
+        num_warps = 8
+
+    # Check if all tensors have the same layout (strides)
+    same_layout = (
+        grad_stride == input_stride
+        and grad_stride == output_stride
+        and grad_stride == gi_stride
+    )
+
+    if not same_layout:
+        # Fall back to contiguous approach when layouts differ
+        grad_2d = grad.movedim(dim, -1).reshape(-1, N).contiguous()
+        input_2d = input.movedim(dim, -1).reshape(-1, N).contiguous()
+        output_2d = output.movedim(dim, -1).reshape(-1, N).contiguous()
+        gi_2d = torch.empty((batch_size, N), dtype=grad.dtype, device=grad.device)
+
+        grid = (batch_size,)
+        with torch_device_fn.device(input.device):
+            _cumprod_backward_kernel[grid](
+                grad_2d,
+                input_2d,
+                output_2d,
+                gi_2d,
+                N,
+                1,
+                N,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+            )
+        grad_input = (
+            gi_2d.reshape([input.shape[i] for i in range(ndim) if i != dim] + [N])
+            .movedim(-1, dim)
+            .contiguous()
+        )
+        return grad_input
+
+    # All tensors share the same layout - use stride-based kernels, computing
+    # batch offsets arithmetically in-kernel to avoid host-side copies.
+    stride_d = grad_stride[dim]
+
+    with torch_device_fn.device(input.device):
+        if len(batch_dims) == 0:
+            grid = (1,)
+            _cumprod_backward_kernel[grid](
+                grad,
+                input,
+                output,
+                grad_input,
+                N,
+                stride_d,
+                0,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+            )
+        elif len(batch_dims) == 1:
+            stride_b = grad_stride[batch_dims[0]]
+            grid = (batch_size,)
+            _cumprod_backward_kernel[grid](
+                grad,
+                input,
+                output,
+                grad_input,
+                N,
+                stride_d,
+                stride_b,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+            )
+        elif len(batch_dims) == 2:
+            stride_b0 = grad_stride[batch_dims[0]]
+            stride_b1 = grad_stride[batch_dims[1]]
+            s0 = input.shape[batch_dims[0]]
+            s1 = input.shape[batch_dims[1]]
+            grid = (s0, s1)
+            _cumprod_backward_kernel_2d_batch[grid](
+                grad,
+                input,
+                output,
+                grad_input,
+                N,
+                stride_d,
+                stride_b0,
+                stride_b1,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+            )
+        else:
+            stride_b0 = grad_stride[batch_dims[0]]
+            stride_b1 = grad_stride[batch_dims[1]]
+            stride_b2 = grad_stride[batch_dims[2]]
+            s0 = input.shape[batch_dims[0]]
+            s1 = input.shape[batch_dims[1]]
+            s2 = input.shape[batch_dims[2]]
+            grid = (s0, s1, s2)
+            _cumprod_backward_kernel_3d_batch[grid](
+                grad,
+                input,
+                output,
+                grad_input,
+                N,
+                stride_d,
+                stride_b0,
+                stride_b1,
+                stride_b2,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+            )
+
+    return grad_input

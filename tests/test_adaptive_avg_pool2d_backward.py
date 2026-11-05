@@ -41,8 +41,7 @@ def test_adaptive_avg_pool2d_backward(shape, output_size, dtype):
     ref_grad_output = utils.to_reference(grad_output, True)
     expected = torch.ops.aten._adaptive_avg_pool2d_backward(ref_grad_output, ref_inp)
 
-    with flag_gems.use_gems():
-        actual = torch.ops.aten._adaptive_avg_pool2d_backward(grad_output, inp)
+    actual = flag_gems._adaptive_avg_pool2d_backward(grad_output, inp)
 
     utils.gems_assert_close(
         actual, expected, dtype, reduce_dim=output_size[0] * output_size[1]

@@ -23,15 +23,22 @@ from . import base, consts, utils
 class MedianNoDimBenchmark(base.Benchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
     DEFAULT_SHAPE_DESC = "input shape"
+    with_out = False
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for shape in self.shapes:
-            yield (utils.generate_tensor_input(shape, cur_dtype, self.device),)
+            inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
+            if self.with_out:
+                out = torch.empty((), dtype=cur_dtype, device=self.device)
+                yield inp, {"out": out}
+            else:
+                yield (inp,)
 
 
 class MedianReductionBenchmark(base.Benchmark):
     DEFAULT_SHAPE_FILES = "benchmark/core_shapes.yaml"
     DEFAULT_SHAPE_DESC = "input shape or [input shape, dim, keepdim]"
+    with_out = False
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for case_id, shape_spec in enumerate(self.shapes):
@@ -49,7 +56,17 @@ class MedianReductionBenchmark(base.Benchmark):
                 else:
                     dim = 0
             inp = utils.generate_tensor_input(shape, cur_dtype, self.device)
-            yield inp, dim, {"keepdim": keepdim}
+            if self.with_out:
+                out_shape = list(shape)
+                if keepdim:
+                    out_shape[dim] = 1
+                else:
+                    del out_shape[dim]
+                values = torch.empty(out_shape, dtype=cur_dtype, device=self.device)
+                indices = torch.empty(out_shape, dtype=torch.int64, device=self.device)
+                yield inp, dim, {"keepdim": keepdim, "out": (values, indices)}
+            else:
+                yield inp, dim, {"keepdim": keepdim}
 
 
 @pytest.mark.median
@@ -62,11 +79,33 @@ def test_median():
     bench.run()
 
 
-@pytest.mark.median
+@pytest.mark.median_out
+def test_median_out():
+    bench = MedianNoDimBenchmark(
+        op_name="median_out",
+        torch_op=torch.ops.aten.median.out,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+        with_out=True,
+    )
+    bench.run()
+
+
+@pytest.mark.median_dim
 def test_median_dim():
     bench = MedianReductionBenchmark(
         op_name="median_dim",
         torch_op=torch.median,
         dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.median_dim_values
+def test_median_dim_values():
+    bench = MedianReductionBenchmark(
+        op_name="median_dim_values",
+        torch_op=torch.median,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES,
+        with_out=True,
     )
     bench.run()

@@ -144,15 +144,13 @@ def compute_global_hist_kernel(
                     arr = tl.load(arr_ptr + cur_m * n + n_offsets, mask=mask)
                     arr = convert_to_uint_preverse_order(arr, descending)
                     key = (arr >> bit_offset) & bfe_mask  # (TILE_N, )
-                    matches = tl.where(
-                        mask, (bin_indices[:, None] == key), False
-                    )  # (TILE_R, TILE_N)
+                    matches = (bin_indices[:, None] == key) & mask[None, :]
                     acc += matches
                 local_sum = tl.sum(acc, axis=1)
                 tl.atomic_add(
                     out_ptr + cur_m * num_passes * r + p * r + bin_indices,
                     local_sum,
-                    sem="relaxed",
+                    sem="acq_rel",
                 )
 
 
@@ -304,7 +302,7 @@ def radix_sort(arr, k_bits=8, descending=False):
         # sort
         arr_in = torch.clone(arr)
         indices_in = (
-            torch.arange(0, n, dtype=torch.int32, device=arr_in.device)
+            torch.arange(0, n, dtype=torch.int64, device=arr_in.device)
             .broadcast_to(arr.shape)
             .contiguous()
         )
@@ -315,10 +313,9 @@ def radix_sort(arr, k_bits=8, descending=False):
         grid_r = triton.cdiv(num_bins, TILE_R)
         TILE_N = 2048
         grid_n = triton.cdiv(n, TILE_N)
-        # Cap grid_x to 65535, increase TILE_N if needed
-        if grid_n > 65535:
-            grid_n = 65535
-            TILE_N = triton.cdiv(n, grid_n)
+        while triton.cdiv(n, TILE_N) > 65535:
+            TILE_N *= 2
+        grid_n = triton.cdiv(n, TILE_N)
         grid_y_m = min(m, 255)
         grid_for_sweep = (grid_n, grid_y_m, grid_r)
 
@@ -416,4 +413,4 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     if dim != inp.ndim - 1:
         out = torch.movedim(out, -1, dim)
         out_index = torch.movedim(out_index, -1, dim)
-    return out, out_index.to(torch.int64)
+    return out, out_index

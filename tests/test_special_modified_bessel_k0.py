@@ -5,11 +5,15 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+_FLOAT_DTYPES = [torch.float32]
+if flag_gems.runtime.device.support_fp64:
+    _FLOAT_DTYPES.append(torch.float64)
+
 
 @pytest.mark.special_modified_bessel_k0
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # Half/BFloat16 not supported by PyTorch reference for modified_bessel_k0
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_special_modified_bessel_k0(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")
@@ -17,15 +21,14 @@ def test_special_modified_bessel_k0(shape, dtype):
     inp = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.1
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.modified_bessel_k0(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.special.modified_bessel_k0(inp)
+    res_out = flag_gems.special_modified_bessel_k0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_modified_bessel_k0_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 # Half/BFloat16 not supported by PyTorch reference for modified_bessel_k0
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("dtype", _FLOAT_DTYPES)
 def test_special_modified_bessel_k0_out(shape, dtype):
     if flag_gems.vendor_name == "enflame" and dtype == torch.float64:
         pytest.skip("enflame doesn't support fp64")
@@ -35,7 +38,6 @@ def test_special_modified_bessel_k0_out(shape, dtype):
     out_ref = torch.empty_like(ref_x)
     ref_out = torch.ops.aten.special_modified_bessel_k0.out(ref_x, out=out_ref)
     out_act = torch.empty_like(x)
-    with flag_gems.use_gems():
-        act_out = torch.ops.aten.special_modified_bessel_k0.out(x, out=out_act)
+    act_out = flag_gems.special_modified_bessel_k0_out(x, out_act)
     utils.gems_assert_close(act_out, ref_out, dtype)
     utils.gems_assert_close(out_act, out_ref, dtype)

@@ -17,6 +17,15 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
+FP8_DTYPES = [torch.float8_e4m3fn] if utils.fp8_is_supported else []
+
+pytestmark = pytest.mark.skipif(
+    not FP8_DTYPES,
+    reason="kunlunxin does not support FP8 (no FP8 hardware)",
+)
+
 HEAD_DIM = 128
 ROPE_DIM = 64
 NUM_HEADS = 8
@@ -30,6 +39,8 @@ HAS_NATIVE_FP8 = hasattr(torch, "float8_e4m3fn") and (
 
 def _supports_mxfp4_ptx():
     if flag_gems.device != "cuda" or not torch.cuda.is_available():
+        return False
+    if flag_gems.vendor_name == "amd":
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 10

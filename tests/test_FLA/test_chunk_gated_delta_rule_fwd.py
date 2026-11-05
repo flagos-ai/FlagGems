@@ -17,59 +17,7 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
-
-
-def naive_chunk_gated_delta_rule_fwd(q, k, v, g, beta, scale, initial_state):
-    """
-    Naive reference implementation of chunk_gated_delta_rule_fwd.
-    Implements the gated delta rule recurrence token-by-token:
-        S_t = exp(g_t) * S_{t-1} + beta_t * k_t^T (v_t - k_t @ S_{t-1})
-        o_t = q_t @ S_t * scale
-    """
-    B, T, H, K = q.shape
-    V = v.shape[-1]
-
-    q = q.float()
-    k = k.float()
-    v = v.float()
-    g = g.float()
-    beta = beta.float()
-
-    S = (
-        initial_state.float().clone()
-        if initial_state is not None
-        else torch.zeros(B, H, K, V, device=q.device, dtype=torch.float32)
-    )
-    outputs = []
-
-    for t in range(T):
-        q_t = q[:, t, :, :]  # (B, H, K)
-        k_t = k[:, t, :, :]  # (B, H, K)
-        v_t = v[:, t, :, :]  # (B, H, V)
-        g_t = g[:, t, :]  # (B, H)
-        beta_t = beta[:, t, :]  # (B, H)
-
-        # Gating: S = exp(g_t) * S
-        gate = torch.exp(g_t).unsqueeze(-1).unsqueeze(-1)  # (B, H, 1, 1)
-        S = gate * S
-
-        # Delta rule: S += beta_t * k_t^T @ (v_t - k_t @ S)
-        # k_t: (B, H, K) -> (B, H, K, 1)
-        # v_t: (B, H, V) -> (B, H, 1, V)
-        kS = torch.einsum("bhk,bhkv->bhv", k_t, S)  # (B, H, V)
-        delta = v_t - kS  # (B, H, V)
-        # outer product: k_t^T @ delta -> (B, H, K, V)
-        update = torch.einsum("bhk,bhv->bhkv", k_t, delta) * beta_t.unsqueeze(
-            -1
-        ).unsqueeze(-1)
-        S = S + update
-
-        # Output: o_t = q_t @ S * scale
-        o_t = torch.einsum("bhk,bhkv->bhv", q_t, S) * scale  # (B, H, V)
-        outputs.append(o_t)
-
-    o = torch.stack(outputs, dim=1)  # (B, T, H, V)
-    return o, S
+from flag_gems.fused.FLA.chunk import naive_chunk_gated_delta_rule_fwd
 
 
 @pytest.mark.chunk_gated_delta_rule_fwd
@@ -172,8 +120,10 @@ def test_chunk_gated_delta_rule_fwd_with_cu_seqlens(T):
     g = F.logsigmoid(torch.randn(B, T, H, device=device, dtype=dtype))
     beta = torch.rand(B, T, H, device=device, dtype=dtype).sigmoid()
     scale = K**-0.5
-    initial_state = torch.zeros(B, H, K, V, device=device, dtype=dtype)
     cu_seqlens = torch.arange(T + 1, device=device, dtype=torch.long)
+    # Varlen mode takes one initial state per sequence, not per batch row.
+    N = len(cu_seqlens) - 1
+    initial_state = torch.zeros(N, H, K, V, device=device, dtype=dtype)
 
     result = flag_gems.chunk_gated_delta_rule_fwd(
         q=q,
@@ -190,4 +140,4 @@ def test_chunk_gated_delta_rule_fwd_with_cu_seqlens(T):
     res_o = result[1]
     res_final_state = result[3]
     assert res_o.shape == (B, T, H, V)
-    assert res_final_state.shape[1:] == (H, K, V)
+    assert res_final_state.shape == (N, H, K, V)
