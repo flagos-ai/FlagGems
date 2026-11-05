@@ -141,6 +141,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .resize import resize
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
@@ -352,6 +353,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "resize",
     "resolve_neg",
     "rms_norm",
     "rms_norm_w8a16_int8",
