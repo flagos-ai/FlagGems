@@ -8,6 +8,7 @@ import os
 import torch
 import triton
 import triton.language as tl
+
 from flag_gems.fused.indexer_topk_key import topk_stable_fp32_key
 from flag_gems.ops.topk import topk as _generic_topk
 from flag_gems.runtime import torch_device_fn

@@ -4,9 +4,10 @@
 
 import importlib
 
-import flag_gems
 import pytest
 import torch
+
+import flag_gems
 
 from . import base
 
@@ -29,12 +30,16 @@ class StableTopKBenchmark(base.Benchmark):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="NVIDIA CUDA required")
 @torch.inference_mode()
 def test_topk_k2048_stable_perf(monkeypatch):
+    from flag_gems.runtime import backend
     from flag_gems.utils.triton_version_utils import HAS_TLE
 
     if not HAS_TLE or flag_gems.vendor_name != "nvidia":
         pytest.skip("optional NVIDIA TLE specialization")
-    module = importlib.import_module("flag_gems.runtime.backend._nvidia.ops.topk")
+    # Resolve the same module instance used by the public operator registrar.
+    vendor_topk = dict(backend.get_ops(flag_gems.vendor_name))["topk"]
+    module = importlib.import_module(vendor_topk.__module__)
     monkeypatch.setattr(module, "_TOPK_RADIX_STABLE_K2048_ENABLED", True)
+    assert flag_gems.topk is module.topk
     bench = StableTopKBenchmark(
         op_name="topk", torch_op=reference, dtypes=[torch.float32]
     )

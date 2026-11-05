@@ -15,11 +15,14 @@ import torch
 @torch.inference_mode()
 def test_stable_k2048_numerics_and_mutable_graph(width, monkeypatch):
     import flag_gems
+    from flag_gems.runtime import backend
     from flag_gems.utils.triton_version_utils import HAS_TLE
 
     if not HAS_TLE or flag_gems.vendor_name != "nvidia":
         pytest.skip("optional NVIDIA TLE specialization")
-    module = importlib.import_module("flag_gems.runtime.backend._nvidia.ops.topk")
+    # The backend loader imports vendor packages under their canonical short name.
+    vendor_topk = dict(backend.get_ops(flag_gems.vendor_name))["topk"]
+    module = importlib.import_module(vendor_topk.__module__)
     monkeypatch.setattr(module, "_TOPK_RADIX_STABLE_K2048_ENABLED", True)
     assert flag_gems.topk is module.topk
     rng = np.random.default_rng(width)
