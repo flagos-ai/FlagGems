@@ -12,31 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# NOTE(2026-10-14): Kunlunxin (XPU) implementation of i0 / i0_out.
-#
-# Vendor-delegation evaluation (rejected): torch.library.get_kernel(aten.i0.out,
-# "CUDA") at import time returns the torch_xmlir device kernel
-# (ts_eager_fallback.cpp:375).  It is bit-exact with torch.i0 but 30-40x SLOWER
-# than the triton polynomial on this backend (68.9ms vs 2.24ms for (4096,4096)
-# f16) -- it IS the slow native path the benchmark measures as baseline.  So
-# unlike amax / log_softmax_out, vendor delegation is a regression here.
-#
-# Optimizations vs the generic (flag_gems.ops) implementation (all verified
-# against torch.i0, maxrel f32=4.8e-7 << rtol 1.3e-6; f16/bf16 bit-exact):
-#   1. 3 fdiv/elem -> 1 fdiv + 1 sqrt: inv_ax = 1/ax, yb = 3.75*inv_ax,
-#      res_big = exp(ax)*p_big*sqrt(inv_ax)  (sqrt(1/x) == 1/sqrt(x), 1 ulp).
-#      fdiv lowers to a slow software sequence on xpu3; the LLIR confirmed the
-#      generic kernel emits 3 scalar fdiv per lane.
-#   2. t = x*(1/3.75) instead of x/3.75 (1 more fdiv removed).
-#   3. BLOCK_SIZE 1024 -> 8192: 1.8-2.5x on every measured shape (the masked
-#      tile cost is amortized over 8x fewer programs).
-#   4. Mask-free kernel when n % 8192 == 0 (all benchmark shapes): ~8% faster.
-#   5. Constant-tuple grid: `grid = lambda meta:` rebuilds the launch grid per
-#      call which participates in the xpu3 compile-cache key (per-call
-#      recompilation, see special_logit/hypot precedent).
-#
-# Semantics: torch.i0(+-inf) == NaN on this platform (vendor kernel computes
-# inf*0); the polynomial reproduces that (no special-casing, do NOT "fix").
 import logging
 
 import torch

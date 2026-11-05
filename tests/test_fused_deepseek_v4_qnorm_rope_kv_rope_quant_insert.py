@@ -439,6 +439,11 @@ def test_combined_q_and_kv(num_tokens: int, n_heads: int, block_size: int):
     # out of memory for huge shape on H800
     if (num_tokens == 98304 or num_tokens == 131072) and n_heads == 128:
         return
+    # Peak memory is ~6x the bf16 q bytes, mostly the PyTorch reference holding q
+    # in fp32 for rmsnorm; skip shapes that cannot fit on this device.
+    q_bytes = num_tokens * n_heads * HEAD_DIM * 2
+    if 6.1 * q_bytes > torch.cuda.mem_get_info()[0]:
+        pytest.skip("not enough free device memory for this shape")
 
     torch.manual_seed(2)
     device = "cuda"

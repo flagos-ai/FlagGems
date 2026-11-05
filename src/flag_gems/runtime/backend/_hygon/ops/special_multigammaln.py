@@ -5,8 +5,8 @@ import triton
 import triton.language as tl
 from triton.language.extra import libdevice as _ld
 
-_logger = logging.getLogger("flag_gems.ops.special_multigammaln")
-_logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @triton.jit
@@ -216,7 +216,7 @@ def _multigammaln_kernel(
 
 
 def run(self, p):
-    _logger.debug("GEMS_HYGON SPECIAL_MULTIGAMMALN")
+    logger.debug("GEMS_HYGON SPECIAL_MULTIGAMMALN")
     p = int(p)
     out = torch.empty_like(self)
     numel = self.numel()

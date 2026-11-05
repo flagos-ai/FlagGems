@@ -22,7 +22,11 @@ from . import base, consts
 # These skips describe the currently validated runtime stacks, not every device
 # from these vendors. Revisit them when native support is added to those stacks.
 _NATIVE_UNSUPPORTED = {
-    "kunlunxin": "current XPU runtime routes native FP8/FP16 grouped MM to an unimplemented CPU fallback",
+    "kunlunxin": (
+        "native torch._scaled_grouped_mm has no executable XPU kernel: the FP8 "
+        "schema ships Meta/CPU kernels only, while FP16 torch._grouped_mm does "
+        "work on the device"
+    ),
     "ascend": "CANN 9.0 has no native aten::_scaled_grouped_mm PrivateUse1 kernel",
     "hygon": "current DTK native grouped MM rejects the tested architecture",
     "metax": "MACA 3.8.1 reports grouped mm is not supported on your system",
