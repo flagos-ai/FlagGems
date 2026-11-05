@@ -38,14 +38,9 @@ strides) and by the frozen FlagGems pytest of the forward pass:
   ``grad_output``.  Probed against the native kernel: the ``mult`` weight applies
   to *both* terms, so a target prefix that repeats a class id scales its whole
   gradient row accordingly.
-* The reference for the formula above is the native *CPU* kernel, which
-  implements it for every input.  Probed on the measured target: the native CUDA
-  backward drops the gradient of the last active target of a row, writing a plain
-  zero into that column, once the active prefix is longer than 32 and its length
-  is not a multiple of the 32-wide reduction it folds the target axis with.  The
-  deviation is deterministic, reproduces over a (class count x prefix length)
-  grid, and is backward-only -- the forward loss and ``is_target`` agree across
-  backends for the same inputs -- so this module follows the CPU values.
+* The native *CPU* kernel is the reference for this formula.  The pytest suite
+  calls that ATen kernel directly for the main comparisons and separately
+  cross-checks the analytic formula on duplicated and permuted target prefixes.
 * ``target`` and ``is_target`` play distinct roles and are not interchangeable:
   the multiplicity comes from ``target`` while the non-target set comes from
   ``is_target``.  Probed by perturbing one against the other -- marking a class
@@ -54,20 +49,15 @@ strides) and by the frozen FlagGems pytest of the forward pass:
 * ``grad_output`` is per-row (shape ``(N,)``) for reduction 0 and a scalar for
   the mean and sum reductions; a 1-D ``grad_output`` of any other length is
   rejected at reduction 0 rather than broadcast.  A 0-dim value is applied to
-  every row, which is what the CPU kernel documents and does -- the native CUDA
-  kernel instead indexes grad_output per row whatever its size, so for a 0-dim
-  argument it reads past the one element it was given (probed by varying the
-  memory behind such a buffer: rows 1.. of its result follow that padding).
-  Broadcasting is the defined behaviour, so it is what this module implements.
-  Reductions other than 0/1/2 are treated as sum, matching the native kernel.
-* The result has the shape, dtype and layout of ``self``; a rank<=1 input keeps
-  its rank, and ``N == 0`` produces an empty result without launching.
+  every row.  Reductions other than 0/1/2 are treated as sum, matching ATen.
+* The result has the shape and dtype of ``self``; a rank<=1 input keeps its rank,
+  and ``N == 0`` produces an empty result without launching.
 * Non-contiguous strided inputs are handled through explicit strides.
 
-The gradient accumulates over an (a, d) class pair tile per row, so the pairs of
-one row are produced by a single program and the ``is_target`` mask is read once
-per tile.  All numerical work happens in the Triton kernels; the host wrapper only
-does metadata math, allocation and launches.
+Both kernels use a 2D (row, class-tile) grid.  Every gradient class is owned by
+one program, which streams the other class axis and writes its result once.  All
+numerical work happens in Triton; the host wrapper only does metadata math,
+allocation and launches.
 """
 
 import logging
@@ -77,6 +67,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -87,19 +78,21 @@ _SUPPORTED_INPUT_DTYPES = (
     torch.float64,
 )
 
-# Target ids are scanned a tile at a time purely to find the first -1, so this
-# only needs to be wide enough to amortise the loop; 256 matches the forward.
-_BLOCK_T = 256
+# Keep the membership comparison tile small: each program compares BLOCK_T
+# target entries with one BLOCK-wide class tile, rather than materialising the
+# old 256 x 256 product.
+_BLOCK_T = 64
 # The gradient is an (own class, other class) pair tile. The candidate widths are
 # tried largest-first so a wide class axis keeps the tile square and a narrow one
-# still spreads over enough programs; 32 is the smallest that keeps a tile at or
-# above one warp per row of the pair.
-_GRAD_BLOCK_CANDIDATES = (128, 64, 32)
+# still spreads over enough programs; the 16-wide fallback gives a one-row,
+# large-class shape enough programs to cover the device.
+_GRAD_BLOCK_CANDIDATES = (128, 64, 32, 16)
 # Below this many programs the grid cannot cover the device, so a narrower tile
 # is preferred even though it loads the other-class operand more times.
 _MIN_GRAD_PROGRAMS = 512
 
 
+@libentry()
 @triton.jit
 def _membership_kernel(
     t_ptr,
@@ -108,6 +101,7 @@ def _membership_kernel(
     trs,
     tcs,
     BLOCK_T: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
     """Multiplicity of every class id inside the active target prefix of a row.
 
@@ -115,6 +109,7 @@ def _membership_kernel(
     the gradient weights both of its terms by are recovered from ``target`` here.
     """
     row = tl.program_id(0)
+    tile = tl.program_id(1)
     bt = row * trs
     stop = C
     for t0 in range(0, C, BLOCK_T):
@@ -122,22 +117,22 @@ def _membership_kernel(
         m = offs < C
         tb = tl.load(t_ptr + bt + offs * tcs, mask=m, other=-1)
         stop = tl.minimum(stop, tl.min(tl.where(m & (tb < 0), offs, C), axis=0))
-    for c0 in range(0, C, BLOCK_T):
-        offs = c0 + tl.arange(0, BLOCK_T)
-        cm = offs < C
-        cnt = tl.zeros((BLOCK_T,), dtype=tl.int32)
-        for t0 in range(0, stop, BLOCK_T):
-            jj = t0 + tl.arange(0, BLOCK_T)
-            jm = jj < stop
-            # -2 can never equal a class offset, so masked-off lanes contribute
-            # nothing to the count.
-            ids = tl.load(t_ptr + bt + jj * tcs, mask=jm, other=-2)
-            cnt += tl.sum(
-                ((ids[:, None] == offs[None, :]) & jm[:, None]).to(tl.int32), axis=0
-            )
-        tl.store(m_ptr + row * C + offs, cnt, mask=cm)
+    offs = tile * BLOCK + tl.arange(0, BLOCK)
+    cm = offs < C
+    cnt = tl.zeros((BLOCK,), dtype=tl.int32)
+    for t0 in range(0, stop, BLOCK_T):
+        jj = t0 + tl.arange(0, BLOCK_T)
+        jm = jj < stop
+        # -2 can never equal a class offset, so masked-off lanes contribute
+        # nothing to the count.  The comparison tile is only BLOCK_T x BLOCK.
+        ids = tl.load(t_ptr + bt + jj * tcs, mask=jm, other=-2)
+        cnt += tl.sum(
+            ((ids[:, None] == offs[None, :]) & jm[:, None]).to(tl.int32), axis=0
+        )
+    tl.store(m_ptr + row * C + offs, cnt, mask=cm)
 
 
+@libentry()
 @triton.jit
 def _grad_kernel(
     x_ptr,
@@ -150,8 +145,8 @@ def _grad_kernel(
     scs,
     irs,
     ics,
-    scale,
-    PER_ROW_GRAD: tl.constexpr,
+    gos,
+    n_mean,
     ACC64: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -170,14 +165,12 @@ def _grad_kernel(
     bx = row * srs
     bi = row * irs
     rb = row * C
-    if PER_ROW_GRAD:
-        factor = tl.load(go_ptr + row)
-    else:
-        factor = tl.load(go_ptr)
     if ACC64:
-        factor = factor.to(tl.float64)
+        acc_ty: tl.constexpr = tl.float64
     else:
-        factor = factor.to(tl.float32)
+        acc_ty: tl.constexpr = tl.float32
+    factor = tl.load(go_ptr + row * gos).to(acc_ty)
+    scale = 1.0 / (tl.full((), 1.0, dtype=acc_ty) * C * n_mean)
     weight = scale * factor
 
     offs = tile * BLOCK + tl.arange(0, BLOCK)
@@ -231,7 +224,11 @@ def _grad_kernel(
                     # Pairs with the own class as the active target and the other
                     # class as the non-target partner. Hinge in the input element
                     # type, exactly as the native kernel.
-                    hinge_own = ((1.0 - x_own)[:, None] + x_other[None, :]) > 0.0
+                    one_own = tl.full((BLOCK,), 1.0, x_ptr.dtype.element_ty)
+                    margin_own = ((one_own - x_own)[:, None] + x_other[None, :]).to(
+                        x_ptr.dtype.element_ty
+                    )
+                    hinge_own = margin_own > 0.0
                     own_as_target = (
                         hinge_own & is_target_own[:, None] & non_target_other[None, :]
                     )
@@ -245,7 +242,11 @@ def _grad_kernel(
                         mult_other_w = mult_other.to(tl.float64)
                     else:
                         mult_other_w = mult_other.to(tl.float32)
-                    hinge_other = ((1.0 - x_other)[:, None] + x_own[None, :]) > 0.0
+                    one_other = tl.full((BLOCK,), 1.0, x_ptr.dtype.element_ty)
+                    margin_other = ((one_other - x_other)[:, None] + x_own[None, :]).to(
+                        x_ptr.dtype.element_ty
+                    )
+                    hinge_other = margin_other > 0.0
                     own_as_non_target = (
                         hinge_other & is_target_other[:, None] & non_target_own[None, :]
                     )
@@ -372,40 +373,36 @@ def multilabel_margin_loss_backward(
             "multilabel_margin_loss_backward: grad_output must hold one value per "
             "row for reduction 0"
         )
-    # Indexing per row is only safe once grad_output really carries one value per
-    # row; a 0-dim value is read from the base pointer and broadcast instead.
-    per_row_grad = reduction == 0 and grad_output.dim() >= 1 and rows > 1
-    grad_output = grad_output.contiguous()
+    # A scalar uses stride zero; a per-row non-contiguous view is consumed at its
+    # own stride without first materialising a contiguous copy.
+    gos = grad_output.stride(0) if reduction == 0 and grad_output.dim() == 1 else 0
 
     acc64 = self.dtype == torch.float64
     srs, scs = _strides2d(self)
     trs, tcs = _strides2d(target)
     irs, ics = _strides2d(is_target)
 
-    scale = 1.0 / float(n_classes)
-    if reduction == 1:
-        scale /= float(rows)
+    n_mean = rows if reduction == 1 else 1
 
     with torch_device_fn.device(self.device):
         mult = torch.empty((rows, n_classes), dtype=torch.int32, device=self.device)
-        _membership_kernel[(rows,)](
+        block = _grad_block_for(rows, n_classes)
+        grid = (rows, triton.cdiv(n_classes, block))
+        _membership_kernel[grid](
             target,
             mult,
             n_classes,
             trs,
             tcs,
             BLOCK_T=_BLOCK_T,
+            BLOCK=block,
         )
-        # Every class is written exactly once, by the program owning its tile,
-        # so the accumulator needs no pre-zeroing; it is a dense fp32/fp64 buffer
-        # rounded to the input dtype once at the end.
+        # Each class is written once.  Storing directly into the input dtype
+        # performs the only output rounding and avoids a full-tensor cast.
         grad_input = torch.empty(
-            (rows, n_classes),
-            dtype=torch.float64 if acc64 else torch.float32,
-            device=self.device,
+            (rows, n_classes), dtype=self.dtype, device=self.device
         )
-        block = _grad_block_for(rows, n_classes)
-        _grad_kernel[(rows, triton.cdiv(n_classes, block))](
+        _grad_kernel[grid](
             self,
             mult,
             is_target,
@@ -416,9 +413,9 @@ def multilabel_margin_loss_backward(
             scs,
             irs,
             ics,
-            scale,
-            PER_ROW_GRAD=per_row_grad,
+            gos,
+            n_mean,
             ACC64=acc64,
             BLOCK=block,
         )
-    return grad_input.to(self.dtype).reshape(self.shape)
+    return grad_input.reshape(self.shape)

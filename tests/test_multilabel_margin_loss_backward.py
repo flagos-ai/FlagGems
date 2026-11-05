@@ -281,16 +281,9 @@ def _grad_output_for(loss, dtype, device):
 def _reference(grad_output, input, target, reduction, is_target):
     """Vectorised torch oracle for the gradient, following the module contract.
 
-    The native CUDA backward is not usable as the oracle: probed on the measured
-    target, it drops the gradient of the last active target of a row -- writing a
-    plain zero into that column -- once the active prefix is longer than 32 and
-    its length is not a multiple of the 32-wide reduction it folds the target
-    axis with, and it indexes grad_output per row even when handed a 0-dim value.
-    Both deviations are deterministic and backward-only; the forward loss and
-    is_target agree across backends. This oracle is the analytic derivative of
-    the forward sum, which is what the native CPU kernel computes, so it pins the
-    real contract instead of reproducing a native CUDA defect. It mirrors the
-    pure-torch reference the forward test in this suite already uses.
+    The main tests use the native ATen CPU backward directly.  This independent
+    formula is retained for half types, which ATen CPU does not implement, and
+    for one small explicit cross-check against that native CPU oracle.
     """
     rows, classes = _class_rows(tuple(input.shape))
     acc_dtype = torch.float64 if input.dtype == torch.float64 else torch.float32
@@ -339,10 +332,12 @@ def _reference(grad_output, input, target, reduction, is_target):
 
 
 def _run_case(inp, target, reduction, dtype, extra_reduce_dim=1):
-    """Compare the gems gradient against the torch oracle for one case."""
+    """Compare the gems gradient against the native ATen CPU kernel."""
     _, classes = _class_rows(tuple(inp.shape))
-    ref_inp = utils.to_reference(inp)
-    ref_target = utils.to_reference(target)
+    # Keep the native CPU backward as the primary oracle.  Moving explicitly to
+    # CPU avoids accidentally selecting the CUDA kernel when --ref is not cpu.
+    ref_inp = inp.detach().to("cpu")
+    ref_target = target.detach().to("cpu")
 
     # is_target comes from the native forward, which is the authoritative
     # producer of the mask the backward consumes. The forward agrees across
@@ -351,16 +346,19 @@ def _run_case(inp, target, reduction, dtype, extra_reduce_dim=1):
         ref_inp, ref_target, reduction if reduction in (0, 1, 2) else 2
     )
     ref_grad_output = _grad_output_for(ref_loss, ref_inp.dtype, ref_inp.device)
-    ref_out = _reference(
+    ref_out = torch.ops.aten.multilabel_margin_loss_backward(
         ref_grad_output,
         ref_inp,
         ref_target,
         reduction if reduction in (0, 1, 2) else 2,
         ref_is_target,
     )
+    # The oracle is deliberately computed on CPU; move only its finished result
+    # so gems_assert_close also works when the harness reference device is CUDA.
+    ref_out = ref_out if cfg.TO_CPU else ref_out.to(inp.device)
 
-    # to_reference may upcast and move to CPU, so the tested side gets the mask
-    # and the upstream gradient back in the input's device and dtype.
+    # The tested side gets the native mask and upstream gradient back in the
+    # input's device and dtype.
     is_target = ref_is_target.to(device=inp.device, dtype=inp.dtype)
     grad_output = ref_grad_output.to(device=inp.device, dtype=inp.dtype)
 
@@ -377,6 +375,111 @@ def _run_case(inp, target, reduction, dtype, extra_reduce_dim=1):
         equal_nan=True,
         reduce_dim=max(1, classes) * extra_reduce_dim,
     )
+
+
+@pytest.mark.multilabel_margin_loss_backward
+@pytest.mark.parametrize("pattern", ["duplicate", "permuted"])
+def test_multilabel_margin_loss_backward_formula_matches_aten_cpu(pattern):
+    """Pin the analytic formula to ATen CPU for nontrivial target prefixes."""
+    # Three rows cover per-row factors; 11 classes keep the cubic oracle small.
+    shape = (3, 11)
+    inp = _make_input(torch.float32, shape, MAIN_RANGE, "cpu")
+    target = _make_target(shape, pattern, "cpu")
+    reduction = 0
+    loss, is_target = torch.ops.aten.multilabel_margin_loss_forward(
+        inp, target, reduction
+    )
+    grad_output = _grad_output_for(loss, inp.dtype, inp.device)
+    native = torch.ops.aten.multilabel_margin_loss_backward(
+        grad_output, inp, target, reduction, is_target
+    )
+    formula = _reference(grad_output, inp, target, reduction, is_target)
+    torch.testing.assert_close(formula, native, rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.multilabel_margin_loss_backward
+def test_multilabel_margin_loss_backward_strided_grad_output():
+    """A reduction-none seed is read through its stride without a copy."""
+    # Eight rows make the stride observable; 11 classes leave a partial tile.
+    shape = (8, 11)
+    dtype = torch.float32
+    inp = _make_input(dtype, shape, MAIN_RANGE, flag_gems.device)
+    target = _make_target(shape, MAIN_PATTERN, flag_gems.device)
+    ref_inp = inp.detach().to("cpu")
+    ref_target = target.detach().to("cpu")
+    _, ref_is_target = torch.ops.aten.multilabel_margin_loss_forward(
+        ref_inp, ref_target, 0
+    )
+
+    rows = shape[0]
+    values = torch.arange(1, rows + 1, dtype=dtype)
+    ref_grad_output = torch.zeros(2 * rows, dtype=dtype)[::2]
+    ref_grad_output.copy_(values)
+    grad_output = torch.zeros(2 * rows, dtype=dtype, device=flag_gems.device)[::2]
+    grad_output.copy_(values.to(flag_gems.device))
+    assert grad_output.stride() == (2,)
+
+    ref_out = torch.ops.aten.multilabel_margin_loss_backward(
+        ref_grad_output, ref_inp, ref_target, 0, ref_is_target
+    )
+    ref_out = ref_out if cfg.TO_CPU else ref_out.to(inp.device)
+    res_out = flag_gems.multilabel_margin_loss_backward(
+        grad_output,
+        inp,
+        target,
+        0,
+        ref_is_target.to(device=inp.device, dtype=dtype),
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
+
+
+@pytest.mark.multilabel_margin_loss_backward
+def test_multilabel_margin_loss_backward_dispatch_registration():
+    """The public ATen registration routes to the Triton implementation."""
+    # A small odd class count exercises registration without duplicating the
+    # larger numerical sweeps above.
+    shape = (2, 5)
+    dtype = torch.float32
+    inp = _make_input(dtype, shape, MAIN_RANGE, flag_gems.device)
+    target = _make_target(shape, MAIN_PATTERN, flag_gems.device)
+    ref_inp = inp.detach().to("cpu")
+    ref_target = target.detach().to("cpu")
+    ref_loss, ref_is_target = torch.ops.aten.multilabel_margin_loss_forward(
+        ref_inp, ref_target, 1
+    )
+    ref_grad_output = _grad_output_for(ref_loss, dtype, ref_inp.device)
+    ref_out = torch.ops.aten.multilabel_margin_loss_backward(
+        ref_grad_output, ref_inp, ref_target, 1, ref_is_target
+    )
+    ref_out = ref_out if cfg.TO_CPU else ref_out.to(inp.device)
+
+    with flag_gems.use_gems():
+        res_out = torch.ops.aten.multilabel_margin_loss_backward(
+            ref_grad_output.to(flag_gems.device),
+            inp,
+            target,
+            1,
+            ref_is_target.to(flag_gems.device),
+        )
+    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
+
+
+@pytest.mark.multilabel_margin_loss_backward
+@pytest.mark.parametrize("dtype", HALF_DTYPES)
+def test_multilabel_margin_loss_backward_hinge_uses_input_dtype(dtype):
+    """Near-zero margins must round before the hinge comparison."""
+    active, inactive = (
+        (-3.001953125, -4.0) if dtype == torch.float16 else (-7.03125, -8.0)
+    )
+    inp = torch.tensor([[active, inactive]], dtype=dtype, device=flag_gems.device)
+    target = torch.tensor([[0, -1]], dtype=torch.int64, device=flag_gems.device)
+    is_target = torch.tensor([[1, 0]], dtype=dtype, device=flag_gems.device)
+    grad_output = torch.ones((), dtype=dtype, device=flag_gems.device)
+
+    res_out = flag_gems.multilabel_margin_loss_backward(
+        grad_output, inp, target, 2, is_target
+    )
+    torch.testing.assert_close(res_out, torch.zeros_like(res_out), rtol=0, atol=0)
 
 
 @pytest.mark.multilabel_margin_loss_backward
