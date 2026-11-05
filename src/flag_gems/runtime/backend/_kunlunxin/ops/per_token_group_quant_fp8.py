@@ -57,11 +57,69 @@ def _per_token_group_quant_fp8(
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
+        y_q = y / y_s
+    else:
+        y_q = (y / _absmax) * fp8_max
 
-    y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+    y_q = tl.where(y_q < fp8_min, fp8_min, y_q)
+    y_q = tl.where(y_q > fp8_max, fp8_max, y_q).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)
+
+
+@triton.jit
+def _per_token_group_quant_fp8_v2(
+    y_ptr,
+    y_q_ptr,
+    y_s_ptr,
+    group_size,
+    y_num_columns,
+    y_row_stride,
+    groups_total,
+    groups_per_row,
+    eps,
+    fp8_min,
+    fp8_max,
+    scale_ue8m0,
+    BLOCK_G: tl.constexpr,
+    BLOCK_S: tl.constexpr,
+):
+    # 2D-tile variant: one program quantizes BLOCK_G consecutive groups so that
+    # the per-group absmax reduction is issued once per tile (fewer programs
+    # and fewer per-group reduction ops on XPU).
+    pid = tl.program_id(0)
+    gr = tl.arange(0, BLOCK_G)
+    g = pid * BLOCK_G + gr
+    ok = g < groups_total
+    row = g // groups_per_row
+    row_g = g % groups_per_row
+
+    cols = tl.arange(0, BLOCK_S)
+    off = row[:, None] * y_row_stride + row_g[:, None] * group_size + cols[None, :]
+
+    y = tl.load(y_ptr + off).to(tl.float32)
+    _absmax = tl.maximum(tl.max(tl.abs(y), axis=1), eps)
+    y_s0 = _absmax / fp8_max
+    # NOTE: no python branch here; an `if scale_ue8m0:` branch around the
+    # exp2/ceil/log2 row op is miscompiled by XPU TritonXPUCoreTiling, so the
+    # ue8m0 scaling is computed unconditionally and selected with tl.where.
+    # Also, never build the quantization as `y / (absmax/fp8_max)`: on XPU that
+    # divides by subnormals (~1e-38 in fp32-emulation mode) and overflows to
+    # inf; keep the safe product form `(y / absmax) * scale` whose quotient is
+    # always in (0, 1].
+    y_s1 = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
+    y_s = tl.where(scale_ue8m0 != 0, y_s1, y_s0)
+    recip_ue = tl.exp2(-tl.ceil(tl.log2(tl.maximum(tl.abs(y_s0), 1e-10))))
+    y_q_std = (y / _absmax[:, None]) * fp8_max
+    y_q_ue = y * recip_ue[:, None]
+    y_q = tl.where(scale_ue8m0 != 0, y_q_ue, y_q_std)
+
+    y_q = tl.where(y_q < fp8_min, fp8_min, y_q)
+    y_q = tl.where(y_q > fp8_max, fp8_max, y_q).to(y_q_ptr.dtype.element_ty)
+
+    tl.store(y_q_ptr + off, y_q)
+    tl.store(y_s_ptr + g, y_s, mask=ok)
 
 
 @triton.jit
@@ -98,8 +156,12 @@ def _per_token_group_quant_fp8_colmajor(
 
     if scale_ue8m0:
         y_s = tl.exp2(tl.ceil(tl.log2(tl.maximum(tl.abs(y_s), 1e-10))))
+        y_q = y / y_s
+    else:
+        y_q = (y / _absmax) * fp8_max
 
-    y_q = tl.clamp(y / y_s, fp8_min, fp8_max).to(y_q_ptr.dtype.element_ty)
+    y_q = tl.where(y_q < fp8_min, fp8_min, y_q)
+    y_q = tl.where(y_q > fp8_max, fp8_max, y_q).to(y_q_ptr.dtype.element_ty)
 
     tl.store(y_q_ptr + cols, y_q, mask=mask)
     tl.store(y_s_ptr, y_s)
@@ -157,20 +219,48 @@ def per_token_group_quant_fp8(
             num_stages=num_stages,
         )
     else:
-        _per_token_group_quant_fp8[(M,)](
-            x,
-            x_q,
-            x_s,
-            group_size,
-            x.shape[1],
-            x.stride(0),
-            eps,
-            fp8_min=fp8_min,
-            fp8_max=fp8_max,
-            scale_ue8m0=scale_ue8m0,
-            BLOCK=BLOCK,
-            num_warps=num_warps,
-            num_stages=num_stages,
-        )
+        # On XPU, the per-group reduction is issued per program; issuing it once
+        # per tile of BLOCK_G groups (v2) cuts the per-group overhead. v2 needs a
+        # power-of-two group size whose tile fits in registers, otherwise fall
+        # back to the original per-group kernel.
+        use_v2 = (N == BLOCK) and N <= 256
+        if use_v2:
+            # the 2D tile carries BLOCK_G*N lanes per program; make sure at
+            # least 4 warps participate (with fewer warps XPU CoreTiling
+            # fails and the uni_sram budget overflows)
+            _per_token_group_quant_fp8_v2[(triton.cdiv(M, 32),)](
+                x,
+                x_q,
+                x_s,
+                group_size,
+                x.shape[1],
+                x.stride(0),
+                M,
+                x.shape[1] // group_size,
+                eps,
+                fp8_min=fp8_min,
+                fp8_max=fp8_max,
+                scale_ue8m0=scale_ue8m0,
+                BLOCK_G=32,
+                BLOCK_S=BLOCK,
+                num_warps=max(num_warps, 4),
+                num_stages=num_stages,
+            )
+        else:
+            _per_token_group_quant_fp8[(M,)](
+                x,
+                x_q,
+                x_s,
+                group_size,
+                x.shape[1],
+                x.stride(0),
+                eps,
+                fp8_min=fp8_min,
+                fp8_max=fp8_max,
+                scale_ue8m0=scale_ue8m0,
+                BLOCK=BLOCK,
+                num_warps=num_warps,
+                num_stages=num_stages,
+            )
 
     return x_q, x_s

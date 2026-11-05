@@ -71,6 +71,5 @@ def test_Concat(shape, dim, dtype):
     ref_inp = [utils.to_reference(_) for _ in inp]
     ref_out = torch.cat(ref_inp, dim)
 
-    with flag_gems.use_gems():
-        res_out = torch.cat(inp, dim)
+    res_out = flag_gems.cat(inp, dim)
     utils.gems_assert_equal(res_out, ref_out)

@@ -83,7 +83,7 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
     - pivots: 1-indexed pivot indices
     - info: 0 if successful, positive integer if diagonal element of D is zero
     """
-    logger.debug("GEMS LINALG LDL FACTOR EX")
+    logger.debug("GEMS LINALG_LDL_FACTOR_EX")
 
     LD = torch.empty_like(A)
     pivots = torch.empty(*A.shape[:-1], dtype=torch.int32, device=A.device)

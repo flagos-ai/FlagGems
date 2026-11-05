@@ -117,7 +117,7 @@ def _fused_rms_norm_forward(x, normalized_shape, weight=None, eps=1e-5):
     Returns:
         tuple: (output, inv_rms) where inv_rms is 1/sqrt(mean(x^2) + eps)
     """
-    logger.debug("GEMS _FUSED_RMS_NORM FORWARD")
+    logger.debug("GEMS _FUSED_RMS_NORM_FORWARD")
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])
     N = math.prod(normalized_shape)
@@ -297,7 +297,7 @@ def _fused_rms_norm_backward(
         when not requested by ``output_mask`` (``dw`` is also ``None`` when
         ``weight`` is ``None``).
     """
-    logger.debug("GEMS _FUSED_RMS_NORM BACKWARD")
+    logger.debug("GEMS _FUSED_RMS_NORM_BACKWARD")
 
     if len(output_mask) != 2:
         raise ValueError("output_mask must contain two booleans")

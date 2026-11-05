@@ -12,11 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import triton
-import triton.language as tl
+import os
 
-from flag_gems import runtime
-from flag_gems.utils import libentry, tl_extra_shim
+# Workaround for Triton HCU backend MoveLoadToFrontDot pass bug
+# The pass causes SSA dominance violations with multi-stage pipelines
+os.environ.setdefault("TRITON_MOVE_LOAD_TOFRONT_DOT", "0")
+
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
+
+from flag_gems import runtime  # noqa: E402
+from flag_gems.utils import libentry, tl_extra_shim  # noqa: E402
 
 
 @triton.jit

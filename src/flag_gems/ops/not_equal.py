@@ -48,5 +48,5 @@ def not_equal_func_scalar(x, y):
 
 
 def not_equal_scalar(A, B):
-    logger.debug("GEMS NOT_EQUAL SCALAR")
+    logger.debug("GEMS NOT_EQUAL_SCALAR")
     return not_equal_func_scalar(A, B)

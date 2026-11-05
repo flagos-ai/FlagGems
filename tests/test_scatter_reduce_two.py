@@ -58,7 +58,6 @@ def test_scatter_reduce_two_(src_shape, inp_shape, dim, dtype, reduce):
     ref_index = to_reference(index)
     ref_src = to_reference(src, upcast=True)
     ref_out = ref_inp.scatter_reduce_(dim, ref_index, ref_src, reduce=reduce)
-    with flag_gems.use_gems():
-        res_out = inp.scatter_reduce_(dim, index, src, reduce=reduce)
+    res_out = flag_gems.scatter_reduce_(inp, dim, index, src, reduce=reduce)
 
     gems_assert_close(res_out, ref_out, dtype)

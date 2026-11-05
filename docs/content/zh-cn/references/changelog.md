@@ -56,7 +56,7 @@ weight: 90
 
 **发布日期**：2026-01-04
 
-- 此版本包含 216 个算子，参见[支持的算子列表](/FlagGems/zh-cn/reference/operators/)
+- 此版本包含 216 个算子，参见[支持的算子列表](operators.md)
 - 新增神经网络算子：
   `avg_pool2d`,
   `avg_pool2d_backward`,

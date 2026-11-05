@@ -1,6 +1,7 @@
 import logging
 import math
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -41,6 +42,8 @@ def deg2rad_func(x):
 
 def deg2rad(A):
     logger.debug("GEMS_KUNLUNXIN DEG2RAD")
+    if A.is_floating_point():
+        return deg2rad_func(A, out0=torch.empty_like(A))
     return deg2rad_func(A)
 
 

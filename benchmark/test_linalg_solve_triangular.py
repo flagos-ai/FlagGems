@@ -36,18 +36,15 @@ if flag_gems.runtime.device.support_fp64:
     SOLVE_TRI_DTYPES.append(torch.float64)
 
 
-def _make_triangular_input(n, k, dtype, device, upper, unitriangular):
+def _make_triangular_input(n, k, dtype, device, upper):
     """Generate a well-conditioned triangular matrix: A = I + 0.1 * tri(randn)"""
     A = torch.randn(n, n, dtype=dtype, device=device)
-    off_diag = 0.1
     if upper:
         A = A.triu(diagonal=1)
     else:
         A = A.tril(diagonal=-1)
-    A.mul_(off_diag)
+    A.mul_(0.1)
     A.add_(torch.eye(n, dtype=dtype, device=device))
-    if unitriangular:
-        A.diagonal().fill_(1.0)
     B = torch.randn(n, k, dtype=dtype, device=device)
     return A, B
 
@@ -59,9 +56,7 @@ class SolveTriBenchmark(base.Benchmark):
     def get_input_iter(self, cur_dtype):
         for n, k in self.shapes:
             for upper in (False, True):
-                A, B = _make_triangular_input(
-                    n, k, cur_dtype, self.device, upper, False
-                )
+                A, B = _make_triangular_input(n, k, cur_dtype, self.device, upper)
                 yield A, B, {"upper": upper}
 
 
@@ -76,18 +71,12 @@ def test_linalg_solve_triangular():
     bench.run()
 
 
-class SolveTriOutBenchmark(base.Benchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = SOLVE_TRI_SHAPES
+class SolveTriOutBenchmark(SolveTriBenchmark):
+    """Same shapes and inputs as SolveTriBenchmark, plus a preallocated `out`."""
 
     def get_input_iter(self, cur_dtype):
-        for n, k in self.shapes:
-            for upper in (False, True):
-                A, B = _make_triangular_input(
-                    n, k, cur_dtype, self.device, upper, False
-                )
-                out = torch.empty_like(B)
-                yield A, B, {"upper": upper, "out": out}
+        for A, B, kwargs in super().get_input_iter(cur_dtype):
+            yield A, B, {**kwargs, "out": torch.empty_like(B)}
 
 
 @pytest.mark.linalg_solve_triangular_out

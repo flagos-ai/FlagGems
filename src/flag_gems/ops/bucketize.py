@@ -45,7 +45,7 @@ def bucketize_kernel(
 
     # Load input value directly using pointer arithmetic
     # For contiguous row-major tensors, offset i corresponds to element i
-    inp_val = tl.load(inp_ptr + offsets)
+    inp_val = tl.load(inp_ptr + offsets, mask=mask, other=0)
 
     # Binary search for each value
     # boundaries is a 1-D tensor of length n_boundaries

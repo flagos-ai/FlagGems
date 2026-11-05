@@ -88,6 +88,7 @@ def _weight_int4pack_mm_kernel(
     stride_cn,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
 ):
     """
     Int4 quantized matrix multiplication kernel.
@@ -95,8 +96,10 @@ def _weight_int4pack_mm_kernel(
     Computes C = A @ W_deq where W_deq is obtained by dequantizing mat2
     (packed uint8 int4 weights) using per-group qScale and qZeros.
 
-    The kernel processes each K position as a rank-1 outer-product update,
-    dequantizing weights on the fly for a (BLOCK_M, BLOCK_N) output tile.
+    A BLOCK_K slice of the weight is dequantized per step and contracted with
+    `tl.dot`, so the multiply runs on tensor cores. Two int4 values share a byte
+    (k = 2j is the low nibble, k = 2j + 1 the high one), so each nibble is
+    decoded over its own half-width fragment and `tl.join` interleaves them back.
     """
     pid = tle.program_id(0)
     grid_n = tl.cdiv(N, BLOCK_N)
@@ -105,47 +108,69 @@ def _weight_int4pack_mm_kernel(
 
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_kp = tl.arange(0, BLOCK_K // 2)
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    # Iterate over K, one position at a time. Each iteration does a rank-1 update:
-    #   acc += a_col[BLOCK_M] ⊗ w_row[BLOCK_N]
-    # where a_col = A[offs_m, k] and w_row = dequantized(W[k, offs_n]).
-    for k in range(K):
-        # --- Load activation column for this k ---
-        a_ptrs = A_ptr + offs_m * stride_am + k * stride_ak
-        a_col = tl.load(a_ptrs, mask=offs_m < M, other=0.0)
-        a_col = a_col.to(tl.float32)
-
-        # --- Dequantize weight row for this k ---
-        byte_idx = k // 2
-        group = k // qGroupSize  # integer division gives group index
-
-        # Load packed bytes for all N positions in the tile
-        byte_ptrs = mat2_ptr + offs_n * stride_mn + byte_idx * stride_mk
-        bytes_val = tl.load(byte_ptrs, mask=offs_n < N, other=0)
-
-        # Extract int4: low nibble for even k, high nibble for odd k
-        int4_vals = tl.where(
-            (k % 2) == 0,
-            bytes_val & 0xF,  # low nibble
-            (bytes_val >> 4) & 0xF,  # high nibble
+    for k0 in range(0, K, BLOCK_K):
+        offs_k = k0 + tl.arange(0, BLOCK_K)
+        a = tl.load(
+            A_ptr + offs_m[:, None] * stride_am + offs_k[None, :] * stride_ak,
+            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K),
+            other=0.0,
         )
 
-        # Load per-group scale and zero for this group and N positions
-        scale_ptrs = qScale_ptr + group * stride_sg + offs_n * stride_sn
-        zero_ptrs = qZeros_ptr + group * stride_zg + offs_n * stride_zn
-        scales = tl.load(scale_ptrs, mask=offs_n < N, other=1.0)
-        zeros = tl.load(zero_ptrs, mask=offs_n < N, other=0.0)
+        # One byte per two K positions, laid out [BLOCK_K // 2, BLOCK_N].
+        byte_idx = k0 // 2 + offs_kp
+        packed = tl.load(
+            mat2_ptr + offs_n[None, :] * stride_mn + byte_idx[:, None] * stride_mk,
+            mask=(offs_n[None, :] < N) & (byte_idx[:, None] < K2),
+            other=0,
+        )
 
-        # Dequantize: w = (q - zero) * scale
-        int4_f32 = int4_vals.to(tl.float32)
-        zeros_f32 = zeros.to(tl.float32)
-        scales_f32 = scales.to(tl.float32)
-        w_row = (int4_f32 - zeros_f32) * scales_f32
+        # Each nibble carries its own K index, so each gets its own group. They
+        # coincide whenever qGroupSize is even, but deriving both keeps the
+        # kernel correct for any group size.
+        k_low = 2 * byte_idx
+        k_high = k_low + 1
+        n_mask = offs_n[None, :] < N
 
-        # Rank-1 update
-        acc += a_col[:, None] * w_row[None, :]
+        group_low = k_low[:, None] // qGroupSize
+        scale_low = tl.load(
+            qScale_ptr + group_low * stride_sg + offs_n[None, :] * stride_sn,
+            mask=n_mask & (k_low[:, None] < K),
+            other=1.0,
+        ).to(tl.float32)
+        zero_low = tl.load(
+            qZeros_ptr + group_low * stride_zg + offs_n[None, :] * stride_zn,
+            mask=n_mask & (k_low[:, None] < K),
+            other=0.0,
+        ).to(tl.float32)
+        low = (((packed & 0xF).to(tl.float32) - zero_low) * scale_low).to(
+            A_ptr.dtype.element_ty
+        )
+
+        group_high = k_high[:, None] // qGroupSize
+        scale_high = tl.load(
+            qScale_ptr + group_high * stride_sg + offs_n[None, :] * stride_sn,
+            mask=n_mask & (k_high[:, None] < K),
+            other=1.0,
+        ).to(tl.float32)
+        zero_high = tl.load(
+            qZeros_ptr + group_high * stride_zg + offs_n[None, :] * stride_zn,
+            mask=n_mask & (k_high[:, None] < K),
+            other=0.0,
+        ).to(tl.float32)
+        high = ((((packed >> 4) & 0xF).to(tl.float32) - zero_high) * scale_high).to(
+            A_ptr.dtype.element_ty
+        )
+
+        # (BLOCK_K // 2, BLOCK_N) x2 -> (BLOCK_K, BLOCK_N), interleaved on K.
+        # Keep the cast above the join: an elementwise op between the join and
+        # the dot blocks the fold that lets the mma see one wide operand.
+        w = tl.reshape(tl.permute(tl.join(low, high), (0, 2, 1)), (BLOCK_K, BLOCK_N))
+
+        acc = tl.dot(a, w, acc=acc)
 
     # Store result
     c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
@@ -199,8 +224,11 @@ def _weight_int4pack_mm_with_scales_and_zeros(
 
     C = torch.empty((M, N), dtype=A.dtype, device=A.device)
 
-    BLOCK_M = 16
-    BLOCK_N = 16
+    BLOCK_M = 32
+    BLOCK_N = 64
+    # Two int4 values share a byte, so BLOCK_K has to be even; 64 also keeps a
+    # whole number of native mma K steps for both fp16 and bf16.
+    BLOCK_K = 64
     grid = lambda META: (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
 
     with torch_device_fn.device(A.device):
@@ -228,6 +256,7 @@ def _weight_int4pack_mm_with_scales_and_zeros(
             C.stride(1),
             BLOCK_M=BLOCK_M,
             BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
         )
 
     return C

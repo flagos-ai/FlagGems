@@ -407,6 +407,17 @@ def mean_heur_one_tile_per_cta(args):
     return args["TILE_N"] >= args["N"]
 
 
+def post_layer_norm_residual_heur_tile_n(args):
+    return triton.next_power_of_2(args["N"])
+
+
+def post_layer_norm_residual_heur_tile_m(args):
+    tile_n = triton.next_power_of_2(args["N"])
+    if args["N"] <= 128:
+        return triton.cdiv(1024, tile_n)
+    return max(1, min(8, 4096 // tile_n))
+
+
 HEURISTICS_CONFIGS = {
     "argmax_non_inner": {
         "TILE_K": argmax_heur_tile_k,
@@ -475,6 +486,10 @@ HEURISTICS_CONFIGS = {
         "ONE_TILE_PER_CTA": mean_heur_one_tile_per_cta,
         "num_warps": softmax_heur_num_warps_non_inner,
     },
+    "post_layer_norm_residual": {
+        "TILE_M": post_layer_norm_residual_heur_tile_m,
+        "TILE_N": post_layer_norm_residual_heur_tile_n,
+    },
     "softmax_inner": {
         "TILE_N": softmax_heur_tile_n_inner,
         "ONE_TILE_PER_CTA": softmax_heur_one_tile_per_cta,
@@ -539,7 +554,7 @@ HEURISTICS_CONFIGS = {
         "BLOCK_M": lambda args: 16,
         "BLOCK_N": lambda args: 64,
         "num_warps": lambda args: 4,
-        "num_stages": lambda args: 3,
+        "num_stages": lambda args: 2,
     },
     "elementwise_generic": {
         "BLOCK_SIZE": simple_elementwise_blocksize_heur,

@@ -32,6 +32,7 @@ class vendors(Enum):
     SPACEMIT = 13
     THEAD = 14
     ARM = 15
+    BIREN = 16
 
     @classmethod
     def get_all_vendors(cls) -> dict:
@@ -92,8 +93,34 @@ DEFAULT_STRATEGIES = {
         "default",
     ],
     "mm_tma_transposed_direct": ["default", "default", "default", "default"],
+    "mm_w8a8_fp8_general_tma": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
     "mm_warp_specialized_tma": ["default", "default", "default", "default"],
     "mv": ["align32", "align32"],
+    "mv_row": ["align32", "align32", "default", "default", "default", "default"],
+    "mv_column": [
+        "align32",
+        "align32",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+        "default",
+    ],
+    "mv_reduce": ["align32", "default", "default", "default", "default"],
+    # Hygon's MV kernel keeps input strides in its autotune key.  Keep this
+    # separate from the generic two-key MV contract used by other backends.
+    "mv_hygon": ["align32", "align32", "default", "default", "default"],
     "mul": ["align32", "default"],
     "mul_broadcast_2d": ["align32", "default", "default"],
     "sparse_attention": ["align32", "align32", "align32"],
@@ -137,6 +164,23 @@ DEFAULT_STRATEGIES = {
         "align32",
     ],
     "mm_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_splitk": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_block_scaled": ["align32", "align32", "align32", "align32", "align32"],
+    "mm_w8a8_fp8_block_scaled_splitk": [
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+        "align32",
+    ],
+    "mm_w8a8_fp8_gemv": ["align32", "align32", "align32", "default"],
+    "mm_w8a8_fp8_skinny": [
+        "mm_w8a8_fp8_tma_m",
+        "align32",
+        "align32",
+        "align32",
+        "default",
+    ],
 }
 
 OP_KEY_ORDERS = {
@@ -183,8 +227,25 @@ OP_KEY_ORDERS = {
     "mm_sqmma": ["M", "N", "K", "dtype"],
     "mm_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_tma_transposed_direct": ["M", "N", "K", "stride_bk"],
+    "mm_w8a8_fp8_general_tma": ["M", "N", "K", "stride_am", "stride_bk", "dtype"],
     "mm_warp_specialized_tma": ["M", "N", "K", "stride_bk"],
     "mv": ["M", "N"],
+    "mv_row": ["M", "K", "SAM", "SAK", "SXK", "SYM"],
+    "mv_column": [
+        "M",
+        "K",
+        "BATCH",
+        "SAB",
+        "SAM",
+        "SAK",
+        "SXB",
+        "SXK",
+        "SYB",
+        "SYM",
+        "SPLIT_K",
+    ],
+    "mv_reduce": ["M", "BATCH", "SPLIT_K", "SYB", "SYM"],
+    "mv_hygon": ["M", "N", "stride_an", "stride_am", "stride_bm"],
     "mul": ["n_elements", "dtype"],
     "mul_broadcast_2d": ["n_elements", "n_cols", "dtype"],
     "sparse_attention": ["topk", "H_ACTUAL", "D"],
@@ -195,6 +256,11 @@ OP_KEY_ORDERS = {
     "w8a8_block_fp8_bmm_general": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
     "w8a8_block_fp8_bmm_splitk": ["B", "M", "N", "K", "stride_xm", "stride_yk"],
     "mm_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_block_scaled": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_block_scaled_splitk": ["M", "N", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_gemv": ["M", "K", "stride_am", "stride_bk"],
+    "mm_w8a8_fp8_skinny": ["M", "N", "K", "stride_am", "stride_bk"],
 }
 
 
@@ -208,6 +274,7 @@ _VENDOR_TORCH_ATTR = {
     "mthreads": "musa",
     "sunrise": "ptpu",
     "tsingmicro": "txda",
+    "biren": "supa",
 }
 
 __all__ = [

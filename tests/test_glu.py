@@ -35,8 +35,7 @@ def test_glu(shape, dtype):
             continue
 
         ref_out = torch.nn.functional.glu(ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            res_out = torch.nn.functional.glu(res_inp, dim=dim)
+        res_out = flag_gems.glu(res_inp, dim=dim)
         utils.gems_assert_close(res_out, ref_out, dtype)
 
 
@@ -56,7 +55,6 @@ def test_glu_backward(shape, dtype):
         ref_out = utils.to_reference(res_out, True)
 
         ref_in_grad = torch.ops.aten.glu_backward(ref_out, ref_inp, dim=dim)
-        with flag_gems.use_gems():
-            res_in_grad = torch.ops.aten.glu_backward(res_out, res_inp, dim=dim)
+        res_in_grad = flag_gems.glu_backward(res_out, res_inp, dim=dim)
 
         utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)

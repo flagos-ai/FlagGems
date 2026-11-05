@@ -43,3 +43,7 @@ docs/benchmark/
 
 # Local outputs from FlagTune
 /flagtune*/
+
+# Packaging build outputs (packaging/{debian,rpm} helpers)
+debian-packages/
+rpm-packages/

@@ -191,7 +191,7 @@ def prod_kernel(
 
 
 def prod_dim(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS PROD DIM")
+    logger.debug("GEMS PROD_DIM")
 
     if not (-inp.ndim <= dim < inp.ndim):
         raise IndexError(

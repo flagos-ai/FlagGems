@@ -65,10 +65,21 @@ def test_lstm(
     c0 = torch.randn(state_shape, device=flag_gems.device, dtype=dtype)
     params = tuple(lstm._flat_weights)
 
-    ref_input = utils.to_reference(input)
-    ref_h0 = utils.to_reference(h0)
-    ref_c0 = utils.to_reference(c0)
-    ref_params = tuple(utils.to_reference(param) for param in params)
+    # The reference is computed in float64 on CPU whenever the input is float32.
+    # Comparing two independent float32 implementations (FlagGems vs native CUDA)
+    # against each other measures the *difference* of their rounding errors, which
+    # for an LSTM accumulates to ~1e-4 -- the same order as the tolerance it would
+    # have to be checked against, so the comparison would not be meaningful.
+    # FlagGems' own deviation from the float64 result is ~1.2e-7, so a tight
+    # tolerance against an accurate reference is both stricter and more informative.
+    use_fp64_ref = dtype is torch.float32
+
+    ref_input = utils.to_reference(input, upcast=use_fp64_ref)
+    ref_h0 = utils.to_reference(h0, upcast=use_fp64_ref)
+    ref_c0 = utils.to_reference(c0, upcast=use_fp64_ref)
+    ref_params = tuple(
+        utils.to_reference(param, upcast=use_fp64_ref) for param in params
+    )
     ref_out, ref_hn, ref_cn = torch.lstm(
         ref_input,
         (ref_h0, ref_c0),
@@ -81,18 +92,17 @@ def test_lstm(
         batch_first,
     )
 
-    with flag_gems.use_gems():
-        res_out, res_hn, res_cn = torch.lstm(
-            input,
-            (h0, c0),
-            params,
-            has_biases,
-            num_layers,
-            0.0,
-            False,
-            bidirectional,
-            batch_first,
-        )
+    res_out, res_hn, res_cn = flag_gems.lstm(
+        input,
+        (h0, c0),
+        params,
+        has_biases,
+        num_layers,
+        0.0,
+        False,
+        bidirectional,
+        batch_first,
+    )
 
     atol = 3e-2 if dtype is torch.bfloat16 else 2e-2 if dtype is torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)

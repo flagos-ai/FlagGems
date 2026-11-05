@@ -38,6 +38,5 @@ def test_accuracy_resolve_neg(shape, dtype):
     z = y.imag
     assert z.is_neg()
 
-    with flag_gems.use_gems():
-        out = z.resolve_neg()
+    out = flag_gems.resolve_neg(z)
     assert not out.is_neg()

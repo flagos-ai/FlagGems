@@ -23,7 +23,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
-from ..ops import weight_norm_interface, weight_norm_interface_backward
+from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 
 logger = logging.getLogger(__name__)
 
@@ -251,3 +251,11 @@ class WeightNorm(torch.autograd.Function):
 
 def weight_norm(v, g, dim=0):
     return WeightNorm.apply(v, g, dim)
+
+
+def _weight_norm(v: torch.Tensor, g: torch.Tensor, dim: int = 0) -> torch.Tensor:
+    """ATen entry point for the Kunlunxin weight-normalization path."""
+    logger.debug("GEMS_KUNLUNXIN _WEIGHT_NORM")
+    if v.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        raise TypeError(f"_weight_norm does not support {v.dtype}")
+    return weight_norm(v, g, dim)

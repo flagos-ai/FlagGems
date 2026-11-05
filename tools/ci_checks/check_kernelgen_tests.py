@@ -13,11 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check KernelGen test files for forbidden use_gems() calls.
+"""Check test files for forbidden use_gems() calls.
 
 Rules:
-  1. Test files for KernelGen operators must NOT call flag_gems.use_gems()
-     or use_gems() directly, as this bypasses reference implementation comparison.
+  1. Test files must NOT call flag_gems.use_gems() or use_gems() directly,
+     as this bypasses reference implementation comparison.
+  2. In incremental mode (default in CI), only PR-changed test files are checked.
+  3. When --base/--head are given, only use_gems() calls on lines the PR
+     actually added (per a three-dot diff) are reported. Pre-existing calls
+     in a file the PR merely touched elsewhere are left alone, so the check
+     does not fail a PR for legacy violations it did not introduce.
 
 Exit codes:
   0 - all checks pass
@@ -29,24 +34,52 @@ import argparse
 import ast
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-
-OPERATORS_YAML = Path("conf/operators.yaml")
 TESTS_DIR = Path("tests")
 
 
-def get_kernelgen_operators() -> set[str]:
-    """Get operator IDs that have 'KernelGen' label."""
-    if not OPERATORS_YAML.exists():
-        print(f"::error::Cannot find {OPERATORS_YAML}", file=sys.stderr)
-        sys.exit(2)
-    with open(OPERATORS_YAML) as f:
-        data = yaml.safe_load(f)
-    ops = data.get("ops", [])
-    return {op["id"] for op in ops if "KernelGen" in op.get("labels", [])}
+def get_added_lines(base_sha: str, head_sha: str, filepath: str) -> set[int]:
+    """Return the set of line numbers added by the PR for ``filepath``.
+
+    Uses a three-dot diff (``base...head``) so only lines the PR branch
+    actually introduced are considered, matching GitHub's "Files changed"
+    view and the derivation in ``derive_changed_operators.py``.
+
+    Line numbers refer to the new (head) side of the file. On any git error
+    the function returns an empty set; callers treat that as "cannot restrict
+    to added lines" and should fall back to a full-file scan.
+    """
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--unified=0",
+                f"{base_sha}...{head_sha}",
+                "--",
+                filepath,
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+
+    added: set[int] = set()
+    # Parse hunk headers: @@ -old,count +new,count @@
+    hunk_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+    for line in result.stdout.splitlines():
+        m = hunk_re.match(line)
+        if m:
+            start = int(m.group(1))
+            count = int(m.group(2)) if m.group(2) is not None else 1
+            for i in range(start, start + count):
+                added.add(i)
+    return added
 
 
 def find_use_gems_calls(filepath: Path) -> list[tuple[int, str]]:
@@ -89,7 +122,7 @@ def find_use_gems_calls(filepath: Path) -> list[tuple[int, str]]:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Check KernelGen tests for forbidden use_gems() calls"
+        description="Check test files for forbidden use_gems() calls"
     )
     parser.add_argument(
         "--operators",
@@ -98,22 +131,40 @@ def main():
     )
     parser.add_argument(
         "--changed-files",
-        help="JSON list of changed test file paths (incremental mode)",
+        help="JSON list of changed file paths (incremental mode)",
         default="",
     )
     parser.add_argument(
         "--all",
         action="store_true",
-        help="Check all KernelGen operator tests (full scan, not used in CI)",
+        help="Check all test files (full scan)",
+    )
+    parser.add_argument(
+        "--base",
+        default="",
+        help="Base commit SHA. With --head, only use_gems() calls on lines "
+        "the PR added (three-dot diff) are reported.",
+    )
+    parser.add_argument(
+        "--head",
+        default="",
+        help="Head commit SHA. See --base.",
     )
     args = parser.parse_args()
 
-    kernelgen_ops = get_kernelgen_operators()
-    print(f"KernelGen operators in registry: {len(kernelgen_ops)}")
+    # Only restrict to PR-added lines in incremental (changed-files) mode.
+    # A full scan (--all) intentionally reports every violation.
+    restrict_to_added = bool(args.base and args.head and not args.all)
 
-    # Incremental mode: only check operators from the current PR
+    # Determine which test files to check
     if args.all:
-        ops_to_check = kernelgen_ops
+        test_files = sorted(TESTS_DIR.glob("test_*.py"))
+    elif args.changed_files:
+        try:
+            changed = json.loads(args.changed_files)
+        except json.JSONDecodeError:
+            changed = [f.strip() for f in args.changed_files.split(",") if f.strip()]
+        test_files = [Path(f) for f in changed if re.match(r"tests/test_.+\.py$", f)]
     elif args.operators:
         try:
             requested_ops = json.loads(args.operators)
@@ -121,50 +172,53 @@ def main():
             requested_ops = [
                 op.strip() for op in args.operators.split(",") if op.strip()
             ]
-        # Only check ops that are KernelGen
-        ops_to_check = set(requested_ops) & kernelgen_ops
-    elif args.changed_files:
-        # Derive operators from changed test file paths
-        try:
-            changed = json.loads(args.changed_files)
-        except json.JSONDecodeError:
-            changed = [f.strip() for f in args.changed_files.split(",") if f.strip()]
-        ops_from_files = set()
-        for fp in changed:
-            m = re.match(r"tests/test_(.+)\.py$", fp)
-            if m:
-                ops_from_files.add(m.group(1))
-        ops_to_check = ops_from_files & kernelgen_ops
+        test_files = [TESTS_DIR / f"test_{op_id}.py" for op_id in requested_ops]
     else:
-        # No operators specified and not --all: nothing to check (safe default)
-        print("No operators specified. Use --operators or --all.")
+        print(
+            "No operators or files specified. Use --operators, --changed-files, or --all."
+        )
         sys.exit(0)
 
-    if not ops_to_check:
-        print("No KernelGen operators to check.")
+    # Filter to files that actually exist
+    test_files = [f for f in test_files if f.exists()]
+
+    if not test_files:
+        print("No test files to check.")
         sys.exit(0)
 
-    print(f"Checking {len(ops_to_check)} operator test(s)...")
+    print(f"Checking {len(test_files)} test file(s)...")
+    if restrict_to_added:
+        print(
+            f"Restricting to lines added by the PR ({args.base[:12]}..."
+            f"{args.head[:12]})."
+        )
     all_violations = []
 
-    for op_id in sorted(ops_to_check):
-        # Find corresponding test file(s)
-        test_file = TESTS_DIR / f"test_{op_id}.py"
-        if not test_file.exists():
-            # Try with leading underscore stripped from test name
+    for test_file in sorted(test_files):
+        violations = find_use_gems_calls(test_file)
+        if not violations:
             continue
 
-        violations = find_use_gems_calls(test_file)
-        if violations:
-            for lineno, code in violations:
-                msg = f"{test_file}:{lineno}: use_gems() call found: {code}"
-                all_violations.append(msg)
+        if restrict_to_added:
+            added = get_added_lines(args.base, args.head, str(test_file))
+            if added:
+                violations = [(ln, code) for ln, code in violations if ln in added]
+            # If `added` is empty we could not resolve the diff; fall back to
+            # reporting all violations rather than silently passing.
+
+        for lineno, code in violations:
+            msg = f"{test_file}:{lineno}: use_gems() call found: {code}"
+            all_violations.append(msg)
 
     if all_violations:
         print(f"\n❌ Found {len(all_violations)} forbidden use_gems() call(s):\n")
         for v in all_violations:
             print(f"::error::{v}")
             print(f"  • {v}")
+        print(
+            "\nTests must not call use_gems(). "
+            "The test framework handles operator dispatch automatically."
+        )
         sys.exit(1)
     else:
         print("✅ No forbidden use_gems() calls found.")

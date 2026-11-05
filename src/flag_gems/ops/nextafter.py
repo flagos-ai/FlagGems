@@ -38,11 +38,11 @@ def nextafter_func(input, other):
     if tl.constexpr(dtype == tl.float16) or tl.constexpr(dtype == tl.bfloat16):
         # NaN check: all exponent bits set and mantissa non-zero
         if tl.constexpr(dtype == tl.float16):
-            exp_mask = 0x7C00  # 5 exponent bits
-            frac_mask = 0x03FF  # 10 mantissa bits
+            exp_mask: tl.constexpr = 0x7C00  # 5 exponent bits
+            frac_mask: tl.constexpr = 0x03FF  # 10 mantissa bits
         else:  # bf16
-            exp_mask = 0x7F80  # 8 exponent bits
-            frac_mask = 0x007F  # 7 mantissa bits
+            exp_mask: tl.constexpr = 0x7F80  # 8 exponent bits
+            frac_mask: tl.constexpr = 0x007F  # 7 mantissa bits
 
         x_int = input.to(tl.uint16, bitcast=True)
         y_int = other.to(tl.uint16, bitcast=True)
@@ -92,10 +92,21 @@ def nextafter_func(input, other):
         neg_zero_up = ~is_positive & is_going_up & (x_int == 0x8000)
         is_zero_cross = pos_zero_down | neg_zero_up
 
+        # IEEE 754: nextafter(NaN, any) = NaN and nextafter(any, NaN) = NaN.
+        # Return a canonical quiet NaN bit pattern when either operand is NaN;
+        # this must take precedence over both is_equal and the increments.
+        # Fold the NaN bit pattern to a compile-time constant so OR-ing it with
+        # the uint16 tensor does not promote to int32 (see cross_const above).
+        nan_const: tl.constexpr = exp_mask | 0x0001  # smallest quiet NaN
+        nan_bits = uint_zero | nan_const
         result_int = tl.where(
-            is_nan | is_equal,
-            x_int,  # return input bits as-is (NaN or self)
-            tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
+            is_nan,
+            nan_bits,
+            tl.where(
+                is_equal,
+                x_int,  # same value: return input as-is
+                tl.where(is_zero_cross, x_int + cross_const, x_int + normal_inc),
+            ),
         )
 
         return result_int.to(input.dtype, bitcast=True)

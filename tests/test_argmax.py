@@ -63,7 +63,6 @@ def test_argmax(shape, dim, keepdim, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.argmax(ref_inp, dim=dim, keepdim=keepdim)
-    with flag_gems.use_gems():
-        res_out = torch.argmax(inp, dim=dim, keepdim=keepdim)
+    res_out = flag_gems.argmax(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)

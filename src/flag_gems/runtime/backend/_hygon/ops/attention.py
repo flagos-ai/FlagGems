@@ -439,8 +439,9 @@ def _attn_bwd_dkdv(
             mask &= offs_m[None, :] >= offs_n[:, None]
         pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
 
-        do = tl.load(do_ptrs)
-        # do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0) # (BLOCK_M1, BLOCK_DMODEL)
+        do = tl.load(
+            do_ptrs, mask=offs_m_mask[:, None], other=0.0
+        )  # (BLOCK_M1, BLOCK_DMODEL)
 
         # Compute dV.
         dv += tl.dot(pT, do.to(tl.float32))  # (BLOCK_N1, BLOCK_DMODEL)
@@ -532,11 +533,58 @@ def _attn_bwd_dq(
 
 config_backward = runtime.get_tuned_config("attention_bwd")
 
+# Small head-dim configs for the backward kernel.
+# When BLOCK_DMODEL <= 32, the standard configs (BLOCK_N1=128, warps=4) can
+# exceed shared memory capacity on some hardware/Triton versions due to the
+# large shared memory footprint of tl.dot operands staged for pipelining.
+# These configs use BLOCK_N1=64 which halves the shared memory requirement
+# for the key/value tiles in the dK/dV section.
+SMALL_HEAD_DIM_BWD_CONFIGS = [
+    triton.Config(
+        {"BLOCK_M1": BM1, "BLOCK_N1": BN1, "BLOCK_M2": BM2, "BLOCK_N2": BN2},
+        num_stages=s,
+        num_warps=w,
+    )
+    for (BM1, BN1, BM2, BN2) in [
+        (32, 64, 64, 32),
+    ]
+    for s in [2, 3, 4]
+    for w in [4, 8]
+]
+config_backward = config_backward + SMALL_HEAD_DIM_BWD_CONFIGS
+
+
+def _prune_bwd_configs(configs, named_args, **kwargs):
+    """Filter backward configs based on BLOCK_DMODEL to avoid shared memory overflow.
+
+    Hygon GPUs have a 64KB shared memory limit. For head_dim=128 (BLOCK_DMODEL=128),
+    configs with BLOCK_N1=128 require 98KB, exceeding the hardware limit.
+
+    This function filters configs to ensure they fit within Hygon's shared memory budget:
+    - For BLOCK_DMODEL=128: only allow BLOCK_N1 <= 64
+    - For BLOCK_DMODEL <= 32: also restrict BLOCK_M1 <= 32 (from upstream)
+    """
+    BLOCK_DMODEL = kwargs.get("BLOCK_DMODEL", named_args.get("BLOCK_DMODEL", 128))
+
+    pruned = []
+    for c in configs:
+        # For head_dim=128, limit BLOCK_N1 to avoid exceeding 64KB shared memory
+        if BLOCK_DMODEL == 128 and c.kwargs.get("BLOCK_N1", 128) > 64:
+            continue
+        # For small head dims, apply upstream constraints
+        if BLOCK_DMODEL <= 32:
+            if c.kwargs.get("BLOCK_N1", 128) > 64 or c.kwargs.get("BLOCK_M1", 32) > 32:
+                continue
+        pruned.append(c)
+
+    return pruned if pruned else configs
+
 
 @libentry()
 @libtuner(
     configs=config_backward,
     key=["KV_CTX", "BLOCK_DMODEL"],
+    prune_configs_by={"early_config_prune": _prune_bwd_configs},
 )
 @triton.jit
 def _attn_bwd(
@@ -557,6 +605,9 @@ def _attn_bwd(
     stride_d,  #
     kv_stride_z,
     kv_stride_h,  #
+    dk_stride_z,
+    dk_stride_h,
+    dk_stride_tok,  #
     H,  # query head num
     Q_CTX,  #
     KV_CTX,  #
@@ -568,9 +619,8 @@ def _attn_bwd(
     BLOCK_N2: tl.constexpr,  #
     BLK_SLICE_FACTOR: tl.constexpr,  #
     BLOCK_DMODEL: tl.constexpr,
+    IS_CAUSAL: tl.constexpr = True,
 ):
-    tl.device_assert(Q_CTX % BLOCK_M1 == 0, "Q_CTX must be a multiple of BLOCK_M1.")
-
     LN2: tl.constexpr = 0.6931471824645996  # = ln(2)
 
     bhid = tl.program_id(2)
@@ -580,6 +630,7 @@ def _attn_bwd(
     kv_head_id = q_head_id // GROUP_HEAD
     adj = (stride_h * q_head_id + stride_z * batch_id).to(tl.int64)
     kv_adj = (kv_stride_h * kv_head_id + kv_stride_z * batch_id).to(tl.int64)
+    dk_adj = (dk_stride_h * q_head_id + dk_stride_z * batch_id).to(tl.int64)
 
     pid = tl.program_id(0)
 
@@ -589,185 +640,195 @@ def _attn_bwd(
     V += kv_adj
     DO += adj
     DQ += adj
-    DK += adj
-    DV += adj
+    DK += dk_adj
+    DV += dk_adj
     M += off_chz
     D += off_chz
 
     # load scales
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
-    start_n = pid * BLOCK_N1
-    start_m = start_n
+    # Grid dim 0 = NUM_KV_BLOCKS + NUM_Q_BLOCKS.
+    # pid in [0, NUM_KV_BLOCKS) handles dK/dV.
+    # pid in [NUM_KV_BLOCKS, grid_dim_0) handles dQ.
+    NUM_KV_BLOCKS = tl.cdiv(KV_CTX, BLOCK_N1)
+    if pid < NUM_KV_BLOCKS:
+        # ============ dK/dV section ============
+        start_n = pid * BLOCK_N1
+        dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+        dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
 
-    MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
-    offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = offs_n < KV_CTX
+        MASK_BLOCK_M1: tl.constexpr = BLOCK_M1 // BLK_SLICE_FACTOR
+        offs_n = start_n + tl.arange(0, BLOCK_N1)
+        offs_n_mask = offs_n < KV_CTX
 
-    dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-    dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
-
-    # load K and V: they stay in SRAM throughout the inner loop.
-    key = tl.load(
-        K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-    value = tl.load(
-        V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_n_mask[:, None],
-        other=0.0,
-    )
-
-    num_steps = BLOCK_N1 // MASK_BLOCK_M1
-
-    dk, dv = _attn_bwd_dkdv(
-        dk,
-        dv,  #
-        Q,
-        key,
-        value,
-        sm_scale,  #
-        DO,  #
-        M,
-        D,  #
-        stride_tok,
-        stride_d,  #
-        H,
-        Q_CTX,  #
-        KV_CTX,  #
-        MASK_BLOCK_M1,
-        BLOCK_N1,
-        BLOCK_DMODEL,  #
-        start_n,
-        start_m,
-        num_steps,  #
-        MASK=True,  #
-    )
-
-    # Compute dK and dV for non-masked blocks.
-    start_m += num_steps * MASK_BLOCK_M1
-    remaining_m = Q_CTX - start_m
-    num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
-
-    if num_steps > 0 and start_m < Q_CTX:
-        dk, dv = _attn_bwd_dkdv(  #
-            dk,
-            dv,  #
-            Q,
-            key,
-            value,
-            sm_scale,  #
-            DO,  #
-            M,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,  #
-            start_n,
-            start_m,
-            num_steps,  #
-            MASK=False,  #
+        # load K and V: they stay in SRAM throughout the inner loop.
+        key = tl.load(
+            K + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
+        )
+        value = tl.load(
+            V + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_n_mask[:, None],
+            other=0.0,
         )
 
-    dv_ptrs = DV + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
+        # Causal: masked diagonal phase, then unmasked above-diagonal phase.
+        # Non-causal: skip masked phase, single unmasked pass over all Q rows.
+        if IS_CAUSAL:
+            start_m = start_n
+            if start_m < Q_CTX:
+                end_m = min(start_m + BLOCK_N1, Q_CTX)
+                num_steps = (end_m - start_m + MASK_BLOCK_M1 - 1) // MASK_BLOCK_M1
+                dk, dv = _attn_bwd_dkdv(
+                    dk,
+                    dv,  #
+                    Q,
+                    key,
+                    value,
+                    sm_scale,  #
+                    DO,  #
+                    M,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    MASK_BLOCK_M1,
+                    BLOCK_N1,
+                    BLOCK_DMODEL,  #
+                    start_n,
+                    start_m,
+                    num_steps,  #
+                    MASK=True,  #
+                )
+                start_m += num_steps * MASK_BLOCK_M1
+        else:
+            start_m = 0
 
-    # Write back dK.
-    dk *= sm_scale
-    dk_ptrs = DK + offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
-    tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
+        # Unmasked phase: traverse remaining Q rows.
+        remaining_m = Q_CTX - start_m
+        num_steps = (remaining_m + BLOCK_M1 - 1) // BLOCK_M1
+        if num_steps > 0:
+            dk, dv = _attn_bwd_dkdv(
+                dk,
+                dv,  #
+                Q,
+                key,
+                value,
+                sm_scale,  #
+                DO,  #
+                M,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,  #
+                start_n,
+                start_m,
+                num_steps,  #
+                MASK=False,  #
+            )
 
-    # THIS BLOCK DOES DQ:
-    MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
-    start_m = pid * BLOCK_M2
-    end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
-    num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
+        dv_ptrs = DV + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        tl.store(dv_ptrs, dv, mask=offs_n_mask[:, None])
 
-    offs_m = start_m + tl.arange(0, BLOCK_M2)
-    offs_m_mask = offs_m < Q_CTX
+        # Write back dK.
+        dk *= sm_scale
+        dk_ptrs = DK + offs_n[:, None] * dk_stride_tok + offs_k[None, :] * stride_d
+        tl.store(dk_ptrs, dk, mask=offs_n_mask[:, None])
 
-    query = tl.load(
-        Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
-    dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
-    do = tl.load(
-        DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
-        mask=offs_m_mask[:, None],
-        other=0.0,
-    )
+    else:
+        # ============ dQ section ============
+        start_m = (pid - NUM_KV_BLOCKS) * BLOCK_M2
+        offs_m = start_m + tl.arange(0, BLOCK_M2)
+        offs_m_mask = offs_m < Q_CTX
 
-    m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
-    m = m[:, None]
-
-    # Stage 1 - Compute dQ for masked (diagonal) blocks.
-    # NOTE: This code scans each row of QK^T backward (from right to left,
-    # but inside each call to _attn_bwd_dq, from left to right), but that's
-    # not due to anything important.  I just wanted to reuse the loop
-    # structure for dK & dV above as much as possible.
-
-    if num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            MASK_BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            start_n,
-            num_steps,  #
-            MASK=True,  #
+        query = tl.load(
+            Q + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
+        )
+        dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
+        do = tl.load(
+            DO + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d,
+            mask=offs_m_mask[:, None],
+            other=0.0,
         )
 
-    # Stage 2 - non-masked blocks
-    stage2_end_n = start_n
-    stage2_num_steps = (stage2_end_n + BLOCK_N2 - 1) // BLOCK_N2
+        m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))
+        m = m[:, None]
 
-    if stage2_num_steps > 0:
-        dq = _attn_bwd_dq(
-            dq,
-            query,
-            K,
-            V,  #
-            do,
-            m,
-            D,  #
-            stride_tok,
-            stride_d,  #
-            H,
-            Q_CTX,  #
-            KV_CTX,  #
-            BLOCK_M2,
-            BLOCK_N2,
-            BLOCK_DMODEL,  #
-            start_m,
-            stage2_end_n - stage2_num_steps * BLOCK_N2,
-            stage2_num_steps,  #
-            MASK=False,  #
-        )
-    # Write back dQ.
-    dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
-    dq *= LN2
-    # tl.store(dq_ptrs, dq)
+        MASK_BLOCK_N2: tl.constexpr = BLOCK_N2 // BLK_SLICE_FACTOR
 
-    tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
+        if IS_CAUSAL:
+            # Masked diagonal phase: KV columns [diag_n, end_n)
+            # diag_n is the KV position where the causal boundary starts for
+            # this Q block. Only needed when diag_n < KV_CTX.
+            diag_n = min(start_m, KV_CTX)
+            end_n = min(start_m + BLOCK_M2, KV_CTX)
+            num_steps = (end_n - diag_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
+
+            if num_steps > 0:
+                dq = _attn_bwd_dq(
+                    dq,
+                    query,
+                    K,
+                    V,  #
+                    do,
+                    m,
+                    D,  #
+                    stride_tok,
+                    stride_d,  #
+                    H,
+                    Q_CTX,  #
+                    KV_CTX,  #
+                    BLOCK_M2,
+                    MASK_BLOCK_N2,
+                    BLOCK_DMODEL,  #
+                    start_m,
+                    diag_n,
+                    num_steps,  #
+                    MASK=True,  #
+                )
+
+            stage2_num_steps = (diag_n + BLOCK_N2 - 1) // BLOCK_N2
+        else:
+            stage2_num_steps = (KV_CTX + BLOCK_N2 - 1) // BLOCK_N2
+
+        if stage2_num_steps > 0:
+            dq = _attn_bwd_dq(
+                dq,
+                query,
+                K,
+                V,  #
+                do,
+                m,
+                D,  #
+                stride_tok,
+                stride_d,  #
+                H,
+                Q_CTX,  #
+                KV_CTX,  #
+                BLOCK_M2,
+                BLOCK_N2,
+                BLOCK_DMODEL,  #
+                start_m,
+                0,
+                stage2_num_steps,  #
+                MASK=False,  #
+            )
+
+        # Write back dQ.
+        dq_ptrs = DQ + offs_m[:, None] * stride_tok + offs_k[None, :] * stride_d
+        dq *= LN2
+        tl.store(dq_ptrs, dq, mask=offs_m_mask[:, None])
 
 
 def scaled_dot_product_attention_forward(
@@ -960,12 +1021,11 @@ def scaled_dot_product_attention_backward(
         D_HEAD=BLOCK_DMODEL,  #
     )
 
-    max_block_n1 = (
-        max([cfg.kwargs["BLOCK_N1"] for cfg in config_backward])
-        if config_backward
-        else 128
+    grid = lambda meta: (
+        triton.cdiv(KV_CTX, meta["BLOCK_N1"]) + triton.cdiv(Q_CTX, meta["BLOCK_M2"]),
+        1,
+        BATCH * Q_HEAD,
     )
-    grid = (triton.cdiv(Q_CTX, max_block_n1), 1, BATCH * Q_HEAD)
 
     _attn_bwd[grid](
         query,
@@ -984,19 +1044,17 @@ def scaled_dot_product_attention_backward(
         query.stride(3),  #
         key.stride(0),
         key.stride(1),  #
+        dk.stride(0),
+        dk.stride(1),
+        dk.stride(2),  #
         Q_HEAD,
         Q_CTX,  #
         KV_CTX,  #
         KV_HEAD,  #
         GROUP_HEAD=group_head,  #
-        # BLOCK_M1=BLOCK_M1,
-        # BLOCK_N1=BLOCK_N1,  #
-        # BLOCK_M2=BLOCK_M2,
-        # BLOCK_N2=BLOCK_N2,  #
         BLK_SLICE_FACTOR=BLK_SLICE_FACTOR,  #
         BLOCK_DMODEL=BLOCK_DMODEL,  #
-        # num_warps=NUM_WARPS,  #
-        # num_stages=NUM_STAGES,  #
+        IS_CAUSAL=is_causal,  #
     )
 
     if group_head > 1:
