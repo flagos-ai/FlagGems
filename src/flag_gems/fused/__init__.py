@@ -74,6 +74,7 @@ from flag_gems.fused.indexer_k_quant_and_cache import indexer_k_quant_and_cache
 from flag_gems.fused.instance_norm import instance_norm
 from flag_gems.fused.int8_sparse_indexer import (
     int8_indexer_cache_store,
+    int8_indexer_cache_views,
     int8_indexer_paged_logits,
     int8_indexer_quantize,
 )
@@ -170,6 +171,7 @@ __all__ = [
     "inplace_fused_experts",
     "instance_norm",
     "int8_indexer_cache_store",
+    "int8_indexer_cache_views",
     "int8_indexer_paged_logits",
     "int8_indexer_quantize",
     "invoke_fused_moe_triton_kernel",

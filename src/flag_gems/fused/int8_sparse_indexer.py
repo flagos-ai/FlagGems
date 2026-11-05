@@ -8,10 +8,14 @@ round-to-nearest-even. Dot products accumulate in INT32; no FP8 conversion
 or instruction is involved. Query scales are folded into the head weights.
 """
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
 from triton.language.extra import libdevice
+
+logger = logging.getLogger(__name__)
 
 _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _INDEX_DTYPES = (torch.int32, torch.int64)
@@ -97,7 +101,14 @@ def int8_indexer_quantize(x):
     return q, scales
 
 
-def _cache_views(cache, page_size):
+def int8_indexer_cache_views(cache, page_size):
+    """Return no-copy INT8-byte and FP32-scale views of packed D128 pages.
+
+    The returned tensors alias ``cache``. The caller owns its storage lifetime,
+    stream ordering and concurrent-write exclusion; this function does not
+    allocate, normalize, copy or inspect device values.
+    """
+    logger.debug("GEMS INT8_INDEXER_CACHE_VIEWS")
     if type(page_size) is not int or page_size <= 0:
         raise ValueError("page_size must be a positive integer")
     if (
@@ -116,6 +127,10 @@ def _cache_views(cache, page_size):
     return flat[:, : page_size * 128].view(torch.int8), flat[:, page_size * 128 :].view(
         torch.float32
     )
+
+
+# Retain the old identity for internal callers during the public API transition.
+_cache_views = int8_indexer_cache_views
 
 
 @triton.jit
@@ -281,6 +296,7 @@ def int8_indexer_paged_logits(
 
 __all__ = [
     "int8_indexer_cache_store",
+    "int8_indexer_cache_views",
     "int8_indexer_paged_logits",
     "int8_indexer_quantize",
 ]
