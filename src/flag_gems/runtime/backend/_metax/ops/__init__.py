@@ -12,7 +12,6 @@ from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .bmm import bmm, bmm_out
-from .broadcast_to import broadcast_to
 from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
@@ -168,7 +167,6 @@ __all__ = [
     "baddbmm_out",
     "bmm",
     "bmm_out",
-    "broadcast_to",
     "bmm_w8a8",
     "cholesky_inverse",
     "cholesky_solve",
