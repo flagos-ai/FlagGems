@@ -5,6 +5,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 
 @pytest.mark.lstm
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -73,6 +75,8 @@ def test_lstm(
     # FlagGems' own deviation from the float64 result is ~1.2e-7, so a tight
     # tolerance against an accurate reference is both stricter and more informative.
     use_fp64_ref = dtype is torch.float32
+    if IS_KUNLUNXIN and not use_fp64_ref:
+        use_fp64_ref = True
 
     ref_input = utils.to_reference(input, upcast=use_fp64_ref)
     ref_h0 = utils.to_reference(h0, upcast=use_fp64_ref)
