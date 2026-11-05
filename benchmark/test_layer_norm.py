@@ -12,14 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Generator, Sequence
+
 import pytest
 import torch
 
 from . import base, consts
+from .test_blas_perf_parallel import ParallelBenchmarkMixin
 
 
 # TODO(Qiming): Extract this to a base class
-class NormBenchmark(base.GenericBenchmark):
+class NormBenchmark(ParallelBenchmarkMixin, base.GenericBenchmark):
+    RECORD_PARALLEL_RESULTS = True
     # TODO: add new metric
 
     def set_more_shapes(self):
@@ -40,27 +44,34 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
-def input_fn(shape, dtype, device):
+def input_fn(
+    shape: Sequence[int | float], dtype: torch.dtype, device: str
+) -> Generator:
+    # A floating-point suffix carries epsilon; preceding integer is normalized rank.
+    if isinstance(shape[-1], float):
+        eps = shape[-1]
+        normalized_rank = shape[-2]
+        shape = shape[:-2]
+        if not isinstance(normalized_rank, int) or not 1 <= normalized_rank <= len(
+            shape
+        ):
+            raise ValueError("normalized rank must select a nonempty input suffix")
+        layer_shape = shape[-normalized_rank:]
+    else:
+        eps = 1e-5
+        layer_shape = shape[1:]
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    layer_shape = shape[1:]
     weight = torch.randn(layer_shape, dtype=dtype, device=device)
     bias = torch.randn(layer_shape, dtype=dtype, device=device)
-    yield inp, layer_shape, weight, bias
-
-
-def native_layer_norm_input_fn(shape, dtype, device):
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    normalized_shape = shape[1:]
-    weight = torch.randn(normalized_shape, dtype=dtype, device=device)
-    bias = torch.randn(normalized_shape, dtype=dtype, device=device)
-    yield inp, normalized_shape, weight, bias, 1e-5
+    yield inp, layer_shape, weight, bias, eps
 
 
 @pytest.mark.native_layer_norm
 def test_native_layer_norm():
     bench = NormBenchmark(
         op_name="native_layer_norm",
-        input_fn=native_layer_norm_input_fn,
+        input_fn=input_fn,
         torch_op=torch.ops.aten.native_layer_norm.default,
         dtypes=consts.FLOAT_DTYPES,
     )

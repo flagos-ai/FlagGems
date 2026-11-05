@@ -1,0 +1,20 @@
+# Synthetic coverage for the MThreads LayerNorm integration; not model weights.
+layer_norm: &layer_norm
+  shape_desc: "M, N (or leading dimensions and normalized suffix)"
+  shapes:
+    - [1, 128]
+    - [1, 4096]
+    - [16, 768]
+    - [16, 4096]
+    - [256, 128]
+    - [256, 1024]
+    - [4096, 128]
+    - [4096, 768]
+    - [4096, 1024]
+    - [4096, 4096]
+    - [32768, 256]
+    - [256, 16384]
+    - [16, 65536]
+    - [2, 3, 8, 16]
+native_layer_norm:
+  <<: *layer_norm

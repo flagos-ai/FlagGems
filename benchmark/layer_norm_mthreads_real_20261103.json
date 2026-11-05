@@ -1,0 +1,57 @@
+{
+  "op": "torch.nn.functional.layer_norm",
+  "input_shape": [
+    65536,
+    1,
+    1152
+  ],
+  "normalized_shape": [
+    1152
+  ],
+  "input_dtype": "torch.bfloat16",
+  "input_stride": [
+    1152,
+    1152,
+    1
+  ],
+  "weight": {
+    "dtype": "torch.bfloat16",
+    "shape": [
+      1152
+    ],
+    "stride": [
+      1
+    ]
+  },
+  "bias": {
+    "dtype": "torch.bfloat16",
+    "shape": [
+      1152
+    ],
+    "stride": [
+      1
+    ]
+  },
+  "eps": 1e-06,
+  "observed_count_tp_aggregate": 110,
+  "observed_count_per_rank": 55,
+  "tp": 2,
+  "sources": {
+    "Qwen3.5-35B-A3B/startup": 110
+  },
+  "source_model": "Qwen3.5-35B-A3B",
+  "source_hardware": "H800",
+  "source_boundary": "startup profiling synthetic visual inputs; four text request scenarios observed zero calls; not image-request production distribution",
+  "numeric_replay": "seeded synthetic tensors; original tensor values/weights were not provided",
+  "m": 65536,
+  "n": 1152,
+  "logical_elements": 75497472,
+  "input_bytes": 150994944,
+  "model_flops": 603979776,
+  "ideal_bytes_native": 302518784,
+  "ideal_bytes_y_only": 301994496,
+  "roofline_note": "logical stable-algorithm approximation; no measured DRAM traffic or peak achieved claim",
+  "block_n": 2048,
+  "arithmetic_intensity_native": 1.9965033840675492,
+  "masked_fraction": 0.4375
+}

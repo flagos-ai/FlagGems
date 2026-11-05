@@ -1,0 +1,14 @@
+# Qwen3.5-35B-A3B startup profiling; seeded values replay the recorded metadata.
+# A float epsilon suffix distinguishes this schema from legacy input-only shapes.
+layer_norm:
+  shape_desc: "input dimensions..., normalized_rank, epsilon"
+  shapes:
+    - [65536, 1, 1152, 1, 1.0e-6]
+  counts: [110]
+  source: "real_shapes_20261103, TP2 startup profile, 55 calls per rank"
+native_layer_norm:
+  shape_desc: "input dimensions..., normalized_rank, epsilon"
+  shapes:
+    - [65536, 1, 1152, 1, 1.0e-6]
+  counts: [110]
+  source: "same functional workload; native interface diagnostic, do not sum counts twice"
