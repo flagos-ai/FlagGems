@@ -68,6 +68,18 @@ def _make_inputs(shape, dtype):
         ]
 
 
+def _assert_row_stack_equal(result, reference, expected_device):
+    if flag_gems.vendor_name == "enflame":
+        # GCU comparison primitives can abort on promoted integer tensors.
+        # Check the target ABI before comparing the actual values on CPU.
+        assert result.device == expected_device
+        assert result.dtype == reference.dtype
+        assert result.shape == reference.shape
+        utils.gems_assert_equal(result.cpu(), reference.cpu())
+    else:
+        utils.gems_assert_equal(result, reference)
+
+
 @pytest.mark.row_stack
 @pytest.mark.parametrize("shape", ROW_STACK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES)
@@ -79,7 +91,7 @@ def test_row_stack(shape, dtype):
     # GEMS direct call: the kernel vertically stacks on the accelerator.
     res_out = flag_gems.row_stack(inp)
 
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_row_stack_equal(res_out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack
@@ -101,7 +113,7 @@ def test_row_stack_zero_sized_trailing_dims(shape, dtype):
     assert res_out.numel() == ref_out.numel()
     assert tuple(res_out.shape) == tuple(ref_out.shape)
     assert tuple(res_out.stride()) == tuple(ref_out.stride())
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_row_stack_equal(res_out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack
@@ -137,7 +149,7 @@ def test_row_stack_memory_format(shape, memory_format, dtype):
     assert tuple(res_out.stride()) == tuple(ref_out.stride())
     if memory_format != torch.contiguous_format:
         assert res_out.is_contiguous(memory_format=memory_format)
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_row_stack_equal(res_out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack
@@ -160,13 +172,14 @@ def test_row_stack_mixed_dtype_promotion(dtype):
         and dtype == torch.float32
     ):
         pytest.skip(
-            "Iluvatar native row_stack float32/float64 promotion computes incorrect values; CPU reference remains covered"
+            "Iluvatar native row_stack float32/float64 promotion computes incorrect values; "
+            "CPU reference remains covered"
         )
     ref_out = torch.row_stack([ref_a, ref_b])
     res_out = flag_gems.row_stack([a, b])
 
     assert res_out.dtype == ref_out.dtype
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_row_stack_equal(res_out, ref_out, a.device)
 
 
 @pytest.mark.row_stack_out
@@ -192,7 +205,7 @@ def test_row_stack_out(shape, dtype):
     assert ref_ret is ref_out
     assert res_ret is res_out
     assert res_ret.data_ptr() == res_out.data_ptr()
-    utils.gems_assert_equal(res_out, ref_out)
+    _assert_row_stack_equal(res_out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack_out
@@ -234,7 +247,7 @@ def test_row_stack_out_memory_format(shape, memory_format, dtype):
         assert ret is res_out
         assert tuple(res_out.shape) == tuple(ref_out.shape)
         assert tuple(res_out.stride()) == tuple(ref_out.stride())
-        utils.gems_assert_equal(res_out, ref_out)
+        _assert_row_stack_equal(res_out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack_out
@@ -258,10 +271,11 @@ def test_row_stack_out_non_contiguous(dtype):
 
     assert ret is out
     assert tuple(out.stride()) == (6, 1)
-    utils.gems_assert_equal(out, ref_out)
+    _assert_row_stack_equal(out, ref_out, inp[0].device)
     # The destination's strides must be respected: the untouched columns stay 0.
-    assert torch.count_nonzero(buffer[:, 0]) == 0
-    assert torch.count_nonzero(buffer[:, 4:]) == 0
+    checked_buffer = buffer.cpu() if flag_gems.vendor_name == "enflame" else buffer
+    assert torch.count_nonzero(checked_buffer[:, 0]) == 0
+    assert torch.count_nonzero(checked_buffer[:, 4:]) == 0
 
 
 @pytest.mark.row_stack_out
@@ -278,7 +292,7 @@ def test_row_stack_out_resize(shape, dtype):
 
     assert ret is out
     assert tuple(out.shape) == tuple(ref_out.shape)
-    utils.gems_assert_equal(out, ref_out)
+    _assert_row_stack_equal(out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack_out
@@ -288,7 +302,8 @@ def test_row_stack_out_dtype_cast():
     ref_inp = [utils.to_reference(e) for e in inp]
     if flag_gems.vendor_name == "iluvatar" and ref_inp[0].device.type != "cpu":
         pytest.skip(
-            "Iluvatar native row_stack out float32-to-float64 cast computes incorrect values; CPU reference remains covered"
+            "Iluvatar native row_stack out float32-to-float64 cast computes incorrect values; "
+            "CPU reference remains covered"
         )
     ref_out = torch.empty((4, 3), dtype=torch.float64, device=ref_inp[0].device)
     torch.row_stack(ref_inp, out=ref_out)
@@ -298,7 +313,7 @@ def test_row_stack_out_dtype_cast():
 
     assert ret is out
     assert out.dtype == torch.float64
-    utils.gems_assert_equal(out, ref_out)
+    _assert_row_stack_equal(out, ref_out, inp[0].device)
 
 
 @pytest.mark.row_stack_out
