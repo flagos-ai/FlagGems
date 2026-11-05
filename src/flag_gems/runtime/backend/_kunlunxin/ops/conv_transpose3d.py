@@ -63,6 +63,28 @@ def conv_transpose3d(
     logger.debug("GEMS_KUNLUNXIN CONV_TRANSPOSE3D")
 
     if _CAN_CAPTURE_NATIVE_KERNEL:
+        # Same reason as the 1D override: one fp16 ulp (7.8e-03 at a magnitude
+        # of 8) is wider than the tolerance this backend's test matrix allows
+        # (atol 1e-4 * 32 for the grouped cases), so an fp16 kernel fails
+        # whenever its partial sums round the other way -- observed as a single
+        # element at 0.0063 against 0.0032 allowed.  fp16 inputs run the same
+        # native kernel in float32 and are rounded once at the end, which makes
+        # the output the correctly rounded fp32 value.
+        if input.dtype == torch.float16:
+            out = _NATIVE_CONVOLUTION.call_boxed(
+                _NATIVE_KEY_SET,
+                input.to(torch.float32),
+                weight.to(torch.float32),
+                None if bias is None else bias.to(torch.float32),
+                _three(stride),
+                _three(padding),
+                _three(dilation),
+                True,
+                _three(output_padding),
+                groups,
+            )
+            return out.to(torch.float16)
+
         return _NATIVE_CONVOLUTION.call_boxed(
             _NATIVE_KEY_SET,
             input,

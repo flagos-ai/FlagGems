@@ -78,7 +78,8 @@ def conv_transpose1d(
         # roughly one element in a few thousand.  Running the same native
         # kernel in float32 and rounding once at the end makes the result the
         # correctly rounded fp32 answer (max abs error 0.0 against the
-        # reference over 40 random seeds) at about 2x the fp16 latency.
+        # reference over 40 random seeds); measured end-to-end cost in
+        # --fg_mode operator is in the noise.
         if input.dtype == torch.float16:
             out = _NATIVE_CONVOLUTION.call_boxed(
                 _NATIVE_KEY_SET,
