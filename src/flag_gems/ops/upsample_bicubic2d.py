@@ -212,8 +212,19 @@ def upsample_bicubic2d(
         scale_h = 0.0 if H_out <= 1 else (H_in - 1.0) / (H_out - 1.0)
         scale_w = 0.0 if W_out <= 1 else (W_in - 1.0) / (W_out - 1.0)
     else:
-        scale_h = float(H_in) / float(H_out)
-        scale_w = float(W_in) / float(W_out)
+        # An explicit scale factor wins over the size ratio, as in ATen's
+        # compute_scales_value (and in bicubic_reciprocal_scale next door in
+        # upsample_bicubic2d_aa.py). The two differ whenever the output size is
+        # not exactly H_in / scales_h, which is the usual case for a
+        # non-integral scale_factor.
+        if scales_h is not None and scales_h > 0:
+            scale_h = 1.0 / float(scales_h)
+        else:
+            scale_h = float(H_in) / float(H_out)
+        if scales_w is not None and scales_w > 0:
+            scale_w = 1.0 / float(scales_w)
+        else:
+            scale_w = float(W_in) / float(W_out)
 
     out = torch.empty((N, C, H_out, W_out), dtype=input.dtype, device=device)
 
