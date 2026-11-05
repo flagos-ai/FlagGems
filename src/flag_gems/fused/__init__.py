@@ -116,9 +116,11 @@ from flag_gems.fused.topk_softplus_sqrt import topk_softplus_sqrt
 from flag_gems.fused.unpack_seq import unpack_seq_triton
 from flag_gems.fused.weight_norm import weight_norm
 
+from .sage_attention import sage_attention
+
 __all__ = [
-    "add_rms_norm",
     "act_quant_triton",
+    "add_rms_norm",
     "apply_repetition_penalties",
     "apply_rotary_pos_emb",
     "beam_search_score",
@@ -183,6 +185,7 @@ __all__ = [
     "reshape_and_cache_flash",
     "rwkv_ka_fusion",
     "rwkv_mm_sparsity",
+    "sage_attention",
     "silu_and_mul",
     "silu_and_mul_out",
     "silu_and_mul_with_clamp",
