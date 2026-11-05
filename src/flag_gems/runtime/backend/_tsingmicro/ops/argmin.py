@@ -197,7 +197,9 @@ def argmin_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        # FIX(zml, 2026-10-30): same mask bug as argmax.py:140 — Python `and`
+        # on tensors collapses the 2D mask. See CHANGELOG in france_results/.
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=max_value)
         # tl.bfloat is promoted to tl.float32 by tl.min
