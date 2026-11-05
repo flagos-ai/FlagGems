@@ -5,20 +5,28 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.runtime import get_tuned_config, torch_device_fn
+from flag_gems.utils import libentry, libtuner
 
 from .mm_w8a8_int8 import _mm_w8a8_aiu_kernel as mm_w8a8_kernel
 from .mm_w8a8_int8 import _mm_w8a8_vector_kernel as mm_w8a8_vector_kernel
-from .mm_w8a8_int8 import _pick_tiles as pick_tiles
+from .mm_w8a8_int8 import _prune_mm_configs as prune_mm_configs
 from .mm_w8a8_int8 import mm_w8a8_int8_out
 
 # Reuse the MM body so INT8 AIU lowering and scaling stay identical across APIs.
-scaled_mm_kernel = mm_w8a8_kernel.fn
+scaled_mm_kernel = mm_w8a8_kernel.jit_function
 MAX_INT32_REDUCTION = (2**31 - 1) // (128 * 128)
 
 
 @libentry()
+@libtuner(
+    configs=get_tuned_config("mm_w8a8_int8"),
+    key=["BATCH", "M", "N", "K"],
+    prune_configs_by={"early_config_prune": prune_mm_configs},
+    use_cuda_graph=True,
+    rep=30,
+)
+@triton.heuristics({"NUM_WARPS": lambda args: args["num_warps"]})
 @triton.jit
 def bmm_channel_int8_kernel(
     activation,
@@ -29,14 +37,16 @@ def bmm_channel_int8_kernel(
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
+    BATCH: tl.constexpr,
+    TRANSPOSE_OUT: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
     GROUP_M: tl.constexpr,
-    BOUNDARY: tl.constexpr,
     NUM_WARPS: tl.constexpr,
 ):
     batch = tl.program_id(1).to(tl.int64)
+    boundary: tl.constexpr = M % BLOCK_M != 0 or N % BLOCK_N != 0 or K % BLOCK_K != 0
     scaled_mm_kernel(
         activation + batch * M * K,
         weight + batch * N * K,
@@ -52,13 +62,15 @@ def bmm_channel_int8_kernel(
         BLOCK_N,
         BLOCK_K,
         GROUP_M,
-        BOUNDARY,
-        BOUNDARY,
+        boundary,
+        boundary,
         NUM_WARPS,
-        False,
-        False,
-        False,
-        False,
+        A_SCALAR=False,
+        B_SCALAR=False,
+        HAS_BIAS=False,
+        TRANSPOSE_OUT=TRANSPOSE_OUT,
+        FAST_TAIL=BLOCK_M >= 128 and N >= 1024 and K >= 2048,
+        STORE_CACHE="",
     )
 
 
@@ -102,8 +114,6 @@ def bmm_w8a8_int8(
         raise TypeError("scales must be contiguous FP32 tensors")
     if any(scale.requires_grad for scale in (activation_scale, weight_scale)):
         raise NotImplementedError("bmm_w8a8_int8 is forward-only")
-    if reduction > MAX_INT32_REDUCTION:
-        raise NotImplementedError("reduction may overflow signed INT32 accumulation")
     if out_dtype not in (torch.bfloat16, torch.float16, torch.float32):
         raise TypeError("output dtype must be bfloat16, float16 or float32")
     if out is None:
@@ -128,6 +138,8 @@ def bmm_w8a8_int8(
         raise ValueError("out must not share storage with an input")
     if out.numel() == 0:
         return out
+    if reduction > MAX_INT32_REDUCTION:
+        raise NotImplementedError("reduction may overflow signed INT32 accumulation")
     if reduction == 0:
         for index in range(batch):
             mm_w8a8_int8_out(
@@ -159,13 +171,13 @@ def bmm_w8a8_int8(
                 num_warps=4,
             )
         return out
-    block_m, block_n, block_k, warps, stages, group_m = pick_tiles(
-        rows, columns, reduction
-    )
-    boundary = rows % block_m != 0 or columns % block_n != 0 or reduction % block_k != 0
     with torch_device_fn.device(activation.device):
         bmm_channel_int8_kernel[
-            (triton.cdiv(rows, block_m) * triton.cdiv(columns, block_n), batch)
+            lambda meta: (
+                triton.cdiv(rows, meta["BLOCK_M"])
+                * triton.cdiv(columns, meta["BLOCK_N"]),
+                batch,
+            )
         ](
             activation,
             weight,
@@ -175,13 +187,7 @@ def bmm_w8a8_int8(
             rows,
             columns,
             reduction,
-            block_m,
-            block_n,
-            block_k,
-            group_m,
-            boundary,
-            warps,
-            num_warps=warps,
-            num_stages=stages,
+            batch,
+            TRANSPOSE_OUT=False,
         )
     return out

@@ -88,6 +88,17 @@ class CodeGenConfig:
             self.prefer_block_pointer = False
 
 
+def get_pointwise_nd_codegen_config():
+    """Return a fresh ND block-pointer config for pointwise tensor kernels."""
+    return CodeGenConfig(
+        max_tile_size=4096,
+        max_grid_size=(16, 1, 1),
+        max_num_warps_per_cta=1,
+        prefer_block_pointer=True,
+        prefer_1d_tile=False,
+    )
+
+
 CODEGEN_COFIGS = {
     vendors.NVIDIA: CodeGenConfig(
         512,
