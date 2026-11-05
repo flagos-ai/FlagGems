@@ -238,10 +238,11 @@ LAYERNORM_CASES = [
     (tuple(shape), tuple(normalized_shape), float(eps))
     for shape, normalized_shape, eps in layernorm_shapes["shapes"]
 ]
-UNSUPPORTED_LAYERNORM_CASES = [
-    (tuple(shape), tuple(normalized_shape))
-    for shape, normalized_shape in layernorm_shapes["unsupported_shapes"]
-]
+# These normalized suffixes exceed the MetaX inference entry's 65536 limit.
+UNSUPPORTED_LAYERNORM_CASES = (
+    ((16, 16, 4098), (16, 4098)),
+    ((16, 8, 128, 128), (8, 128, 128)),
+)
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
