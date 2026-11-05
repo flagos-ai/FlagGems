@@ -535,9 +535,7 @@ def test_div_mode_tensor(shape, rounding_mode, dtype):
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
-    # The top-level div_tensor_mode resolves to the backend specialization (with the
-    # correct half-precision floor algorithm) via SpecOpRegistrar.
-    res_out = flag_gems.div_tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -627,7 +625,7 @@ def test_div_mode_tensor_(shape, rounding_mode, dtype):
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
-    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div_mode_(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
