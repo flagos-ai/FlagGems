@@ -44,6 +44,7 @@ from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
+from .cumulative_trapezoid import cumulative_trapezoid
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
@@ -224,6 +225,7 @@ __all__ = [
     "cummax",
     "cummin",
     "cumsum",
+    "cumulative_trapezoid",
     "diag",
     "diag_embed",
     "diagonal_backward",
