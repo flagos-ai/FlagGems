@@ -999,6 +999,11 @@ _FULL_CONFIG = (
     ),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    (
+        "cudnn_affine_grid_generator_backward.out",
+        cudnn_affine_grid_generator_backward_out,
+    ),
+    ("cudnn_affine_grid_generator_backward", cudnn_affine_grid_generator_backward),
     ("cudnn_batch_norm", cudnn_batch_norm, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm.out", cudnn_batch_norm_out),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
@@ -2168,11 +2173,6 @@ _FULL_CONFIG = (
         "upsample_nearest3d_backward.grad_input",
         upsample_nearest3d_backward_grad_input,
     ),
-    (
-        "cudnn_affine_grid_generator_backward.out",
-        cudnn_affine_grid_generator_backward_out,
-    ),
-    ("cudnn_affine_grid_generator_backward", cudnn_affine_grid_generator_backward),
     ("upsample_trilinear3d", upsample_trilinear3d),
     ("upsample_trilinear3d_backward", upsample_trilinear3d_backward),
     ("value_selecting_reduction_backward", value_selecting_reduction_backward),
