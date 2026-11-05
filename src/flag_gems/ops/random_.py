@@ -118,21 +118,55 @@ def random_(self, *, generator=None):
     return random_from(self, 0, _default_range(self.dtype), generator=generator)
 
 
-def random_from(self, from_, to, *, generator=None):
-    logger.debug("GEMS RANDOM_ FROM")
-    if self.dtype not in _INT_TYPES:
-        raise RuntimeError(f"random_ not implemented for '{self.dtype}'")
+def _check_bounds(dtype, from_, to):
+    """Validate the half-open [from_, to) range against the destination dtype."""
+    if dtype == torch.bool:
+        low, high = 0, 2
+    else:
+        info = torch.iinfo(dtype)
+        low, high = int(info.min), int(info.max) + 1
+    if to is None:
+        to = high
+    if from_ is None:
+        from_ = 0
     if to <= from_:
         raise RuntimeError(
             f"random_ expects 'from' to be less than 'to', but got from={from_} to={to}"
         )
+    # `to` is exclusive, so the largest value that can be produced is to - 1.
+    if from_ < low or to - 1 > high - 1:
+        raise RuntimeError(
+            f"random_ range [{from_}, {to}) is out of bounds for {dtype}"
+        )
+    return from_, to
+
+
+def random_from(self, from_, to, *, generator=None):
+    logger.debug("GEMS RANDOM_ FROM")
+    if self.dtype not in _INT_TYPES:
+        raise RuntimeError(f"random_ not implemented for '{self.dtype}'")
+    from_, to = _check_bounds(self.dtype, from_, to)
+    if self.numel() == 0:
+        return self
+    if not self.is_contiguous():
+        # The kernel stores linearly from the base pointer, so a strided view
+        # (e.g. `base[::2]`) would write elements outside the view. Fill a
+        # contiguous buffer and copy it back through the view's strides.
+        staged = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+        random_from(staged, from_, to, generator=generator)
+        self.copy_(staged)
+        return self
+
     N = volume(self.shape)
     is_int64 = self.dtype == torch.int64
     # int64 needs two 32-bit words per draw; the other dtypes reuse the four
     # words produced by a single philox counter.
     UNROLL = 2 if is_int64 else 4
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-    increment = triton.cdiv(N, UNROLL)
+    # Each program advances `c0` by `pid * BLOCK + arange(BLOCK)`, i.e. it
+    # consumes BLOCK_SIZE counters, so reserve exactly what the launch uses.
+    num_programs = triton.cdiv(N, BLOCK_SIZE * UNROLL)
+    increment = num_programs * BLOCK_SIZE
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )

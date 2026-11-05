@@ -65,3 +65,39 @@ def test_random_from(shape, dtype, from_to):
     assert res_out is x
     assert (x >= from_).all()
     assert (x < to).all()
+
+
+@pytest.mark.random_
+def test_random_from_rejects_out_of_range_bounds():
+    """int8 cannot represent [100, 200); sampling must raise, not truncate."""
+    x = torch.zeros(8, dtype=torch.int8, device=flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.random_from(x, 100, 200)
+
+
+@pytest.mark.random_
+def test_random_from_reserves_counters_per_call():
+    """Consecutive fills must not replay the same philox counters.
+
+    Each program consumes BLOCK_SIZE counters, so a reservation of N // UNROLL
+    left the tail of the stream to be drawn twice.
+    """
+    torch.manual_seed(1234)
+    first = torch.empty(100, dtype=torch.int32, device=flag_gems.device)
+    flag_gems.random_(first)
+    second = torch.empty(100, dtype=torch.int32, device=flag_gems.device)
+    flag_gems.random_(second)
+
+    assert not torch.equal(first, second), "consecutive calls reused draws"
+
+
+@pytest.mark.random_
+def test_random_strided_destination_keeps_the_view():
+    """A strided view must only be written inside the view."""
+    base = torch.full((16,), -7, dtype=torch.int32, device=flag_gems.device)
+    view = base[::2]
+    flag_gems.random_from(view, 0, 10)
+
+    assert torch.all(view >= 0) and torch.all(view < 10)
+    # every element outside the view keeps its sentinel value
+    assert torch.all(base[1::2] == -7)
