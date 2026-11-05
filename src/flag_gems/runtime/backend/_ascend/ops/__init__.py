@@ -158,6 +158,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
@@ -382,6 +383,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_erfinv",
+    "squeeze_copy",
     "stack",
     "swiglu",
     "thnn_fused_lstm_cell",
