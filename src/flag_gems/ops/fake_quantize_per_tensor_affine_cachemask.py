@@ -20,10 +20,37 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
 logger = logging.getLogger(__name__)
+
+
+# Only XPU needs the extern-free rounding below; every other backend keeps
+# ``nearbyint`` so its result stays bit-identical to the previous implementation.
+_NEEDS_FLOOR_ROUND = runtime.device.vendor_name == "kunlunxin"
+
+
+@triton.jit
+def _round_half_even(x):
+    """``nearbyint``/``rint`` without the extern call.
+
+    XPU lowers these extern roundings into a vector-layout value whose use in a
+    ``tl.minimum``/``tl.maximum`` chain emits a ``triton_xpu.unpack`` that cannot
+    be legalized ("reached lowering without a bufPtr") for blocks above 256
+    lanes. Rounding through ``floor`` is exact for every finite float (values at
+    or above 2**23 are already integers) and reproduces round-half-to-even; the
+    non-finite inputs are passed through because this backend's ``floor``
+    saturates them to 2**31.
+    """
+    f = tl.floor(x)
+    frac = x - f
+    up = frac > 0.5
+    tie_odd = (frac == 0.5) & ((f * 0.5) != tl.floor(f * 0.5))
+    r = tl.where(up | tie_odd, f + 1.0, f)
+    r = tl.where(tl.abs(x) == float("inf"), x, r)
+    return tl.where(x != x, x, r)
 
 
 @libentry()
@@ -46,6 +73,7 @@ def fake_quantize_per_tensor_affine_cachemask_kernel(
     zero_point,
     quant_min,
     quant_max,
+    FLOOR_ROUND: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -54,10 +82,22 @@ def fake_quantize_per_tensor_affine_cachemask_kernel(
     value = tl.load(input_ptr + offsets, mask=active).to(tl.float32)
     scale = scale.to(tl.float32)
     inv_scale = inv_scale.to(tl.float32)
-    quantized = tl_extra_shim.nearbyint(value * inv_scale) + zero_point
+    scaled = value * inv_scale
+    if FLOOR_ROUND:
+        quantized = _round_half_even(scaled) + zero_point
+    else:
+        quantized = tl_extra_shim.nearbyint(scaled) + zero_point
     cachemask = (quantized >= quant_min) & (quantized <= quant_max)
     quantized = tl.minimum(tl.maximum(quantized, quant_min), quant_max)
     output = (quantized - zero_point) * scale
+    if FLOOR_ROUND:
+        # XPU's unordered comparisons report NaN as in-range, so a NaN input is
+        # masked in on this backend. The device-side reference (the only
+        # reference available here) reports it out of range and emits a zero
+        # quantized value, so mirror that explicitly.
+        nonfinite = (scaled != scaled) | (tl.abs(scaled) == float("inf"))
+        cachemask = cachemask & (nonfinite == 0)
+        output = tl.where(nonfinite, 0.0, output)
 
     tl.store(output_ptr + offsets, output, mask=active)
     tl.store(mask_ptr + offsets, cachemask, mask=active)
@@ -114,6 +154,7 @@ def _launch(
             int(zero_point),
             int(quant_min),
             int(quant_max),
+            FLOOR_ROUND=_NEEDS_FLOOR_ROUND,
             BLOCK_SIZE=block_size,
         )
 
