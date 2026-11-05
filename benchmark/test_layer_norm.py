@@ -125,12 +125,12 @@ class LayernormBenchmark(base.Benchmark):
 
 
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 def test_layernorm():
     bench = LayernormBenchmark(
         op_name="layernorm", torch_op=F.layer_norm, dtypes=consts.FLOAT_DTYPES
     )
-    bench.set_gems(flag_gems.layernorm)
+    bench.set_gems(lambda *args, **kwargs: flag_gems.layer_norm(*args, **kwargs)[0])
     bench.run()
 
 
@@ -185,7 +185,9 @@ def benchmark_manifest_case(record, nodes, replays, samples):
     bias = make_manifest_tensor(extra["bias"]) if extra["bias"] else None
     normalized_shape, eps = tuple(extra["normalized_shape"]), extra["eps"]
     native = lambda: F.layer_norm(tensor, normalized_shape, weight, bias, eps)
-    candidate = lambda: flag_gems.layernorm(tensor, normalized_shape, weight, bias, eps)
+    candidate = lambda: flag_gems.layer_norm(
+        tensor, normalized_shape, weight, bias, eps
+    )[0]
     tolerance = {
         torch.float32: 1e-6,
         torch.float16: 1e-3,

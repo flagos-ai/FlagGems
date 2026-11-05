@@ -342,69 +342,115 @@ def weight_bias_backward_kernel(
         tl.store(dB + pid, accB, mask=col_mask)
 
 
-def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+def layer_norm(
+    input: torch.Tensor,
+    normalized_shape: Union[int, Sequence[int]],
+    weight: Optional[torch.Tensor] = None,
+    bias: Optional[torch.Tensor] = None,
+    eps: float = 1e-5,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     logger.debug("GEMS_METAX LAYERNORM_FORWARD")
-
-    N = math.prod(normalized_shape)
-    M = input.numel() // N
-
-    input = input.contiguous()
-    weight = None if weight is None else weight.contiguous()
-    bias = None if bias is None else bias.contiguous()
-    y = torch.empty_like(input)
-
-    # NOTE: when the input is half-precision(either float16 or bfloat16)
-    # these statistical data saved for backward is in single precision
-    mean = torch.empty(M, dtype=input.dtype, device=input.device)
-    rstd = torch.empty(M, dtype=input.dtype, device=input.device)
-
-    with torch_device_fn.device(input.device):
-        if N <= 128:
-            TILE_N = triton.next_power_of_2(N)
-            TILE_M = triton.cdiv(1024, TILE_N)
-            grid = (triton.cdiv(M, TILE_M), 1, 1)
-            layer_norm_persistent_kernel_multiline[grid](
-                input,
-                y,
-                weight,
-                bias,
-                mean,
-                rstd,
-                M,
-                N,
-                eps,
-                TILE_M,
-                TILE_N,
+    normalized_shape = (
+        (normalized_shape,)
+        if isinstance(normalized_shape, int)
+        else tuple(normalized_shape)
+    )
+    if not normalized_shape or any(size <= 0 for size in normalized_shape):
+        raise ValueError("normalized_shape must contain positive dimensions")
+    if tuple(input.shape[-len(normalized_shape) :]) != normalized_shape:
+        raise ValueError("normalized_shape must match the trailing input dimensions")
+    if input.device.type != "cuda":
+        raise NotImplementedError("layer_norm requires a MetaX CUDA-compatible device")
+    if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        raise NotImplementedError("layer_norm supports FP16, BF16 and FP32")
+    for affine in (weight, bias):
+        if affine is None:
+            continue
+        if tuple(affine.shape) != normalized_shape:
+            raise ValueError("affine shape must equal normalized_shape")
+        if affine.device != input.device:
+            raise ValueError("affine device must match input")
+        if affine.dtype != input.dtype and not (
+            input.dtype in (torch.float16, torch.bfloat16)
+            and affine.dtype == torch.float32
+        ):
+            raise ValueError("affine dtype must match input or be FP32 for half input")
+    width = math.prod(normalized_shape)
+    rows = input.numel() // width
+    output = torch.empty(input.shape, dtype=input.dtype, device=input.device)
+    # Preserve the flat, input-dtype statistics expected by the existing backward.
+    mean = torch.empty(rows, dtype=input.dtype, device=input.device)
+    rstd = torch.empty_like(mean)
+    if rows == 0:
+        return output, mean, rstd
+    if width > 65536:
+        # The existing streaming kernel covers normalized widths beyond one tile.
+        input = input.contiguous()
+        weight = None if weight is None else weight.contiguous()
+        bias = None if bias is None else bias.contiguous()
+        with torch_device_fn.device(input.device):
+            layer_norm_loop_kernel[(rows, 1, 1)](
+                input, output, weight, bias, mean, rstd, rows, width, eps
             )
-        elif N <= 4096:
-            TILE_N = triton.next_power_of_2(N)
-            grid = (M, 1, 1)
-            layer_norm_persistent_kernel[grid](
+        return output, mean, rstd
+    warps = 1 if width <= 4096 else (4 if width <= 8192 else 8)
+    is_dense_affine = all(
+        affine is None or affine.is_contiguous() for affine in (weight, bias)
+    )
+    body = 1 << (width.bit_length() - 1)
+    tail = width - body
+    use_split = (
+        input.is_contiguous()
+        and is_dense_affine
+        and width <= 4096
+        and rows >= 128
+        and body >= 256
+        and tail >= 64
+        and tail & (tail - 1) == 0
+    )
+    with torch_device_fn.device(input.device):
+        if use_split:
+            layernorm_split_kernel[(rows,)](
                 input,
-                y,
                 weight,
                 bias,
+                output,
                 mean,
                 rstd,
-                M,
-                N,
+                width,
                 eps,
-                TILE_N,
+                body,
+                tail,
+                weight is not None,
+                bias is not None,
+                num_warps=1,
+                enable_fp_fusion=False,
             )
         else:
-            grid = (M, 1, 1)
-            layer_norm_loop_kernel[grid](
+            layernorm_kernel[(rows,)](
                 input,
-                y,
                 weight,
                 bias,
+                output,
                 mean,
                 rstd,
-                M,
-                N,
+                rows,
+                width,
                 eps,
+                tuple(input.shape),
+                tuple(input.stride()),
+                normalized_shape,
+                tuple(weight.stride()) if weight is not None else (),
+                tuple(bias.stride()) if bias is not None else (),
+                input.is_contiguous(),
+                weight is not None,
+                bias is not None,
+                1,
+                triton.next_power_of_2(width),
+                num_warps=warps,
+                enable_fp_fusion=False,
             )
-    return y, mean, rstd
+    return output, mean, rstd
 
 
 def layer_norm_backward(
@@ -426,8 +472,8 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)
@@ -458,6 +504,8 @@ def layernorm_split_kernel(
     Weight,
     Bias,
     Output,
+    Mean,
+    Rstd,
     N: tl.constexpr,
     EPS: tl.constexpr,
     BODY: tl.constexpr,
@@ -477,6 +525,8 @@ def layernorm_split_kernel(
         tl.sum(body_delta * body_delta, 0) + tl.sum(tail_delta * tail_delta, 0)
     ) / N
     rstd = tl.rsqrt(variance + EPS)
+    tl.store(Mean + row, mean)
+    tl.store(Rstd + row, rstd)
     body_out = body_delta * rstd
     tail_out = tail_delta * rstd
     if HAS_WEIGHT:
@@ -495,6 +545,8 @@ def layernorm_kernel(
     Weight,
     Bias,
     Output,
+    Mean,
+    Rstd,
     M: tl.constexpr,
     N: tl.constexpr,
     EPS: tl.constexpr,
@@ -533,7 +585,10 @@ def layernorm_kernel(
     centered = values - mean[:, None]
     centered_masked = tl.where(cols[None, :] < N, centered, 0.0)
     variance = tl.sum(centered_masked * centered_masked, 1) / N
-    normalized = centered * tl.rsqrt(variance[:, None] + EPS)
+    rstd = tl.rsqrt(variance + EPS)
+    tl.store(Mean + rows, mean, rows < M)
+    tl.store(Rstd + rows, rstd, rows < M)
+    normalized = centered * rstd[:, None]
     if HAS_WEIGHT:
         weight_offsets = tl.full((COLS,), 0, tl.int64)
         index = cols
@@ -551,102 +606,3 @@ def layernorm_kernel(
         bias = tl.load(Bias + bias_offsets, cols < N, other=0).to(tl.float32)
         normalized = normalized + bias[None, :]
     tl.store(Output + rows[:, None] * N + cols[None, :], normalized, mask)
-
-
-def layernorm(
-    input: torch.Tensor,
-    normalized_shape: Union[int, Sequence[int]],
-    weight: Optional[torch.Tensor] = None,
-    bias: Optional[torch.Tensor] = None,
-    eps: float = 1e-5,
-) -> torch.Tensor:
-    """C550 inference LayerNorm with FP32 centered variance accumulation."""
-    normalized_shape = (
-        (normalized_shape,)
-        if isinstance(normalized_shape, int)
-        else tuple(normalized_shape)
-    )
-    if not normalized_shape or any(size <= 0 for size in normalized_shape):
-        raise ValueError("normalized_shape must contain positive dimensions")
-    if tuple(input.shape[-len(normalized_shape) :]) != normalized_shape:
-        raise ValueError("normalized_shape must match the trailing input dimensions")
-    if input.device.type != "cuda":
-        raise NotImplementedError("layernorm requires a MetaX CUDA-compatible device")
-    if input.dtype not in (torch.float16, torch.bfloat16, torch.float32):
-        raise NotImplementedError("layernorm supports FP16, BF16 and FP32")
-    width = math.prod(normalized_shape)
-    if width > 65536:
-        raise NotImplementedError("normalized size above 65536 is unsupported")
-    for affine in (weight, bias):
-        if affine is None:
-            continue
-        if tuple(affine.shape) != normalized_shape:
-            raise ValueError("affine shape must equal normalized_shape")
-        if affine.device != input.device or affine.dtype != input.dtype:
-            raise ValueError("affine device and dtype must match input")
-    if torch.is_grad_enabled() and any(
-        tensor is not None and tensor.requires_grad for tensor in (input, weight, bias)
-    ):
-        raise NotImplementedError("layernorm supports inference without autograd")
-    output = torch.empty(input.shape, dtype=input.dtype, device=input.device)
-    rows = input.numel() // width
-    if rows == 0:
-        return output
-    # C550 measurements favor a single 64-lane warp over cross-warp reductions.
-    tile_rows = 1
-    warps = 1 if width <= 4096 else (4 if width <= 8192 else 8)
-    is_dense_affine = all(
-        affine is None or affine.is_contiguous() for affine in (weight, bias)
-    )
-    body = 1 << (width.bit_length() - 1)
-    tail = width - body
-    # Exact segments avoid masked padding while keeping the reduction in one warp.
-    use_split = (
-        input.is_contiguous()
-        and is_dense_affine
-        and width <= 4096
-        and rows >= 128
-        and body >= 256
-        and tail >= 64
-        and tail & (tail - 1) == 0
-    )
-    if use_split:
-        with torch.cuda.device(input.device):
-            layernorm_split_kernel[(rows,)](
-                input,
-                weight,
-                bias,
-                output,
-                width,
-                eps,
-                body,
-                tail,
-                weight is not None,
-                bias is not None,
-                num_warps=1,
-                enable_fp_fusion=False,
-            )
-        return output
-    with torch.cuda.device(input.device):
-        layernorm_kernel[(triton.cdiv(rows, tile_rows),)](
-            input,
-            weight,
-            bias,
-            output,
-            rows,
-            width,
-            eps,
-            tuple(input.shape),
-            tuple(input.stride()),
-            normalized_shape,
-            tuple(weight.stride()) if weight is not None else (),
-            tuple(bias.stride()) if bias is not None else (),
-            input.is_contiguous(),
-            weight is not None,
-            bias is not None,
-            tile_rows,
-            triton.next_power_of_2(width),
-            num_warps=warps,
-            enable_fp_fusion=False,
-        )
-    return output

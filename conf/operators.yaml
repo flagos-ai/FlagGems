@@ -11542,16 +11542,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Reduction
   stages:
   - stable: '3.0'
-- id: layernorm
-  description: MetaX C550 inference LayerNorm with FP32 centered variance.
-  for:
-  - torch.nn.functional.layer_norm
-  labels:
-  - Normalization
-  kind:
-  - NeuralNetwork
-  stages:
-  - alpha: '5.4'
 - id: lcm
   description: Compute the element-wise least common multiple of input tensors.
   for:

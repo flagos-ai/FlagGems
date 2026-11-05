@@ -238,8 +238,8 @@ LAYERNORM_CASES = [
     (tuple(shape), tuple(normalized_shape), float(eps))
     for shape, normalized_shape, eps in layernorm_shapes["shapes"]
 ]
-# These normalized suffixes exceed the MetaX inference entry's 65536 limit.
-UNSUPPORTED_LAYERNORM_CASES = (
+# Exercise the existing streaming path for normalized sizes above one tile.
+LARGE_LAYERNORM_CASES = (
     ((16, 16, 4098), (16, 4098)),
     ((16, 8, 128, 128), (8, 128, 128)),
 )
@@ -259,7 +259,7 @@ UNSUPPORTED_LAYERNORM_CASES = (
     ],
 )
 @pytest.mark.parametrize("affine", ["none", "weight", "bias", "both"])
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_contract(dtype, shape, norm, affine):
     torch.manual_seed(42)
@@ -275,16 +275,28 @@ def test_layernorm_contract(dtype, shape, norm, affine):
         else None
     )
     expected = F.layer_norm(tensor, norm, weight, bias, 1e-6)
-    actual = flag_gems.layernorm(tensor, norm, weight, bias, 1e-6)
+    actual, mean, rstd = flag_gems.layer_norm(tensor, norm, weight, bias, 1e-6)
     tolerance = (
         1e-6 if dtype == torch.float32 else (1e-2 if dtype == torch.bfloat16 else 1e-3)
     )
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
     assert actual.shape == tensor.shape and actual.dtype == tensor.dtype
+    _, expected_mean, expected_rstd = torch.ops.aten.native_layer_norm(
+        tensor, norm, weight, bias, 1e-6
+    )
+    assert mean.shape == rstd.shape == (tensor.numel() // math.prod(norm),)
+    assert mean.dtype == rstd.dtype == tensor.dtype
+    for stats, expected_stats in ((mean, expected_mean), (rstd, expected_rstd)):
+        torch.testing.assert_close(
+            stats,
+            expected_stats.reshape(-1).to(tensor.dtype),
+            atol=tolerance,
+            rtol=tolerance,
+        )
 
 
 @pytest.mark.parametrize("layout", ["transpose", "slice", "expand"])
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_strides(layout):
     torch.manual_seed(13)
@@ -297,7 +309,7 @@ def test_layernorm_strides(layout):
     weight = torch.randn(7, 5, device="cuda").t()
     bias = torch.randn(5, 14, device="cuda")[:, ::2]
     torch.testing.assert_close(
-        flag_gems.layernorm(tensor, (5, 7), weight, bias),
+        flag_gems.layer_norm(tensor, (5, 7), weight, bias)[0],
         F.layer_norm(tensor, (5, 7), weight, bias),
         atol=2e-6,
         rtol=2e-6,
@@ -307,13 +319,13 @@ def test_layernorm_strides(layout):
 @pytest.mark.parametrize(
     "value", [0.0, -0.0, float("nan"), float("inf"), -float("inf"), 10000.0]
 )
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_special_values(value):
     tensor = torch.full((3, 1152), value, device="cuda")
     tensor[1, 0] = 1.0
     torch.testing.assert_close(
-        flag_gems.layernorm(tensor, (1152,)),
+        flag_gems.layer_norm(tensor, (1152,))[0],
         F.layer_norm(tensor, (1152,)),
         atol=2e-3,
         rtol=2e-3,
@@ -321,7 +333,7 @@ def test_layernorm_special_values(value):
     )
 
 
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_real_shape():
     torch.manual_seed(77)
@@ -329,27 +341,33 @@ def test_layernorm_real_shape():
     weight = torch.randn(1152, device="cuda", dtype=tensor.dtype)
     bias = torch.randn_like(weight)
     torch.testing.assert_close(
-        flag_gems.layernorm(tensor, (1152,), weight, bias, 1e-6),
+        flag_gems.layer_norm(tensor, (1152,), weight, bias, 1e-6)[0],
         F.layer_norm(tensor, (1152,), weight, bias, 1e-6),
         atol=1e-2,
         rtol=1e-2,
     )
 
 
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_errors():
-    tensor = torch.empty(3, 1152, device="cuda")
+    torch.manual_seed(42)
+    tensor = torch.randn(3, 1152, device="cuda")
     with pytest.raises(ValueError):
-        flag_gems.layernorm(tensor, (1024,))
+        flag_gems.layer_norm(tensor, (1024,))[0]
     with pytest.raises(ValueError):
-        flag_gems.layernorm(
+        flag_gems.layer_norm(
             tensor, (1152,), torch.empty(1152, device="cuda", dtype=torch.bfloat16)
-        )
+        )[0]
     with pytest.raises(NotImplementedError):
-        flag_gems.layernorm(tensor.double(), (1152,))
-    with pytest.raises(NotImplementedError):
-        flag_gems.layernorm(tensor.requires_grad_(), (1152,))
+        flag_gems.layer_norm(tensor.double(), (1152,))[0]
+    tensor.requires_grad_()
+    torch.testing.assert_close(
+        flag_gems.layer_norm(tensor, (1152,))[0],
+        F.layer_norm(tensor, (1152,)),
+        atol=1e-6,
+        rtol=1e-6,
+    )
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
@@ -357,7 +375,7 @@ def test_layernorm_errors():
     "width", [320, 384, 576, 768, 1152, 1280, 1536, 2304, 2560, 3072]
 )
 @pytest.mark.parametrize("affine", ["none", "weight", "bias", "both"])
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_exact_segments(dtype, width, affine):
     torch.manual_seed(20261103)
@@ -372,7 +390,7 @@ def test_layernorm_exact_segments(dtype, width, affine):
         if affine in ("bias", "both")
         else None
     )
-    actual = flag_gems.layernorm(tensor, (width,), weight, bias, 1e-6)
+    actual = flag_gems.layer_norm(tensor, (width,), weight, bias, 1e-6)[0]
     expected = F.layer_norm(tensor, (width,), weight, bias, 1e-6)
     tolerance = (
         1e-6 if dtype == torch.float32 else (1e-2 if dtype == torch.bfloat16 else 1e-3)
@@ -383,7 +401,7 @@ def test_layernorm_exact_segments(dtype, width, affine):
 @pytest.mark.parametrize("shape,normalized_shape,eps", LAYERNORM_CASES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
 @pytest.mark.parametrize("affine", [False, True])
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
 def test_layernorm_core_shapes(shape, normalized_shape, eps, dtype, affine):
     torch.manual_seed(20261104)
@@ -392,7 +410,7 @@ def test_layernorm_core_shapes(shape, normalized_shape, eps, dtype, affine):
         torch.randn(normalized_shape, dtype=dtype, device="cuda") if affine else None
     )
     bias = torch.randn_like(weight) if affine else None
-    actual = flag_gems.layernorm(tensor, normalized_shape, weight, bias, eps)
+    actual = flag_gems.layer_norm(tensor, normalized_shape, weight, bias, eps)[0]
     expected = F.layer_norm(tensor, normalized_shape, weight, bias, eps)
     tolerance = (
         1e-6 if dtype == torch.float32 else (1e-2 if dtype == torch.bfloat16 else 1e-3)
@@ -400,11 +418,54 @@ def test_layernorm_core_shapes(shape, normalized_shape, eps, dtype, affine):
     torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
 
 
-@pytest.mark.parametrize("shape,normalized_shape", UNSUPPORTED_LAYERNORM_CASES)
+@pytest.mark.parametrize("shape,normalized_shape", LARGE_LAYERNORM_CASES)
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
-@pytest.mark.layernorm
+@pytest.mark.layer_norm
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
-def test_layernorm_unsupported_extents(shape, normalized_shape, dtype):
-    tensor = torch.empty(shape, dtype=dtype, device="cuda")
-    with pytest.raises(NotImplementedError, match="above 65536"):
-        flag_gems.layernorm(tensor, normalized_shape)
+def test_layernorm_large_normalized_extents(shape, normalized_shape, dtype):
+    torch.manual_seed(20261104)
+    tensor = torch.randn(shape, dtype=dtype, device="cuda")
+    actual, mean, rstd = flag_gems.layer_norm(tensor, normalized_shape)
+    expected, expected_mean, expected_rstd = torch.ops.aten.native_layer_norm(
+        tensor, normalized_shape, None, None, 1e-5
+    )
+    tolerance = (
+        1e-6 if dtype == torch.float32 else (1e-2 if dtype == torch.bfloat16 else 1e-3)
+    )
+    torch.testing.assert_close(actual, expected, atol=tolerance, rtol=tolerance)
+    for stats, expected_stats in ((mean, expected_mean), (rstd, expected_rstd)):
+        torch.testing.assert_close(
+            stats, expected_stats.reshape(-1).to(dtype), atol=tolerance, rtol=tolerance
+        )
+
+
+@pytest.mark.layer_norm_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX C550")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize(
+    "shape,norm", [((7, 113), (113,)), ((3, 5, 7), (7,)), ((4, 8, 8), (8, 8))]
+)
+def test_layer_norm_saved_statistics_backward(shape, norm, dtype):
+    torch.manual_seed(20261105)
+    tensor = torch.randn(shape, dtype=dtype, device="cuda", requires_grad=True)
+    weight = torch.randn(norm, dtype=dtype, device="cuda", requires_grad=True)
+    bias = torch.randn_like(weight, requires_grad=True)
+    output, mean, rstd = flag_gems.layer_norm(tensor, norm, weight, bias)
+    grad = torch.randn_like(output)
+    actual = flag_gems.layer_norm_backward(
+        grad, tensor, norm, mean, rstd, weight, bias, (True, True, True)
+    )
+    expected = torch.ops.aten.native_layer_norm_backward(
+        utils.to_reference(grad, True),
+        utils.to_reference(tensor, True),
+        norm,
+        utils.to_reference(mean, True),
+        utils.to_reference(rstd, True),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        (True, True, True),
+    )
+    for actual_grad, expected_grad in zip(actual, expected):
+        utils.gems_assert_close(
+            actual_grad, expected_grad, dtype, reduce_dim=math.prod(norm)
+        )
