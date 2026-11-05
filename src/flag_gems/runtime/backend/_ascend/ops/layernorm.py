@@ -32,8 +32,16 @@ logger = logging.getLogger(__name__)
 
 
 class BlockifiedLayerNormEntry(LibEntry):
+    """Enable block mapping for this kernel during its first compile.
+
+    The flagtree Ascend compiler reads TRITON_ALL_BLOCKS_PARALLEL at compile
+    time; cached launches reuse the generated launcher, so the flag is scoped
+    to the first run. The env var is process-global, so a concurrent first
+    compile of another kernel may still observe it; this is the same trade-off
+    the other Ascend kernels make, scoped to the narrowest window.
+    """
+
     def _first_run(self, *args, **kwargs):
-        # The compiler needs the flag; cached launches use the kernel metadata.
         with _blockified():
             return super()._first_run(*args, **kwargs)
 

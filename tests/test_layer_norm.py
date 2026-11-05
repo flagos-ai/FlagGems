@@ -176,6 +176,28 @@ def test_layer_norm_real_shape(dtype):
         utils.gems_assert_close(output, expected, dtype, reduce_dim=1152)
 
 
+@pytest.mark.layer_norm
+@pytest.mark.parametrize("dtype", [torch.bfloat16])
+def test_layer_norm_large_row_grid(dtype):
+    # 65536 rows exceed the 65535 core limit; columns above 2048 keep the
+    # single-row kernel, so this launch depends on the block mapping.
+    torch.manual_seed(0)
+    shape = (65536, 2049)
+    normalized_shape = shape[1:]
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.randn_like(weight)
+    reference = torch.ops.aten.native_layer_norm.default(
+        utils.to_reference(inp, True),
+        normalized_shape,
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        1e-5,
+    )
+    actual = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, 1e-5)
+    utils.gems_assert_close(actual[0], reference[0], dtype)
+
+
 @pytest.mark.layer_norm_backward
 @pytest.mark.parametrize("shape", LAYER_NORM_SHAPES)
 @pytest.mark.parametrize("wb_none", [False, True])
