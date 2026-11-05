@@ -1534,7 +1534,8 @@ class LibEntry(triton.KernelInterface):
                     self, "_tensor_spec_fn", LibEntry._TENSOR_SPEC_UNRESOLVED
                 )
                 if spec_fn is LibEntry._TENSOR_SPEC_UNRESOLVED:
-                    spec_fn = self._resolve_tensor_spec_fn()
+                    # `self` may be a plain stand-in: resolve through the class.
+                    spec_fn = LibEntry._resolve_tensor_spec_fn()
                 if spec_fn is not None:
                     return base + (spec_fn(arg),)
                 return base
