@@ -62,3 +62,36 @@ def test_fused_add_rms_norm(shape, dtype):
 
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_new_residual, ref_new_residual, dtype)
+
+@pytest.mark.fused_add_rms_norm
+def test_gems_rms_forward_inplace_many_rows(dtype=torch.float32):
+    """Fused add + RMS norm is in-place; more rows than AI cores must be correct.
+
+    An Ascend launch with more programs than AI cores runs in several program
+    waves, and the later waves used to overwrite the row the first wave was
+    still writing (issue #5624).
+    """
+    from flag_gems.modules.normalization import gems_rms_forward
+
+    rows, cols = 1024, 512
+    inp = torch.randn((rows, cols), dtype=dtype, device=flag_gems.device)
+    residual = torch.randn((rows, cols), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((cols,), dtype=dtype, device=flag_gems.device)
+    eps = 1e-5
+
+    out, new_residual = gems_rms_forward(
+        inp.clone(), residual.clone(), weight, eps
+    )
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_residual_in = utils.to_reference(residual, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_residual = ref_inp + ref_residual_in
+    ref_out = (
+        ref_residual
+        * torch.rsqrt(ref_residual.pow(2).mean(-1, keepdim=True) + eps)
+        * ref_weight
+    )
+
+    utils.gems_assert_close(new_residual, ref_residual, dtype)
+    utils.gems_assert_close(out, ref_out, dtype)
