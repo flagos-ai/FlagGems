@@ -38,6 +38,7 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .column_stack_out import column_stack_out
 from .concat import concat
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
@@ -218,6 +219,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "column_stack_out",
     "concat",
     "count_nonzero",
     "cudnn_convolution",
