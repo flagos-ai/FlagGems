@@ -63,6 +63,7 @@ def test_fused_add_rms_norm(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_new_residual, ref_new_residual, dtype)
 
+
 @pytest.mark.fused_add_rms_norm
 def test_gems_rms_forward_inplace_many_rows(dtype=torch.float32):
     """Fused add + RMS norm is in-place; more rows than AI cores must be correct.
@@ -79,9 +80,7 @@ def test_gems_rms_forward_inplace_many_rows(dtype=torch.float32):
     weight = torch.randn((cols,), dtype=dtype, device=flag_gems.device)
     eps = 1e-5
 
-    out, new_residual = gems_rms_forward(
-        inp.clone(), residual.clone(), weight, eps
-    )
+    out, new_residual = gems_rms_forward(inp.clone(), residual.clone(), weight, eps)
 
     ref_inp = utils.to_reference(inp, True)
     ref_residual_in = utils.to_reference(residual, True)

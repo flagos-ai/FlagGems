@@ -153,6 +153,7 @@ def test_apply_rotary_pos_emb(
     utils.gems_assert_close(q_embed_out, q_embed_ref, dtype)
     utils.gems_assert_close(k_embed_out, k_embed_ref, dtype)
 
+
 @pytest.mark.apply_rotary_pos_emb
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend",
@@ -176,10 +177,16 @@ def test_gems_rope_inplace_matches_out_of_place():
     key = torch.randn(
         (batch, seq_len, heads, head_dim), dtype=torch.float32, device=flag_gems.device
     )
-    cos = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device)
-    sin = torch.rand(seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device)
+    cos = torch.rand(
+        seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device
+    )
+    sin = torch.rand(
+        seq_len, head_dim // 2, dtype=torch.float32, device=flag_gems.device
+    )
 
-    ref_q, ref_k = gems_rope_forward(query.clone(), key.clone(), cos, sin, inplace=False)
+    ref_q, ref_k = gems_rope_forward(
+        query.clone(), key.clone(), cos, sin, inplace=False
+    )
     q_in, k_in = query.clone(), key.clone()
     out_q, out_k = gems_rope_forward(q_in, k_in, cos, sin, inplace=True)
 
