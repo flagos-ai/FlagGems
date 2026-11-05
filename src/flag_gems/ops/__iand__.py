@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 def __iand___tensor(self, other):
-    logger.debug("GEMS __IAND__ TENSOR")
+    logger.debug("GEMS __IAND___TENSOR")
     return bitwise_and_tensor_(self, other)
 
 
 def __iand___scalar(self, other):
-    logger.debug("GEMS __IAND__ SCALAR")
+    logger.debug("GEMS __IAND___SCALAR")
     return bitwise_and_scalar_(self, other)

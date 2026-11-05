@@ -195,7 +195,7 @@ def masked_scatter_impl(inp, mask, source, N):
 
 
 def masked_scatter(inp, mask, source):
-    logger.debug("GEMS MASKED SCATTER")
+    logger.debug("GEMS MASKED_SCATTER")
 
     assert broadcastable(
         inp.shape, mask.shape
@@ -219,7 +219,7 @@ def masked_scatter(inp, mask, source):
 
 
 def masked_scatter_(inp, mask, source):
-    logger.debug("GEMS MASKED SCATTER_")
+    logger.debug("GEMS MASKED_SCATTER_")
 
     assert broadcastable(inp.shape, mask.shape)
     _, mask = torch.broadcast_tensors(inp, mask)

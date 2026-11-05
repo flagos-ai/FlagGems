@@ -19,6 +19,17 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+# Building the reference requires a quantization engine compiled into PyTorch
+# (fbgemm/qnnpack/onednn/x86). The reference GRU runs on CPU while the FlagGems
+# implementation runs on flag_gems.device; only skip when no engine is present.
+_has_quantized_engine = any(
+    engine != "none" for engine in torch.backends.quantized.supported_engines
+)
+pytestmark = pytest.mark.skipif(
+    not _has_quantized_engine,
+    reason="PyTorch build has no quantization engine for the reference GRU",
+)
+
 
 def _make_dynamic_quantized_gru(
     input_size,
@@ -54,7 +65,6 @@ def _make_dynamic_quantized_gru(
 @pytest.mark.parametrize(
     "num_layers,bidirectional", [(1, False), (2, True)], ids=["single", "stacked_bidir"]
 )
-@pytest.mark.skip(reason="PyTorch's quantized_gru only supports CPU backend")
 def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirectional):
     """Compare the dense Triton implementation with packed dynamic GRU."""
     from flag_gems.ops.quantized_gru import quantized_gru_input
@@ -110,7 +120,6 @@ def test_quantized_gru(shape, hidden_size, weight_dtype, num_layers, bidirection
 
 @pytest.mark.quantized_gru
 @pytest.mark.parametrize("bidirectional", [False, True])
-@pytest.mark.skip(reason="PyTorch's quantized_gru only supports CPU backend")
 def test_quantized_gru_packed_data(bidirectional):
     from flag_gems.ops.quantized_gru import quantized_gru_data
 

@@ -55,10 +55,9 @@ def test_linear_backward(batch, in_features, out_features, dtype):
     ref_grad_bias = ref_grad_output.sum(dim=0)
 
     # GEMS computation
-    with flag_gems.use_gems():
-        res_grad_input, res_grad_weight, res_grad_bias = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (True, True, True)
-        )
+    res_grad_input, res_grad_weight, res_grad_bias = flag_gems.linear_backward(
+        input_tensor, grad_output, weight, (True, True, True)
+    )
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
     utils.gems_assert_close(res_grad_weight, ref_grad_weight, dtype)
@@ -87,11 +86,10 @@ def test_linear_backward_grad_input_only(batch, in_features, out_features, dtype
     ref_grad_input = ref_grad_output @ ref_weight
 
     # GEMS computation
-    with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (True, False, False)
-        )
-        res_grad_input = res[0]
+    res = flag_gems.linear_backward(
+        input_tensor, grad_output, weight, (True, False, False)
+    )
+    res_grad_input = res[0]
 
     utils.gems_assert_close(res_grad_input, ref_grad_input, dtype)
 
@@ -119,11 +117,10 @@ def test_linear_backward_grad_weight_only(batch, in_features, out_features, dtyp
     ref_grad_weight = ref_grad_output.t() @ ref_input
 
     # GEMS computation
-    with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (False, True, False)
-        )
-        res_grad_weight = res[1]
+    res = flag_gems.linear_backward(
+        input_tensor, grad_output, weight, (False, True, False)
+    )
+    res_grad_weight = res[1]
 
     utils.gems_assert_close(res_grad_weight, ref_grad_weight, dtype)
 
@@ -150,10 +147,9 @@ def test_linear_backward_grad_bias_only(batch, in_features, out_features, dtype)
     ref_grad_bias = ref_grad_output.sum(dim=0)
 
     # GEMS computation
-    with flag_gems.use_gems():
-        res = torch.ops.aten.linear_backward(
-            input_tensor, grad_output, weight, (False, False, True)
-        )
-        res_grad_bias = res[2]
+    res = flag_gems.linear_backward(
+        input_tensor, grad_output, weight, (False, False, True)
+    )
+    res_grad_bias = res[2]
 
     utils.gems_assert_close(res_grad_bias, ref_grad_bias, dtype)

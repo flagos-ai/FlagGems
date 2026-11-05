@@ -308,6 +308,13 @@ def chunk_gated_delta_rule_fwd_h(
             len(chunk_indices),
             prepare_chunk_offsets(cu_seqlens, BT),
         )
+    # The kernel reads one initial state per sequence at h0 + i_nh * K * V with
+    # no bound on i_nh, so a short initial_state is an out-of-bounds GPU read.
+    if initial_state is not None and initial_state.shape[0] != N:
+        raise ValueError(
+            "initial_state must hold one state per sequence: expected "
+            f"shape[0] == {N}, got {initial_state.shape[0]}"
+        )
     assert K <= 256, "current kernel does not support head dimension larger than 256."
 
     h = k.new_empty(B, NT, H, K, V)

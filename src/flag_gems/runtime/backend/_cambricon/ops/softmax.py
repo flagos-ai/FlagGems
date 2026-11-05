@@ -1020,7 +1020,7 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
                 K,
             )
         else:
-            logger.debug("GEMS_CAMBRICON SOFTMAX VJP USE INNER")
+            logger.debug("GEMS_CAMBRICON SOFTMAX_VJP_USE_INNER")
             if M > TOTAL_CORE_NUM or N < 1024 * 8 * 8:
                 softmax_backward_kernel_inner[TOTAL_CORE_NUM, 1, 1](
                     output,
@@ -1075,7 +1075,7 @@ def softmax_backward_out(grad_output, output, dim, input_dtype, *, grad_input):
 
 
 def softmax_backward(grad_output, output, dim, input_dtype):
-    logger.debug("GEMS_CAMBRICON SOFTMAX VJP")
+    logger.debug("GEMS_CAMBRICON SOFTMAX_VJP")
     in_grad = torch.empty_like(output, dtype=input_dtype)
     return softmax_backward_out(
         grad_output, output, dim, input_dtype, grad_input=in_grad

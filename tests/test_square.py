@@ -28,8 +28,7 @@ def test_square(shape, dtype):
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.square(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.square(inp)
+    res_out = flag_gems.square(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -43,8 +42,7 @@ def test_square_(shape, dtype):
     ref_inp = utils.to_reference(inp.clone())
 
     ref_out = torch.square_(ref_inp)
-    with flag_gems.use_gems():
-        res_out = torch.square_(inp)
+    res_out = flag_gems.square_(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
 
@@ -60,7 +58,6 @@ def test_square_out(shape, dtype):
     ref_out = torch.empty_like(ref_inp)
 
     torch.square(ref_inp, out=ref_out)
-    with flag_gems.use_gems():
-        torch.square(inp, out=out)
+    flag_gems.square_out(inp, out=out)
 
     utils.gems_assert_equal(out, ref_out)

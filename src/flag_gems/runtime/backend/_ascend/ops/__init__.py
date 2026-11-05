@@ -34,10 +34,13 @@ from .attention import (
 )
 from .baddbmm import baddbmm
 from .bmm import bmm
+from .bmm_w8a8_int8 import bmm_w8a8_int8
+from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .concat import concat
 from .count_nonzero import count_nonzero
+from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
@@ -48,6 +51,9 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
+from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
@@ -108,6 +114,8 @@ from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mm import mm, mm_out
+from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+from .mode import mode
 from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -155,6 +163,8 @@ from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
 from .topk import topk
+from .topk_w8a16_fp8 import topk_w8a16_fp8
+from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -174,6 +184,9 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -199,12 +212,15 @@ __all__ = [
     "argsort",
     "baddbmm",
     "bmm",
+    "bmm_w8a8",
+    "bmm_w8a8_int8",
     "cat",
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
     "concat",
     "count_nonzero",
+    "cudnn_convolution",
     "cummax",
     "cummin",
     "cumsum",
@@ -215,6 +231,7 @@ __all__ = [
     "dist",
     "dot",
     "embedding",
+    "embedding_spmdm",
     "exponential",
     "exponential_",
     "fill_scalar",
@@ -304,6 +321,9 @@ __all__ = [
     "min_dim",
     "mm",
     "mm_out",
+    "mm_w8a8_int8",
+    "mm_w8a8_int8_out",
+    "mode",
     "mul",
     "multinomial",
     "nanmedian",
@@ -368,6 +388,9 @@ __all__ = [
     "threshold",
     "threshold_backward",
     "topk",
+    "topk_w8a16_fp8",
+    "triangular_solve",
+    "triangular_solve_out",
     "triu",
     "unique_dim",
     "unsafe_index",

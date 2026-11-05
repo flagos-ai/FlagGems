@@ -36,7 +36,6 @@ def test_accuracy__upsample_nearest_exact1d(shape, dtype, factor):
     out_size = [shape[-1] * factor]
 
     ref_out = torch.ops.aten._upsample_nearest_exact1d(ref_x, out_size, None)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._upsample_nearest_exact1d(x, out_size, None)
+    res_out = flag_gems._upsample_nearest_exact1d(x, out_size, None)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

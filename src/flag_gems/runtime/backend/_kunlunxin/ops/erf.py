@@ -175,5 +175,5 @@ def special_erf(x):
     logger.debug("GEMS_KUNLUNXIN SPECIAL_ERF")
     # tests/test_erf.py asserts the "GEMS SPECIAL_ERF" debug record on logger
     # "flag_gems.ops.special_erf" (caplog.at_level contract); keep it intact.
-    logging.getLogger("flag_gems.ops.special_erf").debug("GEMS SPECIAL_ERF")
+    logging.getLogger(__name__).debug("GEMS SPECIAL_ERF")
     return erf(x)

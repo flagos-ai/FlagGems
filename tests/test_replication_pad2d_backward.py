@@ -67,8 +67,7 @@ def test_replication_pad2d_backward(shape, dtype, padding):
     )
     ref_out = torch.ops.aten.replication_pad2d_backward(ref_grad, ref_x, ref_padding)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.replication_pad2d_backward(grad_output, x, padding)
+    res_out = flag_gems.replication_pad2d_backward(grad_output, x, padding)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
@@ -103,9 +102,8 @@ def test_replication_pad2d_backward_grad_input(shape, dtype, padding):
     )
 
     res_out = torch.empty(input_shape, dtype=dtype, device=flag_gems.device)
-    with flag_gems.use_gems():
-        torch.ops.aten.replication_pad2d_backward.grad_input(
-            grad_output, x, padding, grad_input=res_out
-        )
+    flag_gems.replication_pad2d_backward_grad_input(
+        grad_output, x, padding, grad_input=res_out
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype)

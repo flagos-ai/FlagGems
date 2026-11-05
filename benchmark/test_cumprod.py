@@ -30,6 +30,14 @@ CUMPROD_INPLACE_DTYPES = (
     consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.EXTRA_INT_DTYPES
 )
 
+# On enflame gcu300 the native topsaten cumprod aborts the whole process
+# (TOPSATEN_STATUS_NOT_SUPPORT) for every bool/integer dtype, so the baseline
+# cannot be timed; Gems also fails to compile the bool/uint8/int16 variants.
+# Only the float dtypes are benchmarked there.
+if flag_gems.vendor_name == "enflame":
+    CUMPROD_DTYPES = consts.FLOAT_DTYPES
+    CUMPROD_INPLACE_DTYPES = consts.FLOAT_DTYPES
+
 
 def _make_input(shape, dtype, device):
     if dtype in consts.FLOAT_DTYPES:

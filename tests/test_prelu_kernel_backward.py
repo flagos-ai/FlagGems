@@ -34,8 +34,7 @@ def test_prelu_kernel_backward(shape, dtype):
     ref_weight = utils.to_reference(weight)
 
     ref_out = torch.ops.aten._prelu_kernel_backward(ref_grad_output, ref_x, ref_weight)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._prelu_kernel_backward(grad_output, x, weight)
+    res_out = flag_gems._prelu_kernel_backward(grad_output, x, weight)
 
     # Check both outputs
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
@@ -57,8 +56,7 @@ def test_prelu_kernel_backward_per_channel(shape, dtype):
     ref_weight = utils.to_reference(weight)
 
     ref_out = torch.ops.aten._prelu_kernel_backward(ref_grad_output, ref_x, ref_weight)
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten._prelu_kernel_backward(grad_output, x, weight)
+    res_out = flag_gems._prelu_kernel_backward(grad_output, x, weight)
 
     # Check both outputs
     utils.gems_assert_close(res_out[0], ref_out[0], dtype)
