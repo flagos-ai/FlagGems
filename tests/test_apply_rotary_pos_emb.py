@@ -194,5 +194,7 @@ def test_gems_rope_inplace_matches_out_of_place():
     assert out_q.data_ptr() == q_in.data_ptr()
     assert out_k.data_ptr() == k_in.data_ptr()
     # ... and produce the same numbers as the out-of-place path.
+    ref_q = utils.to_reference(ref_q, True)
+    ref_k = utils.to_reference(ref_k, True)
     utils.gems_assert_close(q_in, ref_q, torch.float32)
     utils.gems_assert_close(k_in, ref_k, torch.float32)
