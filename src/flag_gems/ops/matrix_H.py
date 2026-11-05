@@ -74,7 +74,7 @@ import warnings
 
 import torch
 
-from flag_gems import runtime
+from flag_gems.ops.mH import _lazy_conj
 
 logger = logging.getLogger(__name__)
 
@@ -89,31 +89,9 @@ _MATRIX_H_0D_MESSAGE = "Tensor.H is deprecated on 0-D tensors. Consider using x.
 # timing case does not pay the warnings machinery on every iteration.
 _MATRIX_H_WARN_STATE = {"warned": False}
 
-# Bind the C-level Tensor descriptors once: ``t.conj()`` otherwise pays a
-# type-dictionary lookup plus a bound-method creation on every call.
-_CONJ = torch.Tensor.conj
+# Bind the C-level Tensor descriptors once to avoid per-call method lookup.
 _TRANSPOSE = torch.Tensor.transpose
 _IS_COMPLEX = torch.Tensor.is_complex
-
-# Parsing also resolves renamed PrivateUse1 keys such as MUSA.
-_BACKEND_KEYSET = torch._C.DispatchKeySet(
-    torch._C._parse_dispatch_key(runtime.device.dispatch_key)
-)
-_EXCLUDE_BACKEND = torch._C._ExcludeDispatchKeyGuard
-
-
-def _lazy_conj(self):
-    """Toggle the lazy conjugate bit without re-entering FlagGems' ``_conj``.
-
-    FlagGems registers a device ``aten::_conj`` kernel that materializes the
-    conjugation.  With this operator enabled through ``use_gems()``, a plain
-    ``conj()`` would dispatch into it and hand back a physical copy, losing the
-    shared storage and the lazy bit the view contract requires.  Only the
-    ``conj`` call is guarded: the backend key is what ``Tensor.transpose``'s
-    ``as_strided`` needs to resolve, so the stride exchange stays outside.
-    """
-    with _EXCLUDE_BACKEND(_BACKEND_KEYSET):
-        return _CONJ(self)
 
 
 def matrix_H(self):
