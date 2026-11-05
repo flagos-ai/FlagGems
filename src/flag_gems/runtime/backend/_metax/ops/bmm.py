@@ -749,9 +749,15 @@ def _bmm_vector(a, b, out, split, transpose, column):
 
 def bmm(a, b, *, out=None):
     logger.debug("GEMS METAX BMM")
+    assert a.shape[0] == b.shape[0], "Batch dim mismatch"
+    assert a.shape[2] == b.shape[1], "K dim mismatch"
     shape = (a.shape[0], a.shape[1], b.shape[2])
     if out is None:
         out = torch.empty(shape, device=a.device, dtype=a.dtype)
+    elif out.numel() == 0:
+        out.resize_(shape)
+    else:
+        assert out.shape == shape, "Incompatible output shape"
     batch, m, k = a.shape
     n = b.shape[2]
     if not batch or not m or not n:

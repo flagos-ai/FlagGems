@@ -325,6 +325,8 @@ def _keep_all(configs, _named_args, **_kwargs):
     prune_configs_by={"early_config_prune": _prune_gemm},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_gemm",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_gemm",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -446,6 +448,8 @@ def mm_kernel(
     prune_configs_by={"early_config_prune": _prune_nt_rows},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_nt_rows",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_nt_rows",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -560,6 +564,8 @@ def mm_kernel_nt_rows(
     prune_configs_by={"early_config_prune": _prune_wide},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_wide",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_wide",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -680,6 +686,8 @@ def mm_kernel_wide(
     prune_configs_by={"early_config_prune": _prune_dense},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_dense",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_dense",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -738,6 +746,13 @@ def mm_kernel_nn(
     prune_configs_by={"early_config_prune": _prune_syrk},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_syrk",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_syrk",
+    flagtune_dtype_resolver=lambda args: (
+        args["A"].dtype,
+        args["A"].dtype,
+        args["C"].dtype,
+    ),
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -794,6 +809,8 @@ def _syrk_kernel(
     prune_configs_by={"early_config_prune": _prune_simt_row},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_simt_row",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_simt_row",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -846,6 +863,8 @@ def _simt_row_kernel(
     prune_configs_by={"early_config_prune": _prune_simt_column},
     flagtune_op_name="mm",
     flagtune_expand_op_name="mm_simt_column",
+    flagtune_op_id="flaggems/mm",
+    flagtune_variant="metax_simt_column",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     rep=20,
 )
@@ -1046,6 +1065,36 @@ def _split_count(
     return best if wave_work(1) >= wave_work(best) * 1.15 else 1
 
 
+def _partial_tuner(kernel):
+    """Give the FP32 split-K stage its own model and dispatch cache."""
+    tuner = kernel.fn
+    return libentry()(
+        libtuner(
+            configs=tuner.configs,
+            key=_STRIDE_KEY,
+            prune_configs_by={"early_config_prune": tuner.early_config_prune},
+            flagtune_op_name="mm",
+            flagtune_expand_op_name=tuner._flagtune_expand_op_name,
+            flagtune_op_id="flaggems/mm",
+            flagtune_variant=tuner._flagtune_variant + "_partial",
+            flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+            rep=20,
+        )(kernel.jit_function)
+    )
+
+
+mm_kernel_partial = _partial_tuner(mm_kernel)
+mm_kernel_wide_partial = _partial_tuner(mm_kernel_wide)
+_simt_row_partial = _partial_tuner(_simt_row_kernel)
+_simt_column_partial = _partial_tuner(mm_kernel_small_n_partial)
+_PARTIAL_KERNELS = {
+    mm_kernel: mm_kernel_partial,
+    mm_kernel_wide: mm_kernel_wide_partial,
+    _simt_row_kernel: _simt_row_partial,
+    mm_kernel_small_n_partial: _simt_column_partial,
+}
+
+
 @lru_cache(maxsize=4096)
 def _dispatch_mm(
     m,
@@ -1209,6 +1258,7 @@ def _dispatch_mm(
 
 def mm(a, b, *, out=None):
     logger.debug("GEMS METAX MM")
+    assert a.shape[1] == b.shape[0], "incompatible dimensions"
     m, k = a.shape
     n = b.shape[1]
     if out is None:
@@ -1285,6 +1335,8 @@ def mm(a, b, *, out=None):
                     * triton.cdiv(columns, cfg["BN"]),
                 )
 
+        if split_k > 1:
+            tuned = _PARTIAL_KERNELS[tuned]
         tuned[grid](
             a,
             b,
