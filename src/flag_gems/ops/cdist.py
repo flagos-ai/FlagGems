@@ -19,10 +19,9 @@ import math
 import torch
 import triton
 import triton.language as tl
-from triton.language.extra import libdevice
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -298,9 +297,17 @@ def _cdist_backward_kernel(
             abs_diff_safe = tl.where(guard, 1.0, abs_diff)
             dist_safe = tl.where(guard, 1.0, dist)
             p_m1 = p - 1.0
-            numerator = sign_diff * libdevice.pow(abs_diff_safe, p_m1) * grad[:, None]
-            denominator = libdevice.pow(dist_safe, p_m1)
+            numerator = (
+                sign_diff * tl_extra_shim.pow(abs_diff_safe, p_m1) * grad[:, None]
+            )
+            denominator = tl_extra_shim.pow(dist_safe, p_m1)
             contrib = tl.where(guard, 0.0, numerator / denominator)
+
+        # Padded lanes (off_n2 >= n2) load grad=0 and cdist=1, so the general-p
+        # branch computes |diff|^(p-1) * 0 -- inf * 0 == NaN for a large |diff|
+        # and p > 2. Zero them before the reduction so they cannot poison the
+        # accumulated gradient.
+        contrib = tl.where(mask_n2[:, None], contrib, 0.0)
 
         # Sum over n2 dimension
         grad_x1_acc += tl.sum(contrib, axis=0)
