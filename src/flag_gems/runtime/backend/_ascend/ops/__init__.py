@@ -18,6 +18,7 @@ from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from .all import all, all_dim, all_dims
 from .amax import amax
+from .amin_ import amin_
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
@@ -201,6 +202,7 @@ __all__ = [
     "all_dim",
     "all_dims",
     "amax",
+    "amin_",
     "angle",
     "any",
     "any_dim",
