@@ -348,6 +348,7 @@ from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
+from .cosine_similarity import cosine_similarity
 from .count_nonzero import count_nonzero
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
@@ -1253,6 +1254,7 @@ __all__ = [
     "copysign_out",
     "cos",
     "cos_",
+    "cosine_similarity",
     "count_nonzero",
     "cummax",
     "cummaxmin_backward",
