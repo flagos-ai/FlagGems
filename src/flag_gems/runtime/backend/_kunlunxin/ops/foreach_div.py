@@ -44,6 +44,16 @@ from flag_gems.utils.foreach import (
     tl_dtype,
 )
 
+
+def _result_dtype(t, other):
+    """ATen's type promotion for one tensor against a tensor or a number.
+
+    Upstream #7561 removed this helper from ``flag_gems.utils.foreach``; keep
+    the same ``torch.result_type`` semantics locally.
+    """
+    return torch.result_type(t, other)
+
+
 logger = logging.getLogger(__name__)
 # The registration-liveness test only raises the *generic* foreach loggers to
 # DEBUG (``flag_gems.ops._foreach_binary`` / ``_foreach_reduction``).  This

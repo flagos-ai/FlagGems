@@ -46,6 +46,7 @@ from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .clip_ import clip_
+from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
@@ -63,6 +64,8 @@ from .div import (
     true_divide_out,
 )
 from .dropout import dropout, dropout_backward
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
@@ -171,6 +174,9 @@ __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_masked_scale",
@@ -205,6 +211,7 @@ __all__ = [
     "cholesky_inverse",
     "clip_",
     "constant_pad_nd",
+    "conv1d",
     "conv2d",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
