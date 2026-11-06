@@ -66,6 +66,7 @@ def setup_flaggems_logging(path=None, record=True, once=False):
         return
 
     filename = Path(path or Path.home() / ".flaggems/oplist.log")
+    filename.parent.mkdir(parents=True, exist_ok=True)
     handler = logging.FileHandler(filename, mode="w")
     handler._flaggems_owned = True
 
