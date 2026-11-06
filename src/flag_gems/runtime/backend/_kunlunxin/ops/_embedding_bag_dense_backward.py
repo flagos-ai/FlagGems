@@ -9,6 +9,7 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _ROWS_TILE = 128
+_MAX_ROWS_TILE = 1024
 _SAMP_TILE = 128
 _RANK_TILE = 64
 _MAX_SCAN = 8192
@@ -34,9 +35,39 @@ def _ebdb_count_kernel(
     sp_safe = tl.where(live, sp, num_samples - 1)
     iv = tl.load(indices_ptr + sp_safe).to(tl.int32)
     good = live & (iv != padding_idx) & (iv >= 0) & (iv < num_weights)
-    hit = (iv == rows) & good
-    cnt = tl.sum(tl.where(hit, 1.0, 0.0), axis=1, keep_dims=True)
-    tl.store(tile_count_ptr + tid * NWP + rows, cnt.to(tl.int32))
+    iv = tl.where(good, iv, -1)
+    hit = iv == rows
+    cnt = tl.sum(hit.to(tl.int32), axis=1, keep_dims=True)
+    tl.store(tile_count_ptr + tid * NWP + rows, cnt)
+
+
+@libentry()
+@triton.jit
+def _ebdb_tile_prefix_kernel(
+    tile_count_ptr,
+    prefix_ptr,
+    n_tiles_ptr,
+    NWP: tl.constexpr,
+    BW: tl.constexpr,
+):
+    """Exclusive per-tile prefix of the row counts.
+
+    The loop bound is read from memory (``n_tiles_ptr``) rather than taken from a
+    kernel argument / constexpr: any other source lets ``TritonXPUUnrollControl``
+    unroll the 128-lane loop-carried accumulator and the kernel then fails to
+    lower (``uni_sram``, ``Required: 0``).  A ``[NT, BW]`` ``axis=0`` cumsum
+    formulation is ~10x cheaper but silently mis-lowers here (verified: the
+    resulting permutation is garbage), so the quadratic form is kept.
+    """
+    tid = tl.program_id(0)
+    rid = tl.program_id(1)
+    rows = rid * BW + tl.arange(0, BW)
+    n_tiles = tl.max(tl.load(n_tiles_ptr + rows))
+    acc = tl.zeros([BW], dtype=tl.int32)
+    for u in range(n_tiles):
+        c = tl.load(tile_count_ptr + u * NWP + rows)
+        acc += tl.where(u < tid, c, 0)
+    tl.store(prefix_ptr + tid * NWP + rows, acc)
 
 
 @libentry()
@@ -55,26 +86,6 @@ def _ebdb_tile_total_kernel(
     for u in range(n_tiles):
         acc += tl.load(tile_count_ptr + u * NWP + rows)
     tl.store(counts_ptr + rows, acc)
-
-
-@libentry()
-@triton.jit
-def _ebdb_tile_prefix_kernel(
-    tile_count_ptr,
-    prefix_ptr,
-    n_tiles_ptr,
-    NWP: tl.constexpr,
-    BW: tl.constexpr,
-):
-    tid = tl.program_id(0)
-    rid = tl.program_id(1)
-    rows = rid * BW + tl.arange(0, BW)
-    n_tiles = tl.max(tl.load(n_tiles_ptr + rows))
-    acc = tl.zeros([BW], dtype=tl.int32)
-    for u in range(n_tiles):
-        c = tl.load(tile_count_ptr + u * NWP + rows)
-        acc += tl.where(u < tid, c, 0)
-    tl.store(prefix_ptr + tid * NWP + rows, acc)
 
 
 @libentry()
@@ -138,33 +149,35 @@ def _ebdb_gather_row_kernel(
     BD: tl.constexpr,
 ):
     row = tl.program_id(0)
-    blk = tl.program_id(1)
-    cols = blk * BD + tl.arange(0, BD)
-    r_v = tl.full([BD], row, tl.int32)
-    start_v = tl.load(start_ptr + r_v)
-    cnt_v = tl.load(counts_ptr + r_v)
-    k_max = tl.max(cnt_v)
-    freq = tl.full([BD], 1.0, tl.float32)
+    # The trip count must come from a *reduction*: a scalar load/argument lets
+    # ``TritonXPUUnrollControl`` expand this 128-lane loop-carried accumulator
+    # and the kernel then fails to lower (uni_sram, ``Required: 0``).  It is
+    # reduced once per row, outside the column-block loop; ``start`` and the loop
+    # body use scalar loads because encoding them as ``tl.full([BD], ...)``
+    # vectors costs a BD-wide duplicated mfenced gather per use.
+    cnt = tl.max(tl.load(counts_ptr + tl.full([BD], row, tl.int32)))
+    start = tl.load(start_ptr + row)
+    freq = 1.0
     if SGBF:
-        denom = tl.where(cnt_v > 1, cnt_v.to(tl.float32), 1.0)
-        freq = 1.0 / denom
-    acc = tl.zeros([BD], dtype=tl.float32)
-    for k in range(k_max):
-        act = k < cnt_v
-        j = tl.where(act, start_v + k, 0)
-        sid = tl.load(sorted_ptr + j)
-        sid = tl.where(act, sid, 0)
-        bag = tl.load(o2b_ptr + sid).to(tl.int32)
-        bag = tl.where(act, bag, 0)
-        scale = freq
-        if MODE_MEAN:
-            bsz = tl.load(bag_ptr + bag).to(tl.float32)
-            scale = scale / tl.where(bsz != 0.0, bsz, 1.0)
-        if HAS_PSW:
-            scale = scale * tl.load(psw_ptr + sid).to(tl.float32)
-        g = tl.load(grad_ptr + bag * D + cols)
-        acc += tl.where(act, g.to(tl.float32) * scale, 0.0)
-    tl.store(out_ptr + row * D + cols, acc.to(out_ptr.dtype.element_ty))
+        freq = 1.0 / tl.maximum(cnt, 1).to(tl.float32)
+    # One program handles every column block of its row: each (row, block) unit
+    # carries a fixed ~0.75 us dispatch cost here, so keeping the block loop
+    # inside the program avoids paying it once per block.
+    for blk in tl.static_range(0, D // BD):
+        cols = blk * BD + tl.arange(0, BD)
+        acc = tl.zeros([BD], dtype=tl.float32)
+        for k in range(cnt):
+            sid = tl.load(sorted_ptr + start + k)
+            bag = tl.load(o2b_ptr + sid).to(tl.int32)
+            scale = freq
+            if MODE_MEAN:
+                bsz = tl.load(bag_ptr + bag).to(tl.float32)
+                scale = scale * (1.0 / tl.where(bsz != 0.0, bsz, 1.0))
+            if HAS_PSW:
+                scale = scale * tl.load(psw_ptr + sid).to(tl.float32)
+            g = tl.load(grad_ptr + bag * D + cols)
+            acc += g.to(tl.float32) * scale
+        tl.store(out_ptr + row * D + cols, acc.to(out_ptr.dtype.element_ty))
 
 
 @libentry()
@@ -312,18 +325,35 @@ def _fast_path_kind(
     return "csr"
 
 
+def _tile_params(n_rows_pad):
+    bw = min(_MAX_ROWS_TILE, n_rows_pad)
+    while n_rows_pad % bw:
+        bw //= 2
+    ns = _SAMP_TILE  # NB: NS/TS < 128/64 silently mis-lower in the rank kernel
+    ts = _RANK_TILE  # (8% wrong values, then status 700) - do not shrink them.
+    # ``_ebdb_tile_prefix_kernel`` carries a 1D accumulator through a dynamic
+    # loop; on this backend that lowering fails (``TritonXPUUnrollControl`` /
+    # uni_sram) once the loop body carries 128+ lanes, so its row block stays
+    # at ``_ROWS_TILE`` even when the (loop-free) count kernel uses a wider one.
+    return bw, min(_ROWS_TILE, n_rows_pad), ns, ts
+
+
 def _build_csr(indices, n_samples, num_weights, padding_idx):
     """count -> exclusive scan -> stable rank + permutation scatter (no atomics)."""
     device = indices.device
     n_rows_pad = max(_ROWS_TILE, triton.next_power_of_2(num_weights))
-    n_samp_tiles = triton.cdiv(n_samples, _SAMP_TILE)
-    counts = torch.empty(n_rows_pad, dtype=torch.int32, device=device)
+    bw, bw_prefix, ns, ts = _tile_params(n_rows_pad)
+    n_samp_tiles = triton.cdiv(n_samples, ns)
+    n_row_blocks = n_rows_pad // bw
     start = torch.empty(n_rows_pad, dtype=torch.int32, device=device)
+    counts = torch.empty(n_rows_pad, dtype=torch.int32, device=device)
     tile_count = torch.empty(
         n_samp_tiles * n_rows_pad, dtype=torch.int32, device=device
     )
     prefix = torch.empty(n_samp_tiles * n_rows_pad, dtype=torch.int32, device=device)
-    n_row_blocks = n_rows_pad // _ROWS_TILE
+    n_tiles_buf = torch.full(
+        (n_rows_pad,), n_samp_tiles, dtype=torch.int32, device=device
+    )
     _ebdb_count_kernel[(n_samp_tiles, n_row_blocks)](
         indices,
         tile_count,
@@ -331,30 +361,27 @@ def _build_csr(indices, n_samples, num_weights, padding_idx):
         num_weights,
         padding_idx,
         NWP=n_rows_pad,
-        BW=_ROWS_TILE,
-        NS=_SAMP_TILE,
+        BW=bw,
+        NS=ns,
     )
-    n_tiles_buf = torch.full(
-        (n_rows_pad,), n_samp_tiles, dtype=torch.int32, device=device
-    )
-    _ebdb_tile_prefix_kernel[(n_samp_tiles, n_row_blocks)](
+    _ebdb_tile_prefix_kernel[(n_samp_tiles, n_rows_pad // bw_prefix)](
         tile_count,
         prefix,
         n_tiles_buf,
         NWP=n_rows_pad,
-        BW=_ROWS_TILE,
+        BW=bw_prefix,
     )
-    _ebdb_tile_total_kernel[(n_row_blocks,)](
+    _ebdb_tile_total_kernel[(n_rows_pad // bw_prefix,)](
         tile_count,
         counts,
         n_tiles_buf,
         NWP=n_rows_pad,
-        BW=_ROWS_TILE,
+        BW=bw_prefix,
     )
     _ebdb_scan_kernel[(1,)](counts, start, TILE=n_rows_pad)
-    n_rank_blocks = triton.cdiv(n_samples, _RANK_TILE)
+    n_rank_blocks = triton.cdiv(n_samples, ts)
     order = torch.empty(
-        n_samples + n_rank_blocks * _RANK_TILE, dtype=torch.int32, device=device
+        n_samples + n_rank_blocks * ts, dtype=torch.int32, device=device
     )
     _ebdb_rank_kernel[(n_rank_blocks,)](
         indices,
@@ -365,8 +392,8 @@ def _build_csr(indices, n_samples, num_weights, padding_idx):
         num_weights,
         padding_idx,
         NWP=n_rows_pad,
-        TS=_RANK_TILE,
-        NS=_SAMP_TILE,
+        TS=ts,
+        NS=ns,
     )
     return counts, start, order
 
@@ -449,8 +476,7 @@ def _embedding_bag_dense_backward(
     block_d = _pow2_block(dim)
     if block_d is not None:
         out = torch.empty((num_weights, dim), dtype=grad.dtype, device=device)
-        grid = (num_weights, dim // block_d)
-        _ebdb_gather_row_kernel[grid](
+        _ebdb_gather_row_kernel[(num_weights,)](
             grad,
             offset2bag,
             bag_size,

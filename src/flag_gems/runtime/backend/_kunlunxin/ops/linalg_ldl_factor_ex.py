@@ -1,57 +1,15 @@
-"""Kunlunxin ldl_factor_ex (aten::linalg_ldl_factor_ex) vendor override.
-
-Implements the LAPACK DSYTF2 (unblocked Bunch-Kaufman) LDL^T factorization
-with 1x1/2x2 pivoting and row/column interchanges, matching the semantics of
-the CPU reference (LAPACK ssytrf/dsytf2) and the ATen CUDA implementation:
-  - UPLO='L' storage: the returned LD has L in the strict lower triangle,
-    D (1x1 or 2x2 blocks) on the diagonal, and an all-zero upper triangle.
-  - pivots are 1-based; a positive ipiv(k) = p means a 1x1 pivot with rows and
-    columns k and p interchanged; two equal negative entries -(p) twice encode
-    a 2x2 block.
-  - info == 0 on success (nonzero index only for zero/NaN pivot columns).
-
-The previous vendor implementation was an *unpivoted* LDL that always wrote
-pivots = 1..N.  LAPACK's Bunch-Kaufman factorization swaps rows/columns on a
-fraction (~10-15%) of the random symmetric-definite test inputs (e.g. pivots
-[1,2,3,4,5,6,8,8]), producing a different LD layout and different pivots, so
-the old code failed those cases (see harness/solution/linalg_ldl_factor_ex).
-
-Implementation notes (Kunlunxin/XPU Triton backend constraints):
-  - An in-kernel loop over the Bunch-Kaufman steps is not usable: a
-    [N x N] 2-D tile carried through a loop fails at TritonXPUCoreTiling
-    (``out of resource: uni_sram``), and reductions (``tt.reduce``) inside a
-    ``while`` loop cannot be legalized.  The step loop therefore lives on the
-    host: one kernel launch per K (the proven linalg_det/linalg_slogdet
-    structure, ~19us/launch on this backend).
-  - The step size (kstep = 1 or 2) is data dependent, so the host cannot know
-    which K a batch is at.  The kernel reads PIV[K-1] itself: if the previous
-    step was a 2x2 pivot (PIV[K-1] < 0) the launch is a no-op, which mirrors
-    LAPACK advancing K by kstep.  This keeps every batch correct in a single
-    launch per K.
-  - The workspace is a flat (batch, rows, LDA) tile (power-of-two TOT =
-    rows*LDA lanes) so that every load/store is a single full-width strided
-    access; reductions use sum-extraction of scalar-ized columns instead of
-    2-D tile reductions (which crash the XPU backend); masks are applied with
-    ``tl.where`` because masked stores are not honored.
-  - The interchange follows LAPACK DSYTF2 exactly: it is the *partial*
-    Bunch-Kaufman interchange (tail column swap, cross terms, diagonal swap,
-    and the kstep==2 extra A[K+1,K] <-> A[kp,K] swap), not a full P.A.P
-    transposition; the already-factored rows/cols < kk are left untouched.
-  - The kernel computes in float32 (Kunlunxin Triton does not support fp64)
-    and the host restores the requested dtype.
-"""
-
 import logging
 
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-MAX_MATRIX_SIZE = 64
+MAX_MATRIX_SIZE = 32
 
 _ALPHA = (1.0 + 17.0**0.5) / 8.0
 
@@ -61,19 +19,18 @@ def _next_pow2(n):
 
 
 def _plan(n):
-    """(LDA, TOT) for the flat workspace: TOT must be a power of two."""
     rows = triton.next_power_of_2(n)
-    if n >= 16 and n % 8 == 0 and n * n <= 4096:
-        lda = n
+    if rows == n:
+        lda = n if (n >= 16 and n % 8 == 0 and n * n <= 4096) else max(64, rows)
     else:
-        lda = max(64, rows)
+        lda = rows
     return lda, rows * lda
 
 
 @libentry()
 @triton.jit
 def _dsytf2_step_kernel(
-    W, LD, PIV, INFO, N, K, LDA: tl.constexpr, TOT: tl.constexpr, ALPHA
+    W, LD, PIV, INFO, NEXT, N, K, LDA: tl.constexpr, TOT: tl.constexpr, ALPHA
 ):
     """One Bunch-Kaufman step (K) of DSYTF2 (UPLO='L'), one program per matrix.
 
@@ -82,6 +39,7 @@ def _dsytf2_step_kernel(
     LD   - (batch, TOT) float32 output, lower-triangle factors, upper zeroed.
     PIV  - (batch, N) int32 1-based pivot array.
     INFO - (batch,) int32.
+    NEXT - (batch,) int32 index of the next step that must actually run.
     """
     b = tl.program_id(0)
     base = b * TOT
@@ -92,8 +50,14 @@ def _dsytf2_step_kernel(
     T0 = tl.load(W + base + e)
     T = T0
 
-    prevk = tl.maximum(K - 1, 0)
-    is_prev2x2 = (K > 0) & (tl.load(PIV + b * N + prevk) < 0)
+    # A 2x2 pivot writes two negative entries (PIV[k] == PIV[k+1]), so testing
+    # only PIV[K-1] < 0 would also skip the step *after* the block.  NEXT is
+    # advanced by the step that actually ran (K += kstep), which is exactly
+    # LAPACK's loop induction.
+    # NEXT is not initialized on the host (that would cost one extra
+    # kernel launch); step K=0 is always the first one to run.
+    next_k = tl.where(K == 0, 0, tl.load(NEXT + b))
+    active = K == next_k
 
     NR = TOT // LDA
     rowc = tl.where(row < NR, row, 0)
@@ -191,7 +155,10 @@ def _dsytf2_step_kernel(
         tl.where(
             row == kp,
             a_kp_kk,
-            tl.where(row == kk, d_kp, tl.where(row > kk, ckp_r, ck1_r)),
+            # rows between KK and KP: the cross interchange moved A(KP, row)
+            # into A(row, KK).  Read the lower triangle (rkp_r); the upper one
+            # is stale after an interchange on this store-always tile.
+            tl.where(row == kk, d_kp, tl.where(row > kk, rkp_r, ck1_r)),
         ),
     )
     x1c = tl.where(
@@ -200,7 +167,7 @@ def _dsytf2_step_kernel(
         tl.where(
             col == kp,
             a_kp_kk,
-            tl.where(col == kk, d_kp, tl.where(col > kk, ckp_c, ck1_c)),
+            tl.where(col == kk, d_kp, tl.where(col > kk, rkp_c, ck1_c)),
         ),
     )
 
@@ -208,8 +175,8 @@ def _dsytf2_step_kernel(
     d21 = a_kpK
     d21s = tl.where(d21 == 0.0, 1.0, d21)
 
-    act1 = (~skip) & (K < N - 1)
-    act2 = (~skip) & (K < N - 2)
+    act1 = (~skip) & (K < N - 1) & active
+    act2 = (~skip) & (K < N - 2) & active
     d11 = 1.0 / tl.where(g_KK == 0.0, 1.0, g_KK)
     upd1 = live & (row > K) & (col > K)
     T1 = tl.where(upd1 & act1, G - d11 * x * xc, G)
@@ -230,7 +197,7 @@ def _dsytf2_step_kernel(
     T2 = tl.where(live & (col == K + 1) & (row > K + 1) & act2, w2, T2)
 
     T = tl.where(two, T2, T1)
-    T = tl.where(is_prev2x2, T0, T)
+    T = tl.where(active, T, T0)
     tl.store(W + base + e, T)
     tl.store(LD + base + e, tl.where(col > row, 0.0, T))
 
@@ -239,16 +206,17 @@ def _dsytf2_step_kernel(
     idx2 = tl.where(two2, K + 1, K)
     oldpiv = tl.load(PIV + b * N + K)
     oldpiv2 = tl.load(PIV + b * N + idx2)
-    tl.store(PIV + b * N + K, tl.where(is_prev2x2, oldpiv, kp_val))
+    tl.store(PIV + b * N + K, tl.where(active, kp_val, oldpiv))
     tl.store(
         PIV + b * N + idx2,
-        tl.where(is_prev2x2, oldpiv2, tl.where(two2, -(kp + 1), kp_val)),
+        tl.where(active, tl.where(two2, -(kp + 1), kp_val), oldpiv2),
     )
 
     cur_info = tl.load(INFO + b)
     new_info = tl.where((skip & (cur_info == 0)), K + 1, cur_info)
-    new_info = tl.where(is_prev2x2, cur_info, new_info)
+    new_info = tl.where(active, new_info, cur_info)
     tl.store(INFO + b, new_info)
+    tl.store(NEXT + b, tl.where(active, K + kstep, next_k))
 
 
 def _check_linalg_ldl_factor_ex(A, hermitian, check_errors):
@@ -274,19 +242,22 @@ def _check_linalg_ldl_factor_ex(A, hermitian, check_errors):
 def ldl_factor_ex(A, hermitian=False, check_errors=False):
     logger.debug("GEMS_KUNLUNXIN LINALG_LDL_FACTOR_EX")
     _check_linalg_ldl_factor_ex(A, hermitian, check_errors)
-    if hermitian:
-        A = A.transpose(-2, -1).conj()
     n = A.shape[-1]
     batch_count = A.numel() // (n * n)
     input_contiguous = A.contiguous().reshape(batch_count, n, n)
     work_input = input_contiguous.to(torch.float32)
     lda, tot = _plan(n)
-    W = torch.zeros(batch_count, n, lda, dtype=torch.float32, device=A.device)
-    W[:, :, :n] = work_input[:, :n, :]
+    rows = tot // lda
+    # The flat workspace carries ``rows = next_pow2(n)`` rows (TOT must be a
+    # power of two for tl.arange); allocating only ``n`` rows made the reshape
+    # below fail for every non-power-of-two n (e.g. n=3/5/7/17/33).
+    W = torch.zeros(batch_count, rows, lda, dtype=torch.float32, device=A.device)
+    W[:, :n, :n] = work_input
     Wf = W.reshape(batch_count, tot)
     LD = torch.zeros(batch_count, tot, dtype=torch.float32, device=A.device)
     pivots = torch.empty(batch_count, n, dtype=torch.int32, device=A.device)
     info = torch.zeros(batch_count, dtype=torch.int32, device=A.device)
+    next_k = torch.empty(batch_count, dtype=torch.int32, device=A.device)
 
     for K in range(n):
         _dsytf2_step_kernel[(batch_count,)](
@@ -294,6 +265,7 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
             LD,
             pivots,
             info,
+            next_k,
             n,
             K,
             LDA=lda,
@@ -301,6 +273,13 @@ def ldl_factor_ex(A, hermitian=False, check_errors=False):
             ALPHA=_ALPHA,
             num_warps=1,
         )
-    LD_out = LD.view(batch_count, n, lda)[:, :n, :n].contiguous()
+    LD_out = LD.view(batch_count, rows, lda)[:, :n, :n]
+    if not LD_out.is_contiguous():
+        # n < 16 keeps the historical 64-column workspace, so the slice above
+        # is strided; materialise it with the gems Triton copy (not an ATen
+        # copy) instead of Tensor.contiguous().
+        LD_packed = torch.empty(batch_count, n, n, dtype=torch.float32, device=A.device)
+        _gems_copy_(LD_packed, LD_out)
+        LD_out = LD_packed
     LD_out = LD_out.reshape(A.shape).to(A.dtype)
     return LD_out, pivots.reshape(A.shape[:-1]), info.reshape(A.shape[:-2])

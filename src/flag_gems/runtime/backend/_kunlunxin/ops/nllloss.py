@@ -9,9 +9,13 @@ from flag_gems.utils import libentry
 
 from .sum import sum as xpu_sum
 from .zero import zero_
-from .zeros_like import zeros_like as xpu_zeros_like
+from .zeros import zeros_kernel as _zeros_kernel_entry
 
 logger = logging.getLogger(__name__)
+
+# Launch the shared gems `zeros_kernel` directly (its `libentry` wrapper only
+# adds a per-launch Python bookkeeping layer on this latency-sensitive path).
+_zeros_kernel = getattr(_zeros_kernel_entry, "fn", _zeros_kernel_entry)
 
 
 @libentry()
@@ -164,7 +168,6 @@ def nll_loss_scalar_mean_kernel(num_ptr, den_ptr, out_ptr, tw_ptr):
     tl.store(tw_ptr, den.to(tw_ptr.dtype.element_ty))
 
 
-@libentry()
 @triton.jit(do_not_specialize=["ignore_index"])
 def nll_loss_backward_kernel(
     out_grad_ptr,
@@ -786,15 +789,6 @@ def _nll_loss_forward_raw(self, target, weight=None, reduction=1, ignore_index=-
 
 
 class _NllLossForwardFunction(torch.autograd.Function):
-    """Autograd wrapper for the raw forward.
-
-    ``nll_loss_forward`` is registered on the Autograd dispatch key in
-    ``_FULL_CONFIG``; a plain raw kernel there would silently drop the graph
-    (``F.nll_loss`` would return a tensor without ``grad_fn``), so mirror the
-    generic implementation and expose the Triton forward through
-    ``torch.autograd.Function``.
-    """
-
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index):
         output, total_weight = _nll_loss_forward_raw(
@@ -837,7 +831,6 @@ def nll_loss_backward(
     ignore_index=-100,
     total_weight=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN NLL_LOSS_BWD")
     if self.numel() == 0:
         return torch.empty_like(self)
     N = 1 if self.ndim == 1 else self.shape[0]
@@ -848,12 +841,23 @@ def nll_loss_backward(
     weight = None if weight is None else weight.contiguous()
 
     if self.is_contiguous():
-        grad_input = xpu_zeros_like(self)
+        # Inline `xpu_zeros_like`'s launch: same gems `zeros_kernel`/geometry,
+        # but one device guard and no wrapper frame on this launch-hot path.
+        grad_input = torch.empty_like(self)
+        n_elem = self.numel()
+        with torch_device_fn.device(self.device):
+            _zeros_kernel[(12, 1, 1)](
+                grad_input,
+                n_elem,
+                BLOCK_SIZE=triton.next_power_of_2(triton.cdiv(n_elem, 12)),
+                buffer_size_limit=2048,
+                isCloseDtypeConvert=True,
+            )
     else:
         grad_input = torch.empty_like(self).contiguous()
         zero_(grad_input)
 
-    grid = lambda meta: (triton.cdiv(N, meta["BLOCK_N"]),)
+    grid = (triton.cdiv(N, 128),)
     with torch_device_fn.device(self.device):
         nll_loss_backward_kernel[grid](
             grad_output,
@@ -1029,8 +1033,6 @@ def _nll_loss2d_forward_raw(self, target, weight=None, reduction=1, ignore_index
 
 
 class _NllLoss2dForwardFunction(torch.autograd.Function):
-    """Autograd wrapper for the raw 3d+ forward (see ``_NllLossForwardFunction``)."""
-
     @staticmethod
     def forward(ctx, inp, target, weight, reduction, ignore_index):
         output, total_weight = _nll_loss2d_forward_raw(
