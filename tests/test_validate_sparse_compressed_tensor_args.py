@@ -175,3 +175,87 @@ def test_validate_sparse_compressed_tensor_args_invalid_metadata():
         flag_gems._validate_sparse_compressed_tensor_args(
             comp, plain, values, size, layout, check_pinning=False
         )
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+def test_validate_sparse_compressed_tensor_args_empty_nonunit_stride():
+    comp = torch.zeros((4, 3), dtype=torch.int64, device=flag_gems.device)
+    plain = torch.empty_strided(
+        (4, 0), (15, 3), dtype=torch.int64, device=flag_gems.device
+    )
+    values = torch.empty((4, 0), device=flag_gems.device)
+    size = (4, 2, 3)
+
+    assert (
+        torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+            comp,
+            plain,
+            values,
+            size,
+            torch.sparse_csr,
+            check_pinning=False,
+        )
+        is None
+    )
+    assert (
+        flag_gems._validate_sparse_compressed_tensor_args(
+            comp,
+            plain,
+            values,
+            size,
+            torch.sparse_csr,
+            check_pinning=False,
+        )
+        is None
+    )
+
+
+@pytest.mark.validate_sparse_compressed_tensor_args
+@pytest.mark.underscore_validate_sparse_compressed_tensor_args
+def test_validate_sparse_compressed_tensor_args_dispatch():
+    calls = 0
+
+    def registered_impl(
+        compressed_indices,
+        plain_indices,
+        values,
+        size,
+        layout,
+        check_pinning=None,
+    ):
+        nonlocal calls
+        calls += 1
+        return flag_gems._validate_sparse_compressed_tensor_args(
+            compressed_indices,
+            plain_indices,
+            values,
+            size,
+            layout,
+            check_pinning,
+        )
+
+    library = torch.library.Library("aten", "IMPL")
+    library.impl(
+        "_validate_sparse_compressed_tensor_args",
+        registered_impl,
+        flag_gems.backend_info.dispatch_key,
+    )
+    try:
+        comp = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+        plain = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
+        values = torch.zeros(1, device=flag_gems.device)
+        assert (
+            torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+                comp,
+                plain,
+                values,
+                (1, 1),
+                torch.sparse_csr,
+                check_pinning=False,
+            )
+            is None
+        )
+        assert calls == 1
+    finally:
+        library._destroy()
