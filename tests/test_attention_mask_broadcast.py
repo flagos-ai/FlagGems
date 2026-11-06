@@ -20,6 +20,21 @@ import flag_gems
 
 pytestmark = pytest.mark.attention
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _cudnn_attention_available():
+    if not IS_KUNLUNXIN:
+        return True
+    try:
+        q = torch.randn(1, 1, 2, 8, device=flag_gems.device, dtype=torch.float16)
+        torch.ops.aten._scaled_dot_product_cudnn_attention(
+            q, q, q, None, False, 0.0, False, False
+        )
+    except (AttributeError, NotImplementedError, RuntimeError):
+        return False
+    return True
+
 
 def _attention(api, q, k, v, bias):
     if api == "sdpa":
@@ -76,6 +91,8 @@ def _inputs(dtype, mask_kind, strided):
 @pytest.mark.parametrize("strided", [False, True])
 @pytest.mark.parametrize("mask_kind", ["padding", "batch", "matrix", "expanded"])
 def test_attention_mask_broadcast(api, dtype, strided, mask_kind):
+    if api != "sdpa" and not _cudnn_attention_available():
+        pytest.skip("cuDNN attention is not available on this backend")
     q, k, v, bias = _inputs(dtype, mask_kind, strided)
     expected = _reference(q, k, v, bias)
     actual = _attention(api, q, k, v, bias)
@@ -89,6 +106,8 @@ def test_attention_mask_broadcast(api, dtype, strided, mask_kind):
 @pytest.mark.parametrize("api", ["sdpa", "scaled_cudnn", "cudnn"])
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
 def test_attention_mask_broadcast_graph(api, dtype):
+    if api != "sdpa" and not _cudnn_attention_available():
+        pytest.skip("cuDNN attention is not available on this backend")
     q, k, v, bias = _inputs(dtype, "padding", True)
     _attention(api, q, k, v, bias)
     torch.cuda.synchronize()
