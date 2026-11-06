@@ -14,18 +14,22 @@
 
 import logging
 import math
-import os
 
 import torch
 import triton
+from triton.backends.tsingmicro.precision import (
+    restore_precision_mode,
+    set_precision_mode,
+)
 
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_tensor as _repeat_interleave_tensor,
 )
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
-from flag_gems.utils.pointwise_dynamic import pointwise_dynamic
 from flag_gems.utils.shape_utils import c_contiguous_stride
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tensor_wrapper import StridedBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +60,7 @@ def _compute_output_numel(inp_shape, repeats, dim):
 
 
 def _repeat_interleave_self_int_impl(inp, repeats, dim=None, *, output_size=None):
-    logger.debug("GEMS_TSINGMICRO REPEAT_INTERLEAVE_SELF_INT")
+    logger.debug("GEMS_TSINGMICRO _REPEAT_INTERLEAVE_SELF_INT_IMPL")
     if dim is None:
         inp = inp.flatten()
         dim = 0
@@ -103,20 +107,16 @@ def _repeat_interleave_self_int_impl(inp, repeats, dim=None, *, output_size=None
 
 
 def repeat_interleave_self_int(inp, repeats, dim=None, *, output_size=None):
-    original_precision_priority = os.environ.get("PRECISION_MODE", None)
+    logger.debug("GEMS_TSINGMICRO REPEAT_INTERLEAVE_SELF_INT")
     out_numel = _compute_output_numel(inp.shape, repeats, dim)
-    if out_numel > 2**24:
-        os.environ["PRECISION_MODE"] = "1"
-
+    precision_token = set_precision_mode("1") if out_numel > 2**24 else None
     try:
         return _repeat_interleave_self_int_impl(
             inp, repeats, dim=dim, output_size=output_size
         )
     finally:
-        if original_precision_priority is not None:
-            os.environ["PRECISION_MODE"] = original_precision_priority
-        else:
-            os.environ.pop("PRECISION_MODE", None)
+        if precision_token is not None:
+            restore_precision_mode(precision_token)
 
 
 def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):

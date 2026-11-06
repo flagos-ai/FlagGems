@@ -17,6 +17,10 @@ from typing import Optional
 
 import torch
 import triton
+from triton.backends.tsingmicro.precision import (
+    restore_precision_mode,
+    set_precision_mode,
+)
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
@@ -28,11 +32,60 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 
 _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
+# TX Triton may fail lowering int64 pointwise loads when a non-unit dim uses a
+# large stride (GetStructuredStateOp rewrite → llvm.cond_br with `index`).
+_LARGE_STRIDE_THRESHOLD = 2048
+
+# f32 represents integers up to 2**24 exactly. Under precision-mode 0/1 the
+# rank-N tile decode (%/div) and the per-dim address offsets of a strided copy
+# are vectorized i32 ops demoted to f32, so intermediates >= 2**24 lose
+# precision and elements land at wrong offsets. Contiguous copies collapse to
+# a flat task whose offsets stay in the scalar domain and are exempt, so only
+# strided layouts (or views whose max offset crosses the bound) are gated.
+# Force pm=2 for exact integer arithmetic (same rationale as cat/flip).
+_F32_PRECISION_THRESHOLD = 2**24
+
+
+def _needs_i64_precision(dst: torch.Tensor, src: torch.Tensor) -> bool:
+    if dst.is_contiguous() and src.is_contiguous():
+        return False
+    for t in (dst, src):
+        if t.numel() > _F32_PRECISION_THRESHOLD:
+            return True
+        max_offset = sum(
+            (size - 1) * abs(stride) for size, stride in zip(t.shape, t.stride())
+        )
+        if max_offset > _F32_PRECISION_THRESHOLD:
+            return True
+    return False
+
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
 @triton.jit
 def _copy_kernel(src):
     return src
+
+
+def _redispatch_copy_(dst, src, non_blocking: bool):
+    return torch.ops.aten.copy_.default.redispatch(
+        _FALLBACK_KEYSET, dst, src, non_blocking
+    )
+
+
+def _has_large_noncontig_stride(t: torch.Tensor) -> bool:
+    if t.numel() == 0 or t.is_contiguous():
+        return False
+    for size, stride in zip(t.shape, t.stride()):
+        if size > 1 and abs(stride) >= _LARGE_STRIDE_THRESHOLD:
+            return True
+    return False
+
+
+def _int64_large_strided_unsafe(dst: torch.Tensor, src: torch.Tensor) -> bool:
+    """TX backend cannot reliably compile int64 copy with large non-contig strides."""
+    if dst.dtype != torch.int64 and src.dtype != torch.int64:
+        return False
+    return _has_large_noncontig_stride(dst) or _has_large_noncontig_stride(src)
 
 
 def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
@@ -42,15 +95,6 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         return False
     if dst.is_quantized or src.is_quantized:
         return False
-    if dst.dtype == torch.bool or src.dtype == torch.bool:
-        # The TsingMicro Triton backend cannot lower bool pointer loads/stores
-        # reliably; use the native copy implementation for bool tensors.
-        return False
-    if not dst.is_contiguous() or not src.is_contiguous():
-        # The pointwise generator has incorrect addressing for some dense
-        # non-contiguous layouts with large strides. Native copy handles these
-        # layouts, including zero-stride broadcasted sources, correctly.
-        return False
     if src.is_complex() or dst.is_complex():
         # Preserve PyTorch's behaviour of warning when casting complex to real
         # by forcing the redispatch path, which issues the warning internally.
@@ -59,6 +103,8 @@ def _can_use_triton(dst: torch.Tensor, src: torch.Tensor) -> bool:
         src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
     ):
         # Triton does not support float8 yet, so defer to PyTorch which has a reference implementation.
+        return False
+    if _int64_large_strided_unsafe(dst, src):
         return False
     return True
 
@@ -81,6 +127,7 @@ def copy(
 
 
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
+    logger.debug("GEMS_TSINGMICRO COPY_")
     if isinstance(src, (int, float, bool)):
         src = torch.tensor(src, device=dst.device)
     elif not isinstance(src, torch.Tensor):
@@ -105,34 +152,22 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
         ):
             return dst
         # Otherwise defer to PyTorch for well-defined semantics on overlapping writes.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return _redispatch_copy_(dst, src, non_blocking)
 
     if _FLOAT8_E8M0FNU is not None and (
         src.dtype == _FLOAT8_E8M0FNU or dst.dtype == _FLOAT8_E8M0FNU
     ):
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return _redispatch_copy_(dst, src, non_blocking)
 
     if src.numel() > 2**31 - 1 or dst.numel() > 2**31 - 1:
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return _redispatch_copy_(dst, src, non_blocking)
 
     if not _can_use_triton(dst, src):
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
+        return _redispatch_copy_(dst, src, non_blocking)
 
     if dst.numel() == 0:
         # Respect PyTorch behaviour: empty tensors should still validate broadcast.
-        return torch.ops.aten.copy_.default.redispatch(
-            _FALLBACK_KEYSET, dst, src, non_blocking
-        )
-
-    logger.debug("GEMS_TSINGMICRO COPY_")
+        return _redispatch_copy_(dst, src, non_blocking)
 
     try:
         broadcast_shape = torch.broadcast_shapes(dst.shape, src.shape)
@@ -146,6 +181,29 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 
     expanded_src = _expand_like(src, dst.shape)
 
-    overload = _copy_kernel.instantiate(expanded_src.ndim)
-    overload(expanded_src, out0=dst)
+    precision_token = (
+        set_precision_mode("2") if _needs_i64_precision(expanded_src, dst) else None
+    )
+    try:
+        # Pointwise preparation collapses contiguous input/output layouts to a
+        # flat task, avoiding expensive per-element rank-N index reconstruction.
+        # Keep direct instantiation for zero-stride destinations, which general
+        # pointwise output validation treats as internally overlapping.
+        if any(
+            size > 1 and stride == 0 for size, stride in zip(dst.shape, dst.stride())
+        ):
+            overload = _copy_kernel.instantiate(expanded_src.ndim)
+            overload(expanded_src, out0=dst)
+        else:
+            _copy_kernel(expanded_src, out0=dst)
+    except Exception as exc:
+        # TX Triton may still fail on unenumerated int64 / strided combos.
+        logger.warning(
+            "GEMS_TSINGMICRO COPY_ triton path failed (%s); redispatch to ATen",
+            exc,
+        )
+        return _redispatch_copy_(dst, src, non_blocking)
+    finally:
+        if precision_token is not None:
+            restore_precision_mode(precision_token)
     return dst
