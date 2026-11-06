@@ -71,6 +71,7 @@ from .embedding_spmdm import embedding_spmdm
 from .erfinv import erfinv
 from .exponential import exponential
 from .exponential_ import exponential_
+from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
@@ -282,6 +283,7 @@ __all__ = [
     "erfinv",
     "exponential",
     "exponential_",
+    "feature_dropout",
     "fill_scalar",
     "fill_scalar_",
     "fill_tensor",
