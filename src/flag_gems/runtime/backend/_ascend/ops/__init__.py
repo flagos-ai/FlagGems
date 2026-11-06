@@ -184,6 +184,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
 from .swiglu import swiglu
@@ -445,6 +446,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_erfinv",
+    "squeeze_copy",
     "stack",
     "subtract",
     "swiglu",
