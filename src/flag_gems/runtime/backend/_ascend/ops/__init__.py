@@ -164,6 +164,7 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .nansum import nansum, nansum_out
 from .new_ones import new_ones
 from .nonzero_static import nonzero_static, nonzero_static_out
+from .norm_scalaropt_dim import norm_scalaropt_dim
 from .ones import ones
 from .ones_like import ones_like
 from .outer import outer
@@ -439,6 +440,7 @@ __all__ = [
     "new_ones",
     "nonzero_static",
     "nonzero_static_out",
+    "norm_scalaropt_dim",
     "normed_cumsum",
     "ones",
     "ones_like",
