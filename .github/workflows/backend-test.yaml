@@ -47,7 +47,7 @@ on:
         type: string
         default: ''
       container_image:
-        description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (hygon, iluvatar, kunlunxin, metax-maca3810, mthreads-musa520). See .github/backends.json.'
+        description: 'Vendor container image, for backends that only have their driver/runtime set up inside a container (hygon-dtk2604, iluvatar-corex450, kunlunxin-xre5371, metax-maca3810, mthreads-musa520). See .github/backends.json.'
         required: false
         type: string
         default: ''
@@ -75,7 +75,7 @@ permissions:
 
 jobs:
   test:
-    if: ${{ inputs.backend != 'iluvatar' && inputs.backend != 'kunlunxin' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon' && inputs.backend != 'mthreads-musa520' && inputs.backend != 'thead' }}
+    if: ${{ inputs.backend != 'iluvatar-corex450' && inputs.backend != 'kunlunxin-xre5371' && inputs.backend != 'metax-maca3810' && inputs.backend != 'hygon-dtk2604' && inputs.backend != 'mthreads-musa520' && inputs.backend != 'thead-ppu210' }}
     runs-on: ${{ inputs.runner_label }}
     concurrency:
       group: >-
@@ -114,7 +114,7 @@ jobs:
   #     harbor.baai.ac.cn/flagos-runtime/flagos-runtime-kunlunxin-xre5.37.1:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-kunlunxin:
-    if: ${{ inputs.backend == 'kunlunxin' }}
+    if: ${{ inputs.backend == 'kunlunxin-xre5371' }}
     runs-on: ${{ inputs.runs_on_default }}
     container:
       image: ${{ inputs.container_image }}
@@ -260,7 +260,7 @@ jobs:
   # setup.sh (which rebuilds a venv and reinstalls torch over the network
   # even when the image already matches). See test-kunlunxin.
   test-thead:
-    if: ${{ inputs.backend == 'thead' }}
+    if: ${{ inputs.backend == 'thead-ppu210' }}
     runs-on: >-
       ${{ github.repository == 'flagos-ai/FlagGems-vllm'
           && inputs.runs_on_vllm
@@ -318,7 +318,7 @@ jobs:
   #     harbor.baai.ac.cn/flagos-base/flagos-base-hygon-dtk26.04:2.2.0 bash
   # with GitHub Actions creating/starting the container and exec'ing each step.
   test-hygon:
-    if: ${{ inputs.backend == 'hygon' }}
+    if: ${{ inputs.backend == 'hygon-dtk2604' }}
     runs-on: >-
       ${{ github.repository == 'flagos-ai/FlagGems-vllm'
           && inputs.runs_on_vllm
@@ -443,7 +443,7 @@ jobs:
   # with GitHub Actions creating/starting the container and exec'ing each step.
   #     harbor.baai.ac.cn/flagos-base/flagos-base-iluvatar-corex4.5.0:2.2.0 bash
   test-iluvatar:
-    if: ${{ inputs.backend == 'iluvatar' }}
+    if: ${{ inputs.backend == 'iluvatar-corex450' }}
     runs-on: >-
       ${{ github.repository == 'flagos-ai/FlagGems-vllm'
           && inputs.runs_on_vllm

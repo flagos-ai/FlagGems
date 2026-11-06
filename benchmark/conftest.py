@@ -124,6 +124,10 @@ class BenchConfig:
         self.profile_iterations = 1
         self.profile_hook = None
         self.override_registry = None
+        # Override names declared via --override that no timed case invoked.
+        # Non-empty means the candidate was never measured, so the report must
+        # not be written (see pytest_terminal_summary).
+        self.override_unused = []
         self.skip_native = False
         self.native_baseline_skip_reason = None
         self.base_data = None
@@ -641,6 +645,14 @@ def pytest_runtest_logreport(report):
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     """Combine and dump the result into JSON."""
+    if Config.override_unused:
+        terminalreporter.write_line(
+            "ERROR: --override named {} but no timed benchmark in this session "
+            "invoked it. Those numbers would describe the built-in "
+            "implementation rather than the requested candidate, so no report "
+            "was written.".format(", ".join(repr(n) for n in Config.override_unused))
+        )
+        return
     if Config.reference_only:
         with open(REPORT_FILE, "w") as output:
             json.dump(
@@ -686,7 +698,33 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
         json.dump(data, f, indent=2, default=str)
 
 
+def _unused_override_names():
+    """Override names from --override that no timed case actually invoked.
+
+    An override whose name does not match the operator being benchmarked is
+    registered but never called, so the numbers describe the built-in
+    implementation while still looking like a successful candidate run. Modes
+    that never time a candidate are excluded: for them an unused override is
+    expected rather than a mistake.
+    """
+    if Config is None or Config.override_registry is None:
+        return []
+    if (
+        Config.query
+        or Config.list_cases
+        or Config.preflight_only
+        or Config.reference_only
+        or Config.ref_as_candidate
+    ):
+        return []
+    return Config.override_registry.unused_overrides()
+
+
 def pytest_sessionfinish(session, exitstatus):
+    if Config is not None:
+        Config.override_unused = _unused_override_names()
+        if Config.override_unused and session.exitstatus == pytest.ExitCode.OK:
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
     if Config is not None and Config.reference_only:
         if reference_report(Config.reference_records)["status"] in {
             "UNSUPPORTED",
