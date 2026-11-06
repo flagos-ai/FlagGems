@@ -40,9 +40,13 @@ def test_cumulative_trapezoid(shape, dtype):
 def test_cumulative_trapezoid_large(shape, dtype):
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(res_inp, True)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_inp = ref_inp.to("cpu").to(torch.float64)
 
     ref_out = torch.cumulative_trapezoid(ref_inp)
     res_out = flag_gems.cumulative_trapezoid(res_inp)
+    if flag_gems.vendor_name == "kunlunxin":
+        res_out = res_out.cpu()
 
     utils.gems_assert_close(res_out, ref_out, dtype)
 
