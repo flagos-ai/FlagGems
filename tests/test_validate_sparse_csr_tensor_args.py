@@ -96,12 +96,9 @@ def test_validate_sparse_csr_tensor_args(index_dtype, shape, strided_batch, dtyp
 @pytest.mark.underscore_validate_sparse_csr_tensor_args
 @pytest.mark.parametrize("case", ["endpoint", "bounds", "duplicate"])
 def test_validate_sparse_csr_tensor_args_invalid_indices(case):
-    # Device assertions leave the CUDA context in a sticky error state.
-    # Use the native CPU reference here and isolate each GPU failure in a
-    # child process so subsequent tests retain a usable CUDA context.
     comp = torch.tensor([0, 2, 3], dtype=torch.int64)
     plain = torch.tensor([0, 1, 0], dtype=torch.int64)
-    values = torch.zeros(3, device="cpu")
+    values = torch.zeros(3)
     size = (2, 3)
     if case == "endpoint":
         comp[0] = 1
@@ -113,9 +110,11 @@ def test_validate_sparse_csr_tensor_args_invalid_indices(case):
         torch.ops.aten._validate_sparse_csr_tensor_args.default(
             comp, plain, values, size
         )
+    # ATen's CUDA implementation also returns from the call and reports its
+    # device assertion at the next synchronize. Keep each sticky CUDA failure
+    # in a child process so this test cannot poison later cases.
     child_code = """
-import os, sys, resource
-resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+import sys
 import torch
 import flag_gems
 comp = torch.tensor([0, 2, 3], dtype=torch.int64, device=flag_gems.device)
@@ -125,13 +124,9 @@ if case == "endpoint": comp[0] = 1
 elif case == "bounds": plain[0] = 3
 else: plain[1] = plain[0]
 values = torch.zeros(3, device=flag_gems.device)
-size = (2, 3)
-layout = torch.sparse_csr
-flag_gems._validate_sparse_csr_tensor_args(comp, plain, values, size)
+flag_gems._validate_sparse_csr_tensor_args(comp, plain, values, (2, 3))
 flag_gems.runtime.torch_device_fn.synchronize()
 """
-    # pytest.ini adds src to this interpreter only; child Python processes
-    # need an explicit path to the same checkout, including in remote CI.
     child_env = os.environ.copy()
     child_env["PYTHONPATH"] = os.pathsep.join(
         filter(
@@ -170,3 +165,76 @@ def test_validate_sparse_csr_tensor_args_invalid_metadata():
         flag_gems._validate_sparse_csr_tensor_args(
             comp, plain, values, size, check_pinning=False
         )
+
+
+@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
+def test_validate_sparse_csr_tensor_args_empty_nonunit_stride():
+    comp = torch.zeros((4, 3), dtype=torch.int64, device=flag_gems.device)
+    plain = torch.empty_strided(
+        (4, 0), (15, 3), dtype=torch.int64, device=flag_gems.device
+    )
+    values = torch.empty((4, 0), device=flag_gems.device)
+    size = (4, 2, 3)
+
+    assert (
+        torch.ops.aten._validate_sparse_csr_tensor_args.default(
+            comp, plain, values, size, check_pinning=False
+        )
+        is None
+    )
+    assert (
+        flag_gems._validate_sparse_csr_tensor_args(
+            comp, plain, values, size, check_pinning=False
+        )
+        is None
+    )
+
+
+@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
+def test_validate_sparse_csr_tensor_args_large_batch_product():
+    # Regression for a two-dimensional launch: grid.y cannot exceed 65535.
+    batch = (256, 256)
+    comp = torch.zeros((*batch, 2), dtype=torch.int64, device=flag_gems.device)
+    plain = torch.empty((*batch, 0), dtype=torch.int64, device=flag_gems.device)
+    values = torch.empty((*batch, 0), device=flag_gems.device)
+    assert (
+        flag_gems._validate_sparse_csr_tensor_args(
+            comp, plain, values, (*batch, 1, 3), check_pinning=False
+        )
+        is None
+    )
+
+
+@pytest.mark.validate_sparse_csr_tensor_args
+@pytest.mark.underscore_validate_sparse_csr_tensor_args
+def test_validate_sparse_csr_tensor_args_dispatch():
+    calls = 0
+
+    def registered_impl(crow_indices, col_indices, values, size, check_pinning=None):
+        nonlocal calls
+        calls += 1
+        return flag_gems._validate_sparse_csr_tensor_args(
+            crow_indices, col_indices, values, size, check_pinning
+        )
+
+    library = torch.library.Library("aten", "IMPL")
+    library.impl(
+        "_validate_sparse_csr_tensor_args",
+        registered_impl,
+        flag_gems.backend_info.dispatch_key,
+    )
+    try:
+        comp = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+        plain = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
+        values = torch.zeros(1, device=flag_gems.device)
+        assert (
+            torch.ops.aten._validate_sparse_csr_tensor_args.default(
+                comp, plain, values, (1, 1), check_pinning=False
+            )
+            is None
+        )
+        assert calls == 1
+    finally:
+        library._destroy()

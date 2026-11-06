@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -72,7 +70,6 @@ def test_validate_sparse_csr_tensor_args():
     bench = SparseValidationBenchmark(
         op_name="validate_sparse_csr_tensor_args",
         torch_op=torch.ops.aten._validate_sparse_csr_tensor_args.default,
-        gems_op=flag_gems._validate_sparse_csr_tensor_args,
         dtypes=dtypes,
     )
     bench.run()
