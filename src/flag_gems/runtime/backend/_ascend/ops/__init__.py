@@ -24,6 +24,7 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
+from .asin_ import asin_
 from .atan2_ import atan2_
 from .attention import (
     ScaleDotProductAttention,
@@ -242,6 +243,7 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "asin_",
     "atan2_",
     "baddbmm",
     "binary_cross_entropy_with_logits",
