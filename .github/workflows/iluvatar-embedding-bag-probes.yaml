@@ -1,0 +1,149 @@
+# Copyright 2026 FlagOS Contributors
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Preserve the workflow identity from #6564 (Actions workflow 363881205).
+name: Iluvatar embedding bag diagnostics
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - '.github/workflows/iluvatar-embedding-bag-probes.yaml'
+      - '.github/scripts/ascend_convolution_backward_diagnostics.py'
+
+permissions:
+  contents: read
+
+jobs:
+  ascend-diagnostics:
+    if: >-
+      github.head_ref == 'ci/ascend-convolution-backward-diagnostics' &&
+      github.event.pull_request.head.repo.full_name == 'siliconflow/FlagGems'
+    runs-on: cann9
+    timeout-minutes: 120
+    concurrency:
+      group: convolution-backward-diagnostics-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      CONVBWD_DIAG_DIR: ${{ github.workspace }}/convbwd-results
+      OPERATOR_SHA: 52c6876610f5faef45198cd9f8379ac35ac41f2d
+      BASELINE_SHA: a0cb9ccbfcea11789252cd76fee9480648b7a3a0
+      COMPILER: flagtree
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        continue-on-error: true
+        with:
+          persist-credentials: false
+      - uses: flagos-ai/FlagGems/.github/actions/checkout-retry@505d8b4c9440c710446f857942263c7f7bc3b1b8
+      - name: Check out the exact failing operator revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          repository: siliconflow/FlagGems
+          ref: 52c6876610f5faef45198cd9f8379ac35ac41f2d
+          fetch-depth: 2
+          path: operator-source
+          persist-credentials: false
+      - name: Verify source and install the original CI dependencies
+        id: setup
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          export CONVBWD_CACHE_ROOT="$RUNNER_TEMP/convbwd-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          export UV_CACHE_DIR="$CONVBWD_CACHE_ROOT/uv"
+          echo "CONVBWD_CACHE_ROOT=$CONVBWD_CACHE_ROOT" >> "$GITHUB_ENV"
+          echo "UV_CACHE_DIR=$UV_CACHE_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$CONVBWD_DIAG_DIR" "$CONVBWD_CACHE_ROOT"
+          test "$(git rev-parse HEAD)" = "$OPERATOR_SHA"
+          test "$(git rev-parse HEAD^2)" = "$BASELINE_SHA"
+          git log -1 --format=fuller > "$CONVBWD_DIAG_DIR/operator-commit.txt"
+          git show "$BASELINE_SHA:src/flag_gems/ops/convolution_backward.py" \
+            > "$CONVBWD_DIAG_DIR/upstream_convolution_backward.py"
+          ./setup.sh ascend-cann900 2>&1 | tee "$CONVBWD_DIAG_DIR/setup.stdout.log"
+      - name: Select an available device and verify 910B3 runtime identity
+        id: device
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          source .venv/bin/activate
+          bash tools/gpu_check_ascend.sh 2>&1 | tee "$CONVBWD_DIAG_DIR/device.stdout.log"
+          device_id=$(sed -n 's/^Available GPUs: //p' "$CONVBWD_DIAG_DIR/device.stdout.log" | tail -1 | cut -d, -f1)
+          [[ "$device_id" =~ ^[0-9]+$ ]]
+          export ASCEND_RT_VISIBLE_DEVICES="$device_id"
+          export NPU_VISIBLE_DEVICES="$device_id"
+          export TRITON_CACHE_DIR="$CONVBWD_CACHE_ROOT/identity-triton"
+          export FLAGGEMS_CACHE_DIR="$CONVBWD_CACHE_ROOT/identity-gems"
+          echo "ASCEND_RT_VISIBLE_DEVICES=$device_id" >> "$GITHUB_ENV"
+          echo "NPU_VISIBLE_DEVICES=$device_id" >> "$GITHUB_ENV"
+          python ../.github/scripts/ascend_convolution_backward_diagnostics.py snapshot \
+            2>&1 | tee "$CONVBWD_DIAG_DIR/runtime.stdout.log"
+      - name: Run the unchanged test file with a cold private cache
+        id: cold
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 35
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          source .venv/bin/activate
+          python ../.github/scripts/ascend_convolution_backward_diagnostics.py cold \
+            2>&1 | tee "$CONVBWD_DIAG_DIR/cold.stdout.log"
+      - name: Repeat with the same inputs and warm private cache
+        id: warm
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 25
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          source .venv/bin/activate
+          python ../.github/scripts/ascend_convolution_backward_diagnostics.py warm \
+            2>&1 | tee "$CONVBWD_DIAG_DIR/warm.stdout.log"
+      - name: Compare the failing shape against the pinned upstream implementation
+        id: compare
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          source .venv/bin/activate
+          python ../.github/scripts/ascend_convolution_backward_diagnostics.py compare \
+            2>&1 | tee "$CONVBWD_DIAG_DIR/compare.stdout.log"
+      - name: Collect compiler artifacts after failures or step timeouts
+        if: ${{ always() && steps.setup.outcome == 'success' }}
+        working-directory: operator-source
+        shell: bash --login -e -o pipefail {0}
+        run: |
+          source .venv/bin/activate
+          python ../.github/scripts/ascend_convolution_backward_diagnostics.py collect \
+            2>&1 | tee "$CONVBWD_DIAG_DIR/collect.stdout.log"
+      - name: Preserve stdout, failed inputs and compiler artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: convolution-backward-910b3-${{ github.run_id }}-${{ github.run_attempt }}
+          path: convbwd-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Keep failed or incomplete diagnostics red
+        if: always()
+        env:
+          SETUP_OUTCOME: ${{ steps.setup.outcome }}
+          DEVICE_OUTCOME: ${{ steps.device.outcome }}
+          COLD_OUTCOME: ${{ steps.cold.outcome }}
+          WARM_OUTCOME: ${{ steps.warm.outcome }}
+          COMPARE_OUTCOME: ${{ steps.compare.outcome }}
+        shell: bash
+        run: |
+          for outcome in "$SETUP_OUTCOME" "$DEVICE_OUTCOME" "$COLD_OUTCOME" "$WARM_OUTCOME" "$COMPARE_OUTCOME"; do
+            test "$outcome" = success || exit 1
+          done
