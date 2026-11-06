@@ -24,6 +24,7 @@ from .affine_grid_generator import affine_grid_generator
 from .all import all, all_dim, all_dims
 from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
+from .amin import amin
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
@@ -269,6 +270,7 @@ __all__ = [
     "all_dims",
     "alpha_dropout_",
     "amax",
+    "amin",
     "angle",
     "any",
     "any_dim",
