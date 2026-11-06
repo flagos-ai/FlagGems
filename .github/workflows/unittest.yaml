@@ -15,6 +15,7 @@
 name: unit-test
 permissions:
   contents: read
+  statuses: read
 
 on:
   workflow_dispatch:
@@ -28,6 +29,9 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 jobs:
+  cla:
+    uses: ./.github/workflows/cla-check.yaml
+
   preprocess:
     # Runs on GitHub-hosted ubuntu-latest: this job only computes metadata via
     # the GitHub API and git (changed files, PR labels, backend matrix), needs
@@ -35,6 +39,7 @@ jobs:
     # wait-for-triage's octokit cannot tunnel HTTPS to api.github.com. Downstream
     # jobs are unaffected — needs/runs-on are decoupled, so they still schedule
     # onto the self-hosted runners (jiuding, h20, cpu-runner).
+    needs: cla
     runs-on: ubuntu-latest
     concurrency:
       group: unit-test-${{ (github.event.pull_request && contains(github.event.pull_request.title, 'KernelGen')) && 'kg' || github.run_id }}
