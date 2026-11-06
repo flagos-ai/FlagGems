@@ -53,11 +53,17 @@ layer_norm_persistent_kernel_multiline = BlockifiedLayerNormEntry(
 
 
 def _select_tile_m(M, N, tile_n):
-    if N <= 128:
+    # Narrow rows keep the packed schedule: they already run a whole row per
+    # program and the one-row kernel is not exercised at these widths.
+    if tile_n <= 128:
         return triton.cdiv(1024, tile_n)
-    if M < 256 or tile_n > 2048:
+    # Wider rows: a one-row program has the cheapest launch path and holds its
+    # bandwidth up to a few thousand rows. Past that the blockified one-row
+    # kernel slows down, so rows are packed while they still fit the
+    # vector-core UB. Rows wider than the packing window stay one-row because
+    # their rows already fill a program.
+    if M <= 4096 or tile_n > 2048:
         return 1
-    # Larger row tiles amortize scheduling while fitting the vector-core UB.
     return max(1, min(16, 8192 // tile_n))
 
 
