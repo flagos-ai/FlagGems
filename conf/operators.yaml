@@ -5367,18 +5367,14 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: div_mode
-  description: 'Divides each element of the `input` by the corresponding element of
-    `other`.
+- id: div_scalar_mode
+  description: 'Divides each element of the `input` by the scalar `other`.
 
     An optional `rounding_mode` can be specified.
 
     '
   for:
   - div.Scalar_mode
-  - div.Tensor_mode
-  - divide.Scalar_mode
-  - divide.Tensor_mode
   labels:
   - aten
   - pointwise
@@ -5386,13 +5382,32 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '1.0'
-- id: div_mode_
-  description: The in-place version of `div_mode()`.
+- id: div_scalar_mode_
+  description: The in-place version of `div_scalar_mode()` for scalar division.
   for:
   - div_.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: div_tensor_mode
+  description: Divides two tensors with an optional rounding_mode.
+  for:
+  - div.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: div_tensor_mode_
+  description: The in-place version of `div_tensor_mode()`.
+  for:
   - div_.Tensor_mode
-  - divide_.Scalar_mode
-  - divide_.Tensor_mode
   labels:
   - aten
   - pointwise
@@ -5412,6 +5427,50 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: divide_scalar_mode
+  description: Alias of `div_scalar_mode()` for scalar division with optional rounding.
+  for:
+  - divide.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: divide_scalar_mode_
+  description: The in-place version of `divide_scalar_mode()`.
+  for:
+  - divide_.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: divide_tensor_mode
+  description: Alias of `div_tensor_mode()` for tensor division with optional rounding.
+  for:
+  - divide.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: divide_tensor_mode_
+  description: The in-place version of `divide_tensor_mode()`.
+  for:
+  - divide_.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
 - id: dot
   description: Computes the dot product of two 1D tensors.
   for:

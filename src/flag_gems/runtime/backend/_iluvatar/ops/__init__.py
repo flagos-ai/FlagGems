@@ -43,7 +43,7 @@ from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
-from .div import div_mode, div_mode_
+from .div import div_scalar_mode, div_scalar_mode_, div_tensor_mode, div_tensor_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -177,8 +177,10 @@ __all__ = [
     "conv_transpose3d",
     "cudnn_convolution",
     "diagonal_scatter",
-    "div_mode",
-    "div_mode_",
+    "div_scalar_mode",
+    "div_scalar_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "fractional_max_pool2d_backward",
     "gcd_",
     "grid_sampler_3d",

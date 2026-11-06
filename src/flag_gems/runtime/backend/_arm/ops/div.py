@@ -145,7 +145,27 @@ def floor_divide_(A, B):
     return base_div.floor_divide_(A, B)
 
 
-def div_mode(A, B, rounding_mode=None):
+def div_tensor_mode(A, B, rounding_mode=None):
+    logger.debug("GEMS_ARM DIV_TENSOR_MODE")
+    return _div_mode(A, B, rounding_mode=rounding_mode)
+
+
+def div_tensor_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS_ARM DIV_TENSOR_MODE_")
+    return _div_mode_(A, B, rounding_mode=rounding_mode)
+
+
+def div_scalar_mode(A, B, rounding_mode=None):
+    logger.debug("GEMS_ARM DIV_SCALAR_MODE")
+    return _div_mode(A, B, rounding_mode=rounding_mode)
+
+
+def div_scalar_mode_(A, B, rounding_mode=None):
+    logger.debug("GEMS_ARM DIV_SCALAR_MODE_")
+    return _div_mode_(A, B, rounding_mode=rounding_mode)
+
+
+def _div_mode(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide(A, B)
     if rounding_mode == "trunc":
@@ -159,7 +179,7 @@ def div_mode(A, B, rounding_mode=None):
     raise ValueError(msg)
 
 
-def div_mode_(A, B, rounding_mode=None):
+def _div_mode_(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide_(A, B)
     if rounding_mode == "trunc":
