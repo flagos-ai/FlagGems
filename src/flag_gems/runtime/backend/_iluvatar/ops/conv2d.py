@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import logging
 import math
+import os
 
 import torch
 import triton
@@ -32,8 +32,12 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
-@contextlib.contextmanager
-def _disable_aabs():
+_HAS_AABS = _autotuning_knobs is not None and hasattr(
+    _autotuning_knobs, "adjust_block_size"
+)
+
+
+class _NoAABS:
     """Keep the tuned block sizes for conv2d_forward_kernel.
 
     FlagTree's AABS pairs a BLOCK with the bare parameter a mask compares it
@@ -42,16 +46,26 @@ def _disable_aabs():
     BLOCK_NI_HO_WO tiles in_n * out_height * out_width but gets matched to the
     in_n of ``in_n_point_value < in_n``, and BLOCK_CI gets matched to weight_c,
     which drops the dot below the K >= 16 the forward path relies on.
+
+    A plain class (not @contextmanager): this runs on every call and small
+    convs are CPU-bound, so the generator overhead is visible.
     """
-    if _autotuning_knobs is None or not hasattr(_autotuning_knobs, "adjust_block_size"):
-        yield
-        return
-    previous = _autotuning_knobs.adjust_block_size
-    _autotuning_knobs.adjust_block_size = False
-    try:
-        yield
-    finally:
-        _autotuning_knobs.adjust_block_size = previous
+
+    __slots__ = ("_prev",)
+
+    def __enter__(self):
+        if _HAS_AABS:
+            self._prev = _autotuning_knobs.adjust_block_size
+            _autotuning_knobs.adjust_block_size = False
+
+    def __exit__(self, *exc):
+        if _HAS_AABS:
+            _autotuning_knobs.adjust_block_size = self._prev
+        return False
+
+
+def _disable_aabs():
+    return _NoAABS()
 
 
 def conv2d_output_size(
@@ -88,7 +102,138 @@ _LAYOUT_W = 1  # weight packed, input left as-is
 _JIT_LAYOUT_NCHW = tl.constexpr(_LAYOUT_NCHW)
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in ("0", "false", "off", "no", "")
+
+
+def _extend_configs(configs):
+    """Derive num_warps / num_stages variants of every tuned config.
+
+    Block shapes are untouched (so _MAX_BLOCK_C and the weight packing are
+    unaffected); only the launch parameters vary. Configs that exceed the
+    device's resources are skipped by the autotuner itself.
+    """
+    seen = set()
+    out = []
+
+    def add(kwargs, warps, stages):
+        key = (tuple(sorted(kwargs.items())), warps, stages)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(triton.Config(dict(kwargs), num_warps=warps, num_stages=stages))
+
+    for config in configs:
+        base_warps = getattr(config, "num_warps", 4)
+        base_stages = getattr(config, "num_stages", 2)
+        add(config.kwargs, base_warps, base_stages)
+        for warps in (4, 8):
+            for stages in (2, 3):
+                add(config.kwargs, warps, stages)
+    return out
+
+
+def _extend_small_ci_configs(configs):
+    """Add warps (4, 8) x stages (2, 3) variants only for BLOCK_CI == 16 tiles.
+
+    The yaml table is almost entirely num_stages=1. The shapes that gained from
+    deeper pipelining are the small-Cin, long-K-loop ones (e.g. Cin=16, 4x4
+    kernel: 16 K iterations of a 16-wide slice), whose winners are BLOCK_CI=16
+    tiles. Restricting the variants to those keeps the extra compile work to
+    roughly +1.4x instead of the +5x of varying every config.
+    """
+    seen = set()
+    out = []
+
+    def add(kwargs, warps, stages):
+        key = (tuple(sorted(kwargs.items())), warps, stages)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append(triton.Config(dict(kwargs), num_warps=warps, num_stages=stages))
+
+    for config in configs:
+        add(config.kwargs, getattr(config, "num_warps", 4), getattr(config, "num_stages", 1))
+    for config in list(configs):
+        if config.kwargs.get("BLOCK_CI") == 16:
+            for warps in (4, 8):
+                for stages in (2, 3):
+                    add(config.kwargs, warps, stages)
+    return out
+
+
+# Extra block shapes (BLOCK_NI_HO_WO, BLOCK_CI, BLOCK_CO, num_warps, num_stages).
+# Large-spatial shapes (128x128 / 210x210) stayed at ~0.5-0.65x in every run no
+# matter the warps/stages, i.e. the tuned table has no good tile for them. These
+# bigger M tiles and wider CO tiles give the autotuner more reuse per input
+# load. Autotune is per shape key, so shapes that do not benefit simply keep
+# their current winner. All dims are multiples of 16 (tl.dot requirement).
+_EXTRA_BLOCK_CONFIGS = (
+    (128, 32, 32, 4, 2),
+    (128, 64, 32, 8, 2),
+    (128, 64, 64, 8, 2),
+    (128, 32, 64, 8, 3),
+    (256, 32, 32, 8, 2),
+    (256, 64, 32, 8, 2),
+    (256, 64, 64, 8, 2),
+    (256, 32, 64, 8, 2),
+    (256, 16, 32, 8, 3),
+    (64, 64, 32, 4, 2),
+    (64, 32, 64, 4, 3),
+)
+
+
+def _add_extra_block_configs(configs):
+    seen = {
+        (
+            c.kwargs.get("BLOCK_NI_HO_WO"),
+            c.kwargs.get("BLOCK_CI"),
+            c.kwargs.get("BLOCK_CO"),
+            getattr(c, "num_warps", None),
+            getattr(c, "num_stages", None),
+        )
+        for c in configs
+    }
+    out = list(configs)
+    for m, ci, co, warps, stages in _EXTRA_BLOCK_CONFIGS:
+        if (m, ci, co, warps, stages) in seen:
+            continue
+        out.append(
+            triton.Config(
+                {"BLOCK_NI_HO_WO": m, "BLOCK_CI": ci, "BLOCK_CO": co},
+                num_warps=warps,
+                num_stages=stages,
+            )
+        )
+    return out
+
+
 _FORWARD_CONFIGS = list(runtime.get_tuned_config("conv2d_forward"))
+# FLAGGEMS_ICONV_EXTRA_CONFIGS: "small" (default) = variants for BLOCK_CI=16 tiles,
+# "all" = variants for every config (slow to compile), "0" = yaml table only.
+_EXTRA_MODE = os.environ.get("FLAGGEMS_ICONV_EXTRA_CONFIGS", "small").strip().lower()
+try:
+    if _EXTRA_MODE in ("all", "1", "true", "on"):
+        _FORWARD_CONFIGS = _extend_configs(_FORWARD_CONFIGS)
+    elif _EXTRA_MODE == "small":
+        _FORWARD_CONFIGS = _extend_small_ci_configs(_FORWARD_CONFIGS)
+except Exception:  # never let config derivation break import
+    logger.debug("conv2d: extra autotune configs disabled", exc_info=True)
+if _env_flag("FLAGGEMS_ICONV_EXTRA_BLOCKS", False):
+    try:
+        _FORWARD_CONFIGS = _add_extra_block_configs(_FORWARD_CONFIGS)
+    except Exception:
+        logger.debug("conv2d: extra block configs disabled", exc_info=True)
 
 # Widest BLOCK_CI/BLOCK_CO in the forward table. pack_weight never pads past
 # this, and compact tiles are clamped to it.
@@ -107,13 +252,30 @@ _MAX_BLOCK_C = max(
 # (channel) axis is contiguous and aligned, so loads vectorize. The copy costs
 # ~2x the input bytes, so only pay it when the input is big or the reduction is
 # long (each element is re-read kh*kw times).
+#
+# FLAGGEMS_ICONV_CL selects the policy:
+#   auto  - threshold policy below (default)
+#   off   - never convert
+#   on    - always convert
+#   half  - threshold policy, but only for 16-bit dtypes (fp32 never converts)
 # ---------------------------------------------------------------------------
-_CL_MIN_NUMEL = 1 << 22
-_CL_MIN_TAPS = 16
+_CL_MIN_NUMEL = _env_int("FLAGGEMS_ICONV_CL_MIN_NUMEL", 1 << 22)
+_CL_MIN_TAPS = _env_int("FLAGGEMS_ICONV_CL_MIN_TAPS", 16)
+_CL_MODE = os.environ.get("FLAGGEMS_ICONV_CL", "auto").strip().lower()
 _PACK_CACHE = True
 
 
 def _want_channels_last(input: torch.Tensor, kh: int, kw: int) -> bool:
+    if _CL_MODE == "off":
+        return False
+    if _CL_MODE == "on":
+        return True
+    if _CL_MODE == "half" and input.element_size() >= 4:
+        return False
+    if _CL_MODE == "auto" and input.element_size() >= 4:
+        # Measured: fp32 gains from NHWC even on small inputs, while fp16/bf16
+        # lose on small inputs (extra launch), so only 16-bit uses thresholds.
+        return True
     return input.numel() >= _CL_MIN_NUMEL or kh * kw >= _CL_MIN_TAPS
 
 
@@ -232,11 +394,7 @@ def to_channels_last(input: torch.Tensor):
         device=input.device,
         memory_format=torch.channels_last,
     )
-    grid = (
-        triton.cdiv(h * w, _CL_BLOCK_HW),
-        triton.cdiv(c, _CL_BLOCK_C),
-        n,
-    )
+    grid = (triton.cdiv(h * w, _CL_BLOCK_HW), triton.cdiv(c, _CL_BLOCK_C), n)
     _to_channels_last_kernel[grid](
         input,
         output,
@@ -261,11 +419,7 @@ def to_channels_last_padded(input: torch.Tensor, pad_h: int, pad_w: int):
         device=input.device,
         memory_format=torch.channels_last,
     )
-    grid = (
-        triton.cdiv(ph * pw, _CL_BLOCK_HW),
-        triton.cdiv(c, _CL_BLOCK_C),
-        n,
-    )
+    grid = (triton.cdiv(ph * pw, _CL_BLOCK_HW), triton.cdiv(c, _CL_BLOCK_C), n)
     _to_channels_last_pad_kernel[grid](
         input,
         output,
@@ -395,8 +549,8 @@ def _pack_weight_cached(weight: torch.Tensor, groups: int):
     key = (
         weight.data_ptr(),
         weight._version,
-        tuple(weight.shape),
-        tuple(weight.stride()),
+        weight.shape,
+        weight.stride(),
         weight.dtype,
         weight.device,
         groups,
@@ -434,6 +588,8 @@ def _pack_weight_cached(weight: torch.Tensor, groups: int):
         # forward call (packed weight) and the dgrad call (plain NCHW operands)
         # would share a tuned config whenever their shapes coincide.
         "LAYOUT",
+        # Converted (NHWC) and plain (NCHW) inputs have different best tiles.
+        "VARIANT",
     ],
 )
 @triton.jit
@@ -475,6 +631,7 @@ def conv2d_forward_kernel(
     LAYOUT: tl.constexpr,
     PACKED_CI_TILE: tl.constexpr,
     PACKED_CO_TILE: tl.constexpr,
+    VARIANT: tl.constexpr,
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
@@ -769,6 +926,91 @@ def conv2d_backward_kernel_weight(
     tl.store(weight_pointer, accum, weight_mask)
 
 
+def _conv2d_forward_run(
+    input,
+    weight,
+    bias,
+    stride_height,
+    stride_width,
+    padding_height,
+    padding_width,
+    dilation_height,
+    dilation_width,
+    groups,
+    use_cl,
+    out_height,
+    out_width,
+):
+    """One forward launch sequence.
+
+    use_cl: convert the input to NHWC (zero padding folded in) first.
+    """
+    in_n, _, input_height, input_width = input.shape
+    out_c, weight_c, weight_height, weight_width = weight.shape
+    output = torch.empty(
+        (in_n, out_c, out_height, out_width), device=input.device, dtype=input.dtype
+    )
+
+    # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
+    # BLOCK_CO along the out_c, one group per program along axis 2.
+    grid = lambda META: (
+        triton.cdiv(in_n * out_height * out_width, META["BLOCK_NI_HO_WO"]),
+        triton.cdiv(int(out_c // groups), META["BLOCK_CO"]),
+        groups,
+    )
+
+    k_input = input
+    k_in_h, k_in_w = input_height, input_width
+    k_pad_h, k_pad_w = padding_height, padding_width
+    converted = False
+    if use_cl:
+        converted = True
+        if padding_height or padding_width:
+            # Fold the zero padding into the layout conversion. The conv kernel
+            # then sees a padding-free problem on the padded input (same output
+            # size) and skips every spatial bounds check.
+            k_input = to_channels_last_padded(input, padding_height, padding_width)
+            k_in_h, k_in_w = k_input.shape[2], k_input.shape[3]
+            k_pad_h = k_pad_w = 0
+        elif not input.is_contiguous(memory_format=torch.channels_last):
+            k_input = to_channels_last(input)
+
+    packed, w_strides, co_group, ci_tile, co_tile = _pack_weight_cached(weight, groups)
+    with _NoAABS():
+        conv2d_forward_kernel[grid](
+            k_input,
+            packed,
+            output,
+            bias,
+            in_n,
+            k_in_h,
+            k_in_w,
+            out_c,
+            out_height,
+            out_width,
+            *k_input.stride(),
+            *w_strides,
+            co_group,
+            *output.stride(),
+            weight_c,
+            weight_height,
+            weight_width,
+            stride_height,
+            stride_width,
+            k_pad_h,
+            k_pad_w,
+            dilation_height,
+            dilation_width,
+            groups=groups,
+            HAS_BIAS=bias is not None,
+            LAYOUT=_LAYOUT_W,
+            PACKED_CI_TILE=ci_tile,
+            PACKED_CO_TILE=co_tile,
+            VARIANT=int(converted),
+        )
+    return output
+
+
 class Conv2d(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, weight, bias, stride, padding, dilation, groups):
@@ -804,10 +1046,9 @@ class Conv2d(torch.autograd.Function):
         out_c, weight_c, weight_height, weight_width = weight.shape
 
         # weight_c may be below the K >= 16 that tl.dot requires, but the kernel's
-        # K dimension is BLOCK_CI, not weight_c, and every conv2d_forward config in
-        # tune_configs.yaml has BLOCK_CI >= 16. Channels below 16 are handled by the
-        # input_mask / weight_mask instead. This holds only as long as nothing
-        # shrinks BLOCK_CI behind our back, which is what _disable_aabs guards.
+        # K dimension is BLOCK_CI, not weight_c, and every conv2d_forward config
+        # has BLOCK_CI >= 16. Channels below 16 are handled by the masks. This
+        # holds only as long as nothing shrinks BLOCK_CI (see _disable_aabs).
 
         out_height = conv2d_output_size(
             input_height, weight_height, stride_height, padding_height, dilation_height
@@ -816,76 +1057,25 @@ class Conv2d(torch.autograd.Function):
             input_width, weight_width, stride_width, padding_width, dilation_width
         )
 
-        output_dtype = input.dtype
-        output = torch.empty(
-            (in_n, out_c, out_height, out_width),
-            device=input.device,
-            dtype=output_dtype,
-        )
-
-        # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
-        # BLOCK_CO along the out_c,
-        # one group per cat
-        grid = lambda META: (
-            triton.cdiv(in_n * out_height * out_width, META["BLOCK_NI_HO_WO"]),
-            triton.cdiv(int(out_c // groups), META["BLOCK_CO"]),
-            groups,
-        )
-
         # The original input is what backward needs (wgrad reads it with its own
-        # strides and the unpadded spatial size), so keep it apart from the
-        # tensor handed to the forward kernel.
+        # strides and the unpadded spatial size).
         orig_input = input
-        k_input = input
-        k_in_h, k_in_w = input_height, input_width
-        k_pad_h, k_pad_w = padding_height, padding_width
-        if _want_channels_last(input, weight_height, weight_width):
-            if padding_height or padding_width:
-                # Fold the zero padding into the layout conversion. The conv
-                # kernel then sees a padding-free problem on the padded input
-                # (same output size) and skips every spatial bounds check.
-                k_input = to_channels_last_padded(input, padding_height, padding_width)
-                k_in_h, k_in_w = k_input.shape[2], k_input.shape[3]
-                k_pad_h = k_pad_w = 0
-            elif not input.is_contiguous(memory_format=torch.channels_last):
-                k_input = to_channels_last(input)
-            else:
-                k_input = input
 
-        packed, w_strides, co_group, ci_tile, co_tile = _pack_weight_cached(
-            weight, groups
+        output = _conv2d_forward_run(
+            input,
+            weight,
+            bias,
+            stride_height,
+            stride_width,
+            padding_height,
+            padding_width,
+            dilation_height,
+            dilation_width,
+            groups,
+            _want_channels_last(input, weight_height, weight_width),
+            out_height,
+            out_width,
         )
-        with _disable_aabs():
-            conv2d_forward_kernel[grid](
-                k_input,
-                packed,
-                output,
-                bias,
-                in_n,
-                k_in_h,
-                k_in_w,
-                out_c,
-                out_height,
-                out_width,
-                *k_input.stride(),
-                *w_strides,
-                co_group,
-                *output.stride(),
-                weight_c,
-                weight_height,
-                weight_width,
-                stride_height,
-                stride_width,
-                k_pad_h,
-                k_pad_w,
-                dilation_height,
-                dilation_width,
-                groups=groups,
-                HAS_BIAS=bias is not None,
-                LAYOUT=_LAYOUT_W,
-                PACKED_CI_TILE=ci_tile,
-                PACKED_CO_TILE=co_tile,
-            )
 
         ctx.save_for_backward(weight, orig_input, bias)
 
@@ -1032,6 +1222,7 @@ class Conv2d(torch.autograd.Function):
                 LAYOUT=_LAYOUT_NCHW,
                 PACKED_CI_TILE=0,
                 PACKED_CO_TILE=0,
+                VARIANT=0,
             )
 
         weight_back = torch.zeros(
