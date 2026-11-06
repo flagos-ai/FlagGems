@@ -62,6 +62,7 @@ NATIVE_LAYER_NORM_CASES = (
             ((255, 1152), (1152,)),
             ((4097, 100), (100,)),
             ((1025, 36), (36,)),
+            ((16, 16, 1024), (16, 1024)),
         ]
         for dtype in utils.FLOAT_DTYPES
         for has_weight, has_bias in [

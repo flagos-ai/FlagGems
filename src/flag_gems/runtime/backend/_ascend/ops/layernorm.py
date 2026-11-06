@@ -22,6 +22,7 @@ from triton.experimental.tle.language import dsa
 
 from flag_gems.ops.layernorm import layer_norm as common_layer_norm
 from flag_gems.ops.layernorm import (
+    layer_norm_loop_kernel,
     layer_norm_persistent_kernel,
     layer_norm_persistent_kernel_multiline,
 )
@@ -50,6 +51,7 @@ class BlockifiedLayerNormEntry(LibEntry):
             return super()._first_run(*args, **kwargs)
 
 
+layer_norm_loop_kernel = BlockifiedLayerNormEntry(layer_norm_loop_kernel.jit_function)
 layer_norm_persistent_kernel = BlockifiedLayerNormEntry(layer_norm_persistent_kernel.fn)
 layer_norm_persistent_kernel_multiline = BlockifiedLayerNormEntry(
     layer_norm_persistent_kernel_multiline.fn
@@ -129,9 +131,13 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     N = math.prod(normalized_shape)
     M = input.numel() // N
 
-    # This backend specialization only changes the one-pass schedule. Keep the
-    # common streaming implementation for large normalized dimensions.
-    if N > 4096:
+    is_fixed_stream = N == 16384 and input.dtype in (
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+    )
+    # Keep the common streaming dispatch outside the measured fixed-width path.
+    if N > 4096 and not is_fixed_stream:
         return common_layer_norm(input, normalized_shape, weight, bias, eps)
 
     input = input.contiguous()
@@ -145,6 +151,23 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
 
     # Explicit block mapping makes scheduling independent of other operator imports.
     with torch_device_fn.device(input.device):
+        if is_fixed_stream:
+            # Device timing favors 2048-element Welford chunks at this width.
+            layer_norm_loop_kernel[(M,)](
+                input,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                2048,
+                num_warps=4,
+                enable_auto_blockify=True,
+            )
+            return y, mean, rstd
         tile_n = triton.next_power_of_2(N)
         # The traced width wastes nearly half of a padded 2048-column tile.
         if (
