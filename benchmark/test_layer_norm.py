@@ -20,7 +20,19 @@ from . import base, consts
 
 # TODO(Qiming): Extract this to a base class
 class NormBenchmark(base.GenericBenchmark):
-    pass
+    def set_more_shapes(self):
+        return [
+            (16, 16, 64),
+            (16, 16, 1024),
+            (16, 16, 4098),
+            (1, 8, 4, 4),
+            (16, 8, 128, 128),
+            (256, 512),
+            (4096, 256),
+            (4096, 512),
+            (2048, 1024),
+            (1024, 2048),
+        ]
 
 
 # The production call feeds a [65536, 1, 1152] activation with a (1152,)

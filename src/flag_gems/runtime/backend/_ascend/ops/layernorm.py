@@ -57,12 +57,9 @@ def _select_tile_m(M, N, tile_n):
     # program and the one-row kernel is not exercised at these widths.
     if tile_n <= 128:
         return triton.cdiv(1024, tile_n)
-    # Wider rows: a one-row program has the cheapest launch path and holds its
-    # bandwidth up to a few thousand rows. Past that the blockified one-row
-    # kernel slows down, so rows are packed while they still fit the
-    # vector-core UB. Rows wider than the packing window stay one-row because
-    # their rows already fill a program.
-    if M <= 4096 or tile_n > 2048:
+    # Pack medium-width rows to amortize per-program device work. Wider rows
+    # stay single-row to avoid the measured 4096-column packing regression.
+    if M < 256 or tile_n > 2048:
         return 1
     return max(1, min(16, 8192 // tile_n))
 
