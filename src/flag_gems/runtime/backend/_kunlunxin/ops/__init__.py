@@ -297,9 +297,7 @@ from .bitwise_xor import (
     bitwise_xor_scalar_,
     bitwise_xor_scalar_tensor,
     bitwise_xor_tensor,
-    xor,
     xor_,
-    xor_scalar,
     xor_scalar_,
     xor_scalar_tensor,
 )
@@ -939,6 +937,7 @@ from .xlogy import (
     xlogy_tensor_scalar_,
     xlogy_tensor_scalar_out,
 )
+from .xor import xor, xor_scalar
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
