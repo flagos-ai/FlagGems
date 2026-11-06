@@ -21,6 +21,7 @@ from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arccos import arccos
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
@@ -240,6 +241,7 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccos",
     "argmax",
     "argmin",
     "argsort",
