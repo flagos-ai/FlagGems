@@ -45,6 +45,7 @@ from .bucketize import bucketize
 from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
+from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -209,6 +210,7 @@ __all__ = [
     "celu",
     "channel_shuffle",
     "cholesky_inverse",
+    "choose_qparams_optimized",
     "clip_",
     "constant_pad_nd",
     "conv1d",
