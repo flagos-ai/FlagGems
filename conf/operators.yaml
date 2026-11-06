@@ -17904,6 +17904,21 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: rowwise_prune
+  description: |
+    Computes the compressed row indices for a rowwise prune of a dense weight
+    matrix: for every kept row (mask True) the output holds the number of kept
+    rows preceding it, and pruned rows get -1. Returns the selected weight rows
+    together with that index tensor.
+  for:
+  - _rowwise_prune
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: rrelu
   description: |
     Applies the randomized leaky ReLU (RReLU) function element-wise. In training
