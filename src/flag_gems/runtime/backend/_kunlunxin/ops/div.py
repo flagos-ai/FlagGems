@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import logging
+import math
+import numbers
+import struct
 
 import torch
 import triton
@@ -681,7 +684,46 @@ def trunc_divide(A, B):
         return trunc_div_func_scalar_tensor(A, B)
     else:
         # Both scalar
-        return torch.tensor(A / B)
+        return _trunc_divide_scalars(A, B)
+
+
+def _round_to_float32(x):
+    """Round a Python float to the nearest float32 value (host-side only)."""
+    try:
+        return struct.unpack("<f", struct.pack("<f", x))[0]
+    except OverflowError:
+        # Out of float32 range: float32 arithmetic would have produced inf.
+        return math.copysign(math.inf, x)
+
+
+def _trunc_divide_scalars(A, B):
+    if isinstance(A, bool) and isinstance(B, bool):
+        # Common dtype stays bool; aten has no div_trunc kernel for it.
+        raise NotImplementedError("\"div_trunc_cpu\" not implemented for 'Bool'")
+    if isinstance(A, numbers.Integral) and isinstance(B, numbers.Integral):
+        a_int, b_int = int(A), int(B)
+        if b_int == 0:
+            raise RuntimeError("ZeroDivisionError")
+        # abs() on the Python ints so huge NumPy ints cannot overflow
+        quot = abs(a_int) // abs(b_int)
+        return torch.tensor(-quot if (a_int < 0) != (b_int < 0) else quot)
+    # At least one float operand: evaluate in the default float dtype so that
+    # inf / nan and the sign of zero come out exactly as torch produces them.
+    a = _round_to_float32(float(A))
+    b = _round_to_float32(float(B))
+    if b == 0.0:
+        if a == 0.0 or math.isnan(a):
+            quotient = math.nan
+        else:
+            quotient = math.copysign(math.inf, a) * math.copysign(1.0, b)
+    else:
+        quotient = _round_to_float32(a / b)
+    if math.isnan(quotient) or math.isinf(quotient):
+        truncated = quotient
+    else:
+        # math.trunc() drops the sign of -0.0; copysign restores it.
+        truncated = math.copysign(float(math.trunc(quotient)), quotient)
+    return torch.tensor(truncated, dtype=torch.get_default_dtype())
 
 
 def trunc_divide_(A, B):
