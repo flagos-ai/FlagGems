@@ -31,6 +31,7 @@ from .arccos import arccos
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
+from .asin import asin
 from .asin_ import asin_
 from .atan2_ import atan2_
 from .attention import (
@@ -266,6 +267,7 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "asin",
     "asin_",
     "atan2_",
     "baddbmm",
