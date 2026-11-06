@@ -18,7 +18,7 @@ import logging
 
 import torch
 
-from flag_gems.ops._validate_sparse_compressed_common import _validate_metadata
+from flag_gems.ops._validate_sparse_csc_tensor_args import _validate_metadata
 
 logger = logging.getLogger(__name__)
 

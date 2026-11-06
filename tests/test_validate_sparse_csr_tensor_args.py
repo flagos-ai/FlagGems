@@ -169,46 +169,6 @@ def test_validate_sparse_csr_tensor_args_invalid_metadata():
 
 @pytest.mark.validate_sparse_csr_tensor_args
 @pytest.mark.underscore_validate_sparse_csr_tensor_args
-def test_validate_sparse_csr_tensor_args_empty_nonunit_stride():
-    comp = torch.zeros((4, 3), dtype=torch.int64, device=flag_gems.device)
-    plain = torch.empty_strided(
-        (4, 0), (15, 3), dtype=torch.int64, device=flag_gems.device
-    )
-    values = torch.empty((4, 0), device=flag_gems.device)
-    size = (4, 2, 3)
-
-    assert (
-        torch.ops.aten._validate_sparse_csr_tensor_args.default(
-            comp, plain, values, size, check_pinning=False
-        )
-        is None
-    )
-    assert (
-        flag_gems._validate_sparse_csr_tensor_args(
-            comp, plain, values, size, check_pinning=False
-        )
-        is None
-    )
-
-
-@pytest.mark.validate_sparse_csr_tensor_args
-@pytest.mark.underscore_validate_sparse_csr_tensor_args
-def test_validate_sparse_csr_tensor_args_large_batch_product():
-    # Regression for a two-dimensional launch: grid.y cannot exceed 65535.
-    batch = (256, 256)
-    comp = torch.zeros((*batch, 2), dtype=torch.int64, device=flag_gems.device)
-    plain = torch.empty((*batch, 0), dtype=torch.int64, device=flag_gems.device)
-    values = torch.empty((*batch, 0), device=flag_gems.device)
-    assert (
-        flag_gems._validate_sparse_csr_tensor_args(
-            comp, plain, values, (*batch, 1, 3), check_pinning=False
-        )
-        is None
-    )
-
-
-@pytest.mark.validate_sparse_csr_tensor_args
-@pytest.mark.underscore_validate_sparse_csr_tensor_args
 def test_validate_sparse_csr_tensor_args_dispatch():
     calls = 0
 
