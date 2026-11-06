@@ -678,7 +678,7 @@ def _solve_tri(A, B, unitriangular, upper):
             if not tle_copy(B_view, Bp[:, :, :k]):
                 torch.ops.aten._copy_from(B_view, Bp[:, :, :k], False)
         if n % 16 == 0 and n >= 64:
-            bs = 16
+            bs = 8
             nb = n // bs
             for j in range(nb):
                 if j:

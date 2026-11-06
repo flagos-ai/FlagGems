@@ -433,7 +433,16 @@ def max_pool3d_backward(
             dw,
         ).to(original_dtype)
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    # Allocate the gradient buffer as contiguous NCDHW regardless of the
+    # input's memory format. The flat gather kernel (and the slot phase-2
+    # kernel) address grad_input linearly under an NCDHW-contiguous
+    # assumption, so a channels_last_3d input must not leak its NDHWC layout
+    # into the output buffer via zeros_like.
+    grad_input = torch.zeros(
+        (in_n, in_c, in_d, in_h, in_w),
+        device=grad_output.device,
+        dtype=torch.float32,
+    )
     total = grad_input.numel()
     block = 64
     grid = (triton.cdiv(total, block),)

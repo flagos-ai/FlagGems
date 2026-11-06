@@ -234,6 +234,13 @@ def where_self_out(condition, self, other, out=None):
 def _where_self_out_impl(condition, self, other, out, result_type):
     c, a, b = condition, self, other
 
+    # where_scalar_self / where_scalar_other pass a Python number for `self` or
+    # `other`; materialize it as a 0-dim tensor first (matching the generic
+    # implementation) so the dtype/device handling below works on tensors.
+    c = c if isinstance(c, torch.Tensor) else torch.tensor(c)
+    a = a if isinstance(a, torch.Tensor) else torch.tensor(a)
+    b = b if isinstance(b, torch.Tensor) else torch.tensor(b)
+
     if a.dtype != result_type:
         a = a.to(result_type)
     if b.dtype != result_type:
