@@ -457,7 +457,7 @@ class KernelGenerator:
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
             code.writeline(
-                f"in{i} = tl.load(in{i}_ptr).to(in{i}_ptr.type.element_ty) "
+                f"in{i} = tl.load(in{i}_ptr).to(in{i}_ptr.dtype.element_ty) "
                 "# workaround the bug on bool, we should use the pointer's dtype)"
             )
         code.newline()
@@ -471,7 +471,7 @@ class KernelGenerator:
         code.writeline("# stores")
         for i in range(schema.num_output_tensors()):
             code.writeline(
-                f"tl.store(out{i}_ptr, out{i}.to(out{i}_ptr.type.element_ty))"
+                f"tl.store(out{i}_ptr, out{i}.to(out{i}_ptr.dtype.element_ty))"
             )
         code.newline()
         return code
@@ -523,7 +523,7 @@ class KernelGenerator:
                 f"in{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
             code.writeline(
-                f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.type.element_ty) "
+                f"in{i} = tl.load(in{i}_bptr, boundary_check=({order})).to(in{i}_ptr.dtype.element_ty) "
                 "# workaround the bug on bool, we should use the original pointer's dtype(instead of block pointer's)"
             )
         code.newline()
@@ -557,7 +557,8 @@ class KernelGenerator:
                 f"out{i}_ptr, ({shape}), ({strides}), ({offsets}), ({tile_sizes}), order=({order}))"
             )
             code.writeline(
-                f"tl.store(out{i}_bptr, out{i}.to(out{i}_bptr.type.element_ty), boundary_check=({order}))"
+                f"tl.store(out{i}_bptr, out{i}.to(tl.int8 if out{i}_ptr.dtype.element_ty == tl.int1 else out{i}_ptr.dtype.element_ty), boundary_check=({order})) "
+                "# bptr type matches out_ptr type, except when out_ptr is int1. In that case, bptr is cast to int8."
             )
 
     def gen_body_gsl_with_bptr(self, code):
@@ -605,7 +606,7 @@ class KernelGenerator:
             )
             offset_combine = " + ".join(offsets)
             code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.dtype.element_ty)"
             )
 
         code.newline()
@@ -727,7 +728,7 @@ class KernelGenerator:
             offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
             offset_combine = " + ".join(offsets)
             code.writeline(
-                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
+                f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.dtype.element_ty)"
             )
 
         code.newline()
