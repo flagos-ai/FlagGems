@@ -28,6 +28,7 @@ from flag_gems.utils.random_utils import (
 from flag_gems.utils.shape_utils import volume
 
 from ..utils import TOTAL_CORE_NUM
+from ._philox_layout import philox_lane
 
 logger = logging.getLogger(__name__)
 try:
@@ -74,10 +75,12 @@ def randn_kernel(
         r = _philox(BLOCK, sl, sh, c0 + i4_start, c1, 0, 0, 10)
         r = uint_to_uniform_float(r)
 
-        # philox (libdevice v1) returns [4, BLOCK] (lane-major): row i is the
-        # i-th lane across every block element.
-        res[0, :], res[1, :] = pair_uniform_to_normal(r[0, :], r[1, :])
-        res[2, :], res[3, :] = pair_uniform_to_normal(r[2, :], r[3, :])
+        res[0, :], res[1, :] = pair_uniform_to_normal(
+            philox_lane(r, 0), philox_lane(r, 1)
+        )
+        res[2, :], res[3, :] = pair_uniform_to_normal(
+            philox_lane(r, 2), philox_lane(r, 3)
+        )
 
         off = block_offset + tl.arange(0, BLOCK * UNROLL)
         tl.store(
