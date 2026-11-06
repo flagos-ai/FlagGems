@@ -107,6 +107,16 @@ class AvgPool3dBenchmark(base.GenericBenchmark):
         return items[variant]
 
 
+class AvgPool3dBackwardBenchmark(AvgPool3dBenchmark):
+    def build_inputs(self, case):
+        inp, kwargs = super().build_inputs(case)
+        # Preserve the original backward input clone and gradient recipe, but
+        # construct them before timing the standalone backward API.
+        inp = inp.clone().requires_grad_()
+        grad_output = torch.randn_like(torch.ops.aten.avg_pool3d(inp, **kwargs))
+        return grad_output, inp, kwargs
+
+
 @pytest.mark.avg_pool3d
 def test_perf_avg_pool3d():
     bench = AvgPool3dBenchmark(
@@ -120,11 +130,10 @@ def test_perf_avg_pool3d():
 
 @pytest.mark.avg_pool3d_backward
 def test_perf_avg_pool3d_backward():
-    bench = AvgPool3dBenchmark(
+    bench = AvgPool3dBackwardBenchmark(
         input_fn=avg_pool3d_input_fn,
-        op_name="avg_pool3d",
-        torch_op=torch.ops.aten.avg_pool3d,
+        op_name="avg_pool3d_backward",
+        torch_op=torch.ops.aten.avg_pool3d_backward,
         dtypes=consts.FLOAT_DTYPES,
-        is_backward=True,
     )
     bench.run()
