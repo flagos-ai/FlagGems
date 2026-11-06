@@ -44,7 +44,75 @@ try:
 except ImportError:  # pragma: no cover - depends on the installed Triton build
     tle = None
 
+try:
+    from triton.experimental.tle import is_tle_supported
+except ImportError:  # Keep the existing vendor WS path on older FlagTree builds.
+    is_tle_supported = None
+
+from .bmm_kernels import direct_tiled
+
+_BMM_TLE_PRIMITIVES = (
+    "pipe",
+    "pipe.reader",
+    "pipe.reader.wait",
+    "pipe.reader.release",
+    "pipe.writer",
+    "pipe.writer.acquire",
+    "pipe.writer.commit",
+    "gpu.alloc",
+    "gpu.copy",
+    "gpu.alloc_barrier",
+    "gpu.alloc_barriers",
+    "gpu.barrier_arrive",
+    "gpu.barrier_wait",
+    "gpu.warp_specialize",
+    "gpu.wgmma",
+    "gpu.wgmma_wait",
+)
+_BMM_TLE_ON = (
+    tle is not None
+    and is_tle_supported is not None
+    and is_tle_supported(_BMM_TLE_PRIMITIVES)
+    and hasattr(tle, "gpu")
+    and hasattr(tle.gpu, "buffered_tensor")
+    and hasattr(tle.gpu.buffered_tensor, "subslice")
+)
+
+if _BMM_TLE_ON:
+    from .bmm_kernels import (
+        cooperative_split_m,
+        cooperative_split_n_spmc,
+        explicit_barrier_ws,
+        persistent_ws,
+        small_m,
+        square_kernels,
+    )
+else:  # Keep the generic vendor implementation importable on older FlagTree builds.
+    cooperative_split_m = cooperative_split_n_spmc = explicit_barrier_ws = None
+    persistent_ws = small_m = square_kernels = None
+
 logger = logging.getLogger(__name__)
+
+_PERSISTENT_BM256_BN256_BK64_S3_GROUP2_UNROLL2_SHAPE = (16384, 7168, 1024)
+_PERSISTENT_BM256_BN256_BK64_S3_GROUP4_UNROLL1_SHAPE = (16384, 2112, 7168)
+_EXPLICIT_BARRIER_BM256_BN256_BK64_S2_COOP_M4_SHAPE = (448, 7168, 256)
+_SPLIT_M_BM384_BN256_BK32_S3_COOP_M2_SHAPE = (14429, 7168, 1024)
+_SPMC_BM256_BN320_BK64_S2_COOP_N2_SHAPE = (14429, 2112, 7168)
+_SMALL_M_SHAPE = (4, 15, 160, 1024)
+_SQUARE_DIRECT_BM64_BN64_BK64_SHAPE = (2, 384, 384, 384)
+_SQUARE_PERSISTENT_BM256_BN256_BK64_S3_SHAPES = {
+    (2, 4096, 4096, 4096),
+    (16, 1024, 1024, 1024),
+    (16, 2048, 2048, 2048),
+    (16, 4096, 4096, 4096),
+}
+_SQUARE_FP32_BM64_BN64_BK32_SHAPES = {
+    (2, 384, 384, 384),
+    (2, 4096, 4096, 4096),
+    (16, 1024, 1024, 1024),
+    (16, 2048, 2048, 2048),
+    (16, 4096, 4096, 4096),
+}
 
 EXPAND_CONFIG_FILENAME = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "bmm_mthreads_expand.yaml")
@@ -626,10 +694,165 @@ def bmm_sqmma_ws(A, B, batch, M, N, K, C=None):
     return C
 
 
+def _normalized_shape(a, b):
+    return a.shape[1], b.shape[2], a.shape[2]
+
+
+def _fast_output_eligible(a, b, out):
+    return out is None or (
+        out.is_contiguous()
+        and tuple(out.shape) == (a.shape[0], a.shape[1], b.shape[2])
+        and out.dtype == a.dtype
+        and out.device == a.device
+    )
+
+
+def _new_fast_output(a, b, out):
+    if out is not None:
+        return out
+    return torch.empty(
+        (a.shape[0], a.shape[1], b.shape[2]), dtype=a.dtype, device=a.device
+    )
+
+
+def _contiguous_bf16_path_eligible(a, b, out, shape):
+    return (
+        a.shape[0] == b.shape[0] == 1
+        and _normalized_shape(a, b) == shape
+        and a.dtype == b.dtype == torch.bfloat16
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and _fast_output_eligible(a, b, out)
+    )
+
+
+def _small_m_path_eligible(a, b, out):
+    if (
+        (a.shape[0], a.shape[1], b.shape[2], a.shape[2]) != _SMALL_M_SHAPE
+        or a.dtype not in (torch.float16, torch.bfloat16)
+        or a.dtype != b.dtype
+        or not a.is_contiguous()
+        or not _fast_output_eligible(a, b, out)
+    ):
+        return False
+    return b.is_contiguous() or tuple(b.stride()) == (160 * 1024, 1, 1024)
+
+
+def _square_persistent_path_eligible(a, b, out):
+    shape = (a.shape[0], a.shape[1], b.shape[2], a.shape[2])
+    return (
+        shape in _SQUARE_PERSISTENT_BM256_BN256_BK64_S3_SHAPES
+        # The vendor WS path is faster for this one BF16 square shape on S5000.
+        and not (shape == (16, 1024, 1024, 1024) and a.dtype == torch.bfloat16)
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and a.dtype == b.dtype
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and _fast_output_eligible(a, b, out)
+    )
+
+
+def _square_fp32_path_eligible(a, b, out):
+    return (
+        (a.shape[0], a.shape[1], b.shape[2], a.shape[2])
+        in _SQUARE_FP32_BM64_BN64_BK32_SHAPES
+        and a.dtype == b.dtype == torch.float32
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and _fast_output_eligible(a, b, out)
+    )
+
+
+def _square_small_path_eligible(a, b, out):
+    return (
+        (a.shape[0], a.shape[1], b.shape[2], a.shape[2])
+        == _SQUARE_DIRECT_BM64_BN64_BK64_SHAPE
+        and a.dtype in (torch.float16, torch.bfloat16)
+        and a.dtype == b.dtype
+        and a.is_contiguous()
+        and b.is_contiguous()
+        and _fast_output_eligible(a, b, out)
+    )
+
+
+def _try_direct_tiled_bmm(a, b, out):
+    path = direct_tiled.dispatch_path(a, b)
+    if path is None or not _fast_output_eligible(a, b, out):
+        return None
+    out = _new_fast_output(a, b, out)
+    if not direct_tiled.output_eligible(out, a, b):
+        return None
+    with torch_device_fn.device(a.device):
+        direct_tiled.launch(path, a, b, out)
+    return out
+
+
+def _try_bmm_fast_path(a, b, out=None):
+    """Run a validated exact-shape path or return ``None`` for vendor BMM."""
+
+    direct_tiled_out = _try_direct_tiled_bmm(a, b, out)
+    if direct_tiled_out is not None:
+        return direct_tiled_out
+    if not _BMM_TLE_ON:
+        return None
+
+    if _square_small_path_eligible(a, b, out):
+        out = _new_fast_output(a, b, out)
+        return square_kernels.bmm_bm64_bn64_bk64_tiled_ieee_out(a, b, out)
+    if _square_fp32_path_eligible(a, b, out):
+        out = _new_fast_output(a, b, out)
+        return square_kernels.bmm_bm64_bn64_bk32_tiled_tf32x3_out(a, b, out)
+    if _square_persistent_path_eligible(a, b, out):
+        out = _new_fast_output(a, b, out)
+        return square_kernels.bmm_bm256_bn256_bk64_s3_batch_persistent_ws_out(a, b, out)
+    if _small_m_path_eligible(a, b, out):
+        out = _new_fast_output(a, b, out)
+        return small_m.bmm_bm64_bn64_bk128_s2_small_m_ws_out(a, b, out)
+    if _contiguous_bf16_path_eligible(
+        a, b, out, _PERSISTENT_BM256_BN256_BK64_S3_GROUP2_UNROLL2_SHAPE
+    ):
+        out = _new_fast_output(a, b, out)
+        persistent_ws.bmm_bm256_bn256_bk64_s3_persistent_ws_out(
+            a[0], b[0], out[0], group_m=2, unroll_k=2
+        )
+        return out
+    if _contiguous_bf16_path_eligible(
+        a, b, out, _PERSISTENT_BM256_BN256_BK64_S3_GROUP4_UNROLL1_SHAPE
+    ):
+        out = _new_fast_output(a, b, out)
+        persistent_ws.bmm_bm256_bn256_bk64_s3_persistent_ws_out(
+            a[0], b[0], out[0], group_m=4, unroll_k=1
+        )
+        return out
+    if _contiguous_bf16_path_eligible(
+        a, b, out, _EXPLICIT_BARRIER_BM256_BN256_BK64_S2_COOP_M4_SHAPE
+    ):
+        out = _new_fast_output(a, b, out)
+        return explicit_barrier_ws.bmm_bm256_bn256_bk64_s2_coop_m4_out(a, b, out)
+    if _contiguous_bf16_path_eligible(
+        a, b, out, _SPLIT_M_BM384_BN256_BK32_S3_COOP_M2_SHAPE
+    ):
+        out = _new_fast_output(a, b, out)
+        cooperative_split_m.bmm_bm384_bn256_bk32_s3_coop_m2_out(a[0], b[0], out[0])
+        return out
+    if _contiguous_bf16_path_eligible(
+        a, b, out, _SPMC_BM256_BN320_BK64_S2_COOP_N2_SHAPE
+    ):
+        out = _new_fast_output(a, b, out)
+        cooperative_split_n_spmc.bmm_bm256_bn320_bk64_s2_coop_n2_spmc_out(
+            a[0], b[0], out[0]
+        )
+        return out
+    return None
+
+
 def bmm(a, b):
     a_dtype = a.dtype
     batch, M, K = a.shape
     _, _, N = b.shape
+    fast_out = _try_bmm_fast_path(a, b)
+    if fast_out is not None:
+        return fast_out
     if is_bmm_ws_compatible(a, b, M, N, K):
         return bmm_sqmma_ws(a, b, batch, M, N, K)
     elif is_sqmma_compatible(a, b, N, K) and M >= 128:
@@ -645,6 +868,9 @@ def bmm_out(a, b, *, out):
     assert (
         out.shape == (batch, M, N) and out.dtype == a.dtype
     ), "Incompatible output shape or dtype for bmm.out"
+    fast_out = _try_bmm_fast_path(a, b, out)
+    if fast_out is not None:
+        return fast_out
     # All three specialized kernels store straight into a row-major buffer of
     # the operand dtype, so a contiguous `out` can be the destination itself
     # instead of paying for a temporary result plus a full-tensor copy.
