@@ -418,7 +418,7 @@ def apply_rotary_pos_emb(
         q_embed: (*, q_heads, head_dim)
         k_embed: (*, k_heads, head_dim)
     """
-    logger.debug("GEMS_TSINGMICRO ROTARY_POS_EMBEDDING")
+    logger.debug("GEMS_TSINGMICRO APPLY_ROTARY_POS_EMB")
     assert (
         k.shape[-1] == q.shape[-1]
     ), f"q and k must have the same last dimension, got {q.shape} and {k.shape}"

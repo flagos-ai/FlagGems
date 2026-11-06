@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.runtime import device
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,9 @@ def im2col_kernel(
 
 
 def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
-    assert x.is_cuda and out.is_cuda, "Inputs must be CUDA tensors"
+    assert (
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Inputs must be on the {device.name} device"
     x = x.contiguous()
     out = out.contiguous()
 

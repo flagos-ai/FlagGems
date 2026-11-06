@@ -58,8 +58,17 @@ def _leaky_relu_autotune_configs():
     ]
 
 
+# restore_value: leaky_relu_ runs this kernel in-place (output_ptr aliases
+# input_ptr). Autotuning benchmarks each config repeatedly on that buffer, so
+# without restoring it the negative branch (x * negative_slope) compounds every
+# trial and underflows to 0. Restoring output_ptr between trials keeps the input
+# pristine; it is harmless for the out-of-place callers that pass a fresh buffer.
 @libentry()
-@triton.autotune(configs=_leaky_relu_autotune_configs(), key=["n_elements"])
+@triton.autotune(
+    configs=_leaky_relu_autotune_configs(),
+    key=["n_elements"],
+    restore_value=["output_ptr"],
+)
 @triton.jit(do_not_specialize=["negative_slope"])
 def _leaky_relu_kernel(
     input_ptr,
