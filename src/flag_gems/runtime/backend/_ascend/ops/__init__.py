@@ -109,6 +109,7 @@ from .greater_equal_ import greater_equal_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
+from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
 from .hinge_embedding_loss import hinge_embedding_loss
 from .hstack import hstack
@@ -364,6 +365,7 @@ __all__ = [
     "grouped_matmul",
     "gru",
     "gru_data",
+    "gt_tensor_",
     "hadamard_transform",
     "hinge_embedding_loss",
     "hstack",
