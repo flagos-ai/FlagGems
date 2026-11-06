@@ -225,3 +225,83 @@ def test_batch_norm_backward(shape, dtype, affine):
         utils.gems_assert_close(
             res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
         )
+
+
+@pytest.mark.batch_norm_backward
+@pytest.mark.native_batch_norm_backward
+@pytest.mark.parametrize("shape", SHAPES)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_batch_norm_backward_no_train(shape, dtype, affine):
+    # Issue #7542: with train=False the forward used the fixed running
+    # statistics, so the input gradient is the plain chain-rule term and must
+    # not subtract the batch means. The saved stats a native eval-mode forward
+    # hands over are the running ones.
+    C = shape[1]
+    res_grad = torch.randn(size=shape, dtype=dtype, device=flag_gems.device)
+    res_inp = torch.randn_like(res_grad)
+    res_weight = (
+        torch.randn(size=(C,), dtype=dtype, device=flag_gems.device) if affine else None
+    )
+    res_running_mean = torch.randn(size=(C,), dtype=dtype, device=flag_gems.device)
+    res_running_var = torch.rand(size=(C,), dtype=dtype, device=flag_gems.device) + 0.5
+    eps = 1e-05
+    res_save_mean = res_running_mean.to(torch.float32)
+    res_save_invstd = torch.rsqrt(res_running_var.to(torch.float32) + eps)
+
+    ref_grad = utils.to_reference(res_grad, True)
+    ref_inp = utils.to_reference(res_inp, True)
+    ref_weight = utils.to_reference(res_weight, True)
+    ref_running_mean = utils.to_reference(res_running_mean, True)
+    ref_running_var = utils.to_reference(res_running_var, True)
+    ref_save_mean = utils.to_reference(res_save_mean, True)
+    ref_save_invstd = utils.to_reference(res_save_invstd, True)
+
+    train = False
+    if affine:
+        output_mask = [True, True, True]
+    else:
+        output_mask = [True, False, False]
+
+    (
+        ref_in_grad,
+        ref_weight_grad,
+        ref_bias_grad,
+    ) = torch.ops.aten.native_batch_norm_backward(
+        ref_grad,
+        ref_inp,
+        ref_weight,
+        ref_running_mean,
+        ref_running_var,
+        ref_save_mean,
+        ref_save_invstd,
+        train,
+        eps,
+        output_mask,
+    )
+    (
+        res_in_grad,
+        res_weight_grad,
+        res_bias_grad,
+    ) = flag_gems.batch_norm_backward(
+        res_grad,
+        res_inp,
+        res_weight,
+        res_running_mean,
+        res_running_var,
+        res_save_mean,
+        res_save_invstd,
+        train,
+        eps,
+        output_mask,
+    )
+
+    reduce_dim = math.prod(shape) // C
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=reduce_dim)
+    if affine:
+        utils.gems_assert_close(
+            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
+        )
+        utils.gems_assert_close(
+            res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
+        )
