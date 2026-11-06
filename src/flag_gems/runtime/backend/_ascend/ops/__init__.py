@@ -71,6 +71,7 @@ from .cummax import cummax
 from .cummin import cummin
 from .cumsum import cumsum, normed_cumsum
 from .deg2rad import deg2rad
+from .deg2rad_ import deg2rad_
 from .deg2rad_out import deg2rad_out
 from .diag import diag
 from .diag_embed import diag_embed
@@ -306,6 +307,7 @@ __all__ = [
     "cummin",
     "cumsum",
     "deg2rad",
+    "deg2rad_",
     "deg2rad_out",
     "diag",
     "diag_embed",
