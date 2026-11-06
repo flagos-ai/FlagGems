@@ -222,6 +222,7 @@ from .select_scatter import select_scatter
 from .silu import silu, silu_
 from .silu_backward import silu_backward
 from .slice_scatter import slice_scatter
+from .smm import smm
 from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_out
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
@@ -534,6 +535,7 @@ __all__ = [
     "silu_",
     "silu_backward",
     "slice_scatter",
+    "smm",
     "softmax",
     "softmax_backward",
     "softmax_backward_out",
