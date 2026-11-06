@@ -24,6 +24,85 @@ QUANT_MIN = -128
 QUANT_MAX = 127
 
 
+@pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("zero_point", [-17, 0, 3])
+@pytest.mark.parametrize("scale", [0.1, 0.25, 0.3])
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_fake_quantize_tensor_qparams_rounding(dtype, zero_point, scale, enabled):
+    # Exact ties expose rounding after adding an odd zero point. Adjacent fp32
+    # values also distinguish reciprocal multiplication from direct division.
+    levels = torch.arange(-150, 151, dtype=torch.float32) + 0.5
+    ties = levels * scale
+    values = torch.cat(
+        [
+            ties,
+            torch.nextafter(ties, torch.full_like(ties, -float("inf"))),
+            torch.nextafter(ties, torch.full_like(ties, float("inf"))),
+            torch.tensor([-1e4, 1e4]),
+        ]
+    ).to(dtype)
+    # Exercise the contiguous-copy path as well as a non-power-of-two tail.
+    inp_cpu = torch.stack([values, -values], dim=1).t()
+    scale_cpu = torch.tensor(scale, dtype=torch.float32)
+    zero_cpu = torch.tensor(zero_point, dtype=torch.int32)
+    enabled_cpu = torch.tensor(enabled, dtype=torch.int64)
+    ref = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        inp_cpu, scale_cpu, zero_cpu, enabled_cpu, QUANT_MIN, QUANT_MAX
+    )
+    actual = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        inp_cpu.to(flag_gems.device),
+        scale_cpu.to(flag_gems.device),
+        zero_cpu.to(flag_gems.device),
+        enabled_cpu.to(flag_gems.device),
+        QUANT_MIN,
+        QUANT_MAX,
+    )
+    torch.testing.assert_close(actual[0].cpu(), ref[0], rtol=0, atol=0)
+    torch.testing.assert_close(actual[1].cpu(), ref[1], rtol=0, atol=0)
+
+
+@pytest.mark.fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("enabled", [0, 1])
+def test_fake_quantize_tensor_qparams_extreme_values(dtype, enabled):
+    inp = torch.tensor(
+        [
+            float("nan"),
+            float("inf"),
+            -float("inf"),
+            1e20,
+            -1e20,
+            2**22 + 0.5,
+            -(2**22) - 0.5,
+            0.0,
+            -0.0,
+        ],
+        dtype=dtype,
+    )
+    scale = torch.tensor(0.1, dtype=torch.float32)
+    zero = torch.tensor(3, dtype=torch.int32)
+    flag = torch.tensor(enabled, dtype=torch.int64)
+    expected = torch.ops.aten._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        inp, scale, zero, flag, QUANT_MIN, QUANT_MAX
+    )
+    actual = flag_gems._fake_quantize_per_tensor_affine_cachemask_tensor_qparams(
+        inp.to(flag_gems.device),
+        scale.to(flag_gems.device),
+        zero.to(flag_gems.device),
+        flag.to(flag_gems.device),
+        QUANT_MIN,
+        QUANT_MAX,
+    )
+    torch.testing.assert_close(
+        actual[0].cpu(), expected[0], rtol=0, atol=0, equal_nan=True
+    )
+    torch.testing.assert_close(actual[1].cpu(), expected[1], rtol=0, atol=0)
+    if not enabled:
+        bits = torch.int32 if dtype == torch.float32 else torch.int16
+        assert torch.equal(actual[0].cpu().view(bits), inp.view(bits))
+
+
 def _make_inputs(shape, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device)
     scale = torch.tensor(0.1, dtype=torch.float32, device=device)

@@ -63,7 +63,9 @@ jobs:
         # throughput-judged fetch, so a slow-but-moving link finishes in round 1
         # instead of being clock-killed. Rounds only buy retries across short
         # outage blips; a full outage fails fast on the connect probe either way.
-        rounds: "30"
+        # A handful of rounds covers transient blips; a full outage won't be
+        # waited out, so dozens of rounds buy nothing.
+        rounds: "5"
     - name: Ensure full working tree
       shell: bash
       run: |

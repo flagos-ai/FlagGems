@@ -20,13 +20,34 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# The XPU target wants wide tiles and single-program short contractions; the
+# tuning below is measurably worse on CUDA-like targets, so keep both variants.
+_IS_KUNLUNXIN = runtime.device.vendor_name == "kunlunxin"
 
-@libentry()
+
+def _maybe_libentry():
+    """Skip ``libentry`` on the XPU target.
+
+    ``LibEntry.run`` rebuilds its dispatch key and re-binds every kernel
+    argument on each launch. That costs ~6-10 us here (it grows with the
+    argument count), which is the same order as the whole small-shape
+    contraction, while the raw Triton launcher already caches the compiled
+    kernel. The other targets keep ``libentry``: its grid/config caching pays
+    off there. Calling convention mirrors ``libentry()`` so the decoration
+    sites stay unchanged.
+    """
+    if _IS_KUNLUNXIN:
+        return lambda fn: fn
+    return libentry()
+
+
+@_maybe_libentry()
 @triton.jit
 def _inner_gemm_kernel(
     a_ptr,
@@ -48,6 +69,7 @@ def _inner_gemm_kernel(
     HAS_MASK: tl.constexpr,
     IS_FP32: tl.constexpr,
     IS_FP64: tl.constexpr,
+    FP32_PRECISION: tl.constexpr,
 ):
     """Tiled GEMM computing ``inner(A, B)[m, n] = sum_k A[m, k] * B[n, k]``.
 
@@ -107,7 +129,7 @@ def _inner_gemm_kernel(
             # (~2^-24 per product) without falling back to the slow fp32 FMA
             # path. Plain tf32 would be faster but loses 13 mantissa bits,
             # which the fp32 reduction tolerance rejects.
-            acc = tl.dot(a, b, acc, input_precision="tf32x3")
+            acc = tl.dot(a, b, acc, input_precision=FP32_PRECISION)
         else:
             acc = tl.dot(a, b, acc)
         a_ptrs += BLOCK_K * stride_ak
@@ -120,7 +142,7 @@ def _inner_gemm_kernel(
         tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty))
 
 
-@libentry()
+@_maybe_libentry()
 @triton.jit
 def _inner_dot_kernel(
     a_ptr,
@@ -157,10 +179,10 @@ def _inner_dot_kernel(
             b = tl.load(b_ptr + cur, mask=mask, other=0.0).to(tl.float32)
             acc += a * b
 
-    tl.store(mid_ptr + pid, tl.sum(acc, axis=0))
+    tl.store(mid_ptr + pid, tl.sum(acc, axis=0).to(mid_ptr.dtype.element_ty))
 
 
-@libentry()
+@_maybe_libentry()
 @triton.jit
 def _inner_dot_reduce_kernel(mid_ptr, c_ptr, n_blocks, BLOCK_N: tl.constexpr):
     """Tree-reduce the per-program partial sums into the scalar output."""
@@ -170,22 +192,58 @@ def _inner_dot_reduce_kernel(mid_ptr, c_ptr, n_blocks, BLOCK_N: tl.constexpr):
     tl.store(c_ptr, tl.sum(partials, axis=0).to(c_ptr.dtype.element_ty))
 
 
+_FP32_DOT_PRECISION = None
+
+
+def _fp32_dot_precision():
+    """Pick the tl.dot input precision for fp32 operands.
+
+    ``tf32x3`` keeps fp32 accuracy on tensor cores but not every backend
+    implements it (e.g. XPU allows only ``ieee``/``tf32``), so query the active
+    backend and fall back to ``ieee`` where it is unavailable. ``ieee`` matches
+    the fp32 accuracy tf32x3 was chosen for, so falling back keeps the result
+    unchanged while allowing the kernel to compile.
+    """
+    global _FP32_DOT_PRECISION
+    if _FP32_DOT_PRECISION is None:
+        try:
+            backend = triton.compiler.make_backend(
+                triton.runtime.driver.active.get_current_target()
+            )
+            allowed = backend.parse_options({}).allowed_dot_input_precisions
+            _FP32_DOT_PRECISION = "tf32x3" if "tf32x3" in allowed else "ieee"
+        except Exception:
+            _FP32_DOT_PRECISION = "tf32x3"
+    return _FP32_DOT_PRECISION
+
+
 def _select_block_config(M, N, K, dtype):
     """Pick GEMM tile sizes.
 
-    64x64x32 measured fastest across the fp16/fp32/bf16 cases on the H20
-    target; the larger fp32 shapes prefer 5 pipeline stages and the fp16 large
-    shapes prefer 8 warps at 3 stages. The narrow shapes fall back to a 16x16
-    tile so a single program already covers the whole tile.
+    Large tiles are what pay off on the XPU target: ``BLOCK_K`` in particular
+    has to be >= 128 to keep the MMA pipeline fed, and the 256-wide tiles add
+    another 15-60% on the big shapes. fp16 prefers the narrower 256x128 tile
+    while fp32/bf16 do better with 256x256. Narrow shapes keep a 128x128x64
+    tile, which is the fastest option once the launch cost dominates.
+
+    Other targets keep the 64x64x32 tile measured fastest on the H20.
     """
     large = M >= 512 and N >= 512 and K >= 512
     if M < 16 or N < 16:
         return 16, 16, 32, 4, 3
-    if dtype == torch.float16 and large:
-        return 64, 64, 32, 8, 3
-    if dtype == torch.float32 and large:
-        return 64, 64, 32, 4, 5
-    return 64, 64, 32, 4, 4
+    if not _IS_KUNLUNXIN:
+        if dtype == torch.float16 and large:
+            return 64, 64, 32, 8, 3
+        if dtype == torch.float32 and large:
+            return 64, 64, 32, 4, 5
+        return 64, 64, 32, 4, 4
+    if large:
+        if dtype == torch.float32:
+            return 256, 256, 128, 8, 4
+        if dtype == torch.float16:
+            return 256, 128, 128, 8, 4
+        return 256, 256, 128, 8, 4
+    return 128, 128, 64, 4, 4
 
 
 def inner(input: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
@@ -235,10 +293,21 @@ def inner(input: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
         k = input.numel()
         if k == 0:
             return torch.zeros((), dtype=out_dtype, device=device)
+        if _IS_KUNLUNXIN and k <= 65536:
+            # A short contraction is launch-bound on XPU, so a single program
+            # that keeps the whole accumulation in registers beats the split
+            # partial+reduce pair (which costs an extra kernel launch).  One
+            # program is far too little parallelism elsewhere.
+            block_size = min(triton.next_power_of_2(k), 4096)
+            with torch_device_fn.device(device):
+                _inner_dot_kernel[(1,)](
+                    input, other, out, k, BLOCK_SIZE=block_size, IS_FP64=is_fp64
+                )
+            return out
         # 64 programs x 64 lanes saturates the reduction without paying for a
         # second launch; a single wide program serializes the loop.
         block_size = 64
-        grid = (min(triton.cdiv(k, block_size), 64),)
+        grid = (min((k + block_size - 1) // block_size, 64),)
         mid = torch.empty(grid[0], dtype=mid_dtype, device=device)
         with torch_device_fn.device(device):
             _inner_dot_kernel[grid](
@@ -270,9 +339,13 @@ def inner(input: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
     block_m, block_n, block_k, num_warps, num_stages = _select_block_config(
         m, n, k, out_dtype
     )
-    grid = (triton.cdiv(m, block_m) * triton.cdiv(n, block_n),)
+    # Integer arithmetic instead of triton.cdiv: the wrapper cost shows up
+    # directly in the small-shape latency, and cdiv is a surprisingly
+    # expensive Python call here.
+    grid = (((m + block_m - 1) // block_m) * ((n + block_n - 1) // block_n),)
     # Masks are redundant when every dimension divides its tile exactly.
     has_mask = not (m % block_m == 0 and n % block_n == 0 and k % block_k == 0)
+    fp32_precision = _fp32_dot_precision() if out_dtype == torch.float32 else "ieee"
     with torch_device_fn.device(device):
         _inner_gemm_kernel[grid](
             a2,
@@ -294,6 +367,7 @@ def inner(input: torch.Tensor, other: torch.Tensor) -> torch.Tensor:
             HAS_MASK=has_mask,
             IS_FP32=out_dtype == torch.float32,
             IS_FP64=out_dtype == torch.float64,
+            FP32_PRECISION=fp32_precision,
             num_warps=num_warps,
             num_stages=num_stages,
         )
