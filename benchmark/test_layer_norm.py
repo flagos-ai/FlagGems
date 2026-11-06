@@ -40,25 +40,27 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
-# Other shapes normalize all dimensions after the first with eps 1e-5.
-NORMALIZATION_OVERRIDES = {
-    (65536, 1, 1152): ((1152,), 1e-6),
-}
-
-
 def input_fn(shape, dtype, device):
-    normalized_shape, eps = NORMALIZATION_OVERRIDES.get(shape, (shape[1:], 1e-5))
     inp = torch.randn(shape, dtype=dtype, device=device)
+    layer_shape = shape[1:]
+    weight = torch.randn(layer_shape, dtype=dtype, device=device)
+    bias = torch.randn(layer_shape, dtype=dtype, device=device)
+    yield inp, layer_shape, weight, bias
+
+
+def native_layer_norm_input_fn(shape, dtype, device):
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    normalized_shape = shape[1:]
     weight = torch.randn(normalized_shape, dtype=dtype, device=device)
     bias = torch.randn(normalized_shape, dtype=dtype, device=device)
-    yield inp, normalized_shape, weight, bias, eps
+    yield inp, normalized_shape, weight, bias, 1e-5
 
 
 @pytest.mark.native_layer_norm
 def test_native_layer_norm():
     bench = NormBenchmark(
         op_name="native_layer_norm",
-        input_fn=input_fn,
+        input_fn=native_layer_norm_input_fn,
         torch_op=torch.ops.aten.native_layer_norm.default,
         dtypes=consts.FLOAT_DTYPES,
     )

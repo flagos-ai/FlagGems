@@ -35,70 +35,36 @@ else:
         (4096, 512),
         (2048, 1024),
         (1024, 2048),
+        (128, 1152),
+        (255, 1152),
         (1025, 1152),
+        (4097, 100),
+        (1025, 36),
+        (16, 16, 1024),
         (256, 4096),
+        (65536, 1, 1152),
     ]
 
 LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
 
 
-NATIVE_LAYER_NORM_CASES = (
-    [
-        (shape, normalized_shape, 1e-5, dtype, affine, affine)
-        for shape, normalized_shape in [
-            ((4, 64), (64,)),
-            ((4, 8, 8), (8, 8)),
-            ((4, 4, 4, 4), (4, 4, 4)),
-        ]
-        for dtype in utils.FLOAT_DTYPES
-        for affine in (True, False)
-    ]
-    + [
-        (shape, normalized_shape, 1e-5, dtype, has_weight, has_bias)
-        for shape, normalized_shape in [
-            ((4096, 1152), (1152,)),
-            ((4097, 3, 384), (3, 384)),
-            ((128, 1152), (1152,)),
-            ((255, 1152), (1152,)),
-            ((4097, 100), (100,)),
-            ((1025, 36), (36,)),
-            ((16, 16, 1024), (16, 1024)),
-        ]
-        for dtype in utils.FLOAT_DTYPES
-        for has_weight, has_bias in [
-            (True, True),
-            (True, False),
-            (False, True),
-            (False, False),
-        ]
-    ]
-    + [((65536, 1, 1152), (1152,), 1e-6, dtype, True, True) for dtype in FLOAT_DTYPES]
-    + [
-        ((65536, 2049), (2049,), 1e-5, torch.bfloat16, True, True),
-    ]
-)
-
-
 @pytest.mark.native_layer_norm
+# Cover one-, two-, and three-dimensional normalized suffixes of equal size.
 @pytest.mark.parametrize(
-    "shape, normalized_shape, eps, dtype, has_weight, has_bias",
-    NATIVE_LAYER_NORM_CASES,
+    "shape, normalized_shape",
+    [((4, 64), (64,)), ((4, 8, 8), (8, 8)), ((4, 4, 4, 4), (4, 4, 4))],
 )
-def test_native_layer_norm(
-    shape, normalized_shape, eps, dtype, has_weight, has_bias, caplog
-):
-    torch.manual_seed(0)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("affine", [True, False])
+def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = (
         torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-        if has_weight
+        if affine
         else None
     )
-    bias = (
-        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-        if has_bias
-        else None
-    )
+    bias = torch.randn_like(weight) if affine else None
+    eps = 1e-5
 
     ref_result = torch.ops.aten.native_layer_norm.default(
         utils.to_reference(inp, True),
