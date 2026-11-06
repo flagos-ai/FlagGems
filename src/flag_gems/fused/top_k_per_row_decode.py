@@ -48,11 +48,33 @@ SORTING_ALGORITHM_THRESHOLD = 12288
 SPLIT_WORK_THRESHOLD = 200 * 1000
 NUM_THREADS_PER_BLOCK = 512
 MULTIPLE_BLOCKS_PER_ROW_CONFIG = 10
+MEDIUM_VOCAB_SPLIT_WORK_THRESHOLD = 100 * 1000
+MEDIUM_VOCAB_SPLIT_TOPK_THRESHOLD = 512
+MEDIUM_VOCAB_MANY_ROWS_THRESHOLD = 64
+MEDIUM_VOCAB_MULTIPLE_BLOCKS_PER_ROW_CONFIG = 10
+MEDIUM_VOCAB_MANY_ROWS_MULTIPLE_BLOCKS_PER_ROW_CONFIG = 4
 NUM_THREADS_PER_BLOCK_MERGE = 1024
 NUM_FILNAL_ITEMS = 2048
 NUM_BINS = 2048
 RADIX_BITS_FINAL = 8
 RADIX_SIZE_FINAL = 1 << RADIX_BITS_FINAL
+
+
+def _get_decode_split_blocks(num_rows, vocab_size, top_k, stride1):
+    if vocab_size >= SPLIT_WORK_THRESHOLD:
+        return MULTIPLE_BLOCKS_PER_ROW_CONFIG
+    # The medium-vocab split path is only enabled for contiguous rows
+    # (stride1 == 1). For strided rows the multi-block kernel would offset by
+    # an unscaled row_start, so keep those on the safe single-block path.
+    if (
+        stride1 == 1
+        and vocab_size >= MEDIUM_VOCAB_SPLIT_WORK_THRESHOLD
+        and top_k >= MEDIUM_VOCAB_SPLIT_TOPK_THRESHOLD
+    ):
+        if num_rows >= MEDIUM_VOCAB_MANY_ROWS_THRESHOLD:
+            return MEDIUM_VOCAB_MANY_ROWS_MULTIPLE_BLOCKS_PER_ROW_CONFIG
+        return MEDIUM_VOCAB_MULTIPLE_BLOCKS_PER_ROW_CONFIG
+    return 1
 
 
 @triton.jit
@@ -1240,7 +1262,8 @@ def top_k_per_row_decode(
     use_radix_final = vocab_size >= SORTING_ALGORITHM_THRESHOLD
     if HAS_TLE:
         topkp = triton.next_power_of_2(top_k)
-        if vocab_size < SPLIT_WORK_THRESHOLD:
+        split_blocks = _get_decode_split_blocks(num_rows, vocab_size, top_k, stride1)
+        if split_blocks == 1:
             tle_top_k_per_row_decode[(num_rows,)](
                 logits,
                 indices,
@@ -1256,26 +1279,26 @@ def top_k_per_row_decode(
                 BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
                 USE_RADIX_FINAL=use_radix_final,
                 MULTIPLE_BLOCKS_PER_ROW=False,
-                MULTIPLE_BLOCKS_NUM=1,
+                MULTIPLE_BLOCKS_NUM=split_blocks,
                 MERGE_BLOCKS=False,
                 num_warps=NUM_THREADS_PER_BLOCK // 32,
             )
         else:
             device = logits.device
             out_indices_aux = torch.empty(
-                (num_rows, MULTIPLE_BLOCKS_PER_ROW_CONFIG, top_k),
+                (num_rows, split_blocks, top_k),
                 device=device,
                 dtype=torch.int32,
             )
             out_logits_aux = torch.empty(
-                (num_rows, MULTIPLE_BLOCKS_PER_ROW_CONFIG, top_k),
+                (num_rows, split_blocks, top_k),
                 device=device,
                 dtype=torch.float32,
             )
             tle_top_k_per_row_decode[
                 (
                     num_rows,
-                    MULTIPLE_BLOCKS_PER_ROW_CONFIG,
+                    split_blocks,
                 )
             ](
                 logits,
@@ -1292,7 +1315,7 @@ def top_k_per_row_decode(
                 BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
                 USE_RADIX_FINAL=use_radix_final,
                 MULTIPLE_BLOCKS_PER_ROW=True,
-                MULTIPLE_BLOCKS_NUM=MULTIPLE_BLOCKS_PER_ROW_CONFIG,
+                MULTIPLE_BLOCKS_NUM=split_blocks,
                 MERGE_BLOCKS=False,
                 num_warps=NUM_THREADS_PER_BLOCK // 32,
             )
@@ -1301,9 +1324,9 @@ def top_k_per_row_decode(
                 indices,
                 seq_lens,
                 next_n,
-                MULTIPLE_BLOCKS_PER_ROW_CONFIG * top_k,
+                split_blocks * top_k,
                 1,
-                MULTIPLE_BLOCKS_PER_ROW_CONFIG * top_k,
+                split_blocks * top_k,
                 None,
                 out_indices_aux,
                 TOPK=top_k,
@@ -1311,7 +1334,7 @@ def top_k_per_row_decode(
                 BLOCK_SIZE=NUM_THREADS_PER_BLOCK_MERGE,
                 USE_RADIX_FINAL=use_radix_final,
                 MULTIPLE_BLOCKS_PER_ROW=False,
-                MULTIPLE_BLOCKS_NUM=MULTIPLE_BLOCKS_PER_ROW_CONFIG,
+                MULTIPLE_BLOCKS_NUM=split_blocks,
                 MERGE_BLOCKS=True,
                 num_warps=NUM_THREADS_PER_BLOCK_MERGE // 32,
             )
