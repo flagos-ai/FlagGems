@@ -108,3 +108,50 @@ def test_validate_sparse_coo_tensor_args_dense_and_scalar():
         is None
     )
     assert flag_gems._validate_sparse_coo_tensor_args(empty, scalar, ()) is None
+
+
+@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
+def test_validate_sparse_coo_tensor_args_invalid_high_rank():
+    indices = torch.zeros((9, 2), dtype=torch.int64, device=flag_gems.device)
+    indices[-1, -1] = 1
+    values = torch.zeros(2, device=flag_gems.device)
+    size = (1,) * 9
+    with pytest.raises(RuntimeError):
+        torch.ops.aten._validate_sparse_coo_tensor_args.default(
+            indices, values, size, False, False
+        )
+    with pytest.raises(RuntimeError):
+        flag_gems._validate_sparse_coo_tensor_args(indices, values, size, False, False)
+
+
+@pytest.mark.validate_sparse_coo_tensor_args
+@pytest.mark.underscore_validate_sparse_coo_tensor_args
+def test_validate_sparse_coo_tensor_args_dispatch():
+    calls = 0
+
+    def registered_impl(indices, values, size, is_coalesced=None, check_pinning=None):
+        nonlocal calls
+        calls += 1
+        return flag_gems._validate_sparse_coo_tensor_args(
+            indices, values, size, is_coalesced, check_pinning
+        )
+
+    library = torch.library.Library("aten", "IMPL")
+    library.impl(
+        "_validate_sparse_coo_tensor_args",
+        registered_impl,
+        flag_gems.backend_info.dispatch_key,
+    )
+    try:
+        indices = torch.tensor([[0], [0]], device=flag_gems.device)
+        values = torch.zeros(1, device=flag_gems.device)
+        assert (
+            torch.ops.aten._validate_sparse_coo_tensor_args.default(
+                indices, values, (1, 1), True, False
+            )
+            is None
+        )
+        assert calls == 1
+    finally:
+        library._destroy()

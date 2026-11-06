@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -48,7 +46,6 @@ def test_validate_sparse_coo_tensor_args(monkeypatch):
     bench = SparseCooValidationBenchmark(
         op_name="validate_sparse_coo_tensor_args",
         torch_op=torch.ops.aten._validate_sparse_coo_tensor_args.default,
-        gems_op=flag_gems._validate_sparse_coo_tensor_args,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

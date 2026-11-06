@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ _INT64 = torch.int64
 _INT32 = torch.int32
 
 
+@libentry()
 @triton.jit
 def _validate_coo_kernel(
     idx_ptr,
@@ -168,6 +170,9 @@ def _validate_sparse_coo_tensor_args(
             + ", dense_dim = "
             + str(dense_dim)
         )
+    nnz = indices.shape[1]
+    if values.dim() and values.shape[0] != nnz:
+        raise RuntimeError("indices and values must have the same nnz")
 
     if check_pinning is not False and indices.is_pinned() != values.is_pinned():
         raise RuntimeError(
@@ -176,14 +181,8 @@ def _validate_sparse_coo_tensor_args(
     do_coalesced = is_coalesced is True and (values.ndim > 0 and values.shape[0] > 1)
     # With no sparse dimension there is no stored coordinate to validate, and with
     # no stored column there is nothing to read, so neither needs a launch.
-    nnz = indices.shape[1]
     if sparse_dim == 0 or nnz == 0:
         return None
-
-    if do_coalesced and nnz == 1:
-        raise RuntimeError(
-            "coalesced ordering cannot be reduced for a singleton index with multiple values"
-        )
 
     # ---- Layer 2: coordinate validation on the target device ----
     device = indices.device
