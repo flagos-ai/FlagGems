@@ -187,8 +187,12 @@ def test_validate_sparse_compressed_tensor_args_empty_nonunit_stride():
     values = torch.empty((4, 0), device=flag_gems.device)
     size = (4, 2, 3)
 
-    assert (
-        torch.ops.aten._validate_sparse_compressed_tensor_args.default(
+    # Current ATen accepts an empty last dimension regardless of its stride,
+    # but older supported PyTorch releases still apply the contiguity check.
+    # Keep the regression portable while requiring FlagGems to implement the
+    # corrected behavior requested by the operator review.
+    try:
+        native = torch.ops.aten._validate_sparse_compressed_tensor_args.default(
             comp,
             plain,
             values,
@@ -196,8 +200,10 @@ def test_validate_sparse_compressed_tensor_args_empty_nonunit_stride():
             torch.sparse_csr,
             check_pinning=False,
         )
-        is None
-    )
+    except RuntimeError as error:
+        assert "contiguous tensor per batch" in str(error)
+    else:
+        assert native is None
     assert (
         flag_gems._validate_sparse_compressed_tensor_args(
             comp,
