@@ -169,6 +169,7 @@ from .ones_like import ones_like
 from .outer import outer
 from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
+from .permute_copy import permute_copy
 from .polar import polar
 from .polygamma import polygamma_
 from .pow import (
@@ -444,6 +445,7 @@ __all__ = [
     "outer",
     "pad_sequence",
     "pairwise_distance",
+    "permute_copy",
     "polar",
     "polygamma_",
     "pow_scalar",
