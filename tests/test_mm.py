@@ -245,3 +245,150 @@ def test_mm_out_self_transpose(M, K, dtype):
     flag_gems.mm_out(mat, mat.t(), out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K, atol=_mm_atol_base())
+
+
+# Deduplicated FP32 matrix signatures from ESM-2 and GenScore inference.
+# Values are seeded reconstructions, not captured model tensors.
+HYGON_SCIENTIFIC_MM_SHAPES = [
+    (303, 320, 320),
+    (303, 33, 320),
+    (29403, 1, 120),
+    (1220, 128, 128),
+    (2806, 128, 128),
+    (1220, 256, 128),
+    (1220, 128, 256),
+    (2806, 256, 128),
+    (2806, 128, 256),
+    (4819, 128, 128),
+    (126636, 128, 128),
+    (4819, 256, 128),
+    (4819, 128, 256),
+    (126636, 256, 128),
+    (126636, 128, 256),
+]
+
+
+def _hygon_mm_storage(shape, stride, offset, dtype, seed):
+    extent = (
+        offset + 1 + sum(max(dim - 1, 0) * step for dim, step in zip(shape, stride))
+    )
+    generator = torch.Generator().manual_seed(seed)
+    backing = (torch.randn(extent, generator=generator) * 0.125).to(dtype)
+    reference = backing.as_strided(shape, stride, offset)
+    device_backing = backing.to(flag_gems.device)
+    device_view = device_backing.as_strided(shape, stride, offset)
+    return reference, backing, device_view, device_backing
+
+
+def _assert_hygon_mm(
+    reference_a, backing_a, a, storage_a, reference_b, backing_b, b, storage_b
+):
+    metadata = [
+        (x.shape, x.stride(), x.storage_offset(), x.dtype, x.device) for x in (a, b)
+    ]
+    expected = torch.mm(reference_a, reference_b)
+    actual = flag_gems.mm(a, b)
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert actual.device == a.device
+    if a.dtype in (torch.float16, torch.bfloat16):
+        utils.gems_assert_close(
+            actual.cpu(),
+            expected,
+            a.dtype,
+            equal_nan=True,
+            reduce_dim=reference_a.shape[1],
+            atol=_mm_atol_base(),
+        )
+    else:
+        tolerance = (1e-7, 1e-9) if a.dtype == torch.float64 else (1e-4, 1e-5)
+        torch.testing.assert_close(
+            actual.cpu(), expected, rtol=tolerance[0], atol=tolerance[1], equal_nan=True
+        )
+    assert actual.numel() == 0 or all(actual.data_ptr() != x.data_ptr() for x in (a, b))
+    for value, saved in zip((a, b), metadata):
+        assert (
+            value.shape,
+            value.stride(),
+            value.storage_offset(),
+            value.dtype,
+            value.device,
+        ) == saved
+    # The backing arrays are 1D stride-one tensors, avoiding size-one view traps.
+    assert torch.equal(storage_a.cpu().view(torch.uint8), backing_a.view(torch.uint8))
+    assert torch.equal(storage_b.cpu().view(torch.uint8), backing_b.view(torch.uint8))
+    return actual.cpu(), expected
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon schedule regression"
+)
+@pytest.mark.parametrize("M,N,K", HYGON_SCIENTIFIC_MM_SHAPES)
+def test_hygon_mm_scientific_shapes(M, N, K):
+    left = _hygon_mm_storage((M, K), (K, 1), 0, torch.float32, 73)
+    right = _hygon_mm_storage((K, N), (1, K), 0, torch.float32, 91)
+    _assert_hygon_mm(*left, *right)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon schedule regression"
+)
+@pytest.mark.parametrize(
+    "M,N,K", [(0, 5, 7), (7, 0, 5), (7, 5, 0), (7, 5, 1), (17, 33, 65)]
+)
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+def test_hygon_mm_edges_and_offset_strides(M, N, K, dtype):
+    left = _hygon_mm_storage((M, K), (max(2 * K + 3, 1), 2), 3, dtype, 4)
+    right = _hygon_mm_storage((K, N), (2, max(2 * K + 5, 1)), 5, dtype, 8)
+    _assert_hygon_mm(*left, *right)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon rank-one semantics")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_hygon_mm_rank_one_specials(dtype):
+    values = torch.tensor(
+        [
+            -float("inf"),
+            -1.0,
+            -0.0,
+            0.0,
+            torch.finfo(dtype).tiny / 8,
+            1.0,
+            float("inf"),
+            float("nan"),
+        ],
+        dtype=dtype,
+    )
+    a, b = values[:, None], values[None, :]
+    expected = torch.mm(a, b)
+    actual = flag_gems.mm(a.to(flag_gems.device), b.to(flag_gems.device)).cpu()
+    tolerance = (1e-7, 1e-9) if dtype == torch.float64 else (1e-4, 1e-5)
+    torch.testing.assert_close(
+        actual, expected, rtol=tolerance[0], atol=tolerance[1], equal_nan=True
+    )
+    zeros = expected == 0
+    assert torch.equal(torch.signbit(actual[zeros]), torch.signbit(expected[zeros]))
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon FP32 schedules")
+@pytest.mark.parametrize("M,N,K", [(17, 1, 120), (17, 33, 65)])
+def test_hygon_mm_schedule_specials(M, N, K):
+    left = list(_hygon_mm_storage((M, K), (K, 1), 0, torch.float32, 11))
+    right = list(_hygon_mm_storage((K, N), (1, K), 0, torch.float32, 13))
+    left[0][0, 0] = float("inf")
+    left[0][1, 0] = -float("inf")
+    left[0][2, 0] = float("nan")
+    left[0][3, :] = -0.0
+    right[0][0, :] = 1.0
+    # Refresh the device backing after setting the CPU reference special values.
+    left[3] = left[1].to(flag_gems.device)
+    left[2] = left[3].as_strided((M, K), (K, 1), 0)
+    right[3] = right[1].to(flag_gems.device)
+    right[2] = right[3].as_strided((K, N), (1, K), 0)
+    _assert_hygon_mm(*left, *right)
