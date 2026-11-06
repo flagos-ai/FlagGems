@@ -57,6 +57,7 @@ def generate_index_copy_kernel(
             code.writeline("src,")
             code.writeline("out,")
             code.writeline("N,")
+            code.writeline("index_numel,")
             code.writeline("inp_numel: tl.constexpr,")
             code.writeline("inp_stride_dim: tl.constexpr,")
             code.writeline("inp_shape_dim: tl.constexpr,")
@@ -106,6 +107,21 @@ def generate_index_copy_kernel(
                 '"index value out of bounds: 0 <= index < self.size(dim)")'
             )
 
+            # #8300: CPU ATen applies the copies in order, so with a repeated
+            # index the LAST source position wins. A parallel kernel cannot
+            # order programs, so each element abstains when any LATER index
+            # position maps to the same destination — the last writer is then
+            # the only writer. index_numel is a runtime bound: the scan stays a
+            # dynamic loop, not an unrolled one.
+            code.writeline("is_last = mask & valid_index")
+            code.writeline("j = 0")
+            code.writeline("while j < index_numel:")
+            with code.indent():
+                code.writeline("later = tl.load(index + j).to(tl.int64)")
+                code.writeline("dup_later = (j > dim_idx) & (later == src_dim_idx)")
+                code.writeline("is_last = is_last & (~dup_later)")
+                code.writeline("j += 1")
+
             code.writeline(
                 "input_idx = (src_offset + "
                 "(delta * pre_idx + src_dim_idx - dim_idx) * inp_stride_dim"
@@ -113,7 +129,7 @@ def generate_index_copy_kernel(
             )
 
             code.writeline("input_mask = (input_idx >= 0) & (input_idx < inp_numel)")
-            code.writeline("store_mask = mask & valid_index & input_mask")
+            code.writeline("store_mask = mask & valid_index & input_mask & is_last")
             code.writeline("src_val = tl.load(src + src_offset, mask=mask, other=0)")
             code.writeline("tl.store(out + input_idx, src_val, mask=store_mask)")
 
@@ -152,6 +168,7 @@ def generate_destination_passing_wrapper(
     with code.indent():
         code.writeline("src_strides = list(src.stride())")
         code.writeline("src_shapes = list(src.shape)")
+        code.writeline("index = index.contiguous()")
 
         # Kernel launch
         code.writeline("if N <= 4096:")
@@ -167,7 +184,7 @@ def generate_destination_passing_wrapper(
         code.writeline(kernel_launch)
         with code.indent():
             code.writeline(
-                "index, src, out, N, inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, "
+                "index, src, out, N, index.numel(), inp_numel, inp_stride_dim, inp_shape_dim, src_shape_dim, delta, "
             )
             if rank > 0:
                 s = ", ".join(f"src_strides[{i}]" for i in range(rank))
