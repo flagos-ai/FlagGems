@@ -1668,3 +1668,151 @@ linear:
     BLOCK_SIZE_K: 32
   num_stages: 2
   num_warps: 8
+
+baddbmm:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      UNROLL: unroll
+      STAGE_SHARED: stage_shared
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 32
+  - 64
+  - 128
+  - 256
+  block_n:
+  - 64
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  - 128
+  group_m:
+  - 1
+  - 4
+  warps:
+  - 4
+  - 8
+  stages:
+  - 1
+  - 2
+  unroll:
+  - 1
+  stage_shared:
+  - false
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      UNROLL: unroll
+      STAGE_SHARED: stage_shared
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 64
+  - 128
+  block_n:
+  - 64
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  warps:
+  - 4
+  stages:
+  - 1
+  unroll:
+  - 1
+  - 2
+  stage_shared:
+  - true
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      UNROLL: unroll
+      STAGE_SHARED: stage_shared
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 64
+  - 128
+  block_n:
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  warps:
+  - 4
+  stages:
+  - 1
+  unroll:
+  - 4
+  stage_shared:
+  - false
+baddbmm_packed:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+      BLOCK_K: block_k
+      GROUP_M: group_m
+      SPLIT_ROWS: split_rows
+    num_warps: warps
+    num_stages: stages
+  block_m:
+  - 128
+  - 256
+  block_n:
+  - 128
+  - 256
+  block_k:
+  - 32
+  - 64
+  group_m:
+  - 1
+  - 4
+  - 8
+  warps:
+  - 4
+  - 8
+  stages:
+  - 1
+  split_rows:
+  - true
+  - false
+baddbmm_ring:
+- META:
+    GROUP_M: 1
+  num_warps: 8
+  num_stages: 1
+- META:
+    GROUP_M: 4
+  num_warps: 8
+  num_stages: 1
+- META:
+    GROUP_M: 8
+  num_warps: 8
+  num_stages: 1
