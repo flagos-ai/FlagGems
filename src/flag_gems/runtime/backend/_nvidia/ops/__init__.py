@@ -21,4 +21,7 @@ __all__ = [
     "cudnn_batch_norm",
     "cudnn_batch_norm_backward",
     "cudnn_batch_norm_out",
+    "topk",
 ]
+
+from .topk import topk

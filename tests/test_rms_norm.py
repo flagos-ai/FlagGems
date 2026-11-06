@@ -73,3 +73,65 @@ def test_rms_norm(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_grad, ref_grad, dtype)
     utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=N)
+
+
+@pytest.mark.rms_norm
+@pytest.mark.parametrize(
+    "rows, columns, row_stride, offset",
+    [
+        (1, 2048, 2624, 0),
+        (4, 2048, 2624, 0),
+        (4, 512, 2624, 2048),
+        (64, 2048, 2624, 0),
+        (256, 512, 2624, 2048),
+        (4, 513, 769, 3),
+        (4, 6144, 6208, 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
+@torch.no_grad()
+def test_rms_norm_row_padding_and_ordinary_graph(
+    rows, columns, row_stride, offset, dtype
+):
+    if flag_gems.vendor_name != "nvidia" or not torch.cuda.is_available():
+        pytest.skip("CUDA row-stride forward path")
+    from flag_gems.ops.rms_norm import rms_norm_forward
+
+    generator = torch.Generator().manual_seed(719 + rows + columns)
+    size = offset + (rows - 1) * row_stride + columns
+    cpu_a = torch.randn(size, generator=generator).to(dtype)
+    cpu_b = torch.randn(size, generator=generator).to(dtype)
+    cpu_weight = torch.randn(columns, generator=generator).to(dtype)
+    storage = cpu_a.to(flag_gems.device)
+    x = storage.as_strided((rows, columns), (row_stride, 1), offset)
+    weight = cpu_weight.to(flag_gems.device)
+    for _ in range(2):
+        rms_norm_forward(x, (columns,), weight)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        graph_y, graph_inv = rms_norm_forward(x, (columns,), weight)
+    for cpu in (cpu_a, cpu_b, cpu_a):
+        storage.copy_(cpu)
+        eager_y, eager_inv = rms_norm_forward(x, (columns,), weight)
+        packed_y, packed_inv = rms_norm_forward(x.contiguous(), (columns,), weight)
+        graph_y.fill_(torch.nan)
+        graph_inv.fill_(torch.nan)
+        graph.replay()
+        torch.testing.assert_close(graph_y, eager_y, atol=0, rtol=0)
+        torch.testing.assert_close(graph_inv, eager_inv, atol=0, rtol=0)
+        torch.testing.assert_close(graph_y, packed_y, atol=0, rtol=0)
+        torch.testing.assert_close(graph_inv, packed_inv, atol=0, rtol=0)
+        cpu_x = cpu.as_strided((rows, columns), (row_stride, 1), offset).double()
+        inv = 1 / torch.sqrt((cpu_x * cpu_x).mean(-1, keepdim=True) + 1e-5)
+        expected = ((cpu_x * inv).to(dtype) * cpu_weight).to(dtype).float()
+        tolerance = {
+            torch.bfloat16: 0.015625,
+            torch.float16: 0.002,
+            torch.float32: 1e-5,
+        }[dtype]
+        torch.testing.assert_close(
+            graph_y.cpu().float(), expected, atol=tolerance, rtol=tolerance
+        )
+        torch.testing.assert_close(
+            graph_inv.cpu().double(), inv[:, 0], atol=2e-6, rtol=2e-6
+        )
