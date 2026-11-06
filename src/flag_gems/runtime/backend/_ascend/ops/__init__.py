@@ -42,10 +42,13 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .clamp_max import clamp_max
 from .clamp_max_ import clamp_max_
 from .concat import concat
+from .concatenate import concatenate
 from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
+from .cross import cross
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
@@ -187,6 +190,7 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .uniform import uniform
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsafe_index import unsafe_index
@@ -247,10 +251,13 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "clamp_max",
     "clamp_max_",
     "concat",
+    "concatenate",
     "cosh_",
     "count_nonzero",
+    "cross",
     "cudnn_convolution",
     "cummax",
     "cummin",
@@ -441,6 +448,7 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "uniform",
     "unique_dim",
     "unsafe_index",
     "unsafe_index_put",
