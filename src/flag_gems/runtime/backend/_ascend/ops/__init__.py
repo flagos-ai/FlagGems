@@ -167,6 +167,7 @@ from .replication_pad2d_backward import (
     replication_pad2d_backward,
     replication_pad2d_backward_grad_input,
 )
+from .resize import resize
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm
 from .rms_norm_w8a16_int8 import rms_norm_w8a16_int8
@@ -184,6 +185,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
+from .squeeze_copy import squeeze_copy
 from .stack import stack
 from .subtract import subtract
 from .swiglu import swiglu
@@ -194,6 +196,7 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .unbind_copy import unbind_copy
 from .uniform import uniform
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -414,6 +417,7 @@ __all__ = [
     "repeat_interleave_self_int",
     "replication_pad2d_backward",
     "replication_pad2d_backward_grad_input",
+    "resize",
     "resolve_neg",
     "rms_norm",
     "rms_norm_w8a16_int8",
@@ -444,6 +448,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_erfinv",
+    "squeeze_copy",
     "stack",
     "subtract",
     "swiglu",
@@ -456,6 +461,7 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "unbind_copy",
     "uniform",
     "unique_dim",
     "unsafe_index",
