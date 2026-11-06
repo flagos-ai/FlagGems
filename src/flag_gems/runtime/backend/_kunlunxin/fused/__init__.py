@@ -40,6 +40,7 @@ from .mhc_post import mhc_post  # noqa: F401  (import triggers _install)
 from .mhc_pre import mhc_pre  # noqa: F401  (import triggers _install)
 from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
 from .outer import outer
+from .post_layer_norm_residual import post_layer_norm_residual
 from .reglu import dreglu, reglu
 from .reshape_and_cache import reshape_and_cache
 from .reshape_and_cache_flash import reshape_and_cache_flash
@@ -78,6 +79,7 @@ __all__ = [
     "hc_split_sinkhorn",
     "cross_entropy_loss",
     "outer",
+    "post_layer_norm_residual",
     "instance_norm",
     "weight_norm",
     "concat_and_cache_mla",

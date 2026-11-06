@@ -32,9 +32,9 @@ releases only; dev, rc, and other pre-release tags do not match).
   [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC via
   `id-token: write`, no stored PyPI token).
 
-See [Versioning](/FlagGems/release/versioning/) for the tag-naming rules
+See [Versioning](../release/versioning.md) for the tag-naming rules
 that determine what triggers this workflow, and
-[Packaging](/FlagGems/release/packaging/) for build details.
+[Packaging](../release/packaging.md) for build details.
 
 ## `hugo-site.yaml` — build and publish documentation
 
@@ -94,5 +94,5 @@ Artifacts are uploaded as `flag-gems-amd64-packages` and
 The manually dispatched tools that do not touch releases — `probe-node.yaml`,
 `random-test.yaml`, `review-stats.yaml`, plus the comment-triggered
 `fix-sort.yaml` — are documented in
-[Scheduled and on-demand testing](/FlagGems/cicd/scheduled/), which owns
+[Scheduled and on-demand testing](scheduled.md), which owns
 everything you start by hand.

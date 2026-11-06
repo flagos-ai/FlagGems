@@ -198,3 +198,107 @@ def test_indices_dense_rejected():
     with pytest.raises(RuntimeError) as res_err:
         flag_gems.indices(inp)
     assert str(ref_err.value) == str(res_err.value)
+
+
+@pytest.mark.underscore_indices
+@pytest.mark.parametrize("nnd, nnz, size", COO_SHAPES)
+def test__indices(nnd, nnz, size):
+    res_inp = _make_coo(nnd, nnz, size, seed=3)
+    ref_inp = utils.to_reference(res_inp)
+
+    ref_out = torch.ops.aten._indices(ref_inp)
+    res_out = flag_gems._indices(res_inp)
+
+    assert res_out.dtype == torch.int64
+    assert res_out.shape == (nnd, nnz)
+    utils.gems_assert_equal(res_out, ref_inp._indices())
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_indices
+def test__indices_uncoalesced_keeps_coordinates():
+    # The public indices() requires coalescence; _indices does not, and both
+    # native and this implementation return the stored coordinates as-is.
+    # The shared ``_make_coo`` helper coalesces its result for the public
+    # accessor, so build the raw (uncoalesced) tensor directly here.
+    gen = torch.Generator(device="cpu").manual_seed(5)
+    flat = torch.randperm(16, generator=gen)[:8]
+    raw = torch.stack([flat % 4, flat // 4]).contiguous()
+    res_inp = torch.sparse_coo_tensor(
+        raw.to(flag_gems.device),
+        torch.randn(8, generator=gen).to(flag_gems.device),
+        (4, 4),
+    )
+    assert not res_inp.is_coalesced()
+    ref_out = torch.ops.aten._indices(utils.to_reference(res_inp))
+    res_out = flag_gems._indices(res_inp)
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_indices
+def test__indices_empty():
+    res_inp = torch.sparse_coo_tensor(
+        torch.zeros((2, 0), dtype=torch.int64, device=flag_gems.device),
+        torch.zeros((0,), device=flag_gems.device),
+        (4, 4),
+    )
+    res_out = flag_gems._indices(res_inp)
+    assert res_out.shape == (2, 0)
+
+
+@pytest.mark.underscore_indices
+def test__indices_hybrid():
+    # A hybrid COO tensor keeps its dense dimensions in values; the coordinate
+    # table stays (sparse_dim, nnz).
+    res_inp = torch.sparse_coo_tensor(
+        torch.tensor([[1, 0], [0, 1]], device=flag_gems.device),
+        torch.randn(2, 3, 4, device=flag_gems.device),
+        (2, 2, 3, 4),
+    )
+    res_out = flag_gems._indices(res_inp)
+    ref_out = torch.ops.aten._indices(utils.to_reference(res_inp))
+    assert res_out.shape == (2, 2)
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.underscore_indices
+def test__indices_alias_and_mutation():
+    # The schema ``Tensor(a) self -> Tensor(a)`` makes the result an aliasing
+    # view: two reads share storage, and mutating the result mutates the
+    # sparse tensor's stored indices. A copying implementation breaks both.
+    res_inp = _make_coo(2, 8, (4, 4), seed=7)
+
+    first = flag_gems._indices(res_inp)
+    second = flag_gems._indices(res_inp)
+    assert (
+        first.data_ptr() == second.data_ptr()
+    ), "_indices must return an aliasing view, not a fresh copy"
+    assert first.data_ptr() == res_inp._indices().data_ptr()
+
+    first[0, 0] = 77
+    assert (
+        res_inp._indices()[0, 0].item() == 77
+    ), "mutating the returned view must be visible in the sparse tensor"
+
+
+@pytest.mark.underscore_indices
+@pytest.mark.parametrize("layout", ["csr", "csc"], ids=["csr", "csc"])
+def test__indices_unsupported_layout_raises(layout):
+    # Native ATen has no _indices kernel outside sparse COO; the rejection is
+    # a NotImplementedError from the dispatcher, mirrored here.
+    indptr = torch.tensor([0, 2, 4], dtype=torch.int64, device=flag_gems.device)
+    indices = torch.tensor([0, 1, 2, 3], dtype=torch.int64, device=flag_gems.device)
+    values = torch.tensor([1.0, 2.0, 3.0, 4.0], device=flag_gems.device)
+    if layout == "csr":
+        inp = torch.sparse_csr_tensor(indptr, indices, values, size=(2, 4))
+    else:
+        inp = torch.sparse_csc_tensor(indptr, indices, values, size=(2, 4))
+    with pytest.raises(NotImplementedError):
+        flag_gems._indices(inp)
+
+
+@pytest.mark.underscore_indices
+def test__indices_dense_rejected():
+    inp = torch.randn(2, 3, device=flag_gems.device)
+    with pytest.raises(NotImplementedError):
+        flag_gems._indices(inp)
