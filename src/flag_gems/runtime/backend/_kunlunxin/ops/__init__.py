@@ -202,6 +202,7 @@ from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
+from .adaptive_avg_pool1d import adaptive_avg_pool1d
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_avg_pool3d_backward import (  # noqa: F401
@@ -416,6 +417,9 @@ from .fake_quantize_per_channel_affine_cachemask_backward import (  # noqa: F401
 from .fake_quantize_per_tensor_affine import (  # noqa: F401
     fake_quantize_per_tensor_affine,
 )
+from .fake_quantize_per_tensor_affine_cachemask_backward import (  # noqa: F401
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
     fill_scalar,
@@ -428,6 +432,7 @@ from .fill import (
 from .fix import fix, fix_out  # noqa: F401
 from .fix_ import fix_  # noqa: F401
 from .flip import flip
+from .fliplr import fliplr
 from .float_power_ import (  # noqa: F401  (registered via _FULL_CONFIG)
     float_power_scalar_tensor,
     float_power_scalar_tensor_out,
@@ -547,6 +552,7 @@ from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
+from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -903,6 +909,10 @@ from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d import upsample_nearest3d
+from .upsample_nearest3d_backward import (
+    upsample_nearest3d_backward,
+    upsample_nearest3d_backward_grad_input,
+)
 from .upsample_nearest_exact1d import upsample_nearest_exact1d
 from .upsample_nearest_exact2d import (
     _upsample_nearest_exact2d,
@@ -1098,6 +1108,7 @@ __all__ = [
     "absolute_",
     "acos",
     "acos_",
+    "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
@@ -1315,6 +1326,7 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -1329,6 +1341,7 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "fliplr",
     "floor",
     "floor_",
     "floor_divide",
@@ -1469,6 +1482,8 @@ __all__ = [
     "linalg_lu_out",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
+    "linalg_multi_dot",
+    "linalg_multi_dot_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
@@ -1888,6 +1903,8 @@ __all__ = [
     "upsample_nearest1d",
     "upsample_nearest2d",
     "upsample_nearest3d",
+    "upsample_nearest3d_backward",
+    "upsample_nearest3d_backward_grad_input",
     "upsample_nearest_exact1d",
     "upsample_nearest_exact2d_backward",
     "upsample_trilinear3d",
