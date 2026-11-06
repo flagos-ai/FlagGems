@@ -60,6 +60,7 @@ class FusedQKVRMSNormBenchmark(base.Benchmark):
             yield (qr, kv, q_weight, kv_weight, 1e-6)
 
 
+@pytest.mark.fused_q_kv_rmsnorm
 @pytest.mark.skipif(
     (not torch.cuda.is_available()) or (not _HAS_VLLM_FUSED_Q_KV_RMSNORM),
     reason="requires cuda and vllm deepseek_v4_ops.fused_q_kv_rmsnorm",

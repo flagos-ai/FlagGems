@@ -99,3 +99,35 @@ def test_normal_float_tensor():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def normal_inplace_default_input_fn(shape, dtype, device):
+    self = torch.randn(shape, dtype=dtype, device=device)
+    yield self, 0.0, 1.0
+
+
+class NormalInplaceDefaultBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (64,),
+            (1024,),
+            (16384,),
+            (64, 64),
+            (1024, 1024),
+            (64, 512, 512),
+        ]
+        self.shape_desc = "input shape"
+
+
+@pytest.mark.normal_
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_normal_():
+    bench = NormalInplaceDefaultBenchmark(
+        input_fn=normal_inplace_default_input_fn,
+        op_name="normal_",
+        torch_op=torch.Tensor.normal_,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

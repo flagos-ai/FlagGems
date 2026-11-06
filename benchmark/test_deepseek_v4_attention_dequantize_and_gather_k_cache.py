@@ -128,6 +128,7 @@ class DequantizeAndGatherKCacheBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.dequantize_and_gather_k_cache
 @pytest.mark.skipif(
     (not torch.cuda.is_available())
     or (not is_support_fp8e4nv())
