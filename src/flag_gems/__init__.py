@@ -1003,6 +1003,11 @@ _FULL_CONFIG = (
     ),
     ("ctc_loss.IntList", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("ctc_loss.Tensor", ctc_loss, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("cudnn_affine_grid_generator_backward", cudnn_affine_grid_generator_backward),
+    (
+        "cudnn_affine_grid_generator_backward.out",
+        cudnn_affine_grid_generator_backward_out,
+    ),
     ("cudnn_batch_norm", cudnn_batch_norm, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("cudnn_batch_norm.out", cudnn_batch_norm_out),
     ("cudnn_batch_norm_backward", cudnn_batch_norm_backward),
