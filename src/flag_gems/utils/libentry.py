@@ -98,6 +98,25 @@ version = triton.__version__.split(".")
 major_version, minor_version = eval(version[0]), eval(version[1])
 
 
+def launch_by_signature_order(major: int, minor: int) -> bool:
+    """Whether this Triton launches a compiled kernel in signature order.
+
+    Triton 3.3 reworked kernel launching: from then on, arguments are passed
+    positionally in signature order, with non-specialized ones taken from the
+    constexpr set. This used to be written as a closed range
+    ``3 <= minor <= 6``, which silently sent every later minor back to the old
+    ``kernel[grid](*k_args.values())`` path; that path hands stale and
+    wrong-typed arguments to the launcher, so on Triton 3.7 a launch raises
+    (``TypeError: 'type' object cannot be interpreted as an integer``, or a raw
+    fault inside ``launchKernel``) the first time an entry key is not cached.
+    The ABI did not change again, so gate on the lower bound only.
+    """
+    return major == 3 and minor >= 3
+
+
+_LAUNCH_BY_SIGNATURE_ORDER = launch_by_signature_order(major_version, minor_version)
+
+
 def _supports_flagtune_cost_model(tuner: Any) -> bool:
     """Return whether one tuner can use the installed FlagTree Cost Model."""
     return (
@@ -1608,7 +1627,7 @@ class LibEntry(triton.KernelInterface):
                 k_args[param_names[i]] = arg
                 dns_args.append(arg)
             else:
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if _LAUNCH_BY_SIGNATURE_ORDER:
                     k_args[param_names[i]] = arg
                 const_args.append(arg)
         for p in self.jit_function.params[len(args) :]:
@@ -1621,7 +1640,7 @@ class LibEntry(triton.KernelInterface):
 
             if p.is_constexpr:
                 const_args.append(val)
-                if major_version == 3 and 3 <= minor_version <= 6:
+                if _LAUNCH_BY_SIGNATURE_ORDER:
                     k_args[p.name] = val
             elif p.do_not_specialize:
                 dns_args.append(val)
@@ -1723,7 +1742,7 @@ class LibEntry(triton.KernelInterface):
             for pre_hook, hook_kwargs in launch_pre_hooks:
                 pre_hook({**hook_nargs, **hook_kwargs})
 
-        if major_version == 3 and 3 <= minor_version <= 6:
+        if _LAUNCH_BY_SIGNATURE_ORDER:
             all_args = []
             missing_keys = []
             for key in list(self.signature.parameters.keys()):
