@@ -27,6 +27,7 @@ from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm_ import addmm_
 from .addmv_ import addmv_
 from .addr import addr
+from .all import all_dim
 from .any import any, any_dim, any_dims
 from .argsort import argsort
 from .as_strided_scatter import as_strided_scatter
@@ -220,6 +221,7 @@ __all__ = [
     "addmm_",
     "addmv_",
     "addr",
+    "all_dim",
     "any",
     "any_dim",
     "any_dims",
