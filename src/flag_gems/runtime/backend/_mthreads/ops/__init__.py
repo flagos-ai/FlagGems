@@ -50,7 +50,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
-from .copy import copy_
+from .copy_ import copy_
 from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
@@ -64,6 +64,7 @@ from .div import (
     true_divide_out,
 )
 from .dropout import dropout, dropout_backward
+from .embedding_backward import embedding_backward
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
@@ -106,6 +107,7 @@ from .log_softmax import (
     log_softmax_out,
 )
 from .max import max, max_dim
+from .max_pool2d_with_indices import max_pool2d_with_indices
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
@@ -118,6 +120,7 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .nonzero_numpy import nonzero_numpy
 from .norm import norm, norm_scalar, norm_scalaropt_dim
 from .normal import normal_
+from .normal_tensor_float import normal_tensor_float
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
@@ -147,6 +150,7 @@ from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
+from .softmax_backward import softmax_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
@@ -224,6 +228,7 @@ __all__ = [
     "div_mode_",
     "dropout",
     "dropout_backward",
+    "embedding_backward",
     "erfinv",
     "erfinv_",
     "expand_copy",
@@ -275,6 +280,7 @@ __all__ = [
     "log_softmax_out",
     "max",
     "max_dim",
+    "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",
     "median",
     "median_dim",
@@ -297,6 +303,7 @@ __all__ = [
     "norm_scalar",
     "norm_scalaropt_dim",
     "normal_",
+    "normal_tensor_float",
     "one_hot",
     "ones",
     "ones_like",
@@ -328,6 +335,7 @@ __all__ = [
     "scatter_reduce_",
     "scatter_reduce_out",
     "silu_backward",
+    "softmax_backward",
     "softplus_backward",
     "sort",
     "sort_stable",
