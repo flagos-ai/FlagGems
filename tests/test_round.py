@@ -119,3 +119,41 @@ def test_round_half_to_even(shape, dtype):
     res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.round
+@pytest.mark.parametrize("shape", ROUND_HALF_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round_non_contiguous(shape, dtype):
+    # Issue #7756: ATen accepts transposed tensors and strided slices; the
+    # kernel used to raise ValueError on both.
+    transposed = torch.randn(shape[1], shape[0], dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(transposed)
+    utils.gems_assert_equal(flag_gems.round(transposed), torch.round(ref))
+
+    strided = torch.randn(shape[0] * 2, shape[1], dtype=dtype, device=flag_gems.device)[::2]
+    ref = utils.to_reference(strided)
+    utils.gems_assert_equal(flag_gems.round(strided), torch.round(ref))
+
+
+@pytest.mark.round
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round_decimals_non_contiguous(dtype):
+    # Issue #7756, decimals path: the scale must also be applied through strides.
+    inp = torch.randn(8, 4, dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(inp)
+    utils.gems_assert_equal(flag_gems.round(inp, decimals=2), torch.round(ref, decimals=2))
+
+
+@pytest.mark.round_
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_round__non_contiguous(dtype):
+    # Issue #7756, in-place path: the result is written back through the view's strides.
+    inp = torch.randn(4, 8, dtype=dtype, device=flag_gems.device).t()
+    ref = utils.to_reference(inp.clone())
+    ref_out = ref.round_()
+
+    res_out = flag_gems.round_(inp)
+
+    utils.gems_assert_equal(inp, ref_out)
+    assert res_out is inp
