@@ -409,32 +409,42 @@ def scatter_add_0(inp, dim, index, src):
     else:
         out = inp
 
-    # 2D fast path: specialized kernel with simple row/col decomposition.
-    # Only beneficial for small N where the simpler index arithmetic
-    # outweighs the N-dim kernel's better memory access pattern.
-    # Large N falls through to the N-dim generated kernel which is faster.
-    if inp.ndim == 2 and N <= 131072:
-        src_strided = src.as_strided(index.shape, src.stride())
-        dim_2d = dim % 2
-        idx_ncols = index.shape[1]
-        src_stride0 = src_strided.stride(0)
-        out_ncols = out.shape[1]
-        grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
-        scatter_add_2d_kernel[grid](
-            src_strided,
-            index,
-            out,
-            N,
-            idx_ncols,
-            src_stride0,
-            out_ncols,
-            dim_2d,
-        )
-        if dtype_convert:
-            return inp.copy_(out.to(src.dtype))
-        return out
-
     src_strided = src.as_strided(index.shape, src.stride())
+
+    # 2D fast path: specialized kernel with simple row/col decomposition.
+    # The kernel only accepts contiguous index/output layouts and a unit
+    # innermost src stride. Other valid layouts fall through to the stride-aware
+    # N-dim kernel below.
+    if inp.ndim == 2 and N <= 131072:
+        idx_ncols = index.shape[1]
+        index_stride0, index_stride1 = index.stride()
+        src_stride0, src_stride1 = src_strided.stride()
+        out_stride0, out_stride1 = out.stride()
+        fast_path_compatible = (
+            index_stride0 == idx_ncols
+            and index_stride1 == 1
+            and src_stride1 == 1
+            and out_stride0 == out.shape[1]
+            and out_stride1 == 1
+        )
+        if fast_path_compatible:
+            dim_2d = dim % 2
+            out_ncols = out.shape[1]
+            grid = lambda meta: (triton.cdiv(N, meta["BLOCK"] * meta["LOOP"]),)
+            scatter_add_2d_kernel[grid](
+                src_strided,
+                index,
+                out,
+                N,
+                idx_ncols,
+                src_stride0,
+                out_ncols,
+                dim_2d,
+            )
+            if dtype_convert:
+                return inp.copy_(out.to(src.dtype))
+            return out
+
     inp_restrided = restride_dim(inp, dim, index.shape)
     dim_size = inp.size(dim)
     dim_stride = inp.stride(dim)
