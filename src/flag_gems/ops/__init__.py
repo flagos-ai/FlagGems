@@ -323,6 +323,7 @@ from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
 from flag_gems.ops._nested_tensor_from_tensor_list import (
     _nested_tensor_from_tensor_list,
 )
+from flag_gems.ops._nested_tensor_size import _nested_tensor_size
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
@@ -2011,6 +2012,7 @@ __all__ = [
     "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
+    "_nested_tensor_size",
     "_nested_tensor_softmax_with_shape",
     "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
