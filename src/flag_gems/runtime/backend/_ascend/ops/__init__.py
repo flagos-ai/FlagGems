@@ -120,6 +120,7 @@ from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .linspace import linspace
 from .log_ import log_
@@ -351,6 +352,7 @@ __all__ = [
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
+    "linalg_tensorinv",
     "linear",
     "linspace",
     "log_",
