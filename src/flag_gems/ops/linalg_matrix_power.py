@@ -10,7 +10,7 @@ from flag_gems.ops.linalg_lu_factor import _lu_scale_col
 from flag_gems.ops.linalg_lu_factor_ex import linalg_lu_factor_ex as gems_lu_factor_ex
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.device_info import is_amd_radeon
+from flag_gems.utils.device_info import get_device_capability, is_amd_radeon
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 # M=64 uses BLOCK=64 with a single tl.dot call per matmul — slightly
 # slower than cuBLAS for 64×64 (speedup ~0.7x) but still far better than
 # the host-loop fallback (~0.06x).  Above this the dispatch goes to the
-# grid-sync kernel / host loop below, whose matmuls are flag_gems mm/bmm.
+# grid-sync kernel / host loop below, whose matmuls go through _matmul (the
+# fixed-config GEMM on NVIDIA Hopper, flag_gems mm/bmm elsewhere).
 # ---------------------------------------------------------------------------
 TRITON_THRESHOLD = 64  # max M for the single-tile fused path
 
@@ -1313,16 +1314,202 @@ def _lu_factor_ex_local(A, use_df64=False, A_l=None):
 
 
 # ===========================================================================
+# Fixed-configuration 2-D GEMM for the operator's own matmuls.
+#
+# On NVIDIA Hopper ``flag_gems.mm`` is the LibTuner-tuned
+# ``mm_kernel_general_host_tma`` with 340 candidate configurations.  Its first
+# call on a cold tuning cache compiles and benchmarks all of them, which takes
+# minutes and is what makes the accuracy suite exceed its time limit on a
+# fresh CI runner.  Every 2-D product this operator forms is square and
+# same-dtype, so instead of that 340-config search the kernel below (the
+# generic FlagGems block GEMM, copied here so the operator is self-contained)
+# is launched with one configuration chosen from the problem size: a cold run
+# then compiles one kernel per dtype/size bucket.  Batched products keep using
+# ``flag_gems.bmm`` (12 configurations); other vendors keep their
+# backend-specialized ``flag_gems.mm``.
+# ===========================================================================
+
+
+@triton.jit
+def _fixed_mm_prev_multiple_of(a, b):
+    # the largest x<a that x%b == 0
+    return tl.cdiv(a, b) * b - b
+
+
+@libentry()
+@triton.jit
+def _fixed_mm_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    GROUP_M: tl.constexpr,
+    IS_FP64: tl.constexpr = False,
+):
+    pid = tl.program_id(0)
+    grid_m = tl.cdiv(M, BLOCK_M)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    # re-order program ID for better L2 performance
+    width = GROUP_M * grid_n
+    group_id = pid // width
+    group_size = min(grid_m - group_id * GROUP_M, GROUP_M)
+    pid_m = group_id * GROUP_M + (pid % group_size)
+    pid_n = (pid % width) // group_size
+    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    ram = tl.max_contiguous(tl.multiple_of(rm % M, BLOCK_M), BLOCK_M).to(tl.int64)
+    rbn = tl.max_contiguous(tl.multiple_of(rn % N, BLOCK_N), BLOCK_N).to(tl.int64)
+    rm = rm.to(tl.int64)
+    rn = rn.to(tl.int64)
+    prev_multiple = _fixed_mm_prev_multiple_of(K, BLOCK_K)
+
+    if IS_FP64:
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float64)
+    else:
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for start_k in range(0, prev_multiple, BLOCK_K):
+        rk = (start_k + tl.arange(0, BLOCK_K)).to(tl.int64)
+        a = tl.load(A + (ram[:, None] * stride_am + rk[None, :] * stride_ak))
+        b = tl.load(B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn))
+        if a.dtype != b.dtype:
+            a = a.to(C.dtype.element_ty)
+            b = b.to(C.dtype.element_ty)
+        if IS_FP64:
+            acc += tl.dot(a, b, allow_tf32=False)
+        else:
+            acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    # loop peeling for the K tail
+    rk = (prev_multiple + tl.arange(0, BLOCK_K)).to(tl.int64)
+    mask_k = rk < K
+    a = tl.load(
+        A + (ram[:, None] * stride_am + rk[None, :] * stride_ak),
+        mask=mask_k[None, :],
+        other=0.0,
+    )
+    b = tl.load(
+        B + (rk[:, None] * stride_bk + rbn[None, :] * stride_bn),
+        mask=mask_k[:, None],
+        other=0.0,
+    )
+    if a.dtype != b.dtype:
+        a = a.to(C.dtype.element_ty)
+        b = b.to(C.dtype.element_ty)
+    if IS_FP64:
+        acc += tl.dot(a, b, allow_tf32=False)
+    else:
+        acc += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
+
+    acc = acc.to(C.dtype.element_ty)
+    # rematerialize rm and rn to save registers
+    rm = (pid_m * BLOCK_M + tl.arange(0, BLOCK_M)).to(tl.int64)
+    rn = (pid_n * BLOCK_N + tl.arange(0, BLOCK_N)).to(tl.int64)
+    C = C + (rm[:, None] * stride_cm + rn[None, :] * stride_cn)
+    mask = (rm < M)[:, None] & (rn < N)[None, :]
+    tl.store(C, acc, mask=mask)
+
+
+# (max problem size, (BLOCK_M, BLOCK_N, BLOCK_K, GROUP_M, num_warps, num_stages));
+# the last bucket is the fallback for anything larger.  Picked from a sweep on
+# sm_90 against fp64 references; the operator only forms square products, so
+# the bucket is selected by max(M, N, K).
+_FIXED_MM_FP32_CONFIGS = (
+    (256, (32, 32, 32, 8, 4, 3)),
+    (512, (32, 64, 32, 8, 4, 3)),
+    (1024, (64, 64, 32, 8, 4, 3)),
+    (None, (128, 128, 32, 8, 8, 3)),
+)
+_FIXED_MM_FP64_CONFIGS = (
+    (512, (32, 32, 32, 8, 4, 3)),
+    (1024, (64, 32, 32, 8, 4, 3)),
+    (None, (64, 64, 32, 8, 4, 3)),
+)
+
+# None until probed; the vendored path only applies to the Hopper backend,
+# where flag_gems.mm is the 340-config TMA tuner.
+_FIXED_MM_HOPPER = None
+
+
+def _use_fixed_mm_2d() -> bool:
+    global _FIXED_MM_HOPPER
+    if _FIXED_MM_HOPPER is None:
+        try:
+            _FIXED_MM_HOPPER = (
+                flag_gems.vendor_name == "nvidia" and get_device_capability()[0] == 9
+            )
+        except Exception:
+            _FIXED_MM_HOPPER = False
+    return _FIXED_MM_HOPPER
+
+
+def _fixed_mm_config(size: int, dtype: torch.dtype):
+    table = _FIXED_MM_FP64_CONFIGS if dtype == torch.float64 else _FIXED_MM_FP32_CONFIGS
+    for max_size, config in table:
+        if max_size is None or size <= max_size:
+            return config
+    return table[-1][1]
+
+
+def _fixed_mm_2d(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """C = A @ B for 2-D operands, with a shape-selected fixed tile config."""
+    M, K = A.shape
+    N = B.shape[1]
+    out_dtype = torch.promote_types(A.dtype, B.dtype)
+    C = torch.empty((M, N), device=A.device, dtype=out_dtype)
+    block_m, block_n, block_k, group_m, num_warps, num_stages = _fixed_mm_config(
+        max(M, N, K), out_dtype
+    )
+    grid = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+    _fixed_mm_kernel[grid](
+        A,
+        B,
+        C,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        B.stride(0),
+        B.stride(1),
+        C.stride(0),
+        C.stride(1),
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        BLOCK_K=block_k,
+        GROUP_M=group_m,
+        IS_FP64=out_dtype == torch.float64,
+        num_warps=num_warps,
+        num_stages=num_stages,
+    )
+    return C
 
 
 def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-    """Matmul via the flag_gems Triton kernels (mm for 2D, bmm for batched).
+    """Matmul for the operator's internal products (mm for 2D, bmm for batched).
 
-    Looked up on the flag_gems namespace at call time so backend-specialized
-    kernels are used when a backend overrides them (e.g. iluvatar's mm kernel
-    accepts a SPLIT_K tune config that the general mm kernel does not, so the
-    general ``flag_gems.ops.mm`` import would fail there with a KeyError).
+    2-D products on the NVIDIA Hopper backend use the vendored
+    fixed-configuration kernel above: ``flag_gems.mm`` there runs a 340-config
+    autotune on first use, whose cold compile time dominates a fresh CI run.
+    Everything else uses the flag_gems kernels, looked up on the flag_gems
+    namespace at call time so backend-specialized kernels are used when a
+    backend overrides them (e.g. iluvatar's mm kernel accepts a SPLIT_K tune
+    config that the general mm kernel does not, so the general
+    ``flag_gems.ops.mm`` import would fail there with a KeyError).
     """
+    if A.dim() == 2 and _use_fixed_mm_2d():
+        return _fixed_mm_2d(A, B)
+
     from flag_gems import bmm, mm
 
     if A.dim() == 2:
