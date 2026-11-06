@@ -24,21 +24,27 @@ from .arange import arange, arange_start
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
+from .atan2_ import atan2_
 from .attention import (
     ScaleDotProductAttention,
+    _flash_attention_forward,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .clamp_max_ import clamp_max_
 from .concat import concat
+from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -57,6 +63,7 @@ from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -120,6 +127,7 @@ from .mul import mul
 from .multinomial import multinomial
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
+from .new_ones import new_ones
 from .nonzero_static import nonzero_static, nonzero_static_out
 from .ones import ones
 from .ones_like import ones_like
@@ -159,9 +167,11 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
 from .stack import stack
+from .subtract import subtract
 from .swiglu import swiglu
 from .thnn_fused_lstm_cell import thnn_fused_lstm_cell
 from .threshold import threshold, threshold_backward
+from .threshold_ import threshold_
 from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
@@ -174,10 +184,14 @@ from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest2d import upsample_nearest2d
+from .upsample_nearest3d_backward_grad_input import (
+    upsample_nearest3d_backward_grad_input,
+)
 from .var_mean import var_mean
 from .vector_norm import vector_norm
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .xlogy_ import xlogy_
 from .zero import zero
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -187,6 +201,7 @@ __all__ = [
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
+    "_flash_attention_forward",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -210,7 +225,9 @@ __all__ = [
     "argmax",
     "argmin",
     "argsort",
+    "atan2_",
     "baddbmm",
+    "block_diag",
     "bmm",
     "bmm_w8a8",
     "bmm_w8a8_int8",
@@ -218,7 +235,9 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "clamp_max_",
     "concat",
+    "cosh_",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
@@ -240,6 +259,7 @@ __all__ = [
     "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "full",
     "full_like",
@@ -317,6 +337,9 @@ __all__ = [
     "max_dim",
     "mean",
     "mean_dim",
+    "mha_fwd",
+    "mha_varlan_fwd",
+    "mha_varlan_fwd_opt",
     "min",
     "min_dim",
     "mm",
@@ -333,6 +356,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "native_layer_norm",
+    "new_ones",
     "nonzero_static",
     "nonzero_static_out",
     "normed_cumsum",
@@ -383,9 +407,11 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfinv",
     "stack",
+    "subtract",
     "swiglu",
     "thnn_fused_lstm_cell",
     "threshold",
+    "threshold_",
     "threshold_backward",
     "topk",
     "topk_w8a16_fp8",
@@ -398,6 +424,7 @@ __all__ = [
     "unsafe_masked_index",
     "upsample_linear1d_backward",
     "upsample_nearest2d",
+    "upsample_nearest3d_backward_grad_input",
     "var_mean",
     "vector_norm",
     "vstack",
@@ -405,6 +432,7 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xlogy_",
     "zero",
     "zeros",
     "zeros_like",
