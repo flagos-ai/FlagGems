@@ -55,16 +55,16 @@ case $BACKEND in
       export LD_LIBRARY_PATH=/opt/OpenCloudOS/gcc-toolset-14/root/usr/lib64:$LD_LIBRARY_PATH
     fi
     ;;
-  hygon)
+  hygon|hygon-dtk2604)
     source /opt/dtk-26.04/env.sh
     echo "PATH=$PATH"
     ;;
-  iluvatar)
+  iluvatar|iluvatar-corex450)
     export COREX_ROOT=/usr/local/corex
     export PATH=$COREX_ROOT/bin:$PATH
     export LD_LIBRARY_PATH=$COREX_ROOT/lib:$LD_LIBRARY_PATH
     ;;
-  kunlunxin)
+  kunlunxin|kunlunxin-xre5371)
     export LD_LIBRARY_PATH=/xcudart/lib:/usr/local/cuda/lib64
     export XPU_EVENT_KL3_ENABLE=1
     ;;
@@ -99,18 +99,18 @@ case $BACKEND in
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
     ;;
-  sunrise)
+  sunrise|sunrise-tangrt120)
     export LD_LIBRARY_PATH=/usr/local/tangrt/targets/linux-x86_64/lib:$LD_LIBRARY_PATH
     if [ -z "${USE_TRITON}" ]; then
       SITE_PACKAGES=$VIRTUAL_ENV/lib/python3.10/site-packages
       export LD_LIBRARY_PATH=${SITE_PACKAGES}/triton/_C:$LD_LIBRARY_PATH
     fi
     ;;
-  thead)
+  thead|thead-ppu210)
     # The envsetup.sh is provided by the PPU SDK
     source /usr/local/PPU_SDK/envsetup.sh
     ;;
-  tsingmicro)
+  tsingmicro|tsingmicro-tsm260610)
     export TX8_DEPS_ROOT=/opt/tx8_deps
     export LLVM_SYSPATH=/opt/llvm
     export LLVM_BINARY_DIR=${LLVM_SYSPATH}/bin

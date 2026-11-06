@@ -33,9 +33,9 @@ _ACT_MAP = {"none": 0, None: 0, "relu": 1, "silu": 2}
 def _mixed_dtypes_linear_kernel(
     x_ptr,
     w_ptr,
-    scale_ptr,
-    bias_ptr,
-    out_ptr,
+    s_ptr,
+    b_ptr,
+    o_ptr,
     M,
     N,
     K,
@@ -43,10 +43,13 @@ def _mixed_dtypes_linear_kernel(
     stride_xm,
     stride_wn,
     stride_om,
-    INT4: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     ACT: tl.constexpr,  # 0: none, 1: relu, 2: silu
-    EPI_SCALE: tl.constexpr,
+    INT4: tl.constexpr,
+    SCALE_IN_WEIGHT: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    EVEN_K: tl.constexpr,
     BM: tl.constexpr,
     BN: tl.constexpr,
     BK: tl.constexpr,
@@ -62,72 +65,184 @@ def _mixed_dtypes_linear_kernel(
     pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
     pid_n = (pid % num_pid_in_group) // group_size_m
 
-    offs_m = pid_m * BM + tl.arange(0, BM)
-    offs_n = pid_n * BN + tl.arange(0, BN)
-    offs_k = tl.arange(0, BK)
-    offs_am = tl.max_contiguous(tl.multiple_of(offs_m, BM), BM)
+    om = pid_m * BM + tl.arange(0, BM)
+    ok = tl.arange(0, BK)
+    x_off = om[:, None] * stride_xm + ok[None, :]
 
-    m_mask = offs_m < M
-    n_mask = offs_n < N
-
-    x_ptrs = x_ptr + offs_am[:, None] * stride_xm + offs_k[None, :]
     if INT4:
         # Two 4-bit weights are packed per byte: low nibble -> even output
         # column, high nibble -> odd output column.
-        offs_nb = pid_n * (BN // 2) + tl.arange(0, BN // 2)
-        w_ptrs = w_ptr + offs_k[:, None] * stride_wn + offs_nb[None, :]
-        w_mask_n = (offs_nb < ncols)[None, :]
+        onb = pid_n * (BN // 2) + tl.arange(0, BN // 2)
+        on = pid_n * BN + tl.arange(0, BN)
+        ocol = onb * 2
+        w_off = ok[:, None] * stride_wn + onb[None, :]
+        acc0 = tl.zeros((BM, BN // 2), dtype=tl.float32)
+        acc1 = tl.zeros((BM, BN // 2), dtype=tl.float32)
+        nmask = onb < ncols
+        if SCALE_IN_WEIGHT:
+            s0 = tl.load(s_ptr + ocol, mask=nmask, other=0.0)
+            s1 = tl.load(s_ptr + ocol + 1, mask=nmask, other=0.0)
     else:
-        w_ptrs = w_ptr + offs_k[:, None] * stride_wn + offs_n[None, :]
-        w_mask_n = n_mask[None, :]
+        on = pid_n * BN + tl.arange(0, BN)
+        w_off = ok[:, None] * stride_wn + on[None, :]
+        acc = tl.zeros((BM, BN), dtype=tl.float32)
+        nmask = on < N
+        if SCALE_IN_WEIGHT:
+            s = tl.load(s_ptr + on, mask=nmask, other=0.0)
 
-    acc = tl.zeros((BM, BN), dtype=tl.float32)
-    for _ in range(0, tl.cdiv(K, BK)):
-        k_mask = offs_k < K
-        a = tl.load(x_ptrs, mask=m_mask[:, None] & k_mask[None, :], other=0.0)
-        w_mask = (offs_k[:, None] < K) & w_mask_n
-        wb = tl.load(w_ptrs, mask=w_mask, other=0)
-        wb32 = wb.to(tl.int32)
+    for k0 in range(0, K, BK):
+        if EVEN_M:
+            xv = tl.load(x_ptr + x_off)
+        else:
+            xv = tl.load(x_ptr + x_off, mask=om[:, None] < M, other=0.0)
+        if EVEN_K:
+            if EVEN_N:
+                wb = tl.load(w_ptr + w_off)
+            else:
+                wb = tl.load(w_ptr + w_off, mask=nmask[None, :], other=0)
+        else:
+            kmask = (k0 + ok) < K
+            if EVEN_N:
+                wb = tl.load(w_ptr + w_off, mask=kmask[:, None], other=0)
+            else:
+                wb = tl.load(
+                    w_ptr + w_off, mask=kmask[:, None] & nmask[None, :], other=0
+                )
         if INT4:
-            # FasterTransformer biased int4 converter: subtract 8.
-            lo = (wb32 & 0xF) - 8
-            hi = ((wb32 >> 4) & 0xF) - 8
-            wi = tl.interleave(lo, hi)  # [BK, BN]
+            # int16 keeps the nibble tile half the size of an int32 one; the
+            # values (-8..7) are exact in either, but the smaller tile spills
+            # less (measured ~8-10% faster on every int4 shape).
+            w16 = wb.to(tl.int16)
+            lo = ((w16 & 0xF) - 8).to(xv.dtype)
+            hi = (((w16 >> 4) & 0xF) - 8).to(xv.dtype)
+            if SCALE_IN_WEIGHT:
+                lo = (lo.to(tl.float32) * s0.to(tl.float32)[None, :]).to(xv.dtype)
+                hi = (hi.to(tl.float32) * s1.to(tl.float32)[None, :]).to(xv.dtype)
+            acc0 = tl.dot(xv, lo, acc0)
+            acc1 = tl.dot(xv, hi, acc1)
         else:
-            # FasterTransformer biased int8 converter: subtract 128.
-            wi = wb32 - 128
-        if EPI_SCALE:
-            # fp16: fold the per-column scale into the epilogue (fewer in-loop
-            # ops); algebraically identical and within fp16 tolerance.
-            wf = wi.to(a.dtype)
+            # float16/bf16 represent every uint8 exactly, so the -128 code bias
+            # is applied in the dot dtype instead of widening to int32.
+            wf = wb.to(xv.dtype) - 128.0
+            if SCALE_IN_WEIGHT:
+                wf = (wf.to(tl.float32) * s.to(tl.float32)[None, :]).to(xv.dtype)
+            acc = tl.dot(xv, wf, acc)
+        x_off += BK
+        w_off += BK * stride_wn
+
+    if INT4:
+        if not SCALE_IN_WEIGHT:
+            acc0 = (
+                acc0
+                * tl.load(s_ptr + ocol, mask=nmask, other=0.0).to(tl.float32)[None, :]
+            )
+            acc1 = (
+                acc1
+                * tl.load(s_ptr + ocol + 1, mask=nmask, other=0.0).to(tl.float32)[
+                    None, :
+                ]
+            )
+        if HAS_BIAS:
+            acc0 = (
+                acc0
+                + tl.load(b_ptr + ocol, mask=nmask, other=0.0).to(tl.float32)[None, :]
+            )
+            acc1 = (
+                acc1
+                + tl.load(b_ptr + ocol + 1, mask=nmask, other=0.0).to(tl.float32)[
+                    None, :
+                ]
+            )
+        if ACT == 1:
+            acc0 = tl.maximum(acc0, 0.0)
+            acc1 = tl.maximum(acc1, 0.0)
+        elif ACT == 2:
+            acc0 = acc0 * tl.sigmoid(acc0)
+            acc1 = acc1 * tl.sigmoid(acc1)
+        res = tl.interleave(acc0, acc1)
+        out_mask = None if EVEN_M else om[:, None] < M
+        if EVEN_N:
+            if out_mask is None:
+                tl.store(
+                    o_ptr + om[:, None] * stride_om + on[None, :],
+                    res.to(o_ptr.dtype.element_ty),
+                )
+            else:
+                tl.store(
+                    o_ptr + om[:, None] * stride_om + on[None, :],
+                    res.to(o_ptr.dtype.element_ty),
+                    mask=out_mask,
+                )
         else:
-            # bf16: keep the per-tile scale multiply to match the reference
-            # rounding boundary under strict bf16 tolerance.
-            s = tl.load(scale_ptr + offs_n, mask=n_mask, other=0.0)
-            wf = (wi.to(tl.float32) * s.to(tl.float32)[None, :]).to(a.dtype)
-        acc = tl.dot(a, wf, acc)
-        x_ptrs += BK
-        w_ptrs += BK * stride_wn
-        offs_k += BK
+            smask = on < N
+            if out_mask is None:
+                tl.store(
+                    o_ptr + om[:, None] * stride_om + on[None, :],
+                    res.to(o_ptr.dtype.element_ty),
+                    mask=smask[None, :],
+                )
+            else:
+                tl.store(
+                    o_ptr + om[:, None] * stride_om + on[None, :],
+                    res.to(o_ptr.dtype.element_ty),
+                    mask=out_mask & smask[None, :],
+                )
+    else:
+        if not SCALE_IN_WEIGHT:
+            acc = (
+                acc * tl.load(s_ptr + on, mask=nmask, other=0.0).to(tl.float32)[None, :]
+            )
+        if HAS_BIAS:
+            acc = (
+                acc + tl.load(b_ptr + on, mask=nmask, other=0.0).to(tl.float32)[None, :]
+            )
+        if ACT == 1:
+            acc = tl.maximum(acc, 0.0)
+        elif ACT == 2:
+            acc = acc * tl.sigmoid(acc)
+        o_ptrs = o_ptr + om[:, None] * stride_om + on[None, :]
+        if EVEN_M and EVEN_N:
+            tl.store(o_ptrs, acc.to(o_ptr.dtype.element_ty))
+        elif EVEN_N:
+            tl.store(o_ptrs, acc.to(o_ptr.dtype.element_ty), mask=om[:, None] < M)
+        elif EVEN_M:
+            tl.store(o_ptrs, acc.to(o_ptr.dtype.element_ty), mask=nmask[None, :])
+        else:
+            tl.store(
+                o_ptrs,
+                acc.to(o_ptr.dtype.element_ty),
+                mask=(om[:, None] < M) & nmask[None, :],
+            )
 
-    if EPI_SCALE:
-        s_epi = tl.load(scale_ptr + offs_n, mask=n_mask, other=0.0)
-        acc = acc * s_epi.to(tl.float32)[None, :]
 
-    if HAS_BIAS:
-        b = tl.load(bias_ptr + offs_n, mask=n_mask, other=0.0)
-        acc = acc + b.to(tl.float32)[None, :]
-    if ACT == 1:
-        acc = tl.maximum(acc, 0.0)
-    elif ACT == 2:
-        acc = acc * tl.sigmoid(acc)
+def _choose_tiles(M, N, K, int4, dtype):
+    """Tile choice; measured winners per (M, N, int4) on this target.
 
-    out_ptrs = out_ptr + offs_m[:, None] * stride_om + offs_n[None, :]
-    tl.store(
-        out_ptrs,
-        acc.to(out_ptr.dtype.element_ty),
-        mask=m_mask[:, None] & n_mask[None, :],
-    )
+    The op is weight-read bound: one uint8 (int8 mode) or half a byte (int4) per
+    MAC.  Wide column tiles amortise the K-loop over more of the weight and let
+    the byte loads vectorise; BM only needs to cover the real rows (M <= 128 in
+    the workloads) because the dot is cheap relative to the weight stream.
+    """
+    if int4:
+        if N >= 8192:
+            # few row tiles: a narrower BM and a 2048-wide column tile spread the
+            # weight stream over more programs (0.29 ms vs 0.44 ms on 4x4096x11008)
+            BM, BN, BK = 64, 2048, 256
+        else:
+            BM, BN, BK = 128, 1024, 256
+    else:
+        BM = 32 if M <= 32 else 64
+        BN, BK = 1024, 512
+    if K % BK != 0:
+        BK = 256 if K % 256 == 0 else (128 if K % 128 == 0 else 64)
+    return {
+        "BM": BM,
+        "BN": BN,
+        "BK": BK,
+        "GROUP_M": 8,
+        "num_warps": 4,
+        "num_stages": 3,
+    }
 
 
 def mixed_dtypes_linear(input, weight, scale, bias=None, activation=None):
@@ -144,51 +259,63 @@ def mixed_dtypes_linear(input, weight, scale, bias=None, activation=None):
     act = activation if activation is not None else "none"
     assert act in _ACT_MAP, f"unsupported activation: {activation}"
 
-    orig = input.shape
-    K = orig[-1]
-    M = input.numel() // K
+    K = input.shape[-1]
     N = scale.shape[0]
     ncols = weight.shape[1]
-    # int8 mode: one byte per output column; int4-packed mode: two per byte.
     assert ncols == N or 2 * ncols == N, (
         f"weight columns {ncols} must equal scale size {N} (int8) "
         f"or half of it (packed int4)"
     )
     int4 = ncols != N
 
-    out = torch.empty((*orig[:-1], N), dtype=input.dtype, device=input.device)
+    # Rows are addressed with one uniform stride (true for any contiguous input
+    # and for slices along leading dimensions).
+    ndim = input.dim()
+    assert input.stride(-1) == 1, "input last dimension must be contiguous"
+    for i in range(ndim - 2):
+        assert input.stride(i) == input.shape[i + 1] * input.stride(
+            i + 1
+        ), "input rows must be uniformly strided"
+    if weight.stride(1) != 1:
+        weight = weight.contiguous()
+    stride_xm = input.stride(-2) if ndim >= 2 else 0
+    M = input.numel() // K if K > 0 else 0
 
-    epi_scale = input.dtype == torch.float16
-    if (not epi_scale) and M >= 1024:
-        # Large bf16 GEMM: amortize the per-tile dequant multiply over more rows.
-        BM, BN, BK, GROUP_M, nstages = 256, 128, 64, 8, 3
-    else:
-        BM, BN, BK, GROUP_M, nstages = 128, 128, 64, 8, 4
+    out = torch.empty((*input.shape[:-1], N), dtype=input.dtype, device=input.device)
+    if M == 0 or N == 0:
+        return out
+
+    cfg = _choose_tiles(M, N, K, int4, input.dtype)
+    BM = cfg["BM"]
+    BN = cfg["BN"]
+    BK = cfg["BK"]
     grid = (triton.cdiv(M, BM) * triton.cdiv(N, BN),)
-
     with torch_device_fn.device(input.device):
         _mixed_dtypes_linear_kernel[grid](
             input,
             weight,
             scale,
-            bias if bias is not None else input,
+            bias if bias is not None else out,
             out,
             M,
             N,
             K,
             ncols,
-            K,
-            ncols,
+            stride_xm,
+            weight.stride(0),
             N,
-            INT4=int4,
-            HAS_BIAS=(bias is not None),
+            HAS_BIAS=bias is not None,
             ACT=_ACT_MAP[act],
-            EPI_SCALE=epi_scale,
+            INT4=int4,
+            SCALE_IN_WEIGHT=(input.dtype == torch.bfloat16),
+            EVEN_M=(M % BM == 0),
+            EVEN_N=(N % BN == 0),
+            EVEN_K=(K % BK == 0),
             BM=BM,
             BN=BN,
             BK=BK,
-            GROUP_M=GROUP_M,
-            num_warps=8,
-            num_stages=nstages,
+            GROUP_M=cfg["GROUP_M"],
+            num_warps=cfg["num_warps"],
+            num_stages=cfg["num_stages"],
         )
     return out
