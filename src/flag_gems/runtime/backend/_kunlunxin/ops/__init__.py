@@ -263,6 +263,7 @@ from .attention import (  # noqa: F401
     scaled_dot_product_attention_forward,
     scaled_dot_product_efficient_attention_backward,
 )
+from .avg_pool1d import avg_pool1d
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
@@ -1166,6 +1167,7 @@ __all__ = [
     "atan2_",
     "atan2_out",
     "atan_",
+    "avg_pool1d",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
