@@ -17,6 +17,7 @@ from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .cross_attention import cross_attention
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -172,6 +173,7 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cross_attention",
     "erfinv",
     "erfinv_",
     "exponential_",
