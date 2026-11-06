@@ -28,6 +28,36 @@ from flag_gems.utils.limits import get_dtype_min
 logger = logging.getLogger(__name__)
 
 
+@triton.jit
+def _argmax_combine(left, left_index, right, right_index):
+    left_nan = left != left
+    right_nan = right != right
+    both_nan = left_nan & right_nan
+    both_number = ~left_nan & ~right_nan
+    # Masked lanes must never win, even against valid -inf or integer minima.
+    left_valid = left_index != 0x7FFFFFFFFFFFFFFF
+    right_valid = right_index != 0x7FFFFFFFFFFFFFFF
+    ordered_right = (
+        (right_nan & ~left_nan)
+        | (both_number & (right > left))
+        | ((both_nan | (both_number & (right == left))) & (right_index < left_index))
+    )
+    take_right = right_valid & (~left_valid | ordered_right)
+    return tl.where(take_right, right, left), tl.where(
+        take_right, right_index, left_index
+    )
+
+
+@triton.jit
+def _masked_argmax(values, indices, valid, axis: tl.constexpr):
+    # FP32 represents every FP16/BF16 value exactly and avoids BF16 phi casts
+    # unsupported by the current MetaX compiler for tuple reductions.
+    if tl.constexpr(values.dtype == tl.float16 or values.dtype == tl.bfloat16):
+        values = values.to(tl.float32)
+    indices = tl.where(valid, indices.to(tl.int64), 0x7FFFFFFFFFFFFFFF)
+    return tl.reduce((values, indices), axis, _argmax_combine)
+
+
 @libentry()
 @triton.jit
 def argmax_kernel_1(
@@ -43,8 +73,7 @@ def argmax_kernel_1(
     mask = offset < M
     min_value = get_dtype_min(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
-    max_val, max_index = tl.max(inp_val, axis=0, return_indices=True)
-    max_index = max_index + pid * BLOCK_SIZE
+    max_val, max_index = _masked_argmax(inp_val, offset, mask, axis=0)
     mid_value_ptr = mid_value + pid
     max_index_ptr = mid_index + pid
     tl.store(mid_value_ptr, max_val)
@@ -59,9 +88,8 @@ def argmax_kernel_2(mid_value, mid_index, out, mid_size, BLOCK_MID: tl.constexpr
     mask = offset < mid_size
     min_value = get_dtype_min(mid_value.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
-    index_val = tl.argmax(mid_val, axis=0)
-    mid_index_ptrs = mid_index + index_val
-    out_val = tl.load(mid_index_ptrs)
+    indices = tl.load(mid_index + offset, mask=mask, other=0)
+    _, out_val = _masked_argmax(mid_val, indices, mask, axis=0)
     tl.store(out, out_val)
 
 
@@ -97,8 +125,8 @@ def argmax_kernel_non_inner(
         mask = k_offset < K and n_offset[:, None] < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+        local_max, local_argmax = _masked_argmax(
+            inp_vals, tl.broadcast_to(n_offset[:, None], inp_vals.shape), mask, axis=0
         )
         offset_index = pid_m * K + k_offset
         out_index_ptrs = out_index + offset_index
@@ -106,7 +134,7 @@ def argmax_kernel_non_inner(
         tl.store(out_index_ptrs, local_argmax, mask=mask1)
     else:
         max_values = tl.full([TILE_K], dtype=cdtype, value=min_value)
-        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0)
+        argmax_values = tl.full([TILE_K], dtype=tl.int64, value=0x7FFFFFFFFFFFFFFF)
 
         for start_n in range(0, N, TILE_N):
             n_offset = start_n + tl.arange(0, TILE_N)
@@ -114,12 +142,15 @@ def argmax_kernel_non_inner(
             mask = k_offset < K and n_offset[:, None] < N
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            local_max, local_argmax = _masked_argmax(
+                inp_vals,
+                tl.broadcast_to(n_offset[:, None], inp_vals.shape),
+                mask,
+                axis=0,
             )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(update, start_n + local_argmax, argmax_values)
+            max_values, argmax_values = _argmax_combine(
+                max_values, argmax_values, local_max, local_argmax
+            )
         offset_index = pid_m * K + k_offset
         out_index_ptrs = out_index + offset_index
         mask1 = k_offset < K
@@ -148,14 +179,15 @@ def argmax_kernel_inner(
         mask = n_offset < N
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-        local_max, local_argmax = tl.max(
-            inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-        )
+        local_max, local_argmax = _masked_argmax(inp_vals, n_offset, mask, axis=0)
         out_index_ptrs = out_index + pid_m
         tl.store(out_index_ptrs, local_argmax)
     else:
-        max_values = min_value
-        argmax_values = 0
+        reduce_dtype = dtype
+        if tl.constexpr(dtype == tl.float16 or dtype == tl.bfloat16):
+            reduce_dtype = tl.float32
+        max_values = tl.full((), min_value, reduce_dtype)
+        argmax_values = tl.full((), 0x7FFFFFFFFFFFFFFF, tl.int64)
 
         loop_time = N // TILE_N
         remainder = N % TILE_N
@@ -164,13 +196,11 @@ def argmax_kernel_inner(
             offset = pid_m * N + n_offset
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
+            local_max, local_argmax = _masked_argmax(
+                inp_vals, n_offset, n_offset < N, axis=0
             )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(
-                update, start_n * TILE_N + local_argmax, argmax_values
+            max_values, argmax_values = _argmax_combine(
+                max_values, argmax_values, local_max, local_argmax
             )
 
         if remainder:
@@ -179,13 +209,9 @@ def argmax_kernel_inner(
             mask = n_offset < N
             inp_ptrs = inp + offset
             inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
-            local_max, local_argmax = tl.max(
-                inp_vals, 0, return_indices=True, return_indices_tie_break_left=True
-            )
-            update = local_max > max_values
-            max_values = tl.where(update, local_max, max_values)
-            argmax_values = tl.where(
-                update, loop_time * TILE_N + local_argmax, argmax_values
+            local_max, local_argmax = _masked_argmax(inp_vals, n_offset, mask, axis=0)
+            max_values, argmax_values = _argmax_combine(
+                max_values, argmax_values, local_max, local_argmax
             )
 
         out_index_ptrs = out_index + pid_m
