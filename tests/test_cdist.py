@@ -36,3 +36,52 @@ def test_cdist(shapes, dtype):
     # cdist L2 computation accumulates error over feature dimension (M up to 128);
     # atol=0.01 is sufficient for float32 comparison
     utils.gems_assert_close(res_out, ref_out, dtype, atol=0.01)
+
+
+@pytest.mark.cdist
+@pytest.mark.parametrize(
+    "shapes,compute_mode",
+    [
+        (
+            ((2, 26, 8), (2, 4, 8)),
+            "use_mm_for_euclid_dist_if_necessary",
+        ),
+        (
+            ((2, 4, 8), (2, 26, 8)),
+            "use_mm_for_euclid_dist_if_necessary",
+        ),
+        (
+            ((2, 25, 8), (2, 4, 8)),
+            "use_mm_for_euclid_dist",
+        ),
+        (
+            ((2, 1, 26, 8), (1, 3, 4, 8)),
+            "use_mm_for_euclid_dist",
+        ),
+        (
+            ((26, 1025), (2, 3, 4, 1025)),
+            "use_mm_for_euclid_dist",
+        ),
+    ],
+)
+def test_cdist_batched_mm(shapes, compute_mode):
+    shape1, shape2 = shapes
+
+    x1 = torch.randn(shape1, dtype=torch.float32, device=flag_gems.device)
+    x2 = torch.randn(shape2, dtype=torch.float32, device=flag_gems.device)
+
+    ref_x1 = utils.to_reference(x1)
+    ref_x2 = utils.to_reference(x2)
+
+    ref_out = torch.cdist(
+        ref_x1, ref_x2, p=2.0, compute_mode=compute_mode
+    )
+
+    with flag_gems.use_gems():
+        res_out = torch.cdist(
+            x1, x2, p=2.0, compute_mode=compute_mode
+        )
+
+    torch.testing.assert_close(
+        res_out.cpu(), ref_out.cpu(), rtol=1e-3, atol=1e-2
+    )
