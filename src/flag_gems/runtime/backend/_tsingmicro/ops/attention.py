@@ -1167,6 +1167,7 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
+    logger.debug("GEMS_TSINGMICRO SCALED_DOT_PRODUCT_ATTENTION")
     return ScaleDotProductAttention.apply(
         query,
         key,
@@ -1371,12 +1372,12 @@ def flash_attn_varlen_func(
             logsumexp of each row of the matrix QK^T * scaling (e.g., log of the softmax
             normalization factor).
     """
+    logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
     if fa_version != 2:
         raise RuntimeError("Only FA2 is implemented.")
     if num_splits > 0:
         raise RuntimeError("num_splits > 0 is not implemented in GEMS.")
     if use_c_extension:
-        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
         with torch_device_fn.device(q.device):
             out_cpp, softmax_lse = torch.ops.flag_gems.flash_attn_varlen_func(
                 q,
@@ -1412,7 +1413,6 @@ def flash_attn_varlen_func(
             )
         return (out_cpp, softmax_lse) if return_softmax_lse else out_cpp
     else:
-        logger.debug("GEMS_TSINGMICRO FLASH_ATTN_VARLEN_FUNC")
         if block_table is None:
             assert (
                 cu_seqlens_k is not None
