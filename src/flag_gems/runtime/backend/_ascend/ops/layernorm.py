@@ -52,7 +52,7 @@ layer_norm_persistent_kernel_multiline = BlockifiedLayerNormEntry(
 )
 
 
-def _select_tile_m(M, N, tile_n):
+def _select_tile_m(M, tile_n):
     # Narrow rows keep the packed schedule: they already run a whole row per
     # program and the one-row kernel is not exercised at these widths.
     if tile_n <= 128:
@@ -87,7 +87,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     # Explicit block mapping makes scheduling independent of other operator imports.
     with torch_device_fn.device(input.device):
         tile_n = triton.next_power_of_2(N)
-        tile_m = _select_tile_m(M, N, tile_n)
+        tile_m = _select_tile_m(M, tile_n)
         if tile_m > 1:
             grid = (triton.cdiv(M, tile_m), 1, 1)
             layer_norm_persistent_kernel_multiline[grid](
