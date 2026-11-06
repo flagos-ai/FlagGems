@@ -1909,6 +1909,8 @@ _FULL_CONFIG = (
     ("sparse_compressed_tensor.comp_plain_value_size", sparse_compressed_tensor),
     ("sparse_coo_tensor.indices", sparse_coo_tensor),
     ("sparse_coo_tensor.indices_size", sparse_coo_tensor),
+    ("sparse_csc_tensor.ccol_row_value", sparse_csc_tensor),
+    ("sparse_csc_tensor.ccol_row_value_size", sparse_csc_tensor),
     ("sparse_csr_tensor.crow_col_value", sparse_csr_tensor),
     ("sparse_csr_tensor.crow_col_value_size", sparse_csr_tensor),
     (
