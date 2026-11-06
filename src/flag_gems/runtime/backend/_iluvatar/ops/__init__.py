@@ -27,10 +27,14 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
+from .avg_pool1d import avg_pool1d
 from .avg_pool3d import avg_pool3d_backward
+from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
+from .batch_norm_with_update_functional import _batch_norm_with_update_functional
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .column_stack_out import column_stack_out
 from .compute_linear_combination import _compute_linear_combination
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
@@ -46,8 +50,13 @@ from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
+from .expand_copy import expand_copy
+from .float_power_scalar_tensor import float_power_scalar_tensor
+from .float_power_tensor_scalar import float_power_tensor_scalar
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
+from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
@@ -59,6 +68,7 @@ from .index_reduce import index_reduce, index_reduce_
 from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_householder_product import run as linalg_householder_product
@@ -145,6 +155,7 @@ _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cholesky_solve_helper",
     "_compute_linear_combination",
     "_conv_depthwise2d",
@@ -164,9 +175,11 @@ __all__ = [
     "arccos_",
     "arccosh_",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "cholesky_solve",
     "cholesky_solve_out",
+    "column_stack_out",
     "concatenate",
     "constant_pad_nd",
     "conv1d",
@@ -179,8 +192,13 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "expand_copy",
+    "float_power_scalar_tensor",
+    "float_power_tensor_scalar",
+    "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
+    "greater_",
     "grid_sampler_3d",
     "gru",
     "gru_data",
@@ -195,6 +213,7 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
+    "lift_fresh",
     "lift_out",
     "linalg_cholesky",
     "linalg_householder_product",
