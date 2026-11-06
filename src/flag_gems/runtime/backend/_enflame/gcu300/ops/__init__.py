@@ -17,6 +17,7 @@ from ._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
 )
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
+from ._stack import _stack
 from ._unsafe_masked_index import _unsafe_masked_index
 from .abs import abs, abs_
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
@@ -269,6 +270,7 @@ from .special_modified_bessel_k0 import (
     special_modified_bessel_k0_out,
 )
 from .sqrt import sqrt, sqrt_
+from .stack import stack
 from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
@@ -301,6 +303,7 @@ __all__ = [
     "_embedding_bag_per_sample_weights_backward",
     "_index_put_impl_",
     "_scaled_dot_product_flash_attention",
+    "_stack",
     "_unique2",
     "_unsafe_masked_index",
     "_upsample_bicubic2d_aa",
@@ -624,6 +627,7 @@ __all__ = [
     "special_modified_bessel_k0_out",
     "sqrt",
     "sqrt_",
+    "stack",
     "std",
     "sub",
     "sub_",
