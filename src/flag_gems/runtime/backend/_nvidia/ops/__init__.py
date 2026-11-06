@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Example for multi-backend ops.
-
-
-from .add import add
-from .gelu import gelu
+from .cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
+from .cudnn_batch_norm_backward import cudnn_batch_norm_backward
+from .embedding_bag_backward import _embedding_bag_backward
 
 __all__ = [
-    "add",
-    "gelu",
+    "_embedding_bag_backward",
+    "cudnn_batch_norm",
+    "cudnn_batch_norm_backward",
+    "cudnn_batch_norm_out",
 ]
-"""
