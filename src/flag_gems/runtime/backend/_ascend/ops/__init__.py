@@ -62,6 +62,7 @@ from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk_cat import chunk_cat
 from .clamp_max import clamp_max
 from .clamp_max_ import clamp_max_
+from .clip_ import clip_
 from .column_stack_out import column_stack_out
 from .concat import concat
 from .concatenate import concatenate
@@ -304,6 +305,7 @@ __all__ = [
     "chunk_cat",
     "clamp_max",
     "clamp_max_",
+    "clip_",
     "column_stack_out",
     "concat",
     "concatenate",
