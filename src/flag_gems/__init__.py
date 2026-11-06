@@ -2091,6 +2091,7 @@ _FULL_CONFIG = (
     ("svd", svd),
     ("swapaxes_", swapaxes_),
     ("swapdims", swapdims),
+    ("swapdims_", swapdims_),
     ("sym_size.int", sym_size_int),
     ("t_", t_),
     ("t_copy", t_copy),
