@@ -312,6 +312,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
+from flag_gems.ops._nested_from_padded import _nested_from_padded
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -325,6 +326,7 @@ from flag_gems.ops._nested_tensor_from_tensor_list import (
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
+from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -347,8 +349,10 @@ from flag_gems.ops._remove_batch_dim import _remove_batch_dim
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
+from flag_gems.ops._reshape_from_tensor import _reshape_from_tensor
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
+from flag_gems.ops._rowwise_prune import _rowwise_prune
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._saturate_weight_to_fp16 import _saturate_weight_to_fp16
@@ -683,6 +687,10 @@ from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_add_relu import (
+    cudnn_convolution_add_relu,
+    cudnn_convolution_add_relu_out,
+)
 from flag_gems.ops.cudnn_convolution_relu import (
     cudnn_convolution_relu,
     cudnn_convolution_relu_out,
@@ -1446,6 +1454,7 @@ from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
 from flag_gems.ops.sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
+from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
@@ -1994,6 +2003,7 @@ __all__ = [
     "_native_multi_head_attention",
     "_neg_view_copy",
     "_neg_view_copy_out",
+    "_nested_from_padded",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
@@ -2001,6 +2011,7 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
     "_nested_tensor_softmax_with_shape",
+    "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
@@ -2022,8 +2033,10 @@ __all__ = [
     "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
+    "_reshape_from_tensor",
     "_resize_output",
     "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
     "_sample_dirichlet",
     "_saturate_weight_to_fp16",
@@ -2346,6 +2359,8 @@ __all__ = [
     "cudnn_batch_norm_backward",
     "cudnn_batch_norm_out",
     "cudnn_convolution",
+    "cudnn_convolution_add_relu",
+    "cudnn_convolution_add_relu_out",
     "cudnn_convolution_relu",
     "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
@@ -3157,6 +3172,7 @@ __all__ = [
     "sparse_bsr_tensor_unsafe",
     "sparse_compressed_tensor",
     "sparse_coo_tensor",
+    "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
     "sparse_csr_tensor",
     "sparse_dim",
