@@ -14,6 +14,8 @@
 
 from backend_utils import VendorDescriptor  # noqa: E402
 
+# CI probe (do not merge): touch a _kunlunxin path so the backend job is scheduled.
+
 vendor_info = VendorDescriptor(
     vendor_name="kunlunxin",
     device_name="cuda",
