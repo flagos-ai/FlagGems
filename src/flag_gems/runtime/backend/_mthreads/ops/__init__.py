@@ -18,6 +18,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._conj import _conj
+from ._fake_quantize_learnable_per_tensor_affine import _fake_quantize_learnable_per_tensor_affine
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -177,6 +178,7 @@ __all__ = [
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
+    "_fake_quantize_learnable_per_tensor_affine",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_masked_scale",
