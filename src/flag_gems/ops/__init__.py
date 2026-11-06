@@ -1456,6 +1456,7 @@ from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
 from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
 from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from flag_gems.ops.sparse_csr_sum import sparse_csr_sum, sparse_csr_sum_out
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_resize_ import sparse_resize_
@@ -3174,6 +3175,8 @@ __all__ = [
     "sparse_coo_tensor",
     "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_sum",
+    "sparse_csr_sum_out",
     "sparse_csr_tensor",
     "sparse_dim",
     "sparse_resize_",
