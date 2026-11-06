@@ -27,7 +27,7 @@
     "enabled": true
   },
   {
-    "backend": "hygon",
+    "backend": "hygon-dtk2604",
     "vendor": "hygon",
     "runner_label": "hygon",
     "command_aliases": ["hygon"],
@@ -44,7 +44,7 @@
     }
   },
   {
-    "backend": "iluvatar",
+    "backend": "iluvatar-corex450",
     "vendor": "iluvatar",
     "runner_label": "iluvatar",
     "command_aliases": ["iluvatar"],
@@ -61,7 +61,7 @@
     }
   },
   {
-    "backend": "kunlunxin",
+    "backend": "kunlunxin-xre5371",
     "vendor": "kunlunxin",
     "runner_label": "kunlunxin",
     "command_aliases": ["kunlunxin"],
@@ -131,7 +131,7 @@
     "enabled": true
   },
   {
-    "backend": "spacemit",
+    "backend": "spacemit-xxx",
     "vendor": "spacemit",
     "runner_label": "spacemit",
     "command_aliases": ["spacemit"],
@@ -140,7 +140,7 @@
     "enabled": true
   },
   {
-    "backend": "sunrise",
+    "backend": "sunrise-tangrt120",
     "vendor": "sunrise",
     "runner_label": "sunrise",
     "command_aliases": ["sunrise"],
@@ -149,7 +149,7 @@
     "enabled": true
   },
   {
-    "backend": "thead",
+    "backend": "thead-ppu210",
     "vendor": "thead",
     "runner_label": "flagcicd-810e",
     "command_aliases": ["thead"],
@@ -167,7 +167,7 @@
     }
   },
   {
-    "backend": "tsingmicro",
+    "backend": "tsingmicro-tsm260610",
     "vendor": "tsingmicro",
     "runner_label": "tsingmicro",
     "command_aliases": ["tsingmicro"],

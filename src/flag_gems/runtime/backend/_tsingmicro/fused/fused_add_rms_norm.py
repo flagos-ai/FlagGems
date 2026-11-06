@@ -153,7 +153,7 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     are reused elsewhere or require gradients.
     """
     logger.debug(
-        "GEMS_TSINGMICRO FUSED_ADD_RMS_NORM, [input shape]: %s, [residual shape]: %s, [weight shape]: %s",
+        "GEMS_TSINGMICRO FUSED_ADD_RMS_NORM",
         x.size(),
         residual.size(),
         weight.size(),

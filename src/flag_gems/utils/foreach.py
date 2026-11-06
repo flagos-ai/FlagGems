@@ -38,6 +38,8 @@ import triton.language as tl
 from triton import knobs
 from triton.runtime import driver as _triton_driver
 
+from flag_gems.runtime import device as _runtime_device
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -309,6 +311,28 @@ def _pack_ok(
 # ---------------------------------------------------------------------------
 # executor kernels
 # ---------------------------------------------------------------------------
+
+
+# Four-wide 16-bit access decodes bf16 words with ``tt.bitcast``; backends
+# whose lowering cannot carry a 16-bit bitcast keep the element-indexed body.
+_PACK_BF16 = tl.constexpr(_runtime_device.vendor_name != "kunlunxin")
+
+# A by-value scalar is cast inside the kernel with ``.to(S_DT)``, which for a
+# bf16 output is ``arith.truncf ... : f64 to bf16``.  Only the CUDA backend
+# decomposes that: MetaX and Hygon hit ``TruncFOpConversion``'s
+# ``inElemTy.isF32()`` assertion, MUSA hands ``llvm.musa.float2bfloat16`` a
+# double.  Measured on C550 / MTT-S5000 / BW1000 -- bf16 only, the same casts
+# to fp16 and fp32 lower fine, so bf16 keeps the device-array route.
+_BF16_SCALAR_BY_VALUE = _runtime_device.vendor_name == "nvidia"
+
+# ``fast_logf`` / ``fast_log2f`` / ``fast_log10f`` / ``fast_sinf`` / ``fast_cosf``
+# / ``fast_tanf`` / ``fast_expf`` are CUDA libdevice entry points.  HIP does not
+# export them (``AttributeError`` while the JIT hashes the function) and MUSA
+# exports stubs that raise ``NotImplementedError``, so a ``hasattr`` probe
+# cannot see the difference.  Gate on the vendor; ``_FAST_MATH`` is the
+# kernel-side twin of the host bool.
+_FAST_MATH_OK = _runtime_device.vendor_name == "nvidia"
+_FAST_MATH = tl.constexpr(_FAST_MATH_OK)
 
 
 @triton.jit
@@ -596,10 +620,11 @@ def _binary_wide_body(
 
 @triton.jit
 def _binary_narrow_body(
-    meta_ptr,
-    t,
+    a_raw,
+    b_raw,
+    out_raw,
+    n_elements,
     fn: tl.constexpr,
-    NT: tl.constexpr,
     A_DT: tl.constexpr,
     B_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
@@ -607,13 +632,16 @@ def _binary_narrow_body(
     B_SCALAR: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """The element-indexed body: one operand element per lane."""
+    """The element-indexed body: one operand element per lane.
+
+    The metadata is passed in already loaded: re-reading it here would leave two
+    identical loads in the two arms of the caller's alignment branch.
+    """
     offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(B_DT))
-    out_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 3 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    b_ptr = b_raw.to(tl.pointer_type(B_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
 
     idx = offset + tl.arange(0, BLOCK)
     mask = idx < n_elements
@@ -690,6 +718,7 @@ def foreach_binary_kernel(
         (A_DT.primitive_bitwidth == 16)
         & (B_DT.primitive_bitwidth == 16)
         & (OUT_DT.primitive_bitwidth == 16)
+        & (_PACK_BF16 or A_DT != tl.bfloat16)
     )
     if IS16:
         if (((a_raw | b_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
@@ -698,11 +727,31 @@ def foreach_binary_kernel(
             )
         else:
             _binary_narrow_body(
-                meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+                a_raw,
+                b_raw,
+                out_raw,
+                n_elements,
+                fn,
+                A_DT,
+                B_DT,
+                OUT_DT,
+                ALPHA,
+                B_SCALAR,
+                BLOCK,
             )
     else:
         _binary_narrow_body(
-            meta_ptr, t, fn, NT, A_DT, B_DT, OUT_DT, ALPHA, B_SCALAR, BLOCK
+            a_raw,
+            b_raw,
+            out_raw,
+            n_elements,
+            fn,
+            A_DT,
+            B_DT,
+            OUT_DT,
+            ALPHA,
+            B_SCALAR,
+            BLOCK,
         )
 
 
@@ -765,11 +814,12 @@ def foreach_binary_kernel_p4(
 
 @triton.jit
 def _binary_scalar_narrow_body(
-    meta_ptr,
+    a_raw,
+    out_raw,
+    n_elements,
     scalar_ptr,
     scalar_value: tl.float64,
     fn: tl.constexpr,
-    NT: tl.constexpr,
     A_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     S_DT: tl.constexpr,
@@ -777,13 +827,16 @@ def _binary_scalar_narrow_body(
     SCALAR_BY_VALUE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """The element-indexed body: one operand element per lane."""
+    """The element-indexed body: one operand element per lane.
+
+    The metadata is passed in already loaded: re-reading it here would leave two
+    identical loads in the two arms of the caller's alignment branch.
+    """
     t = tl.program_id(0)
     offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    out_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 2 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
     if SCALAR_BY_VALUE:
         s = scalar_value.to(S_DT)
     else:
@@ -848,8 +901,10 @@ def foreach_binary_scalar_kernel(
     # Packing a word only round-trips when both the operand and the result are
     # 16 bits wide; for anything else this folds to the narrow body at compile
     # time.
-    IS16: tl.constexpr = (A_DT.primitive_bitwidth == 16) & (
-        OUT_DT.primitive_bitwidth == 16
+    IS16: tl.constexpr = (
+        (A_DT.primitive_bitwidth == 16)
+        & (OUT_DT.primitive_bitwidth == 16)
+        & (_PACK_BF16 or A_DT != tl.bfloat16)
     )
     if IS16:
         if (((a_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
@@ -868,11 +923,12 @@ def foreach_binary_scalar_kernel(
             )
         else:
             _binary_scalar_narrow_body(
-                meta_ptr,
+                a_raw,
+                out_raw,
+                n_elements,
                 scalar_ptr,
                 scalar_value,
                 fn,
-                NT,
                 A_DT,
                 OUT_DT,
                 S_DT,
@@ -882,11 +938,12 @@ def foreach_binary_scalar_kernel(
             )
     else:
         _binary_scalar_narrow_body(
-            meta_ptr,
+            a_raw,
+            out_raw,
+            n_elements,
             scalar_ptr,
             scalar_value,
             fn,
-            NT,
             A_DT,
             OUT_DT,
             S_DT,
@@ -941,11 +998,14 @@ def foreach_binary_scalar_kernel_p4(
 
 @triton.jit
 def _ternary_narrow_body(
-    meta_ptr,
+    a_raw,
+    b_raw,
+    c_raw,
+    out_raw,
+    n_elements,
     scalar_ptr,
     scalar_value: tl.float64,
     fn: tl.constexpr,
-    NT: tl.constexpr,
     A_DT: tl.constexpr,
     OUT_DT: tl.constexpr,
     S_DT: tl.constexpr,
@@ -956,7 +1016,9 @@ def _ternary_narrow_body(
     """The element-indexed body: one operand element per lane.
 
     ``SWAP`` transposes the grid so the tile index travels first; see
-    :func:`foreach_ternary_kernel_p4` for why.
+    :func:`foreach_ternary_kernel_p4` for why.  The metadata is passed in
+    already loaded: re-reading it here would leave two identical loads in the
+    two arms of the caller's alignment branch.
     """
     if SWAP:
         t = tl.program_id(1)
@@ -965,11 +1027,10 @@ def _ternary_narrow_body(
         t = tl.program_id(0)
         offset = tl.program_id(1) * BLOCK
 
-    a_ptr = tl.load(meta_ptr + t).to(tl.pointer_type(A_DT))
-    b_ptr = tl.load(meta_ptr + NT + t).to(tl.pointer_type(A_DT))
-    c_ptr = tl.load(meta_ptr + 2 * NT + t).to(tl.pointer_type(A_DT))
-    out_ptr = tl.load(meta_ptr + 3 * NT + t).to(tl.pointer_type(OUT_DT))
-    n_elements = tl.load(meta_ptr + 4 * NT + t)
+    a_ptr = a_raw.to(tl.pointer_type(A_DT))
+    b_ptr = b_raw.to(tl.pointer_type(A_DT))
+    c_ptr = c_raw.to(tl.pointer_type(A_DT))
+    out_ptr = out_raw.to(tl.pointer_type(OUT_DT))
     if SCALAR_BY_VALUE:
         s = scalar_value.to(S_DT)
     else:
@@ -1039,8 +1100,10 @@ def foreach_ternary_kernel(
     # The packed body splits each loaded word into 16-bit halves, which is only
     # well defined when both the operands and the result are 16 bits wide; for
     # anything else this folds to the narrow body at compile time.
-    IS16: tl.constexpr = (A_DT.primitive_bitwidth == 16) & (
-        OUT_DT.primitive_bitwidth == 16
+    IS16: tl.constexpr = (
+        (A_DT.primitive_bitwidth == 16)
+        & (OUT_DT.primitive_bitwidth == 16)
+        & (_PACK_BF16 or A_DT != tl.bfloat16)
     )
     if IS16:
         if (((a_raw | b_raw | c_raw | out_raw) & 7) == 0) & ((n_elements & 3) == 0):
@@ -1059,11 +1122,14 @@ def foreach_ternary_kernel(
             )
         else:
             _ternary_narrow_body(
-                meta_ptr,
+                a_raw,
+                b_raw,
+                c_raw,
+                out_raw,
+                n_elements,
                 scalar_ptr,
                 scalar_value,
                 fn,
-                NT,
                 A_DT,
                 OUT_DT,
                 S_DT,
@@ -1073,11 +1139,14 @@ def foreach_ternary_kernel(
             )
     else:
         _ternary_narrow_body(
-            meta_ptr,
+            a_raw,
+            b_raw,
+            c_raw,
+            out_raw,
+            n_elements,
             scalar_ptr,
             scalar_value,
             fn,
-            NT,
             A_DT,
             OUT_DT,
             S_DT,
@@ -1831,6 +1900,17 @@ def _check_same_length(a: Sequence[torch.Tensor], b: Sequence[Any], what: str) -
             f"Tensor list must have same number of elements as {what}, "
             f"got {len(a)} and {len(b)}"
         )
+
+
+def _result_dtype(t: torch.Tensor, other: Any) -> torch.dtype:
+    """ATen's type promotion for one tensor against a tensor or a number.
+
+    Delegating to ``torch.result_type`` rather than reimplementing the lattice
+    is deliberate: it is the same routine ATen consults, so an int64 list plus a
+    float scalar promotes to float32 here exactly as ``torch._foreach_add``
+    does.
+    """
+    return torch.result_type(t, other)
 
 
 # Promotion is a pure function of the operand dtypes (plus whether an operand is
@@ -3057,7 +3137,9 @@ def _launch_scalar_group(
     # the broadcast forms; only a real list needs the equality scan.
     if common is None:
         common = _common_scalar(vals)
-    by_value = common is not None
+    by_value = common is not None and (
+        s_dtype is not torch.bfloat16 or _BF16_SCALAR_BY_VALUE
+    )
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common
@@ -3597,7 +3679,9 @@ def _launch_ternary_group(
     # device buffer.  The ``.ScalarList`` form still needs the array.
     if common is None:
         common = _common_scalar(v_l)
-    by_value = common is not None
+    by_value = common is not None and (
+        s_dtype is not torch.bfloat16 or _BF16_SCALAR_BY_VALUE
+    )
     if by_value:
         scalar_buf = meta  # unused by the kernel; keeps the pointer slot valid
         scalar_value = common
