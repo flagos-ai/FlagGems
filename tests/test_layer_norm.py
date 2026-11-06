@@ -44,11 +44,24 @@ LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
 # Cover one-, two-, and three-dimensional normalized suffixes of equal size.
 @pytest.mark.parametrize(
     "shape, normalized_shape",
-    [((4, 64), (64,)), ((4, 8, 8), (8, 8)), ((4, 4, 4, 4), (4, 4, 4))],
+    [
+        ((4, 64), (64,)),
+        ((4, 8, 8), (8, 8)),
+        ((4, 4, 4, 4), (4, 4, 4)),
+        pytest.param(
+            (4, 40999),
+            (40999,),
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name != "thead",
+                reason="Check FP32 statistics on the PPU wide-reduction path",
+            ),
+        ),
+    ],
 )
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = (
         torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
@@ -76,8 +89,12 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
         in caplog.text
     )
     assert len(result) == len(ref_result) == 3
-    for actual, expected in zip(result, ref_result):
-        utils.gems_assert_close(actual, expected, dtype)
+    for index, (actual, expected) in enumerate(zip(result, ref_result)):
+        comparison_dtype = dtype
+        if flag_gems.vendor_name == "thead" and index > 0:
+            assert actual.dtype == torch.float32
+            comparison_dtype = torch.float32
+        utils.gems_assert_close(actual, expected, comparison_dtype)
 
 
 @pytest.mark.layer_norm
@@ -85,6 +102,7 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_layer_norm(shape, dtype, wb_none):
+    torch.manual_seed(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -121,9 +139,33 @@ def test_layer_norm(shape, dtype, wb_none):
 
 
 @pytest.mark.layer_norm
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(17, 37), (4, 8, 512)])
+def test_layer_norm_fp32_affine(shape, dtype):
+    torch.manual_seed(0)
+    # Slicing also covers the layout conversion before the fused reduction.
+    inp = torch.randn(
+        (*shape[:-1], shape[-1] * 2), device=flag_gems.device, dtype=dtype
+    )
+    inp = inp[..., ::2]
+    weight = torch.randn(shape[-1], device=flag_gems.device, dtype=torch.float32)
+    bias = torch.randn_like(weight)
+    ref = torch.nn.functional.layer_norm(
+        utils.to_reference(inp, True),
+        (shape[-1],),
+        utils.to_reference(weight, True),
+        utils.to_reference(bias, True),
+        1e-6,
+    )
+    result, _, _ = flag_gems.layer_norm(inp, (shape[-1],), weight, bias, 1e-6)
+    utils.gems_assert_close(result, ref, dtype)
+
+
+@pytest.mark.layer_norm
 @pytest.mark.parametrize("shape", LAYER_NORM_MEDIUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_native_layer_norm_statistics(shape, dtype):
+    torch.manual_seed(0)
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     normalized_shape = shape[1:]
     res_weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
@@ -148,9 +190,10 @@ def test_native_layer_norm_statistics(shape, dtype):
     )
 
     reduce_dim = math.prod(normalized_shape)
+    stats_dtype = torch.float32 if flag_gems.vendor_name == "thead" else dtype
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_mean, ref_mean, dtype, reduce_dim=reduce_dim)
-    utils.gems_assert_close(res_rstd, ref_rstd, dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_mean, ref_mean, stats_dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_rstd, ref_rstd, stats_dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.layer_norm_backward
