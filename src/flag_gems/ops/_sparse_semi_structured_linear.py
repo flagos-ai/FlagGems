@@ -243,7 +243,7 @@ def _sparse_semi_structured_linear(
     K must be a multiple of 4. Each weight row carries its own independent 2:4
     pattern, expressed per-row via the N dimension of ``meta``.
     """
-    logger.debug("GEMS SPARSE SEMI STRUCTURED LINEAR")
+    logger.debug("GEMS SPARSE_SEMI_STRUCTURED_LINEAR")
 
     M, K = input.shape
     N, K_w = weight.shape

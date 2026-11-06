@@ -33,9 +33,7 @@ def test_unsafe_masked_index(shape, dtype):
     ref_mask = utils.to_reference(mask)
     ref_indices = utils.to_reference(indices)
 
-    op = torch._unsafe_masked_index
-    ref_out = op(ref_inp, ref_mask, [ref_indices], fill)
-    with flag_gems.use_gems():
-        res_out = op(inp, mask, [indices], fill)
+    ref_out = torch._unsafe_masked_index(ref_inp, ref_mask, [ref_indices], fill)
+    res_out = flag_gems._unsafe_masked_index(inp, mask, [indices], fill)
 
     utils.gems_assert_close(res_out, ref_out, dtype)

@@ -309,9 +309,7 @@ def _flash_attention_forward(
     seqused_k=None,
     alibi_slopes=None,
 ):
-    logging.getLogger("flag_gems.ops._flash_attention_forward").debug(
-        "GEMS _FLASH_ATTENTION_FORWARD"
-    )
+    logging.getLogger(__name__).debug("GEMS _FLASH_ATTENTION_FORWARD")
 
     q = query
     k = key

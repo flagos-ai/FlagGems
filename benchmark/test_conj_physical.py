@@ -27,6 +27,8 @@ INT8_DTYPES = [torch.int8, torch.uint8]
 
 def _supported_fp8_dtypes(device):
     """Keep only the FP8 dtypes the current device can actually materialize."""
+    if not flag_gems.runtime.device.support_fp8:
+        return []
     supported = []
     for dtype in FP8_DTYPES:
         try:

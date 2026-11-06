@@ -20,6 +20,8 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems.ops import flash_api
+from flag_gems.ops.flash_kernel import flash_fwd_splitkv_combine_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import random_utils
 
@@ -28,6 +30,17 @@ from . import conftest as cfg
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
+# The GCU torch build does not register several operators this module relies on:
+# `aten::_flash_attention_forward` (the reference oracle for the dense tests),
+# `torch.gather` on the expanded sparse index tensor, and the `add` broadcast in
+# attn_bias_from_alibi_slopes. They either raise NotImplementedError or abort the
+# process (TOPSATEN_STATUS_NOT_SUPPORT), and one of them is used by six of the
+# seven tests here, so the module is skipped on enflame as a whole.
+pytestmark = pytest.mark.skipif(
+    vendor_name == "enflame",
+    reason="enflame GCU does not support the operators this module uses",
+)
 
 # Representative dense configs cover square/non-square inputs and 64/128 head sizes.
 # Other shape families below keep their existing QUICK_MODE reductions.
@@ -75,6 +88,10 @@ else:
     SWA_HEAD_SIZES = [128, 192]
     SWA_WINDOW_SIZES = [(256, 0), (128, 128)]
 DROPOUT_CONFIGS = [(1, 1, 1024, 1024)]
+HYGON_FP32_FLASH_CONFIGS = [
+    (1, 2, 129, 64),
+    (1, 2, 129, 128),
+]
 
 
 def make_input(
@@ -109,6 +126,26 @@ def torch_flash_fwd(
     q = q.transpose(1, 2)
     k = k.transpose(1, 2)
     v = v.transpose(1, 2)
+
+    if vendor_name == "ascend":
+        # The native ATen FlashAttention reference is unavailable on Ascend.
+        window_size = (
+            extra_kwargs.get("window_size_left", -1),
+            extra_kwargs.get("window_size_right", -1),
+        )
+        # FlashAttention treats windows covering the KV sequence as unlimited.
+        window_size = tuple(-1 if size >= k.shape[1] else size for size in window_size)
+        out, lse = dense_flash_attention_ref(
+            q,
+            k,
+            v,
+            scale,
+            is_causal,
+            window_size=window_size,
+        )
+        # FlashAttention uses +inf as the LSE sentinel for fully masked rows.
+        lse = lse.masked_fill(torch.isneginf(lse), float("inf"))
+        return out.to(q.dtype), lse, None, None, None
 
     (
         out,
@@ -164,15 +201,19 @@ def gems_flash_fwd(
     return out, lse, seed, offset, debug_softmax
 
 
-def dense_flash_attention_ref(q, k, v, scale, is_causal):
+def dense_flash_attention_ref(q, k, v, scale, is_causal, window_size=(-1, -1)):
     scores = torch.einsum("bqhd,bkhd->bhqk", q.float(), k.float()) * scale
     if is_causal:
-        q_index = torch.arange(q.shape[1], device=q.device)[:, None]
-        k_index = torch.arange(k.shape[1], device=k.device)
-        causal_mask = k_index > q_index + k.shape[1] - q.shape[1]
-        scores.masked_fill_(causal_mask, float("-inf"))
+        window_size = (window_size[0], 0)
+    if window_size[0] >= 0 or window_size[1] >= 0:
+        mask = construct_local_mask(
+            q.shape[1], k.shape[1], window_size, device=q.device
+        )
+        scores.masked_fill_(mask, float("-inf"))
     softmax_lse = torch.logsumexp(scores, dim=-1)
     attention = torch.softmax(scores, dim=-1)
+    # Non-square local attention can have query rows with no visible keys.
+    attention = attention.masked_fill(softmax_lse[..., None] == -float("inf"), 0.0)
     output = torch.einsum("bhqk,bkhd->bqhd", attention, v.float())
     return output.to(q.dtype), softmax_lse
 
@@ -214,7 +255,8 @@ def test__flash_attention_forward(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    if cfg.TO_CPU:
+    # Ascend does not provide the native ATen FlashAttention reference.
+    if cfg.TO_CPU or vendor_name == "ascend":
         ref_out, ref_lse = dense_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -232,8 +274,15 @@ def test__flash_attention_forward(
             False,
             scale=scale,
         )
-        ref_out, ref_lse = ref_result[0], ref_result[1]
-    with caplog.at_level("DEBUG", logger="flag_gems.ops._flash_attention_forward"):
+        ref_out = ref_result[0]
+        # The vendor-native op is not a trustworthy reference for softmax_lse:
+        # some backends (e.g. Iluvatar corex) return it in a different
+        # base/sign convention (-log2 instead of ln). Use the dense reference,
+        # which follows the FlashAttention convention (natural log).
+        _, ref_lse = dense_flash_attention_ref(ref_q, ref_k, ref_v, scale, is_causal)
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems._flash_attention_forward)
+    ):
         result = flag_gems._flash_attention_forward(
             q,
             k,
@@ -255,6 +304,86 @@ def test__flash_attention_forward(
     assert len(result) == 5
     utils.gems_assert_close(result[0], ref_out, dtype)
     utils.gems_assert_close(result[1], ref_lse, torch.float)
+
+
+@pytest.mark.skipif(vendor_name != "hygon", reason="Hygon-specific FP32 path")
+@pytest.mark.underscore_flash_attention_forward
+@pytest.mark.parametrize("batch,num_head,seq_len,head_size", HYGON_FP32_FLASH_CONFIGS)
+@pytest.mark.parametrize("is_causal", [False, True])
+def test_hygon_fp32_flash_attention_forward(
+    batch, num_head, seq_len, head_size, is_causal, caplog
+):
+    current_device = flag_gems.device
+    shape = (batch, seq_len, num_head, head_size)
+    q = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    k = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    v = torch.empty(shape, dtype=torch.float32).uniform_(-0.05, 0.05).to(current_device)
+    scale = float(1.0 / np.sqrt(head_size))
+    ref_out, ref_lse = dense_flash_attention_ref(
+        utils.to_reference(q, False),
+        utils.to_reference(k, False),
+        utils.to_reference(v, False),
+        scale,
+        is_causal,
+    )
+
+    with caplog.at_level(
+        "DEBUG", logger=utils.gems_log_logger(flag_gems._flash_attention_forward)
+    ):
+        result = flag_gems._flash_attention_forward(
+            q,
+            k,
+            v,
+            None,
+            None,
+            seq_len,
+            seq_len,
+            0.0,
+            is_causal,
+            False,
+            scale=scale,
+        )
+
+    assert (
+        f"{utils.gems_log_prefix(flag_gems._flash_attention_forward)} "
+        "_FLASH_ATTENTION_FORWARD" in caplog.text
+    )
+    assert len(result) == 5
+    utils.gems_assert_close(result[0], ref_out, torch.float, atol=3e-4)
+    utils.gems_assert_close(result[1], ref_lse, torch.float, atol=3e-4)
+
+
+@pytest.mark.skipif(vendor_name != "hygon", reason="Hygon-specific FP32 path")
+@pytest.mark.underscore_flash_attention_forward
+def test_hygon_fp32_flash_attention_negative_logit_sentinel():
+    current_device = flag_gems.device
+    seq_len, head_size = 16, 64
+    shape = (1, seq_len, 1, head_size)
+    q = torch.full(shape, 4.0e14, dtype=torch.float32).to(current_device)
+    k = torch.full(shape, -4.0e14, dtype=torch.float32).to(current_device)
+    v = (
+        torch.arange(seq_len * head_size, dtype=torch.float32)
+        .reshape(shape)
+        .to(current_device)
+    )
+    scale = float(1.0 / np.sqrt(head_size))
+
+    result = flag_gems._flash_attention_forward(
+        q,
+        k,
+        v,
+        None,
+        None,
+        seq_len,
+        seq_len,
+        0.0,
+        False,
+        False,
+        scale=scale,
+    )
+
+    expected = v.mean(dim=1, keepdim=True).expand_as(v)
+    torch.testing.assert_close(result[0], expected, rtol=1e-5, atol=1e-4)
 
 
 def sparse_attention_ref(q, kv, attn_sink, topk_idxs, scale):
@@ -764,3 +893,382 @@ def test_flash_fwd_dropout(
     if vendor_name == "cambricon":
         dropout_ratio = dropout_ratio.item()
     np.testing.assert_allclose(dropout_ratio, dropout_p, rtol=5e-2)
+
+
+# ---------------------------------------------------------------------------
+# split-KV combine output addressing (Issue #6872)
+#
+# The combine grid flattens [batch, head, query] while the output is a BSHD view
+# whose storage order is independent of that flattening. The tests below run the
+# combine kernel directly on several valid output layouts, and through the public
+# mha_fwd split path, checking both the numerical result and that no store
+# escapes the logical output view.
+# ---------------------------------------------------------------------------
+
+SENTINEL = -123.0
+DTYPES = [torch.float16, torch.bfloat16]
+LAYOUTS = ["bshd", "bhsd_storage", "gapped"]
+
+
+def _strides(layout, batch, seq, heads, dim):
+    if layout == "bshd":
+        return (seq * heads * dim, heads * dim, dim, 1)
+    if layout == "bhsd_storage":
+        # Head-major storage exposed as BSHD.
+        return (heads * seq * dim, dim, seq * dim, 1)
+    # Contiguous rows separated by a hole plus a leading offset.
+    return (seq * (heads * dim + 16) + 32, heads * dim + 16, dim, 1)
+
+
+def make_output(batch, seq, heads, dim, dtype, layout):
+    strides = _strides(layout, batch, seq, heads, dim)
+    extent = (
+        (batch - 1) * strides[0]
+        + (seq - 1) * strides[1]
+        + (heads - 1) * strides[2]
+        + dim
+    )
+    # Pad the backing allocation so that the old, incorrect stores stay inside
+    # it; holes and the trailing guard are checked afterwards.
+    size = extent + batch * heads * seq * dim + 16 * strides[1]
+    backing = torch.full((size,), SENTINEL, dtype=dtype, device=flag_gems.device)
+    out = backing.as_strided((batch, seq, heads, dim), strides)
+    occupied = torch.zeros(size, dtype=torch.bool)
+    occupied.as_strided((batch, seq, heads, dim), strides).fill_(True)
+    return out, backing, occupied
+
+
+def assert_no_stray_writes(backing, occupied):
+    assert torch.all(backing.cpu()[~occupied] == SENTINEL)
+
+
+def make_splits(batch, seq, heads, dim, splits):
+    generator = torch.Generator().manual_seed(17)
+    partial = torch.randn((splits, batch, heads, seq, dim), generator=generator)
+    lse = torch.randn((splits, batch, heads, seq), generator=generator)
+    # An empty KV partition must contribute zero to the weighted output.
+    lse[-1, ..., 0] = -float("inf")
+    return partial, lse
+
+
+def combine_reference(partial, lse):
+    weights = torch.softmax(lse, dim=0)
+    out = (partial * weights[..., None]).sum(0).permute(0, 2, 1, 3)
+    return out, torch.logsumexp(lse, dim=0)
+
+
+def launch_combine(out, final_lse, partial, lse, block_m):
+    splits, batch, heads, seq, dim = partial.shape
+    flash_fwd_splitkv_combine_kernel[((batch * heads * seq + block_m - 1) // block_m,)](
+        out_ptr=out,
+        lse_ptr=final_lse,
+        out_splits_ptr=partial,
+        lse_splits_ptr=lse,
+        head_size=dim,
+        out_split_stride=partial.stride(0),
+        lse_split_stride=lse.stride(0),
+        out_b_stride=out.stride(0),
+        out_s_stride=out.stride(1),
+        out_h_stride=out.stride(2),
+        n_splits=splits,
+        BLOCK_M=block_m,
+        BLOCK_K=triton.next_power_of_2(dim),
+        q_total=batch * heads * seq,
+        MAX_N_SPLITS=triton.next_power_of_2(splits),
+        num_heads=heads,
+        seqlen_q=seq,
+    )
+
+
+# `flash_kernel`/`flash_api` also name the implementation files these tests
+# cover, so tools/test-op.sh can select them by marker when ops/flash_kernel.py
+# or ops/flash_api.py changes.
+@pytest.mark.flash_kernel
+@pytest.mark.flash_attention_forward
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("layout", LAYOUTS)
+@pytest.mark.parametrize(
+    "batch,seq,heads,dim,splits,block_m",
+    [
+        (1, 256, 16, 96, 2, 8),
+        (2, 17, 3, 64, 3, 8),
+        (2, 5, 3, 32, 5, 16),
+        (1, 9, 2, 128, 2, 4),
+    ],
+)
+def test_splitkv_combine_output_layout(
+    batch, seq, heads, dim, splits, block_m, layout, dtype
+):
+    partial_cpu, lse_cpu = make_splits(batch, seq, heads, dim, splits)
+    expected, expected_lse = combine_reference(partial_cpu, lse_cpu)
+
+    out, backing, occupied = make_output(batch, seq, heads, dim, dtype, layout)
+    partial = partial_cpu.to(flag_gems.device)
+    lse = lse_cpu.to(flag_gems.device)
+    final_lse = torch.empty((batch, heads, seq), device=flag_gems.device)
+
+    launch_combine(out, final_lse, partial, lse, block_m)
+
+    torch.testing.assert_close(out.cpu(), expected.to(dtype), atol=0.016, rtol=0.016)
+    torch.testing.assert_close(final_lse.cpu(), expected_lse, atol=1e-5, rtol=1e-5)
+    assert_no_stray_writes(backing, occupied)
+
+
+@pytest.mark.flash_kernel
+@pytest.mark.flash_attention_forward
+@pytest.mark.skipif(
+    flag_gems.device != "cuda", reason="Requires CUDA-compatible graphs"
+)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("layout", ["bshd", "bhsd_storage"])
+def test_splitkv_combine_graph_replay(layout, dtype):
+    partial_cpu, lse_cpu = make_splits(2, 17, 3, 96, 3)
+    partial, lse = [x.to(flag_gems.device) for x in (partial_cpu, lse_cpu)]
+    out, backing, occupied = make_output(2, 17, 3, 96, dtype, layout)
+    final_lse = torch.empty((2, 3, 17), device=flag_gems.device)
+
+    # Compile outside capture and warm up on the capture stream.
+    launch_combine(out, final_lse, partial, lse, 8)
+    stream = torch_device_fn.Stream()
+    stream.wait_stream(torch_device_fn.current_stream())
+    with torch_device_fn.stream(stream):
+        launch_combine(out, final_lse, partial, lse, 8)
+    torch_device_fn.current_stream().wait_stream(stream)
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=stream):
+        launch_combine(out, final_lse, partial, lse, 8)
+
+    for step in range(2):
+        changed_partial = partial_cpu + step + 1
+        changed_lse = lse_cpu.clone()
+        changed_lse[0] += step + 0.5
+        partial.copy_(changed_partial)
+        lse.copy_(changed_lse)
+        backing.fill_(SENTINEL)
+        graph.replay()
+        stream.synchronize()
+
+        expected, expected_lse = combine_reference(changed_partial, changed_lse)
+        torch.testing.assert_close(
+            out.cpu(), expected.to(dtype), atol=0.016, rtol=0.016
+        )
+        torch.testing.assert_close(final_lse.cpu(), expected_lse, atol=1e-5, rtol=1e-5)
+        assert_no_stray_writes(backing, occupied)
+
+
+@pytest.mark.flash_api
+@pytest.mark.flash_attention_forward
+@pytest.mark.skipif(
+    vendor_name == "ascend",
+    reason="Generic mha_fwd requires CUDA device properties and pipeline support",
+)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_splitkv_mha_output_layout(monkeypatch, layout, dtype):
+    """`mha_fwd` selects split-KV on its own; only the device SM count is
+    overridden so that the choice is deterministic. The real split and combine
+    kernels still run.
+    """
+    batch, seq, heads, dim, kv_seq = 2, 17, 3, 96, 256
+    generator = torch.Generator().manual_seed(23)
+    q_cpu = torch.randn((batch, seq, heads, dim), generator=generator).to(dtype)
+    k_cpu = torch.randn((batch, kv_seq, heads, dim), generator=generator).to(dtype)
+    v_cpu = torch.randn((batch, kv_seq, heads, dim), generator=generator).to(dtype)
+    q, k, v = [x.to(flag_gems.device) for x in (q_cpu, k_cpu, v_cpu)]
+    out, backing, occupied = make_output(batch, seq, heads, dim, dtype, layout)
+
+    tasks = batch * heads * triton.cdiv(seq, flash_api.block_m_splitkv_heuristic(dim))
+    get_properties = flash_api.torch_device_fn.get_device_properties
+
+    class DeviceProperties:
+        # Force at least two KV splits without depending on the device SM count.
+        multi_processor_count = tasks * 2
+
+        def __init__(self, properties):
+            self.properties = properties
+
+        def __getattr__(self, name):
+            return getattr(self.properties, name)
+
+    monkeypatch.setattr(
+        flash_api.torch_device_fn,
+        "get_device_properties",
+        lambda *args, **kwargs: DeviceProperties(get_properties(*args, **kwargs)),
+    )
+
+    observed_splits = []
+    original = flash_api.flash_fwd_splitkv_combine_kernel
+
+    class ObserveCombine:
+        def __getitem__(self, grid):
+            def run(**kwargs):
+                observed_splits.append(kwargs["n_splits"])
+                return original[grid](**kwargs)
+
+            return run
+
+    monkeypatch.setattr(flash_api, "flash_fwd_splitkv_combine_kernel", ObserveCombine())
+
+    result = flash_api.mha_fwd(
+        q, k, v, out, None, 0.0, dim**-0.5, False, -1, -1, 0.0, False
+    )
+    assert observed_splits and all(n > 1 for n in observed_splits)
+
+    scores = torch.einsum("bqhd,bkhd->bhqk", q_cpu.float(), k_cpu.float()) * dim**-0.5
+    expected = torch.einsum("bhqk,bkhd->bqhd", scores.softmax(-1), v_cpu.float())
+    torch.testing.assert_close(
+        result[0].cpu(), expected.to(dtype), atol=0.02, rtol=0.02
+    )
+    torch.testing.assert_close(
+        result[4].cpu(), scores.logsumexp(-1), atol=0.02, rtol=0.02
+    )
+    assert result[0].data_ptr() == out.data_ptr()
+    assert_no_stray_writes(backing, occupied)
+
+
+# Ascend attention regressions for UB limits, padded heads, and tail handling.
+
+
+@pytest.mark.flash_attn_varlen_func
+@pytest.mark.flash_attention_backward
+@pytest.mark.flash_api
+@pytest.mark.flash_kernel
+@pytest.mark.skipif(vendor_name != "ascend", reason="Ascend attention regression")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("causal", [False, True])
+@pytest.mark.parametrize("head_dim", [64, 72, 128, 256])
+def test_ascend_varlen_forward_backward_padded_heads(dtype, causal, head_dim):
+    # Irregular lengths exercise both masked and interior KV tiles, plus the
+    # early return for shorter sequences. Four query heads also exercise GQA.
+    lengths = [7, 65, 257]
+    heads, kv_heads = 4, 2
+    torch.manual_seed(17)
+    total = sum(lengths)
+    cpu_inputs = [
+        torch.randn(total, h, head_dim).to(dtype).float().requires_grad_()
+        for h in (heads, kv_heads, kv_heads)
+    ]
+    q, k, v = [x.detach().to(device=flag_gems.device, dtype=dtype) for x in cpu_inputs]
+    cu_cpu = torch.tensor([0, 7, 72, total], dtype=torch.int32)
+    cu = cu_cpu.to(flag_gems.device)
+    out, lse = flag_gems.flash_attn_varlen_func(
+        q,
+        k,
+        v,
+        max(lengths),
+        cu,
+        max(lengths),
+        cu,
+        causal=causal,
+        return_softmax_lse=True,
+    )
+
+    ref_out, ref_lse = [], []
+    for start, end in zip(cu_cpu.tolist()[:-1], cu_cpu.tolist()[1:]):
+        qr, kr, vr = [x[start:end].transpose(0, 1) for x in cpu_inputs]
+        kr = kr.repeat_interleave(heads // kv_heads, dim=0)
+        vr = vr.repeat_interleave(heads // kv_heads, dim=0)
+        scores = qr @ kr.transpose(-1, -2) * head_dim**-0.5
+        if causal:
+            mask = torch.ones(end - start, end - start, dtype=torch.bool).triu(1)
+            scores = scores.masked_fill(mask, float("-inf"))
+        ref_out.append((scores.softmax(-1) @ vr).transpose(0, 1))
+        ref_lse.append(scores.logsumexp(-1))
+    ref_out = torch.cat(ref_out)
+    ref_lse = torch.cat(ref_lse, dim=1)
+    atol, rtol = (0.02, 0.02) if dtype == torch.bfloat16 else (0.003, 0.003)
+    torch.testing.assert_close(out.cpu().float(), ref_out, atol=atol, rtol=rtol)
+    torch.testing.assert_close(lse.cpu(), ref_lse, atol=0.002, rtol=0.002)
+
+    grad_cpu = torch.randn_like(ref_out).to(dtype).float()
+    ref_out.backward(grad_cpu)
+    grads = flag_gems.flash_attention_backward(
+        grad_cpu.to(device=flag_gems.device, dtype=dtype),
+        q,
+        k,
+        v,
+        out,
+        lse.transpose(0, 1).contiguous(),
+        cu,
+        cu,
+        max(lengths),
+        max(lengths),
+        0.0,
+        causal,
+        None,
+        None,
+        scale=head_dim**-0.5,
+    )
+    for name, actual, source in zip(("dq", "dk", "dv"), grads, cpu_inputs):
+        torch.testing.assert_close(
+            actual.cpu().float(),
+            source.grad,
+            atol=atol,
+            rtol=rtol,
+            msg=lambda msg: f"{name}: {msg}",
+        )
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.skipif(vendor_name != "ascend", reason="Ascend attention regression")
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.parametrize("causal", [False, True])
+@pytest.mark.parametrize(
+    "head_dim,seq_len,heads,kv_heads",
+    [
+        (16, 65, 2, 2),
+        (64, 65, 4, 2),
+        (128, 65, 4, 2),
+        (256, 65, 6, 1),
+        (256, 256, 6, 1),
+    ],
+)
+def test_ascend_dense_forward_backward(
+    dtype, causal, head_dim, seq_len, heads, kv_heads
+):
+    # Qwen's local text heads are Q:KV=6:1 with D=256. Tail lengths also
+    # exercise masked dO loads in the backward diagonal and interior tiles.
+    torch.manual_seed(29)
+    cpu_inputs = [
+        torch.randn(1, h, seq_len, head_dim).to(dtype).float().requires_grad_()
+        for h in (heads, kv_heads, kv_heads)
+    ]
+    q, k, v = [x.detach().to(device=flag_gems.device, dtype=dtype) for x in cpu_inputs]
+    out, lse_log2 = flag_gems.scaled_dot_product_attention_forward(
+        q, k, v, is_causal=causal, enable_gqa=True
+    )
+    qr, kr, vr = cpu_inputs
+    kr = kr.repeat_interleave(heads // kv_heads, dim=1)
+    vr = vr.repeat_interleave(heads // kv_heads, dim=1)
+    scores = qr @ kr.transpose(-1, -2) * head_dim**-0.5
+    if causal:
+        mask = torch.ones(seq_len, seq_len, dtype=torch.bool).triu(1)
+        scores = scores.masked_fill(mask, float("-inf"))
+    ref_out = scores.softmax(-1) @ vr
+    atol, rtol = (0.03, 0.03) if dtype == torch.bfloat16 else (0.004, 0.004)
+    torch.testing.assert_close(out.cpu().float(), ref_out, atol=atol, rtol=rtol)
+    torch.testing.assert_close(
+        lse_log2.cpu() * math.log(2), scores.logsumexp(-1), atol=0.002, rtol=0.002
+    )
+    grad_cpu = torch.randn_like(ref_out).to(dtype).float()
+    ref_out.backward(grad_cpu)
+    grads = flag_gems.scaled_dot_product_attention_backward(
+        grad_cpu.to(device=flag_gems.device, dtype=dtype),
+        q,
+        k,
+        v,
+        out,
+        lse_log2,
+        is_causal=causal,
+        enable_gqa=True,
+    )
+    for name, actual, source in zip(("dq", "dk", "dv"), grads, cpu_inputs):
+        torch.testing.assert_close(
+            actual.cpu().float(),
+            source.grad,
+            atol=atol,
+            rtol=rtol,
+            msg=lambda msg: f"{name}: {msg}",
+        )

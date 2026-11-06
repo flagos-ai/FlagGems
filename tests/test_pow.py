@@ -34,7 +34,7 @@ def test_pow_tensor_tensor(shape, dtype):
 
     # Issue #2841
     # Issue #2842
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         inp1 = inp1.uniform_(-1, 1)
         inp2 = inp2.uniform_(-1, 1)
 
@@ -42,8 +42,7 @@ def test_pow_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.pow(ref_inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_tensor_tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -68,8 +67,7 @@ def test_pow_tensor_tensor_(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = ref_inp1.pow_(ref_inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.pow_(inp2)
+    res_out = flag_gems.pow_tensor_tensor_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -95,7 +93,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         if scalar == -0.999:
             inp1 = inp1.uniform_(-1, 1)
         elif scalar == -111.999 and dtype == torch.float16:
@@ -106,8 +104,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
     ref_inp1 = utils.to_reference(inp1, True)
 
     ref_out = torch.pow(ref_inp1, inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_tensor_scalar(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -140,8 +137,7 @@ def test_pow_tensor_scalar_(scalar, shape, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), True)
 
     ref_out = ref_inp1.pow_(inp2)
-    with flag_gems.use_gems():
-        res_out = inp1.pow_(inp2)
+    res_out = flag_gems.pow_tensor_scalar_(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
@@ -159,13 +155,12 @@ def test_pow_scalar(scalar, shape, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = torch.pow(inp1, ref_inp2)
-    with flag_gems.use_gems():
-        res_out = torch.pow(inp1, inp2)
+    res_out = flag_gems.pow_scalar(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)

@@ -7,9 +7,8 @@ from . import accuracy_utils as utils
 
 device = flag_gems.device
 
-# torch._scaled_dot_product_attention_math is exposed as an aten dispatch op;
-# call it via torch.ops.aten so flag_gems.use_gems() can intercept it and to
-# avoid depending on the private torch._... alias across PyTorch versions.
+# Use the aten op for the PyTorch reference path to avoid depending on the
+# private torch._... alias across PyTorch versions.
 sdpa_math = torch.ops.aten._scaled_dot_product_attention_math
 
 
@@ -77,10 +76,9 @@ def test_scaled_dot_product_attention_math(
         ref_q, ref_k, ref_v, attn_mask=ref_mask, is_causal=is_causal, scale=scale
     )
 
-    with flag_gems.use_gems():
-        res_out, res_weights = sdpa_math(
-            q, k, v, attn_mask=attn_mask, is_causal=is_causal, scale=scale
-        )
+    res_out, res_weights = flag_gems._scaled_dot_product_attention_math(
+        q, k, v, attn_mask=attn_mask, is_causal=is_causal, scale=scale
+    )
 
     utils.gems_assert_close(res_out, ref_out, dtype, atol=3e-2)
     utils.gems_assert_close(res_weights, ref_weights, dtype, atol=3e-2)

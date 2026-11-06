@@ -43,12 +43,24 @@ except ImportError:
     GEMS_OP = None
 
 
+def _te_swiglu(inp, fp8_meta_tensor=None):
+    """TE swiglu; kunlunxin TE requires an explicit otype (DType)."""
+    if flag_gems.vendor_name == "kunlunxin":
+        otype = {
+            torch.float16: tex.DType.kFloat16,
+            torch.bfloat16: tex.DType.kBFloat16,
+            torch.float32: tex.DType.kFloat32,
+        }[inp.dtype]
+        return TE_OP(inp, None, otype=otype)
+    return TE_OP(inp, None)
+
+
 @pytest.mark.swiglu
 def test_swiglu():
     if TE_AVAILABLE and TE_OP is not None and GEMS_OP is not None:
         bench = base.TexGluForwardBenchmark(
             op_name="swiglu",
-            torch_op=TE_OP,
+            torch_op=_te_swiglu,
             gems_op=GEMS_OP,
             dtypes=consts.FLOAT_DTYPES,
         )

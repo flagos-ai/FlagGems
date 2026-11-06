@@ -36,6 +36,7 @@ def test_less():
     bench.run()
 
 
+@pytest.mark.less
 @pytest.mark.less_scalar
 def test_less_scalar():
     bench = base.GenericBenchmark(

@@ -26,6 +26,7 @@ import yaml
 
 import flag_gems
 from flag_gems.cli_override import add_override_arguments, apply_overrides_from_args
+from flag_gems.testing.reference import validate_ref_as_candidate_options
 
 BUILTIN_MARKS = {
     "filterwarnings",
@@ -45,6 +46,7 @@ RECORD_LOG = False
 RECORD_JSON = False
 TO_CPU = False
 QUICK_MODE = False
+FIRST_PARAMETER_ONLY = False
 
 device = flag_gems.device
 
@@ -66,6 +68,12 @@ def pytest_addoption(parser):
         "--quick",
         action="store_true",
         help="run tests on quick mode",
+    )
+
+    parser.addoption(
+        "--first-parameter-only",
+        action="store_true",
+        help="Run only the first parameter combination for each test function",
     )
 
     try:
@@ -108,7 +116,9 @@ def pytest_configure(config):
     global RUNTEST_INFO
     global TO_CPU
     global QUICK_MODE
+    global FIRST_PARAMETER_ONLY
 
+    config._ref_as_candidate = validate_ref_as_candidate_options(config)
     TEST_RESULTS.clear()
 
     REGISTERED_MARKS = {
@@ -119,6 +129,7 @@ def pytest_configure(config):
     RECORD_JSON = config.getoption("--record") == "json"
     TO_CPU = config.getoption("--ref") == "cpu"
     QUICK_MODE = config.getoption("--quick") is True
+    FIRST_PARAMETER_ONLY = config.getoption("--first-parameter-only") is True
 
     if RECORD_JSON:
         report_file = config.getoption("--output")
@@ -140,6 +151,16 @@ def pytest_configure(config):
 
     # Apply dynamic operator overrides
     config._override_registry = apply_overrides_from_args(config.option)
+
+    # Print info when first-parameter-only is enabled
+    if FIRST_PARAMETER_ONLY:
+        print(f"\n{'=' * 70}")
+        print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED")
+        print(
+            "   Each test function will run with only its first parameter combination"
+        )
+
+        print(f"{'=' * 70}\n")
 
 
 def pytest_runtest_teardown(item, nextitem):
@@ -233,6 +254,8 @@ def pytest_runtest_logreport(report):
         else:
             result["reason"] = None
 
+    result.update(getattr(report, "reference_candidate", {}))
+
 
 def pytest_terminal_summary(terminalreporter):
     data = TEST_RESULTS
@@ -251,8 +274,160 @@ def pytest_terminal_summary(terminalreporter):
         os.fsync(json_file.fileno())
 
 
+def _item_has_bfloat16_dtype(item):
+    """Check if a parameterized test item includes bfloat16 in its dtype parameter."""
+    if not hasattr(item, "callspec") or item.callspec is None:
+        return False
+
+    for param_name, param_value in item.callspec.params.items():
+        if "dtype" not in param_name.lower():
+            continue
+        # Match torch.bfloat16, string "bfloat16", numpy dtype, etc.
+        if "bfloat16" in str(param_value).lower():
+            return True
+    return False
+
+
+def _profiler_available():
+    import torch
+
+    try:
+        with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]):
+            (torch.ones(1, device=flag_gems.device) * 2).item()
+    except RuntimeError:
+        return False
+    return True
+
+
+def _float64_available():
+    import torch
+
+    return (
+        torch.empty(1, device=flag_gems.device).to(torch.float64).dtype == torch.float64
+    )
+
+
+def _skip_unmeasurable_launch_count_tests(items):
+    """Skip the launch-count cases whose measuring tool is missing here."""
+    for item in items:
+        if item.name == "test_foreach_unary_launch_count_is_independent_of_list_length":
+            if not _profiler_available():
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="torch profiler is unavailable on this platform"
+                    )
+                )
+        elif item.name == "test_foreach_unary_launch_count_scales_with_dtype_groups":
+            if not _float64_available():
+                item.add_marker(
+                    pytest.mark.skip(reason="float64 is not supported on this platform")
+                )
+
+
+def _skip_unavailable_integral_foreach_reference(items):
+    import torch
+
+    availability = {}
+
+    def reference_available(dtype):
+        if dtype not in availability:
+            probe = torch.tensor([1, -1], dtype=dtype, device=flag_gems.device)
+            try:
+                torch._foreach_ceil([probe])
+            except RuntimeError:
+                availability[dtype] = False
+            else:
+                availability[dtype] = True
+        return availability[dtype]
+
+    for item in items:
+        if (
+            getattr(item, "originalname", item.name)
+            != "test_accuracy_foreach_unary_int"
+        ):
+            continue
+        callspec = getattr(item, "callspec", None)
+        if callspec is None:
+            continue
+        if callspec.params.get("name") != "ceil":
+            continue
+        dtype = callspec.params.get("dtype")
+        if dtype is not None and reference_available(dtype):
+            continue
+        item.add_marker(
+            pytest.mark.skip(
+                reason="integral ceil has no device reference on this platform"
+            )
+        )
+
+
 def pytest_collection_modifyitems(session, config, items):
+    """
+    Modify the collected test items before they are executed.
+
+    This hook handles:
+    1. --collect-marks: Collect all test marks and write to a YAML file
+    2. --first-parameter-only: Keep only one parameter combination per test function,
+       preferring the first one that uses bfloat16 dtype.
+    """
+
+    first_parameter_only = config.getoption("--first-parameter-only")
     collect_marks_file = config.getoption("--collect-marks")
+
+    if flag_gems.vendor_name == "kunlunxin":
+        _skip_unmeasurable_launch_count_tests(items)
+        _skip_unavailable_integral_foreach_reference(items)
+
+    if first_parameter_only:
+        # Group items by test function (module + class + function name)
+        function_groups = {}
+
+        for item in items:
+            # For parameterized tests, remove the parameter part from nodeid
+            # Example: "tests/test_add.py::test_add[dtype0-0.001-shape0]" -> "tests/test_add.py::test_add"
+            base_key = item.nodeid
+            if "[" in base_key:
+                base_key = base_key.split("[")[0]
+
+            if base_key not in function_groups:
+                function_groups[base_key] = []
+            function_groups[base_key].append(item)
+
+        # Keep only one item per group, preferring bfloat16
+        kept_items = []
+        bfloat16_count = 0
+        fallback_count = 0
+
+        for base_key, group_items in function_groups.items():
+            # Sort by nodeid to ensure deterministic selection
+            group_items.sort(key=lambda x: x.nodeid)
+
+            # Priority 1: first item that uses bfloat16 dtype
+            selected = None
+            for item in group_items:
+                if _item_has_bfloat16_dtype(item):
+                    selected = item
+                    bfloat16_count += 1
+                    break
+
+            # Priority 2: fallback to the very first item in the group
+            if selected is None:
+                selected = group_items[0]
+                fallback_count += 1
+
+            kept_items.append(selected)
+
+        original_count = len(items)
+        items[:] = kept_items
+
+        print(f"\n{'=' * 70}")
+        print("🔬 FIRST-PARAMETER-ONLY MODE ENABLED (bfloat16 preferred)")
+        print(f"   Original tests: {original_count}")
+        print(f"   Running tests:  {len(kept_items)} (one per test function)")
+        print(f"      ├─ bfloat16 preferred: {bfloat16_count}")
+        print(f"      └─ fallback (no bfloat16): {fallback_count}")
+        print(f"{'=' * 70}\n")
+
     if collect_marks_file:
         report = []
         for item in items:
@@ -281,3 +456,4 @@ def pytest_collection_modifyitems(session, config, items):
 
         # Skip all tests
         items.clear()
+        return

@@ -96,14 +96,14 @@ class RmsNormInt8W8A16Benchmark(RmsNormW8A16Benchmark):
     quantize_weight = staticmethod(_quantize_int8_grouped)
 
 
-@pytest.mark.rms_norm_w8a16_int8
+@pytest.mark.rms_norm_w8a16
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend",
     reason="RMSNorm W8A16 INT8 is only available on Ascend",
 )
 def test_rms_norm_w8a16_int8():
     bench = RmsNormInt8W8A16Benchmark(
-        op_name="rms_norm_w8a16_int8",
+        op_name="rms_norm_w8a16",
         torch_op=_torch_rms_norm_w8a16,
         dtypes=[torch.bfloat16],
     )

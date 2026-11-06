@@ -122,7 +122,7 @@ def _heur(numel):
 
 
 def special_shifted_chebyshev_polynomial_w(x, n):
-    logger.debug("GEMS SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
+    logger.debug("GEMS_THEAD SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_W")
     assert x.dtype in (
         torch.float32,
         torch.float64,
