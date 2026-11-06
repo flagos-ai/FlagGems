@@ -349,6 +349,7 @@ from flag_gems.ops._remove_batch_dim import _remove_batch_dim
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
+from flag_gems.ops._reshape_from_tensor import _reshape_from_tensor
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
 from flag_gems.ops._rowwise_prune import _rowwise_prune
@@ -2032,6 +2033,7 @@ __all__ = [
     "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
+    "_reshape_from_tensor",
     "_resize_output",
     "_resize_output_",
     "_rowwise_prune",
