@@ -8,12 +8,21 @@ import os
 import torch
 import triton
 import triton.language as tl
+from _metax.ops.addmm import (
+    _MAX_SPLIT_K_PROGRAMS_PER_SM,
+    _MIN_K_PER_SPLIT,
+    _SPLIT_K_CANDIDATES,
+    _affine_bench_post_hook,
+    _affine_gemm,
+    _affine_matmul,
+    _affine_vector,
+    _AffineTuner,
+    _prune_affine_vector,
+)
 
 from flag_gems import runtime
 from flag_gems.ops.mul import mul
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import get_device_properties, libentry, libtuner
-from flag_gems.utils.libentry import LibTuner
 
 logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -21,13 +30,6 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
 )
 # Shared-memory requirement of the native 128-element tile.
 _NATIVE128_SHARED_BYTES = 64 * 1024
-
-# Bound split-K partition size, workspace, and concurrent programs.
-_SPLIT_K_CANDIDATES = (1, 2, 4, 8, 16, 32)
-_MIN_K_PER_SPLIT = 256
-_MAX_SPLIT_K_WORKSPACE_BYTES = 32 * 1024**2
-_MAX_SPLIT_K_PROGRAMS_PER_SM = 4
-_MAX_VECTOR_SPLIT_K_PROGRAMS_PER_SM = 8
 
 
 # BATCH, MAX_SPLIT and *_ALIGNMENT are also host tuning/cache inputs.
@@ -61,93 +63,12 @@ _KEY = [
 ]
 
 
-@libentry()
-@triton.jit(do_not_specialize=["alpha", "beta"])
-def _baddbmm_finish_kernel(
-    P,
-    C,
-    Bias,
-    alpha,
-    beta,
-    M: tl.constexpr,
-    N: tl.constexpr,
-    SCB: tl.constexpr,
-    SCM: tl.constexpr,
-    SCN: tl.constexpr,
-    SIB: tl.constexpr,
-    SIM: tl.constexpr,
-    SIN: tl.constexpr,
-    SPLIT_K: tl.constexpr,
-    BETA_ZERO: tl.constexpr,
-    ALPHA_ONE: tl.constexpr,
-    BETA_ONE: tl.constexpr,
-    ZERO: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    batch = tl.program_id(1).to(tl.int64)
-    i = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
-    m, n = i // N, i % N
-    acc = tl.zeros((BLOCK,), tl.float32)
-    if not ZERO:
-        for split in tl.static_range(SPLIT_K):
-            acc += tl.load(P + (batch * SPLIT_K + split) * M * N + i, i < M * N, 0)
-        if not ALPHA_ONE:
-            acc *= alpha
-    if not BETA_ZERO:
-        bias = tl.load(Bias + batch * SIB + m * SIM + n * SIN, i < M * N, 0)
-        bias = bias.to(tl.float32)
-        acc += bias if BETA_ONE else beta * bias
-    tl.store(C + batch * SCB + m * SCM + n * SCN, acc, i < M * N)
-
-
-def _baddbmm_bench_post_hook(args, exception):
-    # Include the selected split-K reduction in candidate timing.
-    if exception is None and args["SPLIT_K"] > 1:
-        _baddbmm_finish_kernel[
-            (triton.cdiv(args["M"] * args["N"], 256), args["BATCH"])
-        ](
-            args["P"],
-            args["C"],
-            args["Bias"],
-            args["alpha"],
-            args["beta"],
-            args["M"],
-            args["N"],
-            args["SCB"],
-            args["SCM"],
-            args["SCN"],
-            args["SIB"],
-            args["SIM"],
-            args["SIN"],
-            args["SPLIT_K"],
-            args["BETA_ZERO"],
-            args["ALPHA_ONE"],
-            args["BETA_ONE"],
-            False,
-            BLOCK=256,
-            num_warps=4,
-        )
-
-
-class _BaddbmmTuner(LibTuner.get("default")):
+class _BaddbmmTuner(_AffineTuner):
     """Keep pruned tiles: AABS mishandles short K and logical transpose."""
 
     def get_key(self, args):
         policy_key = ("confirm16x3",) if args["K"] >= 1024 else ()
         return super().get_key(args) + policy_key
-
-    def _bench(self, *args, config, **meta):
-        options = {**meta, **config.all_kwargs()}
-        values = {**dict(zip(self.arg_names, args)), **options}
-
-        def launch():
-            self.fn.run(*args, **options)
-            self.post_hook(values, exception=None)
-
-        try:
-            return self.do_bench(launch, quantiles=(0.5, 0.2, 0.8))
-        except triton.runtime.errors.OutOfResources:
-            return [float("inf")] * 3
 
     def policy(self, bench_fn, configs, args, kwargs):
         best, timings = super().policy(bench_fn, configs, args, kwargs)
@@ -275,46 +196,13 @@ def _prune_baddbmm_gemm(configs, named_args, **kwargs):
     return result
 
 
-def _prune_baddbmm_vector(configs, named_args, **kwargs):
-    args = {**named_args, **kwargs}
-    n = args["M"] if args["TRANSPOSE"] else args["N"]
-    sk = args["SAK"] if args["TRANSPOSE"] else args["SBK"]
-    sn = args["SAM"] if args["TRANSPOSE"] else args["SBN"]
-    along_k = sk == 1 or sk <= sn or n < 32
-    rows = args["N"] if args["TRANSPOSE"] else args["M"]
-    sm = get_device_properties(args["A"].device.index).multi_processor_count
-    result = []
-    for config in configs:
-        if config.kwargs["BN"] > max(1, triton.next_power_of_2(n)):
-            continue
-        if not (
-            (along_k and config.kwargs["BN"] <= 8)
-            or (not along_k and config.kwargs["BN"] >= 32)
-        ):
-            continue
-        tiles = args["BATCH"] * rows * triton.cdiv(n, config.kwargs["BN"])
-        for split in _SPLIT_K_CANDIDATES:
-            if split > args["MAX_SPLIT"]:
-                break
-            # Include the extra SIMT wave needed by rounded-up K partitions.
-            if split > 1 and (
-                args["K"] < split * _MIN_K_PER_SPLIT
-                or tiles * split > _MAX_VECTOR_SPLIT_K_PROGRAMS_PER_SM * sm
-            ):
-                continue
-            candidate = copy.deepcopy(config)
-            candidate.kwargs["SPLIT_K"] = split
-            result.append(candidate)
-    return result
-
-
 @libentry()
 @libtuner(
     configs=runtime.ops_get_configs("baddbmm_gemm", yaml_path=EXPAND_CONFIG_FILENAME),
     key=_KEY,
     prune_configs_by={"early_config_prune": _prune_baddbmm_gemm},
     policy=_BaddbmmTuner,
-    post_hook=_baddbmm_bench_post_hook,
+    post_hook=_affine_bench_post_hook,
     flagtune_op_name="baddbmm",
     flagtune_expand_op_name="baddbmm_gemm",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -362,149 +250,47 @@ def _baddbmm_gemm_kernel(
     STATIC_K: tl.constexpr = False,
     FLAT_EPILOGUE: tl.constexpr = False,
 ):
-    """One output tile per CTA, optionally with a deterministic K partition."""
-    if SPLIT_K > 1:
-        C = P
-        SCM, SCN = N, 1
-        SCB = SPLIT_K * M * N
     batch = tl.program_id(1).to(tl.int64)
-    A += batch * SAB
-    B += batch * SBB
-    C += batch * SCB
-    Bias += batch * SIB
-    if TRANSPOSE:
-        # Compute C^T = B^T A^T. Swapping the dot operands changes which
-        # operand feeds which MMA port without materializing a transpose.
-        A, B = B, A
-        M, N = N, M
-        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
-        SCM, SCN = SCN, SCM
-        SIM, SIN = SIN, SIM
-    nm, nn = tl.cdiv(M, BM), tl.cdiv(N, BN)
-    split = tl.program_id(0) // (nm * nn) % SPLIT_K
-    pid = tl.program_id(0) % (nm * nn)
-    group = pid // (GROUP_M * nn)
-    first_m = group * GROUP_M
-    group_m = tl.minimum(nm - first_m, GROUP_M)
-    local = pid % (GROUP_M * nn)
-    pm = first_m + local % group_m
-    pn = local // group_m
-    mi = pm * BM + tl.arange(0, BM)
-    ni = pn * BN + tl.arange(0, BN)
-    iterations = tl.cdiv(K, BK * SPLIT_K)
-    ki = tl.arange(0, BK) + split * iterations * BK
-    # Tell the vectorizer each axis is a dense power-of-two tile. The values
-    # do not change; masked tails still compare against M/N/K below.
-    mi = tl.max_contiguous(tl.multiple_of(mi, BM), BM)
-    ni = tl.max_contiguous(tl.multiple_of(ni, BN), BN)
-    ki = tl.max_contiguous(tl.multiple_of(ki, BK), BK)
-    ap = A + mi[:, None].to(tl.int64) * SAM + ki[None, :].to(tl.int64) * SAK
-    bp = B + ki[:, None].to(tl.int64) * SBK + ni[None, :].to(tl.int64) * SBN
-    acc = tl.zeros((BM, BN), tl.float32)
-    if STATIC_K:
-        # Short reductions cannot amortize a pipelined loop's prologue and
-        # epilogue. Keep addresses in int64 here too, including sliced views.
-        for k in tl.static_range((K + BK * SPLIT_K - 1) // (BK * SPLIT_K)):
-            if K % (BK * SPLIT_K) == 0:
-                if M % BM == 0:
-                    ak = tl.load(ap)
-                else:
-                    ak = tl.load(ap, mi[:, None] < M, other=0)
-                if N % BN == 0:
-                    bk = tl.load(bp)
-                else:
-                    bk = tl.load(bp, ni[None, :] < N, other=0)
-            else:
-                ak = tl.load(
-                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
-                )
-                bk = tl.load(
-                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
-                )
-            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
-            ap += BK * SAK
-            bp += BK * SBK
-    else:
-        for k in range(iterations):
-            if K % (BK * SPLIT_K) == 0:
-                if M % BM == 0:
-                    ak = tl.load(ap)
-                else:
-                    ak = tl.load(ap, mi[:, None] < M, other=0)
-                if N % BN == 0:
-                    bk = tl.load(bp)
-                else:
-                    bk = tl.load(bp, ni[None, :] < N, other=0)
-            else:
-                ak = tl.load(
-                    ap, (mi[:, None] < M) & (ki[None, :] + k * BK < K), other=0
-                )
-                bk = tl.load(
-                    bp, (ki[:, None] + k * BK < K) & (ni[None, :] < N), other=0
-                )
-            acc = tl.dot(ak, bk, acc, out_dtype=tl.float32, allow_tf32=False)
-            ap += BK * SAK
-            bp += BK * SBK
-    if FLAT_EPILOGUE:
-        # Materialize the accumulator's output order before the bias arithmetic.
-        i = tl.arange(0, BM * BN)
-        rows = (pm * BM + i // BN).to(tl.int64)
-        cols = (pn * BN + i % BN).to(tl.int64)
-        value = tl.reshape(acc, (BM * BN,))
-        mask = (rows < M) & (cols < N)
-        if SPLIT_K == 1:
-            if not ALPHA_ONE:
-                value *= alpha
-            if not BETA_ZERO:
-                bias = tl.load(Bias + rows * SIM + cols * SIN, mask, 0).to(tl.float32)
-                value += bias if BETA_ONE else beta * bias
-        tl.store(C + split.to(tl.int64) * M * N + rows * SCM + cols * SCN, value, mask)
-    else:
-        cp = (
-            C
-            + split.to(tl.int64) * M * N
-            + mi[:, None].to(tl.int64) * SCM
-            + ni[None, :].to(tl.int64) * SCN
-        )
-        if SPLIT_K == 1:
-            if not ALPHA_ONE:
-                acc *= alpha
-            if not BETA_ZERO:
-                if SIM == 0 and SIN == 0:
-                    bias = tl.full((BM, BN), tl.load(Bias).to(tl.float32), tl.float32)
-                elif SIM == 0:
-                    bias = tl.broadcast_to(
-                        tl.load(
-                            Bias + ni[None, :].to(tl.int64) * SIN, ni[None, :] < N, 0
-                        ).to(tl.float32),
-                        (BM, BN),
-                    )
-                elif SIN == 0:
-                    bias = tl.broadcast_to(
-                        tl.load(
-                            Bias + mi[:, None].to(tl.int64) * SIM, mi[:, None] < M, 0
-                        ).to(tl.float32),
-                        (BM, BN),
-                    )
-                else:
-                    bias = tl.load(
-                        Bias
-                        + mi[:, None].to(tl.int64) * SIM
-                        + ni[None, :].to(tl.int64) * SIN,
-                        (mi[:, None] < M) & (ni[None, :] < N),
-                        other=0,
-                    ).to(tl.float32)
-                acc += bias if BETA_ONE else beta * bias
-        tl.store(cp, acc, (mi[:, None] < M) & (ni[None, :] < N))
+    _affine_gemm(
+        A + batch * SAB,
+        B + batch * SBB,
+        C + batch * SCB,
+        P + batch * SPLIT_K * M * N,
+        Bias + batch * SIB,
+        alpha,
+        beta,
+        SIM,
+        SIN,
+        BETA_ZERO,
+        ALPHA_ONE,
+        BETA_ONE,
+        M,
+        N,
+        K,
+        SAM,
+        SAK,
+        SBK,
+        SBN,
+        SCM,
+        SCN,
+        BM,
+        BN,
+        BK,
+        GROUP_M,
+        SPLIT_K,
+        TRANSPOSE,
+        STATIC_K,
+        FLAT_EPILOGUE,
+    )
 
 
 @libentry()
 @libtuner(
     configs=runtime.ops_get_configs("baddbmm_vector", yaml_path=EXPAND_CONFIG_FILENAME),
     key=_KEY + ["TRANSPOSE"],
-    prune_configs_by={"early_config_prune": _prune_baddbmm_vector},
+    prune_configs_by={"early_config_prune": _prune_affine_vector},
     policy=_BaddbmmTuner,
-    post_hook=_baddbmm_bench_post_hook,
+    post_hook=_affine_bench_post_hook,
     flagtune_op_name="baddbmm",
     flagtune_expand_op_name="baddbmm_vector",
     flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
@@ -548,173 +334,65 @@ def _baddbmm_vector_kernel(
     SPLIT_K: tl.constexpr,
     TRANSPOSE: tl.constexpr,
 ):
-    if SPLIT_K > 1:
-        C = P
-        SCM, SCN = N, 1
-        SCB = SPLIT_K * M * N
     batch = tl.program_id(1).to(tl.int64)
-    A += batch * SAB
-    B += batch * SBB
-    C += batch * SCB
-    Bias += batch * SIB
-    if TRANSPOSE:
-        A, B = B, A
-        M, N = N, M
-        SAM, SAK, SBK, SBN = SBN, SBK, SAK, SAM
-        SCM, SCN = SCN, SCM
-        SIM, SIN = SIN, SIM
-    nn = tl.cdiv(N, BN)
-    pid = tl.program_id(0)
-    split = pid // (M * nn)
-    m = (pid // nn % M).to(tl.int64)
-    n = (pid % nn * BN + tl.arange(0, BN)).to(tl.int64)
-    iterations = tl.cdiv(K, BK * SPLIT_K)
-    k = tl.arange(0, BK).to(tl.int64) + split * iterations * BK
-    acc = tl.zeros((BN, BK), tl.float32)
-    for start in range(iterations):
-        ks = k + start * BK
-        a = tl.load(A + m * SAM + ks * SAK, ks < K, 0).to(tl.float32)
-        b = tl.load(
-            B + n[:, None] * SBN + ks[None, :] * SBK,
-            (n[:, None] < N) & (ks[None, :] < K),
-            0,
-        ).to(tl.float32)
-        acc = tl.fma(a[None, :], b, acc)
-    result = tl.sum(acc, 1)
-    if SPLIT_K == 1:
-        if not ALPHA_ONE:
-            result *= alpha
-        if not BETA_ZERO:
-            bias = tl.load(Bias + m * SIM + n * SIN, n < N, 0).to(tl.float32)
-            result += bias if BETA_ONE else bias * beta
-    tl.store(C + split.to(tl.int64) * M * N + m * SCM + n * SCN, result, n < N)
+    _affine_vector(
+        A + batch * SAB,
+        B + batch * SBB,
+        C + batch * SCB,
+        P + batch * SPLIT_K * M * N,
+        Bias + batch * SIB,
+        alpha,
+        beta,
+        SIM,
+        SIN,
+        BETA_ZERO,
+        ALPHA_ONE,
+        BETA_ONE,
+        M,
+        N,
+        K,
+        SAM,
+        SAK,
+        SBK,
+        SBN,
+        SCM,
+        SCN,
+        BN,
+        BK,
+        SPLIT_K,
+        TRANSPOSE,
+    )
 
 
 def _baddbmm_impl(bias, a, b, beta, alpha, out=None):
-    dtype = a.dtype
-    batch, m, n = a.shape[0], a.shape[-2], b.shape[-1]
+    batch, m, k = a.shape
+    b_batch, bk, n = b.shape
+    assert batch == b_batch and k == bk, "Incompatible dimensions"
     shape = (batch, m, n)
     si = bias.broadcast_to(shape).stride()
+    dtype = a.dtype
+    if a.dtype != b.dtype or bias.dtype != dtype:
+        raise RuntimeError("bias, batch1 and batch2 must have the same dtype")
     if out is None:
         out = torch.empty(shape, device=a.device, dtype=dtype)
+    else:
+        assert (
+            out.shape == shape and out.dtype == dtype
+        ), "Incompatible output shape or dtype for baddbmm.out"
 
-    k = a.shape[-1]
-    if not batch or not m or not n:
-        return out
-    with torch_device_fn.device(a.device):
-        if not k or alpha == 0:
-            _baddbmm_finish_kernel[(triton.cdiv(m * n, 256), batch)](
-                out,
-                out,
-                bias,
-                alpha,
-                beta,
-                m,
-                n,
-                *out.stride(),
-                *si,
-                1,
-                beta == 0,
-                alpha == 1,
-                beta == 1,
-                True,
-                BLOCK=256,
-                num_warps=4,
-            )
-            return out
-
-        small_strided = (
-            max(m, n) <= 32
-            and k <= 256
-            and (1 not in a.stride()[-2:] or 1 not in b.stride()[-2:])
-        )
-        transpose = not small_strided and (n == 1 or (n <= 8 and m > n))
-        rows, cols = (n, m) if transpose else (m, n)
-        vector = small_strided or rows == 1 or (rows <= 8 and cols <= 32)
-        # Split-K partials are FP32 even when the final output is half precision.
-        bytes_per_split = batch * m * n * torch.float32.itemsize
-        split_limit = min(
-            _SPLIT_K_CANDIDATES[-1],
-            max(1, k // _MIN_K_PER_SPLIT),
-            max(1, _MAX_SPLIT_K_WORKSPACE_BYTES // bytes_per_split),
-        )
-        max_split = (
-            1
-            if small_strided
-            else max(split for split in _SPLIT_K_CANDIDATES if split <= split_limit)
-        )
-        partial = torch.empty(
-            (max_split * batch * m * n if max_split > 1 else 0,),
-            dtype=torch.float32,
-            device=a.device,
-        )
-        args = (
-            a,
-            b,
-            out,
-            partial,
-            bias,
-            alpha,
-            beta,
-            batch,
-            a.stride(0),
-            b.stride(0),
-            out.stride(0),
-            *si,
-            beta == 0,
-            alpha == 1,
-            beta == 1,
-            max_split,
-            m,
-            n,
-            k,
-            *a.stride()[-2:],
-            *b.stride()[-2:],
-            *out.stride()[-2:],
-            a.data_ptr() % 16,
-            b.data_ptr() % 16,
-            out.data_ptr() % 16,
-            bias.data_ptr() % 16,
-        )
-        if vector:
-            grid = lambda meta: (
-                rows * triton.cdiv(cols, meta["BN"]) * meta["SPLIT_K"],
-                batch,
-            )
-            _, meta = _baddbmm_vector_kernel[grid](*args, TRANSPOSE=transpose)
-        else:
-
-            def grid(meta):
-                mt, nt = (n, m) if meta["TRANSPOSE"] else (m, n)
-                return (
-                    triton.cdiv(mt, meta["BM"])
-                    * triton.cdiv(nt, meta["BN"])
-                    * meta["SPLIT_K"],
-                    batch,
-                )
-
-            _, meta = _baddbmm_gemm_kernel[grid](*args)
-        if meta["SPLIT_K"] > 1:
-            # All FP32 partials are ready before the reduction and affine epilogue.
-            _baddbmm_finish_kernel[(triton.cdiv(m * n, 256), batch)](
-                partial,
-                out,
-                bias,
-                alpha,
-                beta,
-                m,
-                n,
-                *out.stride(),
-                *si,
-                meta["SPLIT_K"],
-                beta == 0,
-                alpha == 1,
-                beta == 1,
-                False,
-                BLOCK=256,
-                num_warps=4,
-            )
-    return out
+    return _affine_matmul(
+        bias,
+        a,
+        b,
+        beta,
+        alpha,
+        out,
+        shape,
+        k,
+        si,
+        _baddbmm_gemm_kernel,
+        _baddbmm_vector_kernel,
+    )
 
 
 class BaddbmmFunction(torch.autograd.Function):

@@ -266,6 +266,8 @@ def router_gemm(input, weight):
     sxm, sxk = input.stride()
     swn, swk = weight.stride()
     out = torch.empty((m, n), dtype=torch.float32, device=input.device)
+    if m == 0 or n == 0:
+        return out
     bytes_per_split = m * n * out.element_size()
     split_limit = min(
         _SPLIT_K_CANDIDATES[-1],
