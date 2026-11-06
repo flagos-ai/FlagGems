@@ -27,10 +27,12 @@ from .addmm_ import addmm_
 from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
-from .avg_pool3d import avg_pool3d_backward
+from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
+from .batch_norm_with_update_functional import _batch_norm_with_update_functional
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .cholesky_solve_helper import run as _cholesky_solve_helper
+from .column_stack_out import column_stack_out
 from .compute_linear_combination import _compute_linear_combination
 from .concatenate import run as concatenate
 from .constant_pad_nd import constant_pad_nd
@@ -46,8 +48,10 @@ from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
+from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .gru import gru, gru_data
 from .hadamard_transform import hadamard_transform
@@ -145,6 +149,7 @@ _pointwise_dynamic.ModuleGenerator = ModuleGenerator
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_batch_norm_no_update",
+    "_batch_norm_with_update_functional",
     "_cholesky_solve_helper",
     "_compute_linear_combination",
     "_conv_depthwise2d",
@@ -167,6 +172,7 @@ __all__ = [
     "avg_pool3d_backward",
     "cholesky_solve",
     "cholesky_solve_out",
+    "column_stack_out",
     "concatenate",
     "constant_pad_nd",
     "conv1d",
@@ -179,8 +185,10 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
+    "greater_",
     "grid_sampler_3d",
     "gru",
     "gru_data",
