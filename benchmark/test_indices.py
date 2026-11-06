@@ -74,3 +74,29 @@ def test_indices():
         dtypes=[torch.float32],
     )
     bench.run()
+
+
+class UnderscoreIndicesBenchmark(base.Benchmark):
+    """Benchmark ``_indices`` over sparse COO coordinate buffers."""
+
+    def set_shapes(self, shape_file_path=None):
+        # The operator-specific (nnz, size) descriptors replace the inherited
+        # tensor-shape list, which is not valid geometry for sparse inputs.
+        self.shapes = [tuple(entry) for entry in SPARSE_INDICES_BENCH_SHAPES]
+
+    def get_input_iter(self, cur_dtype):
+        for nnz, size in self.shapes:
+            inp = _make_coo(nnz, size, self.device)
+            yield (inp,)
+
+
+@pytest.mark.underscore_indices
+def test__indices():
+    bench = UnderscoreIndicesBenchmark(
+        op_name="_indices",
+        torch_op=torch.ops.aten._indices,
+        # The result is an aliasing metadata view; the values dtype is fixed
+        # by the layout, so the dtype pool only drives input construction.
+        dtypes=[torch.float32],
+    )
+    bench.run()

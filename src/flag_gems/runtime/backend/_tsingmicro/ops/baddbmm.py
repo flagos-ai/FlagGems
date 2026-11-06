@@ -273,6 +273,7 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
+    logger.debug("GEMS_TSINGMICRO BADDBMM")
     return BaddbmmFunction.apply(
         bias.contiguous(),
         A.contiguous(),

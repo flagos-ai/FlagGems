@@ -233,7 +233,8 @@ def mean_dim_kernel(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        # FIX(zml, 2026-10-30): see argmax.py:140 CHANGELOG — use bitwise `&`.
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=0).to(cdtype)
         _sum += a
@@ -243,7 +244,7 @@ def mean_dim_kernel(
 
 
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS_TSINGMICRO MEAN_DIM")
+    logger.debug("GEMS_TSINGMICRO MEAN_DIM_COMM")
     if dtype is None:
         dtype = inp.dtype
         if dtype is torch.bool:
