@@ -87,6 +87,7 @@ from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
 from .cummin import cummin
+from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
@@ -387,6 +388,8 @@ __all__ = [
     "ctc_loss",
     "cummax",
     "cummin",
+    "cumprod",
+    "cumprod_",
     "cumsum",
     "cumsum_out",
     "diag",
