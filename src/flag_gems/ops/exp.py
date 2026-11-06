@@ -18,6 +18,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic
+from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,11 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def exp_func(x):
-    return tl.exp(x.to(tl.float32))
+    if x.dtype == tl.float64:
+        result = tl_extra_shim.exp(x)
+    else:
+        result = tl.exp(x.to(tl.float32))
+    return result
 
 
 def exp(A):
