@@ -48,6 +48,16 @@ def _build_inputs_fn(plan, dtype, device):
     host = torch.quantize_per_tensor(
         torch.randn(shape), scale=scale, zero_point=zero_point, dtype=torch.qint8
     )
+    if flag_gems.vendor_name == "ascend" and str(device).startswith("npu"):
+        target = torch._empty_affine_quantized(
+            host.shape,
+            scale=host.q_scale(),
+            zero_point=host.q_zero_point(),
+            dtype=host.dtype,
+            device=device,
+        )
+        target.untyped_storage().copy_(host.untyped_storage())
+        return (target,)
     return (host if device == "cpu" else host.to(device),)
 
 
@@ -56,7 +66,6 @@ def test_dequantize():
     DequantizeBenchmark(
         op_name="dequantize",
         torch_op=torch.dequantize,
-        gems_op=flag_gems.dequantize,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.qint8],
