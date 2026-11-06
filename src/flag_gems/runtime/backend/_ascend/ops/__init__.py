@@ -28,6 +28,7 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arccos import arccos
+from .arctanh import arctanh
 from .arctanh_out import arctanh_out
 from .argmax import argmax
 from .argmin import argmin
@@ -265,6 +266,7 @@ __all__ = [
     "arange",
     "arange_start",
     "arccos",
+    "arctanh",
     "arctanh_out",
     "argmax",
     "argmin",
