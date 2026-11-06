@@ -344,6 +344,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
+from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -1257,6 +1258,7 @@ __all__ = [
     "conv_tbc_out",
     "conv_transpose1d",
     "conv_transpose2d",
+    "conv_transpose3d",
     "copy",
     "copy_",
     "copysign",
