@@ -28,6 +28,7 @@ from .arccos_ import arccos_
 from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool1d import avg_pool1d
+from .avg_pool3d import avg_pool3d_backward
 from .avg_pool3d_backward import avg_pool3d_backward
 from .batch_norm_no_update import run as _batch_norm_no_update
 from .batch_norm_with_update_functional import _batch_norm_with_update_functional

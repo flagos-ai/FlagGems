@@ -178,12 +178,16 @@ def _chol_blocked_kernel(
             P = tl.zeros((BM, BK), dtype=A.dtype.element_ty)
             for c in range(0, BK):
                 tcol = tl.sum(tl.where(cc[None, :] == c, T, 0.0), axis=1)
-                lrow = tl.load(lp + (jb + c) * sl_r + (jb + cc), mask=cc < c, other=0.0)
+                lrow = tl.load(
+                    lp + (jb + c) * sl_r + (jb + cc), mask=cc < c, other=0.0
+                )
                 acc = tl.sum(P * lrow[None, :], axis=1)
                 dg = tl.load(lp + (jb + c) * sl_r + (jb + c))
                 pcol = (tcol - acc) / dg
                 P = tl.where(cc[None, :] == c, pcol[:, None], P)
-            tl.store(lp + rows[:, None] * sl_r + (jb + cc)[None, :], P, mask=pmask)
+            tl.store(
+                lp + rows[:, None] * sl_r + (jb + cc)[None, :], P, mask=pmask
+            )
             tl.debug_barrier()
 
 

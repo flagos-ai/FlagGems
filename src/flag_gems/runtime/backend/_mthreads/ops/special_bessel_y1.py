@@ -37,9 +37,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.special_bessel_y1 import (
-    special_bessel_y1 as default_special_bessel_y1,
-)
+from flag_gems.ops.special_bessel_y1 import special_bessel_y1 as default_special_bessel_y1
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(
@@ -224,20 +222,20 @@ def _y1_mixed(x):
     configs=[
         triton.Config({"BLOCK": b}, num_warps=w)
         for b, w in (
-            (128, 1),  # 4 elements/thread, warp-local max only (no barrier)
-            (256, 1),  # 8, no barrier
-            (256, 2),  # 4
-            (512, 1),  # 16, no barrier
-            (512, 2),  # 8
-            (512, 4),  # 4
-            (1024, 8),  # 4
-            (1024, 4),  # 8
-            (1024, 2),  # 16
-            (2048, 8),  # 8
-            (2048, 4),  # 16
-            (4096, 8),  # 16
-            (4096, 4),  # 32
-            (8192, 8),  # 32
+            (128, 1),    # 4 elements/thread, warp-local max only (no barrier)
+            (256, 1),    # 8, no barrier
+            (256, 2),    # 4
+            (512, 1),    # 16, no barrier
+            (512, 2),    # 8
+            (512, 4),    # 4
+            (1024, 8),   # 4
+            (1024, 4),   # 8
+            (1024, 2),   # 16
+            (2048, 8),   # 8
+            (2048, 4),   # 16
+            (4096, 8),   # 16
+            (4096, 4),   # 32
+            (8192, 8),   # 32
         )
     ],
     key=["n"],
@@ -245,9 +243,7 @@ def _y1_mixed(x):
 @triton.jit
 def _bessel_y1_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-    offs = tl.max_contiguous(
-        tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK
-    )
+    offs = tl.max_contiguous(tl.multiple_of(pid * BLOCK + tl.arange(0, BLOCK), BLOCK), BLOCK)
     mask = offs < n
     x = tl.load(x_ptr + offs, mask=mask, other=0.0, eviction_policy="evict_first")
     # randn-like tiles never reach 8, so the asymptotic branch is dead work:
