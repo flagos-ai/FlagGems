@@ -46,6 +46,7 @@ from .clamp_max_ import clamp_max_
 from .concat import concat
 from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
+from .cross import cross
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
 from .cummin import cummin
@@ -252,6 +253,7 @@ __all__ = [
     "concat",
     "cosh_",
     "count_nonzero",
+    "cross",
     "cudnn_convolution",
     "cummax",
     "cummin",
