@@ -35,12 +35,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
 from triton.runtime import driver as _triton_driver
-
-try:
-    from triton import knobs
-except ImportError:
-    knobs = None
 
 from flag_gems.runtime import device as _runtime_device
 
@@ -1399,19 +1395,6 @@ def _bind_executor_launcher(
     return replay
 
 
-def _can_replay_launch() -> bool:
-    """Only bypass dispatch when both launch hook chains are known to be empty.
-
-    Older Triton uses CompiledKernel hooks instead of knobs.runtime; vendor
-    launchers may differ too. Leave hook handling to standard JIT dispatch on
-    those builds rather than guessing their hook or launcher ABI.
-    """
-    runtime = getattr(knobs, "runtime", None)
-    enter = getattr(runtime, "launch_enter_hook", None)
-    exit = getattr(runtime, "launch_exit_hook", None)
-    return getattr(enter, "calls", None) == [] and getattr(exit, "calls", None) == []
-
-
 def _launch_executor_kernel(
     kernel: Callable,
     grid: Tuple[int, int],
@@ -1422,7 +1405,6 @@ def _launch_executor_kernel(
     dt_out: Any,
     block: int,
 ) -> None:
-    replay_safe = _can_replay_launch()
     last = _LAST_UNARY_REPLAY[0]
     if (
         last is not None
@@ -1434,7 +1416,8 @@ def _launch_executor_kernel(
         and last[5] is dt_out
         and last[6] == block
         and last[7] == grid
-        and replay_safe
+        and not knobs.runtime.launch_enter_hook.calls
+        and not knobs.runtime.launch_exit_hook.calls
     ):
         try:
             last[8]()
@@ -1458,12 +1441,17 @@ def _launch_executor_kernel(
         not (meta.data_ptr() & 15),
     )
     entry = _LAUNCH_CACHE.get(key)
+    runtime = knobs.runtime
     # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``:
     # the chain exists whether or not anyone subscribed.  ``.calls`` is the
     # list of registered callbacks, so an empty list is the real "no hooks"
     # state.  Proton and other instrumentation add to it, and a replay would
     # then skip their notifications.
-    if entry is not None and replay_safe:
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
         # Binding is inside the ``try`` as well: a Triton build whose launcher
         # has no ``launch_pdl`` or a different raw signature raises here, and
         # that must fall back to dispatch like any other unusable entry rather
@@ -2551,7 +2539,7 @@ def _launch_binary_kernel(
     # which is still read per call so a launch issued under a different
     # ``torch.cuda.stream`` lands on the stream current at launch time.
     last = _LAST_BINARY_REPLAY[0]
-    replay_safe = _can_replay_launch()
+    runtime = knobs.runtime
     if (
         last is not None
         and last[0] is meta
@@ -2565,7 +2553,8 @@ def _launch_binary_kernel(
         and last[8] is b_scalar
         and last[9] == block
         and last[10] == grid
-        and replay_safe
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
     ):
         try:
             last[11]()
@@ -2596,7 +2585,11 @@ def _launch_binary_kernel(
     # ``.calls`` is the list of registered callbacks, so an empty list is the
     # real "no hooks" state.  Proton and other instrumentation add to it, and a
     # replay would then skip their notifications.
-    if entry is not None and replay_safe:
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
         launch = entry[0]
         packed = entry[1]
         pmeta = entry[2]
@@ -3041,7 +3034,12 @@ def _launch_scalar_kernel(
         not (scalar_buf.data_ptr() & 15),
     )
     entry = _SCALAR_LAUNCH_CACHE.get(key)
-    if entry is not None and _can_replay_launch():
+    runtime = knobs.runtime
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
         try:
             entry[0](
                 grid[0],
@@ -3524,7 +3522,7 @@ def _launch_ternary_kernel(
     miss, an installed launch hook, or a launcher that raises all take
     Triton's normal dispatch.
     """
-    replay_safe = _can_replay_launch()
+    runtime = knobs.runtime
     last = _TERNARY_LAST
     key = None
     if (
@@ -3534,7 +3532,8 @@ def _launch_ternary_kernel(
         and last[2] is fn
         and last[3] is kernel
         and last[4] == (grid, nt, dt_in, dt_out, s_dt, by_value, block, swap)
-        and replay_safe
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
     ):
         entry = (last[5], last[6], last[7])
     else:
@@ -3552,7 +3551,9 @@ def _launch_ternary_kernel(
             not (meta.data_ptr() & 15),
         )
         entry = _TERNARY_LAUNCH_CACHE.get(key)
-        if not replay_safe:
+        if entry is not None and (
+            runtime.launch_enter_hook.calls or runtime.launch_exit_hook.calls
+        ):
             entry = None
     if entry is not None:
         try:

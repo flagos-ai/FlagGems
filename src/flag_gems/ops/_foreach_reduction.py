@@ -32,13 +32,13 @@ from typing import Any, Dict, List, Optional, Sequence
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
 from triton.runtime import driver as _triton_driver
 
 from flag_gems.ops.zero import _launch_zero_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.foreach import (
-    _can_replay_launch,
     _device_meta,
     _pick_block,
     check_tensor_list,
@@ -163,8 +163,15 @@ def _launch(
         tuple(int(t.data_ptr()) & 15 for t in pointers),
     )
     entry = _LAUNCH_CACHE.get(key)
-    # Unknown hook interfaces must use standard dispatch, even with a warm cache.
-    if entry is not None and _can_replay_launch():
+    runtime = knobs.runtime
+    # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``:
+    # the chain exists whether or not anyone subscribed.  ``.calls`` is the list
+    # of registered callbacks, so an empty list is the real "no hooks" state.
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
         try:
             entry[0](
                 grid[0],
