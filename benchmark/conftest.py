@@ -36,15 +36,6 @@ from .reference import reference_report, validate_reference_options
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
-if vendor_name == "mthreads":
-    # Enable MUSA graph APIs without replacing Triton's constexpr helper.
-    _triton_next_power_of_2 = triton.next_power_of_2
-    try:
-        importlib.import_module("torchada")
-    finally:
-        triton.next_power_of_2 = _triton_next_power_of_2
-    del _triton_next_power_of_2
-
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None
@@ -513,6 +504,22 @@ def pytest_unconfigure(config):
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
+    elif (
+        vendor_name == "mthreads"
+        and Config.mode == consts.BenchMode.CUDAGRAPH
+        and not (
+            Config.list_cases
+            or Config.preflight_only
+            or Config.reference_only
+            or Config.profile_only
+        )
+    ):
+        # Graph benchmarks need CUDA-to-MUSA aliases, but collection does not.
+        next_power_of_2 = triton.next_power_of_2
+        try:
+            importlib.import_module("torchada")
+        finally:
+            triton.next_power_of_2 = next_power_of_2
 
 
 @pytest.fixture(scope="function", autouse=True)
