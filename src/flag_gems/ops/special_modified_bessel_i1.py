@@ -20,6 +20,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,7 +78,9 @@ def special_modified_bessel_i1_kernel(
 
 
 def _launch_special_modified_bessel_i1(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Tensors must be CUDA tensors"
+    assert (
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Tensors must be on the {device.name} device"
     assert (
         x.numel() == out.numel()
     ), "Input and output must have the same number of elements"
