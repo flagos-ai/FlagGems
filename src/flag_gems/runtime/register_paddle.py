@@ -1,3 +1,6 @@
+import sys
+
+
 class RegisterPaddle:
     def __init__(self, config, user_unused_ops_list=None):
         """
@@ -39,6 +42,20 @@ class RegisterPaddle:
             original_op = getattr(paddle, op_name)
             self.original_ops[op_name] = (paddle, op_name, original_op)
             setattr(paddle, op_name, custom_op)
+            # The torch proxy copies paddle's namespace when `import torch` runs,
+            # so torch.<op> still holds the original function; patch it as well.
+            torch_proxy = sys.modules.get("torch")
+            if (
+                torch_proxy is not None
+                and torch_proxy is not paddle
+                and torch_proxy.__dict__.get(op_name) is original_op
+            ):
+                self.original_ops[f"torch.{op_name}"] = (
+                    torch_proxy,
+                    op_name,
+                    original_op,
+                )
+                setattr(torch_proxy, op_name, custom_op)
 
         self.all_ops.append(op_name)
 

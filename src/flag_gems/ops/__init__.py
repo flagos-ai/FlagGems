@@ -489,13 +489,37 @@ from flag_gems.ops.diag import diag_paddle as diag
 from flag_gems.ops.dot import dot_paddle as dot
 from flag_gems.ops.embedding import  embedding_paddle as embedding
 from flag_gems.ops.max import max_paddle as max
-from flag_gems.ops.ones import ones_paddle as ones 
+from flag_gems.ops.ones import ones_paddle as ones
+from flag_gems.ops.ones import ones_paddle_api as ones_api
 from flag_gems.ops.zeros import zeros_paddle as zeros
+from flag_gems.ops.zeros import zeros_paddle_api as zeros_api
 from flag_gems.ops.zeros_like import zeros_like_paddle as zeros_like
+from flag_gems.ops.zeros_like import zeros_like_paddle_api as zeros_like_api
 from flag_gems.ops.topk import topk_paddle as topk
 from flag_gems.ops.min import min_paddle as min
 from flag_gems.ops.mv import mv_paddle as mv
 from flag_gems.ops.index_select import index_select_paddle as index_select
+
+# These entries launch their Triton kernels straight from Python, which Paddle's
+# autograd cannot see; wrap them in a PyLayer so the backward pass goes through.
+# softmax and embedding are PyLayers already; argmax, all and the constructors
+# have no gradient.
+from flag_gems.utils import paddle_autograd as _ag
+
+sum = _ag.with_autograd(sum, _ag.sum_grad)
+mean = _ag.with_autograd(mean, _ag.mean_grad)
+amax = _ag.with_autograd(amax, _ag.amax_grad)
+max = _ag.with_autograd(max, _ag.max_min_grad)
+min = _ag.with_autograd(min, _ag.max_min_grad)
+triu = _ag.with_autograd(triu, _ag.triu_grad)
+index_select = _ag.with_autograd(index_select, _ag.index_select_grad)
+topk = _ag.with_autograd(topk, _ag.topk_grad)
+bmm = _ag.with_autograd(bmm, _ag.bmm_grad)
+mv = _ag.with_autograd(mv, _ag.mv_grad)
+addmm = _ag.with_autograd(addmm, _ag.addmm_grad)
+dot = _ag.with_autograd(dot, _ag.dot_grad)
+diag = _ag.with_autograd(diag, _ag.diag_grad)
+del _ag
 
 
 __all__ = [
@@ -514,6 +538,9 @@ __all__ = [
     "ones",
     "zeros",
     "zeros_like",
+    "ones_api",
+    "zeros_api",
+    "zeros_like_api",
     "topk",
     "max",
     "min",

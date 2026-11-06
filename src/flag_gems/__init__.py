@@ -384,7 +384,12 @@ def enable(
             ("_C_ops.max", max),
             ("_C_ops.min", min),
             ("_C_ops.mv", mv),
-            ("_C_ops.index_select", index_select)
+            ("_C_ops.index_select", index_select),
+            # paddle.ones / zeros / zeros_like reach _C_ops.full / full_like instead of
+            # the entries above, so their public functions are taken over as well.
+            ("ones", ones_api),
+            ("zeros", zeros_api),
+            ("zeros_like", zeros_like_api),
         )
         current_work_registrar = registrar(
             op_config,

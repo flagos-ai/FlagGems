@@ -17,16 +17,29 @@ from benchmark.performance_utils import (
 def generic_constructor_input_fn(shape, dtype, device):
     yield {"size": shape, "dtype": dtype, "device": device},
 
+# use_gems() takes these three over by replacing torch.ones / zeros / zeros_like
+# themselves (the paddle functions never reach _C_ops.ones and friends). Holding
+# the function objects here would keep calling the originals inside use_gems(), so
+# look the name up at call time, the way the other paddle benchmarks reach _C_ops.
+def ones(*args, **kwargs):
+    return torch.ones(*args, **kwargs)
+
+
+def zeros(*args, **kwargs):
+    return torch.zeros(*args, **kwargs)
+
+
+def zeros_like(*args, **kwargs):
+    return torch.zeros_like(*args, **kwargs)
+
+
 # Define operations and their corresponding input functions
 tensor_constructor_operations = [
     # generic tensor constructor
-    
-    ("ones", torch.ones, generic_constructor_input_fn),
-    ("zeros", torch.zeros, generic_constructor_input_fn),
+    ("ones", ones, generic_constructor_input_fn),
+    ("zeros", zeros, generic_constructor_input_fn),
     # generic tensor-like constructor
-    ("zeros_like", torch.zeros_like, unary_input_fn),
-    
-
+    ("zeros_like", zeros_like, unary_input_fn),
 ]
 
 
