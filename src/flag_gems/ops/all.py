@@ -101,6 +101,12 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 def all(inp):
     logger.debug("GEMS ALL")
+    # all_kernel_1 walks flat offsets over the full element count, so a
+    # non-contiguous view would reduce the wrong elements instead of the view's
+    # own. The dim/dims variants already normalize through `dim_compress`.
+    # See Issue #6961.
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     n_elements = inp.numel()
 
     if n_elements == 0:

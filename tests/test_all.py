@@ -93,3 +93,29 @@ def test_all_dims(shape, dim, keepdim, dtype, kind):
     res_out = flag_gems.all_dims(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.all
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bool])
+@pytest.mark.parametrize("kind", ["column", "strided"])
+def test_all_non_contiguous_view(dtype, kind):
+    """The full reduction must reduce the view's own elements (Issue #6961).
+
+    `all` used to walk flat offsets over `numel`, which for a strided view reads
+    memory the view does not own.
+    """
+    base = torch.zeros(2, 64, dtype=dtype, device=flag_gems.device)
+    if kind == "column":
+        base[:, -1] = 1
+        view = base[:, -1]
+        ref_view = utils.to_reference(base)[:, -1]
+    else:
+        base[:, ::2] = 1
+        view = base[:, ::2]
+        ref_view = utils.to_reference(base)[:, ::2]
+    assert not view.is_contiguous()
+
+    res_out = flag_gems.all(view)
+    ref_out = torch.all(ref_view)
+
+    utils.gems_assert_equal(res_out, ref_out)
