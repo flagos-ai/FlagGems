@@ -20,13 +20,18 @@ from . import base, consts
 
 # TODO(Qiming): Extract this to a base class
 class NormBenchmark(base.GenericBenchmark):
+    # TODO: add new metric
+
     def set_more_shapes(self):
         return [
+            # 3D shapes represented as [batch_size, channels, hidden_size]
             (16, 16, 64),
             (16, 16, 1024),
             (16, 16, 4098),
+            # 4D shapes represented as [batch_size, channels, H, W]
             (1, 8, 4, 4),
             (16, 8, 128, 128),
+            # Medium normalized dimensions across representative row counts
             (256, 512),
             (4096, 256),
             (4096, 512),
@@ -35,16 +40,14 @@ class NormBenchmark(base.GenericBenchmark):
         ]
 
 
-# The production call feeds a [65536, 1, 1152] activation with a (1152,)
-# normalized shape at eps 1e-6; every other core shape drops the trailing
-# dimension and keeps the default eps.
-REAL_CALL_OVERRIDES = {
+# Other shapes normalize all dimensions after the first with eps 1e-5.
+NORMALIZATION_OVERRIDES = {
     (65536, 1, 1152): ((1152,), 1e-6),
 }
 
 
 def input_fn(shape, dtype, device):
-    normalized_shape, eps = REAL_CALL_OVERRIDES.get(shape, (shape[1:], 1e-5))
+    normalized_shape, eps = NORMALIZATION_OVERRIDES.get(shape, (shape[1:], 1e-5))
     inp = torch.randn(shape, dtype=dtype, device=device)
     weight = torch.randn(normalized_shape, dtype=dtype, device=device)
     bias = torch.randn(normalized_shape, dtype=dtype, device=device)

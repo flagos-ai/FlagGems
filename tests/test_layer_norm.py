@@ -42,23 +42,58 @@ else:
 LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
 
 
-@pytest.mark.native_layer_norm
-# Cover one-, two-, and three-dimensional normalized suffixes of equal size.
-@pytest.mark.parametrize(
-    "shape, normalized_shape",
-    [((4, 64), (64,)), ((4, 8, 8), (8, 8)), ((4, 4, 4, 4), (4, 4, 4))],
+NATIVE_LAYER_NORM_CASES = (
+    [
+        (shape, normalized_shape, 1e-5, dtype, affine, affine)
+        for shape, normalized_shape in [
+            ((4, 64), (64,)),
+            ((4, 8, 8), (8, 8)),
+            ((4, 4, 4, 4), (4, 4, 4)),
+        ]
+        for dtype in utils.FLOAT_DTYPES
+        for affine in (True, False)
+    ]
+    + [
+        (shape, normalized_shape, 1e-5, dtype, has_weight, has_bias)
+        for shape, normalized_shape in [
+            ((4096, 1152), (1152,)),
+            ((4097, 3, 384), (3, 384)),
+        ]
+        for dtype in utils.FLOAT_DTYPES
+        for has_weight, has_bias in [
+            (True, True),
+            (True, False),
+            (False, True),
+            (False, False),
+        ]
+    ]
+    + [((65536, 1, 1152), (1152,), 1e-6, dtype, True, True) for dtype in FLOAT_DTYPES]
+    + [
+        ((65536, 2049), (2049,), 1e-5, torch.bfloat16, True, True),
+    ]
 )
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize("affine", [True, False])
-def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
+
+
+@pytest.mark.native_layer_norm
+@pytest.mark.parametrize(
+    "shape, normalized_shape, eps, dtype, has_weight, has_bias",
+    NATIVE_LAYER_NORM_CASES,
+)
+def test_native_layer_norm(
+    shape, normalized_shape, eps, dtype, has_weight, has_bias, caplog
+):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = (
         torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-        if affine
+        if has_weight
         else None
     )
-    bias = torch.randn_like(weight) if affine else None
-    eps = 1e-5
+    bias = (
+        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        if has_bias
+        else None
+    )
 
     ref_result = torch.ops.aten.native_layer_norm.default(
         utils.to_reference(inp, True),
@@ -153,86 +188,6 @@ def test_native_layer_norm_statistics(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_mean, ref_mean, dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_rstd, ref_rstd, dtype, reduce_dim=reduce_dim)
-
-
-@pytest.mark.layer_norm
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_layer_norm_real_shape(dtype):
-    torch.manual_seed(0)
-    normalized_shape = (1152,)
-    inp = torch.randn((65536, 1, 1152), dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-    bias = torch.randn_like(weight)
-    reference = torch.ops.aten.native_layer_norm.default(
-        utils.to_reference(inp, True),
-        normalized_shape,
-        utils.to_reference(weight, True),
-        utils.to_reference(bias, True),
-        1e-6,
-    )
-    actual = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, 1e-6)
-    utils.gems_assert_close(actual[0], reference[0], dtype)
-    for output, expected in zip(actual[1:], reference[1:]):
-        utils.gems_assert_close(output, expected, dtype, reduce_dim=1152)
-
-
-@pytest.mark.layer_norm
-@pytest.mark.parametrize("dtype", [torch.bfloat16])
-def test_layer_norm_large_row_grid(dtype):
-    # 65536 rows exceed the 65535 core limit; columns above 2048 keep the
-    # single-row kernel, so this launch depends on the block mapping.
-    torch.manual_seed(0)
-    shape = (65536, 2049)
-    normalized_shape = shape[1:]
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-    bias = torch.randn_like(weight)
-    reference = torch.ops.aten.native_layer_norm.default(
-        utils.to_reference(inp, True),
-        normalized_shape,
-        utils.to_reference(weight, True),
-        utils.to_reference(bias, True),
-        1e-5,
-    )
-    actual = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, 1e-5)
-    utils.gems_assert_close(actual[0], reference[0], dtype)
-
-
-@pytest.mark.native_layer_norm
-@pytest.mark.parametrize(
-    "shape, normalized_shape",
-    [((4096, 1152), (1152,)), ((4097, 3, 384), (3, 384))],
-)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-@pytest.mark.parametrize(
-    "has_weight, has_bias", [(True, True), (True, False), (False, True), (False, False)]
-)
-def test_native_layer_norm_compact(
-    shape, normalized_shape, dtype, has_weight, has_bias
-):
-    torch.manual_seed(0)
-    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    weight = (
-        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-        if has_weight
-        else None
-    )
-    bias = (
-        torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
-        if has_bias
-        else None
-    )
-    reference = torch.ops.aten.native_layer_norm.default(
-        utils.to_reference(inp, True),
-        normalized_shape,
-        utils.to_reference(weight, True),
-        utils.to_reference(bias, True),
-        1e-5,
-    )
-    actual = flag_gems.native_layer_norm(inp, normalized_shape, weight, bias, 1e-5)
-    utils.gems_assert_close(actual[0], reference[0], dtype)
-    for output, expected in zip(actual[1:], reference[1:]):
-        utils.gems_assert_close(output, expected, dtype, reduce_dim=1152)
 
 
 @pytest.mark.layer_norm_backward
