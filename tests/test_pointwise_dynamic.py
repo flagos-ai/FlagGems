@@ -1115,7 +1115,12 @@ def test_complex_elementwise_mixed_real_complex(dtype):
     b = torch.randn(shape, dtype=real_dtype, device=flag_gems.device)
     alpha = 1.0
     out = add_func(a, b, alpha)
-    torch.testing.assert_close(out, a + b * alpha)
+    # Build the reference on CPU: native complex + real addition is not correct
+    # on every backend (MUSA drops the real operand), and comparing complex128
+    # on the device also trips a double-precision reduction that some backends
+    # do not implement. See issue #2837.
+    expected = a.cpu() + b.cpu() * alpha
+    torch.testing.assert_close(out.cpu(), expected)
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)

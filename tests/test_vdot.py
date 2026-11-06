@@ -75,9 +75,12 @@ def test_vdot(M, is_conj, dtype, stride):
     ref_inp2 = utils.to_reference(inp2, True)
 
     if flag_gems.vendor_name == "mthreads":
+        # The inputs (and therefore the reference computed from them) are built
+        # on CPU for mthreads, so bring the device result back to CPU as well --
+        # otherwise gems_assert_close compares across devices.
         res_out = flag_gems.vdot(
             inp1.to(device=flag_gems.device), inp2.to(device=flag_gems.device)
-        )
+        ).cpu()
     else:
         res_out = flag_gems.vdot(inp1, inp2)
     ref_out = torch.vdot(ref_inp1, ref_inp2)
