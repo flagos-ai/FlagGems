@@ -44,6 +44,7 @@ from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .clamp_max_ import clamp_max_
 from .concat import concat
+from .concatenate import concatenate
 from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
 from .cross import cross
@@ -251,6 +252,7 @@ __all__ = [
     "cholesky_solve_out",
     "clamp_max_",
     "concat",
+    "concatenate",
     "cosh_",
     "count_nonzero",
     "cross",
