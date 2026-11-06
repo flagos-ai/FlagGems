@@ -17,6 +17,7 @@ from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .cross_attention import cross_attention
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -104,6 +105,7 @@ from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
+from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -173,6 +175,7 @@ __all__ = [
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cross_attention",
     "erfinv",
     "erfinv_",
     "exponential_",
@@ -271,6 +274,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
+    "router_gemm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
