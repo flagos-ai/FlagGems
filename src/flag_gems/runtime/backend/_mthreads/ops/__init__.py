@@ -17,6 +17,7 @@ from torch_musa import current_device, get_device_capability
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
@@ -174,6 +175,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
+    "_compute_linear_combination",
     "_conj",
     "_embedding_bag",
     "_embedding_bag_backward",
