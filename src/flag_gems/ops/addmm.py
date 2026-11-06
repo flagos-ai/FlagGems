@@ -41,7 +41,19 @@ def _accumulate_dot(
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("addmm"),
+    # C550 requires a legal MMA tile even for M=1/2/4. A single per-op
+    # configuration avoids the tuner's shrinking path; no math is changed.
+    configs=(
+        [
+            triton.Config(
+                {"BLOCK_SIZE_M": 32, "BLOCK_SIZE_N": 64, "BLOCK_SIZE_K": 32},
+                num_warps=4,
+                num_stages=1,
+            )
+        ]
+        if runtime.device.vendor_name == "metax"
+        else runtime.get_tuned_config("addmm")
+    ),
     key=["M", "N", "K", "stride_am", "stride_bk"],
     strategy=["align32", "align32", "align32", "align32", "align32"],
     warmup=5,

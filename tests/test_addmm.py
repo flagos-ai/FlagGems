@@ -441,3 +441,30 @@ def test_addmm_dtype_out_beta_zero_ignores_bias():
         ref_out = ref_out.to(flag_gems.device)
     assert torch.isfinite(out).all()
     utils.gems_assert_close(out, ref_out, torch.float32, reduce_dim=K)
+
+
+@pytest.mark.addmm
+@pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="C550 launch legality")
+@pytest.mark.parametrize("rows", [1, 2, 4, 17])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("transpose_b", [False, True])
+@pytest.mark.parametrize("n,k", [(96, 128), (896, 3584)])
+def test_metax_addmm_decode_tile_compiles(rows, dtype, transpose_b, n, k):
+    """Autotuner shrinking must not produce an illegal M=1/2/4 MMA tile."""
+    torch.manual_seed(23)
+    a = torch.randn(rows, k, device=flag_gems.device, dtype=dtype)
+    b = torch.randn(
+        (n, k) if transpose_b else (k, n), device=flag_gems.device, dtype=dtype
+    )
+    if transpose_b:
+        b = b.t()
+    bias = torch.randn(n, device=flag_gems.device, dtype=dtype)
+    reference = torch.addmm(
+        utils.to_reference(bias, True),
+        utils.to_reference(a, True),
+        utils.to_reference(b, True),
+        alpha=0.5,
+        beta=2.0,
+    )
+    actual = flag_gems.addmm(bias, a, b, alpha=0.5, beta=2.0)
+    utils.gems_assert_close(actual, reference, dtype, reduce_dim=k)
