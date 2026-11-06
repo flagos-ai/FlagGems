@@ -202,6 +202,7 @@ from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
+from .adaptive_avg_pool1d import adaptive_avg_pool1d
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_avg_pool3d_backward import (  # noqa: F401
@@ -1098,6 +1099,7 @@ __all__ = [
     "absolute_",
     "acos",
     "acos_",
+    "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
     "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
@@ -2012,6 +2014,13 @@ def _patch_adaptive_max_pool3d_aten():
     recomputing them.  The registration is process-global (the Library handle
     is held in this module); the ``use_gems()`` registrar re-registers the
     backward for the same key, so there is no conflict.
+
+    The native CUDA ``adaptive_max_pool3d_backward`` on this stack also
+    returns all-zero gradients (the XDNN wrapper), so the backward is
+    registered for the CUDA dispatch key as well: every
+    ``torch.ops.aten.adaptive_max_pool3d_backward`` call (e.g. the
+    on-device reference in tests) then runs the vendor kernel, which
+    consumes the Gems forward's indices directly.
     """
     global _adaptive_max_pool3d_aten_lib
     if _adaptive_max_pool3d_aten_lib is not None:
@@ -2020,6 +2029,9 @@ def _patch_adaptive_max_pool3d_aten():
     import torch
 
     from .adaptive_max_pool3d import adaptive_max_pool3d as _gems_fwd_impl
+    from .adaptive_max_pool3d_backward import (
+        adaptive_max_pool3d_backward as _gems_bwd_impl,
+    )
 
     def _gems_fwd(input, output_size):
         # ATen adaptive_max_pool3d always returns (output, indices); the Gems
@@ -2030,6 +2042,75 @@ def _patch_adaptive_max_pool3d_aten():
     _adaptive_max_pool3d_aten_lib.impl(
         "adaptive_max_pool3d", _gems_fwd, "CUDA", allow_override=True
     )
+    _adaptive_max_pool3d_aten_lib.impl(
+        "adaptive_max_pool3d_backward", _gems_bwd_impl, "CUDA", allow_override=True
+    )
 
 
 _patch_adaptive_max_pool3d_aten()
+
+_adaptive_avg_pool3d_backward_aten_lib = None
+
+
+def _patch_adaptive_avg_pool3d_backward_aten():
+    """Route ``torch.ops.aten.adaptive_avg_pool3d_backward.grad_input`` (CUDA)
+    to the Gems out-variant.
+
+    The XDNN library on this stack does not implement the 3D adaptive average
+    pooling backward, so the on-device reference (benchmark baseline) raises
+    NOT IMPLEMENTED. Register the vendor out-variant for the CUDA dispatch key
+    so those calls run the Gems kernel, both inside and outside ``use_gems()``
+    scopes (the ``use_gems()`` registrar re-registers the same function, so
+    there is no conflict).
+    """
+    global _adaptive_avg_pool3d_backward_aten_lib
+    if _adaptive_avg_pool3d_backward_aten_lib is not None:
+        return
+
+    import torch
+
+    from .adaptive_avg_pool3d_backward import (
+        adaptive_avg_pool3d_backward_grad_input as _gems_bwd_out_impl,
+    )
+
+    def _gems_bwd_out(grad_output, input, grad_input):
+        return _gems_bwd_out_impl(grad_output, input, grad_input=grad_input)
+
+    _adaptive_avg_pool3d_backward_aten_lib = torch.library.Library("aten", "IMPL")
+    _adaptive_avg_pool3d_backward_aten_lib.impl(
+        "adaptive_avg_pool3d_backward.grad_input",
+        _gems_bwd_out,
+        "CUDA",
+        allow_override=True,
+    )
+
+
+_patch_adaptive_avg_pool3d_backward_aten()
+
+_adaptive_avg_pool3d_aten_lib = None
+
+
+def _patch_adaptive_avg_pool3d_aten():
+    """Route ``torch.ops.aten.adaptive_avg_pool3d`` (CUDA) to the Gems forward.
+
+    The XDNN library on this stack does not implement the 3D adaptive average
+    pooling forward for bfloat16 (raises NOT IMPLEMENTED), which breaks the
+    on-device reference (benchmark baseline). Register the generic forward for
+    the CUDA dispatch key so those calls run the Gems kernel, both inside and
+    outside ``use_gems()`` scopes.
+    """
+    global _adaptive_avg_pool3d_aten_lib
+    if _adaptive_avg_pool3d_aten_lib is not None:
+        return
+
+    import torch
+
+    from flag_gems.ops._adaptive_avg_pool3d import _adaptive_avg_pool3d as _gems_fwd
+
+    _adaptive_avg_pool3d_aten_lib = torch.library.Library("aten", "IMPL")
+    _adaptive_avg_pool3d_aten_lib.impl(
+        "adaptive_avg_pool3d", _gems_fwd, "CUDA", allow_override=True
+    )
+
+
+_patch_adaptive_avg_pool3d_aten()
