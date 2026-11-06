@@ -20,6 +20,26 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def ref_fake_quantize_per_tensor_affine_cachemask_backward(grad, mask):
+    # Kunlunxin eager computes `grad * mask` with the sign of zero lost (a
+    # masked-out negative grad collapses to +0.0), while the kernel and the CPU
+    # reference preserve -0.0. Compute the reference on CPU there so the
+    # mask_semantics signbit check compares against the IEEE-correct sign.
+    # Other backends keep the on-device reference (their eager matches it).
+    if flag_gems.vendor_name != "kunlunxin":
+        return torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+            grad, mask
+        )
+    grad_cpu = grad.cpu() if isinstance(grad, torch.Tensor) else grad
+    mask_cpu = mask.cpu() if isinstance(mask, torch.Tensor) else mask
+    ref = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+        grad_cpu, mask_cpu
+    )
+    if not utils.TO_CPU and isinstance(grad, torch.Tensor):
+        ref = ref.to(grad.dtype).to(grad.device)
+    return ref
+
+
 @pytest.mark.fake_quantize_per_tensor_affine_cachemask_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -44,7 +64,7 @@ def test_fake_quantize_per_tensor_affine_cachemask_backward_mask_semantics():
         device=flag_gems.device,
     )
     mask = torch.tensor([False, False, True, False, False, False], device=grad.device)
-    ref_out = torch.ops.aten.fake_quantize_per_tensor_affine_cachemask_backward(
+    ref_out = ref_fake_quantize_per_tensor_affine_cachemask_backward(
         utils.to_reference(grad), utils.to_reference(mask)
     )
 
