@@ -200,6 +200,7 @@ from .upsample_nearest3d_backward_grad_input import (
 )
 from .var_mean import var_mean
 from .vector_norm import vector_norm
+from .view_copy import view_copy
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
 from .xlogy_ import xlogy_
@@ -449,6 +450,7 @@ __all__ = [
     "upsample_nearest3d_backward_grad_input",
     "var_mean",
     "vector_norm",
+    "view_copy",
     "vstack",
     "where_scalar_other",
     "where_scalar_self",
