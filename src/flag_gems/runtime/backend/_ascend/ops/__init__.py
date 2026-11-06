@@ -194,6 +194,7 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .unbind_copy import unbind_copy
 from .uniform import uniform
 from .unique import _unique2
 from .unique_dim import unique_dim
@@ -456,6 +457,7 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "unbind_copy",
     "uniform",
     "unique_dim",
     "unsafe_index",
