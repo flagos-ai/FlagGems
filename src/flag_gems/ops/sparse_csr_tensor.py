@@ -60,12 +60,21 @@ def _plain_max_kernel(ptr, out_ptr, n, BLOCK: tl.constexpr):
     Only used by the size-inference overload. ``other=-1`` is the identity for
     the maximum of a non-negative index range, so fully masked programs write
     a harmless ``-1``.
+
+    The launcher caps the grid at ``_MAX_BLOCK`` programs, so the loop below is
+    a grid-stride one: each program covers every ``num_pid * BLOCK``-th chunk
+    rather than only its own. Without it the columns past ``_MAX_BLOCK * BLOCK``
+    were never read and the inferred size came out too small.
     """
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n
-    x = tl.load(ptr + offs, mask=mask, other=-1).to(tl.int64)
-    tl.atomic_max(out_ptr, tl.max(x, axis=0))
+    num_pid = tl.num_programs(0)
+    best = tl.full((), -1, dtype=tl.int64)
+    for start in range(pid * BLOCK, n, num_pid * BLOCK):
+        offs = start + tl.arange(0, BLOCK)
+        mask = offs < n
+        x = tl.load(ptr + offs, mask=mask, other=-1).to(tl.int64)
+        best = tl.maximum(best, tl.max(x, axis=0))
+    tl.atomic_max(out_ptr, best)
 
 
 def _infer_size(crow_indices, col_indices, values):
@@ -138,6 +147,25 @@ def sparse_csr_tensor(
     # shape matters: passing device= explicitly (even when it is None) keeps
     # the constructor off its own device-resolution path. ``pin_memory`` is
     # omitted for its default, which the constructor itself treats as False.
+    #
+    # ``_infer_size`` returns None for the inputs it cannot reduce on device.
+    # The constructor only infers the extents when the positional ``size`` is
+    # absent altogether -- forwarding ``None`` there is an invalid argument
+    # list ("received an invalid combination of arguments"), not a request for
+    # inference -- so that case drops the argument instead.
+    if size is None:
+        if pin_memory is False:
+            return _FACTORY(
+                crow_indices, col_indices, values, dtype=requested, device=device
+            )
+        return _FACTORY(
+            crow_indices,
+            col_indices,
+            values,
+            dtype=requested,
+            device=device,
+            pin_memory=pin_memory,
+        )
     if pin_memory is False:
         return _FACTORY(
             crow_indices, col_indices, values, size, dtype=requested, device=device
