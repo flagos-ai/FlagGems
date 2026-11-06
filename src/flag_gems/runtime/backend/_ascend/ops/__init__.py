@@ -21,9 +21,11 @@ from .amax import amax
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
+from .arccos import arccos
 from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
+from .asin_ import asin_
 from .atan2_ import atan2_
 from .attention import (
     ScaleDotProductAttention,
@@ -36,6 +38,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
 from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
@@ -60,6 +63,7 @@ from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
 from .dot import dot
+from .dropout_ import dropout_
 from .embedding import embedding
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
@@ -238,11 +242,14 @@ __all__ = [
     "any_dims",
     "arange",
     "arange_start",
+    "arccos",
     "argmax",
     "argmin",
     "argsort",
+    "asin_",
     "atan2_",
     "baddbmm",
+    "binary_cross_entropy_with_logits",
     "block_diag",
     "bmm",
     "bmm_w8a8",
@@ -269,6 +276,7 @@ __all__ = [
     "diff",
     "dist",
     "dot",
+    "dropout_",
     "embedding",
     "embedding_spmdm",
     "erfinv",
