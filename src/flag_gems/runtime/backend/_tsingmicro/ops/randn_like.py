@@ -20,27 +20,45 @@ import triton
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import philox_backend_seed_offset
 
-from .randn import randn_kernel
+from .randn import (
+    _native_cpu_randn,
+    _philox_to_dsa_seed_scalars,
+    _should_cpu_fallback,
+    randn_kernel,
+)
 
 logger = logging.getLogger(__name__)
-UNROLL = 4
 
 
 def randn_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
 ):
-    logger.debug("GEMS_TSINGMICRO RANDN_LIKE")
+    logger.debug("GEMS_TSINGMICRO RANDN_LIKE (tle.dsa.tsingmicro.randn)")
     if device is None:
-        device = x.device.index
+        device = x.device
     if dtype is None:
         dtype = x.dtype
-    out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-    # hence we cannot obtain the per thread offset as in Pytorch.
-    increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
-    with torch_device_fn.device(x.device):
-        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+    if N == 0:
+        return torch.empty(x.shape, device=device, dtype=dtype)
+
+    philox_seed, philox_offset = philox_backend_seed_offset(max(N, 1))
+
+    # float64: DSA randn is float32-only; keep CPU for correctness.
+    if dtype is torch.float64:
+        logger.debug("GEMS_TSINGMICRO RANDN_LIKE f64 → CPU")
+        return _native_cpu_randn(x.shape, dtype, device)
+
+    if _should_cpu_fallback(N, device):
+        logger.debug("GEMS_TSINGMICRO RANDN_LIKE cpu fallback N=%s", N)
+        return _native_cpu_randn(x.shape, dtype, device)
+
+    # Prefer torch.empty over empty_like: empty_like is disproportionately
+    # expensive on TXDA and dominates small-tensor latency.
+    out = torch.empty(x.shape, device=device, dtype=dtype)
+    seed0, seed1 = _philox_to_dsa_seed_scalars(philox_seed, philox_offset)
+
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
+    with torch_device_fn.device(device):
+        randn_kernel[grid_fn](out.view(-1), seed0, seed1, N)
     return out

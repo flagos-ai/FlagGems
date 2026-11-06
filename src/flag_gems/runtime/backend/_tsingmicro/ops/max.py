@@ -141,7 +141,9 @@ def max_kernel(
     for i in range(0, N, BLOCK_N):
         n_offset = i + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N + n_offset[None, :]
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        # FIX(zml, 2026-10-30): same mask bug as argmax.py:140 — Python `and`
+        # on tensors collapses the 2D mask. See CHANGELOG in france_results/.
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
