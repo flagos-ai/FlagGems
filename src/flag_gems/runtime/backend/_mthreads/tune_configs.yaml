@@ -86,24 +86,18 @@ mm_w8a8_fp8_musa_ws_default:
     cw: [16]
     stages: [3, 4]
     gm: [4]
-  - <<: *ws_large_default
+  - &ws_dense_default
+    <<: *ws_large_default
     bm: [256]
     bk: [64]
     stages: [4]
 
 # Explicit pipe slots are independent of compiler num_stages (kept at 1).
-# All combinations surviving resource/layout pruning are measured, not sampled.
+# Reuse measured coverage tiles instead of a Cartesian WS search.
 mm_w8a8_fp8_musa_ws:
-  - &ws_expanded
-    <<: *ws_small_default
-    bm: [32, 64, 128, 256, 512]
-    bn: [32, 64, 128, 256, 512]
-    bk: [64, 128, 256, 512]
-    nc: [1, 2, 3, 4]
-    cw: [4, 8, 16]
-    pw: [4, 8]
-    stages: [1, 2, 3, 4, 5, 6]
-    gm: [1, 2, 4, 8]
+  - *ws_small_default
+  - *ws_large_default
+  - *ws_dense_default
 
 mm_w8a8_fp8_musa_ws_fragmented_default:
   - &fragmented_control
@@ -139,9 +133,7 @@ mm_w8a8_fp8_musa_ws_fragmented_default:
 
 mm_w8a8_fp8_musa_ws_fragmented:
   - *fragmented_control
-  - <<: *fragmented_default
-    stages: [4, 5, 6, 7]
-    gm: [1, 2, 4, 8]
+  - *fragmented_default
 
 mm_w8a8_fp8_musa_default:
   - &small
@@ -220,23 +212,9 @@ mm_w8a8_fp8_musa:
   - *small
   - *skinny
   - *masked
-  - <<: *medium
-    block_k: [64, 128, 256]
-    group_m: [1, 8]
-    stages: [2, 3, 4]
-  - <<: *large
-    block_k: [64, 128, 256]
-    group_m: [1, 8]
-    stages: [2, 3, 4]
-  - <<: *large
-    block_m: [256]
-    block_n: [128]
-    block_k: [64, 128, 256]
-    group_m: [1, 8]
-    stages: [2, 3, 4]
-  - <<: *wide
-    group_m: [1, 8]
-    stages: [2, 3]
+  - *medium
+  - *large
+  - *wide
   - *short_k_tile
 
 mm:
