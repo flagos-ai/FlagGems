@@ -56,6 +56,7 @@ from .clamp_max_ import clamp_max_
 from .concat import concat
 from .concatenate import concatenate
 from .cosh_ import cosh_
+from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .cross import cross
 from .cudnn_convolution import cudnn_convolution
@@ -279,6 +280,7 @@ __all__ = [
     "concat",
     "concatenate",
     "cosh_",
+    "cosine_embedding_loss",
     "count_nonzero",
     "cross",
     "cudnn_convolution",
