@@ -74,20 +74,21 @@ def silu_and_mul_with_clamp_grad_kernel(x, y, dgrad, limit):
 class SiluAndMulWithClamp(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, y, limit):
+        logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_WITH_CLAMP_FORWARD")
         ctx.save_for_backward(x, y)
         ctx.limit = float(limit)
-        logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_WITH_CLAMP_FORWARD")
         return silu_and_mul_with_clamp_kernel(x, y, ctx.limit)
 
     @staticmethod
     def backward(ctx, dgrad):
-        x, y = ctx.saved_tensors
         logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_WITH_CLAMP_BACKWARD")
+        x, y = ctx.saved_tensors
         dx, dy = silu_and_mul_with_clamp_grad_kernel(x, y, dgrad, ctx.limit)
         return dx, dy, None
 
 
 def silu_and_mul_with_clamp(x, y, limit):
+    logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_WITH_CLAMP")
     return SiluAndMulWithClamp.apply(x, y, limit)
 
 
