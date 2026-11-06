@@ -77,7 +77,7 @@ def entry(monkeypatch, request):
     e.divisibility = 16
     e._tensor_spec_fn = None
     e._has_flagtune_tuner = True
-    e._apply_flagtune = lambda device: None
+    e._apply_flagtune = lambda device, *args: None
     e.kernel_cache = ({},)
     e._cpu_cache = {}
     e._launch_plans = {}
@@ -348,7 +348,7 @@ def test_mode_change_clears_cached_binding_plans(entry):
     entry.run(*args, **kwargs)
     assert entry._launch_plans
     entry.fn = SimpleNamespace(apply_flagtune=lambda: True, fn=None)
-    entry._flagtune_model_ids = ()
+    entry._flagtune_tuners = ()
     entry._flagtune_state = None
     lib.LibEntry._apply_flagtune(entry)
     assert not entry._launch_plans

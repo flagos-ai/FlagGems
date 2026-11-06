@@ -572,7 +572,7 @@ class LibTuner(triton.runtime.Autotuner):
         )
         self.cache = libcache[self.config_table_name]
 
-    def apply_flagtune(self):
+    def apply_flagtune(self, arguments=None):
         supports_cost_model = _supports_flagtune_cost_model(self)
         if self._flagtune_op_name is None and not supports_cost_model:
             return False
@@ -583,11 +583,10 @@ class LibTuner(triton.runtime.Autotuner):
         intent = runtime.resolve_cost_model_intent(
             supports_cost_model=supports_cost_model
         )
+        key = cost_model.failure_key(self, arguments or {})
+        self._flagtune_failure_key = key
         auto_disabled = (
-            intent is runtime.CostModelIntent.AUTO
-            and cost_model.is_auto_disabled(
-                self._flagtune_op_id, self._flagtune_variant
-            )
+            intent is runtime.CostModelIntent.AUTO and cost_model.is_auto_disabled(*key)
         )
         # A changed effective mode invalidates this entry's compiled dispatch
         # caches. REQUIRED deliberately ignores the AUTO fuse.
@@ -1001,30 +1000,29 @@ class LibTuner(triton.runtime.Autotuner):
         """
         self.benchmark_success_count = 0
         self.benchmark_cache_hit_count = 0
-        # Direct LibTuner callers must also honor the operator fuse before a
-        # best-config cache hit can bypass policy execution.
-        if (
-            cost_model.auto_failure_state(
-                getattr(self, "_flagtune_op_id", None),
-                getattr(self, "_flagtune_variant", None),
-            )[0]
-            and runtime.resolve_cost_model_intent(
-                supports_cost_model=_supports_flagtune_cost_model(self)
+        # Bind this invocation before consulting its model's failure state.
+        self.nargs = dict(zip(self.arg_names, args))
+        retry_cost_model = False
+        # Direct callers must reselect when switching model identities, and
+        # revisit a failed identity before a best-config cache hit bypasses it.
+        if _supports_flagtune_cost_model(self) and cost_model._COST_MODEL_DISABLED_OPS:
+            arguments = {**self.nargs, **kwargs}
+            key = cost_model.failure_key(self, arguments)
+            failure = cost_model.auto_failure_state(*key)
+            if key != getattr(self, "_flagtune_failure_key", None) or failure[0]:
+                self.apply_flagtune(arguments)
+            retry_cost_model = failure == (True, False) and (
+                runtime.resolve_cost_model_intent(supports_cost_model=True)
+                is runtime.CostModelIntent.AUTO
             )
-            is runtime.CostModelIntent.AUTO
-        ):
-            self.apply_flagtune()
         run_mode = LibTunerRunMode(getattr(self, "_run_mode", LibTunerRunMode.NORMAL))
         self._flagtune_fallback_cache = None
-        bypass_config_cache = run_mode is not LibTunerRunMode.NORMAL
+        bypass_config_cache = run_mode is not LibTunerRunMode.NORMAL or retry_cost_model
         exhaustive_collection = run_mode is LibTunerRunMode.EXHAUSTIVE_COLLECTION
         if hasattr(self, "seen_tuned_metas"):
             self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         self._last_benchmark_args = tuple(args)
         self._last_benchmark_meta = dict(kwargs)
-        # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
-        # so please make sure the orders of `arg_names` and `args` match.
-        self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
         cost_model_mode = (
             getattr(self, "_flagtune_mode", runtime.TuningMode.DEFAULT)
@@ -1444,7 +1442,7 @@ class LibEntry(triton.KernelInterface):
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
         self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
         self._flagtune_state = None
-        self._flagtune_model_ids = self._cost_model_ids(fn)
+        self._flagtune_tuners = self._cost_model_tuners(fn)
         self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
@@ -1514,28 +1512,44 @@ class LibEntry(triton.KernelInterface):
         return False
 
     @staticmethod
-    def _cost_model_ids(fn):
-        """Collect immutable identities whose process-wide AUTO fuse can change."""
-        identities = []
+    def _cost_model_tuners(fn):
+        """Collect tuners whose model identity depends on launch arguments."""
+        tuners = []
         while not isinstance(fn, triton.runtime.JITFunction):
             if _supports_flagtune_cost_model(fn):
-                identities.append((fn._flagtune_op_id, fn._flagtune_variant))
+                tuners.append(fn)
             fn = getattr(fn, "fn", None)
             if fn is None:
                 break
-        return tuple(identities)
+        return tuple(tuners)
 
-    def _apply_flagtune(self, device=None):
+    def _apply_flagtune(self, device=None, args=(), kwargs=None):
         from flag_gems.runtime.flagtune import _flagtune_state_key
 
         if device is None:
             device = torch_device_fn.current_device()
+        arguments = None
+
+        def failure_states():
+            nonlocal arguments
+            if not cost_model._COST_MODEL_DISABLED_OPS or not self._flagtune_tuners:
+                return ()
+            arguments = {
+                **dict(zip(getattr(self, "arg_names", ()), args)),
+                **(kwargs or {}),
+            }
+            states = []
+            for tuner in self._flagtune_tuners:
+                key = cost_model.failure_key(tuner, arguments)
+                failure = cost_model.auto_failure_state(*key)
+                if failure[0]:
+                    states.append((key, failure))
+            return tuple(states)
+
         state = (
             device,
             _flagtune_state_key(),
-            tuple(
-                cost_model.auto_failure_state(*key) for key in self._flagtune_model_ids
-            ),
+            failure_states(),
         )
         if state == self._flagtune_state:
             return
@@ -1545,19 +1559,30 @@ class LibEntry(triton.KernelInterface):
             state = (
                 device,
                 _flagtune_state_key(),
-                tuple(
-                    cost_model.auto_failure_state(*key)
-                    for key in self._flagtune_model_ids
-                ),
+                failure_states(),
             )
             if state == self._flagtune_state:
                 return
-            changed = False
+            if arguments is None:
+                arguments = {
+                    **dict(zip(getattr(self, "arg_names", ()), args)),
+                    **(kwargs or {}),
+                }
+            # A cooldown may expire before any launch selected fallback mode.
+            # Even if the effective mode is still CM, its cached fallback
+            # kernel must not prevent the policy from retrying the model.
+            changed = (
+                self._flagtune_state is not None and state[2] != self._flagtune_state[2]
+            )
             fn = self.fn
             while not isinstance(fn, triton.runtime.JITFunction):
                 apply_flagtune = getattr(fn, "apply_flagtune", None)
                 if apply_flagtune is not None:
-                    changed = apply_flagtune() or changed
+                    changed = (
+                        apply_flagtune(arguments)
+                        if _supports_flagtune_cost_model(fn)
+                        else apply_flagtune()
+                    ) or changed
                 fn = getattr(fn, "fn", None)
                 if fn is None:
                     break
@@ -1649,7 +1674,7 @@ class LibEntry(triton.KernelInterface):
         grid = kwargs["grid"]
         device = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
-            self._apply_flagtune(device)
+            self._apply_flagtune(device, args, kwargs)
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -1878,7 +1903,7 @@ class LibEntry(triton.KernelInterface):
         entry_key = self.key(keys[1], keys[2], keys[0])
         device_index = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
-            self._apply_flagtune(device_index)
+            self._apply_flagtune(device_index, args, kwargs)
         cache = (
             self._cpu_cache
             if device_index == "cpu"
