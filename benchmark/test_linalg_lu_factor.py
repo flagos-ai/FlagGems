@@ -15,8 +15,13 @@ if VENDOR == "nvidia":
 else:
     _TEST_DTYPES = [torch.float32]
 
-# pivot=False is only supported on CUDA
-if DEVICE == "cuda":
+# pivot=False is only benchmarkable where the TORCH REFERENCE can run it. The
+# gems kernel does support it on Kunlunxin (identity pivots, #7273), but the
+# benchmark's reference call lands on ATen's CPU implementation, which raises
+# "linalg.lu_factor: LU without pivoting is not implemented on the CPU" -- and
+# base.py re-raises that as a pytest failure, which aborts the whole operator
+# benchmark. Excluded on this vendor so the pivot=True matrix can be scored.
+if DEVICE == "cuda" and VENDOR != "kunlunxin":
     _PIVOT_VALUES = [True, False]
 else:
     _PIVOT_VALUES = [True]
