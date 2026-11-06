@@ -248,6 +248,7 @@ from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .xlogy import xlogy
 from .xlogy_ import xlogy_
 from .xlogy_out import xlogy_out
 from .xlogy_tensor_scalar import xlogy_tensor_scalar
@@ -547,6 +548,7 @@ __all__ = [
     "where_scalar_self",
     "where_self",
     "where_self_out",
+    "xlogy",
     "xlogy_",
     "xlogy_out",
     "xlogy_tensor_scalar",
