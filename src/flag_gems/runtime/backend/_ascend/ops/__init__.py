@@ -166,6 +166,7 @@ from .mean import mean, mean_dim
 from .min import min, min_dim
 from .mish import mish
 from .mish_ import mish_
+from .mish_backward import mish_backward
 from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
@@ -457,6 +458,7 @@ __all__ = [
     "min_dim",
     "mish",
     "mish_",
+    "mish_backward",
     "mixed_dtypes_linear",
     "mm",
     "mm_out",
