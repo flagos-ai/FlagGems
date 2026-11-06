@@ -322,3 +322,69 @@ def test_index_error_too_many_indices(dtype):
 
     with pytest.raises(IndexError, match="too many indices"):
         flag_gems.index(inp, indices)
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("use_graph", [False, True])
+def test_index_large_strided_int32_offset(index_dtype, use_graph):
+    """Widen loaded indices before multiplying a large state-cache stride."""
+    import gc
+
+    if flag_gems.device != "cuda":
+        pytest.skip("requires a CUDA-compatible device for memory and graph APIs")
+    shape = (9109, 16, 128, 128)
+    strides = (294912, 16384, 128, 1)
+    slots = [7280, 7281, 7282, 7296, 9108]
+    guard = 2**31
+    row_size = 16 * 128 * 128
+    elements = guard + (shape[0] - 1) * strides[0] + row_size
+    free_bytes, _ = torch.cuda.mem_get_info()
+    if free_bytes < elements * 2 + 1024**3:
+        pytest.skip("requires memory for a guarded BF16 large-offset regression")
+
+    backing = state = indices = packed_indices = actual = expected = graph = None
+    try:
+        # Old int32 negative offsets stay inside this allocation's prefix.
+        backing = torch.empty(elements, dtype=torch.bfloat16, device=flag_gems.device)
+        backing[:guard].fill_(-7)
+        state = torch.as_strided(backing, shape, strides, storage_offset=guard)
+        for position, slot in enumerate(slots):
+            state[slot].fill_(11 + position)
+        packed_indices = torch.tensor(
+            [value for slot in slots for value in (slot, 0)],
+            dtype=index_dtype,
+            device=flag_gems.device,
+        )
+        indices = packed_indices[::2]
+        expected = torch.stack([state[slot] for slot in slots])
+
+        def invoke():
+            return flag_gems.index(state, [indices])
+
+        if use_graph:
+            stream = torch.cuda.Stream()
+            stream.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(stream):
+                for _ in range(2):
+                    actual = invoke()
+            torch.cuda.current_stream().wait_stream(stream)
+            torch.cuda.synchronize()
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                actual = invoke()
+            for delta in (20, 40):
+                for position, slot in enumerate(slots):
+                    state[slot].fill_(11 + position + delta)
+                    expected[position].fill_(11 + position + delta)
+                graph.replay()
+                torch.cuda.synchronize()
+                torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        else:
+            actual = invoke()
+            torch.cuda.synchronize()
+            torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    finally:
+        graph = actual = expected = state = backing = indices = packed_indices = None
+        gc.collect()
+        torch.cuda.empty_cache()
