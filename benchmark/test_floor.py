@@ -45,3 +45,26 @@ def test_floor_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class FloorContiguousBenchmark(base.UnaryPointwiseBenchmark):
+    # Run in comprehensive mode to include both complete tiles and masked tails.
+    def set_more_shapes(self):
+        return super().set_more_shapes() + [
+            (1,),
+            (1023,),
+            (1024,),
+            (1025,),
+            (65536,),
+            (65537,),
+            (1048576,),
+            (1048577,),
+        ]
+
+
+@pytest.mark.floor
+def test_floor_contiguous_launch():
+    bench = FloorContiguousBenchmark(
+        op_name="floor", torch_op=torch.floor, dtypes=[torch.float32]
+    )
+    bench.run()
