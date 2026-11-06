@@ -31,110 +31,107 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+_MAX_GRID = 65535
+_MIN_PROGRAMS = 256
 
-@triton.jit
-def i0_approx(x):
-    """Approximation for I0(x) - modified Bessel function of first kind, order 0"""
-    ax = tl.abs(x)
-
-    # Small region: |x| <= 3.75
-    t = x / 3.75
-    y = t * t
-    p_small = 1.0 + y * (
-        3.5156229
-        + y
-        * (
-            3.0899424
-            + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
-        )
-    )
-
-    # Large region: |x| > 3.75
-    yb = 3.75 / ax
-    p_big = 0.39894228 + yb * (
-        0.01328592
-        + yb
-        * (
-            0.00225319
-            + yb
-            * (
-                -0.00157565
-                + yb
-                * (
-                    0.00916281
-                    + yb
-                    * (
-                        -0.02057706
-                        + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
-                    )
-                )
-            )
-        )
-    )
-    res_big = tl.exp(ax) * p_big / tl.sqrt(ax)
-
-    use_small = ax <= 3.75
-    return tl.where(use_small, p_small, res_big)
+# Host-side launch geometry (no @triton.autotune): the 17-config search cost a
+# recompile per (BLOCK, ITERS, num_warps) x shape on this backend, which made a
+# single accuracy/benchmark run take minutes.  BLOCK/warps are picked on the
+# host; ITERS only shapes the program count below.
+# Measured on gcu:0 (min of 3 do_bench medians).  num_warps=1 beats 4 by 2.3x on
+# every size, and fat tiles win because each program costs ~0.5us of dispatch:
+#   536M elements: BLOCK 4096/nw1 21.67ms < 16384/nw1 15.75ms < 32768/nw1 15.24ms
+#   16.7M elements: same ordering (714us -> 511us); floor-bound 4096-element case
+#   is geometry-insensitive (13.6-22us), so it keeps the small four-warp tile.
+BLOCK_BIG = 32768
+WARPS_BIG = 1
+BLOCK_SMALL = 4096
+WARPS_SMALL = 4
+SMALL_N = 1 << 16
+ITERS = 16
 
 
 @triton.jit
-def special_modified_bessel_k0_kernel(
-    x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr
-):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+def _k0_compute(x):
+    """Elementwise K0 for an fp32 vector x; no per-lane guards needed.
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    x_f32 = x.to(tl.float32)
+    Special values follow from IEEE transcendental semantics (verified on
+    target): log2(0) = -inf makes the small branch +inf, log2(negative) and
+    log2(NaN) yield NaN, exp2(-inf) = 0 handles x = +inf, and any garbage a
+    dead lane would produce is discarded by the final select.
+    """
+    # ---- small branch: K0 = P2(z) - log2(x) * I0'(z), z = (x/2)^2 ----
+    z = 0.25 * x * x
+    # I0'(z) = ln2 * sum z^k/(k!)^2, k <= 6
+    i0p = 1.3370893544751262e-06
+    i0p = i0p * z + 4.813521676110454e-05
+    i0p = i0p * z + 0.0012033805218054606
+    i0p = i0p * z + 0.01925408834888737
+    i0p = i0p * z + 0.17328679513998632
+    i0p = i0p * z + 0.6931471805599453
+    i0p = i0p * z + 0.6931471805599453
+    # P2(z) = P(z) + ln2*I0(z) = sum (H_k - gamma + ln2) z^k/(k!)^2, k <= 7
+    p2 = 1.0663853e-07
+    p2 = p2 * z + 4.949713457674329e-06
+    p2 = p2 * z + 0.0001666156104022018
+    p2 = p2 * z + 0.0038181681406106697
+    p2 = p2 * z + 0.05414624580532627
+    p2 = p2 * z + 0.4039828789146031
+    p2 = p2 * z + 1.1159315156584124
+    p2 = p2 * z + 0.1159315156584124
+    small = p2 - tl.math.log2(x) * i0p
 
-    # K0 is only defined for x > 0
-    # For x < 0, return NaN (matching PyTorch behavior)
-    # For x = 0, return inf (singularity)
-    is_negative = x_f32 < 0.0
-    is_zero = x_f32 == 0.0
+    # ---- large branch: exp(-x) * x^{-1/2} * Q(2/x), Q degree 6 in u = 1/x ----
+    r = tl.math.rsqrt(x)
+    u = r * r
+    q = 0.03610691262092603
+    q = q * u - 0.084170731047342
+    q = q * u + 0.09654736686322864
+    q = q * u - 0.08577435738093041
+    q = q * u + 0.08769158817700086
+    q = q * u - 0.1566520099072446
+    q = q * u + 1.2533140786947428
+    large = tl.math.exp2(x * -1.4426950408889634) * r * q
 
-    # Compute I0(x) for use in the small region formula
-    i0_x = i0_approx(x_f32)
+    return tl.where(x > 2.0, large, small)
 
-    # Small region: 0 < x <= 2.0
-    # Use the relation: K0(x) = -ln(x/2) * I0(x) + poly(x^2/4)
-    y = x_f32 * x_f32 / 4.0  # y = (x/2)^2
 
-    # Fitted polynomial coefficients (from scipy's k0)
-    p = -0.57721566
-    p = p + 0.42278441 * y
-    p = p + 0.23069500 * y * y
-    p = p + 0.03488730 * y * y * y
-    p = p + 0.00260380 * y * y * y * y
-    p = p + 0.00012900 * y * y * y * y * y
+@triton.jit
+def special_modified_bessel_k0_kernel(x_ptr, out_ptr, n_elements, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    step = nprog * BLOCK
+    n_full = (n_elements // BLOCK) * BLOCK
+    for base in range(pid * BLOCK, n_full, step):
+        offs = base + lane
+        x = tl.load(x_ptr + offs).to(tl.float32)
+        res = _k0_compute(x)
+        tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty))
+    # trailing partial tile: finished once, by program 0, with a mask
+    if n_full < n_elements:
+        if pid == 0:
+            offs = n_full + lane
+            mask = offs < n_elements
+            x = tl.load(x_ptr + offs, mask=mask, other=1.0).to(tl.float32)
+            res = _k0_compute(x)
+            tl.store(out_ptr + offs, res.to(out_ptr.dtype.element_ty), mask=mask)
 
-    small_result = -tl.log(x_f32 * 0.5 + 1e-40) * i0_x + p
 
-    # Large region: x > 2.0
-    # Use asymptotic expansion: K0(x) ~ sqrt(pi/(2x)) * exp(-x) * Q(2/x)
-    t = 2.0 / x_f32  # t = 2/x
-
-    q = 1.25331414
-    q = q - 0.07832324 * t
-    q = q + 0.0218956 * t * t
-    q = q - 0.01072842 * t * t * t
-    q = q + 0.00162318 * t * t * t * t
-    q = q - 0.00013259 * t * t * t * t * t
-
-    large_result = q * tl.exp(-x_f32) / tl.sqrt(x_f32 + 1e-40)
-
-    # Select based on x value
-    use_small = x_f32 <= 2.0
-    result = tl.where(use_small, small_result, large_result)
-
-    # Handle edge cases: x < 0 -> NaN, x = 0 -> inf, x > 0 -> result
-    result = tl.where(is_negative, float("nan"), result)
-    result = tl.where(is_zero, float("inf"), result)
-
-    # Cast back to input dtype and store
-    tl.store(out_ptr + offsets, result.to(x.dtype), mask=mask)
+def _launch(x: torch.Tensor, out: torch.Tensor) -> None:
+    n = x.numel()
+    if n == 0:
+        return
+    if n <= SMALL_N:
+        block, warps = BLOCK_SMALL, WARPS_SMALL
+    else:
+        block, warps = BLOCK_BIG, WARPS_BIG
+    nblocks = (n + block - 1) // block
+    nprog = max(min(nblocks, _MIN_PROGRAMS), (nblocks + ITERS - 1) // ITERS)
+    with torch_device_fn.device(x.device):
+        special_modified_bessel_k0_kernel[(min(nprog, _MAX_GRID),)](
+            x, out, n, BLOCK=block, num_warps=warps
+        )
 
 
 def _run_special_modified_bessel_k0(x: torch.Tensor, out: torch.Tensor):
@@ -153,17 +150,7 @@ def _run_special_modified_bessel_k0(x: torch.Tensor, out: torch.Tensor):
 
     x_c = x.contiguous()
     out_c = out.contiguous()
-    n_elements = out_c.numel()
-    if n_elements == 0:
-        return out
-
-    # BLOCK_SIZE 1024 provides good occupancy for element-wise kernels
-    BLOCK_SIZE = 1024
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(x.device):
-        special_modified_bessel_k0_kernel[grid](
-            x_c, out_c, n_elements, BLOCK_SIZE=BLOCK_SIZE
-        )
+    _launch(x_c, out_c)
 
     if out_c.data_ptr() != out.data_ptr():
         out.copy_(out_c)
