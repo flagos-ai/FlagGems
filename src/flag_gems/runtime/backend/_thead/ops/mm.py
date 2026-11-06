@@ -20,6 +20,7 @@ implementation; partial M/N/K tiles are handled in the PPU kernels.
 """
 
 import logging
+from contextlib import nullcontext
 from enum import Enum
 
 import torch
@@ -118,8 +119,10 @@ def _is_transposed_contiguous_2d(tensor: torch.Tensor) -> bool:
     """
     return (
         tensor.ndim == 2
+        and tensor.layout == torch.strided
         and not tensor.is_contiguous()
-        and tensor.transpose(0, 1).is_contiguous()
+        and tensor.stride(0) == 1
+        and tensor.stride(1) == tensor.shape[0]
     )
 
 
@@ -636,6 +639,10 @@ def _ppu_split_k_configs():
     )
 
 
+# The candidate catalog is static; do not rebuild it on every MM call.
+_PPU_MAX_SPLIT_K = max(config.kwargs["SPLIT_K"] for config in _ppu_split_k_configs())
+
+
 def _ppu_split_k_reduce_configs():
     return [
         triton.Config({"BLOCK": block, "VEC": vec}, num_warps=warps, num_stages=1)
@@ -648,18 +655,35 @@ def _ppu_split_k_reduce_configs():
     ]
 
 
+def _flagtune_mm_dtype_identity(arguments):
+    """Return the public MM input/output dtype identity for a PPU kernel."""
+    lhs = arguments.get("A")
+    rhs = arguments.get("B")
+    if rhs is None:
+        rhs = arguments.get("X")
+    if lhs is None or rhs is None:
+        raise ValueError("PPU MM FlagTune identity requires A and B/X tensors")
+    return lhs.dtype, rhs.dtype, lhs.dtype
+
+
 if HAS_PPU_TLE:
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_gemv_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "TRANSPOSED", "B_TRANSPOSED", "M", "K"],
         strategy=["default", "default", "default", "default", "default", "default"],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_single_gemv_configs},
         warmup=25,
         rep=100,
+        # The packaged PPU model was trained with graph-replay candidate timing.
+        benchmark_mode="replay",
         flagtune_op_name="mm",
         flagtune_expand_op_name="gemv_ppu",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="gemv_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -724,7 +748,7 @@ if HAS_PPU_TLE:
             mask=rows < M,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_multi_row_gemv_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
@@ -736,11 +760,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemv_configs},
         warmup=5,
         rep=20,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_multi_row_gemv",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_multi_row_gemv",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -807,7 +835,7 @@ if HAS_PPU_TLE:
             mask=mask,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_narrow_columns_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
@@ -819,11 +847,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemv_configs},
         warmup=5,
         rep=20,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_narrow_columns",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_narrow_columns",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -886,7 +918,7 @@ if HAS_PPU_TLE:
             mask=row_mask & (pid_n < N),
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_grouped_row_gemv_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "M", "N", "K"],
@@ -970,7 +1002,7 @@ if HAS_PPU_TLE:
             mask=row_mask[:, None] & col_mask[None, :],
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_mm_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -983,6 +1015,7 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         # PPU's event benchmarker is noisy in the sub-30us regime.  Match the
         # production benchmark protocol so nearby configs are not ranked by
@@ -991,6 +1024,9 @@ if HAS_PPU_TLE:
         rep=100,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1086,7 +1122,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_narrow_n_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1099,11 +1135,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_narrow_n_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_narrow_n",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_narrow_n",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1190,7 +1230,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_small_m_configs(),
         key=["FUSE_ADDMM", "READ_BIAS", "B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1203,11 +1243,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_small_m",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_small_m",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1297,7 +1341,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_mid_m_configs(),
         key=[
@@ -1320,11 +1364,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_gemm_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_mid_m",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_mid_m",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -1532,7 +1580,7 @@ if HAS_PPU_TLE:
     # PPU global-output atomics compile, but direct FP16 accumulation retained
     # only 20-77% of this workspace path's throughput in the Qwen split-K set.
     # BF16 also rounds every partial sum before the atomic and missed tolerance.
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_split_k_configs(),
         key=["B_TRANSPOSED", "aiu_load_mask", "M", "N", "K"],
@@ -1543,11 +1591,15 @@ if HAS_PPU_TLE:
             _ppu_bucket_strategy,
             _ppu_reduction_bucket_strategy,
         ],
+        policy="flagtune",
         prune_configs_by={"early_config_prune": _prune_split_k_configs},
         warmup=5,
         rep=10,
         flagtune_op_name="mm",
         flagtune_expand_op_name="mm_ppu_split_k",
+        flagtune_op_id="flaggems/mm",
+        flagtune_variant="mm_ppu_split_k",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit
@@ -1670,6 +1722,7 @@ if HAS_PPU_TLE:
         else:
             tl.store(workspace_ptrs, acc, mask=mask)
 
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_split_k_reduce_configs(),
         # SPLIT_K is constexpr and changes the reduction loop body.  Keeping
@@ -1743,6 +1796,18 @@ if HAS_PPU_TLE:
             tl.store(C + offsets, acc.to(C.dtype.element_ty), mask=mask)
 
 
+_NO_DEVICE_CHANGE = nullcontext()
+
+
+def _ppu_device_context(tensor):
+    # LibEntry uses the current device and stream. Avoid resetting an already
+    # current device while preserving the original multi-device behavior.
+    index = tensor.device.index
+    if index == torch_device_fn.current_device():
+        return _NO_DEVICE_CHANGE
+    return torch_device_fn.device(tensor.device)
+
+
 def _can_use_ppu_gemm(
     a: torch.Tensor, b: torch.Tensor, out: torch.Tensor, *, output_dtype: torch.dtype
 ) -> bool:
@@ -1809,16 +1874,15 @@ def _run_ppu_gemv_mm(
 
     if N == 1:
         matrix = a
-        # Keep the singleton operand as a true vector.  Passing a (K, 1)
-        # tensor makes the same GEMV kernel use a two-dimensional pointer
-        # signature and costs a measurable amount on launch-bound columns.
-        vector = b[:, 0]
+        # The kernel addresses raw pointers with explicit strides. Keep the
+        # original tensor: slicing a singleton column only adds a Python view.
+        vector = b
         rows = M
         stride_matrix_row = a.stride(0)
         stride_matrix_k = a.stride(1)
-        stride_vector_k = vector.stride(0)
-        output = out[:, 0]
-        bias_output = expanded_bias[:, 0]
+        stride_vector_k = b.stride(0)
+        output = out
+        bias_output = expanded_bias
         stride_out_row = output.stride(0)
         stride_bias_row = bias_output.stride(0)
         transposed = False
@@ -1826,19 +1890,19 @@ def _run_ppu_gemv_mm(
         # A(1, K) @ B(K, N) is the GEMV B.T(N, K) @ A[0].  The logical
         # transpose is represented only by strides, so no copy is introduced.
         matrix = b
-        vector = a[0, :]
+        vector = a
         rows = N
         stride_matrix_row = b.stride(1)
         stride_matrix_k = b.stride(0)
-        stride_vector_k = vector.stride(0)
-        output = out[0, :]
-        bias_output = expanded_bias[0, :]
-        stride_out_row = output.stride(0)
-        stride_bias_row = bias_output.stride(0)
+        stride_vector_k = a.stride(1)
+        output = out
+        bias_output = expanded_bias
+        stride_out_row = out.stride(1)
+        stride_bias_row = expanded_bias.stride(1)
         transposed = True
 
     grid = lambda META: (triton.cdiv(rows, META["BLOCK_M"]),)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         gemv_kernel_ppu[grid](
             matrix,
             vector,
@@ -1912,7 +1976,7 @@ def _run_ppu_mm(
             READ_BIAS=fuse_addmm and beta != 0,
         )
 
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         if N > _PPU_DESCRIPTOR_MAX_N and M > _PPU_ULTRA_WIDE_DIRECT_M_MAX:
             for n_start in range(0, N, _PPU_DESCRIPTOR_CHUNK_N):
                 width = min(_PPU_DESCRIPTOR_CHUNK_N, N - n_start)
@@ -2132,7 +2196,7 @@ def _run_ppu_narrow_n_mm(
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_narrow_n_kernel_ppu[grid](
             a,
             b,
@@ -2181,7 +2245,7 @@ def _run_partial_m_ppu_mm(
         else {"GROUPED_ROWS": _prefer_grouped_mid_m(1, M, N, K)}
     )
     grid = lambda META: (triton.cdiv(N, META["BLOCK_N"]),)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         kernel[grid](
             a,
             b,
@@ -2225,7 +2289,7 @@ def _run_ppu_multi_row_gemv_mm(
     fuse_addmm = bias is not None
     expanded_bias = bias.broadcast_to((M, N)) if fuse_addmm else out
     grid = lambda META: (triton.cdiv(N, META["BLOCK_M"]), M)
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_multi_row_gemv_kernel_ppu[grid](
             a,
             b,
@@ -2266,7 +2330,7 @@ def _run_ppu_narrow_columns_mm(
     fuse_addmm = bias is not None
     expanded_bias = bias.broadcast_to((M, N)) if fuse_addmm else out
     grid = lambda META: (N, triton.cdiv(M, META["BLOCK_M"]))
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_narrow_columns_kernel_ppu[grid](
             a,
             b,
@@ -2309,7 +2373,7 @@ def _run_ppu_grouped_row_gemv_mm(
         triton.cdiv(N, META["BLOCK_M"]),
         triton.cdiv(M, META["ROWS_PER_PROGRAM"]),
     )
-    with torch_device_fn.device(a.device):
+    with _ppu_device_context(a):
         mm_grouped_row_gemv_kernel_ppu[grid](
             a,
             b,
@@ -2355,18 +2419,17 @@ def _run_split_k_mm(
     fuse_addmm = bias is not None
     read_bias = fuse_addmm and beta != 0
     expanded_bias = bias.broadcast_to((M, N)) if read_bias else out
-    # The tuner updates ``best_config`` inside the kernel launch.  It may still
-    # contain the winner for a previous shape before this call, so allocate the
-    # bounded maximum up front and read the active split count afterwards.
-    max_split_k = max(config.kwargs["SPLIT_K"] for config in _ppu_split_k_configs())
-    workspace = torch.empty((max_split_k, M, N), device=out.device, dtype=torch.float32)
+    # Bound cold tuning as before, using the static catalog's maximum.
+    workspace = torch.empty(
+        (_PPU_MAX_SPLIT_K, M, N), device=out.device, dtype=torch.float32
+    )
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"])
         * triton.cdiv(N, META["BLOCK_N"])
         * META["SPLIT_K"],
     )
-    with torch_device_fn.device(a.device):
-        mm_split_k_kernel_ppu[grid](
+    with _ppu_device_context(a):
+        _, launch_meta = mm_split_k_kernel_ppu[grid](
             a,
             b,
             workspace,
@@ -2381,15 +2444,9 @@ def _run_split_k_mm(
             aiu_load_mask=_aiu_load_mask(a, b),
             EVEN_MN=False,
         )
-        # The libentry wrapper owns the tuner in newer runtimes, while older
-        # runtimes exposed the tuner directly.  Read the selected config from
-        # whichever layer carries ``best_config``.
-        split_tuner = mm_split_k_kernel_ppu
-        while not hasattr(split_tuner, "best_config"):
-            split_tuner = getattr(split_tuner, "fn", None)
-            if split_tuner is None:
-                raise RuntimeError("split-K tuner did not expose best_config")
-        split_k = split_tuner.best_config.kwargs["SPLIT_K"]
+        # A warm LibEntry launch does not update the tuner's best_config.
+        # Its returned metadata belongs to this exact cached kernel/shape.
+        split_k = launch_meta["SPLIT_K"]
         reduce_grid = lambda META: (triton.cdiv(M * N, META["BLOCK"] * META["VEC"]),)
         mm_split_k_reduce_kernel_ppu[reduce_grid](
             workspace,
