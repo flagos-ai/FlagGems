@@ -54,6 +54,9 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
     V: tl.constexpr,
     BK: tl.constexpr,
     BV: tl.constexpr,
+    Q_STRIDE: tl.constexpr,
+    K_STRIDE: tl.constexpr,
+    V_STRIDE: tl.constexpr,
     USE_INITIAL_STATE: tl.constexpr,
     USE_QK_L2NORM_IN_KERNEL: tl.constexpr,
     IS_VARLEN: tl.constexpr,
@@ -79,9 +82,9 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
     o_k = i_k * BK + tl.arange(0, BK)
     o_v = i_v * BV + tl.arange(0, BV)
 
-    p_q = q + (bos * H + i_h) * K + o_k
-    p_k = k + (bos * H + i_h) * K + o_k
-    p_v = v + (bos * HV + i_hv) * V + o_v
+    p_q = q + bos * Q_STRIDE + i_h * K + o_k
+    p_k = k + bos * K_STRIDE + i_h * K + o_k
+    p_v = v + bos * V_STRIDE + i_hv * V + o_v
     p_b = b + bos * HV + i_hv
     p_o = o + ((i_k * all + bos) * HV + i_hv) * V + o_v
 
@@ -113,9 +116,9 @@ def fused_sigmoid_gating_delta_rule_update_kernel(
 
     for i in range(0, T):
         # Load inputs
-        b_q = tl.load(p_q + i * H * K, mask=mask_k, other=0).to(tl.float32)
-        b_k = tl.load(p_k + i * H * K, mask=mask_k, other=0).to(tl.float32)
-        b_v = tl.load(p_v + i * HV * V, mask=mask_v, other=0).to(tl.float32)
+        b_q = tl.load(p_q + i * Q_STRIDE, mask=mask_k, other=0).to(tl.float32)
+        b_k = tl.load(p_k + i * K_STRIDE, mask=mask_k, other=0).to(tl.float32)
+        b_v = tl.load(p_v + i * V_STRIDE, mask=mask_v, other=0).to(tl.float32)
         b_b = tl.load(p_b + i * HV).to(tl.float32)
 
         # Compute sigmoid gating
@@ -198,6 +201,7 @@ def fused_sigmoid_gating_delta_rule_update(
     scale: float = None,
     use_qk_l2norm_in_kernel: bool = False,
     cu_seqlens: torch.Tensor = None,
+    is_kda: bool = False,
 ):
     """
     Fused triton implementation of sigmoid gating delta rule update.
@@ -205,6 +209,18 @@ def fused_sigmoid_gating_delta_rule_update(
     and the recurrent delta rule update for better performance.
     """
     B, T, H, K, V = *k.shape, v.shape[-1]
+    if is_kda:
+        raise NotImplementedError(
+            "per-key gating is not supported by this Gems implementation"
+        )
+    token_strides = []
+    for tensor in (q, k, v):
+        if tensor.stride(-1) != 1 or tensor.stride(-2) != tensor.shape[-1]:
+            raise ValueError("GDN requires contiguous head dimensions")
+        token_stride = tensor.stride(0) if B > 1 and T == 1 else tensor.stride(1)
+        if B > 1 and tensor.stride(0) != T * token_stride:
+            raise ValueError("GDN requires a uniform token stride across batches")
+        token_strides.append(token_stride)
     HV = v.shape[2]
     N = B if cu_seqlens is None else len(cu_seqlens) - 1
     BK, BV = triton.next_power_of_2(K), min(triton.next_power_of_2(V), 64)
@@ -221,11 +237,11 @@ def fused_sigmoid_gating_delta_rule_update(
     o = q.new_empty(NK, *v.shape)
     grid = (NK, NV, N * HV)
 
-    if not initial_state_indices.is_contiguous():
+    if initial_state_indices is not None and not initial_state_indices.is_contiguous():
         initial_state_indices = initial_state_indices.contiguous()
-    if not initial_state_source.is_contiguous():
-        initial_state_source = initial_state_source.contiguous()
-    if not cu_seqlens.is_contiguous():
+    if initial_state_source is not None and not initial_state_source.is_contiguous():
+        raise ValueError("GDN state must be contiguous for in-place updates")
+    if cu_seqlens is not None and not cu_seqlens.is_contiguous():
         cu_seqlens = cu_seqlens.contiguous()
 
     fused_sigmoid_gating_delta_rule_update_kernel[grid](
@@ -251,6 +267,9 @@ def fused_sigmoid_gating_delta_rule_update(
         V=V,
         BK=BK,
         BV=BV,
+        Q_STRIDE=token_strides[0],
+        K_STRIDE=token_strides[1],
+        V_STRIDE=token_strides[2],
         USE_QK_L2NORM_IN_KERNEL=use_qk_l2norm_in_kernel,
         num_warps=num_warps,
         num_stages=num_stages,
