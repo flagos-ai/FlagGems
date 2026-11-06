@@ -1450,6 +1450,7 @@ from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
 from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_resize_ import sparse_resize_
+from flag_gems.ops.sparse_resize_and_clear_ import sparse_resize_and_clear_
 from flag_gems.ops.sparse_sampled_addmm import (
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -3161,6 +3162,7 @@ __all__ = [
     "sparse_csr_tensor",
     "sparse_dim",
     "sparse_resize_",
+    "sparse_resize_and_clear_",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "spdiags",
