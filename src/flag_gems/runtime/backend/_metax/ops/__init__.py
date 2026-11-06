@@ -105,6 +105,7 @@ from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
+from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -272,6 +273,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
+    "router_gemm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
