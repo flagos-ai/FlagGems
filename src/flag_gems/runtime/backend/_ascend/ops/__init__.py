@@ -220,6 +220,9 @@ from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
+from .upsample_nearest_exact3d_backward_grad_input import (
+    upsample_nearest_exact3d_backward_grad_input,
+)
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward_grad_input import (
     upsample_nearest3d_backward_grad_input,
@@ -498,6 +501,7 @@ __all__ = [
     "unsafe_index_put",
     "unsafe_masked_index",
     "upsample_linear1d_backward",
+    "upsample_nearest_exact3d_backward_grad_input",
     "upsample_nearest2d",
     "upsample_nearest3d_backward_grad_input",
     "var_mean",
