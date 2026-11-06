@@ -123,6 +123,7 @@ from .fill import (
     fill_tensor_out,
 )
 from .flip import flip
+from .float_power_ import float_power_scalar_tensor_out
 from .floor import floor, floor_, floor_out
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
@@ -424,6 +425,7 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "float_power_scalar_tensor_out",
     "floor",
     "floor_",
     "floor_divide",
