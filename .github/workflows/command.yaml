@@ -514,7 +514,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: flagos-ai/FlagOps/actions/setup-project@main
         with:
-          backend: thead
+          backend: thead-ppu210
           vllm-version: '0.21.0'
           gpu-check-script: tools/gpu_check_thead.sh
       - uses: flagos-ai/FlagOps/actions/run-ondemand-test@main
