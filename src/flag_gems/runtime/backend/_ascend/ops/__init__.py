@@ -63,6 +63,7 @@ from .diagonal import diagonal_backward
 from .diff import diff
 from .dist import dist
 from .dot import dot
+from .dropout_ import dropout_
 from .embedding import embedding
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
@@ -275,6 +276,7 @@ __all__ = [
     "diff",
     "dist",
     "dot",
+    "dropout_",
     "embedding",
     "embedding_spmdm",
     "erfinv",
