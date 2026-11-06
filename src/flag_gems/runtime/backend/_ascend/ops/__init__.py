@@ -228,6 +228,7 @@ from .softplus_backward import softplus_backward
 from .softshrink_backward import softshrink_backward
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
+from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
@@ -547,6 +548,7 @@ __all__ = [
     "sort",
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
+    "special_erfc",
     "special_erfinv",
     "special_log1p_out",
     "special_logit_out",
