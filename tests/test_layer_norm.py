@@ -57,6 +57,7 @@ LAYER_NORM_FORWARD_SHAPES = LAYER_NORM_SHAPES + LAYER_NORM_MEDIUM_SHAPES
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 @pytest.mark.parametrize("affine", [True, False])
 def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     weight = (
         torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
@@ -93,6 +94,7 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
 @pytest.mark.parametrize("wb_none", [False, True])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_layer_norm(shape, dtype, wb_none):
+    torch.manual_seed(0)
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -132,6 +134,7 @@ def test_layer_norm(shape, dtype, wb_none):
 @pytest.mark.parametrize("shape", LAYER_NORM_MEDIUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_native_layer_norm_statistics(shape, dtype):
+    torch.manual_seed(0)
     res_inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     normalized_shape = shape[1:]
     res_weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
