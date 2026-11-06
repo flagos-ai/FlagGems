@@ -17,6 +17,8 @@ import math
 
 import torch
 import triton
+import triton.language as tl
+from triton.experimental.tle.language import dsa
 
 from flag_gems.ops.layernorm import layer_norm as common_layer_norm
 from flag_gems.ops.layernorm import (
@@ -24,6 +26,8 @@ from flag_gems.ops.layernorm import (
     layer_norm_persistent_kernel_multiline,
 )
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.utils import CORE_NUM
+from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.libentry import LibEntry
 
 from .mm import _blockified
@@ -50,6 +54,60 @@ layer_norm_persistent_kernel = BlockifiedLayerNormEntry(layer_norm_persistent_ke
 layer_norm_persistent_kernel_multiline = BlockifiedLayerNormEntry(
     layer_norm_persistent_kernel_multiline.fn
 )
+
+
+@BlockifiedLayerNormEntry
+@triton.jit(do_not_specialize=["eps"])
+def layer_norm_compact_kernel(
+    input_ptr,
+    output_ptr,
+    weight_ptr,
+    bias_ptr,
+    mean_ptr,
+    rstd_ptr,
+    M,
+    N: tl.constexpr,
+    eps,
+    TILE_M: tl.constexpr,
+    TILE_N: tl.constexpr,
+    NUM_PROGRAMS: tl.constexpr,
+):
+    columns = tl.arange(0, TILE_N)
+    if weight_ptr is None:
+        weight = 1.0
+    else:
+        weight = tl.load(weight_ptr + columns, columns < N, 0)
+        weight = dsa.extract_slice(weight, [0], [N], [1]).to(tl.float32)[None, :]
+    if bias_ptr is None:
+        bias = 0.0
+    else:
+        bias = tl.load(bias_ptr + columns, columns < N, 0)
+        bias = dsa.extract_slice(bias, [0], [N], [1]).to(tl.float32)[None, :]
+
+    for block in range(ext.program_id(0), tl.cdiv(M, TILE_M), NUM_PROGRAMS):
+        rows = block * TILE_M + tl.arange(0, TILE_M)
+        offsets = rows[:, None] * N + columns[None, :]
+        mask = (rows[:, None] < M) & (columns[None, :] < N)
+        values = tl.load(input_ptr + offsets, mask, 0)
+        # Compact arithmetic keeps padded columns out of UB intermediates.
+        values = dsa.extract_slice(values, [0, 0], [TILE_M, N], [1, 1]).to(tl.float32)
+        mean = tl.sum(values, 1) / N
+        centered = values - mean[:, None]
+        rstd = tl.rsqrt(tl.sum(centered * centered, 1) / N + eps)
+        output = (centered * rstd[:, None] * weight + bias).to(
+            output_ptr.dtype.element_ty
+        )
+        # GM stores retain a power-of-two shape for the Ascend lowering.
+        output = dsa.insert_slice(
+            tl.full((TILE_M, TILE_N), 0, output_ptr.dtype.element_ty),
+            output,
+            [0, 0],
+            [TILE_M, N],
+            [1, 1],
+        )
+        tl.store(output_ptr + offsets, output, mask)
+        tl.store(mean_ptr + rows, mean, rows < M)
+        tl.store(rstd_ptr + rows, rstd, rows < M)
 
 
 def _select_tile_m(M, tile_n):
@@ -87,6 +145,29 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     # Explicit block mapping makes scheduling independent of other operator imports.
     with torch_device_fn.device(input.device):
         tile_n = triton.next_power_of_2(N)
+        # The traced width wastes nearly half of a padded 2048-column tile.
+        if (
+            N == 1152
+            and M >= 4096
+            and input.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        ):
+            tile_m = 4 if input.dtype == torch.float32 else 8
+            layer_norm_compact_kernel[(CORE_NUM,)](
+                input,
+                y,
+                weight,
+                bias,
+                mean,
+                rstd,
+                M,
+                N,
+                eps,
+                tile_m,
+                tile_n,
+                CORE_NUM,
+                enable_auto_blockify=True,
+            )
+            return y, mean, rstd
         tile_m = _select_tile_m(M, tile_n)
         if tile_m > 1:
             grid = (triton.cdiv(M, tile_m), 1, 1)
