@@ -50,6 +50,7 @@ from .conv1d import conv1d
 from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
@@ -216,6 +217,8 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "conv_transpose2d",
+    "convolution_backward",
+    "convolution_backward_out",
     "copy_",
     "cudnn_convolution",
     "deg2rad_",

@@ -49,6 +49,7 @@ from .clamp_max import clamp_max
 from .clamp_max_ import clamp_max_
 from .concat import concat
 from .concatenate import concatenate
+from .convolution_backward import convolution_backward, convolution_backward_out
 from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
 from .cross import cross
@@ -262,6 +263,8 @@ __all__ = [
     "clamp_max_",
     "concat",
     "concatenate",
+    "convolution_backward",
+    "convolution_backward_out",
     "cosh_",
     "count_nonzero",
     "cross",
