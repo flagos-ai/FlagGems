@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,7 +53,9 @@ def hardtanh_backward_kernel(
 
 def hardtanh_backward(grad_output, self, min_val, max_val):
     logger.debug("GEMS HARDTANH_BACKWARD")
-    assert grad_output.is_cuda and self.is_cuda
+    assert (
+        grad_output.device.type == device.name and self.device.type == device.name
+    ), f"Inputs must be on the {device.name} device"
     assert grad_output.device == self.device
     n_elements = grad_output.numel()
     if n_elements == 0:
