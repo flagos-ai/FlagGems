@@ -20,10 +20,109 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    tensorview_call,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle.language.dsa import tile_load, tile_store
+
+# ---------------------------------------------------------------------------
+# TensorView fast path (forward only)
+#
+# An embedding lookup is a row gather: each index names a contiguous row of the
+# weight matrix. A GatherScatterView takes the indices in its sparse dimension
+# and moves whole rows as block DMAs, where the generic kernel launches one
+# program per token and reads the row element-wise.
+#
+# Only the forward pass. The backward is a scatter-add over repeated indices
+# with optional frequency scaling, which the existing kernels already handle.
+# ---------------------------------------------------------------------------
+TV_BLOCK_M = 32
+
+if HAS_TENSORVIEW:
+
+    @triton.jit
+    def embedding_tv_kernel(
+        out,
+        indices,
+        weight,
+        num_tokens,
+        vocab_size,
+        DIM: tl.constexpr,
+        BLOCK_M: tl.constexpr,
+        BLOCK_DIM: tl.constexpr,
+    ):
+        token_block = tl.program_id(0)
+        offsets = token_block * BLOCK_M + tl.arange(0, BLOCK_M)
+        rows = tl.load(indices + offsets, mask=offsets < num_tokens, other=-1).to(
+            tl.int32
+        )
+
+        weight_view = tle_exp.make_gather_scatter_view(
+            weight,
+            shape=[vocab_size, DIM],
+            strides=[DIM, 1],
+            tile=[BLOCK_M, BLOCK_DIM],
+            sparse_dim=[0],
+        )
+        gathered = tile_load(
+            weight_view, index=(rows, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        )
+
+        out_view = tle_exp.make_partition_view(
+            out,
+            shape=[num_tokens, DIM],
+            strides=[DIM, 1],
+            tile=[BLOCK_M, BLOCK_DIM],
+        )
+        tile_store(
+            out_view,
+            value=gathered,
+            index=(token_block, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+    def _embedding_forward_tensorview(weight, indices, block_m=None):
+        logger.debug("GEMS_ASCEND EMBEDDING_FORWARD(TENSORVIEW)")
+        vocab_size, dim = weight.shape
+        if block_m is None:
+            # One gathered tile is live.
+            block_m = tile_rows_for_ub(
+                triton.next_power_of_2(dim) * weight.element_size(), 1, TV_BLOCK_M
+            )
+        num_tokens = indices.numel()
+        out = torch.empty(
+            (num_tokens, dim), dtype=weight.dtype, device=weight.device
+        )
+        grid = (triton.cdiv(num_tokens, block_m),)
+        with torch_device_fn.device(weight.device):
+            embedding_tv_kernel[grid](
+                out,
+                indices,
+                weight,
+                num_tokens,
+                vocab_size,
+                DIM=dim,
+                BLOCK_M=block_m,
+                BLOCK_DIM=triton.next_power_of_2(dim),
+            )
+        return out
+
+    def _embedding_forward_tv_eligible(weight, indices):
+        return (
+            weight.ndim == 2
+            and weight.numel() > 0
+            and indices.numel() > 0
+            and indices.dtype in (torch.int32, torch.int64)
+        )
 
 
 @libentry()
@@ -139,12 +238,27 @@ class Embedding(torch.autograd.Function):
         BLOCK_SIZE = triton.next_power_of_2(N)
         indices = indices.contiguous()
         weight = weight.contiguous()
-        output = torch.empty(
-            (*indices.shape, N), device=indices.device, dtype=weight.dtype
-        )
 
-        with torch_device_fn.device(weight.device):
-            embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+        def _generic_forward(weight, indices):
+            output = torch.empty(
+                (*indices.shape, N), device=indices.device, dtype=weight.dtype
+            )
+            with torch_device_fn.device(weight.device):
+                embedding_kernel[M,](output, indices, weight, N, BLOCK_SIZE)
+            return output
+
+        if HAS_TENSORVIEW and _embedding_forward_tv_eligible(weight, indices):
+            # The fast path produces a flat [num_tokens, N] tile; restore the
+            # caller's leading index shape afterwards.
+            output = tensorview_call(
+                "EMBEDDING_FORWARD",
+                _embedding_forward_tensorview,
+                _generic_forward,
+                weight,
+                indices,
+            ).reshape(*indices.shape, N)
+        else:
+            output = _generic_forward(weight, indices)
 
         ctx.M = M
         ctx.N = N

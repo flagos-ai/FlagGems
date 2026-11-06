@@ -19,10 +19,19 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._ascend.tensorview import (
+    HAS_TENSORVIEW,
+    tensorview_call,
+    tile_rows_for_ub,
+)
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
+
+if HAS_TENSORVIEW:
+    import triton.experimental.tle as tle_exp
+    from triton.experimental.tle.language.dsa import tile_load, tile_store
 
 # The Ascend driver flattens the launch grid before rtKernelLaunch
 # (coreDim = grid.x * grid.y * grid.z), so it is the *product* of the axes that
@@ -201,7 +210,7 @@ def _launch_index_copy(out, dim, index, src):
         )
 
 
-def index_copy(inp, dim, index, src):
+def _index_copy_generic(inp, dim, index, src):
     logger.debug("GEMS_ASCEND INDEX_COPY")
     dim %= inp.ndim
     out = inp.clone()
@@ -209,8 +218,143 @@ def index_copy(inp, dim, index, src):
     return out
 
 
-def index_copy_(inp, dim, index, src):
+def _index_copy__generic(inp, dim, index, src):
     logger.debug("GEMS_ASCEND INDEX_COPY_")
     dim %= inp.ndim
     _launch_index_copy(inp, dim, index, src)
     return inp
+
+
+# ---------------------------------------------------------------------------
+# TensorView fast path
+#
+# Along dim 0 the index names whole contiguous rows, so the source rows arrive
+# through a PartitionView and go straight out through a GatherScatterView whose
+# sparse dimension takes the index. One block DMA per tile instead of the
+# generic kernel's strided element-wise copy.
+#
+# Unlike index_add this is a pure write, so repeated indices are safe: whichever
+# tile writes last wins, which is the semantics torch.index_copy_ specifies for
+# duplicates anyway.
+# ---------------------------------------------------------------------------
+TV_BLOCK_T = 32
+
+if HAS_TENSORVIEW:
+
+    @triton.jit
+    def index_copy_tv_kernel(
+        dst,
+        src,
+        index,
+        num_indices,
+        num_rows,
+        WIDTH: tl.constexpr,
+        BLOCK_T: tl.constexpr,
+        BLOCK_WIDTH: tl.constexpr,
+    ):
+        tile = tl.program_id(0)
+        offsets = tile * BLOCK_T + tl.arange(0, BLOCK_T)
+        rows = tl.load(index + offsets, mask=offsets < num_indices, other=-1).to(
+            tl.int32
+        )
+
+        src_view = tle_exp.make_partition_view(
+            src,
+            shape=[num_indices, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_T, BLOCK_WIDTH],
+        )
+        values = tile_load(
+            src_view, index=(tile, 0), dst_space=tle_exp.language.dsa.ascend.UB
+        )
+
+        dst_view = tle_exp.make_gather_scatter_view(
+            dst,
+            shape=[num_rows, WIDTH],
+            strides=[WIDTH, 1],
+            tile=[BLOCK_T, BLOCK_WIDTH],
+            sparse_dim=[0],
+        )
+        tile_store(
+            dst_view,
+            value=values,
+            index=(rows, 0),
+            src_space=tle_exp.language.dsa.ascend.UB,
+        )
+
+    def _launch_index_copy_tv(out, index, src, block_t=None):
+        src = src.contiguous()
+        num_rows = out.shape[0]
+        width = math.prod(out.shape[1:]) if out.dim() > 1 else 1
+        if block_t is None:
+            # One tile of values is live between the load and the store.
+            block_t = tile_rows_for_ub(
+                triton.next_power_of_2(width) * out.element_size(), 1, TV_BLOCK_T
+            )
+        num_indices = index.numel()
+        grid = (triton.cdiv(num_indices, block_t),)
+        with torch_device_fn.device(out.device):
+            index_copy_tv_kernel[grid](
+                out,
+                src,
+                index,
+                num_indices,
+                num_rows,
+                WIDTH=width,
+                BLOCK_T=block_t,
+                BLOCK_WIDTH=triton.next_power_of_2(width),
+            )
+        return out
+
+    def _index_copy_tensorview(inp, dim, index, src):
+        logger.debug("GEMS_ASCEND INDEX_COPY(TENSORVIEW)")
+        out = inp.contiguous().clone()
+        return _launch_index_copy_tv(out, index.contiguous(), src)
+
+    def _index_copy__tensorview(inp, dim, index, src):
+        logger.debug("GEMS_ASCEND INDEX_COPY_(TENSORVIEW)")
+        if inp.is_contiguous():
+            return _launch_index_copy_tv(inp, index.contiguous(), src)
+        work = inp.contiguous()
+        _launch_index_copy_tv(work, index.contiguous(), src)
+        inp.copy_(work)
+        return inp
+
+    def _tv_eligible(inp, dim, index, src):
+        if inp.numel() == 0 or index.numel() == 0:
+            return False
+        if dim % max(inp.ndim, 1) != 0:
+            return False
+        if src.dtype != inp.dtype:
+            return False
+        return index.numel() == src.shape[0]
+
+    def index_copy(inp, dim, index, src):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_copy_generic(inp, dim, index, src)
+        return tensorview_call(
+            "INDEX_COPY",
+            _index_copy_tensorview,
+            _index_copy_generic,
+            inp,
+            dim,
+            index,
+            src,
+        )
+
+    def index_copy_(inp, dim, index, src):
+        if not _tv_eligible(inp, dim, index, src):
+            return _index_copy__generic(inp, dim, index, src)
+        return tensorview_call(
+            "INDEX_COPY_",
+            _index_copy__tensorview,
+            _index_copy__generic,
+            inp,
+            dim,
+            index,
+            src,
+        )
+
+else:
+    index_copy = _index_copy_generic
+    index_copy_ = _index_copy__generic
