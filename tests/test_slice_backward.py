@@ -84,6 +84,63 @@ def test_slice_backward(shape, dim, start, end, step, dtype):
 
 
 @pytest.mark.slice_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "expand_scalar",
+        "expand_row",
+        "transpose",
+        "strided_offset",
+        "offset",
+        "contiguous",
+    ],
+)
+@pytest.mark.parametrize(
+    "dim,start,end,step", [(0, 0, 2, 1), (1, 1, 7, 2), (-1, -7, 8, 3), (0, 2, 2, 1)]
+)
+def test_slice_backward_gradient_layout(dtype, layout, dim, start, end, step):
+    shape = (4, 8)
+    sliced = torch.empty(shape)[
+        tuple(
+            slice(start, end, step) if d == dim % 2 else slice(None) for d in range(2)
+        )
+    ]
+    rows, cols = sliced.shape
+    device = flag_gems.device
+    if layout == "expand_scalar":
+        grad = torch.tensor(2, dtype=dtype, device=device).expand(rows, cols)
+    elif layout == "expand_row":
+        grad = (
+            torch.arange(cols, dtype=dtype, device=device)
+            .reshape(1, cols)
+            .expand(rows, cols)
+        )
+    elif layout == "transpose":
+        grad = (
+            torch.arange(rows * cols, dtype=dtype, device=device)
+            .reshape(cols, rows)
+            .t()
+        )
+    elif layout == "strided_offset":
+        grad = torch.arange(2 * rows * cols + 1, dtype=dtype, device=device)[
+            1::2
+        ].reshape(rows, cols)
+    elif layout == "offset":
+        grad = torch.arange(rows * cols + 1, dtype=dtype, device=device)[1:].reshape(
+            rows, cols
+        )
+    else:
+        grad = torch.arange(rows * cols, dtype=dtype, device=device).reshape(rows, cols)
+
+    ref_out = torch.ops.aten.slice_backward(grad.cpu(), shape, dim, start, end, step)
+    res_out = flag_gems.slice_backward(grad, shape, dim, start, end, step)
+    assert res_out.shape == shape
+    assert res_out.dtype == dtype
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.slice_backward
 @pytest.mark.parametrize("shape", SLICE_BACKWARD_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
