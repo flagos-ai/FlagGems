@@ -16,6 +16,7 @@
 
 import logging
 import math
+from functools import reduce
 
 import torch
 import triton
@@ -63,6 +64,87 @@ def amin_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
 
 
 @libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_non_inner"))
+@triton.jit
+def amin_dim_kernel_non_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    K,
+    TILE_N: tl.constexpr,
+    TILE_K: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    dtype = input_ptr.dtype.element_ty
+    cdtype = tl.float32 if dtype is tl.bfloat16 or dtype is tl.float16 else dtype
+    max_value = get_dtype_max(dtype)
+
+    pid_m = tle.program_id(0)
+    pid_k = tle.program_id(1)
+    k_offsets = pid_k * TILE_K + tl.arange(0, TILE_K)[None, :]
+
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)[:, None]
+        inp_offset = pid_m * N * K + n_offsets * K + k_offsets
+        mask = (n_offsets < N) & (k_offsets < K)
+        inp = tl.load(input_ptr + inp_offset, mask=mask, other=max_value).to(cdtype)
+        out = tl.min(inp, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out, mask=k_offsets < K)
+    else:
+        acc = tl.full([TILE_N, TILE_K], value=max_value, dtype=cdtype)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)[:, None]
+            inp_offsets = pid_m * N * K + n_offsets * K + k_offsets
+            mask = (n_offsets < N) & (k_offsets < K)
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=max_value).to(
+                cdtype
+            )
+            acc = tl.minimum(acc, inp)
+        out = tl.min(acc, axis=0, keep_dims=True)
+        out_offset = pid_m * K + k_offsets
+        tl.store(output_ptr + out_offset, out, mask=k_offsets < K)
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("softmax_inner"))
+@triton.jit
+def amin_dim_kernel_inner(
+    output_ptr,
+    input_ptr,
+    M,
+    N,
+    TILE_N: tl.constexpr,
+    ONE_TILE_PER_CTA: tl.constexpr,
+):
+    dtype = input_ptr.dtype.element_ty
+    cdtype = tl.float32 if dtype is tl.bfloat16 or dtype is tl.float16 else dtype
+    max_value = get_dtype_max(dtype)
+
+    pid_m = tle.program_id(0)
+    if ONE_TILE_PER_CTA:
+        n_offsets = tl.arange(0, TILE_N)
+        inp_offset = pid_m * N + n_offsets
+        mask = n_offsets < N
+        inp = tl.load(input_ptr + inp_offset, mask=mask, other=max_value).to(cdtype)
+        out = tl.min(inp, axis=0)
+        tl.store(output_ptr + pid_m, out)
+    else:
+        acc = tl.full([TILE_N], value=max_value, dtype=cdtype)
+        for start_n in range(0, N, TILE_N):
+            n_offsets = start_n + tl.arange(0, TILE_N)
+            inp_offsets = pid_m * N + n_offsets
+            mask = n_offsets < N
+            inp = tl.load(input_ptr + inp_offsets, mask=mask, other=max_value).to(
+                cdtype
+            )
+            acc = tl.minimum(acc, inp)
+        out = tl.min(acc, axis=0)
+        tl.store(output_ptr + pid_m, out)
+
+
+@libentry()
 @libtuner(
     configs=runtime.get_tuned_config("naive_reduction"),
     key=["M", "N"],
@@ -105,7 +187,7 @@ def amin(inp, dim=None, keepdim=False):
         torch.float16,
         torch.bfloat16,
     ), "amin only supports float dtypes"
-    if dim is None or len(dim) == 0:
+    if dim is None or (hasattr(dim, "__len__") and len(dim) == 0):
         M = inp.numel()
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
@@ -130,29 +212,64 @@ def amin(inp, dim=None, keepdim=False):
                 mid, out, mid_size, block_mid
             )  # max block size is 128k, so mid does not requires int64 index
         return out
-    else:
-        if isinstance(dim, int):
-            dim = [dim]
-        assert ((i >= -inp.ndim and i < inp.ndim) for i in dim), "Invalid dim"
-        dtype = inp.dtype
 
-        shape = list(inp.shape)
-        dim = [d % inp.ndim for d in dim]
-        inp = dim_compress(inp, dim)
-        N = 1
-        for i in dim:
-            N *= shape[i]
-            shape[i] = 1
-        M = inp.numel() // N
+    if isinstance(dim, int):
+        dim = [dim]
+    if not all(-inp.ndim <= i < inp.ndim for i in dim):
+        raise IndexError(
+            f"Dimension out of range (expected to be in range of "
+            f"[{-inp.ndim}, {inp.ndim - 1}])"
+        )
+    dtype = inp.dtype
+    shape = list(inp.shape)
+    dim = [d % inp.ndim for d in dim]
 
+    if len(dim) == 1:
+        # Single-dim reduction: split into (M, N, K) and reduce over N with a
+        # strided kernel, avoiding the dim_compress copy. K == 1 means the
+        # reduced dim is innermost (contiguous); K > 1 means it is a middle or
+        # outer dim, where the copy used to dominate the runtime.
+        d = dim[0]
+        N = inp.shape[d]
+        if N == 0:
+            # Reducing over an empty dimension has no identity, same as torch.
+            raise IndexError("amin(): cannot reduce over a zero-size dimension")
+        M = reduce(lambda x, y: x * y, shape[:d], 1)
+        K = reduce(lambda x, y: x * y, shape[d + 1 :], 1)
+        shape[d] = 1
         out = torch.empty(shape, dtype=dtype, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+        if M == 0 or K == 0:
+            # Some other dimension is empty: the output is a valid empty tensor
+            # and there is nothing to launch. Matches torch.
+            if not keepdim:
+                out = out.squeeze(dim=d)
+            return out
+        inp = inp.contiguous()
         with torch_device_fn.device(inp.device):
-            amin_kernel[grid](inp, out, M, N)
+            if K == 1:
+                grid = (M, 1, 1)
+                amin_dim_kernel_inner[grid](out, inp, M, N)
+            else:
+                grid = lambda meta: (M, triton.cdiv(K, meta["TILE_K"]), 1)
+                amin_dim_kernel_non_inner[grid](out, inp, M, N, K)
         if not keepdim:
-            out = out.squeeze(dim=dim)
+            out = out.squeeze(dim=d)
         return out
+
+    # Multi-dim reduction keeps the original dim_compress path.
+    inp = dim_compress(inp, dim)
+    N = 1
+    for i in dim:
+        N *= shape[i]
+        shape[i] = 1
+    M = inp.numel() // N
+    out = torch.empty(shape, dtype=dtype, device=inp.device)
+    grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
+    with torch_device_fn.device(inp.device):
+        amin_kernel[grid](inp, out, M, N)
+    if not keepdim:
+        out = out.squeeze(dim=dim)
+    return out
 
 
 def amin_(inp, dim=None, keepdim=False):
