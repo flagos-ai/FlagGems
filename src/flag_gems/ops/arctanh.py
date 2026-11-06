@@ -16,6 +16,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device
+
 
 @triton.jit
 def arctanh_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
@@ -36,7 +38,9 @@ def arctanh_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 def _launch_arctanh(x: torch.Tensor, out: torch.Tensor):
-    assert x.is_cuda and out.is_cuda, "Input and output must be CUDA tensors"
+    assert (
+        x.device.type == device.name and out.device.type == device.name
+    ), f"Input and output must be on the {device.name} device"
     assert x.shape == out.shape, "Input and output shapes must match"
     assert out.dtype == x.dtype, "Output dtype must match input dtype"
     assert x.dtype in (
