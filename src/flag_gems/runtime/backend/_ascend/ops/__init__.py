@@ -65,6 +65,7 @@ from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
+from .frac import frac
 from .full import full
 from .full_like import full_like
 from .fused_adam_ import fused_adam_
@@ -269,6 +270,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "frac",
     "full",
     "full_like",
     "fused_adam_",
