@@ -20,22 +20,17 @@ import torch
 import triton
 
 import flag_gems
+from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-if QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+MNK_SHAPES = accuracy_shapes("mm", QUICK_MODE)
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
+
+# THead GEMM delivery coverage is BF16, including quick-mode runs.
+if flag_gems.vendor_name == "thead":
+    FLOAT_DTYPES = [torch.bfloat16]
 
 
 MK_SHAPES = (
@@ -64,9 +59,8 @@ def _mm_atol_base():
 
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("M, N, K, b_column_major", accuracy_cases("mm", QUICK_MODE))
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("b_column_major", [True, False])
 def test_mm(M, N, K, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")

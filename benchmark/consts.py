@@ -25,6 +25,8 @@ import flag_gems
 from .cases import BenchmarkCaseList, BenchmarkCasePlan, BenchmarkCaseSpec  # noqa: F401
 
 FLOAT_DTYPES = [torch.float16, torch.float32, torch.bfloat16]
+# Only THead GEMM validation is restricted to the optimized BF16 path.
+GEMM_DTYPES = [torch.bfloat16] if flag_gems.vendor_name == "thead" else FLOAT_DTYPES
 INT_DTYPES = [torch.int16, torch.int32]
 BOOL_DTYPES = [torch.bool]
 COMPLEX_DTYPES = [torch.complex64]
@@ -102,6 +104,7 @@ def model_shapes():
 class BenchmarkMetrics:
     case_id: Optional[str] = None
     candidate_source: Optional[str] = None
+    case_metadata: Optional[dict] = None
     # Legacy shape information for backward compatibility
     # This field corresponds to the 'size' field in the previous version's benchmark.
     legacy_shape: Optional[int] = None
@@ -137,6 +140,7 @@ class BenchmarkMetrics:
 ALL_AVAILABLE_METRICS = set(map(lambda x: x.name, fields(BenchmarkMetrics))) - {
     "case_id",
     "candidate_source",
+    "case_metadata",
     "legacy_shape",
     "shape_detail",
     "base_raw_speedup",

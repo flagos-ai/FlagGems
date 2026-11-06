@@ -53,7 +53,7 @@ def _input_fn(b, m, n, k, dtype, device, b_column_major):
 
     if b_column_major:
         inp2 = torch.randn([b, n, k], dtype=dtype, device=device, requires_grad=True)
-        inp2 = inp2.transpose(1, 2).contiguous()
+        inp2 = inp2.transpose(1, 2)
     else:
         inp2 = torch.randn([b, k, n], dtype=dtype, device=device, requires_grad=True)
 
@@ -82,7 +82,7 @@ def _input_fn_out(b, m, n, k, dtype, device, b_column_major):
 
     if b_column_major:
         inp2 = torch.randn([b, n, k], dtype=dtype, device=device)
-        inp2 = inp2.transpose(1, 2).contiguous()
+        inp2 = inp2.transpose(1, 2)
     else:
         inp2 = torch.randn([b, k, n], dtype=dtype, device=device)
 

@@ -47,6 +47,7 @@ from .consts import (
     check_metric_dependencies,
     model_shapes,
 )
+from .gemm_shapes import blas_cases, input_metadata
 from .reference import reference_failure
 
 torch_backend_device = flag_gems.runtime.torch_backend_device
@@ -819,6 +820,7 @@ class Benchmark:
         try:
             args, kwargs = self.unpack_to_args_kwargs(input)
             metric.shape_detail = self.record_shapes(*args, **kwargs)
+            metric.case_metadata = input_metadata(self.op_name, args)
             baseline_context = self._capture_external_baseline(args, kwargs)
             if "latency_base" in self.to_bench_metrics and not Config.skip_native:
                 metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
@@ -1244,6 +1246,20 @@ class TexGluBackwardBenchmark(TexGluBenchmark):
         return torch.tensor(inp_shape).prod().item() * 2
 
 
+def deduplicate_thead_gemm_shapes(op_name, shapes):
+    """Ignore the unused batch field only for THead's two-dimensional GEMMs."""
+    if vendor_name != "thead" or op_name not in ("mm", "mm_out", "addmm", "addmm_out"):
+        return shapes
+    seen = set()
+    unique = []
+    for shape in shapes:
+        key = tuple(shape[1:])
+        if key not in seen:
+            seen.add(key)
+            unique.append(shape)
+    return unique
+
+
 class BlasBenchmark(Benchmark):
     """
     benchmark for blas
@@ -1255,13 +1271,18 @@ class BlasBenchmark(Benchmark):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
 
-    def get_input_iter(self, dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, dtype, self.device, False)
+    def set_shapes(self, shape_file_path=None):
+        super().set_shapes(shape_file_path)
+        self.shapes = deduplicate_thead_gemm_shapes(self.op_name, self.shapes)
 
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            for b, m, n, k in self.shapes:
-                yield from self.input_fn(b, m, n, k, dtype, self.device, True)
+    def get_input_iter(self, dtype) -> Generator:
+        for b, m, n, k, column_major in blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        ):
+            yield from self.input_fn(b, m, n, k, dtype, self.device, column_major)
 
     def supports_cases(self) -> bool:
         # Subclasses that replace the standard BLAS case loop must provide
@@ -1274,9 +1295,12 @@ class BlasBenchmark(Benchmark):
         return type(self).get_input_iter is BlasBenchmark.get_input_iter
 
     def get_case_iter(self, dtype) -> Generator:
-        raw_cases = [(*shape, False) for shape in self.shapes]
-        if Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-            raw_cases.extend((*shape, True) for shape in self.shapes)
+        raw_cases = blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        )
 
         for ordinal, (b, m, n, k, b_column_major) in enumerate(raw_cases):
             yield BenchmarkCaseSpec(
@@ -1284,7 +1308,10 @@ class BlasBenchmark(Benchmark):
                 ordinal=ordinal,
                 dtype=dtype,
                 shape={"b": b, "m": m, "n": n, "k": k},
-                params={"b_column_major": b_column_major},
+                params={
+                    "b_column_major": b_column_major,
+                    "layout": "NT" if b_column_major else "NN",
+                },
                 builder_args=(b, m, n, k, dtype, self.device, b_column_major),
             )
 

@@ -16,36 +16,28 @@ import pytest
 import torch
 
 import flag_gems
+from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
-if QUICK_MODE:
-    ROUTER_SHAPES = [
-        (16, 256, 7168),
-    ]
-    INPUT_DTYPES = [torch.bfloat16]
-else:
-    ROUTER_SHAPES = [
-        (1, 256, 7168),
-        (8, 256, 7168),
-        (16, 256, 7168),
-        (32, 256, 7168),
-        (128, 256, 7168),
-        (1, 64, 4096),
-        (16, 128, 4096),
-        (64, 384, 7168),
-    ]
-    INPUT_DTYPES = [torch.bfloat16]
+ROUTER_SHAPES = accuracy_shapes("router_gemm", QUICK_MODE)
+INPUT_DTYPES = [torch.bfloat16]
 
 
 @pytest.mark.router_gemm
-@pytest.mark.parametrize("M, N, K", ROUTER_SHAPES)
+@pytest.mark.parametrize(
+    "M, N, K, b_column_major", accuracy_cases("router_gemm", QUICK_MODE)
+)
 @pytest.mark.parametrize("in_dtype", INPUT_DTYPES)
-def test_router_gemm_accuracy(M, N, K, in_dtype):
+def test_router_gemm_accuracy(M, N, K, in_dtype, b_column_major):
     """Test that router_gemm (bf16 input -> fp32 output) matches fp32 reference."""
     x = torch.randn((M, K), dtype=in_dtype, device=flag_gems.device)
-    weight = torch.randn((N, K), dtype=in_dtype, device=flag_gems.device)
+    weight = (
+        torch.randn((N, K), dtype=in_dtype, device=flag_gems.device)
+        if b_column_major
+        else torch.randn((K, N), dtype=in_dtype, device=flag_gems.device).t()
+    )
 
     ref_x = utils.to_reference(x, True)
     ref_weight = utils.to_reference(weight, True)

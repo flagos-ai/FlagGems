@@ -45,6 +45,10 @@ def _can_use_ppu_baddbmm(bias, A, B, out=None) -> bool:
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     logger.debug("GEMS_THEAD BADDBMM")
+    # The routed Triton forward does not attach an autograd node when called
+    # directly. Keep the existing differentiable implementation for training.
+    if torch.is_grad_enabled() and any(t.requires_grad for t in (bias, A, B)):
+        return _generic_baddbmm(bias, A, B, beta=beta, alpha=alpha)
     if _can_use_ppu_baddbmm(bias, A, B):
         out = torch.empty(
             (A.shape[0], A.shape[1], B.shape[2]),

@@ -41,7 +41,7 @@ def test_bmm(monkeypatch):
         op_name="bmm",
         input_fn=_input_fn,
         torch_op=torch.bmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.GEMM_DTYPES,
     )
 
     bench.run()
@@ -67,7 +67,7 @@ def test_bmm_out(monkeypatch):
         op_name="bmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.bmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.GEMM_DTYPES,
     )
 
     bench.run()
