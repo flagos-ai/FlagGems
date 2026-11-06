@@ -111,15 +111,16 @@ def layer_norm_compact_kernel(
 
 
 def _select_tile_m(M, tile_n):
-    # Narrow rows keep the packed schedule: they already run a whole row per
-    # program and the one-row kernel is not exercised at these widths.
+    # Larger narrow-row groups amortize the per-program copy/reduction cost.
     if tile_n <= 128:
+        if M >= 1024:
+            return min(64, triton.next_power_of_2(triton.cdiv(M, CORE_NUM)))
         return triton.cdiv(1024, tile_n)
     # Pack medium-width rows to amortize per-program device work. Wider rows
     # stay single-row to avoid the measured 4096-column packing regression.
     if M < 256 or tile_n > 2048:
         return 1
-    return max(1, min(16, 8192 // tile_n))
+    return max(1, min(32, 8192 // tile_n))
 
 
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
@@ -148,11 +149,12 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
         # The traced width wastes nearly half of a padded 2048-column tile.
         if (
             N == 1152
-            and M >= 4096
+            and M >= 128
             and input.dtype in (torch.float16, torch.bfloat16, torch.float32)
         ):
             tile_m = 4 if input.dtype == torch.float32 else 8
-            layer_norm_compact_kernel[(CORE_NUM,)](
+            num_programs = min(CORE_NUM, triton.cdiv(M, tile_m))
+            layer_norm_compact_kernel[(num_programs,)](
                 input,
                 y,
                 weight,
@@ -164,7 +166,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 eps,
                 tile_m,
                 tile_n,
-                CORE_NUM,
+                num_programs,
                 enable_auto_blockify=True,
             )
             return y, mean, rstd
