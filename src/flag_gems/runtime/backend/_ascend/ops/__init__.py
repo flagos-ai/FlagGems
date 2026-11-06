@@ -51,6 +51,7 @@ from .bmm_w8a8_int8 import bmm_w8a8_int8
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .chunk_cat import chunk_cat
 from .clamp_max import clamp_max
 from .clamp_max_ import clamp_max_
 from .concat import concat
@@ -275,6 +276,7 @@ __all__ = [
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
+    "chunk_cat",
     "clamp_max",
     "clamp_max_",
     "concat",
