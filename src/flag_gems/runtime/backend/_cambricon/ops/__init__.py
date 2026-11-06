@@ -96,8 +96,10 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .digamma_ import digamma, digamma_
 from .div import (
-    div_mode,
-    div_mode_,
+    div_scalar_mode,
+    div_scalar_mode_,
+    div_tensor_mode,
+    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -187,7 +189,7 @@ from .logit import logit, logit_out
 from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
-from .lt import lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt, lt_scalar
 from .lt_ import lt_, lt_scalar_
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
@@ -441,8 +443,10 @@ __all__ = [
     "diagonal_backward",
     "digamma",
     "digamma_",
-    "div_mode",
-    "div_mode_",
+    "div_scalar_mode",
+    "div_scalar_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "dropout",
     "dropout_backward",
     "elu",
@@ -545,6 +549,8 @@ __all__ = [
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_out",
+    "less_scalar",
+    "less_tensor",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linspace",

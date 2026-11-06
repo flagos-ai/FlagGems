@@ -87,6 +87,10 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .digamma_ import digamma_
 from .div import (
+    div_scalar_mode,
+    div_scalar_mode_,
+    div_tensor_mode,
+    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -151,7 +155,7 @@ from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logit import logit, logit_, logit_out
 from .logspace import logspace
-from .lt import lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
@@ -347,6 +351,10 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "digamma_",
+    "div_scalar_mode",
+    "div_scalar_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "dropout",
     "elu",
     "elu_",
@@ -428,6 +436,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_scalar",
+    "less_tensor",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linear",

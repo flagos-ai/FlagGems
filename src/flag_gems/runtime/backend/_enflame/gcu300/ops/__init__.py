@@ -92,6 +92,10 @@ from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .div import (
+    div_scalar_mode,
+    div_scalar_mode_,
+    div_tensor_mode,
+    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -167,7 +171,7 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
-from .lt import lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
 from .max import max, max_dim
@@ -392,6 +396,10 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "div_scalar_mode",
+    "div_scalar_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "dropout",
     "elu",
     "embedding",
@@ -469,6 +477,8 @@ __all__ = [
     "lerp_scalar_",
     "lerp_tensor",
     "lerp_tensor_",
+    "less_scalar",
+    "less_tensor",
     "lift_fresh",
     "lift_fresh_copy",
     "lift_fresh_copy_out",

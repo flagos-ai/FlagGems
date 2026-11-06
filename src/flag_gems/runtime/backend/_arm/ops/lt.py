@@ -88,3 +88,13 @@ def lt_func_scalar(x, y):
 def lt_scalar(A, B):
     logger.debug("GEMS_ARM LT_SCALAR")
     return lt_func_scalar(A, B)
+
+
+def less_tensor(A, B):
+    logger.debug("GEMS_ARM LESS_TENSOR")
+    return lt_block(A, B)
+
+
+def less_scalar(A, B):
+    logger.debug("GEMS_ARM LESS_SCALAR")
+    return lt_func_scalar(A, B)

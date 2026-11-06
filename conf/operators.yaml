@@ -5391,18 +5391,14 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: div_mode
-  description: 'Divides each element of the `input` by the corresponding element of
-    `other`.
+- id: div_scalar_mode
+  description: 'Divides each element of the `input` by the scalar `other`.
 
     An optional `rounding_mode` can be specified.
 
     '
   for:
   - div.Scalar_mode
-  - div.Tensor_mode
-  - divide.Scalar_mode
-  - divide.Tensor_mode
   labels:
   - aten
   - pointwise
@@ -5410,13 +5406,10 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '1.0'
-- id: div_mode_
-  description: The in-place version of `div_mode()`.
+- id: div_scalar_mode_
+  description: The in-place version of `div_scalar_mode()` for scalar division.
   for:
   - div_.Scalar_mode
-  - div_.Tensor_mode
-  - divide_.Scalar_mode
-  - divide_.Tensor_mode
   labels:
   - aten
   - pointwise
@@ -5424,69 +5417,28 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.2'
-- id: div_out
-  description: This is an variant of `div()` with an `out` argument.
+- id: div_tensor_mode
+  description: Divides two tensors with an optional rounding_mode.
   for:
-  - div.out
-  labels:
-  - aten
-  kind:
-  - Math
-  stages:
-  - stable: '4.2'
-- id: div_scalar
-  description: This is the scalar version of `div()`.
-  for:
-  - div.Scalar
-  - divide.Scalar
-  - true_divide.Scalar
-  labels:
-  - aten
-  kind:
-  - Math
-  stages:
-  - stable: '2.1'
-- id: div_scalar_
-  description: This is the in-place version of `div_scalar()`.
-  for:
-  - div_.Scalar
-  - divide_Scalar
-  - true_divide_.Scalar
-  labels:
-  - aten
-  kind:
-  - Math
-  stages:
-  - stable: '2.1'
-- id: div_tensor
-  description: 'Divides each element of the input `input` by the corresponding element
-    of `other`.
-
-    Note that `torch.divide()` is an alias of `torch.div()` and `torch.true_divide()`
-
-    is an alias of `torch.div()` with `rounding_mode=None`.
-
-    '
-  for:
-  - div.Tensor
+  - div.Tensor_mode
   labels:
   - aten
   - pointwise
   kind:
   - Math
   stages:
-  - stable: '2.1'
-- id: div_tensor_
-  description: This is the in-place version of `div_tensor()`.
+  - stable: '1.0'
+- id: div_tensor_mode_
+  description: The in-place version of `div_tensor_mode()`.
   for:
-  - div_.Tensor
-  - divide_.Tensor
+  - div_.Tensor_mode
   labels:
   - aten
+  - pointwise
   kind:
   - Math
   stages:
-  - stable: '2.1'
+  - stable: '2.2'
 - id: divide
   description: An alias of `div()` for element-wise division.
   for:
@@ -5499,6 +5451,50 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: divide_scalar_mode
+  description: Alias of `div_scalar_mode()` for scalar division with optional rounding.
+  for:
+  - divide.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: divide_scalar_mode_
+  description: The in-place version of `divide_scalar_mode()`.
+  for:
+  - divide_.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: divide_tensor_mode
+  description: Alias of `div_tensor_mode()` for tensor division with optional rounding.
+  for:
+  - divide.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: divide_tensor_mode_
+  description: The in-place version of `divide_tensor_mode()`.
+  for:
+  - divide_.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
 - id: dot
   description: Computes the dot product of two 1D tensors.
   for:
@@ -11816,6 +11812,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: less_scalar
+  description: Computes element-wise less-than comparison with a scalar.
+  for:
+  - less.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.0'
 - id: less_scalar_
   description: The scalar version of `less_()`.
   for:
@@ -11827,6 +11834,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: less_tensor
+  description: Computes that `input` is less than `other` element-wise.
+  for:
+  - less.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.0'
 - id: lgamma
   description: Computes the logarithm of the gamma function on input.
   for:
@@ -13398,7 +13416,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 - id: lt
   description: Computes that `input` is less than `other` element-wise.
   for:
-  - less.Tensor
   - lt.Tensor
   labels:
   - aten
@@ -13421,7 +13438,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
 - id: lt_scalar
   description: The scalar version of `lt`.
   for:
-  - less.Scalar
   - lt.Scalar
   labels:
   - aten
@@ -22447,6 +22463,45 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - alpha: '5.5'
 - id: true_divide
+  description: Performs element-wise true division with tensor or scalar operands.
+  for:
+  - div.Scalar
+  - div.Tensor
+  - divide.Scalar
+  - true_divide.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: true_divide_
+  description: The in-place version of `true_divide()`.
+  for:
+  - div_.Scalar
+  - div_.Tensor
+  - divide_.Scalar
+  - divide_.Tensor
+  - true_divide_.Scalar
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: true_divide_out
+  description: This is a variant of `true_divide()` with an `out` argument.
+  for:
+  - div.out
+  - true_divide.out
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '4.2'
+- id: true_divide_tensor
   description: Performs element-wise true division between two tensors.
   for:
   - true_divide.Tensor
@@ -22458,7 +22513,7 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: true_divide_
+- id: true_divide_tensor_
   description: Performs element-wise true division in-place between two tensors.
   for:
   - true_divide_.Tensor

@@ -130,6 +130,54 @@ def test_div_scalar_mode_inplace(rounding_mode):
     bench.run()
 
 
+@pytest.mark.parametrize(
+    "entry,packet,overload",
+    [
+        pytest.param(
+            "divide_scalar_mode",
+            "divide",
+            "Scalar_mode",
+            marks=pytest.mark.divide_scalar_mode,
+        ),
+        pytest.param(
+            "divide_scalar_mode_",
+            "divide_",
+            "Scalar_mode",
+            marks=pytest.mark.divide_scalar_mode_,
+        ),
+        pytest.param(
+            "divide_tensor_mode",
+            "divide",
+            "Tensor_mode",
+            marks=pytest.mark.divide_tensor_mode,
+        ),
+        pytest.param(
+            "divide_tensor_mode_",
+            "divide_",
+            "Tensor_mode",
+            marks=pytest.mark.divide_tensor_mode_,
+        ),
+    ],
+)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
+def test_divide_mode(rounding_mode, entry, packet, overload):
+    aten_op = getattr(getattr(torch.ops.aten, packet), overload)
+    gems_op = getattr(flag_gems, entry)
+    bench = base.GenericBenchmark(
+        op_name=entry,
+        input_fn=(
+            _div_tensor_mode_input_fn
+            if overload == "Tensor_mode"
+            else _div_scalar_mode_input_fn
+        ),
+        torch_op=lambda a, b: aten_op(a, b, rounding_mode=rounding_mode),
+        gems_op=lambda a, b: gems_op(a, b, rounding_mode=rounding_mode),
+        dtypes=_div_mode_dtypes(rounding_mode),
+        is_inplace=packet.endswith("_"),
+    )
+    bench.run()
+
+
 @pytest.mark.div_scalar_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

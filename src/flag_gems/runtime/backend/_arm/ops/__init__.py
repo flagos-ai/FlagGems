@@ -20,8 +20,10 @@ from .attention import scaled_dot_product_attention
 from .bmm import bmm
 from .cumsum import cumsum
 from .div import (  # noqa: F401
-    div_mode,
-    div_mode_,
+    div_scalar_mode,
+    div_scalar_mode_,
+    div_tensor_mode,
+    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -34,7 +36,7 @@ from .full import full
 from .gather import gather
 from .index_select import index_select
 from .isin import isin
-from .lt import lt
+from .lt import less_scalar, less_tensor, lt
 from .masked_fill import masked_fill
 from .min import min
 from .mm import mm, mm_out
@@ -62,8 +64,10 @@ __all__ = [
     "argmax",
     "bmm",
     "cumsum",
-    "div_mode",
-    "div_mode_",
+    "div_scalar_mode",
+    "div_scalar_mode_",
+    "div_tensor_mode",
+    "div_tensor_mode_",
     "exponential_",
     "floor_divide",
     "floor_divide_",
@@ -71,6 +75,8 @@ __all__ = [
     "gather",
     "index_select",
     "isin",
+    "less_scalar",
+    "less_tensor",
     "lt",
     "masked_fill",
     "min",
