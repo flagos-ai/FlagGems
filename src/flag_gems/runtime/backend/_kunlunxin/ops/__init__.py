@@ -20,6 +20,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_index
 from ._batch_norm_no_update import _batch_norm_no_update
+from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -27,6 +28,9 @@ from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
     _embedding_bag_per_sample_weights_backward,
 )
 from ._euclidean_dist import _euclidean_dist
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (  # noqa: F401
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_abs_ import _foreach_abs_
 from ._foreach_add_list import _foreach_add_List
@@ -42,6 +46,11 @@ from ._foreach_atan import _foreach_atan, _foreach_atan_
 from ._foreach_binary import (  # noqa: F401
     _foreach_addcdiv_ScalarList,
     _foreach_addcdiv_Tensor,
+    _foreach_addcmul__Scalar,
+    _foreach_addcmul__ScalarList,
+    _foreach_addcmul__Tensor,
+    _foreach_addcmul_Tensor,
+    _foreach_lerp__List,
     _foreach_lerp_List,
     _foreach_mul_List,
     _foreach_sub_List,
@@ -71,7 +80,9 @@ from ._foreach_binary_scalar import (  # noqa: F401
     _foreach_mul__ScalarList,
     _foreach_pow__Scalar,
     _foreach_pow__ScalarList,
+    _foreach_pow_Scalar,
     _foreach_pow_ScalarAndTensor,
+    _foreach_pow_ScalarList,
     _foreach_sub__Scalar,
     _foreach_sub__ScalarList,
 )
@@ -103,6 +114,11 @@ from ._foreach_mul_list_ import _foreach_mul__List
 from ._foreach_neg import _foreach_neg, _foreach_neg_
 from ._foreach_pow_list import _foreach_pow_List  # noqa: F401
 from ._foreach_pow_list_ import _foreach_pow__List  # noqa: F401
+from ._foreach_reduction import (  # noqa: F401
+    _foreach_max,
+    _foreach_norm,
+    _foreach_norm_Scalar,
+)
 from ._foreach_round import _foreach_round
 from ._foreach_round_ import _foreach_round_
 from ._foreach_scalar_out import (  # noqa: F401
@@ -158,11 +174,11 @@ from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
 from ._masked_scale import _masked_scale  # noqa: F401
-from ._native_batch_norm_legit_functional import _native_batch_norm_legit_functional
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
 from ._pad_enum import _pad_enum
+from ._pad_packed_sequence import _pad_packed_sequence
 from ._pdist_backward import _pdist_backward
 from ._pdist_forward import _pdist_forward, pdist
 from ._prelu_kernel import _prelu_kernel  # noqa: F401
@@ -298,6 +314,7 @@ from .celu import celu, celu_
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
+from .choose_qparams_optimized import choose_qparams_optimized
 from .chunk_cat import chunk_cat  # noqa: F401
 from .chunk_cat import chunk_cat as _chunk_cat
 from .chunk_gated_delta_rule_fwd import chunk_gated_delta_rule_fwd  # noqa: F401
@@ -312,6 +329,7 @@ from .clamp import (
     clamp_tensor_,
 )
 from .clip import clip, clip_
+from .clone import clone  # noqa: F401
 from .col2im import col2im
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
@@ -394,6 +412,9 @@ from .fake_quantize_per_channel_affine_cachemask import (  # noqa: F401
 )
 from .fake_quantize_per_channel_affine_cachemask_backward import (  # noqa: F401
     fake_quantize_per_channel_affine_cachemask_backward,
+)
+from .fake_quantize_per_tensor_affine import (  # noqa: F401
+    fake_quantize_per_tensor_affine,
 )
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fill import (
@@ -500,6 +521,7 @@ from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
@@ -574,6 +596,7 @@ from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
 from .matrix_power import matrix_power, matrix_power_out
 from .max import max, max_dim
+from .max_pool1d_with_indices import max_pool1d_with_indices  # noqa: F401
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
     max_pool2d_with_indices,
@@ -608,6 +631,10 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
 from .native_batch_norm import native_batch_norm
+from .native_batch_norm_legit_functional import (
+    _native_batch_norm_legit_functional,
+    native_batch_norm_legit_functional,
+)
 from .native_batch_norm_legit_no_training import native_batch_norm_legit_no_training
 from .native_channel_shuffle import native_channel_shuffle
 from .native_dropout_backward import native_dropout_backward
@@ -641,6 +668,7 @@ from .normal import (
 )
 from .normal_functional import normal_functional
 from .not_equal import not_equal, not_equal_scalar
+from .nuclear_norm import nuclear_norm  # noqa: F401
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
@@ -797,6 +825,10 @@ from .special_modified_bessel_i0 import (  # noqa: F401
     special_modified_bessel_i0,
     special_modified_bessel_i0_out,
 )
+from .special_modified_bessel_i1 import (
+    special_modified_bessel_i1,
+    special_modified_bessel_i1_out,
+)
 from .special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
@@ -913,17 +945,20 @@ __all__ = [
     "_batch_norm_impl_index",
     "_batch_norm_no_update",
     "_cdist_backward",
+    "_cholesky_solve_helper",
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
+    "_fake_quantize_per_tensor_affine_cachemask_tensor_qparams",
     "_flash_attention_forward",
     "_foreach_abs_",
     "_foreach_acos",
     "_foreach_acos_",
     "_foreach_add__List",
+    "_foreach_add__Scalar",
     "_foreach_add__Tensor",
     "_foreach_add_List",
     "_foreach_add_Scalar",
@@ -935,19 +970,26 @@ __all__ = [
     "_foreach_addcdiv_Scalar",
     "_foreach_addcdiv_ScalarList",
     "_foreach_addcdiv_Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_addcmul__ScalarList",
+    "_foreach_addcmul__Tensor",
     "_foreach_addcmul_Scalar",
     "_foreach_addcmul_ScalarList",
+    "_foreach_addcmul_Tensor",
     "_foreach_asin",
     "_foreach_asin_",
     "_foreach_atan",
     "_foreach_atan_",
     "_foreach_ceil",
     "_foreach_ceil_",
+    "_foreach_clamp_min__ScalarList",
     "_foreach_copy",
     "_foreach_copy_",
     "_foreach_cos",
     "_foreach_cos_",
     "_foreach_div__List",
+    "_foreach_div__Scalar",
+    "_foreach_div__ScalarList",
     "_foreach_div__Tensor",
     "_foreach_div_List",
     "_foreach_div_Scalar",
@@ -963,6 +1005,7 @@ __all__ = [
     "_foreach_expm1_",
     "_foreach_floor",
     "_foreach_floor_",
+    "_foreach_lerp__List",
     "_foreach_lerp__Scalar",
     "_foreach_lerp__ScalarList",
     "_foreach_lerp_List",
@@ -977,6 +1020,7 @@ __all__ = [
     "_foreach_log2_",
     "_foreach_log_",
     "_foreach_mul__List",
+    "_foreach_mul__ScalarList",
     "_foreach_mul__Tensor",
     "_foreach_mul_List",
     "_foreach_mul_Scalar",
@@ -1003,6 +1047,7 @@ __all__ = [
     "_foreach_sqrt",
     "_foreach_sqrt_",
     "_foreach_sub__List",
+    "_foreach_sub__ScalarList",
     "_foreach_sub_List",
     "_foreach_sub_Scalar",
     "_foreach_sub_ScalarList",
@@ -1023,6 +1068,7 @@ __all__ = [
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_enum",
+    "_pad_packed_sequence",
     "_pdist_backward",
     "_pdist_forward",
     "_resize_output",
@@ -1172,6 +1218,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "choose_qparams_optimized",
     "chunk_cat",
     "chunk_gated_delta_rule_fwd",
     "clamp",
@@ -1184,6 +1231,7 @@ __all__ = [
     "clamp_tensor_",
     "clip",
     "clip_",
+    "clone",
     "col2im",
     "column_stack",
     "column_stack_out",
@@ -1266,6 +1314,7 @@ __all__ = [
     "fake_quantize_per_channel_affine_cachemask",
     "fake_quantize_per_channel_affine_cachemask_backward",
     "fake_quantize_per_channel_affine_cachemask_out",
+    "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fill_scalar",
@@ -1374,6 +1423,7 @@ __all__ = [
     "isposinf",
     "ixor",
     "jagged_to_padded_dense_forward",
+    "kl_div",
     "kron",
     "kthvalue",
     "layer_norm",
@@ -1479,6 +1529,7 @@ __all__ = [
     "matrix_power_out",
     "max",
     "max_dim",
+    "max_pool1d_with_indices",
     "max_pool2d_backward",
     "max_pool2d_with_indices",
     "max_pool2d_with_indices_backward",
@@ -1525,6 +1576,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_functional",
     "native_batch_norm_legit_no_training",
     "native_channel_shuffle",
     "native_dropout_backward",
@@ -1562,6 +1614,7 @@ __all__ = [
     "normed_cumsum",
     "not_equal",
     "not_equal_scalar",
+    "nuclear_norm",
     "one_hot",
     "ones",
     "ones_like",
@@ -1752,6 +1805,8 @@ __all__ = [
     "special_logsumexp",
     "special_modified_bessel_i0",
     "special_modified_bessel_i0_out",
+    "special_modified_bessel_i1",
+    "special_modified_bessel_i1_out",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
