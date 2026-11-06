@@ -120,6 +120,7 @@ from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
 from .min import min, min_dim
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mode import mode
@@ -343,6 +344,7 @@ __all__ = [
     "mha_varlan_fwd_opt",
     "min",
     "min_dim",
+    "mixed_dtypes_linear",
     "mm",
     "mm_out",
     "mm_w8a8_int8",
