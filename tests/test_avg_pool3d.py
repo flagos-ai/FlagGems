@@ -177,3 +177,132 @@ def test_avg_pool3d_backward(
     gems_assert_close(
         res_inp_grad, ref_inp_grad, dtype, reduce_dim=kernel_volume * kernel_volume
     )
+
+
+@pytest.mark.avg_pool3d
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
+    AVGPOOL3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_avg_pool3d_unbatched(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+    dtype,
+):
+    # Drop the batch dim: ATen accepts (C, D, H, W) for avg_pool3d and returns a
+    # 4D tensor (Issue #7797).
+    inp = torch.randn(shape[1:], dtype=dtype, device=flag_gems.device)
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.ops.aten.avg_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+
+    res_out = flag_gems.avg_pool3d(
+        inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+
+    assert res_out.shape == ref_out.shape
+    gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.avg_pool3d_backward
+@pytest.mark.parametrize(
+    "shape, kernel_size, stride, padding, ceil_mode, count_include_pad, divisor_override",
+    AVGPOOL3D_CONFIGS,
+)
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_avg_pool3d_backward_unbatched(
+    shape,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
+    dtype,
+):
+    if flag_gems.vendor_name == "kunlunxin" and ceil_mode:
+        pytest.skip(
+            "torch_xmlir XPU native avg_pool3d_backward does not support ceil_mode"
+        )
+    inp = torch.randn(
+        shape[1:], dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    ref_inp = to_reference(inp, True)
+
+    ref_out = torch.ops.aten.avg_pool3d(
+        ref_inp,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding,
+        ceil_mode=ceil_mode,
+        count_include_pad=count_include_pad,
+        divisor_override=divisor_override,
+    )
+    out_grad = torch.randn_like(ref_out, dtype=inp.dtype, device=flag_gems.device)
+    ref_out_grad = to_reference(out_grad, True)
+    ref_inp_grad = torch.ops.aten.avg_pool3d_backward(
+        ref_out_grad,
+        ref_inp,
+        kernel_size,
+        stride,
+        padding,
+        ceil_mode,
+        count_include_pad,
+        divisor_override,
+    )
+
+    res_inp_grad = flag_gems.avg_pool3d_backward(
+        out_grad,
+        inp,
+        kernel_size,
+        stride,
+        padding,
+        ceil_mode,
+        count_include_pad,
+        divisor_override,
+    )
+
+    assert res_inp_grad.shape == ref_inp_grad.shape
+    if isinstance(kernel_size, int):
+        kd = kh = kw = kernel_size
+    else:
+        kd, kh, kw = kernel_size
+    kernel_volume = kd * kh * kw
+    gems_assert_close(
+        res_inp_grad, ref_inp_grad, dtype, reduce_dim=kernel_volume * kernel_volume
+    )
+
+
+@pytest.mark.avg_pool3d_backward
+def test_avg_pool3d_backward_rejects_batched_grad_for_unbatched_input():
+    inp = torch.randn(2, 7, 9, 11, device=flag_gems.device)
+    grad = torch.randn(1, 2, 3, 4, 5, device=flag_gems.device)
+
+    with pytest.raises(ValueError):
+        flag_gems.avg_pool3d_backward(grad, inp, 2, 2, 0, False, True, None)
