@@ -76,8 +76,11 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
         in caplog.text
     )
     assert len(result) == len(ref_result) == 3
-    for actual, expected in zip(result, ref_result):
-        utils.gems_assert_close(actual, expected, dtype)
+    stats_dtype = torch.float32 if flag_gems.vendor_name == "mthreads" else dtype
+    for actual, expected, result_dtype in zip(
+        result, ref_result, (dtype, stats_dtype, stats_dtype)
+    ):
+        utils.gems_assert_close(actual, expected, result_dtype)
 
 
 @pytest.mark.layer_norm
@@ -149,8 +152,9 @@ def test_native_layer_norm_statistics(shape, dtype):
 
     reduce_dim = math.prod(normalized_shape)
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_mean, ref_mean, dtype, reduce_dim=reduce_dim)
-    utils.gems_assert_close(res_rstd, ref_rstd, dtype, reduce_dim=reduce_dim)
+    stats_dtype = torch.float32 if flag_gems.vendor_name == "mthreads" else dtype
+    utils.gems_assert_close(res_mean, ref_mean, stats_dtype, reduce_dim=reduce_dim)
+    utils.gems_assert_close(res_rstd, ref_rstd, stats_dtype, reduce_dim=reduce_dim)
 
 
 @pytest.mark.layer_norm_backward

@@ -87,6 +87,7 @@ from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .kthvalue import kthvalue
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
@@ -255,6 +256,7 @@ __all__ = [
     "int_mm_out",
     "isin",
     "kthvalue",
+    "layer_norm",
     "lcm",
     "lcm_",
     "ldl_factor_ex",
@@ -292,6 +294,7 @@ __all__ = [
     "nanmedian_dim",
     "nanmedian_dim_values",
     "nanmedian_out",
+    "native_layer_norm",
     "nonzero_numpy",
     "norm",
     "norm_scalar",
