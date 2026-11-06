@@ -159,6 +159,7 @@ from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .matmul_bf16 import matmul_bf16
+from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
 from .max import max, max_dim
 from .mean import mean, mean_dim
@@ -441,6 +442,7 @@ __all__ = [
     "masked_scatter_backward",
     "masked_select",
     "matmul_bf16",
+    "matmul_bias_activation",
     "matmul_int8",
     "max",
     "max_dim",
