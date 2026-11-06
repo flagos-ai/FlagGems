@@ -26,18 +26,24 @@ from .argmin import argmin
 from .argsort import argsort
 from .attention import (
     ScaleDotProductAttention,
+    _flash_attention_forward,
     flash_attention_forward,
     flash_attn_varlen_func,
+    flash_attn_varlen_opt_func,
     scaled_dot_product_attention,
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
 from .bmm import bmm
+from .bmm_w8a8_int8 import bmm_w8a8_int8
+from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cat import cat, cat_out
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .chunk_cat import chunk_cat
+from .clamp_max_ import clamp_max_
 from .concat import concat
+from .cosh_ import cosh_
 from .count_nonzero import count_nonzero
 from .cudnn_convolution import cudnn_convolution
 from .cummax import cummax
@@ -50,10 +56,13 @@ from .diff import diff
 from .dist import dist
 from .dot import dot
 from .embedding import embedding
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
 from .exponential import exponential
 from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
+from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
 from .full import full
 from .full_like import full_like
@@ -181,6 +190,10 @@ from .zeros_like import zeros_like
 
 __all__ = [
     "_dyn_quant_matmul_4bit",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
+    "_flash_attention_forward",
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_unique2",
@@ -206,12 +219,16 @@ __all__ = [
     "argsort",
     "baddbmm",
     "bmm",
+    "bmm_w8a8",
+    "bmm_w8a8_int8",
     "cat",
     "cat_out",
     "cholesky_solve",
     "cholesky_solve_out",
     "chunk_cat",
+    "clamp_max_",
     "concat",
+    "cosh_",
     "count_nonzero",
     "cudnn_convolution",
     "cummax",
@@ -233,6 +250,7 @@ __all__ = [
     "fill_tensor_",
     "flash_attention_forward",
     "flash_attn_varlen_func",
+    "flash_attn_varlen_opt_func",
     "flip",
     "full",
     "full_like",
@@ -310,6 +328,9 @@ __all__ = [
     "max_dim",
     "mean",
     "mean_dim",
+    "mha_fwd",
+    "mha_varlan_fwd",
+    "mha_varlan_fwd_opt",
     "min",
     "min_dim",
     "mm",
