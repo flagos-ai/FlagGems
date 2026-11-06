@@ -323,6 +323,8 @@ def test_dtype_param(ord):
         if flag_gems.vendor_name in ("ascend", "iluvatar")
         else torch.float64
     )
+    if out_dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("fp64 output dtype unsupported (environment limitation)")
     ref = _compute_ref(A, ord, dtype=out_dtype)
     res = _call_op(A, ord, dtype=out_dtype)
     assert res.dtype == out_dtype, f"{res.dtype} vs {out_dtype}"

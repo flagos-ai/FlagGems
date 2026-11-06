@@ -80,17 +80,15 @@ def ne_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN NE_SCALAR")
     numel = A.numel()
     dtype = A.dtype
-    if A.is_contiguous() and dtype in (torch.float16, torch.float32, torch.bfloat16):
-        s = float(B)
-        wrapped = torch.tensor(s, dtype=dtype).item()
+    is_float = dtype in (torch.float16, torch.float32, torch.bfloat16)
+    # aten's wrapped-scalar semantics: the Python scalar is rounded to the
+    # tensor dtype before the comparison. Computed once for every float dtype
+    # (contiguous or not) and reused by the generic fallback below.
+    wrapped = None
+    if is_float:
+        wrapped = torch.tensor(float(B), dtype=dtype).item()
+    if A.is_contiguous() and is_float:
         if math.isfinite(wrapped):
-            # wrapped == torch's wrapped-scalar semantics (compare in the
-            # input dtype). Only take the fast path when the wrapped scalar
-            # is finite: when |s| overflows the dtype (e.g. 66000 for fp16,
-            # 1e300 for fp32) torch wraps it to +/-inf and x != +/-inf must
-            # stay on the exact generic compare path (x = +/-inf vs
-            # s = +/-inf -> False cannot be expressed by the saturating
-            # distance formula, which sees inf-inf = NaN -> True).
             if (
                 numel >= _NE_SCALAR_FAST_TILE * _NE_SCALAR_MIN_GRID
                 and numel % _NE_SCALAR_FAST_TILE == 0
@@ -115,10 +113,16 @@ def ne_scalar(A, B):
                 return _ne_scalar_native(
                     A, float(wrapped), numel, masked=(numel % tile != 0), tile=tile
                 )
-    # Like gt_scalar / greater_scalar, the scalar path must NOT set
-    # TRITONXPU_COMPARE_FUSION / TRITONXPU_FP16_FAST: for tensor-vs-scalar the
-    # fusion env vars make the compiler emit an fp16 compare that trips
-    # `arith.cmpf same-type` and overflows uni_sram -> compile failure.
+            if numel >= _NE_SCALAR_FAST_TILE:
+                return _ne_scalar_native(
+                    A,
+                    float(wrapped),
+                    numel,
+                    masked=(numel % _NE_SCALAR_FAST_TILE != 0),
+                )
+
+    if wrapped is not None:
+        B = wrapped
     res = ne_func_scalar(A, B)
     return res
 
