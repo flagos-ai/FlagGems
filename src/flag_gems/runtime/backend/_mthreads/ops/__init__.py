@@ -107,6 +107,7 @@ from .log_softmax import (
     log_softmax_backward_out,
     log_softmax_out,
 )
+from .logdet import logdet
 from .max import max, max_dim
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
@@ -277,6 +278,7 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
+    "logdet",
     "max",
     "max_dim",
     "max_pool2d_with_indices_backward",
