@@ -21,7 +21,6 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     gems_assert_close,
     gems_assert_equal,
-    init_seed,
     to_reference,
 )
 from .conftest import QUICK_MODE
@@ -38,7 +37,6 @@ FEATURE_DROPOUT_SHAPES = (
 @pytest.mark.parametrize("p", [0.3, 0.5, 0.7])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout(shape, p, dtype):
-    init_seed(20261105)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.feature_dropout(inp, p, True)
     assert res_out.shape == inp.shape
@@ -51,7 +49,9 @@ def test_feature_dropout(shape, p, dtype):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                gems_assert_close(channel_out, to_reference(channel_inp * scale), dtype)
+                assert torch.allclose(
+                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
+                )
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
         1
@@ -101,7 +101,6 @@ def test_feature_dropout_p_one(shape, dtype):
 @pytest.mark.parametrize("p", [0.3, 0.5])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout_inplace(shape, p, dtype):
-    init_seed(20261105)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp_clone = inp.clone()
     res_out = flag_gems.feature_dropout_(inp, p, True)
@@ -115,4 +114,6 @@ def test_feature_dropout_inplace(shape, p, dtype):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                gems_assert_close(channel_out, to_reference(channel_inp * scale), dtype)
+                assert torch.allclose(
+                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
+                )
