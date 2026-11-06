@@ -28,7 +28,16 @@ def _normalize_empty_stride(indices):
     # The shared validator predates that edge case, so normalize only empty
     # descriptors without copying or changing any observable data.
     if indices.numel() == 0 and indices.ndim and indices.stride(-1) != 1:
-        return torch.empty_like(indices, memory_format=torch.contiguous_format)
+        # ``empty_like(..., memory_format=contiguous_format)`` retained the
+        # source stride on older PyTorch releases.  Constructing from the
+        # shape gives a canonical contiguous stride across supported versions.
+        return torch.empty(
+            indices.shape,
+            dtype=indices.dtype,
+            layout=indices.layout,
+            device=indices.device,
+            pin_memory=indices.is_pinned(),
+        )
     return indices
 
 
