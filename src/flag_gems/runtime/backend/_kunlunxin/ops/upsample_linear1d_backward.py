@@ -432,9 +432,9 @@ def upsample_linear1d_backward(
             )
             go_pad = _flat_with_slack(grad_output, 0, b)
             with torch_device_fn.device(grad_output.device):
-                upsample_linear1d_backward_downscale_kernel[
-                    (triton.cdiv(total, b),)
-                ](go_pad, grad_in_buf, K=k, B=b)
+                upsample_linear1d_backward_downscale_kernel[(triton.cdiv(total, b),)](
+                    go_pad, grad_in_buf, K=k, B=b
+                )
             return grad_in_buf[:total].view(n, c, in_w)
 
     return _general_upsample_linear1d_backward(

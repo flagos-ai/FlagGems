@@ -53,6 +53,10 @@ BACKEND_OPS_FILE_RE = re.compile(
     r"^src/flag_gems/runtime/backend/_[^/]+/(?:[^/]+/)*ops/(.+)\.py$"
 )
 TEST_FILE_RE = re.compile(r"^tests/test_(.+)\.py$")
+# Shared utility modules (e.g. src/flag_gems/utils/foreach.py). They have no
+# operator id of their own; they are attributed to the ops modules that import
+# them.
+UTILS_FILE_RE = re.compile(r"^src/flag_gems/utils/(.+)\.py$")
 
 
 def expected_marker(op_id: str, all_op_ids: set) -> str:
@@ -193,17 +197,29 @@ def resolve_multi_op_impl(filepath: str, all_operators: dict) -> list[str]:
     # Reverse map: "<for value with . -> _>" (the re-export name) -> op id.
     # Example: _foreach_mul_.Scalar -> _foreach_mul__Scalar -> foreach_mul_scalar_.
     rev = {}
+    # Some ops declare an overload-qualified ``for`` value but are re-exported
+    # under the plain name (``_foreach_norm.Scalar`` -> ``_foreach_norm``), so
+    # fall back to the base name when it is unambiguous.
+    base = {}
     for op in all_operators.values():
         for f in op.get("for", []) or []:
             rev[f.replace(".", "_")] = op["id"]
+            ids = base.setdefault(f.split(".")[0], [])
+            if op["id"] not in ids:
+                ids.append(op["id"])
     try:
         src = init_path.read_text(encoding="utf-8")
     except OSError:
         return []
     stem = Path(filepath).stem
-    m = re.search(rf"from \.{re.escape(stem)} import \((.*?)\)", src, re.DOTALL)
+    # Both import styles occur: backend packages use a relative re-export
+    # (``from ._module import (...)``), the generic ``flag_gems/ops/__init__.py``
+    # uses an absolute one (``from flag_gems.ops._module import (...)``). Accept
+    # either, anchored on the module's last component being exactly the stem.
+    import_re = rf"from\s+[\w.]*\.{re.escape(stem)}\s+import\s+"
+    m = re.search(import_re + r"\((.*?)\)", src, re.DOTALL)
     if m is None:
-        m = re.search(rf"from \.{re.escape(stem)} import ([^\n()]+)", src)
+        m = re.search(import_re + r"([^\n()]+)", src)
     if m is None:
         return []
     ids = []
@@ -212,9 +228,64 @@ def resolve_multi_op_impl(filepath: str, all_operators: dict) -> list[str]:
         if not name:
             continue
         op_id = rev.get(name)
+        if op_id is None:
+            candidates = base.get(name, [])
+            op_id = candidates[0] if len(candidates) == 1 else None
         if op_id is not None and op_id not in ids:
             ids.append(op_id)
     return ids
+
+
+def resolve_impl_operators(stem: str, filepath: str, all_operators: dict) -> list[str]:
+    """Operator ids implemented by one ops module, given its path inside ``ops/``.
+
+    ``stem`` is the file path relative to its ``ops/`` directory (``abs``,
+    ``sub/file``); keep passing it rather than re-deriving from ``filepath`` so
+    nested generic ops keep the ``sub_file`` id form. Falls back to the raw stem
+    when nothing can be resolved, leaving behavior for unknown files unchanged.
+    """
+    # Handle subdirectory ops like ops/sub/file.py -> sub/file
+    # But most ops are flat: ops/abs.py -> abs
+    op_id = stem.replace("/", "_")
+    if op_id == "__init__":
+        return []
+    # Try exact match first
+    if op_id in all_operators:
+        return [op_id]
+    # The file stem is not an operator id: it may be a shared impl module
+    # exporting several operators (e.g. _foreach_binary_scalar.py). Resolve the
+    # real ids from the ops/__init__.py re-exports.
+    resolved = resolve_multi_op_impl(filepath, all_operators)
+    return resolved or [op_id]
+
+
+def utils_dependents(filepath: str) -> list[str]:
+    """Ops implementation files that import a changed ``utils/`` module.
+
+    A shared module such as ``src/flag_gems/utils/foreach.py`` -- the executor
+    behind every ``_foreach_*`` operator -- has no operator id of its own and
+    matches none of the other patterns, so a change to it would select no tests
+    at all. Attribute it to the ops modules that import it; they resolve to
+    their operator ids through :func:`resolve_impl_operators`.
+    """
+    stem = Path(filepath).stem
+    if stem == "__init__":
+        return []
+    dotted = f"flag_gems.utils.{stem}"
+    pattern = re.compile(rf"(?:^|\s)(?:from|import)\s+{re.escape(dotted)}(?:\s|\.|$)")
+    dependents = []
+    for candidate in sorted(Path("src/flag_gems").rglob("*.py")):
+        rel = candidate.as_posix()
+        m = OPS_FILE_RE.match(rel) or BACKEND_OPS_FILE_RE.match(rel)
+        if m is None:
+            continue
+        try:
+            src = candidate.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if pattern.search(src):
+            dependents.append((m.group(1), rel))
+    return dependents
 
 
 def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]:
@@ -232,27 +303,21 @@ def derive_operators(changed_files: list[str], all_operators: dict) -> list[str]
         # Case 2: ops source file changed (generic or backend-specific)
         m = OPS_FILE_RE.match(filepath) or BACKEND_OPS_FILE_RE.match(filepath)
         if m:
-            stem = m.group(1)
-            # Handle subdirectory ops like ops/sub/file.py -> sub/file
-            # But most ops are flat: ops/abs.py -> abs
-            op_id = stem.replace("/", "_")
-            if op_id == "__init__":
-                continue
-            # Try exact match first
-            if op_id in all_operators:
-                changed_ops.add(op_id)
-            else:
-                # The file stem is not an operator id: it may be a shared impl
-                # module exporting several operators (e.g.
-                # _foreach_binary_scalar.py). Resolve the real ids from the
-                # ops/__init__.py re-exports; fall back to the raw stem when
-                # nothing can be resolved so behavior for unknown files is
-                # unchanged.
-                resolved = resolve_multi_op_impl(filepath, all_operators)
-                if resolved:
-                    changed_ops.update(resolved)
-                else:
-                    changed_ops.add(op_id)
+            changed_ops.update(
+                resolve_impl_operators(m.group(1), filepath, all_operators)
+            )
+            continue
+
+        # Case 5: shared utils module changed. ``src/flag_gems/utils/foreach.py``
+        # is the executor behind every ``_foreach_*`` operator and matches no
+        # other pattern, so without this the derivation selects no tests and the
+        # change would be reviewed with an empty test run.
+        m = UTILS_FILE_RE.match(filepath)
+        if m:
+            for stem, dependent in utils_dependents(filepath):
+                changed_ops.update(
+                    resolve_impl_operators(stem, dependent, all_operators)
+                )
             continue
 
         # Case 3: test file changed

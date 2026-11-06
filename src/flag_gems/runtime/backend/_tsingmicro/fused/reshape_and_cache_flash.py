@@ -96,6 +96,7 @@ def reshape_and_cache_flash(
     k_scale,
     v_scale,
 ):
+    logger.debug("GEMS_TSINGMICRO RESHAPE_AND_CACHE_FLASH")
     if use_c_extension:
         logger.debug("GEMS_TSINGMICRO RESHAPE_AND_CACHE_FLASH(C EXTENSION)")
         torch.ops.flag_gems.reshape_and_cache_flash(
