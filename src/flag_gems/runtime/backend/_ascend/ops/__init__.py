@@ -20,6 +20,7 @@ from .acosh_ import acosh_
 from .adaptive_avg_pool2d import adaptive_avg_pool2d
 from .adaptive_max_pool3d import adaptive_max_pool3d
 from .addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
+from .affine_grid_generator import affine_grid_generator
 from .all import all, all_dim, all_dims
 from .amax import amax
 from .angle import angle
@@ -243,6 +244,7 @@ __all__ = [
     "addmm_dtype",
     "addmm_dtype_out",
     "addmm_out",
+    "affine_grid_generator",
     "all",
     "all_dim",
     "all_dims",
