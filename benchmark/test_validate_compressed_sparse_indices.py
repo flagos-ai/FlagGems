@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -77,7 +75,6 @@ def test_validate_compressed_sparse_indices():
     bench = SparseValidationBenchmark(
         op_name="validate_compressed_sparse_indices",
         torch_op=torch.ops.aten._validate_compressed_sparse_indices.default,
-        gems_op=flag_gems._validate_compressed_sparse_indices,
         dtypes=dtypes,
     )
     bench.run()

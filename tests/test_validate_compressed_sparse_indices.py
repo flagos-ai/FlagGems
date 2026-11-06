@@ -168,3 +168,35 @@ def test_validate_compressed_sparse_indices_invalid_metadata():
         flag_gems._validate_compressed_sparse_indices(
             True, comp, plain, shape[0], shape[1], plain.shape[-1]
         )
+
+
+@pytest.mark.validate_compressed_sparse_indices
+@pytest.mark.underscore_validate_compressed_sparse_indices
+def test_validate_compressed_sparse_indices_dispatch():
+    calls = 0
+
+    def registered_impl(is_crow, compressed_idx, plain_idx, cdim, dim, nnz):
+        nonlocal calls
+        calls += 1
+        return flag_gems._validate_compressed_sparse_indices(
+            is_crow, compressed_idx, plain_idx, cdim, dim, nnz
+        )
+
+    library = torch.library.Library("aten", "IMPL")
+    library.impl(
+        "_validate_compressed_sparse_indices",
+        registered_impl,
+        flag_gems.backend_info.dispatch_key,
+    )
+    try:
+        comp = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+        plain = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
+        assert (
+            torch.ops.aten._validate_compressed_sparse_indices.default(
+                True, comp, plain, 1, 1, 1
+            )
+            is None
+        )
+        assert calls == 1
+    finally:
+        library._destroy()
