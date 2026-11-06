@@ -36,6 +36,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
 from .block_diag import block_diag
 from .bmm import bmm
 from .bmm_w8a8_int8 import bmm_w8a8_int8
@@ -243,6 +244,7 @@ __all__ = [
     "argsort",
     "atan2_",
     "baddbmm",
+    "binary_cross_entropy_with_logits",
     "block_diag",
     "bmm",
     "bmm_w8a8",
