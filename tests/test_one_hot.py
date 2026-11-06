@@ -89,3 +89,30 @@ def test_one_hot():
 
     with pytest.raises(RuntimeError):
         gems_one_hot(torch.tensor([3, 4, 1, 0], dtype=torch.long, device=device), -2)
+
+
+@pytest.mark.one_hot
+def test_one_hot_inference_mode():
+    # Regression test: `F.one_hot` is CompositeImplicitAutograd, so the
+    # non-CUDA fallback used to re-enter this kernel as soon as
+    # torch.inference_mode() dropped the Autograd key, recursing until the
+    # stack overflowed.
+    gems_one_hot = flag_gems.one_hot
+    expected_device = "cpu" if cfg.TO_CPU else device
+
+    x = torch.tensor([0, 1, 2, 0], device=device, dtype=torch.int64)
+    expected = torch.tensor(
+        [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 0, 0]], device=expected_device
+    )
+    with torch.inference_mode():
+        utils.gems_assert_equal(gems_one_hot(x, 3), expected)
+
+        # num_classes == -1 has to be resolved before the fallback expands
+        x2 = torch.tensor([0, 1, 2, 3], device=device, dtype=torch.int64)
+        utils.gems_assert_equal(
+            gems_one_hot(x2),
+            torch.tensor(
+                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+                device=expected_device,
+            ),
+        )
