@@ -69,6 +69,7 @@ from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
@@ -227,6 +228,7 @@ __all__ = [
     "erfinv",
     "erfinv_",
     "expand_copy",
+    "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fix",
