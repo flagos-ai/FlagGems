@@ -343,20 +343,35 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
     output=None,
     cachemask=None,
 ):
+    orig_dtype = input.dtype
     input = input.contiguous()
     scale = scale.contiguous()
     zero_point = zero_point.contiguous()
 
-    if output is None:
+    # fp16 in-kernel load + cast is miscompiled (KERNEL_OPT_EXPERIENCE case 11);
+    # pre-convert to fp32 only for large n_channels (small n_channels are
+    # launch-bound, where the conversion overhead outweighs the benefit).
+    n_channels = input.shape[axis]
+    compute_in_fp32 = (input.dtype == torch.float16) and (n_channels >= 64)
+    if compute_in_fp32:
+        input = input.to(torch.float32)
+
+    output_preallocated = output
+    if output is None or compute_in_fp32:
         output = torch.empty_like(input)
     if cachemask is None:
         cachemask = torch.empty_like(input, dtype=torch.bool)
 
     n_elements = input.numel()
     if n_elements == 0:
+        if compute_in_fp32:
+            if output_preallocated is None:
+                output = output.to(orig_dtype)
+            else:
+                output_preallocated.copy_(output)
+                output = output_preallocated
         return output, cachemask
 
-    n_channels = input.shape[axis]
     inner = 1
     for size in input.shape[axis + 1 :]:
         inner *= size
@@ -379,7 +394,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                 )
             else:
                 mask_fp32 = torch.empty(
-                    n_elements, dtype=torch.float32, device=input.device
+                    input.shape, dtype=torch.float32, device=input.device
                 )
                 _launch_rows(
                     input,
@@ -413,7 +428,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                 )
             else:
                 mask_fp32 = torch.empty(
-                    n_elements, dtype=torch.float32, device=input.device
+                    input.shape, dtype=torch.float32, device=input.device
                 )
                 _launch_cols(
                     input,
@@ -428,6 +443,12 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                     mask_fp32=mask_fp32,
                 )
                 torch.ops.aten._copy_from(mask_fp32, cachemask, False)
+    if compute_in_fp32:
+        if output_preallocated is None:
+            output = output.to(orig_dtype)
+        else:
+            output_preallocated.copy_(output)
+            output = output_preallocated
     return output, cachemask
 
 

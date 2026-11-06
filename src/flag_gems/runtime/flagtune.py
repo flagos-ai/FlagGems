@@ -24,6 +24,22 @@ FLAGTUNE_INCLUDE_ENV = "FLAGTUNE_INCLUDE"
 
 _flagtune_op_registry = {}
 _include_ops = None
+_registry_revision = 0
+
+
+def _flagtune_state_key():
+    """Track inputs to mode selection without parsing them on each launch."""
+    get = os.environ.get
+    use_flagtune = get(USE_FLAGTUNE_ENV)
+    if use_flagtune is not None and use_flagtune.strip() == "0":
+        return (use_flagtune,)
+    return (
+        _registry_revision,
+        _include_ops,
+        use_flagtune,
+        get(USE_FLAGTUNE_COST_MODEL_ENV),
+        get(FLAGTUNE_INCLUDE_ENV),
+    )
 
 
 class TuningMode(str, Enum):
@@ -74,6 +90,7 @@ def register_flagtune_op(
     replace=False,
 ):
     """Register an operator name that can be selected by flag_gems.flagtune."""
+    global _registry_revision
     name = _normalize_op_name(op_name)
     spec = FlagTuneOpSpec(
         name=name,
@@ -88,6 +105,7 @@ def register_flagtune_op(
         raise ValueError(f"FlagTune op {name!r} is already registered")
 
     _flagtune_op_registry[name] = spec
+    _registry_revision += 1
     return spec
 
 
