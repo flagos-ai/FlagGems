@@ -218,6 +218,26 @@ class Cache(object):
         self.model: Final[PersistantModel] = model
 
 
+# Minimum block size along the dot M/N dimensions that the backend compiler
+# lowers correctly. FlagTree's AABS raises these to the floor at tuning time on
+# ppu, but a config cached before that floor existed still holds 8, and a cache
+# hit replays it without going through AABS. See Issue #7278.
+_DOT_BLOCK_FLOOR: Dict[str, int] = {"thead": 16}
+_DOT_BLOCK_NAMES = ("BLOCK_SIZE_M", "BLOCK_SIZE_N")
+
+
+def _below_dot_block_floor(config: triton.Config) -> bool:
+    vendor_name = _state.vendor_module.vendor_info.vendor_name
+    floor = _DOT_BLOCK_FLOOR.get(vendor_name)
+    if floor is None:
+        return False
+    return any(
+        config.kwargs[name] < floor
+        for name in _DOT_BLOCK_NAMES
+        if name in config.kwargs
+    )
+
+
 class ConfigCache(Cache):
     """
     `ConfigCache` is used to store the relationship between keys and their known best configurations.
@@ -232,7 +252,10 @@ class ConfigCache(Cache):
         return self.get(key) is not None
 
     def __getitem__(self, key: Tuple[Union[int, float, str], ...]) -> triton.Config:
-        ret: Optional[triton.Config] = self.get(key)
+        # `get` hides stale entries from `in`; a direct read must still return
+        # what is stored, because `LibTuner.run` reads back the config it just
+        # stored and the compiler floors the tile at launch time anyway.
+        ret: Optional[triton.Config] = self.model.get_config(self.table_name, key)
         if ret is None:
             raise KeyError(f"Key {key} not found in ConfigCache.")
         return ret
@@ -243,7 +266,12 @@ class ConfigCache(Cache):
         self.set(key, config)
 
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
-        return self.model.get_config(self.table_name, key)
+        config = self.model.get_config(self.table_name, key)
+        if config is not None and _below_dot_block_floor(config):
+            # Retune instead of replaying a tile this backend cannot lower
+            # correctly; the next tuning overwrites the stale entry.
+            return None
+        return config
 
     def set(
         self, key: Tuple[Union[int, float, str], ...], config: triton.Config
@@ -1432,6 +1460,11 @@ def libtuner(
 
 
 class LibEntry(triton.KernelInterface):
+    # `key()` may be called on plain stand-ins that never ran `__init__` (see
+    # tests/test_libentry.py); an absent `_tensor_spec_fn` then means "not
+    # resolved yet" rather than "no hook".
+    _TENSOR_SPEC_UNRESOLVED = object()
+
     def __init__(
         self,
         fn,
@@ -1522,8 +1555,17 @@ class LibEntry(triton.KernelInterface):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
                 base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
-                if self._tensor_spec_fn is not None:
-                    return base + (self._tensor_spec_fn(arg),)
+                # `key()` is also called with plain stand-ins in tests (see
+                # tests/test_libentry.py), which never run LibEntry.__init__.
+                # Resolve the hook lazily for those instead of assuming "none".
+                spec_fn = getattr(
+                    self, "_tensor_spec_fn", LibEntry._TENSOR_SPEC_UNRESOLVED
+                )
+                if spec_fn is LibEntry._TENSOR_SPEC_UNRESOLVED:
+                    # `self` may be a plain stand-in: resolve through the class.
+                    spec_fn = LibEntry._resolve_tensor_spec_fn()
+                if spec_fn is not None:
+                    return base + (spec_fn(arg),)
                 return base
             return (type(arg), arg)
 
