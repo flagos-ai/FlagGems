@@ -46,6 +46,7 @@ from .diagonal_scatter import diagonal_scatter
 from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
+from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
 from .greater_ import greater_
@@ -180,6 +181,7 @@ __all__ = [
     "diagonal_scatter",
     "div_mode",
     "div_mode_",
+    "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
     "greater_",
