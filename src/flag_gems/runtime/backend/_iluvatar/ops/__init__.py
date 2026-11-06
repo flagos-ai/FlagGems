@@ -52,6 +52,7 @@ from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .expand_copy import expand_copy
 from .float_power_scalar_tensor import float_power_scalar_tensor
+from .float_power_tensor_scalar import float_power_tensor_scalar
 from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gcd_ import gcd_
@@ -67,6 +68,7 @@ from .index_reduce import index_reduce, index_reduce_
 from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .kthvalue import kthvalue
+from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_householder_product import run as linalg_householder_product
@@ -192,6 +194,7 @@ __all__ = [
     "div_mode_",
     "expand_copy",
     "float_power_scalar_tensor",
+    "float_power_tensor_scalar",
     "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
     "gcd_",
@@ -210,6 +213,7 @@ __all__ = [
     "index_select_backward",
     "kthvalue",
     "ldl_factor_ex",
+    "lift_fresh",
     "lift_out",
     "linalg_cholesky",
     "linalg_householder_product",
