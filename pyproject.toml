@@ -189,7 +189,7 @@ metax-maca3810 = [
     "apex==0.1+metax3.8.1.0",
     "flash_attn==2.6.3+metax3.8.1.0torch2.10",
     "flashinfer==0.2.6+metax3.8.1.0torch2.10",
-    "flash_linear_attention==0.5.0+metax3.8.1.0torch2.10",
+    "flash_linear_attention==0.5.2",
     "flash_mla==1.0.1+metax3.8.1.0torch2.10",
     "numpy==2.3.5",
     "torch==2.10.0+metax3.8.1.0",
