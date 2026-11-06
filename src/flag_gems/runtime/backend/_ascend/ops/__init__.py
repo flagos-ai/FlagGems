@@ -97,6 +97,7 @@ from .exponential_ import exponential_
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
+from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .frac import frac
 from .full import full
 from .full_like import full_like
@@ -346,6 +347,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flash_attn_varlen_opt_func",
     "flip",
+    "float_power_scalar_tensor_out",
     "frac",
     "full",
     "full_like",
