@@ -25,6 +25,7 @@ from .all import all, all_dim, all_dims
 from .alpha_dropout_ import alpha_dropout_
 from .amax import amax
 from .amin import amin
+from .amin_ import amin_
 from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
@@ -271,6 +272,7 @@ __all__ = [
     "alpha_dropout_",
     "amax",
     "amin",
+    "amin_",
     "angle",
     "any",
     "any_dim",
