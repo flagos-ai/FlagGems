@@ -791,30 +791,20 @@ def _launch16(
     o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
     svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
     grid = (triton.cdiv(n, block),)
-    live = svals[:nt16]
     ot = tl_dtype(dsts[0].dtype)
-    if live and live.count(live[0]) == nt16:
-        # One scalar for every slot: 35 kernel arguments instead of 50.
-        args = (*a, *o, live[0], n, fn, nt16, ot, block, even)
-        if even and n % 16 == 0 and n != 1:
-            if _raw_launch(
-                _foreach16s_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
-            ):
-                return
-        _foreach16s_kernel[grid](*args, num_warps=8)
-        return
-    _foreach16_kernel[grid](
-        *a,
-        *o,
-        *svals,
-        n,
-        fn,
-        nt16,
-        ot,
-        block,
-        even,
-        num_warps=8,
-    )
+    # Always take the per-slot kernel.  The shared-scalar entry (_foreach16s_kernel)
+    # passes one scalar 16 times, so the body converts the *same* SSA value to
+    # OT 16 times; TritonXPUUnrollControl CSEs those 16 converts and then
+    # misplaces the single result, failing with "operand #0 does not dominate
+    # this use" (fp16 block=1024 for sub/mul/minimum, and every shape for pow).
+    # Distinct per-slot scalar arguments stay distinct SSA values and compile.
+    args = (*a, *o, *svals, n, fn, nt16, ot, block, even)
+    if even and n % 16 == 0 and n != 1:
+        if _raw_launch(
+            _foreach16_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
+        ):
+            return
+    _foreach16_kernel[grid](*args, num_warps=8)
 
 
 _SCRATCH: dict = {}
