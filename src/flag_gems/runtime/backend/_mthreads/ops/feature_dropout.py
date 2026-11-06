@@ -19,7 +19,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.feature_dropout import feature_dropout as default_feature_dropout
-from flag_gems.ops.feature_dropout import generate_feature_mask_kernel
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
@@ -34,6 +33,57 @@ _B2_MAX_TILE_AREA = 1024
 _MAX_GRID_DIM = 2**31 - 1
 _MAX_PHILOX_CHANNELS = 2**32 - 1
 _MAX_INT64_OFFSET = 2**63 - 1
+
+
+@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
+def generate_feature_mask_kernel(
+    MASK,
+    N,  # batch size
+    C,  # number of channels
+    p,
+    scale,
+    philox_seed,
+    philox_offset,
+    BLOCK_N: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    """
+    Generate a feature dropout mask of shape (N, C).
+    Each element is either 0 (dropped) or scale (kept).
+    Each (n, c) pair gets its own random value.
+    """
+    philox_seed = philox_seed.to(tl.int64)
+    philox_offset = philox_offset.to(tl.int64)
+
+    pid_n = tl.program_id(0)
+    pid_c = tl.program_id(1)
+
+    n_offset = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    c_offset = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)
+
+    n_mask = n_offset < N
+    c_mask = c_offset < C
+
+    # Compute flat indices for random number generation
+    # flat_idx = n * C + c
+    flat_idx = n_offset[:, None] * C + c_offset[None, :]
+
+    # Generate random numbers using philox
+    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
+    i4 = flat_idx.to(tl.uint32)
+    c0 = c0 + i4
+    _O = c0 * 0
+    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
+    rand_vals = uint_to_uniform_float(r0)
+
+    # Create mask: scale if rand > p (keep), 0 if rand <= p (drop)
+    mask_vals = tl.where(rand_vals > p, scale, 0.0)
+
+    # Store mask
+    mask_offsets = n_offset[:, None] * C + c_offset[None, :]
+    mask_mask = n_mask[:, None] & c_mask[None, :]
+    tl.store(MASK + mask_offsets, mask_vals, mask=mask_mask)
 
 
 @triton.jit
