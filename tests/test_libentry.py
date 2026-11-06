@@ -710,6 +710,9 @@ class ResolvedDescriptor:
 def descriptor_module(monkeypatch):
     module = SimpleNamespace(TensorDescriptor=ResolvedDescriptor)
     monkeypatch.setitem(sys.modules, "triton.tools.tensor_descriptor", module)
+    # `_descriptor_cache_key` memoizes the resolved descriptor type; drop the
+    # memoized value so the patched module is actually used (test isolation).
+    monkeypatch.setattr(libentry_mod, "_TENSOR_DESCRIPTOR_TYPE", None)
     return module
 
 
@@ -2349,10 +2352,6 @@ def test_mul_config_compiles_and_binds_runtime_kernels():
         assert tuner.fn.__name__ == expected_kernels[variant_name]
 
 
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "mthreads",
-    reason="Issue #2826: Cannot re-initialize MUSA in forked subprocess",
-)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "metax",
     reason="Issue #2827: It's not stable in full test though it's passed by single test",
