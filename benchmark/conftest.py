@@ -200,6 +200,7 @@ def pytest_ignore_collect(collection_path, config):
     test_files = {
         "mm": "test_mm.py",
         "mv": "test_mv.py",
+        "router_gemm": "test_blas_perf_parallel.py",
         "addmm": "test_blas_perf_parallel.py",
         "bmm": "test_bmm.py",
         "baddbmm": "test_blas_perf_parallel.py",

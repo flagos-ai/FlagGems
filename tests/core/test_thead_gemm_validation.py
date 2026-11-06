@@ -28,13 +28,13 @@ from tests import conftest as accuracy_config
 
 @pytest.mark.parametrize("suite", [accuracy_config, benchmark_config])
 @pytest.mark.parametrize("vendor", ["thead", "nvidia", "hygon", "mthreads"])
-@pytest.mark.parametrize("op", ["mm", "mv", "addmm", "bmm", "baddbmm"])
+@pytest.mark.parametrize("op", ["mm", "mv", "addmm", "bmm", "baddbmm", "router_gemm"])
 def test_gemm_collection_only_scopes_thead_single_operator(
     monkeypatch, tmp_path, suite, vendor, op
 ):
     monkeypatch.setattr(suite.flag_gems, "vendor_name", vendor)
     config = SimpleNamespace(getoption=lambda name: op)
-    if suite is benchmark_config and op in ("addmm", "baddbmm"):
+    if suite is benchmark_config and op in ("addmm", "baddbmm", "router_gemm"):
         selected = tmp_path / "test_blas_perf_parallel.py"
     else:
         selected = tmp_path / f"test_{op}.py"

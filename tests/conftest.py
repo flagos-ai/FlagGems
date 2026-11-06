@@ -62,6 +62,7 @@ def pytest_ignore_collect(collection_path, config):
     test_files = {
         "mm": "test_mm.py",
         "mv": "test_mv.py",
+        "router_gemm": "test_router_gemm.py",
         "addmm": "test_addmm.py",
         "bmm": "test_bmm.py",
         "baddbmm": "test_baddbmm.py",

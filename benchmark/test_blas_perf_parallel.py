@@ -44,6 +44,7 @@ from .consts import (
     OperationAttribute,
     model_shapes,
 )
+from .gemm_shapes import blas_cases, gemm_layouts, input_metadata
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -121,31 +122,13 @@ class BlasBenchmark(Benchmark):
         self.shapes = deduplicate_thead_gemm_shapes(self.op_name, self.shapes)
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        if self.op_name == "mm" and Config.mm_layout is not None:
-            layouts = {
-                "nn": (False,),
-                "nt": (True,),
-                "both": (False, True),
-            }[Config.mm_layout]
-            for b_column_major in layouts:
-                for b, m, n, k in self.shapes:
-                    yield from self.input_fn(
-                        b,
-                        m,
-                        n,
-                        k,
-                        cur_dtype,
-                        self.device,
-                        b_column_major,
-                    )
-            return
-
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
-
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            for b, m, n, k in self.shapes:
-                yield from self.input_fn(b, m, n, k, cur_dtype, self.device, True)
+        for b, m, n, k, column_major in blas_cases(
+            self.op_name,
+            self.shapes,
+            Config.mm_layout,
+            Config.bench_level == consts.BenchLevel.COMPREHENSIVE,
+        ):
+            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, column_major)
 
     def set_more_shapes(self):
         large_k_shapes = [
@@ -311,10 +294,6 @@ class RouterGemmBenchmark(BlasBenchmark):
 
     DEFAULT_SHAPES = ROUTER_GEMM_SHAPES[:]
 
-    def get_input_iter(self, cur_dtype) -> Generator:
-        for b, m, n, k in self.shapes:
-            yield from self.input_fn(b, m, n, k, cur_dtype, self.device, False)
-
     def set_more_shapes(self):
         return None
 
@@ -362,7 +341,7 @@ def baddbmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
         inp2 = torch.randn(
             [b, n, k], dtype=cur_dtype, device=device, requires_grad=requires_grad
         )
-        inp2 = inp2.transpose(1, 2).contiguous()
+        inp2 = inp2.transpose(1, 2)
     else:
         inp2 = torch.randn(
             [b, k, n], dtype=cur_dtype, device=device, requires_grad=requires_grad
@@ -437,7 +416,11 @@ def addmv_input_fn(m, n, cur_dtype, device):
 
 def router_gemm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     x = torch.randn([m, k], dtype=torch.bfloat16, device=device)
-    weight = torch.randn([n, k], dtype=torch.bfloat16, device=device)
+    weight = (
+        torch.randn([n, k], dtype=cur_dtype, device=device)
+        if b_column_major
+        else torch.randn([k, n], dtype=cur_dtype, device=device).t()
+    )
     yield x, weight
 
 
@@ -691,6 +674,7 @@ class ParallelBenchmarkMixin:
         metric = BenchmarkMetrics()
         args, kwargs = self.unpack_to_args_kwargs(input_item)
         metric.shape_detail = self.record_shapes(*args, **kwargs)
+        metric.case_metadata = input_metadata(self.op_name, args)
         if "latency_base" in self.to_bench_metrics:
             metric.latency_base = self.get_latency(self.torch_op, *args, **kwargs)
         if "latency" in self.to_bench_metrics:
@@ -1093,11 +1077,14 @@ class ParallelBenchmarkMixin:
 
 class ParallelBlasBenchmark(ParallelBenchmarkMixin, BlasBenchmark):
     def get_parallel_metric_group_size(self, shape):
-        if self.op_name == "mm" and Config.mm_layout is not None:
-            return 2 if Config.mm_layout == "both" else 1
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            return 2
-        return 1
+        return len(
+            gemm_layouts(
+                self.op_name,
+                shape,
+                Config.mm_layout,
+                Config.bench_level == BenchLevel.COMPREHENSIVE,
+            )
+        )
 
 
 _MM_W8A8_FP8_OUT_CACHE = {}
@@ -1193,9 +1180,14 @@ class ParallelMmW8A8Fp8Benchmark(ParallelBlasBenchmark):
 
 class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
     def get_parallel_metric_group_size(self, shape):
-        if Config.bench_level == BenchLevel.COMPREHENSIVE:
-            return 2
-        return 1
+        return len(
+            gemm_layouts(
+                self.op_name,
+                shape,
+                Config.mm_layout,
+                Config.bench_level == BenchLevel.COMPREHENSIVE,
+            )
+        )
 
 
 class ParallelMvAndOuterBenchmark(ParallelBenchmarkMixin, MvAndOuterBenchmark):
@@ -1265,6 +1257,18 @@ class ParallelMulBenchmark(ParallelBenchmarkMixin, Benchmark):
 
 
 class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
+    RECORD_PARALLEL_RESULTS = True
+
+    def get_parallel_metric_group_size(self, shape):
+        return len(
+            gemm_layouts(
+                self.op_name,
+                shape,
+                Config.mm_layout,
+                Config.bench_level == BenchLevel.COMPREHENSIVE,
+            )
+        )
+
     SHAPE_CONFIG_KEYS = ("router_gemm",)
 
     def _get_tuning_fixed_overhead(self):

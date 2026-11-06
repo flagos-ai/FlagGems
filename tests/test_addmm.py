@@ -17,32 +17,16 @@ import torch
 from packaging import version
 
 import flag_gems
+from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
-if QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    VECTOR_BIAS_MNK_SHAPES = [(64, 256, 184)]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    VECTOR_BIAS_MNK_SHAPES = [
-        (64, 256, 184),
-        (128, 512, 512),
-        (256, 256, 1024),
-        (512, 1024, 1024),
-        (1024, 512, 1536),
-    ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+MNK_SHAPES = accuracy_shapes("addmm", QUICK_MODE)
+FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
+VECTOR_BIAS_MNK_SHAPES = MNK_SHAPES[:6]
 
 # THead GEMM delivery coverage is BF16, including quick-mode runs.
 if flag_gems.vendor_name == "thead":
@@ -76,10 +60,9 @@ _addmm_beta_zero_only = pytest.mark.skipif(
 
 
 @pytest.mark.addmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("M, N, K, b_column_major", accuracy_cases("addmm", QUICK_MODE))
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-@pytest.mark.parametrize("b_column_major", [True, False])
 def test_addmm(monkeypatch, M, N, K, scalar, dtype, b_column_major):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Issue #3794: not working")

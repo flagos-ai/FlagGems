@@ -19,23 +19,15 @@ import pytest
 import torch
 
 import flag_gems
+from benchmark.gemm_shapes import accuracy_shapes
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
-if cfg.QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+BMNK_SHAPES = accuracy_shapes("bmm", cfg.QUICK_MODE)
+MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
+FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
 
 # THead GEMM delivery coverage is BF16, including quick-mode runs.
 if flag_gems.vendor_name == "thead":
@@ -43,9 +35,9 @@ if flag_gems.vendor_name == "thead":
 
 
 @pytest.mark.bmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("batch, M, N, K", BMNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_bmm(monkeypatch, M, N, K, dtype):
+def test_bmm(monkeypatch, batch, M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
 
@@ -55,7 +47,6 @@ def test_bmm(monkeypatch, M, N, K, dtype):
         np.random.seed(0)
         random.seed(0)
 
-    batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
     ref_mat1 = utils.to_reference(mat1, True)
@@ -68,9 +59,9 @@ def test_bmm(monkeypatch, M, N, K, dtype):
 
 
 @pytest.mark.bmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
+@pytest.mark.parametrize("batch, M, N, K", BMNK_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_bmm_non_contiguous(M, N, K, dtype):
+def test_bmm_non_contiguous(batch, M, N, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip("Issue #2799: Skipping fp32 bmm test on tsingmicro.")
 
@@ -80,7 +71,6 @@ def test_bmm_non_contiguous(M, N, K, dtype):
         np.random.seed(0)
         random.seed(0)
 
-    batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2_raw = torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device)
     # make mat2 non-contiguous
@@ -88,9 +78,6 @@ def test_bmm_non_contiguous(M, N, K, dtype):
 
     if N > 1 and K > 1:
         assert not mat2.is_contiguous()
-    else:
-        # Skipping non-contiguous test for small N or K
-        return
 
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
