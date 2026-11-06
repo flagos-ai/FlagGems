@@ -245,4 +245,3 @@ def _validate_sparse_csc_tensor_args(
     return _validate_metadata(
         ccol_indices, row_indices, values, size, torch.sparse_csc, check_pinning
     )
-
