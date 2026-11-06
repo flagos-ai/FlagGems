@@ -44,6 +44,7 @@ from .attention import (
     scaled_dot_product_attention_forward,
 )
 from .baddbmm import baddbmm
+from .bilinear import bilinear
 from .binary_cross_entropy_with_logits import binary_cross_entropy_with_logits
 from .bitwise_xor_scalar_tensor import bitwise_xor_scalar_tensor
 from .block_diag import block_diag
@@ -268,6 +269,7 @@ __all__ = [
     "asin_",
     "atan2_",
     "baddbmm",
+    "bilinear",
     "binary_cross_entropy_with_logits",
     "bitwise_xor_scalar_tensor",
     "block_diag",
