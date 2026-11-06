@@ -163,8 +163,9 @@ def generate_destination_passing_repeat_wrapper(
             code.writeline("num_tasks = volume(shape)")
 
         if rank > 0:
-            code.writeline("tile_size = min(512, triton.next_power_of_2(num_tasks))")
-            code.writeline("num_warps = 4")
+            # TX81: num_warps=1；tile 尽量大以减少 CTA 启动开销
+            code.writeline("tile_size = min(1024, triton.next_power_of_2(num_tasks))")
+            code.writeline("num_warps = 1")
             code.writeline("num_ctas = min(65535, triton.cdiv(num_tasks, tile_size))")
             code.writeline(
                 "tiles_per_cta = triton.cdiv(num_tasks, tile_size * num_ctas)"
