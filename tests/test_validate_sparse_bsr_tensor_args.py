@@ -289,3 +289,36 @@ def test_validate_sparse_bsr_tensor_args_metadata_parity(case):
     ):
         with pytest.raises(RuntimeError):
             function(comp, plain, values, size, check_pinning=False)
+
+
+@pytest.mark.validate_sparse_bsr_tensor_args
+@pytest.mark.underscore_validate_sparse_bsr_tensor_args
+def test_validate_sparse_bsr_tensor_args_dispatch():
+    calls = 0
+
+    def registered_impl(crow_indices, col_indices, values, size, check_pinning=None):
+        nonlocal calls
+        calls += 1
+        return flag_gems._validate_sparse_bsr_tensor_args(
+            crow_indices, col_indices, values, size, check_pinning
+        )
+
+    library = torch.library.Library("aten", "IMPL")
+    library.impl(
+        "_validate_sparse_bsr_tensor_args",
+        registered_impl,
+        flag_gems.backend_info.dispatch_key,
+    )
+    try:
+        comp = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+        plain = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
+        values = torch.zeros((1, 2, 3), device=flag_gems.device)
+        assert (
+            torch.ops.aten._validate_sparse_bsr_tensor_args.default(
+                comp, plain, values, (2, 3), check_pinning=False
+            )
+            is None
+        )
+        assert calls == 1
+    finally:
+        library._destroy()
