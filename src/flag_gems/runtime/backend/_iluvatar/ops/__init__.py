@@ -51,6 +51,7 @@ from .div import div_mode, div_mode_
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .expand_copy import expand_copy
+from .float_power_scalar_tensor import float_power_scalar_tensor
 from .float_power_tensor_scalar import float_power_tensor_scalar
 from .float_power_tensor_tensor import float_power_tensor_tensor
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
@@ -192,6 +193,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "expand_copy",
+    "float_power_scalar_tensor",
     "float_power_tensor_scalar",
     "float_power_tensor_tensor",
     "fractional_max_pool2d_backward",
