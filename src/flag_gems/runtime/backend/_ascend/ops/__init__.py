@@ -216,6 +216,7 @@ from .softmax import softmax, softmax_backward, softmax_backward_out, softmax_ou
 from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfinv import special_erfinv
+from .special_xlogy import special_xlogy
 from .square_ import square_
 from .squeeze_copy import squeeze_copy
 from .stack import stack
@@ -519,6 +520,7 @@ __all__ = [
     "sparse_sampled_addmm",
     "sparse_sampled_addmm_out",
     "special_erfinv",
+    "special_xlogy",
     "square_",
     "squeeze_copy",
     "stack",
