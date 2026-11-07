@@ -16,6 +16,90 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils.device_info import get_device_capability
+
+
+def _has_fp8e4nv() -> bool:
+    """True when the device's Triton can cast to fp8e4nv in hardware."""
+    major, minor = get_device_capability()
+    return major * 10 + minor >= 89
+
+
+@triton.jit
+def _encode_e4m3fn(x):
+    """Encode pre-clamped fp32 to FP8 E4M3FN as uint8 (SM80/PPU compatible).
+
+    Software replacement for ``x.to(tl.float8e4nv).to(tl.uint8, bitcast=True)``
+    on architectures whose Triton lacks fp8e4nv (e.g. SM80, T-Head PPU).
+    Round-to-nearest-even, matching the hardware cast. Input must be
+    pre-clamped to [-448, 448].
+    """
+    bits = x.to(tl.int32, bitcast=True)
+    sign = (bits >> 31) & 1
+    abs_bits = bits & 0x7FFFFFFF
+
+    fp32_exp = (abs_bits >> 23) & 0xFF
+    fp32_mant = abs_bits & 0x7FFFFF
+
+    is_zero = abs_bits == 0
+    fp8_exp_normal = fp32_exp - 120
+    is_subnorm = (fp8_exp_normal <= 0) & (~is_zero)
+
+    # Normal path: top 3 mantissa bits with RNE rounding.
+    truncated = fp32_mant & 0xFFFFF
+    halfway = 0x80000
+    lsb = (fp32_mant >> 20) & 1
+    round_up_n = (truncated > halfway) | ((truncated == halfway) & (lsb == 1))
+    normal_mant = (fp32_mant >> 20) + round_up_n.to(tl.int32)
+    mant_ovf = normal_mant >= 8
+    normal_exp_out = fp8_exp_normal + mant_ovf.to(tl.int32)
+    normal_mant_out = tl.where(mant_ovf, 0, normal_mant)
+
+    # Subnormal path: shift implicit-1 mantissa into fp8 denormal with RNE.
+    full_mant = 0x800000 | fp32_mant
+    sub_shift = 141 - fp32_exp
+    sub_shift_safe = tl.minimum(tl.maximum(sub_shift, 1), 31)
+    one_i32 = tl.full((), 1, tl.int32)
+    round_pos = sub_shift_safe - 1
+    round_mask = one_i32 << round_pos
+    sticky_mask = round_mask - 1
+    sub_round_bit = (full_mant & round_mask) != 0
+    sub_sticky = (full_mant & sticky_mask) != 0
+    sub_truncated = full_mant >> sub_shift_safe
+    sub_lsb = sub_truncated & 1
+    sub_round_up = sub_round_bit & (sub_sticky | (sub_lsb == 1))
+    sub_mant_out = sub_truncated + sub_round_up.to(tl.int32)
+    sub_carry_to_normal = sub_mant_out >= 8
+    sub_exp_final = tl.where(sub_carry_to_normal, 1, 0)
+    sub_mant_final = tl.where(sub_carry_to_normal, 0, sub_mant_out & 0x7)
+
+    out_exp = tl.where(is_subnorm, sub_exp_final, normal_exp_out)
+    out_mant = tl.where(is_subnorm, sub_mant_final, normal_mant_out)
+    out_exp = tl.where(is_zero, 0, out_exp)
+    out_mant = tl.where(is_zero, 0, out_mant)
+
+    out_exp = tl.minimum(tl.maximum(out_exp, 0), 15)
+    out_mant = out_mant & 0x7
+
+    byte = (sign << 7) | (out_exp << 3) | out_mant
+    return byte.to(tl.uint8)
+
+
+@triton.jit
+def _to_e4m3fn_u8(x, USE_HW: tl.constexpr):
+    """Pre-clamped fp32 -> E4M3FN bytes, in hardware when the device has it.
+
+    ``USE_HW`` must be a tl.constexpr: Triton only type-checks the branch it
+    compiles, so the ``tl.float8e4nv`` reference below is skipped entirely on
+    devices whose Triton lacks that type (it would otherwise fail to compile
+    with "type fp8e4nv not supported"). A module-level Python bool does NOT
+    work here -- it is not folded into a compile-time constant.
+    """
+    if USE_HW:
+        return x.to(tl.float8e4nv).to(tl.uint8, bitcast=True)
+    else:
+        return _encode_e4m3fn(x)
+
 
 @triton.jit
 def fused_qnorm_rope_kv_insert_kernel(
@@ -31,6 +115,8 @@ def fused_qnorm_rope_kv_insert_kernel(
     num_heads: tl.constexpr,
     kv_block_stride,
     num_tokens_insert: tl.constexpr,
+    HAS_FP8E4NV: tl.constexpr,
+    num_real_heads: tl.constexpr = -1,  # >=0: slots beyond it are zero-fill pad
 ):
     HEAD_DIM: tl.constexpr = 512
     NOPE_DIM: tl.constexpr = 448
@@ -58,6 +144,11 @@ def fused_qnorm_rope_kv_insert_kernel(
     offset_rope = tl.arange(0, ROPE_DIM)
     offset_half_rope = tl.arange(0, HALF_ROPE_DIM)
     offset_quant = tl.arange(0, QUANT_BLOCK)
+    # FlashMLA head-padding fast path: pad slots only need zero-fill
+    # (skip loads, RMSNorm and RoPE entirely).
+    if num_real_heads >= 0 and (not is_kv) and slot_idx >= num_real_heads:
+        tl.store(q_base + offset, tl.zeros((HEAD_DIM,), dtype=tl.bfloat16))
+        return
     if not is_kv:
         # load q
         q_blk = tl.load(q_base + offset).to(tl.float32)  # [NOPE_DIM]
@@ -135,8 +226,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -158,8 +248,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -181,8 +270,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -204,8 +292,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -227,8 +314,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -250,8 +336,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -273,8 +358,7 @@ def fused_qnorm_rope_kv_insert_kernel(
     x_scaled = kv_quant_blk / scale
     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
     # convert to fp8, then bitcast to uint8 for storage
-    x_fp8 = x_clamped.to(tl.float8e4nv)
-    x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+    x_uint8 = _to_e4m3fn_u8(x_clamped, HAS_FP8E4NV)
     # store quantized data
     tl.store(token_fp8_ptr + qblock_idx * QUANT_BLOCK + offset_quant, x_uint8)
     # store scale: stored_value = exponent + 127 (bias)
@@ -295,6 +379,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
     cos_sin_cache: torch.Tensor,
     eps: float,
     cache_block_size: int,
+    num_real_heads: int = -1,
 ):
     """
     Horizontally-fused DeepseekV4-MLA: per-head RMSNorm + GPT-J RoPE for Q, and
@@ -346,6 +431,8 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
         num_heads,
         k_cache.stride(0),
         num_tokens_insert,
+        _has_fp8e4nv(),
+        num_real_heads=num_real_heads,
         num_warps=1,
         num_stages=2,
     )
