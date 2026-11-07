@@ -143,6 +143,11 @@ _FULL_CONFIG = (
         cast_Char,
         lambda: torch_has_aten_overload("_cast_Char", "default"),
     ),
+    (
+        "_cast_Short",
+        cast_Short,
+        lambda: torch_has_aten_overload("_cast_Short", "default"),
+    ),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
     ("_cholesky_solve_helper", _cholesky_solve_helper),
