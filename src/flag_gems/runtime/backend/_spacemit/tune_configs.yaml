@@ -12,33 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Feature switch for the smt_rvisa eDSL kernels (mean/max/sum/softmax/
+# log_softmax/mv); the default lives here and SPACEMIT_SMT_RVISA=1/0
+# overrides it per process. Shaped like a config list because the loader
+# wraps every top-level key in triton.Config.
+spacemit_rvisa:
+  - META:
+      enabled: false
 attention:
-  - gen: true
-    param_map:
-      META:
-        BLOCK_M: block_m
-        BLOCK_N: block_n
-        PRE_LOAD_V: pre_load_v
-      num_warps: warps
-      num_stages: stages
-    block_m:
-      - 32
-      - 64
-      - 128
-    block_n:
-      - 32
-      - 64
-      - 128
-    pre_load_v:
-      - true
-      - false
-    warps:
-      - 4
-      - 8
-    stages:
-      - 2
-      - 3
-      - 4
+  # Single pinned config for the K3/QEMU backend: the generated 3x3x2x2x3
+  # enumeration plus the code-appended SMALL_HEAD_DIM_CONFIGS (BLOCK_N=16)
+  # makes every attention autotune benchmark ~36 configs on QEMU, and the
+  # (128,32,warps=4) tile is the only combination validated to compile and
+  # run correctly here (BLOCK_N=16 dots with head_dim=16 trip the
+  # spestruct.inner_pack verifier in spine-opt).
+  - META:
+      BLOCK_M: 128
+      BLOCK_N: 32
+      PRE_LOAD_V: false
+    num_warps: 4
+    num_stages: 2
 attention_bwd:
   - gen: true
     param_map:
@@ -60,7 +53,6 @@ bmm_spacemit:
 - META:
     TILE_M: 128
     TILE_N: 256
-    EVEN_K: 1
     MICRO_M: 8
     MICRO_N: 32
     MICRO_K: 32
@@ -186,13 +178,13 @@ addmm_spacemit:
     BLOCK_SIZE_M: 128
     BLOCK_SIZE_N: 256
     EVEN_K: 1
-    MICRO_M: 8
+    MICRO_M: 16
     MICRO_N: 32
-    MICRO_K: 32
+    MICRO_K: 8
 addmm:
   - META:
-      BLOCK_SIZE_M: 128
-      BLOCK_SIZE_N: 256
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 128
       BLOCK_SIZE_K: 64
     num_stages: 3
     num_warps: 8
@@ -515,14 +507,25 @@ triu:
 - gen: true
   param_map:
     META:
-      M_BLOCK_SIZE: 1
-      N_BLOCK_SIZE: 2048
+      M_BLOCK_SIZE: block_m
+      N_BLOCK_SIZE: block_n
+  block_m:
+  - 8
+  block_n:
+  - 256
 triu_batch:
 - gen: true
   param_map:
     META:
-      BATCH_BLOCK_SIZE: 1
-      MN_BLOCK_SIZE: 512
+      BATCH_BLOCK_SIZE: batch_block
+      M_BLOCK_SIZE: block_m
+      N_BLOCK_SIZE: block_n
+  batch_block:
+  - 1
+  block_m:
+  - 8
+  block_n:
+  - 128
 weight_norm_kernel_last:
 - gen: true
   param_map:
@@ -660,7 +663,470 @@ naive_reduction:
       BLOCK_N: block_n
   block_m:
   - 2
-  - 4
-  - 8
   block_n:
-  - 1024
+  - 512
+abs:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+add_scalar_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+add_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+add_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+bitwise_and_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+bitwise_and_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+bitwise_not:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+bitwise_or_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+bitwise_or_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+cos:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+div_scalar_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+div_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+div_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+eq_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+eq_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+erf:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+exp:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gelu_none_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gelu_none_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gelu_tanh_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gelu_tanh_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+ge_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+ge_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gt_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+gt_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+le_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+le_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+log_softmax_spacemit:
+- META:
+    ROW_SIZE: 1
+    COL_SIZE: 256
+lt_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+lt_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+mean_spacemit_v1:
+- gen: true
+  param_map:
+    META:
+      BLOCK_M: block_m
+      BLOCK_N: block_n
+  block_m:
+  - 1
+  block_n:
+  - 256
+mul_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+mul_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+relu_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+relu_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+rsqrt:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+sigmoid_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+sigmoid_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+silu_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+silu_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+sin:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+softmax_spacemit:
+- META:
+    ROW_SIZE: 1
+    COL_SIZE: 512
+sub_scalar_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+sub_tensor_scalar:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+sub_tensor_tensor:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+tanh_backward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+tanh_forward:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE: block_size
+      NUM_CTAS: num_ctas
+  block_size:
+  - 512
+  num_ctas:
+  - 8
+# Persistent-program count for the reduction ops without a libtuner
+# (sum/min/max/amax/all read this through
+# heuristics_config_utils.get_num_ctas(); shaped like a config list because
+# the loader wraps every top-level key in triton.Config).
+spacemit_num_ctas:
+- META:
+    num_ctas: 8
