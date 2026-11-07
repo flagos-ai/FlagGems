@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
+import statistics
+import time
+
 import pytest
 import torch
 
@@ -194,3 +198,31 @@ def test_pack_seq_int8():
     )
     bench.set_gems(pack_seq_triton)
     bench.run()
+
+
+@pytest.mark.pack_seq_triton
+@pytest.mark.skipif(flag_gems.device != "npu", reason="requires an Ascend NPU")
+@pytest.mark.parametrize(
+    "batch_size,max_length,width",
+    [(3, 8, 64), (16, 16, 128), (64, 4, 32), (65, 4, 32), (512, 8, 1024)],
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_pack_seq_host_latency(batch_size, max_length, width, dtype, record_property):
+    lengths_list = [max_length - index % max_length for index in range(batch_size)]
+    lengths = torch.tensor(lengths_list, dtype=torch.int32, device=flag_gems.device)
+    x = torch.randn(sum(lengths_list), width, dtype=dtype, device=flag_gems.device)
+    for _ in range(10):
+        pack_seq_triton(x, lengths)
+    samples = []
+    for _ in range(7):
+        torch.npu.synchronize()
+        start = time.perf_counter()
+        for _ in range(20):
+            pack_seq_triton(x, lengths)
+        torch.npu.synchronize()
+        samples.append((time.perf_counter() - start) * 1e6 / 20)
+    record_property("host_latency_us", statistics.median(samples))
+    record_property("host_samples_us", json.dumps(samples))
+    print(
+        f"host-inclusive pack_seq B={batch_size} L={max_length} D={width} {dtype}: {statistics.median(samples):.3f} us"
+    )

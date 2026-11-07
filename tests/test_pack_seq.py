@@ -381,3 +381,42 @@ def test_pack_seq_int8_out_of_range_padding_is_unvalidated():
         expected = x[b * 10 : b * 10 + 10]
         actual = result[b, :10]
         assert torch.equal(actual, expected)
+
+
+@pytest.mark.pack_seq_triton
+@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend host dispatch regression")
+@pytest.mark.parametrize("batch_size", [1, 3, 64, 65])
+@pytest.mark.parametrize("features", [(17,), (2, 9)])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.uint8]
+)
+@pytest.mark.parametrize("length_dtype", [torch.int32, torch.int64])
+def test_pack_seq_ascend_length_dispatch(batch_size, features, dtype, length_dtype):
+    lengths_list = [i % 5 for i in range(batch_size)]
+    lengths_list[-1] = 3
+    total = sum(lengths_list)
+    width = 1
+    for dimension in features:
+        width *= dimension
+    values = (torch.arange(total * width) % 31).to(dtype).reshape(total, *features)
+    pad = 7 if dtype == torch.uint8 else -float("inf")
+    expected = torch.full((batch_size, max(lengths_list), *features), pad, dtype=dtype)
+    offset = 0
+    for index, length in enumerate(lengths_list):
+        expected[index, :length] = values[offset : offset + length]
+        offset += length
+    lengths = torch.tensor(lengths_list, dtype=length_dtype, device=flag_gems.device)
+    actual = pack_seq_triton(values.to(flag_gems.device), lengths, pad_value=pad)
+    assert actual.shape == expected.shape
+    assert actual.dtype == dtype
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0, equal_nan=True)
+
+
+@pytest.mark.pack_seq_triton
+@pytest.mark.skipif(flag_gems.device != "npu", reason="Ascend host dispatch regression")
+def test_pack_seq_multidimensional_lengths():
+    lengths = torch.tensor([[1, 2], [0, 3]], dtype=torch.int32, device=flag_gems.device)
+    values = torch.arange(30, dtype=torch.float32).reshape(6, 5)
+    expected = _ref_pack_seq(values, [1, 2, 0, 3])
+    actual = pack_seq_triton(values.to(flag_gems.device), lengths)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0, equal_nan=True)
