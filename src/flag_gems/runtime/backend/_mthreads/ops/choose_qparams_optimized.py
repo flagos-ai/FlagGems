@@ -140,9 +140,7 @@ def choose_qparams_optimized(input, numel, n_bins, ratio, bit_width):
     logger.debug("GEMS_MTHREADS CHOOSE_QPARAMS_OPTIMIZED")
 
     if not _use_triton_kernel(input, numel):
-        return default_choose_qparams_optimized(
-            input, numel, n_bins, ratio, bit_width
-        )
+        return default_choose_qparams_optimized(input, numel, n_bins, ratio, bit_width)
 
     x = input.view(-1) if input.is_contiguous() else input.reshape(-1)
     n = int(numel)
