@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
@@ -24,6 +25,24 @@ from flag_gems.utils import libentry
 from .conv2d import conv2d_output_size
 
 logger = logging.getLogger(__name__)
+
+_BLOCK_NI_DO_HO_WO = 32
+_BLOCK_CI = 32
+_BLOCK_CO = 32
+
+# Zero bias for the bias-less case, kept per (size, device): the kernel only reads
+# it, and re-allocating it per call showed up in the launch cost.
+_ZERO_BIAS = {}
+
+
+def _zero_bias(out_c, device):
+    key = (out_c, str(device))
+    t = _ZERO_BIAS.get(key)
+    if t is None:
+        t = torch.zeros(out_c, device=device, dtype=torch.float)
+        if len(_ZERO_BIAS) < 64:
+            _ZERO_BIAS[key] = t
+    return t
 
 
 def conv3d_output_size(
@@ -49,7 +68,6 @@ def conv3d_output_size(
     return conv2d_output_size(in_size, kernel_size, stride, padding, dilation)
 
 
-@libentry()
 # @triton.autotune(
 #     configs=runtime.get_tuned_config("conv3d_forward"),
 #     key=[
@@ -74,7 +92,37 @@ def conv3d_output_size(
 #         "groups",
 #     ],
 # )
-@triton.jit
+# Scalar arguments are kept out of the specialization list so that the launch
+# keeps a stable argument list for every geometry.
+_NO_SPECIALIZE_ARGS = [
+    "in_n",
+    "input_depth",
+    "input_height",
+    "input_width",
+    "out_c",
+    "out_depth",
+    "out_height",
+    "out_width",
+    "input_n_stride",
+    "input_c_stride",
+    "input_depth_stride",
+    "input_height_stride",
+    "input_width_stride",
+    "weight_n_stride",
+    "weight_c_stride",
+    "weight_depth_stride",
+    "weight_height_stride",
+    "weight_width_stride",
+    "output_n_stride",
+    "output_c_stride",
+    "output_depth_stride",
+    "output_height_stride",
+    "output_width_stride",
+]
+
+
+@libentry()
+@triton.jit(do_not_specialize=_NO_SPECIALIZE_ARGS)
 def conv3d_forward_kernel(
     input_pointer,
     weight_pointer,
@@ -200,8 +248,12 @@ def conv3d_forward_kernel(
             output_c_offset < out_per_group_c
         )[None, :]
 
-        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0)
+        input_block = tl.load(curr_input_pointer, mask=input_mask, other=0.0).to(
+            tl.float32
+        )
+        weight_block = tl.load(curr_weight_pointer, mask=weight_mask, other=0.0).to(
+            tl.float32
+        )
 
         accum += tl.sum(input_block[:, :, None] * weight_block[None, :, :], axis=1)
     bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
@@ -226,6 +278,125 @@ def conv3d_forward_kernel(
     )
 
     tl.store(output_pointer, accum, mask=output_mask)
+
+
+# One lane per output element, accumulating the taps in float32. Used when the
+# padding is at least one effective kernel extent, so some output element's
+# whole receptive field lies in the padding and the result is just the bias.
+@libentry()
+@triton.jit(do_not_specialize=_NO_SPECIALIZE_ARGS)
+def conv3d_padded_tile_kernel(
+    input_pointer,
+    weight_pointer,
+    output_pointer,
+    bias_pointer,
+    in_n,
+    input_depth,
+    input_height,
+    input_width,
+    out_c,
+    out_depth,
+    out_height,
+    out_width,
+    input_n_stride,
+    input_c_stride,
+    input_depth_stride,
+    input_height_stride,
+    input_width_stride,
+    weight_n_stride,
+    weight_c_stride,
+    weight_depth_stride,
+    weight_height_stride,
+    weight_width_stride,
+    output_n_stride,
+    output_c_stride,
+    output_depth_stride,
+    output_height_stride,
+    output_width_stride,
+    weight_c: tl.constexpr,
+    weight_depth: tl.constexpr,
+    weight_height: tl.constexpr,
+    weight_width: tl.constexpr,
+    stride_depth: tl.constexpr,
+    stride_height: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_depth: tl.constexpr,
+    padding_height: tl.constexpr,
+    padding_width: tl.constexpr,
+    dilation_depth: tl.constexpr,
+    dilation_height: tl.constexpr,
+    dilation_width: tl.constexpr,
+    groups: tl.constexpr,
+    BLOCK_NI_DO_HO_WO: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    lane = tl.program_id(0) * BLOCK_NI_DO_HO_WO + tl.arange(0, BLOCK_NI_DO_HO_WO)
+    total = in_n * out_c * out_depth * out_height * out_width
+    ow = lane % out_width
+    q = lane // out_width
+    oh = q % out_height
+    q = q // out_height
+    od = q % out_depth
+    q = q // out_depth
+    oc = q % out_c
+    ni = q // out_c
+    group = oc // (out_c // groups)
+
+    live = lane < total
+    acc = tl.zeros((BLOCK_NI_DO_HO_WO,), tl.float32)
+    for r in range(weight_depth):
+        idd = od * stride_depth - padding_depth + r * dilation_depth
+        for s in range(weight_height):
+            ih = oh * stride_height - padding_height + s * dilation_height
+            for t in range(weight_width):
+                iw = ow * stride_width - padding_width + t * dilation_width
+                valid = (
+                    live
+                    & (idd >= 0)
+                    & (idd < input_depth)
+                    & (ih >= 0)
+                    & (ih < input_height)
+                    & (iw >= 0)
+                    & (iw < input_width)
+                )
+                idd_s = tl.where(valid, idd, 0)
+                ih_s = tl.where(valid, ih, 0)
+                iw_s = tl.where(valid, iw, 0)
+                for ci in range(weight_c):
+                    xv = tl.load(
+                        input_pointer
+                        + ni * input_n_stride
+                        + (group * weight_c + ci) * input_c_stride
+                        + idd_s * input_depth_stride
+                        + ih_s * input_height_stride
+                        + iw_s * input_width_stride,
+                        mask=live,
+                        other=0.0,
+                    )
+                    xv = tl.where(valid, xv, 0.0).to(tl.float32)
+                    wv = tl.load(
+                        weight_pointer
+                        + oc * weight_n_stride
+                        + ci * weight_c_stride
+                        + r * weight_depth_stride
+                        + s * weight_height_stride
+                        + t * weight_width_stride,
+                        mask=live,
+                        other=0.0,
+                    ).to(tl.float32)
+                    acc += xv * wv
+    acc += tl.load(bias_pointer + oc, mask=live, other=0.0).to(tl.float32)
+    tl.store(
+        output_pointer
+        + ni * output_n_stride
+        + oc * output_c_stride
+        + od * output_depth_stride
+        + oh * output_height_stride
+        + ow * output_width_stride,
+        acc,
+        mask=live,
+    )
 
 
 # class Conv3d(torch.autograd.Function):
@@ -254,15 +425,29 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     else:
         stride_depth = stride_height = stride_width = stride
 
-    if isinstance(padding, (list, tuple)):
-        padding_depth, padding_height, padding_width = padding
-    else:
-        padding_depth = padding_height = padding_width = padding
-
     if isinstance(dilation, (list, tuple)):
         dilation_depth, dilation_height, dilation_width = dilation
     else:
         dilation_depth = dilation_height = dilation_width = dilation
+
+    if isinstance(padding, str):
+        if padding == "same":
+            assert (
+                stride_depth == 1 and stride_height == 1 and stride_width == 1
+            ), "Doesn't support any stride values other than 1 in padding = 'same' mode"
+            padding_depth = math.ceil(dilation_depth * (weight.shape[-3] - 1) / 2)
+            padding_height = math.ceil(dilation_height * (weight.shape[-2] - 1) / 2)
+            padding_width = math.ceil(dilation_width * (weight.shape[-1] - 1) / 2)
+        elif padding == "valid":
+            padding_depth = padding_height = padding_width = 0
+        else:
+            raise ValueError(
+                f"Unsupported padding string: {padding}, only 'valid'/'same' are allowed."
+            )
+    elif isinstance(padding, (list, tuple)):
+        padding_depth, padding_height, padding_width = padding
+    else:
+        padding_depth = padding_height = padding_width = padding
 
     in_n, _, input_depth, input_height, input_width = input.shape
     out_c, weight_c, weight_depth, weight_height, weight_width = weight.shape
@@ -279,18 +464,11 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     output_dtype = input.dtype
 
-    # For float16 inputs, promote to float32 for computation to prevent overflow
-    # Same issue as conv2d: float16 max value ~65504, 3D convolution with large
-    # channels/kernels easily overflows causing NaN propagation
-    use_fp32_compute = input.dtype == torch.float16
-    if use_fp32_compute:
-        input = input.to(torch.float32)
-        weight = weight.to(torch.float32)
-        if bias is not None:
-            bias = bias.to(torch.float32)
-        compute_dtype = torch.float32
-    else:
-        compute_dtype = output_dtype
+    # The kernel up-casts both operands to float32 before multiplying and keeps a
+    # float32 accumulator, so half precision inputs do not need a host-side
+    # promotion: a promoted round trip costs more than the convolution itself at
+    # these sizes.
+    compute_dtype = output_dtype
 
     output = torch.empty(
         (in_n, out_c, out_depth, out_height, out_width),
@@ -300,21 +478,35 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
 
     # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
     # BLOCK_CO along the out_c,
-    # one group per cat
-    grid = lambda META: (
-        triton.cdiv(
-            in_n * out_depth * out_height * out_width, META["BLOCK_NI_DO_HO_WO"]
-        ),
-        triton.cdiv(out_c // groups, META["BLOCK_CO"]),
+    # one group per cat. The block sizes are fixed, so the grid is a plain tuple.
+    grid = (
+        triton.cdiv(in_n * out_depth * out_height * out_width, _BLOCK_NI_DO_HO_WO),
+        triton.cdiv(out_c // groups, _BLOCK_CO),
         groups,
     )
 
     if bias is None:
-        bias_pointer = torch.zeros(out_c, device=input.device, dtype=torch.float)
+        bias_pointer = _zero_bias(out_c, input.device)
     else:
         bias_pointer = bias.to(torch.float)
 
-    conv3d_forward_kernel[grid](
+    # When the padding is at least one effective kernel extent, some output
+    # element's whole receptive field lies outside the input and its result is
+    # just the bias, so compute those geometries with the tile kernel instead.
+    kernel = conv3d_forward_kernel
+    if (
+        padding_depth >= dilation_depth * (weight_depth - 1) + 1
+        or padding_height >= dilation_height * (weight_height - 1) + 1
+        or padding_width >= dilation_width * (weight_width - 1) + 1
+    ):
+        kernel = conv3d_padded_tile_kernel
+        grid = (
+            triton.cdiv(
+                in_n * out_c * out_depth * out_height * out_width, _BLOCK_NI_DO_HO_WO
+            ),
+        )
+
+    kernel[grid](
         input,
         weight,
         output,
@@ -344,13 +536,17 @@ def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
         dilation_height,
         dilation_width,
         groups=groups,
-        BLOCK_NI_DO_HO_WO=32,
-        BLOCK_CI=32,
-        BLOCK_CO=32,
+        BLOCK_NI_DO_HO_WO=_BLOCK_NI_DO_HO_WO,
+        BLOCK_CI=_BLOCK_CI,
+        BLOCK_CO=_BLOCK_CO,
     )
 
-    # Convert back to original dtype if we promoted to fp32
-    if use_fp32_compute:
-        output = output.to(output_dtype)
+    if padding == "same":
+        output = output[
+            ...,
+            (out_depth - input_depth) :,
+            (out_height - input_height) :,
+            (out_width - input_width) :,
+        ]
 
     return output
