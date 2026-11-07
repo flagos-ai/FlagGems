@@ -93,3 +93,99 @@ def test_all_dims(shape, dim, keepdim, dtype, kind):
     res_out = flag_gems.all_dims(inp, dim=dim, keepdim=keepdim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.all
+@pytest.mark.parametrize("shape", [(0,), (0, 3), (2, 0, 3)])
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+def test_all_empty_full_reduction_returns_true(shape, dtype):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    expected = torch.all(ref_inp)
+    actual = flag_gems.all(inp)
+
+    assert actual.item() is True
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.all_dim
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((0, 3), 0),
+        ((3, 0), -1),
+        ((0, 0), 1),
+        ((2, 0, 3), 1),
+        ((2, 0, 3), 0),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_all_dim_empty_reduction_returns_true(shape, dim, dtype, keepdim):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    expected = torch.all(ref_inp, dim=dim, keepdim=keepdim)
+    actual = flag_gems.all_dim(inp, dim=dim, keepdim=keepdim)
+
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.all_dims
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((0, 3), (0, 1)),
+        ((2, 0, 3), (1, 2)),
+    ],
+)
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+@pytest.mark.parametrize("keepdim", [True, False])
+def test_all_dims_empty_reduction_returns_true(shape, dim, dtype, keepdim):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    expected = torch.all(ref_inp, dim=dim, keepdim=keepdim)
+    actual = flag_gems.all_dims(inp, dim=dim, keepdim=keepdim)
+
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.all_dims
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+def test_all_dims_empty_output_keeps_its_shape(dtype):
+    inp = torch.empty((0, 3), dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    expected = torch.all(ref_inp, dim=1)
+    actual = flag_gems.all_dims(inp, dim=1)
+
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.all_dims
+@pytest.mark.parametrize(
+    "shape, dim",
+    [((0,), None), ((0, 3), 1)],
+)
+@pytest.mark.parametrize("dtype", [torch.bool, torch.float32])
+def test_all_empty_results_keep_their_device(shape, dim, dtype):
+    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp)
+
+    expected = torch.all(ref_inp) if dim is None else torch.all(ref_inp, dim=dim)
+    actual = getattr(flag_gems, "all" if dim is None else "all_dims")(
+        inp, **({} if dim is None else {"dim": dim})
+    )
+
+    assert actual.device == inp.device
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    utils.gems_assert_equal(actual, expected)

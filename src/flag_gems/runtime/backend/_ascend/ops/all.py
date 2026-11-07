@@ -27,6 +27,14 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _empty_dim_result(shape, dim, keepdim, device):
+    """Return the reduction result without launching a kernel for an empty output."""
+    for i in dim:
+        shape[i] = 1
+    out = torch.ones(shape, dtype=torch.bool, device=device)
+    return out if keepdim else out.squeeze(dim=dim)
+
+
 # torch.all: Tests if all elements in input evaluate to True. If the dtype of input
 #            is not BOOL, then test if all elements in input evaluate to non-zero value
 # In triton function, test if all elements in input evaluate to non-zero value is ok.
@@ -107,6 +115,8 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def all(inp):
     logger.debug("GEMS_ASCEND ALL")
     n_elements = inp.numel()
+    if n_elements == 0:
+        return torch.ones([], dtype=torch.bool, device=inp.device)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -131,10 +141,14 @@ def all_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
+        if inp.shape[dim] == 0:
+            return _empty_dim_result(shape, [dim], keepdim, inp.device)
         inp = dim_compress(inp, dim)
         N = shape[dim]
         shape[dim] = 1
         M = inp.numel() // N
+        if M == 0:
+            return _empty_dim_result(shape, [dim], keepdim, inp.device)
 
         out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
@@ -159,12 +173,16 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    if any(not shape[i] for i in dim):
+        return _empty_dim_result(shape, dim, keepdim, inp.device)
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = inp.numel() // N
+    if M == 0:
+        return _empty_dim_result(shape, dim, keepdim, inp.device)
 
     out = torch.empty(shape, dtype=torch.bool, device=inp.device)
 
