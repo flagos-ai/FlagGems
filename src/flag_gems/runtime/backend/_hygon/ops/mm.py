@@ -924,7 +924,7 @@ def mm(a, b):
     c = torch.empty((M, N), device=device, dtype=c_dtype)
     from .mm_splitk import try_mm_splitk
 
-    if try_mm_splitk(a, b, c, compare_packet=True):
+    if try_mm_splitk(a, b, c, compare_local_split=True):
         return c
 
     _launch_mm_family(a, b, c)
@@ -932,7 +932,7 @@ def mm(a, b):
 
 
 def _launch_mm_family(a, b, c):
-    from .mm_packet import try_mm_packet
+    from .mm_family import try_mm_family
 
     mm_kernel._apply_flagtune()
     tuner = mm_kernel.fn
@@ -943,7 +943,7 @@ def _launch_mm_family(a, b, c):
     tuning_key = (
         tuner.config_table_name, id(tuner.configs), tuple(tuner._benchmark_protocol),
     )
-    if not try_mm_packet(
+    if not try_mm_family(
         a, b, c, lambda: _launch_ordinary_mm(a, b, c), tuning_key=tuning_key,
         ordinary_with_output=lambda output: _launch_ordinary_mm(a, b, output),
     ):
@@ -1034,7 +1034,7 @@ def mm_out(a, b, *, out):
 
     from .mm_splitk import try_mm_splitk
 
-    if try_mm_splitk(a, b, c, compare_packet=True):
+    if try_mm_splitk(a, b, c, compare_local_split=True):
         return c
 
     _launch_mm_family(a, b, c)

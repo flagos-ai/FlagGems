@@ -1366,6 +1366,21 @@ def libtuner(
     return decorator
 
 
+def _freeze_launch_option(value):
+    """Snapshot nested compiler options without relying on their repr."""
+    if isinstance(value, dict):
+        return (
+            dict,
+            frozenset((k, _freeze_launch_option(v)) for k, v in value.items()),
+        )
+    if isinstance(value, (list, tuple)):
+        return (type(value), tuple(_freeze_launch_option(v) for v in value))
+    if isinstance(value, (set, frozenset)):
+        return (type(value), frozenset(_freeze_launch_option(v) for v in value))
+    hash(value)
+    return (type(value), value)
+
+
 class LibEntry(triton.KernelInterface):
     def __init__(
         self,
@@ -1399,6 +1414,11 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        self._launch_option_exclusions = frozenset(self.signature.parameters) | {
+            "grid",
+            "stream",
+            "warmup",
+        }
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1517,6 +1537,33 @@ class LibEntry(triton.KernelInterface):
             )
 
         entry_key = self.key(spec_args, dns_args, const_args)
+        # Kernel parameters are already specialized above. External options
+        # (including backend-specific ones) also affect the compiled program.
+        # Keep runtime grid/stream/warmup out of this compiler identity.
+        bypass_cache = bool(kwargs.get("warmup", False)) or "stream" in kwargs
+        try:
+            # Common scalar options need no recursive Python traversal. The
+            # frozenset makes keyword order irrelevant and preserves types.
+            options_key = frozenset(
+                (name, type(value), value)
+                for name, value in kwargs.items()
+                if name not in self._launch_option_exclusions
+            )
+        except TypeError:
+            options = {
+                name: value
+                for name, value in kwargs.items()
+                if name not in self._launch_option_exclusions
+            }
+            try:
+                options_key = _freeze_launch_option(options)
+            except (TypeError, RecursionError):
+                # Let Triton handle an opaque option; never risk reusing a
+                # kernel whose compiler identity we cannot snapshot safely.
+                options_key = ()
+                bypass_cache = True
+        if options_key:
+            entry_key += (("launch_options", options_key),)
         device = torch_device_fn.current_device()
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
@@ -1526,11 +1573,11 @@ class LibEntry(triton.KernelInterface):
             cache = self._cpu_cache
         else:
             cache = self.kernel_cache[device]
-        while entry_key not in cache:
+        while bypass_cache or entry_key not in cache:
             # NOTE: we serialize the first run of a jit function regardless of which device to run on
             # because Triton runtime is currently not threadsafe.
             with self.lock:
-                if entry_key in cache:
+                if not bypass_cache and entry_key in cache:
                     break
                 kernel = self.fn.run(*args, **kwargs)
                 fn = self.fn
@@ -1571,13 +1618,14 @@ class LibEntry(triton.KernelInterface):
                         and (p.default is not inspect._empty)
                     ):
                         constexprs[p.name] = p.default
-                cache[entry_key] = (
-                    kernel,
-                    constexprs,
-                    tune_constexprs,
-                    heur_constexprs,
-                    tuple(launch_pre_hooks),
-                )
+                if not bypass_cache:
+                    cache[entry_key] = (
+                        kernel,
+                        constexprs,
+                        tune_constexprs,
+                        heur_constexprs,
+                        tuple(launch_pre_hooks),
+                    )
             return kernel, constexprs
 
         (

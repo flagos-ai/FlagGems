@@ -292,30 +292,31 @@ def _splitk_alignment_facts(M, N, enabled=True):
     return M & -M, N & -N
 
 
-def try_mm_splitk(a, b, c, *, use_alignment_facts=True, compare_packet=False):
+def try_mm_splitk(a, b, c, *, use_alignment_facts=True, compare_local_split=False):
     """Write c using the small-output family; return False outside its domain."""
     if type(use_alignment_facts) is not bool:
         raise TypeError("use_alignment_facts must be boolean")
-    if type(compare_packet) is not bool:
-        raise TypeError("compare_packet must be boolean")
+    if type(compare_local_split) is not bool:
+        raise TypeError("compare_local_split must be boolean")
     if _splitk_parameters(a, b, c) is None:
         return False
     M, K = a.shape
     N = b.shape[1]
-    if compare_packet and use_alignment_facts and b.stride() == (1, K):
+    if compare_local_split and use_alignment_facts and b.stride() == (1, K):
         _mm_splitk_partial._apply_flagtune()
         tuner = _mm_splitk_partial.fn
         if tuner._run_mode == "normal":
-            from .mm_packet import try_mm_packet
+            from .mm_family import try_mm_family
+            from .mm_local_split import LocalSplitMMConfig
 
             key = (
                 "splitK-baseline", tuner.config_table_name,
                 id(tuner.configs), tuple(tuner._benchmark_protocol),
             )
-            if try_mm_packet(
+            if try_mm_family(
                 a, b, c, lambda: try_mm_splitk(a, b, c), tuning_key=key,
                 ordinary_with_output=lambda output: try_mm_splitk(a, b, output),
-                variants=("splitu_nt_k256_16", "splitu_nt_k256_peeled_16"),
+                local_split_only=(LocalSplitMMConfig((16, 16)), LocalSplitMMConfig((16, 16), schedule=1)),
             ):
                 return True
     ma, na = _splitk_alignment_facts(M, N, use_alignment_facts)

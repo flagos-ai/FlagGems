@@ -783,18 +783,21 @@ def test_hygon_mv_expanded_preserves_pre_hook(hygon_mm):
 
 
 def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
-    packet = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_packet")
+    local = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_local_split")
     partial = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
     post = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk_post", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
-    # Count the two storage layouts separately, plus MV's single MMAC family.
-    # The ordinary MM/MV candidates are already counted in their YAML pools.
-    python_candidates = (
-        sum(len(packet._packet_variants(nt=nt)) for nt in (False, True)) + 1
-    )
+    from flag_gems.runtime.backend._hygon.ops.mm_shared import shared_mm_configs
+
+    # The ordinary registry is identical for both input strides, like the YAML
+    # pool above. Count its configurations once; retain layout-specific legacy
+    # algorithms separately. Dtype/shape/stride specializations are not new configs.
+    local_configs = local.local_split_mm_configs()
+    from flag_gems.runtime.backend._hygon.ops.mm_cooperative import cooperative_mm_configs
+    python_candidates = len(shared_mm_configs()) + len(cooperative_mm_configs()) + len(local_configs) + 1
     total = (
         len(_expanded_configs(hygon_mm))
         + len(partial)

@@ -1,4 +1,4 @@
-"""Measured matrix-instruction candidate for contiguous column-major BF16 MV.
+"""Measured matrix-instruction candidate for contiguous column-major 16-bit MV.
 
 The existing MV tuner keeps its complete configuration pool and protocol.
 Only scalar family timings and indices are retained between public calls.
@@ -19,21 +19,28 @@ _choice_lock = threading.RLock()
 
 
 def _eligible(inp, vec, out):
-    from .mm_packet import _loop_carried_refill_supported
+    from .mm_local_split import _loop_carried_refill_supported
 
     n, k = inp.shape
-    if not (n > 1 and k >= 256 and k % 256 == 0
-            and inp.dtype == vec.dtype == out.dtype == torch.bfloat16
+    begin, end = out.data_ptr(), out.data_ptr() + 2 * n
+    disjoint = all(end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
+                   for t, count in ((inp, n * k), (vec, k)))
+    if not (n > 0 and k > 0
+            and inp.dtype == vec.dtype == out.dtype
+            and inp.dtype in (torch.bfloat16, torch.float16)
             and inp.device == vec.device == out.device
             and inp.device.type == "cuda"
             and inp.stride() == (1, n) and vec.stride() == (1,)
             and out.stride() == (1,)
             and not out.requires_grad
             and (not out.is_inference() or torch.is_inference_mode_enabled())
-            and out.untyped_storage().data_ptr()
-            not in (inp.untyped_storage().data_ptr(), vec.untyped_storage().data_ptr())
-            and all(t.data_ptr() % 16 == 0 for t in (inp, vec, out))
-            and 2 * n * k < 2**31 and 2 * k < 2**31 and 2 * n < 2**31
+            and disjoint
+            and all(t.data_ptr() % 2 == 0 for t in (inp, vec, out))
+            and 2 * n * k < 2**31 and 2 * k < 2**31
+            and n + 16 < 2**31
+            and 2 * (255 * n + 16) < 2**31
+            and 2 * (15 * k + 256) < 2**31
+            and 2 * (15 * n + 16) < 2**31
             and _loop_carried_refill_supported()):
         return False
     with torch_device_fn.device(inp.device):
@@ -52,8 +59,7 @@ def _launch_mmac(inp, vec, out):
         loop_unroll_stage="post-pipeline", wave_private_sync=True,
         loop_carried_store_refill=True,
         mma_phase_schedule=False,
-        packet_operand_overlap_diagnostic=False, packet_post_mma_wait=False,
-        packet_wait_rotation=False, optimize_epilogue=False,
+        post_mma_wait=False, optimize_epilogue=False,
         kpack=2, mmac_transposed=False,
     )
 
@@ -62,7 +68,7 @@ def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
     if not _eligible(inp, vec, out):
         return False
     key = (inp.device, tuple(inp.shape), tuple(inp.stride()), tuple(vec.stride()),
-           tuple(out.stride()), tuning_key, "mv-mmac-allocating-family-v1")
+           tuple(out.stride()), tuning_key, "mv-mmac-allocating-family-v2-tail16")
     with torch_device_fn.device(inp.device):
         choice = _choices.get(key)
         if choice is None:

@@ -3,7 +3,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy at http://www.apache.org/licenses/LICENSE-2.0
 
-"""CTA-local BF16 split-K with explicit input and loop-schedule profiles.
+"""CTA-local 16-bit split-K with explicit input and loop-schedule profiles.
 
 INPUT_LAYOUT: 0 = K256, physical B[N,K]; 1 = K256, physical B[K,N];
 2 = cooperative K128, physical B[N,K]. LOOP_SCHEDULE: 0 = ordinary,
@@ -14,7 +14,7 @@ from triton.experimental import gluon as g
 from triton.experimental.gluon import language as gl
 from triton.experimental.gluon.language.amd import AMDMFMALayout
 from triton.experimental.gluon.language.amd.cdna3 import buffer_load, buffer_store, mfma
-from triton.experimental.gluon.language.hcu.raw_window import raw_warp_group_id
+from triton.experimental.gluon.language.hcu import warp_group_id
 from triton.language import range as pipeline_range
 from triton.runtime.jit import constexpr_function
 
@@ -96,6 +96,16 @@ def input_coords(D: gl.constexpr, L: gl.constexpr, WIDTH: gl.constexpr):
 
 
 @g.jit
+def load_input_tile(base, offsets, row_mask, coordinates, K: gl.constexpr,
+                    start, STEP: gl.constexpr):
+    # Complete chunks retain the old unmasked K path exactly. For a partial
+    # chunk every partition zero-fills its own invalid reduction coordinates.
+    if K % STEP:
+        row_mask = row_mask & (start + coordinates < K)
+    return buffer_load(base, offsets, row_mask, other=0)
+
+
+@g.jit
 def store_partials(acc, BM: gl.constexpr, BN: gl.constexpr):
     pc: gl.constexpr = partial_layout(BM, BN)
     cs = gl.allocate_shared_memory(gl.float32, [4, BM, BN], pc)
@@ -118,7 +128,7 @@ def write_output_tile(cs, C, row_m, col_n, M: gl.constexpr, N: gl.constexpr,
     ni = gl.arange(0, BN, layout=gl.SliceLayout(0, cl))
     co = (mi[:, None] * N + ni[None, :]).to(gl.int32)
     cbase = C + row_m.to(gl.int64) * N + col_n.to(gl.int64)
-    buffer_store(value.to(gl.bfloat16), cbase, co,
+    buffer_store(value.to(C.dtype.element_ty), cbase, co,
                  (row_m + mi[:, None] < M) & (col_n + ni[None, :] < N))
 
 
@@ -137,15 +147,21 @@ def _mm_local_splitk_kernel(
     gl.static_assert(LOOP_SCHEDULE == 3 or M_TILES == 1)
     gl.static_assert(M > 0 and N > 0)
     gl.static_assert(BM >= 16 and BN >= 16 and BM & (BM - 1) == 0 and BN & (BN - 1) == 0)
-    gl.static_assert(2 * M * K < 2147483648 and 2 * N * K < 2147483648 and 2 * M * N < 2147483648)
-    gl.static_assert(A.dtype.element_ty == gl.bfloat16 and B.dtype.element_ty == gl.bfloat16)
-    gl.static_assert(C.dtype.element_ty == gl.bfloat16)
+    ELEM: gl.constexpr = A.dtype.element_ty
+    STEP: gl.constexpr = 128 if INPUT_LAYOUT == 2 else 256
+    gl.static_assert(K > 0 and M + M_TILES * BM < 2147483648 and N + BN < 2147483648)
+    gl.static_assert(ELEM == gl.bfloat16 or ELEM == gl.float16)
+    gl.static_assert(B.dtype.element_ty == ELEM and C.dtype.element_ty == ELEM)
+    gl.static_assert(2 * ((BM - 1) * K + STEP) < 2147483648)
+    gl.static_assert(2 * ((BM - 1) * N + BN) < 2147483648)
+    if INPUT_LAYOUT == 1:
+        gl.static_assert(2 * ((STEP - 1) * N + BN) < 2147483648)
+    else:
+        gl.static_assert(2 * ((BN - 1) * K + STEP) < 2147483648)
     if INPUT_LAYOUT == 2:
-        gl.static_assert(K >= 128 and K % 128 == 0)
         gl.static_assert(BM * BN <= 4096 and BM + BN <= 128)
         gl.static_assert(ROW_WARP_STRIDE == 1 or ROW_WARP_STRIDE == 4)
     else:
-        gl.static_assert(K >= 256 and K % 256 == 0)
         if LOOP_SCHEDULE == 3:
             # 4*(M_TILES*BM+BN)*(64+8)*2 fits the 64KiB input allocation.
             gl.static_assert(M_TILES > 0 and M_TILES * BM + BN <= 112)
@@ -191,26 +207,26 @@ def _mm_local_splitk_kernel(
         for i in gl.static_range(0,M_TILES):
             base=A+(row_m+i*BM).to(gl.int64)*K
             mask=row_m+i*BM+rm<M
-            aa=aa+(gl.allocate_shared_memory(gl.bfloat16,[4,BM,64],sa),)
-            av=av+(buffer_load(base,ao,mask,other=0),)
+            aa=aa+(gl.allocate_shared_memory(ELEM,[4,BM,64],sa),)
+            av=av+(load_input_tile(base, ao, mask, ka, K, 0, STEP),)
             masks=masks+(mask,)
             bases=bases+(base,)
             acc=acc+(gl.full([4,BM,BN],0,gl.float32,mma),)
-        bb=gl.allocate_shared_memory(gl.bfloat16,[4,BN,64],sb)
-        bv=buffer_load(bbase,bo,bmask,other=0)
-        for q in pipeline_range(0,K//256,loop_unroll_factor=1):
+        bb=gl.allocate_shared_memory(ELEM,[4,BN,64],sb)
+        bv=load_input_tile(bbase, bo, bmask, kb, K, 0, STEP)
+        for q in pipeline_range(0,gl.cdiv(K, 256),loop_unroll_factor=1):
             for i in gl.static_range(0,M_TILES):
                 aa[i].store(av[i])
             bb.store(bv)
             br=bb.permute([0,2,1]).load(db)
-            have_next=q+1<K//256
+            have_next=q+1<gl.cdiv(K, 256)
             next_av=()
             next_acc=()
             for i in gl.static_range(0,M_TILES):
                 ar=aa[i].load(da)
-                next_av=next_av+(buffer_load(bases[i]+(q+1)*256,ao,masks[i]&have_next,other=0),)
+                next_av=next_av+(load_input_tile(bases[i]+(q+1)*256, ao, masks[i]&have_next, ka, K, (q + 1) * 256, STEP),)
                 next_acc=next_acc+(mfma(ar,br,acc[i]),)
-            next_b=buffer_load(bbase+(q+1)*256,bo,bmask&have_next,other=0)
+            next_b=load_input_tile(bbase+(q+1)*256, bo, bmask&have_next, kb, K, (q + 1) * 256, STEP)
             av=next_av
             bv=next_b
             acc=next_acc
@@ -238,24 +254,22 @@ def _mm_local_splitk_kernel(
             if DOUBLE_BUFFER:
                 # Leading allocation dimension is an ordinary buffer dimension; shared
                 # layout itself remains rank3, and index(slot) returns [4,D,32].
-                aa = gl.allocate_shared_memory(gl.bfloat16, [2, 4, BM, 32], sa)
-                bb = gl.allocate_shared_memory(gl.bfloat16, [2, 4, BN, 32], sb)
-                first_a = buffer_load(abase, ao, row_m + rm < M, other=0)
-                first_b = buffer_load(bbase, bo, col_n + rn < N, other=0)
+                aa = gl.allocate_shared_memory(ELEM, [2, 4, BM, 32], sa)
+                bb = gl.allocate_shared_memory(ELEM, [2, 4, BN, 32], sb)
+                first_a = load_input_tile(abase, ao, row_m + rm < M, ka, K, 0, STEP)
+                first_b = load_input_tile(bbase, bo, col_n + rn < N, kb, K, 0, STEP)
                 aa.index(0).store(first_a)
                 bb.index(0).store(first_b)
                 # Two explicit constant-slot phases. Two source pairs preserve the
                 # previous four-K128-chunk unroll hint (2 pairs instead of4 singles).
-                for q in pipeline_range(0, K // 128, 2, loop_unroll_factor=2):
+                for q in pipeline_range(0, gl.cdiv(K, 128), 2, loop_unroll_factor=2):
                     # q is even: publish slot0/q; retire every read of q-1/slot1.
                     gl.thread_barrier()
                     ar0 = aa.index(0).load(da)
                     br0 = bb.index(0).permute([0, 2, 1]).load(db)
-                    have_phase1 = q + 1 < K // 128
-                    next_a0 = buffer_load(abase + (q + 1) * 128, ao,
-                                          (row_m + rm < M) & have_phase1, other=0)
-                    next_b0 = buffer_load(bbase + (q + 1) * 128, bo,
-                                          (col_n + rn < N) & have_phase1, other=0)
+                    have_phase1 = q + 1 < gl.cdiv(K, 128)
+                    next_a0 = load_input_tile(abase + (q + 1) * 128, ao, (row_m + rm < M) & have_phase1, ka, K, (q + 1) * 128, STEP)
+                    next_b0 = load_input_tile(bbase + (q + 1) * 128, bo, (col_n + rn < N) & have_phase1, kb, K, (q + 1) * 128, STEP)
                     acc = mfma(ar0, br0, acc)
                     if have_phase1:
                         aa.index(1).store(next_a0)
@@ -266,11 +280,9 @@ def _mm_local_splitk_kernel(
                         gl.thread_barrier()
                         ar1 = aa.index(1).load(da)
                         br1 = bb.index(1).permute([0, 2, 1]).load(db)
-                        have_next_pair = q + 2 < K // 128
-                        next_a1 = buffer_load(abase + (q + 2) * 128, ao,
-                                              (row_m + rm < M) & have_next_pair, other=0)
-                        next_b1 = buffer_load(bbase + (q + 2) * 128, bo,
-                                              (col_n + rn < N) & have_next_pair, other=0)
+                        have_next_pair = q + 2 < gl.cdiv(K, 128)
+                        next_a1 = load_input_tile(abase + (q + 2) * 128, ao, (row_m + rm < M) & have_next_pair, ka, K, (q + 2) * 128, STEP)
+                        next_b1 = load_input_tile(bbase + (q + 2) * 128, bo, (col_n + rn < N) & have_next_pair, kb, K, (q + 2) * 128, STEP)
                         acc = mfma(ar1, br1, acc)
                         if have_next_pair:
                             aa.index(0).store(next_a1)
@@ -278,11 +290,11 @@ def _mm_local_splitk_kernel(
                 aa._keep_alive()
                 bb._keep_alive()
             else:
-                aa = gl.allocate_shared_memory(gl.bfloat16, [4, BM, 32], sa)
-                bb = gl.allocate_shared_memory(gl.bfloat16, [4, BN, 32], sb)
-                for q in pipeline_range(0, K // 128, loop_unroll_factor=4):
-                    av = buffer_load(abase + q * 128, ao, row_m + rm < M, other=0)
-                    bv = buffer_load(bbase + q * 128, bo, col_n + rn < N, other=0)
+                aa = gl.allocate_shared_memory(ELEM, [4, BM, 32], sa)
+                bb = gl.allocate_shared_memory(ELEM, [4, BN, 32], sb)
+                for q in pipeline_range(0, gl.cdiv(K, 128), loop_unroll_factor=4):
+                    av = load_input_tile(abase + q * 128, ao, row_m + rm < M, ka, K, q * 128, STEP)
+                    bv = load_input_tile(bbase + q * 128, bo, col_n + rn < N, kb, K, q * 128, STEP)
                     aa.store(av)
                     bb.store(bv)
                     # All waves: publish the same complete K128 tile.
@@ -305,19 +317,19 @@ def _mm_local_splitk_kernel(
             else:
                 bm = col_n + rn < N
             acc = gl.full([4, BM, BN], 0, gl.float32, mma)
-            aa = gl.allocate_shared_memory(gl.bfloat16, [4, BM, 64], sa)
-            bb = gl.allocate_shared_memory(gl.bfloat16, [4, BN, 64], sb)
-            av = buffer_load(abase, ao, am, other=0)
-            bv = buffer_load(bbase, bo, bm, other=0)
+            aa = gl.allocate_shared_memory(ELEM, [4, BM, 64], sa)
+            bb = gl.allocate_shared_memory(ELEM, [4, BN, 64], sb)
+            av = load_input_tile(abase, ao, am, ka, K, 0, STEP)
+            bv = load_input_tile(bbase, bo, bm, kb, K, 0, STEP)
             if LOOP_SCHEDULE == 2:
                 aa.store(av)
                 bb.store(bv)
                 ar0 = aa.slice(0, 32, 2).load(da)
                 br0 = bb.slice(0, 32, 2).permute([0, 2, 1]).load(db)
-                if K // 256 > 1:
-                    av_next = buffer_load(abase + 256, ao, am, other=0)
-                    bv_next = buffer_load(bbase + 256, bo, bm, other=0)
-                    for q in pipeline_range(0, K // 256 - 2, loop_unroll_factor=1):
+                if gl.cdiv(K, 256) > 1:
+                    av_next = load_input_tile(abase + 256, ao, am, ka, K, 256, STEP)
+                    bv_next = load_input_tile(bbase + 256, bo, bm, kb, K, 256, STEP)
+                    for q in pipeline_range(0, gl.cdiv(K, 256) - 2, loop_unroll_factor=1):
                         ar1 = aa.slice(32, 32, 2).load(da)
                         br1 = bb.slice(32, 32, 2).permute([0, 2, 1]).load(db)
                         acc = mfma(ar0, br0, acc)
@@ -325,8 +337,8 @@ def _mm_local_splitk_kernel(
                         bb.store(bv_next)
                         ar0 = aa.slice(0, 32, 2).load(da)
                         br0 = bb.slice(0, 32, 2).permute([0, 2, 1]).load(db)
-                        av_next = buffer_load(abase + (q + 2) * 256, ao, am, other=0)
-                        bv_next = buffer_load(bbase + (q + 2) * 256, bo, bm, other=0)
+                        av_next = load_input_tile(abase + (q + 2) * 256, ao, am, ka, K, (q + 2) * 256, STEP)
+                        bv_next = load_input_tile(bbase + (q + 2) * 256, bo, bm, kb, K, (q + 2) * 256, STEP)
                         acc = mfma(ar1, br1, acc)
                     # Final producer step: no unused future global load is issued.
                     ar1 = aa.slice(32, 32, 2).load(da)
@@ -343,15 +355,15 @@ def _mm_local_splitk_kernel(
                 acc = mfma(ar0, br0, acc)
                 acc = mfma(ar1, br1, acc)
             elif LOOP_SCHEDULE == 1:
-                for q in pipeline_range(0, K // 256 - 1, loop_unroll_factor=1):
+                for q in pipeline_range(0, gl.cdiv(K, 256) - 1, loop_unroll_factor=1):
                     aa.store(av)
                     bb.store(bv)
                     # No explicit A/B CTA: compiler must prove wave-private ownership
                     # and supply per-wave LDS waits, or conservatively retain full CTA.
                     ar = aa.load(da)
                     br = bb.permute([0, 2, 1]).load(db)
-                    next_a = buffer_load(abase + (q + 1) * 256, ao, am, other=0)
-                    next_b = buffer_load(bbase + (q + 1) * 256, bo, bm, other=0)
+                    next_a = load_input_tile(abase + (q + 1) * 256, ao, am, ka, K, (q + 1) * 256, STEP)
+                    next_b = load_input_tile(bbase + (q + 1) * 256, bo, bm, kb, K, (q + 1) * 256, STEP)
                     acc = mfma(ar, br, acc)
                     av = next_a
                     bv = next_b
@@ -363,19 +375,19 @@ def _mm_local_splitk_kernel(
                 br = bb.permute([0, 2, 1]).load(db)
                 acc = mfma(ar, br, acc)
             else:
-                for q in pipeline_range(0, K // 256, loop_unroll_factor=1):
+                for q in pipeline_range(0, gl.cdiv(K, 256), loop_unroll_factor=1):
                     aa.store(av)
                     bb.store(bv)
                     # No explicit A/B CTA: compiler must prove wave-private ownership
                     # and supply per-wave LDS waits, or conservatively retain full CTA.
                     ar = aa.load(da)
                     br = bb.permute([0, 2, 1]).load(db)
-                    have_next = q + 1 < K // 256
-                    next_a = buffer_load(abase + (q + 1) * 256, ao, am & have_next, other=0)
+                    have_next = q + 1 < gl.cdiv(K, 256)
+                    next_a = load_input_tile(abase + (q + 1) * 256, ao, am & have_next, ka, K, (q + 1) * 256, STEP)
                     if INPUT_LAYOUT == 1:
-                        next_b = buffer_load(bbase + (q + 1) * 256 * N, bo, bm & have_next, other=0)
+                        next_b = load_input_tile(bbase + (q + 1) * 256 * N, bo, bm & have_next, kb, K, (q + 1) * 256, STEP)
                     else:
-                        next_b = buffer_load(bbase + (q + 1) * 256, bo, bm & have_next, other=0)
+                        next_b = load_input_tile(bbase + (q + 1) * 256, bo, bm & have_next, kb, K, (q + 1) * 256, STEP)
                     acc = mfma(ar, br, acc)
                     av = next_a
                     bv = next_b
@@ -383,7 +395,7 @@ def _mm_local_splitk_kernel(
             bb._keep_alive()
         cs = store_partials(acc, BM, BN)
     gl.thread_barrier()
-    wave = raw_warp_group_id(1)
+    wave = warp_group_id(1)
     if wave == 0:
         if LOOP_SCHEDULE == 3:
             for i in gl.static_range(0, M_TILES):
