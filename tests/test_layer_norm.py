@@ -225,3 +225,63 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
         utils.gems_assert_close(
             res_bias_grad, ref_bias_grad, dtype, reduce_dim=shape[0]
         )
+
+
+@pytest.mark.layer_norm_backward
+@pytest.mark.parametrize(
+    "shape, normalized_shape",
+    [((2, 3, 4), (4,)), ((5, 2, 3, 8), (3, 8)), ((2, 3, 4), (3, 4)), ((7, 33), (33,))],
+)
+@pytest.mark.parametrize("wb_none", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_layer_norm_backward_leading_dims(shape, normalized_shape, dtype, wb_none):
+    # normalized_shape covers only the trailing dims, so the number of rows is
+    # numel // prod(normalized_shape), not shape[0]; N must not be inferred from M.
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn_like(inp)
+    if wb_none:
+        weight = bias = None
+        output_mask = [True, False, False]
+    else:
+        weight = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        bias = torch.randn(normalized_shape, dtype=dtype, device=flag_gems.device)
+        output_mask = [True, True, True]
+
+    ref_inp = utils.to_reference(inp, True)
+    ref_grad = utils.to_reference(grad, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+    _, ref_mean, ref_rstd = torch.ops.aten.native_layer_norm(
+        ref_inp, normalized_shape, ref_weight, ref_bias, 1e-5
+    )
+    # feed the kernel and the reference the same (dtype-rounded) statistics
+    mean = ref_mean.to(device=flag_gems.device, dtype=dtype)
+    rstd = ref_rstd.to(device=flag_gems.device, dtype=dtype)
+    ref_mean = utils.to_reference(mean, True)
+    ref_rstd = utils.to_reference(rstd, True)
+    ref_in_grad, ref_weight_grad, ref_bias_grad = (
+        torch.ops.aten.native_layer_norm_backward(
+            ref_grad,
+            ref_inp,
+            normalized_shape,
+            ref_mean,
+            ref_rstd,
+            ref_weight,
+            ref_bias,
+            output_mask,
+        )
+    )
+
+    res_in_grad, res_weight_grad, res_bias_grad = flag_gems.layer_norm_backward(
+        grad, inp, normalized_shape, mean, rstd, weight, bias, output_mask
+    )
+
+    reduce_dim = inp.numel() // math.prod(normalized_shape)
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype)
+    if not wb_none:
+        utils.gems_assert_close(
+            res_weight_grad, ref_weight_grad, dtype, reduce_dim=reduce_dim
+        )
+        utils.gems_assert_close(
+            res_bias_grad, ref_bias_grad, dtype, reduce_dim=reduce_dim
+        )
