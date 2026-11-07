@@ -71,6 +71,7 @@ from .kthvalue import kthvalue
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_det import linalg_det
 from .linalg_householder_product import run as linalg_householder_product
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
@@ -102,7 +103,6 @@ from .not_equal import not_equal
 from .pad_sequence import pad_sequence
 from .permute_copy import permute_copy
 from .pinverse import pinverse
-from .quantized_max_pool1d_out import quantized_max_pool1d_out
 from .randperm import randperm
 from .renorm_ import renorm_
 from .repeat import repeat
@@ -216,6 +216,7 @@ __all__ = [
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
+    "linalg_det",
     "linalg_householder_product",
     "linalg_lstsq",
     "linalg_matrix_norm",
@@ -251,7 +252,6 @@ __all__ = [
     "pad_sequence",
     "permute_copy",
     "pinverse",
-    "quantized_max_pool1d_out",
     "randperm",
     "renorm_",
     "repeat",
