@@ -25,6 +25,13 @@ from flag_gems.utils.shape_utils import volume
 device_ = device
 logger = logging.getLogger(__name__)
 
+# grid 的每个轴都有上限：CUDA 是 2**31-1，NPU 是 65535。这里按更严的 65535
+# 取上限，BLOCK_SIZE=1024 时 N 超过 65535*1024（64 MB 的 int8）就分片多次启动，
+# 避免 coreDim 越界（EE1003，随后 segfault）。
+_MAX_GRID = 65535
+_BLOCK_SIZE = 1024
+_CHUNK = _MAX_GRID * _BLOCK_SIZE
+
 
 @triton.jit
 def zeros_kernel(
@@ -39,6 +46,24 @@ def zeros_kernel(
     tl.store(output_ptr + offsets, 0.0, mask=mask)
 
 
+def _launch(out, n_elements):
+    grid_fn = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    zeros_kernel[grid_fn](out, n_elements, BLOCK_SIZE=_BLOCK_SIZE)
+
+
+def _fill_zeros(out, n_elements):
+    """按 _CHUNK 分片清零；kernel 按扁平偏移写，要求 out 连续。"""
+    if n_elements <= _CHUNK:
+        _launch(out, n_elements)
+    elif out.is_contiguous():
+        flat = out.view(-1)
+        for start in range(0, n_elements, _CHUNK):
+            part = flat[start : start + _CHUNK]
+            _launch(part, part.numel())
+    else:
+        _launch(out, n_elements)
+
+
 def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
     logger.debug("GEMS ZEROS")
     if dtype is None:
@@ -48,16 +73,19 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
     out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    # 空张量没有元素要写；N == 0 时 grid 会退化成 0，被驱动直接拒绝。
+    if N == 0:
+        return out
     with torch_device_fn.device(device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024)
+        _fill_zeros(out, N)
     return out
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS ZERO_")
     N = x.numel()
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
+    if N == 0:
+        return x
     with torch_device_fn.device(x.device):
-        zeros_kernel[grid_fn](x, N, BLOCK_SIZE=1024)
+        _fill_zeros(x, N)
     return x
