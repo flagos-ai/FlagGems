@@ -19,7 +19,9 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
-from ._fake_quantize_learnable_per_tensor_affine import _fake_quantize_learnable_per_tensor_affine
+from ._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -37,6 +39,7 @@ from .arange import arange, arange_start
 from .arctan2 import arctan2
 from .arctan2_ import arctan2_
 from .arctan_ import arctan_
+from .argmax import argmax
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
@@ -207,6 +210,7 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "argmax",
     "argmin",
     "argsort",
     "atan2",
