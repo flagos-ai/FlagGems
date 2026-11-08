@@ -38,6 +38,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
@@ -92,6 +93,7 @@ from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
+from .histc import histc
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
@@ -225,6 +227,7 @@ __all__ = [
     "any_dims",
     "argsort",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "baddbmm_",
     "beam_search_score",
@@ -269,6 +272,7 @@ __all__ = [
     "gelu_backward",
     "hadamard_transform",
     "heur_block_n",
+    "histc",
     "index_add",
     "index_add_",
     "index_copy",
