@@ -95,6 +95,7 @@ from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
@@ -179,6 +180,9 @@ from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
+from .special_shifted_chebyshev_polynomial_t import (
+    special_shifted_chebyshev_polynomial_t,
+)
 from .special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
 )
@@ -274,6 +278,7 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "inner",
     "int_mm",
     "int_mm_out",
     "isin",
@@ -372,6 +377,7 @@ __all__ = [
     "special_multigammaln",
     "special_round",
     "special_round_out",
+    "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
