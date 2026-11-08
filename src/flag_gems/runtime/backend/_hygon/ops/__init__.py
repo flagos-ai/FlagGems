@@ -179,6 +179,9 @@ from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
+from .special_shifted_chebyshev_polynomial_t import (
+    special_shifted_chebyshev_polynomial_t,
+)
 from .special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
 )
@@ -372,6 +375,7 @@ __all__ = [
     "special_multigammaln",
     "special_round",
     "special_round_out",
+    "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
