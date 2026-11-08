@@ -67,6 +67,7 @@ from .div import (
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
+from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
 from .feature_dropout import feature_dropout
@@ -241,6 +242,7 @@ __all__ = [
     "div_mode",
     "div_mode_",
     "embedding_bag_dense_backward",
+    "expand_copy",
     "exponential",
     "exponential_",
     "feature_dropout",
