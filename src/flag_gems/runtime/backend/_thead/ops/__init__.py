@@ -27,6 +27,7 @@ from .adaptive_max_pool3d_backward import adaptive_max_pool3d_backward
 from .addmm import addmm, addmm_out
 from .addmm_ import addmm_
 from .addmv_ import addmv_
+from .argmax import argmax
 from .as_strided_scatter import as_strided_scatter
 from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
@@ -124,6 +125,7 @@ __all__ = [
     "addmm_",
     "addmm_out",
     "addmv_",
+    "argmax",
     "as_strided_scatter",
     "baddbmm",
     "baddbmm_",
