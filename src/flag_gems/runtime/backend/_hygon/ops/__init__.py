@@ -175,6 +175,7 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_i1e import special_i1e
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
@@ -368,6 +369,7 @@ __all__ = [
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_hermite_polynomial_h",
+    "special_i1e",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
