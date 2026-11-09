@@ -4,8 +4,10 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import tl_extra_shim
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
 
 div_rn = tl_extra_shim.div_rn
 exp2 = tl_extra_shim.exp2
@@ -94,7 +96,7 @@ def silu_backward_kernel(x, dy):
 
 
 def silu(self):
-    logger.debug("GEMS_TSINGMICRO SILU_FORWARD")
+    logger.debug("GEMS_TSINGMICRO SILU")
     collapsed = _collapse_contiguous_dims(self)
     output = silu_forward_sigmoid(collapsed)
     return output.view(self.shape)
@@ -107,6 +109,6 @@ def silu_backward(grad_output, self):
 
 
 def silu_(A):
-    logger.debug("GEMS_TSINGMICRO SILU__FORWARD")
+    logger.debug("GEMS_TSINGMICRO SILU_")
     out = silu_forward(A, out0=A)
     return out
