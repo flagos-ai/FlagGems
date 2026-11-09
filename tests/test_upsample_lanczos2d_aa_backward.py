@@ -153,7 +153,14 @@ def test_upsample_lanczos2d_aa_backward(
     [
         (torch.float16, 3e-3),
         (torch.bfloat16, 2e-2),
-        (torch.float64, 1e-12),
+        pytest.param(
+            torch.float64,
+            1e-12,
+            marks=pytest.mark.skipif(
+                not utils.fp64_is_supported,
+                reason="float64 is not supported on this platform",
+            ),
+        ),
     ],
 )
 def test_upsample_lanczos2d_aa_backward_dtypes(monkeypatch, dtype, tolerance):

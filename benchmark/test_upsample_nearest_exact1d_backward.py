@@ -15,10 +15,18 @@
 import pytest
 import torch
 
-from flag_gems.ops._upsample_nearest_exact1d_backward import (
-    _upsample_nearest_exact1d_backward,
-    _upsample_nearest_exact1d_backward_grad_input,
-)
+import flag_gems
+
+if flag_gems.vendor_name == "kunlunxin":
+    from flag_gems.runtime.backend._kunlunxin.ops._upsample_nearest_exact1d_backward import (
+        _upsample_nearest_exact1d_backward,
+        _upsample_nearest_exact1d_backward_grad_input,
+    )
+else:
+    from flag_gems.ops._upsample_nearest_exact1d_backward import (
+        _upsample_nearest_exact1d_backward,
+        _upsample_nearest_exact1d_backward_grad_input,
+    )
 
 from . import base, consts
 
