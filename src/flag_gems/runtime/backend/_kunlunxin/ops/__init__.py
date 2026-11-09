@@ -22,6 +22,7 @@ from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_in
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
+from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._embedding_bag_per_sample_weights_backward import (  # noqa: F401
@@ -173,6 +174,7 @@ from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
+from ._logcumsumexp import _logcumsumexp, _logcumsumexp_out  # noqa: F401
 from ._lu_with_info import _lu_with_info
 from ._masked_scale import _masked_scale  # noqa: F401
 from ._native_batch_norm_legit import (
@@ -210,7 +212,7 @@ from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
 from .adaptive_avg_pool1d import adaptive_avg_pool1d
-from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d import adaptive_avg_pool2d, adaptive_avg_pool2d_out
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
@@ -271,6 +273,7 @@ from .attention import (  # noqa: F401
     scaled_dot_product_attention_forward,
     scaled_dot_product_efficient_attention_backward,
 )
+from .avg_pool1d import avg_pool1d
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
@@ -304,9 +307,7 @@ from .bitwise_xor import (
     bitwise_xor_scalar_,
     bitwise_xor_scalar_tensor,
     bitwise_xor_tensor,
-    xor,
     xor_,
-    xor_scalar,
     xor_scalar_,
     xor_scalar_tensor,
 )
@@ -499,9 +500,11 @@ from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
+from .hash_tensor import hash_tensor
 from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
+from .histogramdd import histogramdd
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -523,6 +526,7 @@ from .index_put_impl import _index_put_impl_
 from .index_reduce import index_reduce_
 from .index_select import index_select
 from .index_select_backward import index_select_backward
+from .inverse import inverse
 from .ior_scalar import ior_scalar
 from .ior_tensor import ior_tensor
 from .isclose import allclose, isclose
@@ -532,6 +536,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .kl_div import kl_div  # noqa: F401
@@ -625,6 +630,7 @@ from .mean import mean, mean_dim
 from .median import median, median_dim, median_dim_values, median_out
 from .min import min, min_dim
 from .minimum import minimum
+from .miopen_batch_norm import miopen_batch_norm
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
 from .mish import mish, mish_
 from .mish_backward import mish_backward
@@ -869,6 +875,7 @@ from .special_shifted_chebyshev_polynomial_v import (
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .special_softmax import special_softmax
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
@@ -898,6 +905,7 @@ from .tile import tile
 from .to import to_copy
 from .topk import topk
 from .trace import trace
+from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
 from .triu import triu, triu_
@@ -948,6 +956,7 @@ from .xlogy import (
     xlogy_tensor_scalar_,
     xlogy_tensor_scalar_out,
 )
+from .xor import xor, xor_scalar
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
@@ -1082,6 +1091,8 @@ __all__ = [
     "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
+    "_logcumsumexp",
+    "_logcumsumexp_out",
     "_lu_with_info",
     "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
@@ -1124,6 +1135,7 @@ __all__ = [
     "acos_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool2d_out",
     "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
@@ -1191,6 +1203,7 @@ __all__ = [
     "atan2_",
     "atan2_out",
     "atan_",
+    "avg_pool1d",
     "avg_pool2d",
     "avg_pool2d_backward",
     "avg_pool3d",
@@ -1415,8 +1428,10 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_",
     "hardsigmoid_out",
+    "hash_tensor",
     "hinge_embedding_loss",
     "histc",
+    "histogramdd",
     "hsplit",
     "hstack",
     "hypot",
@@ -1439,6 +1454,7 @@ __all__ = [
     "index_select",
     "index_select_backward",
     "inplace_fused_experts",
+    "inverse",
     "ior_scalar",
     "ior_tensor",
     "isclose",
@@ -1449,6 +1465,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
     "kl_div",
@@ -1577,6 +1594,7 @@ __all__ = [
     "min",
     "min_dim",
     "minimum",
+    "miopen_batch_norm",
     "miopen_batch_norm_backward",
     "mish",
     "mish_",
@@ -1853,6 +1871,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
+    "special_softmax",
     "special_xlog1py",
     "special_zeta",
     "special_zeta_out",
@@ -1895,6 +1914,8 @@ __all__ = [
     "to_copy",
     "topk",
     "trace",
+    "triangular_solve",
+    "triangular_solve_out",
     "tril",
     "tril_",
     "tril_indices",

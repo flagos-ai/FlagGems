@@ -47,7 +47,7 @@ from flag_gems.ops._foreach_unary import UNARY_OPS, _scalar_fn
 from ..utils.foreach import foreach_unary, real_dtype_of
 from .acos import _acos_body
 from .asin import _asin_body
-from .lgamma import lgamma_func
+from .lgamma import lgamma, lgamma_func
 from .log2 import log2_func
 
 logger = logging.getLogger(__name__)
@@ -128,9 +128,23 @@ def _foreach_log2_(self):
 
 def _foreach_lgamma(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_LGAMMA")
+    # Large shapes go through pointwise_dynamic(DEFAULT) in the foreach executor,
+    # whose fp32 body is not cast back to bf16 and faults out of bounds.  Fall back
+    # to the per-tensor lgamma kernel (which upcasts + casts back correctly) above
+    # _FUSED_LIMIT, and keep the fused executor for the small launch-bound shapes.
+    tensors = list(self)
+    if tensors and max(t.numel() for t in tensors) > (1 << 20):
+        return [lgamma(t) for t in tensors]
     return _apply_vendor("lgamma", _LGAMMA_FAST, self, inplace=False)
 
 
 def _foreach_lgamma_(self):
     logger.debug("GEMS_KUNLUNXIN _FOREACH_LGAMMA_")
+    # Same bf16 out-of-bounds issue as the out-of-place variant above _FUSED_LIMIT;
+    # compute via the per-tensor kernel and copy the result back in place.
+    tensors = list(self)
+    if tensors and max(t.numel() for t in tensors) > (1 << 20):
+        for t in tensors:
+            t.copy_(lgamma(t))
+        return None
     return _apply_vendor("lgamma", _LGAMMA_FAST, self, inplace=True)
