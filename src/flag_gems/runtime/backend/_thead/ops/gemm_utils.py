@@ -583,6 +583,8 @@ def _prune_split_k_configs(configs, named_args, **kwargs):
     only rejects candidates whose non-interleaved slices cannot be represented
     by the kernel or whose temporary workspace exceeds a generic bound.
     """
+    # Triton passes positional arguments and launch keywords separately.
+    named_args = {**named_args, **kwargs}
     K = named_args.get("K")
     if K is None:
         return configs
@@ -685,6 +687,8 @@ def _prune_gemm_configs(configs, named_args, **kwargs):
     dispatch table and can regress a neighbouring shape.  The remaining
     checks describe addressability and compiler/resource limits only.
     """
+    # Triton passes positional arguments and launch keywords separately.
+    named_args = {**named_args, **kwargs}
     M = named_args.get("M")
     N = named_args.get("N")
     aiu_load_mask = named_args.get("aiu_load_mask", _AIU_LOAD_A | _AIU_LOAD_B)
@@ -743,6 +747,8 @@ def _prune_gemm_configs(configs, named_args, **kwargs):
 
 def _prune_narrow_n_configs(configs, named_args, **kwargs):
     """Keep narrow-N candidates based only on legality/resource checks."""
+    # Triton passes positional arguments and launch keywords separately.
+    named_args = {**named_args, **kwargs}
     aiu_load_mask = named_args.get("aiu_load_mask", _AIU_LOAD_A | _AIU_LOAD_B)
     filtered = []
     for config in configs:
