@@ -155,6 +155,7 @@ from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .log_softmax_backward_data import log_softmax_backward_data
 from .logical_not_ import logical_not_
 from .lt_ import lt_
+from .lt_scalar_ import lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
@@ -452,6 +453,7 @@ __all__ = [
     "log_softmax_out",
     "logical_not_",
     "lt_",
+    "lt_scalar_",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
