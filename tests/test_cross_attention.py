@@ -17,6 +17,7 @@ import torch
 import torch.nn.functional as F
 
 import flag_gems
+from flag_gems.utils.triton_version_utils import HAS_TLE
 
 from . import accuracy_utils as utils
 
@@ -27,6 +28,17 @@ DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 # Keep those workarounds scoped to this vendor so other backends keep using the
 # original reference behaviour unchanged.
 _MTHREADS = flag_gems.vendor_name == "mthreads"
+
+# The generic implementation drives its K/V loop with
+# ``triton.experimental.tle.language.gpu.pipeline`` and raises when TLE is
+# unavailable. The MUSA specialization uses a plain ``tl.range`` loop, so only
+# skip the module when the generic path would actually be selected.
+_TLE_UNAVAILABLE = not HAS_TLE and not _MTHREADS
+
+pytestmark = pytest.mark.skipif(
+    _TLE_UNAVAILABLE,
+    reason="cross_attention generic path requires triton.experimental.tle",
+)
 
 # Reuse the numeric coverage from test_scaled_dot_product_attention.py's
 # LEGACY_SHAPES. SDPA's (B, Hq, Hkv, Lq, Lk, D, enable_gqa) maps to this
