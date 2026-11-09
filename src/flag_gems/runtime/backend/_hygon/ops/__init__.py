@@ -15,7 +15,6 @@
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
-from ._conj import _conj
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
@@ -215,7 +214,6 @@ from .weight_norm import (
 
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
-    "_conj",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
