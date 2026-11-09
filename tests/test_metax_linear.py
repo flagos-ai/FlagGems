@@ -133,7 +133,6 @@ def test_public_linear_matches_fp64_and_keeps_default_configs(
 def test_public_linear_registered_aten_path(monkeypatch):
     x = torch.randn(16, 1024, device="cuda")
     w = torch.randn(1024, 1024, device="cuda")
-    expected = flag_gems.linear(x, w)
     module = importlib.import_module(flag_gems.linear.__module__)
     selected = []
     real_select = module._small_fp32_entry
@@ -143,9 +142,20 @@ def test_public_linear_registered_aten_path(monkeypatch):
         return real_select()
 
     monkeypatch.setattr(module, "_small_fp32_entry", select)
-    with flag_gems.use_gems(include=["linear"]):
-        actual = torch.nn.functional.linear(x, w)
-    torch.testing.assert_close(actual, expected)
+    # Exercise the public registrar without enabling unrelated ATen overrides.
+    previous = getattr(flag_gems, "current_work_registrar", None)
+    with monkeypatch.context() as registration:
+        registration.setattr(flag_gems, "current_work_registrar", None, raising=False)
+        library = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(lib=library, include=["linear"])
+            actual = torch.nn.functional.linear(x, w)
+        finally:
+            library._destroy()
+    _assert_fp64_linear(actual, x, w, None)
+    assert getattr(flag_gems, "current_work_registrar", None) is previous
+    # A later native call must no longer enter the temporary registration.
+    torch.nn.functional.linear(x, w)
     assert selected == [True]
 
 
