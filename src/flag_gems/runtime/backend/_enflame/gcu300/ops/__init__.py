@@ -279,6 +279,7 @@ from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .take import take, take_out
+from .take_along_dim import take_along_dim, take_along_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -644,6 +645,8 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "take",
+    "take_along_dim",
+    "take_along_dim_out",
     "take_out",
     "tanh",
     "tanh_",
