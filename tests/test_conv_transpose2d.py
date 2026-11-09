@@ -20,6 +20,15 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _assert_close(res, ref, dtype, **kwargs):
+    if IS_KUNLUNXIN:
+        res, ref = res.cpu(), ref.cpu()
+    utils.gems_assert_close(res, ref, dtype, **kwargs)
+
+
 _skip_if_no_fp64 = pytest.mark.skipif(
     flag_gems.vendor_name == "kunlunxin" and not flag_gems.runtime.device.support_fp64,
     reason="unsupported-dtype guard is unconstructible without fp64",
@@ -241,12 +250,17 @@ def _assert_conv_transpose2d_matches(
     ref_inp = utils.to_reference(inp, True)
     weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
     ref_weight = utils.to_reference(weight, True)
+    if IS_KUNLUNXIN:
+        ref_inp = ref_inp.cpu()
+        ref_weight = ref_weight.cpu()
     out_channels = weight_shape[1] * groups
     bias = None
     ref_bias = None
     if use_bias:
         bias = torch.randn((out_channels,), dtype=dtype, device=flag_gems.device)
         ref_bias = utils.to_reference(bias, True)
+        if IS_KUNLUNXIN:
+            ref_bias = ref_bias.cpu()
 
     torch.backends.cudnn.allow_tf32 = False
     ref_out = torch.nn.functional.conv_transpose2d(
@@ -275,7 +289,7 @@ def _assert_conv_transpose2d_matches(
         (weight_shape[0] // max(groups, 1)) * weight_shape[2] * weight_shape[3],
         1,
     )
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
+    _assert_close(res_out, ref_out, dtype, reduce_dim=reduce_dim)
     return res_out, ref_out
 
 
@@ -511,4 +525,4 @@ def test_conv_transpose2d_noncontiguous_tensors_match_pytorch(
     )
 
     reduce_dim = max(weight.shape[0] * weight.shape[2] * weight.shape[3], 1)
-    utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=reduce_dim)
+    _assert_close(res_out, ref_out, torch.float32, reduce_dim=reduce_dim)
