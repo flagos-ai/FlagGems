@@ -19,7 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from ..utils import libentry
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,10 @@ def logspace_kernel(
     mask = idx < steps
 
     exponent = start + idx * step_size
-    vals = tl.exp2(log2_base * exponent)
+    # `tl.exp2` lowers to an extern `tops_exp2_v2_fp32` call that ld.lld cannot
+    # relocate on this backend, so the kernel failed to link. exp(x * ln 2) is
+    # the same function and lowers to the in-tree exp.
+    vals = tl.exp(log2_base * exponent * 0.6931471805599453)
 
     tl.store(out_ptr + idx * out_stride0, vals, mask=mask)
 
