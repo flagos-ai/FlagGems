@@ -835,7 +835,10 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
     post = hygon_splitk.runtime.ops_get_configs(
         "mm_hygon_splitk_post", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
     )
-    from flag_gems.runtime.backend._hygon.ops.mm_shared import shared_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.mm_shared import (
+        SHORT_K_MM_CONFIGS,
+        shared_mm_configs,
+    )
 
     # The ordinary registry is identical for both input strides, like the YAML
     # pool above. Count its configurations once; retain layout-specific legacy
@@ -845,6 +848,7 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
     from flag_gems.runtime.backend._hygon.ops.mv import _GROUPED_MV_CONFIGS
     python_candidates = (
         len(shared_mm_configs())
+        + len(SHORT_K_MM_CONFIGS)
         + len(cooperative_mm_configs())
         + len(local_configs)
         + len(_GROUPED_MV_CONFIGS)

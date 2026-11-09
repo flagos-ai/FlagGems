@@ -11,7 +11,14 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
-from .mm_shared import SharedMMConfig, launch_shared_mm, shared_mm_configs
+from .mm_shared import (
+    SharedMMConfig,
+    ShortKMMConfig,
+    launch_shared_mm,
+    launch_short_k_mm,
+    shared_mm_configs,
+    short_k_mm_candidates,
+)
 from .mm_local_split import (
     LocalSplitMMConfig,
     local_split_mm_configs,
@@ -85,7 +92,8 @@ def mm_family_candidates(a, b, c, *, splitk_pool=False):
     cooperative = tuple(
         config for config in cooperative_mm_configs() if config.supports(a, b, c)
     )
-    return shared + cooperative + local
+    short_k = short_k_mm_candidates(a, b, c) if shared_configs else ()
+    return shared + cooperative + local + short_k
 
 
 def _launch(a, b, c, candidate):
@@ -95,6 +103,8 @@ def _launch(a, b, c, candidate):
         return launch_cooperative_mm(a, b, c, candidate)
     if isinstance(candidate, GroupedMVConfig):
         return launch_grouped_mv(a, b, c, candidate)
+    if isinstance(candidate, ShortKMMConfig):
+        return launch_short_k_mm(a, b, c, candidate)
     return launch_local_split_mm(a, b, c, candidate)
 
 
@@ -105,6 +115,8 @@ def _label(candidate):
         return dict(family="local_split", **asdict(candidate))
     if isinstance(candidate, GroupedMVConfig):
         return dict(family="grouped_mv", **asdict(candidate))
+    if isinstance(candidate, ShortKMMConfig):
+        return dict(family="short_k", **asdict(candidate))
     return asdict(candidate) if isinstance(candidate, SharedMMConfig) else candidate
 
 

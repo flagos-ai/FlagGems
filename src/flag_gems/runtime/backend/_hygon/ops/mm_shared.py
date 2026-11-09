@@ -189,3 +189,43 @@ def shared_mm_configs():
         SharedMMConfig((128, 256, 16), address_mode="scalar"),
         SharedMMConfig((64, 64, 64), group_m=1),
     )
+
+
+@dataclass(frozen=True)
+class ShortKMMConfig:
+    block_k: int
+
+
+SHORT_K_MM_CONFIGS = (ShortKMMConfig(32), ShortKMMConfig(64))
+_SHORT_K_STORAGE = SharedMMConfig((128, 128, 16))
+
+
+def short_k_mm_candidates(a, b, c):
+    m, k = a.shape
+    n = b.shape[1]
+    if min(m, n) < 128 or not 64 <= k <= 256 or not _SHORT_K_STORAGE.supports(a, b, c):
+        return ()
+    compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
+    if triton.cdiv(m, 128) * triton.cdiv(n, 128) < compute_units:
+        return ()
+    # Two to four whole K panels can be folded into a straight-line
+    # synchronous schedule. The regular tuner remains in the competition.
+    return tuple(
+        config for config in SHORT_K_MM_CONFIGS
+        if k % config.block_k == 0 and 2 <= k // config.block_k <= 4
+    )
+
+
+def launch_short_k_mm(a, b, c, config):
+    m, k = a.shape
+    n = b.shape[1]
+    with torch_device_fn.device(a.device):
+        return _ordinary_mm_entry()[(triton.cdiv(m, 128) * triton.cdiv(n, 128),)](
+            a, b, c, m, n, tl.constexpr(k), *a.stride(), *b.stride(), *c.stride(),
+            BLOCK_M=128, BLOCK_N=128, BLOCK_K=config.block_k, GROUP_M=4,
+            MASK_EDGES=m % 128 != 0 or n % 128 != 0,
+            USE_TLE=True, LOAD_MODE=0, K_DIVISIBLE_BY_16=True,
+            B_K_CONTIGUOUS=b.stride() == (1, k), LOOP_UNROLL_FACTOR=4,
+            mmac_warps_m=2, mmac_transposed=True, optimize_epilogue=True,
+            schedule_hint="local-prefetch", kpack=2, num_warps=4, num_stages=2,
+        )
