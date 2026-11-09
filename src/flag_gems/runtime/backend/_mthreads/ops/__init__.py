@@ -54,6 +54,7 @@ from .conv2d import conv2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
+from .cross_attention import cross_attention
 from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
@@ -227,6 +228,7 @@ __all__ = [
     "conv_transpose1d_output_size",
     "conv_transpose2d",
     "copy_",
+    "cross_attention",
     "cudnn_convolution",
     "deg2rad_",
     "diagonal_scatter",
