@@ -19,7 +19,10 @@ from typing import Any
 
 from backend_utils import VendorDescriptor  # noqa: E402
 
-if importlib.util.find_spec("triton.backends.spine_triton") is not None:
+if (
+    importlib.util.find_spec("triton.backends.spine_triton") is not None
+    and importlib.util.find_spec("triton.backends.spine_triton.driver") is not None
+):
     # SpacemiT's official Triton installation exposes the backend as spine_triton.
     from .utils.config_pre_hook import setup_triton_config  # noqa: E402
 
@@ -29,7 +32,10 @@ if importlib.util.find_spec("triton.backends.spine_triton") is not None:
     from triton.backends.spine_triton.driver import CPUDriver  # noqa: E402
 
     triton.runtime.driver.set_active(CPUDriver())  # noqa: E402
-elif importlib.util.find_spec("triton.backends.spacemit") is not None:
+elif (
+    importlib.util.find_spec("triton.backends.spacemit") is not None
+    and importlib.util.find_spec("triton.backends.spacemit.driver") is not None
+):
     # FlagTree exposes the backend as spacemit.
     from .utils.config_pre_hook import setup_triton_config  # noqa: E402
 
