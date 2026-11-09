@@ -32,11 +32,14 @@ _SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
 )
 _SKIP_FP64_ON_ENFLAME = pytest.mark.skipif(
     flag_gems.runtime.device.vendor_name == "enflame",
-    reason="Enflame dose not support float64",
+    reason="Enflame does not support float64",
 )
 CHOLESKY_INVERSE_DTYPES = [
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
+    pytest.param(
+        torch.float64,
+        marks=[_SKIP_FP64_ON_KUNLUNXIN, _SKIP_FP64_ON_ENFLAME],
+    ),
 ]
 
 
