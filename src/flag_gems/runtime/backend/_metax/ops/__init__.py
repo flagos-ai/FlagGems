@@ -86,6 +86,7 @@ from .foreach_log10 import foreach_log10
 from .foreach_log10_ import foreach_log10_
 from .foreach_log1p import foreach_log1p
 from .foreach_log2 import foreach_log2
+from .foreach_maximum_list import foreach_maximum_list
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -308,6 +309,7 @@ __all__ = [
     "foreach_log10_",
     "foreach_log1p",
     "foreach_log2",
+    "foreach_maximum_list",
     "full",
     "full_like",
     "gcd_",
