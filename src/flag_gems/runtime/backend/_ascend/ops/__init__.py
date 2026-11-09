@@ -153,6 +153,7 @@ from .log_normal import log_normal
 from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .log_softmax_backward_data import log_softmax_backward_data
+from .logaddexp2 import logaddexp2
 from .logaddexp2_out import logaddexp2_out
 from .logical_not_ import logical_not_
 from .logical_xor_ import logical_xor_
@@ -454,6 +455,7 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_data",
     "log_softmax_out",
+    "logaddexp2",
     "logaddexp2_out",
     "logical_not_",
     "logical_xor_",
