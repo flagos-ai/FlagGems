@@ -36,9 +36,7 @@ def _bf16_split(x):
     return hi, lo
 
 
-def _select_metax_tiling(
-    query_len, key_len, head_dim, has_mask, is_fp32
-):
+def _select_metax_tiling(query_len, key_len, head_dim, has_mask, is_fp32):
     """Select tiles that fit the C500 register and shared-memory limits."""
     if query_len <= 32:
         if not is_fp32 and head_dim <= 64:
@@ -119,20 +117,16 @@ def cross_attention_metax_kernel(
     valid_queries = query_offsets < QUERY_LEN
 
     query_base = (
-        batch.to(tl.int64) * stride_q_batch
-        + query_head.to(tl.int64) * stride_q_head
+        batch.to(tl.int64) * stride_q_batch + query_head.to(tl.int64) * stride_q_head
     )
     key_base = (
-        batch.to(tl.int64) * stride_k_batch
-        + kv_head.to(tl.int64) * stride_k_head
+        batch.to(tl.int64) * stride_k_batch + kv_head.to(tl.int64) * stride_k_head
     )
     value_base = (
-        batch.to(tl.int64) * stride_v_batch
-        + kv_head.to(tl.int64) * stride_v_head
+        batch.to(tl.int64) * stride_v_batch + kv_head.to(tl.int64) * stride_v_head
     )
     output_base = (
-        batch.to(tl.int64) * stride_o_batch
-        + query_head.to(tl.int64) * stride_o_head
+        batch.to(tl.int64) * stride_o_batch + query_head.to(tl.int64) * stride_o_head
     )
     query_ptrs = (
         Q
@@ -186,12 +180,8 @@ def cross_attention_metax_kernel(
             if FP32_SPLIT:
                 key_hi, key_lo = _bf16_split(key)
                 scores = tl.dot(query_hi, key_hi, allow_tf32=False)
-                scores = tl.dot(
-                    query_hi, key_lo, scores, allow_tf32=False
-                )
-                scores = tl.dot(
-                    query_lo, key_hi, scores, allow_tf32=False
-                )
+                scores = tl.dot(query_hi, key_lo, scores, allow_tf32=False)
+                scores = tl.dot(query_lo, key_hi, scores, allow_tf32=False)
             else:
                 scores = tl.dot(query, key, input_precision="ieee")
         else:
@@ -202,9 +192,7 @@ def cross_attention_metax_kernel(
             if HAS_MASK:
                 blocked = (
                     tl.load(
-                        AttnMask
-                        + mask_base
-                        + logical_keys[None, :] * stride_mask_key
+                        AttnMask + mask_base + logical_keys[None, :] * stride_mask_key
                     )
                     != 0
                 )
@@ -215,9 +203,7 @@ def cross_attention_metax_kernel(
             if HAS_MASK:
                 blocked = (
                     tl.load(
-                        AttnMask
-                        + mask_base
-                        + logical_keys[None, :] * stride_mask_key,
+                        AttnMask + mask_base + logical_keys[None, :] * stride_mask_key,
                         mask=score_is_valid,
                         other=1,
                     )
