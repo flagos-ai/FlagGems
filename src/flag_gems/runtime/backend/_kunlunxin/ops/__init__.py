@@ -475,7 +475,6 @@ from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
 from .gelu import gelu, gelu_, gelu_backward
 from .geometric import geometric, geometric_  # noqa: F401
-from .ger import ger
 from .get_paged_mqa_logits_metadata import get_paged_mqa_logits_metadata
 from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
@@ -1381,7 +1380,6 @@ __all__ = [
     "gelu_backward",
     "geometric",
     "geometric_",
-    "ger",
     "get_paged_mqa_logits_metadata",
     "get_scheduler_metadata",
     "glu",
