@@ -104,3 +104,30 @@ def test_clone_autograd_non_contiguous():
     (ref_in_grad,) = torch.autograd.grad(ref_out.sum(), [ref_inp])
 
     utils.gems_assert_close(res_in_grad, ref_in_grad.to(torch.float32), torch.float32)
+
+
+@pytest.mark.clone
+@pytest.mark.parametrize("dtype", [torch.float32, torch.uint8, torch.int64])
+def test_clone_cpu_falls_back_to_native(dtype):
+    # Issue #8566: a CPU tensor cannot enter the Triton device context
+    # (torch.compile's preserve_rng_state clones a CPU ByteTensor), so the
+    # override falls back to a native copy for any non-backend device
+    inp = torch.randn(4, 8, dtype=torch.float32).to(dtype) if dtype != torch.float32 else torch.randn(4, 8)
+    ref = inp.clone()
+
+    res = flag_gems.clone(inp)
+
+    assert res.device == inp.device
+    assert res.dtype == inp.dtype
+    assert res.shape == inp.shape
+    torch.testing.assert_close(res, ref)
+
+
+@pytest.mark.clone
+def test_clone_cpu_preserves_memory_format():
+    # Issue #8566: the CPU fallback must honor the memory_format argument
+    inp = torch.randn(4, 8)
+    ref = inp.clone(memory_format=torch.contiguous_format)
+
+    res = flag_gems.clone(inp, memory_format=torch.contiguous_format)
+    torch.testing.assert_close(res, ref)
