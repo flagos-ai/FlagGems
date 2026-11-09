@@ -65,7 +65,7 @@ LEGAL_CONFIGS = {
     },
 }
 
-SUPPORTED_OPS = ["mm", "bmm"]
+SUPPORTED_OPS = ["mm", "bmm", "addmm", "attention"]
 
 logger = logging.getLogger(__name__)
 
@@ -148,11 +148,11 @@ def get_tuned_config(func):
         # Remove _spacemit suffix for config lookup
         op_key = _strip_spacemit_suffix(op_name)
 
-        if op_key in SUPPORTED_OPS and configs and len(configs) > 0:
-            arch_id = get_current_arch_id()
+        if op_key in SUPPORTED_OPS and configs:
 
             def make_pre_hook(config_obj):
                 def pre_hook(nargs):
+                    arch_id = get_current_arch_id()
                     # nargs is a dict mapping kernel arg names to values
                     dtype = None
                     for value in nargs.values():
@@ -219,9 +219,8 @@ def get_tuned_config(func):
 
                 return pre_hook
 
-            # ensure configs list non-empty before setting pre_hook
-            if len(configs) > 0 and configs[0] is not None:
-                configs[0].pre_hook = make_pre_hook(configs[0])
+            for config in configs:
+                config.pre_hook = make_pre_hook(config)
 
         return configs
 

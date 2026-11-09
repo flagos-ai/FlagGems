@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-import os
 
 import torch
 import triton
@@ -154,30 +153,14 @@ def _attn_max_pass(
     return m_row
 
 
-def _spacemit_attention_configs():
-    # Tuned configs for "attention" are shared across CPU backends and may
-    # carry options this kernel does not take (PRE_LOAD_V) plus a num_ctas
-    # tuned for another flavor; strip the former and pin num_ctas to the
-    # launcher default (grid size = number of persistent programs).
-    cfgs = runtime.get_tuned_config("attention")
-    # BLOCK_M sets the smt scratch arena size; the TCM pool is 256KB per
-    # worker and the tuned BLOCK_M=128 requests ~485KB, which tcm_malloc
-    # fails with NULL (the kernel then segfaults on its first scratch init
-    # store). Clamp to a size that fits the pool.
-    block_m = int(os.environ.get("ATTN_FLASH_BLOCK_M", "32"))
-    block_n = int(os.environ.get("ATTN_FLASH_BLOCK_N", "32"))
-    for c in cfgs:
-        c.kwargs.pop("PRE_LOAD_V", None)
-        c.num_ctas = 16
-        c.kwargs["BLOCK_M"] = block_m
-        c.kwargs["BLOCK_N"] = block_n
-    return cfgs
+_ATTENTION_CONFIGS = runtime.get_tuned_config("attention_spacemit")
 
 
 @libentry()
 @libtuner(
-    configs=_spacemit_attention_configs(),
+    configs=_ATTENTION_CONFIGS,
     key=["Q_CTX", "KV_CTX", "HEAD_DIM", "GROUP_SIZE"],
+    disable_aabs=True,
 )
 @triton.jit
 def _attn_fwd(
@@ -460,19 +443,17 @@ class Attention(torch.autograd.Function):
             (q.shape[0], q.shape[1], q.shape[2]), dtype=torch.float32, device=q.device
         )
 
-        # Ones matrix for the engine-side row-sum dot in _attn_fwd_inner.
-        # Width 32 must stay tied to MICRO_N=32 in the launch below; BLOCK_N
-        # must match the clamp in _spacemit_attention_configs (every config
-        # is forced to it, so the tuner cannot pick anything else).
-        block_n = int(os.environ.get("ATTN_FLASH_BLOCK_N", "32"))
-        ones = torch.ones((block_n, 32), dtype=v.dtype, device=q.device)
         if is_causal:
             STAGE = 3 if (Q_CTX == KV_CTX) else 4
         else:
             STAGE = 1
+        # The kernel views a flat prefix as (BLOCK_N, MICRO_N), stride
+        # (MICRO_N, 1). Valid tiles have MICRO_N <= BLOCK_N, so the host
+        # can size this all-ones buffer without knowing the hook's MICRO tile.
+        block_n = max(config.kwargs["BLOCK_N"] for config in _ATTENTION_CONFIGS)
+        ones = torch.ones((block_n * block_n,), dtype=v.dtype, device=q.device)
 
-        num_ctas = 16
-        grid = lambda META: (META.get("num_ctas", num_ctas),)
+        grid = lambda META: (META["num_ctas"],)
 
         _attn_fwd[grid](
             q,
@@ -508,9 +489,6 @@ class Attention(torch.autograd.Function):
             HEAD_DIM=HEAD_DIM_K,
             STAGE=STAGE,
             BLOCK_SIZE_K=BLOCK_SIZE_K,
-            MICRO_M=16,
-            MICRO_K=8,
-            MICRO_N=32,
         )
 
         return o

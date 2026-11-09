@@ -20,6 +20,9 @@ import triton.language.extra.smt_rvisa as tle
 from triton.language.extra.smt_rvisa import call as _sr_call
 from triton.language.extra.smt_rvisa import index, mem
 
+from flag_gems import runtime
+from flag_gems.utils import libentry, libtuner
+
 _f16 = tle.f16
 _f32 = tle.f32
 # NOTE: dtype args to tle.* must be bare names that match _DTYPE_NAMES
@@ -496,6 +499,12 @@ def mm_tldot_kernel(
 #   BK=256 fixed (K3 MICRO_K=8, 32 K-tiles per BK). 4x faster than tl.dot.
 #   TCM ~256KB (within 384KB limit); noloop BK=K variant needed 608KB (over).
 # ---------------------------------------------------------------------------
+@libentry()
+@libtuner(
+    configs=runtime.get_tuned_config("mm_spacemit"),
+    key=["M", "N", "K"],
+    disable_aabs=True,
+)
 @triton.jit
 def mm_smt_kernel(
     a_ptr,
@@ -560,7 +569,6 @@ _TLDOT_BK = 256
 _TLDOT_BM = 32
 _SMT_BK = 256
 _SMT_BM = 32
-_SMT_MM, _SMT_MK, _SMT_MN = 16, 8, 32  # K3 (0xA064) f16 MICRO tile from config_pre_hook
 
 # Cache b_contig (= W.T materialized) by weight data_ptr. Weights are stable
 # across forward passes in inference, so the cache hits after the first call.
@@ -635,9 +643,6 @@ def _mm_smt_path(a, b, c, M, K, N):
                 BLOCK_SIZE_M=_SMT_BM,
                 BLOCK_SIZE_N=bn,
                 BLOCK_SIZE_K=_SMT_BK,
-                MICRO_M=_SMT_MM,
-                MICRO_K=_SMT_MK,
-                MICRO_N=_SMT_MN,
             )
         if n_tail > 0:
             # Tail: native addmm into a contiguous temp. Rare (N%256 != 0).

@@ -32,6 +32,15 @@ attention:
       PRE_LOAD_V: false
     num_warps: 4
     num_stages: 2
+attention_spacemit:
+  - META:
+      BLOCK_M: 32
+      BLOCK_N: 32
+      # K3 FP16 defaults; config_pre_hook adjusts for the input dtype and target.
+      MICRO_M: 16
+      MICRO_N: 32
+      MICRO_K: 8
+    num_ctas: 16
 attention_bwd:
   - gen: true
     param_map:
@@ -89,18 +98,15 @@ log_softmax:
     BLOCK_M: 32
     BLOCK_N: 512
 mm_spacemit:
-- META:
-    BLOCK_SIZE_M: 32
-    BLOCK_SIZE_N: 32
-    EVEN_K: 1
-    SPLIT_M: 0
-    SPLIT_N: 0
-    SPLIT_K: 0
-    SUB_BLK_M: 16
-    SUB_BLK_N: 16
-    MICRO_M: 8
-    MICRO_K: 32
-    MICRO_N: 32
+  - META:
+      # Block sizes are selected by the existing mm host dispatch.
+      # K3 FP16 defaults; config_pre_hook adjusts for the input dtype and target.
+      MICRO_M: 16
+      MICRO_N: 32
+      MICRO_K: 8
+    num_warps: 0
+    num_ctas: 0
+    num_stages: 1
 mm:
   - META:
       BLOCK_M: 64
