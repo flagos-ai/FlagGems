@@ -17,7 +17,11 @@ import logging
 import torch
 import triton
 import triton.language as tl
-from triton.knobs import autotuning as _autotuning_knobs
+
+try:
+    from triton.knobs import autotuning as _autotuning_knobs
+except ImportError:  # older triton / flagtree builds without knobs
+    _autotuning_knobs = None
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
