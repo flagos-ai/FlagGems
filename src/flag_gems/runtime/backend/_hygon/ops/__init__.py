@@ -52,6 +52,7 @@ from .conv_depthwise2d import conv_depthwise2d
 from .conv_tbc_backward import conv_tbc_backward
 from .convolution_overrideable import convolution_overrideable
 from .cudnn_convolution import cudnn_convolution
+from .dequantize import dequantize
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .div import (
@@ -260,6 +261,7 @@ __all__ = [
     "conv_tbc_backward",
     "convolution_overrideable",
     "cudnn_convolution",
+    "dequantize",
     "diagonal_scatter",
     "diff",
     "div_mode",
