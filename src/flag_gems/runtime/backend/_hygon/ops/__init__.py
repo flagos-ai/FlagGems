@@ -95,6 +95,7 @@ from .hadamard_transform import hadamard_transform
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
@@ -277,6 +278,7 @@ __all__ = [
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "inner",
     "int_mm",
     "int_mm_out",
     "isin",
