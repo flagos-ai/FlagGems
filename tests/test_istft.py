@@ -58,6 +58,25 @@ def _stft(signal, n_fft, hop_length, win_length, window, **kwargs):
     )
 
 
+def _ref_istft(spec, n_fft, hop_length, win_length, window, **kwargs):
+    """Reference istft, falling back to the CPU oracle when needed.
+
+    Not every backend implements every istft variant natively: for example
+    torch_xmlir rejects the complex output of a two-sided spectrum with
+    "NOT IMPLEMENTED". The CPU implementation is the canonical oracle, so use
+    it when the reference device cannot serve the call.
+    """
+    try:
+        return torch.istft(spec, n_fft, hop_length, win_length, window, **kwargs)
+    except (RuntimeError, NotImplementedError):
+        if spec.device.type == "cpu":
+            raise
+        ref_window = None if window is None else window.cpu()
+        return torch.istft(
+            spec.cpu(), n_fft, hop_length, win_length, ref_window, **kwargs
+        )
+
+
 def _build_case(
     signal_len, batch, n_fft, hop_length, win_length, dtype, rect_window=False, **kwargs
 ):
@@ -83,6 +102,9 @@ def _build_case(
 
 
 def _assert_close(res, ref, dtype, atol):
+    if ref.device.type == "cpu":
+        # The reference came from the CPU oracle fallback in _ref_istft.
+        res = res.cpu()
     utils.gems_assert_close(utils.to_cpu(res, ref), ref, dtype, atol=atol)
 
 
@@ -105,7 +127,7 @@ def test_istft_roundtrip(dtype, n_fft, hop_length, win_length):
         window=window,
         length=signal_len,
     )
-    ref_out = torch.istft(
+    ref_out = _ref_istft(
         ref_spec,
         n_fft,
         hop_length=hop_length,
@@ -136,7 +158,7 @@ def test_istft_1d_signal(dtype):
         window=window,
         length=signal_len,
     )
-    ref_out = torch.istft(
+    ref_out = _ref_istft(
         ref_spec, n_fft, hop_length, win_length, ref_window, length=signal_len
     ).to(dtype)
 
@@ -170,7 +192,7 @@ def test_istft_variants(dtype):
         normalized=True,
         length=signal_len,
     )
-    ref = torch.istft(
+    ref = _ref_istft(
         ref_spec,
         n_fft,
         hop_length,
@@ -190,7 +212,7 @@ def test_istft_variants(dtype):
         window=window,
         length=signal_len - 8,
     )
-    ref = torch.istft(
+    ref = _ref_istft(
         ref_spec, n_fft, hop_length, win_length, ref_window, length=signal_len - 8
     ).to(dtype)
     _assert_close(res, ref, dtype, atol)
@@ -199,7 +221,7 @@ def test_istft_variants(dtype):
     res = flag_gems.istft(
         spec, n_fft, hop_length=hop_length, win_length=win_length, window=window
     )
-    ref = torch.istft(ref_spec, n_fft, hop_length, win_length, ref_window).to(dtype)
+    ref = _ref_istft(ref_spec, n_fft, hop_length, win_length, ref_window).to(dtype)
     _assert_close(res, ref, dtype, atol)
 
     # two-sided spectrogram (onesided=False), inferred onesided=None
@@ -214,7 +236,7 @@ def test_istft_variants(dtype):
         window=window2,
         length=signal_len,
     )
-    ref2 = torch.istft(
+    ref2 = _ref_istft(
         ref_spec2, n_fft, hop_length, win_length, ref_window2, length=signal_len
     ).to(dtype)
     _assert_close(res2, ref2, dtype, atol)
@@ -229,7 +251,7 @@ def test_istft_variants(dtype):
         return_complex=True,
         onesided=False,
     )
-    ref3 = torch.istft(
+    ref3 = _ref_istft(
         ref_spec2,
         n_fft,
         hop_length,
@@ -274,7 +296,7 @@ def test_istft_center_false():
         center=False,
         length=length,
     )
-    ref_out = torch.istft(
+    ref_out = _ref_istft(
         ref_spec,
         n_fft,
         hop_length,
