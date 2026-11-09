@@ -92,6 +92,7 @@ from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
 from .hadamard_transform import hadamard_transform
+from .hardsigmoid_backward import hardsigmoid_backward
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
@@ -272,6 +273,7 @@ __all__ = [
     "gelu_",
     "gelu_backward",
     "hadamard_transform",
+    "hardsigmoid_backward",
     "heur_block_n",
     "index_add",
     "index_add_",
