@@ -63,7 +63,18 @@ _MAX_GRID_DIM_Z = 255
 _BLOCK_MIN = 2048
 
 
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "dim_offset_a",
+        "dim_offset_b",
+        "dim_offset_c",
+        "dim_offset_d",
+        "total_elements_a",
+        "total_elements_b",
+        "total_elements_c",
+        "total_elements_d",
+    ]
+)
 def cat_copy_contig_kernel_4(
     out_ptr,
     in_ptr_a,
@@ -106,15 +117,31 @@ def cat_copy_contig_kernel_4(
         dim_offset = dim_offset_d
         total_elements = total_elements_d
 
-    block_start = (pid_z.to(tl.int64) * grid_x + pid_x) * BLOCK_X
+    # int32 mask, same reason as in `cat_copy_row_kernel_4`: an int64 mask built
+    # from a branch-selected bound makes the backend write only the first
+    # 32-lane chunk of the block.
+    block_start = (pid_z * grid_x + pid_x) * BLOCK_X
     offsets = tl.arange(0, BLOCK_X)
-    mask = block_start + offsets < total_elements
+    mask = block_start + offsets < total_elements.to(tl.int32)
 
     data = tl.load(in_ptr + block_start + offsets, mask=mask)
     tl.store(out_ptr + block_start + dim_offset + offsets, data, mask=mask)
 
 
-@triton.jit
+@triton.jit(
+    do_not_specialize=[
+        "dim_size_in_a",
+        "dim_size_in_b",
+        "dim_size_in_c",
+        "dim_size_in_d",
+        "dim_offset_a",
+        "dim_offset_b",
+        "dim_offset_c",
+        "dim_offset_d",
+        "dim_size_out",
+        "dim_prod_post",
+    ]
+)
 def cat_copy_row_kernel_4(
     out_ptr,
     in_ptr_a,
@@ -165,8 +192,13 @@ def cat_copy_row_kernel_4(
     out_row_size = dim_size_out * dim_prod_post
 
     offsets = tl.arange(0, BLOCK_X)
-    col_start = pid_col.to(tl.int64) * BLOCK_X
-    mask = col_start + offsets < row_size
+    # Keep the mask in int32. With an int64 mask the GCU300 backend drops the
+    # last 32-lane chunk below the bound, so a row of 960 elements would only be
+    # copied up to index 927. `row_size` is bounded by the int32 element count of
+    # a row, which is what the int32 index arithmetic elsewhere in this backend
+    # already assumes; addresses below still widen to int64.
+    col_start = pid_col * BLOCK_X
+    mask = col_start + offsets < row_size.to(tl.int32)
 
     rows_per_prog = tl.cdiv(rows, grid_z)
     for r in range(rows_per_prog):
