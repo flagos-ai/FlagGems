@@ -221,9 +221,7 @@ def istft(
 
     # Window: mirror torch's centering of the window into the n_fft frame.
     if window is None:
-        window_full = torch.ones(
-            n_fft, dtype=compute_dtype, device=frames_r.device
-        )
+        window_full = torch.ones(n_fft, dtype=compute_dtype, device=frames_r.device)
     elif win_length != n_fft:
         left = (n_fft - win_length) // 2
         window_full = torch.constant_pad_nd(
@@ -281,9 +279,7 @@ def istft(
         signal = None
 
     # Envelope from the squared window (same overlap-add, deterministic).
-    envelope = torch.zeros(
-        expected_len, dtype=compute_dtype, device=frames_r.device
-    )
+    envelope = torch.zeros(expected_len, dtype=compute_dtype, device=frames_r.device)
     env_grid = (triton.cdiv(expected_len, BLOCK), 1)
     istft_overlap_add_kernel[env_grid](
         window_sq_rep,

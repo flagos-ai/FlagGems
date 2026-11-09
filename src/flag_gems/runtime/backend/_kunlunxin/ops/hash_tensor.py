@@ -62,9 +62,9 @@ def _to_i64_bits(val, dtype_code: tl.constexpr):
         # from the float64 exponent.
         b2 = (v32 * 8388608.0).to(tl.uint32, bitcast=True)
         sub_bits = (
-            ((b2 >> 31) & 1).to(tl.int64) << 63
-        ) | ((((b2 >> 23) & 0xFF).to(tl.int64) + 896 - 23) << 52) | (
-            (b2 & 0x7FFFFF).to(tl.int64) << 29
+            (((b2 >> 31) & 1).to(tl.int64) << 63)
+            | ((((b2 >> 23) & 0xFF).to(tl.int64) + 896 - 23) << 52)
+            | ((b2 & 0x7FFFFF).to(tl.int64) << 29)
         )
 
         u = tl.where(
@@ -221,9 +221,7 @@ def hash_tensor(x, dim, keepdim=False, mode=0):
                 BLOCK_N,
             )
         else:
-            partials = torch.empty(
-                M * num_n_splits, dtype=torch.int64, device=device
-            )
+            partials = torch.empty(M * num_n_splits, dtype=torch.int64, device=device)
             grid = (M, num_n_splits)
             hash_tiled_kernel[grid](
                 xr,
