@@ -213,6 +213,7 @@ from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
+from .upsample_lanczos2d_aa_backward import upsample_lanczos2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
@@ -428,6 +429,7 @@ __all__ = [
     "unique_dim",
     "unsqueeze",
     "unsqueeze_",
+    "upsample_lanczos2d_aa_backward",
     "upsample_linear1d",
     "upsample_nearest2d",
     "upsample_nearest_exact2d_backward",
