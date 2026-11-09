@@ -682,6 +682,10 @@ from flag_gems.ops.cross_attention import cross_attention
 from flag_gems.ops.crow_indices import crow_indices
 from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_affine_grid_generator_backward import (
+    cudnn_affine_grid_generator_backward,
+    cudnn_affine_grid_generator_backward_out,
+)
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
 from flag_gems.ops.cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
@@ -696,12 +700,17 @@ from flag_gems.ops.cudnn_convolution_relu import (
     cudnn_convolution_relu_out,
 )
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_grid_sampler import cudnn_grid_sampler, cudnn_grid_sampler_out
 from flag_gems.ops.cudnn_grid_sampler_backward import (
     cudnn_grid_sampler_backward,
     cudnn_grid_sampler_backward_out,
 )
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
+from flag_gems.ops.cudnn_rnn_flatten_weight import (
+    cudnn_rnn_flatten_weight,
+    cudnn_rnn_flatten_weight_out,
+)
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_, cumprod_backward
@@ -1571,6 +1580,7 @@ from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
 from flag_gems.ops.squeeze import squeeze
+from flag_gems.ops.squeeze_ import squeeze_, squeeze__dim, squeeze__dims
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.sspaddmm import sspaddmm, sspaddmm_out
 from flag_gems.ops.stack import stack
@@ -1589,6 +1599,7 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapaxes import swapaxes
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
 from flag_gems.ops.sym_size import sym_size, sym_size_int
@@ -1634,6 +1645,7 @@ from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from flag_gems.ops.unflatten import unflatten
+from flag_gems.ops.unflatten_dense_tensors import unflatten_dense_tensors
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -2353,6 +2365,8 @@ __all__ = [
     "crow_indices",
     "crow_indices_copy",
     "ctc_loss",
+    "cudnn_affine_grid_generator_backward",
+    "cudnn_affine_grid_generator_backward_out",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
     "cudnn_batch_norm",
@@ -2364,10 +2378,14 @@ __all__ = [
     "cudnn_convolution_relu",
     "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
+    "cudnn_grid_sampler",
     "cudnn_grid_sampler_backward",
     "cudnn_grid_sampler_backward_out",
+    "cudnn_grid_sampler_out",
     "cudnn_rnn",
     "cudnn_rnn_backward",
+    "cudnn_rnn_flatten_weight",
+    "cudnn_rnn_flatten_weight_out",
     "cummax",
     "cummaxmin_backward",
     "cummin",
@@ -3272,6 +3290,9 @@ __all__ = [
     "square_",
     "square_out",
     "squeeze",
+    "squeeze_",
+    "squeeze__dim",
+    "squeeze__dims",
     "squeeze_copy",
     "sspaddmm",
     "sspaddmm_out",
@@ -3298,6 +3319,7 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapaxes",
     "swapaxes_",
     "swapdims",
     "sym_size",
@@ -3354,6 +3376,7 @@ __all__ = [
     "unbind_copy",
     "underscore_sobol_engine_draw",
     "unflatten",
+    "unflatten_dense_tensors",
     "unfold",
     "unfold_backward",
     "unfold_copy",

@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Re-measure two Pretune runs' selected configs in one interleaved process.
+"""Re-measure two Pretune runs' selected configs in one process.
 
 Pretune writes ``latency_p50_ms`` from a fresh measurement taken inside the
 process that tuned the shape.  Comparing a baseline run against an ours run
@@ -25,8 +25,9 @@ reported 82.6%-108.8% relative throughput.
 
 This command removes that error term.  It reads both Pretune CSV artifacts,
 takes the config each run selected, and measures both configs for every shape
-back to back in one process, alternating which side is measured first on every
-trial.  Only the latency columns of the two inputs are rewritten, so
+back to back in one process. The default alternates which side is measured
+first; ``--measurement-order sequential`` finishes each side's trials in order.
+Only the latency columns of the two inputs are rewritten, so
 ``compare.py`` consumes the result unchanged.
 
 CLI arguments:
@@ -51,8 +52,8 @@ Artifacts are ``baseline_pretune.csv``, ``ours_pretune.csv``, and
 complete are passed through untouched and counted as skipped.
 
 Unlike Pretune this command is deliberately single-process and single-device.
-Interleaving both sides in one process is the entire point, so the sweep cannot
-be spread over workers, and Pretune's per-worker device pinning is unavailable.
+Both sides of each comparison must stay in the same process and on the same
+device, so Pretune's per-worker device pinning is unavailable.
 ``--device`` therefore restricts this process to one device before the FlagGems
 runtime is imported; importing it later caches the visible device count and the
 restriction stops taking effect.  An already-set backend visibility variable is
@@ -93,7 +94,7 @@ DEFAULT_TRIALS = 9
 DEFAULT_REPEATS = 3
 DEFAULT_NOISE_FLOOR_MS = 0.002
 DEFAULT_REGRESSION_THRESHOLD_PCT = 95.0
-LATENCY_SOURCE = "libtuner_interleaved_rebench"
+LATENCY_SOURCE = "libtuner_fixed_config_rebench"
 SIDES = ("baseline", "ours")
 REQUIRED_COLUMNS = (
     "input_row_index",
@@ -162,6 +163,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--flagtune-config", required=True, help="Operator YAML both runs used."
     )
     parser.add_argument("--output", required=True, help="Artifact directory.")
+    parser.add_argument(
+        "--measurement-order",
+        choices=("interleaved", "sequential"),
+        default="interleaved",
+        help="Sequential finishes all trials of baseline before ours for each shape.",
+    )
     parser.add_argument(
         "--dtypes",
         default="bfloat16",
@@ -359,6 +366,7 @@ def measure_all(
     iterations: int,
     benchmark_mode: str,
     benchmark_retries: int,
+    measurement_order: str = "interleaved",
 ) -> dict[int, dict[str, list[tuple[float, float, float]]]]:
     """Run every sweep and return per-row, per-side, per-sweep quantiles.
 
@@ -376,6 +384,7 @@ def measure_all(
         iterations: Triton repetition duration in milliseconds.
         benchmark_mode: Architecture-neutral ``event`` or ``replay`` mode.
         benchmark_retries: Replay samples sharing each trial's budget.
+        measurement_order: Label order passed to the fixed-config worker.
 
     Returns:
         ``{index: {side: [ (p20, p50, p80) per sweep ]}}``.
@@ -441,6 +450,7 @@ def measure_all(
                     trials=trials,
                     benchmark_mode=benchmark_mode,
                     benchmark_retries=benchmark_retries,
+                    measurement_order=measurement_order,
                 )
             except (BenchmarkExecutionError, DeviceProbeError) as exc:
                 raise RebenchError(f"row {index} sweep {sweep}: {exc}") from exc
@@ -519,6 +529,17 @@ def summarize(
                 "sweep_relative_throughput_pct": [
                     rounded_derived(value) for value in sweep_relatives
                 ],
+                # Preserve within-sweep pairing when device frequency or
+                # allocation effects scale both timings between sweeps.
+                "paired_median_relative_throughput_pct": rounded_derived(
+                    statistics.median(sweep_relatives)
+                ),
+                "below_threshold_sweep_count": sum(
+                    value < threshold_pct for value in sweep_relatives
+                ),
+                "all_sweeps_below_threshold": all(
+                    value < threshold_pct for value in sweep_relatives
+                ),
                 "sweep_spread_pct": rounded_derived(spread),
                 "same_config": (
                     joined[index]["baseline"].get("best_config")
@@ -588,7 +609,7 @@ def _confirmed_text(value: Optional[bool]) -> str:
 def print_summary(summary: Mapping[str, Any]) -> None:
     """Print the acceptance metrics and every row below the threshold."""
     aggregate = summary["aggregate"]
-    print("[rebench] interleaved re-measurement")
+    print("[rebench] fixed-config re-measurement")
     print(f"  measured rows                 {aggregate['measured_row_count']}")
     if aggregate["skipped_row_count"]:
         print(
@@ -760,6 +781,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         iterations=args.latency_iterations,
         benchmark_mode=args.benchmark_mode,
         benchmark_retries=args.benchmark_retries,
+        measurement_order=args.measurement_order,
     )
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -790,6 +812,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         noise_floor_ms=args.noise_floor_ms,
         threshold_pct=args.regression_threshold_pct,
     )
+    summary["raw_sweeps"] = collected
     summary["inputs"] = {
         "device_visibility": pinned,
         "baseline": str(paths["baseline"]),
@@ -800,6 +823,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     }
     summary["protocol"] = {
         "latency_source": LATENCY_SOURCE,
+        "measurement_order": args.measurement_order,
         "trials_per_sweep": args.trials,
         "sweeps": args.repeats,
         "latency_warmup_ms": args.latency_warmup,
