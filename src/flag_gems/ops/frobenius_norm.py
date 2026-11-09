@@ -60,7 +60,7 @@ def _prune_frobenius_norm_configs(configs, named_args, **kwargs):
     key=["M", "N"],
     prune_configs_by={"early_config_prune": _prune_frobenius_norm_configs},
     **(
-        {"cache_results": False}
+        {"cache_results": True}
         if "cache_results" in inspect.signature(triton.autotune).parameters
         else {}
     ),
