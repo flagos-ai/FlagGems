@@ -200,6 +200,9 @@ from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
+from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
+    _thnn_differentiable_gru_cell_backward,
+)
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
@@ -867,6 +870,10 @@ from .special_multigammaln import special_multigammaln
 from .special_ndtr import special_ndtr
 from .special_ndtri import special_ndtri
 from .special_round import special_round, special_round_out
+from .special_scaled_modified_bessel_k0 import (  # noqa: F401
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
 from .special_scaled_modified_bessel_k1 import (  # noqa: F401
     special_scaled_modified_bessel_k1,
     special_scaled_modified_bessel_k1_out,
@@ -885,6 +892,7 @@ from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
 from .special_softmax import special_softmax
+from .special_spherical_bessel_j0 import special_spherical_bessel_j0  # noqa: F401
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
