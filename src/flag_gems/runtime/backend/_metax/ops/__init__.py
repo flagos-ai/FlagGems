@@ -22,6 +22,7 @@ from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_add_list import foreach_add_list
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -182,6 +183,7 @@ __all__ = [
     "exponential_",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_add_list",
     "full",
     "full_like",
     "gcd_",
