@@ -101,6 +101,8 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .div import (
+    div_mode,
+    div_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -427,6 +429,8 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
+    "div_mode",
+    "div_mode_",
     "dropout",
     "dstack",
     "elu",
