@@ -231,6 +231,7 @@ from .sort import sort
 from .sparse_sampled_addmm import sparse_sampled_addmm, sparse_sampled_addmm_out
 from .special_erfc import special_erfc
 from .special_erfinv import special_erfinv
+from .special_expm1 import special_expm1
 from .special_log1p_out import special_log1p_out
 from .special_logit_out import special_logit_out
 from .special_xlogy import special_xlogy
@@ -552,6 +553,7 @@ __all__ = [
     "sparse_sampled_addmm_out",
     "special_erfc",
     "special_erfinv",
+    "special_expm1",
     "special_log1p_out",
     "special_logit_out",
     "special_xlogy",
