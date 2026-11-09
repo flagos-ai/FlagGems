@@ -128,7 +128,7 @@ def _b_transposed_layout(b: torch.Tensor) -> bool:
     return _is_transposed_contiguous_2d(b)
 
 
-def _is_supported_ppu_b_layout(a: torch.Tensor, b: torch.Tensor) -> bool:
+def _is_supported_ppu_b_layout(b: torch.Tensor) -> bool:
     """Accept dense NN and NT layouts, including partial reduction tiles.
 
     Per-operand alignment controls AIU candidate legality through
@@ -1752,7 +1752,7 @@ def _can_use_ppu_gemm(
         and out.dtype == output_dtype
         and a.device == b.device == out.device
         and a.is_contiguous()
-        and _is_supported_ppu_b_layout(a, b)
+        and _is_supported_ppu_b_layout(b)
         and out.is_contiguous()
     ):
         return False
