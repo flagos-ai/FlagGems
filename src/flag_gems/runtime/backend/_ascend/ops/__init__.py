@@ -105,6 +105,7 @@ from .functional_sym_constrain_range import functional_sym_constrain_range
 from .fused_adam_ import fused_adam_
 from .gather import gather, gather_backward
 from .geometric import geometric, geometric_
+from .greater_ import greater_
 from .greater_equal_ import greater_equal_
 from .grouped_matmul import grouped_matmul
 from .groupnorm import group_norm, group_norm_backward
@@ -409,6 +410,7 @@ __all__ = [
     "gather_backward",
     "geometric",
     "geometric_",
+    "greater_",
     "greater_equal_",
     "group_norm",
     "group_norm_backward",
