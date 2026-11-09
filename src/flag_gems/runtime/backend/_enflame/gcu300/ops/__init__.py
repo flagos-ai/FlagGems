@@ -83,6 +83,7 @@ from .conv2d import conv2d
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out
+from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
@@ -91,6 +92,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diagonal_copy import diagonal_copy
 from .div import (
     floor_divide,
     floor_divide_,
@@ -124,6 +126,7 @@ from .fill import (
 )
 from .flip import flip
 from .flipud import flipud
+from .float_power_ import float_power_scalar_tensor_out
 from .floor import floor, floor_, floor_out
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
@@ -134,6 +137,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hardtanh_backward import hardtanh_backward
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -194,6 +198,7 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .native_layer_norm import native_layer_norm
 from .ne import ne, ne_scalar, not_equal_scalar
 from .neg import neg, neg_
+from .nll_loss2d import nll_loss2d
 from .nllloss import (
     nll_loss2d_backward,
     nll_loss2d_forward,
@@ -263,6 +268,7 @@ from .slice_backward import slice_backward
 from .slice_scatter import slice_scatter
 from .softmax import softmax, softmax_backward
 from .softplus import softplus
+from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_modified_bessel_k0 import (
@@ -274,6 +280,7 @@ from .std import std
 from .sub import sub, sub_
 from .sum import sum, sum_dim, sum_dim_out, sum_out
 from .take import take, take_out
+from .take_along_dim import take_along_dim, take_along_dim_out
 from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
@@ -384,6 +391,7 @@ __all__ = [
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_embedding_loss",
     "count_nonzero",
     "ctc_loss",
     "cummax",
@@ -393,6 +401,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diagonal_copy",
     "dropout",
     "elu",
     "embedding",
@@ -426,6 +435,7 @@ __all__ = [
     "flash_attn_varlen_func",
     "flip",
     "flipud",
+    "float_power_scalar_tensor_out",
     "floor",
     "floor_",
     "floor_divide",
@@ -447,6 +457,7 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "hardtanh_backward",
     "hstack",
     "index",
     "index_add",
@@ -529,6 +540,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
@@ -618,6 +630,7 @@ __all__ = [
     "softmax",
     "softmax_backward",
     "softplus",
+    "softshrink_backward",
     "sort",
     "sort_stable",
     "sorted_indices_unique_flat",
@@ -634,6 +647,8 @@ __all__ = [
     "sum_dim_out",
     "sum_out",
     "take",
+    "take_along_dim",
+    "take_along_dim_out",
     "take_out",
     "tanh",
     "tanh_",
