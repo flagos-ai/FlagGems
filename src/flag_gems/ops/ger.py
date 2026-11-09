@@ -56,12 +56,13 @@ def _ger_kernel(
     a_ptr,
     b_ptr,
     o_ptr,
-    M,
-    N,
+    m_ptr,
+    n_ptr,
     sa,
     sb,
     so_m,
     so_n,
+    IS_INT: tl.constexpr,
     NO_MASK: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
@@ -77,24 +78,40 @@ def _ger_kernel(
         pid_m = tl.program_id(0)
         pid_n = tl.program_id(1)
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_m = (pid_m * BLOCK_M).to(tl.int64) + tl.arange(0, BLOCK_M).to(tl.int64)
+    offs_n = (pid_n * BLOCK_N).to(tl.int64) + tl.arange(0, BLOCK_N).to(tl.int64)
     row_off = offs_m * so_m
     col_off = offs_n * so_n
 
     if NO_MASK:
         a = tl.load(a_ptr + offs_m * sa)
         b = tl.load(b_ptr + offs_n * sb)
-        prod = a[:, None] * b[None, :]
+        # Integer products are computed in i64: the sub-64-bit multiply would
+        # otherwise get an i32 overflow-check cmp whose operands the old XPU
+        # compiler materializes with mixed types (TritonXPULegalize rejects it).
+        if IS_INT:
+            prod = a.to(tl.int64)[:, None] * b.to(tl.int64)[None, :]
+        else:
+            prod = a[:, None] * b[None, :]
         tl.store(
             o_ptr + row_off[:, None] + col_off[None, :], prod, cache_modifier=".cs"
         )
     else:
-        mask_m = offs_m < M
-        mask_n = offs_n < N
+        # Compare against int32 bounds loaded from device tensors so both cmpi
+        # operands are int32 tensors; the old XPU compiler materializes
+        # Python-int bounds (runtime or constexpr) as int64 and rejects the
+        # mixed-type cmpi.
+        mask_m = offs_m < tl.load(m_ptr)
+        mask_n = offs_n < tl.load(n_ptr)
         a = tl.load(a_ptr + offs_m * sa, mask=mask_m, other=0)
         b = tl.load(b_ptr + offs_n * sb, mask=mask_n, other=0)
-        prod = a[:, None] * b[None, :]
+        # Integer products are computed in i64: the sub-64-bit multiply would
+        # otherwise get an i32 overflow-check cmp whose operands the old XPU
+        # compiler materializes with mixed types (TritonXPULegalize rejects it).
+        if IS_INT:
+            prod = a.to(tl.int64)[:, None] * b.to(tl.int64)[None, :]
+        else:
+            prod = a[:, None] * b[None, :]
         tl.store(
             o_ptr + row_off[:, None] + col_off[None, :],
             prod,
@@ -108,8 +125,8 @@ def _ger_complex64_kernel(
     a_ptr,
     b_ptr,
     o_ptr,
-    M,
-    N,
+    m_ptr,
+    n_ptr,
     sa,
     sb,
     so_m,
@@ -123,11 +140,11 @@ def _ger_complex64_kernel(
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
-    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
-    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    offs_m = (pid_m * BLOCK_M).to(tl.int64) + tl.arange(0, BLOCK_M).to(tl.int64)
+    offs_n = (pid_n * BLOCK_N).to(tl.int64) + tl.arange(0, BLOCK_N).to(tl.int64)
 
-    mask_m = offs_m < M
-    mask_n = offs_n < N
+    mask_m = offs_m < tl.load(m_ptr)
+    mask_n = offs_n < tl.load(n_ptr)
 
     ar = tl.load(a_ptr + offs_m * sa, mask=mask_m, other=0.0)
     ai = tl.load(a_ptr + offs_m * sa + 1, mask=mask_m, other=0.0)
@@ -299,6 +316,11 @@ def _forward_config(itemsize, M, N):
 def _launch(a, b, out):
     M = a.shape[0]
     N = b.shape[0]
+    # The masked kernels load their M/N bounds from these int32 scalars rather
+    # than taking Python ints, so the cmp stays int32-vs-int32 on the XPU
+    # compiler (which materializes Python ints as int64).
+    m64 = torch.tensor([M], dtype=torch.int64, device=a.device)
+    n64 = torch.tensor([N], dtype=torch.int64, device=a.device)
     if out.is_complex():
         grid = (triton.cdiv(M, _BLOCK_M), triton.cdiv(N, _BLOCK_N))
         av = torch.view_as_real(a)
@@ -308,8 +330,8 @@ def _launch(a, b, out):
             av,
             bv,
             ov,
-            M,
-            N,
+            m64,
+            n64,
             av.stride(0),
             bv.stride(0),
             ov.stride(0),
@@ -329,12 +351,13 @@ def _launch(a, b, out):
             a,
             b,
             out,
-            M,
-            N,
+            m64,
+            n64,
             a.stride(0),
             b.stride(0),
             out.stride(0),
             out.stride(1),
+            IS_INT=not out.dtype.is_floating_point,
             NO_MASK=no_mask,
             BLOCK_M=bm,
             BLOCK_N=bn,
