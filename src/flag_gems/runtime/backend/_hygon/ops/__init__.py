@@ -94,6 +94,7 @@ from .float_power_ import (
 from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
+from .greater_ import greater_
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
 from .index_add import index_add, index_add_
@@ -279,6 +280,7 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "greater_",
     "hadamard_transform",
     "hardsigmoid_backward",
     "heur_block_n",
