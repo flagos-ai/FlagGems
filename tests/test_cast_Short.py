@@ -28,6 +28,8 @@ DTYPES = [
     torch.bfloat16,
     torch.float32,
     torch.float64,
+    torch.complex64,
+    torch.complex128,
 ]
 
 
@@ -35,7 +37,7 @@ TARGET = torch.int16
 
 
 def make_input(shape, dtype):
-    if dtype.is_floating_point:
+    if dtype.is_floating_point or dtype.is_complex:
         return torch.randn(shape, device=flag_gems.device, dtype=dtype)
     return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
 
@@ -81,3 +83,18 @@ def test_cast_Short_strided(dtype, layout):
     else:
         x = x.contiguous(memory_format=torch.channels_last)
     assert_cast(x)
+
+
+@pytest.mark.cast_Short
+@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize("conjugated", [False, True])
+def test_cast_Short_complex_real_component(dtype, conjugated):
+    # Nonzero imaginary parts must not contribute to the int16 result.
+    real = torch.tensor([-32768.0, -2.9, 0.0, 3.9, 32767.0], device=flag_gems.device)
+    imag = torch.tensor([7.0, -11.0, 5.0, -13.0, 17.0], device=flag_gems.device)
+    x = torch.complex(real, imag).to(dtype)
+    if conjugated:
+        x = x.conj()
+    actual, expected = assert_cast(x)
+    torch.testing.assert_close(actual, real.to(torch.int16), rtol=0, atol=0)
+    torch.testing.assert_close(expected, real.to(torch.int16), rtol=0, atol=0)
