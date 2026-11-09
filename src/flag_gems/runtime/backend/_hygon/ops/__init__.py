@@ -38,6 +38,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
@@ -232,6 +233,7 @@ __all__ = [
     "any_dims",
     "argsort",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "baddbmm_",
     "beam_search_score",
