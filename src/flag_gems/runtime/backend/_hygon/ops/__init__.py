@@ -97,6 +97,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .greater_ import greater_
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
+from .histc import histc
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
@@ -284,6 +285,7 @@ __all__ = [
     "hadamard_transform",
     "hardsigmoid_backward",
     "heur_block_n",
+    "histc",
     "index_add",
     "index_add_",
     "index_copy",
