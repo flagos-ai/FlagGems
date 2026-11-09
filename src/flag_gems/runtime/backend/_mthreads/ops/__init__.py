@@ -17,7 +17,11 @@ from torch_musa import current_device, get_device_capability
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
+from ._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -45,6 +49,7 @@ from .bucketize import bucketize
 from .celu import celu
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
+from .choose_qparams_optimized import choose_qparams_optimized
 from .clip_ import clip_
 from .conv1d import conv1d
 from .conv2d import conv2d
@@ -69,6 +74,7 @@ from .embedding_bag_backward import _embedding_bag_backward
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
+from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
@@ -85,6 +91,7 @@ from .index_copy_ import index_copy_
 from .index_put import _index_put_impl_, index_put, index_put_
 from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
+from .inverse import inverse
 from .isin import isin
 from .kthvalue import kthvalue
 from .lcm import lcm
@@ -105,6 +112,7 @@ from .log_softmax import (
     log_softmax_backward_out,
     log_softmax_out,
 )
+from .logdet import logdet
 from .max import max, max_dim
 from .max_pool2d_with_indices_backward import max_pool2d_with_indices_backward
 from .median import median, median_dim, median_dim_values, median_out
@@ -152,6 +160,7 @@ from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
+from .special_bessel_y1 import special_bessel_y1
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
 from .special_multigammaln import special_multigammaln
@@ -173,10 +182,12 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
+    "_compute_linear_combination",
     "_conj",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
+    "_fake_quantize_learnable_per_tensor_affine",
     "_functional_sym_constrain_range_for_size",
     "_index_put_impl_",
     "_masked_scale",
@@ -209,6 +220,7 @@ __all__ = [
     "celu",
     "channel_shuffle",
     "cholesky_inverse",
+    "choose_qparams_optimized",
     "clip_",
     "constant_pad_nd",
     "conv1d",
@@ -227,6 +239,7 @@ __all__ = [
     "erfinv",
     "erfinv_",
     "expand_copy",
+    "fake_quantize_per_tensor_affine",
     "feature_dropout",
     "feature_dropout_",
     "fix",
@@ -253,6 +266,7 @@ __all__ = [
     "index_select",
     "int_mm",
     "int_mm_out",
+    "inverse",
     "isin",
     "kthvalue",
     "lcm",
@@ -273,6 +287,7 @@ __all__ = [
     "log_softmax_backward",
     "log_softmax_backward_out",
     "log_softmax_out",
+    "logdet",
     "max",
     "max_dim",
     "max_pool2d_with_indices_backward",
@@ -334,6 +349,7 @@ __all__ = [
     "special_bessel_j0",
     "special_bessel_j1",
     "special_bessel_y0",
+    "special_bessel_y1",
     "special_erfcx",
     "special_gammainc",
     "special_multigammaln",
