@@ -111,6 +111,7 @@ from .groupnorm import group_norm, group_norm_backward
 from .gru import gru, gru_data
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
+from .hardshrink import hardshrink
 from .hardshrink_out import hardshrink_out
 from .hardsigmoid_backward import hardsigmoid_backward
 from .hardtanh_backward import hardtanh_backward
@@ -415,6 +416,7 @@ __all__ = [
     "gru_data",
     "gt_tensor_",
     "hadamard_transform",
+    "hardshrink",
     "hardshrink_out",
     "hardsigmoid_backward",
     "hardtanh_backward",
