@@ -59,6 +59,7 @@ def _attn_fwd_inner(
     fp8_v: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
     PRE_LOAD_V: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
 ):
     # range of values handled by this stage
     if STAGE == 1:
@@ -75,15 +76,23 @@ def _attn_fwd_inner(
         mask_block_ptr += lo * stride_attn_mask_kv_seqlen
 
     LOG2E = 1.44269504  # log2(e) constant
+    # mask for non-power-of-2 head dims: shape [HEAD_DIM]
+    hd_mask = tl.arange(0, HEAD_DIM) < HEAD_DIM_ACTUAL
 
     # loop over key, value and update accumulator
     for start_n in range(lo, hi, BLOCK_N):
         kv_load_mask = (start_n + offs_n) < KV_CTX
         # start_n = tl.multiple_of(start_n, BLOCK_N)
         # -- compute qk ----
-        key = tl.load(K_block_ptr, mask=kv_load_mask[None, :], other=0.0)
+        # K shape: [HEAD_DIM, BLOCK_N] -- mask both head and kv-seq axes
+        key = tl.load(
+            K_block_ptr, mask=hd_mask[:, None] & kv_load_mask[None, :], other=0.0
+        )
         if PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            # V shape: [BLOCK_N, HEAD_DIM] -- mask both axes
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
 
         qk = tl.dot(query, key, allow_tf32=False)
         # incase not divisible.
@@ -125,7 +134,9 @@ def _attn_fwd_inner(
         acc = acc * alpha[:, None]
         # update acc
         if not PRE_LOAD_V:
-            value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
+            value = tl.load(
+                V_block_ptr, mask=kv_load_mask[:, None] & hd_mask[None, :], other=0.0
+            )
         if fp8_v:
             p = p.to(tl.float8e5)
         else:
@@ -200,6 +211,7 @@ def _attn_fwd(
     Q_CTX,
     KV_CTX,
     HEAD_DIM: tl.constexpr,
+    HEAD_DIM_ACTUAL: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     STAGE: tl.constexpr,
@@ -277,8 +289,12 @@ def _attn_fwd(
     # load scales
     qk_scale = sm_scale
     # qk_scale *= 1.44269504  # 1/log(2)
+    # mask for non-power-of-2 head dims
+    hd_mask = offs_headsize < HEAD_DIM_ACTUAL
     # load query: it will stay in SRAM throughout
-    query = tl.load(Q_block_ptr, mask=q_load_mask[:, None], other=0.0)
+    query = tl.load(
+        Q_block_ptr, mask=q_load_mask[:, None] & hd_mask[None, :], other=0.0
+    )
     # stage 1: off-band
     # For causal = True, STAGE = 3 and _attn_fwd_inner gets 1 as its STAGE
     # For causal = False, STAGE = 1, and _attn_fwd_inner gets 3 as its STAGE
@@ -307,6 +323,7 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            HEAD_DIM_ACTUAL,
         )
     # stage 2: on-band
     if STAGE & 2:
@@ -336,13 +353,18 @@ def _attn_fwd(
             V.dtype.element_ty == tl.float8e5,
             HAS_ATTN_MASK,
             PRE_LOAD_V,
+            HEAD_DIM_ACTUAL,
         )
     # epilogue
     m_i += tl.math.log2(l_i)
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * Q_CTX + offs_m
     tl.store(m_ptrs, m_i, mask=q_load_mask)
-    tl.store(O_block_ptr, acc.to(Out.type.element_ty), mask=q_load_mask[:, None])
+    tl.store(
+        O_block_ptr,
+        acc.to(Out.type.element_ty),
+        mask=q_load_mask[:, None] & hd_mask[None, :],
+    )
 
 
 @triton.jit
@@ -790,7 +812,7 @@ def scaled_dot_product_attention_forward(
     # when v is in float8_e5m2 it is transposed.
     HEAD_DIM_V = value.shape[-1]
     assert HEAD_DIM_Q == HEAD_DIM_K and HEAD_DIM_K == HEAD_DIM_V
-    assert HEAD_DIM_K in {16, 32, 64, 128, 256}
+    assert HEAD_DIM_K <= 256
     assert dropout_p == 0.0, "Currenty only support dropout_p=0.0"
 
     # The TLE kernel is a fast path for fp16 / D=64 / unmasked / inference-only
@@ -814,6 +836,13 @@ def scaled_dot_product_attention_forward(
     else:
         sm_scale = scale
 
+    # Triton kernels require HEAD_DIM (constexpr block size) to be a power of 2.
+    # We pass HEAD_DIM = next_power_of_2(HEAD_DIM_K) as the SRAM block size and
+    # HEAD_DIM_ACTUAL = HEAD_DIM_K as the real dimension, then mask inside the
+    # kernel. No tensor padding needed.
+    HEAD_DIM_ACTUAL = HEAD_DIM_K
+    HEAD_DIM_K = triton.next_power_of_2(HEAD_DIM_K)
+
     q_head_num = query.shape[1]
     kv_head_num = key.shape[1]
     assert enable_gqa or q_head_num == kv_head_num, (
@@ -831,10 +860,23 @@ def scaled_dot_product_attention_forward(
         HAS_ATTN_MASK = True
         if attn_mask.dtype == torch.bool:
             attn_mask = attn_mask.to(query.dtype) * -1.0e6
-        stride_attn_mask_batch = attn_mask.stride(0)
-        stride_attn_mask_head = attn_mask.stride(1)
-        stride_attn_mask_q_seqlen = attn_mask.stride(2)
-        stride_attn_mask_kv_seqlen = attn_mask.stride(3)
+        # Normalize to 4-D [batch, head, q_seqlen, kv_seqlen] so the four
+        # stride() lookups below are always valid (a 2-D [q, kv] mask is a
+        # legal SDPA input).
+        while attn_mask.dim() < 4:
+            attn_mask = attn_mask.unsqueeze(0)
+        # A size-1 mask dim is a broadcast axis: every batch/head/q index must
+        # read the same element. Its physical stride (e.g. after .clone(), the
+        # full row span) is meaningless because the dim holds one element, so
+        # the kernel -- which strides by index -- would walk off that element.
+        # Force stride 0 on size-1 dims to express the broadcast.
+        mask_strides = [
+            0 if attn_mask.shape[i] == 1 else attn_mask.stride(i) for i in range(4)
+        ]
+        stride_attn_mask_batch = mask_strides[0]
+        stride_attn_mask_head = mask_strides[1]
+        stride_attn_mask_q_seqlen = mask_strides[2]
+        stride_attn_mask_kv_seqlen = mask_strides[3]
     else:
         HAS_ATTN_MASK = False
         stride_attn_mask_batch = 1
@@ -884,6 +926,7 @@ def scaled_dot_product_attention_forward(
             query.shape[2],  #
             key.shape[2],  #
             HEAD_DIM_K,  #
+            HEAD_DIM_ACTUAL,  #
             STAGE=stage,  #
             HAS_ATTN_MASK=HAS_ATTN_MASK,  #
             sync_solver=True,
