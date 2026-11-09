@@ -16,6 +16,7 @@ import copy
 import inspect
 import os
 import warnings
+from itertools import product
 
 import triton
 
@@ -132,6 +133,57 @@ class TunedConfigLoader(object):
                 for block in ranges["BLOCK"]
                 for s in ranges["s"]
                 for w in ranges["w"]
+            ]
+
+        fields = {
+            "addmm_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "FLAT_EPILOGUE",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+            "addmm_vector": ("BN", "BK", "SPLIT_K"),
+            "baddbmm_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "FLAT_EPILOGUE",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+            "baddbmm_vector": ("BN", "BK", "SPLIT_K"),
+            "router_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "SIMT",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+        }.get(op_name)
+        if fields is not None:
+            return [
+                triton.Config(
+                    dict(zip(fields, values)),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for values in product(*(ranges[field.upper()] for field in fields))
+                for stages in ranges["s"]
+                for warps in ranges["w"]
             ]
 
         if op_name == "addmm":
@@ -911,6 +963,11 @@ class TunedConfigLoader(object):
             os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
         )
         return {
+            "addmm_gemm": self._build_single_expand_spec("addmm_gemm"),
+            "addmm_vector": self._build_single_expand_spec("addmm_vector"),
+            "baddbmm_gemm": self._build_single_expand_spec("baddbmm_gemm"),
+            "baddbmm_vector": self._build_single_expand_spec("baddbmm_vector"),
+            "router_gemm": self._build_single_expand_spec("router_gemm"),
             **{
                 name: {
                     "yaml_op_name": name,
