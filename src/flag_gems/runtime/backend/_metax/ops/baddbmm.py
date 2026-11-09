@@ -1,182 +1,398 @@
 # Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# SPDX-License-Identifier: Apache-2.0
 
+import copy
 import logging
+import os
 
 import torch
 import triton
 import triton.language as tl
+from _metax.ops.addmm import (
+    _MAX_SPLIT_K_PROGRAMS_PER_SM,
+    _MIN_K_PER_SPLIT,
+    _SPLIT_K_CANDIDATES,
+    _affine_bench_post_hook,
+    _affine_gemm,
+    _affine_matmul,
+    _affine_vector,
+    _AffineTuner,
+    _prune_affine_vector,
+)
 
 from flag_gems import runtime
 from flag_gems.ops.mul import mul
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as ext
+from flag_gems.utils import get_device_properties, libentry, libtuner
 
 logger = logging.getLogger(__name__)
+EXPAND_CONFIG_FILENAME = os.path.normpath(
+    os.path.join(os.path.dirname(__file__), "..", "baddbmm_metax_expand.yaml")
+)
+# Shared-memory requirement of the native 128-element tile.
+_NATIVE128_SHARED_BYTES = 64 * 1024
+
+
+# BATCH, MAX_SPLIT and *_ALIGNMENT are also host tuning/cache inputs.
+# BATCH sizes the benchmark finish grid even though kernel programs obtain
+# their batch index from program_id. Keep these fields in both signatures.
+_KEY = [
+    "BATCH",
+    "SAB",
+    "SBB",
+    "SCB",
+    "SIB",
+    "M",
+    "N",
+    "K",
+    "SAM",
+    "SAK",
+    "SBK",
+    "SBN",
+    "SCM",
+    "SCN",
+    "SIM",
+    "SIN",
+    "BETA_ZERO",
+    "ALPHA_ONE",
+    "BETA_ONE",
+    "MAX_SPLIT",
+    "A_ALIGNMENT",
+    "B_ALIGNMENT",
+    "C_ALIGNMENT",
+    "BIAS_ALIGNMENT",
+]
+
+
+class _BaddbmmTuner(_AffineTuner):
+    """Keep pruned tiles: AABS mishandles short K and logical transpose."""
+
+    def get_key(self, args):
+        policy_key = ("confirm16x3",) if args["K"] >= 1024 else ()
+        return super().get_key(args) + policy_key
+
+    def policy(self, bench_fn, configs, args, kwargs):
+        best, timings = super().policy(bench_fn, configs, args, kwargs)
+        values = {**dict(zip(self.arg_names, args)), **kwargs}
+        if values["K"] < 1024:
+            return best, timings
+        finalists = [
+            config
+            for config in sorted(timings, key=timings.get)[:16]
+            if timings[config][0] < float("inf")
+        ]
+        if len(finalists) < 2:
+            return best, timings
+        # Recheck long reductions in alternating full-call rounds.
+        # Coarse benchmark data stays reusable; get_key versions the selection.
+        samples = {config: [] for config in finalists}
+        with self.use_benchmark_protocol("replay", warmup=0, rep=100):
+            for iteration in range(3):
+                order = finalists if iteration % 2 == 0 else reversed(finalists)
+                for config in order:
+                    value = self._bench(*args, config=config, **kwargs)
+                    if isinstance(value, (int, float)):
+                        value = [value] * 3
+                    samples[config].append(value)
+        for config, values in samples.items():
+            timings[config] = [sorted(v[i] for v in values)[1] for i in range(3)]
+        return min(finalists, key=timings.get), timings
+
+
+def _prune_baddbmm_gemm(configs, named_args, **kwargs):
+    args = {**named_args, **kwargs}
+    m, n, k = args["M"], args["N"], args["K"]
+    properties = get_device_properties(args["A"].device.index)
+    sm = properties.multi_processor_count
+    shared_bytes = properties.shared_memory_per_block
+    result = []
+    for config in configs:
+        meta = config.kwargs
+        bm, bn, bk = meta["BM"], meta["BN"], meta["BK"]
+        native_tile = (
+            bm == bn == bk == 128
+            and config.num_warps == 4
+            and config.num_stages == 4
+            and meta["pipeline"] == "cpasync"
+            and not meta["scenario"]
+            and not meta["TRANSPOSE"]
+            and not meta["STATIC_K"]
+        )
+        dense_output = args["SCM"] == n and args["SCN"] == 1
+        direct = (
+            native_tile
+            and args["A"].dtype in (torch.float16, torch.bfloat16)
+            and args["C"].dtype == args["A"].dtype
+            and m >= 1024
+            and n >= 128
+            and k >= 512
+            and args["SAM"] == k
+            and args["SAK"] == 1
+            and dense_output
+            and all(args[name].data_ptr() % 16 == 0 for name in ("A", "B", "C"))
+            and k % 8 == n % 8 == 0
+            and args["BATCH"] * triton.cdiv(m, bm) * triton.cdiv(n, bn) >= sm // 2
+        )
+        direct_nn = direct and args["SBK"] == n and args["SBN"] == 1
+        direct_nt = direct and args["SBK"] == 1 and args["SBN"] == k
+        # Flatten before bias arithmetic so the NT half store does not
+        # require the faulty MMA-layout bias/store conversion.
+        if meta["FLAT_EPILOGUE"] and not direct_nt:
+            continue
+        mt, nt = (n, m) if meta["TRANSPOSE"] else (m, n)
+        if bm > max(32, triton.next_power_of_2(mt)) or bn > max(
+            32, triton.next_power_of_2(nt)
+        ):
+            continue
+        if min(m, n) >= 1024 and bm * bn < 4096:
+            continue
+        shared = (
+            _NATIVE128_SHARED_BYTES
+            if direct_nn or (direct_nt and meta["FLAT_EPILOGUE"])
+            else (bm + bn)
+            * bk
+            * args["A"].element_size()
+            * (1 if config.num_stages == 1 else 2)
+        )
+        if shared > shared_bytes:
+            continue
+        if (
+            bk > max(32, triton.next_power_of_2(k))
+            or meta["scenario"] == "reduceSmemUsage"
+        ):
+            continue
+        if meta["scenario"] == "unprefetch" and (mt % bm or nt % bn or k % bk):
+            continue
+        if meta["STATIC_K"] and (k > 128 or min(m, n) < 64):
+            continue
+        if bm >= 256 and bn >= 256 and args["SBK"] == 1:
+            continue
+        if meta["TRANSPOSE"] and not (args["SBN"] == 1 or args["SAM"] == 1):
+            continue
+        # Roll changes only the installed compiler's loop-unroll policy.
+        if meta["scenario"] == "roll" and not (64 <= min(m, n) <= 256 and k >= 1024):
+            continue
+        tiles = args["BATCH"] * triton.cdiv(mt, bm) * triton.cdiv(nt, bn)
+        for split in _SPLIT_K_CANDIDATES:
+            if split > args["MAX_SPLIT"]:
+                break
+            if (meta["FLAT_EPILOGUE"] or direct_nn) and split != 1:
+                continue
+            if split > 1 and (
+                meta["STATIC_K"]
+                or k < split * _MIN_K_PER_SPLIT
+                or tiles * split > _MAX_SPLIT_K_PROGRAMS_PER_SM * sm
+            ):
+                continue
+            if (
+                args["A"].dtype == torch.float32
+                and split > 1
+                and k % (bk * split)
+                and meta["pipeline"].startswith("cpasync")
+            ):
+                continue
+            candidate = copy.deepcopy(config)
+            candidate.kwargs["SPLIT_K"] = split
+            result.append(candidate)
+    return result
 
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
-    key=["M", "N", "K"],
-    strategy=["align32", "align32", "align32"],
-    warmup=5,
-    rep=10,
+    configs=runtime.ops_get_configs("baddbmm_gemm", yaml_path=EXPAND_CONFIG_FILENAME),
+    key=_KEY,
+    prune_configs_by={"early_config_prune": _prune_baddbmm_gemm},
+    policy=_BaddbmmTuner,
+    post_hook=_affine_bench_post_hook,
     flagtune_op_name="baddbmm",
+    flagtune_expand_op_name="baddbmm_gemm",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    rep=30,
 )
-@triton.heuristics(runtime.get_heuristic_config("baddbmm"))
 @triton.jit(do_not_specialize=["alpha", "beta"])
-def baddbmm_kernel(
+def _baddbmm_gemm_kernel(
     A,
     B,
-    O,
-    bias,
+    C,
+    P,
+    Bias,
     alpha,
     beta,
-    M,
-    N,
-    K,
-    TILE_M: tl.constexpr,
-    TILE_N: tl.constexpr,
-    TILE_K: tl.constexpr,
-    GROUP_M: tl.constexpr,
-    DIVISIBLE_M: tl.constexpr,
-    DIVISIBLE_N: tl.constexpr,
-    DIVISIBLE_K: tl.constexpr,
-    bias_batch_stride: tl.constexpr,
-    bias_M_stride: tl.constexpr,
-    bias_N_stride: tl.constexpr,
-    IS_FP64: tl.constexpr = False,
+    BATCH: tl.constexpr,
+    SAB: tl.constexpr,
+    SBB: tl.constexpr,
+    SCB: tl.constexpr,
+    SIB: tl.constexpr,
+    SIM: tl.constexpr,
+    SIN: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+    ALPHA_ONE: tl.constexpr,
+    BETA_ONE: tl.constexpr,
+    MAX_SPLIT: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    A_ALIGNMENT: tl.constexpr,
+    B_ALIGNMENT: tl.constexpr,
+    C_ALIGNMENT: tl.constexpr,
+    BIAS_ALIGNMENT: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr = 1,
+    SPLIT_K: tl.constexpr = 1,
+    TRANSPOSE: tl.constexpr = False,
+    STATIC_K: tl.constexpr = False,
+    FLAT_EPILOGUE: tl.constexpr = False,
 ):
-    # batch offsets
-    pid_b = ext.program_id(2)
-    A += pid_b * M * K
-    B += pid_b * K * N
-    O += pid_b * M * N
-    bias += pid_b * bias_batch_stride
-
-    pidx = ext.program_id(0)
-    pidy = ext.program_id(1)
-
-    if GROUP_M == 1:
-        pid_m, pid_n = pidx, pidy
-    else:
-        gridx = ext.num_programs(0)
-        gridy = ext.num_programs(1)
-        pid = pidx + pidy * gridx
-        num_CTA_per_group = gridy * GROUP_M
-        group_id = pid // num_CTA_per_group
-        inner_group_id = pid % num_CTA_per_group
-        GROUP_SIZE = tl.where(
-            (group_id * GROUP_M + GROUP_M) > gridx, gridx % GROUP_M, GROUP_M
-        )
-        pid_m = group_id * GROUP_M + inner_group_id % GROUP_SIZE
-        pid_n = inner_group_id // GROUP_SIZE
-
-    offs_m = pid_m * TILE_M + tl.arange(0, TILE_M)
-    offs_n = pid_n * TILE_N + tl.arange(0, TILE_N)
-    offs_k = tl.arange(0, TILE_K)
-
-    if not DIVISIBLE_M:
-        mask_m = offs_m < M
-    if not DIVISIBLE_N:
-        mask_n = offs_n < N
-
-    a_ptrs = A + offs_m[:, None] * K + offs_k[None, :]
-    b_ptrs = B + offs_k[:, None] * N + offs_n[None, :]
-    o_ptrs = O + offs_m[:, None] * N + offs_n[None, :]
-
-    num_iters = tl.cdiv(K, TILE_K)
-    if IS_FP64:
-        accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float64)
-    else:
-        accumulator = tl.zeros((TILE_M, TILE_N), dtype=tl.float32)
-    for _ in range(num_iters):
-        if DIVISIBLE_K:
-            if DIVISIBLE_M:
-                mask_a = None
-            else:
-                mask_a = mask_m[:, None]
-            if DIVISIBLE_N:
-                mask_b = None
-            else:
-                mask_b = mask_n[None, :]
-        else:
-            mask_k = offs_k < K
-            if DIVISIBLE_M:
-                mask_a = mask_k[None, :]
-            else:
-                mask_a = mask_m[:, None] & mask_k[None, :]
-            if DIVISIBLE_N:
-                mask_b = mask_k[:, None]
-            else:
-                mask_b = mask_k[:, None] & mask_n[None, :]
-        a = tl.load(a_ptrs, mask=mask_a)
-        b = tl.load(b_ptrs, mask=mask_b)
-        accumulator += tl.dot(a, b, allow_tf32=False)
-        offs_k += TILE_K
-        a_ptrs += TILE_K
-        b_ptrs += TILE_K * N
-
-    bias_ptrs = bias + offs_m[:, None] * bias_M_stride + offs_n[None, :] * bias_N_stride
-
-    if DIVISIBLE_M and DIVISIBLE_N:
-        mask_c = None
-    else:
-        mask_c = True
-        if not DIVISIBLE_M:
-            mask_c &= offs_m[:, None] < M
-        if not DIVISIBLE_N:
-            mask_c &= offs_n[None, :] < N
-
-    bi = tl.load(bias_ptrs, mask=mask_c)
-    out = accumulator * alpha + bi * beta
-    o = out.to(bi.dtype)
-    tl.store(o_ptrs, o, mask=mask_c)
-
-
-def _baddbmm_launch(bias, A, B, beta, alpha, out):
-    batch, M, K = A.shape
-    _, _, N = B.shape
-    A = A.contiguous()
-    B = B.contiguous()
-    bbias = torch.broadcast_to(bias, (batch, M, N)).contiguous()
-    bias_batch_stride = bbias.stride(0)
-    bias_M_stride = bbias.stride(1)
-    bias_N_stride = bbias.stride(-1)
-
-    grid = lambda meta: (
-        triton.cdiv(meta["M"], meta["TILE_M"]),
-        triton.cdiv(meta["N"], meta["TILE_N"]),
-        batch,
+    batch = tl.program_id(1).to(tl.int64)
+    _affine_gemm(
+        A + batch * SAB,
+        B + batch * SBB,
+        C + batch * SCB,
+        P + batch * SPLIT_K * M * N,
+        Bias + batch * SIB,
+        alpha,
+        beta,
+        SIM,
+        SIN,
+        BETA_ZERO,
+        ALPHA_ONE,
+        BETA_ONE,
+        M,
+        N,
+        K,
+        SAM,
+        SAK,
+        SBK,
+        SBN,
+        SCM,
+        SCN,
+        BM,
+        BN,
+        BK,
+        GROUP_M,
+        SPLIT_K,
+        TRANSPOSE,
+        STATIC_K,
+        FLAT_EPILOGUE,
     )
-    with torch_device_fn.device(A.device):
-        baddbmm_kernel[grid](
-            A,
-            B,
-            out,
-            bbias,
-            alpha,
-            beta,
-            M,
-            N,
-            K,
-            bias_batch_stride=bias_batch_stride,
-            bias_M_stride=bias_M_stride,
-            bias_N_stride=bias_N_stride,
-        )
+
+
+@libentry()
+@libtuner(
+    configs=runtime.ops_get_configs("baddbmm_vector", yaml_path=EXPAND_CONFIG_FILENAME),
+    key=_KEY + ["TRANSPOSE"],
+    prune_configs_by={"early_config_prune": _prune_affine_vector},
+    policy=_BaddbmmTuner,
+    post_hook=_affine_bench_post_hook,
+    flagtune_op_name="baddbmm",
+    flagtune_expand_op_name="baddbmm_vector",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    rep=30,
+)
+@triton.jit(do_not_specialize=["alpha", "beta"])
+def _baddbmm_vector_kernel(
+    A,
+    B,
+    C,
+    P,
+    Bias,
+    alpha,
+    beta,
+    BATCH: tl.constexpr,
+    SAB: tl.constexpr,
+    SBB: tl.constexpr,
+    SCB: tl.constexpr,
+    SIB: tl.constexpr,
+    SIM: tl.constexpr,
+    SIN: tl.constexpr,
+    BETA_ZERO: tl.constexpr,
+    ALPHA_ONE: tl.constexpr,
+    BETA_ONE: tl.constexpr,
+    MAX_SPLIT: tl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    SAM: tl.constexpr,
+    SAK: tl.constexpr,
+    SBK: tl.constexpr,
+    SBN: tl.constexpr,
+    SCM: tl.constexpr,
+    SCN: tl.constexpr,
+    A_ALIGNMENT: tl.constexpr,
+    B_ALIGNMENT: tl.constexpr,
+    C_ALIGNMENT: tl.constexpr,
+    BIAS_ALIGNMENT: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    SPLIT_K: tl.constexpr,
+    TRANSPOSE: tl.constexpr,
+):
+    batch = tl.program_id(1).to(tl.int64)
+    _affine_vector(
+        A + batch * SAB,
+        B + batch * SBB,
+        C + batch * SCB,
+        P + batch * SPLIT_K * M * N,
+        Bias + batch * SIB,
+        alpha,
+        beta,
+        SIM,
+        SIN,
+        BETA_ZERO,
+        ALPHA_ONE,
+        BETA_ONE,
+        M,
+        N,
+        K,
+        SAM,
+        SAK,
+        SBK,
+        SBN,
+        SCM,
+        SCN,
+        BN,
+        BK,
+        SPLIT_K,
+        TRANSPOSE,
+    )
+
+
+def _baddbmm_impl(bias, a, b, beta, alpha, out=None):
+    batch, m, k = a.shape
+    b_batch, bk, n = b.shape
+    assert batch == b_batch and k == bk, "Incompatible dimensions"
+    shape = (batch, m, n)
+    si = bias.broadcast_to(shape).stride()
+    dtype = a.dtype
+    if a.dtype != b.dtype or bias.dtype != dtype:
+        raise RuntimeError("bias, batch1 and batch2 must have the same dtype")
+    if out is None:
+        out = torch.empty(shape, device=a.device, dtype=dtype)
+    else:
+        assert (
+            out.shape == shape and out.dtype == dtype
+        ), "Incompatible output shape or dtype for baddbmm.out"
+
+    return _affine_matmul(
+        bias,
+        a,
+        b,
+        beta,
+        alpha,
+        out,
+        shape,
+        k,
+        si,
+        _baddbmm_gemm_kernel,
+        _baddbmm_vector_kernel,
+    )
 
 
 class BaddbmmFunction(torch.autograd.Function):
@@ -188,11 +404,7 @@ class BaddbmmFunction(torch.autograd.Function):
         ctx.alpha = alpha
         ctx.beta = beta
 
-        batch, M, K = A.shape
-        _, _, N = B.shape
-        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
-        _baddbmm_launch(bias, A, B, beta, alpha, out)
-        return out
+        return _baddbmm_impl(bias, A, B, beta, alpha, None)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -262,28 +474,8 @@ def compute_B_grad(A, d_output, alpha):
 
 
 def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
-    logger.debug("GEMS_METAX BADDBMM_OUT")
-    batch, M, K = A.shape
-    _, _, N = B.shape
-    assert (
-        out.shape == (batch, M, N) and out.dtype == A.dtype
-    ), "Incompatible output shape or dtype for baddbmm.out"
-    _baddbmm_launch(
-        bias.contiguous(),
-        A.contiguous(),
-        B.contiguous(),
-        beta,
-        alpha,
-        out,
-    )
-    return out
+    return _baddbmm_impl(bias, A, B, beta, alpha, out)
 
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
-    return BaddbmmFunction.apply(
-        bias.contiguous(),
-        A.contiguous(),
-        B.contiguous(),
-        beta,
-        alpha,
-    )
+    return BaddbmmFunction.apply(bias, A, B, beta, alpha)

@@ -1015,6 +1015,7 @@ class CrossEntropyLoss(torch.autograd.Function):
 def cross_entropy_loss(
     inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
+    logger.debug("GEMS_TSINGMICRO CROSS_ENTROPY_LOSS")
     return CrossEntropyLoss.apply(
         inp,
         target,
