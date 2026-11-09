@@ -15,8 +15,13 @@ import triton
 import triton.language as tl
 
 from .fused_moe_kernel import (
+    _MOE_DOT_BLOCK_K,
+    _MOE_DOT_BLOCK_M,
+    _MOE_DOT_BLOCK_N,
     dispatch_kunlunxin_fused_moe_kernel,
+    invoke_kunlunxin_fused_moe_dot_gemm,
     invoke_kunlunxin_fused_moe_kernel,
+    invoke_kunlunxin_fused_moe_scatter,
     invoke_kunlunxin_moe_sum,
 )
 
@@ -196,92 +201,183 @@ def fused_experts_impl(
     use_xblas_struct = (
         not apply_router_weight_on_input and w1_bias is None and w2_bias is None
     )
-    if use_xblas_struct:
-        # Plain GEMMs with Triton-only epilogues.
-        intermediate13 = torch.empty(
-            (num_tokens, top_k, gate_up_size),
+    use_dot_path = (
+        use_xblas_struct
+        and hidden_states.dtype != torch.float32
+        and hidden_size % _MOE_DOT_BLOCK_K == 0
+        and gate_up_size % _MOE_DOT_BLOCK_N == 0
+        and intermediate_size % _MOE_DOT_BLOCK_K == 0
+        and hidden_size % _MOE_DOT_BLOCK_N == 0
+    )
+    if use_dot_path:
+        from ..fused.moe_align_block_size import moe_align_block_size
+
+        num_valid_tokens = num_tokens * top_k
+        sorted_token_ids, expert_ids, num_tokens_post_pad = moe_align_block_size(
+            topk_ids.reshape(-1), _MOE_DOT_BLOCK_M, num_experts
+        )
+        num_tokens_post_padded = int(num_tokens_post_pad.item())
+
+        # GEMM1 (gate/up) over the expert-sorted token stream via tensor-core
+        # tl.dot. One extra zero row absorbs the padding token ids.
+        a_pad = torch.zeros(
+            (num_tokens + 1, hidden_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        a_pad[:num_tokens] = hidden_states
+        sorted_intermediate13 = torch.empty(
+            (num_tokens_post_padded, gate_up_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        invoke_kunlunxin_fused_moe_dot_gemm(
+            a_pad,
+            w1,
+            sorted_intermediate13,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            top_k,
+            gather_rows=True,
+        )
+
+        # SwiGLU is elementwise, so it commutes with the sorting.
+        sorted_intermediate = torch.empty(
+            (num_tokens_post_padded, intermediate_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        _experts_swiglu_kernel[(triton.cdiv(sorted_intermediate.numel(), 256),)](
+            sorted_intermediate13,
+            sorted_intermediate,
+            intermediate_size,
+            sorted_intermediate.numel(),
+            BLOCK=256,
+            num_warps=1,
+            num_stages=1,
+        )
+
+        # GEMM2 (down) over the same sorted stream; the A operand is already in
+        # sorted order, so it is indexed by the tile's own row range.
+        sorted_routed_output = torch.empty(
+            (num_tokens_post_padded, hidden_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        invoke_kunlunxin_fused_moe_dot_gemm(
+            sorted_intermediate,
+            w2,
+            sorted_routed_output,
+            sorted_token_ids,
+            expert_ids,
+            num_tokens_post_padded,
+            1,
+            gather_rows=False,
+        )
+
+        # Scatter the sorted outputs back to (num_tokens, top_k, hidden_size).
+        routed_padded = torch.empty(
+            (num_valid_tokens + 1, hidden_size),
+            dtype=hidden_states.dtype,
+            device=hidden_states.device,
+        )
+        invoke_kunlunxin_fused_moe_scatter(
+            sorted_routed_output,
+            routed_padded,
+            sorted_token_ids,
+            num_valid_tokens,
+        )
+        routed_output = routed_padded[:num_valid_tokens].view(
+            num_tokens, top_k, hidden_size
+        )
+    else:
+        if use_xblas_struct:
+            # Plain GEMMs with Triton-only epilogues.
+            intermediate13 = torch.empty(
+                (num_tokens, top_k, gate_up_size),
+                dtype=hidden_states.dtype,
+                device=hidden_states.device,
+            )
+            invoke_kunlunxin_fused_moe_kernel(
+                hidden_states,
+                w1,
+                intermediate13,
+                None,
+                None,
+                topk_ids,
+                topk_ids,
+                topk_ids,
+                False,
+                top_k,
+                config,
+                FUSE_SILU=False,
+                direct_routing=True,
+                generic_route=generic_bf16_route,
+            )
+            intermediate = torch.empty(
+                (num_tokens, top_k, intermediate_size),
+                dtype=hidden_states.dtype,
+                device=hidden_states.device,
+            )
+            _experts_swiglu_kernel[(triton.cdiv(intermediate.numel(), 256),)](
+                intermediate13,
+                intermediate,
+                intermediate_size,
+                intermediate.numel(),
+                BLOCK=256,
+                num_warps=1,
+                num_stages=1,
+            )
+        else:
+            intermediate = torch.empty(
+                (num_tokens, top_k, intermediate_size),
+                dtype=hidden_states.dtype,
+                device=hidden_states.device,
+            )
+            invoke_kunlunxin_fused_moe_kernel(
+                hidden_states,
+                w1,
+                intermediate,
+                w1_bias,
+                topk_weights if apply_router_weight_on_input else None,
+                topk_ids,
+                topk_ids,
+                topk_ids,
+                False,
+                top_k,
+                config,
+                FUSE_SILU=True,
+                direct_routing=True,
+                routed_weight_on_input=apply_router_weight_on_input,
+                generic_route=generic_bf16_route,
+            )
+
+        routed_output = torch.empty(
+            (num_tokens, top_k, hidden_size),
             dtype=hidden_states.dtype,
             device=hidden_states.device,
         )
         invoke_kunlunxin_fused_moe_kernel(
-            hidden_states,
-            w1,
-            intermediate13,
-            None,
-            None,
+            intermediate.view(num_tokens * top_k, intermediate_size),
+            w2,
+            routed_output,
+            w2_bias,
+            (
+                None
+                if use_xblas_struct
+                else None if apply_router_weight_on_input else topk_weights
+            ),
             topk_ids,
             topk_ids,
             topk_ids,
-            False,
-            top_k,
+            (False if use_xblas_struct else not apply_router_weight_on_input),
+            1,
             config,
             FUSE_SILU=False,
             direct_routing=True,
             generic_route=generic_bf16_route,
         )
-        intermediate = torch.empty(
-            (num_tokens, top_k, intermediate_size),
-            dtype=hidden_states.dtype,
-            device=hidden_states.device,
-        )
-        _experts_swiglu_kernel[(triton.cdiv(intermediate.numel(), 256),)](
-            intermediate13,
-            intermediate,
-            intermediate_size,
-            intermediate.numel(),
-            BLOCK=256,
-            num_warps=1,
-            num_stages=1,
-        )
-    else:
-        intermediate = torch.empty(
-            (num_tokens, top_k, intermediate_size),
-            dtype=hidden_states.dtype,
-            device=hidden_states.device,
-        )
-        invoke_kunlunxin_fused_moe_kernel(
-            hidden_states,
-            w1,
-            intermediate,
-            w1_bias,
-            topk_weights if apply_router_weight_on_input else None,
-            topk_ids,
-            topk_ids,
-            topk_ids,
-            False,
-            top_k,
-            config,
-            FUSE_SILU=True,
-            direct_routing=True,
-            routed_weight_on_input=apply_router_weight_on_input,
-            generic_route=generic_bf16_route,
-        )
-
-    routed_output = torch.empty(
-        (num_tokens, top_k, hidden_size),
-        dtype=hidden_states.dtype,
-        device=hidden_states.device,
-    )
-    invoke_kunlunxin_fused_moe_kernel(
-        intermediate.view(num_tokens * top_k, intermediate_size),
-        w2,
-        routed_output,
-        w2_bias,
-        (
-            None
-            if use_xblas_struct
-            else None if apply_router_weight_on_input else topk_weights
-        ),
-        topk_ids,
-        topk_ids,
-        topk_ids,
-        (False if use_xblas_struct else not apply_router_weight_on_input),
-        1,
-        config,
-        FUSE_SILU=False,
-        direct_routing=True,
-        generic_route=generic_bf16_route,
-    )
     # All reads of hidden_states have completed before this final stream-ordered
     # reduction, so the in-place variant can safely target the original storage.
     output = hidden_states if inplace else torch.empty_like(hidden_states)
