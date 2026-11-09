@@ -869,6 +869,7 @@ from .special_shifted_chebyshev_polynomial_v import (
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .special_softmax import special_softmax
 from .special_xlog1py import special_xlog1py
 from .special_zeta import (
     special_zeta,
@@ -1853,6 +1854,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "special_shifted_chebyshev_polynomial_w",
     "special_sinc",
+    "special_softmax",
     "special_xlog1py",
     "special_zeta",
     "special_zeta_out",
