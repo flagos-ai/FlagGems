@@ -154,6 +154,7 @@ from .log_sigmoid_backward import log_sigmoid_backward, log_sigmoid_backward_out
 from .log_softmax import log_softmax, log_softmax_backward, log_softmax_out
 from .log_softmax_backward_data import log_softmax_backward_data
 from .logical_not_ import logical_not_
+from .lt_ import lt_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
@@ -255,13 +256,13 @@ from .unsafe_index_put import unsafe_index_put
 from .unsafe_masked_index import unsafe_masked_index
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_linear1d_backward import upsample_linear1d_backward
-from .upsample_nearest_exact3d_backward_grad_input import (
-    upsample_nearest_exact3d_backward_grad_input,
-)
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
 from .upsample_nearest3d_backward_grad_input import (
     upsample_nearest3d_backward_grad_input,
+)
+from .upsample_nearest_exact3d_backward_grad_input import (
+    upsample_nearest_exact3d_backward_grad_input,
 )
 from .var_mean import var_mean
 from .vector_norm import vector_norm
@@ -449,6 +450,7 @@ __all__ = [
     "log_softmax_backward_data",
     "log_softmax_out",
     "logical_not_",
+    "lt_",
     "masked_fill",
     "masked_fill_",
     "masked_scatter",
@@ -576,10 +578,10 @@ __all__ = [
     "unsafe_index_put",
     "unsafe_masked_index",
     "upsample_linear1d_backward",
-    "upsample_nearest_exact3d_backward_grad_input",
     "upsample_nearest2d",
     "upsample_nearest3d_backward",
     "upsample_nearest3d_backward_grad_input",
+    "upsample_nearest_exact3d_backward_grad_input",
     "var_mean",
     "vector_norm",
     "view_copy",
