@@ -314,13 +314,20 @@ def test_grid_sampler_out_of_range_grid():
     ref_gnan = utils.to_reference(gnan).to(torch.float32)
     # torch's zeros-padding NaN behavior is backend-dependent (CUDA yields 0,
     # CPU propagates NaN), so the NaN-vs-zeros combination is compared against
-    # the CUDA reference only.
+    # the CUDA reference only. Kunlunxin has no matching NaN-grid reference at
+    # all: native XDNN propagates NaN for every padding mode while CPU yields a
+    # finite clamped value under border/reflection, neither matching the
+    # kernel's intentional NaN -> 0 semantics, so the NaN comparison is skipped
+    # there.
     is_cuda_ref = ref_in.device.type == "cuda"
     for pad in (0, 1, 2):
         ref_ex = torch.ops.aten.grid_sampler(ref_in, ref_gex, 0, pad, False)
         res_ex = flag_gems.grid_sampler(input_t, gex, 0, pad, False)
         utils.gems_assert_close(res_ex, ref_ex, torch.float32)
 
+        if flag_gems.vendor_name == "kunlunxin":
+            # No NaN-grid reference matches the kernel's NaN -> 0 semantics.
+            continue
         if not is_cuda_ref and pad == 0:
             # CPU reference disagrees with CUDA on zeros+NaN; skip that combo.
             continue
