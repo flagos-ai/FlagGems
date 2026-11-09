@@ -120,6 +120,7 @@ from .index_copy_ import index_copy, index_copy_
 from .index_fill import index_fill, index_fill_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
+from .inner import inner
 from .inverse import inverse
 from .isin import isin
 from .isposinf import isposinf
@@ -425,6 +426,7 @@ __all__ = [
     "index_reduce_",
     "index_reduce_out",
     "index_select",
+    "inner",
     "inverse",
     "isin",
     "isposinf",
