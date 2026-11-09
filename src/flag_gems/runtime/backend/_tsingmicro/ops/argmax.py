@@ -137,7 +137,13 @@ def argmax_kernel(
     for start_n in range(0, N, BLOCK_N):
         n_offset = start_n + tl.arange(0, BLOCK_N)
         offset = m_offset[:, None] * N * K + n_offset[None, :] * K + pid_k
-        mask = m_offset[:, None] < M and n_offset[None, :] < N
+        # FIX(zml, 2026-10-30): Python `and` on non-scalar tensors is a bug —
+        # Triton emits a deprecation warning and the compiled mask collapses to
+        # a 1D row, letting OOB garbage leak through tl.load's other=min_value
+        # and win the argmax reduction (observed: logit collapse → `!!!!!`
+        # repeated tokens in 27B concurrent VL greedy sampling on stop_sign.png).
+        # Use bitwise `&` so the mask is a true 2D [BLOCK_M, BLOCK_N].
+        mask = (m_offset[:, None] < M) & (n_offset[None, :] < N)
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         local_max, local_argmax = tl.max(
