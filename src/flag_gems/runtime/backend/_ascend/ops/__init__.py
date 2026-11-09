@@ -99,6 +99,7 @@ from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
 from .flip import flip
 from .float_power_scalar_tensor_out import float_power_scalar_tensor_out
 from .frac import frac
+from .frac_ import frac_
 from .full import full
 from .full_like import full_like
 from .functional_sym_constrain_range import functional_sym_constrain_range
@@ -402,6 +403,7 @@ __all__ = [
     "flip",
     "float_power_scalar_tensor_out",
     "frac",
+    "frac_",
     "full",
     "full_like",
     "functional_sym_constrain_range",
