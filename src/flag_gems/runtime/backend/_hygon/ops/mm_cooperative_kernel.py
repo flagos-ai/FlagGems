@@ -1,233 +1,222 @@
-"""Producer/consumer GEMM over two ordinary shared-memory windows."""
+"""Cooperative GEMM using logical TL/TLE roles and automatic shared charts."""
 
 from flag_gems.utils import libentry
-from triton.experimental import gluon as g
-from triton.experimental.gluon import language as gl
-from triton.experimental.gluon.language.amd import AMDMFMALayout
-from triton.experimental.gluon.language.amd.cdna3 import mfma, buffer_store
-from triton.experimental.gluon.language.hcu import (
-    structured_register_load,
-    matrix_load_to_shared,
-    cta_barrier,
-    warp_group_id,
-    wait_local_memory,
-)
-from triton.experimental.gluon.language.amd.cdna4.async_copy import (
-    commit_group,
-    wait_group,
-)
-from .mm_shared_layout import (
-    cooperative_shared_layout,
-    shared_frame_layout,
-    grouped_program_coordinates,
-)
 
-# Keep the full accumulator cohort across the staggered read/MMA boundary.
-ACC_CONSTRAINTS = gl.constexpr(
-    ",".join(["=v"] * 128 + [str(i) for i in range(128)] + ["~{memory}"])
-)
+import triton
+import triton.language as tl
+import triton.experimental.tle.language as tle
+from triton.language.extra.hip import accumulator_fence
+from triton.language.extra.hip import cta_barrier as cta_phase
 
 
-@g.jit
-def accumulator_fence(acc, PRIORITY: gl.constexpr):
-    if PRIORITY == 1:
-        acc = gl.inline_asm_elementwise(
-            "s_setprio 1",
-            ACC_CONSTRAINTS,
-            [acc],
-            dtype=gl.float32,
-            is_pure=False,
-            pack=128,
-        )
+@triton.jit
+def grouped_program_coordinates(
+    pid, count_m: tl.constexpr, count_n: tl.constexpr, GROUP_M: tl.constexpr
+):
+    # The caller launches count_m * count_n consecutive program IDs.
+    tl.static_assert(count_m > 0 and count_n > 0 and GROUP_M > 0)
+    # Program IDs in the supported launch grid are nonnegative.
+    pid = pid.to(tl.uint32)
+    group_width: tl.constexpr = GROUP_M * count_n
+    if count_n == 1:
+        # Keep rotated tail-row ordering; the single column is always zero.
+        if count_m > GROUP_M and count_m % GROUP_M != 0:
+            first_tail: tl.constexpr = (count_m // GROUP_M) * GROUP_M
+            tail_rows: tl.constexpr = count_m % GROUP_M
+            pm = tl.where(pid >= first_tail, first_tail + pid % tail_rows, pid)
+            return pm.to(tl.int32), tl.cast(0, tl.int32)
+        return pid.to(tl.int32), tl.cast(0, tl.int32)
+    elif count_m <= GROUP_M:
+        return (pid % count_m).to(tl.int32), (pid // count_m).to(tl.int32)
+    elif count_m % GROUP_M == 0:
+        return ((pid // group_width) * GROUP_M + pid % GROUP_M).to(tl.int32), (
+            (pid % group_width) // GROUP_M
+        ).to(tl.int32)
     else:
-        acc = gl.inline_asm_elementwise(
-            "s_setprio 0",
-            ACC_CONSTRAINTS,
-            [acc],
-            dtype=gl.float32,
-            is_pure=False,
-            pack=128,
-        )
-    return acc
+        full_groups: tl.constexpr = count_m // GROUP_M
+        full_span: tl.constexpr = full_groups * group_width
+        tail_m: tl.constexpr = count_m % GROUP_M
+        in_tail = pid >= full_span
+        full_m = (pid // group_width) * GROUP_M + pid % GROUP_M
+        full_n = (pid % group_width) // GROUP_M
+        # Preserve the original absolute modulo, including rotated tail rows.
+        tail_m_index = full_groups * GROUP_M + pid % tail_m
+        tail_n = (pid - full_span) // tail_m
+        return tl.where(in_tail, tail_m_index, full_m).to(tl.int32), tl.where(
+            in_tail, tail_n, full_n
+        ).to(tl.int32)
 
 
-@g.jit
-def program_coordinates(M: gl.constexpr, N: gl.constexpr, GROUP_M: gl.constexpr):
+@triton.jit
+def _coordinates(M: tl.constexpr, N: tl.constexpr, GROUP_M: tl.constexpr):
     if GROUP_M == 0:
-        return (gl.program_id(0), gl.program_id(1))
+        return tl.program_id(0), tl.program_id(1)
     else:
-        count_m: gl.constexpr = (M + 255) // 256
-        count_n: gl.constexpr = (N + 255) // 256
+        cm: tl.constexpr = (M + 255) // 256
+        cn: tl.constexpr = (N + 255) // 256
         return grouped_program_coordinates(
-            gl.program_id(0) + gl.program_id(1) * count_m, count_m, count_n, GROUP_M
+            tl.program_id(0) + tl.program_id(1) * cm, cm, cn, GROUP_M
         )
 
 
-@g.jit
-def load_a64_parts(
-    A,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
-    column,
-    da: gl.constexpr,
-    GROUP_M: gl.constexpr,
-):
-    pid_m, pid_n = program_coordinates(M, N, GROUP_M)
-    full = structured_register_load(
-        A, (M, K), (K, 1), (pid_m * 256, column, 1), (256, 64), da
-    )
-    lo, hi = gl.split(full.reshape((256, 2, 32)).permute((0, 2, 1)))
-    return (gl.convert_layout(lo, da), gl.convert_layout(hi, da))
-
-
-@g.jit
-def producer_one(
+@triton.jit
+def _produce_tile(
     B,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
+    owner,
+    n,
+    k,
     t,
-    window,
-    GROUP_M: gl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BK: tl.constexpr,
 ):
-    pid_m, pid_n = program_coordinates(M, N, GROUP_M)
-    dest = window._reinterpret(
-        B.dtype.element_ty, [256, 64], cooperative_shared_layout(False)
+    column = t * BK + k
+    mask = n[None, :] < N
+    value = tle.load(
+        B + n[None, :].to(tl.int64) * K + column[:, None], mask, other=0, is_async=True
     )
-    matrix_load_to_shared(dest, B, (N, K), (K, 1), (pid_n * 256, t * 64))
-    commit_group()
-    # First phase retires reads of the other window; second publishes this DMA.
-    cta_barrier()
-    wait_group(0)
-    cta_barrier()
+    owner.slot(t % 2).store(value)
+    cta_phase()
+    cta_phase()
 
 
-@g.jit
-def producer(
-    B, M: gl.constexpr, N: gl.constexpr, K: gl.constexpr, owner, GROUP_M: gl.constexpr
+@triton.jit
+def _producer(
+    B,
+    owner,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr,
 ):
-    for pair in range(K // 128):
-        producer_one(B, M, N, K, pair * 2, owner.index(0), GROUP_M)
-        producer_one(B, M, N, K, pair * 2 + 1, owner.index(1), GROUP_M)
-    if K // 64 % 2:
-        producer_one(B, M, N, K, K // 64 - 1, owner.index(0), GROUP_M)
-    # Distinct phases match the other actor even when adjacent in this one.
-    cta_barrier()
-    cta_barrier()
+    pm, pn = _coordinates(M, N, GROUP_M)
+    n = pn * BN + tl.arange(0, BN)
+    k = tl.arange(0, BK)
+    for pair in range(K // (2 * BK)):
+        _produce_tile(B, owner, n, k, pair * 2, N, K, BK)
+        _produce_tile(B, owner, n, k, pair * 2 + 1, N, K, BK)
+    if (K // BK) % 2:
+        _produce_tile(B, owner, n, k, K // BK - 1, N, K, BK)
+    cta_phase()
+    cta_phase()
 
 
-@g.jit
-def compute_one(
+@triton.jit
+def _load_parts(
+    A, row, K: tl.constexpr, BM: tl.constexpr, BK: tl.constexpr, M: tl.constexpr, t
+):
+    pointer = tl.make_block_ptr(A, (M, K), (K, 1), (row, t * BK), (BM, BK), (1, 0))
+    full = tl.load(pointer, boundary_check=(0, 1), padding_option="zero")
+    lo, hi = tl.split(full.reshape((BM, 2, BK // 2)).permute((0, 2, 1)))
+    return lo, hi
+
+
+@triton.jit
+def _compute_parts(
     A,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
-    t,
-    window,
+    owner,
     acc,
     av0,
     av1,
-    high,
-    GROUP_M: gl.constexpr,
+    row,
+    t,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+    HIGH_PHASE: tl.constexpr,
 ):
-    mma: gl.constexpr = AMDMFMALayout(
-        3, [16, 16, 16], True, [8, 1], tiles_per_warp=[2, 2], mmac_layout=1
-    )
-    da: gl.constexpr = gl.DotOperandLayout(0, mma, 8)
-    db: gl.constexpr = gl.DotOperandLayout(1, mma, 8)
-    parent = window._reinterpret(
-        A.dtype.element_ty, [64, 256], cooperative_shared_layout(True)
-    )
-    bv0 = parent.slice(0, 32, dim=0).load(db)
-    wait_local_memory()
-    if high:
-        cta_barrier()
+    bv0 = owner.slot(t % 2).subslice(0, BK // 2, 0).load()
+    if HIGH_PHASE:
+        cta_phase()
     acc = accumulator_fence(acc, 1)
-    acc = mfma(av0, bv0, acc)
+    acc = tl.dot(av0, bv0, acc, allow_tf32=False)
     acc = accumulator_fence(acc, 0)
-    if not high:
-        cta_barrier()
-    next0, next1 = load_a64_parts(A, M, N, K, (t + 1) * 64, da, GROUP_M)
-    bv1 = parent.slice(32, 32, dim=0).load(db)
-    wait_local_memory()
-    if high:
-        cta_barrier()
+    if not HIGH_PHASE:
+        cta_phase()
+    next0, next1 = _load_parts(A, row, K, BM, BK, M, t + 1)
+    bv1 = owner.slot(t % 2).subslice(BK // 2, BK // 2, 0).load()
+    if HIGH_PHASE:
+        cta_phase()
     acc = accumulator_fence(acc, 1)
-    acc = mfma(av1, bv1, acc)
+    acc = tl.dot(av1, bv1, acc, allow_tf32=False)
     acc = accumulator_fence(acc, 0)
-    if not high:
-        cta_barrier()
-    return (acc, next0, next1)
+    if not HIGH_PHASE:
+        cta_phase()
+    return acc, next0, next1
 
 
-@g.jit
-def consumer(
+@triton.jit
+def _consumer(
     A,
     C,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
     owner,
-    GROUP_M: gl.constexpr,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    ROW_START: tl.constexpr,
+    HIGH_PHASE: tl.constexpr,
+    GROUP_M: tl.constexpr,
 ):
-    pid_m, pid_n = program_coordinates(M, N, GROUP_M)
-    mma: gl.constexpr = AMDMFMALayout(
-        3, [16, 16, 16], True, [8, 1], tiles_per_warp=[2, 2], mmac_layout=1
-    )
-    da: gl.constexpr = gl.DotOperandLayout(0, mma, 8)
-    acc = gl.full((256, 256), 0, gl.float32, mma)
-    av0, av1 = load_a64_parts(A, M, N, K, 0, da, GROUP_M)
-    high = warp_group_id(4) != 0
-    # Distinct phases match the other actor even when adjacent in this one.
-    cta_barrier()
-    cta_barrier()
-    for pair in range(K // 128):
-        acc, av0, av1 = compute_one(
-            A, M, N, K, pair * 2, owner.index(0), acc, av0, av1, high, GROUP_M
+    pm, pn = _coordinates(M, N, GROUP_M)
+    row = pm * (2 * BM) + ROW_START
+    acc = tl.zeros((BM, BN), tl.float32)
+    av0, av1 = _load_parts(A, row, K, BM, BK, M, 0)
+    cta_phase()
+    cta_phase()
+    for pair in range(tl.cdiv(K, BK) // 2):
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, pair * 2, M, K, BM, BK, HIGH_PHASE
         )
-        acc, av0, av1 = compute_one(
-            A, M, N, K, pair * 2 + 1, owner.index(1), acc, av0, av1, high, GROUP_M
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, pair * 2 + 1, M, K, BM, BK, HIGH_PHASE
         )
-    if K // 64 % 2:
-        acc, av0, av1 = compute_one(
-            A, M, N, K, K // 64 - 1, owner.index(0), acc, av0, av1, high, GROUP_M
+    if tl.cdiv(K, BK) % 2:
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, tl.cdiv(K, BK) - 1, M, K, BM, BK, HIGH_PHASE
         )
-    m = pid_m * 256 + gl.arange(0, 256, layout=gl.SliceLayout(1, mma))
-    n = pid_n * 256 + gl.arange(0, 256, layout=gl.SliceLayout(0, mma))
-    origin = pid_m.to(gl.int64) * 256 * N + pid_n.to(gl.int64) * 256
-    cbase = C + origin
-    local_m = gl.arange(0, 256, layout=gl.SliceLayout(1, mma))
-    local_n = gl.arange(0, 256, layout=gl.SliceLayout(0, mma))
-    offsets = local_m[:, None] * N + local_n[None, :]
-    value = acc.to(C.dtype.element_ty)
-    buffer_store(value, cbase, offsets, (m[:, None] < M) & (n[None, :] < N))
+    output = tl.make_block_ptr(C, (M, N), (N, 1), (row, pn * BN), (BM, BN), (1, 0))
+    tl.store(output, acc.to(C.dtype.element_ty), boundary_check=(0, 1))
 
 
 @libentry()
-@g.jit
+@triton.jit
 def _mm_cooperative_kernel(
     A,
     B,
     C,
-    M: gl.constexpr,
-    N: gl.constexpr,
-    K: gl.constexpr,
-    GROUP_M: gl.constexpr = 0,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr = 256,
+    BN: tl.constexpr = 256,
+    BK: tl.constexpr = 64,
+    GROUP_M: tl.constexpr = 0,
 ):
-    gl.static_assert(K < 8192 and 512 * N < 2147483648)
-    gl.static_assert(GROUP_M >= 0)
-    gl.static_assert(K >= 64 and K % 64 == 0)
-    gl.static_assert(M > 0 and N > 0 and (M < 2147483648) and (N < 2147483648))
-    owner = gl.allocate_shared_memory(
-        A.dtype.element_ty, [2, 16384], shared_frame_layout(16384)
-    )
-    gl.warp_specialize(
+    tl.static_assert(BM == 256 and BN == 256 and BK == 64)
+    tl.static_assert(K >= 64 and K < 8192 and K % 64 == 0)
+    tl.static_assert(M > 0 and N > 0 and M < 2147483648 and N < 2147483648)
+    tl.static_assert(512 * N < 2147483648 and GROUP_M >= 0)
+    # Describe logical storage; the backend jointly selects its physical chart
+    # from the global producer and actual MMAC consumers.
+    owner = tle.gpu.alloc([2, BK, BN], A.dtype.element_ty)
+    tle.gpu.warp_specialize(
         [
-            (consumer, (A, C, M, N, K, owner, GROUP_M)),
-            (producer, (B, M, N, K, owner, GROUP_M)),
+            (_consumer, (A, C, owner, M, N, K, BM // 2, BN, BK, 0, False, GROUP_M)),
+            (
+                _consumer,
+                (A, C, owner, M, N, K, BM // 2, BN, BK, BM // 2, True, GROUP_M),
+            ),
+            (
+                _producer,
+                (B, owner, M, N, K, BN, BK, GROUP_M),
+            ),
         ],
-        [4],
-        [32],
+        [4, 4],
+        [128, 32],
     )
-    owner._keep_alive()

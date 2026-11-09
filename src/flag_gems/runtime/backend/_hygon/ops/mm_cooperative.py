@@ -14,13 +14,8 @@ def _supported():
     try:
         from triton._C.libtriton import hcu
         from triton.backends.hcu.compiler import HIPOptions
-        from triton.experimental.gluon.language.hcu import (
-            cta_barrier,
-            matrix_load_to_shared,
-            structured_register_load,
-            wait_local_memory,
-            warp_group_id,
-        )
+        import triton.experimental.tle.language as tle
+        from triton.language.extra.hip import accumulator_fence, cta_barrier
     except ImportError:
         return False
     options = {
@@ -38,19 +33,17 @@ def _supported():
             callable(op)
             for op in (
                 cta_barrier,
-                matrix_load_to_shared,
-                structured_register_load,
-                wait_local_memory,
-                warp_group_id,
+                accumulator_fence,
+                tle.gpu.alloc,
+                tle.gpu.warp_specialize,
             )
         )
         and all(
             callable(getattr(hcu, name, None))
             for name in (
-                "create_local_memory_wait",
                 "create_cta_barrier",
                 "has_warp_specialize",
-                "create_warp_group_id",
+                "create_accumulator_fence",
             )
         )
     )
@@ -59,13 +52,10 @@ def _supported():
 @dataclass(frozen=True)
 class CooperativeMMConfig:
     group_m: int = 0
-    tupled_fences: bool = False
 
     def __post_init__(self):
         if type(self.group_m) is not int or self.group_m < 0:
             raise ValueError("CTA grouping must be a nonnegative integer")
-        if type(self.tupled_fences) is not bool:
-            raise ValueError("tupled_fences must be a boolean")
 
     def supports(self, a, b, c):
         if not _supported() or any(t.ndim != 2 for t in (a, b, c)):
@@ -121,13 +111,12 @@ def launch_cooperative_mm(a, b, c, config):
             n,
             k,
             GROUP_M=config.group_m,
-            num_warps=8,
+            num_warps=4,
             num_stages=1,
-            waves_per_eu=1,
-            loop_unroll_stage="post-pipeline",
-            schedule_hint="local-prefetch",
-            optimize_epilogue=True,
-            lds_dma_alias_workaround=False,
+            prefer_wide_async_copy=True,
+            kpack=2,
+            mmac_warps_m=4,
+            mmac_transposed=True,
             disable_llvm_loop_unroll=True,
             structured_register_prepack_address=True,
             structured_register_unclamped_column=True,
@@ -135,13 +124,11 @@ def launch_cooperative_mm(a, b, c, config):
             buffer_store_scalar_offset=True,
             interleave_global_lds_reads=True,
             interleave_global_lds_reads_fences=True,
-            tupled_register_fences=config.tupled_fences,
-            rebase_buffer_store=False,
-            terminal_readonly_publication=False,
+            tupled_register_fences=True,
         )
 
 
 @lru_cache(maxsize=1)
 def cooperative_mm_configs():
-    """Two measured traversal/scheduling strategies for this single algorithm."""
-    return (CooperativeMMConfig(), CooperativeMMConfig(4, True))
+    """Two CTA traversal choices for one logical producer/consumer algorithm."""
+    return (CooperativeMMConfig(), CooperativeMMConfig(4))

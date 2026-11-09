@@ -521,6 +521,51 @@ def test_hygon_small_mm_uses_launch_metadata_for_cached_post(
         )
 
 
+@pytest.mark.parametrize("transpose_b", [False, True])
+def test_hygon_splitk_compares_local_split_for_both_layouts(
+    hygon_splitk, monkeypatch, transpose_b
+):
+    from types import SimpleNamespace
+
+    split = hygon_splitk
+    family = importlib.import_module(split.__package__ + ".mm_family")
+    a = torch.empty((2, 2048), dtype=torch.bfloat16)
+    b = (
+        torch.empty((64, 2048), dtype=torch.bfloat16).t()
+        if transpose_b
+        else torch.empty((2048, 64), dtype=torch.bfloat16)
+    )
+    c = torch.empty((2, 64), dtype=torch.bfloat16)
+    eligibility_checks, outputs = [], []
+
+    def eligible(*args):
+        eligibility_checks.append(args)
+        return (32, 32, 32, 16)
+
+    def launch(a, b, out):
+        outputs.append(out)
+
+    tuner = SimpleNamespace(
+        _run_mode="normal", config_table_name="test", configs=(), _benchmark_protocol=()
+    )
+    monkeypatch.setattr(split, "_splitk_parameters", eligible)
+    monkeypatch.setattr(split, "_launch_mm_splitk", launch)
+    monkeypatch.setattr(
+        split, "_mm_splitk_partial", SimpleNamespace(fn=tuner, _apply_flagtune=lambda: None)
+    )
+
+    def compete(a, b, c, ordinary, *, ordinary_with_output, splitk_pool, **kwargs):
+        assert splitk_pool
+        ordinary()
+        ordinary_with_output(torch.empty_like(c))
+        return True
+
+    monkeypatch.setattr(family, "try_mm_family", compete)
+    assert split.try_mm_splitk(a, b, c, compare_local_split=True)
+    assert len(eligibility_checks) == 1
+    assert len(outputs) == 2 and outputs[0] is c and outputs[1] is not c
+
+
 @pytest.mark.parametrize("mask", [0, 3])
 def test_hygon_small_mm_older_backend_keeps_global_profiles(hygon_splitk, mask):
     configs = hygon_splitk.runtime.ops_get_configs(
@@ -797,7 +842,14 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
     # algorithms separately. Dtype/shape/stride specializations are not new configs.
     local_configs = local.local_split_mm_configs()
     from flag_gems.runtime.backend._hygon.ops.mm_cooperative import cooperative_mm_configs
-    python_candidates = len(shared_mm_configs()) + len(cooperative_mm_configs()) + len(local_configs) + 1
+    from flag_gems.runtime.backend._hygon.ops.mv import _GROUPED_MV_CONFIGS
+    python_candidates = (
+        len(shared_mm_configs())
+        + len(cooperative_mm_configs())
+        + len(local_configs)
+        + len(_GROUPED_MV_CONFIGS)
+        + 1
+    )
     total = (
         len(_expanded_configs(hygon_mm))
         + len(partial)
@@ -806,3 +858,21 @@ def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
         + python_candidates
     )
     assert total <= 4000
+
+
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+def test_hygon_grouped_mv_preserves_row_and_output_strides(hygon_mm, dtype):
+    from flag_gems.runtime.backend._hygon.ops.mv import GroupedMVConfig, launch_grouped_mv
+
+    m, n, k = 3, 13, 2053
+    a = torch.randn((m, k), device="cuda", dtype=dtype) / k**0.5
+    b = torch.randn((n, k), device="cuda", dtype=dtype).t()
+    storage = torch.empty((m, 2 * n), device=a.device, dtype=dtype)
+    c = storage[:, ::2]
+    for _ in range(2):
+        storage.fill_(float("nan"))
+        launch_grouped_mv(a, b, c, GroupedMVConfig(2, 1024))
+        torch.testing.assert_close(c, torch.mm(a, b), atol=0.02, rtol=0.01)
+        assert storage[:, 1::2].isnan().all()
+        a.normal_(std=k**-0.5)
+        b.normal_()

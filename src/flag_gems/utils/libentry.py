@@ -1473,6 +1473,8 @@ class LibEntry(triton.KernelInterface):
             return (type(arg), arg)
 
         def dns_arg(arg):
+            if isinstance(arg, triton.language.constexpr):
+                return (type(arg), _freeze_launch_option(arg.value))
             if hasattr(arg, "data_ptr"):
                 return arg.dtype
             if not isinstance(arg, int):

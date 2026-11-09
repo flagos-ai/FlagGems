@@ -1,6 +1,7 @@
 """CTA-local split-K legality follows actual tile offsets, not model shapes."""
 
 import importlib
+from contextlib import nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +10,6 @@ import torch
 
 @pytest.fixture(scope="module")
 def local():
-    pytest.importorskip("triton.experimental.gluon")
     return importlib.import_module(
         "flag_gems.runtime.backend._hygon.ops.mm_local_split"
     )
@@ -30,9 +30,9 @@ def tensor(shape, stride, pointer, dtype):
 
 def operands(m, n, k, dtype):
     return (
-        tensor((m, k), (k, 1), 0x100000000, dtype),
-        tensor((k, n), (1, k), 0x10000000000, dtype),
-        tensor((m, n), (n, 1), 0x20000000000, dtype),
+        tensor((m, k), (k, 1), 1 << 20, dtype),
+        tensor((k, n), (1, k), 1 << 46, dtype),
+        tensor((m, n), (n, 1), 1 << 47, dtype),
     )
 
 
@@ -54,11 +54,12 @@ def test_global_2gib_is_not_local_buffer_limit(local, m, n, k):
         assert config.supports(*operands(m, n, k, torch.bfloat16))
 
 
-def test_actual_local_span_rejected(local):
-    c = local.LocalSplitMMConfig()
-    assert not c.supports(*operands(1, 1, 2**27, torch.bfloat16))
-    assert not c.supports(*operands(1, 2**27, 256, torch.bfloat16))
-    assert not c.supports(*operands(2**31 - 1, 1, 256, torch.bfloat16))
+def test_global_offsets_are_i64_and_padded_coordinates_fit_i32(local):
+    config = local.LocalSplitMMConfig()
+    for shape in [(1, 1, 2**27), (1, 2**27, 256), (2**31 - 1, 1, 256)]:
+        assert config.supports(*operands(*shape, torch.bfloat16))
+    for shape in [(2**31 + 1, 1, 256), (1, 2**31 + 1, 256), (1, 1, 2**31 + 1)]:
+        assert not config.supports(*operands(*shape, torch.bfloat16))
 
 
 def test_alias_checks_actual_view_ranges(local):
@@ -75,6 +76,8 @@ def test_dtype_storage_and_output_contracts(local):
     assert not c.supports(*operands(19, 33, 257, torch.float32))
     a, b, out = operands(19, 33, 257, torch.bfloat16)
     b.stride = lambda: (33, 1)
+    assert c.supports(a, b, out)
+    b.stride = lambda: (66, 2)
     assert not c.supports(a, b, out)
     a, b, out = operands(19, 33, 257, torch.bfloat16)
     out.requires_grad = True
@@ -86,14 +89,14 @@ def test_dtype_storage_and_output_contracts(local):
     [
         {"tile": (8, 16)},
         {"k_step": 64},
-        {"schedule": True},
-        {"schedule": 4},
-        {"m_tiles": 2},
-        {"tile": (64, 64)},
-        {"k_step": 128, "schedule": 1},
+        {"num_stages": True},
+        {"num_stages": 3},
+        {"m_tiles": 0},
+        {"tile": (128, 64)},
+        {"tile": (32, 64), "m_tiles": 3},
     ],
 )
-def test_invalid_resource_or_schedule_combinations(local, kwargs):
+def test_invalid_resource_or_pipeline_combinations(local, kwargs):
     with pytest.raises(ValueError):
         local.LocalSplitMMConfig(**kwargs)
 
@@ -128,3 +131,45 @@ def test_natural_halfword_alignment(local, index):
     assert local.LocalSplitMMConfig().supports(*values)
     values[index].data_ptr = lambda: original + 1
     assert not local.LocalSplitMMConfig().supports(*values)
+
+
+def test_pool_contains_logical_tiles_and_standard_pipeline_stages(local):
+    configs = local.local_split_mm_configs()
+    assert len(configs) == len(set(configs)) == 8
+    assert set(configs[0].__dataclass_fields__) == {
+        "tile",
+        "k_step",
+        "m_tiles",
+        "num_stages",
+    }
+    assert {cfg.num_stages for cfg in configs} == {1, 2}
+    assert local.LocalSplitMMConfig((64, 64)).m_tiles == 1
+    assert local.LocalSplitMMConfig((16, 32), k_step=128, m_tiles=5).m_tiles == 5
+
+
+def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
+    module = importlib.import_module(local.__package__ + ".mv_mmac")
+    graph = importlib.import_module("triton.flagtune.runtime.graph_benchmark")
+    monkeypatch.setattr(module, "_choices", {})
+    monkeypatch.setattr(module, "_choice_measurements", {})
+    monkeypatch.setattr(module, "_eligible", lambda *args: True)
+    monkeypatch.setattr(module.torch_device_fn, "device", lambda _: nullcontext())
+    monkeypatch.setattr(torch.cuda, "is_current_stream_capturing", lambda: False)
+    monkeypatch.setattr(module, "_launch_mmac", lambda a, b, out: out.fill_(1))
+    calls = []
+
+    def bench(fn, **kwargs):
+        fn()
+        calls.append(1)
+        return 1.0
+
+    monkeypatch.setattr(graph, "do_bench_hcu_graph", bench)
+    for dtype in (torch.bfloat16, torch.float16, torch.bfloat16):
+        a = torch.ones(3, 5, dtype=dtype)
+        b = torch.ones(5, dtype=dtype)
+        out = torch.empty(3, dtype=dtype)
+        assert module.try_mv_mmac(
+            a, b, out, lambda result: result.fill_(1), tuning_key=("test",)
+        )
+    assert len(calls) == 12
+    assert len(module._choices) == 2

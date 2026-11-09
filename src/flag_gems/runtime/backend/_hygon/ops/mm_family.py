@@ -1,10 +1,11 @@
-"""Measure ordinary shared/TL, cooperative, and CTA-local reduction GEMM."""
+"""Measure ordinary TL, cooperative, and reduction GEMM families."""
 
 import logging
 import statistics
 import threading
 from dataclasses import asdict
 from functools import lru_cache
+from math import prod
 
 import torch
 import triton
@@ -21,45 +22,66 @@ from .mm_cooperative import (
     cooperative_mm_configs,
     launch_cooperative_mm,
 )
+from .mv import GroupedMVConfig, grouped_mv_candidates, launch_grouped_mv
 
 logger = logging.getLogger(__name__)
 _choices = {}
 _choice_measurements = {}
 _choice_lock = threading.RLock()
+_SPLITK_LOCAL = (
+    LocalSplitMMConfig((16, 16)),
+    LocalSplitMMConfig((16, 16), num_stages=2),
+)
+_SPLITK_LOCAL_WIDE = LocalSplitMMConfig((32, 32), num_stages=2)
+_SPLITK_SHARED = SharedMMConfig((32, 64, 64))
 
 
 @lru_cache(maxsize=1)
 def _shared_supported():
     try:
         from triton.backends.hcu.compiler import HIPOptions
-        from triton.experimental.gluon import language as gl
-        from triton.experimental.gluon.language.hcu import matrix_load_to_shared
+        import triton.experimental.tle.language as tle
     except ImportError:
         return False
     return (
-        hasattr(gl, "SharedLinearLayout")
-        and callable(matrix_load_to_shared)
-        and {"mma_phase_schedule", "post_mma_wait", "lds_dma_alias_workaround"}
+        callable(tle.load)
+        and {"prefer_wide_async_copy", "mmac_warps_m", "lds_dma_alias_workaround"}
         <= HIPOptions.__dataclass_fields__.keys()
     )
 
 
-def mm_family_candidates(a, b, c, *, local_split_only=None):
+def mm_family_candidates(a, b, c, *, splitk_pool=False):
     if a.ndim != 2 or b.ndim != 2 or c.ndim != 2 or a.device.type != "cuda":
         return ()
     with torch_device_fn.device(a.device):
         target = triton.runtime.driver.active.get_current_target()
     if target.backend != "hip" or target.arch != "gfx936":
         return ()
-    local = tuple(config for config in local_split_mm_configs() if config.supports(a, b, c))
-    if local_split_only is not None:
-        requested = tuple(local_split_only)
-        return requested if requested and all(x in local for x in requested) else ()
-    shared = (
-        tuple(config for config in shared_mm_configs() if config.supports(a, b, c))
-        if _shared_supported()
-        else ()
-    )
+    local_configs = local_split_mm_configs()
+    shared_configs = shared_mm_configs() if _shared_supported() else ()
+    if splitk_pool:
+        m, n = c.shape
+        compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
+        bm, bn = _SPLITK_LOCAL_WIDE.tile
+        local_tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        local_shortlist = _SPLITK_LOCAL
+        if (m >= bm and n >= bn) or local_tiles * 2 >= compute_units:
+            local_shortlist += (_SPLITK_LOCAL_WIDE,)
+        local_configs = tuple(config for config in local_shortlist if config in local_configs)
+        # Consider the smallest Shared tile only when its CTA grid can
+        # supply at least one wave per compute unit in aggregate.
+        bm, bn, _ = _SPLITK_SHARED.tile
+        shared_tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        shared_configs = (
+            (_SPLITK_SHARED,)
+            if _SPLITK_SHARED in shared_configs
+            and shared_tiles * prod(_SPLITK_SHARED.warps) >= compute_units
+            else ()
+        )
+    local = tuple(config for config in local_configs if config.supports(a, b, c))
+    shared = tuple(config for config in shared_configs if config.supports(a, b, c))
+    if splitk_pool:
+        return local + shared + grouped_mv_candidates(a, b, compute_units)
     cooperative = tuple(
         config for config in cooperative_mm_configs() if config.supports(a, b, c)
     )
@@ -71,6 +93,8 @@ def _launch(a, b, c, candidate):
         return launch_shared_mm(a, b, c, candidate)
     if isinstance(candidate, CooperativeMMConfig):
         return launch_cooperative_mm(a, b, c, candidate)
+    if isinstance(candidate, GroupedMVConfig):
+        return launch_grouped_mv(a, b, c, candidate)
     return launch_local_split_mm(a, b, c, candidate)
 
 
@@ -79,6 +103,8 @@ def _label(candidate):
         return dict(family="cooperative", **asdict(candidate))
     if isinstance(candidate, LocalSplitMMConfig):
         return dict(family="local_split", **asdict(candidate))
+    if isinstance(candidate, GroupedMVConfig):
+        return dict(family="grouped_mv", **asdict(candidate))
     return asdict(candidate) if isinstance(candidate, SharedMMConfig) else candidate
 
 
@@ -89,13 +115,13 @@ def clear_mm_family_choices():
 
 
 def try_mm_family(
-    a, b, c, ordinary, *, tuning_key, ordinary_with_output=None, local_split_only=None
+    a, b, c, ordinary, *, tuning_key, ordinary_with_output=None, splitk_pool=False
 ):
     """Compare real candidates with the existing Default/Expanded TL tuner.
 
     Cache only the selected index, never tensors. A cold graph capture defers
-    family selection to the already established ordinary path. Input dtype,
-    layout, tuning protocol and the actual candidate tuple enter cache identity.
+    family selection to the incumbent path. In the Split-K region, the
+    incumbent is the Split-K tuner and only a fixed shortlist challenges it.
     """
     if any(t.ndim != 2 for t in (a, b, c)) or a.device.type != "cuda":
         return False
@@ -129,9 +155,9 @@ def try_mm_family(
         tuple(c.stride()),
         tuning_key,
         (
-            "shared-family-v3-local-config",
+            "shared-family-v5-grouped-mv",
             storage,
-            None if local_split_only is None else tuple(local_split_only),
+            splitk_pool,
             ordinary_with_output is not None,
         ),
     )
@@ -143,9 +169,7 @@ def try_mm_family(
             with _choice_lock:
                 cached = _choices.get(key)
                 if cached is None:
-                    candidates = mm_family_candidates(
-                        a, b, c, local_split_only=local_split_only
-                    )
+                    candidates = mm_family_candidates(a, b, c, splitk_pool=splitk_pool)
                     if not candidates:
                         return False
                     from triton.flagtune.runtime.graph_benchmark import (
@@ -214,7 +238,7 @@ def try_mm_family(
                         }
                         choice = min(finalists, key=refined.__getitem__)
                     _choice_measurements[key] = dict(
-                        variants=("ordinary_tl",)
+                        variants=(("splitk_pool" if splitk_pool else "ordinary_tl"),)
                         + tuple(_label(x) for x in candidates),
                         screened_ms=medians,
                         refined_allocating_ms=refined,

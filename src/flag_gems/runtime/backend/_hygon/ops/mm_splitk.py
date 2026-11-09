@@ -300,25 +300,35 @@ def try_mm_splitk(a, b, c, *, use_alignment_facts=True, compare_local_split=Fals
         raise TypeError("compare_local_split must be boolean")
     if _splitk_parameters(a, b, c) is None:
         return False
-    M, K = a.shape
-    N = b.shape[1]
-    if compare_local_split and use_alignment_facts and b.stride() == (1, K):
+    if compare_local_split and use_alignment_facts:
         _mm_splitk_partial._apply_flagtune()
         tuner = _mm_splitk_partial.fn
         if tuner._run_mode == "normal":
             from .mm_family import try_mm_family
-            from .mm_local_split import LocalSplitMMConfig
 
             key = (
-                "splitK-baseline", tuner.config_table_name,
-                id(tuner.configs), tuple(tuner._benchmark_protocol),
+                "splitK-baseline",
+                tuner.config_table_name,
+                id(tuner.configs),
+                tuple(tuner._benchmark_protocol),
             )
             if try_mm_family(
-                a, b, c, lambda: try_mm_splitk(a, b, c), tuning_key=key,
-                ordinary_with_output=lambda output: try_mm_splitk(a, b, output),
-                local_split_only=(LocalSplitMMConfig((16, 16)), LocalSplitMMConfig((16, 16), schedule=1)),
+                a,
+                b,
+                c,
+                lambda: _launch_mm_splitk(a, b, c),
+                tuning_key=key,
+                ordinary_with_output=lambda output: _launch_mm_splitk(a, b, output),
+                splitk_pool=True,
             ):
                 return True
+    _launch_mm_splitk(a, b, c, use_alignment_facts=use_alignment_facts)
+    return True
+
+
+def _launch_mm_splitk(a, b, c, *, use_alignment_facts=True):
+    M, K = a.shape
+    N = b.shape[1]
     ma, na = _splitk_alignment_facts(M, N, use_alignment_facts)
     # Facts below are valid only for this exact ceil-grid and its original
     # pid axes. Arbitrary caller grids must retain the original checks.
@@ -342,4 +352,3 @@ def try_mm_splitk(a, b, c, *, use_alignment_facts=True, compare_local_split=Fals
         # LibEntry returns the metadata for this exact launch, including on
         # cache hits; do not read a mutable global tuner's best_config.
         _splitk_post_hook(dict(meta, W=workspace, C=c, M=M, N=N, K=K), None)
-    return True

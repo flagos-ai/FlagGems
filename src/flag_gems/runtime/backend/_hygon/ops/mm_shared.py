@@ -1,27 +1,22 @@
-"""Ordinary shared-layout GEMM launch policy; no Packet types or source ABI."""
+"""Explicit geometry choices for the ordinary TL/TLE GEMM entry."""
 
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache, lru_cache
 from math import prod
 
 import torch
 import triton
+import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
-
-from .mm_shared_layout import operand_shared_layouts
+from flag_gems.utils import libentry
 
 
 @dataclass(frozen=True)
 class SharedMMConfig:
     tile: tuple
     warps: tuple = (2, 2)
-    tiles_per_warp: tuple = (2, 2)
     group_m: int = 8
-    output_layout: int = 0
-    row_group_bits: int = 2
-    matrix_copy: bool = True
-    post_mma: bool = False
     address_mode: str = "direct"
 
     def __post_init__(self):
@@ -36,23 +31,13 @@ class SharedMMConfig:
             or prod(self.warps) > 8
         ):
             raise ValueError("requires power-of-two wave axes and at most 8 waves")
-        if self.matrix_copy and min(bm * bk, bn * bk) < 512 * prod(self.warps):
-            raise ValueError("matrix copy requires a complete 16B vector per lane/wave")
-        if len(self.tiles_per_warp) != 2 or any(
-            x < 1 or x & (x - 1) for x in self.tiles_per_warp
-        ):
-            raise ValueError("MMAC tiles per wave axis must be positive powers of two")
-        if self.group_m < 1 or self.output_layout not in (0, 1, 2):
-            raise ValueError("invalid traversal or output layout")
+        if self.group_m < 1:
+            raise ValueError("traversal group must be positive")
         if self.address_mode not in ("direct", "fold", "scalar"):
             raise ValueError("unknown buffer-address strategy")
-        if not 0 <= self.row_group_bits <= 6:
-            raise ValueError("invalid row grouping")
-        if self.output_layout == 2 and bn < 32:
-            raise ValueError("column ownership requires a 32-column tile")
 
     def supports(self, a, b, c):
-        """Check actual vector, pipeline and byte-offset requirements."""
+        """Check vector alignment, storage disjointness and address bounds."""
         if any(t.ndim != 2 for t in (a, b, c)):
             return False
         m, k = a.shape
@@ -70,8 +55,7 @@ class SharedMMConfig:
         return (
             m > 0
             and n > 0
-            and k >= 4 * bk
-            and k % (4 * bk) == 0
+            and k >= 8
             and k % 8 == 0
             and (nt or n % 8 == 0)
             and b.shape[0] == k
@@ -89,37 +73,38 @@ class SharedMMConfig:
             and disjoint
             and max(m, n, k) < 2**31
             and 2 * m * n < 2**31
-            and (
-                2 * local_span < 2**31
-                if self.matrix_copy
-                else max(2 * m * k, 2 * k * n) < 2**31
-            )
+            and (2 * local_span < 2**31 or max(2 * m * k, 2 * k * n) < 2**31)
         )
 
 
-@lru_cache(maxsize=None)
+@cache
 def _compile_parameters(config, transposed_b):
-    a_layout, b_layout = operand_shared_layouts(
-        config.tile, transposed_b=transposed_b, row_group_bits=config.row_group_bits
-    )
-    options = dict(
-        num_warps=prod(config.warps),
-        num_stages=5,
-        waves_per_eu=1,
-        loop_unroll_stage="post-pipeline",
-        schedule_hint="local-prefetch",
-        lds_dma_alias_workaround=True,
-        mma_phase_schedule=config.post_mma,
-        post_mma_wait=config.post_mma,
-        rebase_buffer_store=False,
-        terminal_readonly_publication=False,
-        GROUP_M=config.group_m,
-        TILES_PER_WARP=config.tiles_per_warp,
-        OUTPUT_LAYOUT=config.output_layout,
-        A_SHARED_LAYOUT=a_layout,
-        B_SHARED_LAYOUT=b_layout,
-        USE_MATRIX_COPY=config.matrix_copy,
-    )
+    options = {
+        "num_warps": prod(config.warps),
+        "num_stages": 5,
+        "waves_per_eu": 1,
+        "loop_unroll_stage": "post-pipeline",
+        "schedule_hint": "local-prefetch",
+        "lds_dma_alias_workaround": True,
+        "prefer_wide_async_copy": True,
+        "kpack": 2,
+        "mmac_warps_m": config.warps[0],
+        "mmac_transposed": True,
+        "optimize_epilogue": True,
+        "rebase_buffer_store": False,
+        "terminal_readonly_publication": False,
+        "GROUP_M": config.group_m,
+        "BLOCK_M": config.tile[0],
+        "BLOCK_N": config.tile[1],
+        "BLOCK_K": config.tile[2],
+        "USE_TLE": True,
+        "ASYNC_LOAD": True,
+        "ASYNC_LOAD_MASK": 3,
+        "LOAD_MODE": 3,
+        "LARGE_TILE_CONFIGS": True,
+        "LOOP_UNROLL_FACTOR": 4,
+        "B_K_CONTIGUOUS": transposed_b,
+    }
     if config.address_mode != "direct":
         options.update(
             coalesce_lgkm_waits=True,
@@ -132,86 +117,75 @@ def _compile_parameters(config, transposed_b):
     return tuple(options.items())
 
 
+@lru_cache(maxsize=1)
+def _ordinary_mm_entry():
+    # Resolve lazily because mm imports its family dispatcher. Configurations
+    # are selected by that dispatcher; do not nest another autotuner here.
+    from .mm import mm_kernel
+
+    kernel = mm_kernel
+    while not isinstance(kernel, triton.runtime.JITFunction):
+        kernel = kernel.fn
+    return libentry()(kernel)
+
+
 def launch_shared_mm(a, b, c, config):
     """Launch one explicit ordinary GEMM candidate through the real LibEntry."""
     if not config.supports(a, b, c):
-        raise ValueError("unsupported matrix storage, vector extent or pipeline K")
-    from .mm_shared_kernel import _mm_shared_kernel
-
+        raise ValueError("unsupported matrix storage, vector extent or address range")
     m, k = a.shape
     n = b.shape[1]
     bm, bn, _ = config.tile
+    tiles_m, tiles_n = triton.cdiv(m, bm), triton.cdiv(n, bn)
+    padded_m, padded_n = tiles_m * bm, tiles_n * bn
     options = dict(_compile_parameters(config, b.stride() == (1, k)))
+    options.update(
+        MASK_EDGES=m % bm != 0 or n % bn != 0,
+        K_DIVISIBLE_BY_16=k % 16 == 0,
+        # Only tile coordinates and output offsets are narrowed. Block-pointer
+        # shapes/strides and global input origins retain their i64 arithmetic.
+        USE_I32_INDEX=max(
+            tiles_m * tiles_n,
+            config.group_m * tiles_n,
+            padded_m,
+            padded_n,
+            2 * ((padded_m - 1) * n + padded_n),
+        )
+        < 2**31,
+    )
     with torch_device_fn.device(a.device):
-        return _mm_shared_kernel[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
+        return _ordinary_mm_entry()[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
             a,
             b,
             c,
-            m,
-            n,
-            k,
-            *a.stride(),
-            *b.stride(),
-            *c.stride(),
-            *config.tile,
-            *config.warps,
+            tl.constexpr(m),
+            tl.constexpr(n),
+            tl.constexpr(k),
+            *(tl.constexpr(s) for s in a.stride()),
+            *(tl.constexpr(s) for s in b.stride()),
+            *(tl.constexpr(s) for s in c.stride()),
             **options,
         )
 
 
 @lru_cache(maxsize=1)
 def shared_mm_configs():
-    """One geometry registry shared by both runtime B storage layouts.
+    """Logical tiles and traversal choices, shared by NN and NT.
 
-    As with the ordinary YAML pool, a configuration is not duplicated for its
-    input strides or dtype. All entries are offered for NN and NT; only actual
-    vector/resource/pipeline legality is checked against the current operands.
+    Lane ownership, shared layout, copy instruction and synchronization are
+    selected by the compiler. Do not duplicate candidates for those details.
     """
-    from dataclasses import replace
-
-    geometries = (
+    return (
         SharedMMConfig((64, 128, 32)),
-        SharedMMConfig((32, 64, 64), tiles_per_warp=(1, 2)),
+        SharedMMConfig((32, 64, 64)),
         SharedMMConfig((128, 128, 32)),
         SharedMMConfig((128, 256, 16)),
-        SharedMMConfig((64, 64, 64), tiles_per_warp=(1, 1)),
         SharedMMConfig((64, 64, 64)),
         SharedMMConfig((256, 256, 16), warps=(4, 2), group_m=1, address_mode="scalar"),
-        SharedMMConfig(
-            (256, 256, 16),
-            warps=(4, 2),
-            row_group_bits=3,
-            output_layout=2,
-            address_mode="fold",
-        ),
-        SharedMMConfig(
-            (256, 256, 16),
-            warps=(4, 2),
-            row_group_bits=3,
-            output_layout=2,
-            group_m=1,
-            address_mode="fold",
-        ),
-    )
-    regular = tuple(
-        replace(geometry, matrix_copy=copy, post_mma=post)
-        for geometry in geometries
-        for copy in (True, False)
-        for post in (False, True)
-    )
-    # Both operands fit a half-size allocation frame. Keep this useful tile
-    # geometry in the same ordinary registry instead of a compact-owner ABI.
-    return regular + (
-        SharedMMConfig(
-            (128, 128, 16),
-            output_layout=1,
-            address_mode="scalar",
-            matrix_copy=False,
-            post_mma=True,
-        ),
-        SharedMMConfig(
-            (256, 256, 16), warps=(4, 2), row_group_bits=3, post_mma=True
-        ),
-        SharedMMConfig((128, 256, 16), output_layout=2, address_mode="scalar"),
-        SharedMMConfig((64, 64, 64), group_m=1, post_mma=True),
+        SharedMMConfig((256, 256, 16), warps=(4, 2), address_mode="fold"),
+        SharedMMConfig((256, 256, 16), warps=(4, 2), group_m=1, address_mode="fold"),
+        SharedMMConfig((128, 128, 16), address_mode="scalar"),
+        SharedMMConfig((256, 256, 16), warps=(4, 2)),
+        SharedMMConfig((128, 256, 16), address_mode="scalar"),
+        SharedMMConfig((64, 64, 64), group_m=1),
     )

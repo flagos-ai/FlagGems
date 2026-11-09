@@ -14,12 +14,13 @@
 
 """Hygon Triton/TLE implementation of ``aten.mv``.
 
-The reduction is kept as a vectorized Triton reduction because the current
-gfx936 lowering of ``tl.dot`` adds shared-memory movement for GEMV instead of
-using a matrix instruction.
+The vector reduction is measured against a matrix-instruction candidate that
+reuses the ordinary CTA-local split-K GEMM implementation.
 """
 
 import logging
+from dataclasses import dataclass
+from functools import lru_cache
 
 import torch
 import triton
@@ -31,6 +32,33 @@ from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GroupedMVConfig:
+    block_n: int
+    block_k: int
+
+
+_GROUPED_MV_CONFIGS = tuple(
+    GroupedMVConfig(block_n, block_k)
+    for block_n, block_k in ((1, 1024), (2, 1024), (2, 2048), (4, 1024))
+)
+
+
+def grouped_mv_candidates(a, b, compute_units):
+    """Offer vector reduction for underfilled MMAC rows and contiguous K."""
+    m, k = a.shape
+    n = b.shape[1]
+    if not (1 < m < 8 and b.stride() == (1, k)):
+        return ()
+    return tuple(
+        config
+        for config in _GROUPED_MV_CONFIGS
+        if config.block_n <= n
+        and config.block_k <= k
+        and m * triton.cdiv(n, config.block_n) <= 4 * compute_units
+    )
 
 
 @libentry()
@@ -61,6 +89,8 @@ def mv_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
     LOOP_STAGES: tl.constexpr,
+    GROUP_VEC_STRIDE: tl.constexpr = 0,
+    GROUP_OUT_STRIDE: tl.constexpr = 0,
 ):
     """Accumulate K tiles before reducing each output row.
 
@@ -69,6 +99,10 @@ def mv_kernel(
     ``BLOCK_M`` element tiles.
     """
 
+    if GROUP_VEC_STRIDE:
+        row = ext.program_id(1)
+        B += row * GROUP_VEC_STRIDE
+        C += row * GROUP_OUT_STRIDE
     pid = ext.program_id(0)
     offset_n = pid * BLOCK_N + tl.arange(0, BLOCK_N)
     offset_m = tl.arange(0, BLOCK_M)
@@ -98,6 +132,35 @@ def mv_kernel(
     acc = tl.sum(acc, axis=1)
     c_ptrs = C + offset_n * stride_cn
     tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=n_mask)
+
+
+@lru_cache(maxsize=1)
+def _fixed_mv_entry():
+    return libentry()(mv_kernel.fn.fn)
+
+
+def launch_grouped_mv(a, b, c, config):
+    """Run one GEMV per A row against the shared matrix B transpose."""
+    m, k = a.shape
+    n = b.shape[1]
+    with torch_device_fn.device(a.device):
+        return _fixed_mv_entry()[(triton.cdiv(n, config.block_n), m)](
+            b,
+            a,
+            c,
+            n,
+            k,
+            b.stride(1),
+            b.stride(0),
+            a.stride(1),
+            c.stride(1),
+            BLOCK_N=config.block_n,
+            BLOCK_M=config.block_k,
+            LOOP_STAGES=1,
+            GROUP_VEC_STRIDE=a.stride(0),
+            GROUP_OUT_STRIDE=c.stride(0),
+            num_warps=4,
+        )
 
 
 def mv(inp, vec):

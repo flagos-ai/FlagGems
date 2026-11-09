@@ -1,4 +1,4 @@
-"""Ordinary CTA-local split-K configurations and byte-address contracts."""
+"""Logical CTA-local split-K configurations for the ordinary Triton kernel."""
 
 from dataclasses import dataclass
 
@@ -8,14 +8,10 @@ import triton
 from flag_gems.runtime import torch_device_fn
 
 
-def _loop_carried_refill_supported():
-    try:
-        from triton._C.libtriton import llvm
-        from triton.backends.hcu.compiler import HIPOptions
-    except ImportError:
-        return False
-    return "loop_carried_store_refill" in HIPOptions.__dataclass_fields__ and callable(
-        getattr(llvm, "interleave_hcu_loop_carried_store_refill", None)
+def _matches_strides(tensor, expected):
+    return all(
+        size == 1 or actual == stride
+        for size, actual, stride in zip(tensor.shape, tensor.stride(), expected)
     )
 
 
@@ -23,9 +19,8 @@ def _loop_carried_refill_supported():
 class LocalSplitMMConfig:
     tile: tuple = (32, 32)
     k_step: int = 256
-    # 0: ordinary, 1: peeled final tile, 2: input prefetch, 3: multiple row tiles.
-    schedule: int = 0
     m_tiles: int = 1
+    num_stages: int = 1
 
     def __post_init__(self):
         object.__setattr__(self, "tile", tuple(self.tile))
@@ -33,27 +28,17 @@ class LocalSplitMMConfig:
             type(x) is not int or x < 16 or x & (x - 1) for x in self.tile
         ):
             raise ValueError("local split tile dimensions must be powers of two >=16")
-        bm, bn = self.tile
-        if (
-            type(self.k_step) is not int
-            or self.k_step not in (128, 256)
-            or type(self.schedule) is not int
-            or self.schedule not in range(4)
-        ):
-            raise ValueError("unsupported local split step or schedule")
+        if type(self.k_step) is not int or self.k_step not in (128, 256):
+            raise ValueError("unsupported local split K step")
+        if type(self.num_stages) is not int or self.num_stages not in (1, 2):
+            raise ValueError("local split uses one or two pipeline stages")
         if type(self.m_tiles) is not int or self.m_tiles < 1:
             raise ValueError("m_tiles must be a positive integer")
-        if self.schedule != 3 and self.m_tiles != 1:
-            raise ValueError("multiple row tiles require the multi-row schedule")
-        if self.k_step == 128:
-            if self.schedule or bm + bn > 128 or bm * bn > 4096:
-                raise ValueError(
-                    "K128 requires the ordinary schedule and a bounded shared tile"
-                )
-        elif self.m_tiles * bm + bn > 112 or (self.schedule != 3 and bm * bn > 4096):
-            raise ValueError(
-                "local split input planes exceed the 64KiB shared allocation"
-            )
+        bm, bn = self.tile
+        # Bound the simultaneous input planes and cross-wave FP32 output
+        # scratch independently. Their lifetimes do not overlap.
+        if max(2 * self.k_step * (self.m_tiles * bm + bn), 16 * bm * bn) > 65536:
+            raise ValueError("local split tiles exceed the 64KiB shared allocation")
 
     def supports(self, a, b, c):
         if any(t.ndim != 2 for t in (a, b, c)):
@@ -70,13 +55,9 @@ class LocalSplitMMConfig:
             min(m, n, k) > 0
             and b.shape[0] == k
             and c.shape == (m, n)
-            and all(
-                size == 1 or actual == expected
-                for tensor, expected_strides in ((a, (k, 1)), (b, (1, k)), (c, (n, 1)))
-                for size, actual, expected in zip(
-                    tensor.shape, tensor.stride(), expected_strides
-                )
-            )
+            and _matches_strides(a, (k, 1))
+            and (_matches_strides(b, (1, k)) or _matches_strides(b, (n, 1)))
+            and _matches_strides(c, (n, 1))
             and a.dtype == b.dtype == c.dtype
             and a.dtype in (torch.bfloat16, torch.float16)
             and a.device == b.device == c.device
@@ -85,25 +66,23 @@ class LocalSplitMMConfig:
             and (not c.is_inference() or torch.is_inference_mode_enabled())
             and all(t.data_ptr() % 2 == 0 for t in (a, b, c))
             and disjoint
-            # Grid/row masks use signed i32; allow their complete rounded tile.
-            and m + self.m_tiles * bm < 2**31
-            and n + bn < 2**31
-            # Global A/B/C origins are rebased in i64. Only the within-CTA
-            # buffer offsets, including inactive padded lanes, use signed i32.
-            and 2 * ((max(bm, bn) - 1) * k + self.k_step) < 2**31
-            and 2 * ((bm - 1) * n + bn) < 2**31
+            # Coordinates and masks use signed i32, including inactive lanes.
+            # All global pointer origins and element offsets use i64.
+            and triton.cdiv(m, self.m_tiles * bm) * (self.m_tiles * bm) <= 2**31
+            and triton.cdiv(n, bn) * bn <= 2**31
+            and triton.cdiv(k, self.k_step) * self.k_step <= 2**31
         )
 
 
-_LOCAL_SPLIT_CONFIGS = (
-    LocalSplitMMConfig((16, 32), k_step=128),
-    LocalSplitMMConfig(),
-    LocalSplitMMConfig(schedule=1),
-    LocalSplitMMConfig((16, 16)),
-    LocalSplitMMConfig((16, 16), schedule=1),
-    LocalSplitMMConfig(schedule=2),
-    LocalSplitMMConfig((16, 16), schedule=2),
-    LocalSplitMMConfig((16, 32), schedule=3, m_tiles=5),
+_LOCAL_SPLIT_CONFIGS = tuple(
+    LocalSplitMMConfig(tile, k_step=step, m_tiles=rows, num_stages=stages)
+    for stages in (1, 2)
+    for tile, step, rows in (
+        ((16, 32), 128, 1),
+        ((32, 32), 256, 1),
+        ((16, 16), 256, 1),
+        ((16, 32), 256, 5),
+    )
 )
 
 
@@ -112,52 +91,46 @@ def local_split_mm_configs():
         from triton.backends.hcu.compiler import HIPOptions
     except ImportError:
         return ()
-    fields = HIPOptions.__dataclass_fields__
-    if "padded_slot_intervals" not in fields:
-        return ()
-    return tuple(
-        c
-        for c in _LOCAL_SPLIT_CONFIGS
-        if (
-            c.k_step == 128
-            or {"wave_private_sync", "disable_llvm_loop_unroll"} <= fields.keys()
-        )
-        and (c.schedule < 2 or _loop_carried_refill_supported())
+    required = {"wave_private_sync", "kpack", "disable_llvm_loop_unroll"}
+    return (
+        _LOCAL_SPLIT_CONFIGS
+        if required <= HIPOptions.__dataclass_fields__.keys()
+        else ()
     )
 
 
 def launch_local_split_mm(a, b, c, config):
     if not isinstance(config, LocalSplitMMConfig) or not config.supports(a, b, c):
-        raise ValueError("unsupported local split matrix storage or byte-offset range")
+        raise ValueError("unsupported local split matrix storage or coordinate range")
     from .mm_local_splitk_kernel import _mm_local_splitk_kernel
 
     m, k = a.shape
     n = b.shape[1]
     bm, bn = config.tile
-    options = {
-        "padded_slot_intervals": True,
-        "num_warps": 4,
-        "num_stages": 1,
-        "waves_per_eu": 1,
-        "loop_unroll_stage": "post-pipeline",
-        "wave_private_sync": config.k_step == 256,
-        "kpack": 2,
-        "mmac_transposed": False,
-    }
-    if config.k_step == 128:
-        options.update(
-            INPUT_LAYOUT=2, PADDED=True, ROW_WARP_STRIDE=1, DOUBLE_BUFFER=True
-        )
-    else:
-        options.update(LOOP_SCHEDULE=config.schedule, disable_llvm_loop_unroll=True)
-        if config.m_tiles != 1:
-            options["M_TILES"] = config.m_tiles
-        if config.schedule >= 2:
-            options["loop_carried_store_refill"] = True
     with torch_device_fn.device(a.device):
         target = triton.runtime.driver.active.get_current_target()
         if target.backend != "hip" or target.arch != "gfx936":
             raise ValueError("local split GEMM currently requires gfx936")
         return _mm_local_splitk_kernel[
             (triton.cdiv(m, bm * config.m_tiles), triton.cdiv(n, bn), 1)
-        ](a, b, c, m, n, k, bm, bn, **options)
+        ](
+            a,
+            b,
+            c,
+            m,
+            n,
+            k,
+            bm,
+            bn,
+            K_STEP=config.k_step,
+            B_ROW_MAJOR=_matches_strides(b, (n, 1)),
+            M_TILES=config.m_tiles,
+            num_warps=4,
+            num_stages=config.num_stages,
+            waves_per_eu=1,
+            schedule_hint="local-prefetch" if config.num_stages == 2 else "none",
+            wave_private_sync=True,
+            disable_llvm_loop_unroll=True,
+            kpack=2,
+            mmac_transposed=False,
+        )

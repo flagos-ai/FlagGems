@@ -93,6 +93,53 @@ def test_family_cold_graph_never_tunes(router, monkeypatch):
     assert not router._choices
 
 
+@pytest.mark.parametrize(
+    "m,n,k,nt,expected",
+    [
+        (2, 64, 4096, True, 4),
+        (4, 64, 4096, True, 4),
+        (2, 4, 16384, True, 4),
+        (2, 64, 4096, False, 0),
+        (1, 64, 4096, True, 0),
+        (8, 64, 4096, True, 0),
+        (4, 2048, 4096, True, 0),
+    ],
+)
+def test_grouped_mv_candidates_follow_layout_and_parallelism(router, m, n, k, nt, expected):
+    a = tensor((m, k), (k, 1), 0x100000)
+    b = tensor((k, n), (1, k) if nt else (n, 1), 0x100000000)
+    assert len(router.grouped_mv_candidates(a, b, compute_units=80)) == expected
+
+
+@pytest.mark.parametrize(
+    "m,n,expected_tiles",
+    [
+        (2, 64, ((16, 16), (16, 16))),
+        (128, 128, ((16, 16), (16, 16), (32, 32))),
+        (4, 2048, ((16, 16), (16, 16), (32, 32), (32, 64, 64))),
+    ],
+)
+def test_splitk_shortlist_uses_tile_parallelism(router, monkeypatch, m, n, expected_tiles):
+    driver = SimpleNamespace(
+        get_current_target=lambda: SimpleNamespace(backend="hip", arch="gfx936")
+    )
+    monkeypatch.setattr(router.triton.runtime.driver, "_active", driver)
+    monkeypatch.setattr(
+        router.torch_device_fn,
+        "get_device_properties",
+        lambda device: SimpleNamespace(multi_processor_count=128),
+    )
+    monkeypatch.setattr(router, "_shared_supported", lambda: True)
+    monkeypatch.setattr(
+        router, "local_split_mm_configs", lambda: router._SPLITK_LOCAL + (router._SPLITK_LOCAL_WIDE,)
+    )
+    a = tensor((m, 4096), (4096, 1), 0x100000)
+    b = tensor((4096, n), (n, 1), 0x100000000)
+    c = tensor((m, n), (n, 1), 0x200000000)
+    candidates = router.mm_family_candidates(a, b, c, splitk_pool=True)
+    assert tuple(config.tile for config in candidates) == expected_tiles
+
+
 def test_family_separates_dtype_protocol_and_runtime_eligibility(router, monkeypatch):
     install_benchmark(monkeypatch)
     cfg = router.SharedMMConfig((64, 128, 32))

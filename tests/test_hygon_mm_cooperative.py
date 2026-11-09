@@ -83,3 +83,19 @@ def test_output_local_offset_and_grouped_grid_limits(cooperative):
         t.data_ptr = lambda i=i: (i + 1) * 2**60
     assert config.supports(*large)
     assert not replace(config, group_m=4).supports(*large)
+
+
+def test_requires_typed_fence_binding(cooperative, monkeypatch):
+    from triton._C import libtriton
+
+    if not hasattr(libtriton, "hcu"):
+        pytest.skip("HCU compiler required")
+    cooperative._supported.cache_clear()
+    try:
+        assert cooperative._supported()
+        with monkeypatch.context() as context:
+            context.delattr(libtriton.hcu, "create_accumulator_fence")
+            cooperative._supported.cache_clear()
+            assert not cooperative._supported()
+    finally:
+        cooperative._supported.cache_clear()

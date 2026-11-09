@@ -640,6 +640,8 @@ def mm_kernel(
     K_DIVISIBLE_BY_16: tl.constexpr = False,
     LOOP_UNROLL_FACTOR: tl.constexpr = 1,
     FULL_K_LOOP: tl.constexpr = False,
+    B_K_CONTIGUOUS: tl.constexpr = False,
+    USE_I32_INDEX: tl.constexpr = False,
 ):
     # Preserve the wrapper's K alignment proof independently of async-load
     # capability so synchronous boundary-checked loads retain vector accesses.
@@ -647,11 +649,13 @@ def mm_kernel(
     tl.static_assert(LOAD_MODE == -1 or (LOAD_MODE & ~ASYNC_LOAD_MASK) == 0)
     async_a: tl.constexpr = ASYNC_LOAD if LOAD_MODE == -1 else (LOAD_MODE & 1) != 0
     async_b: tl.constexpr = ASYNC_LOAD if LOAD_MODE == -1 else (LOAD_MODE & 2) != 0
-    if LARGE_TILE_CONFIGS or ASYNC_LOAD_MASK or K_DIVISIBLE_BY_16:
-        k_bound = tl.multiple_of(K.to(tl.int64), 16)
+    if K_DIVISIBLE_BY_16:
+        k_bound = tl.multiple_of(tl.cast(K, tl.int64), 16)
     else:
-        k_bound = K.to(tl.int64)
+        k_bound = tl.cast(K, tl.int64)
     pid = ext.program_id(0)
+    if USE_I32_INDEX:
+        pid = pid.to(tl.int32)
 
     # --------------------------
     # match naming: num_pid_m, num_pid_n
@@ -689,7 +693,9 @@ def mm_kernel(
     full_tiles_only: tl.constexpr = (
         FULL_K_LOOP and K_DIVISIBLE_BY_16 and (16 % BLOCK_K == 0)
     )
-    if full_tiles_only:
+    if USE_TLE:
+        prev_k_mult = tl.cdiv(K, BLOCK_K) * BLOCK_K
+    elif full_tiles_only:
         prev_k_mult = K
     elif FULL_K_LOOP:
         prev_k_mult = (K // BLOCK_K) * BLOCK_K
@@ -704,7 +710,7 @@ def mm_kernel(
 
     # Keep A in block-pointer form: DTK Clang18 can lose byte-offset scaling
     # for explicit masked A pointers in pipelined gfx936 MM. The boundary
-    # checks retain M/K tails. B edge tiles keep their explicit masks.
+    # checks retain tails for both descriptors.
     if USE_TLE:
         a_block_ptr = tl.make_block_ptr(
             base=a_ptr,
@@ -720,7 +726,7 @@ def mm_kernel(
             strides=(stride_bk, stride_bn),
             offsets=(0, (pid_n * BLOCK_N).to(tl.int32)),
             block_shape=(BLOCK_K, BLOCK_N),
-            order=(1, 0),
+            order=(0, 1) if B_K_CONTIGUOUS else (1, 0),
         )
 
     # --------------------------
@@ -731,34 +737,18 @@ def mm_kernel(
     ):
         rk = start_k + offs_k
 
-        if not MASK_EDGES and USE_TLE:
+        if USE_TLE:
+            # Keep async input lifetimes and K-tail padding in one loop.
             a = tle.load(
-                a_block_ptr,
-                # Choose the copy policy per candidate. Most shapes retain
-                # the register/shared pipeline; packed-K candidates also
-                # compare direct-to-LDS loads.
+                a_block_ptr, boundary_check=(0, 1), padding_option="zero",
                 is_async=async_a,
             )
             b = tle.load(
-                b_block_ptr,
+                b_block_ptr, boundary_check=(0, 1), padding_option="zero",
                 is_async=async_b,
             )
             a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
             b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
-        elif MASK_EDGES and USE_TLE:
-            a = tle.load(
-                a_block_ptr,
-                boundary_check=(0,),
-                padding_option="zero",
-                is_async=async_a,
-            )
-            a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
-            b = tle.load(
-                b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-                mask=(offs_bn_cont < N)[None, :],
-                other=0.0,
-                is_async=async_b,
-            )
         elif MASK_EDGES:
             a = tl.load(
                 a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
@@ -784,69 +774,31 @@ def mm_kernel(
 
         if IS_FP64:
             accumulator += tl.dot(a, b, out_dtype=tl.float64, allow_tf32=False)
+        elif USE_TLE:
+            accumulator = tl.dot(
+                a, b, accumulator, out_dtype=tl.float32, allow_tf32=False
+            )
         else:
             accumulator += tl.dot(a, b, out_dtype=tl.float32, allow_tf32=False)
 
     # --------------------------
     # loop peel
     # --------------------------
-    if not full_tiles_only:
+    if not USE_TLE and not full_tiles_only:
         if not FULL_K_LOOP or prev_k_mult < K:
             rk = prev_k_mult + offs_k
             mask_k = rk < K
 
-            if not MASK_EDGES and USE_TLE:
-                if LARGE_TILE_CONFIGS and BLOCK_M == 256 and BLOCK_N == 256 and BLOCK_K == 16:
-                    a = tle.load(a_block_ptr, is_async=async_a)
-                    b = tle.load(b_block_ptr, is_async=async_b)
-                else:
-                    a = tle.load(
-                        a_block_ptr,
-                        boundary_check=(0, 1),
-                        padding_option="zero",
-                        is_async=async_a,
-                    )
-                    b = tle.load(
-                        b_block_ptr,
-                        boundary_check=(0, 1),
-                        padding_option="zero",
-                        is_async=async_b,
-                    )
-            elif MASK_EDGES and USE_TLE:
-                a = tle.load(
-                    a_block_ptr,
-                    boundary_check=(0, 1),
-                    padding_option="zero",
-                    is_async=async_a,
-                )
-                b = tle.load(
-                    b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-                    mask=mask_k[:, None] & ((offs_bn_cont < N)[None, :] if MASK_EDGES else True),
-                    other=0.0,
-                    is_async=async_b,
-                )
-            elif IS_FP64:
-                a = tl.load(
-                    a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
-                    mask=mask_k[None, :] & ((offs_am_cont < M)[:, None] if MASK_EDGES else True),
-                    other=0.0,
-                )
-                b = tl.load(
-                    b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-                    mask=mask_k[:, None] & ((offs_bn_cont < N)[None, :] if MASK_EDGES else True),
-                    other=0.0,
-                )
-            else:
-                a = tl.load(
-                    a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
-                    mask=mask_k[None, :] & ((offs_am_cont < M)[:, None] if MASK_EDGES else True),
-                    other=0.0,
-                )
-                b = tl.load(
-                    b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
-                    mask=mask_k[:, None] & ((offs_bn_cont < N)[None, :] if MASK_EDGES else True),
-                    other=0.0,
-                )
+            a = tl.load(
+                a_ptr + (offs_am_cont[:, None] * stride_am + rk[None, :] * stride_ak),
+                mask=mask_k[None, :] & ((offs_am_cont < M)[:, None] if MASK_EDGES else True),
+                other=0.0,
+            )
+            b = tl.load(
+                b_ptr + (rk[:, None] * stride_bk + offs_bn_cont[None, :] * stride_bn),
+                mask=mask_k[:, None] & ((offs_bn_cont < N)[None, :] if MASK_EDGES else True),
+                other=0.0,
+            )
 
             if a.dtype != b.dtype:
                 a = a.to(c_ptr.dtype.element_ty)
@@ -922,13 +874,15 @@ def mm(a, b):
         return mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c_dtype)
 
     c = torch.empty((M, N), device=device, dtype=c_dtype)
+    _launch_matrix_mm(a, b, c)
+    return c
+
+
+def _launch_matrix_mm(a, b, c):
     from .mm_splitk import try_mm_splitk
 
-    if try_mm_splitk(a, b, c, compare_local_split=True):
-        return c
-
-    _launch_mm_family(a, b, c)
-    return c
+    if not try_mm_splitk(a, b, c, compare_local_split=True):
+        _launch_mm_family(a, b, c)
 
 
 def _launch_mm_family(a, b, c):
@@ -1032,10 +986,5 @@ def mm_out(a, b, *, out):
         c.copy_(mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c.dtype))
         return c
 
-    from .mm_splitk import try_mm_splitk
-
-    if try_mm_splitk(a, b, c, compare_local_split=True):
-        return c
-
-    _launch_mm_family(a, b, c)
+    _launch_matrix_mm(a, b, c)
     return c
