@@ -366,6 +366,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -825,6 +829,7 @@ from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
 from .sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe  # noqa: F401
 from .sparse_compressed_tensor import sparse_compressed_tensor  # noqa: F401
+from .sparse_mm_reduce_impl import _sparse_mm_reduce_impl  # noqa: F401
 from .sparse_sampled_addmm import (  # noqa: F401
     sparse_sampled_addmm,
     sparse_sampled_addmm_out,
@@ -913,6 +918,7 @@ from .sqrt import sqrt, sqrt_
 from .square import square, square_out
 from .square_ import square_
 from .squeeze_copy import squeeze_copy  # noqa: F401
+from .sspaddmm import sspaddmm, sspaddmm_out  # noqa: F401
 from .stack import stack
 from .std import std
 from .sub import sub, sub_, subtract, subtract_
@@ -970,6 +976,10 @@ from .vstack import vstack
 from .weight_norm import _weight_norm
 from .weightnorm import weight_norm_interface, weight_norm_interface_backward
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
+from .wrapped_linear_prepack import _wrapped_linear_prepack  # noqa: F401
+from .wrapped_quantized_linear_prepacked import (  # noqa: F401
+    _wrapped_quantized_linear_prepacked,
+)
 from .xlogy import (
     xlogy,
     xlogy_,

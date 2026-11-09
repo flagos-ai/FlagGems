@@ -102,6 +102,8 @@ def test_sparse_csc_tensor_unsafe_dtype(nnz, dtype):
     ccol, row, values = _make_components(nnz, dtype)
     size = (4, 4)
     target = torch.float64
+    if not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported on this device")
 
     ref_values = utils.to_reference(values).to(target)
     ref = torch.ops.aten._sparse_csc_tensor_unsafe(

@@ -26,6 +26,15 @@ from flag_gems.ops._wrapped_linear_prepack import (
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+def _assert_equal(actual, expected):
+    if IS_KUNLUNXIN:
+        actual, expected = actual.cpu(), expected.cpu()
+    utils.gems_assert_equal(actual, expected)
+
+
 SHAPES = [(4, 8)] if cfg.QUICK_MODE else [(0, 7), (5, 0), (4, 8), (33, 65), (128, 256)]
 
 
@@ -45,6 +54,9 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
 
     ref_weight = utils.to_reference(weight)
     ref_bias = utils.to_reference(bias)
+    if IS_KUNLUNXIN:
+        ref_weight = ref_weight.cpu()
+        ref_bias = ref_bias.cpu()
     ref_quantized = torch.quantize_per_tensor(
         ref_weight, float(scale), int(zero_point), torch.qint8
     ).int_repr()
@@ -52,8 +64,8 @@ def test_wrapped_linear_prepack(shape, noncontiguous):
     packed = _wrapped_linear_prepack(weight, scale, zero_point, bias)
     actual_weight, metadata, actual_bias = unpack_linear_weight(packed, N, K)
 
-    utils.gems_assert_equal(actual_weight, ref_quantized)
-    utils.gems_assert_equal(actual_bias, ref_bias)
+    _assert_equal(actual_weight, ref_quantized)
+    _assert_equal(actual_bias, ref_bias)
     assert metadata[0].item() == pytest.approx(float(scale))
     assert metadata[1].item() == pytest.approx(float(zero_point))
     assert metadata[2].item() == pytest.approx(_PACK_MAGIC)
@@ -72,11 +84,12 @@ def test_wrapped_linear_prepack_rounds_ties_to_even_and_clamps():
 
     packed = _wrapped_linear_prepack(weight, scale, zero_point, bias)
     actual_weight, _, _ = unpack_linear_weight(packed, 1)
-    ref_weight = torch.quantize_per_tensor(
-        utils.to_reference(weight), 0.5, -3, torch.qint8
-    ).int_repr()
+    ref_source = utils.to_reference(weight)
+    if IS_KUNLUNXIN:
+        ref_source = ref_source.cpu()
+    ref_weight = torch.quantize_per_tensor(ref_source, 0.5, -3, torch.qint8).int_repr()
 
-    utils.gems_assert_equal(actual_weight, ref_weight)
+    _assert_equal(actual_weight, ref_weight)
 
 
 @pytest.mark.wrapped_linear_prepack
