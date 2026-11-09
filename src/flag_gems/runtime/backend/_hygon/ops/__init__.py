@@ -97,6 +97,7 @@ from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
 from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
+from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
 from .histc import histc
@@ -206,7 +207,10 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
-from .thnn_fused_gru_cell_backward import thnn_fused_gru_cell_backward
+from .thnn_fused_gru_cell_backward import (
+    _thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward_out,
+)
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
@@ -233,6 +237,8 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
     "_scaled_dot_product_flash_attention",
+    "_thnn_fused_gru_cell_backward",
+    "_thnn_fused_gru_cell_backward_out",
     "_thnn_fused_lstm_cell",
     "_unique2",
     "adaptive_avg_pool2d_backward",
@@ -294,6 +300,7 @@ __all__ = [
     "gelu_backward",
     "greater_",
     "grid_sampler_3d",
+    "grouped_mm_w8a8",
     "hadamard_transform",
     "hardsigmoid_backward",
     "heur_block_n",
@@ -415,7 +422,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
-    "thnn_fused_gru_cell_backward",
     "tile",
     "topk_w8a16_fp8",
     "triangular_solve",
