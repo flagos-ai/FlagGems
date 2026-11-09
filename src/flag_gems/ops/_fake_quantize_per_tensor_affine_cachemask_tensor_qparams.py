@@ -45,15 +45,19 @@ def _fake_quantize_per_tensor_affine_cachemask_tensor_qparams_kernel(
 
     # Scalar qparams stay on device: one load per program, then cache hits.
     scale = tl.load(scale_ptr).to(tl.float32)
+    inv = tl.div_rn(1.0, scale)
     zero_point = tl.load(zero_point_ptr).to(tl.float32)
     enabled = tl.load(fake_quant_enabled_ptr) != 0
 
     x = tl.load(x_ptr + offsets, mask=load_mask, other=0.0).to(tl.float32)
-    # nearbyint rounds half to even under the default rounding mode, matching
-    # the aten reference; same helper the other fake-quant kernels use.
-    q = tl_extra_shim.nearbyint(x / scale + zero_point)
+    # ATen's tensor_qparams path multiplies by the fp32 reciprocal of scale and
+    # rounds to nearest even before adding zero_point; dividing by scale differs
+    # by an ulp on exact ties.
+    q = tl_extra_shim.nearbyint(x * inv) + zero_point
     in_range = (q >= QUANT_MIN) & (q <= QUANT_MAX)
     q_clamped = tl.minimum(tl.maximum(q, QUANT_MIN), QUANT_MAX)
+    # NaN does not propagate through ATen's clamp; it lands on QUANT_MIN.
+    q_clamped = tl.where(x != x, QUANT_MIN * 1.0, q_clamped)
     quantized = scale * (q_clamped - zero_point)
     # When fake quantization is disabled, pass through the input and report
     # the whole tensor as in-range (mask all True).
