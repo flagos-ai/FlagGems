@@ -1,63 +1,38 @@
+# Copyright 2026, The FlagOS Contributors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+"""Kunlunxin ``_conj``: zero-copy conjugate view.
+
+``aten::_conj`` only toggles the lazy conjugate bit on a storage-sharing
+alias; nothing is read or written. Delegating to ATen's backend-agnostic
+CompositeExplicitAutograd implementation keeps that view semantics (and its
+``ConjBackward0`` autograd rule) while bypassing FlagGems' own registration
+for this one call.
+"""
+
 import logging
 
 import torch
-import triton
-import triton.language as tl
 
-from flag_gems.runtime import torch_device_fn
+from flag_gems import runtime
 
 logger = logging.getLogger(__name__)
 
-
-@triton.jit
-def _conj_flat_kernel(fin, fout, n2, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    i = pid * BLOCK + tl.arange(0, BLOCK)
-    m = i < n2
-    x = tl.load(fin + i, mask=m)
-    out = tl.where((i % 2) == 1, -x, x)
-    tl.store(fout + i, out, mask=m)
-
-
-@triton.jit
-def _conj_flat_copy_kernel(fin, fout, n2, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    i = pid * BLOCK + tl.arange(0, BLOCK)
-    m = i < n2
-    x = tl.load(fin + i, mask=m)
-    tl.store(fout + i, x, mask=m)
-
-
-def _flatten_storage(input: torch.Tensor) -> torch.Tensor:
-    """Return a contiguous 1D view of the interleaved real/imag storage.
-
-    ``view_as_real`` strips the complex dtype, so materializing a
-    non-contiguous input goes through the vendor ``copy_`` for a *real* tensor
-    (the complex ``copy_`` is rejected by the vendor on this stack).
-    """
-    rv = torch.view_as_real(input)
-    if not rv.is_contiguous():
-        rv = rv.contiguous()
-    return rv.reshape(-1)
-
-
-def _conj_block_size(n2: int) -> int:
-    return 32768 if n2 >= 1 << 20 else 8192
-
-
-def _conj_from_storage(input: torch.Tensor) -> torch.Tensor:
-    """Materialize ``conj`` of a tensor whose storage is the physical value."""
-    out = torch.empty_like(input, memory_format=torch.contiguous_format)
-    fin = _flatten_storage(input)
-    fout = torch.view_as_real(out).reshape(-1)
-    n2 = fin.numel()
-
-    BLOCK = _conj_block_size(n2)
-    grid = (triton.cdiv(n2, BLOCK),)
-    with torch_device_fn.device(input.device):
-        _conj_flat_kernel[grid](fin, fout, n2, BLOCK=BLOCK, num_warps=8)
-
-    return out
+# NOTE: parse_dispatch_key also resolves renamed PrivateUse1 keys.
+_BACKEND_KEYSET = torch._C.DispatchKeySet(
+    torch._C._parse_dispatch_key(runtime.device.dispatch_key)
+)
 
 
 def _conj(input: torch.Tensor) -> torch.Tensor:
@@ -65,15 +40,5 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     if not input.is_complex():
         raise RuntimeError("_conj only supports complex tensors")
 
-    if input.is_conj():
-        out = torch.empty_like(input, memory_format=torch.contiguous_format)
-        fin = _flatten_storage(input)
-        fout = torch.view_as_real(out).reshape(-1)
-        n2 = fin.numel()
-        BLOCK = _conj_block_size(n2)
-        grid = (triton.cdiv(n2, BLOCK),)
-        with torch_device_fn.device(input.device):
-            _conj_flat_copy_kernel[grid](fin, fout, n2, BLOCK=BLOCK, num_warps=8)
-        return out
-
-    return _conj_from_storage(input)
+    with torch._C._ExcludeDispatchKeyGuard(_BACKEND_KEYSET):
+        return torch._conj(input)

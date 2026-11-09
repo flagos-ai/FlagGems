@@ -22,6 +22,11 @@ from flag_gems.utils import libentry, libtuner
 
 logger = logging.getLogger(__name__)
 
+# NOTE: parse_dispatch_key also resolves renamed PrivateUse1 keys.
+_BACKEND_KEYSET = torch._C.DispatchKeySet(
+    torch._C._parse_dispatch_key(runtime.device.dispatch_key)
+)
+
 
 @libentry()
 @libtuner(
@@ -66,9 +71,12 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
     toggles the tensor's conjugate bit (~0.00036 ms, zero data traffic).
     Materializing it with a Triton kernel (as the generic FlagGems
     implementation does) is both a semantic deviation from eager semantics and
-    a massive latency regression for large tensors. For complex64/complex128
-    we reproduce the zero-copy conjugate-bit view exactly (same approach as
-    the _thead backend).
+    a massive latency regression for large tensors.
+
+    For complex64/complex128 we delegate to ATen's native ``_conj`` (under a
+    dispatch guard that skips FlagGems' own registration), which reproduces the
+    zero-copy conjugate-bit view exactly, including ``ConjBackward0`` autograd
+    metadata.
 
     torch_musa cannot materialize complex32 (ComplexHalf) conjugate-bit views
     ("SetMUTensorDType Unsupported tensor dtype: ComplexHalf"), so complex32
@@ -81,18 +89,10 @@ def _conj(input: torch.Tensor) -> torch.Tensor:
         # zero-copy alias behavior.
         return input.as_strided(input.size(), input.stride(), input.storage_offset())
 
-    if input.is_conj():
-        # conj(conj(x)) = x: toggle the conjugate bit off, still zero-copy.
-        out = input.as_strided(input.size(), input.stride(), input.storage_offset())
-        torch._C._set_conj(out, False)
-        return out
-
     if input.dtype == torch.complex32:
         # torch_musa cannot read back conj-bit complex32 views correctly.
         return _conj_physical_copy(input)
 
-    # complex64/complex128: build a storage-sharing alias with the conjugate
-    # bit set, matching eager ``torch._conj`` semantics (involution included).
-    out = input.as_strided(input.size(), input.stride(), input.storage_offset())
-    torch._C._set_conj(out, True)
-    return out
+    # complex64/complex128: native lazy conjugate view, zero copy.
+    with torch._C._ExcludeDispatchKeyGuard(_BACKEND_KEYSET):
+        return torch._conj(input)
