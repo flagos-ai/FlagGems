@@ -304,6 +304,7 @@ from .uniform import uniform_
 from .unique import _unique2, simple_unique_flat, sorted_indices_unique_flat
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
+from .upsample_bicubic2d import upsample_bicubic2d
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_nearest1d import upsample_nearest1d
 from .upsample_nearest2d import upsample_nearest2d
@@ -694,6 +695,7 @@ __all__ = [
     "uniform_",
     "unique_consecutive",
     "unique_dim",
+    "upsample_bicubic2d",
     "upsample_nearest1d",
     "upsample_nearest2d",
     "value_selecting_reduction_backward",
