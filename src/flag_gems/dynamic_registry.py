@@ -215,6 +215,21 @@ class DynamicOpOverride:
         """Return list of currently overridden operator names."""
         return list(self._overrides.keys())
 
+    def unused_overrides(self, module_name: str = "flag_gems") -> List[str]:
+        """Names injected via ``override_from_file`` that were never invoked.
+
+        Read-only counterpart of the check ``restore_all`` performs, for callers
+        that need to know *before* the implementations are restored -- for
+        example a report writer that must not publish numbers produced by some
+        other implementation than the one that was requested.
+        """
+        prefix = f"{module_name}."
+        return sorted(
+            full_name[len(prefix) :]
+            for full_name in self._tracked
+            if full_name.startswith(prefix) and self._call_counts.get(full_name, 0) == 0
+        )
+
     def call_counts(self) -> Dict[str, int]:
         """Snapshot actual invocations of file-injected implementations."""
         return dict(self._call_counts)
