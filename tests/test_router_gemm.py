@@ -16,22 +16,19 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
-
-ROUTER_SHAPES = accuracy_shapes("router_gemm", QUICK_MODE)
-INPUT_DTYPES = [torch.bfloat16]
+from .gemm_utils import GEMM_DTYPES, accuracy_cases
 
 
 @pytest.mark.router_gemm
 @pytest.mark.parametrize(
     "M, N, K, b_column_major", accuracy_cases("router_gemm", QUICK_MODE)
 )
-@pytest.mark.parametrize("in_dtype", INPUT_DTYPES)
+@pytest.mark.parametrize("in_dtype", GEMM_DTYPES)
 def test_router_gemm_accuracy(M, N, K, in_dtype, b_column_major):
-    """Test that router_gemm (bf16 input -> fp32 output) matches fp32 reference."""
+    """Test that router_gemm (low-precision input -> fp32 output) matches fp32 reference."""
     x = torch.randn((M, K), dtype=in_dtype, device=flag_gems.device)
     weight = (
         torch.randn((N, K), dtype=in_dtype, device=flag_gems.device)
@@ -52,10 +49,11 @@ def test_router_gemm_accuracy(M, N, K, in_dtype, b_column_major):
 
 @pytest.mark.router_gemm
 @pytest.mark.parametrize("M, N, K", [(16, 256, 7168)])
-def test_router_gemm_output_dtype(M, N, K):
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
+def test_router_gemm_output_dtype(M, N, K, dtype):
     """Verify output dtype is fp32 (MoE router gate requirement)."""
-    x = torch.randn((M, K), dtype=torch.bfloat16, device=flag_gems.device)
-    weight = torch.randn((N, K), dtype=torch.bfloat16, device=flag_gems.device)
+    x = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    weight = torch.randn((N, K), dtype=dtype, device=flag_gems.device)
 
     out_fp32 = flag_gems.router_gemm(x, weight)
     assert out_fp32.dtype == torch.float32

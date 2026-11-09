@@ -16,20 +16,14 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
-from .accuracy_utils import FLOAT_DTYPES as ORIG_FLOAT_DTYPES
 from .accuracy_utils import SCALARS, gems_assert_close, to_reference
 from .conftest import QUICK_MODE
+from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
 
 BMNK_SHAPES = accuracy_shapes("baddbmm", QUICK_MODE)
 MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
 BACKWARD_SHAPES = [(2, 16, 4096), (32, 64, 2048)]
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else ORIG_FLOAT_DTYPES
-
-# THead GEMM delivery coverage is BF16, including quick-mode runs.
-if flag_gems.vendor_name == "thead":
-    FLOAT_DTYPES = [torch.bfloat16]
 
 GNK_SHAPES = [(16, 512, 2048), (16, 2560, 2048), (64, 2048, 128)]
 
@@ -48,11 +42,8 @@ FP8_MNK_SHAPES = [
     "batch, M, N, K, b_column_major", accuracy_cases("baddbmm", QUICK_MODE)
 )
 @pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm(monkeypatch, batch, M, N, K, scalar, dtype, b_column_major):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
     mat2 = (
         torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device).transpose(1, 2)
@@ -75,7 +66,7 @@ def test_baddbmm(monkeypatch, batch, M, N, K, scalar, dtype, b_column_major):
 @pytest.mark.baddbmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm_out(M, N, K, scalar, dtype):
     batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
@@ -98,11 +89,8 @@ def test_baddbmm_out(M, N, K, scalar, dtype):
 @pytest.mark.baddbmm
 @pytest.mark.parametrize("M, N, K", BACKWARD_SHAPES)
 @pytest.mark.parametrize("scalar", SCALARS)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_baddbmm_backward(M, N, K, scalar, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #3794: not working")
-
     batch = 2
     mat1 = torch.randn(
         (batch, M, K), dtype=dtype, device=flag_gems.device, requires_grad=True

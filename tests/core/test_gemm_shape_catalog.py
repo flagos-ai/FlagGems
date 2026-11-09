@@ -14,9 +14,6 @@
 
 """The platform core suite has a fixed, tensor-free case contract."""
 
-import ast
-from pathlib import Path
-
 import pytest
 
 from benchmark.gemm_shapes import _catalog, accuracy_cases, blas_cases, gemm_layouts
@@ -57,30 +54,10 @@ def test_explicit_layout_selection_and_other_blas_order():
     shape = (1, 32, 512, 4096)
     assert list(blas_cases("mm", [shape], requested="nt")) == [(*shape, True)]
     assert gemm_layouts("mm", (1, 64, 1, 4096)) == (False,)
+    assert gemm_layouts("mm", (1, 64, 1, 4096), requested="both") == (False, True)
+    assert gemm_layouts("bmm", shape, requested="nn") == (False, True)
     assert gemm_layouts("mv", (1, 4096)) == (False,)
     shapes = [shape, (1, 64, 64, 2048)]
     assert list(blas_cases("other", shapes, comprehensive=True)) == [
         (*s, layout) for layout in (False, True) for s in shapes
     ]
-
-
-def test_accuracy_parameter_axes_are_unique():
-    root = Path(__file__).resolve().parents[1]
-    for op in ("mm", "mv", "addmm", "bmm", "baddbmm", "router_gemm"):
-        module = ast.parse((root / f"test_{op}.py").read_text())
-        for function in module.body:
-            if not isinstance(function, ast.FunctionDef):
-                continue
-            seen = set()
-            for mark in function.decorator_list:
-                if (
-                    isinstance(mark, ast.Call)
-                    and isinstance(mark.func, ast.Attribute)
-                    and mark.func.attr == "parametrize"
-                ):
-                    names = {
-                        name.strip()
-                        for name in ast.literal_eval(mark.args[0]).split(",")
-                    }
-                    assert not seen & names, (op, function.name, seen & names)
-                    seen.update(names)

@@ -16,22 +16,15 @@ import pytest
 import torch
 
 import flag_gems
-from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
-
-MN_SHAPES = accuracy_shapes("mv", cfg.QUICK_MODE)
-FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.FLOAT_DTYPES
-
-# THead GEMM delivery coverage is BF16, including quick-mode runs.
-if flag_gems.vendor_name == "thead":
-    FLOAT_DTYPES = [torch.bfloat16]
+from .gemm_utils import GEMM_DTYPES, accuracy_cases
 
 
 @pytest.mark.mv
 @pytest.mark.parametrize("N, K, column_major", accuracy_cases("mv", cfg.QUICK_MODE))
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_mv(N, K, dtype, column_major):
     matrix = (
         torch.randn((K, N), dtype=dtype, device=flag_gems.device).t()

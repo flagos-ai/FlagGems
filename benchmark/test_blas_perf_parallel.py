@@ -32,7 +32,7 @@ import yaml
 import flag_gems
 
 from . import consts
-from .base import Benchmark, GenericBenchmark2DOnly, deduplicate_thead_gemm_shapes
+from .base import Benchmark, GenericBenchmark2DOnly
 from .conftest import Config, emit_record_logger
 from .consts import (
     COMPLEX_DTYPES,
@@ -45,6 +45,8 @@ from .consts import (
     model_shapes,
 )
 from .gemm_shapes import blas_cases, gemm_layouts, input_metadata
+from .test_baddbmm import baddbmm_input_fn
+from .test_mv import mv_input_fn
 
 try:
     from vllm.model_executor.layers.quantization.utils.fp8_utils import (
@@ -116,10 +118,6 @@ class BlasBenchmark(Benchmark):
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
-
-    def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        self.shapes = deduplicate_thead_gemm_shapes(self.op_name, self.shapes)
 
     def get_input_iter(self, cur_dtype) -> Generator:
         for b, m, n, k, column_major in blas_cases(
@@ -229,8 +227,14 @@ class MvAndOuterBenchmark(GenericBenchmark2DOnly):
         return None
 
     def get_input_iter(self, cur_dtype) -> Generator:
-        for m, n in self.shapes:
-            yield from self.input_fn(m, n, cur_dtype, self.device)
+        for shape in self.shapes:
+            if self.op_name == "mv":
+                for column_major in gemm_layouts("mv", shape):
+                    yield from self.input_fn(
+                        *shape, cur_dtype, self.device, column_major
+                    )
+            else:
+                yield from self.input_fn(*shape, cur_dtype, self.device)
 
 
 class AddmvBenchmark(GenericBenchmark2DOnly):
@@ -289,7 +293,7 @@ ROUTER_GEMM_SHAPES = [
 
 class RouterGemmBenchmark(BlasBenchmark):
     """
-    benchmark for router_gemm (bf16 -> fp32)
+    benchmark for router_gemm (FP16 or BF16 inputs, FP32 output)
     """
 
     DEFAULT_SHAPES = ROUTER_GEMM_SHAPES[:]
@@ -328,30 +332,6 @@ def bmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
     else:
         inp2 = torch.randn([b, k, n], dtype=cur_dtype, device=device)
         yield inp1, inp2
-
-
-def baddbmm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    # THead delivery measures forward inference; backward has separate accuracy tests.
-    requires_grad = flag_gems.vendor_name != "thead"
-    inp1 = torch.randn(
-        [b, m, k], dtype=cur_dtype, device=device, requires_grad=requires_grad
-    )
-
-    if b_column_major:
-        inp2 = torch.randn(
-            [b, n, k], dtype=cur_dtype, device=device, requires_grad=requires_grad
-        )
-        inp2 = inp2.transpose(1, 2)
-    else:
-        inp2 = torch.randn(
-            [b, k, n], dtype=cur_dtype, device=device, requires_grad=requires_grad
-        )
-
-    bias = torch.randn(
-        [b, m, n], dtype=cur_dtype, device=device, requires_grad=requires_grad
-    )
-
-    yield bias, inp1, inp2
 
 
 def mm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
@@ -394,12 +374,6 @@ def group_mm_input_fn(groups, N, K, cur_dtype, device):
     yield mat_a, mat_b, offs
 
 
-def mv_input_fn(m, n, cur_dtype, device):
-    inp1 = torch.randn([m, n], dtype=cur_dtype, device=device)
-    inp2 = torch.randn([n], dtype=cur_dtype, device=device)
-    yield inp1, inp2
-
-
 def outer_input_fn(m, n, cur_dtype, device):
     inp1 = torch.randn([m], dtype=cur_dtype, device=device)
     inp2 = torch.randn([n], dtype=cur_dtype, device=device)
@@ -415,7 +389,7 @@ def addmv_input_fn(m, n, cur_dtype, device):
 
 
 def router_gemm_input_fn(b, m, n, k, cur_dtype, device, b_column_major):
-    x = torch.randn([m, k], dtype=torch.bfloat16, device=device)
+    x = torch.randn([m, k], dtype=cur_dtype, device=device)
     weight = (
         torch.randn([n, k], dtype=cur_dtype, device=device)
         if b_column_major
@@ -1051,11 +1025,9 @@ class ParallelBenchmarkMixin:
             else:
                 metrics = self._run_inputs(self.get_input_iter(dtype), dtype=dtype)
 
-            record_results = self.RECORD_PARALLEL_RESULTS or (
-                flag_gems.vendor_name == "thead"
-                and self.op_name in ("mm", "mv", "addmm", "bmm", "baddbmm")
-            )
-            if record_results and not os.environ.get(PARALLEL_RESULT_FILE_ENV):
+            if self.RECORD_PARALLEL_RESULTS and not os.environ.get(
+                PARALLEL_RESULT_FILE_ENV
+            ):
                 # Main process of an opted-in benchmark: record the merged
                 # metrics like a single-process benchmark (--record json).
                 self._emit_result(dtype, metrics)
@@ -1191,7 +1163,8 @@ class ParallelBaddbmmBenchmark(ParallelBenchmarkMixin, BaddbmmBenchmark):
 
 
 class ParallelMvAndOuterBenchmark(ParallelBenchmarkMixin, MvAndOuterBenchmark):
-    pass
+    def get_parallel_metric_group_size(self, shape):
+        return len(gemm_layouts("mv", shape)) if self.op_name == "mv" else 1
 
 
 class ParallelAddmvBenchmark(ParallelBenchmarkMixin, AddmvBenchmark):
@@ -1257,7 +1230,8 @@ class ParallelMulBenchmark(ParallelBenchmarkMixin, Benchmark):
 
 
 class ParallelRouterGemmBenchmark(ParallelBenchmarkMixin, RouterGemmBenchmark):
-    RECORD_PARALLEL_RESULTS = True
+    # NVIDIA and Cambricon report through the dedicated Router GEMM benchmark.
+    RECORD_PARALLEL_RESULTS = flag_gems.vendor_name == "thead"
 
     def get_parallel_metric_group_size(self, shape):
         return len(
@@ -1624,7 +1598,7 @@ def test_blas_benchmark(op_name, torch_op, input_fn, bench_cls):
         input_fn=input_fn,
         op_name=op_name,
         torch_op=torch_op,
-        dtypes=consts.GEMM_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.run()
 
@@ -1747,7 +1721,7 @@ def test_mv_and_outer_benchmark(op_name, torch_op, input_fn):
         input_fn=input_fn,
         op_name=op_name,
         torch_op=torch_op,
-        dtypes=consts.GEMM_DTYPES if op_name == "mv" else FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES if op_name == "mv" else FLOAT_DTYPES,
     )
     bench.run()
 
@@ -1815,7 +1789,7 @@ def test_perf_router_gemm():
         input_fn=router_gemm_input_fn,
         op_name="router_gemm",
         torch_op=torch_router_gemm,
-        dtypes=[torch.bfloat16],
+        dtypes=consts.FP16_BF16_DTYPES,
     )
     bench.set_gems(flag_gems.router_gemm)
     bench.run()

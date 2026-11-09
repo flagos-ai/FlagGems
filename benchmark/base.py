@@ -1246,20 +1246,6 @@ class TexGluBackwardBenchmark(TexGluBenchmark):
         return torch.tensor(inp_shape).prod().item() * 2
 
 
-def deduplicate_thead_gemm_shapes(op_name, shapes):
-    """Ignore the unused batch field only for THead's two-dimensional GEMMs."""
-    if vendor_name != "thead" or op_name not in ("mm", "mm_out", "addmm", "addmm_out"):
-        return shapes
-    seen = set()
-    unique = []
-    for shape in shapes:
-        key = tuple(shape[1:])
-        if key not in seen:
-            seen.add(key)
-            unique.append(shape)
-    return unique
-
-
 class BlasBenchmark(Benchmark):
     """
     benchmark for blas
@@ -1270,10 +1256,6 @@ class BlasBenchmark(Benchmark):
     def __init__(self, *args, input_fn, **kwargs):
         super().__init__(*args, **kwargs)
         self.input_fn = input_fn
-
-    def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path)
-        self.shapes = deduplicate_thead_gemm_shapes(self.op_name, self.shapes)
 
     def get_input_iter(self, dtype) -> Generator:
         for b, m, n, k, column_major in blas_cases(
@@ -1308,10 +1290,7 @@ class BlasBenchmark(Benchmark):
                 ordinal=ordinal,
                 dtype=dtype,
                 shape={"b": b, "m": m, "n": n, "k": k},
-                params={
-                    "b_column_major": b_column_major,
-                    "layout": "NT" if b_column_major else "NN",
-                },
+                params={"b_column_major": b_column_major},
                 builder_args=(b, m, n, k, dtype, self.device, b_column_major),
             )
 

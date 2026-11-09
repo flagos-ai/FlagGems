@@ -20,17 +20,12 @@ import torch
 import triton
 
 import flag_gems
-from benchmark.gemm_shapes import accuracy_cases, accuracy_shapes
 
 from . import accuracy_utils as utils
 from .conftest import QUICK_MODE
+from .gemm_utils import GEMM_DTYPES, accuracy_cases, accuracy_shapes
 
 MNK_SHAPES = accuracy_shapes("mm", QUICK_MODE)
-FLOAT_DTYPES = [torch.float32] if QUICK_MODE else utils.FLOAT_DTYPES
-
-# THead GEMM delivery coverage is BF16, including quick-mode runs.
-if flag_gems.vendor_name == "thead":
-    FLOAT_DTYPES = [torch.bfloat16]
 
 
 MK_SHAPES = (
@@ -60,11 +55,8 @@ def _mm_atol_base():
 # Issue #2833: fails at (1, 1, 2)
 @pytest.mark.mm
 @pytest.mark.parametrize("M, N, K, b_column_major", accuracy_cases("mm", QUICK_MODE))
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_mm(M, N, K, dtype, b_column_major):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #2834: Skipping fp32 mm test on tsingmicro platform")
-
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     if b_column_major:
         mat2 = torch.randn((N, K), dtype=dtype, device=flag_gems.device).t()
@@ -80,7 +72,7 @@ def test_mm(M, N, K, dtype, b_column_major):
 
 
 @pytest.mark.mm
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_mm_broadcast_stride_zero(dtype):
     """Regression test: broadcast tensors (stride=0) must not crash TMA path."""
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
@@ -195,7 +187,7 @@ def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
 @pytest.mark.mm
 @pytest.mark.mm_self_transpose
 @pytest.mark.parametrize("M, K", MK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_mm_self_transpose(M, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip(
@@ -218,7 +210,7 @@ def test_mm_self_transpose(M, K, dtype):
 
 @pytest.mark.mm_out
 @pytest.mark.parametrize("M, K", MK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_mm_out_self_transpose(M, K, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
         pytest.skip(

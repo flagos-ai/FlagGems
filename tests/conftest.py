@@ -54,31 +54,6 @@ TIMESTAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 REPORT_FILE = "accuracy_result.json"
 
 
-def pytest_ignore_collect(collection_path, config):
-    # Marker filtering normally happens after importing every test module.
-    # Scope single-operator THead validation before unrelated optional imports.
-    if flag_gems.vendor_name != "thead":
-        return None
-    test_files = {
-        "mm": "test_mm.py",
-        "mv": "test_mv.py",
-        "router_gemm": "test_router_gemm.py",
-        "addmm": "test_addmm.py",
-        "bmm": "test_bmm.py",
-        "baddbmm": "test_baddbmm.py",
-    }
-    target = test_files.get(config.getoption("markexpr").strip())
-    if (
-        target is not None
-        and collection_path.is_file()
-        and collection_path.name.startswith("test_")
-        and collection_path.suffix == ".py"
-        and collection_path.name != target
-    ):
-        return True
-    return None
-
-
 def pytest_addoption(parser):
     parser.addoption(
         "--ref",

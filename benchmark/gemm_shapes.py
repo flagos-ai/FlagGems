@@ -39,10 +39,8 @@ def gemm_layouts(op, shape, requested=None, comprehensive=False):
     """True means transposed-contiguous B, or a column-major MV matrix."""
     if op not in GEMM_OPS and op != "mv":
         return (False, True) if comprehensive else (False,)
-    if requested == "nn":
-        return (False,)
-    if requested == "nt":
-        return (True,)
+    if op == "mm" and requested is not None:
+        return {"nn": (False,), "nt": (True,), "both": (False, True)}[requested]
     equivalent = min(shape) == 1 if op == "mv" else min(shape[-2:]) == 1
     return (False,) if equivalent else (False, True)
 
