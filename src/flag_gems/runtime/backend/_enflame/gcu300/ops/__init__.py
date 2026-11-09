@@ -141,6 +141,7 @@ from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
 from .hardtanh_backward import hardtanh_backward
+from .histc import histc
 from .hstack import hstack
 from .index import index
 from .index_add import index_add, index_add_
@@ -468,6 +469,7 @@ __all__ = [
     "gt",
     "gt_scalar",
     "hardtanh_backward",
+    "histc",
     "hstack",
     "index",
     "index_add",
