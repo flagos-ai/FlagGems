@@ -90,6 +90,8 @@ def _assert_close(res, ref, dtype, atol):
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.parametrize("n_fft,hop_length,win_length", FFT_PARAMS)
 def test_istft_roundtrip(dtype, n_fft, hop_length, win_length):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("fp64 is not supported on this backend")
     signal_len = 4096
     batch = 2
     spec, window, ref_spec, ref_window = _build_case(
@@ -119,6 +121,8 @@ def test_istft_roundtrip(dtype, n_fft, hop_length, win_length):
 @pytest.mark.istft
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_istft_1d_signal(dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("fp64 is not supported on this backend")
     signal_len = 1024
     n_fft, hop_length, win_length = 256, 64, 256
     spec, window, ref_spec, ref_window = _build_case(
@@ -146,6 +150,8 @@ def test_istft_1d_signal(dtype):
 # pins the exact-arithmetic behavior this test targets.
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_istft_variants(dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("fp64 is not supported on this backend")
     signal_len = 2048
     n_fft, hop_length, win_length = 256, 64, 256
     batch = 2
