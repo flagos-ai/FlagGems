@@ -196,6 +196,7 @@ from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian
 from .native_layer_norm import native_layer_norm
 from .ne import ne, ne_scalar, not_equal_scalar
 from .neg import neg, neg_
+from .nll_loss2d import nll_loss2d
 from .nllloss import (
     nll_loss2d_backward,
     nll_loss2d_forward,
@@ -534,6 +535,7 @@ __all__ = [
     "ne_scalar",
     "neg",
     "neg_",
+    "nll_loss2d",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
     "nll_loss_backward",
