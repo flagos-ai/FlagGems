@@ -124,6 +124,7 @@ from .isin import isin
 from .isposinf import isposinf
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
+from .le_ import le_
 from .leaky_relu import leaky_relu
 from .leaky_relu_out import leaky_relu_out
 from .less_ import less_
@@ -426,6 +427,7 @@ __all__ = [
     "isposinf",
     "l1_loss",
     "layer_norm",
+    "le_",
     "leaky_relu",
     "leaky_relu_out",
     "less_",
