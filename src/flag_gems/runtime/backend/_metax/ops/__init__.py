@@ -109,6 +109,7 @@ from .rnn_tanh import rnn_tanh
 from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
+from .scaled_dot_product_attention_math_for_mps import _scaled_dot_product_attention_math_for_mps
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
@@ -149,6 +150,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
+    "_scaled_dot_product_attention_math_for_mps",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
