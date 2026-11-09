@@ -12,18 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import itertools
 import logging
 from typing import List, Tuple, Union
 
 import torch
 import triton
+from triton.backends.tsingmicro.precision import (
+    restore_precision_mode,
+    set_precision_mode,
+)
 
-from flag_gems.utils import pointwise_dynamic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig
-from flag_gems.utils.tensor_wrapper import StridedBuffer
+
+from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.tensor_wrapper import StridedBuffer
+from .copy import _int64_large_strided_unsafe
+from .copy import copy_ as copy_tensor
 
 logger = logging.getLogger(__name__)
+
+# f32 can only represent integers up to 2**24 exactly; under precision-mode 0/1
+# i32 strides are demoted to f32 arithmetic, so larger address intermediates
+# lose precision and elements land at wrong offsets. Force pm=2 for exact
+# integer arithmetic (same rationale as flip).
+_F32_PRECISION_THRESHOLD = 2**24
+
+
+def _needs_i64_precision(inputs, out0):
+    in_max = 0
+    for a in inputs:
+        if any(abs(a.stride(i)) > _F32_PRECISION_THRESHOLD for i in range(a.ndim)):
+            return True
+        in_max = max(
+            in_max,
+            sum((a.shape[i] - 1) * abs(a.stride(i)) for i in range(a.ndim)),
+        )
+    # output views are freshly allocated, so the store's max physical offset
+    # (logical - offset) * stride is bounded by out0.numel()
+    return max(in_max, out0.numel()) > _F32_PRECISION_THRESHOLD
 
 
 config_ = CodeGenConfig(
@@ -95,15 +123,37 @@ def cat(
     out_shape = list(inp0_shape)
     out_shape[dim] = sum(s[dim] for s in inp_shapes)
     out0 = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
-    out0_strides = out0.stride()
-    out0_offsets = list(
-        itertools.accumulate(
-            [s[dim] * out0_strides[dim] for s in inp_shapes[:-1]], initial=0
-        )
+    out0_dim_offsets = list(
+        itertools.accumulate([s[dim] for s in inp_shapes[:-1]], initial=0)
     )
 
-    for a, out0_offset in zip(A, out0_offsets):
-        in_view = StridedBuffer(a, a.shape, a.stride())
-        out_view = StridedBuffer(out0, a.shape, out0.stride(), offset=out0_offset)
-        copy_func.instantiate(a.ndim)(in_view, out0=out_view)
+    # Per-dim offsets cannot be expressed with block pointers (boundary_check
+    # clips tiles whose offsets exceed the logical shape), so always use the
+    # masked-load kernel variant.
+    config = copy.copy(copy_func.config)
+    config.prefer_block_pointer = False
+    copy_func.config = config
+
+    needs_i64 = _needs_i64_precision(A, out0)
+    precision_token = set_precision_mode("2") if needs_i64 else None
+    try:
+        for a, out0_dim_offset in zip(A, out0_dim_offsets):
+            out_tensor_view = out0.narrow(dim, out0_dim_offset, a.shape[dim])
+            if _int64_large_strided_unsafe(out_tensor_view, a):
+                # TX Triton cannot lower some int64 pointwise copies with a large
+                # non-contiguous stride. Reuse copy_'s ATen redispatch fallback.
+                copy_tensor(out_tensor_view, a)
+                continue
+            per_dim_offsets = [0] * len(a.shape)
+            # negative: store computes addr = base + (logical - offset) * stride,
+            # so a negative offset shifts the write region forward along `dim`
+            per_dim_offsets[dim] = -out0_dim_offset
+            in_view = StridedBuffer(a, a.shape, a.stride())
+            out_view = StridedBuffer(
+                out0, a.shape, out0.stride(), offsets=per_dim_offsets
+            )
+            copy_func.instantiate(a.ndim)(in_view, out0=out_view)
+    finally:
+        if precision_token is not None:
+            restore_precision_mode(precision_token)
     return out0
