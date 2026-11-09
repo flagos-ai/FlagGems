@@ -38,6 +38,7 @@ from flag_gems.utils.code_cache import config_cache_dir
 from flag_gems.utils.libentry import (
     LibTuner,
     LibTunerRunMode,
+    launch_by_signature_order,
     libcache,
     major_version,
     minor_version,
@@ -79,6 +80,29 @@ def test_libentry_uses_platform_appropriate_lock():
     else:
         expected_lock_type = type(multiprocessing.Lock())
     assert type(softmax_kernel_inner.lock) is expected_lock_type
+
+
+@pytest.mark.parametrize(
+    "major,minor,expected",
+    [
+        (2, 6, False),
+        (3, 0, False),
+        (3, 1, False),
+        (3, 2, False),
+        (3, 3, True),
+        (3, 6, True),
+        (3, 7, True),
+        (3, 8, True),
+        (4, 0, False),
+    ],
+)
+def test_launch_by_signature_order_covers_later_triton_minors(major, minor, expected):
+    """Triton 3.3 changed the launch ABI; no upper bound applies after it.
+
+    A closed `minor <= 6` range sent 3.7 back to the legacy launch path, which
+    raises when it hands wrong-typed arguments to the launcher.
+    """
+    assert launch_by_signature_order(major, minor) is expected
 
 
 # not_raises is copied from https://gist.github.com/oisinmulvihill/45c14271fad7794a4a52516ecb784e69
