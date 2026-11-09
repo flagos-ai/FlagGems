@@ -24,6 +24,9 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
 
+from ._bmm_tuned import tuned_bmm
+from ._tuned_gemm_policy import use_tuned_gemm
+
 logger = logging.getLogger(__name__)
 
 # DispatchKeySet to redispatch to the native ATen implementation,
@@ -158,8 +161,17 @@ def bmm_kernel(
 
 def bmm(A, B):
     logger.debug("GEMS_METAX BMM")
+    assert A.ndim == B.ndim == 3, "bmm expects two batched matrices"
+    assert (
+        A.shape[0] == B.shape[0] and A.shape[2] == B.shape[1]
+    ), "incompatible dimensions"
     batch, M, K = A.shape
     _, _, N = B.shape
+    if K == 0:
+        return torch.zeros((batch, M, N), dtype=A.dtype, device=A.device)
+    if batch * M * N < 2**31 and use_tuned_gemm(A, B):
+        with torch_device_fn.device(A.device):
+            return tuned_bmm(A, B)
     logger.debug(
         "GEMS_METAX BMM, [shape info]: [%s, %s, %s, %s](batch, M, N, K), "
         "[A column-major]: %s, [B column-major]: %s",
