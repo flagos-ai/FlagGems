@@ -35,12 +35,32 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 import torch
 import triton
 import triton.language as tl
-from triton import knobs
 from triton.runtime import driver as _triton_driver
+
+try:
+    from triton import knobs
+except ImportError:  # older triton / flagtree builds without knobs
+    knobs = None
 
 from flag_gems.runtime import device as _runtime_device
 
 logger = logging.getLogger(__name__)
+
+
+def _hooks_absent() -> bool:
+    """True only when we can prove no launch hook is installed.
+
+    Triton builds without ``triton.knobs`` cannot prove that, so this returns
+    False and the caller falls back to Triton's normal dispatch.  The launch
+    cache is an optimisation only; a miss always dispatches normally.
+    """
+    if knobs is None:
+        return False
+    return (
+        not knobs.runtime.launch_enter_hook.calls
+        and not knobs.runtime.launch_exit_hook.calls
+    )
+
 
 # ---------------------------------------------------------------------------
 # dtype plumbing
@@ -1416,8 +1436,7 @@ def _launch_executor_kernel(
         and last[5] is dt_out
         and last[6] == block
         and last[7] == grid
-        and not knobs.runtime.launch_enter_hook.calls
-        and not knobs.runtime.launch_exit_hook.calls
+        and _hooks_absent()
     ):
         try:
             last[8]()
@@ -1441,17 +1460,12 @@ def _launch_executor_kernel(
         not (meta.data_ptr() & 15),
     )
     entry = _LAUNCH_CACHE.get(key)
-    runtime = knobs.runtime
     # ``launch_enter_hook`` is a ``HookChain`` in triton 3.6, never ``None``:
     # the chain exists whether or not anyone subscribed.  ``.calls`` is the
     # list of registered callbacks, so an empty list is the real "no hooks"
     # state.  Proton and other instrumentation add to it, and a replay would
     # then skip their notifications.
-    if (
-        entry is not None
-        and not runtime.launch_enter_hook.calls
-        and not runtime.launch_exit_hook.calls
-    ):
+    if entry is not None and _hooks_absent():
         # Binding is inside the ``try`` as well: a Triton build whose launcher
         # has no ``launch_pdl`` or a different raw signature raises here, and
         # that must fall back to dispatch like any other unusable entry rather
@@ -2539,7 +2553,6 @@ def _launch_binary_kernel(
     # which is still read per call so a launch issued under a different
     # ``torch.cuda.stream`` lands on the stream current at launch time.
     last = _LAST_BINARY_REPLAY[0]
-    runtime = knobs.runtime
     if (
         last is not None
         and last[0] is meta
@@ -2553,8 +2566,7 @@ def _launch_binary_kernel(
         and last[8] is b_scalar
         and last[9] == block
         and last[10] == grid
-        and not runtime.launch_enter_hook.calls
-        and not runtime.launch_exit_hook.calls
+        and _hooks_absent()
     ):
         try:
             last[11]()
@@ -2585,11 +2597,7 @@ def _launch_binary_kernel(
     # ``.calls`` is the list of registered callbacks, so an empty list is the
     # real "no hooks" state.  Proton and other instrumentation add to it, and a
     # replay would then skip their notifications.
-    if (
-        entry is not None
-        and not runtime.launch_enter_hook.calls
-        and not runtime.launch_exit_hook.calls
-    ):
+    if entry is not None and _hooks_absent():
         launch = entry[0]
         packed = entry[1]
         pmeta = entry[2]
@@ -3034,12 +3042,7 @@ def _launch_scalar_kernel(
         not (scalar_buf.data_ptr() & 15),
     )
     entry = _SCALAR_LAUNCH_CACHE.get(key)
-    runtime = knobs.runtime
-    if (
-        entry is not None
-        and not runtime.launch_enter_hook.calls
-        and not runtime.launch_exit_hook.calls
-    ):
+    if entry is not None and _hooks_absent():
         try:
             entry[0](
                 grid[0],
@@ -3522,7 +3525,7 @@ def _launch_ternary_kernel(
     miss, an installed launch hook, or a launcher that raises all take
     Triton's normal dispatch.
     """
-    runtime = knobs.runtime
+    hooks_absent = _hooks_absent()
     last = _TERNARY_LAST
     key = None
     if (
@@ -3532,8 +3535,7 @@ def _launch_ternary_kernel(
         and last[2] is fn
         and last[3] is kernel
         and last[4] == (grid, nt, dt_in, dt_out, s_dt, by_value, block, swap)
-        and not runtime.launch_enter_hook.calls
-        and not runtime.launch_exit_hook.calls
+        and hooks_absent
     ):
         entry = (last[5], last[6], last[7])
     else:
@@ -3551,9 +3553,7 @@ def _launch_ternary_kernel(
             not (meta.data_ptr() & 15),
         )
         entry = _TERNARY_LAUNCH_CACHE.get(key)
-        if entry is not None and (
-            runtime.launch_enter_hook.calls or runtime.launch_exit_hook.calls
-        ):
+        if entry is not None and not hooks_absent:
             entry = None
     if entry is not None:
         try:
