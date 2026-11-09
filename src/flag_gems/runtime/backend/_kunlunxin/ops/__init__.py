@@ -320,6 +320,7 @@ from .cauchy import cauchy, cauchy_  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .chain_matmul import chain_matmul, chain_matmul_out  # noqa: F401
 from .channel_shuffle import channel_shuffle
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
