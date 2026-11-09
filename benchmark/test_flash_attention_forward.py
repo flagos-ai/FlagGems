@@ -60,6 +60,44 @@ def gems_flash_attention_forward(
     )
 
 
+def fp32_math_attention_forward(
+    q,
+    k,
+    v,
+    cumulative_sequence_length_q,
+    cumulative_sequence_length_k,
+    max_q,
+    max_k,
+    dropout_p,
+    is_causal,
+    return_debug_mask,
+    *,
+    scale=None,
+    **extra_kwargs,
+):
+    del (
+        cumulative_sequence_length_q,
+        cumulative_sequence_length_k,
+        max_q,
+        max_k,
+        dropout_p,
+        return_debug_mask,
+        extra_kwargs,
+    )
+    scale = q.shape[-1] ** -0.5 if scale is None else scale
+    scale_tensor = q.new_full((), scale)
+    scores = torch.einsum("bqhd,bkhd->bhqk", q, k) * scale_tensor
+    if is_causal:
+        causal_mask = torch.ones(
+            (q.shape[1], k.shape[1]), dtype=torch.bool, device=q.device
+        ).triu(diagonal=1)
+        scores.masked_fill_(causal_mask, float("-inf"))
+    lse = torch.logsumexp(scores, dim=-1)
+    probabilities = torch.softmax(scores, dim=-1)
+    out = torch.einsum("bhqk,bkhd->bqhd", probabilities, v)
+    return out, lse, None, None, None
+
+
 def torch_flash_attention_supports_alibi(device: str) -> bool:
     if device == "cpu" or not torch.cuda.is_available():
         return False
@@ -89,6 +127,33 @@ def torch_flash_attention_supports_alibi(device: str) -> bool:
         if "does not support alibi" in str(e).lower():
             return False
         raise
+
+
+class HygonFP32FlashAttentionForwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        del shape_file_path
+        self.shapes = [
+            (
+                1,
+                8,
+                8,
+                seq_len,
+                seq_len,
+                head_size,
+                is_causal,
+                0.0,
+                False,
+                None,
+                None,
+                False,
+            )
+            for seq_len in (256, 1024, 4096)
+            for head_size in (64, 128)
+            for is_causal in (False, True)
+        ]
+
+    def set_more_shapes(self):
+        return []
 
 
 class FlashAttentionForwardBenchmark(base.GenericBenchmark):
@@ -286,6 +351,18 @@ def test__flash_attention_forward():
         torch_op=torch.ops.aten._flash_attention_forward.default,
         # FlashAttention supports CUDA float16 and bfloat16 inputs.
         dtypes=[torch.float16, torch.bfloat16],
+    )
+    bench.run()
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon-specific FP32 path")
+@pytest.mark.underscore_flash_attention_forward
+def test_hygon_fp32_flash_attention_forward():
+    bench = HygonFP32FlashAttentionForwardBenchmark(
+        op_name="_flash_attention_forward",
+        input_fn=_flash_attention_forward_input_fn,
+        torch_op=fp32_math_attention_forward,
+        dtypes=[torch.float32],
     )
     bench.run()
 
