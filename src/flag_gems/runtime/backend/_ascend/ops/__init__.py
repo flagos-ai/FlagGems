@@ -94,6 +94,7 @@ from .euclidean_dist import euclidean_dist
 from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
+from .feature_dropout import feature_dropout
 from .fill import fill_scalar, fill_scalar_, fill_tensor, fill_tensor_
 from .fill_diagonal_ import fill_diagonal_
 from .flash_api import mha_fwd, mha_varlan_fwd, mha_varlan_fwd_opt
@@ -395,6 +396,7 @@ __all__ = [
     "expand_copy",
     "exponential",
     "exponential_",
+    "feature_dropout",
     "fill_diagonal_",
     "fill_scalar",
     "fill_scalar_",
