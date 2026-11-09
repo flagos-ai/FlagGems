@@ -49,6 +49,7 @@ from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
+from .convolution_overrideable import convolution_overrideable
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
@@ -244,6 +245,7 @@ __all__ = [
     "conj_physical",
     "conv2d",
     "conv_depthwise2d",
+    "convolution_overrideable",
     "cudnn_convolution",
     "diagonal_scatter",
     "diff",
