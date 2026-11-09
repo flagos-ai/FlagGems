@@ -105,6 +105,7 @@ from .div import (
     trunc_divide_,
 )
 from .dropout import dropout
+from .dstack import dstack
 from .elu import elu
 from .embedding import embedding, embedding_backward
 from .embedding_dense_backward import embedding_dense_backward
@@ -406,6 +407,7 @@ __all__ = [
     "diagonal_backward",
     "diagonal_copy",
     "dropout",
+    "dstack",
     "elu",
     "embedding",
     "embedding_backward",
