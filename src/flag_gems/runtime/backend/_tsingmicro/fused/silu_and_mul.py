@@ -48,8 +48,8 @@ def silu_and_mul_grad_kernel(x, y, dgrad):
 class SiluAndMul(torch.autograd.Function):
     @staticmethod
     def forward(ctx, A, B):
+        logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_FORWARD")
         ctx.save_for_backward(A, B)
-        logger.debug("GEMS_TSINGMICRO SILU_AND_MUL")
         return silu_and_mul_kernel(A, B)
 
     def backward(ctx, grad_output):
@@ -59,9 +59,11 @@ class SiluAndMul(torch.autograd.Function):
 
 
 def silu_and_mul(A, B):
+    logger.debug("GEMS_TSINGMICRO SILU_AND_MUL")
     return SiluAndMul.apply(A, B)
 
 
 def silu_and_mul_out(A, B, out):
+    logger.debug("GEMS_TSINGMICRO SILU_AND_MUL_OUT")
     silu_and_mul_kernel(A, B, out0=out)
     return out

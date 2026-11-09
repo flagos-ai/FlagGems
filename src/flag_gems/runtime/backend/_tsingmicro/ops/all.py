@@ -61,10 +61,12 @@ def all_kernel_dim(
     for off in range(0, N, BLOCK_N):
         cols = off + tl.arange(0, BLOCK_N)[None, :]
         col_mask = cols < N
-        mask = row_mask and col_mask
+        # FIX(zml, 2026-10-30): Python `and` on tensors is wrong (see
+        # argmax.py:140 CHANGELOG). Use bitwise `&` for element-wise masks.
+        mask = row_mask & col_mask
 
         a = tl.load(inp + cols, mask, other=1.0)
-        _all = _all and (a != 0)
+        _all = _all & (a != 0)
     all = tl.reduce(_all, axis=1, combine_fn=reduce_all)
     tl.store(out, all[:, None], row_mask)
 
