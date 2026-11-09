@@ -3639,3 +3639,21 @@ matrix_power_bmm:
       TILE_N: 32
       TILE_K: 32
     num_warps: 2
+
+cudnn_grid_sampler:
+  - META:
+      BLOCK: 128
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK: 256
+    num_warps: 4
+    num_stages: 4
+  - META:
+      BLOCK: 512
+    num_warps: 8
+    num_stages: 3
+  - META:
+      BLOCK: 1024
+    num_warps: 8
+    num_stages: 3
