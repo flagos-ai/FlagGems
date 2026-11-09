@@ -17,60 +17,338 @@ import logging
 
 import triton
 import triton.language as tl
-
-from flag_gems import runtime
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
+from triton.language.extra import libdevice
 
 logger = logging.getLogger(__name__)
 
+_PINF = float("inf")
 
-@libentry()
-@triton.autotune(
-    configs=runtime.get_tuned_config("renorm_"),
-    key=["N"],
-)
-@triton.jit(do_not_specialize=["p", "maxnorm"])
-def renorm_kernel(X, N, p, maxnorm, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0).to(tl.int64)
-    row_start = X + pid * N
 
-    # Process the row in segments of BLOCK_SIZE so every element in [0, N)
-    # is covered even when autotune picks a BLOCK_SIZE smaller than N.
-    _sum = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(row_start + cols, mask=mask, other=0.0).to(tl.float32)
-        _sum += tl_extra_shim.pow(tl.abs(x), p)
+@triton.jit
+def _renorm_term(x, P_MODE: tl.constexpr, p):
+    """Contribution of one element to the p-norm sum."""
+    if P_MODE == 1:
+        return tl.abs(x)
+    if P_MODE == 2:
+        return x * x
+    if P_MODE == 3:
+        return x * x * tl.abs(x)
+    if P_MODE == 4:
+        return tl.abs(x)
+    return libdevice.pow(tl.abs(x), p)
 
-    norm = tl_extra_shim.pow(tl.sum(_sum), 1.0 / p)
+
+@triton.jit
+def _renorm_norm(acc, P_MODE: tl.constexpr, inv_p):
+    """Slice norm from the finished accumulation."""
+    if P_MODE == 1:
+        return acc
+    if P_MODE == 2:
+        return tl.sqrt(acc)
+    if P_MODE == 4:
+        return acc
+    return libdevice.pow(acc, inv_p)
+
+
+@triton.jit
+def _renorm_last_kernel(
+    x_ptr,
+    M,
+    P,
+    sM,
+    sP,
+    p,
+    inv_p,
+    maxnorm,
+    P_MODE: tl.constexpr,
+    BM: tl.constexpr,
+    U: tl.constexpr,
+):
+    """Q == 1: one lane per slice, the reduction walks the P axis.
+
+    ``U`` rows are loaded per trip, with every load of the trip issued before
+    any dependent arithmetic, so U independent loads are in flight per warp.
+    """
+    pid = tl.program_id(0)
+    m = pid * BM + tl.arange(0, BM)
+    mask = m < M
+    mp = x_ptr + m.to(tl.int64) * sM
+    pu = P // U
+    acc = tl.zeros([BM], dtype=tl.float32)
+    if U == 8:
+        for pp in range(0, pu):
+            b = pp.to(tl.int64) * (8 * sP)
+            x0 = tl.load(mp + b, mask=mask, other=0.0).to(tl.float32)
+            x1 = tl.load(mp + b + sP, mask=mask, other=0.0).to(tl.float32)
+            x2 = tl.load(mp + b + 2 * sP, mask=mask, other=0.0).to(tl.float32)
+            x3 = tl.load(mp + b + 3 * sP, mask=mask, other=0.0).to(tl.float32)
+            x4 = tl.load(mp + b + 4 * sP, mask=mask, other=0.0).to(tl.float32)
+            x5 = tl.load(mp + b + 5 * sP, mask=mask, other=0.0).to(tl.float32)
+            x6 = tl.load(mp + b + 6 * sP, mask=mask, other=0.0).to(tl.float32)
+            x7 = tl.load(mp + b + 7 * sP, mask=mask, other=0.0).to(tl.float32)
+            if P_MODE == 4:
+                acc = tl.maximum(
+                    acc,
+                    tl.maximum(
+                        tl.maximum(
+                            tl.maximum(tl.abs(x0), tl.abs(x1)),
+                            tl.maximum(tl.abs(x2), tl.abs(x3)),
+                        ),
+                        tl.maximum(
+                            tl.maximum(tl.abs(x4), tl.abs(x5)),
+                            tl.maximum(tl.abs(x6), tl.abs(x7)),
+                        ),
+                    ),
+                )
+            else:
+                acc += (
+                    _renorm_term(x0, P_MODE, p)
+                    + _renorm_term(x1, P_MODE, p)
+                    + _renorm_term(x2, P_MODE, p)
+                    + _renorm_term(x3, P_MODE, p)
+                    + _renorm_term(x4, P_MODE, p)
+                    + _renorm_term(x5, P_MODE, p)
+                    + _renorm_term(x6, P_MODE, p)
+                    + _renorm_term(x7, P_MODE, p)
+                )
+    else:
+        for pp in range(0, pu):
+            b = pp.to(tl.int64) * (4 * sP)
+            x0 = tl.load(mp + b, mask=mask, other=0.0).to(tl.float32)
+            x1 = tl.load(mp + b + sP, mask=mask, other=0.0).to(tl.float32)
+            x2 = tl.load(mp + b + 2 * sP, mask=mask, other=0.0).to(tl.float32)
+            x3 = tl.load(mp + b + 3 * sP, mask=mask, other=0.0).to(tl.float32)
+            if P_MODE == 4:
+                acc = tl.maximum(
+                    acc,
+                    tl.maximum(
+                        tl.maximum(tl.abs(x0), tl.abs(x1)),
+                        tl.maximum(tl.abs(x2), tl.abs(x3)),
+                    ),
+                )
+            else:
+                acc += (
+                    _renorm_term(x0, P_MODE, p)
+                    + _renorm_term(x1, P_MODE, p)
+                    + _renorm_term(x2, P_MODE, p)
+                    + _renorm_term(x3, P_MODE, p)
+                )
+    for pp in range(pu * U, P):
+        x = tl.load(mp + pp.to(tl.int64) * sP, mask=mask, other=0.0).to(tl.float32)
+        if P_MODE == 4:
+            acc = tl.maximum(acc, tl.abs(x))
+        else:
+            acc += _renorm_term(x, P_MODE, p)
+    norm = _renorm_norm(acc, P_MODE, inv_p)
     scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+    dt = x_ptr.dtype.element_ty
+    if U == 8:
+        for pp in range(0, pu):
+            b = pp.to(tl.int64) * (8 * sP)
+            x0 = tl.load(mp + b, mask=mask, other=0.0).to(tl.float32)
+            x1 = tl.load(mp + b + sP, mask=mask, other=0.0).to(tl.float32)
+            x2 = tl.load(mp + b + 2 * sP, mask=mask, other=0.0).to(tl.float32)
+            x3 = tl.load(mp + b + 3 * sP, mask=mask, other=0.0).to(tl.float32)
+            x4 = tl.load(mp + b + 4 * sP, mask=mask, other=0.0).to(tl.float32)
+            x5 = tl.load(mp + b + 5 * sP, mask=mask, other=0.0).to(tl.float32)
+            x6 = tl.load(mp + b + 6 * sP, mask=mask, other=0.0).to(tl.float32)
+            x7 = tl.load(mp + b + 7 * sP, mask=mask, other=0.0).to(tl.float32)
+            tl.store(mp + b, (x0 * scale).to(dt), mask=mask)
+            tl.store(mp + b + sP, (x1 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 2 * sP, (x2 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 3 * sP, (x3 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 4 * sP, (x4 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 5 * sP, (x5 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 6 * sP, (x6 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 7 * sP, (x7 * scale).to(dt), mask=mask)
+    else:
+        for pp in range(0, pu):
+            b = pp.to(tl.int64) * (4 * sP)
+            x0 = tl.load(mp + b, mask=mask, other=0.0).to(tl.float32)
+            x1 = tl.load(mp + b + sP, mask=mask, other=0.0).to(tl.float32)
+            x2 = tl.load(mp + b + 2 * sP, mask=mask, other=0.0).to(tl.float32)
+            x3 = tl.load(mp + b + 3 * sP, mask=mask, other=0.0).to(tl.float32)
+            tl.store(mp + b, (x0 * scale).to(dt), mask=mask)
+            tl.store(mp + b + sP, (x1 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 2 * sP, (x2 * scale).to(dt), mask=mask)
+            tl.store(mp + b + 3 * sP, (x3 * scale).to(dt), mask=mask)
+    for pp in range(pu * U, P):
+        off = pp.to(tl.int64) * sP
+        x = tl.load(mp + off, mask=mask, other=0.0).to(tl.float32)
+        tl.store(mp + off, (x * scale).to(dt), mask=mask)
 
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x = tl.load(row_start + cols, mask=mask, other=0.0).to(tl.float32)
-        tl.store(row_start + cols, x * scale, mask=mask)
+
+@triton.jit
+def _renorm_tile_kernel(
+    x_ptr,
+    M,
+    Q,
+    P,
+    sM,
+    sQ,
+    sP,
+    p,
+    inv_p,
+    maxnorm,
+    P_MODE: tl.constexpr,
+    BQ: tl.constexpr,
+    BM: tl.constexpr,
+):
+    """Q > 1: each program owns BM slices and walks the whole reduction."""
+    pid = tl.program_id(0)
+    m = pid * BM + tl.arange(0, BM)
+    q = tl.arange(0, BQ)
+    m_mask = (m < M)[None, :]
+    base = x_ptr + q.to(tl.int64)[:, None] * sQ + m.to(tl.int64)[None, :] * sM
+    acc = tl.zeros([BM], dtype=tl.float32)
+    for pp in range(0, P):
+        poff = pp.to(tl.int64) * sP
+        for qq in range(0, Q, BQ):
+            mask = ((qq + q) < Q)[:, None] & m_mask
+            x = tl.load(base + poff + qq.to(tl.int64) * sQ, mask=mask, other=0.0).to(
+                tl.float32
+            )
+            if P_MODE == 4:
+                part = tl.max(tl.abs(x), axis=0)
+                acc = tl.maximum(acc, part)
+            else:
+                acc += tl.sum(_renorm_term(x, P_MODE, p), axis=0)
+    norm = _renorm_norm(acc, P_MODE, inv_p)
+    scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+    for pp in range(0, P):
+        poff = pp.to(tl.int64) * sP
+        for qq in range(0, Q, BQ):
+            mask = ((qq + q) < Q)[:, None] & m_mask
+            off = base + poff + qq.to(tl.int64) * sQ
+            x = tl.load(off, mask=mask, other=0.0).to(tl.float32)
+            tl.store(off, (x * scale[None, :]).to(x_ptr.dtype.element_ty), mask=mask)
+
+
+def _group_stride(sizes, strides):
+    """Collapsed stride for one leading/trailing axis group, or None."""
+    s = None
+    step = 1
+    for sz, st in zip(reversed(sizes), reversed(strides)):
+        if sz == 1:
+            continue
+        if s is None:
+            s = st
+        if st != s * step:
+            return None
+        step *= sz
+    return s if s is not None else 0
 
 
 def renorm_(x, p, dim, maxnorm):
     logger.debug("GEMS RENORM")
-    dim = dim % x.ndim
+    ndim = x.dim()
+    if ndim == 0:
+        raise IndexError("renorm_ expects a tensor with at least one dimension")
+    d = int(dim)
+    if d < 0:
+        d += ndim
+    if d < 0 or d >= ndim:
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{}, {}], "
+            "but got {})".format(-ndim, ndim - 1, dim)
+        )
+    pf = float(p)
+    if not (pf > 0.0):
+        raise RuntimeError("renorm: non-positive-p norm is not supported")
+    maxn = float(maxnorm)
+    if x.numel() == 0:
+        return x
 
-    perm = [dim] + [i for i in range(x.ndim) if i != dim]
-    x_perm = x.permute(perm).contiguous()
-    M = x_perm.shape[0]
-    N = x_perm[0].numel()
-    x_flat = x_perm.reshape(M, N)
+    if pf == _PINF:
+        p_mode = 4
+        inv_p = 0.0
+    elif pf == 1.0:
+        p_mode = 1
+        inv_p = 1.0
+    elif pf == 2.0:
+        p_mode = 2
+        inv_p = 0.5
+    elif pf == 3.0:
+        p_mode = 3
+        inv_p = 1.0 / 3.0
+    else:
+        p_mode = 0
+        inv_p = 1.0 / pf
 
-    grid = (M,)
-    with torch_device_fn.device(x.device):
-        renorm_kernel[grid](x_flat, N, p, maxnorm)
+    shape = x.shape
+    strides = x.stride()
+    M = shape[d]
+    sM = strides[d]
+    lead_sizes = shape[:d]
+    trail_sizes = shape[d + 1 :]
+    sP = _group_stride(lead_sizes, strides[:d])
+    sQ = _group_stride(trail_sizes, strides[d + 1 :])
+    if sP is None or sQ is None:
+        # Non-collapsible layout: renormalize on a permuted contiguous copy.
+        perm = [d] + [i for i in range(ndim) if i != d]
+        tmp = x.permute(perm).contiguous()
+        renorm_(tmp, pf, 0, maxn)
+        inv_perm = [0] * ndim
+        for i, pi in enumerate(perm):
+            inv_perm[pi] = i
+        x.copy_(tmp.permute(inv_perm))
+        return x
+    P = 1
+    for sz in lead_sizes:
+        P *= sz
+    Q = 1
+    for sz in trail_sizes:
+        Q *= sz
 
-    inv_perm = [0] * x.ndim
-    for i, pi in enumerate(perm):
-        inv_perm[pi] = i
-    x.copy_(x_flat.reshape(x_perm.shape).permute(inv_perm))
-
+    if Q == 1:
+        # Fixed launch shape, swept on this card (logs/renorm_micro{,2}.log):
+        # U=4/nw=1 with BM=256 (M<=4096) or 512 wins.  The autotune search was
+        # removed because its first call runs triton's do_bench, whose L2
+        # flush goes through flag_gems' zero_ (ENABLE_I64=True) and aborts on
+        # this compiler -- that was the source of 162 accuracy failures.
+        BM = 256 if M <= 4096 else 512
+        _renorm_last_kernel[(triton.cdiv(M, BM),)](
+            x,
+            M,
+            P,
+            sM,
+            sP,
+            pf,
+            inv_p,
+            maxn,
+            P_MODE=p_mode,
+            BM=BM,
+            U=4,
+            num_warps=1,
+            num_stages=1,
+        )
+    else:
+        bq = triton.next_power_of_2(Q)
+        if bq > 64:
+            bq = 64
+        if bq < 4:
+            bq = 4
+        bm = triton.next_power_of_2(M)
+        if bm > 64:
+            bm = 64
+        if bm < 16:
+            bm = 16
+        n_m = triton.cdiv(M, bm)
+        _renorm_tile_kernel[(n_m,)](
+            x,
+            M,
+            Q,
+            P,
+            sM,
+            sQ,
+            sP,
+            pf,
+            inv_p,
+            maxn,
+            p_mode,
+            bq,
+            bm,
+            num_warps=max(1, min(4, (bq * bm) // 256)),
+            num_stages=1,
+        )
     return x
