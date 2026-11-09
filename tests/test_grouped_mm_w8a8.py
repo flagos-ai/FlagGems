@@ -25,6 +25,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+requires_e4m3 = pytest.mark.skipif(
+    flag_gems.vendor_name == "hygon", reason="Hygon grouped_mm_w8a8 supports INT8"
+)
+
+
 def make_grouped_gemm_case(lengths, n, k, device, seed=20261019):
     torch.manual_seed(seed)
     m, e = sum(lengths), len(lengths)
@@ -57,6 +62,7 @@ def grouped_gemm_cpu_reference(A, As, B, Bs, lengths):
     [
         ([0, 1, 3, 0, 7], 65, 129),
         ([1, 32, 0, 65], 128, 256),
+        ([0, 65, 0, 129, 0], 73, 193),
         ([0, 257, 3], 64, 128),
         ([1] + [0] * 255 + [13], 64, 6144),
         ([0, 129, 0, 3968], 257, 2051),
@@ -104,7 +110,12 @@ def test_grouped_mm_w8a8_changing_expert_rows():
 
 @pytest.mark.grouped_mm_w8a8
 @pytest.mark.parametrize(
-    "dtype", [torch.int8, torch.float8_e4m3fn, torch.float8_e4m3fnuz]
+    "dtype",
+    [
+        torch.int8,
+        pytest.param(torch.float8_e4m3fn, marks=requires_e4m3),
+        pytest.param(torch.float8_e4m3fnuz, marks=requires_e4m3),
+    ],
 )
 @pytest.mark.parametrize(
     "lengths,n,k",
@@ -138,6 +149,7 @@ def test_grouped_mm_w8a8_dtypes_tails(lengths, n, k, dtype):
 
 
 @pytest.mark.grouped_mm_w8a8
+@requires_e4m3
 @pytest.mark.parametrize("dtype", [torch.float8_e4m3fn, torch.float8_e4m3fnuz])
 def test_grouped_mm_w8a8_fp8_encodings(dtype):
     bits = torch.arange(256, dtype=torch.int16).to(torch.uint8)

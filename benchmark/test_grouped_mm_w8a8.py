@@ -20,7 +20,8 @@ The capture bundle contains shapes.json and metadata/*.jsonl. Prepared benchmark
 JSON stays outside the repository and is supplied with --shape_file PATH.
 It preserves per-scenario call counts, captured first-observation expert counts,
 cumulative offsets and tensor layouts. Operand values and scales are generated
-deterministically, not captured model values. INT8 uses ContinuousGroupedGEMM.
+deterministically, not captured model values. MetaX uses ContinuousGroupedGEMM.
+Hygon uses AITER INT8 MoE GEMM.
 Prepared external INT8/FP8 diagnostic JSON files are also accepted; their
 classification must identify synthetic routing.
 
@@ -58,6 +59,92 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
     tl.store(Weights + groups, groups, groups < G)
 
 
+class HygonAiterReference:
+    """Prepare the AITER reference for one packed INT8 replay case."""
+
+    def __init__(self, stage, a, b, sa, sb, output, indices):
+        import aiter
+        from aiter.jit.module_moe_c_kernel import moe_c_moe_gemm_marlin_w8a8
+        from aiter.ops.moe_sorting import moe_sorting_fwd
+        from aiter.ops.shuffle import moe_layout_shuffle_gemm1, moe_layout_shuffle_gemm2
+
+        # The down table is named for the paired gate/up projection's width.
+        experts, n, k = b.shape
+        geometry = {"gate_up": (512, 6144), "down": (6144, 256)}
+        if experts != 257 or geometry.get(stage) != (n, k):
+            raise ValueError(
+                f"No Hygon AITER tuning table mapped for {stage}, {b.shape}"
+            )
+        self.down = stage == "down"
+        device = a.device
+        properties = torch.cuda.get_device_properties(device)
+        arch = properties.gcnArchName.split(":")[0]
+        suffix = ",is_bottom=True" if self.down else ""
+        # Replay adds one shared expert to the 256 routed experts. Use the
+        # nearest vendor table for tuning, but pass all 257 experts to sorting.
+        config = Path(aiter.__file__).with_name("moe_c_configs") / (
+            f"E=256,N=512,gfx_version={arch},num_cus={properties.multi_processor_count},"
+            f"dtype=int8_w8a8{suffix}.json"
+        )
+        options = {
+            int(key): value for key, value in json.loads(config.read_text()).items()
+        }
+        m = a.shape[0]
+        self.bucket = min(options, key=lambda size: abs(size - m))
+        self.tile = options[self.bucket]["BLOCK_SIZE_M"]
+        self.mode = options[self.bucket]["MODE"]
+
+        self.gemm = moe_c_moe_gemm_marlin_w8a8
+        self.sort = moe_sorting_fwd
+        shuffle = moe_layout_shuffle_gemm2 if self.down else moe_layout_shuffle_gemm1
+        self.a, self.sa, self.sb = a, sa[:, None], sb[:, :, None]
+        self.b = shuffle(b).view_as(b)
+        self.output = output[:, None, :]
+        self.experts = experts
+        self.indices = indices[:, None]
+        self.route_weights = torch.ones((m, 1), dtype=torch.float32, device=device)
+        capacity = m + experts * self.tile - 1
+        blocks = (capacity + self.tile - 1) // self.tile
+        self.sorted_ids = torch.empty(capacity, dtype=torch.int32, device=device)
+        self.sorted_weights = torch.empty(capacity, dtype=torch.float32, device=device)
+        self.sorted_experts = torch.empty(blocks, dtype=torch.int32, device=device)
+        self.expert_positions = torch.empty(
+            2 * experts, dtype=torch.int32, device=device
+        )
+        self.padded = torch.empty(1, dtype=torch.int32, device=device)
+
+    def run(self):
+        self.sort(
+            self.indices,
+            self.route_weights,
+            self.sorted_ids,
+            self.sorted_weights,
+            self.sorted_experts,
+            self.expert_positions,
+            self.padded,
+            None,
+            self.experts,
+            self.tile,
+        )
+        # GEMM2 indexes routing weights by original row ID. Top-1 unit weights
+        # preserve the packed operator's semantics and select the GEMM2 layout.
+        self.gemm(
+            self.a,
+            self.b,
+            self.output,
+            self.sa,
+            self.sb,
+            self.route_weights if self.down else None,
+            self.sorted_ids,
+            self.sorted_experts,
+            self.padded,
+            1,
+            self.mode,
+            1,
+            self.bucket,
+        )
+
+
 class GroupedMMW8A8Benchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         path = Path(shape_file_path or base.Config.shape_file)
@@ -71,14 +158,28 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
         self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
+        self.use_hygon = flag_gems.vendor_name == "hygon"
+        if self.use_hygon:
+            if self.use_deepgemm or self.dataset.get("input_dtype") != "int8":
+                raise ValueError("Hygon grouped_mm_w8a8 replay requires INT8 inputs")
+            self.torch_op = self.hygon_reference
+            self.baseline_name = "Hygon AITER native INT8 MoE GEMM; CK routing included"
+        elif self.use_deepgemm:
+            self.torch_op = self.deepgemm_reference
+            self.baseline_name = (
+                "MetaX DeepGEMM contiguous, backend=mctlassEx, full wrapper"
+            )
+        else:
+            self.torch_op = self.mctlass_reference
+            self.baseline_name = (
+                "ContinuousGroupedGEMM Torch API; routing + block selection + "
+                "tile prefix included; FP8 uses Torch tile-prefix adapter"
+            )
         if self.use_deepgemm or self.dataset.get("input_dtype") == "int8":
             requested = base.Config.user_desired_dtypes
             if requested and requested != [torch.int8]:
                 raise ValueError("This captured export requires INT8 inputs")
             self.to_bench_dtypes = [torch.int8]
-            self.torch_op = (
-                self.deepgemm_reference if self.use_deepgemm else self.mctlass_reference
-            )
             self.gems_op = flag_gems.grouped_mm_w8a8
         self.shape_desc = "G, M, N, K; " + self.dataset["classification"]
         for row in self.shapes:
@@ -126,15 +227,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
                         "scenario": row.get("scenario"),
                         "captured_tensor_metadata": row.get("tensor_metadata"),
                         "routing_origin": self.dataset.get("routing_origin"),
-                        "baseline": (
-                            "MetaX DeepGEMM contiguous, backend=mctlassEx, full wrapper"
-                            if self.use_deepgemm
-                            else (
-                                "ContinuousGroupedGEMM Torch API; routing + "
-                                "block selection + tile prefix included; "
-                                "FP8 uses Torch tile-prefix adapter"
-                            )
-                        ),
+                        "baseline": self.baseline_name,
                     },
                     builder_args=(row,),
                 ),
@@ -181,34 +274,43 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
             )
             output = torch.empty((m, n), dtype=torch.bfloat16, device="cuda")
             return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
-        self.native_config = {"n_group": g}
-        if dtype != torch.int8:
-            self.native_config.update(
-                is_blockwise=True,
-                use_fp8=True,
-                is_scale_a_1d=True,
-                is_scale_b_1d=True,
-                scale_a_layout="k-major",
-                scale_b_layout="k-major",
-                M=m,
-                m_indices=torch.tensor(
-                    [
-                        group
-                        for group, length in enumerate(row["lengths"])
-                        for _ in range(length)
-                    ],
-                    dtype=torch.int32,
-                    device="cuda",
-                ),
-            )
-        native_module = pytest.importorskip("mctlassEx.ContinuousGroupedGEMM")
-        self.native = native_module.ContinuousGroupedGEMM()
-        scratch = torch.empty((m, n), dtype=torch.bfloat16, device="cuda")
-        lengths = torch.tensor(row["lengths"], dtype=torch.int32, device="cuda")
+        if not self.use_hygon:
+            self.native_config = {"n_group": g}
+            if dtype != torch.int8:
+                self.native_config.update(
+                    is_blockwise=True,
+                    use_fp8=True,
+                    is_scale_a_1d=True,
+                    is_scale_b_1d=True,
+                    scale_a_layout="k-major",
+                    scale_b_layout="k-major",
+                    M=m,
+                    m_indices=torch.tensor(
+                        [
+                            group
+                            for group, length in enumerate(row["lengths"])
+                            for _ in range(length)
+                        ],
+                        dtype=torch.int32,
+                        device="cuda",
+                    ),
+                )
+            native_module = pytest.importorskip("mctlassEx.ContinuousGroupedGEMM")
+            self.native = native_module.ContinuousGroupedGEMM()
+        output = torch.empty((m, n), dtype=torch.bfloat16, device=a.device)
+        lengths = torch.tensor(row["lengths"], dtype=torch.int32, device=a.device)
         indices = torch.repeat_interleave(
-            torch.arange(g, dtype=torch.int32, device="cuda"), lengths, output_size=m
+            torch.arange(g, dtype=torch.int32, device=a.device), lengths, output_size=m
         )
-        return a, sa[:, None], b, sb[:, :, None], scratch, indices, lengths
+        if self.use_hygon:
+            self.hygon_native = HygonAiterReference(
+                row["stage"], a, b, sa, sb, output, indices
+            )
+        return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
+
+    def hygon_reference(self, a, sa, b, sb, output, indices, lengths):
+        self.hygon_native.run()
+        return output
 
     def deepgemm_reference(self, a, sa, b, sb, output, indices, lengths):
         # Preserve the installed public wrapper and explicitly select native INT8.
@@ -274,7 +376,8 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
 
 @pytest.mark.grouped_mm_w8a8
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "metax", reason="Requires MetaX mctlass Torch bindings"
+    "grouped_mm_w8a8" not in vars(flag_gems),
+    reason="requires a registered grouped_mm_w8a8 implementation",
 )
 def test_grouped_mm_w8a8():
     bench = GroupedMMW8A8Benchmark(
@@ -283,5 +386,4 @@ def test_grouped_mm_w8a8():
         gems_op=flag_gems.grouped_mm_w8a8,
         dtypes=[torch.int8, torch.float8_e4m3fn],
     )
-    bench.torch_op = bench.mctlass_reference
     bench.run()
