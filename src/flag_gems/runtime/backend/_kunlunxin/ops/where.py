@@ -21,6 +21,7 @@ from _kunlunxin.utils.bf16_fast_store import bf16_fast_store
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from triton.runtime import driver
 
+from flag_gems.ops.where import where_self_out as _generic_where_self_out
 from flag_gems.runtime import torch_device_fn
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
@@ -45,33 +46,27 @@ logger = logging.getLogger(__name__)
 # same 0.35x; an int8 view of the condition plus sitofp hits a TritonXPU
 # vector-widen lowering bug). isCloseVectorization is the only lever that helps.
 
-# 2026-09-14: the "bool CONDITION input is the bottleneck" finding is now
-# resolved on the float path. Root cause (verified by probe, evidence:
-# artifacts/op-perf-batch-2026-09/evidence/w0-lowering-diagnosis/): an i1
-# condition -- whether loaded directly, or produced by cmpi/cmpf -- pins the
-# condition component to the scalar layout (three i1 routes all measured
-# ~383us on 4096^2 fp32: load-i1+where / i8+cmpf+where / i8+cmpi+where). The
-# way out is to keep i1 out of the data flow entirely: view the condition as
-# int8 (zero-copy, layout-preserving), widen with a vectorized sitofp, and
-# blend arithmetically -- a*c + b*(1-c) is bit-exact for a 0/1 mask (every
-# multiply is by 0 or 1). Probe: 131.9us vs 383.5us = 2.9x. This needs the
-# triton-fork VSIToFPOpConversion (i8->f32 1:4 segment lowering, 2026-09-14);
-# the historical "int8 view + sitofp hits a vector-widen lowering bug" note
-# above is exactly that bug, now fixed.
-config_openvec_ = CodeGenConfig(
-    512,
-    (65536, 65536, 65536),
-    32,
-    True,
-    prefer_1d_tile=True,
-    buffer_size_limit=8192,
-    kunlunAutoGrid=True,
-    unroll_num=8,
-)
-
-# Non-float self/other keep the generic i1 tl.where path: the arithmetic blend
-# is float-only. isCloseVectorization stays on here so the mixed i1-mask
-# tl.where is not scalarized by the vectorizer.
+# 2026-11-04: the float path used to be an arithmetic blend
+# (`self * c + other * (1 - c)` over a condition widened from an int8 view, under
+# a separate `config_openvec_` config that has since been removed). That rewrite
+# is only equivalent to a select when both operands are finite: `nan * 0` and
+# `inf * 0` are `nan`, so a nan/inf in the branch the condition does *not* select
+# poisoned the result -- `where([True, False], [1, nan], [nan, 2])` returned
+# `[nan, nan]` instead of `[1, 2]`, and `torch.logdet` (an `aten::where`
+# composite) returned nan for every finite input. It also stopped compiling on
+# the current TritonXPU toolchain for every numel >= 4096 (`size mismatch when
+# packing elements for LLVM struct expected 4 but got 1` inside
+# ConvertTritonXPUToLLVM), so the blend was both wrong and unusable at realistic
+# sizes.
+#
+# Both paths now use a real `tl.where` select on a real bool condition.
+# Re-measured on the 4096^2 fp32 case the old 2.9x result was taken on: the
+# i1-condition select takes 0.2793 ms, while the int8-view select run under the
+# retired `config_openvec_` takes 0.4204 ms -- 33% slower. The 2026-09-14 note
+# above ("blend 131.9us vs i1 383.5us = 2.9x") no longer holds because the i1
+# scalar-layout lowering it worked around has since been fixed; keeping i1 out of
+# the dataflow no longer buys anything, and the blend itself does not compile at
+# all from numel 4096 up.
 config_closevec_ = CodeGenConfig(
     512,
     (65536, 65536, 65536),
@@ -88,21 +83,10 @@ config_closevec_ = CodeGenConfig(
 @pointwise_dynamic(
     is_tensor=[True, True, True],
     promotion_methods=[(1, 2, "NO_OPMATH")],
-    config=config_openvec_,
-)
-@triton.jit
-def where_inner(condition, self, other):
-    c = condition.to(tl.float32)
-    return self * c + other * (1.0 - c)
-
-
-@pointwise_dynamic(
-    is_tensor=[True, True, True],
-    promotion_methods=[(1, 2, "NO_OPMATH")],
     config=config_closevec_,
 )
 @triton.jit
-def where_inner_generic(condition, self, other):
+def where_inner(condition, self, other):
     return tl.where(condition, self, other)
 
 
@@ -157,19 +141,21 @@ def _where_self_flat_kernel(
     numel,
     BLOCK: tl.constexpr,
 ):
-    """`out = x*c + y*(1-c)` over three same-shape contiguous planes.
+    """`out = cond ? x : y` over three same-shape contiguous planes.
 
-    Same math as `where_inner`: the condition arrives as an int8 view, is widened
-    to f32, and the blend is arithmetic, so i1 never enters the dataflow (see the
-    `config_openvec_` note). `numel` is a runtime bound and the store is masked,
-    so a numel that BLOCK does not divide is served by the same binary.
+    Same math as `where_inner`: a real select, not an arithmetic blend, so a
+    nan/inf in the branch the condition does not select is not propagated (see
+    the 2026-11-04 note above). The condition arrives as an int8 view and is
+    compared against zero inside the kernel. `numel` is a runtime bound and the
+    store is masked, so a numel that BLOCK does not divide is served by the same
+    binary.
     """
     offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     mask = offs < numel
-    c = tl.load(cond_ptr + offs, mask=mask).to(tl.float32)
+    cond = tl.load(cond_ptr + offs, mask=mask)
     x = tl.load(a_ptr + offs, mask=mask)
     y = tl.load(b_ptr + offs, mask=mask)
-    tl.store(out_ptr + offs, x * c + y * (1.0 - c), mask=mask)
+    tl.store(out_ptr + offs, tl.where(cond != 0, x, y), mask=mask)
 
 
 def _flat_where_self(c, a, b, out, out_provided):
@@ -232,7 +218,31 @@ def where_self_out(condition, self, other, out=None):
 
 
 def _where_self_out_impl(condition, self, other, out, result_type):
-    c, a, b = condition, self, other
+    # `where_scalar_self` / `where_scalar_other` pass a Python number straight
+    # through, so `self` or `other` may not be a tensor at all. The generic
+    # implementation wraps non-tensors with `torch.tensor` before anything else;
+    # this copy dropped that step and crashed with
+    # `AttributeError: 'float' object has no attribute 'dtype'` on every scalar
+    # case (72/72 in tests/test_where_self_out.py, on base too). The 0-dim
+    # fixups below move the resulting CPU scalar onto the compute device.
+    c, a, b = (
+        x if isinstance(x, torch.Tensor) else torch.tensor(x)
+        for x in (condition, self, other)
+    )
+
+    # Broadcasting operands go to the generic implementation. The pointwise
+    # kernels generated for this backend do not cover every broadcast shape:
+    # with a 0-dim operand against a one-element tensor, the generated wrapper
+    # fails LLVM translation
+    #
+    #   error: LLVM Translation failed for operation:
+    #     builtin.unrealized_conversion_cast
+    #
+    # for both the i1 and the int8-condition variants. The generic `tl.where`
+    # kernel serves the same shapes correctly, and this branch is reached only
+    # when the shapes differ -- the same-shape paths below are untouched.
+    if c.shape != a.shape or a.shape != b.shape:
+        return _generic_where_self_out(c, a, b, out=out)
 
     if a.dtype != result_type:
         a = a.to(result_type)
@@ -280,8 +290,11 @@ def _where_self_out_impl(condition, self, other, out, result_type):
         # device other than the current one, or a triton too old to have the
         # flat launcher cache.
         #
-        # bool -> int8 view is zero-copy and layout-preserving (same element
-        # size); keeps i1 out of the kernel entirely (see config_openvec_ note).
+        # The condition is passed as a real bool tensor: `tl.where` takes an i1
+        # predicate directly, and the int8-view workaround existed only to keep
+        # i1 out of the arithmetic blend. Keeping it would make `tl.where` warn
+        # ("non-boolean condition is deprecated") and, for 0-dim broadcast
+        # operands, fail LLVM translation (`builtin.unrealized_conversion_cast`).
         #
         # 2026-09-16: when the caller did not pass `out`, let the generated
         # wrapper allocate the result instead of pre-allocating with
@@ -293,15 +306,15 @@ def _where_self_out_impl(condition, self, other, out, result_type):
         # allocated tensor); the `out=` variant below is untouched.
         where_inner.instantiate(ndim)
         if out_provided:
-            where_inner(c.view(torch.int8), a, b, out0=out)
+            where_inner(c, a, b, out0=out)
         else:
-            out = where_inner(c.view(torch.int8), a, b)
+            out = where_inner(c, a, b)
     else:
         if not out_provided:
             out_shape = torch.broadcast_shapes(c.shape, a.shape, b.shape)
             out = torch.empty(out_shape, dtype=result_type, device=device)
-        where_inner_generic.instantiate(ndim)
-        where_inner_generic(c, a, b, out0=out)
+        where_inner.instantiate(ndim)
+        where_inner(c, a, b, out0=out)
     return out
 
 
