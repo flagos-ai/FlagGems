@@ -187,8 +187,8 @@ from .logical_and import logical_and
 from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
-from .lt import less_scalar, less_tensor, lt, lt_scalar
 from .logspace import logspace
+from .lt import less_scalar, less_tensor, lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
@@ -430,11 +430,11 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diagonal_copy",
     "div_scalar_mode",
     "div_scalar_mode_",
     "div_tensor_mode",
     "div_tensor_mode_",
-    "diagonal_copy",
     "dropout",
     "dstack",
     "elu",

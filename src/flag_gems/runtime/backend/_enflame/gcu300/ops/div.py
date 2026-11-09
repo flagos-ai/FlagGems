@@ -481,12 +481,14 @@ def remainder_(A, B):
 
 import sys as _sys  # noqa: E402
 
-# The generic div_mode path truncates with libdevice div_rn, which gcu300
+# The generic division-mode paths truncate with libdevice div_rn, which gcu300
 # implements as round-to-nearest-integer instead of IEEE division, so trunc and
 # floor results land one integer step away.  flag_gems.ops still exposes those
 # generic helpers, so rebind them to the gcu300 implementations (same pattern as
 # the _kunlunxin backend specializations).
 _generic_ops_module = _sys.modules.get("flag_gems.ops")
 if _generic_ops_module is not None:
-    setattr(_generic_ops_module, "div_mode", div_mode)
-    setattr(_generic_ops_module, "div_mode_", div_mode_)
+    setattr(_generic_ops_module, "div_scalar_mode", div_scalar_mode)
+    setattr(_generic_ops_module, "div_scalar_mode_", div_scalar_mode_)
+    setattr(_generic_ops_module, "div_tensor_mode", div_tensor_mode)
+    setattr(_generic_ops_module, "div_tensor_mode_", div_tensor_mode_)
