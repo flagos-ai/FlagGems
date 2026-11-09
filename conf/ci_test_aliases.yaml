@@ -33,6 +33,7 @@ as_strided_copy_out: test_as_strided_copy
 baddbmm_out: test_baddbmm
 binary_cross_entropy_out: test_binary_cross_entropy
 ccol_indices_copy_out: test_ccol_indices_copy
+chain_matmul_out: test_chain_matmul
 conv_tbc_out: test_conv_tbc
 foreach_abs: test_foreach_unary
 foreach_abs_: test_foreach_unary
@@ -193,6 +194,7 @@ searchsorted_out: test_searchsorted
 searchsorted_scalar_out: test_searchsorted
 scatter_reduce_two_out: test_scatter_reduce
 segment_reduce_out: test_segment_reduce
+slow_conv_dilated3d_out: test_slow_conv_dilated3d
 special_zeta_out: test_special_zeta
 special_zeta_scalar_tensor_out: test_special_zeta
 special_zeta_tensor_scalar_out: test_special_zeta
@@ -237,6 +239,7 @@ rshift_scalar: test_rshift
 rshift_tensor: test_rshift
 rshift_scalar_out: test_rshift
 rshift_tensor_out: test_rshift
+embedding_bag_forward_only: test_embedding_bag
 batch_norm_backward: test_batch_norm
 cumprod_backward: test_cumprod
 erfinv: test_erfinv_
@@ -280,3 +283,6 @@ fused_adamw__tensor_lr: test_fused_adamw_
 # conf/operators.yaml cannot find its test.
 underscore_linalg_det: test__linalg_det
 underscore_sobol_engine_scramble_: test__sobol_engine_scramble_
+
+_embedding_bag: test_embedding_bag
+underscore_embedding_bag: test_embedding_bag
