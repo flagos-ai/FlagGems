@@ -89,6 +89,7 @@ from .embedding import embedding
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
+from .eq_ import eq_
 from .erfc import erfc
 from .erfc_ import erfc_
 from .erfinv import erfinv
@@ -394,6 +395,7 @@ __all__ = [
     "dropout_",
     "embedding",
     "embedding_spmdm",
+    "eq_",
     "erfc",
     "erfc_",
     "erfinv",
