@@ -253,6 +253,7 @@ from .repeat_interleave import (
 )
 from .replication_pad2d import replication_pad2d, replication_pad2d_out
 from .replication_pad3d import replication_pad3d
+from .row_stack import row_stack, row_stack_out
 from .rsqrt import rsqrt, rsqrt_
 from .scatter import scatter, scatter_
 from .scatter_add import scatter_add, scatter_add_
@@ -605,6 +606,8 @@ __all__ = [
     "replication_pad2d_out",
     "replication_pad3d",
     "router_gemm",
+    "row_stack",
+    "row_stack_out",
     "rsqrt",
     "rsqrt_",
     "scaled_dot_product_attention",
