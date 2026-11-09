@@ -158,7 +158,6 @@ from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
-from .special_bessel_y1 import special_bessel_y1
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
 from .special_multigammaln import special_multigammaln
@@ -347,7 +346,6 @@ __all__ = [
     "special_bessel_j0",
     "special_bessel_j1",
     "special_bessel_y0",
-    "special_bessel_y1",
     "special_erfcx",
     "special_gammainc",
     "special_multigammaln",
