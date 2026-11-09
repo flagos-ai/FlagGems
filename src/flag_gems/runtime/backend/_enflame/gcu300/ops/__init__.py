@@ -181,6 +181,7 @@ from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
+from .matrix_exp_backward import matrix_exp_backward
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
     max_pool2d_backward,
@@ -521,6 +522,7 @@ __all__ = [
     "masked_fill_",
     "masked_scatter_backward",
     "masked_select",
+    "matrix_exp_backward",
     "max",
     "max_dim",
     "max_pool2d_backward",
