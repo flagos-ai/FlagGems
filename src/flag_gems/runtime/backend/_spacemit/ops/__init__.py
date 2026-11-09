@@ -32,6 +32,7 @@ from .bitwise_or import (  # noqa: F401
     bitwise_or_tensor,
     bitwise_or_tensor_,
 )
+from .bmm import bmm, bmm_out  # noqa: F401
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_  # noqa: F401
 from .cos import cos, cos_  # noqa: F401
 from .div import true_divide, true_divide_  # noqa: F401
