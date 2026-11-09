@@ -144,6 +144,7 @@ from .nansum import nansum, nansum_out
 from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .nonzero_numpy import nonzero_numpy
 from .norm_scalaropt_dim import norm_scalaropt_dim
+from .nuclear_norm import nuclear_norm
 from .ormqr import ormqr
 from .pad_sequence import pad_sequence
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
@@ -349,6 +350,7 @@ __all__ = [
     "nll_loss_backward",
     "nonzero_numpy",
     "norm_scalaropt_dim",
+    "nuclear_norm",
     "ormqr",
     "pad_sequence",
     "per_token_group_quant_fp8",
