@@ -99,6 +99,7 @@ from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
+from .hash_tensor import hash_tensor
 from .histc import histc
 from .igamma import igamma
 from .index_add import index_add, index_add_
@@ -296,6 +297,7 @@ __all__ = [
     "grid_sampler_3d",
     "hadamard_transform",
     "hardsigmoid_backward",
+    "hash_tensor",
     "heur_block_n",
     "histc",
     "igamma",
