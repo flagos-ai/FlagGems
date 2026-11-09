@@ -279,6 +279,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
