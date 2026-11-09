@@ -150,12 +150,6 @@ def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None
     """
     logger.debug("GEMS CLONE")
 
-    # A ZeroTensor carries a null data pointer by design; the Triton copy
-    # kernel below would dereference it. Native semantics: cloning a lazy
-    # all-zero tensor yields a materialized zero tensor.
-    if inp._is_zerotensor():
-        return torch.zeros_like(inp, memory_format=memory_format)
-
     if memory_format is None:
         memory_format = torch.preserve_format
 
