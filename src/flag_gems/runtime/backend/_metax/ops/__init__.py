@@ -93,6 +93,7 @@ from .nansum import nansum, nansum_out
 from .new_ones import new_ones
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .nuclear_norm import nuclear_norm
 from .ones import ones
 from .ones_like import ones_like
 from .ormqr import ormqr
@@ -262,6 +263,7 @@ __all__ = [
     "new_ones",
     "nonzero",
     "nonzero_numpy",
+    "nuclear_norm",
     "ones",
     "ones_like",
     "ormqr",
