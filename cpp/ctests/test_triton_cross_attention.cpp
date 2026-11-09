@@ -15,11 +15,9 @@
 // Correctness tests for the C++ wrapped flag_gems::cross_attention.
 //
 // The reference and the tolerance mirror tests/test_cross_attention.py: the
-// result is compared against torch's scaled_dot_product_attention (with
-// enable_gqa whenever the head counts differ, and the mask inverted because
-// SDPA bool masks mark *allowed* positions while cross_attention blocks
-// non-zero entries), using accuracy_utils::gems_assert_close, i.e. the same
-// atol/rtol table the Python tests use.
+// result is compared against torch's FP32 mathematical SDPA (with enable_gqa
+// whenever the head counts differ), using accuracy_utils::gems_assert_close,
+// i.e. the same atol/rtol table the Python tests use.
 
 #include <array>
 #include <cmath>
@@ -28,9 +26,10 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <vector>
 
-#include <ATen/ops/scaled_dot_product_attention.h>
+#include <ATen/ops/_scaled_dot_product_attention_math.h>
 
 #include "flag_gems/accuracy_utils.h"
 #include "flag_gems/operators.h"
@@ -60,19 +59,23 @@ torch::Tensor sdpa_reference(const torch::Tensor &query,
                              const torch::Tensor &value,
                              const std::optional<torch::Tensor> &attn_mask = std::nullopt,
                              const std::optional<double> &scale = std::nullopt) {
-  std::optional<torch::Tensor> allowed_mask = std::nullopt;
+  std::optional<torch::Tensor> additive_mask = std::nullopt;
   if (attn_mask.has_value()) {
-    // cross_attention: non-zero == blocked; SDPA: true == allowed.
-    allowed_mask = ~(attn_mask.value() != 0);
+    // The raw math entry expects an additive mask, unlike public SDPA's bool
+    // mask. cross_attention's non-zero entries are blocked, so they add -inf.
+    const auto blocked_mask = attn_mask.value() != 0;
+    additive_mask = at::zeros(blocked_mask.sizes(), query.options().dtype(torch::kFloat))
+                        .masked_fill(blocked_mask, -std::numeric_limits<float>::infinity());
   }
-  return at::scaled_dot_product_attention(query,
-                                          key,
-                                          value,
-                                          allowed_mask,
-                                          /*dropout_p=*/0.0,
-                                          /*is_causal=*/false,
-                                          scale,
-                                          /*enable_gqa=*/query.size(1) != key.size(1));
+  return std::get<0>(at::_scaled_dot_product_attention_math(query.to(torch::kFloat),
+                                                            key.to(torch::kFloat),
+                                                            value.to(torch::kFloat),
+                                                            additive_mask,
+                                                            /*dropout_p=*/0.0,
+                                                            /*is_causal=*/false,
+                                                            /*dropout_mask=*/std::nullopt,
+                                                            scale,
+                                                            /*enable_gqa=*/query.size(1) != key.size(1)));
 }
 
 std::string describe(int64_t B,

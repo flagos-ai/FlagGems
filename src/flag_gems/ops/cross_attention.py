@@ -161,6 +161,15 @@ def _select_gpu_tiling(
 ):
     largest_dim = max(qk_dim, value_dim)
     pipeline_ns = 2
+    if (
+        not is_fp32
+        and qk_dim <= 128
+        and value_dim <= 32
+        and (qk_dim > value_dim or value_dim % 16 != 0)
+    ):
+        # Hopper reproduces incorrect results with wider M tiles for these
+        # low-precision narrow/tail layouts. Keep aligned equal-dim fast paths.
+        return 16, 64, 4, pipeline_ns
     if is_fp32:
         if largest_dim > 256:
             # D > 256 FP32 (`tf32x3` 3x shmem): the Q/K shmem footprint

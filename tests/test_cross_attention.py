@@ -15,6 +15,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 import flag_gems
 
@@ -31,6 +32,8 @@ CROSS_ATTENTION_SHAPES = (
     (4, 8, 8, 128, 128, 64, 64),
     (2, 16, 16, 256, 128, 64, 64),
     (2, 32, 32, 128, 512, 128, 128),
+    # Pipelined K/V iteration with tail tiles on both sequence axes.
+    (2, 32, 32, 129, 513, 128, 128),
     (1, 16, 16, 257, 513, 128, 128),
     (4, 8, 8, 1024, 1024, 64, 64),
     (4, 8, 8, 1024, 1024, 128, 128),
@@ -39,6 +42,10 @@ CROSS_ATTENTION_SHAPES = (
     (4, 8, 8, 17, 1030, 64, 64),
     (4, 8, 8, 17, 1030, 128, 128),
     (2, 4, 4, 512, 612, 128, 128),
+    # Narrow values exercise a different low-precision MMA layout than Q/K.
+    (2, 3, 3, 33, 47, 64, 32),
+    (2, 3, 3, 61, 129, 128, 32),
+    (2, 4, 2, 129, 193, 64, 32),
     (2, 4, 4, 1024, 1034, 64, 64),
     (2, 4, 4, 2048, 2048, 32, 32),
     (2, 4, 4, 4096, 4096, 16, 16),
@@ -60,9 +67,9 @@ CROSS_ATTENTION_SHAPES = (
 
 
 def _reference(query, key, value, attn_mask=None, scale=None):
-    ref_query = utils.to_reference(query, False)
-    ref_key = utils.to_reference(key, False)
-    ref_value = utils.to_reference(value, False)
+    ref_query = utils.to_reference(query, True)
+    ref_key = utils.to_reference(key, True)
+    ref_value = utils.to_reference(value, True)
     ref_mask = utils.to_reference(attn_mask, False)
 
     # PyTorch SDPA bool masks use True for allowed positions, while the public
@@ -70,16 +77,18 @@ def _reference(query, key, value, attn_mask=None, scale=None):
     allowed_mask = None if ref_mask is None else ~(ref_mask != 0)
     enable_gqa = ref_query.shape[1] != ref_key.shape[1]
 
-    return F.scaled_dot_product_attention(
-        ref_query,
-        ref_key,
-        ref_value,
-        attn_mask=allowed_mask,
-        dropout_p=0.0,
-        is_causal=False,
-        scale=scale,
-        enable_gqa=enable_gqa,
-    )
+    # Use the mathematical oracle rather than a device-selected fused SDPA.
+    with sdpa_kernel(SDPBackend.MATH):
+        return F.scaled_dot_product_attention(
+            ref_query,
+            ref_key,
+            ref_value,
+            attn_mask=allowed_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            scale=scale,
+            enable_gqa=enable_gqa,
+        )
 
 
 # def _assert_close(actual, expected, dtype):
