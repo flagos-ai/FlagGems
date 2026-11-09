@@ -121,16 +121,19 @@ def addmm_kernel(
             accumulator += smt.dot(a, b)
     accumulator = smt.view(accumulator, (0, 0), (BLOCK_SIZE_M, BLOCK_SIZE_N), (1, 1))
 
-    bias_block_ptr = tl.make_block_ptr(
-        base=bias_ptr,
-        shape=[M, N],
-        strides=[stride_im, stride_in],
-        offsets=[pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N],
-        block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N],
-        order=[1, 0],
-    )
-    bias = tl.load(bias_block_ptr, boundary_check=(0, 1))
-    accumulator = accumulator * alpha + bias * beta
+    accumulator = accumulator * alpha
+    # A zero beta ignores bias, including its NaN and Inf values.
+    if beta != 0:
+        bias_block_ptr = tl.make_block_ptr(
+            base=bias_ptr,
+            shape=[M, N],
+            strides=[stride_im, stride_in],
+            offsets=[pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N],
+            block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N],
+            order=[1, 0],
+        )
+        bias = tl.load(bias_block_ptr, boundary_check=(0, 1))
+        accumulator = accumulator + bias * beta
     c = accumulator.to(c_ptr.dtype.element_ty)
 
     c_block_ptr = tl.make_block_ptr(
@@ -154,7 +157,9 @@ def addmm(bias, mat1, mat2, *, beta=1, alpha=1):
     mat1 = mat1.contiguous()
     mat2 = mat2.contiguous()
     out = torch.empty((M, N), device=mat1.device, dtype=mat1.dtype)
-    bias = bias.broadcast_to(out.shape).contiguous()
+    bias = bias.broadcast_to(out.shape)
+    if beta != 0:
+        bias = bias.contiguous()
 
     def grid(META):
         return (

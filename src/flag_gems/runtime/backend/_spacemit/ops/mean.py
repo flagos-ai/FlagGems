@@ -149,7 +149,9 @@ def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr)
     )
 
     for off_n in range(0, num_pid_n):
-        a = tl.load(x_ptr_desc, boundary_check=[0, 1]).to(tl.float32)
+        a = tl.load(x_ptr_desc, boundary_check=[0, 1], padding_option="zero").to(
+            tl.float32
+        )
         _mean_acc += a
         x_ptr_desc = tl.advance(x_ptr_desc, [0, BLOCK_N])
 
@@ -282,13 +284,6 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     return out
 
 
-def avg_pool2d(
-    x,
-    kernel_size=None,
-    stride=None,
-    padding=0,
-    ceil_mode=False,
-    count_include_pad=True,
-    divisor_override=None,
-):
+def global_avg_pool(x, _output_size=None):
+    logger.debug("GEMS_SPACEMIT GLOBAL_AVG_POOL")
     return mean_dim(x, dim=[2, 3], keepdim=True)

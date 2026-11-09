@@ -61,7 +61,7 @@ from .le import le, le_scalar  # noqa: F401
 from .log_softmax import log_softmax  # noqa: F401
 from .lt import lt, lt_scalar  # noqa: F401
 from .max import max, max_dim  # noqa: F401
-from .mean import mean, mean_dim  # noqa: F401
+from .mean import global_avg_pool, mean, mean_dim  # noqa: F401
 from .min import min, min_dim  # noqa: F401
 
 try:
@@ -104,6 +104,8 @@ __all__ = [
     "bitwise_or_scalar_tensor",
     "bitwise_or_tensor",
     "bitwise_or_tensor_",
+    "bmm",
+    "bmm_out",
     "clamp",
     "clamp_",
     "clamp_tensor",
@@ -120,6 +122,7 @@ __all__ = [
     "ge",
     "ge_scalar",
     "gelu",
+    "global_avg_pool",
     "gt",
     "gt_scalar",
     "isinf",
@@ -159,6 +162,8 @@ __all__ = [
     "tanh",
     "tanh_",
     "triu",
+    "true_divide",
+    "true_divide_",
 ]
 
 # drop entries whose module was unavailable on this stack (see the

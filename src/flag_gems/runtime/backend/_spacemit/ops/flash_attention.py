@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
 
 import torch
 import triton
 import triton.language as tl
 import triton.language.extra.smt as smt
+from triton.language.extra.cpu import libdevice as tl_extra_shim
 
 from flag_gems import runtime
 from flag_gems.runtime.backend._spacemit.ops.attn_vfwmacc import _attn_m1_fused_host
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -504,7 +508,17 @@ def flash_attention(
     scale=None,
     enable_gqa=False,
 ):
-    return Attention.apply(query, key, value, scale, is_causal, enable_gqa)
+    logger.debug("GEMS_SPACEMIT FLASH_ATTENTION")
+    return scaled_dot_product_attention(
+        query,
+        key,
+        value,
+        attn_mask=attn_mask,
+        dropout_p=dropout_p,
+        is_causal=is_causal,
+        scale=scale,
+        enable_gqa=enable_gqa,
+    )
 
 
 def _sdpa_m1_fused(q, k, v, scale, is_causal):
@@ -537,30 +551,225 @@ def _sdpa_m1_fused(q, k, v, scale, is_causal):
     return out
 
 
-def _sdpa_python_fallback(query, key, value, attn_mask, dropout_p, is_causal, scale):
-    """Manual QK^T + softmax + AV for shapes/dtypes the fused kernels reject.
+@triton.jit
+def _attn_fwd_generic(
+    Q,
+    K,
+    V,
+    Mask,
+    Out,
+    Lse,
+    scale: tl.constexpr,
+    row_start,
+    stride_qb,
+    stride_qh,
+    stride_qm,
+    stride_qd,
+    stride_kb,
+    stride_kh,
+    stride_kn,
+    stride_kd,
+    stride_vb,
+    stride_vh,
+    stride_vn,
+    stride_vd,
+    stride_mb,
+    stride_mh,
+    stride_mm,
+    stride_mn,
+    HEADS: tl.constexpr,
+    Q_LEN: tl.constexpr,
+    KV_LEN: tl.constexpr,
+    HEAD_DIM: tl.constexpr,
+    VALUE_DIM: tl.constexpr,
+    K_GROUP: tl.constexpr,
+    V_GROUP: tl.constexpr,
+    HAS_MASK: tl.constexpr,
+    BOOL_MASK: tl.constexpr,
+    IS_CAUSAL: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+    BLOCK_V: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    row = row_start + tl.program_id(0)
+    query_index = row % Q_LEN
+    head = row // Q_LEN % HEADS
+    batch = row // (Q_LEN * HEADS)
+    d = tl.arange(0, BLOCK_D)
+    vd = tl.arange(0, BLOCK_V)
+    q = tl.load(
+        Q
+        + batch * stride_qb
+        + head * stride_qh
+        + query_index * stride_qm
+        + d * stride_qd,
+        mask=d < HEAD_DIM,
+        other=0,
+    ).to(tl.float32)
+    maximum = tl.full((), -float("inf"), tl.float32)
+    denominator = tl.full((), 0, tl.float32)
+    accumulator = tl.full((BLOCK_V,), 0, tl.float32)
+    for start in range(0, KV_LEN, BLOCK_N):
+        n = start + tl.arange(0, BLOCK_N)
+        k = tl.load(
+            K
+            + batch * stride_kb
+            + (head // K_GROUP) * stride_kh
+            + n[:, None] * stride_kn
+            + d[None, :] * stride_kd,
+            mask=(n[:, None] < KV_LEN) & (d[None, :] < HEAD_DIM),
+            other=0,
+        ).to(tl.float32)
+        scores = tl.sum(k * q[None, :], 1) * tl.full((), scale, tl.float32)
+        if HAS_MASK:
+            bias = tl.load(
+                Mask
+                + batch * stride_mb
+                + head * stride_mh
+                + query_index * stride_mm
+                + n * stride_mn,
+                mask=n < KV_LEN,
+                other=0,
+            )
+            if BOOL_MASK:
+                scores = tl.where(bias, scores, -float("inf"))
+            else:
+                scores += bias.to(tl.float32)
+        keep = n < KV_LEN
+        if IS_CAUSAL:
+            keep = keep & (n <= query_index)
+        scores = tl.where(keep, scores, -float("inf"))
+        new_maximum = tl.maximum(maximum, tl.max(scores, 0))
+        safe_maximum = tl.where(new_maximum == -float("inf"), 0, new_maximum)
+        # Some CPU vector-exp lowerings clamp -inf to a finite input. Keep
+        # masked probabilities exactly zero, including fully masked rows.
+        probabilities = tl.where(
+            scores == -float("inf"), 0, tl_extra_shim.exp(scores - safe_maximum)
+        )
+        correction = tl.where(
+            maximum == -float("inf"), 0, tl_extra_shim.exp(maximum - safe_maximum)
+        )
+        denominator = denominator * correction + tl.sum(probabilities, 0)
+        v = tl.load(
+            V
+            + batch * stride_vb
+            + (head // V_GROUP) * stride_vh
+            + n[:, None] * stride_vn
+            + vd[None, :] * stride_vd,
+            mask=(n[:, None] < KV_LEN) & (vd[None, :] < VALUE_DIM),
+            other=0,
+        ).to(tl.float32)
+        accumulator = accumulator * correction + tl.sum(probabilities[:, None] * v, 0)
+        maximum = new_maximum
+    safe_denominator = tl.where(denominator == 0, 1, denominator)
+    tl.store(
+        Out + row * VALUE_DIM + vd, accumulator / safe_denominator, mask=vd < VALUE_DIM
+    )
+    # CPU flash attention uses zero for fully masked rows, including its LSE.
+    lse = tl.where(denominator == 0, 0, maximum + tl_extra_shim.log(safe_denominator))
+    tl.store(Lse + row, lse)
 
-    Must not call aten scaled_dot_product_attention (recursion once this op is
-    registered as an aten override). Computes in fp32 because the backend has
-    no bf16 dot and cannot pack head_dim=16 dots.
-    """
-    assert dropout_p == 0.0, "fallback only supports dropout_p=0.0"
-    B, Hq, Mq, D = query.shape
-    _, Hkv, Mk, _ = key.shape
-    if Hq != Hkv:
-        n_rep = Hq // Hkv
-        key = key.unsqueeze(2).expand(B, Hkv, n_rep, Mk, D).reshape(B, Hq, Mk, D)
-        value = value.unsqueeze(2).expand(B, Hkv, n_rep, Mk, D).reshape(B, Hq, Mk, D)
-    attn = query.float() @ key.float().transpose(-1, -2) * scale
-    if is_causal:
-        q_idx = torch.arange(Mq, device=query.device).unsqueeze(-1)
-        k_idx = torch.arange(Mk, device=query.device).unsqueeze(0)
-        attn = attn.masked_fill(k_idx - q_idx > Mk - Mq, float("-inf"))
+
+def _attention_forward(
+    query, key, value, attn_mask, dropout_p, is_causal, scale, enable_gqa=False
+):
+    """Streaming attention for layouts/dtypes unsupported by the SMT kernels."""
+    if dropout_p != 0.0:
+        raise ValueError("SpacemiT attention only supports dropout_p=0.0")
+    if any(t.ndim != 4 for t in (query, key, value)):
+        raise ValueError(
+            "attention expects 4D (batch, heads, sequence, dimension) tensors"
+        )
+    if query.dtype not in (torch.float16, torch.float32):
+        raise ValueError("SpacemiT attention only supports float16 and float32")
+    if any(t.dtype != query.dtype or t.device != query.device for t in (key, value)):
+        raise ValueError("query, key, and value must have the same dtype and device")
+    bq, hq, q_len, dim = query.shape
+    bk, hk, kv_len, key_dim = key.shape
+    bv, hv, value_len, value_dim = value.shape
+    if dim == 0 or dim != key_dim or kv_len != value_len:
+        raise ValueError("incompatible query, key, and value dimensions")
+    batch = max(bq, bk, bv)
+    if any(b not in (1, batch) for b in (bq, bk, bv)):
+        raise ValueError("attention batch dimensions must be broadcastable")
+    heads = hq if enable_gqa else max(hq, hk, hv)
+    if enable_gqa:
+        if hk == 0 or hv == 0 or hq % hk or hq % hv:
+            raise ValueError(
+                "GQA requires query heads divisible by key and value heads"
+            )
+    elif any(h not in (1, heads) for h in (hq, hk, hv)):
+        raise ValueError("different head counts require enable_gqa=True")
+    if heads == 0:
+        raise ValueError("attention requires at least one head")
+    mask_strides = (0, 0, 0, 0)
     if attn_mask is not None:
-        attn = attn + attn_mask
-    attn = torch.nn.functional.softmax(attn, dim=-1)
-    out = attn @ value.float()
-    return out.to(query.dtype)
+        if attn_mask.device != query.device:
+            raise ValueError("attention mask must be on the query device")
+        if attn_mask.dtype not in (torch.bool, query.dtype, torch.float32):
+            raise ValueError(
+                "attention mask must be boolean, float32, or match query dtype"
+            )
+        target = (batch, heads, q_len, kv_len)
+        if attn_mask.ndim > 4:
+            raise ValueError(
+                "attention mask must broadcast to (batch, heads, queries, keys)"
+            )
+        shape = (1,) * (4 - attn_mask.ndim) + tuple(attn_mask.shape)
+        strides = (0,) * (4 - attn_mask.ndim) + attn_mask.stride()
+        if any(a not in (1, b) for a, b in zip(shape, target)):
+            raise ValueError(
+                "attention mask must broadcast to (batch, heads, queries, keys)"
+            )
+        mask_strides = tuple(
+            0 if size == 1 else stride for size, stride in zip(shape, strides)
+        )
+    out = torch.empty(
+        (batch, heads, q_len, value_dim), dtype=query.dtype, device=query.device
+    )
+    lse = torch.empty((batch, heads, q_len), dtype=torch.float32, device=query.device)
+    scale = 1.0 / math.sqrt(dim) if scale is None else scale
+    strides = []
+    for tensor in (query, key, value):
+        sb, sh, sm, sd = tensor.stride()
+        strides.extend(
+            (
+                0 if tensor.shape[0] == 1 else sb,
+                0 if tensor.shape[1] == 1 else sh,
+                sm,
+                sd,
+            )
+        )
+    rows = batch * heads * q_len
+    # Older K3 runtimes drop programs above 512; chunk launches explicitly.
+    for start in range(0, rows, 512):
+        _attn_fwd_generic[(min(512, rows - start),)](
+            query,
+            key,
+            value,
+            query if attn_mask is None else attn_mask,
+            out,
+            lse,
+            scale,
+            start,
+            *strides,
+            *mask_strides,
+            HEADS=heads,
+            Q_LEN=q_len,
+            KV_LEN=kv_len,
+            HEAD_DIM=dim,
+            VALUE_DIM=value_dim,
+            K_GROUP=heads // hk,
+            V_GROUP=heads // hv,
+            HAS_MASK=attn_mask is not None,
+            BOOL_MASK=attn_mask is not None and attn_mask.dtype == torch.bool,
+            IS_CAUSAL=is_causal,
+            BLOCK_D=triton.next_power_of_2(dim),
+            BLOCK_V=triton.next_power_of_2(max(1, value_dim)),
+            BLOCK_N=32,
+            num_warps=4,
+        )
+    return out, lse
 
 
 def scaled_dot_product_attention(
@@ -573,14 +782,26 @@ def scaled_dot_product_attention(
     scale=None,
     enable_gqa=False,
 ):
-    # Fast path: K3 attention kernels (f16, B=1, GQA; smt.dot flash for Mq>1)
+    logger.debug("GEMS_SPACEMIT SCALED_DOT_PRODUCT_ATTENTION")
+    # The SMT kernels use bottom-right causal alignment. Restrict causal
+    # launches to square attention, where it equals PyTorch upper-left masking.
     B, Hq, Mq, D = query.shape
     _, Hkv, Mk, _ = key.shape
     if (
         query.dtype == torch.float16
         and D in (64, 128)
         and B == 1
+        and key.shape[0] == value.shape[0] == 1
+        and key.shape == value.shape
+        and key.shape[-1] == D
+        and key.dtype == value.dtype == query.dtype
+        and key.device == value.device == query.device
+        and Hkv > 0
+        and Mk > 0
+        and Hq > 0
         and Hq % Hkv == 0
+        and (enable_gqa or Hq == Hkv or Hkv == 1)
+        and (not is_causal or Mq == Mk)
         and query.is_contiguous()
         and key.is_contiguous()
         and value.is_contiguous()
@@ -590,11 +811,11 @@ def scaled_dot_product_attention(
         sc = scale if scale is not None else (1.0 / math.sqrt(D))
         if Mq == 1 and D == 128:
             return _sdpa_m1_fused(query, key, value, sc, is_causal)
-        return flash_attention(
-            query, key, value, is_causal=is_causal, scale=sc, enable_gqa=enable_gqa
-        )
+        return Attention.apply(query, key, value, sc, is_causal, enable_gqa)
     sc = scale if scale is not None else (1.0 / math.sqrt(D))
-    return _sdpa_python_fallback(query, key, value, attn_mask, dropout_p, is_causal, sc)
+    return _attention_forward(
+        query, key, value, attn_mask, dropout_p, is_causal, sc, enable_gqa
+    )[0]
 
 
 def scaled_dot_product_flash_attention_for_cpu(
@@ -607,31 +828,6 @@ def scaled_dot_product_flash_attention_for_cpu(
     attn_mask=None,
     scale=None,
 ):
-    """Bridge: aten::_scaled_dot_product_flash_attention_for_cpu → FlagGems SDPA.
-
-    Inductor decomposes `aten::scaled_dot_product_attention` (CompositeImplicitAutograd)
-    down to `aten::_scaled_dot_product_flash_attention_for_cpu` during FakeTensor tracing,
-    bypassing FlagGems' CPU registration. Registering this wrapper on the decomposed op
-    routes Inductor-compiled graphs back through FlagGems SDPA.
-
-    Native op returns (output, attn_matrix); we return (output, None) since FlagGems
-    SDPA does not compute the attention matrix.
-
-    The 4D attn_mask passed by HF's sdpa_attention_forward is a standard causal mask
-    (0 on/below diagonal, -inf above) for Qwen3 prefill without padding, and all-zeros
-    for decode (Mq=1). We convert: Mq==1 → is_causal=False; Mq>1 → is_causal=True.
-    """
-    Mq = query.shape[2]
-    if attn_mask is not None:
-        is_causal = Mq > 1
-        attn_mask = None
-    out = scaled_dot_product_attention(
-        query,
-        key,
-        value,
-        attn_mask=attn_mask,
-        dropout_p=dropout_p,
-        is_causal=is_causal,
-        scale=scale,
-    )
-    return (out, None)
+    """CPU flash ATen bridge returning both output and float accumulation LSE."""
+    logger.debug("GEMS_SPACEMIT SCALED_DOT_PRODUCT_FLASH_ATTENTION_FOR_CPU")
+    return _attention_forward(query, key, value, attn_mask, dropout_p, is_causal, scale)

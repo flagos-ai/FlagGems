@@ -22,7 +22,13 @@ import triton.language.extra.smt as smt
 from flag_gems.ops.mv import mv as general_mv
 from flag_gems.runtime import torch_device_fn
 
-from ..heuristics_config_utils import HAS_SMT_RVISA, _sr_call, f16, f32
+from ..heuristics_config_utils import (
+    HAS_SMT_RVISA,
+    _sr_call,
+    f16,
+    f32,
+    smt_rvisa_enabled,
+)
 from ..heuristics_config_utils import tle as srv
 
 logger = logging.getLogger(__name__)
@@ -35,25 +41,6 @@ HAS_VMT4D = hasattr(smt, "vmt4d")
 _VMT4D_BK = 128
 _VMT4D_BN = 32
 
-# Cache wt (= inp.T materialized, the [K, N] n-contiguous layout the vmt4d
-# kernel reads) by weight identity. Weights are stable across forward passes
-# in inference, so the transpose (215.9ms one-off @(4096,8192), mv_bench
-# 2026-10-22) is paid once and the cache hits afterwards. Keyed by
-# (data_ptr, shape, stride) like mm._b_contig_cache (same residual false-hit
-# risk on tensor reuse).
-_wt_cache = {}
-
-
-def _get_wt(inp):
-    key = (inp.data_ptr(), inp.shape, inp.stride())
-    cached = _wt_cache.get(key)
-    if cached is not None:
-        return cached
-    wt = inp.t().contiguous()
-    if len(_wt_cache) < 256:
-        _wt_cache[key] = wt
-    return wt
-
 
 # ---------------------------------------------------------------------------
 # vmt4d engine-path GEMV (M=1 matmul). smt.vmt4d lowers to an M=1
@@ -64,14 +51,12 @@ def _get_wt(inp):
 #   - f32 acc (engine widening): ~1e-6 rel error; needs spine-mlir with the
 #     VMT4D init-pad dtype fix (MR 68, 6f472365);
 #   - wt must be a contiguous [K, N] pre-transposed matrix: strided [K, N]
-#     views of a [N, K] tensor miscompile (handoff bug 2), the transpose is
-#     cached per weight (see _get_wt);
+#     views of a [N, K] tensor miscompile (handoff bug 2);
 #   - BK=128 x BN=32 is the bench-best tile (mv_bench bench7, 2026-10-27:
 #     the [128, 32] f16 tile is 8KB and stays in registers, no stack
 #     round-trip for the pack products; [128, 256] = 64KB always spills).
-#     Best-vs-best vs the svector arm: 1.11x @ (32768, 512), par @
-#     (16384, 256), 0.31x @ (4096, 4096) -- the vmt4d arm only wins small-N
-#     large-K (see the dispatch guard);
+#     The dispatch retains the small-N, large-K shape range from this
+#     kernel benchmark when the input already has the required layout.
 #   - K % BK == 0 and N % BN == 0 (no tail masking), grid = N / BN <= 512
 #     (see the dispatch guard).
 # ---------------------------------------------------------------------------
@@ -166,11 +151,10 @@ def mv(inp, vec):
     N, K = inp.shape
 
     # vmt4d engine path: f16 operands on tile-aligned shapes with a
-    # vmt4d-capable triton; the [K, N] transposed weight is cached so the
-    # layout cost is paid once per weight. Small-N large-K only (bench7
-    # best-vs-best: 1.11x over the svector arm @ (32768, 512), par @
-    # (16384, 256), 0.31x @ (4096, 4096) -- N > 512 goes to the svector
-    # arm). The grid guard keeps programs within 512 like the svector arm
+    # vmt4d-capable triton. Use a [K, N] transpose view only when it is
+    # already contiguous, as required by the kernel's pointer arithmetic.
+    # Small-N large-K only; N > 512 goes to the svector arm.
+    # The grid guard keeps programs within 512 like the svector arm
     # (the runtime silently drops programs beyond that on stacks without
     # the grid-chunked dispatch fix).
     if (
@@ -184,26 +168,29 @@ def mv(inp, vec):
         and K % _VMT4D_BK == 0
         and N % _VMT4D_BN == 0
         and N // _VMT4D_BN <= 512
+        and inp.t().is_contiguous()
+        and vec.is_contiguous()
     ):
-        wt = _get_wt(inp)
-        vec_c = vec if vec.is_contiguous() else vec.contiguous()
+        wt = inp.t()
         y = torch.empty((1, N), dtype=torch.float32, device=inp.device)
         with torch_device_fn.device(inp.device):
             _mv_vmt4d_kernel[(N // _VMT4D_BN,)](
-                vec_c.view(1, K), wt, y, K=K, N=N, BK=_VMT4D_BK, BN=_VMT4D_BN
+                vec.view(1, K), wt, y, K=K, N=N, BK=_VMT4D_BK, BN=_VMT4D_BN
             )
         return y.view(N).to(inp.dtype)
 
-    # svector path constraints: f16 operands, N % 4 == 0 (the 4-row unroll
-    # must not read past the last row) and a <=512-program grid (the runtime
-    # silently drops programs beyond that); everything else goes to the
-    # general implementation
+    # The svector kernel reads contiguous f16 operands. N % 4 == 0 keeps
+    # its 4-row unroll within the input, and the grid stays within 512
+    # programs. Other layouts use the general kernel's stride arguments.
     if (
         HAS_SMT_RVISA
+        and smt_rvisa_enabled()
         and inp.dtype == torch.float16
         and vec.dtype == torch.float16
         and N % 4 == 0
         and N > 0
+        and inp.is_contiguous()
+        and vec.is_contiguous()
     ):
         # BLOCK widens with N so ceil(N / BLOCK) stays within 512 programs;
         # 4 below N<=2048 and 16 above match the benchmarked configs
@@ -213,10 +200,8 @@ def mv(inp, vec):
         # the unroll writes whole 4-row groups; pad C to a BLOCK multiple so
         # the final program's stores stay in bounds, then slice [:N]
         Np = ((N + block - 1) // block) * block
-        inp_c = inp.contiguous().reshape(-1)
-        vec_c = vec.contiguous()
         C = torch.empty(Np, dtype=torch.float32, device=inp.device)
         with torch_device_fn.device(inp.device):
-            _mv_rvisa_host[(Np // block,)](inp_c, vec_c, C, K, N, BLOCK=block)
+            _mv_rvisa_host[(Np // block,)](inp, vec, C, K, N, BLOCK=block)
         return C[:N].to(inp.dtype)
     return general_mv(inp, vec)

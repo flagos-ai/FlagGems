@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -22,6 +24,72 @@ from triton.language.extra.smt_rvisa import index, mem
 
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
+
+logger = logging.getLogger(__name__)
+
+
+@libentry()
+@triton.jit
+def _mm_fallback_kernel(
+    A,
+    B,
+    C,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    # Scalar products also support dtypes/layouts rejected by the matrix engine.
+    # Bound the launch grid on runtimes which support at most 512 programs.
+    tiles_n = tl.cdiv(N, BLOCK_N)
+    for task in range(tl.program_id(0), M * tiles_n, tl.num_programs(0)):
+        row = task // tiles_n
+        cols = task % tiles_n * BLOCK_N + tl.arange(0, BLOCK_N)
+        acc = tl.zeros((BLOCK_N,), tl.float32)
+        for k_start in range(tl.cdiv(K, BLOCK_K)):
+            ks = k_start * BLOCK_K + tl.arange(0, BLOCK_K)
+            a = tl.load(A + row * stride_am + ks * stride_ak, ks < K, other=0).to(
+                tl.float32
+            )
+            b = tl.load(
+                B + ks[:, None] * stride_bk + cols[None, :] * stride_bn,
+                (ks[:, None] < K) & (cols[None, :] < N),
+                other=0,
+            ).to(tl.float32)
+            acc += tl.sum(a[:, None] * b, axis=0)
+        tl.store(C + row * stride_cm + cols * stride_cn, acc, cols < N)
+
+
+def _mm_fallback(a, b, out):
+    M, K = a.shape
+    N = b.shape[1]
+    if M == 0 or N == 0:
+        return out
+    _mm_fallback_kernel[(min(M * triton.cdiv(N, 16), 512),)](
+        a,
+        b,
+        out,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        out.stride(0),
+        out.stride(1),
+        BLOCK_N=16,
+        BLOCK_K=32,
+    )
+    return out
+
 
 _f16 = tle.f16
 _f32 = tle.f32
@@ -435,7 +503,7 @@ def _mm_mN_t_host(a, W, C, M, K, N, NB, CS):
 
 # ---------------------------------------------------------------------------
 # tl.dot mm kernel (standard Triton dot, spine-mlir-main-rv64 lowering).
-#   Fallback for M>1 prefill when smt.dot path unavailable. Requires b_contig.
+#   Fallback for M>1 prefill when smt.dot path unavailable. Uses input strides.
 #   1.27x-2.42x faster than vfwmacc.vv. smt.dot path is 4x faster than this.
 # ---------------------------------------------------------------------------
 @triton.jit
@@ -476,8 +544,8 @@ def mm_tldot_kernel(
             block_shape=(BLOCK_K, BLOCK_N),
             order=(1, 0),
         )
-        a = tl.load(a_bp, boundary_check=(0, 1))
-        b = tl.load(b_bp, boundary_check=(0, 1))
+        a = tl.load(a_bp, boundary_check=(0, 1), padding_option="zero")
+        b = tl.load(b_bp, boundary_check=(0, 1), padding_option="zero")
         acc += tl.dot(a, b)
     c_bp = tl.make_block_ptr(
         base=c_ptr,
@@ -570,22 +638,6 @@ _TLDOT_BM = 32
 _SMT_BK = 256
 _SMT_BM = 32
 
-# Cache b_contig (= W.T materialized) by weight data_ptr. Weights are stable
-# across forward passes in inference, so the cache hits after the first call.
-# Keyed by (data_ptr, shape, stride) to be safe against tensor reuse.
-_b_contig_cache = {}
-
-
-def _get_b_contig(b):
-    key = (b.data_ptr(), b.shape, b.stride())
-    cached = _b_contig_cache.get(key)
-    if cached is not None:
-        return cached
-    bc = b.contiguous()
-    if len(_b_contig_cache) < 256:
-        _b_contig_cache[key] = bc
-    return bc
-
 
 def _pick_smt_bn(N):
     """Per-shape BN. 256 for N>=2048, else 64. BN=512 crashes the kernel
@@ -614,7 +666,6 @@ def _mm_smt_path(a, b, c, M, K, N):
         # Chunked smt.dot would be slower than vfwmacc.vv NB=512 — let caller fall back.
         return False
     grid_m = (M + _SMT_BM - 1) // _SMT_BM
-    b_contig = _get_b_contig(b)
     n_done = 0
     while n_done < N:
         chunk_n = min(_SMT_MAX_COLS_PER_LAUNCH, N - n_done)
@@ -625,7 +676,7 @@ def _mm_smt_path(a, b, c, M, K, N):
             if grid_m * grid_n > 512:
                 return False
             a_chunk = a
-            b_chunk = b_contig[:, n_done : n_done + n_main]
+            b_chunk = b[:, n_done : n_done + n_main]
             c_chunk = c[:, n_done : n_done + n_main]
             mm_smt_kernel[(grid_m, grid_n)](
                 a_chunk,
@@ -645,15 +696,9 @@ def _mm_smt_path(a, b, c, M, K, N):
                 BLOCK_SIZE_K=_SMT_BK,
             )
         if n_tail > 0:
-            # Tail: native addmm into a contiguous temp. Rare (N%256 != 0).
-            # Do NOT zero_/addmm the c_tail view in place: the FlagGems `zero`
-            # op ignores strides (flat fill) and would clobber the main tile,
-            # and addmm's kernel loads self unconditionally (0*NaN = NaN).
             c_tail = c[:, n_done + n_main : n_done + n_main + n_tail]
-            b_tail = b_contig[:, n_done + n_main : n_done + n_main + n_tail]
-            tmp = torch.zeros(M, n_tail, dtype=a.dtype, device=a.device)
-            torch.addmm(tmp, a, b_tail, beta=0, alpha=1, out=tmp)
-            c_tail.copy_(tmp)
+            b_tail = b[:, n_done + n_main : n_done + n_main + n_tail]
+            _mm_fallback(a, b_tail, c_tail)
         n_done += chunk_n
     return True
 
@@ -672,8 +717,8 @@ def _pick_tldot_bn(N):
 
 
 def _mm_tldot_path(a, b, c, M, K, N):
-    """tl.dot fallback for M>1 prefill. Materializes b_contig=W.T (K,N) row-major
-    (cached). Returns True on success, False to fall back. Only for proj mms."""
+    """tl.dot fallback for M>1 prefill, reading B with its original strides.
+    Returns True on success, False to fall back. Only for proj mms."""
     bn = _pick_tldot_bn(N)
     if bn == 0:
         return False
@@ -681,18 +726,17 @@ def _mm_tldot_path(a, b, c, M, K, N):
     grid_n = (N + bn - 1) // bn
     if grid_m * grid_n > 512:
         return False
-    b_contig = _get_b_contig(b)
     mm_tldot_kernel[(grid_m, grid_n)](
         a,
-        b_contig,
+        b,
         c,
         M,
         N,
         K,
         a.stride(0),
         a.stride(1),
-        b_contig.stride(0),
-        b_contig.stride(1),
+        b.stride(0),
+        b.stride(1),
         c.stride(0),
         c.stride(1),
         BLOCK_M=_TLDOT_BM,
@@ -745,11 +789,19 @@ def _mm_transposed_tail(a, b, c, M, K, N):
     return True
 
 
+def _check_mm_inputs(a, b):
+    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+        raise RuntimeError("mm expects two matrices with compatible dimensions")
+    if a.dtype != b.dtype or a.device != b.device:
+        raise RuntimeError("mm inputs must have the same dtype and device")
+    if a.dtype not in (torch.float16, torch.float32):
+        raise RuntimeError("SpacemiT mm only supports float16 and float32")
+    return a.shape[0], a.shape[1], b.shape[1]
+
+
 def mm(a, b):
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
+    logger.debug("GEMS_SPACEMIT MM")
+    M, K, N = _check_mm_inputs(a, b)
     # allocates output
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
     # vfwmacc fast paths (pure llvm-direct sibling, no host-side copy):
@@ -757,83 +809,61 @@ def mm(a, b):
     #                 mm_m1_t_raw (vfwmacc.vv, transposed b=W.T)
     #   M>1  prefill: mm_mN_t_raw (vfwmacc.vv, transposed b=W.T, M-row loop)
     # Qwen hits transposed b 100% (weights (out,in) row-major, mm(x, W.T)).
-    # Forcing a copy costs ~1.6s/decode-step on K3 — never copy here.
-    # Tail handling: N%8==0 suffices (main tile = (N//256)*256 via vfwmacc,
-    #   tail <256 cols via native addmm). lm_head N=151936 (vocab) hits this.
-    if a.dtype == torch.float16 and a.is_contiguous() and K % 64 == 0:
+    # M==1 reads the original layout directly to avoid a weight copy.
+    # Tail handling: N%8==0 suffices for the raw vector kernels.
+    if a.dtype == torch.float16 and a.is_contiguous() and K > 0 and K % 64 == 0:
         if M == 1:
             if b.is_contiguous() and b.stride(1) == 1 and N % 64 == 0:
                 NB = 64
                 grid = (N // NB,)
                 _mm_m1_host[grid](a, b, c, K, N, NB=NB)
                 return c
-            if b.stride(0) == 1 and N % 8 == 0:
+            if b.stride(0) == 1 and b.stride(1) == K and N % 8 == 0:
                 _mm_transposed_tail(a, b, c, M, K, N)
                 return c
         else:
             # M>1 prefill: try smt.dot (matrix engine, 4x faster) first,
             # fall back to tl.dot, then vfwmacc. Only for proj mms (N<=4096).
-            # Contiguous b rides the same engine paths: both _mm_smt_path and
-            # _mm_tldot_path feed the kernel b_contig (K,N) row-major, and
-            # _get_b_contig is a no-op when b is already contiguous. The
-            # vfwmacc tail (_mm_transposed_tail) requires W-layout
-            # (b.stride(0)==1), so contiguous b that exhausts smt/tl.dot
-            # falls to ATen below instead.
-            if (b.stride(0) == 1 or b.is_contiguous()) and N % 8 == 0:
+            # SMT/tl.dot read contiguous and transposed B using its strides.
+            # The raw vfwmacc path requires tightly packed rows of W=B.T.
+            if (b.stride(0) == 1 or b.stride(1) == 1) and N % 8 == 0:
                 if _mm_smt_path(a, b, c, M, K, N):
                     return c
                 if _mm_tldot_path(a, b, c, M, K, N):
                     return c
-                if b.stride(0) == 1:
+                if b.stride(0) == 1 and b.stride(1) == K:
                     _mm_transposed_tail(a, b, c, M, K, N)
                     return c
-    # Fallback: ATen native mm. torch.addmm beta=0 bypasses aten::mm dispatch
-    # (see _arm/ops/mm.py:540). Cannot call torch.mm() (infinite recursion via
-    # torch.library override). Handles non-f16, non-contiguous, non-tile-aligned.
-    # zero first (c is our own contiguous alloc — flat fill is safe): under
-    # use_gems the overridden addmm kernel loads self unconditionally
-    # (acc*alpha + bias*beta), so uninit NaN leaks via 0*NaN.
-    c.zero_()
-    return torch.addmm(c, a, b, beta=0, alpha=1)
+    return _mm_fallback(a, b, c)
 
 
 def mm_out(a, b, *, out):
-    # checks constraints
-    assert a.shape[1] == b.shape[0], "incompatible dimensions"
-    M, K = a.shape
-    _, N = b.shape
+    logger.debug("GEMS_SPACEMIT MM_OUT")
+    M, K, N = _check_mm_inputs(a, b)
+    if out.dtype != a.dtype or out.device != a.device:
+        raise RuntimeError("mm output must match the input dtype and device")
+    if out.shape != (M, N):
+        out.resize_((M, N))
 
-    if a.dtype == torch.float16 and a.is_contiguous() and K % 64 == 0:
-        if M == 1:
+    if a.dtype == torch.float16 and a.is_contiguous() and K > 0 and K % 64 == 0:
+        if M == 1 and out.is_contiguous():
             if b.is_contiguous() and b.stride(1) == 1 and N % 64 == 0:
                 NB = 64
                 grid = (N // NB,)
                 _mm_m1_host[grid](a, b, out, K, N, NB=NB)
                 return out
-            if b.stride(0) == 1 and N % 8 == 0:
+            if b.stride(0) == 1 and b.stride(1) == K and N % 8 == 0:
                 _mm_transposed_tail(a, b, out, M, K, N)
                 return out
-        else:
-            # Contiguous b rides the same engine paths (kernel always sees
-            # b_contig row-major); the vfwmacc tail needs W-layout, so fall
-            # to ATen below when smt/tl.dot both decline.
-            if (b.stride(0) == 1 or b.is_contiguous()) and N % 8 == 0:
+        elif M > 1:
+            # SMT/tl.dot use B's strides; the raw fallback needs packed W=B.T.
+            if (b.stride(0) == 1 or b.stride(1) == 1) and N % 8 == 0:
                 if _mm_smt_path(a, b, out, M, K, N):
                     return out
                 if _mm_tldot_path(a, b, out, M, K, N):
                     return out
-                if b.stride(0) == 1:
+                if out.is_contiguous() and b.stride(0) == 1 and b.stride(1) == K:
                     _mm_transposed_tail(a, b, out, M, K, N)
                     return out
 
-    # zero first (same uninit-self NaN hazard as mm() fallback above); out may
-    # be a non-contiguous caller tensor — the overridden `zero` op flat-fills
-    # and would clobber memory beyond a strided out, so go through a temp.
-    if out.is_contiguous():
-        out.zero_()
-        torch.addmm(out, a, b, beta=0, alpha=1, out=out)
-    else:
-        tmp = torch.zeros((M, N), dtype=a.dtype, device=a.device)
-        torch.addmm(tmp, a, b, beta=0, alpha=1, out=tmp)
-        out.copy_(tmp)
-    return out
+    return _mm_fallback(a, b, out)
