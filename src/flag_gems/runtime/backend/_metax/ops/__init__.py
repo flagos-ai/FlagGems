@@ -42,6 +42,7 @@ from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm
 from .lcm_ import lcm_
 from .lgamma_ import lgamma, lgamma_
+from .lift_fresh import lift_fresh
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor import ldl_factor
 from .linalg_lstsq import linalg_lstsq
@@ -209,6 +210,7 @@ __all__ = [
     "ldl_factor",
     "lgamma",
     "lgamma_",
+    "lift_fresh",
     "linalg_cholesky",
     "linalg_lstsq",
     "linalg_matrix_exp",
