@@ -92,6 +92,7 @@ from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
 from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
+from .diagonal_copy import diagonal_copy
 from .div import (
     floor_divide,
     floor_divide_,
@@ -398,6 +399,7 @@ __all__ = [
     "diag",
     "diag_embed",
     "diagonal_backward",
+    "diagonal_copy",
     "dropout",
     "elu",
     "embedding",
