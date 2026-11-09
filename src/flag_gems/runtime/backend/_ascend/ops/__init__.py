@@ -124,6 +124,7 @@ from .isin import isin
 from .isposinf import isposinf
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
+from .less_equal import less_equal
 from .less_equal_ import less_equal_
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
@@ -422,6 +423,7 @@ __all__ = [
     "isposinf",
     "l1_loss",
     "layer_norm",
+    "less_equal",
     "less_equal_",
     "linalg_cross",
     "linalg_cross_out",
