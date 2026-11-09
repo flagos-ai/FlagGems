@@ -100,6 +100,7 @@ from .grid_sampler_3d import grid_sampler_3d
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
 from .histc import histc
+from .igamma import igamma
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
@@ -295,6 +296,7 @@ __all__ = [
     "hardsigmoid_backward",
     "heur_block_n",
     "histc",
+    "igamma",
     "index_add",
     "index_add_",
     "index_copy",
