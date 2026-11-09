@@ -402,11 +402,14 @@ def scan_part_min_abc_loop_kernel(
         prev_min_val_b = tl.broadcast_to(prev_min_val, (BLOCK_SIZE,))
         prev_min_val_idx_b = tl.broadcast_to(prev_min_val_idx, (BLOCK_SIZE,))
 
-        # update result from prev val and idx
-        cummin_indices = tl.where(
-            result <= prev_min_val_b, cummin_indices, prev_min_val_idx_b
+        # update result from prev val and idx. Use the NaN-aware minimum helper
+        # rather than `tl.minimum`: on this backend `tl.minimum(nan, x)` returns
+        # `x`, so a NaN would be silently replaced by the running minimum (or by
+        # the `max_value` seed) instead of poisoning the rest of the scan the way
+        # `torch.cummin` does.
+        result, cummin_indices = ext.minimum_with_index_tie_break_right(
+            result, cummin_indices, prev_min_val_b, prev_min_val_idx_b
         )
-        result = tl.minimum(result, prev_min_val_b)
 
         # update global min val and idx
         prev_min_val = tl.sum(tl.where(last_mask, result, 0.0), axis=0)
