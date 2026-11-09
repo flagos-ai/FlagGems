@@ -68,7 +68,7 @@ def selu_(*args, **kwargs):
         return x
 
     BLOCK_SIZE = 1024
-    if n_elements // BLOCK_SIZE > 65535:
+    if n_elements // BLOCK_SIZE > 1024:
         BLOCK_SIZE = 16384
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(x.device):

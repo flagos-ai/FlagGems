@@ -26,6 +26,9 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
+# namedtuple 类构造约 87us，逐次调用会压过小 shape 的 kernel 时间，提到模块级复用。
+MaxOut = namedtuple("max", ["values", "indices"])
+
 
 @libentry()
 @triton.jit
@@ -190,7 +193,8 @@ def max_kernel_non_inner(
 def max(inp):
     logger.debug("GEMS_ENFLAME MAX")
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
     M = inp.numel()
     dtype = inp.dtype
 
@@ -228,12 +232,20 @@ def max_dim(inp, dim=None, keepdim=False):
     M = math.prod(shape[:dim])
     K = inp.numel() // M // N
 
-    inp = inp.contiguous()
+    if not inp.is_contiguous():
+        inp = inp.contiguous()
 
     shape_list = list(shape)
-    shape_list[dim] = 1
+    if keepdim:
+        shape_list[dim] = 1
+    else:
+        # 两个 kernel 都按扁平的 m*K+k 布局写回，直接分配最终形状即可，
+        # 避免两次 torch.squeeze 带来的设备同步与 Python 开销。
+        shape_list.pop(dim)
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    # GCU400 Triton 的 int32 索引存储每个 lane 只写 4 字节，若直接写入 int64
+    # 输出张量会得到大量 0；先用 int32 缓冲承接 kernel 写回，再统一转成 int64。
+    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:
         BLOCK_N = min(triton.next_power_of_2(N), 4096)
@@ -273,10 +285,4 @@ def max_dim(inp, dim=None, keepdim=False):
                 num_warps=1,
             )
 
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
-
-    Max_out = namedtuple("max", ["values", "indices"])
-    out = Max_out(values=out_value, indices=out_index)
-    return out
+    return MaxOut(values=out_value, indices=out_index.to(torch.int64))

@@ -151,6 +151,9 @@ def max_pool2d_forward_kernel(
 @libentry()
 @triton.autotune(
     configs=[
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 8}, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 16}, num_warps=2),
+        triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 8}, num_warps=2),
         triton.Config({"BLOCK_IN_H": 16, "BLOCK_IN_W": 16}, num_warps=4),
         triton.Config({"BLOCK_IN_H": 32, "BLOCK_IN_W": 8}, num_warps=4),
         triton.Config({"BLOCK_IN_H": 8, "BLOCK_IN_W": 32}, num_warps=4),
@@ -170,6 +173,7 @@ def max_pool2d_backward_kernel(
     in_w,
     out_h,
     out_w,
+    num_nc,
     # Strides for grad_output/indices
     out_stride_nc,
     out_stride_h,
@@ -187,10 +191,20 @@ def max_pool2d_backward_kernel(
     BLOCK_IN_H: tl.constexpr,
     BLOCK_IN_W: tl.constexpr,
 ):
-    nc_idx = tl.program_id(0)
-    pid_hw = tl.program_id(1)
-
+    # Flattened (nc, spatial-block) tile space split across a 2D grid so that
+    # neither grid dim exceeds the 65535 limit (e.g. N*C = 128*512 = 65536
+    # alone overflows grid.x). Must match the host grid() below.
     num_w_blocks = tl.cdiv(in_w, BLOCK_IN_W)
+    num_h_blocks = tl.cdiv(in_h, BLOCK_IN_H)
+    num_spatial = num_h_blocks * num_w_blocks
+    total_blocks = num_nc * num_spatial
+    grid_x = tl.minimum(65535, total_blocks)
+    linear_pid = tl.program_id(0) + tl.program_id(1) * grid_x
+    if linear_pid >= total_blocks:
+        return
+
+    nc_idx = linear_pid // num_spatial
+    pid_hw = linear_pid % num_spatial
     h_block_idx = pid_hw // num_w_blocks
     w_block_idx = pid_hw % num_w_blocks
 
@@ -385,15 +399,23 @@ def max_pool2d_backward(
     in_n, in_c, in_h, in_w = input.shape
     out_h, out_w = grad_output.shape[2], grad_output.shape[3]
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    # The kernel writes every input position, so no zero-init is needed; and
+    # accumulating in fp32 inside the kernel lets us store directly in the
+    # output dtype, dropping both the memset pass and the final dtype
+    # conversion pass of the original zeros_like(fp32) + .to(dtype) flow.
+    grad_input = torch.empty_like(input, dtype=grad_output.dtype)
 
     if grad_input.numel() == 0:
-        return grad_input.to(grad_output.dtype)
+        return grad_input
 
-    grid = lambda meta: (
-        in_n * in_c,
-        triton.cdiv(in_h, meta["BLOCK_IN_H"]) * triton.cdiv(in_w, meta["BLOCK_IN_W"]),
-    )
+    def grid(meta):
+        num_h_blocks = triton.cdiv(in_h, meta["BLOCK_IN_H"])
+        num_w_blocks = triton.cdiv(in_w, meta["BLOCK_IN_W"])
+        num_spatial = num_h_blocks * num_w_blocks
+        total = in_n * in_c * num_spatial
+        grid_x = min(65535, total)
+        grid_y = triton.cdiv(total, grid_x)
+        return (grid_x, grid_y)
 
     out_stride_nc = out_h * out_w
     out_stride_h = out_w
@@ -407,6 +429,7 @@ def max_pool2d_backward(
         in_w,
         out_h,
         out_w,
+        in_n * in_c,
         out_stride_nc,
         out_stride_h,
         out_stride_w,
@@ -420,4 +443,21 @@ def max_pool2d_backward(
         dilation_w,
     )
 
-    return grad_input.to(grad_output.dtype)
+    return grad_input
+
+
+def max_pool2d_with_indices_backward(
+    grad_output: torch.Tensor,
+    self: torch.Tensor,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode: bool,
+    indices: torch.Tensor,
+):
+    """Wrapper matching the aten::max_pool2d_with_indices_backward schema."""
+    logger.debug("GEMS_ENFLAME MAX_POOL2D_WITH_INDICES_BACKWARD")
+    return max_pool2d_backward(
+        grad_output, self, indices, kernel_size, stride, padding, dilation, ceil_mode
+    )

@@ -86,3 +86,11 @@ def ceil_(A):
     N_total = inp.numel()
     _launch_ceil(inp, A, N_total)
     return A
+
+
+def ceil_out(A, *, out=None):
+    logger.debug("GEMS_ENFLAME CEIL_OUT")
+    if out is None:
+        return ceil(A)
+    _launch_ceil(A, out, A.numel())
+    return out

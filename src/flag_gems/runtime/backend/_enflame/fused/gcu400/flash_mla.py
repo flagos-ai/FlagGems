@@ -212,7 +212,7 @@ def flash_mla(
     #     num_stages = 1
     # else:
     #     error.backend_not_support(device)
-    BLOCK_H = 16
+    BLOCK_H = 32
     num_stages = 3
     BLOCK_N = 32
     grid = (

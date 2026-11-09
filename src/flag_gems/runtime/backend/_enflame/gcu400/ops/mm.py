@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# mm 按 fp16 优先原则整体回退到优化前版本（fp16 最优）。
+# 确定性大 tile（BK=512）在 fp16 4096² 上稳定劣化：3 轮 benchmark 实测
+# fp16 均值 1.0268x -> 0.9638x，fp16 4096² gems 0.998/0.968 ms -> 1.298/1.232 ms；
+# 而 bf16 同配置反而变好（0.7565x -> 0.8803x）。整体均值的提升来自牺牲 fp16，
+# 按「fp16 不降」硬约束不可接受，因此回退整份实现。
+# 保留的优化结论见报告与 optimizer_agent_gcu400.md 条目 44/45/46。
+
 import logging
 
 import torch
@@ -147,6 +154,7 @@ def mm(a, b):
 
 
 def mm_out(a, b, *, out):
+    logger.debug("GEMS_ENFLAME MM_OUT")
     if a.stride(0) > 1 and a.stride(1) > 1:
         a = a.contiguous()
     if b.stride(0) > 1 and b.stride(1) > 1:
@@ -168,6 +176,45 @@ def mm_out(a, b, *, out):
         K,
         a.stride(0),
         a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        dot_out_dtype=tl.float32,
+        GROUP_M=8,
+    )
+    return c
+
+
+def router_gemm(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """bf16 x bf16 -> fp32 GEMM for MoE router gate.
+
+    gcu400: the public general_mm reuses runtime.get_tuned_config("mm"),
+    whose gcu400 configs carry SPLIT_K, with a kernel that has no such
+    parameter.  Route through the local mm_kernel instead; its signature and
+    tuned configs match, and an fp32 output tensor makes the accumulated
+    result store in fp32 as required by the router gate contract.
+    """
+    logger.debug("GEMS_ENFLAME ROUTER_GEMM")
+    if x.stride(0) > 1 and x.stride(1) > 1:
+        x = x.contiguous()
+    M, K = x.shape
+    N = weight.shape[0]
+    c = torch.empty((M, N), device=x.device, dtype=torch.float32)
+    b = weight.t().contiguous()
+    grid = lambda META: (
+        triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
+        META["SPLIT_K"],
+    )
+    mm_kernel[grid](
+        x,
+        b,
+        c,
+        M,
+        N,
+        K,
+        x.stride(0),
+        x.stride(1),
         b.stride(0),
         b.stride(1),
         c.stride(0),

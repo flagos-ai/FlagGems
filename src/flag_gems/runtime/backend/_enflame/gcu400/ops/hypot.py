@@ -57,13 +57,7 @@ def _hypot_kernel(
     xf = x.to(COMPUTE_DTYPE)
     yf = y.to(COMPUTE_DTYPE)
 
-    ax = tl.abs(xf)
-    ay = tl.abs(yf)
-    t = tl.maximum(ax, ay)
-    m = tl.minimum(ax, ay)
-    t_nz = tl.where(t > 0, t, 1).to(COMPUTE_DTYPE)
-    r = m / t_nz
-    res = tl.where(t > 0, t * tl.sqrt(1 + r * r), m)
+    res = tl.sqrt(xf * xf + yf * yf)
 
     out_val = res.to(OUT_DTYPE)
     tl.store(out_ptr + offsets, out_val, mask=mask)
@@ -84,7 +78,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
     if n_elements == 0:
         return
 
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 65536
     if n_elements // BLOCK_SIZE > 65535:
         BLOCK_SIZE = 32768
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)

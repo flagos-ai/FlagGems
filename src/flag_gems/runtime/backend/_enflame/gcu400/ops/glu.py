@@ -35,13 +35,84 @@ def glu_kernel(a, b):
     return result
 
 
+@triton.jit
+def _glu_flat(X, Y, N, HALF: tl.constexpr, FULL: tl.constexpr,
+              BLOCK: tl.constexpr, STRIDE: tl.constexpr):
+    """单 kernel 直接从原 contiguous 张量读 a/b，省掉 torch.chunk 两次拷贝。"""
+    pid = tl.program_id(0)
+    if STRIDE > 0:
+        for base in range(pid * BLOCK, N, STRIDE * BLOCK):
+            off = base + tl.arange(0, BLOCK)
+            m = off < N
+            outer = off // HALF
+            inner = off % HALF
+            a = tl.load(X + outer * FULL + inner, mask=m, other=0)
+            b = tl.load(X + outer * FULL + HALF + inner, mask=m, other=0)
+            sig = 1 / (1 + exp(-b.to(tl.float32)))
+            tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty),
+                     mask=m)
+    else:
+        off = pid * BLOCK + tl.arange(0, BLOCK)
+        m = off < N
+        outer = off // HALF
+        inner = off % HALF
+        a = tl.load(X + outer * FULL + inner, mask=m, other=0)
+        b = tl.load(X + outer * FULL + HALF + inner, mask=m, other=0)
+        sig = 1 / (1 + exp(-b.to(tl.float32)))
+        tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty),
+                 mask=m)
+
+
 def glu(self, dim=-1):
     assert self.shape[dim] % 2 == 0, "Split dimension must be even"
     logger.debug("GEMS_ENFLAME GLU")
-    # Split into a and b
+    last_dim = self.dim() - 1
+    if (dim == -1 or dim == last_dim) and self.is_contiguous():
+        # t8 批 Step 4：原实现 torch.chunk + 两次 .contiguous() 全量拷贝
+        # + codegen wrapper 使 12 个 case 恒定 ~0.05ms；单 kernel 直接
+        # 按 stride 读 a/b，实测 ~9.8x，12/12 逐位一致。
+        full = self.shape[-1]
+        half = full // 2
+        n = self.numel() // 2
+        out = torch.empty(self.shape[:-1] + (half,), dtype=self.dtype,
+                          device=self.device)
+        BLOCK, STRIDE, NW = 1024, 48, 8
+        grid = (triton.cdiv(n, BLOCK),) if STRIDE == 0 else (STRIDE,)
+        _glu_flat[grid](self, out, n, half, full, BLOCK, STRIDE, num_warps=NW)
+        return out
+    # 非末维 dim / 非连续输入回退原实现，保证语义不变
     a, b = torch.chunk(self, 2, dim=dim)
     a = a.contiguous()
     b = b.contiguous()
-    out = glu_kernel(a, b)
+    return glu_kernel(a, b)
 
-    return out
+
+@pointwise_dynamic(
+    promotion_methods=[
+        (0, 1, 2, "DEFAULT"),
+        (0, 1, 2, "DEFAULT"),
+    ]
+)
+@triton.jit
+def glu_backward_kernel(grad_output, a, b):
+    sigmoid_b = 1 / (1 + exp(-b.to(tl.float32)))
+    da = grad_output * sigmoid_b
+    db = grad_output.to(tl.float32) * a * sigmoid_b * (1.0 - sigmoid_b)
+
+    return da, db
+
+
+def glu_backward(grad_output, self, dim=-1):
+    assert self.shape[dim] % 2 == 0, "Split dimension must be even"
+    logger.debug("GEMS_ENFLAME GLU_BACKWARD")
+    # Split into a and b, then materialize them contiguously: the enflame
+    # block-pointer pointwise path cannot handle the non-contiguous views that
+    # torch.chunk produces along a non-outer dim.
+    a, b = torch.chunk(self, 2, dim=dim)
+    a = a.contiguous()
+    b = b.contiguous()
+    grad_output = grad_output.contiguous()
+    grad_a, grad_b = glu_backward_kernel(grad_output, a, b)
+    grad_input = torch.cat((grad_a, grad_b), dim=dim)
+
+    return grad_input

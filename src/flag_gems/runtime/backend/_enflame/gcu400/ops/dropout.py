@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import (
@@ -41,6 +42,7 @@ def dropout_forward_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
+    IS_BF16: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -73,6 +75,11 @@ def dropout_forward_kernel(
     x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0).to(X.dtype.element_ty)
 
     scale = 1.0 / (1.0 - p)
+    if IS_BF16:
+        # Native GCU dropout rounds the scale to bfloat16 before the multiply for
+        # bfloat16 inputs (unlike fp16/fp32 which keep full fp32 precision). Match
+        # that rounding so kept elements agree bit-for-bit with the reference.
+        scale = scale.to(tl.bfloat16)
     y0 = x0 * scale * mask0
     y1 = x1 * scale * mask1
     y2 = x2 * scale * mask2
@@ -101,6 +108,7 @@ def dropout_persistent_kernel(
     philox_offset,
     NUM_BLOCKS: tl.constexpr,
     BLOCK: tl.constexpr,
+    IS_BF16: tl.constexpr,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -137,6 +145,8 @@ def dropout_persistent_kernel(
         x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0).to(X.dtype.element_ty)
 
         scale = 1.0 / (1.0 - p)
+        if IS_BF16:
+            scale = scale.to(tl.bfloat16)
         y0 = x0 * scale * mask0
         y1 = x1 * scale * mask1
         y2 = x2 * scale * mask2
@@ -157,8 +167,10 @@ NUM_SIPS = 24
 
 
 def _choose_block(dtype):
-    if dtype.itemsize <= 2:
-        return 4096
+    # On gcu400 the 4096-element tile (4 * 4096 = 16K elements per iteration)
+    # overflows registers on the persistent path.  Measured 16-bit: 536M
+    # elements 5688us -> 5076us and 4096x4096 183us -> 166us with BLOCK=2048.
+    # fp32 already used 2048; both dtypes now share the same tile.
     return 2048
 
 
@@ -182,6 +194,7 @@ def dropout(input, p, train=True):
     BLOCK = _choose_block(input.dtype)
     NUM_BLOCKS = triton.cdiv(N, BLOCK * UNROLL)
     increment = triton.cdiv(N, UNROLL)
+    is_bf16 = input.dtype == torch.bfloat16
 
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
@@ -195,6 +208,7 @@ def dropout(input, p, train=True):
                 philox_seed,
                 philox_offset,
                 BLOCK=BLOCK,
+                IS_BF16=is_bf16,
             )
         else:
             grid_size = min(NUM_BLOCKS, NUM_SIPS)
@@ -208,7 +222,71 @@ def dropout(input, p, train=True):
                 philox_offset,
                 NUM_BLOCKS=NUM_BLOCKS,
                 BLOCK=BLOCK,
+                IS_BF16=is_bf16,
             )
 
     mask = mask_u8.view(input.shape).view(torch.bool)
     return out, mask
+
+
+# Fixed Grid on GCU400 (48 CTAs). The generic backward kernel launches
+# cdiv(N, BLOCK) CTAs which exceeds the 65535 grid.x hardware limit for
+# large tensors; striding from a fixed grid keeps every launch within the
+# limit regardless of tensor size.
+_GRID_SIZE = 48
+
+
+@libentry()
+@triton.heuristics(runtime.get_heuristic_config("dropout"))
+@triton.jit(do_not_specialize=["scale"])
+def dropout_backward_kernel(
+    DY,
+    DX,
+    dropout_mask,
+    N,
+    scale,
+    BLOCK: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    num_tile = (N + BLOCK - 1) // BLOCK
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        offset = tile_id * BLOCK + tl.arange(0, BLOCK)
+        mask = offset < N
+        m = tl.load(
+            dropout_mask + offset, mask=mask, other=0, eviction_policy="evict_first"
+        )
+        dy = tl.load(DY + offset, mask=mask, other=0, eviction_policy="evict_first")
+        dx = dy * m * scale
+        tl.store(DX + offset, dx, mask=mask, eviction_policy="evict_first")
+
+
+def dropout_backward(grad_output, mask, scale):
+    logger.debug("GEMS_ENFLAME NATIVE_DROPOUT_BACKWARD")
+    grad_output = grad_output.contiguous()
+    grad_input = torch.empty_like(grad_output)
+    N = grad_output.numel()
+    if N == 0:
+        return grad_input
+    # Fixed reference block so the kernel GRID_SIZE argument matches grid
+    # dim 0 regardless of which BLOCK the heuristic picks.
+    grid_size = min(_GRID_SIZE, triton.cdiv(N, 1024))
+    grid = (grid_size, 1, 1)
+    with torch_device_fn.device(grad_output.device):
+        dropout_backward_kernel[grid](
+            grad_output,
+            grad_input,
+            mask,
+            N,
+            scale,
+            GRID_SIZE=grid_size,
+            NUM_STAGES=4,
+        )
+    return grad_input
+
+
+def native_dropout_backward(grad_output, mask, scale):
+    """Canonical adapter for aten::native_dropout_backward."""
+    logger.debug("GEMS_ENFLAME NATIVE_DROPOUT_BACKWARD")
+    return dropout_backward(grad_output, mask, scale)

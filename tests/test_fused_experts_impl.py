@@ -407,8 +407,8 @@ def test_fused_moe_vs_vllm(config, dtype):
 @pytest.mark.fused_experts_impl
 @pytest.mark.parametrize("config", FUSED_MOE_QUANT_CONFIGS)
 @pytest.mark.skipif(
-    not CUDA_AVAILABLE,
-    reason="FP8 quantization requires NVIDIA Hopper architecture",
+    not (CUDA_AVAILABLE or flag_gems.vendor_name == "enflame"),
+    reason="FP8 quantization requires NVIDIA Hopper architecture or GCU architecture",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -707,8 +707,8 @@ def torch_w8a8_block_fp8_moe(
 @pytest.mark.parametrize("config", FUSED_MOE_FP8_BLOCKWISE_CONFIGS)
 @pytest.mark.parametrize("block_shape", [[128, 128]])
 @pytest.mark.skipif(
-    not CUDA_AVAILABLE,
-    reason="FP8 blockwise quantization requires NVIDIA Hopper architecture",
+    not (CUDA_AVAILABLE or flag_gems.vendor_name == "enflame"),
+    reason="FP8 quantization requires NVIDIA Hopper architecture or GCU architecture",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

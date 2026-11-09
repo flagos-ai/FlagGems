@@ -19,10 +19,11 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.topk import argsort
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils.random_utils import philox_backend_seed_offset
+
+from .topk import argsort
 
 logger = logging.getLogger(__name__)
 device_ = device
@@ -393,7 +394,9 @@ def sort_by_key(key, value, valid_bits, generator=None):
             bit_offset += bits_per_pass
 
         # last step, shuffle inner-block data
-        BLOCK_SIZE_SHUFFLE = 64
+        # 128 keys in one warp: the 64-key/4-warp form returns duplicate
+        # indices on GCU, 128/1 is correct and still fits dsm.
+        BLOCK_SIZE_SHUFFLE = 128
         grid_shuffle = (triton.cdiv(n_elements, BLOCK_SIZE_SHUFFLE),)
         philox_seed, philox_offset = philox_backend_seed_offset(
             n_elements, generator=generator
@@ -405,7 +408,7 @@ def sort_by_key(key, value, valid_bits, generator=None):
                 philox_seed,
                 philox_offset,
                 BLOCK_SIZE_SHUFFLE,
-                num_warps=4,
+                num_warps=1,
             )
         return v_out
     else:
@@ -438,7 +441,11 @@ def randperm(
 
     if device is None:
         device = torch.device(device_.name)
-    in_range = torch.arange(n, dtype=dtype, device=device)
+    # GCU has no native int64: Triton kernels taking int64 buffers produce
+    # garbage unless TORCH_GCU_ENABLE_INT64_AND_UINT64 is set.  Compute the
+    # permutation in int32 and cast it at the end.
+    value_dtype = torch.int32 if dtype == torch.int64 else dtype
+    in_range = torch.arange(n, dtype=value_dtype, device=device)
 
     u8max = 2**8
     u16max = 2**16
@@ -475,4 +482,6 @@ def randperm(
         low=keymin, high=keymax, size=[n], dtype=key_dtype, device=device
     )
     perm_range = sort_by_key(rand_key, in_range, valid_bits, generator=generator)
+    if value_dtype != dtype:
+        perm_range = perm_range.to(dtype)
     return perm_range

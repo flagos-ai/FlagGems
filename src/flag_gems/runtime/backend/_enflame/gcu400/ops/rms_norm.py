@@ -27,46 +27,119 @@ from ..utils.config_utils import MAX_GRID_DIM
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_SIZE = 32768
+_FORWARD_WARPS = 4  # 前向 launch 的 warp 数，按 shape 扫描后固定
+
+
+@triton.jit
+def _rms_norm_rows(
+    Y,
+    INV_RMS,
+    X,
+    W,
+    pid,
+    y_stride_r: tl.constexpr,
+    y_stride_c: tl.constexpr,
+    x_stride_r: tl.constexpr,
+    x_stride_c: tl.constexpr,
+    M,
+    N,
+    eps,
+    BLOCK_SIZE: tl.constexpr,
+    ROWS: tl.constexpr,
+    SINGLE_BLOCK: tl.constexpr,
+    SAVE_INV_RMS: tl.constexpr,
+):
+    """一个 program 处理 ROWS 行：单块路径下 w 只加载一次供所有行复用。
+
+    每行仍用标量 tl.sum(axis=0) 归约（与 1D kernel 完全等价），避免 2D
+    tl.sum(axis=1) 在 GCU 后端上的归约语义问题（实测 1024² 会产生整行错值）。
+    """
+    cols = tl.arange(0, BLOCK_SIZE)
+    cmask = cols < N
+    if SINGLE_BLOCK:
+        w_shared = tl.load(W + cols, mask=cmask, other=0.0)
+    else:
+        w_shared = tl.full((BLOCK_SIZE,), 0.0, tl.float32)
+
+    for r in range(ROWS):
+        row = pid * ROWS + r
+        if row < M:
+            Y_cur = row * y_stride_r + Y
+            X_cur = row * x_stride_r + X
+            if SINGLE_BLOCK:
+                x = tl.load(X_cur + cols * x_stride_c, mask=cmask, other=0.0).to(
+                    tl.float32
+                )
+                var = tl.sum(x * x, axis=0) / N
+                rrms = tl.math.rsqrt(var + eps)
+                y = (x * rrms).to(Y_cur.dtype.element_ty) * w_shared
+                tl.store(Y_cur + cols * y_stride_c, y, mask=cmask)
+                if SAVE_INV_RMS:
+                    tl.store(INV_RMS + row, rrms)
+            else:
+                # 行宽超过单 tile 上限：分块累加方差，再分块写结果
+                _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+                for off in range(0, N, BLOCK_SIZE):
+                    c = off + tl.arange(0, BLOCK_SIZE)
+                    m = c < N
+                    t = tl.load(X_cur + c * x_stride_c, mask=m, other=0.0).to(
+                        tl.float32
+                    )
+                    _var += t * t
+                var = tl.sum(_var, axis=0) / N
+                rrms = tl.math.rsqrt(var + eps)
+                for off in range(0, N, BLOCK_SIZE):
+                    c = off + tl.arange(0, BLOCK_SIZE)
+                    m = c < N
+                    t = tl.load(X_cur + c * x_stride_c, mask=m, other=0.0).to(
+                        tl.float32
+                    )
+                    w = tl.load(W + c, mask=m, other=0.0)
+                    y = (t * rrms).to(Y_cur.dtype.element_ty) * w
+                    tl.store(Y_cur + c * y_stride_c, y, mask=m)
+                if SAVE_INV_RMS:
+                    tl.store(INV_RMS + row, rrms)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["eps"])
 def rms_norm_kernel(
-    Y,  # pointer to the output
-    INV_RMS,  # pointer to inverse rms
-    X,  # pointer to the input
-    W,  # pointer to the weights
+    Y,
+    INV_RMS,
+    X,
+    W,
     y_stride_r: tl.constexpr,
     y_stride_c: tl.constexpr,
-    x_stride_r: tl.constexpr,  # how much to increase the pointer when moving by 1 row
-    x_stride_c: tl.constexpr,  # how much to increase the pointer when moving by 1 col
-    N,  # number of columns in X
-    eps,  # epsilon to avoid division by zero
+    x_stride_r: tl.constexpr,
+    x_stride_c: tl.constexpr,
+    M,
+    N,
+    eps,
+    total_programs,
     BLOCK_SIZE: tl.constexpr,
-    BLOCK_SIZE_M: tl.constexpr,
+    ROWS: tl.constexpr,
+    SINGLE_BLOCK: tl.constexpr,
+    SAVE_INV_RMS: tl.constexpr,
 ):
-    for i in range(BLOCK_SIZE_M):
-        pid = tl.program_id(0) * BLOCK_SIZE_M + i
-        Y_cur = pid * y_stride_r + Y
-        X_cur = pid * x_stride_r + X
-
-        _var = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            _var += x * x
-        var = tl.sum(_var, axis=0) / N
-        rrms = 1 / tl.sqrt(var + eps)
-
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x = tl.load(X_cur + cols * x_stride_c, mask, other=0.0).to(tl.float32)
-            w = tl.load(W + cols, mask=mask, other=0.0)
-            y = (x * rrms).to(Y_cur.dtype.element_ty) * w
-            tl.store(Y_cur + cols * y_stride_c, y, mask=mask)
-        tl.store(INV_RMS + pid, rrms)
+    for pid in range(tl.program_id(0), total_programs, tl.num_programs(0)):
+        _rms_norm_rows(
+            Y,
+            INV_RMS,
+            X,
+            W,
+            pid,
+            y_stride_r,
+            y_stride_c,
+            x_stride_r,
+            x_stride_c,
+            M,
+            N,
+            eps,
+            BLOCK_SIZE,
+            ROWS,
+            SINGLE_BLOCK,
+            SAVE_INV_RMS,
+        )
 
 
 @libentry()
@@ -184,20 +257,50 @@ class RmsNorm(torch.autograd.Function):
         N = math.prod(normalized_shape)
 
         BLOCK_SIZE = min(triton.next_power_of_2(N), MAX_BLOCK_SIZE)
+        single_block = triton.next_power_of_2(N) <= MAX_BLOCK_SIZE
+        # 只有需要反向时才保存 inv_rms；benchmark / 推理路径不分配也不写
+        save_inv_rms = x.requires_grad or weight.requires_grad
         x = x.contiguous()
         weight = weight.contiguous()
         y = torch.empty_like(x)
-        inv_rms = torch.empty((M,), device=x.device, dtype=torch.float32)
+        inv_rms = (
+            torch.empty((M,), device=x.device, dtype=torch.float32)
+            if save_inv_rms
+            else x
+        )
 
-        grid_m = M
-        BLOCK_SIZE_M = 1
-        if M > 65535:
-            grid_m = MAX_GRID_DIM
-            BLOCK_SIZE_M = (M + MAX_GRID_DIM - 1) // MAX_GRID_DIM
+        # 每个 program 处理多行：w 只加载一次、program 数按 M 减少
+        if single_block:
+            if M >= 512:
+                rows = 8
+            elif M >= 128:
+                rows = 4
+            else:
+                rows = 2
+        else:
+            rows = 1
+        total_programs = triton.cdiv(M, rows)
+        grid_m = min(total_programs, MAX_GRID_DIM)
 
         with torch_device_fn.device(x.device):
             rms_norm_kernel[grid_m,](
-                y, inv_rms, x, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, BLOCK_SIZE_M
+                y,
+                inv_rms,
+                x,
+                weight,
+                N,
+                1,
+                N,
+                1,
+                M,
+                N,
+                eps,
+                total_programs,
+                BLOCK_SIZE,
+                rows,
+                single_block,
+                save_inv_rms,
+                num_warps=_FORWARD_WARPS,
             )
 
         ctx.save_for_backward(x, inv_rms, weight)

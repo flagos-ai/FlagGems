@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @libtuner(
-    configs=runtime.get_tuned_config("baddbmm"),
+    configs=runtime.get_tuned_config("baddbmm")[:8],
     key=["M", "N", "K"],
     strategy=["align32", "align32", "align32"],
     warmup=5,

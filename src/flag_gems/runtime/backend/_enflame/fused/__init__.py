@@ -68,28 +68,61 @@ if arch_version == 300:
         "fused_recurrent_gated_delta_rule_fwd",
     ]
 elif arch_version == 400 or arch_version == 410:
+    from .gcu400.beam_search_score import beam_search_score, beam_search_score_
     from .gcu400.bincount import bincount
+    from .gcu400.concat_and_cache_mla import concat_and_cache_mla
     from .gcu400.cross_entropy_loss import cross_entropy_loss
+    from .gcu400.FLA import fused_recurrent_gated_delta_rule_fwd
     from .gcu400.flash_mla import flash_mla
     from .gcu400.fused_add_rms_norm import fused_add_rms_norm
+    from .gcu400.fused_moe import (  # noqa: F401
+        dispatch_fused_moe_kernel,
+        fused_experts_impl,
+        inplace_fused_experts,
+        invoke_fused_moe_triton_kernel,
+        outplace_fused_experts,
+    )
     from .gcu400.gelu_and_mul import gelu_and_mul
+    from .gcu400.moe_align_block_size import (  # noqa: F401
+        moe_align_block_size,
+        moe_align_block_size_triton,
+    )
+    from .gcu400.moe_sum import moe_sum  # noqa: F401
     from .gcu400.outer import outer
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
-    from .gcu400.silu_and_mul import silu_and_mul
+    from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
+    from .gcu400.silu_and_mul_with_clamp import (
+        silu_and_mul_with_clamp,
+        silu_and_mul_with_clamp_out,
+    )
     from .gcu400.skip_layernorm import skip_layer_norm
     from .gcu400.sparse_attention import sparse_attn_triton
     from .gcu400.sparse_mla import triton_sparse_mla_fwd_interface
     from .gcu400.topk_softmax import topk_softmax
 
     __all__ = [
+        "dispatch_fused_moe_kernel",
+        "fused_experts_impl",
+        "inplace_fused_experts",
+        "invoke_fused_moe_triton_kernel",
+        "outplace_fused_experts",
+        "moe_align_block_size",
+        "moe_align_block_size_triton",
+        "beam_search_score",
+        "beam_search_score_",
         "apply_rotary_pos_emb",
         "gelu_and_mul",
         "silu_and_mul",
+        "silu_and_mul_out",
+        "silu_and_mul_with_clamp",
+        "silu_and_mul_with_clamp_out",
         "cross_entropy_loss",
+        "concat_and_cache_mla",
         "flash_mla",
         "moe_sum",
         "outer",
         "fused_add_rms_norm",
+        "fused_recurrent_gated_delta_rule_fwd",
         "skip_layer_norm",
         "rwkv_ka_fusion",
         "bincount",

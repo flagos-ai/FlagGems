@@ -84,7 +84,7 @@ def select_scatter(inp, src, dim, index):
     for d in range(dim + 1, inp.ndim):
         dim_prod_post *= inp.size(d)
 
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = 4096
     if total_elements // BLOCK_SIZE > 65535:
         BLOCK_SIZE = 16384
     grid = (triton.cdiv(total_elements, BLOCK_SIZE),)

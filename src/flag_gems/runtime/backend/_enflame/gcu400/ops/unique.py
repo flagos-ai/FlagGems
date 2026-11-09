@@ -338,12 +338,12 @@ def sorted_quick_unique_flat(sorted_data: torch.Tensor, return_counts: bool):
     global_ctas_num = triton.cdiv(num_tasks, tile_size)
     if global_ctas_num <= 8192:
         tile_size = max(
-            32, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks)
+            1024, min(triton.next_power_of_2(global_ctas_num), next_power_num_tasks)
         )
         global_ctas_num = triton.cdiv(num_tasks, tile_size)
     ctas_num = global_ctas_num if global_ctas_num < 65536 else 2048
     tiles_per_cta = triton.cdiv(num_tasks, tile_size * ctas_num)
-    num_warps = 4
+    num_warps = 8
     grid = (ctas_num, 1, 1)
 
     # allocate tensor
@@ -705,7 +705,7 @@ def _unique2(
         )
     else:
         sorted_data, _ = torch.sort(in0.ravel())
-        print(f"sorted_data:{sorted_data.to('cpu')}")
+        # t8: 移除调试打印 sorted_data.to("cpu")（强制 device->host 全量同步）
         data_out, inverse_indices, counts = sorted_quick_unique_flat(
             sorted_data, return_counts
         )

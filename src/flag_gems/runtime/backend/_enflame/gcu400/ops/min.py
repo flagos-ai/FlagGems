@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 _min = builtins.min
 
+# Creating a namedtuple class costs ~87us in Python.  Building it on every
+# min_dim call dominated the total latency for small shapes (the Triton kernel
+# itself is only ~5us), so the class is defined once at module scope.
+MinOut = namedtuple("min", ["values", "indices"])
+
 
 @libentry()
 @triton.jit(do_not_specialize=["M", "N"])
@@ -196,9 +201,18 @@ def min_dim(inp, dim=None, keepdim=False):
     inp = inp.contiguous()
 
     shape_list = list(shape)
-    shape_list[dim] = 1
+    if keepdim:
+        shape_list[dim] = 1
+    else:
+        # Kernels already write a flat m*K + k layout, so allocate the final
+        # squeezed shape directly instead of two squeeze calls later.
+        shape_list.pop(dim)
     out_value = torch.empty(shape_list, dtype=inp.dtype, device=inp.device)
-    out_index = torch.empty(shape_list, dtype=torch.int64, device=inp.device)
+    # GCU400 Triton writes only 4 bytes per int32 lane even when the tensor is
+    # int64, so an int64 output ends up with every other index zeroed.  Emit
+    # into an int32 buffer (all three kernels store int32) and cast once on the
+    # host; the op contract still returns int64 indices like torch.min.
+    out_index = torch.empty(shape_list, dtype=torch.int32, device=inp.device)
 
     if K == 1:
         BLOCK_N = _min(triton.next_power_of_2(N), 4096)
@@ -255,10 +269,6 @@ def min_dim(inp, dim=None, keepdim=False):
                 num_warps=1,
             )
 
-    if not keepdim:
-        out_value = torch.squeeze(out_value, dim)
-        out_index = torch.squeeze(out_index, dim)
+    out_index = out_index.to(torch.int64)
 
-    Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value, indices=out_index)
-    return out
+    return MinOut(values=out_value, indices=out_index)

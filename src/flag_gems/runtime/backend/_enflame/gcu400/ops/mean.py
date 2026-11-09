@@ -404,6 +404,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
             out = out.reshape([1] * x.ndim)
         return out
 
+    if isinstance(dim, int):
+        dim = [dim]
     if len(dim) == 1:
         inp = x
         mean_dim_idx = dim[0] % inp.ndim

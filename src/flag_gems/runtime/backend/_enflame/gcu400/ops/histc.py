@@ -76,7 +76,7 @@ def histc(inp, bins=100, min=0, max=0):
     if N == 0:
         return out
 
-    BLOCK = 8192
+    BLOCK = 64
     grid = builtins.min((N + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
     with torch_device_fn.device(inp.device):
         histc_kernel_simple[(grid,)](

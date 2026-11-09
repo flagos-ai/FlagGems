@@ -437,6 +437,23 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         )
 
 
+def _cummin_impl(input, dim, M, N, K, dtype):
+    out = torch.empty_like(input, dtype=dtype, device=input.device)
+    out_indices = torch.empty_like(input, dtype=torch.int32, device=input.device)
+
+    compute_dtype = out.dtype
+    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
+        compute_dtype = torch.float32
+
+    if M == 1 and K == 1:
+        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
+    elif M * K <= 16:
+        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
+    else:
+        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
+    return out, out_indices
+
+
 def cummin(
     input: Tensor,
     dim: int,
@@ -457,17 +474,35 @@ def cummin(
     dtype = input.dtype
     if dtype is torch.bool:
         dtype = torch.int64
-    out = torch.empty_like(input, dtype=dtype, device=input.device)
-    out_indices = torch.empty_like(input, dtype=torch.int32, device=input.device)
 
-    compute_dtype = out.dtype
-    if input.dtype == torch.float16 or input.dtype == torch.bfloat16:
-        compute_dtype = torch.float32
+    # torch propagates NaN and reports the most recent NaN position.  The scan
+    # combine drops NaNs on this backend, so run the regular min on a NaN-free
+    # copy and patch the NaN prefix back in afterwards.
+    if input.is_floating_point() and bool(torch.isnan(input).any()):
+        nan_mask = torch.isnan(input)
+        pos_shape = [1] * input.ndim
+        pos_shape[dim] = N
+        pos = torch.arange(N, device=input.device, dtype=torch.int32).view(
+            pos_shape
+        )
+        big = 1 << 30  # larger than any position, still fits int32
+        key = torch.where(
+            nan_mask,
+            -pos - 1,
+            torch.full_like(pos, big, dtype=torch.int32),
+        )
+        latest_min, _ = _cummin_impl(key, dim, M, N, K, torch.int32)
+        has_nan = latest_min < big
+        latest = (-latest_min - 1).to(torch.int64)
 
-    if M == 1 and K == 1:
-        scan_then_fan_col(input, out, out_indices, N, compute_dtype)
-    elif M * K <= 16:
-        scan_then_fan(input, out, out_indices, M, N, K, compute_dtype)
-    else:
-        scan_then_fan_loop(input, out, out_indices, M, N, K, compute_dtype)
+        inf = torch.tensor(float("inf"), dtype=input.dtype, device=input.device)
+        safe = torch.where(nan_mask, inf, input)
+        vals, idx = _cummin_impl(safe, dim, M, N, K, dtype)
+
+        nan_val = torch.tensor(float("nan"), dtype=vals.dtype, device=vals.device)
+        vals = torch.where(has_nan, nan_val, vals)
+        idx = torch.where(has_nan, latest.to(torch.int32), idx)
+        return vals, idx.to(torch.int32).to(torch.int64)
+
+    out, out_indices = _cummin_impl(input, dim, M, N, K, dtype)
     return out, out_indices.to(torch.int32).to(torch.int64)

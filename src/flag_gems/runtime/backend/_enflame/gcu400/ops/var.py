@@ -25,6 +25,9 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+VAR_BLOCK_M = 2
+VAR_BLOCK_N = 1024
+
 
 @triton.jit
 def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
@@ -38,7 +41,6 @@ def welford_func(mean_x, count_x, M_x, mean_y, count_y, M_y):
 
 
 @libentry()
-@triton.autotune(configs=runtime.get_tuned_config("var_mean"), key=["M", "N"])
 @triton.jit(do_not_specialize=["correction"])
 def var_welford_kernel(
     X,
@@ -111,7 +113,6 @@ def var_kernel_1(
 
 
 @libentry()
-@triton.heuristics(runtime.get_heuristic_config("var_mean"))
 @triton.jit(do_not_specialize=["correction"])
 def var_kernel_2(
     Acc,
@@ -156,7 +157,17 @@ def var(x, dim=None, *, correction=None, keepdim=False):
 
         with torch_device_fn.device(x.device):
             var_kernel_1[(BLOCK_NUM,)](x, acc, average, count, N, BLOCK_N=BLOCK_N)
-            var_kernel_2[(1,)](acc, average, count, var, N, correction, BLOCK_NUM)
+            var_kernel_2[(1,)](
+                acc,
+                average,
+                count,
+                var,
+                N,
+                correction,
+                BLOCK_NUM,
+                BLOCK_N=triton.next_power_of_2(BLOCK_NUM),
+                num_warps=4,
+            )
     else:
         shape = list(x.shape)
         dim = [d % x.ndim for d in dim]
@@ -168,9 +179,18 @@ def var(x, dim=None, *, correction=None, keepdim=False):
         M = x.numel() // N
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+        grid = (triton.cdiv(M, VAR_BLOCK_M),)
         with torch_device_fn.device(x.device):
-            var_welford_kernel[grid](x, var, M, N, correction)
+            var_welford_kernel[grid](
+                x,
+                var,
+                M,
+                N,
+                correction,
+                BLOCK_M=VAR_BLOCK_M,
+                BLOCK_N=VAR_BLOCK_N,
+                num_warps=4,
+            )
 
     if not keepdim:
         var = var.squeeze(dim=dim)

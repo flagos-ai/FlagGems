@@ -19,7 +19,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.gt")
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -42,3 +42,13 @@ def gt_func_scalar(x, y):
 def gt_scalar(A, B):
     logger.debug("GEMS_ENFLAME GT_SCALAR")
     return gt_func_scalar(A, B)
+
+
+def gt_tensor_(A, B):
+    logger.debug("GEMS_ENFLAME GT_TENSOR_")
+    return gt_func(A, B, out0=A)
+
+
+def gt_scalar_(A, B):
+    logger.debug("GEMS_ENFLAME GT_SCALAR_ ")
+    return gt_func_scalar(A, B, out0=A)

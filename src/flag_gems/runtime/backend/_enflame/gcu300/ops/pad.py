@@ -464,21 +464,31 @@ def pad(self, pad, mode="constant", value=None):
     if value is None:
         value = 0.0
 
-    pad_pairs = len(pad) // 2
-
     if mode == "reflect":
-        for i in range(pad_pairs):
+        ndim //= 2
+        assert (
+            len(pad) == 2 * ndim
+        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+
+        for i in range(ndim):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_size = self.shape[ndim - 1 - i]
+            input_l, input_r = (
+                self.shape[ndim - (2 * i + 1) - 1],
+                self.shape[ndim - (2 * i + 1)],
+            )
             assert (
-                pad_l < input_size and pad_r < input_size
+                pad_l < input_l and pad_r < input_r
             ), f"padding size should be less than the corresponding input dimension, \
                  but got padding size: {pad_l}, {pad_r}, input size: {self.shape}"
 
     if mode == "circular":
-        for i in range(pad_pairs):
+        ndim //= 2
+        assert (
+            len(pad) == 2 * ndim
+        ), f"padding size is expected to be {2 * ndim}, but got {len(pad)}"
+        for i in range(ndim):
             pad_l, pad_r = pad[2 * i], pad[2 * i + 1]
-            input_size = self.shape[ndim - 1 - i]
+            input_size = self.shape[ndim - i - 1]
             assert (
                 pad_l <= input_size and pad_r <= input_size
             ), "Padding value causes wrapping around more than once."

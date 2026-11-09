@@ -22,7 +22,7 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry, libtuner
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.sum")
 
 
 @libentry()

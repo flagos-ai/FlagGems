@@ -44,7 +44,7 @@ FP8_MNK_SHAPES = [
 @pytest.mark.w8a8_block_fp8_matmul
 @pytest.mark.parametrize("M,N,K", FP8_MNK_SHAPES)
 def test_w8a8_block_fp8_matmul(M, N, K):
-    if flag_gems.vendor_name == "mthreads":
+    if flag_gems.vendor_name == "mthreads" or flag_gems.vendor_name == "enflame":
         if hasattr(torch, "float8_e4m3fn"):
             dtype = torch.float8_e4m3fn
         else:

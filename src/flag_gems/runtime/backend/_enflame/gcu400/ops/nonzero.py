@@ -25,9 +25,18 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 # 单 block 路径的最大元素数(小于等于该值走单 kernel 方案)
-SINGLE_BLOCK_LIMIT = 65536
+# 上限受 DSM(片上共享存储)约束: 单 block kernel 在 store 阶段同时存活
+# out_off(int64,8B) + 各维坐标(int32) ≈ 16~20B/elem, BLOCK=65536 时峰值
+# 约 1.05MB 超过硬件上限 917504B(OutOfResources: dsm memory)。
+# BLOCK=32768 时峰值约 0.5~0.65MB, 安全; 故元素数 >32768 走多 block 路径
+# (count+offset+compact 三 kernel, 每 block<=16384, 且能多 SP 并行)。
+SINGLE_BLOCK_LIMIT = 32768
 # 单 block 路径的最小 BLOCK(避免过小向量触发编译器缺陷)
 MIN_BLOCK = 1024
+# 多 block 路径 grid_x 上限(GCU 硬件约束: grid_x<=65535, grid_y<=255)
+MAX_GRID_X = 65535
+# 多 block 路径单 block 最大元素数(受 DSM 约束, compact kernel 峰值<=20B/elem)
+MAX_MULTI_BLOCK = 32768
 
 
 @libentry()
@@ -594,6 +603,12 @@ def nonzero(inp, *, as_tuple=False):
             else:
                 block, num_warps = 16384, 4
             n_blocks = triton.cdiv(n_elements, block)
+            # grid_x 硬件上限 65535: 超限时增大 block(上限 MAX_MULTI_BLOCK, 受 DSM
+            # 约束 compact kernel 峰值<=20B/elem, 32768*20=655360<917504 安全)以
+            # 减少 block 数; 可覆盖 n_elements <= 65535*32768 ≈ 2.1e9。
+            while n_blocks > MAX_GRID_X and block < MAX_MULTI_BLOCK:
+                block *= 2
+                n_blocks = triton.cdiv(n_elements, block)
             inp_i32 = torch.empty(n_elements, dtype=torch.int32, device=inp.device)
             counts = torch.empty(n_blocks, dtype=torch.int32, device=inp.device)
             offsets = torch.empty(n_blocks, dtype=torch.int32, device=inp.device)

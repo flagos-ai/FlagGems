@@ -39,6 +39,8 @@ def pow_func_fast(x, exponent):
     is_odd = (e_int & 1) != 0
     result = tl.where(is_neg & is_int & is_odd, -result, result)
     result = tl.where(is_neg & ~is_int, float("nan"), result)
+    # exp2(0 * log2(0)) is NaN, but torch defines 0 ** 0 == 1.
+    result = tl.where((x_f == 0.0) & (e_f == 0.0), 1.0, result)
     return result
 
 

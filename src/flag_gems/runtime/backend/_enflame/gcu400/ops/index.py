@@ -545,29 +545,15 @@ def index(inp, indices):
                 replacement_shape = list(idx_item.shape)
 
     out_shape = before_shape + replacement_shape + after_shape
-    original_dtype = inp.dtype
-
-    if inp.dtype == torch.int64:
-        inp = inp.to(torch.int32)
 
     out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
 
     if inp.numel() == 0:
-        if original_dtype == torch.int64:
-            out = out.to(torch.int64)
         return out.contiguous()
 
     tensor_indices = [idx for idx in indices if idx is not None]
     if not tensor_indices:
-        result = inp.view(*out_shape)
-        if original_dtype == torch.int64:
-            result = result.to(torch.int64)
-        return result.contiguous()
-
-    tensor_indices = [
-        idx.to(torch.int32) if idx.dtype == torch.int64 else idx
-        for idx in tensor_indices
-    ]
+        return inp.view(*out_shape).contiguous()
 
     _index_func(inp, tensor_indices, out)
 
@@ -582,6 +568,4 @@ def index(inp, indices):
         result.copy_(out)
         out = result
 
-    if original_dtype == torch.int64:
-        out = out.to(torch.int64)
     return out.contiguous()

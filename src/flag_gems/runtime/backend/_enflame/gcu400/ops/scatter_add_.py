@@ -26,6 +26,8 @@ from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 from flag_gems.utils.shape_utils import restride_dim
 
+from .scatter import is_last_dim_flat, scatter_last_dim
+
 logger = logging.getLogger(__name__)
 
 
@@ -388,6 +390,12 @@ def scatter_add_(x, dim, index, src):
             if index.size(dim) >= x.size(dim):
                 equal_count += 1
 
+    src_view = src.as_strided(index.shape, src.stride())
+    if is_last_dim_flat(x, dim, index, src_view):
+        # 直接累加到原 dtype：FP32 中转要多走三遍全量流量，而原子次数不变
+        scatter_last_dim(x, dim, index, src_view, True)
+        return x
+
     if equal_count == x.dim() and index.shape == src.shape and dim == x.ndim - 1:
         return scatter_add_1(x, dim, index, src)
     if (index.shape == src.shape and index.shape == x.shape and dim != x.ndim - 1) or (
@@ -398,3 +406,12 @@ def scatter_add_(x, dim, index, src):
         return scatter_add_1(x, dim, index, src)
     else:
         return scatter_add_0(x, dim, index, src)
+
+
+def scatter_add(inp, dim, index, src):
+    """非原地 scatter_add：克隆输入后复用原地实现。"""
+    logger.debug("GEMS_ENFLAME SCATTER_ADD")
+
+    out = inp.clone()
+    scatter_add_(out, dim, index, src)
+    return out
