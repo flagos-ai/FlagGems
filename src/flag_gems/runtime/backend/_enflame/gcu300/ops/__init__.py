@@ -83,6 +83,7 @@ from .conv2d import conv2d
 from .copy import copy, copy_
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out
+from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
@@ -386,6 +387,7 @@ __all__ = [
     "cosh",
     "cosh_",
     "cosh_out",
+    "cosine_embedding_loss",
     "count_nonzero",
     "ctc_loss",
     "cummax",
