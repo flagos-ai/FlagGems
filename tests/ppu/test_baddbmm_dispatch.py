@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import importlib
+from contextlib import nullcontext
 
 import pytest
 import torch
@@ -26,6 +27,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.baddbmm
+@pytest.mark.parametrize("use_aten", [False, True])
 @pytest.mark.parametrize(
     "grad_enabled,requires_grad",
     [
@@ -36,20 +38,28 @@ pytestmark = pytest.mark.skipif(
         (False, (True, True, True)),
     ],
 )
-def test_baddbmm_dispatch_preserves_autograd(monkeypatch, grad_enabled, requires_grad):
+def test_baddbmm_dispatch_preserves_autograd(
+    monkeypatch, use_aten, grad_enabled, requires_grad
+):
     baddbmm = importlib.import_module(flag_gems.baddbmm.__module__)
     monkeypatch.setattr(baddbmm, "_can_use_ppu_baddbmm", lambda *args: True)
-    generic_result = object()
-    routed_result = object()
-    monkeypatch.setattr(
-        baddbmm, "_generic_baddbmm", lambda *args, **kwargs: generic_result
+    launches = []
+
+    def dispatch(a, b, out, *, bias, alpha, beta):
+        launches.append((alpha, beta))
+        return out
+
+    monkeypatch.setattr(baddbmm, "_dispatch_ppu_bmm", dispatch)
+    bias, a, b = (
+        torch.empty((2, 4, 4), device=flag_gems.device, requires_grad=grad)
+        for grad in requires_grad
     )
-    monkeypatch.setattr(
-        baddbmm, "_dispatch_ppu_bmm", lambda *args, **kwargs: routed_result
-    )
-    bias, a, b = (torch.empty((2, 4, 4), requires_grad=grad) for grad in requires_grad)
-    with torch.set_grad_enabled(grad_enabled):
-        result = baddbmm.baddbmm(bias, a, b)
-    assert result is (
-        generic_result if grad_enabled and any(requires_grad) else routed_result
-    )
+    op = torch.baddbmm if use_aten else flag_gems.baddbmm
+    context = flag_gems.use_gems(include=["baddbmm"]) if use_aten else nullcontext()
+    with context, torch.set_grad_enabled(grad_enabled):
+        result = op(bias, a, b, beta=0.5, alpha=0.25)
+    assert launches == [(0.25, 0.5)]
+    assert result.requires_grad == (grad_enabled and any(requires_grad))
+    if result.requires_grad:
+        expected = "BaddbmmBackward0" if use_aten else "_PPUBaddbmmFunctionBackward"
+        assert type(result.grad_fn).__name__ == expected
