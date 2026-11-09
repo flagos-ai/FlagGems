@@ -42,12 +42,18 @@ def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
 def arange_start(
     start, end, step=1, *, dtype=None, layout=None, device=None, pin_memory=None
 ):
-    logger.debug("GEMS_TSINGMICRO ARANGE")
+    logger.debug("GEMS_TSINGMICRO ARANGE_START")
     if dtype is torch.int64:
+        start = int(start)
+        end = int(end)
+        step = int(step)
+        if step == 0:
+            raise RuntimeError("step must be nonzero")
         sgn = (step > 0) - (step < 0)
-        size = int((end - start + step - sgn) // step)
+        size = (end - start + step - sgn) // step
     else:
-        size = int(math.ceil((end - start) // step))
+        size = math.ceil((end - start) / step)
+    size = int(size)
 
     if dtype is torch.bfloat16:
         acc_dtype = torch.float32
@@ -76,6 +82,7 @@ def arange_start(
 
 
 def arange(end, *, dtype=None, layout=None, device=None, pin_memory=None):
+    logger.debug("GEMS_TSINGMICRO ARANGE")
     return arange_start(
         0, end, 1, dtype=dtype, layout=layout, device=device, pin_memory=pin_memory
     )
