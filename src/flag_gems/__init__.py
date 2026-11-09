@@ -2152,6 +2152,7 @@ _FULL_CONFIG = (
     ("unbind.int", unbind),
     ("unbind_copy.int", unbind_copy),
     ("unflatten.int", unflatten),
+    ("unflatten_dense_tensors", unflatten_dense_tensors),
     ("unfold", unfold),
     ("unfold_backward", unfold_backward),
     ("unfold_copy", unfold_copy),

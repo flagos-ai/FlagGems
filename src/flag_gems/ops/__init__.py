@@ -1645,6 +1645,7 @@ from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from flag_gems.ops.unflatten import unflatten
+from flag_gems.ops.unflatten_dense_tensors import unflatten_dense_tensors
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -3375,6 +3376,7 @@ __all__ = [
     "unbind_copy",
     "underscore_sobol_engine_draw",
     "unflatten",
+    "unflatten_dense_tensors",
     "unfold",
     "unfold_backward",
     "unfold_copy",

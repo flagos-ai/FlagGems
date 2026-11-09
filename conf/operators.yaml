@@ -22656,6 +22656,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: unflatten_dense_tensors
+  description: |
+    Given a flat buffer and a list of template tensors, returns one view per template carved out of the buffer at a running offset, preserving the buffer's alias, strides and storage offset; zero-numel templates yield fresh empty tensors. Metadata-only view op (no element-wise computation).
+  for:
+    - unflatten_dense_tensors
+  labels:
+    - aten
+    - KernelGen
+    - view
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: unfold
   description: Return a view of the tensor with a sliding window along the given dimension.
   for:
