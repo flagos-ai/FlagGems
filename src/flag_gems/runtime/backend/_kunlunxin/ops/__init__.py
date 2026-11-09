@@ -203,7 +203,7 @@ from .absolute import absolute, absolute_
 from .acos import acos, acos_
 from .acosh import acosh, acosh_  # noqa: F401
 from .adaptive_avg_pool1d import adaptive_avg_pool1d
-from .adaptive_avg_pool2d import adaptive_avg_pool2d
+from .adaptive_avg_pool2d import adaptive_avg_pool2d, adaptive_avg_pool2d_out
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
 from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
@@ -1110,6 +1110,7 @@ __all__ = [
     "acos_",
     "adaptive_avg_pool1d",
     "adaptive_avg_pool2d",
+    "adaptive_avg_pool2d_out",
     "adaptive_avg_pool3d_backward_grad_input",
     "adaptive_max_pool2d",
     "adaptive_max_pool2d_backward",
