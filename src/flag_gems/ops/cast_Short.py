@@ -249,9 +249,10 @@ def cast_Short(self, non_blocking=False):
         # with doubled strides (and it materialises the lazy conjugate bit).
         src = src.real
 
-    # empty_like reproduces the exact layout (shape and strides) the native cast
-    # allocates, so a non-contiguous input yields an equally non-contiguous out.
-    out = torch.empty_like(src, dtype=torch.int16)
+    # Allocate from the original tensor: .real doubles complex strides, which
+    # empty_like preserves for empty tensors even though the native cast does not.
+    # Using self also preserves the native output layout for non-contiguous inputs.
+    out = torch.empty_like(self, dtype=torch.int16)
     numel = src.numel()
     if numel == 0:
         return out
