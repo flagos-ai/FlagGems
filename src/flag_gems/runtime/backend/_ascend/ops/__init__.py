@@ -122,6 +122,7 @@ from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .isin import isin
 from .isposinf import isposinf
+from .kl_div import kl_div
 from .l1_loss import l1_loss
 from .layernorm import layer_norm, native_layer_norm
 from .le_ import le_
@@ -425,6 +426,7 @@ __all__ = [
     "index_select",
     "isin",
     "isposinf",
+    "kl_div",
     "l1_loss",
     "layer_norm",
     "le_",
