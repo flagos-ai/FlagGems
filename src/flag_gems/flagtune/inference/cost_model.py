@@ -20,8 +20,10 @@ never imports libentry or takes ownership of ordinary tuner caches.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type
@@ -34,8 +36,11 @@ from flag_gems.flagtune.inference.status import exception_reason, print_status
 _FLAGTUNE_PROPOSER_POOL: Dict[Any, Any] = {}
 _FLAGTUNE_VARIANT_INFO_POOL: Dict[Any, Any] = {}
 _FLAGTUNE_AVAILABILITY: Optional[Tuple[bool, Optional[BaseException]]] = None
-# One AUTO failure disables the affected operator variant in this process.
-_COST_MODEL_DISABLED_OPS: set[tuple[Optional[str], Optional[str]]] = set()
+# AUTO failures are scoped to a complete model identity, not an operator.
+_COST_MODEL_DISABLED_OPS: set[Tuple[str, str, str, str]] = set()
+_COST_MODEL_RETRY_AFTER: Dict[Any, float] = {}
+_AUTO_RETRY_SECONDS = 60
+logger = logging.getLogger(__name__)
 _COST_MODEL_IDENTITIES: Dict[Any, Any] = {}
 _MODEL_LOAD_STARTED: set[Any] = set()
 _MODEL_SOURCE_CONFIGURED = False
@@ -65,9 +70,20 @@ def _configure_flagtune_model_source() -> None:
     _MODEL_SOURCE_CONFIGURED = True
 
 
-def is_auto_disabled(op_id: Optional[str], variant: Optional[str] = None) -> bool:
-    """Return whether AUTO is fused for this variant until process restart."""
-    return (op_id, variant) in _COST_MODEL_DISABLED_OPS
+def is_auto_disabled(platform_key, op_id, variant, dtype_key) -> bool:
+    """Return whether an AUTO failure is still within its retry cooldown."""
+    key = (platform_key, op_id, variant, dtype_key)
+    if key not in _COST_MODEL_DISABLED_OPS:
+        return False
+    return time.monotonic() < _COST_MODEL_RETRY_AFTER.get(key, float("inf"))
+
+
+def auto_failure_state(platform_key, op_id, variant, dtype_key):
+    """Invalidate dispatch even if no call observed the cooldown while active."""
+    return (
+        (platform_key, op_id, variant, dtype_key) in _COST_MODEL_DISABLED_OPS,
+        is_auto_disabled(platform_key, op_id, variant, dtype_key),
+    )
 
 
 @contextmanager
@@ -201,7 +217,7 @@ def identity_cache_key(
     op_id = str(getattr(tuner, "_flagtune_op_id", "<unknown>"))
     variant = str(getattr(tuner, "_flagtune_variant", "<unknown>"))
     tensors = []
-    for name in tuner.arg_names:
+    for name in getattr(tuner, "arg_names", ()):
         value = arguments.get(name)
         if not hasattr(value, "device"):
             value = getattr(value, "base", value)
@@ -210,6 +226,19 @@ def identity_cache_key(
     platform = f"{vendor_name}:" + ",".join(str(tensor.device) for tensor in tensors)
     dtype_key = ",".join(str(tensor.dtype) for tensor in tensors)
     return platform, op_id, variant, dtype_key
+
+
+def failure_key(tuner: Any, arguments: Dict[str, Any]) -> Tuple[str, str, str, str]:
+    """Use the canonical model identity without probing on cached launches.
+
+    Before identity discovery succeeds, failures use the device/dtype lookup
+    key instead. This keeps discovery/runtime-unavailable errors local too.
+    """
+    key = identity_cache_key(tuner, arguments, runtime.device.vendor_name)
+    identity = _COST_MODEL_IDENTITIES.get(key)
+    if identity is None:
+        return key
+    return identity.platform_key, identity.op_id, identity.variant, identity.dtype_key
 
 
 def runtime_candidates(tuner: Any, op_name: str, kwargs: Dict[str, Any]):
@@ -248,7 +277,17 @@ def run_proposer(
     identity = model_identity.artifact_key
     fields = tuple(variant_info.param_names)
     to_config = variant_info.to_config
-    initial = configs_to_dicts(candidate_configs, list(fields))
+    # Runtime tuning may have gained configs since this model was packaged.
+    # Only pass candidates covered by the model's recorded parameter space.
+    initial = [
+        config
+        for config in configs_to_dicts(candidate_configs, list(fields))
+        if variant_info.param_space.validate(config)
+    ]
+    if not initial:
+        raise ValueError(
+            "no runtime candidates satisfy the loaded model parameter space"
+        )
     legal_keys = {tuple(config[name] for name in fields) for config in initial}
 
     def checked_config(config_dict):
@@ -368,6 +407,22 @@ def load_model(self, identity_key, arguments, infer_tensor_dtypes):
             dtype_key=make_dtype_key(dtypes),
         )
         _COST_MODEL_IDENTITIES[identity_key] = model_identity
+    key = failure_key(self, arguments)
+    if identity_key != key and identity_key in _COST_MODEL_DISABLED_OPS:
+        # Once discovery recovers, migrate its provisional failure so recovery
+        # clears it and warning suppression continues for the same model.
+        _COST_MODEL_DISABLED_OPS.discard(identity_key)
+        _COST_MODEL_DISABLED_OPS.add(key)
+        deadline = _COST_MODEL_RETRY_AFTER.pop(identity_key, float("inf"))
+        _COST_MODEL_RETRY_AFTER[key] = max(
+            deadline, _COST_MODEL_RETRY_AFTER.get(key, deadline)
+        )
+    if runtime.resolve_cost_model_intent(
+        supports_cost_model=True
+    ) is runtime.CostModelIntent.AUTO and is_auto_disabled(*key):
+        # Another ordinal of the same product may have discovered this model
+        # for the first time during an existing cooldown.
+        return None
     proposer, variant_info = ensure_proposer(model_identity)
     return model_identity, proposer, variant_info
 
@@ -384,27 +439,22 @@ def run_policy(
     default_policy: Callable,
     legacy_fallback: Callable,
 ) -> Tuple[triton.Config, Dict[str, float]]:
-    """Run Cost Model; an AUTO failure fuses this op_id across the process."""
+    """Run Cost Model, with a bounded AUTO cooldown and strict REQUIRED mode."""
     op_name = (
         getattr(self, "_flagtune_op_name", None)
         or getattr(self, "_flagtune_expand_op_name", None)
         or getattr(self, "__name__", "unknown")
     )
-    op_id = getattr(self, "_flagtune_op_id", None)
     intent = runtime.resolve_cost_model_intent(supports_cost_model=supports_cost_model)
-    variant = getattr(self, "_flagtune_variant", None)
-    disabled_key = (op_id, variant)
-    if (
-        intent is runtime.CostModelIntent.AUTO
-        and disabled_key in _COST_MODEL_DISABLED_OPS
-    ):
-        # Check before tensor inspection, candidate resolution or model loading.
-        return legacy_fallback(self, bench_fn, args, kwargs, op_name)
     mode = runtime.resolve_tuning_mode(op_name, supports_cost_model=supports_cost_model)
     if mode is not runtime.TuningMode.COST_MODEL:
         return default_policy(self, bench_fn, configs, args, kwargs)
+    arguments = {**(self.nargs or {}), **dict(zip(self.arg_names, args)), **kwargs}
+    disabled_key = failure_key(self, arguments)
+    if intent is runtime.CostModelIntent.AUTO and is_auto_disabled(*disabled_key):
+        # Cached identity lookup requires no model-source access or probing.
+        return legacy_fallback(self, bench_fn, args, kwargs, op_name)
     intent_required = intent is runtime.CostModelIntent.REQUIRED
-    arguments = {**(self.nargs or {}), **kwargs}
     identity_key = identity_cache_key(self, arguments, runtime.device.vendor_name)
 
     phase = "preload"
@@ -418,16 +468,24 @@ def run_policy(
                 if len(candidates) > 1
                 else None
             )
+            disabled_key = failure_key(self, arguments)
+        if len(candidates) > 1 and loaded is None:
+            return legacy_fallback(self, bench_fn, args, kwargs, op_name)
         if loaded is not None:
             phase = "postload"
             previous_strict = getattr(self, "_flagtune_strict_benchmark", False)
             self._flagtune_strict_benchmark = True
             try:
                 with cost_model_boundary(phase):
-                    return run_proposer(self, bench_fn, candidates, arguments, loaded)
+                    result = run_proposer(self, bench_fn, candidates, arguments, loaded)
+                _COST_MODEL_DISABLED_OPS.discard(disabled_key)
+                _COST_MODEL_RETRY_AFTER.pop(disabled_key, None)
+                return result
             finally:
                 self._flagtune_strict_benchmark = previous_strict
     except flagtune_error_types() as exc:
+        # Identity discovery can succeed even when loading the bundle fails.
+        disabled_key = failure_key(self, arguments)
         if intent_required:
             print_status(
                 "REQUIRED Cost Model failed",
@@ -437,6 +495,7 @@ def run_policy(
                 action="raising; no fallback",
             )
             raise
+        _COST_MODEL_RETRY_AFTER[disabled_key] = time.monotonic() + _AUTO_RETRY_SECONDS
         if disabled_key not in _COST_MODEL_DISABLED_OPS:
             _COST_MODEL_DISABLED_OPS.add(disabled_key)
             fallback_mode = runtime.resolve_tuning_mode(
@@ -448,8 +507,19 @@ def run_policy(
                 phase=phase,
                 reason=exception_reason(exc),
                 fallback_mode=fallback_mode.value,
-                action="AUTO disabled for this variant in this process until restart",
+                action=f"AUTO retry after {_AUTO_RETRY_SECONDS}s",
+            )
+            logger.warning(
+                "FlagTune model unavailable for %s/%s/%s/%s: %s; using %s tuning. "
+                "AUTO will retry after %ss; set USE_FLAGTUNE_COST_MODEL=1 "
+                "to require a model.",
+                *disabled_key,
+                exception_reason(exc),
+                fallback_mode.value,
+                _AUTO_RETRY_SECONDS,
             )
     else:
+        _COST_MODEL_DISABLED_OPS.discard(disabled_key)
+        _COST_MODEL_RETRY_AFTER.pop(disabled_key, None)
         return default_policy(self, bench_fn, candidates, args, kwargs)
     return legacy_fallback(self, bench_fn, args, kwargs, op_name)

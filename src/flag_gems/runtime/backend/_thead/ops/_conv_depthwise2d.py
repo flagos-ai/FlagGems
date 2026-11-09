@@ -21,51 +21,6 @@ import triton
 import triton.language as tl
 
 # ---------------------------------------------------------------------------
-# PPU toolchain compatibility shim for the ZW810 (thead PPU) backend.
-# The Triton "ppu" backend emits inline asm carrying a "ppu." dialect prefix
-# (e.g. "ppu.mov.u32", "ppu.mma.sync.aligned.m16n16k16..."), while some PPU SDK
-# assembler builds (ppu-llc 2.0.0-715aa1) only accept the bare dialect
-# ("mov.u32", "ld.global.b32") and otherwise fail with
-# "token recognition error at '.mo'".
-# Stripping the prefix unconditionally is NOT safe: tensor-core kernels use
-# PPU-only mnemonics ("m16n16k16" mma, "ldmatrix ... m16n16.x1.trans") whose
-# bare forms are not valid CUDA PTX, so ppu-llc rejects them with
-# "unsupported modifier combination of mma/ldmatrix" and every tl.dot kernel
-# fails to build.  Therefore try the emitted (prefixed) IR first and only
-# retry with the prefix stripped when the assembler rejects the native form,
-# which keeps both older and newer ppu-llc builds working.
-# ---------------------------------------------------------------------------
-try:
-    from triton.backends.ppu import compiler as _ppu_compiler_mod
-
-    if not getattr(_ppu_compiler_mod.PPUBackend, "_ppu_prefix_patched", False):
-        _orig_make_hgbin = _ppu_compiler_mod.PPUBackend.make_hgbin
-
-        def _make_hgbin_ppu_prefix_fallback(self, src, metadata, opt, capability):
-            try:
-                return _orig_make_hgbin(self, src, metadata, opt, capability)
-            except Exception as native_error:
-                stripped_src = src.replace("ppu.", "")
-                if stripped_src == src:
-                    raise
-                try:
-                    return _orig_make_hgbin(
-                        self, stripped_src, metadata, opt, capability
-                    )
-                except Exception as stripped_error:
-                    raise RuntimeError(
-                        "PPU hgbin assembly failed for both the native 'ppu.' "
-                        "dialect and the legacy prefix-stripped fallback.\n"
-                        f"  [native]   {native_error}\n"
-                        f"  [stripped] {stripped_error}"
-                    ) from stripped_error
-
-        _ppu_compiler_mod.PPUBackend.make_hgbin = _make_hgbin_ppu_prefix_fallback
-        _ppu_compiler_mod.PPUBackend._ppu_prefix_patched = True
-except ModuleNotFoundError:
-    pass
-
-# ---------------------------------------------------------------------------
 # FlagGems registered-op key bridge.
 # The KernelGen FlagGems plugin overrides the registered ATen op by keying on
 # the benchmark operator name ("conv_depthwise2d"), but the FlagGems
