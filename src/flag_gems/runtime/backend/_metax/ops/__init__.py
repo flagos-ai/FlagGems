@@ -32,6 +32,7 @@ from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
 from .gt_tensor_ import gt_tensor_
 from .hadamard_transform import hadamard_transform
+from .histc import histc
 from .index import index
 from .index_put import index_put, index_put_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
@@ -193,6 +194,7 @@ __all__ = [
     "gt_scalar_",
     "gt_tensor_",
     "hadamard_transform",
+    "histc",
     "index",
     "index_put",
     "index_put_",
