@@ -34,7 +34,12 @@ def test_conj(shape, dtype):
     ref_out = torch.conj(ref_inp)
     res_out = flag_gems.conj(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # Some backends do not implement isclose/equal for complex32 (ComplexHalf,
+    # reported as "Unsupported tensor dtype: ComplexHalf"). Compare the real
+    # and imaginary lanes as ordinary floats instead, which every backend
+    # supports; res_out may be a conj view, and .real/.imag handle that bit.
+    utils.gems_assert_close(res_out.real, ref_out.real, res_out.real.dtype)
+    utils.gems_assert_close(res_out.imag, ref_out.imag, res_out.imag.dtype)
 
 
 @pytest.mark.underscore_conj
@@ -51,4 +56,9 @@ def test__conj(shape, dtype):
     ref_out = torch._conj(ref_inp)
     res_out = flag_gems._conj(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # Some backends do not implement isclose/equal for complex32 (ComplexHalf,
+    # reported as "Unsupported tensor dtype: ComplexHalf"). Compare the real
+    # and imaginary lanes as ordinary floats instead, which every backend
+    # supports; res_out may be a conj view, and .real/.imag handle that bit.
+    utils.gems_assert_close(res_out.real, ref_out.real, res_out.real.dtype)
+    utils.gems_assert_close(res_out.imag, ref_out.imag, res_out.imag.dtype)
