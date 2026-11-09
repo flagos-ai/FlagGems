@@ -317,6 +317,7 @@ from .bmm import bmm, bmm_out
 from .bucketize import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
+from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
