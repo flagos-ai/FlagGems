@@ -315,6 +315,7 @@ from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .bucketize import bucketize
+from .cast_Byte import cast_Byte  # noqa: F401
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
 from .cdist_backward import _cdist_backward
@@ -1239,6 +1240,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bucketize",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",
