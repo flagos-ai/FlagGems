@@ -41,14 +41,17 @@ def _launch(kernel, grid, args, tensor_count, num_warps=4):
     if kernel.pre_run_hooks:
         kernel[grid](*args, num_warps=num_warps)
         return
+    _knobs = getattr(triton, "knobs", None)
     key = (
         id(kernel),
         driver.active.get_current_device(),
         grid,
         num_warps,
         (
-            kernel.debug or triton.knobs.runtime.debug,
-            triton.knobs.compilation.instrumentation_mode,
+            kernel.debug or getattr(getattr(_knobs, "runtime", None), "debug", False),
+            getattr(
+                getattr(_knobs, "compilation", None), "instrumentation_mode", False
+            ),
         ),
         (
             tuple(
