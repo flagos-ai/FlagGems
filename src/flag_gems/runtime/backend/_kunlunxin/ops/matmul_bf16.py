@@ -27,6 +27,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.utils import libentry
+
 DEV = "cuda"
 
 
@@ -42,6 +44,7 @@ def get_autotune_config():
     ]
 
 
+@libentry()
 @triton.autotune(
     configs=get_autotune_config(),
     key=["M", "N", "K"],

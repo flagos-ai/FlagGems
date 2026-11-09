@@ -12,130 +12,157 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+torch.randn via TX81 hardware PRNG (tle.dsa.tsingmicro.randn → __RandGen / xorshift128+).
+
+Avoids Philox int-vector IR that falls back to RISC-V scalar loops on TX81.
+
+P0: host only derives two int64 scalars (no CPU randint / seed H2D); the kernel
+expands them to the 16 xorshift streams with pid/lane mixing.
+
+Small-N: DSA launch has a fixed host/runtime floor; for numel below
+``FLAGGEMS_RANDN_CPU_FALLBACK_MAX`` (default 16384) use CPU randn + H2D.
+"""
+
 import logging
+import os
 
 import torch
 import triton
+import triton.experimental.tle.language as tle
 import triton.language as tl
 
 from flag_gems.runtime import device, get_heuristic_config, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import volume
-
-
-@triton.jit
-def high_precision_fast_sin_cos(x):
-    # Normalize to [-π, π]
-    two_pi = 6.283185307179586
-    x = x - two_pi * tl.floor(x / two_pi + 0.5)
-    x2 = x * x
-
-    # --- SIN: 7th-order minimax (x * P(x²)) ---
-    # Coefficients optimized for [-π, π], max error ~1.5e-9
-    s_c0 = 0.99999999999999999999
-    s_c1 = -0.16666666666666666654
-    s_c2 = 0.00833333333333332876
-    s_c3 = -0.00019841269841269616
-    s_c4 = 2.755731922398589e-6
-    s_c5 = -2.505210838544172e-8
-
-    sin_x = x * (
-        s_c0 + x2 * (s_c1 + x2 * (s_c2 + x2 * (s_c3 + x2 * (s_c4 + x2 * s_c5))))
-    )
-
-    # --- COS: 6th-order minimax (Q(x²)) ---
-    c_c0 = 1.0
-    c_c1 = -0.49999999999999999983
-    c_c2 = 0.04166666666666666636
-    c_c3 = -0.00138888888888888742
-    c_c4 = 2.4801587301587299e-5
-    c_c5 = -2.755731922398581e-7
-
-    cos_x = c_c0 + x2 * (c_c1 + x2 * (c_c2 + x2 * (c_c3 + x2 * (c_c4 + x2 * c_c5))))
-
-    return sin_x, cos_x
-
-
-@triton.jit
-def pair_uniform_to_normal_fast(u1, u2):
-    u1 = tl.maximum(1.0e-7, u1)
-    theta = 6.283185307179586 * u2
-    r = tl.sqrt(-2.0 * tl.log(u1))
-    sin_t, cos_t = high_precision_fast_sin_cos(theta)
-    return r * cos_t, r * sin_t
-
 
 device_ = device
 logger = logging.getLogger(__name__)
 
+_U64 = (1 << 64) - 1
+
+# Below this numel, CPU generate + H2D beats on-device DSA (launch floor now
+# ~0.12ms after txModuleLoad path; crossover ~16K–64K). Override with
+# FLAGGEMS_RANDN_CPU_FALLBACK_MAX.
+_CPU_FALLBACK_MAX = int(os.environ.get("FLAGGEMS_RANDN_CPU_FALLBACK_MAX", "16384"))
+
+
+def _splitmix64(x: int) -> int:
+    """SplitMix64 — cheap host mix to turn Philox state into xorshift seeds."""
+    z = (x + 0x9E3779B97F4A7C15) & _U64
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9 & _U64
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EB & _U64
+    return z ^ (z >> 31)
+
+
+def _to_i64(u: int) -> int:
+    u &= _U64
+    if u >= (1 << 63):
+        u -= 1 << 64
+    return u
+
+
+def _philox_to_dsa_seed_scalars(philox_seed, philox_offset):
+    """
+    Map Philox (seed, offset) → two signed int64 scalars for the kernel.
+
+    No tensor alloc / H2D. Kernel expands these into 16 streams.
+    """
+    s = int(philox_seed) & _U64
+    o = int(philox_offset) & _U64
+    # Two independent mixes; OR 1 avoids the all-zero xorshift fixed point.
+    seed0 = _splitmix64(s ^ ((o << 1) & _U64)) | 1
+    seed1 = _splitmix64((s + 0xA0761D6478BD642F) ^ (o * 3)) | 1
+    return _to_i64(seed0), _to_i64(seed1)
+
+
+def _should_cpu_fallback(
+    n: int, device, cpu_fallback_max: int = _CPU_FALLBACK_MAX
+) -> bool:
+    """Small-N CPU hybrid decision; ``cpu_fallback_max`` lets callers like
+    ``normal`` use their own measured crossover (see normal.py)."""
+    if n > cpu_fallback_max or n <= 0:
+        return False
+    dev = torch.device(device) if not isinstance(device, torch.device) else device
+    return dev.type != "cpu"
+
+
+def _native_cpu_randn(size, dtype, device):
+    """CPU randn + H2D without re-entering FlagGems aten overrides."""
+    cpu = torch.ops.aten.randn.default(
+        size,
+        dtype=dtype,
+        layout=torch.strided,
+        device=torch.device("cpu"),
+        pin_memory=False,
+    )
+    return cpu.to(device=device, dtype=dtype)
+
 
 @libentry()
-# @libtuner(
-#     configs = [
-#         triton.Config(kwargs={"BLOCK": 256}, num_stages=1, num_warps=1),
-#         triton.Config(kwargs={"BLOCK": 512}, num_stages=1, num_warps=1),
-#         triton.Config(kwargs={"BLOCK": 1024}, num_stages=1, num_warps=1),
-#         triton.Config(kwargs={"BLOCK": 4096}, num_stages=1, num_warps=1),
-#         triton.Config(kwargs={"BLOCK": 16384}, num_stages=1, num_warps=1),
-#         triton.Config(kwargs={"BLOCK": 32768}, num_stages=1, num_warps=1),
-#     ],
-#     key=["N"],
-#     strategy=["log"],
-# )
 @triton.heuristics(get_heuristic_config("randn"))
-@triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
+@triton.jit
 def randn_kernel(
     out_ptr,
+    seed0,  # scalar i64
+    seed1,  # scalar i64
     N,
-    philox_seed,
-    philox_offset,
     BLOCK: tl.constexpr,
 ):
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
-    n0, n1 = pair_uniform_to_normal_fast(r0, r1)
-    n2, n3 = pair_uniform_to_normal_fast(r2, r3)
-    off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
+    """
+    One program produces ``BLOCK`` Normal(0, 1) samples via ``tle.dsa.tsingmicro.randn``.
+    ``BLOCK`` must be a multiple of 32.
 
-    tl.store(out_ptr + off_0, n0, mask=off_0 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_1, n1, mask=off_1 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_2, n2, mask=off_2 < N, eviction_policy="evict_first")
-    tl.store(out_ptr + off_3, n3, mask=off_3 < N, eviction_policy="evict_first")
+    ``seed0`` / ``seed1`` are host-side scalars; each program expands them to
+    16 xorshift streams mixed with ``pid`` / lane (hardware seed writeback is
+    currently a no-op, so independence comes from this mix).
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < N
 
+    pid64 = pid.to(tl.int64)
+    lane = tl.arange(0, 16).to(tl.int64)
+    # Signed-safe multipliers (unsigned golden-ratio constants overflow int64).
+    s0 = seed0 + pid64 * (-7046029254386353131) + lane
+    s1 = seed1 + pid64 * (-4412409329100832499) + (lane << 1)
+    s0 = s0 | 1
+    s1 = s1 | 1
 
-UNROLL = 4
+    vals, _s0, _s1 = tle.dsa.tsingmicro.randn(s0, s1, BLOCK)
+    tl.store(out_ptr + offs, vals, mask=mask)
 
 
 def randn(size, *, dtype=None, layout=None, device=None, pin_memory=None):
-    logger.debug("GEMS_TSINGMICRO RANDN")
+    logger.debug("GEMS_TSINGMICRO RANDN (tle.dsa.tsingmicro.randn)")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
         device = torch.device(device_.name)
-    out = torch.empty(size, device=device, dtype=dtype)
     N = volume(size)
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
-    # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
-    # hence we cannot obtain the per thread offset as in Pytorch.
-    increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment)
+    if N == 0:
+        return torch.empty(size, device=device, dtype=dtype)
+
+    # Advance Philox state for FlagGems RNG accounting (both paths).
+    philox_seed, philox_offset = philox_backend_seed_offset(max(N, 1))
+
+    # float64: DSA randn is float32-only; keep CPU for correctness.
+    if dtype is torch.float64:
+        logger.debug("GEMS_TSINGMICRO RANDN f64 → CPU")
+        return _native_cpu_randn(size, dtype, device)
+
+    # Small tensors: DSA launch + Box-Muller floor (~0.5ms) loses to CPU+H2D.
+    if _should_cpu_fallback(N, device):
+        logger.debug(
+            "GEMS_TSINGMICRO RANDN cpu fallback N=%s (max=%s)", N, _CPU_FALLBACK_MAX
+        )
+        return _native_cpu_randn(size, dtype, device)
+
+    out = torch.empty(size, device=device, dtype=dtype)
+    seed0, seed1 = _philox_to_dsa_seed_scalars(philox_seed, philox_offset)
+
+    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"]),)
     with torch_device_fn.device(device):
-        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+        randn_kernel[grid_fn](out.view(-1), seed0, seed1, N)
     return out
