@@ -173,7 +173,14 @@ from ._is_all_true import _is_all_true
 from ._jagged_to_padded_dense_forward import (  # noqa: F401
     _jagged_to_padded_dense_forward,
 )
+from ._lu_with_info import _lu_with_info
 from ._masked_scale import _masked_scale  # noqa: F401
+from ._native_batch_norm_legit import (
+    _native_batch_norm_legit,
+    _native_batch_norm_legit_no_stats,
+    _native_batch_norm_legit_no_stats_out,
+    _native_batch_norm_legit_out,
+)
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -344,6 +351,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
+from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
@@ -583,6 +591,7 @@ from .logaddexp import logaddexp, logaddexp_out
 from .logaddexp2 import logaddexp2
 from .logaddexp2_out import logaddexp2_out
 from .logcumsumexp import logcumsumexp, logcumsumexp_out
+from .logdet import logdet
 from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
@@ -1084,8 +1093,13 @@ __all__ = [
     "_fused_adam_",
     "_index_put_impl_",
     "_is_all_true",
+    "_lu_with_info",
+    "_native_batch_norm_legit",
     "_native_batch_norm_legit_functional",
+    "_native_batch_norm_legit_no_stats",
+    "_native_batch_norm_legit_no_stats_out",
     "_native_batch_norm_legit_no_training",
+    "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
     "_pad_enum",
@@ -1268,6 +1282,7 @@ __all__ = [
     "conv_tbc_out",
     "conv_transpose1d",
     "conv_transpose2d",
+    "conv_transpose3d",
     "copy",
     "copy_",
     "copysign",
@@ -1526,6 +1541,7 @@ __all__ = [
     "logaddexp_out",
     "logcumsumexp",
     "logcumsumexp_out",
+    "logdet",
     "logical_and",
     "logical_and_",
     "logical_not",
