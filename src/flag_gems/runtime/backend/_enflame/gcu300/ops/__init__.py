@@ -177,6 +177,7 @@ from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .lt import lt, lt_scalar
 from .masked_fill import masked_fill, masked_fill_
+from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
 from .max import max, max_dim
 from .max_pool2d_with_indices import (
@@ -514,6 +515,7 @@ __all__ = [
     "lt_scalar",
     "masked_fill",
     "masked_fill_",
+    "masked_scatter_backward",
     "masked_select",
     "max",
     "max_dim",
