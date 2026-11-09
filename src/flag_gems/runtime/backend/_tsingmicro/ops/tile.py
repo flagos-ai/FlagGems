@@ -12,10 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import math
-import os
+
+from triton.backends.tsingmicro.precision import (
+    restore_precision_mode,
+    set_precision_mode,
+)
 
 from .tile_impl import tile as _original_tile
+
+logger = logging.getLogger(__name__)
+
 
 # the uplimit f32 can present the precision of i32
 _F32_PRECISION_NUMEL_THRESHOLD = 2**24
@@ -34,15 +42,13 @@ def _compute_output_numel(x, dims):
 
 
 def tile(inp, dims):
-    original_precision_priority = os.environ.get("PRECISION_MODE", None)
+    logger.debug("GEMS_TSINGMICRO TILE")
     out_numel = _compute_output_numel(inp, dims)
-    if out_numel > _F32_PRECISION_NUMEL_THRESHOLD:
-        os.environ["PRECISION_MODE"] = "1"
-
+    precision_token = (
+        set_precision_mode("1") if out_numel > _F32_PRECISION_NUMEL_THRESHOLD else None
+    )
     try:
         return _original_tile(inp, dims)
     finally:
-        if original_precision_priority is not None:
-            os.environ["PRECISION_MODE"] = original_precision_priority
-        else:
-            os.environ.pop("PRECISION_MODE", None)
+        if precision_token is not None:
+            restore_precision_mode(precision_token)

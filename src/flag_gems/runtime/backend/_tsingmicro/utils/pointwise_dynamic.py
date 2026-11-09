@@ -35,10 +35,10 @@ from flag_gems.utils.shape_utils import (
     check_tensor_attributes,
     has_internal_overlapping,
 )
-from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
 
 from .. import OPS_SPM_RESERVED_SIZE, SPM_SIZE, SYS_SPM_RESERVED_SIZE
+from .tensor_wrapper import StridedBuffer
 
 
 # ------------------ Operation Description ---------------------------
@@ -319,6 +319,11 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
+                    if not with_block_pointer:
+                        offset_args = _cs(
+                            f"in{i}_offset{j}: tl.int64" for j in range(ndim)
+                        )
+                        code.writeline(f"{offset_args}, # per-dim offsets for in{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
                             f"in{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
@@ -329,6 +334,11 @@ class KernelGenerator:
                 for i in range(schema.num_output_tensors()):
                     stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
+                    if not with_block_pointer:
+                        offset_args = _cs(
+                            f"out{i}_offset{j}: tl.int64" for j in range(ndim)
+                        )
+                        code.writeline(f"{offset_args}, # per-dim offsets for out{i}")
                     if with_block_pointer:
                         stride_order_args = _cs(
                             f"out{i}_stride_order{j}: tl.constexpr" for j in range(ndim)
@@ -390,11 +400,17 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     stride_args = _cs(f"in{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for in{i}")
+                    offset_args = _cs(f"in{i}_offset{j}: tl.int64" for j in range(ndim))
+                    code.writeline(f"{offset_args}, # per-dim offsets for in{i}")
 
                 # strides for outputs
                 for i in range(schema.num_output_tensors()):
                     stride_args = _cs(f"out{i}_stride{j}: int" for j in range(ndim))
                     code.writeline(f"{stride_args}, # strides for out{i}")
+                    offset_args = _cs(
+                        f"out{i}_offset{j}: tl.int64" for j in range(ndim)
+                    )
+                    code.writeline(f"{offset_args}, # per-dim offsets for out{i}")
 
                 # task space, used to reconstruct multi index
                 task_space_args = _cs(f"s{i}" for i in range(ndim))
@@ -600,7 +616,7 @@ class KernelGenerator:
                 with code.indent():
                     code.writeline(
                         f"in{i} = tl.load("
-                        f"in{i}_ptr + offsets0[:, None] * in{i}_stride0, "
+                        f"in{i}_ptr + (offsets0[:, None] + in{i}_offset0) * in{i}_stride0, "
                         f"mask=mask0[:, None], other=0.0"
                         f").to(in{i}_ptr.type.element_ty)"
                     )
@@ -610,7 +626,7 @@ class KernelGenerator:
                 code.writeline("else:")
                 with code.indent():
                     offsets = tuple(
-                        f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                        f"(offsets{j}{_broadcast_vec(j, ndim)} - in{i}_offset{j}) * in{i}_stride{j}"
                         for j in range(ndim)
                     )
                     offset_combine = " + ".join(offsets)
@@ -619,7 +635,7 @@ class KernelGenerator:
                     )
             else:
                 offsets = tuple(
-                    f"offsets{j}{_broadcast_vec(j, ndim)} * in{i}_stride{j}"
+                    f"(offsets{j}{_broadcast_vec(j, ndim)} - in{i}_offset{j}) * in{i}_stride{j}"
                     for j in range(ndim)
                 )
                 offset_combine = " + ".join(offsets)
@@ -646,7 +662,7 @@ class KernelGenerator:
         # stores
         for i in range(schema.num_output_tensors()):
             offsets = tuple(
-                f"offsets{j}{_broadcast_vec(j, ndim)} * out{i}_stride{j}"
+                f"(offsets{j}{_broadcast_vec(j, ndim)} - out{i}_offset{j}) * out{i}_stride{j}"
                 for j in range(ndim)
             )
             offset_combine = " + ".join(offsets)
@@ -742,7 +758,9 @@ class KernelGenerator:
         # loads
         code.writeline("# loads")
         for i in range(schema.num_input_tensors()):
-            offsets = tuple(f"i{j} * in{i}_stride{j}" for j in range(ndim))
+            offsets = tuple(
+                f"(i{j} - in{i}_offset{j}) * in{i}_stride{j}" for j in range(ndim)
+            )
             offset_combine = " + ".join(offsets)
             code.writeline(
                 f"in{i} = tl.load(in{i}_ptr + {offset_combine}, mask=mask).to(in{i}_ptr.type.element_ty)"
@@ -767,7 +785,9 @@ class KernelGenerator:
 
         # stores
         for i in range(schema.num_output_tensors()):
-            offsets = tuple(f"i{j} * out{i}_stride{j}" for j in range(ndim))
+            offsets = tuple(
+                f"(i{j} - out{i}_offset{j}) * out{i}_stride{j}" for j in range(ndim)
+            )
             offset_combine = " + ".join(offsets)
             code.writeline(
                 f"in{i} = tl.store(out{i}_ptr + {offset_combine}, out{i}, mask=mask)"
@@ -781,12 +801,12 @@ class KernelGenerator:
             self.gen_body_one_tile_per_cta_1d_tile(code)
 
     def gen_body_row_broadcast_1d_tile(self, code):
-        """Generate a row-aligned kernel for operands broadcast on the last dim.
+        """Generate a row-aligned kernel for broadcast or pitched operands.
 
         A flat 1D tile reloads a trailing broadcast value for every output
         element. Row-aligned tiling keeps that value live while processing all
-        column tiles in the row, reducing the load count from O(numel) to
-        O(number of logical rows).
+        column tiles in the row. It also keeps contiguous inner dimensions
+        vectorized when an outer dimension has padding or is broadcast.
         """
         ndim = self.ndim
         last_dim = ndim - 1
@@ -813,7 +833,8 @@ class KernelGenerator:
                 for i in range(schema.num_input_tensors()):
                     if ndim > 1:
                         offsets = tuple(
-                            f"i{j} * in{i}_stride{j}" for j in range(last_dim)
+                            f"(i{j} - in{i}_offset{j}) * in{i}_stride{j}"
+                            for j in range(last_dim)
                         )
                         row_offset = " + ".join(offsets)
                     else:
@@ -833,7 +854,8 @@ class KernelGenerator:
                     for i in range(schema.num_input_tensors()):
                         if ndim > 1:
                             offsets = tuple(
-                                f"i{j} * in{i}_stride{j}" for j in range(last_dim)
+                                f"(i{j} - in{i}_offset{j}) * in{i}_stride{j}"
+                                for j in range(last_dim)
                             )
                             row_offset = " + ".join(offsets)
                         else:
@@ -848,7 +870,7 @@ class KernelGenerator:
                             code.writeline(
                                 f"in{i} = tl.load("
                                 f"in{i}_ptr + {row_offset} + "
-                                f"cols * in{i}_stride{last_dim}, mask=mask"
+                                f"(cols - in{i}_offset{last_dim}) * in{i}_stride{last_dim}, mask=mask"
                                 f").to(in{i}_ptr.type.element_ty)"
                             )
 
@@ -869,14 +891,15 @@ class KernelGenerator:
                     for i in range(schema.num_output_tensors()):
                         if ndim > 1:
                             offsets = tuple(
-                                f"i{j} * out{i}_stride{j}" for j in range(last_dim)
+                                f"(i{j} - out{i}_offset{j}) * out{i}_stride{j}"
+                                for j in range(last_dim)
                             )
                             row_offset = " + ".join(offsets)
                         else:
                             row_offset = "0"
                         code.writeline(
                             f"tl.store(out{i}_ptr + {row_offset} + "
-                            f"cols * out{i}_stride{last_dim}, out{i}, mask=mask)"
+                            f"(cols - out{i}_offset{last_dim}) * out{i}_stride{last_dim}, out{i}, mask=mask)"
                         )
 
     def codegen_1d_tile(self, code):
@@ -894,7 +917,7 @@ class KernelGenerator:
         with code.indent():
             code.writeline("pid = tle.program_id(0)")
             code.writeline(
-                "if use_row_broadcast: # reuse trailing-broadcast loads per row"
+                "if use_row_broadcast: # preserve row-aligned vector accesses"
             )
             with code.indent():
                 self.gen_body_row_broadcast_1d_tile(code)
@@ -1077,14 +1100,53 @@ class WrapperGenerator:
             trailing_broadcast = " or ".join(
                 f"in{i}.stride()[-1] == 0" for i in range(self.fx.num_input_tensors())
             )
+            tensor_names = [
+                *(f"in{i}" for i in range(self.fx.num_input_tensors())),
+                *(f"out{i}" for i in range(self.fx.num_output_tensors())),
+            ]
+            if ndim > 1:
+                inner_broadcast = " or ".join(
+                    f"in{i}.stride()[-2] == 0"
+                    for i in range(self.fx.num_input_tensors())
+                )
+                contiguous_last_dim = " and ".join(
+                    f"{name}.stride()[-1] in (0, 1)" for name in tensor_names
+                )
+                row_gap_terms = []
+                for name in tensor_names:
+                    axis_terms = []
+                    for axis in range(ndim - 1):
+                        expected_stride = " * ".join(
+                            f"shape[{inner_axis}]"
+                            for inner_axis in range(axis + 1, ndim)
+                        )
+                        axis_terms.append(
+                            f"(shape[{axis}] > 1 and "
+                            f"{name}.stride()[{axis}] not in "
+                            f"(0, {expected_stride}))"
+                        )
+                    row_gap_terms.append(f"({' or '.join(axis_terms)})")
+                has_row_gaps = " or ".join(row_gap_terms)
+                code.writeline(
+                    f"use_contiguous_rows = ({contiguous_last_dim}) and "
+                    f"((shape[-2] > 1 and ({inner_broadcast})) or "
+                    f"({has_row_gaps}))"
+                )
+            else:
+                code.writeline("use_contiguous_rows = False")
             code.writeline(
-                f"use_row_broadcast = shape[-1] > 1 and ({trailing_broadcast})"
+                f"use_row_broadcast = shape[-1] > 1 and "
+                f"(({trailing_broadcast}) or use_contiguous_rows)"
             )
             code.writeline("num_rows = num_tasks // shape[-1]")
             code.writeline("rows_per_cta = 0")
             code.writeline("col_tiles_per_row = 0")
             code.writeline("if use_row_broadcast:")
             with code.indent():
+                code.writeline(
+                    f"tile_size = min({max_tile_size}, "
+                    "triton.next_power_of_2(shape[-1]))"
+                )
                 code.writeline(f"num_ctas = min({max_grid_size0}, num_rows)")
                 code.writeline("rows_per_cta = triton.cdiv(num_rows, num_ctas)")
                 code.writeline("col_tiles_per_row = triton.cdiv(shape[-1], tile_size)")
@@ -1104,6 +1166,9 @@ class WrapperGenerator:
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
             if not with_block_pointer:
+                code.writeline(
+                    f"in{i}_offsets = in{i}.offsets() if hasattr(in{i}, 'offsets') else (0,) * {ndim}"
+                )
                 continue
             if ndim >= 2:  # where ndim is 1, we don't need to compute stride order
                 code.writeline(f"in{i}_stride_order = stride_order(in{i}_strides)")
@@ -1112,6 +1177,9 @@ class WrapperGenerator:
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
             if not with_block_pointer:
+                code.writeline(
+                    f"out{i}_offsets = out{i}.offsets() if hasattr(out{i}, 'offsets') else (0,) * {ndim}"
+                )
                 continue
             if ndim >= 2:
                 code.writeline(f"out{i}_stride_order = stride_order(out{i}_strides)")
@@ -1139,6 +1207,8 @@ class WrapperGenerator:
                         s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
                         if not with_block_pointer:
+                            off = ", ".join(f"in{i}_offsets[{j}]" for j in range(ndim))
+                            code.writeline(f"{off}, # per-dim offsets for in{i}")
                             continue
                         order = ", ".join(
                             f"in{i}_stride_order[{j}]" for j in range(ndim)
@@ -1149,6 +1219,8 @@ class WrapperGenerator:
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
                         if not with_block_pointer:
+                            off = ", ".join(f"out{i}_offsets[{j}]" for j in range(ndim))
+                            code.writeline(f"{off}, # per-dim offsets for out{i}")
                             continue
                         order = ", ".join(
                             f"out{i}_stride_order[{j}]" for j in range(ndim)
@@ -1175,8 +1247,14 @@ class WrapperGenerator:
         code.writeline("# kernel launch")
         for i in range(schema.num_input_tensors()):
             code.writeline(f"in{i}_strides = in{i}.stride()")
+            code.writeline(
+                f"in{i}_offsets = in{i}.offsets() if hasattr(in{i}, 'offsets') else (0,) * {ndim}"
+            )
         for i in range(schema.num_output_tensors()):
             code.writeline(f"out{i}_strides = out{i}.stride()")
+            code.writeline(
+                f"out{i}_offsets = out{i}.offsets() if hasattr(out{i}, 'offsets') else (0,) * {ndim}"
+            )
 
         code.writeline("with torch_device_fn.device(in0.device.index):")
         with code.indent():
@@ -1198,9 +1276,13 @@ class WrapperGenerator:
                     for i in range(schema.num_input_tensors()):
                         s = ", ".join(f"in{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for in{i}")
+                        off = ", ".join(f"in{i}_offsets[{j}]" for j in range(ndim))
+                        code.writeline(f"{off}, # per-dim offsets for in{i}")
                     for i in range(schema.num_output_tensors()):
                         s = ", ".join(f"out{i}_strides[{j}]" for j in range(ndim))
                         code.writeline(f"{s}, # stride for out{i}")
+                        off = ", ".join(f"out{i}_offsets[{j}]" for j in range(ndim))
+                        code.writeline(f"{off}, # per-dim offsets for out{i}")
 
                     shape_args: str = ", ".join(f"shape[{i}]" for i in range(ndim))
                     code.writeline(f"{shape_args}, # task indexing space")
@@ -1275,7 +1357,7 @@ class ModuleGenerator:
         code.writeline("    heuristics_for_num_warps,")
         code.writeline("    stride_order,")
         code.writeline(")")
-        code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
+        code.writeline("from _tsingmicro.utils.tensor_wrapper import StridedBuffer")
         code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.utils import triton_lang_extension as tle")
         code.writeline("from flag_gems.runtime import torch_device_fn")
@@ -1466,6 +1548,66 @@ class PointwiseDynamicFunction:
                     task_shape,
                     broadcasted_stride(item.shape, item.stride(), task_shape),
                 )
+
+            # Move a non-trivial broadcast axis to the innermost logical
+            # position. This only changes StridedBuffer metadata; the physical
+            # tensor layout and returned tensor shape remain unchanged.
+            tensor_args = [
+                args[i] for i in range(schema.num_inputs()) if schema.is_tensor(i)
+            ]
+            broadcast_axes = [
+                axis
+                for axis, size in enumerate(task_shape)
+                if size > 1 and any(item.stride()[axis] == 0 for item in tensor_args)
+            ]
+            # Axis reordering is only useful to expose a broadcast dimension
+            # to the flat/row 1-D kernels. ND block-pointer kernels already
+            # preserve and tile every logical axis; reordering them can turn a
+            # contiguous inner dimension into a large-stride gather.
+            if self.config.prefer_1d_tile and broadcast_axes:
+                last_axis = ndim - 1
+                broadcast_axis = (
+                    last_axis
+                    if last_axis in broadcast_axes
+                    else min(broadcast_axes, key=lambda axis: task_shape[axis])
+                )
+                all_buffers = tensor_args + list(kwargs.values())
+                moved_axis_strides = [
+                    abs(item.stride()[broadcast_axis])
+                    for item in all_buffers
+                    if item.stride()[broadcast_axis] != 0
+                ]
+                # Moving a broadcast axis to the logical innermost position
+                # makes every other operand access that axis as a vector.
+                # Large strides turn those vector loads/stores into gathers
+                # and are much slower than retaining a contiguous last dim.
+                reorder_is_cheap = (
+                    not moved_axis_strides
+                    or max(moved_axis_strides) <= 16
+                    or (
+                        task_shape[broadcast_axis] >= 64
+                        and max(moved_axis_strides) <= 32
+                    )
+                )
+                if broadcast_axis != last_axis and reorder_is_cheap:
+                    order = tuple(
+                        axis for axis in range(ndim) if axis != broadcast_axis
+                    ) + (broadcast_axis,)
+                    reordered_shape = tuple(task_shape[axis] for axis in order)
+
+                    def reorder_buffer(item):
+                        strides = item.stride()
+                        return StridedBuffer(
+                            item.unwrap(),
+                            reordered_shape,
+                            tuple(strides[axis] for axis in order),
+                        )
+
+                    args = tuple(
+                        reorder_buffer(item) if schema.is_tensor(i) else item
+                        for i, item in enumerate(args)
+                    )
+                    kwargs = {key: reorder_buffer(item) for key, item in kwargs.items()}
         return (ndim, args, kwargs)
 
     def _unwrap(self, tensors):
