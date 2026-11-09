@@ -130,6 +130,7 @@ from .special_round_out import special_round_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .standard_gamma_grad import standard_gamma_grad
 from .tanh import tanh
 from .to_copy import to_copy
 from .topk_w8a16_fp8 import topk_w8a16_fp8
@@ -300,6 +301,7 @@ __all__ = [
     "special_round",
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
+    "standard_gamma_grad",
     "tanh",
     "to_copy",
     "topk_w8a16_fp8",
