@@ -1599,6 +1599,7 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapaxes import swapaxes
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
 from flag_gems.ops.sym_size import sym_size, sym_size_int
@@ -3317,6 +3318,7 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapaxes",
     "swapaxes_",
     "swapdims",
     "sym_size",
