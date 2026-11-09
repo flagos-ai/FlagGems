@@ -38,6 +38,7 @@ from .attention import (
     scaled_dot_product_attention_backward,
     scaled_dot_product_attention_forward,
 )
+from .avg_pool1d import avg_pool1d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
@@ -49,6 +50,7 @@ from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
 from .conv_tbc_backward import conv_tbc_backward
+from .convolution_overrideable import convolution_overrideable
 from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
@@ -68,6 +70,7 @@ from .div import (
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
+from .expand_copy import expand_copy
 from .exponential import exponential
 from .exponential_ import exponential_
 from .feature_dropout import feature_dropout
@@ -92,10 +95,15 @@ from .float_power_ import (
 from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
+from .greater_ import greater_
+from .grid_sampler_3d import grid_sampler_3d
 from .hadamard_transform import hadamard_transform
+from .hardsigmoid_backward import hardsigmoid_backward
+from .histc import histc
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_select_backward import index_select_backward
+from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
@@ -169,6 +177,7 @@ from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
+from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
@@ -176,10 +185,14 @@ from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w_out,
 )
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
+from .special_i1e import special_i1e
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
 from .special_round_out import special_round_out
+from .special_shifted_chebyshev_polynomial_t import (
+    special_shifted_chebyshev_polynomial_t,
+)
 from .special_shifted_chebyshev_polynomial_u import (
     special_shifted_chebyshev_polynomial_u,
 )
@@ -187,6 +200,7 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
+from .thnn_fused_gru_cell_backward import thnn_fused_gru_cell_backward
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
@@ -226,6 +240,7 @@ __all__ = [
     "any_dims",
     "argsort",
     "as_strided_scatter",
+    "avg_pool1d",
     "avg_pool3d_backward",
     "baddbmm_",
     "beam_search_score",
@@ -237,12 +252,14 @@ __all__ = [
     "conv2d",
     "conv_depthwise2d",
     "conv_tbc_backward",
+    "convolution_overrideable",
     "cudnn_convolution",
     "diagonal_scatter",
     "diff",
     "div_mode",
     "div_mode_",
     "embedding_bag_dense_backward",
+    "expand_copy",
     "exponential",
     "exponential_",
     "feature_dropout",
@@ -269,13 +286,18 @@ __all__ = [
     "gelu",
     "gelu_",
     "gelu_backward",
+    "greater_",
+    "grid_sampler_3d",
     "hadamard_transform",
+    "hardsigmoid_backward",
     "heur_block_n",
+    "histc",
     "index_add",
     "index_add_",
     "index_copy",
     "index_copy_",
     "index_select_backward",
+    "inner",
     "int_mm",
     "int_mm_out",
     "isin",
@@ -365,19 +387,23 @@ __all__ = [
     "sort",
     "sort_stable",
     "special_bessel_j0",
+    "special_chebyshev_polynomial_t",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_hermite_polynomial_h",
+    "special_i1e",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_round",
     "special_round_out",
+    "special_shifted_chebyshev_polynomial_t",
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
+    "thnn_fused_gru_cell_backward",
     "tile",
     "topk_w8a16_fp8",
     "triangular_solve",
