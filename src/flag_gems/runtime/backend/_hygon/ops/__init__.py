@@ -133,6 +133,7 @@ from .max_pool3d_with_indices import (
 )
 from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
@@ -333,6 +334,7 @@ __all__ = [
     "max_unpool2d",
     "median_dim",
     "median_dim_values",
+    "mixed_dtypes_linear",
     "mm",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
