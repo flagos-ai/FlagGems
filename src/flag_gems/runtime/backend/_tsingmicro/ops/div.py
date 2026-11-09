@@ -20,16 +20,21 @@ import triton.language as tl
 
 from flag_gems.utils.triton_lang_extension import div_rn, fmod
 
+from ..utils.codegen_config_utils import get_pointwise_nd_codegen_config
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
+_DIV_TENSOR_CONFIG = get_pointwise_nd_codegen_config()
+
 
 @pointwise_dynamic(
-    is_tensor=[True, True, False], promotion_methods=[(0, 1, "INT_TO_FLOAT")]
+    is_tensor=[True, True],
+    promotion_methods=[(0, 1, "INT_TO_FLOAT")],
+    config=_DIV_TENSOR_CONFIG,
 )
 @triton.jit
-def true_div_func(x, y, inplace):
+def true_div_func(x, y):
     return x / y
 
 
@@ -128,7 +133,7 @@ def true_divide(A, B):
     if _is_complex(A) or _is_complex(B):
         return _true_divide_complex(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return true_div_func(A, B, False)
+        return true_div_func(A, B)
     elif isinstance(A, torch.Tensor):
         return true_div_func_tensor_scalar(A, B, False)
     elif isinstance(B, torch.Tensor):
@@ -143,7 +148,7 @@ def true_divide_out(A, B, out):
     if _is_complex(A) or _is_complex(B):
         return _true_divide_complex(A, B, out=out)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
-        return true_div_func(A, B, False, out0=out)
+        return true_div_func(A, B, out0=out)
     elif isinstance(A, torch.Tensor):
         return true_div_func_tensor_scalar(A, B, False, out0=out)
     elif isinstance(B, torch.Tensor):
@@ -158,7 +163,7 @@ def true_divide_(A, B):
     if _is_complex(A) or _is_complex(B):
         return _true_divide_complex(A, B, out=A)
     if isinstance(B, torch.Tensor):
-        return true_div_func(A, B, True, out0=A)
+        return true_div_func(A, B, out0=A)
     else:
         return true_div_func_tensor_scalar(A, B, True, out0=A)
 
@@ -504,22 +509,8 @@ def rem_st(x, y, inplace):
     return _remainder(x, y)
 
 
-def _integer_remainder_cpu(A, B, out=None):
-    tensor_arg = A if isinstance(A, torch.Tensor) else B
-    device = tensor_arg.device
-    a_cpu = A.cpu() if isinstance(A, torch.Tensor) else A
-    b_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
-    result = torch.remainder(a_cpu, b_cpu).to(device)
-    if out is not None:
-        out.copy_(result)
-        return out
-    return result
-
-
 def remainder(A, B):
     logger.debug("GEMS_TSINGMICRO REMAINDER")
-    if _is_integral_value(A) and _is_integral_value(B):
-        return _integer_remainder_cpu(A, B)
     if isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
         return rem_tt(A, B, False)
     elif isinstance(A, torch.Tensor):
@@ -533,8 +524,6 @@ def remainder(A, B):
 
 def remainder_(A, B):
     logger.debug("GEMS_TSINGMICRO REMAINDER_")
-    if _is_integral_value(A) and _is_integral_value(B):
-        return _integer_remainder_cpu(A, B, out=A)
     if isinstance(B, torch.Tensor):
         return rem_tt(A, B, True, out0=A)
     else:

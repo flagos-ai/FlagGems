@@ -1,17 +1,3 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import importlib
 import logging
 import os
@@ -24,10 +10,142 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
-# The generated kernel currently produces incorrect addresses for tensors
-# larger than this threshold on TsingMicro. Use the native implementation for
-# those inputs until the large-address kernel issue is resolved.
-_LARGE_INDEX_INPUT_NUMEL = 2**26
+_INT_INDEX_DTYPES = (torch.int32, torch.int64, torch.long, torch.int)
+# inp larger than this uses device-native aten.index; smaller tensors use CPU fallback.
+_INDEX_CPU_FALLBACK_MAX_BYTES = int(
+    os.environ.get("FLAGGEMS_INDEX_CPU_FALLBACK_MAX_BYTES", str(1 << 30))
+)
+
+
+def _inp_nbytes(inp: torch.Tensor) -> int:
+    return inp.numel() * inp.element_size()
+
+
+def _native_index(inp: torch.Tensor, indices: list) -> torch.Tensor:
+    """Device-native aten.index (avoid CPU round-trip on large tensors)."""
+    return torch.ops.aten.index(inp, indices)
+
+
+def _tail_dense_from(inp: torch.Tensor, start_dim: int) -> bool:
+    """True when inp[..., *] from ``start_dim`` is a packed contiguous tail."""
+    if start_dim >= inp.ndim:
+        return True
+    stride = inp.stride()
+    shape = inp.shape
+    step = 1
+    for d in range(inp.ndim - 1, start_dim - 1, -1):
+        if stride[d] != step:
+            return False
+        step *= shape[d]
+    return True
+
+
+def _try_fast_leading_two(inp: torch.Tensor, indices: list):
+    """Fast path for ``inp[i0, i1]`` (QSA paged gather: cache[phys, page_offset]).
+
+    Folds the first two axes into a linear dim0 gather and reuses
+    ``index_select``'s 16-CTA kernel. Supports fat page stride
+    (``stride0 > shape1 * stride1``), e.g. field ``[40960,512,1,256]``
+    with ``stride0=262144``.
+    """
+    if len(indices) != 2:
+        return None
+    i0, i1 = indices[0], indices[1]
+    if i0 is None or i1 is None:
+        return None
+    if i0.dtype not in _INT_INDEX_DTYPES or i1.dtype not in _INT_INDEX_DTYPES:
+        return None
+    if inp.ndim < 2:
+        return None
+    if not _tail_dense_from(inp, start_dim=2):
+        return None
+
+    s0 = int(inp.stride(0))
+    s1 = int(inp.stride(1))
+    if s1 <= 0 or s0 % s1 != 0:
+        return None
+    page_span = s0 // s1
+    if page_span < int(inp.shape[1]):
+        return None
+
+    try:
+        i0b, i1b = torch.broadcast_tensors(i0, i1)
+    except RuntimeError:
+        return None
+
+    flat_idx = (
+        i0b.to(dtype=torch.int64) * page_span + i1b.to(dtype=torch.int64)
+    ).reshape(-1)
+    flat_idx = flat_idx.contiguous()
+
+    tail_shape = tuple(inp.shape[2:])
+    n_rows = (int(inp.shape[0]) - 1) * page_span + int(inp.shape[1])
+    if n_rows <= 0:
+        return None
+
+    from .index_select import dim0_rows_are_dense, index_select
+
+    if tail_shape:
+        row_view = inp.as_strided(
+            size=(n_rows, *tail_shape),
+            stride=(s1, *inp.stride()[2:]),
+        )
+        if not dim0_rows_are_dense(row_view):
+            return None
+        out = index_select(row_view, 0, flat_idx)
+        return out.view(*i0b.shape, *tail_shape)
+
+    # 2D inp[i0, i1] → scalar cells (e.g. block_table[req, page]).
+    # index_select dim0 on a dense [n_rows, 1] view.
+    row_view2 = inp.as_strided(size=(n_rows, 1), stride=(s1, 1))
+    if not dim0_rows_are_dense(row_view2):
+        return None
+    out = index_select(row_view2, 0, flat_idx).reshape(-1)
+    return out.view(*i0b.shape)
+
+
+def _try_fast_dim0(inp, indices):
+    """Reuse index_select 16-CTA gather for common advanced-index patterns."""
+    fast2 = _try_fast_leading_two(inp, indices)
+    if fast2 is not None:
+        return fast2
+
+    if len(indices) != 1:
+        return None
+    index = indices[0]
+    if index is None:
+        return None
+    if index.dtype not in _INT_INDEX_DTYPES:
+        return None
+    from .index_select import dim0_rows_are_dense, index_select
+
+    if not dim0_rows_are_dense(inp):
+        return None
+
+    # Multi-dim index (e.g. [B,T] gather on embedding [V,H]): flatten → select → view.
+    # Profiler hotspot: inp[1048576,64] bf16 with 2D indices fell to CPU (~52ms) when
+    # we rejected ndim>1.
+    index_shape = tuple(index.shape)
+    flat = index.reshape(-1) if index.ndim != 1 else index
+    if not flat.is_contiguous():
+        flat = flat.contiguous()
+    out = index_select(inp, 0, flat)
+    if index.ndim == 1:
+        return out
+    return out.view(*index_shape, *inp.shape[1:])
+
+
+def _try_fast_2d_dim0(inp, indices):
+    """Backward-compatible alias."""
+    return _try_fast_dim0(inp, indices)
+
+
+def _fallback_cpu(inp, indices):
+    """Mirror torch_txda PrivateUse1 index backend fallback (same idea as index_select)."""
+    device = inp.device
+    indices_cpu = [None if idx is None else idx.cpu() for idx in indices]
+    out = torch.ops.aten.index(inp.cpu(), indices_cpu)
+    return out.to(device=device, non_blocking=False)
 
 
 def get_max_rank_shape(indices: List[torch.Tensor]) -> List[int]:
@@ -284,178 +402,14 @@ _index_func = IndexFunction()
 
 def index(inp, indices):
     logger.debug("GEMS_TSINGMICRO INDEX")
-    original_indices = list(indices)  # Save original indices for later checks
     indices = list(indices)
 
     if not indices:
         raise ValueError("at least one index must be provided")
 
-    indices = [
-        (
-            index.to(inp.device)
-            if index is not None and index.device != inp.device
-            else index
-        )
-        for index in indices
-    ]
-
-    if inp.numel() >= _LARGE_INDEX_INPUT_NUMEL:
-        return torch.ops.aten.index.Tensor(inp, indices)
-
-    # Step 1: Process indices (convert bool/int8 to long, handle None)
-    # Following PyTorch meta implementation
-    processed_indices = []
-    for i, index in enumerate(indices):
-        if index is not None:
-            # Check dtype
-            if index.dtype in [torch.int8, torch.bool]:
-                # Convert boolean/int8 mask to long indices
-                nonzero = index.nonzero()
-                k = len(processed_indices)
-                if k + index.ndim > inp.ndim:
-                    raise IndexError(
-                        f"too many indices for tensor of dimension {inp.ndim}"
-                    )
-                # Check shape matches
-                for j in range(index.ndim):
-                    if index.shape[j] != inp.shape[k + j]:
-                        raise IndexError(
-                            f"The shape of the mask {index.shape} at index {i} "
-                            f"does not match the shape of the indexed tensor {inp.shape} at index {k + j}"
-                        )
-                # Extract indices from nonzero
-                for j in range(index.ndim):
-                    processed_indices.append(nonzero.select(1, j))
-            elif index.dtype in [torch.long, torch.int, torch.int32, torch.int64]:
-                processed_indices.append(index)
-            else:
-                raise TypeError(
-                    "tensors used as indices must be long, int, byte or bool tensors"
-                )
-        else:
-            processed_indices.append(None)
-
-    indices = processed_indices
-
-    # Check indices count
-    if len(indices) > inp.ndim:
-        raise IndexError(
-            f"too many indices for tensor of dimension {inp.ndim} (got {len(indices)})"
-        )
-
-    # Save for later use
-    has_any_tensor = any(idx is not None for idx in indices)
-    starts_with_none = indices[0] is None if indices else False
-
-    # Step 2: Broadcast indices (only tensor indices, not None)
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if tensor_indices:
-        # Broadcast all tensor indices together
-        if len(tensor_indices) > 1:
-            tensor_indices = list(torch.broadcast_tensors(*tensor_indices))
-        # Update indices list with broadcasted tensors
-        tensor_idx = 0
-        for i in range(len(indices)):
-            if indices[i] is not None:
-                indices[i] = tensor_indices[tensor_idx]
-                tensor_idx += 1
-
-    # Step 3: Add missing None indices (pad to input.ndim)
-    while len(indices) < inp.ndim:
-        indices.append(None)
-
-    # Step 4: Check if has contiguous subspace
-    # (all non-None tensors are adjacent)
-    state = 0
-    has_contiguous_subspace = False
-    for index in indices:
-        if state == 0:
-            if index is not None:
-                state = 1
-        elif state == 1:
-            if index is None:
-                state = 2
-        else:
-            if index is not None:
-                break
-    else:
-        has_contiguous_subspace = True
-
-    # Transpose if not contiguous OR starts with None (and has tensor indices)
-    need_post_process = False
-    first_tensor_dim = None
-    if not has_contiguous_subspace or (starts_with_none and has_any_tensor):
-        dims = []
-        transposed_indices = []
-        # First add all non-None index positions
-        for i, index in enumerate(indices):
-            if index is not None:
-                dims.append(i)
-                transposed_indices.append(index)
-        # Then add all None positions
-        for i, index in enumerate(indices):
-            if index is None:
-                dims.append(i)
-                transposed_indices.append(index)
-        # Permute input
-        inp = inp.permute(dims)
-        indices = transposed_indices
-
-        # Check if we need post-processing
-        # (only when originally started with None and was contiguous)
-        if starts_with_none and has_any_tensor and has_contiguous_subspace:
-            need_post_process = True
-            # Find first tensor dimension in original indices
-            for i, idx in enumerate(original_indices):
-                if idx is not None:
-                    first_tensor_dim = i
-                    break
-
-    # Step 5: Now indices have contiguous subspace (after potential transpose)
-    # Calculate output shape: before_shape + replacement_shape + after_shape
-    before_shape = []
-    after_shape = []
-    replacement_shape = []
-
-    for dim, index in enumerate(indices):
-        if index is None:
-            if replacement_shape:
-                # None after tensor indices -> goes to after_shape
-                after_shape.append(inp.shape[dim])
-            else:
-                # None before tensor indices -> goes to before_shape
-                before_shape.append(inp.shape[dim])
-        else:
-            # First tensor index determines replacement_shape
-            if not replacement_shape:
-                replacement_shape = list(index.shape)
-
-    # Step 6: Build output shape and create output tensor
-    out_shape = before_shape + replacement_shape + after_shape
-    out = torch.empty(out_shape, dtype=inp.dtype, device=inp.device)
-
-    # Step 7: Handle empty tensor case
-    if inp.numel() == 0:
-        return out
-
-    # Step 8: Extract only tensor indices for kernel
-    tensor_indices = [idx for idx in indices if idx is not None]
-    if not tensor_indices:
-        # All None, just reshape
-        return inp.view(*out_shape)
-
-    # Step 9: Call kernel with tensor indices
-    _index_func(inp, tensor_indices, out)
-
-    # Step 10: Post-process if needed (for originally contiguous tensor indices starting with None)
-    if need_post_process:
-        # Calculate index_rank from the first tensor index
-        index_rank = tensor_indices[0].ndim
-        # Create permutation order to move broadcast dimensions to correct position
-        pre_dims = list(range(index_rank, index_rank + first_tensor_dim))
-        broadcast_dims = list(range(index_rank))
-        post_dims = list(range(index_rank + first_tensor_dim, out.ndim))
-        new_order = pre_dims + broadcast_dims + post_dims
-        out = out.permute(new_order)
-
-    return out
+    fast = _try_fast_dim0(inp, indices)
+    if fast is not None:
+        return fast
+    # if _inp_nbytes(inp) > _INDEX_CPU_FALLBACK_MAX_BYTES:
+    #     return _native_index(inp, indices)
+    return _fallback_cpu(inp, indices)
