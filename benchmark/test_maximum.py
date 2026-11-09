@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # consts.FLOAT_DTYPES omits float64; maximum supports it when the device does.
