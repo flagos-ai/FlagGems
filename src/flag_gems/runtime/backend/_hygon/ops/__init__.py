@@ -180,6 +180,7 @@ from .searchsorted import (
 )
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
+from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
@@ -395,6 +396,7 @@ __all__ = [
     "silu_",
     "silu_backward",
     "softplus_backward",
+    "softshrink_backward",
     "sort",
     "sort_stable",
     "special_bessel_j0",
