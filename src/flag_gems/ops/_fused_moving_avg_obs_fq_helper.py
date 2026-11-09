@@ -21,33 +21,14 @@ import triton
 import triton.language as tl
 import triton.language.extra.libdevice as libdevice
 
-from flag_gems import runtime
-
 logger = logging.getLogger(__name__)
-
-
-# libdevice.div_rn does not lower on the AMD backend, so fall back to '/'
-# there (for fp32 it lowers to the same IEEE round-to-nearest-even division).
-# Every other backend (including other HIP platforms such as Hygon) keeps the
-# exact div_rn intrinsic, so their behavior is byte-for-byte unchanged.
-if runtime.device.vendor_name == "amd":
-
-    @triton.jit
-    def _div_rn(a, b):
-        return a / b
-
-else:
-
-    @triton.jit
-    def _div_rn(a, b):
-        return libdevice.div_rn(a, b)
 
 
 @triton.jit
 def _rint(x):
-    # Round half to even. libdevice.rint does not lower on HIP, but the backend
-    # provides the equivalent libdevice.nearbyint.
-    return libdevice.nearbyint(x)
+    # Round half to even. The in-kernel forms the GCU compiler chokes on are
+    # avoided (see _fused_kernel); the vector rint below lowers fine.
+    return libdevice.rint(x)
 
 
 _SCALAR_TYPE_NAMES = {
@@ -58,261 +39,278 @@ _SCALAR_TYPE_NAMES = {
 
 
 @triton.jit
-def _init_minmax(cmin_ptr, cmax_ptr, C, BLOCK: tl.constexpr):
-    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < C
-    tl.store(cmin_ptr + off, tl.full((BLOCK,), float("inf"), tl.float32), mask=m)
-    tl.store(cmax_ptr + off, tl.full((BLOCK,), float("-inf"), tl.float32), mask=m)
-
-
-@triton.jit
-def _reduce_minmax(x_ptr, cmin_ptr, cmax_ptr, R, BLOCK: tl.constexpr):
-    # grid = (ceil(R / BLOCK), C); each program reduces a chunk of channel c's
-    # row. The row-chunk count can reach 2**20+ for large tensors, so it must be
-    # grid dim 0 (limit 2**31-1); channels go on dim 1 (limit 65535).
-    j = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c = tl.program_id(1)
-    m = j < R
-    x = tl.load(x_ptr + c * R + j, mask=m, other=0.0).to(tl.float32)
-    xmin = tl.where(m, x, float("inf"))
-    xmax = tl.where(m, x, float("-inf"))
-    lmin = tl.min(xmin, axis=0)
-    lmax = tl.max(xmax, axis=0)
-    tl.atomic_min(cmin_ptr + c, lmin)
-    tl.atomic_max(cmax_ptr + c, lmax)
-
-
-@triton.jit
-def _qparams(
-    cmin_ptr,
-    cmax_ptr,
+def _fused_kernel(
+    x_ptr,
+    out_ptr,
+    mask_ptr,
     rmin_ptr,
     rmax_ptr,
     scale_ptr,
     zp_ptr,
-    C,
-    avg_const,
+    INNER,
+    avg,
     qmin,
     qmax,
+    dnegf,
+    dposf,
+    zsymf,
     OBS: tl.constexpr,
     FQ: tl.constexpr,
     SYM: tl.constexpr,
+    FLOOR: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < C
-    rmin = tl.load(rmin_ptr + off, mask=m, other=0.0).to(tl.float32)
-    rmax = tl.load(rmax_ptr + off, mask=m, other=0.0).to(tl.float32)
-
+    # One program per quantization group.  Per-tensor mode launches a single
+    # program (group 0, INNER == numel); per-channel mode (channel-major,
+    # ch_axis == 0) launches one program per channel.  Each group owns its
+    # state element, so in-place running-stat / qparam stores are race free
+    # and preserve storage.
+    #
+    # The per-group state and qparam math is kept in shape-(1,) vectors: the
+    # enflame compiler cannot lower scalar x scalar divisions, while (1,)
+    # tensor ops lower fine.
+    c = tl.program_id(0)
+    base = c * INNER
+    lidx = tl.arange(0, BLOCK)
+    one = tl.arange(0, 1)
+    zf = tl.zeros((1,), tl.float32)
+    avgv = avg.to(tl.float32) + zf
+    qmnf = qmin.to(tl.float32)
+    qmxf = qmax.to(tl.float32)
+    rmin = tl.load(rmin_ptr + c + one).to(tl.float32)
+    rmax = tl.load(rmax_ptr + c + one).to(tl.float32)
     if OBS:
-        cmin = tl.load(cmin_ptr + off, mask=m, other=0.0).to(tl.float32)
-        cmax = tl.load(cmax_ptr + off, mask=m, other=0.0).to(tl.float32)
-        rmin = rmin + avg_const * (cmin - rmin)
-        rmax = rmax + avg_const * (cmax - rmax)
-        tl.store(rmin_ptr + off, rmin, mask=m)
-        tl.store(rmax_ptr + off, rmax, mask=m)
-
+        acc_min = tl.full((BLOCK,), float("inf"), tl.float32)
+        acc_max = tl.full((BLOCK,), float("-inf"), tl.float32)
+        for i in range(0, INNER, BLOCK):
+            idx = i + lidx
+            m = idx < INNER
+            v = tl.load(x_ptr + base + idx, mask=m, other=0.0).to(tl.float32)
+            acc_min = tl.minimum(acc_min, tl.where(m, v, float("inf")))
+            acc_max = tl.maximum(acc_max, tl.where(m, v, float("-inf")))
+        cmn = tl.min(acc_min, axis=0) + zf
+        cmx = tl.max(acc_max, axis=0) + zf
+        # moving average, mirrored in float32 operation order
+        rmin = rmin + avgv * (cmn - rmin)
+        rmax = rmax + avgv * (cmx - rmax)
+        tl.store(rmin_ptr + c + one, rmin.to(rmin_ptr.dtype.element_ty))
+        tl.store(rmax_ptr + c + one, rmax.to(rmax_ptr.dtype.element_ty))
     if FQ:
-        qmnf = qmin.to(tl.float32)
-        qmxf = qmax.to(tl.float32)
-        mn = tl.minimum(rmin, 0.0)
-        mx = tl.maximum(rmax, 0.0)
-        # asymmetric / default branch
-        sc = _div_rn(mx - mn, qmxf - qmnf)
-        sc = tl.where(sc == 0.0, 0.1, sc)
-        z = _rint(qmnf - _div_rn(mn, sc))
-        z = tl.minimum(tl.maximum(z, qmnf), qmxf)
-
-        both = (mn < 0.0) & (mx > 0.0)
+        qmnv = qmnf + zf
+        qmxv = qmxf + zf
+        mn = tl.minimum(rmin, zf)
+        mx = tl.maximum(rmax, zf)
+        # asymmetric branch (plain '/' is IEEE div.rn; libdevice.div_rn is
+        # miscompiled on this backend)
+        sc_a = (mx - mn) / (qmxv - qmnv)
+        deg = sc_a == 0.0
+        sc_a = tl.where(deg, 0.1 + zf, sc_a)
+        z_a = _rint(qmnv - (mn / sc_a))
+        z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
+        z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
+        sc_v = sc_a
+        z_v = z_a
         if SYM:
-            sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
-            sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-            z_sym = _rint((qmnf + qmxf) / 2.0)
-            sc = tl.where(both, sc_sym, sc)
-            z = tl.where(both, z_sym, z)
+            # dneg/dpos/z_s depend only on the host-side quant range, so they
+            # are precomputed on the host and passed in as floats: the in-kernel
+            # forms -- ((qmax - qmin + 1) // 2).to(tl.float32) (integer scalar
+            # division then an int->float scalar cast) and
+            # _rint(scalar) -- crash the GCU compiler (SIGSEGV in
+            # make_gcuir) resp. fail to legalize tt.extern_elementwise.
+            dneg = dnegf + zf
+            dpos = dposf + zf
+            both = (mn < 0.0) & (mx > 0.0)
+            sc_s = tl.maximum((-mn) / dneg, mx / dpos)
+            sc_s = tl.where(sc_s == 0.0, 0.1 + zf, sc_s)
+            z_s = zsymf + zf
+            sc_v = tl.where(both, sc_s, sc_a)
+            z_v = tl.where(both, z_s, z_a)
+        z = tl.max(z_v, axis=0)
+        # native stores/uses a floored scale (6.1e-5) while zero_point is
+        # derived from the unfloored value
+        sc_v = tl.maximum(sc_v, FLOOR + zf)
+        sc = tl.max(sc_v, axis=0)
+        tl.store(scale_ptr + c + one, sc_v.to(scale_ptr.dtype.element_ty))
+        tl.store(zp_ptr + c + one, z_v.to(zp_ptr.dtype.element_ty))
+        for i in range(0, INNER, BLOCK):
+            idx = i + lidx
+            m = idx < INNER
+            v = tl.load(x_ptr + base + idx, mask=m, other=0.0).to(tl.float32)
+            q = _rint(v / sc) + z
+            valid = (q >= qmnf) & (q <= qmxf)
+            qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
+            res = (qc - z) * sc
+            tl.store(out_ptr + base + idx, res.to(out_ptr.dtype.element_ty), mask=m)
+            tl.store(mask_ptr + base + idx, valid.to(tl.uint8), mask=m)
+    else:
+        for i in range(0, INNER, BLOCK):
+            idx = i + lidx
+            m = idx < INNER
+            v = tl.load(x_ptr + base + idx, mask=m, other=0.0).to(tl.float32)
+            tl.store(out_ptr + base + idx, v.to(out_ptr.dtype.element_ty), mask=m)
+            tl.store(mask_ptr + base + idx, tl.full((BLOCK,), 1, tl.uint8), mask=m)
 
-        tl.store(scale_ptr + off, sc, mask=m)
-        tl.store(zp_ptr + off, z.to(tl.int32), mask=m)
+
+_BLOCK = 16384  # per-lane DMA width for the group/element kernels:
+# measured on the per-channel cases (2048x16384 / 4096x16384), 1024/4warps
+# = 256 per lane -> 29.5/58.8 ms, 4096 -> 15.8/31.2, 8192 -> 7.6/14.9,
+# 16384 -> 7.4/14.5, 32768 -> 13.1/25.9 (local-memory pressure).
+_SCALE_FLOOR = 6.1e-5
+# Elementwise passes in the large per-tensor path: BLOCK/num_warps is the
+# per-lane DMA width on this backend (threads-per-warp == 1), so 65536/1 is the
+# bandwidth sweet spot (measured 385-420 GB/s vs ~40 GB/s at 2048/4).
+_LARGE_BLOCK = 65536
+_RED_BLOCK = 16384  # partial min/max keeps 4 accumulators, so a smaller tile
+_SINGLE_MAX = 1 << 16
+_PARTIAL_G = 256
+_ELEM_G = 1024
 
 
 @triton.jit
-def _fake_quant(
+def _reduce_partials(x_ptr, pmin_ptr, pmax_ptr, N, CHUNK, BLOCK: tl.constexpr):
+    # Grid-strided partial min/max used by the multi-block per-tensor path.
+    pid = tl.program_id(0)
+    start = pid * CHUNK
+    lidx = tl.arange(0, BLOCK)
+    acc_min = tl.full((BLOCK,), float("inf"), tl.float32)
+    acc_max = tl.full((BLOCK,), float("-inf"), tl.float32)
+    for i in range(start, start + CHUNK, BLOCK):
+        idx = i + lidx
+        m = idx < N
+        v = tl.load(x_ptr + idx, mask=m, other=0.0).to(tl.float32)
+        acc_min = tl.minimum(acc_min, tl.where(m, v, float("inf")))
+        acc_max = tl.maximum(acc_max, tl.where(m, v, float("-inf")))
+    tl.store(pmin_ptr + pid, tl.min(acc_min, axis=0))
+    tl.store(pmax_ptr + pid, tl.max(acc_max, axis=0))
+
+
+@triton.jit
+def _finalize_pt(
+    pmin_ptr,
+    pmax_ptr,
+    rmin_ptr,
+    rmax_ptr,
+    scale_ptr,
+    zp_ptr,
+    G,
+    avg,
+    qmin,
+    qmax,
+    dnegf,
+    dposf,
+    zsymf,
+    OBS: tl.constexpr,
+    FQ: tl.constexpr,
+    SYM: tl.constexpr,
+    FLOOR: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    # Single-program finalize: combine partials, update running stats in place
+    # and (re)compute scale / zero_point for the per-tensor group.
+    one = tl.arange(0, 1)
+    zf = tl.zeros((1,), tl.float32)
+    qmnf = qmin.to(tl.float32)
+    qmxf = qmax.to(tl.float32)
+    rmin = tl.load(rmin_ptr + one).to(tl.float32)
+    rmax = tl.load(rmax_ptr + one).to(tl.float32)
+    if OBS:
+        lidx = tl.arange(0, BLOCK)
+        acc_min = tl.full((BLOCK,), float("inf"), tl.float32)
+        acc_max = tl.full((BLOCK,), float("-inf"), tl.float32)
+        for i in range(0, G, BLOCK):
+            idx = i + lidx
+            m = idx < G
+            pmn = tl.load(pmin_ptr + idx, mask=m, other=float("inf"))
+            pmx = tl.load(pmax_ptr + idx, mask=m, other=float("-inf"))
+            acc_min = tl.minimum(acc_min, pmn)
+            acc_max = tl.maximum(acc_max, pmx)
+        cmn = tl.min(acc_min, axis=0) + zf
+        cmx = tl.max(acc_max, axis=0) + zf
+        avgv = avg.to(tl.float32) + zf
+        rmin = rmin + avgv * (cmn - rmin)
+        rmax = rmax + avgv * (cmx - rmax)
+        tl.store(rmin_ptr + one, rmin.to(rmin_ptr.dtype.element_ty))
+        tl.store(rmax_ptr + one, rmax.to(rmax_ptr.dtype.element_ty))
+    if FQ:
+        qmnv = qmnf + zf
+        qmxv = qmxf + zf
+        mn = tl.minimum(rmin, zf)
+        mx = tl.maximum(rmax, zf)
+        sc_a = (mx - mn) / (qmxv - qmnv)
+        deg = sc_a == 0.0
+        sc_a = tl.where(deg, 0.1 + zf, sc_a)
+        z_a = _rint(qmnv - (mn / sc_a))
+        z_a = tl.minimum(tl.maximum(z_a, qmnv), qmxv)
+        z_a = tl.where(deg, tl.where(qmnv < 0.0, qmxv, qmnv), z_a)
+        sc_v = sc_a
+        z_v = z_a
+        if SYM:
+            # dneg/dpos/z_s depend only on the host-side quant range, so they
+            # are precomputed on the host and passed in as floats: the in-kernel
+            # forms -- ((qmax - qmin + 1) // 2).to(tl.float32) (integer scalar
+            # division then an int->float scalar cast) and
+            # _rint(scalar) -- crash the GCU compiler (SIGSEGV in
+            # make_gcuir) resp. fail to legalize tt.extern_elementwise.
+            dneg = dnegf + zf
+            dpos = dposf + zf
+            both = (mn < 0.0) & (mx > 0.0)
+            sc_s = tl.maximum((-mn) / dneg, mx / dpos)
+            sc_s = tl.where(sc_s == 0.0, 0.1 + zf, sc_s)
+            z_s = zsymf + zf
+            sc_v = tl.where(both, sc_s, sc_a)
+            z_v = tl.where(both, z_s, z_a)
+        sc_v = tl.maximum(sc_v, FLOOR + zf)
+        tl.store(scale_ptr + one, sc_v.to(scale_ptr.dtype.element_ty))
+        tl.store(zp_ptr + one, z_v.to(zp_ptr.dtype.element_ty))
+
+
+@triton.jit
+def _fq_elem(
     x_ptr,
     out_ptr,
     mask_ptr,
     scale_ptr,
     zp_ptr,
     N,
-    R,
+    CHUNK,
     qmin,
     qmax,
-    PER_CHANNEL: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
-    if PER_CHANNEL:
-        c = off // R
-    else:
-        c = tl.zeros((BLOCK,), tl.int32)
-    s = tl.load(scale_ptr + c, mask=m, other=1.0).to(tl.float32)
-    z = tl.load(zp_ptr + c, mask=m, other=0).to(tl.float32)
-
+    # Grid-strided elementwise fake-quant: the launch grid is capped well below
+    # the device grid.x limit, each program walks its own span (CHUNK elements)
+    # so the whole array is covered exactly once.
+    pid = tl.program_id(0)
+    start = pid * CHUNK
+    lidx = tl.arange(0, BLOCK)
+    sc = tl.load(scale_ptr).to(tl.float32)
+    z = tl.load(zp_ptr).to(tl.float32)
     qmnf = qmin.to(tl.float32)
     qmxf = qmax.to(tl.float32)
-    q = _rint(_div_rn(x, s)) + z
-    valid = (q >= qmnf) & (q <= qmxf)
-    qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
-    out = (qc - z) * s
-    tl.store(out_ptr + off, out, mask=m)
-    tl.store(mask_ptr + off, valid.to(tl.int8), mask=m)
+    for i in range(start, start + CHUNK, BLOCK):
+        off = i + lidx
+        m = off < N
+        v = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
+        q = _rint(v / sc) + z
+        valid = (q >= qmnf) & (q <= qmxf)
+        qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
+        res = (qc - z) * sc
+        tl.store(out_ptr + off, res.to(out_ptr.dtype.element_ty), mask=m)
+        tl.store(mask_ptr + off, valid.to(tl.uint8), mask=m)
 
 
 @triton.jit
-def _pt_qparam_fq(
-    x_ptr,
-    out_ptr,
-    mask_ptr,
-    cmin_ptr,
-    cmax_ptr,
-    rmin_in_ptr,
-    rmax_in_ptr,
-    rmin_out_ptr,
-    rmax_out_ptr,
-    scale_out_ptr,
-    zp_out_ptr,
-    N,
-    avg_const,
-    qmin,
-    qmax,
-    OBS: tl.constexpr,
-    SYM: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    # Per-tensor (C == 1) fused qparam + fake-quant with SCALAR qparam compute.
-    # Leaner than the generalized _fused_fq for the per-tensor case: every block
-    # computes the same scalar scale/zp from read-only inputs (no vector loads,
-    # no modulo scatter); block 0 persists the scalar qparam/running outputs.
+def _copy_elem(x_ptr, out_ptr, mask_ptr, N, CHUNK, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
-
-    rmin = tl.load(rmin_in_ptr).to(tl.float32)
-    rmax = tl.load(rmax_in_ptr).to(tl.float32)
-    if OBS:
-        cmin = tl.load(cmin_ptr).to(tl.float32)
-        cmax = tl.load(cmax_ptr).to(tl.float32)
-        rmin = rmin + avg_const * (cmin - rmin)
-        rmax = rmax + avg_const * (cmax - rmax)
-
-    qmnf = qmin.to(tl.float32)
-    qmxf = qmax.to(tl.float32)
-    mn = tl.minimum(rmin, 0.0)
-    mx = tl.maximum(rmax, 0.0)
-    sc = _div_rn(mx - mn, qmxf - qmnf)
-    sc = tl.where(sc == 0.0, 0.1, sc)
-    z = _rint(qmnf - _div_rn(mn, sc))
-    z = tl.minimum(tl.maximum(z, qmnf), qmxf)
-    if SYM:
-        both = (mn < 0.0) & (mx > 0.0)
-        sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
-        sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-        z_sym = _rint((qmnf + qmxf) / 2.0)
-        sc = tl.where(both, sc_sym, sc)
-        z = tl.where(both, z_sym, z)
-
-    if pid == 0:
-        if OBS:
-            tl.store(rmin_out_ptr, rmin)
-            tl.store(rmax_out_ptr, rmax)
-        tl.store(scale_out_ptr, sc)
-        tl.store(zp_out_ptr, z.to(tl.int32))
-
-    off = pid * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
-    q = _rint(_div_rn(x, sc)) + z
-    valid = (q >= qmnf) & (q <= qmxf)
-    qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
-    out = (qc - z) * sc
-    tl.store(out_ptr + off, out, mask=m)
-    tl.store(mask_ptr + off, valid.to(tl.int8), mask=m)
-
-
-@triton.jit
-def _fused_fq(
-    x_ptr,
-    out_ptr,
-    mask_ptr,
-    cmin_ptr,
-    cmax_ptr,
-    rmin_in_ptr,
-    rmax_in_ptr,
-    rmin_out_ptr,
-    rmax_out_ptr,
-    scale_out_ptr,
-    zp_out_ptr,
-    N,
-    R,
-    avg_const,
-    qmin,
-    qmax,
-    OBS: tl.constexpr,
-    SYM: tl.constexpr,
-    PER_CHANNEL: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    # Fused qparam + fake-quant. Every lane recomputes scale/zp for its channel
-    # from READ-ONLY inputs (rmin_in/rmax_in + cmin/cmax), so there is no
-    # cross-block RAW hazard. Each channel's qparam / running-stat output is
-    # written exactly once, by the lane holding that channel's first element
-    # (off % R == 0). This removes the separate _qparams launch.
-    pid = tl.program_id(0)
-    off = pid * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    if PER_CHANNEL:
-        c = off // R
-    else:
-        c = tl.zeros((BLOCK,), tl.int32)
-
-    rmin = tl.load(rmin_in_ptr + c, mask=m, other=0.0).to(tl.float32)
-    rmax = tl.load(rmax_in_ptr + c, mask=m, other=0.0).to(tl.float32)
-    if OBS:
-        cmin = tl.load(cmin_ptr + c, mask=m, other=0.0).to(tl.float32)
-        cmax = tl.load(cmax_ptr + c, mask=m, other=0.0).to(tl.float32)
-        rmin = rmin + avg_const * (cmin - rmin)
-        rmax = rmax + avg_const * (cmax - rmax)
-
-    qmnf = qmin.to(tl.float32)
-    qmxf = qmax.to(tl.float32)
-    mn = tl.minimum(rmin, 0.0)
-    mx = tl.maximum(rmax, 0.0)
-    sc = _div_rn(mx - mn, qmxf - qmnf)
-    sc = tl.where(sc == 0.0, 0.1, sc)
-    z = _rint(qmnf - _div_rn(mn, sc))
-    z = tl.minimum(tl.maximum(z, qmnf), qmxf)
-    if SYM:
-        both = (mn < 0.0) & (mx > 0.0)
-        sc_sym = tl.maximum(_div_rn(-mn, -qmnf), _div_rn(mx, qmxf))
-        sc_sym = tl.where(sc_sym == 0.0, 0.1, sc_sym)
-        z_sym = _rint((qmnf + qmxf) / 2.0)
-        sc = tl.where(both, sc_sym, sc)
-        z = tl.where(both, z_sym, z)
-
-    # Persist qparam / running per channel exactly once (first element of chan).
-    gate = m & ((off % R) == 0)
-    if OBS:
-        tl.store(rmin_out_ptr + c, rmin, mask=gate)
-        tl.store(rmax_out_ptr + c, rmax, mask=gate)
-    tl.store(scale_out_ptr + c, sc, mask=gate)
-    tl.store(zp_out_ptr + c, z.to(tl.int32), mask=gate)
-
-    x = tl.load(x_ptr + off, mask=m, other=0.0).to(tl.float32)
-    q = _rint(_div_rn(x, sc)) + z
-    valid = (q >= qmnf) & (q <= qmxf)
-    qc = tl.minimum(tl.maximum(q, qmnf), qmxf)
-    out = (qc - z) * sc
-    tl.store(out_ptr + off, out, mask=m)
-    tl.store(mask_ptr + off, valid.to(tl.int8), mask=m)
+    start = pid * CHUNK
+    lidx = tl.arange(0, BLOCK)
+    ones = tl.full((BLOCK,), 1, tl.uint8)
+    for i in range(start, start + CHUNK, BLOCK):
+        off = i + lidx
+        m = off < N
+        v = tl.load(x_ptr + off, mask=m, other=0.0)
+        tl.store(out_ptr + off, v, mask=m)
+        tl.store(mask_ptr + off, ones, mask=m)
 
 
 def _fused_moving_avg_obs_fq_helper(
@@ -346,136 +344,147 @@ def _fused_moving_avg_obs_fq_helper(
         scalar_type = _SCALAR_TYPE_NAMES.get(self.dtype, str(self.dtype))
         raise RuntimeError(f"expected scalar type Float but found {scalar_type}")
 
-    x = self
-    dev = x.device
-    obs = int(observer_on)
-    fq = int(fake_quant_on)
+    per_channel = bool(per_row_fake_quant)
+    if per_channel and int(ch_axis) != 0:
+        raise RuntimeError(
+            "Per-channel FakeQuant in fused_moving_avg_obs_fake_quant is only "
+            "supported on axis == 0"
+        )
+
+    obs = int(observer_on) != 0
+    fq = int(fake_quant_on) != 0
     sym = bool(symmetric_quant)
-    pc = bool(per_row_fake_quant)
-    qmin = int(quant_min)
-    qmax = int(quant_max)
-    ac = float(averaging_const)
 
+    x = self
+    shape = x.shape
     N = x.numel()
-    xf = x.contiguous().view(-1)
+    dev = x.device
+    if N == 0:
+        return (
+            torch.empty(shape, dtype=torch.float32, device=dev),
+            torch.empty(shape, dtype=torch.bool, device=dev),
+        )
 
-    if pc:
-        C = x.shape[int(ch_axis)]
-        R = N // C
+    if x.is_contiguous():
+        xf = x.view(-1)
+    else:
+        xf = x.contiguous().view(-1)
+
+    if per_channel:
+        C = shape[0] if x.dim() > 0 else 1
+        if C == 0:
+            return (
+                torch.empty(shape, dtype=torch.float32, device=dev),
+                torch.empty(shape, dtype=torch.bool, device=dev),
+            )
+        INNER = N // C
     else:
         C = 1
-        R = N
+        INNER = N
 
-    out = torch.empty_like(xf, dtype=torch.float32)
-    mask_b = torch.empty(N, dtype=torch.bool, device=dev)
+    out = torch.empty(N, dtype=torch.float32, device=dev)
+    mask = torch.empty(N, dtype=torch.bool, device=dev)
+    mask_u8 = mask.view(torch.uint8)
 
-    # Fused fake-quant-on path: single launch for qparam + fake-quant (removes
-    # the separate _qparams launch) for BOTH per-tensor and per-channel. Each
-    # lane recomputes its channel's scale/zp from read-only inputs; the lane at
-    # each channel's first element persists that channel's qparam/running stats.
-    if fq:
-        rmin_in = running_min.to(torch.float32)
-        rmax_in = running_max.to(torch.float32)
-        # Separate output buffers so cross-block reads of rmin_in/rmax_in never
-        # race with the running-stat writes.
-        rmin_out = torch.empty(C, dtype=torch.float32, device=dev)
-        rmax_out = torch.empty(C, dtype=torch.float32, device=dev)
+    qmin = int(quant_min)
+    qmax = int(quant_max)
+    # Symmetric-mode constants, precomputed on the host (see _fused_kernel).
+    # Python's round() is round-half-to-even, matching libdevice.rint.
+    dneg_h = float((qmax - qmin + 1) // 2)
+    dpos_h = float((qmax - qmin) // 2)
+    zsym_h = float(round((qmin + qmax) * 0.5))
+    if (not per_channel) and N > _SINGLE_MAX:
+        # Large per-tensor: parallel multi-block reduction + elementwise pass
+        # so the work is spread over the whole device instead of one program.
+        G = _PARTIAL_G
+        chunk = (N + G - 1) // G
+        pmin = pmax = scale
         if obs:
-            # Allocate cmin/cmax pre-filled with +/-inf (tensor creation, not a
-            # kernel launch), then reduce; removes the _init_minmax launch.
-            cmin = torch.full((C,), float("inf"), dtype=torch.float32, device=dev)
-            cmax = torch.full((C,), float("-inf"), dtype=torch.float32, device=dev)
-            BLK_R = 1024
-            _reduce_minmax[(triton.cdiv(R, BLK_R), C)](xf, cmin, cmax, R, BLOCK=BLK_R)
+            pmin = torch.empty(G, dtype=torch.float32, device=dev)
+            pmax = torch.empty(G, dtype=torch.float32, device=dev)
+            _reduce_partials[(G,)](
+                xf,
+                pmin,
+                pmax,
+                N,
+                chunk,
+                BLOCK=_RED_BLOCK,
+                num_warps=1,
+            )
         else:
-            cmin = rmin_in
-            cmax = rmax_in
-        BLK = 1024
-        if pc:
-            _fused_fq[(triton.cdiv(N, BLK),)](
+            G = 0
+        if obs or fq:
+            _finalize_pt[(1,)](
+                pmin,
+                pmax,
+                running_min,
+                running_max,
+                scale,
+                zero_point,
+                G,
+                float(averaging_const),
+                qmin,
+                qmax,
+                dneg_h,
+                dpos_h,
+                zsym_h,
+                OBS=obs,
+                FQ=fq,
+                SYM=sym,
+                FLOOR=_SCALE_FLOOR,
+                BLOCK=_BLOCK,
+                num_warps=4,
+            )
+        n_prog = min(triton.cdiv(N, _LARGE_BLOCK), _ELEM_G)
+        echunk = (N + n_prog - 1) // n_prog
+        grid = (n_prog,)
+        if fq:
+            _fq_elem[grid](
                 xf,
                 out,
-                mask_b,
-                cmin,
-                cmax,
-                rmin_in,
-                rmax_in,
-                rmin_out,
-                rmax_out,
+                mask_u8,
                 scale,
                 zero_point,
                 N,
-                R,
-                ac,
+                echunk,
                 qmin,
                 qmax,
-                OBS=obs,
-                SYM=sym,
-                PER_CHANNEL=True,
-                BLOCK=BLK,
+                BLOCK=_LARGE_BLOCK,
+                num_warps=1,
             )
         else:
-            _pt_qparam_fq[(triton.cdiv(N, BLK),)](
+            _copy_elem[grid](
                 xf,
                 out,
-                mask_b,
-                cmin,
-                cmax,
-                rmin_in,
-                rmax_in,
-                rmin_out,
-                rmax_out,
-                scale,
-                zero_point,
+                mask_u8,
                 N,
-                ac,
-                qmin,
-                qmax,
-                OBS=obs,
-                SYM=sym,
-                BLOCK=BLK,
+                echunk,
+                BLOCK=_LARGE_BLOCK,
+                num_warps=1,
             )
-        if obs:
-            running_min.copy_(rmin_out)
-            running_max.copy_(rmax_out)
-        out_t = out.view(x.shape)
-        mask_t = mask_b.view(x.shape)
-        return (out_t, mask_t)
+        return out.view(shape), mask.view(shape)
 
-    # fake-quant-off path: still update running stats via the qparam kernel.
-    # Phase 1: per-channel min/max reduction (only needed if observer on)
-    if obs:
-        cmin = torch.empty(C, dtype=torch.float32, device=dev)
-        cmax = torch.empty(C, dtype=torch.float32, device=dev)
-        BLK_C = 128
-        _init_minmax[(triton.cdiv(C, BLK_C),)](cmin, cmax, C, BLOCK=BLK_C)
-        BLK_R = 1024
-        grid_r = (triton.cdiv(R, BLK_R), C)
-        _reduce_minmax[grid_r](xf, cmin, cmax, R, BLOCK=BLK_R)
-    else:
-        cmin = running_min
-        cmax = running_max
-
-    # Phase 2: qparam update (mutates running_min/max in place)
-    BLK_Q = 128
-    _qparams[(triton.cdiv(C, BLK_Q),)](
-        cmin,
-        cmax,
+    _fused_kernel[(C,)](
+        xf,
+        out,
+        mask_u8,
         running_min,
         running_max,
         scale,
         zero_point,
-        C,
-        ac,
+        INNER,
+        float(averaging_const),
         qmin,
         qmax,
+        dneg_h,
+        dpos_h,
+        zsym_h,
         OBS=obs,
         FQ=fq,
         SYM=sym,
-        BLOCK=BLK_Q,
+        FLOOR=_SCALE_FLOOR,
+        BLOCK=_BLOCK,
+        num_warps=1,
     )
 
-    # fake-quant off: output is identity, mask is all-true.
-    out_t = xf.to(torch.float32).view(x.shape)
-    mask_t = torch.ones(x.shape, dtype=torch.bool, device=dev)
-    return (out_t, mask_t)
+    return out.view(shape), mask.view(shape)
