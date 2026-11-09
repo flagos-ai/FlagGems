@@ -90,6 +90,7 @@ from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_spmdm import embedding_spmdm
 from .erfinv import erfinv
+from .erfinv_ import erfinv_
 from .euclidean_dist import euclidean_dist
 from .expand_copy import expand_copy
 from .exponential import exponential
@@ -392,6 +393,7 @@ __all__ = [
     "embedding",
     "embedding_spmdm",
     "erfinv",
+    "erfinv_",
     "euclidean_dist",
     "expand_copy",
     "exponential",
