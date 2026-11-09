@@ -242,6 +242,8 @@ def rms_norm_backward_fused_kernel(
         row_idx = row_start + r
         row_valid = row_idx < M
 
+        # tx81 triton backend does not support the mask which is combined with the
+        # runtime scalar. Need to fix it, so we use where to guard against garbage values.
         row_valid_idx = tl.where(row_valid, row_idx, 0)
         x_row = tl.load(
             X + row_valid_idx * x_stride_r + cols * x_stride_c,
@@ -448,4 +450,5 @@ class RmsNorm(torch.autograd.Function):
 
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
+    logger.debug("GEMS_TSINGMICRO RMS_NORM")
     return RmsNorm.apply(x, normalized_shape, weight, eps)
