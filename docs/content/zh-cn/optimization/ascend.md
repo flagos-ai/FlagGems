@@ -96,6 +96,59 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - **UB 预算**：910B 的 192 KiB UB 若存放单个分块，理论上限约为 FP16/BF16 98,304 个元素或 FP32 49,152 个元素。但实际计算中，输入、输出、中间变量、内存对齐填充与多缓冲（Multibuffer）会同时占用空间。若遇到 `ub overflow` 错误（通常以 bit 为单位报警），应主动缩减 `BLOCK_*` 或在核内使用 `BLOCK_SIZE_SUB` 循环切分。
 - **Cube 对齐**：Cube 路径需关注尾轴和矩阵行宽对齐。512 B 行宽对应 FP16/BF16 256 个元素或 FP32 128 个元素；不足时硬件或编译器可能引入自动 Padding 并增加无效搬运。
 
+### 1.3 910C 与 950DT SKU 规格
+
+> [!WARNING]
+> 不同 SKU 的核心数、主频及显存配置存在差异，具体规格以各设备实际的 `platform_config/<SoC_version>.ini`（或通过 `acl.get_soc_name()` / `npu-smi` 查询）为准，切勿仅凭系列名称推断。以下汇总了 CANN `platform_config` 中的常见 SKU 配置供参考。
+
+**Ascend910C**（A3 架构，双 Die 封装，在 CANN 中归属于 `ascend910b_list`，仅支持 SIMD 模式）包含 6 种常见的 `Ascend910_93xx` SKU。各型号的 `ai_cpu_cnt`（6）与 `l1_size`（512 KiB）均相同，HBM 容量和 L2 Cache 则随 Vector 核心数而变：
+
+| SoC 版本 | AI Core（Cube） | Vector Core | Cube 主频 | HBM 容量 | L2 Cache | UB / AI Core |
+| :------- | :---------------- | :----------- | :--------- | :-------- | :-------- | :------------- |
+| `Ascend910_9362` | 20 | 40 | 1.5 GHz | 32 GiB | 168 MiB | 192 KiB |
+| `Ascend910_9372` | 20 | 40 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9381` | 24 | 48 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9382` | 24 | 48 | 1.8 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9391` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
+| `Ascend910_9392` | 24 | 48 | 1.85 GHz | 64 GiB | 192 MiB | 192 KiB |
+
+- `Ascend910_9362` / `_9372`：20 核（Cube）配置，其中 `_9362` HBM 容量为 32 GiB。
+- `Ascend910_9381` / `_9382`：24 核（Cube）、1.8 GHz 主频，配置相同；其中 `_9382` 是目前最常见的部署型号。
+- `Ascend910_9391` / `_9392`：24 核（Cube），主频提升至 1.85 GHz。
+
+**Ascend950DT**（A5 架构，面向解码场景，与 950PR 同源，完整芯片包含最多 36 个 AI 子系统）。以 CANN 9.0.0/9.1.0 环境中的 `Ascend950DT_9582` 为例，其配置文件（`platform_config/Ascend950DT_9582.ini`）参数如下：
+
+| 配置项 | 参数值 | 说明 |
+| :--- | :--- | :--- |
+| `cube_core_cnt` / `vector_core_cnt` | 32 / 64 | Cube / Vector 核心数 |
+| `l1_size` | 512 KiB | L1 Cache 容量 |
+| `l2_size` | 128 MiB | L2 Cache 容量 |
+| `ub_size` | 248 KiB（253,952 B） | Unified Buffer 可用容量 |
+| `cube_freq` / `vec_freq` | 1.65 GHz | Cube / Vector 运行频率 |
+| `memory_size` | 96 GiB | HBM 容量 |
+
+#### Ascend950DT_9582 理论峰值与实测性能对比
+
+`Ascend950DT_9582` 对应 32 核（Cube）规格。下表对比了 `Ascend950DT_9582` 的理论峰值与单机实测性能（实测环境基于 CANN 9.1.0 与 `torch_npu`）：
+
+| 算子 / 指标 | 理论峰值 | 实测值 | 测试方法 / 备注 |
+| :--- | :--- | :--- | :--- |
+| `matmul`（Cube+Vector BF16 / FP16） | 486 TFLOP/s | 430.4 TFLOP/s | `torch.matmul`，8192³，30 次取中位数 |
+| `matmul`（Cube+Vector TF32） | 243 TFLOP/s | 27.0 TFLOP/s | FP32，未启用 HF32，8192³ |
+| `matmul`（Cube+Vector FP8 / HiF8 / MXFP8） | 919 TFLOP/s | — | — |
+| `matmul`（Cube+Vector MXFP4） | 1784 TFLOP/s | — | — |
+| `matmul`（Cube+Vector INT8） | 919 TOPS | — | — |
+| 内存带宽 | 4 TB/s | ≈2.7–3.1 TB/s | ≥1024 MiB copy / triad / read（大缓冲区） |
+| 内存容量 | 96 GB | 96 GiB | `platform_config/Ascend950DT_9582.ini` (`memory_size`) |
+| `conv2d` FP16 | — | 353–364 TFLOP/s | `F.conv2d`，大尺寸 1x1 卷积 |
+| `conv2d` FP32（HF32 开 / 关） | — | 176–183 / 26.9 TFLOP/s | `torch.npu.conv.allow_hf32` |
+
+> [!NOTE]
+> 1. **数据来源**：理论峰值数据来源于《昇腾 950 NPU 架构白皮书》（p13 表 3-1 中 950DT 32 核规格）。
+> 2. **实测说明**：实测数据与主机环境、驱动及软件栈版本相关，仅供参考，不代表硬件绝对上限。
+> 3. **带宽测量**：小缓冲区测试（如 64 MiB copy）受 Cache 驻留效应影响测得带宽偏高（可能达到大缓冲区稳定值的 1.8 倍），应以大缓冲区（≥1024 MiB）测得的稳定吞吐为准。
+> 4. **算子差异**：不同算子（如 `conv2d` 与 `matmul`）在硬件上的指令流水与执行单元饱和吞吐不同，不可直接混用估算。
+
 ## 2. Triton 编译与启动参数
 
 *FlagGems* 将 Ascend 配置为 NPU 后端（`device_name="npu"`），使用系统安装的 Triton / FlagTree 扩展。可通过 `kernel[grid](...)` 关键字参数或 `triton.Config` 传入对应调优选项：
@@ -143,6 +196,10 @@ kernel[grid](x, y, N, BLOCK_SIZE)
 - [cannbot-knowledge：标量降级与 padding](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/scalar_degradation_avoidance.md)
 - [cannbot-knowledge：`care_padding` 适用条件](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/care_padding.md)
 - [cannbot-knowledge：NPU 数据类型与对齐](https://gitcode.com/cann/cannbot-knowledge/blob/2dc417d1e7419f7b6f2f9a926860876ef8ae0887/knowledge/ops/triton/optimizations/techniques/data_types_ascend.md)
+- [cannbot-knowledge：Ascend950DT 实测观测](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_measured_observations.md)
+- [cannbot-knowledge：Ascend950DT 目标平台](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/target_ascend950dt.md)
+- [cannbot-knowledge：Ascend950DT 与 950PR SKU 差异](https://gitcode.com/cann/cannbot-knowledge/blob/master/knowledge/common/platforms/concepts/ascend950dt_vs_pr_overrides.md)
+- [华为昇腾 950 NPU 架构白皮书（PDF）](https://public-download.obs.cn-east-2.myhuaweicloud.com/ascend/%E6%98%87%E8%85%BE950%20NPU%E6%9E%B6%E6%9E%84%E7%99%BD%E7%9A%AE%E4%B9%A6.pdf)
 - [cannbot-skills：Ascend 编译选项](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/04-Compilation-Pipeline/07-compile-options.md)
 - [cannbot-skills：Ascend 内存模型与扩展 API](https://gitcode.com/cann/cannbot-skills/blob/affd5a88dd956022a598adf2f5ed9f3e26718d48/ops/triton-latency-optimizer/references/docs_triton_IR/docs_triton_ascend/01-Programming-Model/03-memory-model.md)
 - [Triton-Ascend 后端编译器（`NPUOptions`）](https://github.com/triton-lang/triton-ascend/blob/main/third_party/ascend/backend/compiler.py)
