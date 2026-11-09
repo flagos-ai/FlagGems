@@ -30,6 +30,7 @@ from .angle import angle
 from .any import any, any_dim, any_dims
 from .arange import arange, arange_start
 from .arccos import arccos
+from .arccos_ import arccos_
 from .arcsin import arcsin
 from .arctan import arctan
 from .arctan_ import arctan_
@@ -348,6 +349,7 @@ __all__ = [
     "arange",
     "arange_start",
     "arccos",
+    "arccos_",
     "arcsin",
     "arctan",
     "arctan_",
