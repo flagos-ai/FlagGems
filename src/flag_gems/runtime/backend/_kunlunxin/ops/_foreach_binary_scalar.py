@@ -42,8 +42,12 @@ import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
-from triton import knobs
 from triton.runtime import driver
+
+try:
+    from triton import knobs
+except ImportError:  # older triton / flagtree builds without knobs
+    knobs = None
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import (
@@ -734,6 +738,10 @@ _RAW_CACHE: dict = {}
 
 def _raw_launch(jit_fn, grid, const_key, tensors, args, num_warps) -> bool:
     """Launch ``jit_fn`` bypassing the binder; False if the caller must not."""
+    # Without ``triton.knobs`` we cannot prove no hook is installed, so this
+    # Triton build must take the normal dispatch path.
+    if knobs is None:
+        return False
     # The knob holds a ``HookChain``, never ``None``, and the chain defines no
     # ``__bool__``/``__len__`` -- so it is always truthy and ``is not None`` would
     # reject every call.  An empty ``calls`` list means nobody is profiling; any
@@ -791,30 +799,20 @@ def _launch16(
     o = list(dsts[:nt16]) + [_scratch_for(dsts[0], n)] * (_K16_SLOTS - nt16)
     svals = list(vals[:nt16]) + [0.0] * (_K16_SLOTS - nt16)
     grid = (triton.cdiv(n, block),)
-    live = svals[:nt16]
     ot = tl_dtype(dsts[0].dtype)
-    if live and live.count(live[0]) == nt16:
-        # One scalar for every slot: 35 kernel arguments instead of 50.
-        args = (*a, *o, live[0], n, fn, nt16, ot, block, even)
-        if even and n % 16 == 0 and n != 1:
-            if _raw_launch(
-                _foreach16s_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
-            ):
-                return
-        _foreach16s_kernel[grid](*args, num_warps=8)
-        return
-    _foreach16_kernel[grid](
-        *a,
-        *o,
-        *svals,
-        n,
-        fn,
-        nt16,
-        ot,
-        block,
-        even,
-        num_warps=8,
-    )
+    # Always take the per-slot kernel.  The shared-scalar entry (_foreach16s_kernel)
+    # passes one scalar 16 times, so the body converts the *same* SSA value to
+    # OT 16 times; TritonXPUUnrollControl CSEs those 16 converts and then
+    # misplaces the single result, failing with "operand #0 does not dominate
+    # this use" (fp16 block=1024 for sub/mul/minimum, and every shape for pow).
+    # Distinct per-slot scalar arguments stay distinct SSA values and compile.
+    args = (*a, *o, *svals, n, fn, nt16, ot, block, even)
+    if even and n % 16 == 0 and n != 1:
+        if _raw_launch(
+            _foreach16_kernel, grid, (fn, nt16, ot, block, even), a + o, args, 8
+        ):
+            return
+    _foreach16_kernel[grid](*args, num_warps=8)
 
 
 _SCRATCH: dict = {}
