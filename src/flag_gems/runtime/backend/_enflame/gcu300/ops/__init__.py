@@ -140,6 +140,7 @@ from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu
 from .groupnorm import group_norm, group_norm_backward
 from .gt import gt, gt_scalar
+from .hardswish_backward import hardswish_backward
 from .hardtanh_backward import hardtanh_backward
 from .histc import histc
 from .hstack import hstack
@@ -470,6 +471,7 @@ __all__ = [
     "group_norm_backward",
     "gt",
     "gt_scalar",
+    "hardswish_backward",
     "hardtanh_backward",
     "histc",
     "hstack",
