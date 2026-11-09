@@ -43,8 +43,7 @@ from .baddbmm_ import baddbmm_
 from .beam_search_score import beam_search_score
 from .binary_cross_entropy_backward import binary_cross_entropy_backward
 from .block_diag import block_diag
-from .broadcast_tensors import broadcast_tensors
-from .broadcast_to import broadcast_to
+from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .conj_physical import conj_physical
 from .conv2d import conv2d
@@ -65,6 +64,8 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
+from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
 from .exponential import exponential
 from .exponential_ import exponential_
@@ -206,6 +207,9 @@ from .weight_norm import (
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_embedding_bag",
+    "_embedding_bag_backward",
+    "_embedding_bag_forward_only",
     "_flash_attention_forward",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
@@ -226,8 +230,7 @@ __all__ = [
     "beam_search_score",
     "binary_cross_entropy_backward",
     "block_diag",
-    "broadcast_tensors",
-    "broadcast_to",
+    "bmm_w8a8",
     "cholesky_inverse",
     "conj_physical",
     "conv2d",

@@ -1,4 +1,3 @@
-from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
@@ -13,11 +12,12 @@ from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
 from .bmm import bmm
-from .broadcast_to import broadcast_to
+from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .cross_attention import cross_attention
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -26,6 +26,7 @@ from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
+from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
@@ -81,6 +82,8 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
+from ._make_dep_token import _make_dep_token
+from .mode import mode
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -102,6 +105,7 @@ from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
+from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -164,12 +168,13 @@ __all__ = [
     "baddbmm",
     "baddbmm_out",
     "bmm",
-    "broadcast_to",
+    "bmm_w8a8",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cross_attention",
     "erfinv",
     "erfinv_",
     "exponential_",
@@ -180,6 +185,7 @@ __all__ = [
     "gcd_",
     "greater_equal_",
     "group_norm",
+    "grouped_mm_w8a8",
     "gru",
     "gru_data",
     "gt_scalar_",
@@ -239,6 +245,7 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mode",
     "mv",
     "mvlgamma",
     "mvlgamma_",
@@ -266,6 +273,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
+    "router_gemm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",

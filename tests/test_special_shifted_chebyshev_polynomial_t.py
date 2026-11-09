@@ -22,6 +22,10 @@ from . import conftest as cfg
 
 # shifted_chebyshev_polynomial_t has no eager Half/BFloat16 CUDA kernel, so the
 # supported set is the float32/float64 subset of utils.FLOAT_DTYPES.
+_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
+    flag_gems.runtime.device.vendor_name == "kunlunxin",
+    reason="float64 is not supported by Kunlunxin",
+)
 if cfg.QUICK_MODE:
     FLOAT_DTYPES = [torch.float32]
 else:
@@ -36,6 +40,8 @@ else:
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_shifted_chebyshev_polynomial_t(shape, dtype, caplog):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("backend declares no fp64 support; float64 unavailable")
     # x in [0, 1] for shifted Chebyshev polynomial
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, shape, dtype=torch.long, device=flag_gems.device)
@@ -62,6 +68,8 @@ def test_special_shifted_chebyshev_polynomial_t(shape, dtype, caplog):
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_special_shifted_chebyshev_polynomial_t_scalar_n(shape, dtype, caplog):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("backend declares no fp64 support; float64 unavailable")
     # Scalar n reaches the same wrapper: aten decomposes the .n_scalar overload
     # onto the registered .default overload, so no separate registration exists.
     x = torch.rand(shape, dtype=dtype, device=flag_gems.device)
