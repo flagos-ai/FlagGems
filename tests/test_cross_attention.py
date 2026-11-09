@@ -22,6 +22,12 @@ from . import accuracy_utils as utils
 
 DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
+# Moore Threads (MUSA) uses the muDNN flash path for the SDPA reference, which
+# rejects non-contiguous operands/masks and returns NaN on fully blocked rows.
+# Keep those workarounds scoped to this vendor so other backends keep using the
+# original reference behaviour unchanged.
+_MTHREADS = flag_gems.vendor_name == "mthreads"
+
 # Reuse the numeric coverage from test_scaled_dot_product_attention.py's
 # LEGACY_SHAPES. SDPA's (B, Hq, Hkv, Lq, Lk, D, enable_gqa) maps to this
 # operator's (B, Hq, Hkv, Lq, Lk, Dqk, Dv), with Dqk == Dv == D. GQA/MQA is
@@ -65,12 +71,22 @@ def _reference(query, key, value, attn_mask=None, scale=None):
     ref_value = utils.to_reference(value, False)
     ref_mask = utils.to_reference(attn_mask, False)
 
+    if _MTHREADS:
+        # Materialize contiguous copies: the muDNN flash SDPA kernel rejects
+        # non-contiguous query/key/value strides, and the values are identical
+        # either way.
+        ref_query = ref_query.contiguous()
+        ref_key = ref_key.contiguous()
+        ref_value = ref_value.contiguous()
+
     # PyTorch SDPA bool masks use True for allowed positions, while the public
     # cross_attention contract uses non-zero values for blocked positions.
     allowed_mask = None if ref_mask is None else ~(ref_mask != 0)
+    if _MTHREADS and allowed_mask is not None:
+        allowed_mask = allowed_mask.contiguous()
     enable_gqa = ref_query.shape[1] != ref_key.shape[1]
 
-    return F.scaled_dot_product_attention(
+    output = F.scaled_dot_product_attention(
         ref_query,
         ref_key,
         ref_value,
@@ -81,14 +97,16 @@ def _reference(query, key, value, attn_mask=None, scale=None):
         enable_gqa=enable_gqa,
     )
 
-
-# def _assert_close(actual, expected, dtype):
-#     atol = {
-#         torch.float16: 1e-3,
-#         torch.bfloat16: 1e-3,
-#         torch.float32: 1e-4,
-#     }[dtype]
-#     utils.gems_assert_close(actual, expected, dtype, atol=atol)
+    if _MTHREADS and allowed_mask is not None:
+        # Fully blocked rows are documented to produce exact zeros; the MUSA
+        # flash/math SDPA kernels instead yield NaN, so normalize those rows to
+        # the contract here.
+        empty_rows = ~allowed_mask.any(dim=-1)
+        if empty_rows.any():
+            output = torch.where(
+                empty_rows.unsqueeze(-1), torch.zeros_like(output), output
+            )
+    return output
 
 
 def _assert_close(actual, expected, dtype):
