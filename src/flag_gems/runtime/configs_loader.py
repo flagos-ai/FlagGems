@@ -16,6 +16,7 @@ import copy
 import inspect
 import os
 import warnings
+from itertools import product
 
 import triton
 
@@ -101,6 +102,46 @@ class TunedConfigLoader(object):
         return triton.Config(single_config["META"], **kwargs)
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
+        if op_name in (
+            "mm_gemm",
+            "mm_dense",
+            "mm_nt_rows",
+            "mm_wide",
+            "bmm_gemm",
+            "bmm_wide",
+        ):
+            fields = (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "pipeline",
+                "scenario",
+            )
+        else:
+            fields = {
+                "mm_syrk": ("BT", "BK", "pipeline", "scenario"),
+                "mm_pack": ("BR", "BC"),
+                "mm_reduce": ("BLOCK",),
+                "mm_simt_row": ("BN", "BK"),
+                "mm_simt_column": ("BM", "BK"),
+                "bmm_vector": ("BR", "BK"),
+            }.get(op_name)
+        if fields is not None:
+            return [
+                triton.Config(
+                    dict(zip(fields, values)),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for values in product(*(ranges[field.upper()] for field in fields))
+                for stages in ranges["s"]
+                for warps in ranges["w"]
+            ]
+
         if op_name == "bmm":
             return [
                 triton.Config(
@@ -132,6 +173,57 @@ class TunedConfigLoader(object):
                 for block in ranges["BLOCK"]
                 for s in ranges["s"]
                 for w in ranges["w"]
+            ]
+
+        fields = {
+            "addmm_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "FLAT_EPILOGUE",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+            "addmm_vector": ("BN", "BK", "SPLIT_K"),
+            "baddbmm_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "TRANSPOSE",
+                "STATIC_K",
+                "FLAT_EPILOGUE",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+            "baddbmm_vector": ("BN", "BK", "SPLIT_K"),
+            "router_gemm": (
+                "BM",
+                "BN",
+                "BK",
+                "GROUP_M",
+                "SIMT",
+                "SPLIT_K",
+                "pipeline",
+                "scenario",
+            ),
+        }.get(op_name)
+        if fields is not None:
+            return [
+                triton.Config(
+                    dict(zip(fields, values)),
+                    num_stages=stages,
+                    num_warps=warps,
+                    pre_hook=pre_hook,
+                )
+                for values in product(*(ranges[field.upper()] for field in fields))
+                for stages in ranges["s"]
+                for warps in ranges["w"]
             ]
 
         if op_name == "addmm":
@@ -493,35 +585,6 @@ class TunedConfigLoader(object):
                 for warps in ranges["w"]
             ]
 
-        if op_name in ("mm_nn", "mm_nt"):
-            # "scenario" is optional so older expand yamls stay loadable, but
-            # once present it must be set on every generated config: the tuner's
-            # SQL config cache builds its schema from the first config it stores
-            # and marks the columns NOT NULL, so a key that appears on only some
-            # configs makes lookups for the others raise KeyError.
-            scenarios = ranges.get("SCENARIO", [""])
-            return [
-                triton.Config(
-                    {
-                        "BLOCK_M": block_m,
-                        "BLOCK_N": block_n,
-                        "BLOCK_K": block_k,
-                        "pipeline": pipeline,
-                        "scenario": scenario,
-                    },
-                    num_stages=s,
-                    num_warps=w,
-                    pre_hook=pre_hook,
-                )
-                for block_m in ranges["BLOCK_M"]
-                for block_n in ranges["BLOCK_N"]
-                for block_k in ranges["BLOCK_K"]
-                for pipeline in ranges["PIPELINE"]
-                for scenario in scenarios
-                for s in ranges["s"]
-                for w in ranges["w"]
-            ]
-
         if op_name in ("bmm_sqmma", "addmm_sqmma"):
             return [
                 triton.Config(
@@ -781,7 +844,12 @@ class TunedConfigLoader(object):
                 for w in ranges["w"]
             ]
 
-        if op_name in ("mul", "mul_broadcast_2d"):
+        if op_name in (
+            "mul",
+            "mul_broadcast_2d",
+            "mul_broadcast_2d_dense_row",
+            "mul_broadcast_2d_metax",
+        ):
             return [
                 triton.Config(
                     {"BLOCK_SIZE": block_size},
@@ -911,6 +979,11 @@ class TunedConfigLoader(object):
             os.path.dirname(__file__), "backend", "_mthreads", "tune_configs.yaml"
         )
         return {
+            "addmm_gemm": self._build_single_expand_spec("addmm_gemm"),
+            "addmm_vector": self._build_single_expand_spec("addmm_vector"),
+            "baddbmm_gemm": self._build_single_expand_spec("baddbmm_gemm"),
+            "baddbmm_vector": self._build_single_expand_spec("baddbmm_vector"),
+            "router_gemm": self._build_single_expand_spec("router_gemm"),
             **{
                 name: {
                     "yaml_op_name": name,
@@ -950,6 +1023,18 @@ class TunedConfigLoader(object):
             "baddbmm": self._build_single_expand_spec(
                 "baddbmm", expand_yaml_path=self._get_expand_config_path("baddbmm")
             ),
+            "bmm_gemm": self._build_single_expand_spec("bmm_gemm"),
+            "bmm_wide": self._build_single_expand_spec("bmm_wide"),
+            "bmm_vector": self._build_single_expand_spec("bmm_vector"),
+            "mm_dense": self._build_single_expand_spec("mm_dense"),
+            "mm_gemm": self._build_single_expand_spec("mm_gemm"),
+            "mm_nt_rows": self._build_single_expand_spec("mm_nt_rows"),
+            "mm_wide": self._build_single_expand_spec("mm_wide"),
+            "mm_simt_row": self._build_single_expand_spec("mm_simt_row"),
+            "mm_simt_column": self._build_single_expand_spec("mm_simt_column"),
+            "mm_syrk": self._build_single_expand_spec("mm_syrk"),
+            "mm_pack": self._build_single_expand_spec("mm_pack"),
+            "mm_reduce": self._build_single_expand_spec("mm_reduce"),
             "bmm": self._build_single_expand_spec(
                 "bmm", expand_yaml_path=self._get_expand_config_path("bmm")
             ),
@@ -1110,9 +1195,6 @@ class TunedConfigLoader(object):
                 "default_strategy": ["default"] * 6,
                 "expand_yaml_path": None,
             },
-            "gemv_k_parallel": self._build_single_expand_spec(
-                "gemv", yaml_op_name="gemv_k_parallel"
-            ),
             "mm": self._build_single_expand_spec(
                 "mm", expand_yaml_path=self._get_expand_config_path("mm")
             ),
@@ -1191,8 +1273,6 @@ class TunedConfigLoader(object):
                 "default_strategy": ["default"] * 4,
                 "expand_yaml_path": None,
             },
-            "mm_nn": self._build_single_expand_spec("mm_nn"),
-            "mm_nt": self._build_single_expand_spec("mm_nt"),
             "mm_splitk_two_step": self._build_single_expand_spec(
                 "mm", yaml_op_name="mm_splitk_two_step"
             ),
@@ -1225,6 +1305,16 @@ class TunedConfigLoader(object):
             ),
             "mul_broadcast_2d": self._build_single_expand_spec(
                 "mul_broadcast_2d",
+                expand_yaml_path=self._get_expand_config_path("mul"),
+                yaml_op_name="mul",
+            ),
+            "mul_broadcast_2d_dense_row": self._build_single_expand_spec(
+                "mul_broadcast_2d_dense_row",
+                expand_yaml_path=self._get_expand_config_path("mul"),
+                yaml_op_name="mul",
+            ),
+            "mul_broadcast_2d_metax": self._build_single_expand_spec(
+                "mul_broadcast_2d_metax",
                 expand_yaml_path=self._get_expand_config_path("mul"),
                 yaml_op_name="mul",
             ),
