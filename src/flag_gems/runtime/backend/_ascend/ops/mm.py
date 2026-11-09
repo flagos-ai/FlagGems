@@ -700,6 +700,33 @@ def get_higher_dtype(a, b):
             return a
 
 
+def _mm_nn_rectangular_tile(m, n, k):
+    # Avoid oversized autotuning tiles for narrow outputs and incomplete M tiles.
+    # These ranges retain enough output tiles with a 128x256 Cube tile.
+    if k % 128 != 0 or (k == 128 and m % 128 == 0):
+        return None
+    if 1 <= m <= 16 and n == 64 and 2048 <= k <= 4096:
+        return 16, 64, 256
+    # Smaller-N workloads already have efficient tuned tiles. Only their
+    # unaligned-N, long-K family needs an explicit 128-column tile.
+    if 64 <= m <= 128 and 2048 <= n <= 4096:
+        if n % 128 != 0 and 4096 <= k <= 8192:
+            return 128, 128, 128
+        return None
+    if (
+        (64 <= m <= 512 and 2048 <= n <= 12288 and n % 64 == 0 and 128 <= k <= 8192)
+        or (
+            1024 <= m <= 4096
+            and 128 <= n <= 512
+            and 4096 <= k <= 8192
+            and (n >= 512 or m >= 2048)
+        )
+        or (1024 <= m <= 4096 and 1024 <= n <= 4096 and k == 128)
+    ):
+        return 128, 256, min(256, k)
+    return None
+
+
 def mm(a, b):
     logger.debug("GEMS_ASCEND MM")
     device = a.device
@@ -1102,6 +1129,27 @@ def mm(a, b):
                     K,
                     BLOCK_OUT=4,
                     BLOCK_K=min(2048, triton.next_power_of_2(K)),
+                )
+            return c
+        tile = _mm_nn_rectangular_tile(M, N, K) if a.dtype == torch.bfloat16 else None
+        if tile is not None:
+            block_m, block_n, block_k = tile
+            with torch_device_fn.device(device), _blockified():
+                _mm_rectangular_kernel[
+                    (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
+                ](
+                    a,
+                    b,
+                    c,
+                    M,
+                    N,
+                    K,
+                    block_m,
+                    block_n,
+                    block_k,
+                    multibuffer=True,
+                    unit_flag=True,
+                    sync_solver=False,
                 )
             return c
         if M <= 32 and N >= 16384:
