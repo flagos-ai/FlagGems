@@ -148,6 +148,7 @@ from .linalg_solve_triangular import (
 )
 from .linear import linear
 from .linspace import linspace
+from .log1p import log1p
 from .log2 import log2
 from .log_ import log_
 from .log_normal import log_normal
@@ -448,6 +449,7 @@ __all__ = [
     "linalg_solve_triangular_out",
     "linear",
     "linspace",
+    "log1p",
     "log2",
     "log_",
     "log_normal",
