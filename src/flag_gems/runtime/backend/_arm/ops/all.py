@@ -99,6 +99,8 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def all(inp):
     logger.debug("GEMS_ARM ALL")
     n_elements = inp.numel()
+    if n_elements == 0:
+        return torch.ones([], dtype=torch.bool, device=inp.device)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     mid_size = triton.cdiv(n_elements, block_size)
     block_mid = triton.next_power_of_2(mid_size)
@@ -123,6 +125,12 @@ def all_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
+        if inp.shape[dim] == 0:
+            shape[dim] = 1
+            out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+            if not keepdim:
+                out = out.squeeze(dim=dim)
+            return out
         inp = dim_compress(inp, dim)
         N = shape[dim]
         shape[dim] = 1
@@ -147,6 +155,11 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    if any(not shape[i] for i in dim):
+        for i in dim:
+            shape[i] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        return out.squeeze(dim=dim) if not keepdim else out
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:

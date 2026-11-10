@@ -115,6 +115,8 @@ def all(inp):
     logger.debug("GEMS_ENFLAME ALL")
     inp = _to_u8_if_bool(inp)
     N_total = inp.numel()
+    if N_total == 0:
+        return torch.ones([], dtype=torch.bool, device=inp.device)
     if N_total <= 4096:
         BLOCK = max(triton.next_power_of_2(N_total), 1024)
     elif N_total <= 65536:
@@ -145,6 +147,12 @@ def all_dim(inp, dim=None, keepdim=False):
     else:
         assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
         dim = dim % inp.ndim
+        if inp.shape[dim] == 0:
+            shape[dim] = 1
+            out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+            if not keepdim:
+                out = out.squeeze(dim=dim)
+            return out
         inp = dim_compress(inp, dim)
         inp = _to_u8_if_bool(inp)
         N = shape[dim]
@@ -170,6 +178,11 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    if any(not shape[i] for i in dim):
+        for i in dim:
+            shape[i] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        return out.squeeze(dim=dim) if not keepdim else out
     inp = dim_compress(inp, dim)
     inp = _to_u8_if_bool(inp)
     N = 1
@@ -183,6 +196,4 @@ def all_dims(inp, dim=None, keepdim=False):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         all_kernel_dim[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
+    return out.squeeze(dim=dim) if not keepdim else out

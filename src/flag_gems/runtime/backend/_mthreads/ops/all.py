@@ -104,6 +104,14 @@ def triton_all_dim_strided(
     shape = list(inp.shape)
     dim, n, inner, outer = _flatten_dim(shape, dim)
     m = outer * inner
+    if m == 0 and n != 0:
+        out = torch.empty((m,), dtype=torch.bool, device=inp.device)
+        shape[dim] = 1
+        return out.view(shape).squeeze(dim=dim) if not keepdim else out.view(shape)
+    if n == 0:
+        shape[dim] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        return out.squeeze(dim=dim) if not keepdim else out
 
     stride = inp.stride()
     stride_reduce = stride[dim]
@@ -193,6 +201,8 @@ def all_kernel_2(mid, out, MID_SIZE, BLOCK_MID: tl.constexpr):
 def all(inp):
     logger.debug("GEMS_MTHREADS ALL")
     n_elements = inp.numel()
+    if n_elements == 0:
+        return torch.ones([], dtype=torch.bool, device=inp.device)
     block_size = triton.next_power_of_2(math.ceil(math.sqrt(n_elements)))
     block_size = min(block_size * 2, 4096, triton.next_power_of_2(n_elements))
     mid_size = triton.cdiv(n_elements, block_size)
@@ -232,6 +242,11 @@ def all_dims(inp, dim=None, keepdim=False):
 
     shape = list(inp.shape)
     dim = [d % inp.ndim for d in dim]
+    if any(not shape[i] for i in dim):
+        for i in dim:
+            shape[i] = 1
+        out = torch.ones(shape, dtype=torch.bool, device=inp.device)
+        return out.squeeze(dim=dim) if not keepdim else out
     inp = dim_compress(inp, dim)
     N = 1
     for i in dim:
@@ -244,9 +259,7 @@ def all_dims(inp, dim=None, keepdim=False):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         all_kernel_dim[grid](inp, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim=dim)
-    return out
+    return out.squeeze(dim=dim) if not keepdim else out
 
 
 __all__ = ["all", "all_dim", "all_dims"]
