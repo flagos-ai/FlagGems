@@ -29,6 +29,7 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_atan_ import foreach_atan_
 from .foreach_ceil import foreach_ceil
 from .foreach_clamp_max_list import foreach_clamp_max_list
 from .foreach_clamp_max_list_ import foreach_clamp_max_list_
@@ -229,6 +230,7 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_atan_",
     "foreach_ceil",
     "foreach_clamp_max_list",
     "foreach_clamp_max_list_",
