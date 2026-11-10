@@ -280,6 +280,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -943,6 +945,7 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
