@@ -72,6 +72,7 @@ from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
+from flag_gems.ops._efficientzerotensor import _efficientzerotensor
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
@@ -265,6 +266,7 @@ from flag_gems.ops._fused_rms_norm import (
     _fused_rms_norm_forward,
 )
 from flag_gems.ops._fused_sgd_ import _fused_sgd_, _fused_sgd__tensor_lr
+from flag_gems.ops._fw_primal import _fw_primal
 from flag_gems.ops._gather_sparse_backward import _gather_sparse_backward
 from flag_gems.ops._has_compatible_shallow_copy_type import (
     _has_compatible_shallow_copy_type,
@@ -294,6 +296,7 @@ from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
+from flag_gems.ops._make_dual import _make_dual
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
@@ -311,6 +314,7 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
+from flag_gems.ops._nested_from_padded import _nested_from_padded
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -324,6 +328,7 @@ from flag_gems.ops._nested_tensor_from_tensor_list import (
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
+from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
 from flag_gems.ops._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
@@ -342,11 +347,14 @@ from flag_gems.ops._philox_uniform_ import _philox_uniform_
 from flag_gems.ops._pin_memory import _pin_memory
 from flag_gems.ops._prelu_kernel import _prelu_kernel
 from flag_gems.ops._prelu_kernel_backward import _prelu_kernel_backward
+from flag_gems.ops._remove_batch_dim import _remove_batch_dim
 from flag_gems.ops._reshape_alias import _reshape_alias
 from flag_gems.ops._reshape_alias_copy import _reshape_alias_copy
 from flag_gems.ops._reshape_copy import _reshape_copy
+from flag_gems.ops._reshape_from_tensor import _reshape_from_tensor
 from flag_gems.ops._resize_output import _resize_output
 from flag_gems.ops._resize_output_ import _resize_output_
+from flag_gems.ops._rowwise_prune import _rowwise_prune
 from flag_gems.ops._safe_softmax import _safe_softmax
 from flag_gems.ops._sample_dirichlet import _sample_dirichlet
 from flag_gems.ops._saturate_weight_to_fp16 import _saturate_weight_to_fp16
@@ -403,6 +411,7 @@ from flag_gems.ops._thnn_fused_lstm_cell_backward_impl import (
 )
 from flag_gems.ops._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from flag_gems.ops._transformer_encoder_layer_fwd import _transformer_encoder_layer_fwd
+from flag_gems.ops._unpack_dual import _unpack_dual
 from flag_gems.ops._unsafe_masked_index import _unsafe_masked_index
 from flag_gems.ops._unsafe_masked_index_put_accumulate import (
     _unsafe_masked_index_put_accumulate,
@@ -430,8 +439,14 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
+from flag_gems.ops._validate_sparse_bsr_tensor_args import (
+    _validate_sparse_bsr_tensor_args,
+)
 from flag_gems.ops._validate_sparse_csc_tensor_args import (
     _validate_sparse_csc_tensor_args,
+)
+from flag_gems.ops._validate_sparse_csr_tensor_args import (
+    _validate_sparse_csr_tensor_args,
 )
 from flag_gems.ops._values_copy import _values_copy, _values_copy_out
 from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
@@ -582,10 +597,13 @@ from flag_gems.ops.bitwise_xor import (
 from flag_gems.ops.blackman_window import blackman_window, blackman_window_periodic
 from flag_gems.ops.block_diag import block_diag
 from flag_gems.ops.bmm import bmm, bmm_out
+from flag_gems.ops.bmm_w8a8 import bmm_w8a8
 from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 from flag_gems.ops.bucketize import bucketize
+from flag_gems.ops.can_cast import can_cast
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
+from flag_gems.ops.cast_Char import cast_Char
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ccol_indices import ccol_indices
@@ -593,7 +611,8 @@ from flag_gems.ops.ccol_indices_copy import ccol_indices_copy, ccol_indices_copy
 from flag_gems.ops.cdist import _cdist_backward, _cdist_forward, cdist
 from flag_gems.ops.ceil import ceil, ceil_, ceil_out
 from flag_gems.ops.celu import celu, celu_
-from flag_gems.ops.chain_matmul import chain_matmul
+from flag_gems.ops.chain_matmul import chain_matmul_out
+from flag_gems.ops.chain_matmul import run as chain_matmul
 from flag_gems.ops.chalf import chalf
 from flag_gems.ops.channel_shuffle import channel_shuffle
 from flag_gems.ops.cholesky import cholesky
@@ -668,15 +687,42 @@ from flag_gems.ops.count_nonzero import count_nonzero
 from flag_gems.ops.cov import cov
 from flag_gems.ops.cross import cross, cross_out
 from flag_gems.ops.cross_attention import cross_attention
+from flag_gems.ops.crow_indices import crow_indices
 from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_affine_grid_generator import (
+    cudnn_affine_grid_generator,
+    cudnn_affine_grid_generator_out,
+)
+from flag_gems.ops.cudnn_affine_grid_generator_backward import (
+    cudnn_affine_grid_generator_backward,
+    cudnn_affine_grid_generator_backward_out,
+)
 from flag_gems.ops.cudnn_attention_backward import cudnn_attention_backward
 from flag_gems.ops.cudnn_attention_forward import cudnn_attention_forward
+from flag_gems.ops.cudnn_batch_norm import cudnn_batch_norm, cudnn_batch_norm_out
 from flag_gems.ops.cudnn_batch_norm_backward import cudnn_batch_norm_backward
 from flag_gems.ops.cudnn_convolution import cudnn_convolution
+from flag_gems.ops.cudnn_convolution_add_relu import (
+    cudnn_convolution_add_relu,
+    cudnn_convolution_add_relu_out,
+)
+from flag_gems.ops.cudnn_convolution_relu import (
+    cudnn_convolution_relu,
+    cudnn_convolution_relu_out,
+)
 from flag_gems.ops.cudnn_convolution_transpose import cudnn_convolution_transpose
+from flag_gems.ops.cudnn_grid_sampler import cudnn_grid_sampler, cudnn_grid_sampler_out
+from flag_gems.ops.cudnn_grid_sampler_backward import (
+    cudnn_grid_sampler_backward,
+    cudnn_grid_sampler_backward_out,
+)
 from flag_gems.ops.cudnn_rnn import cudnn_rnn
 from flag_gems.ops.cudnn_rnn_backward import cudnn_rnn_backward
+from flag_gems.ops.cudnn_rnn_flatten_weight import (
+    cudnn_rnn_flatten_weight,
+    cudnn_rnn_flatten_weight_out,
+)
 from flag_gems.ops.cummax import cummax, cummaxmin_backward
 from flag_gems.ops.cummin import cummin
 from flag_gems.ops.cumprod import cumprod, cumprod_, cumprod_backward
@@ -714,12 +760,21 @@ from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dstack import run as dstack
 from flag_gems.ops.elu import elu, elu_, elu_backward
 from flag_gems.ops.embedding import embedding, embedding_backward
-from flag_gems.ops.embedding_bag import embedding_bag
+from flag_gems.ops.embedding_bag import (
+    _embedding_bag,
+    _embedding_bag_forward_only,
+    embedding_bag,
+)
+from flag_gems.ops.embedding_bag_backward import _embedding_bag_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.empty import empty
+from flag_gems.ops.empty_affine_quantized import (
+    _empty_affine_quantized,
+    _empty_affine_quantized_out,
+)
 from flag_gems.ops.empty_per_channel_affine_quantized import (
     _empty_per_channel_affine_quantized,
 )
@@ -1071,8 +1126,12 @@ from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
+from flag_gems.ops.lu_solve import lu_solve, lu_solve_out
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
 from flag_gems.ops.make_dual_copy import _make_dual_copy, _make_dual_copy_out
+from flag_gems.ops.make_per_channel_quantized_tensor import (
+    _make_per_channel_quantized_tensor,
+)
 from flag_gems.ops.make_per_tensor_quantized_tensor import (
     _make_per_tensor_quantized_tensor,
     _make_per_tensor_quantized_tensor_out,
@@ -1121,6 +1180,7 @@ from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer
 from flag_gems.ops.mm import mm, mm_out, router_gemm
 from flag_gems.ops.mode import mode
 from flag_gems.ops.moveaxis import moveaxis
+from flag_gems.ops.movedim import movedim
 from flag_gems.ops.mse_loss import mse_loss
 from flag_gems.ops.mse_loss_backward import mse_loss_backward
 from flag_gems.ops.msort import msort, msort_out
@@ -1132,6 +1192,7 @@ from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss_backward_out,
     multi_margin_loss_out,
 )
+from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
 from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
@@ -1378,6 +1439,14 @@ from flag_gems.ops.slice_backward import slice_backward
 from flag_gems.ops.slice_copy import slice_copy, slice_copy_out
 from flag_gems.ops.slice_scatter import slice_scatter
 from flag_gems.ops.slogdet import slogdet
+from flag_gems.ops.slow_conv_dilated2d import (
+    slow_conv_dilated2d,
+    slow_conv_dilated2d_out,
+)
+from flag_gems.ops.slow_conv_dilated3d import (
+    slow_conv_dilated3d,
+    slow_conv_dilated3d_out,
+)
 from flag_gems.ops.slow_conv_transpose2d import slow_conv_transpose2d
 from flag_gems.ops.slow_conv_transpose3d import slow_conv_transpose3d
 from flag_gems.ops.smm import smm
@@ -1403,8 +1472,12 @@ from flag_gems.ops.sparse_broadcast_to_copy import sparse_broadcast_to_copy
 from flag_gems.ops.sparse_bsc_tensor import sparse_bsc_tensor
 from flag_gems.ops.sparse_bsc_tensor_unsafe import sparse_bsc_tensor_unsafe
 from flag_gems.ops.sparse_bsr_tensor import sparse_bsr_tensor
+from flag_gems.ops.sparse_bsr_tensor_unsafe import sparse_bsr_tensor_unsafe
 from flag_gems.ops.sparse_compressed_tensor import sparse_compressed_tensor
+from flag_gems.ops.sparse_coo_tensor import sparse_coo_tensor
+from flag_gems.ops.sparse_csc_tensor import sparse_csc_tensor
 from flag_gems.ops.sparse_csc_tensor_unsafe import sparse_csc_tensor_unsafe
+from flag_gems.ops.sparse_csr_tensor import sparse_csr_tensor
 from flag_gems.ops.sparse_dim import sparse_dim
 from flag_gems.ops.sparse_resize_ import sparse_resize_
 from flag_gems.ops.sparse_sampled_addmm import (
@@ -1518,6 +1591,8 @@ from flag_gems.ops.split_copy import split_copy
 from flag_gems.ops.split_with_sizes_copy import split_with_sizes_copy
 from flag_gems.ops.sqrt import sqrt, sqrt_
 from flag_gems.ops.square import square, square_, square_out
+from flag_gems.ops.squeeze import squeeze
+from flag_gems.ops.squeeze_ import squeeze_, squeeze__dim, squeeze__dims
 from flag_gems.ops.squeeze_copy import squeeze_copy
 from flag_gems.ops.sspaddmm import sspaddmm, sspaddmm_out
 from flag_gems.ops.stack import stack
@@ -1536,12 +1611,11 @@ from flag_gems.ops.subtract_ import subtract, subtract_
 from flag_gems.ops.sum import sum, sum_dim, sum_dim_out, sum_out
 from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.ops.svd import svd
+from flag_gems.ops.swapaxes import swapaxes
+from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
-from flag_gems.ops.sym_constrain_range import sym_constrain_range
-from flag_gems.ops.sym_numel import sym_numel
+from flag_gems.ops.swapdims_ import swapdims_
 from flag_gems.ops.sym_size import sym_size, sym_size_int
-from flag_gems.ops.sym_storage_offset import sym_storage_offset
-from flag_gems.ops.sym_stride import sym_stride, sym_stride_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
 from flag_gems.ops.take import take, take_out
@@ -1562,6 +1636,8 @@ from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
+from flag_gems.ops.to_dense_backward import to_dense_backward
+from flag_gems.ops.to_sparse_semi_structured import to_sparse_semi_structured
 from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
@@ -1583,6 +1659,7 @@ from flag_gems.ops.unbind import unbind
 from flag_gems.ops.unbind_copy import unbind_copy
 from flag_gems.ops.underscore_sobol_engine_draw import underscore_sobol_engine_draw
 from flag_gems.ops.unflatten import unflatten
+from flag_gems.ops.unflatten_dense_tensors import unflatten_dense_tensors
 from flag_gems.ops.unfold import unfold
 from flag_gems.ops.unfold_backward import unfold_backward
 from flag_gems.ops.unfold_copy import unfold_copy
@@ -1731,9 +1808,15 @@ __all__ = [
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
+    "_efficientzerotensor",
+    "_embedding_bag",
+    "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
+    "_embedding_bag_forward_only",
     "_embedding_bag_per_sample_weights_backward",
     "_embedding_bag_sparse_backward",
+    "_empty_affine_quantized",
+    "_empty_affine_quantized_out",
     "_empty_per_channel_affine_quantized",
     "_euclidean_dist",
     "_fake_quantize_learnable_per_channel_affine",
@@ -1903,6 +1986,7 @@ __all__ = [
     "_fused_rms_norm_forward",
     "_fused_sgd_",
     "_fused_sgd__tensor_lr",
+    "_fw_primal",
     "_fw_primal_copy",
     "_fw_primal_copy_out",
     "_gather_sparse_backward",
@@ -1929,8 +2013,10 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_dual",
     "_make_dual_copy",
     "_make_dual_copy_out",
+    "_make_per_channel_quantized_tensor",
     "_make_per_tensor_quantized_tensor",
     "_make_per_tensor_quantized_tensor_out",
     "_masked_scale",
@@ -1945,6 +2031,7 @@ __all__ = [
     "_native_multi_head_attention",
     "_neg_view_copy",
     "_neg_view_copy_out",
+    "_nested_from_padded",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
@@ -1952,6 +2039,7 @@ __all__ = [
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
     "_nested_tensor_softmax_with_shape",
+    "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",
     "_nested_view_from_jagged_copy",
@@ -1969,11 +2057,14 @@ __all__ = [
     "_pin_memory",
     "_prelu_kernel",
     "_prelu_kernel_backward",
+    "_remove_batch_dim",
     "_reshape_alias",
     "_reshape_alias_copy",
     "_reshape_copy",
+    "_reshape_from_tensor",
     "_resize_output",
     "_resize_output_",
+    "_rowwise_prune",
     "_safe_softmax",
     "_sample_dirichlet",
     "_saturate_weight_to_fp16",
@@ -2012,6 +2103,7 @@ __all__ = [
     "_trilinear",
     "_trilinear_out",
     "_unique2",
+    "_unpack_dual",
     "_unsafe_masked_index",
     "_unsafe_masked_index_put_accumulate",
     "_unsafe_view",
@@ -2030,7 +2122,9 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
+    "_validate_sparse_bsr_tensor_args",
     "_validate_sparse_csc_tensor_args",
+    "_validate_sparse_csr_tensor_args",
     "_values_copy",
     "_values_copy_out",
     "_weight_int4pack_mm_with_scales_and_zeros",
@@ -2194,10 +2288,13 @@ __all__ = [
     "block_diag",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
     "bmm_w8a8_fp8",
     "bucketize",
+    "can_cast",
     "cartesian_prod",
     "cast_Byte",
+    "cast_Char",
     "cat",
     "cat_out",
     "cauchy",
@@ -2212,6 +2309,7 @@ __all__ = [
     "celu",
     "celu_",
     "chain_matmul",
+    "chain_matmul_out",
     "chalf",
     "channel_shuffle",
     "cholesky",
@@ -2282,15 +2380,32 @@ __all__ = [
     "cross",
     "cross_attention",
     "cross_out",
+    "crow_indices",
     "crow_indices_copy",
     "ctc_loss",
+    "cudnn_affine_grid_generator",
+    "cudnn_affine_grid_generator_backward",
+    "cudnn_affine_grid_generator_backward_out",
+    "cudnn_affine_grid_generator_out",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
+    "cudnn_batch_norm",
     "cudnn_batch_norm_backward",
+    "cudnn_batch_norm_out",
     "cudnn_convolution",
+    "cudnn_convolution_add_relu",
+    "cudnn_convolution_add_relu_out",
+    "cudnn_convolution_relu",
+    "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
+    "cudnn_grid_sampler",
+    "cudnn_grid_sampler_backward",
+    "cudnn_grid_sampler_backward_out",
+    "cudnn_grid_sampler_out",
     "cudnn_rnn",
     "cudnn_rnn_backward",
+    "cudnn_rnn_flatten_weight",
+    "cudnn_rnn_flatten_weight_out",
     "cummax",
     "cummaxmin_backward",
     "cummin",
@@ -2727,6 +2842,8 @@ __all__ = [
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lu_solve",
+    "lu_solve_out",
     "lu_unpack",
     "lu_unpack_out",
     "margin_ranking_loss",
@@ -2778,6 +2895,7 @@ __all__ = [
     "mm_out",
     "mode",
     "moveaxis",
+    "movedim",
     "mse_loss",
     "mse_loss_backward",
     "msort",
@@ -2789,6 +2907,7 @@ __all__ = [
     "multi_margin_loss_backward",
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
+    "multilabel_margin_loss",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
@@ -3059,6 +3178,10 @@ __all__ = [
     "slice_copy_out",
     "slice_scatter",
     "slogdet",
+    "slow_conv_dilated2d",
+    "slow_conv_dilated2d_out",
+    "slow_conv_dilated3d",
+    "slow_conv_dilated3d_out",
     "slow_conv_transpose2d",
     "slow_conv_transpose3d",
     "smm",
@@ -3084,8 +3207,12 @@ __all__ = [
     "sparse_bsc_tensor",
     "sparse_bsc_tensor_unsafe",
     "sparse_bsr_tensor",
+    "sparse_bsr_tensor_unsafe",
     "sparse_compressed_tensor",
+    "sparse_coo_tensor",
+    "sparse_csc_tensor",
     "sparse_csc_tensor_unsafe",
+    "sparse_csr_tensor",
     "sparse_dim",
     "sparse_resize_",
     "sparse_sampled_addmm",
@@ -3182,6 +3309,10 @@ __all__ = [
     "square",
     "square_",
     "square_out",
+    "squeeze",
+    "squeeze_",
+    "squeeze__dim",
+    "squeeze__dims",
     "squeeze_copy",
     "sspaddmm",
     "sspaddmm_out",
@@ -3208,14 +3339,12 @@ __all__ = [
     "sum_to_size",
     "SUPPORTED_FP8_DTYPE",
     "svd",
+    "swapaxes",
+    "swapaxes_",
     "swapdims",
-    "sym_constrain_range",
-    "sym_numel",
+    "swapdims_",
     "sym_size",
     "sym_size_int",
-    "sym_storage_offset",
-    "sym_stride",
-    "sym_stride_int",
     "t_",
     "t_copy",
     "t_copy_out",
@@ -3238,6 +3367,8 @@ __all__ = [
     "threshold_backward",
     "tile",
     "to_copy",
+    "to_dense_backward",
+    "to_sparse_semi_structured",
     "topk",
     "topk_w8a16_fp8",
     "trace",
@@ -3267,6 +3398,7 @@ __all__ = [
     "unbind_copy",
     "underscore_sobol_engine_draw",
     "unflatten",
+    "unflatten_dense_tensors",
     "unfold",
     "unfold_backward",
     "unfold_copy",

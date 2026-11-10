@@ -29,13 +29,14 @@ logger = logging.getLogger(__name__)
 
 
 @triton.heuristics(runtime.get_heuristic_config("dropout"))
-@triton.jit(do_not_specialize=["p", "philox_seed", "philox_offset"])
+@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
 def dropout_forward_kernel(
     X,
     Y,
     dropout_mask,
     N,
     p,
+    scale,
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr,
@@ -58,7 +59,6 @@ def dropout_forward_kernel(
     mask1 = r1 > p
     mask2 = r2 > p
     mask3 = r3 > p
-    p = 1.0 / (1.0 - p)
 
     off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
@@ -70,10 +70,10 @@ def dropout_forward_kernel(
     x2 = tl.load(X + off_2, mask=off_2 < N, other=0.0, eviction_policy="evict_first")
     x3 = tl.load(X + off_3, mask=off_3 < N, other=0.0, eviction_policy="evict_first")
 
-    y0 = x0 * p * mask0  # tl.where(mask0, x0 * p, 0.0)
-    y1 = x1 * p * mask1  # tl.where(mask1, x1 * p, 0.0)
-    y2 = x2 * p * mask2  # tl.where(mask2, x2 * p, 0.0)
-    y3 = x3 * p * mask3  # tl.where(mask3, x3 * p, 0.0)
+    y0 = x0 * scale * mask0  # tl.where(mask0, x0 * scale, 0.0)
+    y1 = x1 * scale * mask1  # tl.where(mask1, x1 * scale, 0.0)
+    y2 = x2 * scale * mask2  # tl.where(mask2, x2 * scale, 0.0)
+    y3 = x3 * scale * mask3  # tl.where(mask3, x3 * scale, 0.0)
 
     tl.store(dropout_mask + off_0, mask0, mask=off_0 < N, eviction_policy="evict_first")
     tl.store(dropout_mask + off_1, mask1, mask=off_1 < N, eviction_policy="evict_first")
@@ -130,12 +130,17 @@ def dropout(input, p, train=True):
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
+    # aten scales by the reciprocal rounded to the input dtype
+    # (`float(1/(1-p))` in fp16/bf16 is not the fp32 value). Multiplying in fp32
+    # with the unrounded reciprocal shifted every kept element by up to one ulp
+    # for the half dtypes.
+    scale = float(torch.tensor(1.0 / (1.0 - p), dtype=input.dtype).item())
     with torch_device_fn.device(device):
         philox_seed, philox_offset = philox_backend_seed_offset(increment)
         philox_seed = philox_seed % (2 ^ 32)
         philox_offset = philox_offset % (2 ^ 32)
         dropout_forward_kernel[grid_fn](
-            input, out, mask, N, p, philox_seed, philox_offset
+            input, out, mask, N, p, scale, philox_seed, philox_offset
         )
     return out, mask
 
