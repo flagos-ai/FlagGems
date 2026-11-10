@@ -78,6 +78,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .divide import divide
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
@@ -289,6 +290,7 @@ __all__ = [
     "diff",
     "div_mode",
     "div_mode_",
+    "divide",
     "embedding_bag_dense_backward",
     "expand_copy",
     "exponential",
