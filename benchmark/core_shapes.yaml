@@ -462,6 +462,33 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+linear:
+  # Matched by op_name, which set_shapes() looks up before falling back to
+  # the MRO class name, so this override leaves every other BlasBenchmark op
+  # on the shared square shapes above.
+  #
+  # The first five entries are exactly the shared BlasBenchmark squares, so
+  # --level core keeps the shape set it always reported for this op. The next
+  # five are LoRA-rank small-K shapes (K=32-64), the region where the Ascend
+  # kernel beats the vendor path; they are added on top of the baseline, not
+  # in place of it, so both the large-K and the small-K regions are measured.
+  #
+  # The leading B is decorative: test_linear.py's _input_fn takes b and
+  # ignores it, building only [m, k], so the two 4096^3 squares below differ
+  # only in that ignored field (they were both in the baseline list).
+  shapes:
+    - [2, 384, 384, 384]
+    - [2, 4096, 4096, 4096]
+    - [16, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [16, 4096, 4096, 4096]
+    - [1, 4096, 4096, 32]
+    - [2, 4096, 4096, 64]
+    - [1, 4096, 8192, 64]
+    - [16, 8192, 4096, 32]
+    - [1, 4096, 14336, 64]
+  shape_desc: "B, M, N, K"
+
 addmm_vector_bias:
   shapes:
     - [1, 64, 256, 184]
