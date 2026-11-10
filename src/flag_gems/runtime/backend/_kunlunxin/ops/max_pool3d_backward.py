@@ -433,7 +433,9 @@ def max_pool3d_backward(
             dw,
         ).to(original_dtype)
 
-    grad_input = torch.zeros_like(input, dtype=torch.float32)
+    grad_input = torch.zeros_like(
+        input, dtype=torch.float32, memory_format=torch.contiguous_format
+    )
     total = grad_input.numel()
     block = 64
     grid = (triton.cdiv(total, block),)
