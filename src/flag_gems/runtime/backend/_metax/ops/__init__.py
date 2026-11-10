@@ -29,6 +29,26 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_abs import foreach_abs
+from .foreach_abs_ import foreach_abs_
+from .foreach_acos_ import foreach_acos_
+from .foreach_add_list import foreach_add_list
+from .foreach_add_list_ import foreach_add_list_
+from .foreach_add_scalar import foreach_add_scalar
+from .foreach_add_scalar_ import foreach_add_scalar_
+from .foreach_add_scalar_list import foreach_add_scalar_list
+from .foreach_add_scalar_list_ import foreach_add_scalar_list_
+from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
+from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcdiv_tensor_ import foreach_addcdiv_tensor_
+from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
+from .foreach_addcmul_scalar_list_ import foreach_addcmul_scalar_list_
+from .foreach_asin_ import foreach_asin_
+from .foreach_atan import foreach_atan
+from .foreach_atan_ import foreach_atan_
+from .foreach_ceil import foreach_ceil
+from .foreach_clamp_max_list import foreach_clamp_max_list
+from .foreach_clamp_max_list_ import foreach_clamp_max_list_
 from .foreach_clamp_max_scalar import foreach_clamp_max_scalar
 from .foreach_clamp_max_scalar_ import foreach_clamp_max_scalar_
 from .foreach_clamp_max_scalar_list import foreach_clamp_max_scalar_list
@@ -61,6 +81,11 @@ from .foreach_floor import foreach_floor
 from .foreach_floor_ import foreach_floor_
 from .foreach_frac import foreach_frac
 from .foreach_frac_ import foreach_frac_
+from .foreach_log import foreach_log
+from .foreach_log10 import foreach_log10
+from .foreach_log10_ import foreach_log10_
+from .foreach_log1p import foreach_log1p
+from .foreach_log2 import foreach_log2
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -226,6 +251,26 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_abs",
+    "foreach_abs_",
+    "foreach_acos_",
+    "foreach_add_list",
+    "foreach_add_list_",
+    "foreach_add_scalar",
+    "foreach_add_scalar_",
+    "foreach_add_scalar_list",
+    "foreach_add_scalar_list_",
+    "foreach_addcdiv_scalar_",
+    "foreach_addcdiv_scalar_list_",
+    "foreach_addcdiv_tensor_",
+    "foreach_addcmul_scalar_",
+    "foreach_addcmul_scalar_list_",
+    "foreach_asin_",
+    "foreach_atan",
+    "foreach_atan_",
+    "foreach_ceil",
+    "foreach_clamp_max_list",
+    "foreach_clamp_max_list_",
     "foreach_clamp_max_scalar",
     "foreach_clamp_max_scalar_",
     "foreach_clamp_max_scalar_list",
@@ -258,6 +303,11 @@ __all__ = [
     "foreach_floor_",
     "foreach_frac",
     "foreach_frac_",
+    "foreach_log",
+    "foreach_log10",
+    "foreach_log10_",
+    "foreach_log1p",
+    "foreach_log2",
     "full",
     "full_like",
     "gcd_",
