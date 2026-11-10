@@ -197,9 +197,8 @@ def test_cudnn_ctc_loss_empty_target():
         log_probs, targets, input_lengths, target_lengths, 0, False, False
     )
 
-    # Captured at import time is not necessary: this is the native path unless a
-    # previous test leaked a global registration (see the dispatch test, which is
-    # scoped so it cannot).
+    # The reference is the native op: no other test in this file leaves a global
+    # registration behind (the dispatch test is scoped and tears its own down).
     ref_loss, ref_grad = torch.ops.aten._cudnn_ctc_loss(
         log_probs,
         targets.to(device),
