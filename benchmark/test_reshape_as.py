@@ -23,28 +23,22 @@ from . import base, consts
 
 
 def _reshape_as_input_fn(shape, dtype, device):
-    # Both branches are benchmarked, because neither one dominates: a
-    # stride-2 1-D slice and a transposed N-D source differ only in layout.
-    # A 1-D source of any stride is always stride-expressible as any shape
-    # with the same numel, so it measures the zero-copy view/dispatch path. A
-    # transposed N-D source only stays a view when the target keeps the same
-    # trailing size; flattening it needs the materializing copy kernel.
+    # Every row here must hit the materializing copy kernel: a 1-D source (at
+    # any stride) is always stride-expressible as any same-numel shape, so a
+    # 1-D row could only ever measure dispatch. The benchmark therefore runs
+    # 2-D+ shapes only (GenericBenchmarkExcluse1D) and transposes the source,
+    # which is a copy for every target shape: flattening a transposed 2-D is
+    # unresolvable, and the higher-rank shapes all flatten to a 1-D target.
     numel = 1
     for s in shape:
         numel *= s
-    other = torch.randn((numel,), dtype=dtype, device=device)
-    if len(shape) >= 2:
-        yield torch.randn(shape, dtype=dtype, device=device).transpose(0, -1), other
-    else:
-        # Same target as the N-D cases: a flat 1-D source, so the 1-D rows
-        # report the view path rather than a copy that a real reshape could
-        # never need here.
-        yield torch.randn(shape, dtype=dtype, device=device), other
+    other = torch.empty((numel,), dtype=dtype, device=device)
+    yield torch.randn(shape, dtype=dtype, device=device).transpose(0, -1), other
 
 
 @pytest.mark.reshape_as
 def test_reshape_as():
-    bench = base.GenericBenchmark(
+    bench = base.GenericBenchmarkExcluse1D(
         input_fn=_reshape_as_input_fn,
         op_name="reshape_as",
         torch_op=torch.Tensor.reshape_as,
