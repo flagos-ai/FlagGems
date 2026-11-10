@@ -20,6 +20,7 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
+from ._masked_scale import _masked_scale
 from ._scaled_dot_product_attention_math_for_mps import (
     _scaled_dot_product_attention_math_for_mps,
 )
@@ -239,6 +240,7 @@ __all__ = [
     "_embedding_bag_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
