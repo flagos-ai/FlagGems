@@ -501,33 +501,30 @@ def _launch_backward(
     num_classes,
     state_count_max,
     blank,
-    init_grad=True,
 ):
     block_s = triton.next_power_of_2(state_count_max)
     launch_params = _launch_params(block_s)
     with torch_device_fn.device(work_log_probs.device):
-        if init_grad:
-            # `grad_input` is filled entirely by the init kernel, so no
-            # separate zero initialization is required. The forward pass
-            # already seeds it on the eager path, which is why this is
-            # optional.
-            total = work_log_probs.numel()
-            block = 256
-            grid = (triton.cdiv(total, block),)
-            cudnn_ctc_loss_init_grad_kernel[grid](
-                work_log_probs,
-                work_input_lengths,
-                work_target_lengths,
-                log_alpha,
-                grad_output,
-                grad_input,
-                total,
-                T,
-                batch_size,
-                num_classes,
-                block_s,
-                block,
-            )
+        # `grad_input` is filled entirely by the init kernel -- `exp(log_probs)`
+        # on the valid time steps, zero elsewhere -- so it needs no separate
+        # zero initialization before the accumulation below.
+        total = work_log_probs.numel()
+        block = 256
+        grid = (triton.cdiv(total, block),)
+        cudnn_ctc_loss_init_grad_kernel[grid](
+            work_log_probs,
+            work_input_lengths,
+            work_target_lengths,
+            log_alpha,
+            grad_output,
+            grad_input,
+            total,
+            T,
+            batch_size,
+            num_classes,
+            block_s,
+            block,
+        )
         cudnn_ctc_loss_backward_kernel[(batch_size,)](
             work_log_probs,
             work_targets,
@@ -679,7 +676,6 @@ def _cudnn_ctc_loss_impl(
             num_classes,
             state_count_max,
             blank,
-            init_grad=True,
         )
 
     return neg_log_likelihood, grad_input
