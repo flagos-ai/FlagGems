@@ -21,6 +21,7 @@ from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .convolution_double_backward import _convolution_double_backward
 from .cross_attention import cross_attention
+from .dequantize import dequantize
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
@@ -183,6 +184,7 @@ __all__ = [
     "conv_transpose1d",
     "conv_transpose1d_output_size",
     "cross_attention",
+    "dequantize",
     "erfinv",
     "erfinv_",
     "exponential_",
