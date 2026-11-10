@@ -151,7 +151,7 @@ def _nansum_global(inp, *, dtype=None):
 
 
 def nansum(inp, dim=None, keepdim=False, *, dtype=None):
-    logger.debug("GEMS NANSUM")
+    logger.debug("GEMS_MTHREADS NANSUM")
     if dim is None:
         result = _nansum_global(inp, dtype=dtype)
         return result.reshape([1] * inp.ndim) if keepdim else result
