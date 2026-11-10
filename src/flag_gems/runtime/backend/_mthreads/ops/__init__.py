@@ -40,6 +40,7 @@ from .arctan2 import arctan2
 from .arctan2_ import arctan2_
 from .arctan_ import arctan_
 from .arctanh import arctanh
+from .arctanh_out import arctanh_out
 from .argmin import argmin
 from .argsort import argsort
 from .atan2 import atan2
@@ -58,6 +59,7 @@ from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
+from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import (
@@ -76,6 +78,7 @@ from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
 from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
+from .fake_quantize_per_tensor_affine_cachemask import fake_quantize_per_tensor_affine_cachemask
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
@@ -100,6 +103,7 @@ from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linalg_tensorinv import linalg_tensorinv
@@ -212,6 +216,7 @@ __all__ = [
     "arctan2_",
     "arctan_",
     "arctanh",
+    "arctanh_out",
     "argmin",
     "argsort",
     "atan2",
@@ -233,6 +238,7 @@ __all__ = [
     "conv_transpose2d",
     "copy_",
     "cudnn_convolution",
+    "cummaxmin_backward",
     "deg2rad_",
     "diagonal_scatter",
     "div_mode",
@@ -243,6 +249,7 @@ __all__ = [
     "erfinv_",
     "expand_copy",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
     "feature_dropout",
     "feature_dropout_",
     "fix",
@@ -278,6 +285,7 @@ __all__ = [
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_tensorinv",
     "linear",
