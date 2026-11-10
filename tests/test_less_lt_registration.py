@@ -88,7 +88,7 @@ def test_less_lt_dispatch(monkeypatch, name, overload):
         assert flag_gems.all_registered_ops() == [op_id]
         actual = op(a, b)
     assert registered == calls == [key]
-    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
 
 
 @pytest.mark.less__scalar
@@ -143,5 +143,5 @@ def test_less__scalar_dispatch(monkeypatch):
         actual = torch.ops.aten.less_.Scalar(a, 0.5)
     assert registered == calls == [key]
     assert actual is a
-    utils.gems_assert_equal(actual, expected)
-    utils.gems_assert_equal(a, expected)
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(a.cpu(), expected)
