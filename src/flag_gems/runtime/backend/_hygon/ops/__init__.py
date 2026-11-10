@@ -16,6 +16,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._conj import _conj
+from ._conv_depthwise2d import _conv_depthwise2d
 from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -237,6 +238,7 @@ from .weight_norm import (
 __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_conv_depthwise2d",
     "_convolution_double_backward",
     "_convolution_mode",
     "_embedding_bag",
