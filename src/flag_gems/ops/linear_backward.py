@@ -19,7 +19,6 @@ import torch
 
 import flag_gems
 
-from .mm import mm
 from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
@@ -45,6 +44,9 @@ def linear_backward(
         if the corresponding mask is False
     """
     logger.debug("GEMS LINEAR_BACKWARD")
+    # Dispatch through the registered operator: a backend override ships its own
+    # tuned config, which the generic kernel cannot consume.
+    from flag_gems import mm
 
     # Validate inputs
     assert (

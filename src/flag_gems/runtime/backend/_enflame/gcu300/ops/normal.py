@@ -80,7 +80,7 @@ def normal_tensor_tensor(mean, std, *, generator=None):
     logger.debug("GEMS_ENFLAME NORMAL_TENSOR_TENSOR")
     shape = broadcast_shapes([mean.shape, std.shape])
     device = mean.device
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_tensor_tensor(out, std, mean)
 
 
@@ -88,7 +88,7 @@ def normal_tensor_float(mean, std, *, generator=None):
     logger.debug("GEMS_ENFLAME NORMAL_TENSOR_FLOAT")
     shape = mean.shape
     device = mean.device
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_tensor_float(out, std, mean)
 
 
@@ -96,7 +96,7 @@ def normal_float_tensor(mean, std, *, generator=None):
     logger.debug("GEMS_ENFLAME NORMAL_FLOAT_TENSOR")
     shape = std.shape
     device = std.device
-    out = normal_distribution(shape, device)
+    out = normal_distribution(shape, device, generator=generator)
     return transform_func_float_tensor(out, std, mean)
 
 
