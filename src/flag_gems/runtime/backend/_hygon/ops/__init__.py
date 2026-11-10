@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from ._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
@@ -248,6 +249,7 @@ from .weight_norm import (
 
 __all__ = [
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
     "_conv_depthwise2d",
