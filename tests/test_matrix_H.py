@@ -380,8 +380,8 @@ def test_matrix_H_backward(shape, dtype):
 
 @pytest.mark.matrix_H
 @pytest.mark.parametrize("dtype", MATRIX_H_COMPLEX_DTYPES)
-def test_matrix_H_dispatch_preserves_lazy_conj_and_backward(dtype):
-    """Exercise the registered path and the shared mH lazy-conj helper."""
+def test_matrix_H_preserves_lazy_conj_and_backward(dtype):
+    """Exercise the shared matrix_H/mH lazy-conjugate helper."""
     inp = _make_input(dtype, (4, 6)).requires_grad_(True)
     ref_inp = _to_reference(inp.detach()).requires_grad_(True)
     upstream = _make_input(dtype, (6, 4))
@@ -390,12 +390,11 @@ def test_matrix_H_dispatch_preserves_lazy_conj_and_backward(dtype):
     ref_out = _ATEN_OP(ref_inp)
     ref_in_grad = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)[0]
 
-    with flag_gems.use_gems():
-        # These boxed aten calls are the production path.  The complex result
-        # must remain a lazy view even though FlagGems also registers _conj.
-        res_out = _ATEN_OP(inp)
-        mh_out = torch.ops.aten.mH(inp)
-        res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
+    # Call the FlagGems wrappers directly: tests must not manage use_gems(),
+    # while both operators still need to preserve the lazy conjugate view.
+    res_out = flag_gems.matrix_H(inp)
+    mh_out = flag_gems.mH(inp)
+    res_in_grad = torch.autograd.grad(res_out, inp, grad_outputs=upstream)[0]
 
     for out in (res_out, mh_out):
         assert out.untyped_storage().data_ptr() == inp.untyped_storage().data_ptr()
