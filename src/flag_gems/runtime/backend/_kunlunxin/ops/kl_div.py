@@ -188,10 +188,12 @@ def _kl_none_kernel(
     if LOG_TARGET:
         loss = tl.exp(t) * (t - x)
     else:
-        # ATen (xlogy semantics): target == 0 contributes exactly 0.  Add a
-        # tiny fp32 epsilon so 0 * log(0) -> 0 * log(1e-30) == 0 instead of
-        # 0 * (-inf) == NaN, without an extra compare/select on every lane.
-        loss = t * (tl.log(t + 1e-30) - x)
+        # ATen (xlogy semantics): target == 0 contributes exactly 0.  Select it
+        # explicitly rather than biasing the log argument: an epsilon only works
+        # while 1e-30 survives next to the operand, and on targets that fold it
+        # away (or evaluate the add at the operand precision) 0 * log(0) comes
+        # back as NaN.
+        loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
     tl.store(out_ptr + offs, loss.to(out_ptr.dtype.element_ty), mask=mask)
 
 
@@ -324,7 +326,7 @@ def _kl_block_kernel(
         if LOG_TARGET:
             loss = tl.exp(t) * (t - x)
         else:
-            loss = t * (tl.log(t + 1e-30) - x)
+            loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
     else:
         mask = offs < n
         x = tl.load(x_ptr + xo, mask=mask, other=0.0).to(tl.float32)
@@ -335,7 +337,7 @@ def _kl_block_kernel(
         else:
             # padded lanes must contribute exactly 0: 1*(log(1) - 0) == 0
             t = tl.load(t_ptr + to, mask=mask, other=1.0).to(tl.float32)
-            loss = t * (tl.log(t + 1e-30) - x)
+            loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
     s = tl.sum(loss, axis=0)
     if FINAL:
         if DIV:
@@ -362,7 +364,7 @@ def _kl_flat_none_kernel(
     if LOG_TARGET:
         loss = tl.exp(t) * (t - x)
     else:
-        loss = t * (tl.log(t + 1e-30) - x)
+        loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
     tl.store(out_ptr + offs, loss.to(out_ptr.dtype.element_ty), mask=mask)
 
 
@@ -395,7 +397,7 @@ def _kl_flat_kernel(
             if LOG_TARGET:
                 loss = tl.exp(t) * (t - x)
             else:
-                loss = t * (tl.log(t + 1e-30) - x)
+                loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
         else:
             mask = offs < n
             x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
@@ -404,7 +406,7 @@ def _kl_flat_kernel(
                 loss = tl.exp(t) * (t - x)
             else:
                 t = tl.load(t_ptr + offs, mask=mask, other=1.0).to(tl.float32)
-                loss = t * (tl.log(t + 1e-30) - x)
+                loss = tl.where(t == 0.0, 0.0, t * (tl.log(t) - x))
         acc += loss
     s = tl.sum(acc, axis=0)
     if FINAL:
