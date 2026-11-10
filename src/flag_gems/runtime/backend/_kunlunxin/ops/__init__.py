@@ -611,6 +611,7 @@ from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
+from .masked_select_backward import masked_select_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .matmuladd import matmuladd
@@ -1570,6 +1571,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_select",
+    "masked_select_backward",
     "matmul_bf16",
     "matmul_int8",
     "matmuladd",
