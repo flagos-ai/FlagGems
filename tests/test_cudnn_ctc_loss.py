@@ -337,7 +337,7 @@ def test_cudnn_ctc_loss_invalid_blank():
 
 
 @contextmanager
-def _registered_cudnn_ctc_loss():
+def _registered_cudnn_ctc_loss(include=("cudnn_ctc_loss",)):
     """Scope a `cudnn_ctc_loss` registration to the calling `with` block.
 
     Test files must not use `flag_gems.use_gems()`, and `only_enable` alone
@@ -349,10 +349,12 @@ def _registered_cudnn_ctc_loss():
     """
     library = torch.library.Library("aten", "IMPL")
     previous_registrar = flag_gems.current_work_registrar
+    if isinstance(include, str):
+        include = [include]
     try:
         flag_gems.only_enable(
             lib=library,
-            include=["cudnn_ctc_loss"],
+            include=list(include),
             registrar=flag_gems.GeneralOpRegistrar,
         )
         yield
@@ -396,6 +398,94 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
 
     utils.gems_assert_close(dispatch_loss, direct_loss, torch.float32)
     utils.gems_assert_close(dispatch_grad, direct_grad, torch.float32)
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_out_dispatch(monkeypatch):
+    """The `.out` overload must route to gems and write the caller's buffers.
+
+    Matching numbers alone cannot prove this: when `.out` is unregistered the
+    call silently falls back to the native cuDNN kernel, which agrees with gems
+    to ~1e-5 -- well inside the comparison tolerance. A spy on the registered
+    entry is what actually distinguishes the two, so that is asserted first.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
+    device = flag_gems.device
+    torch.manual_seed(0)
+    shape = (16, 4, 16, 5)
+    log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    ref_loss, ref_grad = flag_gems.cudnn_ctc_loss(
+        log_probs, targets, input_lengths, target_lengths, 0, False, False
+    )
+
+    calls = []
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return flag_gems.cudnn_ctc_loss_out(*args, **kwargs)
+
+    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
+    mapping["cudnn_ctc_loss_out"] = [("_cudnn_ctc_loss.out", spy, None)]
+    monkeypatch.setattr(flag_gems, "FULL_CONFIG_BY_FUNC", mapping)
+
+    with _registered_cudnn_ctc_loss("cudnn_ctc_loss_out"):
+        out0 = torch.empty_like(ref_loss)
+        out1 = torch.empty_like(ref_grad)
+        # The `.out` overload takes `int[]` lengths, not tensors.
+        res0, res1 = torch.ops.aten._cudnn_ctc_loss.out(
+            log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            0,
+            False,
+            False,
+            out0=out0,
+            out1=out1,
+        )
+
+    assert calls, "aten dispatch did not reach the Gems .out implementation"
+    # The `.out` contract: the caller's buffers are written and returned.
+    assert res0.data_ptr() == out0.data_ptr()
+    assert res1.data_ptr() == out1.data_ptr()
+    utils.gems_assert_close(out0, ref_loss, torch.float32)
+    utils.gems_assert_close(out1, ref_grad, torch.float32)
+
+
+@pytest.mark.cudnn_ctc_loss
+def test_cudnn_ctc_loss_out_resizes_empty_buffer():
+    """A zero-element `out` is resized to the required shape, as ATen does."""
+    device = flag_gems.device
+    torch.manual_seed(0)
+    shape = (8, 2, 6, 2)
+    log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
+    ref_log_probs = utils.to_reference(log_probs, True)
+    ref_targets = utils.to_reference(targets)
+    ref_loss, ref_grad, _ = _reference(
+        ref_log_probs, ref_targets, input_lengths, target_lengths
+    )
+
+    out0 = torch.empty(0, dtype=torch.float32, device=device)
+    out1 = torch.empty(0, dtype=torch.float32, device=device)
+    res0, res1 = flag_gems.cudnn_ctc_loss_out(
+        log_probs,
+        targets,
+        input_lengths,
+        target_lengths,
+        0,
+        False,
+        False,
+        out0=out0,
+        out1=out1,
+    )
+
+    assert res0.shape == ref_loss.shape
+    assert res1.shape == ref_grad.shape
+    utils.gems_assert_close(res0, ref_loss, torch.float32)
+    utils.gems_assert_close(res1, ref_grad, torch.float32)
 
 
 @pytest.mark.cudnn_ctc_loss
