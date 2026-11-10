@@ -208,6 +208,10 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._upsample_nearest_exact3d_backward import (
+    _upsample_nearest_exact3d_backward,
+    _upsample_nearest_exact3d_backward_grad_input,
+)
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
@@ -1133,6 +1137,8 @@ __all__ = [
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
+    "_upsample_nearest_exact3d_backward",
+    "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
     "abs",
     "abs_",
