@@ -161,6 +161,7 @@ from .repeat_interleave import (
 from .replication_pad2d import replication_pad2d
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
+from .sage_attention import sage_attention  # noqa: F401
 from .scaled_grouped_mm import scaled_grouped_mm
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .silu_backward import silu_backward
