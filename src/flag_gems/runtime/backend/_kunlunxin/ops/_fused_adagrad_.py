@@ -165,7 +165,7 @@ def _fused_adagrad_(
     grad_scale=None,
     found_inf=None,
 ):
-    logger.debug("GEMS_KUNLUNXIN FUSED_ADAGRAD_")
+    logger.debug("GEMS_KUNLUNXIN _FUSED_ADAGRAD_")
 
     # ATen compares ``found_inf`` against 1 exactly (any other value -- including
     # 2.0 -- still applies the update).  Resolve it on the host so the kernel no
