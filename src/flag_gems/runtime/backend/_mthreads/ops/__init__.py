@@ -19,7 +19,9 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._compute_linear_combination import _compute_linear_combination
 from ._conj import _conj
-from ._fake_quantize_learnable_per_tensor_affine import _fake_quantize_learnable_per_tensor_affine
+from ._fake_quantize_learnable_per_tensor_affine import (
+    _fake_quantize_learnable_per_tensor_affine,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
@@ -99,6 +101,7 @@ from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .log import log
 from .log2_ import log2_
@@ -274,6 +277,7 @@ __all__ = [
     "lift_out",
     "linalg_cholesky",
     "linalg_ldl_solve",
+    "linalg_tensorinv",
     "linear",
     "log",
     "log10",
