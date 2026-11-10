@@ -159,7 +159,7 @@ def nansum(inp, dim=None, keepdim=False, *, dtype=None):
 
 
 def nansum_out(inp, dim=None, keepdim=False, *, dtype=None, out=None):
-    logger.debug("GEMS NANSUM_OUT")
+    logger.debug("GEMS_MTHREADS NANSUM_OUT")
     result = nansum(inp, dim=dim, keepdim=keepdim, dtype=dtype)
     out.copy_(result)
     return out
