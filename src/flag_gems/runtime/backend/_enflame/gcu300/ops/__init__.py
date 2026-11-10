@@ -93,6 +93,7 @@ from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
+from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
@@ -420,6 +421,7 @@ __all__ = [
     "count_nonzero",
     "ctc_loss",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
