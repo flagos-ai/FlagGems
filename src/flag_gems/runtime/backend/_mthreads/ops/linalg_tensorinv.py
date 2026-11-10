@@ -211,12 +211,8 @@ def _tensorinv_blocked_kernel(AW, BW, N, BLOCK: tl.constexpr, ACC: tl.constexpr)
                 tm = rm[:, None] & cm[None, :]
                 ua = tl.load(AW + k * N + cols, mask=cm, other=0.0)
                 ub = tl.load(BW + k * N + cols, mask=cm, other=0.0)
-                ta = tl.load(
-                    AW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0
-                )
-                tb = tl.load(
-                    BW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0
-                )
+                ta = tl.load(AW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0)
+                tb = tl.load(BW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0)
                 tl.store(
                     AW + rows[:, None] * N + cols[None, :],
                     ta - factor[:, None] * ua[None, :],

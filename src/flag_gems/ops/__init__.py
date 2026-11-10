@@ -296,6 +296,7 @@ from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
+from flag_gems.ops._make_dual import _make_dual
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
@@ -1614,6 +1615,7 @@ from flag_gems.ops.svd import svd
 from flag_gems.ops.swapaxes import swapaxes
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
+from flag_gems.ops.swapdims_ import swapdims_
 from flag_gems.ops.sym_size import sym_size, sym_size_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
@@ -2012,6 +2014,7 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_dual",
     "_make_dual_copy",
     "_make_dual_copy_out",
     "_make_per_channel_quantized_tensor",
@@ -3341,6 +3344,7 @@ __all__ = [
     "swapaxes",
     "swapaxes_",
     "swapdims",
+    "swapdims_",
     "sym_size",
     "sym_size_int",
     "t_",
