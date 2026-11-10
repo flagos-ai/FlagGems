@@ -290,7 +290,7 @@ def _launch_fast(device, dtype, ss, oo, alpha):
                     triton.knobs.runtime.launch_enter_hook,
                     triton.knobs.runtime.launch_exit_hook,
                     *args,
-                    block
+                    block,
                 )
                 continue
         _fast4[(total,)](*args, BLOCK=block, num_warps=warps)
