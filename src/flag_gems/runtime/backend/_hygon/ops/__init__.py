@@ -12,13 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
+from ._adaptive_avg_pool3d_backward import _adaptive_avg_pool3d_backward
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
 from ._conj import _conj
+from ._conv_depthwise2d import _conv_depthwise2d
+from ._convolution_double_backward import _convolution_double_backward
+from ._convolution_mode import _convolution_mode
+from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
+from ._masked_scale import _masked_scale
+from ._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
+)
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
@@ -51,7 +61,9 @@ from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
 from .conv_tbc_backward import conv_tbc_backward
 from .convolution_overrideable import convolution_overrideable
+from .convolution_overrideable_out import convolution_overrideable_out
 from .cudnn_convolution import cudnn_convolution
+from .dequantize import dequantize
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .div import (
@@ -67,6 +79,7 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
+from .divide import divide
 from .embedding_bag import _embedding_bag, _embedding_bag_forward_only
 from .embedding_bag_backward import _embedding_bag_backward
 from .embedding_bag_dense_backward import embedding_bag_dense_backward
@@ -92,6 +105,7 @@ from .float_power_ import (
     float_power_tensor_tensor_,
     float_power_tensor_tensor_out,
 )
+from .fmod_scalar import fmod_scalar
 from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
@@ -99,15 +113,18 @@ from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
+from .hash_tensor import hash_tensor
 from .histc import histc
 from .igamma import igamma
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
+from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .ldexp_ import ldexp_
 from .lift_fresh import lift_fresh
@@ -125,6 +142,7 @@ from .lstm import lstm
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
+from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
     max_pool3d_backward,
@@ -138,6 +156,7 @@ from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .multiply_ import multiply_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -180,9 +199,11 @@ from .searchsorted import (
 )
 from .silu import silu, silu_, silu_backward
 from .softplus_backward import softplus_backward
+from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
+from .special_chebyshev_polynomial_t_out import special_chebyshev_polynomial_t_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
@@ -191,6 +212,7 @@ from .special_chebyshev_polynomial_w import (
 )
 from .special_hermite_polynomial_h import special_hermite_polynomial_h
 from .special_i1e import special_i1e
+from .special_i1e_out import special_i1e_out
 from .special_legendre_polynomial_p import special_legendre_polynomial_p
 from .special_multigammaln import special_multigammaln
 from .special_ndtri import special_ndtri
@@ -213,6 +235,7 @@ from .triangular_solve import triangular_solve, triangular_solve_out
 from .unique import _unique2
 from .unique_dim import unique_dim
 from .unsqueeze import unsqueeze, unsqueeze_
+from .upsample_lanczos2d_aa_backward import upsample_lanczos2d_aa_backward
 from .upsample_linear1d import upsample_linear1d
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
@@ -226,12 +249,20 @@ from .weight_norm import (
 )
 
 __all__ = [
+    "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d_backward",
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
+    "_conv_depthwise2d",
+    "_convolution_double_backward",
+    "_convolution_mode",
     "_embedding_bag",
     "_embedding_bag_backward",
+    "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_masked_scale",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
     "_unique2",
@@ -259,11 +290,14 @@ __all__ = [
     "conv_depthwise2d",
     "conv_tbc_backward",
     "convolution_overrideable",
+    "convolution_overrideable_out",
     "cudnn_convolution",
+    "dequantize",
     "diagonal_scatter",
     "diff",
     "div_mode",
     "div_mode_",
+    "divide",
     "embedding_bag_dense_backward",
     "expand_copy",
     "exponential",
@@ -287,6 +321,7 @@ __all__ = [
     "float_power_tensor_tensor_out",
     "floor_divide",
     "floor_divide_",
+    "fmod_scalar",
     "fused_moving_avg_obs_fq_helper",
     "gcd_",
     "gelu",
@@ -296,6 +331,7 @@ __all__ = [
     "grid_sampler_3d",
     "hadamard_transform",
     "hardsigmoid_backward",
+    "hash_tensor",
     "heur_block_n",
     "histc",
     "igamma",
@@ -303,12 +339,14 @@ __all__ = [
     "index_add_",
     "index_copy",
     "index_copy_",
+    "index_reduce_out",
     "index_select_backward",
     "inner",
     "int_mm",
     "int_mm_out",
     "isin",
     "jagged_to_padded_dense_forward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "ldexp_",
@@ -328,6 +366,7 @@ __all__ = [
     "masked_scale",
     "masked_scatter_backward",
     "matmul_bf16",
+    "matmul_bias_activation",
     "matmul_int8",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
@@ -341,6 +380,7 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "multiply_",
     "mv",
     "mvlgamma",
     "nanmedian",
@@ -349,6 +389,7 @@ __all__ = [
     "nanmedian_out",
     "nansum",
     "nansum_out",
+    "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
     "norm_scalaropt_dim",
@@ -395,16 +436,19 @@ __all__ = [
     "silu_",
     "silu_backward",
     "softplus_backward",
+    "softshrink_backward",
     "sort",
     "sort_stable",
     "special_bessel_j0",
     "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_t_out",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_hermite_polynomial_h",
     "special_i1e",
+    "special_i1e_out",
     "special_legendre_polynomial_p",
     "special_multigammaln",
     "special_ndtri",
@@ -428,6 +472,7 @@ __all__ = [
     "unique_dim",
     "unsqueeze",
     "unsqueeze_",
+    "upsample_lanczos2d_aa_backward",
     "upsample_linear1d",
     "upsample_nearest2d",
     "upsample_nearest_exact2d_backward",
