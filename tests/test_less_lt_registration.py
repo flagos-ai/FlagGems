@@ -83,14 +83,10 @@ def test_less_lt_dispatch(monkeypatch, name, overload):
         return original_impl(library, overload, fn, *args, **kwargs)
 
     monkeypatch.setattr(torch.library.Library, "impl", intercept)
-    previous = flag_gems.current_work_registrar
-    try:
-        with flag_gems.use_gems(include=[op_id]):
-            assert flag_gems.current_work_registrar.get_all_keys() == [key]
-            assert flag_gems.current_work_registrar.get_all_ops() == [op_id]
-            actual = op(a, b)
-    finally:
-        flag_gems.current_work_registrar = previous
+    with flag_gems.use_gems(include=[op_id]):
+        assert flag_gems.all_registered_keys() == [key]
+        assert flag_gems.all_registered_ops() == [op_id]
+        actual = op(a, b)
     assert registered == calls == [key]
     utils.gems_assert_equal(actual, expected)
 
@@ -141,14 +137,10 @@ def test_less__scalar_dispatch(monkeypatch):
         return original_impl(library, overload, fn, *args, **kwargs)
 
     monkeypatch.setattr(torch.library.Library, "impl", intercept)
-    previous = flag_gems.current_work_registrar
-    try:
-        with flag_gems.use_gems(include=[op_id]):
-            assert flag_gems.current_work_registrar.get_all_keys() == [key]
-            assert flag_gems.current_work_registrar.get_all_ops() == [op_id]
-            actual = torch.ops.aten.less_.Scalar(a, 0.5)
-    finally:
-        flag_gems.current_work_registrar = previous
+    with flag_gems.use_gems(include=[op_id]):
+        assert flag_gems.all_registered_keys() == [key]
+        assert flag_gems.all_registered_ops() == [op_id]
+        actual = torch.ops.aten.less_.Scalar(a, 0.5)
     assert registered == calls == [key]
     assert actual is a
     utils.gems_assert_equal(actual, expected)
