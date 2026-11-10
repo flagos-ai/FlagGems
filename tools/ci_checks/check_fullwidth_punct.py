@@ -13,21 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check Python source for fullwidth (CJK) punctuation in code.
+"""Check Python source for non-ASCII characters in code.
 
-Fullwidth punctuation such as U+FF0C (，) is a common typo when an IME is left
-in a CJK mode. It breaks the tokenizer and, when it lands in a function call,
-makes Black's AST safety check raise a ParseError that is hard to read.
+Non-ASCII characters in Python *code* (operators, numbers, identifiers) are
+almost always IME artifacts — fullwidth punctuation (，), fullwidth digits
+(１２３), fullwidth operators (＋－), ideographic spaces (U+3000), zero-width
+characters — that the tokenizer either rejects outright or silently miscompiles.
+A fullwidth comma in a function call, for example, makes Black's AST safety
+check raise a ParseError that is hard to read.
 
 Rules:
   1. Scan code tokens only — skip comments and strings, so Chinese prose in
      comments and docstrings is left untouched.
-  2. Flag any fullwidth punctuation codepoint appearing in a NAME, OP, NUMBER,
-     or NEWLINE token.
+  2. Flag any codepoint > 127 appearing in a NAME, OP, or NUMBER token. These
+     token categories must be pure ASCII; PEP 3131 Unicode identifiers are not
+     used in this codebase (verified).
 
 Exit codes:
-  0 - no fullwidth punctuation found in code
-  1 - fullwidth punctuation found in code
+  0 - no non-ASCII characters found in code
+  1 - non-ASCII characters found in code
   2 - script internal error
 """
 
@@ -35,38 +39,17 @@ import io
 import sys
 import tokenize
 
-# Fullwidth / CJK punctuation that has an ASCII equivalent and should never
-# appear in Python code (only in comments and strings, which are skipped).
-FULLWIDTH_PUNCT = {
-    "，",  # ， fullwidth comma
-    "。",  # 。 ideographic full stop
-    "；",  # ； fullwidth semicolon
-    "：",  # ： fullwidth colon
-    "‘",  # ' left single quote
-    "’",  # ' right single quote
-    "“",  # " left double quote
-    "”",  # " right double quote
-    "（",  # （ fullwidth left paren
-    "）",  # ） fullwidth right paren
-    "【",  # 【 left black lenticular bracket
-    "】",  # 】 right black lenticular bracket
-    "！",  # ！ fullwidth exclamation mark
-    "？",  # ？ fullwidth question mark
-}
-
 # Token types that carry code; comments and strings are intentionally excluded
 # so Chinese prose in docstrings/comments is not flagged.
 CODE_TOKEN_TYPES = {
     tokenize.NAME,
     tokenize.OP,
     tokenize.NUMBER,
-    tokenize.NEWLINE,
-    tokenize.NL,
 }
 
 
 def check_file(path):
-    """Return a list of (row, col, char) for fullwidth punctuation in code."""
+    """Return a list of (row, col, char) for non-ASCII chars in code."""
     errors = []
     try:
         with open(path, encoding="utf-8") as f:
@@ -81,7 +64,7 @@ def check_file(path):
             if tok_type not in CODE_TOKEN_TYPES:
                 continue
             for ch in tok_str:
-                if ch in FULLWIDTH_PUNCT:
+                if ord(ch) > 127:
                     errors.append((row, col, ch))
                     break
     except tokenize.TokenError as exc:
@@ -99,7 +82,7 @@ def main():
     for path in sys.argv[1:]:
         for row, col, ch in check_file(path):
             print(
-                f"{path}:{row}:{col}: fullwidth char U+{ord(ch):04X} '{ch}' "
+                f"{path}:{row}:{col}: non-ASCII char U+{ord(ch):04X} '{ch}' "
                 "in code (switch IME to ASCII)"
             )
             failed = True
