@@ -28,17 +28,9 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt_tensor(A, B):
+def lt(A, B):
     logger.debug("GEMS LT")
     return lt_func(A, B)
-
-
-def less_tensor(A, B):
-    return lt_tensor(A, B)
-
-
-def less_scalar(A, B):
-    return lt_scalar(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])

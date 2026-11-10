@@ -32,7 +32,7 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt_tensor(A, B):
+def lt(A, B):
     logger.debug("GEMS_KUNLUNXIN LT")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
@@ -40,14 +40,6 @@ def lt_tensor(A, B):
     del os.environ["TRITONXPU_COMPARE_FUSION"]
     del os.environ["TRITONXPU_FP16_FAST"]
     return res
-
-
-def less_tensor(A, B):
-    return lt_tensor(A, B)
-
-
-def less_scalar(A, B):
-    return lt_scalar(A, B)
 
 
 @pointwise_dynamic(

@@ -601,16 +601,7 @@ from .logit_ import logit_
 from .logit_backward import logit_backward  # noqa: F401  (registered via _FULL_CONFIG)
 from .logspace import logspace
 from .logsumexp import logsumexp
-from .lt import (
-    less_,
-    less_scalar,
-    less_scalar_,
-    less_tensor,
-    lt_,
-    lt_scalar,
-    lt_scalar_,
-    lt_tensor,
-)
+from .lt import less_, less_scalar_, lt, lt_, lt_scalar, lt_scalar_
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
@@ -1496,9 +1487,7 @@ __all__ = [
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
-    "less_scalar",
     "less_scalar_",
-    "less_tensor",
     "lgamma",
     "lgamma_",
     "lift_fresh_copy",
@@ -1561,10 +1550,10 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "lt",
     "lt_",
     "lt_scalar",
     "lt_scalar_",
-    "lt_tensor",
     "lu_unpack",
     "lu_unpack_out",
     "margin_ranking_loss",

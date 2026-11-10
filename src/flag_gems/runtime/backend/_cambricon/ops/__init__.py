@@ -187,7 +187,7 @@ from .logit import logit, logit_out
 from .logit_ import logit_
 from .logspace import logspace
 from .logsumexp import logsumexp
-from .lt import less_scalar, less_tensor, lt_scalar, lt_tensor
+from .lt import lt, lt_scalar
 from .lt_ import lt_, lt_scalar_
 from .margin_ranking_loss import margin_ranking_loss
 from .masked_fill import masked_fill, masked_fill_
@@ -545,8 +545,6 @@ __all__ = [
     "leaky_relu",
     "leaky_relu_",
     "leaky_relu_out",
-    "less_scalar",
-    "less_tensor",
     "lift_fresh_copy",
     "lift_fresh_copy_out",
     "linspace",
@@ -569,10 +567,10 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "lt",
     "lt_",
     "lt_scalar",
     "lt_scalar_",
-    "lt_tensor",
     "margin_ranking_loss",
     "masked_fill",
     "masked_fill_",

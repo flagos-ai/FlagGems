@@ -34,7 +34,7 @@ from .full import full
 from .gather import gather
 from .index_select import index_select
 from .isin import isin
-from .lt import less_tensor, lt_tensor
+from .lt import lt
 from .masked_fill import masked_fill
 from .min import min
 from .mm import mm, mm_out
@@ -71,8 +71,7 @@ __all__ = [
     "gather",
     "index_select",
     "isin",
-    "less_tensor",
-    "lt_tensor",
+    "lt",
     "masked_fill",
     "min",
     "mm",

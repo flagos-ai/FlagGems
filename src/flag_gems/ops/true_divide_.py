@@ -228,10 +228,6 @@ def _launcher(kern, grid, num_warps, consts, tag=()):
         return kern[(grid_x,)](*args, *consts, num_warps=num_warps)
 
     def launch(*args):
-        # The cached runner below is a GCU-specific optimization. Use the
-        # portable Triton launcher on other backends (including NVIDIA).
-        if args[0].device.type != "gcu":
-            return jit_launch(*args)
         dev = torch.gcu.current_device()
         st = _LAUNCH_STATE.get(key)
         if st is not None and st[0] == dev:
@@ -435,7 +431,7 @@ def run(self, other):
 def true_divide_(A, B):
     """Canonical Tensor overload for in-place true division."""
     logger.debug("GEMS TRUE_DIVIDE_")
-    if isinstance(A, torch.Tensor) and (A.is_complex() or not A.is_contiguous()):
+    if isinstance(A, torch.Tensor) and A.is_complex():
         return _div_true_divide_(A, B)
     return run(A, B)
 

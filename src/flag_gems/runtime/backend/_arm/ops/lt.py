@@ -73,18 +73,10 @@ def lt_block(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     return out
 
 
-def lt_tensor(A, B):
+def lt(A, B):
     logger.debug("GEMS_ARM LT")
     return lt_block(A, B)
     # return lt_func(A, B)
-
-
-def less_tensor(A, B):
-    return lt_tensor(A, B)
-
-
-def less_scalar(A, B):
-    return lt_scalar(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])
