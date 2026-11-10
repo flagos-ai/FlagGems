@@ -168,6 +168,7 @@ from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
 from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
 from ._is_all_true import _is_all_true
@@ -476,6 +477,9 @@ from .fused_experts_impl import (
     inplace_fused_experts,
     outplace_fused_experts,
 )
+from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
+    fused_moving_avg_obs_fake_quant,
+)
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
@@ -486,6 +490,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
+from .grid_sampler import grid_sampler
 from .grid_sampler_2d import grid_sampler_2d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
@@ -1088,6 +1093,7 @@ __all__ = [
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
     "_index_put_impl_",
@@ -1390,6 +1396,7 @@ __all__ = [
     "full",
     "full_like",
     "fused_experts_impl",
+    "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
     "gcd",
@@ -1412,6 +1419,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler",
     "grid_sampler_2d",
     "grid_sampler_3d_backward",
     "group_mm",
