@@ -13,12 +13,10 @@
 # limitations under the License.
 
 import math
-from pathlib import Path
 
 import pytest
 import torch
 import torch.nn.functional as F
-import yaml
 
 import flag_gems
 
@@ -230,13 +228,27 @@ def test_layer_norm_backward(monkeypatch, shape, dtype, wb_none):
         )
 
 
-with (
-    Path(__file__).resolve().parents[1] / "benchmark/core_shapes.yaml"
-).open() as shape_file:
-    layernorm_shapes = yaml.safe_load(shape_file)["layernorm"]
+# Keep accuracy coverage independent of benchmark configuration.
 LAYERNORM_CASES = [
-    (tuple(shape), tuple(normalized_shape), float(eps))
-    for shape, normalized_shape, eps in layernorm_shapes["shapes"]
+    ((200, 36), (36,), 1e-05),
+    ((4096, 100), (100,), 1e-05),
+    ((1, 40999), (40999,), 1e-05),
+    ((100, 40499), (40499,), 1e-05),
+    ((4096, 256), (256,), 1e-05),
+    ((256, 512), (512,), 1e-05),
+    ((4096, 512), (512,), 1e-05),
+    ((2048, 1024), (1024,), 1e-05),
+    ((1024, 2048), (2048,), 1e-05),
+    ((4, 64), (64,), 1e-05),
+    ((4, 8, 8), (8, 8), 1e-05),
+    ((4, 4, 4, 4), (4, 4, 4), 1e-05),
+    ((16, 16, 64), (16, 64), 1e-05),
+    ((16, 16, 1024), (16, 1024), 1e-05),
+    ((1, 8, 4, 4), (8, 4, 4), 1e-05),
+    ((1, 2), (2,), 1e-05),
+    ((200, 40999), (40999,), 1e-05),
+    ((2, 32), (32,), 1e-05),
+    ((65536, 1, 1152), (1152,), 1e-06),
 ]
 # Exercise the existing streaming path for normalized sizes above one tile.
 LARGE_LAYERNORM_CASES = (
