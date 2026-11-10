@@ -1613,6 +1613,7 @@ from flag_gems.ops.svd import svd
 from flag_gems.ops.swapaxes import swapaxes
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
+from flag_gems.ops.swapdims_ import swapdims_
 from flag_gems.ops.sym_size import sym_size, sym_size_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
@@ -3339,6 +3340,7 @@ __all__ = [
     "swapaxes",
     "swapaxes_",
     "swapdims",
+    "swapdims_",
     "sym_size",
     "sym_size_int",
     "t_",
