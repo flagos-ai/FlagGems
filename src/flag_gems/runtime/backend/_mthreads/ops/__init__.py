@@ -169,6 +169,7 @@ from .special_bessel_y0 import special_bessel_y0
 from .special_bessel_y1 import special_bessel_y1
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
+from .special_modified_bessel_k0 import special_modified_bessel_k0
 from .special_modified_bessel_k0_out import special_modified_bessel_k0_out
 from .special_multigammaln import special_multigammaln
 from .special_round import special_round
@@ -365,6 +366,7 @@ __all__ = [
     "special_bessel_y1",
     "special_erfcx",
     "special_gammainc",
+    "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
     "special_multigammaln",
     "special_round",
