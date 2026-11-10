@@ -62,3 +62,16 @@ def test_arange(start, step, end, dtype, device, pin_memory):
     )
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.arange_start
+@pytest.mark.arange_start_step
+def test_arange_start_float_args_follow_default_dtype():
+    start, end, step = 1 / 70, 1.0, 1 / 70
+    target_device = "cpu" if cfg.TO_CPU else flag_gems.device
+    ref_out = torch.arange(start, end, step, device=target_device)
+    res_out = flag_gems.arange_start(start, end, step, device=flag_gems.device)
+    assert torch.get_default_dtype() is torch.float32
+    assert res_out.dtype == torch.float32
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_equal(res_out, ref_out)
