@@ -321,6 +321,7 @@ backends:
       - torch==2.9.1+musa5.2.0
       - torch_musa==2.9.1
       - mkl==2024.0.0
+      - torchada==0.1.54
 
   spacemit-xxx:
     python: "3.12"

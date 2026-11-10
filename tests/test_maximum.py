@@ -55,6 +55,32 @@ def test_maximum_cpu_scalar_operand(cuda_dtype, cpu_dtype, cpu_operand):
 
 
 @pytest.mark.maximum
+@pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="float64 is not supported on this device"
+)
+@pytest.mark.parametrize(
+    "value, scalar_dtype",
+    [
+        (1.0 + 2.0**-52, torch.float64),
+        (2**24 + 1, torch.int64),
+        (2**53 + 2**29, torch.int64),
+    ],
+    ids=["fp64", "int64-2^24", "int64-2^53"],
+)
+@pytest.mark.parametrize("cpu_operand", ["self", "other"])
+def test_maximum_cpu_scalar_precision(value, scalar_dtype, cpu_operand):
+    inp = torch.ones((2, 3), dtype=torch.float64, device=flag_gems.device)
+    # None of these values survives a trip through fp32.
+    scalar = torch.tensor(value, dtype=scalar_dtype)
+    inp1, inp2 = (scalar, inp) if cpu_operand == "self" else (inp, scalar)
+
+    ref_out = torch.maximum(utils.to_reference(inp1), utils.to_reference(inp2))
+    res_out = flag_gems.maximum(inp1, inp2)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.maximum
 @pytest.mark.parametrize("cpu_operand", ["self", "other"])
 def test_maximum_rejects_non_scalar_cpu_operand(cpu_operand):
     inp = torch.randn((2, 19, 7), device=flag_gems.device)
