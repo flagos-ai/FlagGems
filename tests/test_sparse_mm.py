@@ -260,7 +260,11 @@ def test_reduce_against_aten_cpu(reduce):
     # verified against the native implementation rather than a hand-written
     # reference.
     device = flag_gems.device
-    crow = torch.tensor([0, 2, 2, 5], device=device, dtype=torch.int64)
+    # crow_indices must hold M + 1 entries: a 4-row tensor needs 5. The old
+    # 4-entry vector declared size=(4, 3) but only described 3 rows, so the
+    # kernel's crow[row + 1] read for the last row ran past the buffer
+    # (illegal memory access).
+    crow = torch.tensor([0, 2, 2, 5, 5], device=device, dtype=torch.int64)
     col = torch.tensor([0, 2, 0, 1, 2], device="cuda", dtype=torch.int64)
     vals = torch.tensor([1.0, 2.0, -3.0, 4.0, 0.5], device="cuda")
     sparse = torch.sparse_csr_tensor(crow, col, vals, size=(4, 3))
