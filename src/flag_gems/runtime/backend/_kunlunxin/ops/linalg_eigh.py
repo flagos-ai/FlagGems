@@ -199,14 +199,27 @@ def _jacobi_eigh_sort_kernel(
     row_mask = rows < N
 
     eval_col = tl.load(W_IN + batch * N + col)
-    # Vectorised rank: number of eigenvalues strictly less, ties broken by
-    # index.  Replaces the generic fully-unrolled ``tl.static_range`` loop,
-    # which overflows the XPU compiler's buffer budget at BLOCK_N == 128.
-    others = tl.arange(0, BLOCK_N)
-    other_mask = others < N
-    eval_others = tl.load(W_IN + batch * N + others, mask=other_mask, other=1.0e38)
-    less = (eval_others < eval_col) | ((eval_others == eval_col) & (others < col))
-    rank = tl.sum(less.to(tl.int32), axis=0)
+    if BLOCK_N <= 64:
+        # Scalar rank, exactly as the generic kernel computes it.  The
+        # vectorised form below exists only for BLOCK_N == 128, where the
+        # fully unrolled loop overflows the XPU compiler's buffer budget;
+        # keeping small tiles on the scalar path keeps this kernel identical
+        # to the one every other backend runs.
+        rank = tl.full((), 0, dtype=tl.int32)
+        for other in tl.static_range(0, BLOCK_N):
+            eval_other = tl.where(other < N, tl.load(W_IN + batch * N + other), 1.0e38)
+            rank += (
+                (eval_other < eval_col) | ((eval_other == eval_col) & (other < col))
+            ).to(tl.int32)
+    else:
+        # Vectorised rank: number of eigenvalues strictly less, ties broken by
+        # index.  Replaces the generic fully-unrolled loop, which overflows the
+        # XPU compiler's buffer budget at BLOCK_N == 128.
+        others = tl.arange(0, BLOCK_N)
+        other_mask = others < N
+        eval_others = tl.load(W_IN + batch * N + others, mask=other_mask, other=1.0e38)
+        less = (eval_others < eval_col) | ((eval_others == eval_col) & (others < col))
+        rank = tl.sum(less.to(tl.int32), axis=0)
 
     vec = tl.load(
         V_IN + batch * N * N + rows * N + col,
