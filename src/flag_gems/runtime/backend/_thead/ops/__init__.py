@@ -31,6 +31,7 @@ from .as_strided_scatter import as_strided_scatter
 from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .bmm import bmm, bmm_out
+from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .compute_linear_combination import _compute_linear_combination
 from .conv_tbc_backward import conv_tbc_backward
@@ -64,6 +65,7 @@ from .matmul_bias_activation import matmul_bias_activation
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
 from .mm import mm, mm_out
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .nll_loss_backward import nll_loss_backward
@@ -131,6 +133,7 @@ __all__ = [
     "baddbmm_out",
     "bmm",
     "bmm_out",
+    "bmm_w8a8",
     "cholesky_inverse",
     "conv_tbc_backward",
     "conv_transpose1d",
@@ -173,6 +176,8 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mul",
+    "mul_",
     "mv",
     "mvlgamma",
     "native_layer_norm",

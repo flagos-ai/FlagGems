@@ -557,6 +557,16 @@ def streamk_scenario(a, b, M, N, K):
     # TODO: this my change sometime according to the realbenchmark result
     # Currently, the best configuration for streamk has only been tested on A100(capability[0] == 8).
     # The optimal settings for other devices need to be determined through real testing.
+    #
+    # kunlunxin (XPU): the STREAM-K kernels are not usable here. Their scalar
+    # spin-lock atomics (`locks + tile_id`, tile_id derived via integer
+    # division) fail to lower in TritonSDNNBufferize:
+    #   error: unexpected op in ptr sequence
+    #   note: Pipeline failed while executing [TritonSDNNBufferize ...]
+    # so the kernel never compiles (RuntimeError: PassManager::run failed).
+    # XPU also reports capability (8, 6), which is what selects this path.
+    if runtime.device.vendor_name == "kunlunxin":
+        return False
     capability = get_device_capability()
     return (
         capability[0] == 8

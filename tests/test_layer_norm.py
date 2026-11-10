@@ -89,12 +89,15 @@ def test_native_layer_norm(shape, normalized_shape, dtype, affine, caplog):
         in caplog.text
     )
     assert len(result) == len(ref_result) == 3
-    for index, (actual, expected) in enumerate(zip(result, ref_result)):
-        comparison_dtype = dtype
+    stats_dtype = (
+        torch.float32 if flag_gems.vendor_name in ("hygon", "thead") else dtype
+    )
+    for index, (actual, expected, expected_dtype) in enumerate(
+        zip(result, ref_result, (dtype, stats_dtype, stats_dtype))
+    ):
         if flag_gems.vendor_name == "thead" and index > 0:
             assert actual.dtype == torch.float32
-            comparison_dtype = torch.float32
-        utils.gems_assert_close(actual, expected, comparison_dtype)
+        utils.gems_assert_close(actual, expected, expected_dtype)
 
 
 @pytest.mark.layer_norm
@@ -190,7 +193,9 @@ def test_native_layer_norm_statistics(shape, dtype):
     )
 
     reduce_dim = math.prod(normalized_shape)
-    stats_dtype = torch.float32 if flag_gems.vendor_name == "thead" else dtype
+    stats_dtype = (
+        torch.float32 if flag_gems.vendor_name in ("hygon", "thead") else dtype
+    )
     utils.gems_assert_close(res_out, ref_out, dtype)
     utils.gems_assert_close(res_mean, ref_mean, stats_dtype, reduce_dim=reduce_dim)
     utils.gems_assert_close(res_rstd, ref_rstd, stats_dtype, reduce_dim=reduce_dim)
