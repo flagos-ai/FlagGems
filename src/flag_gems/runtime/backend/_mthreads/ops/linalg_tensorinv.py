@@ -156,7 +156,6 @@ def _tensorinv_init_kernel(A, AW, BW, N, BLOCK: tl.constexpr, ACC: tl.constexpr)
 def _tensorinv_blocked_kernel(AW, BW, N, BLOCK: tl.constexpr, ACC: tl.constexpr):
     """Blocked Gauss-Jordan over global scratch for N > _REGISTER_MAX_N."""
     zero = tl.full((), 0.0, ACC)
-    one = tl.full((), 1.0, ACC)
     for k in range(0, N):
         # --- pivot search over rows k..N-1 ---
         best_val = tl.full((), -1.0, tl.float32)
@@ -211,12 +210,8 @@ def _tensorinv_blocked_kernel(AW, BW, N, BLOCK: tl.constexpr, ACC: tl.constexpr)
                 tm = rm[:, None] & cm[None, :]
                 ua = tl.load(AW + k * N + cols, mask=cm, other=0.0)
                 ub = tl.load(BW + k * N + cols, mask=cm, other=0.0)
-                ta = tl.load(
-                    AW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0
-                )
-                tb = tl.load(
-                    BW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0
-                )
+                ta = tl.load(AW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0)
+                tb = tl.load(BW + rows[:, None] * N + cols[None, :], mask=tm, other=0.0)
                 tl.store(
                     AW + rows[:, None] * N + cols[None, :],
                     ta - factor[:, None] * ua[None, :],
