@@ -101,6 +101,7 @@ from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_tensorinv import linalg_tensorinv
 from .linear import linear
 from .log import log
 from .log2_ import log2_
@@ -277,6 +278,7 @@ __all__ = [
     "lift_out",
     "linalg_cholesky",
     "linalg_ldl_solve",
+    "linalg_tensorinv",
     "linear",
     "log",
     "log10",
