@@ -82,11 +82,11 @@ from .foreach_floor_ import foreach_floor_
 from .foreach_frac import foreach_frac
 from .foreach_frac_ import foreach_frac_
 from .foreach_log import foreach_log
-from .foreach_log10 import foreach_log10
-from .foreach_log10_ import foreach_log10_
 from .foreach_log1p import foreach_log1p
 from .foreach_log2 import foreach_log2
 from .foreach_log2_ import foreach_log2_
+from .foreach_log10 import foreach_log10
+from .foreach_log10_ import foreach_log10_
 from .foreach_max import foreach_max
 from .foreach_maximum_list import foreach_maximum_list
 from .foreach_maximum_list_ import foreach_maximum_list_
