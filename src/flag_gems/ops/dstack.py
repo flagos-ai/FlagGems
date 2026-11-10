@@ -183,7 +183,7 @@ def _as_copy_tensor(tensor, real_dtype):
     return tensor.view(real_dtype)
 
 
-def run(tensors, out=None, **kwargs):
+def _dstack_forward(tensors, out=None, **kwargs):
     """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
     del kwargs
     items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
@@ -290,6 +290,49 @@ def run(tensors, out=None, **kwargs):
                 )
         offset += depth_i
     return result
+
+
+class _Dstack(torch.autograd.Function):
+    """Autograd bridge for ``dstack``: backward is a slice of the output grad.
+
+    ``dstack`` promotes each input with ``atleast_3d`` and concatenates along
+    dim 2, so the adjoint of input ``i`` is the matching depth slice of
+    ``grad_out`` reshaped back to the input's original shape.
+    """
+
+    @staticmethod
+    def forward(ctx, *items):
+        ctx.shapes = [tuple(t.shape) for t in items]
+        ctx.dtypes = [t.dtype for t in items]
+        ctx.depths = [_atleast_3d(t.shape)[2] for t in items]
+        return _dstack_forward(list(items))
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        grads = []
+        offset = 0
+        for shape, dtype, depth, needs in zip(
+            ctx.shapes, ctx.dtypes, ctx.depths, ctx.needs_input_grad
+        ):
+            if needs:
+                grads.append(grad_out.narrow(2, offset, depth).reshape(shape).to(dtype))
+            else:
+                grads.append(None)
+            offset += depth
+        return tuple(grads)
+
+
+def run(tensors, out=None, **kwargs):
+    """``aten::dstack(Tensor[] tensors) -> Tensor``, plus the ``out=`` overload."""
+    items = [tensors] if isinstance(tensors, torch.Tensor) else list(tensors)
+    if (
+        out is None
+        and torch.is_grad_enabled()
+        and all(isinstance(t, torch.Tensor) for t in items)
+        and any(t.requires_grad for t in items)
+    ):
+        return _Dstack.apply(*items)
+    return _dstack_forward(tensors, out=out, **kwargs)
 
 
 dstack = run

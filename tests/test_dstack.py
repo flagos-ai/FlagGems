@@ -227,3 +227,35 @@ def test_dstack_rejects_non_tensor():
 
     with pytest.raises(TypeError):
         flag_gems.dstack(inp)
+
+
+@pytest.mark.dstack
+@pytest.mark.parametrize(
+    "shapes",
+    [
+        [(), ()],
+        [(3,), (3,)],
+        [(4, 5), (4, 5)],
+        [(4, 5, 6), (4, 5, 7)],
+        [(2, 2, 3, 4), (2, 2, 3, 4)],
+    ],
+)
+def test_dstack_backward(shapes):
+    """Autograd must reach every input; the old path silently returned None."""
+    inp = [
+        torch.randn(
+            shape, dtype=torch.float32, device=flag_gems.device
+        ).requires_grad_()
+        for shape in shapes
+    ]
+    ref_inp = [utils.to_reference(x.detach(), False).requires_grad_() for x in inp]
+
+    ref_out = torch.dstack(ref_inp)
+    res_out = flag_gems.dstack(inp)
+    assert res_out.requires_grad
+    ref_out.sum().backward()
+    res_out.sum().backward()
+
+    for got, ref in zip(inp, ref_inp):
+        assert got.grad is not None
+        utils.gems_assert_equal(got.grad, ref.grad)
