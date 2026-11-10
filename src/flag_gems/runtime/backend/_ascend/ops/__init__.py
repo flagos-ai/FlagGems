@@ -293,6 +293,7 @@ from .topk import topk
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .triu import triu
+from .true_divide_ import true_divide_, true_divide_tensor_
 from .unbind_copy import unbind_copy
 from .uniform import uniform
 from .unique import _unique2
@@ -674,6 +675,8 @@ __all__ = [
     "triangular_solve",
     "triangular_solve_out",
     "triu",
+    "true_divide_",
+    "true_divide_tensor_",
     "unbind_copy",
     "uniform",
     "unique_dim",

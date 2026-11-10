@@ -148,3 +148,89 @@ def test_true_divide_tensor_inplace_dispatch(shape, dtype, caplog):
     )
     assert res_out is inp1
     utils.gems_assert_close(inp1, ref_inp1, dtype, equal_nan=True)
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend division")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["dense", "strided", "rows", "scalar"])
+@pytest.mark.parametrize("entry", ["true_divide_", "true_divide_tensor_"])
+def test_ascend_true_divide_inplace_layout(dtype, layout, entry):
+    raw_cpu = torch.arange(3 * 514, dtype=torch.float32).reshape(3, 514) / 16
+    raw_cpu = raw_cpu.to(dtype)
+    raw = raw_cpu.to(flag_gems.device)
+    inp = raw[:, 1::2] if layout == "strided" else raw
+    ref_raw = raw_cpu.clone()
+    ref_inp = ref_raw[:, 1::2] if layout == "strided" else ref_raw
+    if layout == "dense":
+        divisor_cpu = torch.full(inp.shape, 2, dtype=dtype)
+    elif layout == "rows":
+        divisor_cpu = torch.tensor([[1], [2], [4]], dtype=dtype)
+    elif layout == "scalar":
+        divisor_cpu = 2.0
+    else:
+        divisor_cpu = torch.tensor(2, dtype=dtype)
+    divisor = (
+        divisor_cpu.to(inp.device)
+        if isinstance(divisor_cpu, torch.Tensor)
+        else divisor_cpu
+    )
+    ref_inp.div_(divisor_cpu)
+    actual = getattr(flag_gems, entry)(inp, divisor)
+    assert actual is inp
+    utils.gems_assert_equal(raw.cpu(), ref_raw)
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend graph replay")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ascend_true_divide_temperature_graph(dtype):
+    cpu = (torch.arange(151936, dtype=torch.float32) % 127).reshape(1, -1).to(dtype)
+    inp = cpu.to(flag_gems.device)
+    temperature = torch.tensor([[2]], dtype=dtype, device=inp.device)
+
+    def invoke():
+        return flag_gems.true_divide_(inp, temperature)
+
+    invoke()
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = invoke()
+    for divisor in [4, 2]:
+        inp.copy_(cpu)
+        temperature.fill_(divisor)
+        graph.replay()
+        torch.npu.synchronize()
+        assert actual is inp
+        utils.gems_assert_equal(inp.cpu(), cpu.div(divisor))
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend complex division")
+def test_ascend_true_divide_complex_inplace():
+    cpu = torch.tensor([1 + 2j, 3 - 4j, -5 + 6j], dtype=torch.complex64)
+    divisor_cpu = torch.tensor([2 - 1j, -1 + 2j, 3 + 4j], dtype=cpu.dtype)
+    inp = cpu.to(flag_gems.device)
+    divisor = divisor_cpu.to(inp.device)
+    actual = flag_gems.true_divide_(inp, divisor)
+    assert actual is inp
+    utils.gems_assert_close(inp.cpu(), cpu / divisor_cpu, dtype=cpu.dtype)
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend validation")
+@pytest.mark.parametrize("case", ["integer", "shape", "overlap"])
+def test_ascend_true_divide_invalid_preserves_input(case):
+    if case == "integer":
+        inp = torch.arange(4, dtype=torch.int32, device=flag_gems.device)
+        other = 2
+    elif case == "shape":
+        inp = torch.ones((1, 4), device=flag_gems.device)
+        other = torch.ones((2, 4), device=inp.device)
+    else:
+        inp = torch.ones((1,), device=flag_gems.device).expand(4)
+        other = 2
+    before = inp.cpu()
+    with pytest.raises(RuntimeError):
+        flag_gems.true_divide_(inp, other)
+    utils.gems_assert_equal(inp.cpu(), before)

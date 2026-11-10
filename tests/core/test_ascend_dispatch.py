@@ -242,3 +242,48 @@ def test_ascend_new_zeros_uses_source_device():
         result = src.new_zeros((3, 7))
     assert result.device == src.device
     utils.gems_assert_equal(result.cpu(), torch.zeros((3, 7), dtype=src.dtype))
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend dispatch")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("op", ["div_", "divide_", "true_divide_"])
+@pytest.mark.parametrize("overload", ["Tensor", "Scalar"])
+def test_ascend_true_divide_inplace_alias(dtype, op, overload):
+    cpu = torch.arange(257, dtype=torch.float32).to(dtype)
+    inp = cpu.to(flag_gems.device)
+    divisor = (
+        torch.tensor(2, dtype=dtype, device=inp.device) if overload == "Tensor" else 2
+    )
+    expected = cpu.div(2)
+    with flag_gems.use_gems(include=["true_divide_", "true_divide_tensor_"]):
+        actual = getattr(getattr(torch.ops.aten, op), overload)(inp, divisor)
+    assert actual is inp
+    utils.gems_assert_equal(inp.cpu(), expected)
+
+
+
+@pytest.mark.true_divide_
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend graph replay")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_ascend_true_divide_temperature_graph_dispatch(dtype):
+    cpu = (torch.arange(151936, dtype=torch.float32) % 127).reshape(1, -1).to(dtype)
+    inp = cpu.to(flag_gems.device)
+    temperature = torch.tensor([[2]], dtype=dtype, device=inp.device)
+
+    def invoke():
+        return inp.div_(temperature)
+
+    with flag_gems.use_gems(include=["true_divide_", "true_divide_tensor_"]):
+        invoke()
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = invoke()
+        for divisor in [4, 2]:
+            inp.copy_(cpu)
+            temperature.fill_(divisor)
+            graph.replay()
+            torch.npu.synchronize()
+            assert actual is inp
+            utils.gems_assert_equal(inp.cpu(), cpu.div(divisor))
+
