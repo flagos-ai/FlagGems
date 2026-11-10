@@ -225,6 +225,10 @@ def run(tensors, out=None, **kwargs):
         if out is None
         else out
     )
+    # Cast every input to the promoted dtype so the copy-element width used by
+    # the kernels matches the one implied by the result (a real input promoted
+    # to complex must be read as two copy units, not one).
+    items = [item.to(dtype=dtype).contiguous() for item in items]
 
     real_dtype = _real_dtype(result.dtype)
     unit = 1 if real_dtype is None else 2
