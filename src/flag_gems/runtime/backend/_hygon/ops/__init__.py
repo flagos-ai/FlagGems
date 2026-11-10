@@ -17,6 +17,7 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._conj import _conj
 from ._convolution_double_backward import _convolution_double_backward
+from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
@@ -238,6 +239,7 @@ __all__ = [
     "_convolution_double_backward",
     "_embedding_bag",
     "_embedding_bag_backward",
+    "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
     "_masked_scale",
