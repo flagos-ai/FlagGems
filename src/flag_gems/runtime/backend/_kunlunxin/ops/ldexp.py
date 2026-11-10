@@ -37,7 +37,7 @@ from flag_gems.ops.ldexp import (
     _validate_out,
 )
 from flag_gems.ops.copy import copy_
-from flag_gems.utils import pointwise_dynamic, tl_extra_shim
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -45,32 +45,46 @@ _WRAP_INTEGER_EXPONENT = tuple(map(int, torch.__version__.split(".")[:2])) >= (2
 
 
 @triton.jit
-def _ldexp_fallback(x, n):
-    return x * tl.exp2(n.to(x.dtype))
+def _scalbn32(x, n):
+    """x * 2^n (fp32; n int32) for NORMAL x, built from the bit pattern.
 
-
-# The xpu libdevice ldexp (fp32) is correct on this stack; fp64 is not (see
-# _ldexp64 below).  getattr fallback keeps the vendor module importable on
-# other backends / triton versions (mirrors the generic ldexp.py).
-_ldexp = getattr(tl_extra_shim, "ldexp", _ldexp_fallback)
+    The XPU runtime used in CI (flagtree triton) lacks the libdevice `ldexp`
+    extern, and the FPU multiply flushes subnormal results to +-0.0, so the
+    scale is done purely in integer bits:  x * 2^n has exponent field
+    e = expo(x) + n; normal results are (e << 23) | mantissa, and subnormal
+    results (e <= 0) are the exact integer shift M >> (1 - e).
+    """
+    bits = x.to(tl.int32, bitcast=True)
+    sign = bits & -2147483648
+    M = (bits & 0x7FFFFF) | 0x800000
+    e = ((bits >> 23) & 0xFF).to(tl.int32) + n
+    e_c = tl.maximum(tl.minimum(e, 254), 1)
+    normal_bits = (e_c << 23) | (bits & 0x7FFFFF)
+    shift = tl.maximum(tl.minimum(1 - e, 31), 0)
+    sub_bits = M >> shift
+    bits_out = tl.where(e <= 0, sub_bits, normal_bits)
+    bits_out = tl.where(e >= 255, 0x7F800000, bits_out)
+    return (sign | bits_out).to(tl.float32, bitcast=True)
 
 
 @triton.jit
 def _ldexp32(x, n):
-    """Exact x * 2^n (fp32; n int32).
+    """Exact x * 2^n (fp32; n int32), no libdevice dependency.
 
-    Mirrors the generic `_ldexp32`: the libdevice ldexp handles normal inputs
-    exactly, while subnormal inputs (whose mantissa would be flushed by the
-    XPU multiply) are scaled through the integer mantissa instead.
+    Normal inputs are scaled bit-exactly by `_scalbn32`; subnormal inputs
+    (whose mantissa the XPU multiply would flush) are re-scaled through the
+    integer mantissa.  Zeros / inf / nan pass through unchanged.
     """
     bits = x.to(tl.int32, bitcast=True)
     mantissa = bits & 0x7FFFFF
-    subnormal = ((bits & 0x7F800000) == 0) & (mantissa != 0)
+    expo = ((bits >> 23) & 0xFF).to(tl.int32)
+    subnormal = (expo == 0) & (mantissa != 0)
     n = tl.maximum(tl.minimum(n, 2**30), -(2**30))
-    normal_result = _ldexp(x, n)
-    subnormal_result = _ldexp(mantissa.to(tl.float32), n - 149)
+    normal_result = _scalbn32(x, n)
+    subnormal_result = _scalbn32(mantissa.to(tl.float32), n - 149)
     subnormal_result = tl.where(bits < 0, -subnormal_result, subnormal_result)
-    return tl.where(subnormal, subnormal_result, normal_result)
+    return tl.where((expo == 0xFF) | ((expo == 0) & (mantissa == 0)), x,
+                    tl.where(subnormal, subnormal_result, normal_result))
 
 
 @triton.jit
