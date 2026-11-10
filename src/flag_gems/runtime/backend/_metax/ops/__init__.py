@@ -99,6 +99,16 @@ from .foreach_minimum_list_ import foreach_minimum_list_
 from .foreach_minimum_scalar import foreach_minimum_scalar
 from .foreach_minimum_scalar_ import foreach_minimum_scalar_
 from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
+from .foreach_minimum_scalar_list_ import foreach_minimum_scalar_list_
+from .foreach_mul_list import foreach_mul_list
+from .foreach_mul_list_ import foreach_mul_list_
+from .foreach_mul_scalar import foreach_mul_scalar
+from .foreach_mul_scalar_ import foreach_mul_scalar_
+from .foreach_mul_scalar_list import foreach_mul_scalar_list
+from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
+from .foreach_mul_tensor import foreach_mul_tensor
+from .foreach_mul_tensor_ import foreach_mul_tensor_
+from .foreach_neg import foreach_neg
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -334,6 +344,16 @@ __all__ = [
     "foreach_minimum_scalar",
     "foreach_minimum_scalar_",
     "foreach_minimum_scalar_list",
+    "foreach_minimum_scalar_list_",
+    "foreach_mul_list",
+    "foreach_mul_list_",
+    "foreach_mul_scalar",
+    "foreach_mul_scalar_",
+    "foreach_mul_scalar_list",
+    "foreach_mul_scalar_list_",
+    "foreach_mul_tensor",
+    "foreach_mul_tensor_",
+    "foreach_neg",
     "full",
     "full_like",
     "gcd_",
