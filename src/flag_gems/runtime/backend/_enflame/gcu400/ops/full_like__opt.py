@@ -14,6 +14,7 @@
 float16/fp32/bfloat16 的溢出检查内联并缓存 finfo，避免 codegen 的
 Python 层开销，同时保留生产 check_dtype 的语义。
 """
+
 import math
 
 import torch
@@ -36,8 +37,7 @@ _FINFO = {
 
 
 @triton.jit
-def _fill_kernel(OUT, N, VAL, BLOCK_SIZE: tl.constexpr,
-                 MASKED: tl.constexpr):
+def _fill_kernel(OUT, N, VAL, BLOCK_SIZE: tl.constexpr, MASKED: tl.constexpr):
     pid = tl.program_id(0)
     off = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     v = tl.full([BLOCK_SIZE], VAL, OUT.dtype.element_ty)
@@ -47,33 +47,56 @@ def _fill_kernel(OUT, N, VAL, BLOCK_SIZE: tl.constexpr,
         tl.store(OUT + off, v)
 
 
-def full_like(x, fill_value, *, dtype=None, layout=None, device=None,
-              pin_memory=None, memory_format=None):
+def full_like(
+    x,
+    fill_value,
+    *,
+    dtype=None,
+    layout=None,
+    device=None,
+    pin_memory=None,
+    memory_format=None,
+):
     dt = x.dtype if dtype is None else dtype
     dev = x.device if device is None else torch.device(device)
-    if (dev.type != "gcu" or dt not in _FINFO
-            or isinstance(fill_value, torch.Tensor)
-            or layout is not None or pin_memory is not None
-            or memory_format is not None):
-        return _public(x, fill_value, dtype=dtype, layout=layout,
-                       device=device, pin_memory=pin_memory,
-                       memory_format=memory_format)
+    if (
+        dev.type != "gcu"
+        or dt not in _FINFO
+        or isinstance(fill_value, torch.Tensor)
+        or layout is not None
+        or pin_memory is not None
+        or memory_format is not None
+    ):
+        return _public(
+            x,
+            fill_value,
+            dtype=dtype,
+            layout=layout,
+            device=device,
+            pin_memory=pin_memory,
+            memory_format=memory_format,
+        )
 
     # 与生产 check_dtype 相同的溢出检查（finfo 已缓存）
-    if (not isinstance(fill_value, bool)
-            and not (math.isinf(fill_value) or math.isnan(fill_value))):
+    if not isinstance(fill_value, bool) and not (
+        math.isinf(fill_value) or math.isnan(fill_value)
+    ):
         fi = _FINFO[dt]
         if fill_value < fi.min or fill_value > fi.max:
             raise RuntimeError(
-                f"value cannot be converted to type {dt} without overflow")
+                f"value cannot be converted to type {dt} without overflow"
+            )
 
     n = x.numel()
     out = torch.empty(x.size(), device=dev, dtype=dt)
     if n == 0:
         return out
     _fill_kernel[(triton.cdiv(n, BLOCK),)](
-        out, n, fill_value,
-        BLOCK_SIZE=BLOCK, MASKED=(n % BLOCK != 0) or (BLOCK > n),
+        out,
+        n,
+        fill_value,
+        BLOCK_SIZE=BLOCK,
+        MASKED=(n % BLOCK != 0) or (BLOCK > n),
         num_warps=NUM_WARPS,
     )
     return out

@@ -268,6 +268,7 @@ def cat_out(
     logger.debug("GEMS_ENFLAME CAT_OUT")
     A = list(A)
     from .cat__opt import try_fast_cat_out as _try_fast_cat_out
+
     if _try_fast_cat_out(A, dim, out):
         return out
     if _should_use_uint8_view_path(A):
@@ -327,6 +328,7 @@ def cat(
     logger.debug("GEMS_ENFLAME CAT")
     A = list(A)
     from .cat__opt import try_fast_cat as _try_fast_cat
+
     _fast = _try_fast_cat(A, dim)
     if _fast is not None:
         return _fast

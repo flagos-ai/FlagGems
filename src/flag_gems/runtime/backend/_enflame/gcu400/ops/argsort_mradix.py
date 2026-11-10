@@ -198,9 +198,7 @@ if HAS_TLE_RAW:
         # sign bit) for a non-negative one: `sign * MASK | TOP`.
         if x.dtype.is_floating():
             sign = (u >> SHIFT).to(tl.uint32)
-            hi = sign * tl.full((1,), MASK, tl.uint32) | tl.full(
-                (1,), TOP, tl.uint32
-            )
+            hi = sign * tl.full((1,), MASK, tl.uint32) | tl.full((1,), TOP, tl.uint32)
         elif x.dtype.is_int_signed():
             hi = tl.full((1,), TOP, tl.uint32)
         else:
@@ -304,13 +302,9 @@ if HAS_TLE_RAW:
             #   - anything else leaves int32: a *masked* 64-bit store loses half
             #     of its lanes on GCU, so the widening is left to torch.
             if not IDX_IN_REGION:
-                iout = tl.load(
-                    tle.gpu.local_ptr(buf, (2 * BLOCK_N + offs,)), mask=mask
-                )
+                iout = tl.load(tle.gpu.local_ptr(buf, (2 * BLOCK_N + offs,)), mask=mask)
                 if OUT_I64:
-                    tl.store(
-                        output_idx64_ptr + row * N + offs, iout.to(tl.int64)
-                    )
+                    tl.store(output_idx64_ptr + row * N + offs, iout.to(tl.int64))
                 else:
                     tl.store(
                         output_idx_ptr + row * N + offs,

@@ -19,6 +19,7 @@
 直接取 `LibEntry.fn.fn` 原始 JITFunction 显式传 constexpr。
 运行时 patch `Heuristics.values` 无效（LibEntry 缓存已固化），实测 1.00x。
 """
+
 import math
 
 import torch
@@ -52,8 +53,13 @@ def _out_index(inp, shape_list, dim, keepdim):
 
 
 def argmax(inp, dim=None, keepdim=False, *, dtype=None):
-    if (dim is None or dtype is not None or keepdim
-            or inp.numel() == 0 or not inp.is_contiguous()):
+    if (
+        dim is None
+        or dtype is not None
+        or keepdim
+        or inp.numel() == 0
+        or not inp.is_contiguous()
+    ):
         return _prod_argmax(inp, dim, keepdim, dtype=dtype)
 
     shape = inp.shape
@@ -70,23 +76,42 @@ def argmax(inp, dim=None, keepdim=False, *, dtype=None):
             out_index = _out_index(inp, shape_list, dim, keepdim)
             TILE_N, BLOCK_M = _inner_constexpr(M, N)
             grid = (min(48, triton.cdiv(M, BLOCK_M)), 1, 1)
-            _KI[grid](inp, out_index, M, N,
-                      TILE_N=TILE_N, BLOCK_M=BLOCK_M,
-                      GRID_SIZE=48, NUM_STAGES=4,
-                      num_warps=4)
+            _KI[grid](
+                inp,
+                out_index,
+                M,
+                N,
+                TILE_N=TILE_N,
+                BLOCK_M=BLOCK_M,
+                GRID_SIZE=48,
+                NUM_STAGES=4,
+                num_warps=4,
+            )
             return out_index
 
-        if (d == 1 and inp.dtype in (torch.float32, torch.bfloat16)
-                and K >= 512 and N >= 512):
+        if (
+            d == 1
+            and inp.dtype in (torch.float32, torch.bfloat16)
+            and K >= 512
+            and N >= 512
+        ):
             out_index = _out_index(inp, shape_list, dim, keepdim)
             TILE_K = min(triton.next_power_of_2(K), 512)
             TILE_N = 64
             grid = (min(48, M * triton.cdiv(K, TILE_K)), 1, 1)
-            _KN[grid](inp, out_index, M, N, K,
-                      TILE_K=TILE_K, TILE_N=TILE_N,
-                      ONE_TILE_PER_CTA=False,
-                      GRID_SIZE=48, NUM_STAGES=4,
-                      num_warps=4)
+            _KN[grid](
+                inp,
+                out_index,
+                M,
+                N,
+                K,
+                TILE_K=TILE_K,
+                TILE_N=TILE_N,
+                ONE_TILE_PER_CTA=False,
+                GRID_SIZE=48,
+                NUM_STAGES=4,
+                num_warps=4,
+            )
             return out_index
 
         return _prod_argmax(inp, dim, keepdim, dtype=dtype)

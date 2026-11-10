@@ -5,6 +5,7 @@ ENFLAME max_grid_size=(12,1,1) 让大 shape 并行度不足。
 gt_scalar_ 上已验证 2^24/2^30 档 B131072/nw4 显著优于 B32768/nw4；
 微秒级小 shape 复用生产同一底层调用，避免额外 Python 判断造成回归。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -22,10 +23,12 @@ def _floor_out_kernel(X, Out, N, BLOCK: tl.constexpr):
 def floor_out(A, *, out=None):
     if out is None:
         from flag_gems.ops.floor import floor_out as _public
+
         return _public(A, out=None)
     n = A.numel()
     if n < 65536 or not A.is_contiguous() or not out.is_contiguous():
         from flag_gems.ops.floor import floor_func
+
         floor_func(A, out0=out)
         return out
     BLOCK, num_warps = 131072, 4

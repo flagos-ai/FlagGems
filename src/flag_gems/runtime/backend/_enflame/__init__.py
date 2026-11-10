@@ -53,7 +53,7 @@ int64_enabled = arch_version != 300
 # torch.randn(dtype=complex64) reaches topsatenNormal with ComplexFloat and
 # fails TOPSATEN_STATUS_NOT_SUPPORT, which is a C++ terminate rather than a
 # catchable exception.
-complex_enabled = False
+complex_enabled = arch_version != 300
 
 vendor_info = VendorDescriptor(
     vendor_name="enflame",

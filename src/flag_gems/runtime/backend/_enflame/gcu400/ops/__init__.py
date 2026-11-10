@@ -16,25 +16,64 @@ from ._aminmax import _aminmax, _aminmax_out
 from ._amp_foreach_non_finite_check_and_unscale_ import (
     _amp_foreach_non_finite_check_and_unscale_,
 )
+from ._cummin_helper import _cummin_helper
+from ._euclidean_dist import _euclidean_dist
+from ._foreach_add__List import _foreach_add__List
+from ._foreach_addcdiv__Scalar import _foreach_addcdiv__Scalar
+from ._foreach_ceil import _foreach_ceil, _foreach_ceil_
+from ._foreach_clamp_min import _foreach_clamp_min__List
+from ._foreach_cos_ import _foreach_cos_
+from ._foreach_div import _foreach_div__ScalarList
+from ._foreach_exp import _foreach_exp, _foreach_exp_
+from ._foreach_lerp__List import _foreach_lerp__List
+from ._foreach_log2 import _foreach_log2
+from ._foreach_log2_ import _foreach_log2_
+from ._foreach_log10 import _foreach_log10
+from ._foreach_maximum_List import _foreach_maximum_List
+from ._foreach_minimum import (
+    _foreach_minimum__Scalar,
+    _foreach_minimum__ScalarList,
+    _foreach_minimum_Scalar,
+    _foreach_minimum_ScalarList,
+)
+from ._foreach_mul import (
+    _foreach_mul__List,
+    _foreach_mul__Scalar,
+    _foreach_mul__ScalarList,
+    _foreach_mul__Tensor,
+    _foreach_mul_List,
+    _foreach_mul_Scalar,
+    _foreach_mul_ScalarList,
+    _foreach_mul_Tensor,
+)
+from ._foreach_neg import _foreach_neg
+from ._foreach_pow import _foreach_pow__List
+from .upsample_nearest1d_backward import (
+    upsample_nearest1d_backward,
+    upsample_nearest1d_backward_grad_input,
+)
+from ._foreach_sign import _foreach_sign, _foreach_sign_
+from ._foreach_sin import _foreach_sin
+from ._foreach_sqrt import _foreach_sqrt
+from ._foreach_sqrt_ import _foreach_sqrt_
+from ._foreach_sub import (
+    _foreach_sub__Scalar,
+    _foreach_sub__ScalarList,
+    _foreach_sub_Scalar,
+    _foreach_sub_ScalarList,
+)
+from ._foreach_tan import _foreach_tan
+from ._foreach_zero import _foreach_zero, _foreach_zero_
 from ._functional_sym_constrain_range import (
     _functional_sym_constrain_range,
 )
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._is_all_true import _is_all_true
 from ._native_batch_norm_legit_functional import (
     _native_batch_norm_legit_functional,
 )
-from .linalg_cholesky import linalg_cholesky
-from .cholesky import cholesky
-from ._euclidean_dist import _euclidean_dist
-from ._foreach_zero import _foreach_zero, _foreach_zero_
-from ._foreach_log2_ import _foreach_log2_
-from .conv3d import conv3d
-from .conv2d__opt import conv2d
-from .conv1d__opt import conv1d
-from .atan2 import atan2, atan2_out
-from .lgamma_ import lgamma, lgamma_
 from ._safe_softmax import _safe_softmax
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._scaled_dot_product_fused_attention_overrideable import (
@@ -59,6 +98,8 @@ from .abs import abs, abs_
 from .absolute import absolute
 from .acos import acos
 from .acosh import acosh, acosh_
+from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
+from .adaptive_max_pool3d import adaptive_max_pool3d
 from .add import add, add_
 from .addcmul import addcmul, addcmul_out
 from .addmm import addmm, addmm_out
@@ -66,27 +107,6 @@ from .addmm_dtype import addmm_dtype, addmm_dtype_out
 from .addmv import addmv, addmv_out
 from .alias_copy import alias_copy, alias_copy_out
 from .all import all, all_dim, all_dims
-from .rsub import rsub_tensor
-from .rsub__opt import rsub_scalar
-from .not_equal import not_equal
-from .not_equal_scalar__opt import not_equal_scalar
-from .greater_equal import greater_equal, greater_equal_scalar, greater_equal_
-from .trunc_ import trunc, trunc_
-from .copysign import copysign, copysign_out
-from .greater import greater, greater_out
-from .greater_scalar__opt import greater_scalar
-from .greater_scalar_out__opt import greater_scalar_out
-from .copysign_ import copysign_
-from .logical_xor_ import logical_xor_
-from .prod import prod, prod_dim
-from .rad2deg import rad2deg, rad2deg_
-from .clamp_max import clamp_max
-from .clamp_max__opt import clamp_max_
-from .gt import gt_tensor_
-from .gt_scalar__opt import gt_scalar_
-
-from .logical_and import logical_and_
-from .ceil import ceil_out
 from .amin import amin, amin_
 from .aminmax import aminmax
 from .angle import angle
@@ -104,6 +124,7 @@ from .argsort import argsort
 from .asin import asin_
 from .asinh import asinh, asinh_, asinh_out
 from .atan import atan, atan_
+from .atan2 import atan2, atan2_out
 from .atanh import atanh, atanh_
 from .attention import (
     ScaleDotProductAttention,
@@ -115,6 +136,7 @@ from .attention import (
 )
 from .avg_pool2d import avg_pool2d, avg_pool2d_backward
 from .baddbmm import baddbmm, baddbmm_out
+from .batch_norm_backward_reduce import batch_norm_backward_reduce
 from .binary_cross_entropy_with_logits import (
     binary_cross_entropy_with_logits,
     binary_cross_entropy_with_logits_,
@@ -144,26 +166,36 @@ from .bitwise_xor import (
     bitwise_xor_tensor_,
 )
 from .bmm import bmm, bmm_out
+from .bucketize__opt import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_
-from .ceil import ceil, ceil_
+from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
+from .cholesky import cholesky
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_
+from .clamp_max import clamp_max
+from .clamp_max__opt import clamp_max_
+from .clip___opt import clip_
+from .clip__opt import clip
+from .combinations import combinations
 from .concat__opt import concat
 from .concatenate import concatenate
 from .constant_pad_nd import constant_pad_nd
 from .contiguous import contiguous
-from ._is_all_true import _is_all_true
+from .conv1d__opt import conv1d
+from .conv2d__opt import conv2d
+from .conv3d import conv3d
 from .copy import copy, copy_
+from .copysign import copysign, copysign_out
+from .copysign_ import copysign_
 from .cos import cos, cos_
-from .cosh_out__opt import cosh_out
-from .cosh__opt import cosh
 from .cosh___opt import cosh_
+from .cosh__opt import cosh
+from .cosh_out__opt import cosh_out
 from .count_nonzero import count_nonzero
 from .cummax import cummax
-from .cummin import cummin
 from .cummaxmin_backward__opt import cummaxmin_backward
-from .bucketize__opt import bucketize
+from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
 from .diag_embed import diag_embed
@@ -180,20 +212,19 @@ from .div import (
     trunc_divide,
     trunc_divide_,
 )
-from .dropout import dropout, dropout_backward, native_dropout_backward
 from .dot import dot
+from .dropout import dropout, dropout_backward, native_dropout_backward
 from .elu import elu, elu_
 from .eq import eq, eq_scalar, equal
 from .erf import erf, erf_
 from .erfinv_ import erfinv, erfinv_
 from .exp import exp, exp_, exp_out
 from .exp2 import exp2, exp2_
+from .expm1___opt import expm1_
+from .expm1__opt import expm1
+from .expm1_out__opt import expm1_out
 from .exponential import exponential
 from .exponential_ import exponential_
-from .square_out import square_out
-from .square__opt import square_
-
-from .square import square
 from .eye import eye
 from .eye_m import eye_m
 from .feature_dropout import feature_dropout, feature_dropout_
@@ -208,40 +239,34 @@ from .fill import (
 from .flash_attention_backward_gcu400__opt import (
     scaled_dot_product_efficient_attention_backward,
 )
-from .frac_ import frac, frac_
 from .flip import flip
 from .floor_ import floor_
 from .floor__opt import floor
-from .clip__opt import clip
-from .clip___opt import clip_
-from .expm1_out__opt import expm1_out
-from .expm1__opt import expm1
-from .expm1___opt import expm1_
 from .floor_out__opt import floor_out
-
 from .fmax import fmax, fmax_out
 from .fmin import fmin, fmin_out
 from .fmod import fmod_, fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
+from .frac_ import frac, frac_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .fractional_max_pool3d_backward import fractional_max_pool3d_backward
-from .full import full
+from .full__opt import full
 from .full_like__opt import full_like
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_out
 from .ge import ge, ge_scalar
 from .gelu import gelu, gelu_, gelu_backward
 from .glu import glu, glu_backward
+from .greater import greater, greater_out
+from .greater_equal import greater_equal, greater_equal_, greater_equal_scalar
+from .greater_scalar__opt import greater_scalar
+from .greater_scalar_out__opt import greater_scalar_out
 from .grid_sample import grid_sample
 from .group_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
-from .gt import gt, gt_scalar
+from .gt import gt, gt_scalar, gt_tensor_
+from .gt_scalar__opt import gt_scalar_
 from .hardsigmoid import hardsigmoid, hardsigmoid_out
 from .hardswish_ import hardswish_
-from .repeat import repeat
-from .top_k_per_row_decode import top_k_per_row_decode
-from .per_token_group_quant_fp8 import per_token_group_quant_fp8
-from .rwkv_mm_sparsity import rwkv_mm_sparsity
-from .linalg_ldl_solve import linalg_ldl_solve
 from .histc import histc
 from .hstack import hstack
 from .hypot import hypot, hypot_out
@@ -262,14 +287,20 @@ from .layernorm import layer_norm, layer_norm_backward
 from .le import le, le_scalar
 from .leaky_relu import leaky_relu, leaky_relu_, leaky_relu_out
 from .lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
+from .less_equal import less_equal
+from .less_equal_scalar__opt import less_equal_scalar
+from .lgamma_ import lgamma, lgamma_
 from .lift_fresh_copy import lift_fresh_copy, lift_fresh_copy_out
-from .linalg_ldl_factor import ldl_factor as linalg_ldl_factor
+from .linalg_cholesky import linalg_cholesky
 
 # Also bind the bare name: the aten patcher (op_registrar._resolve_live_override)
 # looks the override up as flag_gems.<generic function __name__>, which for
 # aten::linalg_ldl_factor is "ldl_factor".  Without this alias, use_gems() would
 # keep registering the generic flag_gems.ops implementation instead of this one.
 from .linalg_ldl_factor import ldl_factor  # noqa: F401
+from .linalg_ldl_factor import ldl_factor as linalg_ldl_factor
+from .linalg_ldl_solve import linalg_ldl_solve
+from .linalg_matrix_rank import linalg_matrix_rank
 from .linalg_polar import linalg_polar
 from .linear import linear
 from .linspace import linspace
@@ -286,12 +317,11 @@ from .log_softmax import (
     log_softmax_out,
 )
 from .logaddexp import logaddexp, logaddexp_out
-from .logical_and import logical_and
+from .logical_and import logical_and, logical_and_
 from .logical_not import logical_not
-from .less_equal import less_equal
-from .less_equal_scalar__opt import less_equal_scalar
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor
+from .logical_xor_ import logical_xor_
 from .logit import logit, logit_, logit_out
 from .logspace import logspace
 from .lt import lt, lt_scalar
@@ -311,6 +341,7 @@ from .minimum import minimum
 from .mm import mm, mm_out, router_gemm
 from .mse_loss import mse_loss
 from .mul import mul, mul_
+from .multi_margin_loss_out import multi_margin_loss_out
 from .multinomial import multinomial
 from .multiply_ import multiply_
 from .mv import mv
@@ -319,11 +350,15 @@ from .native_layer_norm import native_layer_norm
 from .ne import ne, ne_scalar
 from .neg import neg, neg_
 from .negative import negative, negative_, negative_out
+from .nested_compute_contiguous_strides_offsets import (
+    nested_compute_contiguous_strides_offsets,
+)
+from .new_zeros import new_zeros, new_zeros_out
 from .nllloss import (
-    nll_loss_backward,
-    nll_loss_forward,
     nll_loss2d_backward,
     nll_loss2d_forward,
+    nll_loss_backward,
+    nll_loss_forward,
 )
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
@@ -333,11 +368,13 @@ from .normal import (
     normal_tensor_float,
     normal_tensor_tensor,
 )
+from .not_equal import not_equal
+from .not_equal_scalar__opt import not_equal_scalar
 from .one_hot import one_hot
 from .ones import ones
 from .ones_like import ones_like
 from .pad__opt import pad
-
+from .per_token_group_quant_fp8 import per_token_group_quant_fp8
 from .poisson__opt import poisson
 from .polar import polar
 from .pow import (
@@ -348,7 +385,9 @@ from .pow import (
     pow_tensor_tensor_,
 )
 from .prelu__opt import prelu
+from .prod import prod, prod_dim
 from .quantile import quantile
+from .rad2deg import rad2deg, rad2deg_
 from .randint import randint
 from .randn import randn
 from .randn_like import randn_like
@@ -358,6 +397,7 @@ from .reflection_pad2d import reflection_pad2d, reflection_pad2d_out
 from .relu import relu, relu_
 from .relu6 import relu6
 from .remainder import remainder, remainder_
+from .repeat import repeat
 from .repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
@@ -370,6 +410,9 @@ from .rms_norm import rms_norm
 from .round import round, round_, round_out
 from .rrelu_with_noise_backward__opt import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
+from .rsub import rsub_tensor
+from .rsub__opt import rsub_scalar
+from .rwkv_mm_sparsity import rwkv_mm_sparsity
 from .scatter import scatter, scatter_
 from .scatter_add_ import scatter_add, scatter_add_
 from .scatter_reduce__opt import scatter_reduce
@@ -384,8 +427,8 @@ from .selu import selu
 from .selu_ import selu_
 from .sgn_ import sgn_
 from .sigmoid import sigmoid, sigmoid_, sigmoid_backward
-from .silu import silu, silu_, silu_backward
 from .signbit__opt import signbit
+from .silu import silu, silu_, silu_backward
 from .sin import sin, sin_
 from .sinh_ import sinh_
 from .slice_backward import slice_backward
@@ -397,15 +440,29 @@ from .softmax_out__opt import softmax_out
 from .softplus import softplus
 from .softshrink import softshrink, softshrink_out
 from .sort import sort, sort_stable
+from .special_bessel_j1 import special_bessel_j1
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
+from .special_chebyshev_polynomial_w import (
+    special_chebyshev_polynomial_w,
+    special_chebyshev_polynomial_w_out,
+)
 from .special_i0e import special_i0e, special_i0e_out
 from .special_i1 import special_i1, special_i1_out
-from .special_bessel_j1 import special_bessel_j1
 from .special_modified_bessel_k0 import (
     special_modified_bessel_k0,
     special_modified_bessel_k0_out,
 )
+from .embedding_bag_backward import _embedding_bag_backward
+from .embedding_bag import _embedding_bag, embedding_bag
+from .special_scaled_modified_bessel_k0 import (
+    special_scaled_modified_bessel_k0,
+    special_scaled_modified_bessel_k0_out,
+)
+from .special_xlogy import special_xlogy, special_xlogy_
 from .sqrt import sqrt, sqrt_
+from .square import square
+from .square__opt import square_
+from .square_out import square_out
 from .stack import stack
 from .std import std
 from .sub import sub, sub_
@@ -417,8 +474,10 @@ from .tanh import tanh, tanh_, tanh_backward
 from .threshold import threshold, threshold_backward
 from .tile import tile
 from .to import to_dtype
+from .top_k_per_row_decode import top_k_per_row_decode
 from .topk import topk
 from .tril import tril, tril_, tril_out
+from .trunc_ import trunc, trunc_
 from .uniform import uniform_
 from .unique import (
     _unique2,
@@ -437,15 +496,19 @@ from .vector_norm import vector_norm
 from .view_copy import view_copy
 from .vstack__opt import vstack
 from .where import where_scalar_other, where_scalar_self, where_self, where_self_out
-from .new_zeros import new_zeros, new_zeros_out
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
-
-from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
-from .adaptive_max_pool3d import adaptive_max_pool3d
+from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
+from .cudnn_rnn_backward import cudnn_rnn_backward
+from .thnn_fused_gru_cell_backward import _thnn_fused_gru_cell_backward_out
+from .gru import gru_data
 
 __all__ = [
+    "gru_data",
+    "_thnn_fused_gru_cell_backward_out",
+    "cudnn_rnn_backward",
+    "_thnn_fused_lstm_cell_backward_impl",
     "adaptive_max_pool2d_backward",
     "adaptive_max_pool3d",
     "_aminmax",
@@ -563,6 +626,7 @@ __all__ = [
     "avg_pool2d_backward",
     "baddbmm",
     "baddbmm_out",
+    "batch_norm_backward_reduce",
     "binary_cross_entropy_with_logits",
     "binary_cross_entropy_with_logits_",
     "bitwise_and_scalar",
@@ -600,6 +664,7 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "combinations",
     "concat",
     "concatenate",
     "constant_pad_nd",
@@ -616,6 +681,7 @@ __all__ = [
     "count_nonzero",
     "cummax",
     "cummin",
+    "_cummin_helper",
     "cummaxmin_backward",
     "bucketize",
     "cumsum",
@@ -754,9 +820,49 @@ __all__ = [
     "linear",
     "linspace",
     "linalg_cholesky",
+    "linalg_matrix_rank",
     "cholesky",
     "_euclidean_dist",
+    "_foreach_log2",
+    "_foreach_tan",
+    "_foreach_neg",
+    "_foreach_sqrt",
     "_foreach_log2_",
+    "_foreach_sqrt_",
+    "_foreach_add__List",
+    "_foreach_log10",
+    "_foreach_cos_",
+    "_foreach_sin",
+    "_foreach_sign",
+    "_foreach_sign_",
+    "_foreach_lerp__List",
+    "_foreach_addcdiv__Scalar",
+    "_foreach_maximum_List",
+    "_foreach_clamp_min__List",
+    "_foreach_mul_List",
+    "_foreach_mul_Scalar",
+    "_foreach_mul_ScalarList",
+    "_foreach_mul_Tensor",
+    "_foreach_mul__List",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
+    "_foreach_mul__Tensor",
+    "_foreach_sub_Scalar",
+    "_foreach_sub_ScalarList",
+    "_foreach_sub__Scalar",
+    "_foreach_sub__ScalarList",
+    "_foreach_minimum_Scalar",
+    "_foreach_minimum_ScalarList",
+    "_foreach_minimum__Scalar",
+    "_foreach_minimum__ScalarList",
+    "_foreach_div__ScalarList",
+    "_foreach_pow__List",
+    "upsample_nearest1d_backward",
+    "upsample_nearest1d_backward_grad_input",
+    "_foreach_exp_",
+    "_foreach_exp",
+    "_foreach_ceil_",
+    "_foreach_ceil",
     "_foreach_zero",
     "_foreach_zero_",
     "conv3d",
@@ -828,6 +934,7 @@ __all__ = [
     "negative",
     "negative_",
     "negative_out",
+    "nested_compute_contiguous_strides_offsets",
     "nonzero",
     "nonzero_numpy",
     "normal_",
@@ -920,6 +1027,8 @@ __all__ = [
     "sorted_indices_unique_flat",
     "sorted_quick_unique_flat",
     "special_chebyshev_polynomial_u",
+    "special_chebyshev_polynomial_w",
+    "special_chebyshev_polynomial_w_out",
     "special_i0e",
     "special_i0e_out",
     "special_i1",
@@ -927,6 +1036,13 @@ __all__ = [
     "special_bessel_j1",
     "special_modified_bessel_k0",
     "special_modified_bessel_k0_out",
+    "_embedding_bag_backward",
+    "_embedding_bag",
+    "embedding_bag",
+    "special_scaled_modified_bessel_k0",
+    "special_scaled_modified_bessel_k0_out",
+    "special_xlogy",
+    "special_xlogy_",
     "sqrt",
     "sqrt_",
     "stack",
@@ -979,4 +1095,13 @@ __all__ = [
     "zero_out",
     "zeros",
     "zeros_like",
+    "multi_margin_loss_out",
 ]
+
+# Enflame has no vendor FFT, so point the STFT path at the aten::fft-backed
+# implementation.  Imported and executed here (not at package import) so the
+# shared flag_gems.ops.stft module already exists to be patched.
+from ..stft_fft import install as _install_enflame_fft
+
+_install_enflame_fft()
+del _install_enflame_fft

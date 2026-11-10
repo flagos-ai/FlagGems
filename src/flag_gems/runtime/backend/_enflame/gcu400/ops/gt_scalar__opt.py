@@ -5,6 +5,7 @@
 让大 shape 并行度不足。v2 增加 2^28 以上超大 shape 的 B131072/nw4 档（2^30 探针最优）。
 小 shape 也用手写小 BLOCK kernel（回退公共实现会多一层派发开销）。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -25,6 +26,7 @@ def gt_scalar_(A, B):
         # 小 shape 已是 launch 开销下限（约 0.0037ms），任何额外 Python 判断
         # 都会造成 5~10% 回归；直接复用生产同一调用，保证严格 1.000x
         from flag_gems.ops.gt import gt_func_scalar
+
         return gt_func_scalar(A, B, out0=A)
     # 2^24 与 2^30 两档探针一致：B131072/nw4 最优
     # （2^24 约 6.3x、2^30 约 8.8x 于公共实现），grid 分别为 128 / 8192
@@ -33,6 +35,5 @@ def gt_scalar_(A, B):
     if grid[0] > 65535:
         BLOCK = 65536
         grid = (triton.cdiv(n, BLOCK),)
-    _gt_scalar_inplace_kernel[grid](A, n, float(B), BLOCK=BLOCK,
-                                    num_warps=num_warps)
+    _gt_scalar_inplace_kernel[grid](A, n, float(B), BLOCK=BLOCK, num_warps=num_warps)
     return A

@@ -9,6 +9,7 @@
 host 分支与生产逐字同构（零额外 Python 判断），保留 ValueError 语义；
 `out0=A` 保证 in-place 契约（返回值就是 A 本体）。
 """
+
 from flag_gems.runtime.backend._enflame.gcu400.ops.clip__opt import (
     clip_func,
     clip_func_max,

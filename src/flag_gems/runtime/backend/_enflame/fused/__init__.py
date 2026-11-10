@@ -75,6 +75,9 @@ elif arch_version == 400 or arch_version == 410:
     from .gcu400.FLA import fused_recurrent_gated_delta_rule_fwd
     from .gcu400.flash_mla import flash_mla
     from .gcu400.fused_add_rms_norm import fused_add_rms_norm
+    from .gcu400.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (  # noqa: F401
+        fused_deepseek_v4_qnorm_rope_kv_rope_insert,
+    )
     from .gcu400.fused_moe import (  # noqa: F401
         dispatch_fused_moe_kernel,
         fused_experts_impl,
@@ -88,6 +91,7 @@ elif arch_version == 400 or arch_version == 410:
         moe_align_block_size_triton,
     )
     from .gcu400.moe_sum import moe_sum  # noqa: F401
+    from .gcu400.mrope import mrope  # noqa: F401
     from .gcu400.outer import outer
     from .gcu400.rotary_embedding import apply_rotary_pos_emb  # noqa: F401
     from .gcu400.silu_and_mul import silu_and_mul, silu_and_mul_out
@@ -120,8 +124,10 @@ elif arch_version == 400 or arch_version == 410:
         "concat_and_cache_mla",
         "flash_mla",
         "moe_sum",
+        "mrope",
         "outer",
         "fused_add_rms_norm",
+        "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
         "fused_recurrent_gated_delta_rule_fwd",
         "skip_layer_norm",
         "rwkv_ka_fusion",

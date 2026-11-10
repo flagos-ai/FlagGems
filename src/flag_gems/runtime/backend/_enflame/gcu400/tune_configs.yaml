@@ -1049,3 +1049,43 @@ linear:
       BLOCK_SIZE_K: 64
     num_stages: 3
     num_warps: 2
+
+adaptive_max_pool3d:
+  # gcu400 tuned (2026-11-09, direct-scan kernel, 2x640x64x42x72->16x14x14):
+  # OPB=1024/w16/s3 = 35.2 ms, OPB=2048/w8/s3 = 43.6 ms, OPB=256/w8/s3 = 61.2 ms.
+  # Small-OPB entries kept for tiny outputs where large blocks waste threads.
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 16
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 1024
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 2048
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 1
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 256
+      CHAN_PER_BLOCK: 2
+    num_warps: 8
+    num_stages: 3
+  - META:
+      OUT_PER_BLOCK: 128
+      CHAN_PER_BLOCK: 1
+    num_warps: 4
+    num_stages: 4
+  - META:
+      OUT_PER_BLOCK: 64
+      CHAN_PER_BLOCK: 1
+    num_warps: 2
+    num_stages: 5

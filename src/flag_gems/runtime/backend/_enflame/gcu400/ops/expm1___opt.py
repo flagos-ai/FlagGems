@@ -9,6 +9,7 @@ promotion（expm1 纯生产 3 轮 PASS 3.220x），本项直接 import 复用，
 `out0=A` 保证 in-place 契约；整型输入经 promotion 输出浮点，
 与公共实现一致。
 """
+
 from flag_gems.runtime.backend._enflame.gcu400.ops.expm1__opt import (
     _expm1_func,
 )

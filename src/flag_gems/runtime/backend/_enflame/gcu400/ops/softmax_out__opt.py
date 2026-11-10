@@ -35,6 +35,7 @@ out 连续且 dtype 一致、K>1 且 K>=256、N>=64；其余
 非连续输入/out、负 dim 之外的越界 dim、out 与 self 别名）
 全部委托生产 `softmax_out`，保证 correctness 全覆盖。
 """
+
 import torch
 import triton
 
@@ -61,10 +62,17 @@ def softmax_out(self, dim, half_to_float=False, *, out):
         M *= self.shape[i]
     Kv = self.numel() // M // N
 
-    if not (self.is_floating_point() and self.is_contiguous()
-            and out.is_contiguous() and not half_to_float
-            and out.dtype == self.dtype and out.data_ptr() != self.data_ptr()
-            and Kv > 1 and Kv >= 256 and N >= 64):
+    if not (
+        self.is_floating_point()
+        and self.is_contiguous()
+        and out.is_contiguous()
+        and not half_to_float
+        and out.dtype == self.dtype
+        and out.data_ptr() != self.data_ptr()
+        and Kv > 1
+        and Kv >= 256
+        and N >= 64
+    ):
         return _prod_softmax_out(self, dim, half_to_float, out=out)
 
     if tuple(out.shape) != tuple(self.shape):
@@ -73,8 +81,15 @@ def softmax_out(self, dim, half_to_float=False, *, out):
     TILE_K, TILE_N, nw = 256, 64, 2
     grid = (M, triton.cdiv(Kv, TILE_K), 1)
     with torch_device_fn.device(self.device):
-        _K[grid](out, self, M, N, Kv,
-                 TILE_N=TILE_N, TILE_K=TILE_K,
-                 ONE_TILE_PER_CTA=(TILE_N >= N),
-                 num_warps=nw)
+        _K[grid](
+            out,
+            self,
+            M,
+            N,
+            Kv,
+            TILE_N=TILE_N,
+            TILE_K=TILE_K,
+            ONE_TILE_PER_CTA=(TILE_N >= N),
+            num_warps=nw,
+        )
     return out

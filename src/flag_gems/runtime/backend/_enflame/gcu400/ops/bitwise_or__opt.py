@@ -9,6 +9,7 @@
 - 其余（含 int32 大 shape） -> BLOCK=8192  / SIPS=48 / nw4
 - 非连续输入               -> 回退原实现
 """
+
 import logging
 
 import torch
@@ -19,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _bitwise_or_gsl(X, N, S: tl.constexpr,
-                    BLOCK: tl.constexpr, SIPS: tl.constexpr):
+def _bitwise_or_gsl(X, N, S: tl.constexpr, BLOCK: tl.constexpr, SIPS: tl.constexpr):
     pid = tl.program_id(0)
     n_tiles = tl.cdiv(N, BLOCK)
     for t in range(pid, n_tiles, SIPS):
@@ -34,6 +34,7 @@ def _orig(A, B):
     from flag_gems.runtime.backend._enflame.gcu400.ops.bitwise_or import (
         bitwise_or_scalar_ as fn,
     )
+
     return fn(A, B)
 
 

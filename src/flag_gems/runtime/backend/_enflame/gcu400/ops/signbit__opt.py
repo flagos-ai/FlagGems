@@ -10,6 +10,7 @@
 kernel 主体与公共实现逐字同构（fp32/fp16/bf16/fp64 分别 bitcast 到
 对应整数看符号位，其它 dtype 用 `x<0`）；不修改全局 CODEGEN_COFIGS。
 """
+
 import triton
 import triton.language as tl
 

@@ -4,6 +4,7 @@ square 与 square_out 共用公共 ops/square.py 的 pointwise_dynamic codegen�
 ENFLAME max_grid_size=(12,1,1) 让大 shape 并行度不足（实测 5.95ms vs
 torch 0.76ms）。本候选沿用 square_out_v2 的分档策略，out=None 时分配新张量。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -28,6 +29,7 @@ def square(A):
     # 回退必须先于任何分配，否则小 shape 会多付一次 empty_like 开销
     if n < 65536 or not A.is_contiguous():
         from flag_gems.ops.square import square as _public
+
         return _public(A)
     out = torch.empty_like(A)
     hp = A.dtype in (torch.float16, torch.bfloat16)

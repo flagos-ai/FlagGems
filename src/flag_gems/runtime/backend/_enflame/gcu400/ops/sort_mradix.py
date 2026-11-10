@@ -309,9 +309,7 @@ if HAS_TLE_RAW:
                 # per-lane mask loses half of its lanes on GCU and
                 # tensor.view(int32) is not a reliable alias of int64 storage on
                 # this backend, so they leave as int32 and are widened by torch.
-                iout = tl.load(
-                    tle.gpu.local_ptr(buf, (2 * BLOCK_N + offs,)), mask=mask
-                )
+                iout = tl.load(tle.gpu.local_ptr(buf, (2 * BLOCK_N + offs,)), mask=mask)
                 if FULL_TILE:
                     tl.store(output_idx_ptr + row * N + offs, iout.to(tl.int32))
                 else:
@@ -326,6 +324,7 @@ if HAS_TLE_RAW:
             # next iteration's staging stores without paying a second
             # per-row barrier inside the region.
             tl.debug_barrier()
+
 
 _MAX_GRID = None
 
@@ -362,7 +361,7 @@ def sort_mradix(x, out_shape, descending, out_vals=None, out_idx32=None):
     the positions to int64 (torch.sort's index dtype).
     """
     logger.debug("GEMS_ENFLAME SORT_MRADIX")
-    
+
     n_rows, n_cols = x.shape
     if out_vals is None:
         out_vals = torch.empty_like(x)

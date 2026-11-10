@@ -11,6 +11,7 @@ kernel 主体与公共实现逐字同构；codegen 内部
 自包含（不 import 其它候选文件），便于 override 从独立目录加载。
 不修改全局 CODEGEN_COFIGS。
 """
+
 import triton
 import triton.language as tl
 

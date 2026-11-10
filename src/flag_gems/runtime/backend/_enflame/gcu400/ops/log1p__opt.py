@@ -23,6 +23,7 @@ num_warps=4 / NUM_STAGES=4` 写死。180 组 constexpr 扫描（与生产输出
 而 `torch.equal` 对 NaN 恒 False，会让全部配置误判为不合格；
 扫描/门禁必须用全正输入。
 """
+
 import torch
 import triton
 
@@ -64,7 +65,13 @@ def log1p(x: torch.Tensor):
     BS, G, nw, ST = _config(n, result_dtype)
     grid = (G, 1, 1)
     with torch_device_fn.device(out.device.index):
-        _K[grid](x_contig.view(-1), out.view(-1), n,
-                 BLOCK_SIZE=BS, GRID_SIZE=G,
-                 NUM_STAGES=ST, num_warps=nw)
+        _K[grid](
+            x_contig.view(-1),
+            out.view(-1),
+            n,
+            BLOCK_SIZE=BS,
+            GRID_SIZE=G,
+            NUM_STAGES=ST,
+            num_warps=nw,
+        )
     return out.view_as(x)

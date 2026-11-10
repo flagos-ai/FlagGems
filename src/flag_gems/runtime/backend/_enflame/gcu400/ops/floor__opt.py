@@ -14,6 +14,7 @@ Python 判断都会造成 0.3~0.9us 的偏差。
 
 不修改全局 CODEGEN_COFIGS，只影响本算子生成的包装函数，对其它算子无副作用。
 """
+
 import triton
 import triton.language as tl
 

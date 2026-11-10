@@ -67,41 +67,58 @@ def concat_and_cache_mla_kernel(
     if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
         scale_val = tl.load(scale_ptr)
 
-    # Process kv_c section
-    for i in range(0, kv_lora_rank, BLOCK_SIZE):
-        idx = i + tl.arange(0, BLOCK_SIZE)
-        mask = idx < kv_lora_rank
+    if kv_dtype == FP8_KV_CACHE_DATA_TYPE_AUTO:
+        # auto 路径把 kv_c 与 k_pe 拼成一条 entry 向量：两段 load 后择一，
+        # 单次 store 写回，避免两个独立循环与两次写回的调度开销。
+        idx = tl.arange(0, BLOCK_SIZE)
+        kv_mask = idx < kv_lora_rank
+        pe_offset = idx - kv_lora_rank
+        pe_mask = (idx >= kv_lora_rank) & (idx < kv_lora_rank + pe_dim)
+        kv_val = tl.load(
+            kv_c_ptr + token_idx * kv_c_stride + idx, mask=kv_mask, other=0
+        )
+        pe_val = tl.load(
+            k_pe_ptr + token_idx * k_pe_stride + pe_offset, mask=pe_mask, other=0
+        )
+        entry_val = tl.where(kv_mask, kv_val, pe_val)
+        tl.store(kv_cache_ptr + cache_base + idx, entry_val, mask=kv_mask | pe_mask)
+    else:
+        # FP8 量化路径需要逐段转换，保留原有两遍循环。
+        # Process kv_c section
+        for i in range(0, kv_lora_rank, BLOCK_SIZE):
+            idx = i + tl.arange(0, BLOCK_SIZE)
+            mask = idx < kv_lora_rank
 
-        src_ptr = kv_c_ptr + token_idx * kv_c_stride + idx
-        dst_ptr = kv_cache_ptr + cache_base + idx
+            src_ptr = kv_c_ptr + token_idx * kv_c_stride + idx
+            dst_ptr = kv_cache_ptr + cache_base + idx
 
-        val = tl.load(src_ptr, mask=mask, other=0)
+            val = tl.load(src_ptr, mask=mask, other=0)
 
-        if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
-            if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
-                val = (val / scale_val).to(tl.float8e4nv)
-            elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
-                val = (val / scale_val).to(tl.float8e5)
-            val = val.to(tl.uint8, bitcast=True)
-        tl.store(dst_ptr, val, mask=mask)
+            if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
+                if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
+                    val = (val / scale_val).to(tl.float8e4nv)
+                elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
+                    val = (val / scale_val).to(tl.float8e5)
+                val = val.to(tl.uint8, bitcast=True)
+            tl.store(dst_ptr, val, mask=mask)
 
-    # Process k_pe section
-    for j in range(0, pe_dim, BLOCK_SIZE):
-        idx = j + tl.arange(0, BLOCK_SIZE)
-        mask = idx < pe_dim
+        # Process k_pe section
+        for j in range(0, pe_dim, BLOCK_SIZE):
+            idx = j + tl.arange(0, BLOCK_SIZE)
+            mask = idx < pe_dim
 
-        src_ptr = k_pe_ptr + token_idx * k_pe_stride + idx
-        dst_ptr = kv_cache_ptr + cache_base + kv_lora_rank + idx
+            src_ptr = k_pe_ptr + token_idx * k_pe_stride + idx
+            dst_ptr = kv_cache_ptr + cache_base + kv_lora_rank + idx
 
-        val = tl.load(src_ptr, mask=mask, other=0)
+            val = tl.load(src_ptr, mask=mask, other=0)
 
-        if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
-            if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
-                val = (val / scale_val).to(tl.float8e4nv)
-            elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
-                val = (val / scale_val).to(tl.float8e5)
-            val = val.to(tl.uint8, bitcast=True)
-        tl.store(dst_ptr, val, mask=mask)
+            if kv_dtype != FP8_KV_CACHE_DATA_TYPE_AUTO:
+                if kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E4M3:
+                    val = (val / scale_val).to(tl.float8e4nv)
+                elif kv_dtype == FP8_KV_CACHE_DATA_TYPE_FP8E5M2:
+                    val = (val / scale_val).to(tl.float8e5)
+                val = val.to(tl.uint8, bitcast=True)
+            tl.store(dst_ptr, val, mask=mask)
 
 
 class ConcatAndCacheMla(torch.autograd.Function):
@@ -161,7 +178,7 @@ class ConcatAndCacheMla(torch.autograd.Function):
 
         # configure kernel launch
         grid = (num_tokens,)
-        BLOCK_SIZE = min(kv_lora_rank, 512)
+        BLOCK_SIZE = min(triton.next_power_of_2(kv_lora_rank + pe_dim), 2048)
 
         assert kv_cache.dim() == 3, "kv_cache must be a 3D tensor"
         assert (

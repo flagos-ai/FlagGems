@@ -518,3 +518,20 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+# foreach 列表算子每次调用构造 16 个 tensor，若回落到含 1024**3 元素的
+# DEFAULT_SHAPES，float32 会在 144 GiB 设备上 OOM。这里显式给出与公共
+# benchmark/core_shapes.yaml 一致的中等规模 shape。
+ForeachOpsBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"

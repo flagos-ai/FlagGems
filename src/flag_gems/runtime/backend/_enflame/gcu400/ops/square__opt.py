@@ -5,6 +5,7 @@
 max_grid_size=(12,1,1) 让大 shape 并行度不足（实测约 6ms vs torch 0.76ms）。
 三档 BLOCK 沿用 square/square_out 已验证的策略。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -28,6 +29,7 @@ def square_(A):
     if n < 65536 or not A.is_contiguous():
         # 小 shape 是 launch 开销下限，复用生产同一底层调用保证严格 1.000x
         from flag_gems.ops.square import _kernel_for
+
         _kernel_for(A.dtype)(A, out0=A)
         return A
     wide_product = A.dtype in (torch.float16, torch.bfloat16)
@@ -39,6 +41,7 @@ def square_(A):
     if grid[0] > 65535:
         BLOCK = 65536
         grid = (triton.cdiv(n, BLOCK),)
-    _square_inplace_kernel[grid](A, n, BLOCK=BLOCK, HP=wide_product,
-                                 num_warps=num_warps)
+    _square_inplace_kernel[grid](
+        A, n, BLOCK=BLOCK, HP=wide_product, num_warps=num_warps
+    )
     return A

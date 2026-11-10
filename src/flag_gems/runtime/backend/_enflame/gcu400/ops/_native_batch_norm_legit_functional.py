@@ -96,9 +96,9 @@ def _batch_norm_forward_kernel(
                     + input_batch_stride * batch_offset[:, None]
                     + input_spatial_stride * spatial_offset[None, :]
                 )
-                curr_input = tl.load(
-                    curr_input_pointer, mask=mask, other=0.0
-                ).to(tl.float32)
+                curr_input = tl.load(curr_input_pointer, mask=mask, other=0.0).to(
+                    tl.float32
+                )
 
                 step = m_step * n_num_steps + n_step + 1
                 new_mean = tl.where(mask, mean + (curr_input - mean) / step, mean)
@@ -131,14 +131,11 @@ def _batch_norm_forward_kernel(
             )
             tl.store(
                 RunningVar + feat_pid,
-                (1 - momentum) * running_var
-                + momentum * variance * unbiased_scale,
+                (1 - momentum) * running_var + momentum * variance * unbiased_scale,
             )
     else:
         mean_value = tl.load(RunningMean + feat_pid).to(tl.float32)
-        inv_std = tl.math.rsqrt(
-            tl.load(RunningVar + feat_pid).to(tl.float32) + eps
-        )
+        inv_std = tl.math.rsqrt(tl.load(RunningVar + feat_pid).to(tl.float32) + eps)
 
     if has_weight:
         weight = tl.load(Weight + feat_pid).to(tl.float32)
@@ -207,9 +204,7 @@ def _native_batch_norm_legit_functional(
         running_var = inv_std
 
     num_samples = batch_dim * spatial_dim
-    unbiased_scale = (
-        num_samples / (num_samples - 1) if num_samples > 1 else 1.0
-    )
+    unbiased_scale = num_samples / (num_samples - 1) if num_samples > 1 else 1.0
 
     block_m = min(triton.next_power_of_2(batch_dim), MAX_TILE_ELEMS)
     block_n = min(

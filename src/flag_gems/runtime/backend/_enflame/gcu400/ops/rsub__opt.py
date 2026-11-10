@@ -5,14 +5,16 @@
 ENFLAME max_grid_size=(12,1,1) 让大 shape 并行度不足。
 沿用 square/square_out/clamp_max_ 已验证的分档策略。
 """
+
 import torch
 import triton
 import triton.language as tl
 
 
 @triton.jit
-def _rsub_scalar_kernel(X, Out, N, B: tl.constexpr, ALPHA: tl.constexpr,
-                        BLOCK: tl.constexpr):
+def _rsub_scalar_kernel(
+    X, Out, N, B: tl.constexpr, ALPHA: tl.constexpr, BLOCK: tl.constexpr
+):
     pid = tl.program_id(0)
     off = pid * BLOCK + tl.arange(0, BLOCK)
     m = off < N
@@ -27,6 +29,7 @@ def rsub_scalar(A, B, alpha=1):
     # 避免「回退公共实现」在生产路径多一层 Python 转发开销。
     if not A.is_contiguous():
         from flag_gems.ops.rsub import rsub_scalar as _public
+
         return _public(A, B, alpha)
     out = torch.empty_like(A)
     if n < 65536:
@@ -39,6 +42,7 @@ def rsub_scalar(A, B, alpha=1):
     if grid[0] > 65535:
         BLOCK = 65536
         grid = (triton.cdiv(n, BLOCK),)
-    _rsub_scalar_kernel[grid](A, out, n, float(B), float(alpha),
-                              BLOCK=BLOCK, num_warps=nw)
+    _rsub_scalar_kernel[grid](
+        A, out, n, float(B), float(alpha), BLOCK=BLOCK, num_warps=nw
+    )
     return out

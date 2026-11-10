@@ -20,6 +20,7 @@ v2 不委托该错误路径，改为显式 contiguous 后走自己的连续输�
 其余 dtype / right / out_int32 由同一 kernel 的 constexpr 分支支持。
 生产 ops/bucketize.py 未改动。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -32,9 +33,16 @@ NB_MAX = 16
 
 
 @triton.jit
-def _bucketize_count_kernel(INP, B, OUT, N, NB: tl.constexpr,
-                            BLOCK: tl.constexpr, RIGHT: tl.constexpr,
-                            MASKED: tl.constexpr):
+def _bucketize_count_kernel(
+    INP,
+    B,
+    OUT,
+    N,
+    NB: tl.constexpr,
+    BLOCK: tl.constexpr,
+    RIGHT: tl.constexpr,
+    MASKED: tl.constexpr,
+):
     pid = tl.program_id(0)
     off = pid * BLOCK + tl.arange(0, BLOCK)
     if MASKED:
@@ -68,8 +76,14 @@ def bucketize(input, boundaries, *, out_int32=False, right=False):
     out = torch.empty(n, dtype=out_dtype, device=input.device)
     BLOCK = 4096 if n >= 65536 else 2048
     _bucketize_count_kernel[(triton.cdiv(n, BLOCK),)](
-        inp, b, out, n, NB=nb, BLOCK=BLOCK,
-        RIGHT=right, MASKED=(n % BLOCK != 0) or (BLOCK > n),
+        inp,
+        b,
+        out,
+        n,
+        NB=nb,
+        BLOCK=BLOCK,
+        RIGHT=right,
+        MASKED=(n % BLOCK != 0) or (BLOCK > n),
         num_warps=8,
     )
     return out.reshape(input.shape)

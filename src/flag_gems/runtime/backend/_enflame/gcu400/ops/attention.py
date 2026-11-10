@@ -66,9 +66,7 @@ def _attn_fwd_inner(
         # one makes every logit -inf (fully masked), so m_ij == m_i == -inf and
         # exp2(-inf - -inf) is NaN.  Clamp the causal bands to KV_CTX; rows
         # beyond it are then covered by the off-band stage alone.
-        lo, hi = min(start_m * BLOCK_M, KV_CTX), min(
-            (start_m + 1) * BLOCK_M, KV_CTX
-        )
+        lo, hi = min(start_m * BLOCK_M, KV_CTX), min((start_m + 1) * BLOCK_M, KV_CTX)
     # causal = False
     else:
         lo, hi = 0, KV_CTX
@@ -178,6 +176,277 @@ def _attn_fwd_prune_configs(configs, named_args, **kwargs):
     head_dim = named_args.get("HEAD_DIM", 128)
     block_n = max((bn for bn in (16, 32, 64, 128) if bn <= head_dim), default=16)
     return [c for c in configs if c.kwargs.get("BLOCK_N", 128) == block_n]
+
+
+@triton.jit
+def _attn_nomax_step(
+    acc,
+    p_sum,
+    l_i,
+    query,
+    k_base,
+    v_base,
+    offs_m,
+    offs_d,
+    start_n,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_seqlen,
+    stride_v_headsize,
+    BLOCK_N: tl.constexpr,
+    MASKED: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+):
+    offs_n = tl.arange(0, BLOCK_N)
+    pos = start_n + offs_n
+    key = tl.load(
+        k_base + offs_d[:, None] * stride_k_headsize + pos[None, :] * stride_k_seqlen
+    )
+    qk = tl.dot(query, key, allow_tf32=False)
+    if MASKED:
+        # exp2(-inf) == 0, so the causal mask needs no later fixup and the
+        # deferred row sum stays exact.
+        qk = tl.where(offs_m[:, None] >= pos[None, :], qk, -float("inf"))
+    p = tl.math.exp2(qk)
+    if DEFER_SUM:
+        p_sum = p_sum + p
+    else:
+        l_i += tl.sum(p, 1)
+    value = tl.load(
+        v_base + pos[:, None] * stride_v_seqlen + offs_d[None, :] * stride_v_headsize
+    )
+    acc = tl.dot(p.to(value.dtype), value, acc, allow_tf32=False)
+    return acc, p_sum, l_i
+
+
+@triton.jit
+def _attn_nomax_rowblock(
+    start_m,
+    Q,
+    K,
+    V,
+    M,
+    Out,
+    sm_scale,
+    q_offset,
+    o_offset,
+    kv_offset,
+    stride_q_seqlen,
+    stride_q_headsize,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_seqlen,
+    stride_v_headsize,
+    stride_o_seqlen,
+    stride_o_headsize,
+    off_hz,
+    Q_CTX,
+    KV_CTX,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+    CAUSAL: tl.constexpr,
+):
+    offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_d = tl.arange(0, HEAD_DIM)
+
+    # Every load here is unmasked; the host dispatches only when Q_CTX and
+    # KV_CTX are multiples of the block sizes.
+    query = tl.load(
+        Q
+        + q_offset
+        + offs_m[:, None] * stride_q_seqlen
+        + offs_d[None, :] * stride_q_headsize
+    )
+    # Fold the softmax scale (and log2(e)) into Q once instead of rescaling
+    # the [BLOCK_M, BLOCK_N] score tile on every KV step.
+    query = (query.to(tl.float32) * (sm_scale * 1.44269504)).to(query.dtype)
+
+    k_base = K + kv_offset
+    v_base = V + kv_offset
+
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
+    p_sum = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
+    if CAUSAL:
+        # Off-band: everything strictly above the diagonal block is unmasked.
+        # Requires BLOCK_M % BLOCK_N == 0 so the split points are block aligned.
+        # The `start_m > 0` guard matters: for row block 0 this range is empty,
+        # and a 0-trip version of the loop miscompiles on GCU400 (sporadic
+        # NaN/garbage in the first block's accumulator, ~1 element per row).
+        if start_m > 0:
+            for start_n in tl.range(0, start_m * BLOCK_M, BLOCK_N):
+                acc, p_sum, l_i = _attn_nomax_step(
+                    acc,
+                    p_sum,
+                    l_i,
+                    query,
+                    k_base,
+                    v_base,
+                    offs_m,
+                    offs_d,
+                    start_n,
+                    stride_k_seqlen,
+                    stride_k_headsize,
+                    stride_v_seqlen,
+                    stride_v_headsize,
+                    BLOCK_N,
+                    MASKED=False,
+                    DEFER_SUM=DEFER_SUM,
+                )
+        # On-band: only the BLOCK_M/BLOCK_N blocks touching the diagonal.
+        for start_n in tl.range(start_m * BLOCK_M, (start_m + 1) * BLOCK_M, BLOCK_N):
+            acc, p_sum, l_i = _attn_nomax_step(
+                acc,
+                p_sum,
+                l_i,
+                query,
+                k_base,
+                v_base,
+                offs_m,
+                offs_d,
+                start_n,
+                stride_k_seqlen,
+                stride_k_headsize,
+                stride_v_seqlen,
+                stride_v_headsize,
+                BLOCK_N,
+                MASKED=True,
+                DEFER_SUM=DEFER_SUM,
+            )
+    else:
+        for start_n in tl.range(0, KV_CTX, BLOCK_N):
+            acc, p_sum, l_i = _attn_nomax_step(
+                acc,
+                p_sum,
+                l_i,
+                query,
+                k_base,
+                v_base,
+                offs_m,
+                offs_d,
+                start_n,
+                stride_k_seqlen,
+                stride_k_headsize,
+                stride_v_seqlen,
+                stride_v_headsize,
+                BLOCK_N,
+                MASKED=False,
+                DEFER_SUM=DEFER_SUM,
+            )
+
+    if DEFER_SUM:
+        l_i = tl.sum(p_sum, 1)
+    acc = acc / l_i[:, None]
+    tl.store(
+        Out
+        + o_offset
+        + offs_m[:, None] * stride_o_seqlen
+        + offs_d[None, :] * stride_o_headsize,
+        acc.to(Out.dtype.element_ty),
+    )
+    tl.store(M + off_hz * Q_CTX + offs_m, tl.math.log2(l_i))
+
+
+@triton.jit
+def _attn_fwd_nomax(
+    Q,
+    K,
+    V,
+    M,
+    Out,
+    sm_scale,
+    stride_q_batch,
+    stride_q_head,
+    stride_q_seqlen,
+    stride_q_headsize,
+    stride_k_batch,
+    stride_k_head,
+    stride_k_seqlen,
+    stride_k_headsize,
+    stride_v_batch,
+    stride_v_head,
+    stride_v_seqlen,
+    stride_v_headsize,
+    stride_o_batch,
+    stride_o_head,
+    stride_o_seqlen,
+    stride_o_headsize,
+    q_head_num,
+    Q_CTX,
+    KV_CTX,
+    HEAD_DIM: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    DEFER_SUM: tl.constexpr,
+    CAUSAL: tl.constexpr,
+):
+    # Fast path for the mask-free, evenly divisible case (causal or not).
+    #
+    # Difference from _attn_fwd: the softmax keeps no running maximum. The row
+    # shift in exp2 cancels in p / sum(p), so dropping it is exact as long as
+    # the scaled scores stay inside exp2's exponent range -- which holds for
+    # the usual 1/sqrt(d) scaling of unit-variance inputs. What it buys on
+    # GCU400 is that `acc` is never read-modify-written per KV step: the
+    # online form rescales the whole [BLOCK_M, HEAD_DIM] accumulator every
+    # iteration, which forces the accumulator out of OACC and costs ~35%.
+    start_m = tl.program_id(0)
+    off_hz = tl.program_id(1)
+    batch_id = off_hz // q_head_num
+    head_id = off_hz % q_head_num
+
+    q_offset = (
+        batch_id.to(tl.int64) * stride_q_batch + head_id.to(tl.int64) * stride_q_head
+    )
+    o_offset = (
+        batch_id.to(tl.int64) * stride_o_batch + head_id.to(tl.int64) * stride_o_head
+    )
+    kv_offset = (
+        batch_id.to(tl.int64) * stride_k_batch + head_id.to(tl.int64) * stride_k_head
+    )
+
+    _attn_nomax_rowblock(
+        start_m,
+        Q,
+        K,
+        V,
+        M,
+        Out,
+        sm_scale,
+        q_offset,
+        o_offset,
+        kv_offset,
+        stride_q_seqlen,
+        stride_q_headsize,
+        stride_k_seqlen,
+        stride_k_headsize,
+        stride_v_seqlen,
+        stride_v_headsize,
+        stride_o_seqlen,
+        stride_o_headsize,
+        off_hz,
+        Q_CTX,
+        KV_CTX,
+        HEAD_DIM,
+        BLOCK_M,
+        BLOCK_N,
+        DEFER_SUM=DEFER_SUM,
+        CAUSAL=CAUSAL,
+    )
+
+
+def _nomax_launch_config(q_ctx, kv_ctx):
+    """Tile choice for _attn_fwd_nomax, measured on GCU400.
+
+    A 128x128 tile with 2 warps wins on every shape swept; it keeps the
+    [BLOCK_M, HEAD_DIM] fp32 accumulator inside OACC while still giving each
+    SIP enough programs to hide the K/V loads. Narrower tiles keep short
+    sequences (and HEAD_DIM=64) on the same path.
+    """
+    block_n = next(bn for bn in (128, 64, 32) if kv_ctx % bn == 0)
+    block_m = next(bm for bm in (128, 64, 32) if q_ctx % bm == 0)
+    return block_m, block_n, 2
 
 
 @libentry()
@@ -563,11 +832,7 @@ def _attn_bwd_prune_configs(configs, named_args, **kwargs):
     # written (it keeps uninitialized garbage), so drop those configs.
     block_n1 = max((c.kwargs["BLOCK_N1"] for c in configs), default=128)
     # GCU caps num_warps at 4 (GCUOptions); configs above that abort at launch.
-    return [
-        c
-        for c in configs
-        if c.kwargs["BLOCK_M2"] == block_n1 and c.num_warps <= 4
-    ]
+    return [c for c in configs if c.kwargs["BLOCK_M2"] == block_n1 and c.num_warps <= 4]
 
 
 @libentry()
@@ -786,9 +1051,7 @@ def _attn_bwd(
     m = m[:, None]
 
     if IS_CAUSAL:
-        end_n = min(
-            start_m + BLOCK_M2, KV_CTX
-        )  # Ensure end_n does not exceed N_CTX
+        end_n = min(start_m + BLOCK_M2, KV_CTX)  # Ensure end_n does not exceed N_CTX
         num_steps = (end_n - start_n + MASK_BLOCK_N2 - 1) // MASK_BLOCK_N2
 
         # Stage 1 - Compute dQ for masked (diagonal) blocks.
@@ -932,6 +1195,76 @@ def scaled_dot_product_attention_forward(
         stride_attn_mask_head = 1
         stride_attn_mask_q_seqlen = 1
         stride_attn_mask_kv_seqlen = 1
+
+    # Fast path: no attention mask, evenly divisible sequence lengths, causal
+    # or not. Measured on GCU400 to be the cheapest formulation; see
+    # _attn_fwd_nomax for why the running max is dropped.
+    q_ctx, kv_ctx = query.shape[2], key.shape[2]
+    causal_fast = bool(stage == 3)
+    if (
+        not HAS_ATTN_MASK
+        and stage in (1, 3)
+        and q_ctx == kv_ctx
+        and dropout_p == 0.0
+        and HEAD_DIM_K in (64, 128)
+        # _attn_fwd_nomax indexes K/V by the query head directly; grouped-query
+        # shapes need the q_head_num // kv_head_num mapping of the generic path.
+        and q_head_num == kv_head_num
+    ):
+        block_m, block_n, num_warps = _nomax_launch_config(q_ctx, kv_ctx)
+        # The causal split runs [0, start_m*BLOCK_M) then the diagonal blocks,
+        # so the split point has to be block aligned.
+        if (
+            q_ctx % block_m == 0
+            and kv_ctx % block_n == 0
+            and (not causal_fast or block_m % block_n == 0)
+        ):
+            # Deferring the row sum always wins on GCU400: the reduction is a
+            # shuffle tree, and paying it per KV step costs more than carrying
+            # an extra [BLOCK_M, BLOCK_N] fp32 accumulator (measured on all
+            # three core shapes, 4-16 KV steps).
+            defer_sum = True
+            M = torch.empty(
+                (query.shape[0], query.shape[1], query.shape[2]),
+                device=query.device,
+                dtype=torch.float32,
+            )
+            grid_m = q_ctx // block_m
+            _attn_fwd_nomax[(grid_m, query.shape[0] * q_head_num)](
+                query,
+                key,
+                value,
+                M,
+                o,
+                sm_scale,
+                query.stride(0),
+                query.stride(1),
+                query.stride(2),
+                query.stride(3),
+                key.stride(0),
+                key.stride(1),
+                key.stride(2),
+                key.stride(3),
+                value.stride(0),
+                value.stride(1),
+                value.stride(2),
+                value.stride(3),
+                o.stride(0),
+                o.stride(1),
+                o.stride(2),
+                o.stride(3),
+                q_head_num,
+                q_ctx,
+                kv_ctx,
+                HEAD_DIM=HEAD_DIM_K,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                DEFER_SUM=defer_sum,
+                CAUSAL=causal_fast,
+                num_warps=num_warps,
+                num_stages=2,
+            )
+            return o, M
 
     M = torch.empty(
         (query.shape[0], query.shape[1], query.shape[2]),

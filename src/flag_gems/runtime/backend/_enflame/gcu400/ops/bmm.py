@@ -92,8 +92,16 @@ def bmm_kernel(
     offs_bn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_k = tl.arange(0, BLOCK_K)
 
-    a_ptrs = A + pid_b * stride_ab + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
-    b_ptrs = B + pid_b * stride_bb + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    a_ptrs = (
+        A
+        + pid_b * stride_ab
+        + (offs_am[:, None] * stride_am + offs_k[None, :] * stride_ak)
+    )
+    b_ptrs = (
+        B
+        + pid_b * stride_bb
+        + (offs_k[:, None] * stride_bk + offs_bn[None, :] * stride_bn)
+    )
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=dot_out_dtype)
     # EVEN 是编译期常量，编译器据此静态裁剪为单个循环，
@@ -124,7 +132,12 @@ def bmm_kernel(
 
     offs_cm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_cn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    c_ptrs = C + pid_b * stride_cb + offs_cm[:, None] * stride_cm + offs_cn[None, :] * stride_cn
+    c_ptrs = (
+        C
+        + pid_b * stride_cb
+        + offs_cm[:, None] * stride_cm
+        + offs_cn[None, :] * stride_cn
+    )
     c = acc.to(C.dtype.element_ty)
     if EVEN:
         tl.store(c_ptrs, c)
@@ -135,7 +148,9 @@ def bmm_kernel(
 
 def _launch_bmm(A, B, out, Batch, M, N, K):
     # 集中处理 config 分派与 kernel 启动，供 bmm / bmm_out 共用。
-    block_m, block_n, block_k, num_warps, num_stages, even = _select_bmm_config(Batch, M, N, K, A.dtype)
+    block_m, block_n, block_k, num_warps, num_stages, even = _select_bmm_config(
+        Batch, M, N, K, A.dtype
+    )
     grid = (Batch * triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
     bmm_kernel[grid](
         A,

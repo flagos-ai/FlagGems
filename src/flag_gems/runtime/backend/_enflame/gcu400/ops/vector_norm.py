@@ -447,7 +447,7 @@ def v_global_kernel_2(Mid, Out, ord, MID_SIZE, BLOCK_MID: tl.constexpr):
 
 
 def _launch_global_norm(x, out, M, ord_val, dtype):
-    SINGLE_PASS_LIMIT = 32768
+    SINGLE_PASS_LIMIT = 65536
     SINGLE_BLOCK = 32768
 
     with torch_device_fn.device(x.device):

@@ -10,10 +10,14 @@
 - 直接 atomic_add 到输出 dtype 会损失 fp16/bf16 精度，丢弃；
 - num_warps 1/2、BLOCK 256/1024/2048、2D tile 均劣化。
 
-仅接管 inner_size==1 且输入连续的情形（含 benchmark 的 2D/dim=1 与
-correctness 的 dim=-1）；inner_size>1、非连续、空张量一律委托生产，
-保证 interior-axis 与 NaN 语义不变。
+接管 inner_size==1（含 benchmark 的 2D/dim=1 与 correctness 的 dim=-1）
+以及 inner_size>1 的 interior-axis 情形；两者都用 grid-stride 内核，避免
+生产实现 "一个 program 一个 outer 行" 在 GCU 上超过 grid.x=65535。
+非连续输入就地 `.contiguous()`，不再委托生产实现（其 grid 未做上限）。
+RS==0 的空 reduction 仍委托生产。NaN 语义与生产一致（indices 来自前向，
+本算子只做 scatter-add）。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -24,24 +28,56 @@ __all__ = ["cummaxmin_backward"]
 
 
 @triton.jit
-def _cmb_kernel(G, IDX, OUT, RS, IS, BLOCK: tl.constexpr,
-                MASKED: tl.constexpr):
-    row = tl.program_id(0)
-    outer = row // IS
-    inner = row % IS
-    base = outer * (RS * IS) + inner
+def _cmb_kernel(G, IDX, OUT, NROW, RS, IS, BLOCK: tl.constexpr, MASKED: tl.constexpr):
     ar = tl.arange(0, BLOCK)
-    for bs in range(0, RS, BLOCK):
-        pos = bs + ar
-        if MASKED:
-            m = pos < RS
-            g = tl.load(G + base + pos * IS, mask=m, other=0.0)
-            t = tl.load(IDX + base + pos * IS, mask=m, other=0)
-            tl.atomic_add(OUT + base + t * IS, g.to(tl.float32), mask=m)
-        else:
-            g = tl.load(G + base + pos * IS)
-            t = tl.load(IDX + base + pos * IS)
-            tl.atomic_add(OUT + base + t * IS, g.to(tl.float32))
+    # grid.x is capped at 65535 on GCU, so the launch uses a fixed grid and
+    # each program walks a strided subset of the outer rows.
+    step = tl.num_programs(0)
+    for row in tl.range(tl.program_id(0), NROW, step):
+        outer = row // IS
+        inner = row % IS
+        base = outer * (RS * IS) + inner
+        for bs in range(0, RS, BLOCK):
+            pos = bs + ar
+            if MASKED:
+                m = pos < RS
+                g = tl.load(G + base + pos * IS, mask=m, other=0.0)
+                t = tl.load(IDX + base + pos * IS, mask=m, other=0)
+                tl.atomic_add(OUT + base + t * IS, g.to(tl.float32), mask=m)
+            else:
+                g = tl.load(G + base + pos * IS)
+                t = tl.load(IDX + base + pos * IS)
+                tl.atomic_add(OUT + base + t * IS, g.to(tl.float32))
+
+
+@triton.jit
+def _cmb_inner_kernel(
+    G, IDX, OUT, NROW, RS, IS, BLOCK: tl.constexpr, MASKED: tl.constexpr
+):
+    """Reduction axis is interior: vectorize over the contiguous inner axis.
+
+    ``row`` indexes an (outer, r) pair; every lane scatters
+    ``grad[outer, r, j]`` into ``grad_input[outer, t, j]`` with ``t`` from the
+    forward indices.  The grid is capped and strided because
+    ``outer * reduction`` can be far beyond grid.x's 65535 limit.
+    """
+    ar = tl.arange(0, BLOCK)
+    step = tl.num_programs(0)
+    for row in tl.range(tl.program_id(0), NROW, step):
+        outer = row // RS
+        outer_base = outer * (RS * IS)
+        src_base = outer_base + (row % RS) * IS
+        for bs in range(0, IS, BLOCK):
+            j = bs + ar
+            if MASKED:
+                m = j < IS
+                g = tl.load(G + src_base + j, mask=m, other=0.0)
+                t = tl.load(IDX + src_base + j, mask=m, other=0)
+                tl.atomic_add(OUT + outer_base + t * IS + j, g.to(tl.float32), mask=m)
+            else:
+                g = tl.load(G + src_base + j)
+                t = tl.load(IDX + src_base + j)
+                tl.atomic_add(OUT + outer_base + t * IS + j, g.to(tl.float32))
 
 
 def cummaxmin_backward(grad_output, input, indices, dim):
@@ -57,16 +93,45 @@ def cummaxmin_backward(grad_output, input, indices, dim):
     for i in range(dim):
         outer_size *= shape[i]
 
-    if (inner_size != 1 or RS == 0
-            or not grad_output.is_contiguous()
-            or not indices.is_contiguous()):
+    if RS == 0:
         return _public(grad_output, input, indices, dim)
 
-    BLOCK = min(triton.next_power_of_2(RS), 1024)
-    out = torch.zeros(shape, dtype=torch.float32,
-                      device=grad_output.device)
-    _cmb_kernel[(outer_size,)](
-        grad_output, indices, out, RS, inner_size,
-        BLOCK=BLOCK, MASKED=(BLOCK != RS), num_warps=8,
-    )
+    # Stay on the local kernels instead of delegating to the generic
+    # implementation: that one launches one program per (outer, r) pair and
+    # overflows grid.x for shapes like (200, 40999, 3).  Both kernels grid-stride
+    # over their rows, so contiguous inputs keep the fast path and strided ones
+    # only pay for a copy.
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+    if not indices.is_contiguous():
+        indices = indices.contiguous()
+
+    out = torch.zeros(shape, dtype=torch.float32, device=grad_output.device)
+    if inner_size == 1:
+        BLOCK = min(triton.next_power_of_2(RS), 1024)
+        _cmb_kernel[(min(outer_size, 65535),)](
+            grad_output,
+            indices,
+            out,
+            outer_size,
+            RS,
+            inner_size,
+            BLOCK=BLOCK,
+            MASKED=(BLOCK != RS),
+            num_warps=8,
+        )
+    else:
+        BLOCK = min(triton.next_power_of_2(inner_size), 1024)
+        nrow = outer_size * RS
+        _cmb_inner_kernel[(min(nrow, 65535),)](
+            grad_output,
+            indices,
+            out,
+            nrow,
+            RS,
+            inner_size,
+            BLOCK=BLOCK,
+            MASKED=(BLOCK != inner_size),
+            num_warps=8,
+        )
     return out.to(grad_output.dtype)

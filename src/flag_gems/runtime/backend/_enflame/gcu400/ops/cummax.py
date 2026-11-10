@@ -25,6 +25,8 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
+from ..utils.tie_break import maximum_with_index_tie_break_right
+
 Tensor = torch.Tensor
 
 logger = logging.getLogger(__name__)
@@ -32,9 +34,7 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def tl_cummax(input, index, axis=0):
-    return tl.associative_scan(
-        (input, index), axis, ext.maximum_with_index_tie_break_right
-    )
+    return tl.associative_scan((input, index), axis, maximum_with_index_tie_break_right)
 
 
 @triton.jit
@@ -42,7 +42,7 @@ def tl_max_tie_break_right(input, index, axis=None, keep_dims=False):
     return tl.reduce(
         (input, index),
         axis,
-        ext.maximum_with_index_tie_break_right,
+        maximum_with_index_tie_break_right,
         keep_dims=keep_dims,
     )
 
@@ -72,8 +72,12 @@ def add_base_max_kernel(
         partial_max_indices_ptrs = partial_max_indices + pid - 1
         prev_idx = tl.load(partial_max_indices_ptrs)
 
-        final_vals = tl.maximum(out_vals, prev_val)
-        final_indices = tl.where(out_vals >= prev_val, out_indices, prev_idx)
+        # Use the tie-break barrier rather than tl.maximum: IEEE maximum()
+        # returns the non-NaN operand, so a NaN in an earlier part would be
+        # dropped instead of propagating (torch.cummax keeps it).
+        final_vals, final_indices = maximum_with_index_tie_break_right(
+            out_vals, out_indices, prev_val, prev_idx
+        )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -286,8 +290,10 @@ def add_base_max_abc_kernel(
         partial_max_index_ptrs = partial_max_indices + last_part_offset
         prev_idx = tl.load(partial_max_index_ptrs)
 
-        final_vals = tl.maximum(out_vals, prev_val)
-        final_indices = tl.where(out_vals >= prev_val, out_indices, prev_idx)
+        # See add_base_max_kernel: NaN must survive the cross-part merge.
+        final_vals, final_indices = maximum_with_index_tie_break_right(
+            out_vals, out_indices, prev_val, prev_idx
+        )
         tl.store(out_ptrs, final_vals.to(out_vals.dtype), mask=mask)
         tl.store(out_indices_ptrs, final_indices, mask=mask)
 
@@ -355,67 +361,69 @@ def scan_part_max_abc_loop_kernel(
     inp,
     out,
     out_indices,
+    A,
     B,
     C,
     loop_num,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid_a = tl.program_id(0)
-    pid_c = tl.program_id(1)
+    num_a = tl.num_programs(0)
+    num_c = tl.num_programs(1)
 
-    a_idx = pid_a
-    c_idx = pid_c
     t_idx = tl.arange(0, BLOCK_SIZE)
-    ac_offset = a_idx * B * C + c_idx
-
-    min_value = get_dtype_min(inp.type.element_ty)
-    prev_max_val = tl.full([], min_value, dtype=tl.float32)
-    prev_max_idx = tl.full([], 0, dtype=tl.int32)
     last_mask = t_idx == (BLOCK_SIZE - 1)
+    min_value = get_dtype_min(inp.type.element_ty)
 
-    scan_nan = tl.full([], 0, dtype=tl.int32)
-    if tl.constexpr(inp.type.element_ty.is_floating()):
-        first_val = tl.load(inp + ac_offset)
-        scan_nan = (first_val != first_val).to(tl.int32)
+    # Grid-stride over the (A, C) planes: GCU caps grid.x at 65535 and grid.y
+    # at 255, so a single launch may only cover a subset of them.
+    for a_idx in tl.range(tl.program_id(0), A, num_a):
+        for c_idx in tl.range(tl.program_id(1), C, num_c):
+            ac_offset = a_idx * B * C + c_idx
 
-    for l_idx in tl.range(loop_num):
-        b_idx = l_idx * BLOCK_SIZE + t_idx
-        mask = b_idx < B
-        offset = ac_offset + b_idx * C
+            prev_max_val = tl.full([], min_value, dtype=tl.float32)
+            prev_max_idx = tl.full([], 0, dtype=tl.int32)
 
-        inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
-        if (
-            tl.constexpr(inp_vals.dtype.is_int64())
-            | tl.constexpr(inp_vals.dtype.is_uint64())
-        ) | tl.constexpr(inp_vals.dtype.is_fp64()):
-            vals = inp_vals
-        elif tl.constexpr(inp_vals.dtype.is_int()):
-            vals = inp_vals.to(tl.int32)
-        else:
-            vals = inp_vals.to(tl.float32)
-        idxs = b_idx
+            for l_idx in tl.range(loop_num):
+                b_idx = l_idx * BLOCK_SIZE + t_idx
+                mask = b_idx < B
+                offset = ac_offset + b_idx * C
 
-        if tl.constexpr(vals.dtype.is_floating()):
-            clean_vals = tl.where(vals != vals, min_value, vals)
-            result, cummax_indices = tl_cummax(clean_vals, idxs, axis=0)
-        else:
-            result, cummax_indices = tl_cummax(vals, idxs, axis=0)
+                inp_vals = tl.load(inp + offset, mask=mask, other=min_value)
+                if (
+                    tl.constexpr(inp_vals.dtype.is_int64())
+                    | tl.constexpr(inp_vals.dtype.is_uint64())
+                ) | tl.constexpr(inp_vals.dtype.is_fp64()):
+                    vals = inp_vals
+                elif tl.constexpr(inp_vals.dtype.is_int()):
+                    vals = inp_vals.to(tl.int32)
+                else:
+                    vals = inp_vals.to(tl.float32)
+                idxs = b_idx
 
-        prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
-        prev_max_idx_b = tl.broadcast_to(prev_max_idx, (BLOCK_SIZE,))
+                result, cummax_indices = tl_cummax(vals, idxs, axis=0)
 
-        final_vals = tl.maximum(result, prev_max_val_b)
-        final_idx = tl.where(result >= prev_max_val_b, cummax_indices, prev_max_idx_b)
-        prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0.0), axis=0)
-        prev_max_idx = tl.sum(tl.where(last_mask, final_idx, 0), axis=0)
+                prev_max_val_b = tl.broadcast_to(prev_max_val, (BLOCK_SIZE,))
+                prev_max_idx_b = tl.broadcast_to(prev_max_idx, (BLOCK_SIZE,))
 
-        if tl.constexpr(inp.type.element_ty.is_floating()):
-            nan_override = scan_nan > 0
-            final_vals = tl.where(nan_override, float("nan"), final_vals)
-            final_idx = tl.where(nan_override, 0, final_idx)
+                # tl.maximum() returns the non-NaN operand; carry NaN forward
+                # explicitly so it keeps propagating like torch.cummax.
+                if tl.constexpr(vals.dtype.is_floating()):
+                    prev_is_nan = prev_max_val != prev_max_val
+                    result_is_nan = result != result
+                    prev_nan_mask = tl.broadcast_to(prev_is_nan, (BLOCK_SIZE,))
+                    use_result = result_is_nan | (
+                        (~prev_nan_mask) & (result >= prev_max_val_b)
+                    )
+                else:
+                    use_result = result >= prev_max_val_b
 
-        tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
-        tl.store(out_indices + offset, final_idx, mask=mask)
+                final_vals = tl.where(use_result, result, prev_max_val_b)
+                final_idx = tl.where(use_result, cummax_indices, prev_max_idx_b)
+                prev_max_val = tl.sum(tl.where(last_mask, final_vals, 0.0), axis=0)
+                prev_max_idx = tl.sum(tl.where(last_mask, final_idx, 0), axis=0)
+
+                tl.store(out + offset, final_vals.to(out.type.element_ty), mask=mask)
+                tl.store(out_indices + offset, final_idx, mask=mask)
 
 
 def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
@@ -424,12 +432,15 @@ def scan_then_fan_loop(inp, out, out_indices, A, B, C, dtype):
         BLOCK_SIZE = triton.next_power_of_2(B)
     loop_num = math.ceil(B / BLOCK_SIZE)
 
-    grid = (A, C)
+    # GCU caps grid.x at 65535 and grid.y at 255; the kernel strides over the
+    # remaining planes, so clamping the launch is always safe.
+    grid = (min(A, 65535), min(C, 255))
     with torch_device_fn.device(inp.device):
         scan_part_max_abc_loop_kernel[grid](
             inp,
             out,
             out_indices,
+            A,
             B,
             C,
             loop_num,

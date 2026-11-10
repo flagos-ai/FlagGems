@@ -570,9 +570,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
             )
             _fill_identity_indices_kernel[
                 (_capped_grid_1d(triton.cdiv(indices_i32.numel(), 1024)),)
-            ](
-                indices_i32, spatial_total, indices_i32.numel(), BLOCK_SIZE=1024
-            )
+            ](indices_i32, spatial_total, indices_i32.numel(), BLOCK_SIZE=1024)
             return input, _as_int64_indices(indices_i32)
         return input
 
@@ -636,13 +634,18 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
             output = torch.empty(
                 (in_n, in_c, 1, out_h, out_w), device=input.device, dtype=input.dtype
             )
-            indices_i32 = (
-                torch.empty_like(output, dtype=torch.int32)
-                if want_indices
-                else output
-            )
+            # gcu400: always run the direct kernel with RETURN_INDICES=True.
+            # Profiling shows the index computation + int32 store gives the
+            # compiler extra ILP that hides the window-load latency: without
+            # it the kernel is uniformly ~2.5x slower across every autotune
+            # config (156.9 ms vs 61.1 ms on (2,640,64,42,72)->(16,14,14)).
+            # When the caller does not want indices the buffer is scratch and
+            # its contents are discarded.
+            indices_i32 = torch.empty_like(output, dtype=torch.int32)
             # Use CB=1 for small total to avoid wasted blocks from channel grouping
-            grid = lambda meta: (_capped_grid_1d(triton.cdiv(total, meta["OUT_PER_BLOCK"])),)
+            grid = lambda meta: (
+                _capped_grid_1d(triton.cdiv(total, meta["OUT_PER_BLOCK"])),
+            )
             _kernel_direct[grid](
                 input,
                 output,
@@ -658,7 +661,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 MAX_WIN_D=_compute_max_win(in_d, 1),
                 MAX_WIN_H=_compute_max_win(in_h, out_h),
                 MAX_WIN_W=_compute_max_win(in_w, out_w),
-                RETURN_INDICES=want_indices,
+                RETURN_INDICES=True,
             )
             if want_indices:
                 return output, _as_int64_indices(indices_i32)
@@ -673,14 +676,14 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
             d_reduced = torch.empty(
                 (in_n, in_c, in_h, in_w), device=input.device, dtype=input.dtype
             )
-            if want_indices:
-                d_argmax_i32 = torch.empty(
-                    (in_n, in_c, in_h, in_w),
-                    device=input.device,
-                    dtype=torch.int32,
-                )
-            else:
-                d_argmax_i32 = d_reduced
+            # gcu400: always compute the D argmax — same ILP effect as the
+            # direct kernel (index work hides the load latency of the serial
+            # max-select chain); discarded when indices are not requested.
+            d_argmax_i32 = torch.empty(
+                (in_n, in_c, in_h, in_w),
+                device=input.device,
+                dtype=torch.int32,
+            )
             block_m = 64
             block_k = min(64, triton.next_power_of_2(k))
             # Flattened 1D grid (capped): the kernel decodes (m-block, k-block)
@@ -697,7 +700,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                 k,
                 BLOCK_M=block_m,
                 BLOCK_K=block_k,
-                RETURN_INDICES=want_indices,
+                RETURN_INDICES=True,
             )
             input = d_reduced.unsqueeze(2)
             in_d = 1
@@ -715,7 +718,9 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
                     base_spatial = torch.arange(
                         hw, device=input.device, dtype=torch.int64
                     ).view(1, 1, 1, out_h, out_w)
-                    indices = d_argmax_i32.unsqueeze(2).to(torch.int64) * hw + base_spatial
+                    indices = (
+                        d_argmax_i32.unsqueeze(2).to(torch.int64) * hw + base_spatial
+                    )
                     return output, indices
                 return output
 
@@ -729,7 +734,10 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
     output = torch.empty(
         (in_n, in_c, out_d, out_h, out_w), device=input.device, dtype=input.dtype
     )
-    indices_i32 = torch.empty_like(output, dtype=torch.int32) if want_indices else output
+    # gcu400: the direct kernel always runs with RETURN_INDICES=True (see the
+    # out_d=1 comment — index work gives the compiler the ILP to hide window
+    # load latency, ~2.5x faster).  Discarded when indices are not requested.
+    indices_i32 = torch.empty_like(output, dtype=torch.int32)
     flat_k1 = total_output
 
     # Cooperative path for very small total_output with large windows.
@@ -766,7 +774,9 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
         )
     else:
         # Direct scan — autotuner picks (M, K)
-        grid = lambda meta: (_capped_grid_1d(triton.cdiv(flat_k1, meta["OUT_PER_BLOCK"])),)
+        grid = lambda meta: (
+            _capped_grid_1d(triton.cdiv(flat_k1, meta["OUT_PER_BLOCK"])),
+        )
         _kernel_direct[grid](
             input,
             output,
@@ -782,7 +792,7 @@ def adaptive_max_pool3d(input: torch.Tensor, output_size, return_indices=None):
             MAX_WIN_D=max_win_d,
             MAX_WIN_H=max_win_h,
             MAX_WIN_W=max_win_w,
-            RETURN_INDICES=want_indices,
+            RETURN_INDICES=True,
         )
 
     if d_argmax_i32 is not None and want_indices:

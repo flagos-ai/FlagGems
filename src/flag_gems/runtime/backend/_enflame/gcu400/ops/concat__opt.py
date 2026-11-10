@@ -18,6 +18,7 @@
 - 所有输入 rank>=1。
 BLOCK 按单输入元素量分档（探针最优）：<65536 用 16384，否则 32768。
 """
+
 from typing import List, Tuple, Union
 
 import torch
@@ -28,10 +29,23 @@ from flag_gems.ops.cat import cat as _public_cat
 
 
 @triton.jit
-def _linear_cat_kernel(Out, In0, In1, In2, In3,
-                       n0, n1, n2, n3,
-                       o0, o1, o2, o3,
-                       NT: tl.constexpr, BLOCK: tl.constexpr):
+def _linear_cat_kernel(
+    Out,
+    In0,
+    In1,
+    In2,
+    In3,
+    n0,
+    n1,
+    n2,
+    n3,
+    o0,
+    o1,
+    o2,
+    o3,
+    NT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
     off = tl.arange(0, BLOCK)
@@ -61,9 +75,13 @@ def _can_fast_path(A, dim):
         return False
     tail = tuple(first.shape[1:])
     for t in A:
-        if (t.dtype != first.dtype or t.device != first.device
-                or not t.is_contiguous() or t.ndim != rank
-                or tuple(t.shape[1:]) != tail):
+        if (
+            t.dtype != first.dtype
+            or t.device != first.device
+            or not t.is_contiguous()
+            or t.ndim != rank
+            or tuple(t.shape[1:]) != tail
+        ):
             return False
     return True
 
@@ -82,8 +100,7 @@ def _fast_cat(A):
     max_n = max(ns)
     BLOCK = 16384 if max_n < 65536 else 32768
     grid = (triton.cdiv(max_n, BLOCK), n)
-    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK,
-                             num_warps=4)
+    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK, num_warps=4)
     return out
 
 

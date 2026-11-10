@@ -10,6 +10,7 @@
 - 保留 grid-stride 循环，任意 N 都正确；数值路径与生产一致（f32 中间）。
 不修改 TRACKED 文件，通过重绑 import 追加式落地。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -21,8 +22,17 @@ BLOCK = 4096
 
 
 @triton.jit(do_not_specialize=["N_total", "lower", "upper"])
-def _rrwb_kernel(GO, X, NZ, OUT, N_total, lower, upper,
-                 TRAINING: tl.constexpr, BLOCK_SIZE: tl.constexpr):
+def _rrwb_kernel(
+    GO,
+    X,
+    NZ,
+    OUT,
+    N_total,
+    lower,
+    upper,
+    TRAINING: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK_SIZE)
@@ -53,8 +63,9 @@ def rrelu_with_noise_backward(
 ):
     # 显式连续输出：empty_like 会 preserve 非连续 strides，
     # 而 kernel 按线性 off 写入，非连续 out 会导致值错乱。
-    out = torch.empty(grad_output.shape, dtype=grad_output.dtype,
-                      device=grad_output.device)
+    out = torch.empty(
+        grad_output.shape, dtype=grad_output.dtype, device=grad_output.device
+    )
     n = out.numel()
     if n == 0:
         return out
@@ -63,7 +74,15 @@ def rrelu_with_noise_backward(
     nz = noise if noise.is_contiguous() else noise.contiguous()
     grid = min(triton.cdiv(n, BLOCK), NUM_SIPS * 2)
     _rrwb_kernel[(grid,)](
-        go, x, nz, out, n, float(lower), float(upper),
-        TRAINING=bool(training), BLOCK_SIZE=BLOCK, num_warps=4,
+        go,
+        x,
+        nz,
+        out,
+        n,
+        float(lower),
+        float(upper),
+        TRAINING=bool(training),
+        BLOCK_SIZE=BLOCK,
+        num_warps=4,
     )
     return out

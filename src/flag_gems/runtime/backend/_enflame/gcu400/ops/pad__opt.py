@@ -10,15 +10,22 @@ v4 补回生产实现里对负源坐标的钳位：GCU 的 masked load 要求指
 一次 masked load 完成「拷贝或填 value」。
 非 constant、非连续、rank>3 回退生产实现。
 """
+
 import torch
 import triton
 import triton.language as tl
 
 
 @triton.jit
-def _pad_rank1_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
-                      LEFT: tl.constexpr, N_IN: tl.constexpr,
-                      BLOCK: tl.constexpr):
+def _pad_rank1_kernel(
+    X,
+    Out,
+    N_OUT: tl.constexpr,
+    VALUE: tl.constexpr,
+    LEFT: tl.constexpr,
+    N_IN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     out_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     src_coord = out_offset - LEFT
     valid = (out_offset < N_OUT) & (src_coord >= 0) & (src_coord < N_IN)
@@ -27,18 +34,31 @@ def _pad_rank1_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
 
 
 @triton.jit
-def _pad_rank2_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
-                      OUT_S0: tl.constexpr, IN_S0: tl.constexpr,
-                      PB0: tl.constexpr, PB1: tl.constexpr,
-                      IN_D0: tl.constexpr, IN_D1: tl.constexpr,
-                      BLOCK: tl.constexpr):
+def _pad_rank2_kernel(
+    X,
+    Out,
+    N_OUT: tl.constexpr,
+    VALUE: tl.constexpr,
+    OUT_S0: tl.constexpr,
+    IN_S0: tl.constexpr,
+    PB0: tl.constexpr,
+    PB1: tl.constexpr,
+    IN_D0: tl.constexpr,
+    IN_D1: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     out_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     coord0 = out_offset // OUT_S0
     coord1 = out_offset - coord0 * OUT_S0
     src0 = coord0 - PB0
     src1 = coord1 - PB1
-    valid = ((out_offset < N_OUT) & (src0 >= 0) & (src0 < IN_D0)
-             & (src1 >= 0) & (src1 < IN_D1))
+    valid = (
+        (out_offset < N_OUT)
+        & (src0 >= 0)
+        & (src0 < IN_D0)
+        & (src1 >= 0)
+        & (src1 < IN_D1)
+    )
     src_offset = src0 * IN_S0 + src1
     # GCU 后端的 masked load 仍要求指针落在合法区间，负偏移需先钳位
     safe_src_offset = tl.where(valid, src_offset, 0)
@@ -47,12 +67,23 @@ def _pad_rank2_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
 
 
 @triton.jit
-def _pad_rank3_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
-                      OUT_S0: tl.constexpr, OUT_S1: tl.constexpr,
-                      IN_S0: tl.constexpr, IN_S1: tl.constexpr,
-                      PB0: tl.constexpr, PB1: tl.constexpr, PB2: tl.constexpr,
-                      IN_D0: tl.constexpr, IN_D1: tl.constexpr, IN_D2: tl.constexpr,
-                      BLOCK: tl.constexpr):
+def _pad_rank3_kernel(
+    X,
+    Out,
+    N_OUT: tl.constexpr,
+    VALUE: tl.constexpr,
+    OUT_S0: tl.constexpr,
+    OUT_S1: tl.constexpr,
+    IN_S0: tl.constexpr,
+    IN_S1: tl.constexpr,
+    PB0: tl.constexpr,
+    PB1: tl.constexpr,
+    PB2: tl.constexpr,
+    IN_D0: tl.constexpr,
+    IN_D1: tl.constexpr,
+    IN_D2: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     out_offset = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     coord0 = out_offset // OUT_S0
     rest0 = out_offset - coord0 * OUT_S0
@@ -61,9 +92,15 @@ def _pad_rank3_kernel(X, Out, N_OUT: tl.constexpr, VALUE: tl.constexpr,
     src0 = coord0 - PB0
     src1 = coord1 - PB1
     src2 = coord2 - PB2
-    valid = ((out_offset < N_OUT) & (src0 >= 0) & (src0 < IN_D0)
-             & (src1 >= 0) & (src1 < IN_D1)
-             & (src2 >= 0) & (src2 < IN_D2))
+    valid = (
+        (out_offset < N_OUT)
+        & (src0 >= 0)
+        & (src0 < IN_D0)
+        & (src1 >= 0)
+        & (src1 < IN_D1)
+        & (src2 >= 0)
+        & (src2 < IN_D2)
+    )
     src_offset = src0 * IN_S0 + src1 * IN_S1 + src2
     safe_src_offset = tl.where(valid, src_offset, 0)
     value_or_input = tl.load(X + safe_src_offset, mask=valid, other=VALUE)
@@ -90,22 +127,50 @@ def _launch(A, pad_before, pad_after, value):
         BLOCK = 65536
         grid = (triton.cdiv(n_out, BLOCK),)
     if rank == 1:
-        _pad_rank1_kernel[grid](A, out, n_out, value,
-                                pad_before[0], in_shape[0],
-                                BLOCK=BLOCK, num_warps=num_warps)
+        _pad_rank1_kernel[grid](
+            A,
+            out,
+            n_out,
+            value,
+            pad_before[0],
+            in_shape[0],
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
     elif rank == 2:
-        _pad_rank2_kernel[grid](A, out, n_out, value,
-                                out_shape[1], in_shape[1],
-                                pad_before[0], pad_before[1],
-                                in_shape[0], in_shape[1],
-                                BLOCK=BLOCK, num_warps=num_warps)
+        _pad_rank2_kernel[grid](
+            A,
+            out,
+            n_out,
+            value,
+            out_shape[1],
+            in_shape[1],
+            pad_before[0],
+            pad_before[1],
+            in_shape[0],
+            in_shape[1],
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
     else:
-        _pad_rank3_kernel[grid](A, out, n_out, value,
-                                out_shape[1] * out_shape[2], out_shape[2],
-                                in_shape[1] * in_shape[2], in_shape[2],
-                                pad_before[0], pad_before[1], pad_before[2],
-                                in_shape[0], in_shape[1], in_shape[2],
-                                BLOCK=BLOCK, num_warps=num_warps)
+        _pad_rank3_kernel[grid](
+            A,
+            out,
+            n_out,
+            value,
+            out_shape[1] * out_shape[2],
+            out_shape[2],
+            in_shape[1] * in_shape[2],
+            in_shape[2],
+            pad_before[0],
+            pad_before[1],
+            pad_before[2],
+            in_shape[0],
+            in_shape[1],
+            in_shape[2],
+            BLOCK=BLOCK,
+            num_warps=num_warps,
+        )
     return out
 
 
@@ -114,7 +179,12 @@ def pad(self, pad, mode="constant", value=None):
     if value is None:
         value = 0.0
     rank = self.ndim
-    if mode == "constant" and self.is_contiguous() and rank <= 3 and len(pad) == 2 * rank:
+    if (
+        mode == "constant"
+        and self.is_contiguous()
+        and rank <= 3
+        and len(pad) == 2 * rank
+    ):
         # F.pad 约定：pad 从最内维开始成对给出 (left, right)
         pad_before = [0] * rank
         pad_after = [0] * rank
@@ -124,4 +194,5 @@ def pad(self, pad, mode="constant", value=None):
             pad_after[dim] = int(pad[2 * dim_from_last + 1])
         return _launch(self, pad_before, pad_after, float(value))
     from flag_gems.runtime.backend._enflame.gcu400.ops.pad import pad as _public
+
     return _public(self, pad, mode, value)

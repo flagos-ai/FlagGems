@@ -173,6 +173,116 @@ def _select_block_k(K):
     return 32
 
 
+def _select_block_k_flat(K):
+    # Deep-K shapes: BK=512 keeps the dot pipeline fed for the whole K loop and
+    # fits DSM at BLOCK_M=128 / BLOCK_N<=256. Shallow-K shapes cannot use it
+    # (a single 512-deep step would over-read K).
+    if K >= 512 and K % 512 == 0:
+        return 512
+    return _select_block_k(K)
+
+
+@libentry()
+@triton.jit
+def grouped_mm_flat_kernel(
+    A,
+    B,
+    C,
+    offs,
+    num_groups,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    # One tile per program. The owning group is resolved by walking `offs`
+    # once; the walk is O(num_groups) but is amortised over the whole K loop,
+    # which is why this layout only pays off on deep-K shapes. It matters
+    # because it lets the scheduler pack the grid freely: the persistent
+    # variant caps the grid at GCU_NUM_GRID programs and measurably loses
+    # pipelining on wide-N shapes.
+    tile_idx = tl.program_id(axis=0)
+    num_n_tiles = tl.cdiv(N, BLOCK_N)
+    group_start = 0
+    found_start = 0
+    found_end = 0
+    found_group = 0
+    tile_in_group = 0
+    remaining = tile_idx
+    found = 0
+
+    for g in tl.range(num_groups):
+        group_end = tl.load(offs + g).to(tl.int32)
+        num_tiles = tl.cdiv(group_end - group_start, BLOCK_M) * num_n_tiles
+        if found == 0:
+            if remaining < num_tiles:
+                found_start = group_start
+                found_end = group_end
+                found_group = g
+                tile_in_group = remaining
+                found = 1
+            else:
+                remaining -= num_tiles
+        group_start = group_end
+
+    if found == 1:
+        tile_m_idx = tile_in_group // num_n_tiles
+        tile_n_idx = tile_in_group % num_n_tiles
+        offs_am = found_start + tile_m_idx * BLOCK_M
+        offs_bn = tile_n_idx * BLOCK_N
+
+        a_block_ptr = tl.make_block_ptr(
+            base=A,
+            shape=(M, K),
+            strides=(stride_am, stride_ak),
+            offsets=(offs_am, 0),
+            block_shape=(BLOCK_M, BLOCK_K),
+            order=(1, 0),
+        )
+        b_block_ptr = tl.make_block_ptr(
+            base=B,
+            shape=(num_groups * K, N),
+            strides=(stride_bk, stride_bn),
+            offsets=(found_group * K, offs_bn),
+            block_shape=(BLOCK_K, BLOCK_N),
+            order=(1, 0),
+        )
+
+        accumulator = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        for _k in tl.range(0, tl.cdiv(K, BLOCK_K)):
+            a = tl.load(a_block_ptr, boundary_check=(0, 1))
+            b = tl.load(b_block_ptr, boundary_check=(0, 1))
+            accumulator = tl.dot(a, b, acc=accumulator, allow_tf32=False)
+            a_block_ptr = tl.advance(a_block_ptr, (0, BLOCK_K))
+            b_block_ptr = tl.advance(b_block_ptr, (BLOCK_K, 0))
+
+        c = accumulator.to(C.dtype.element_ty)
+        if offs_am + BLOCK_M <= found_end and N % BLOCK_N == 0:
+            c_block_ptr = tl.make_block_ptr(
+                base=C,
+                shape=(M, N),
+                strides=(stride_cm, stride_cn),
+                offsets=(offs_am, offs_bn),
+                block_shape=(BLOCK_M, BLOCK_N),
+                order=(1, 0),
+            )
+            tl.store(c_block_ptr, c)
+        else:
+            offs_cm = offs_am + tl.arange(0, BLOCK_M)
+            offs_cn = offs_bn + tl.arange(0, BLOCK_N)
+            c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
+            c_mask = (offs_cm[:, None] < found_end) & (offs_cn[None, :] < N)
+            tl.store(c_ptrs, c, mask=c_mask)
+
+
 def _select_block_n(N):
     if N <= 16:
         return 16
@@ -295,23 +405,51 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
 
     BLOCK_M = 128
     BLOCK_N = _select_block_n(N)
-    BLOCK_K = _select_block_k(K)
+    C = A.new_empty(M, N)
+    use_block_ptr = _block_ptr_aligned(A, B, C)
 
-    # Fixed grid: cap concurrent programs at GCU_NUM_GRID and let the
-    # in-kernel stride loop cover the whole tile space. The upper bound uses
-    # total M, which is always >= the per-group sum of cdiv tiles, so every
-    # real tile gets at least one program.
-    total_tiles_upper = triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
-    grid = (min(GCU_NUM_GRID, total_tiles_upper),)
+    # Deep-K shapes win from a free-running grid (see grouped_mm_flat_kernel);
+    # shallow-K shapes keep the persistent grid, which amortises the group
+    # walk over many tiles per program.
+    use_flat = use_block_ptr and K >= 1024 and N <= 4096
+    if use_flat:
+        BLOCK_K = _select_block_k_flat(K)
+        NUM_WARPS, NUM_STAGES = 2, 2
+        # Upper bound on the real tile count without a host-side sync:
+        # sum_g cdiv(M_g, BM) <= floor(M/BM) + num_groups, since each group
+        # contributes at most one partial tile. Programs past the real tile
+        # count exit immediately in-kernel.
+        total_tiles = (triton.cdiv(M, BLOCK_M) + num_groups) * triton.cdiv(N, BLOCK_N)
+        grid = (total_tiles,)
+    else:
+        BLOCK_K = _select_block_k(K)
+        # 短 K 分组（G 多、N 大）在 num_warps=2 下更快，长 K 保持 1。
+        NUM_WARPS = 2 if K <= 256 else 1
+        NUM_STAGES = 3
+        # Persistent grid: cap concurrent programs at GCU_NUM_GRID and let the
+        # in-kernel stride loop cover the whole tile space. The upper bound uses
+        # total M, which is always >= the per-group sum of cdiv tiles, so every
+        # real tile gets at least one program.
+        total_tiles_upper = triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N)
+        grid = (min(GCU_NUM_GRID, total_tiles_upper),)
+    print(
+        "BLOCK_M: ",
+        BLOCK_M,
+        "BLOCK_N: ",
+        BLOCK_N,
+        "BLOCK_K: ",
+        BLOCK_K,
+        "NUM_WARPS: ",
+        NUM_WARPS,
+        "NUM_STAGES: ",
+        NUM_STAGES,
+    )
 
-    # 短 K 分组（G 多、N 大）在 num_warps=2 下更快，长 K 保持 1。
-    num_warps = 2 if K <= 256 else 1
     # K / N 能整除时省掉边界 mask；N 很大的 shape 无 mask 路径会落入
     # 低算力稳态，因此只对 N<=2048 启用。
     enable_even = N <= 2048
     even_k = enable_even and K % BLOCK_K == 0
     even_n = enable_even and N % BLOCK_N == 0
-    C = A.new_empty(M, N)
 
     launch_args = (
         A,
@@ -329,20 +467,30 @@ def group_mm(A: torch.Tensor, B: torch.Tensor, offs: torch.Tensor) -> torch.Tens
         C.stride(0),
         C.stride(1),
     )
-    launch_kwargs = {
-        "GRID_DIM_X": grid[0],
-        "BLOCK_M": BLOCK_M,
-        "BLOCK_N": BLOCK_N,
-        "BLOCK_K": BLOCK_K,
-        "EVEN_K": even_k,
-        "EVEN_N": even_n,
-        "num_warps": num_warps,
-        "num_stages": 3,
-    }
 
-    if _block_ptr_aligned(A, B, C):
-        grouped_mm_kernel[grid](*launch_args, **launch_kwargs)
+    if use_flat:
+        grouped_mm_flat_kernel[grid](
+            *launch_args,
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            num_warps=NUM_WARPS,
+            num_stages=NUM_STAGES,
+        )
     else:
-        grouped_mm_generic_kernel[grid](*launch_args, **launch_kwargs)
+        launch_kwargs = {
+            "GRID_DIM_X": grid[0],
+            "BLOCK_M": BLOCK_M,
+            "BLOCK_N": BLOCK_N,
+            "BLOCK_K": BLOCK_K,
+            "EVEN_K": even_k,
+            "EVEN_N": even_n,
+            "num_warps": NUM_WARPS,
+            "num_stages": NUM_STAGES,
+        }
+        if use_block_ptr:
+            grouped_mm_kernel[grid](*launch_args, **launch_kwargs)
+        else:
+            grouped_mm_generic_kernel[grid](*launch_args, **launch_kwargs)
 
     return C

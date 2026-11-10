@@ -266,7 +266,7 @@ def scatter_reduce(
         with _tdf.device(inp.device):
             _gcu_scatter_reduce_vec_kernel[(out_numel,)](
                 _inp,
-                index.to(torch.int32).contiguous(),
+                index.contiguous(),
                 _src,
                 _out,
                 out_axis,

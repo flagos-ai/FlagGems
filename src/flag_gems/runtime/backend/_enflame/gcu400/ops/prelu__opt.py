@@ -14,6 +14,7 @@ S/C 保持运行时参数，只把 USE_SHIFT/LOG2_S/C_MASK 提为 constexpr —�
 小 shape 沿用生产的 BLOCK=1024/nw4，避免微秒级 case 回归；
 大 shape 用 B131072/nw4（B262144 会触发 dsm memory OutOfResources，排除）。
 """
+
 import logging
 
 import torch
@@ -27,8 +28,12 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def _prelu_kernel(
-    x_ptr, w_ptr, out_ptr,
-    n_elements, S, C,
+    x_ptr,
+    w_ptr,
+    out_ptr,
+    n_elements,
+    S,
+    C,
     USE_SHIFT: tl.constexpr,
     LOG2_S: tl.constexpr,
     C_MASK: tl.constexpr,
@@ -110,8 +115,17 @@ def prelu(*args, **kwargs):
         grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
 
     _prelu_kernel[grid](
-        x, weight, out, n_elements, spatial, channels,
-        int(use_shift), log2_spatial, channel_mask, int(w_is_scalar),
-        BLOCK_SIZE, num_warps=num_warps,
+        x,
+        weight,
+        out,
+        n_elements,
+        spatial,
+        channels,
+        int(use_shift),
+        log2_spatial,
+        channel_mask,
+        int(w_is_scalar),
+        BLOCK_SIZE,
+        num_warps=num_warps,
     )
     return out

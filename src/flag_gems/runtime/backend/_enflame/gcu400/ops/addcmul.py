@@ -5,6 +5,7 @@
 同 shape / 同 dtype / contiguous / value 为标量 / n<=65536，其余全部回退，
 保证语义不变。HP=True 用 fp32 中间计算，与生产逐位一致。
 """
+
 import logging
 
 import torch
@@ -25,8 +26,9 @@ def addcmul_forward(x, t1, t2, value):
 
 
 @triton.jit
-def _addcmul_flat(X, T1, T2, Y, N, VALUE: tl.constexpr,
-                  BLOCK: tl.constexpr, HP: tl.constexpr):
+def _addcmul_flat(
+    X, T1, T2, Y, N, VALUE: tl.constexpr, BLOCK: tl.constexpr, HP: tl.constexpr
+):
     pid = tl.program_id(0)
     off = pid * BLOCK + tl.arange(0, BLOCK)
     m = off < N
@@ -34,8 +36,9 @@ def _addcmul_flat(X, T1, T2, Y, N, VALUE: tl.constexpr,
     t1 = tl.load(T1 + off, mask=m, other=0)
     t2 = tl.load(T2 + off, mask=m, other=0)
     if HP:
-        y = (x.to(tl.float32) + VALUE * t1.to(tl.float32)
-             * t2.to(tl.float32)).to(Y.dtype.element_ty)
+        y = (x.to(tl.float32) + VALUE * t1.to(tl.float32) * t2.to(tl.float32)).to(
+            Y.dtype.element_ty
+        )
     else:
         y = x + VALUE * t1 * t2
     tl.store(Y + off, y, mask=m)
@@ -51,10 +54,13 @@ def addcmul(inp, tensor1, tensor2, *, value=1.0, out=None):
     # 几乎零额外开销（v1 的 _fast_ok 让 float16/1M 劣化到 0.930x）。
     n = inp.numel()
     if out is None and n <= _FAST_MAX and isinstance(value, (int, float)):
-        if (inp.dtype == tensor1.dtype == tensor2.dtype
-                and inp.shape == tensor1.shape == tensor2.shape
-                and inp.is_contiguous() and tensor1.is_contiguous()
-                and tensor2.is_contiguous()):
+        if (
+            inp.dtype == tensor1.dtype == tensor2.dtype
+            and inp.shape == tensor1.shape == tensor2.shape
+            and inp.is_contiguous()
+            and tensor1.is_contiguous()
+            and tensor2.is_contiguous()
+        ):
             o = torch.empty_like(inp)
             block = min(_BLOCK, max(1024, triton.next_power_of_2(n)))
             hp = inp.dtype in (torch.float16, torch.bfloat16)

@@ -5,6 +5,7 @@ v1 的 3 轮 benchmark：overall 4.15x / fp16 4.32x / fp16_large 4.34x，
 门禁而 FAIL。v2 让 n<65536 直接走公共 pointwise_dynamic 实现，
 消除该回归；其余保持 v1 的大 BLOCK 手写 kernel。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -26,6 +27,7 @@ def _square_kernel(X, Y, N, BLOCK: tl.constexpr, HP: tl.constexpr):
 
 def _public(A, out):
     from flag_gems.ops.square import square_out as _impl
+
     return _impl(A, out=out)
 
 

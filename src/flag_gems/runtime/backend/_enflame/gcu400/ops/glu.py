@@ -36,8 +36,15 @@ def glu_kernel(a, b):
 
 
 @triton.jit
-def _glu_flat(X, Y, N, HALF: tl.constexpr, FULL: tl.constexpr,
-              BLOCK: tl.constexpr, STRIDE: tl.constexpr):
+def _glu_flat(
+    X,
+    Y,
+    N,
+    HALF: tl.constexpr,
+    FULL: tl.constexpr,
+    BLOCK: tl.constexpr,
+    STRIDE: tl.constexpr,
+):
     """单 kernel 直接从原 contiguous 张量读 a/b，省掉 torch.chunk 两次拷贝。"""
     pid = tl.program_id(0)
     if STRIDE > 0:
@@ -49,8 +56,7 @@ def _glu_flat(X, Y, N, HALF: tl.constexpr, FULL: tl.constexpr,
             a = tl.load(X + outer * FULL + inner, mask=m, other=0)
             b = tl.load(X + outer * FULL + HALF + inner, mask=m, other=0)
             sig = 1 / (1 + exp(-b.to(tl.float32)))
-            tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty),
-                     mask=m)
+            tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty), mask=m)
     else:
         off = pid * BLOCK + tl.arange(0, BLOCK)
         m = off < N
@@ -59,8 +65,7 @@ def _glu_flat(X, Y, N, HALF: tl.constexpr, FULL: tl.constexpr,
         a = tl.load(X + outer * FULL + inner, mask=m, other=0)
         b = tl.load(X + outer * FULL + HALF + inner, mask=m, other=0)
         sig = 1 / (1 + exp(-b.to(tl.float32)))
-        tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty),
-                 mask=m)
+        tl.store(Y + off, (a.to(tl.float32) * sig).to(Y.dtype.element_ty), mask=m)
 
 
 def glu(self, dim=-1):
@@ -74,8 +79,9 @@ def glu(self, dim=-1):
         full = self.shape[-1]
         half = full // 2
         n = self.numel() // 2
-        out = torch.empty(self.shape[:-1] + (half,), dtype=self.dtype,
-                          device=self.device)
+        out = torch.empty(
+            self.shape[:-1] + (half,), dtype=self.dtype, device=self.device
+        )
         BLOCK, STRIDE, NW = 1024, 48, 8
         grid = (triton.cdiv(n, BLOCK),) if STRIDE == 0 else (STRIDE,)
         _glu_flat[grid](self, out, n, half, full, BLOCK, STRIDE, num_warps=NW)

@@ -63,8 +63,7 @@ def _foreach_log2_flat_kernel(
 def _foreach_log2_(self):
     logger.debug("GEMS_GCU400 FOREACH_LOG2_")
     if FALLBACK_TO_PUBLIC or not all(
-        tensor.dtype in _FLOAT_DTYPES and not tensor.dtype.is_complex
-        for tensor in self
+        tensor.dtype in _FLOAT_DTYPES and not tensor.dtype.is_complex for tensor in self
     ):
         return apply_unary("log2", self, inplace=True)
 

@@ -18,6 +18,7 @@
 不改 cat.py / cat__opt.py（避免影响已闭环的第 21 项 concat 与
 第 30 项 cat_out），只按算子选择更大的 BLOCK。
 """
+
 from typing import List, Tuple, Union
 
 import torch
@@ -49,8 +50,7 @@ def vstack(
 
     A = list(aligned)
     # 只接管「大 shape + 严格满足 cat fast path 边界」的情形
-    if (A[0].numel() < _LARGE or t0.ndim < 2
-            or not _can_fast_path(A, 0)):
+    if A[0].numel() < _LARGE or t0.ndim < 2 or not _can_fast_path(A, 0):
         # 与生产 vstack 逐字同构的直接调用，零额外转发开销
         return _cat(aligned, dim=0)
 
@@ -65,6 +65,5 @@ def vstack(
     out = torch.empty(out_shape, dtype=A[0].dtype, device=A[0].device)
     BLOCK = 65536
     grid = (triton.cdiv(max(ns), BLOCK), n)
-    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs,
-                             NT=n, BLOCK=BLOCK, num_warps=4)
+    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK, num_warps=4)
     return out

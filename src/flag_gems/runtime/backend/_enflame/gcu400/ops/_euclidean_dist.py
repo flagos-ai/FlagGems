@@ -97,12 +97,19 @@ def _euclidean_dist(x1, x2):
     # Small output tiles spread the [N,M] grid across many programs/cores (the
     # pair counts here are tiny and otherwise launch-bound); BK >= 16 so tl.dot
     # is legal even for tiny D, with kk < D masking the pad lanes to zero.
+    # BK is capped at 128: one 32x256 fp32 operand pair per program spills, and
+    # at 128x256x256 a BK=128 K-loop measures 12.4 us vs 15.7 us for BK=256
+    # (interleaved medians, spread < 0.05 us). For D <= 128 this is unchanged.
     BN = 32
     BM = 32
-    BK = max(16, min(triton.next_power_of_2(D), 256))
+    BK = max(16, min(triton.next_power_of_2(D), 128))
 
     with torch_device_fn.device(x1.device):
         grid = (triton.cdiv(N, BN), triton.cdiv(M, BM))
+        # 2 warps beat 4 by 10-17% on both benchmark shapes (64x128: 8.24 vs
+        # 9.19 us, 128x256: 10.40 vs 12.45 us, one config per process, spread
+        # < 0.06 us). The kernel is latency-bound -- tcu shows the GEMM pipe at
+        # ~3% and the 1D pipe at ~4% -- so extra warps only add per-CTA setup.
         _euclidean_dist_mm_kernel[grid](
             x1,
             x2,
@@ -116,6 +123,7 @@ def _euclidean_dist(x1, x2):
             BN=BN,
             BM=BM,
             BK=BK,
+            num_warps=2,
         )
 
     return output

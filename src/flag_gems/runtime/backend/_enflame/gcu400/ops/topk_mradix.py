@@ -168,7 +168,10 @@ if HAS_TLE_RAW:
             # selected.
             tle.gpu.copy(
                 input_ptr + row * N + offs_n,
-                l1.slot(0), [BLOCK_N], mask=offs_n < N, other=float("-inf"),
+                l1.slot(0),
+                [BLOCK_N],
+                mask=offs_n < N,
+                other=float("-inf"),
             )
             # S1 convert .. S4 over the staged row, in place. Both VDMEM
             # windows are written by the region (l1 holds the sort keys, ws the

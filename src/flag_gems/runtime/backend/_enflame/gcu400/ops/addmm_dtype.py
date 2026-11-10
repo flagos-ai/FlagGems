@@ -7,6 +7,7 @@ addmm / addmm_out。本实现保留公共 addmm_dtype_out 的全部校验与 fp3
 省掉 bias.broadcast_to(...).contiguous() 多余拷贝），小维度 / 非连续 /
 标量或向量 bias / beta=0 一律回退公共实现，保证语义与数值不变。
 """
+
 import torch
 import triton
 
@@ -24,9 +25,7 @@ def addmm_dtype(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1):
         device=mat1.device,
         dtype=out_dtype,
     )
-    return addmm_dtype_out(
-        bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out
-    )
+    return addmm_dtype_out(bias, mat1, mat2, out_dtype, beta=beta, alpha=alpha, out=out)
 
 
 def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
@@ -42,8 +41,7 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     if not (
         out_dtype == mat1.dtype
         or (
-            out_dtype == torch.float32
-            and mat1.dtype in (torch.float16, torch.bfloat16)
+            out_dtype == torch.float32 and mat1.dtype in (torch.float16, torch.bfloat16)
         )
     ):
         raise RuntimeError(
@@ -72,18 +70,15 @@ def addmm_dtype_out(bias, mat1, mat2, out_dtype, *, beta=1, alpha=1, out):
     )
     if not use_g4:
         from flag_gems.ops.addmm import addmm_out as _public_addmm_out
-        return _public_addmm_out(
-            bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out
-        )
+
+        return _public_addmm_out(bias_c, mat1, mat2, beta=beta, alpha=alpha, out=out)
 
     block_m, block_n, block_k, num_warps, num_stages = _select_addmm_out_config(
         M, N, K, mat1.dtype
     )
     # C 族 11 轮：bn=64 三次复现 1.386/1.391/1.398x，优于默认 256 的 1.298x。
     block_n = 64
-    even = (
-        M % block_m == 0 and N % block_n == 0 and K % block_k == 0
-    )
+    even = M % block_m == 0 and N % block_n == 0 and K % block_k == 0
     grid = (triton.cdiv(M, block_m) * triton.cdiv(N, block_n),)
     with torch_device_fn.device(mat1.device):
         _g4_addmm_kernel[grid](

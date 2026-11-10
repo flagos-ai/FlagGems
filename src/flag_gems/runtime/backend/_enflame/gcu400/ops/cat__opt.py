@@ -9,6 +9,7 @@ dim==0 时 pre_idx 恒为 0 且 (idx//P)*P + idx%P == idx，故
 由调用方回退原有完整逻辑（float8 / 非 0 dim / >4 输入 / dtype 不一致 /
 非连续 / 除 cat 维外 shape 不一致）。
 """
+
 import torch
 import triton
 import triton.language as tl
@@ -17,10 +18,23 @@ __all__ = ["try_fast_cat", "try_fast_cat_out"]
 
 
 @triton.jit
-def _linear_cat_kernel(Out, In0, In1, In2, In3,
-                       n0, n1, n2, n3,
-                       o0, o1, o2, o3,
-                       NT: tl.constexpr, BLOCK: tl.constexpr):
+def _linear_cat_kernel(
+    Out,
+    In0,
+    In1,
+    In2,
+    In3,
+    n0,
+    n1,
+    n2,
+    n3,
+    o0,
+    o1,
+    o2,
+    o3,
+    NT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
     pid_x = tl.program_id(0)
     pid_y = tl.program_id(1)
     off = tl.arange(0, BLOCK)
@@ -50,9 +64,13 @@ def _can_fast_path(A, dim):
         return False
     tail = tuple(first.shape[1:])
     for t in A:
-        if (t.dtype != first.dtype or t.device != first.device
-                or not t.is_contiguous() or t.ndim != rank
-                or tuple(t.shape[1:]) != tail):
+        if (
+            t.dtype != first.dtype
+            or t.device != first.device
+            or not t.is_contiguous()
+            or t.ndim != rank
+            or tuple(t.shape[1:]) != tail
+        ):
             return False
     return True
 
@@ -74,8 +92,7 @@ def try_fast_cat(A, dim):
     max_n = max(ns)
     BLOCK = 16384 if max_n < 65536 else 32768
     grid = (triton.cdiv(max_n, BLOCK), n)
-    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK,
-                             num_warps=4)
+    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK, num_warps=4)
     return out
 
 
@@ -91,9 +108,12 @@ def try_fast_cat_out(A, dim, out):
     n = len(A)
     first = A[0]
     out_shape = (sum(t.shape[0] for t in A),) + tuple(first.shape[1:])
-    if (out.dtype != first.dtype or out.device != first.device
-            or not out.is_contiguous()
-            or tuple(out.shape) != tuple(out_shape)):
+    if (
+        out.dtype != first.dtype
+        or out.device != first.device
+        or not out.is_contiguous()
+        or tuple(out.shape) != tuple(out_shape)
+    ):
         return False
     if any(out.data_ptr() == t.data_ptr() for t in A):
         return False
@@ -108,6 +128,5 @@ def try_fast_cat_out(A, dim, out):
     max_n = max(ns)
     BLOCK = 16384 if max_n < 65536 else 32768
     grid = (triton.cdiv(max_n, BLOCK), n)
-    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs,
-                             NT=n, BLOCK=BLOCK, num_warps=4)
+    _linear_cat_kernel[grid](out, *ptrs, *ns, *offs, NT=n, BLOCK=BLOCK, num_warps=4)
     return True

@@ -60,8 +60,14 @@ def conv2d_output_size(
 
 @libentry()
 @triton.autotune(
-    configs=[triton.Config({"BLOCK_NI_HO_WO": 32, "BLOCK_CI": 16, "BLOCK_CO": 32}, num_warps=4, num_stages=2)],
-        # Step 4 13 轮扫描最优 (C07)：0.8018ms vs 原 0.8736ms，fp16/fp32 精度 PASS
+    configs=[
+        triton.Config(
+            {"BLOCK_NI_HO_WO": 32, "BLOCK_CI": 16, "BLOCK_CO": 32},
+            num_warps=4,
+            num_stages=2,
+        )
+    ],
+    # Step 4 13 轮扫描最优 (C07)：0.8018ms vs 原 0.8736ms，fp16/fp32 精度 PASS
     key=[
         "in_n",
         "weight_c",

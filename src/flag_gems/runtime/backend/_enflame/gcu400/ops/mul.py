@@ -549,9 +549,7 @@ def mul_contig_kernel(
     GRID_SIZE: tl.constexpr,
 ):
     num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(
-        tl.program_id(0), num_tile, GRID_SIZE, num_stages=4
-    ):
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
         offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         x = tl.load(x_ptr + offsets, mask=mask)
@@ -571,9 +569,7 @@ def mul_scalar_contig_kernel(
     GRID_SIZE: tl.constexpr,
 ):
     num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(
-        tl.program_id(0), num_tile, GRID_SIZE, num_stages=4
-    ):
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
         offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = offsets < n_elements
         x = tl.load(x_ptr + offsets, mask=mask)
@@ -722,9 +718,7 @@ def _fast_scalar_mul(tensor, scalar, out):
             output,
             scalar,
             n_elements,
-            BLOCK_SIZE=_pick_block(
-                n_elements, tensor.element_size(), scalar_path=True
-            ),
+            BLOCK_SIZE=_pick_block(n_elements, tensor.element_size(), scalar_path=True),
             IS_BOOL=dtype is torch.bool,
             GRID_SIZE=grid[0],
             num_warps=4,

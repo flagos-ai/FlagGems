@@ -11,6 +11,7 @@
 （codegen 会取 `.dtype` 报错，省略参数才是自动分配路径）。
 不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
 """
+
 import triton
 import triton.language as tl
 

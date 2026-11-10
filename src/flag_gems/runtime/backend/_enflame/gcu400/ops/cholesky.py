@@ -144,6 +144,15 @@ def cholesky(A, upper=False):
     if n == 0 or A.numel() == 0:
         return torch.empty_like(A)
 
+    if A.dtype == torch.float64:
+        # The GCU compiler cannot lower float64 arithmetic in this kernel
+        # (``PassManager execution failed`` even for a 2x2 tile), while the
+        # native LAPACK-backed ``aten::cholesky`` does support float64 on GCU.
+        # Hand float64 over to it instead of failing to compile.
+        if _CAN_CAPTURE_NATIVE_KERNEL:
+            return _NATIVE_CHOLESKY.call_boxed(_DEVICE_KEYSET, A, bool(upper))
+        raise NotImplementedError("cholesky float64 requires the native aten kernel")
+
     if n > _MAX_N:
         # The blocked kernel keeps the whole matrix register-resident, which is
         # only viable for small orders. Beyond that, delegate to the native

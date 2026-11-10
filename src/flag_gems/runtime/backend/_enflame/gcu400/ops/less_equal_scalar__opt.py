@@ -8,6 +8,7 @@
 保持生产原有的 `is_tensor=[True, False]` 与 `ALWAYS_BOOL` promotion 语义
 （输出 bool，标量 B 与 x 的 fp32 比较）。不修改全局 CODEGEN_COFIGS。
 """
+
 import triton
 import triton.language as tl
 

@@ -13,6 +13,7 @@ promotion 输出 bool，out 与输入 dtype 不同）；out=None 时 codegen
 日志含 greater_scalar_out 的 3 轮 15 case，时段一致。
 不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
 """
+
 import triton
 import triton.language as tl
 

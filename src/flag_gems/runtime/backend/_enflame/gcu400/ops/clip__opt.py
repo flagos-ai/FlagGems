@@ -8,6 +8,7 @@ pointwise_dynamic 对象（clip_func / clip_func_min / clip_func_max），
 
 不修改全局 CODEGEN_COFIGS，符合 skill「pointwise_dynamic 必须特化」要求。
 """
+
 import triton
 import triton.language as tl
 
