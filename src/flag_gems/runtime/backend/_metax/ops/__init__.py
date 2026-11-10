@@ -107,6 +107,7 @@ from .foreach_mul_scalar_ import foreach_mul_scalar_
 from .foreach_mul_scalar_list import foreach_mul_scalar_list
 from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
 from .foreach_mul_tensor import foreach_mul_tensor
+from .foreach_mul_tensor_ import foreach_mul_tensor_
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -350,6 +351,7 @@ __all__ = [
     "foreach_mul_scalar_list",
     "foreach_mul_scalar_list_",
     "foreach_mul_tensor",
+    "foreach_mul_tensor_",
     "full",
     "full_like",
     "gcd_",
