@@ -136,7 +136,7 @@ def _assert_close(actual, expected, dtype, reduce_dim):
     utils.gems_assert_close(actual, expected, dtype, atol=atol, reduce_dim=reduce_dim)
 
 
-@pytest.mark.embedding_spmdm
+@pytest.mark.embedding_spmdm_grad
 @pytest.mark.parametrize("weighted", (False, True))
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
@@ -163,7 +163,7 @@ def test_embedding_spmdm_grad_matches_reference(shape, dtype, weighted):
         _assert_close(actual_weights, expected_weights, dtype, reduce_dim=shape[1])
 
 
-@pytest.mark.embedding_spmdm
+@pytest.mark.embedding_spmdm_grad
 def test_embedding_spmdm_grad_noncontiguous_inputs():
     shape = (37, 40, 3, 9)
     table, indices, weights = _make_inputs(
@@ -178,7 +178,7 @@ def test_embedding_spmdm_grad_noncontiguous_inputs():
     _assert_close(actual[1], expected[1], torch.float16, reduce_dim=shape[1])
 
 
-@pytest.mark.embedding_spmdm
+@pytest.mark.embedding_spmdm_grad
 def test_embedding_spmdm_grad_validation():
     table = torch.randn(11, 16, device=flag_gems.device)
     indices = torch.zeros(2, 3, dtype=torch.int64, device=flag_gems.device)
