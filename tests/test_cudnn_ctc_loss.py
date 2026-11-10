@@ -173,7 +173,17 @@ def test_cudnn_ctc_loss_varying_lengths(input_lengths, target_lengths):
 
 @pytest.mark.cudnn_ctc_loss
 def test_cudnn_ctc_loss_empty_target():
-    """An empty label sequence yields a zero loss and a `log_probs` gradient."""
+    """An empty label sequence matches cuDNN on both loss and gradient.
+
+    Compared against cuDNN itself rather than a re-derived formula: cuDNN
+    reports a zero loss for the empty label sequence and seeds the gradient
+    with `exp(log_probs)` (nothing accumulates posterior mass into state 0, so
+    the seed survives the backward pass). Only the valid time steps are
+    compared, since cuDNN leaves the padded rows uninitialized.
+    """
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
     device = flag_gems.device
     torch.manual_seed(0)
     t_steps, batch, classes = 8, 2, 6
@@ -187,14 +197,25 @@ def test_cudnn_ctc_loss_empty_target():
         log_probs, targets, input_lengths, target_lengths, 0, False, False
     )
 
-    # Zero loss for the empty target, and the gradient of the valid region is
-    # `exp(log_probs)` since no label state can consume probability mass.
-    assert res_loss[0].item() == 0.0
-    ref_grad = utils.to_reference(log_probs[: input_lengths[0], 0], True).exp()
+    # Captured at import time is not necessary: this is the native path unless a
+    # previous test leaked a global registration (see the dispatch test, which is
+    # scoped so it cannot).
+    ref_loss, ref_grad = torch.ops.aten._cudnn_ctc_loss(
+        log_probs,
+        targets.to(device),
+        torch.tensor(input_lengths, dtype=torch.int32, device=device),
+        torch.tensor(target_lengths, dtype=torch.int32, device=device),
+        0,
+        False,
+        False,
+    )
+
+    utils.gems_assert_close(res_loss, ref_loss, torch.float32)
+    valid = input_lengths[0]
+    utils.gems_assert_close(res_grad[:valid, 0], ref_grad[:valid, 0], torch.float32)
+    # The empty-label gradient really is the `exp(log_probs)` seed, not zeros.
     utils.gems_assert_close(
-        res_grad[: input_lengths[0], 0],
-        ref_grad,
-        torch.float32,
+        res_grad[:valid, 0], log_probs[:valid, 0].exp(), torch.float32
     )
 
 
@@ -321,8 +342,10 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
 
     `_cudnn_ctc_loss.Tensor` has to be in `_FULL_CONFIG` with an Autograd
     fallthrough; a registration regression is otherwise silent because
-    `register_error` only logs. Calling the real schema under `only_enable`
-    exercises the same path `use_gems()` would take.
+    `register_error` only logs. Calling the real schema under a scoped
+    `use_gems` exercises the same path a global registration would, and the
+    context tears the registration down on exit, so later tests still see the
+    native cuDNN kernel in their references.
     """
 
     if TO_CPU:
@@ -339,13 +362,10 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
         log_probs, targets, inp_len, tgt_len, 0, False, False
     )
 
-    flag_gems.only_enable(include=["cudnn_ctc_loss"])
-    try:
+    with flag_gems.use_gems(include=["cudnn_ctc_loss"]):
         dispatch_loss, dispatch_grad = torch.ops.aten._cudnn_ctc_loss.Tensor(
             log_probs, targets, inp_len, tgt_len, 0, False, False
         )
-    finally:
-        flag_gems.enable()
 
     utils.gems_assert_close(dispatch_loss, direct_loss, torch.float32)
     utils.gems_assert_close(dispatch_grad, direct_grad, torch.float32)
@@ -413,6 +433,12 @@ def test_cudnn_ctc_loss_infeasible_alignment():
     back as zero (not `inf`), and the gradient must be all zeros (not `NaN`
     from `inf - inf`, and not the `exp(log_probs)` seed the empty-target path
     leaves in place).
+
+    The gradient of the *infeasible* batch entry is asserted directly rather
+    than compared against cuDNN: cuDNN does not write that entry's gradient
+    buffer at all, so its value is uninitialized memory (measured to be
+    whatever the allocator last handed out). The feasible trailing entry is
+    still compared against cuDNN.
     """
 
     if TO_CPU:
@@ -445,7 +471,8 @@ def test_cudnn_ctc_loss_infeasible_alignment():
         assert res_grad[:, 0].count_nonzero().item() == 0
         assert not torch.isnan(res_grad).any()
         utils.gems_assert_close(res_loss, ref_loss, torch.float32)
-        utils.gems_assert_close(res_grad[:, 0], ref_grad[:, 0], torch.float32)
+        # Batch 1 is alignable, so cuDNN does define its gradient.
+        utils.gems_assert_close(res_grad[:, 1], ref_grad[:, 1], torch.float32)
 
 
 @pytest.mark.cudnn_ctc_loss

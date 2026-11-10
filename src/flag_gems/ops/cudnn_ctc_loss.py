@@ -50,6 +50,14 @@ def _logaddexp3(a, b, c, use_c):
     )
 
 
+# `T`, `N` and `C` are runtime arguments rather than `constexpr`s. They only
+# appear in address arithmetic (`t * N * C + batch * C`) and in loop bounds that
+# Triton lowers fine at runtime, so nothing is lost by keeping them dynamic,
+# while every distinct shape no longer triggers its own compile. The constexprs
+# below genuinely drive the block/grid shape (`BLOCK_S`, `STATE_COUNT_MAX`) and
+# are what the kernels are specialized on.
+
+
 @libentry()
 @triton.jit
 def cudnn_ctc_loss_forward_kernel(
@@ -60,10 +68,9 @@ def cudnn_ctc_loss_forward_kernel(
     target_offsets,
     neg_log_likelihood,
     log_alpha,
-    T: tl.constexpr,
-    N: tl.constexpr,
-    C: tl.constexpr,
-    MAX_TARGET: tl.constexpr,
+    T,
+    N,
+    C,
     STATE_COUNT_MAX: tl.constexpr,
     BLANK: tl.constexpr,
     BLOCK_S: tl.constexpr,
@@ -90,8 +97,9 @@ def cudnn_ctc_loss_forward_kernel(
 
     # The extended label sequence always starts with the blank symbol, so the
     # blank emission probability only has to be loaded once per batch entry.
-    # An empty target has nothing to align, so cuDNN reports a zero loss and a
-    # zero-gradient for it (filled in by the gradient init kernel below).
+    # An empty target has nothing to align, so cuDNN reports a zero loss for it
+    # and seeds the gradient with `exp(log_probs)`, which the backward pass then
+    # leaves untouched (nothing accumulates posterior mass into state 0).
     init_state = (states == 0) | ((states == 1) & (target_len > 0))
     init_logp = tl.load(
         log_probs + batch * C + labels,
@@ -192,9 +200,9 @@ def cudnn_ctc_loss_init_grad_kernel(
     grad_output,
     grad_input,
     total,
-    T: tl.constexpr,
-    N: tl.constexpr,
-    C: tl.constexpr,
+    T,
+    N,
+    C,
     BLOCK_S: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
@@ -244,10 +252,9 @@ def cudnn_ctc_loss_backward_kernel(
     log_alpha,
     grad_output,
     grad_input,
-    T: tl.constexpr,
-    N: tl.constexpr,
-    C: tl.constexpr,
-    MAX_TARGET: tl.constexpr,
+    T,
+    N,
+    C,
     STATE_COUNT_MAX: tl.constexpr,
     BLANK: tl.constexpr,
     BLOCK_S: tl.constexpr,
@@ -380,22 +387,56 @@ def _lengths_to_tensor(values, device):
     return torch.tensor(list(values), dtype=torch.long, device=device)
 
 
-def _stage_to_device(host, device):
-    """Upload one host-side `long` vector asynchronously.
+def _stage_packed(targets, input_lengths, target_lengths, device):
+    """Upload targets and lengths in one async H2D copy.
 
-    The lengths and targets arrive on the host, but every kernel needs them on
-    the device. A *blocking* H2D copy of a few hundred bytes costs ~2ms of host
-    time on the CUDA backend and two of them per call dwarf the kernels.
+    The lengths arrive as Python sequences (the ATen schema allows tensors too,
+    handled by the caller), but every kernel needs them on the device. A
+    blocking H2D copy of a few hundred bytes costs ~2ms of host time on the CUDA
+    backend and several of them per call dwarf the kernels.
 
-    The non-blocking variant of a regular pageable copy costs microseconds, and
-    it is markedly cheaper than the pinned one here: a pinned staging buffer
-    followed immediately by a kernel serializes into a ~2ms stall, while the
-    pageable async path runs at ~8us. The copy is ordered on the caller's
-    stream, so the kernels below still see the data.
+    Everything is packed into a single `int64` host vector so exactly one upload
+    happens. The int32 targets are widened into the *low* half of its head, so
+    once uploaded they form the contiguous upper half of the same buffer when
+    read back as int32 -- zero-copy for the kernel, with no device-side cast.
+
+    The non-blocking form of a regular *pageable* copy is what makes this cheap.
+    A pinned staging buffer followed immediately by a kernel serializes into a
+    ~2ms stall, whereas the pageable async path runs at ~8us. The copy is
+    ordered on the caller's stream, so the kernels below still see the data.
     """
-    out = torch.empty(host.numel(), dtype=torch.long, device=device)
-    out.copy_(host, non_blocking=True)
-    return out
+    batch = len(input_lengths)
+    offsets = [0] * batch
+    running = 0
+    for index, length in enumerate(target_lengths):
+        offsets[index] = running
+        running += int(length)
+    lengths_host = torch.tensor(
+        list(input_lengths) + list(target_lengths) + offsets, dtype=torch.int64
+    )
+
+    target_count = targets.numel()
+    # The packed buffer is int32 at the head (so the targets stay contiguous for
+    # the kernels) and int64 past it (so the lengths keep their natural width).
+    # `view(torch.int64)` needs the offset 8-byte aligned, so an odd target
+    # count gets one padding slot.
+    target_slots = target_count + (target_count % 2)
+    total_slots = target_slots + 2 * lengths_host.numel()
+    packed = torch.empty(total_slots, dtype=torch.int32)
+    packed[:target_count].copy_(targets.detach().to(device="cpu", dtype=torch.int32))
+    packed[target_slots:].view(torch.int64).copy_(lengths_host)
+
+    staged = torch.empty_like(packed, device=device)
+    staged.copy_(packed, non_blocking=True)
+
+    work_targets = staged[:target_count]
+    lengths = staged[target_slots:].view(torch.int64)
+    return (
+        work_targets,
+        lengths[:batch],
+        lengths[batch : 2 * batch],
+        lengths[2 * batch :],
+    )
 
 
 def _target_offsets(target_lengths, device, batch_size):
@@ -433,6 +474,18 @@ def _length_stats(values, name):
     return min(lengths), max(lengths)
 
 
+def _launch_params(block_s):
+    """Pick the launch shape for a state-row block of `block_s` lanes.
+
+    Both kernels carry the whole state row in one block and walk T serially, so
+    occupancy is set by `block_s`. A row of 256 lanes (>= 128 target labels)
+    leaves only one state lane per thread at Triton's default 4 warps; widening
+    to 8 warps measured 1.13x on forward and 1.33x on backward there, while
+    smaller rows regress because the extra warps mostly idle. Tuned on H20.
+    """
+    return {"num_warps": 8} if block_s >= 256 else {}
+
+
 def _launch_backward(
     work_log_probs,
     work_targets,
@@ -446,7 +499,6 @@ def _launch_backward(
     T,
     batch_size,
     num_classes,
-    max_target,
     state_count_max,
     blank,
     zero_infinity,
@@ -459,6 +511,7 @@ def _launch_backward(
             grad_output,
         )
     block_s = triton.next_power_of_2(state_count_max)
+    launch_params = _launch_params(block_s)
     with torch_device_fn.device(work_log_probs.device):
         if init_grad:
             # `grad_input` is filled entirely by the init kernel, so no
@@ -495,10 +548,10 @@ def _launch_backward(
             T,
             batch_size,
             num_classes,
-            max_target,
             state_count_max,
             blank,
             block_s,
+            **launch_params,
         )
 
 
@@ -545,25 +598,12 @@ class CudnnCtcLossFunction(torch.autograd.Function):
                     "input_lengths/target_lengths need to have size matching "
                     "batch_size"
                 )
-            offsets = [0] * batch_size
-            running = 0
-            for index, length in enumerate(target_lengths):
-                offsets[index] = running
-                running += int(length)
-            lengths_host = torch.tensor(
-                input_lengths + target_lengths + offsets,
-                dtype=torch.long,
-            )
-            target_count = targets.numel()
-            packed = torch.empty(target_count + lengths_host.numel(), dtype=torch.long)
-            packed[:target_count].copy_(targets.to(torch.long))
-            packed[target_count:].copy_(lengths_host)
-            staged = _stage_to_device(packed, log_probs.device)
-            work_targets = staged[:target_count].to(torch.int32)
-            lengths = staged[target_count:]
-            work_input_lengths = lengths[:batch_size]
-            work_target_lengths = lengths[batch_size : 2 * batch_size]
-            target_offsets = lengths[2 * batch_size :]
+            (
+                work_targets,
+                work_input_lengths,
+                work_target_lengths,
+                target_offsets,
+            ) = _stage_packed(targets, input_lengths, target_lengths, log_probs.device)
         else:
             work_targets = targets.to(device=log_probs.device, dtype=torch.int32)
             work_targets = work_targets.contiguous()
@@ -596,6 +636,7 @@ class CudnnCtcLossFunction(torch.autograd.Function):
 
         state_count_max = 2 * max_target + 1
         block_s = triton.next_power_of_2(state_count_max)
+        launch_params = _launch_params(block_s)
 
         neg_log_likelihood = torch.empty(
             (batch_size,), dtype=torch.float32, device=log_probs.device
@@ -624,10 +665,10 @@ class CudnnCtcLossFunction(torch.autograd.Function):
                     T,
                     batch_size,
                     num_classes,
-                    max_target,
                     state_count_max,
                     blank,
                     block_s,
+                    **launch_params,
                 )
 
         # cuDNN always materializes the log_probs gradient, so the backward
@@ -667,7 +708,6 @@ class CudnnCtcLossFunction(torch.autograd.Function):
                 T,
                 batch_size,
                 num_classes,
-                max_target,
                 state_count_max,
                 blank,
                 zero_infinity,
@@ -708,7 +748,6 @@ class CudnnCtcLossFunction(torch.autograd.Function):
                 ctx.T,
                 ctx.batch_size,
                 ctx.num_classes,
-                ctx.max_target,
                 ctx.state_count_max,
                 ctx.blank,
                 ctx.zero_infinity,
