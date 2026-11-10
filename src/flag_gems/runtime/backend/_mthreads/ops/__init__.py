@@ -76,6 +76,7 @@ from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .expand_copy import expand_copy
 from .fake_quantize_per_tensor_affine import fake_quantize_per_tensor_affine
+from .fake_quantize_per_tensor_affine_cachemask import fake_quantize_per_tensor_affine_cachemask
 from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
@@ -244,6 +245,7 @@ __all__ = [
     "erfinv_",
     "expand_copy",
     "fake_quantize_per_tensor_affine",
+    "fake_quantize_per_tensor_affine_cachemask",
     "feature_dropout",
     "feature_dropout_",
     "fix",
