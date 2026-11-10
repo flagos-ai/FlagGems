@@ -27,11 +27,12 @@ import struct
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice as _ld
+
 from flag_gems.ops.fake_quantize_per_tensor_affine_cachemask import (
     fake_quantize_per_tensor_affine_cachemask as default_fq_cachemask,
 )
 from flag_gems.runtime import torch_device_fn
-from triton.language.extra import libdevice as _ld
 
 logger = logging.getLogger(
     f'flag_gems.runtime.backend._mthreads.ops.{__name__.split(".")[-1]}'
