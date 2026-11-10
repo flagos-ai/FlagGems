@@ -150,6 +150,7 @@ from .mm import mm
 from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
+from .multiply_ import multiply_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
@@ -363,6 +364,7 @@ __all__ = [
     "mse_loss_backward",
     "mul",
     "mul_",
+    "multiply_",
     "mv",
     "mvlgamma",
     "nanmedian",
