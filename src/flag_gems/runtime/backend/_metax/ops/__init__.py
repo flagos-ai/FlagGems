@@ -29,6 +29,7 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_erf_ import foreach_erf_
 from .foreach_exp import foreach_exp
 from .foreach_exp_ import foreach_exp_
 from .foreach_expm1 import foreach_expm1
@@ -199,6 +200,7 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_erf_",
     "foreach_exp",
     "foreach_exp_",
     "foreach_expm1",
