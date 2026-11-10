@@ -102,6 +102,7 @@ from .float_power_ import (
     float_power_tensor_tensor_,
     float_power_tensor_tensor_out,
 )
+from .fmod_scalar import fmod_scalar
 from .fused_moving_avg_obs_fq_helper import fused_moving_avg_obs_fq_helper
 from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
@@ -308,6 +309,7 @@ __all__ = [
     "float_power_tensor_tensor_out",
     "floor_divide",
     "floor_divide_",
+    "fmod_scalar",
     "fused_moving_avg_obs_fq_helper",
     "gcd_",
     "gelu",
