@@ -422,6 +422,14 @@ class LibTuner(triton.runtime.Autotuner):
                 from triton.testing import do_bench_cudagraph
 
                 def do_bench(kernel_call, quantiles):
+                    from flag_gems.runtime import device
+
+                    if device.vendor_name == "mthreads":
+                        next_power_of_2 = triton.next_power_of_2
+                        try:
+                            importlib.import_module("torchada")
+                        finally:
+                            triton.next_power_of_2 = next_power_of_2
                     return do_bench_cudagraph(
                         kernel_call,
                         rep=rep if rep is not None else 100,

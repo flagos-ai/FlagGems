@@ -11,16 +11,28 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
-from .bmm import bmm
+from .bmm import bmm, bmm_out
 from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc
+from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .convolution_double_backward import _convolution_double_backward
+from .cross_attention import cross_attention
+from .dequantize import dequantize
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
+from .fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_exp_ import foreach_exp_
+from .foreach_expm1 import foreach_expm1
+from .foreach_expm1_ import foreach_expm1_
+from .foreach_floor import foreach_floor
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -83,6 +95,7 @@ except ImportError:
     pass
 from ._make_dep_token import _make_dep_token
 from .mode import mode
+from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -104,6 +117,7 @@ from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
+from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -144,6 +158,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -166,17 +181,27 @@ __all__ = [
     "baddbmm",
     "baddbmm_out",
     "bmm",
+    "bmm_out",
     "bmm_w8a8",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "conv_tbc",
+    "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cross_attention",
+    "dequantize",
     "erfinv",
     "erfinv_",
     "exponential_",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_exp_",
+    "foreach_expm1",
+    "foreach_expm1_",
+    "foreach_floor",
     "full",
     "full_like",
     "gcd_",
@@ -243,6 +268,8 @@ __all__ = [
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
     "mode",
+    "mul",
+    "mul_",
     "mv",
     "mvlgamma",
     "mvlgamma_",
@@ -270,6 +297,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
+    "router_gemm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",
