@@ -84,8 +84,21 @@ from .foreach_frac_ import foreach_frac_
 from .foreach_log import foreach_log
 from .foreach_log1p import foreach_log1p
 from .foreach_log2 import foreach_log2
+from .foreach_log2_ import foreach_log2_
 from .foreach_log10 import foreach_log10
 from .foreach_log10_ import foreach_log10_
+from .foreach_max import foreach_max
+from .foreach_maximum_list import foreach_maximum_list
+from .foreach_maximum_list_ import foreach_maximum_list_
+from .foreach_maximum_scalar import foreach_maximum_scalar
+from .foreach_maximum_scalar_ import foreach_maximum_scalar_
+from .foreach_maximum_scalar_list import foreach_maximum_scalar_list
+from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
+from .foreach_minimum_list import foreach_minimum_list
+from .foreach_minimum_list_ import foreach_minimum_list_
+from .foreach_minimum_scalar import foreach_minimum_scalar
+from .foreach_minimum_scalar_ import foreach_minimum_scalar_
+from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -308,6 +321,19 @@ __all__ = [
     "foreach_log10_",
     "foreach_log1p",
     "foreach_log2",
+    "foreach_log2_",
+    "foreach_max",
+    "foreach_maximum_list",
+    "foreach_maximum_list_",
+    "foreach_maximum_scalar",
+    "foreach_maximum_scalar_",
+    "foreach_maximum_scalar_list",
+    "foreach_maximum_scalar_list_",
+    "foreach_minimum_list",
+    "foreach_minimum_list_",
+    "foreach_minimum_scalar",
+    "foreach_minimum_scalar_",
+    "foreach_minimum_scalar_list",
     "full",
     "full_like",
     "gcd_",
