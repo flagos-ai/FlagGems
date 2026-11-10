@@ -140,18 +140,34 @@ def _pad_col(x, pad, R, pitch, ncols):
     )
 
 
+def _copy_into(dst, src):
+    """Copy ``src`` into ``dst``: DMA engine first, in-tree Triton ``copy_`` else.
+
+    ``tle_copy`` is an opportunistic fast path, not a guarantee: it returns
+    False on triton builds without a usable tle extension (the CI runtime
+    image is one) and on layouts/dtypes the engine cannot express.  Every copy
+    in this file must therefore keep a real fallback -- calling ``tle_copy``
+    alone leaves ``dst`` untouched, which silently turns a padded reduction
+    into an identity-only one and a transpose helper into uninitialised
+    memory.
+    """
+    if not tle_copy(src, dst):
+        _gems_copy_(dst, src)
+
+
 def _native_contiguous(t):
     """Materialise ``t`` contiguously through the vendor DMA engine.
 
     ``Tensor.contiguous()`` is itself a FlagGems-registered operator, so using
     it here would drag a Triton copy kernel into the timed region (and into
     every ``use_gems`` call site).  ``tle_copy`` drives the vendor SDNN copy
-    engine directly (no ATen, no FlagGems kernel).
+    engine directly (no ATen, no FlagGems kernel); where it is unavailable the
+    in-tree Triton ``copy_`` stands in.
     """
     if t.is_contiguous():
         return t
     out = torch.empty(t.shape, dtype=t.dtype, device=t.device)
-    tle_copy(t, out)
+    _copy_into(out, t)
     return out
 
 
@@ -174,16 +190,11 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
         # rather than reading the rows past `R`.
         pad = torch.full((RP, ncols), _identity(op), dtype=x.dtype, device=dev)
         if C == 1:
-            # The one destination `tle_copy` cannot express, and at one element
-            # per row a scatter costs less than the strided copy that used to
-            # stand in for it.
+            # One element per row is a scatter, which the DMA row path cannot
+            # express; at this width it also costs less than a strided copy.
             _pad_col(x, pad, R, pitch, ncols)
-        elif not tle_copy(x, pad[:R, :C]):
-            # Every wider destination is expressible; if that ever stops being
-            # true, fail loudly rather than reduce a buffer left all identity.
-            raise NotImplementedError(
-                f"tle_copy cannot express a {C}-column pad destination"
-            )
+        else:
+            _copy_into(pad[:R, :C], x)
         x = pad
         pitch = ncols
     nfull = ncols // BN
@@ -234,7 +245,7 @@ def _row_reduce(x, R, C, op, final_sqrt=False):
         cop = _combine_op(op)
         pt = torch.full((R, BN), _identity(cop), dtype=torch.float32, device=dev)
         part_t = part[: nchunk * RP].reshape(nchunk, RP)[:, :R].transpose(0, 1)
-        tle_copy(part_t, pt[:, :nchunk])
+        _copy_into(pt[:, :nchunk], part_t)
         out = torch.empty(RP + BM, dtype=torch.float32, device=dev)
         _row_reduce_kernel[(nrow_blocks, 1)](
             pt,
@@ -417,7 +428,7 @@ def _rank2_sigma_norm(Ab, B, M, N, mode):
     if K % BN:
         pitch = triton.cdiv(K, BN) * BN
         Wp = torch.zeros((B, 2, pitch), dtype=W.dtype, device=dev)
-        tle_copy(W, Wp[:, :, :K])
+        _copy_into(Wp[:, :, :K], W)
         W = Wp
 
     aa = _row_reduce(W[:, 0, :], B, pitch, _OP_SUMSQ)
@@ -863,7 +874,7 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         Wt = _native_contiguous(Ab.transpose(-2, -1))
     else:
         Wt = Ab
-    tle_copy(Wt, Wh[:, :K, :R])
+    _copy_into(Wh[:, :K, :R], Wt)
 
     sc_h = torch.empty((B, _BD_L), dtype=torch.float32, device=dev)
     sc_l = torch.empty_like(sc_h)
@@ -882,8 +893,8 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
 
     with torch_device_fn.device(dev):
         for j in range(min(K, R - 1)):
-            tle_copy(Wh[:, :, j], sc_h)
-            tle_copy(Wl[:, :, j], sc_l)
+            _copy_into(sc_h, Wh[:, :, j])
+            _copy_into(sc_l, Wl[:, :, j])
             _bidiag_col_h_kernel[(B,)](sc_h, sc_l, v_h, v_l, th, tl_, B, j)
             _bidiag_left_w_kernel[(B, int(RP // _BD_C))](
                 Wh, Wl, v_h, v_l, th, tl_, wh_b, wl_b, B, j, RP, PROW
@@ -903,12 +914,12 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         eh = torch.zeros_like(dh)
         el = torch.zeros_like(dh)
         nd = min(_BD_L, RP)
-        tle_copy(Wh.diagonal(0, 1, 2), dh[:, :nd])
-        tle_copy(Wl.diagonal(0, 1, 2), dl[:, :nd])
+        _copy_into(dh[:, :nd], Wh.diagonal(0, 1, 2))
+        _copy_into(dl[:, :nd], Wl.diagonal(0, 1, 2))
         ne = min(_BD_L, RP - 1)
         if ne > 0:
-            tle_copy(Wh.diagonal(1, 1, 2), eh[:, :ne])
-            tle_copy(Wl.diagonal(1, 1, 2), el[:, :ne])
+            _copy_into(eh[:, :ne], Wh.diagonal(1, 1, 2))
+            _copy_into(el[:, :ne], Wl.diagonal(1, 1, 2))
         td = torch.empty((B, _BD_L), dtype=torch.float32, device=dev)
         tdl = torch.empty_like(td)
         te = torch.empty_like(td)
@@ -972,9 +983,13 @@ def _absmax_sum_kernel(
             acc += tl.abs(x) * m
         res = tl.sum(acc, axis=1)
         if IS_MIN:
-            res = tl.where(r_mask, res, tl.full([BLOCK_M], float("inf"), dtype=tl.float32))
+            res = tl.where(
+                r_mask, res, tl.full([BLOCK_M], float("inf"), dtype=tl.float32)
+            )
         else:
-            res = tl.where(r_mask, res, tl.full([BLOCK_M], float("-inf"), dtype=tl.float32))
+            res = tl.where(
+                r_mask, res, tl.full([BLOCK_M], float("-inf"), dtype=tl.float32)
+            )
         tl.store(Partial + b * PAD + pid * BLOCK_M + nrows, res)
     else:
         c = pid * BLOCK_N + ncols
@@ -991,9 +1006,13 @@ def _absmax_sum_kernel(
             acc += tl.abs(x) * m
         res = tl.sum(acc, axis=1)
         if IS_MIN:
-            res = tl.where(c_mask, res, tl.full([BLOCK_N], float("inf"), dtype=tl.float32))
+            res = tl.where(
+                c_mask, res, tl.full([BLOCK_N], float("inf"), dtype=tl.float32)
+            )
         else:
-            res = tl.where(c_mask, res, tl.full([BLOCK_N], float("-inf"), dtype=tl.float32))
+            res = tl.where(
+                c_mask, res, tl.full([BLOCK_N], float("-inf"), dtype=tl.float32)
+            )
         tl.store(Partial + b * PAD + pid * BLOCK_N + ncols, res)
 
 
