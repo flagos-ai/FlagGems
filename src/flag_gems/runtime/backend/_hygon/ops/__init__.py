@@ -17,9 +17,16 @@ from ._amp_foreach_non_finite_check_and_unscale_ import (
 )
 from ._conj import _conj
 from ._conv_depthwise2d import _conv_depthwise2d
+from ._convolution_double_backward import _convolution_double_backward
+from ._convolution_mode import _convolution_mode
+from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
 
 # Hygon internal implementation for attention
+from ._masked_scale import _masked_scale
+from ._scaled_dot_product_attention_math_for_mps import (
+    _scaled_dot_product_attention_math_for_mps,
+)
 from ._scaled_dot_product_flash_attention import _scaled_dot_product_flash_attention
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
 from .adaptive_avg_pool2d_backward import adaptive_avg_pool2d_backward
@@ -100,6 +107,7 @@ from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
+from .hash_tensor import hash_tensor
 from .histc import histc
 from .igamma import igamma
 from .index_add import index_add, index_add_
@@ -126,6 +134,7 @@ from .lstm import lstm
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
+from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
     max_pool3d_backward,
@@ -230,10 +239,15 @@ __all__ = [
     "_amp_foreach_non_finite_check_and_unscale_",
     "_conj",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
+    "_convolution_mode",
     "_embedding_bag",
     "_embedding_bag_backward",
+    "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_masked_scale",
+    "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
     "_thnn_fused_lstm_cell",
     "_unique2",
@@ -298,6 +312,7 @@ __all__ = [
     "grid_sampler_3d",
     "hadamard_transform",
     "hardsigmoid_backward",
+    "hash_tensor",
     "heur_block_n",
     "histc",
     "igamma",
@@ -330,6 +345,7 @@ __all__ = [
     "masked_scale",
     "masked_scatter_backward",
     "matmul_bf16",
+    "matmul_bias_activation",
     "matmul_int8",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
