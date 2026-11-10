@@ -1,3 +1,5 @@
+from contextlib import contextmanager
+
 import pytest
 import torch
 import torch.nn.functional as F
@@ -334,6 +336,32 @@ def test_cudnn_ctc_loss_invalid_blank():
         )
 
 
+@contextmanager
+def _registered_cudnn_ctc_loss():
+    """Scope a `cudnn_ctc_loss` registration to the calling `with` block.
+
+    Test files must not use `flag_gems.use_gems()`, and `only_enable` alone
+    registers into the global aten library where it outlives the test: a
+    `finally: enable()` would then leave *every* op registered, so the
+    `torch.ops.aten._cudnn_ctc_loss` references in the other tests would turn
+    into self-comparisons. A private library plus restoring the registrar keeps
+    the registration local, the same way `test_special_zeta` does it.
+    """
+    library = torch.library.Library("aten", "IMPL")
+    previous_registrar = flag_gems.current_work_registrar
+    try:
+        flag_gems.only_enable(
+            lib=library,
+            include=["cudnn_ctc_loss"],
+            registrar=flag_gems.GeneralOpRegistrar,
+        )
+        yield
+    finally:
+        if hasattr(library, "_destroy"):
+            library._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+
 @pytest.mark.cudnn_ctc_loss
 def test_cudnn_ctc_loss_tensor_lengths_dispatch():
     """The `.Tensor` overload must be reachable through dispatch, not only via
@@ -342,9 +370,9 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
     `_cudnn_ctc_loss.Tensor` has to be in `_FULL_CONFIG` with an Autograd
     fallthrough; a registration regression is otherwise silent because
     `register_error` only logs. Calling the real schema under a scoped
-    `use_gems` exercises the same path a global registration would, and the
-    context tears the registration down on exit, so later tests still see the
-    native cuDNN kernel in their references.
+    registration exercises the same path a global one would, and the block
+    tears the registration down on exit, so later tests still see the native
+    cuDNN kernel in their references.
     """
 
     if TO_CPU:
@@ -361,7 +389,7 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
         log_probs, targets, inp_len, tgt_len, 0, False, False
     )
 
-    with flag_gems.use_gems(include=["cudnn_ctc_loss"]):
+    with _registered_cudnn_ctc_loss():
         dispatch_loss, dispatch_grad = torch.ops.aten._cudnn_ctc_loss.Tensor(
             log_probs, targets, inp_len, tgt_len, 0, False, False
         )
