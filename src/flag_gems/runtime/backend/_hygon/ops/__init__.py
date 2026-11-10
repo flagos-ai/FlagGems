@@ -201,6 +201,7 @@ from .softshrink_backward import softshrink_backward
 from .sort import sort, sort_stable
 from .special_bessel_j0 import special_bessel_j0
 from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
+from .special_chebyshev_polynomial_t_out import special_chebyshev_polynomial_t_out
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
@@ -435,6 +436,7 @@ __all__ = [
     "sort_stable",
     "special_bessel_j0",
     "special_chebyshev_polynomial_t",
+    "special_chebyshev_polynomial_t_out",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
