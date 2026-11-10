@@ -29,6 +29,28 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_addcmul_scalar_list_ import foreach_addcmul_scalar_list_
+from .foreach_asin_ import foreach_asin_
+from .foreach_atan import foreach_atan
+from .foreach_atan_ import foreach_atan_
+from .foreach_ceil import foreach_ceil
+from .foreach_clamp_max_list import foreach_clamp_max_list
+from .foreach_clamp_max_list_ import foreach_clamp_max_list_
+from .foreach_clamp_max_scalar import foreach_clamp_max_scalar
+from .foreach_clamp_max_scalar_ import foreach_clamp_max_scalar_
+from .foreach_clamp_max_scalar_list import foreach_clamp_max_scalar_list
+from .foreach_clamp_max_scalar_list_ import foreach_clamp_max_scalar_list_
+from .foreach_clamp_min_list import foreach_clamp_min_list
+from .foreach_clamp_min_list_ import foreach_clamp_min_list_
+from .foreach_clamp_min_scalar import foreach_clamp_min_scalar
+from .foreach_clamp_min_scalar_ import foreach_clamp_min_scalar_
+from .foreach_clamp_min_scalar_list import foreach_clamp_min_scalar_list
+from .foreach_clamp_min_scalar_list_ import foreach_clamp_min_scalar_list_
+from .foreach_copy_ import foreach_copy_
+from .foreach_cos import foreach_cos
+from .foreach_cos_ import foreach_cos_
+from .foreach_cosh import foreach_cosh
+from .foreach_cosh_ import foreach_cosh_
 from .foreach_div_list_ import foreach_div_list_
 from .foreach_div_scalar import foreach_div_scalar
 from .foreach_div_scalar_ import foreach_div_scalar_
@@ -43,6 +65,9 @@ from .foreach_exp_ import foreach_exp_
 from .foreach_expm1 import foreach_expm1
 from .foreach_expm1_ import foreach_expm1_
 from .foreach_floor import foreach_floor
+from .foreach_floor_ import foreach_floor_
+from .foreach_frac import foreach_frac
+from .foreach_frac_ import foreach_frac_
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -208,6 +233,28 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_addcmul_scalar_list_",
+    "foreach_asin_",
+    "foreach_atan",
+    "foreach_atan_",
+    "foreach_ceil",
+    "foreach_clamp_max_list",
+    "foreach_clamp_max_list_",
+    "foreach_clamp_max_scalar",
+    "foreach_clamp_max_scalar_",
+    "foreach_clamp_max_scalar_list",
+    "foreach_clamp_max_scalar_list_",
+    "foreach_clamp_min_list",
+    "foreach_clamp_min_list_",
+    "foreach_clamp_min_scalar",
+    "foreach_clamp_min_scalar_",
+    "foreach_clamp_min_scalar_list",
+    "foreach_clamp_min_scalar_list_",
+    "foreach_copy_",
+    "foreach_cos",
+    "foreach_cos_",
+    "foreach_cosh",
+    "foreach_cosh_",
     "foreach_div_list_",
     "foreach_div_scalar",
     "foreach_div_scalar_",
@@ -222,6 +269,9 @@ __all__ = [
     "foreach_expm1",
     "foreach_expm1_",
     "foreach_floor",
+    "foreach_floor_",
+    "foreach_frac",
+    "foreach_frac_",
     "full",
     "full_like",
     "gcd_",
