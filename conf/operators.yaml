@@ -4817,7 +4817,6 @@ tensor into the caller-supplied `out` buffer.
   for:
   - _cudnn_ctc_loss
   - _cudnn_ctc_loss.Tensor
-  - _cudnn_ctc_loss.out
   labels:
   - aten
   - KernelGen

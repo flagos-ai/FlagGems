@@ -221,8 +221,17 @@ def test_cudnn_ctc_loss_empty_target():
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_autograd():
-    """The loss must be differentiable end to end through `log_probs`."""
+def test_cudnn_ctc_loss_autograd(monkeypatch):
+    """The loss must be differentiable end to end through `log_probs`.
+
+    Differentiation has to go through the dispatcher: the registered entry is
+    only the CUDA kernel, and PyTorch's own autograd rule for
+    `_cudnn_ctc_loss` supplies the backward. A direct `flag_gems.cudnn_ctc_loss`
+    call returns plain tensors with no `grad_fn`.
+    """
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
     device = flag_gems.device
     torch.manual_seed(0)
     t_steps, batch, classes = 16, 3, 8
@@ -243,25 +252,31 @@ def test_cudnn_ctc_loss_autograd():
     (ref_grad,) = torch.autograd.grad(ref.sum(), ref_lp)
 
     gems_lp = log_probs.clone().requires_grad_(True)
-    out = flag_gems.cudnn_ctc_loss(
-        gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
-    )
-    gems_loss = out[0]
-    (gems_grad,) = torch.autograd.grad(gems_loss.sum(), gems_lp)
+    _install_spy(monkeypatch, [])
+    with _registered_cudnn_ctc_loss(["cudnn_ctc_loss"]):
+        gems_loss = torch.ops.aten._cudnn_ctc_loss(
+            gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
+        )[0]
+        (gems_grad,) = torch.autograd.grad(gems_loss.sum(), gems_lp)
 
     utils.gems_assert_close(gems_loss, ref.detach(), torch.float32)
     utils.gems_assert_close(gems_grad, ref_grad, torch.float32)
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_weighted_grad():
+def test_cudnn_ctc_loss_weighted_grad(monkeypatch):
     """Each batch entry must be scaled by its own upstream gradient.
 
     A plain `.sum()` upstream folds into a uniform gradient, which hides a
-    per-batch indexing bug in the backward kernel: every sample would be
-    scaled by `grad_output[0]` and still match. Weighting the upstream by a
-    per-batch vector makes the scaling observable.
+    per-batch indexing bug: every sample would be scaled by `grad_output[0]`
+    and still match. Weighting the upstream by a per-batch vector makes the
+    scaling observable. The scaling itself is done by PyTorch's native
+    `_cudnn_ctc_loss_backward`, so this pins the interaction between the Triton
+    forward and that rule.
     """
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
     device = flag_gems.device
     torch.manual_seed(0)
     t_steps, batch, classes = 16, 3, 8
@@ -287,11 +302,13 @@ def test_cudnn_ctc_loss_weighted_grad():
     (ref_grad,) = torch.autograd.grad((ref * ref_weights).sum(), ref_lp)
 
     gems_lp = log_probs.clone().requires_grad_(True)
-    out = flag_gems.cudnn_ctc_loss(
-        gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
-    )
     gems_weights = torch.tensor(upstream, dtype=log_probs.dtype, device=device)
-    (gems_grad,) = torch.autograd.grad((out[0] * gems_weights).sum(), gems_lp)
+    _install_spy(monkeypatch, [])
+    with _registered_cudnn_ctc_loss(["cudnn_ctc_loss"]):
+        gems_loss = torch.ops.aten._cudnn_ctc_loss(
+            gems_lp, targets, [t_steps] * batch, target_lengths, 0, False, False
+        )[0]
+        (gems_grad,) = torch.autograd.grad((gems_loss * gems_weights).sum(), gems_lp)
 
     utils.gems_assert_close(gems_grad, ref_grad, torch.float32)
 
@@ -336,6 +353,31 @@ def test_cudnn_ctc_loss_invalid_blank():
         )
 
 
+def _install_spy(monkeypatch, calls):
+    """Route the registered `cudnn_ctc_loss` entry through a counter.
+
+    A numeric comparison cannot tell gems apart from the native kernel; only
+    the fact that this wrapper ran can.
+    """
+    real = flag_gems.cudnn_ctc_loss
+
+    def spy(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    def tensor_spy(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
+    mapping["cudnn_ctc_loss"] = [
+        ("_cudnn_ctc_loss", spy, None),
+        ("_cudnn_ctc_loss.Tensor", tensor_spy, None),
+    ]
+    monkeypatch.setattr(flag_gems, "FULL_CONFIG_BY_FUNC", mapping)
+    return spy
+
+
 @contextmanager
 def _registered_cudnn_ctc_loss(include=("cudnn_ctc_loss",)):
     """Scope a `cudnn_ctc_loss` registration to the calling `with` block.
@@ -365,16 +407,15 @@ def _registered_cudnn_ctc_loss(include=("cudnn_ctc_loss",)):
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_tensor_lengths_dispatch():
-    """The `.Tensor` overload must be reachable through dispatch, not only via
-    the Python wrapper.
+def test_cudnn_ctc_loss_dispatch_overloads(monkeypatch):
+    """Both functional overloads must be reachable, and must hit gems.
 
-    `_cudnn_ctc_loss.Tensor` has to be in `_FULL_CONFIG` with an Autograd
-    fallthrough; a registration regression is otherwise silent because
-    `register_error` only logs. Calling the real schema under a scoped
-    registration exercises the same path a global one would, and the block
-    tears the registration down on exit, so later tests still see the native
-    cuDNN kernel in their references.
+    `_cudnn_ctc_loss` (int[] lengths) and `_cudnn_ctc_loss.Tensor` have to be in
+    `_FULL_CONFIG`; a registration regression is otherwise silent because
+    `register_error` only logs. Comparing numbers alone cannot catch it either:
+    an unregistered overload falls back to native cuDNN, which agrees with gems
+    to ~1e-5, well inside the comparison tolerance. So each path is checked
+    with a spy on the registered entry before any value assertion.
     """
 
     if TO_CPU:
@@ -391,23 +432,34 @@ def test_cudnn_ctc_loss_tensor_lengths_dispatch():
         log_probs, targets, inp_len, tgt_len, 0, False, False
     )
 
-    with _registered_cudnn_ctc_loss():
-        dispatch_loss, dispatch_grad = torch.ops.aten._cudnn_ctc_loss.Tensor(
-            log_probs, targets, inp_len, tgt_len, 0, False, False
+    for overload, args in (
+        ("_cudnn_ctc_loss", (log_probs, targets, input_lengths, target_lengths)),
+        ("_cudnn_ctc_loss.Tensor", (log_probs, targets, inp_len, tgt_len)),
+    ):
+        calls = []
+        _install_spy(monkeypatch, calls)
+        entry = (
+            torch.ops.aten._cudnn_ctc_loss
+            if overload == "_cudnn_ctc_loss"
+            else torch.ops.aten._cudnn_ctc_loss.Tensor
         )
 
-    utils.gems_assert_close(dispatch_loss, direct_loss, torch.float32)
-    utils.gems_assert_close(dispatch_grad, direct_grad, torch.float32)
+        with _registered_cudnn_ctc_loss(["cudnn_ctc_loss"]):
+            dispatch_loss, dispatch_grad = entry(*args, 0, False, False)
+
+        assert calls, f"{overload} did not reach the Gems implementation"
+        utils.gems_assert_close(dispatch_loss, direct_loss, torch.float32)
+        utils.gems_assert_close(dispatch_grad, direct_grad, torch.float32)
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_out_dispatch(monkeypatch):
-    """The `.out` overload must route to gems and write the caller's buffers.
+def test_cudnn_ctc_loss_out_reuses_registered_default(monkeypatch):
+    """`.out` is served by the autogenerated composite over `.default`.
 
-    Matching numbers alone cannot prove this: when `.out` is unregistered the
-    call silently falls back to the native cuDNN kernel, which agrees with gems
-    to ~1e-5 -- well inside the comparison tolerance. A spy on the registered
-    entry is what actually distinguishes the two, so that is asserted first.
+    There is no separate `.out` registration: enabling `_cudnn_ctc_loss` makes
+    the native `.out` wrapper call it, then resize and copy the results. The
+    spy proving that is the point -- with nothing registered, `.out` still
+    returns correct-looking values from native cuDNN.
     """
 
     if TO_CPU:
@@ -422,19 +474,11 @@ def test_cudnn_ctc_loss_out_dispatch(monkeypatch):
     )
 
     calls = []
+    _install_spy(monkeypatch, calls)
 
-    def spy(*args, **kwargs):
-        calls.append(1)
-        return flag_gems.cudnn_ctc_loss_out(*args, **kwargs)
-
-    mapping = dict(flag_gems.FULL_CONFIG_BY_FUNC)
-    mapping["cudnn_ctc_loss_out"] = [("_cudnn_ctc_loss.out", spy, None)]
-    monkeypatch.setattr(flag_gems, "FULL_CONFIG_BY_FUNC", mapping)
-
-    with _registered_cudnn_ctc_loss("cudnn_ctc_loss_out"):
+    with _registered_cudnn_ctc_loss(["cudnn_ctc_loss"]):
         out0 = torch.empty_like(ref_loss)
         out1 = torch.empty_like(ref_grad)
-        # The `.out` overload takes `int[]` lengths, not tensors.
         res0, res1 = torch.ops.aten._cudnn_ctc_loss.out(
             log_probs,
             targets,
@@ -447,8 +491,8 @@ def test_cudnn_ctc_loss_out_dispatch(monkeypatch):
             out1=out1,
         )
 
-    assert calls, "aten dispatch did not reach the Gems .out implementation"
-    # The `.out` contract: the caller's buffers are written and returned.
+    assert calls, ".out fell back to native cuDNN instead of .default"
+    # The composite must write and return the caller's buffers.
     assert res0.data_ptr() == out0.data_ptr()
     assert res1.data_ptr() == out1.data_ptr()
     utils.gems_assert_close(out0, ref_loss, torch.float32)
@@ -456,36 +500,52 @@ def test_cudnn_ctc_loss_out_dispatch(monkeypatch):
 
 
 @pytest.mark.cudnn_ctc_loss
-def test_cudnn_ctc_loss_out_resizes_empty_buffer():
-    """A zero-element `out` is resized to the required shape, as ATen does."""
+def test_cudnn_ctc_loss_native_autograd_scales_by_batch(monkeypatch):
+    """Under dispatch, PyTorch's own autograd rule produces the gradient.
+
+    With only the CUDA kernel registered, `_cudnn_ctc_loss_backward` scales the
+    forward's raw gradient by each batch entry's upstream gradient and applies
+    the `zero_infinity` mask. A uniform `.sum()` upstream hides a per-batch
+    indexing bug, so the weights here are non-uniform.
+    """
+
+    if TO_CPU:
+        pytest.skip("_cudnn_ctc_loss is CUDA-only, cannot run in quick-cpu mode")
+
     device = flag_gems.device
     torch.manual_seed(0)
-    shape = (8, 2, 6, 2)
-    log_probs, targets, input_lengths, target_lengths = _make_inputs(shape, device)
-    ref_log_probs = utils.to_reference(log_probs, True)
-    ref_targets = utils.to_reference(targets)
-    ref_loss, ref_grad, _ = _reference(
-        ref_log_probs, ref_targets, input_lengths, target_lengths
-    )
+    t_steps, batch, classes = 16, 3, 8
+    raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
+    log_probs = torch.log_softmax(raw, dim=-1)
+    targets = torch.tensor([1, 2, 3, 4], dtype=torch.int32)
+    target_lengths = [2, 1, 1]
+    weights = [1.0, 0.0, -2.0]
 
-    out0 = torch.empty(0, dtype=torch.float32, device=device)
-    out1 = torch.empty(0, dtype=torch.float32, device=device)
-    res0, res1 = flag_gems.cudnn_ctc_loss_out(
-        log_probs,
+    ref_lp = log_probs.clone().requires_grad_(True)
+    # cuDNN requires the targets on the CPU.
+    ref_loss = torch.ops.aten._cudnn_ctc_loss(
+        ref_lp,
         targets,
-        input_lengths,
+        [t_steps] * batch,
         target_lengths,
         0,
+        True,
         False,
-        False,
-        out0=out0,
-        out1=out1,
-    )
+    )[0]
+    ref_w = torch.tensor(weights, dtype=ref_lp.dtype, device=ref_lp.device)
+    (ref_grad,) = torch.autograd.grad((ref_loss * ref_w).sum(), ref_lp)
 
-    assert res0.shape == ref_loss.shape
-    assert res1.shape == ref_grad.shape
-    utils.gems_assert_close(res0, ref_loss, torch.float32)
-    utils.gems_assert_close(res1, ref_grad, torch.float32)
+    gems_lp = log_probs.clone().requires_grad_(True)
+    _install_spy(monkeypatch, [])
+    gems_w = torch.tensor(weights, dtype=log_probs.dtype, device=device)
+    with _registered_cudnn_ctc_loss(["cudnn_ctc_loss"]):
+        gems_loss = torch.ops.aten._cudnn_ctc_loss(
+            gems_lp, targets, [t_steps] * batch, target_lengths, 0, True, False
+        )[0]
+        (gems_grad,) = torch.autograd.grad((gems_loss * gems_w).sum(), gems_lp)
+
+    utils.gems_assert_close(gems_loss, ref_loss, torch.float32)
+    utils.gems_assert_close(gems_grad, ref_grad, torch.float32)
 
 
 @pytest.mark.cudnn_ctc_loss
