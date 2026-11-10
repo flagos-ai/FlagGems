@@ -208,6 +208,9 @@ from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumu
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backward
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
+from ._weight_norm_differentiable_backward import (  # noqa: F401
+    weight_norm_differentiable_backward,
+)
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
 from .acos import acos, acos_
