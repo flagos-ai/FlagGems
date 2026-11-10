@@ -466,3 +466,100 @@ def test_scaled_dot_product_attention_nonsquare_qk(
     gems_result = torch_sdpa(q, k, v, scale, is_causal)
 
     utils.gems_assert_close(gems_result, torch_result, dtype)
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend D256 regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+@pytest.mark.parametrize(
+    "batch,heads,kv_heads,seq_len,scale",
+    [
+        (1, 6, 1, 128, None),
+        (1, 2, 1, 256, 0.0),
+        (1, 2, 2, 384, 0.17),
+        (2, 4, 2, 512, -0.125),
+        (1, 4, 1, 1024, None),
+    ],
+)
+def test_scaled_dot_product_attention_ascend_d256_gradients(
+    dtype, batch, heads, kv_heads, seq_len, scale
+):
+    # Exercise the first/last causal tiles, both supported traversal sizes,
+    # multiple batches, and shared KV gradients against independent CPU math.
+    generator = torch.Generator().manual_seed(20261110)
+    inputs = [
+        (torch.randn(batch, h, seq_len, 256, generator=generator) * 0.5).to(dtype)
+        for h in (heads, kv_heads, kv_heads)
+    ]
+    grad = torch.randn(inputs[0].shape, generator=generator).to(dtype)
+    ref_q, ref_k, ref_v = [x.double().requires_grad_() for x in inputs]
+    group = heads // kv_heads
+    ref_k_expanded = ref_k.repeat_interleave(group, dim=1)
+    ref_v_expanded = ref_v.repeat_interleave(group, dim=1)
+    scores = ref_q @ ref_k_expanded.transpose(-1, -2)
+    scores = scores * (256**-0.5 if scale is None else scale)
+    causal_mask = torch.ones(seq_len, seq_len, dtype=torch.bool).triu(1)
+    probabilities = scores.masked_fill(causal_mask, -float("inf")).softmax(-1)
+    expected = probabilities @ ref_v_expanded
+    expected_grads = torch.autograd.grad(expected, (ref_q, ref_k, ref_v), grad.double())
+
+    q, k, v = [x.to(device).requires_grad_() for x in inputs]
+    actual = flag_gems.scaled_dot_product_attention(
+        q, k, v, is_causal=True, scale=scale, enable_gqa=group > 1
+    )
+    actual_grads = torch.autograd.grad(actual, (q, k, v), grad.to(device))
+    tolerance = 0.006 if dtype == torch.float16 else 0.04
+    for result, reference in zip((actual, *actual_grads), (expected, *expected_grads)):
+        torch.testing.assert_close(
+            result.cpu().float(),
+            reference.to(dtype).float(),
+            atol=tolerance,
+            rtol=tolerance,
+        )
+
+
+@pytest.mark.scaled_dot_product_attention_forward
+@pytest.mark.scaled_dot_product_attention_backward
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend D256 regression")
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_scaled_dot_product_attention_ascend_d256_cached_gradients(dtype):
+    import torch_npu
+
+    # Exercise score-buffer reuse across batches and GQA heads at the lower
+    # dispatch boundary. Compare all gradients with the native fused operator.
+    generator = torch.Generator().manual_seed(20261111)
+    inputs = [
+        (torch.randn(2, heads, 4096, 256, generator=generator) * 0.5)
+        .to(dtype)
+        .to(device)
+        for heads in (8, 2, 2)
+    ]
+    grad = torch.randn(inputs[0].shape, generator=generator).to(dtype).to(device)
+    reference_inputs = [x.detach().requires_grad_() for x in inputs]
+    causal_mask = torch.ones((2048, 2048), dtype=torch.bool).triu(1).to(device)
+    expected = torch_npu.npu_fusion_attention(
+        *reference_inputs,
+        8,
+        "BNSD",
+        atten_mask=causal_mask,
+        scale=1 / 16,
+        keep_prob=1.0,
+        pre_tockens=2147483647,
+        next_tockens=0,
+        sparse_mode=2,
+    )[0]
+    expected_grads = torch.autograd.grad(expected, reference_inputs, grad)
+    q, k, v = [x.detach().requires_grad_() for x in inputs]
+    actual = flag_gems.scaled_dot_product_attention(
+        q, k, v, is_causal=True, enable_gqa=True
+    )
+    actual_grads = torch.autograd.grad(actual, (q, k, v), grad)
+    tolerance = 0.006 if dtype == torch.float16 else 0.04
+    for result, reference in zip((actual, *actual_grads), (expected, *expected_grads)):
+        torch.testing.assert_close(
+            result.cpu().float(),
+            reference.cpu().float(),
+            atol=tolerance,
+            rtol=tolerance,
+        )

@@ -800,13 +800,8 @@ def _attn_fwd_d256_inner(
             qk = qk - m_ij[:, None]
 
         p = tl.math.exp2(qk)
-        l_ij = tl.sum(p, 1)
-        # -- update m_i and l_i
-        alpha = tl.math.exp2(m_i - m_ij)
-        l_i = l_i * alpha + l_ij
-        # -- update output accumulator --
-        acc = acc * alpha[:, None]
-        # update acc
+        # Preserve FP32 probabilities for the online normalization sum.
+        p_full = p
         if not PRE_LOAD_V:
             value = tl.load(V_block_ptr, mask=kv_load_mask[:, None], other=0.0)
         if fp8_v:
@@ -814,7 +809,12 @@ def _attn_fwd_d256_inner(
         else:
             p = p.to(query.dtype)
         p = p.to(value.dtype)
-        acc = tl.dot(p, value, acc, allow_tf32=False)
+        # Start PV before the independent vector updates to the softmax state.
+        pv = tl.dot(p, value, allow_tf32=False)
+        l_ij = tl.sum(p_full, 1)
+        alpha = tl.math.exp2(m_i - m_ij)
+        l_i = l_i * alpha + l_ij
+        acc = acc * alpha[:, None] + pv
         # update m_i and l_i
         m_i = m_ij
 
@@ -1062,7 +1062,6 @@ def _attn_bwd_d256_dkdv(
     MASK: tl.constexpr,
 ):
     offs_n = start_n + tl.arange(0, BLOCK_N1)
-    offs_n_mask = tl.full((BLOCK_N1,), True, tl.int1)  # (BLOCK_N1, )
 
     offs_k = tl.arange(0, BLOCK_DMODEL)  # (BLOCK_DMODEL, )
 
@@ -1088,21 +1087,32 @@ def _attn_bwd_d256_dkdv(
         m = tl.load(M + offs_m, mask=offs_m_mask, other=float("inf"))  # (BLOCK_M1, )
 
         # key: (BLOCK_N1, BLOCK_DMODEL)
-        qkT = tl.dot(key, qT)
-        qkT = qkT * sm_scale * 1.44269504  # (BLOCK_N1, BLOCK_M1)
-        m = tl.broadcast_to(m[None, :], (BLOCK_N1, BLOCK_M1))  # (BLOCK_N1, BLOCK_M1)
-        m = tl.where(offs_n_mask[:, None], m, float("inf"))  # (BLOCK_N1, BLOCK_M1)
+        if GRAD_KV == 1:
+            qkT = tl.dot(tl.trans(qT), tl.trans(key))
+        else:
+            qkT = tl.dot(key, qT)
+        if GRAD_KV == 2:
+            # Fold the two scalar factors at compile time for dV. Keep the
+            # probability reconstruction and accumulation in FP32.
+            qkT = qkT * (sm_scale * 1.44269504)
+        else:
+            qkT = qkT * sm_scale * 1.44269504  # (BLOCK_N1, BLOCK_M1)
+        if GRAD_KV == 1:
+            m = m[:, None]
+        else:
+            m = m[None, :]
         pT = tl.math.exp2(qkT - m)
         # pT = tl.math.exp2(qkT - m[None, :])
 
-        mask = (
-            tl.full((offs_m.shape[0],), True, tl.int1)[None, :]
-            & tl.full((offs_n.shape[0],), True, tl.int1)[:, None]
-        )  # (BLOCK_N1, BLOCK_M1)
-        # Autoregressive masking.
-        if MASK:
-            mask &= offs_m[None, :].to(tl.float32) >= offs_n[:, None].to(tl.float32)
-        pT = tl.where(mask, pT, 0.0)  # (BLOCK_N1, BLOCK_M1)
+        if GRAD_KV == 1:
+            mask = tl.full((BLOCK_M1, BLOCK_N1), True, tl.int1)
+            if MASK:
+                mask &= offs_m[:, None].to(tl.float32) >= offs_n[None, :].to(tl.float32)
+        else:
+            mask = tl.full((BLOCK_N1, BLOCK_M1), True, tl.int1)
+            if MASK:
+                mask &= offs_m[None, :].to(tl.float32) >= offs_n[:, None].to(tl.float32)
+        pT = tl.where(mask, pT, 0.0)
 
         do = tl.load(do_ptrs, mask=offs_m_mask[:, None], other=0.0)
 
@@ -1113,19 +1123,15 @@ def _attn_bwd_d256_dkdv(
             # D is the per-query-row dot product of O and dO.
             Di = tl.load(D + offs_m, mask=offs_m_mask, other=0.0)  # (BLOCK_M1, )
 
-            # Compute dP and dS.
-            dpT = tl.dot(value, tl.trans(do)).to(
-                tl.float32
-            )  # (BLOCK_N1, BLOCK_DMODEL) @ (BLOCK_M1, BLOCK_DMODEL).T -> (BLOCK_N1, BLOCK_M1)
-            dsT = pT * (dpT - Di[None, :])  # (BLOCK_N1, BLOCK_M1)
-            dsT = dsT.to(qT.dtype)
-            qT = tl.where(offs_m_mask[None, :], qT, 0.0)  # (BLOCK_DMODEL, BLOCK_M1)
-            dsT = tl.where(
-                offs_m_mask[None, :] & offs_n_mask[:, None], dsT, 0.0
-            )  # (BLOCK_N1, BLOCK_M1)
-            dk += tl.dot(
-                dsT, tl.trans(qT)
-            )  # (BLOCK_N1, BLOCK_M1) @ (BLOCK_DMODEL, BLOCK_M1).T -> (BLOCK_N1, BLOCK_DMODEL)
+            # dK uses query-major scores and a feature-major FP32 accumulator.
+            if GRAD_KV == 1:
+                dp = tl.dot(do, tl.trans(value))
+                ds = (pT * (dp - Di[:, None])).to(qT.dtype)
+                dk += tl.dot(qT, ds)
+            else:
+                dpT = tl.dot(value, tl.trans(do))
+                dsT = (pT * (dpT - Di[None, :])).to(qT.dtype)
+                dk += tl.dot(qT, tl.trans(dsT))
         # Increment pointers.
         curr_m += step_m
     return dk, dv
@@ -1175,24 +1181,24 @@ def _attn_bwd_d256_dq(
 
         kT = tl.load(kT_ptrs, mask=offs_n_mask[None, :], other=0.0)
         vT = tl.load(vT_ptrs, mask=offs_n_mask[None, :], other=0.0)
-        qk = tl.dot(query, kT)
+        qk = tl.dot(tl.trans(kT), tl.trans(query))
         qk = qk * sm_scale * 1.44269504
-        p = tl.math.exp2(qk - m)
+        p = tl.math.exp2(qk - tl.trans(m))
         mask = (
-            tl.full((offs_m.shape[0],), True, tl.int1)[:, None]
-            & tl.full((offs_n.shape[0],), True, tl.int1)[None, :]
+            tl.full((offs_m.shape[0],), True, tl.int1)[None, :]
+            & tl.full((offs_n.shape[0],), True, tl.int1)[:, None]
         )
         # Autoregressive masking.
         if MASK:
-            mask &= offs_m[:, None].to(tl.float32) >= offs_n[None, :].to(tl.float32)
+            mask &= offs_m[None, :].to(tl.float32) >= offs_n[:, None].to(tl.float32)
         p = tl.where(mask, p, 0.0)
         # Compute dP and dS.
-        dp = tl.dot(do, vT).to(tl.float32)
-        ds = p * (dp - Di[:, None])
+        dp = tl.dot(tl.trans(vT), tl.trans(do)).to(tl.float32)
+        ds = p * (dp - Di[None, :])
         ds = tl.where(mask, ds, 0.0).to(kT.dtype)
         # Compute dQ.
         # K stays in its original dtype; scale the FP32 gradient at the end.
-        dq += tl.dot(ds, tl.trans(kT))
+        dq += tl.dot(kT, ds)
         # Increment pointers.
         curr_n += step_n
     return dq
@@ -1232,7 +1238,9 @@ def _attn_bwd_d256(
     IS_CAUSAL: tl.constexpr,
     GRAD_KV: tl.constexpr = 0,
 ):
-    bhid = tl.program_id(2)
+    # Schedule consecutive sequence tiles across cores for dK/dV; retain
+    # the original head-first order for dQ.
+    bhid = tl.program_id(2) if COMPUTE_DQ else tl.program_id(0)
     batch_id = bhid // H
     q_head_id = bhid % H
     kv_head_id = q_head_id // GROUP_HEAD
@@ -1249,11 +1257,11 @@ def _attn_bwd_d256(
     DV += grad_kv_adj
     M += (bhid * Q_CTX).to(tl.int64)
     D += (bhid * Q_CTX).to(tl.int64)
-    pid = tl.program_id(0)
+    pid = tl.program_id(0) if COMPUTE_DQ else tl.program_id(2)
     offs_k = tl.arange(0, BLOCK_DMODEL)
 
-    # Compile dQ and dK/dV separately. Each uses one fully masked loop so
-    # Ascend does not have to schedule nested diagonal/interior loop regions.
+    # Keep dK/dQ in a single masked loop. dV peels its first causal tile
+    # below so the remaining query tiles need no elementwise causal mask.
     if COMPUTE_DQ:
         start_m = pid * BLOCK_M2
         offs_m = start_m + tl.arange(0, BLOCK_M2)
@@ -1262,7 +1270,8 @@ def _attn_bwd_d256(
         query = tl.load(Q + q_ptrs, mask=mask_m[:, None], other=0.0)
         do = tl.load(DO + q_ptrs, mask=mask_m[:, None], other=0.0)
         m = tl.load(M + offs_m, mask=mask_m, other=float("inf"))[:, None]
-        dq = tl.zeros([BLOCK_M2, BLOCK_DMODEL], dtype=tl.float32)
+        # Feature-major accumulation avoids a transpose in each loop iteration.
+        dq = tl.zeros([BLOCK_DMODEL, BLOCK_M2], dtype=tl.float32)
         end_n = KV_CTX
         if IS_CAUSAL:
             end_n = tl.minimum(start_m + BLOCK_M2, KV_CTX)
@@ -1290,7 +1299,7 @@ def _attn_bwd_d256(
         )
         # Apply the softmax scale after accumulating against unscaled K.
         dq *= sm_scale
-        tl.store(DQ + q_ptrs, dq, mask=mask_m[:, None])
+        tl.store(DQ + q_ptrs, tl.trans(dq), mask=mask_m[:, None])
     else:
         start_n = pid * BLOCK_N1
         offs_n = start_n + tl.arange(0, BLOCK_N1)
@@ -1298,40 +1307,96 @@ def _attn_bwd_d256(
         kv_ptrs = offs_n[:, None] * stride_tok + offs_k[None, :] * stride_d
         key = tl.load(K + kv_ptrs, mask=mask_n[:, None], other=0.0)
         value = tl.load(V + kv_ptrs, mask=mask_n[:, None], other=0.0)
-        dk = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
+        # dK is feature-major; dV retains its sequence-major accumulator.
+        dk = tl.zeros([BLOCK_DMODEL, BLOCK_N1], dtype=tl.float32)
         dv = tl.zeros([BLOCK_N1, BLOCK_DMODEL], dtype=tl.float32)
         start_m = 0
         if IS_CAUSAL:
             start_m = (start_n // BLOCK_M1) * BLOCK_M1
         num_steps = tl.cdiv(tl.maximum(Q_CTX - start_m, 0), BLOCK_M1)
-        dk, dv = _attn_bwd_d256_dkdv(
-            dk,
-            dv,
-            GRAD_KV,
-            Q,
-            key,
-            value,
-            sm_scale,
-            DO,
-            M,
-            D,
-            stride_tok,
-            stride_d,
-            H,
-            Q_CTX,
-            KV_CTX,
-            BLOCK_M1,
-            BLOCK_N1,
-            BLOCK_DMODEL,
-            start_n,
-            start_m,
-            num_steps,
-            MASK=IS_CAUSAL,
-        )
+        # Only the first query tile intersects the causal boundary.
+        # Keep dV's interior loop free of per-element causal comparisons.
+        if GRAD_KV == 2 and IS_CAUSAL:
+            tl.static_assert(BLOCK_M1 >= BLOCK_N1)
+            tl.static_assert(BLOCK_M1 % BLOCK_N1 == 0)
+            dk, dv = _attn_bwd_d256_dkdv(
+                dk,
+                dv,
+                GRAD_KV,
+                Q,
+                key,
+                value,
+                sm_scale,
+                DO,
+                M,
+                D,
+                stride_tok,
+                stride_d,
+                H,
+                Q_CTX,
+                KV_CTX,
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,
+                start_n,
+                start_m,
+                1,
+                MASK=IS_CAUSAL,
+            )
+            dk, dv = _attn_bwd_d256_dkdv(
+                dk,
+                dv,
+                GRAD_KV,
+                Q,
+                key,
+                value,
+                sm_scale,
+                DO,
+                M,
+                D,
+                stride_tok,
+                stride_d,
+                H,
+                Q_CTX,
+                KV_CTX,
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,
+                start_n,
+                start_m + BLOCK_M1,
+                num_steps - 1,
+                MASK=False,
+            )
+        else:
+            dk, dv = _attn_bwd_d256_dkdv(
+                dk,
+                dv,
+                GRAD_KV,
+                Q,
+                key,
+                value,
+                sm_scale,
+                DO,
+                M,
+                D,
+                stride_tok,
+                stride_d,
+                H,
+                Q_CTX,
+                KV_CTX,
+                BLOCK_M1,
+                BLOCK_N1,
+                BLOCK_DMODEL,
+                start_n,
+                start_m,
+                num_steps,
+                MASK=IS_CAUSAL,
+            )
         if GRAD_KV != 2:
-            tl.store(DK + kv_ptrs, dk * sm_scale, mask=mask_n[:, None])
+            tl.store(DK + kv_ptrs, tl.trans(dk) * sm_scale, mask=mask_n[:, None])
         if GRAD_KV != 1:
             tl.store(DV + kv_ptrs, dv, mask=mask_n[:, None])
+
 
 def _aligned_d256_forward(
     query,
@@ -1440,9 +1505,94 @@ def _aligned_d256_forward(
             PRE_LOAD_V=False,
             num_warps=4,
             num_stages=1,
-            sync_solver=True,
+            sync_solver=False,
         )
     return o, M
+
+
+@libentry()
+@triton.jit
+def _attn_bwd_d256_materialize(
+    Q,
+    K,
+    V,
+    DO,
+    M,
+    Delta,
+    P,
+    DS,
+    H: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    S: tl.constexpr,
+    sm_scale: tl.constexpr,
+    head_id,
+    BLOCK: tl.constexpr = 128,
+):
+    # Materialize only the lower triangle for one query head. Each row block
+    # owns its causal prefix; the gradient kernels never read the upper tiles.
+    row = tl.program_id(0)
+    head_id = head_id + tl.program_id(1)
+    kv_head = (head_id // H) * KV_HEADS + (head_id % H) // (H // KV_HEADS)
+    q_offset = head_id.to(tl.int64) * S * 256
+    kv_offset = kv_head.to(tl.int64) * S * 256
+    m = row * BLOCK + tl.arange(0, BLOCK)
+    d = tl.arange(0, 256)
+    q = tl.load(Q + q_offset + m[:, None] * 256 + d[None, :])
+    grad = tl.load(DO + q_offset + m[:, None] * 256 + d[None, :])
+    lse = tl.load(M + head_id * S + m)
+    delta = tl.load(Delta + head_id * S + m)
+    for col in range(row + 1):
+        n = col * BLOCK + tl.arange(0, BLOCK)
+        key = tl.load(K + kv_offset + n[None, :] * 256 + d[:, None])
+        scores = tl.dot(q, key) * sm_scale * 1.44269504
+        prob = tl.exp2(scores - lse[:, None])
+        prob = tl.where(m[:, None] >= n[None, :], prob, 0.0)
+        value = tl.load(V + kv_offset + n[None, :] * 256 + d[:, None])
+        dp = tl.dot(grad, value)
+        ds = prob * (dp - delta[:, None])
+        offsets = m[:, None] * S + n[None, :]
+        # Match the existing dot-input casts; all score and dS math is FP32.
+        tl.store(P + offsets, prob)
+        tl.store(DS + offsets, ds)
+
+
+@libentry()
+@triton.jit
+def _attn_bwd_d256_cached_grad(
+    A,
+    X,
+    Y,
+    H: tl.constexpr,
+    KV_HEADS: tl.constexpr,
+    S: tl.constexpr,
+    sm_scale: tl.constexpr,
+    COMPUTE_DQ: tl.constexpr,
+    head_id,
+    BLOCK: tl.constexpr = 128,
+):
+    row = tl.program_id(0)
+    head_id = head_id + tl.program_id(1)
+    m = row * BLOCK + tl.arange(0, BLOCK)
+    r = tl.arange(0, BLOCK)
+    d = tl.arange(0, 256)
+    acc = tl.zeros((BLOCK, 256), tl.float32)
+    if COMPUTE_DQ:
+        x_head = (head_id // H) * KV_HEADS + (head_id % H) // (H // KV_HEADS)
+        begin, end = 0, (row + 1) * BLOCK
+    else:
+        x_head = head_id
+        begin, end = row * BLOCK, S
+    x_offset = x_head.to(tl.int64) * S * 256
+    for start in range(begin, end, BLOCK):
+        k = start + r
+        if COMPUTE_DQ:
+            a = tl.load(A + m[:, None] * S + k[None, :])
+        else:
+            a = tl.load(A + k[None, :] * S + m[:, None])
+        x = tl.load(X + x_offset + k[:, None] * 256 + d[None, :])
+        acc += tl.dot(a, x)
+    out_offset = head_id.to(tl.int64) * S * 256
+    tl.store(Y + out_offset + m[:, None] * 256 + d[None, :], acc * sm_scale)
 
 
 def _aligned_d256_backward(
@@ -1528,43 +1678,100 @@ def _aligned_d256_backward(
         num_stages=1,
     )
 
-    for compute_dq, grad_kv in ((False, 1), (False, 2), (True, 0)):
-        seq_len, block = (Q_CTX, BLOCK_M2) if compute_dq else (KV_CTX, BLOCK_N1)
-        grid = (triton.cdiv(seq_len, block), 1, BATCH * Q_HEAD)
-        _attn_bwd_d256[grid](
-            query,
-            arg_k,
-            value,
-            sm_scale,
-            do,
-            dq,
-            dk,
-            dv,  #
-            M,
-            delta,  #
-            query.stride(0),
-            query.stride(1),
-            query.stride(2),
-            query.stride(3),  #
-            key.stride(0),
-            key.stride(1),  #
-            Q_HEAD,
-            Q_CTX,  #
-            KV_CTX,  #
-            KV_HEAD,  #
-            GROUP_HEAD=group_head,  #
-            BLOCK_M1=BLOCK_M1,
-            BLOCK_N1=BLOCK_N1,
-            BLOCK_M2=BLOCK_M2,
-            BLOCK_N2=BLOCK_N2,
-            BLOCK_DMODEL=BLOCK_DMODEL,  #
-            num_warps=4,
-            num_stages=1,
-            sync_solver=True,
-            COMPUTE_DQ=compute_dq,
-            GRAD_KV=grad_kv,
-            IS_CAUSAL=is_causal,
+    # On long, many-head workloads, one-head score reuse avoids recomputing
+    # QK/dP for each gradient. Bound the two FP16/BF16 buffers to 256 MiB.
+    # This range has lower measured total peak memory than the fused path.
+    use_score_cache = (
+        4096 <= Q_CTX <= 8192 and Q_CTX % 256 == 0 and BATCH * Q_HEAD >= 16
+    )
+    if use_score_cache:
+        probabilities = torch.empty(
+            (Q_CTX, KV_CTX), device=query.device, dtype=query.dtype
         )
+        ds = torch.empty_like(probabilities)
+        grid = (Q_CTX // 128,)
+        for head_id in range(BATCH * Q_HEAD):
+            _attn_bwd_d256_materialize[grid](
+                query,
+                key,
+                value,
+                do,
+                M,
+                delta,
+                probabilities,
+                ds,
+                Q_HEAD,
+                KV_HEAD,
+                Q_CTX,
+                sm_scale,
+                head_id,
+                num_warps=4,
+                num_stages=1,
+                sync_solver=False,
+            )
+            for scores, operand, gradient, compute_dq, factor in (
+                (ds, key, dq, True, sm_scale),
+                (ds, query, dk, False, sm_scale),
+                (probabilities, do, dv, False, 1.0),
+            ):
+                _attn_bwd_d256_cached_grad[grid](
+                    scores,
+                    operand,
+                    gradient,
+                    Q_HEAD,
+                    KV_HEAD,
+                    Q_CTX,
+                    factor,
+                    compute_dq,
+                    head_id,
+                    num_warps=4,
+                    num_stages=2,
+                    sync_solver=False,
+                )
+    else:
+        for compute_dq, grad_kv in ((False, 1), (False, 2), (True, 0)):
+            seq_len, block = (Q_CTX, BLOCK_M2) if compute_dq else (KV_CTX, BLOCK_N1)
+            grid = (
+                (triton.cdiv(seq_len, block), 1, BATCH * Q_HEAD)
+                if compute_dq
+                else (BATCH * Q_HEAD, 1, triton.cdiv(seq_len, block))
+            )
+            _attn_bwd_d256[grid](
+                query,
+                arg_k,
+                value,
+                sm_scale,
+                do,
+                dq,
+                dk,
+                dv,  #
+                M,
+                delta,  #
+                query.stride(0),
+                query.stride(1),
+                query.stride(2),
+                query.stride(3),  #
+                key.stride(0),
+                key.stride(1),  #
+                Q_HEAD,
+                Q_CTX,  #
+                KV_CTX,  #
+                KV_HEAD,  #
+                GROUP_HEAD=group_head,  #
+                BLOCK_M1=BLOCK_M1,
+                BLOCK_N1=BLOCK_N1,
+                BLOCK_M2=BLOCK_M2,
+                BLOCK_N2=BLOCK_N2,
+                BLOCK_DMODEL=BLOCK_DMODEL,  #
+                num_warps=4,
+                num_stages=1,
+                # Keep graph sync solving for dV's peeled loops. Use legacy sync
+                # insertion only for the validated single-loop dK/dQ kernels.
+                sync_solver=grad_kv == 2,
+                COMPUTE_DQ=compute_dq,
+                GRAD_KV=grad_kv,
+                IS_CAUSAL=is_causal,
+            )
 
     if group_head > 1:
         dk = dk.reshape(BATCH, Q_HEAD // group_head, group_head, KV_CTX, HEAD_DIM_K)
