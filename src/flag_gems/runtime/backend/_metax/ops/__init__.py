@@ -104,6 +104,7 @@ from .foreach_mul_list import foreach_mul_list
 from .foreach_mul_list_ import foreach_mul_list_
 from .foreach_mul_scalar import foreach_mul_scalar
 from .foreach_mul_scalar_ import foreach_mul_scalar_
+from .foreach_mul_scalar_list import foreach_mul_scalar_list
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -344,6 +345,7 @@ __all__ = [
     "foreach_mul_list_",
     "foreach_mul_scalar",
     "foreach_mul_scalar_",
+    "foreach_mul_scalar_list",
     "full",
     "full_like",
     "gcd_",
