@@ -434,10 +434,9 @@ def test_multilabel_margin_loss_backward_strided_grad_output():
 
 
 @pytest.mark.multilabel_margin_loss_backward
-def test_multilabel_margin_loss_backward_dispatch_registration():
-    """The public ATen registration routes to the Triton implementation."""
-    # A small odd class count exercises registration without duplicating the
-    # larger numerical sweeps above.
+def test_multilabel_margin_loss_backward_odd_class_count():
+    """A small odd class count complements the larger numerical sweeps."""
+    # This small odd class count exercises the partial final class tile.
     shape = (2, 5)
     dtype = torch.float32
     inp = _make_input(dtype, shape, MAIN_RANGE, flag_gems.device)
@@ -453,14 +452,13 @@ def test_multilabel_margin_loss_backward_dispatch_registration():
     )
     ref_out = ref_out if cfg.TO_CPU else ref_out.to(inp.device)
 
-    with flag_gems.use_gems():
-        res_out = torch.ops.aten.multilabel_margin_loss_backward(
-            ref_grad_output.to(flag_gems.device),
-            inp,
-            target,
-            1,
-            ref_is_target.to(flag_gems.device),
-        )
+    res_out = flag_gems.multilabel_margin_loss_backward(
+        ref_grad_output.to(flag_gems.device),
+        inp,
+        target,
+        1,
+        ref_is_target.to(flag_gems.device),
+    )
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=shape[-1])
 
 
