@@ -102,7 +102,7 @@ def _vander_flat_kernel(
 
 
 def linalg_vander(x, N=None):
-    logger.debug("GEMS LINALG_VANDER (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN LINALG_VANDER")
     if N is None:
         N = x.shape[-1]
 

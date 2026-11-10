@@ -268,7 +268,7 @@ def _l1_loss_reduce_parts(mid, n_parts, out, n_elements, reduction, dev):
 
 
 def l1_loss(input: torch.Tensor, target: torch.Tensor, reduction=Reduction.MEAN):
-    logger.debug("GEMS L1_LOSS (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN L1_LOSS")
     reduction = _normalize_reduction(reduction)
     input, target = _check_input(input, target)
     n_elements = input.numel()

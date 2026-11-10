@@ -43,7 +43,7 @@ def linalg_solve_ex(A, B, *, left=True, check_errors=False):
     Identical contract to the generic implementation; only the execution path
     differs (factor-then-substitute through the standalone LU ops).
     """
-    logger.debug("GEMS LINALG_SOLVE_EX (kunlunxin)")
+    logger.debug("GEMS_KUNLUNXIN LINALG_SOLVE_EX")
 
     if A.ndim < 2 or B.ndim < 2:
         raise ValueError("A and B must be at least 2D")

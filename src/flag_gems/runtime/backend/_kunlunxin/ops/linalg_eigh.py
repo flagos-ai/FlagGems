@@ -693,7 +693,7 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
     When compute_v is False, only eigenvalues are computed and eigenvectors
     are returned as an empty tensor.
     """
-    logger.debug("GEMS LINALG_EIGH")
+    logger.debug("GEMS_KUNLUNXIN LINALG_EIGH")
 
     if A.ndim < 2 or A.shape[-1] != A.shape[-2]:
         raise ValueError(f"Input matrix must be square, got shape {A.shape}")
