@@ -24,7 +24,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils.shape_utils import volume
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.mul")
 
 # Name of the active flag_gems backend device (e.g. "cuda", "musa"). The
 # optimized Triton path below runs on this device; tensors on other device

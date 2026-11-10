@@ -19,7 +19,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.gt")
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])

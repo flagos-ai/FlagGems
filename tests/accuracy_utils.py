@@ -409,10 +409,19 @@ def gems_log_prefix(fn):
     vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
     ``_<vendor>`` path component so this works for both short imported module
     names and fully qualified backend module names.
+
+    Some backends import their architecture packages under a bare arch name
+    (e.g. ``gcu400.ops.div``), which carries no vendor component. Fall back to
+    the implementation's source path, which still lives under
+    ``<backend>/_<vendor>/``.
     """
-    module_parts = fn.__module__.split(".")
-    if f"_{flag_gems.vendor_name}" in module_parts:
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    vendor = flag_gems.vendor_name
+    if f"_{vendor}" in fn.__module__.split("."):
+        return f"GEMS_{vendor.upper()}"
+    code = getattr(fn, "__code__", None)
+    filename = (getattr(code, "co_filename", "") or "").replace("\\", "/")
+    if f"/_{vendor}/" in filename:
+        return f"GEMS_{vendor.upper()}"
     return "GEMS"
 
 
