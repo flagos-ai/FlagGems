@@ -11,6 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Third-party dependencies (external baselines used at benchmark time):
+#   AITER (https://github.com/ROCm/aiter) -- MIT License.
+#     Calls moe_c_moe_gemm_marlin_w8a8, moe_sorting_fwd, moe_layout_shuffle_gemm1/2
+#     and reads the installed moe_c_configs tuning tables. The Marlin MoE kernel
+#     lineage is MIT (https://github.com/IST-DASLab/marlin).
+#   DeepGEMM (https://github.com/deepseek-ai/DeepGEMM) -- MIT License.
+#     Optional MetaX contiguous INT8 baseline
+#     (m_grouped_gemm_int8_int8_bf16_nt_contiguous), imported via importorskip.
+#   mctlassEx (MetaX) -- proprietary, closed source, no redistribution license.
+#     Installed separately by the user and imported via pytest.importorskip.
+#     Used only as an optional external baseline.
 
 """Standard grouped_mm_w8a8 benchmark with explicit baseline provenance.
 
@@ -63,6 +75,8 @@ class HygonAiterReference:
     """Prepare the AITER reference for one packed INT8 replay case."""
 
     def __init__(self, stage, a, b, sa, sb, output, indices):
+        # AITER is MIT-licensed; used as an external baseline through its
+        # public Python API.
         import aiter
         from aiter.jit.module_moe_c_kernel import moe_c_moe_gemm_marlin_w8a8
         from aiter.ops.moe_sorting import moe_sorting_fwd
@@ -260,6 +274,7 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
         a, b = a.cuda(), b.cuda()
         sa, sb = sa.float().cuda(), sb.float().reshape(g, n).cuda()
         if self.use_deepgemm:
+            # DeepGEMM is MIT-licensed; optional MetaX INT8 baseline.
             module = pytest.importorskip("deep_gemm")
             self.deepgemm = module.m_grouped_gemm_int8_int8_bf16_nt_contiguous
             lengths = torch.tensor(row["lengths"], dtype=torch.int32, device="cuda")
@@ -295,6 +310,8 @@ class GroupedMMW8A8Benchmark(base.Benchmark):
                         device="cuda",
                     ),
                 )
+            # mctlassEx is a proprietary MetaX package supplied by the user;
+            # used only as an optional external benchmark baseline.
             native_module = pytest.importorskip("mctlassEx.ContinuousGroupedGEMM")
             self.native = native_module.ContinuousGroupedGEMM()
         output = torch.empty((m, n), dtype=torch.bfloat16, device=a.device)
