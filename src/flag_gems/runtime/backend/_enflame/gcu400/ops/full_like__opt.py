@@ -21,9 +21,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.runtime.backend._enflame.gcu400.ops.full_like import (
-    full_like as _public,
-)
+from flag_gems.runtime.backend._enflame.gcu400.ops.full_like import full_like as _public
 
 __all__ = ["full_like"]
 

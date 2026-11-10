@@ -15,11 +15,7 @@
 
 import logging
 
-from flag_gems.ops._foreach_binary import (
-    _apply_list,
-    _apply_scalar,
-    _apply_tensor,
-)
+from flag_gems.ops._foreach_binary import _apply_list, _apply_scalar, _apply_tensor
 
 from ._foreach_flat import (
     FALLBACK,

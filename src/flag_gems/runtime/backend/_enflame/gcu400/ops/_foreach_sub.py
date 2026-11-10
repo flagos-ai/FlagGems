@@ -17,13 +17,7 @@ import logging
 
 from flag_gems.ops._foreach_binary import _apply_scalar
 
-from ._foreach_flat import (
-    FALLBACK,
-    MODE_SCALAR,
-    MODE_SCALAR_LIST,
-    OP_SUB,
-    run_binary,
-)
+from ._foreach_flat import FALLBACK, MODE_SCALAR, MODE_SCALAR_LIST, OP_SUB, run_binary
 
 logger = logging.getLogger(__name__)
 

@@ -272,8 +272,8 @@ def sweep(
 
             # Keep cumsum/index math in int32 — uint32 cumsum + ptr arith inserts
             # illegal arith.extui on GCU300.
-            local_ex_cumsum = (
-                tl.cumsum(matches.to(tl.int32), axis=0) - matches.to(tl.int32)
+            local_ex_cumsum = tl.cumsum(matches.to(tl.int32), axis=0) - matches.to(
+                tl.int32
             )  # (TILE_N, )
             ex_cumsum_in_bin = (
                 exclusive_prefix.to(tl.int32) + local_ex_cumsum
@@ -359,9 +359,7 @@ def radix_sort(arr, k_bits=8, descending=False):
 
         # GCU aten cumsum with INT64 enabled promotes int32 -> Long and then
         # rejects mismatched out dtype; pin dtype=int32. Sweep loads as tl.int32.
-        ex_cumsum_bins = (
-            torch.cumsum(global_hist, -1, dtype=torch.int32) - global_hist
-        )
+        ex_cumsum_bins = torch.cumsum(global_hist, -1, dtype=torch.int32) - global_hist
 
         # sort
         arr_in = torch.clone(arr)

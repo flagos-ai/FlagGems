@@ -357,9 +357,11 @@ def index_put(inp, indices, values, accumulate=False):
     out = inp.clone()
     return _index_put_impl_(out, indices, values, accumulate=accumulate)
 
+
 def index_put_(inp, indices, values, accumulate=False):
     logger.debug("GEMS_ENFLAME INDEX_PUT_")
     return _index_put_impl_(inp, indices, values, accumulate=accumulate)
+
 
 def _index_put_impl_(inp, indices, values, accumulate=False, unsafe=False):
     logger.debug("GEMS_ENFLAME _INDEX_PUT_IMPL_")

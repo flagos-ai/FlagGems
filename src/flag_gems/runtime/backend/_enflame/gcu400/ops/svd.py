@@ -20,7 +20,6 @@ import triton
 import triton.language as tl
 
 import flag_gems
-
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 

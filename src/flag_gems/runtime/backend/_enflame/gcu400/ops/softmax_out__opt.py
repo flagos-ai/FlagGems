@@ -39,11 +39,11 @@ out 连续且 dtype 一致、K>1 且 K>=256、N>=64；其余
 import torch
 import triton
 
+from flag_gems.ops.softmax import softmax_kernel_non_inner as _kernel_wrapped
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.softmax import (
     softmax_out as _prod_softmax_out,
 )
-from flag_gems.ops.softmax import softmax_kernel_non_inner as _kernel_wrapped
 
 _K = _kernel_wrapped.fn.fn
 

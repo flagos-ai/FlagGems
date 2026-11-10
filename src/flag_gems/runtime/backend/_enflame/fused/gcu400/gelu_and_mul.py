@@ -159,8 +159,17 @@ def _gelu_mul_grad_flat(
             s = _gelu_tanh_sigmoid(u)
             x_gelu = x * s
             # d/dx [x*sigmoid(2u)] = s + 2*x*s*(1-s)*u'
-            dx = d * y * (
-                s + 2.0 * x * s * (1.0 - s) * (0.7978845608028654 * (1.0 + 3.0 * 0.044715 * x * x))
+            dx = (
+                d
+                * y
+                * (
+                    s
+                    + 2.0
+                    * x
+                    * s
+                    * (1.0 - s)
+                    * (0.7978845608028654 * (1.0 + 3.0 * 0.044715 * x * x))
+                )
             )
         tl.store(DX + off, dx, mask)
         tl.store(DY + off, d * x_gelu, mask)

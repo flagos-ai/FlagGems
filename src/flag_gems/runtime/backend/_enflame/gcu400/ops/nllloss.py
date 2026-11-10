@@ -175,12 +175,13 @@ def nll_loss2d_backward(
 # smaller BLOCK_N / num_warps=1 so small-N launches get more programs.
 # ---------------------------------------------------------------------------
 
+import triton.language as tl  # noqa: E402
+
+from flag_gems.ops.nllloss import (  # noqa: E402
+    nll_loss_forward_raw as _common_forward_raw,
+)
 from flag_gems.runtime import torch_device_fn  # noqa: E402
 from flag_gems.utils import libentry  # noqa: E402
-import triton.language as tl  # noqa: E402
-from flag_gems.ops.nllloss import (
-    nll_loss_forward_raw as _common_forward_raw,
-)  # noqa: E402
 
 _GCU400_BWD_BLOCK = 32
 _GCU400_BWD_WARPS = 1

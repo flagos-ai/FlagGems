@@ -29,11 +29,11 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.thnn_fused_gru_cell_backward import _prepare_out
 from flag_gems.ops.thnn_fused_gru_cell_backward import (
-    _prepare_out,
     _thnn_fused_gru_cell_backward_out as _public_out,
-    _validate_inputs,
 )
+from flag_gems.ops.thnn_fused_gru_cell_backward import _validate_inputs
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

@@ -24,11 +24,11 @@ from typing import List, Tuple, Union
 import torch
 import triton
 
+from flag_gems.runtime.backend._enflame.gcu400.ops.cat import cat as _cat
 from flag_gems.runtime.backend._enflame.gcu400.ops.cat__opt import (
     _can_fast_path,
     _linear_cat_kernel,
 )
-from flag_gems.runtime.backend._enflame.gcu400.ops.cat import cat as _cat
 
 __all__ = ["vstack"]
 

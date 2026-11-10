@@ -12,9 +12,9 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import _select_addmm_out_config
 from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import (
     addmm_kernel as _g4_addmm_kernel,
-    _select_addmm_out_config,
 )
 
 

@@ -10,9 +10,7 @@
 不修改任何 TRACKED 文件，也不改全局 CODEGEN_COFIGS。
 """
 
-from flag_gems.runtime.backend._enflame.gcu400.ops.cosh_out__opt import (
-    _cosh_func,
-)
+from flag_gems.runtime.backend._enflame.gcu400.ops.cosh_out__opt import _cosh_func
 
 __all__ = ["cosh_"]
 

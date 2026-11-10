@@ -31,7 +31,6 @@ if utils.complex_is_supported:
         LDL_SOLVE_DTYPES.append(torch.complex128)
 
 
-
 def _make_ldl_inputs(batch_shape, n, k, dtype, device):
     A = torch.randn(*batch_shape, n, n, dtype=dtype, device=device)
     A = A @ A.mT + torch.eye(n, dtype=dtype, device=device) * n

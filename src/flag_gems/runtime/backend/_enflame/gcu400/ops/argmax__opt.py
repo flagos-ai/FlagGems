@@ -26,9 +26,11 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.argmax import argmax as _prod_argmax
 from flag_gems.runtime.backend._enflame.gcu400.ops.argmax import (
-    argmax as _prod_argmax,
     argmax_kernel_inner as _ki_wrapped,
+)
+from flag_gems.runtime.backend._enflame.gcu400.ops.argmax import (
     argmax_kernel_non_inner as _kn_wrapped,
 )
 

@@ -45,9 +45,8 @@ cap; fp16/bf16 rows use the same window width because the region sorts on
 stays on the generic path in sort.py.
 """
 
-from pathlib import Path
-
 import logging
+from pathlib import Path
 
 import torch
 import triton
