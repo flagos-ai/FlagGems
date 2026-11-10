@@ -873,6 +873,14 @@ class TunedConfigLoader(object):
         return None
 
     def _build_expand_registry(self):
+        mm_expand_yaml_path = self._get_expand_config_path("mm")
+        hygon_mm_expand_yaml_path = (
+            mm_expand_yaml_path if self.device.vendor_name == "hygon" else None
+        )
+        mv_expand_yaml_path = hygon_mm_expand_yaml_path or self._get_expand_config_path(
+            "mv"
+        )
+
         return {
             "addmm": self._build_single_expand_spec(
                 "addmm", expand_yaml_path=self._get_expand_config_path("addmm")
@@ -1045,7 +1053,7 @@ class TunedConfigLoader(object):
                 "gemv", yaml_op_name="gemv_k_parallel"
             ),
             "mm": self._build_single_expand_spec(
-                "mm", expand_yaml_path=self._get_expand_config_path("mm")
+                "mm", expand_yaml_path=mm_expand_yaml_path
             ),
             "mm_hygon_splitk": {
                 "yaml_op_name": "mm_hygon_splitk",
@@ -1053,20 +1061,20 @@ class TunedConfigLoader(object):
                         "ASYNC_LOAD_MASK", "WAVE_PRIVATE_SYNC_SUPPORTED",
                         "M_ALIGNMENT", "N_ALIGNMENT"],
                 "default_strategy": ["default"] * 10,
-                "expand_yaml_path": None,
+                "expand_yaml_path": hygon_mm_expand_yaml_path,
             },
             "mm_hygon_splitk_post": {
                 "yaml_op_name": "mm_hygon_splitk_post",
                 "key": ["MN", "SPLITS"],
                 "default_strategy": ["default"] * 2,
-                "expand_yaml_path": None,
+                "expand_yaml_path": hygon_mm_expand_yaml_path,
             },
             "mm_hygon": {
                 "yaml_op_name": "mm",
                 "key": ["M", "N", "K", "stride_am", "stride_bk",
                         "LARGE_TILE_CONFIGS", "ASYNC_LOAD_MASK", "K_DIVISIBLE_BY_16"],
                 "default_strategy": ["default"] * 8,
-                "expand_yaml_path": self._get_expand_config_path("mm"),
+                "expand_yaml_path": mm_expand_yaml_path,
             },
             "mm_ppu": {
                 "yaml_op_name": "mm_ppu",
@@ -1159,7 +1167,7 @@ class TunedConfigLoader(object):
                 "mm_warp_specialized_tma"
             ),
             "mv": self._build_single_expand_spec(
-                "mv", expand_yaml_path=self._get_expand_config_path("mv")
+                "mv", expand_yaml_path=mv_expand_yaml_path
             ),
             "mv_row": self._build_single_expand_spec("mv_row"),
             "mv_column": self._build_single_expand_spec("mv_column"),
@@ -1170,7 +1178,7 @@ class TunedConfigLoader(object):
             "mv_hygon": self._build_single_expand_spec(
                 "mv_hygon",
                 yaml_op_name="mv",
-                expand_yaml_path=self._get_expand_config_path("mv"),
+                expand_yaml_path=mv_expand_yaml_path,
             ),
             "mul": self._build_single_expand_spec(
                 "mul", expand_yaml_path=self._get_expand_config_path("mul")

@@ -11,7 +11,7 @@ import torch
 @pytest.fixture(scope="module")
 def cooperative():
     return importlib.import_module(
-        "flag_gems.runtime.backend._hygon.ops.mm_cooperative"
+        "flag_gems.runtime.backend._hygon.ops.mm"
     )
 
 
@@ -90,12 +90,12 @@ def test_requires_typed_fence_binding(cooperative, monkeypatch):
 
     if not hasattr(libtriton, "hcu"):
         pytest.skip("HCU compiler required")
-    cooperative._supported.cache_clear()
+    cooperative._cooperative_supported.cache_clear()
     try:
-        assert cooperative._supported()
+        assert cooperative._cooperative_supported()
         with monkeypatch.context() as context:
             context.delattr(libtriton.hcu, "create_accumulator_fence")
-            cooperative._supported.cache_clear()
-            assert not cooperative._supported()
+            cooperative._cooperative_supported.cache_clear()
+            assert not cooperative._cooperative_supported()
     finally:
-        cooperative._supported.cache_clear()
+        cooperative._cooperative_supported.cache_clear()

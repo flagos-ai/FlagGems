@@ -12,9 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Hygon floating-point matrix multiplication."""
+
 import copy
 import logging
 import os
+import statistics
+import threading
+from dataclasses import asdict, dataclass
+from functools import cache, lru_cache
+from math import prod
 
 import torch
 import triton
@@ -30,10 +37,18 @@ except ImportError:
     tle = None
     HAS_HYGON_TLE = False
 
+try:
+    from triton.language.extra.hip import accumulator_fence
+    from triton.language.extra.hip import cta_barrier as cta_phase
+except ImportError:
+    accumulator_fence = cta_phase = None
+
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+
+from .mv import GroupedMVConfig, grouped_mv_candidates, launch_grouped_mv
 
 logger = logging.getLogger(__name__)
 EXPAND_CONFIG_FILENAME = os.path.normpath(
@@ -41,6 +56,7 @@ EXPAND_CONFIG_FILENAME = os.path.normpath(
 )
 
 
+# Ordinary GEMM tuning and kernel.
 def _hygon_mm_bucket(value):
     """Bucket dimensions at tile/work boundaries for config reuse.
 
@@ -254,6 +270,11 @@ def _hygon_mm_large_tile_eligible(a, b, c, M, N, K):
     )
 
 
+def _hygon_mm_output_tile_fits(M, N, bm, bn, *, allow_tail=False):
+    """Require one full output tile and exact coverage unless tails are allowed."""
+    return M >= bm and N >= bn and (allow_tail or (M % bm == 0 and N % bn == 0))
+
+
 def _hygon_mm_expanded_prune(configs, named_args, **kwargs):
     """Prune correctness/capability limits, leaving ranking to tuning."""
     M, N = int(named_args["M"]), int(named_args["N"])
@@ -270,7 +291,7 @@ def _hygon_mm_expanded_prune(configs, named_args, **kwargs):
         mode, stages = int(meta["LOAD_MODE"]), int(config.num_stages)
         if mode not in (0, 1, 2, 3) or mode & ~load_mask:
             continue
-        if not masked and (M < bm or N < bn or M % bm or N % bn):
+        if not masked and not _hygon_mm_output_tile_fits(M, N, bm, bn):
             continue
         # Three-stage async pipelines are legal too. Particular mixed-load
         # shaders can miscompile in DTK; validate compiled candidates instead
@@ -439,14 +460,8 @@ def _hygon_mm_configs():
     return configs
 
 
-def _hygon_mm_legacy_edge_prune(configs, named_args, **kwargs):
-    """Keep a generic, shape-compatible HCU tile family.
-
-    Full tiles must divide the output grid. The gated masked family may
-    cover partial output tiles; narrow the search by dimension scale.  The rules use only dimension ranges and preserve
-    several neighboring candidates around each boundary; they are not model
-    shape dispatches.
-    """
+def _hygon_mm_default_base_prune(configs, named_args, **kwargs):
+    """Shortlist Default's base tiles by output coverage and problem size."""
     M = int(named_args.get("M", 0))
     N = int(named_args.get("N", 0))
     K = int(named_args.get("K", 0))
@@ -456,14 +471,12 @@ def _hygon_mm_legacy_edge_prune(configs, named_args, **kwargs):
     valid = [
         config
         for config in configs
-        if M >= int(config.kwargs.get("BLOCK_M", 1))
-        and N >= int(config.kwargs.get("BLOCK_N", 1))
-        and (
-            masked_family
-            or (
-                M % int(config.kwargs.get("BLOCK_M", 1)) == 0
-                and N % int(config.kwargs.get("BLOCK_N", 1)) == 0
-            )
+        if _hygon_mm_output_tile_fits(
+            M,
+            N,
+            int(config.kwargs.get("BLOCK_M", 1)),
+            int(config.kwargs.get("BLOCK_N", 1)),
+            allow_tail=masked_family,
         )
     ]
     candidates = valid or list(configs)
@@ -471,8 +484,6 @@ def _hygon_mm_legacy_edge_prune(configs, named_args, **kwargs):
         floor_m = 1 << max(0, M.bit_length() - 1)
         ceil_m = 1 << max(0, (M - 1).bit_length())
         allowed_m = {floor_m, min(16, ceil_m)}
-    elif M < 64:
-        allowed_m = {16, 32, 64}
     else:
         allowed_m = {16, 32, 64}
     if N < 32:
@@ -505,16 +516,15 @@ def _hygon_mm_legacy_edge_prune(configs, named_args, **kwargs):
     return narrowed or candidates
 
 
-def _hygon_mm_edge_prune(configs, named_args, **kwargs):
-    if configs and "LOAD_MODE" in configs[0].kwargs:
-        return _hygon_mm_expanded_prune(configs, named_args, **kwargs)
-    legacy = [
+def _hygon_mm_default_prune(configs, named_args, **kwargs):
+    """Apply the Default shortlist and admit eligible dense and single-wave tiles."""
+    base_configs = [
         config
         for config in configs
         if not _hygon_mm_is_dense_config(config)
         and not _hygon_mm_is_single_wave_config(config)
     ]
-    candidates = _hygon_mm_legacy_edge_prune(legacy, named_args, **kwargs)
+    candidates = _hygon_mm_default_base_prune(base_configs, named_args, **kwargs)
     if kwargs.get("LARGE_TILE_CONFIGS", named_args.get("LARGE_TILE_CONFIGS", False)):
         M, N = int(named_args["M"]), int(named_args["N"])
         masked = kwargs.get("MASK_EDGES", named_args.get("MASK_EDGES", False))
@@ -533,10 +543,9 @@ def _hygon_mm_edge_prune(configs, named_args, **kwargs):
                 )
                 or (
                     not masked
-                    and M >= config.kwargs["BLOCK_M"]
-                    and N >= config.kwargs["BLOCK_N"]
-                    and M % config.kwargs["BLOCK_M"] == 0
-                    and N % config.kwargs["BLOCK_N"] == 0
+                    and _hygon_mm_output_tile_fits(
+                        M, N, config.kwargs["BLOCK_M"], config.kwargs["BLOCK_N"]
+                    )
                 )
             )
         )
@@ -564,23 +573,14 @@ def _hygon_mm_edge_prune(configs, named_args, **kwargs):
     return candidates
 
 
+def _hygon_mm_edge_prune(configs, named_args, **kwargs):
+    """Select the pruning policy for the effective autotune config table."""
+    if configs and "LOAD_MODE" in configs[0].kwargs:
+        return _hygon_mm_expanded_prune(configs, named_args, **kwargs)
+    return _hygon_mm_default_prune(configs, named_args, **kwargs)
+
+
 _HYGON_MM_DEFAULT_CONFIGS = _hygon_mm_configs()
-
-
-def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
-    if large_tile_configs and (M % 128 or N % 128):
-        return True
-    # Divisors that occur only in Expanded (for example BLOCK_M=1) cannot
-    # prove the default shortlist safe. If any default tile divides the
-    # output, pruning retains only dividing tiles; otherwise mask edges.
-    return not any(
-        M >= config.kwargs["BLOCK_M"]
-        and N >= config.kwargs["BLOCK_N"]
-        and M % config.kwargs["BLOCK_M"] == 0
-        and N % config.kwargs["BLOCK_N"] == 0
-        for config in _HYGON_MM_DEFAULT_CONFIGS
-        if not _hygon_mm_is_single_wave_config(config)
-    )
 
 
 @triton.jit
@@ -827,6 +827,1331 @@ def mm_kernel(
     tl.store(c_ptr, accumulator, mask=mask_store)
 
 
+# Cooperative producer/consumer GEMM.
+
+@triton.jit
+def grouped_program_coordinates(
+    pid, count_m: tl.constexpr, count_n: tl.constexpr, GROUP_M: tl.constexpr
+):
+    # The caller launches count_m * count_n consecutive program IDs.
+    tl.static_assert(count_m > 0 and count_n > 0 and GROUP_M > 0)
+    # Program IDs in the supported launch grid are nonnegative.
+    pid = pid.to(tl.uint32)
+    group_width: tl.constexpr = GROUP_M * count_n
+    if count_n == 1:
+        # Keep rotated tail-row ordering; the single column is always zero.
+        if count_m > GROUP_M and count_m % GROUP_M != 0:
+            first_tail: tl.constexpr = (count_m // GROUP_M) * GROUP_M
+            tail_rows: tl.constexpr = count_m % GROUP_M
+            pm = tl.where(pid >= first_tail, first_tail + pid % tail_rows, pid)
+            return pm.to(tl.int32), tl.cast(0, tl.int32)
+        return pid.to(tl.int32), tl.cast(0, tl.int32)
+    elif count_m <= GROUP_M:
+        return (pid % count_m).to(tl.int32), (pid // count_m).to(tl.int32)
+    elif count_m % GROUP_M == 0:
+        return ((pid // group_width) * GROUP_M + pid % GROUP_M).to(tl.int32), (
+            (pid % group_width) // GROUP_M
+        ).to(tl.int32)
+    else:
+        full_groups: tl.constexpr = count_m // GROUP_M
+        full_span: tl.constexpr = full_groups * group_width
+        tail_m: tl.constexpr = count_m % GROUP_M
+        in_tail = pid >= full_span
+        full_m = (pid // group_width) * GROUP_M + pid % GROUP_M
+        full_n = (pid % group_width) // GROUP_M
+        # Preserve the original absolute modulo, including rotated tail rows.
+        tail_m_index = full_groups * GROUP_M + pid % tail_m
+        tail_n = (pid - full_span) // tail_m
+        return tl.where(in_tail, tail_m_index, full_m).to(tl.int32), tl.where(
+            in_tail, tail_n, full_n
+        ).to(tl.int32)
+
+
+@triton.jit
+def _coordinates(M: tl.constexpr, N: tl.constexpr, GROUP_M: tl.constexpr):
+    if GROUP_M == 0:
+        return tl.program_id(0), tl.program_id(1)
+    else:
+        cm: tl.constexpr = (M + 255) // 256
+        cn: tl.constexpr = (N + 255) // 256
+        return grouped_program_coordinates(
+            tl.program_id(0) + tl.program_id(1) * cm, cm, cn, GROUP_M
+        )
+
+
+@triton.jit
+def _produce_tile(
+    B,
+    owner,
+    n,
+    k,
+    t,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BK: tl.constexpr,
+):
+    column = t * BK + k
+    mask = n[None, :] < N
+    value = tle.load(
+        B + n[None, :].to(tl.int64) * K + column[:, None], mask, other=0, is_async=True
+    )
+    owner.slot(t % 2).store(value)
+    cta_phase()
+    cta_phase()
+
+
+@triton.jit
+def _producer(
+    B,
+    owner,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pm, pn = _coordinates(M, N, GROUP_M)
+    n = pn * BN + tl.arange(0, BN)
+    k = tl.arange(0, BK)
+    for pair in range(K // (2 * BK)):
+        _produce_tile(B, owner, n, k, pair * 2, N, K, BK)
+        _produce_tile(B, owner, n, k, pair * 2 + 1, N, K, BK)
+    if (K // BK) % 2:
+        _produce_tile(B, owner, n, k, K // BK - 1, N, K, BK)
+    cta_phase()
+    cta_phase()
+
+
+@triton.jit
+def _load_parts(
+    A, row, K: tl.constexpr, BM: tl.constexpr, BK: tl.constexpr, M: tl.constexpr, t
+):
+    pointer = tl.make_block_ptr(A, (M, K), (K, 1), (row, t * BK), (BM, BK), (1, 0))
+    full = tl.load(pointer, boundary_check=(0, 1), padding_option="zero")
+    lo, hi = tl.split(full.reshape((BM, 2, BK // 2)).permute((0, 2, 1)))
+    return lo, hi
+
+
+@triton.jit
+def _compute_parts(
+    A,
+    owner,
+    acc,
+    av0,
+    av1,
+    row,
+    t,
+    M: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BK: tl.constexpr,
+    HIGH_PHASE: tl.constexpr,
+):
+    bv0 = owner.slot(t % 2).subslice(0, BK // 2, 0).load()
+    if HIGH_PHASE:
+        cta_phase()
+    acc = accumulator_fence(acc, 1)
+    acc = tl.dot(av0, bv0, acc, allow_tf32=False)
+    acc = accumulator_fence(acc, 0)
+    if not HIGH_PHASE:
+        cta_phase()
+    next0, next1 = _load_parts(A, row, K, BM, BK, M, t + 1)
+    bv1 = owner.slot(t % 2).subslice(BK // 2, BK // 2, 0).load()
+    if HIGH_PHASE:
+        cta_phase()
+    acc = accumulator_fence(acc, 1)
+    acc = tl.dot(av1, bv1, acc, allow_tf32=False)
+    acc = accumulator_fence(acc, 0)
+    if not HIGH_PHASE:
+        cta_phase()
+    return acc, next0, next1
+
+
+@triton.jit
+def _consumer(
+    A,
+    C,
+    owner,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    ROW_START: tl.constexpr,
+    HIGH_PHASE: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    pm, pn = _coordinates(M, N, GROUP_M)
+    row = pm * (2 * BM) + ROW_START
+    acc = tl.zeros((BM, BN), tl.float32)
+    av0, av1 = _load_parts(A, row, K, BM, BK, M, 0)
+    cta_phase()
+    cta_phase()
+    for pair in range(tl.cdiv(K, BK) // 2):
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, pair * 2, M, K, BM, BK, HIGH_PHASE
+        )
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, pair * 2 + 1, M, K, BM, BK, HIGH_PHASE
+        )
+    if tl.cdiv(K, BK) % 2:
+        acc, av0, av1 = _compute_parts(
+            A, owner, acc, av0, av1, row, tl.cdiv(K, BK) - 1, M, K, BM, BK, HIGH_PHASE
+        )
+    output = tl.make_block_ptr(C, (M, N), (N, 1), (row, pn * BN), (BM, BN), (1, 0))
+    tl.store(output, acc.to(C.dtype.element_ty), boundary_check=(0, 1))
+
+
+@libentry()
+@triton.jit
+def _mm_cooperative_kernel(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr = 256,
+    BN: tl.constexpr = 256,
+    BK: tl.constexpr = 64,
+    GROUP_M: tl.constexpr = 0,
+):
+    tl.static_assert(BM == 256 and BN == 256 and BK == 64)
+    tl.static_assert(K >= 64 and K < 8192 and K % 64 == 0)
+    tl.static_assert(M > 0 and N > 0 and M < 2147483648 and N < 2147483648)
+    tl.static_assert(512 * N < 2147483648 and GROUP_M >= 0)
+    # Describe logical storage; the backend jointly selects its physical chart
+    # from the global producer and actual MMAC consumers.
+    owner = tle.gpu.alloc([2, BK, BN], A.dtype.element_ty)
+    tle.gpu.warp_specialize(
+        [
+            (_consumer, (A, C, owner, M, N, K, BM // 2, BN, BK, 0, False, GROUP_M)),
+            (
+                _consumer,
+                (A, C, owner, M, N, K, BM // 2, BN, BK, BM // 2, True, GROUP_M),
+            ),
+            (
+                _producer,
+                (B, owner, M, N, K, BN, BK, GROUP_M),
+            ),
+        ],
+        [4, 4],
+        [128, 32],
+    )
+
+
+# Independent CTA-local Split-K GEMM.
+
+@triton.jit
+def _write_partial_sum(
+    accumulator,
+    C,
+    mi,
+    ni,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+):
+    pairs = tl.reshape(tl.permute(accumulator, (1, 2, 0)), (BM * BN, 2, 2))
+    even, odd = tl.split(pairs)
+    low, high = tl.split(even + odd)
+    value = tl.reshape(low + high, (BM, BN))
+    tl.store(
+        C + mi[:, None].to(tl.int64) * N + ni[None, :],
+        value.to(C.dtype.element_ty),
+        (mi[:, None] < M) & (ni[None, :] < N),
+    )
+
+
+@libentry()
+@triton.jit
+def _mm_local_splitk_kernel(
+    A,
+    B,
+    C,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    BM: tl.constexpr = 32,
+    BN: tl.constexpr = 32,
+    K_STEP: tl.constexpr = 256,
+    B_ROW_MAJOR: tl.constexpr = False,
+    M_TILES: tl.constexpr = 1,
+):
+    tl.static_assert(K_STEP == 128 or K_STEP == 256)
+    tl.static_assert(M_TILES > 0 and BM >= 16 and BN >= 16)
+    row = tl.program_id(0) * (M_TILES * BM)
+    col = tl.program_id(1) * BN
+    part = tl.arange(0, 4)
+    offsets = tl.arange(0, BM)
+    ni = col + tl.arange(0, BN)
+    ki = part[:, None] * (K_STEP // 4) + tl.arange(0, K_STEP // 4)[None, :]
+    accumulators = ()
+    for i in tl.static_range(M_TILES):
+        accumulators = accumulators + (tl.zeros((4, BM, BN), tl.float32),)
+    for start in range(tl.cdiv(K, K_STEP)):
+        kk = start * K_STEP + ki
+        if B_ROW_MAJOR:
+            bv = tl.load(
+                B + kk[:, :, None].to(tl.int64) * N + ni[None, None, :],
+                (kk[:, :, None] < K) & (ni[None, None, :] < N),
+                other=0,
+            )
+        else:
+            bv = tl.load(
+                B + ni[None, None, :].to(tl.int64) * K + kk[:, :, None],
+                (kk[:, :, None] < K) & (ni[None, None, :] < N),
+                other=0,
+            )
+        next_accumulators = ()
+        for i in tl.static_range(M_TILES):
+            mi = row + i * BM + offsets
+            av = tl.load(
+                A + mi[None, :, None].to(tl.int64) * K + kk[:, None, :],
+                (mi[None, :, None] < M) & (kk[:, None, :] < K),
+                other=0,
+            )
+            next_accumulators = next_accumulators + (
+                tl.dot(av, bv, accumulators[i], allow_tf32=False),
+            )
+        accumulators = next_accumulators
+    for i in tl.static_range(M_TILES):
+        _write_partial_sum(accumulators[i], C, row + i * BM + offsets, ni, M, N, BM, BN)
+
+
+# Tuned Split-K partials and their optional global reducer.
+
+try:
+    from triton.backends.hcu.compiler import HIPOptions
+except ImportError:
+    _SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED = False
+else:
+    _SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED = (
+        "wave_private_sync" in HIPOptions.__dataclass_fields__
+    )
+
+# Split-K partials and the reducer use sections in the same Expanded YAML
+# as the ordinary MM kernel. Separate section names keep the tuning keys
+# and launch parameters specific to each kernel.
+
+
+@libentry()
+@libtuner(
+    configs=[triton.Config(dict(BLOCK=256), num_warps=4, num_stages=1)],
+    key=["MN", "SPLITS"],
+    strategy=["default"] * 2,
+    warmup=5,
+    rep=10,
+    benchmark_mode="replay",
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_hygon_splitk_post",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+)
+@triton.jit
+def _mm_splitk_post(W, C, MN: tl.constexpr, SPLITS: tl.constexpr, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    acc = tl.zeros((BLOCK,), tl.float32)
+    for split in tl.static_range(SPLITS):
+        acc += tl.load(W + split * MN + i, i < MN, other=0.)
+    tl.store(C + i, acc, i < MN)
+
+
+def _splitk_post_hook(args, exception):
+    # Triton invokes this inside its timed kernel_call. The final launch and
+    # LibEntry cache hits are completed by the public wrapper below.
+    if exception is None and args["KIND"] == 0 and args["SPLITS"] > 1:
+        mn = args["M"] * args["N"]
+        _mm_splitk_post[lambda meta: (triton.cdiv(mn, meta["BLOCK"]),)](
+            args["W"], args["C"], mn, args["SPLITS"],
+        )
+
+
+def _splitk_default_configs():
+    # Retain the two existing synchronous global-split families for Default.
+    # Expanded replaces this list with the complete declared YAML space.
+    return [
+        triton.Config(
+            dict(BM=32, BN=bn, BK=bk, SPLITS=splits, KIND=0,
+                 LOAD_MODE=0, optimize_epilogue=False,
+                 schedule_hint="local-prefetch"),
+            num_warps=2, num_stages=2,
+        )
+        for bn, bk, splits in [(16, 64, 32), (32, 32, 16)]
+    ]
+
+
+def _splitk_prune(configs, named_args, **kwargs):
+    mask = int(kwargs.get("ASYNC_LOAD_MASK", named_args.get("ASYNC_LOAD_MASK", 0)))
+    # Tail tiles and shallow per-split loops remain eligible. Resource limits
+    # are checked by the compiler/launcher, not an estimated performance model.
+    supports_private = bool(kwargs.get(
+        "WAVE_PRIVATE_SYNC_SUPPORTED",
+        named_args.get("WAVE_PRIVATE_SYNC_SUPPORTED", False),
+    ))
+    selected = []
+    for config in configs:
+        if config.kwargs["LOAD_MODE"] & ~mask:
+            continue
+        if not supports_private and config.kwargs.get("wave_private_sync", False):
+            continue
+        if not supports_private and "wave_private_sync" in config.kwargs:
+            # Older HCU backends must not receive an unknown backend option.
+            config = copy.deepcopy(config)
+            config.kwargs.pop("wave_private_sync")
+        selected.append(config)
+    return selected
+
+
+@libentry()
+@libtuner(
+    configs=_splitk_default_configs(),
+    key=["M", "N", "K", "stride_bk", "stride_bn", "B_K_CONTIGUOUS",
+         "ASYNC_LOAD_MASK", "WAVE_PRIVATE_SYNC_SUPPORTED", "M_ALIGNMENT", "N_ALIGNMENT"],
+    strategy=["default"] * 10,
+    warmup=5,
+    rep=10,
+    benchmark_mode="replay",
+    post_hook=_splitk_post_hook,
+    flagtune_op_name="mm",
+    flagtune_expand_op_name="mm_hygon_splitk",
+    flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
+    prune_configs_by={"early_config_prune": _splitk_prune},
+)
+@triton.jit
+def _mm_splitk_partial(A, B, W, C, M, N, K, stride_bk, stride_bn,
+            B_K_CONTIGUOUS: tl.constexpr,
+            BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,
+            SPLITS: tl.constexpr, KIND: tl.constexpr,
+            LOAD_MODE: tl.constexpr, ASYNC_LOAD_MASK: tl.constexpr,
+            WAVE_PRIVATE_SYNC_SUPPORTED: tl.constexpr,
+            M_ALIGNMENT: tl.constexpr = 1, N_ALIGNMENT: tl.constexpr = 1):
+    tl.static_assert(KIND == 0 or KIND == 1)
+    tl.static_assert(LOAD_MODE >= 0 and LOAD_MODE <= 3)
+    tl.static_assert((LOAD_MODE & ~ASYNC_LOAD_MASK) == 0)
+    # Host launch contract: exact ceil-grid, positive M/N, facts divide M/N.
+    tl.static_assert(M_ALIGNMENT > 0 and (M_ALIGNMENT & (M_ALIGNMENT - 1)) == 0)
+    tl.static_assert(N_ALIGNMENT > 0 and (N_ALIGNMENT & (N_ALIGNMENT - 1)) == 0)
+    FULL_M: tl.constexpr = M_ALIGNMENT % BM == 0
+    FULL_N: tl.constexpr = N_ALIGNMENT % BN == 0
+    rm = tl.program_id(0) * BM + tl.arange(0, BM)
+    rn = tl.program_id(1) * BN + tl.arange(0, BN)
+    kr = tl.arange(0, BK)
+    if KIND == 0:
+        split = tl.program_id(2)
+        # Match the existing production split-K interleaving exactly. Keep
+        # both loads as block pointers to avoid the known DTK masked-pointer
+        # byte-offset problem; every candidate is still numerically checked.
+        ap = tl.make_block_ptr(A, (M, K), (K, 1),
+                              (tl.program_id(0) * BM, split * BK),
+                              (BM, BK), (1, 0))
+        if B_K_CONTIGUOUS:
+            bp = tl.make_block_ptr(B, (K, N), (stride_bk, stride_bn),
+                                  (split * BK, tl.program_id(1) * BN),
+                                  (BK, BN), (0, 1))
+        else:
+            bp = tl.make_block_ptr(B, (K, N), (stride_bk, stride_bn),
+                                  (split * BK, tl.program_id(1) * BN),
+                                  (BK, BN), (1, 0))
+        acc = tl.zeros((BM, BN), tl.float32)
+        for q in range(tl.cdiv(K, BK * SPLITS)):
+            if FULL_M:
+                a = tle.load(ap, boundary_check=(1,), padding_option='zero',
+                             is_async=(LOAD_MODE & 1) != 0)
+            else:
+                a = tle.load(ap, boundary_check=(0, 1), padding_option='zero',
+                             is_async=(LOAD_MODE & 1) != 0)
+            if FULL_N:
+                b = tle.load(bp, boundary_check=(0,), padding_option='zero',
+                             is_async=(LOAD_MODE & 2) != 0)
+            else:
+                b = tle.load(bp, boundary_check=(0, 1), padding_option='zero',
+                             is_async=(LOAD_MODE & 2) != 0)
+            acc = tl.dot(a, b, acc)
+            ap = tl.advance(ap, (0, BK * SPLITS))
+            bp = tl.advance(bp, (BK * SPLITS, 0))
+        if SPLITS == 1:
+            out = C + rm[:, None] * N + rn[None, :]
+        else:
+            out = W + split * M * N + rm[:, None] * N + rn[None, :]
+        if FULL_M and FULL_N:
+            tl.store(out, acc)
+        elif FULL_M:
+            tl.store(out, acc, rn[None, :] < N)
+        elif FULL_N:
+            tl.store(out, acc, rm[:, None] < M)
+        else:
+            tl.store(out, acc, (rm[:, None] < M) & (rn[None, :] < N))
+    else:
+        # Express CTA-internal K partitioning with existing batched dot and
+        # reduction primitives. Inspect actual warp distribution before
+        # calling this the same parallel algorithm as Torch.
+        sp = tl.arange(0, SPLITS)
+        acc = tl.zeros((SPLITS, BM, BN), tl.float32)
+        for q in range(tl.cdiv(K, BK * SPLITS)):
+            kk = (sp[:, None] + q * SPLITS) * BK + kr[None, :]
+            if FULL_M:
+                a = tle.load(A + rm[None, :, None] * K + kk[:, None, :],
+                             kk[:, None, :] < K,
+                             other=0., is_async=(LOAD_MODE & 1) != 0)
+            else:
+                a = tle.load(A + rm[None, :, None] * K + kk[:, None, :],
+                             (rm[None, :, None] < M) & (kk[:, None, :] < K),
+                             other=0., is_async=(LOAD_MODE & 1) != 0)
+            if FULL_N:
+                b = tle.load(B + kk[:, :, None] * stride_bk
+                             + rn[None, None, :] * stride_bn,
+                             kk[:, :, None] < K,
+                             other=0., is_async=(LOAD_MODE & 2) != 0)
+            else:
+                b = tle.load(B + kk[:, :, None] * stride_bk
+                             + rn[None, None, :] * stride_bn,
+                             (kk[:, :, None] < K) & (rn[None, None, :] < N),
+                             other=0., is_async=(LOAD_MODE & 2) != 0)
+            acc = tl.dot(a, b, acc)
+        result = tl.sum(acc, 0)
+        if FULL_M and FULL_N:
+            tl.store(C + rm[:, None] * N + rn[None, :], result)
+        elif FULL_M:
+            tl.store(C + rm[:, None] * N + rn[None, :], result, rn[None, :] < N)
+        elif FULL_N:
+            tl.store(C + rm[:, None] * N + rn[None, :], result, rm[:, None] < M)
+        else:
+            tl.store(C + rm[:, None] * N + rn[None, :], result,
+                     (rm[:, None] < M) & (rn[None, :] < N))
+
+
+def _splitk_parameters(a, b, c):
+    if not HAS_HYGON_TLE:
+        return None
+    if a.ndim != 2 or b.ndim != 2 or c.ndim != 2:
+        return None
+    M, K = a.shape
+    N = b.shape[1]
+    if not (
+        M >= 2 and N >= 2
+        # K partitions supply parallel work for small output grids. Limit
+        # the grid to 64 tiles and the tuning workspace to 16MiB.
+        and triton.cdiv(M, 32) * triton.cdiv(N, 32) <= 64
+        and K >= 2048
+        and b.shape[0] == K
+        and c.shape == (M, N)
+        and a.dtype == b.dtype == c.dtype
+        and a.dtype in (torch.bfloat16, torch.float16)
+        and a.device == b.device == c.device
+        and a.device.type == "cuda"
+        and not c.requires_grad
+        and (not c.is_inference() or torch.is_inference_mode_enabled())
+        and c.untyped_storage().data_ptr()
+        not in (a.untyped_storage().data_ptr(), b.untyped_storage().data_ptr())
+        and a.is_contiguous() and c.is_contiguous()
+        and (b.is_contiguous() or (
+            b.stride(0) == 1 and b.stride(1) == K and b.t().is_contiguous()
+        ))
+        and all(t.data_ptr() % 16 == 0 for t in (a, b, c))
+        and all(t.untyped_storage().nbytes() <= 2**31 - 1 for t in (a, b, c))
+    ):
+        return None
+    if N < 16:
+        if K < 8192:
+            return None
+        block_n, block_k, splits = 16, 64, 32
+    else:
+        block_n, block_k, splits = 32, 32, 16
+    from triton import knobs
+
+    if not (
+        knobs.hcu.use_buffer_ops
+        and not knobs.hcu.use_async_copy
+        and not knobs.hcu.use_block_pingpong
+        and not knobs.hcu.use_in_thread_transpose
+    ):
+        return None
+    with torch_device_fn.device(a.device):
+        target = triton.runtime.driver.active.get_current_target()
+    if target.backend != "hip" or target.arch != "gfx936":
+        return None
+    return 32, block_n, block_k, splits
+
+
+def _splitk_alignment_facts(M, N, enabled=True):
+    """Divisibility facts for the exact ceil-grid used by try_mm_splitk."""
+    if type(enabled) is not bool:
+        raise TypeError("use_alignment_facts must be boolean")
+    if not enabled or any(type(x) is not int or not 0 < x <= 2**31 - 1 for x in (M, N)):
+        return 1, 1
+    return M & -M, N & -N
+
+
+def try_mm_splitk(a, b, c, *, use_alignment_facts=True, compare_local_split=False):
+    """Write c using the small-output family; return False outside its domain."""
+    if type(use_alignment_facts) is not bool:
+        raise TypeError("use_alignment_facts must be boolean")
+    if type(compare_local_split) is not bool:
+        raise TypeError("compare_local_split must be boolean")
+    if _splitk_parameters(a, b, c) is None:
+        return False
+    if compare_local_split and use_alignment_facts:
+        _mm_splitk_partial._apply_flagtune()
+        tuner = _mm_splitk_partial.fn
+        if tuner._run_mode == "normal":
+            key = (
+                "splitK-baseline",
+                tuner.config_table_name,
+                id(tuner.configs),
+                tuple(tuner._benchmark_protocol),
+            )
+            if try_mm_family(
+                a,
+                b,
+                c,
+                lambda: _launch_mm_splitk(a, b, c),
+                tuning_key=key,
+                ordinary_with_output=lambda output: _launch_mm_splitk(a, b, output),
+                splitk_pool=True,
+            ):
+                return True
+    _launch_mm_splitk(a, b, c, use_alignment_facts=use_alignment_facts)
+    return True
+
+
+def _launch_mm_splitk(a, b, c, *, use_alignment_facts=True):
+    M, K = a.shape
+    N = b.shape[1]
+    ma, na = _splitk_alignment_facts(M, N, use_alignment_facts)
+    # Facts below are valid only for this exact ceil-grid and its original
+    # pid axes. Arbitrary caller grids must retain the original checks.
+    # All Expanded configurations share one workspace. CTA/GSU1 leave it
+    # unused; every global split writes its complete disjoint FP32 partial.
+    workspace = torch.empty((64, M, N), device=a.device, dtype=torch.float32)
+    with torch_device_fn.device(a.device):
+        mask = _hygon_mm_async_load_mask(a, b, c, M, N, K)
+        grid = lambda meta: (
+            triton.cdiv(M, meta["BM"]), triton.cdiv(N, meta["BN"]),
+            meta["SPLITS"] if meta["KIND"] == 0 else 1,
+        )
+        _, meta = _mm_splitk_partial[grid](
+            a, b, workspace, c, M, N, K, *b.stride(),
+            B_K_CONTIGUOUS=b.stride(0) == 1, ASYNC_LOAD_MASK=mask,
+            WAVE_PRIVATE_SYNC_SUPPORTED=_SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED,
+            M_ALIGNMENT=ma, N_ALIGNMENT=na,
+        )
+        # LibEntry returns the metadata for this exact launch, including on
+        # cache hits; do not read a mutable global tuner's best_config.
+        _splitk_post_hook(dict(meta, W=workspace, C=c, M=M, N=N, K=K), None)
+
+
+# Fixed Shared and short-K profiles for the ordinary kernel.
+
+
+@dataclass(frozen=True)
+class SharedMMConfig:
+    tile: tuple
+    warps: tuple = (2, 2)
+    group_m: int = 8
+    address_mode: str = "direct"
+
+    def __post_init__(self):
+        if len(self.tile) != 3 or any(x < 8 or x & (x - 1) for x in self.tile):
+            raise ValueError("tile dimensions must be powers of two >= 8")
+        bm, bn, bk = self.tile
+        if max(bm * bk, bn * bk) > 4096:
+            raise ValueError("operand tiles must fit the shared slot")
+        if (
+            len(self.warps) != 2
+            or any(x < 1 or x & (x - 1) for x in self.warps)
+            or prod(self.warps) > 8
+        ):
+            raise ValueError("requires power-of-two wave axes and at most 8 waves")
+        if self.group_m < 1:
+            raise ValueError("traversal group must be positive")
+        if self.address_mode not in ("direct", "fold", "scalar"):
+            raise ValueError("unknown buffer-address strategy")
+
+    def supports(self, a, b, c):
+        """Check vector alignment, storage disjointness and address bounds."""
+        if any(t.ndim != 2 for t in (a, b, c)):
+            return False
+        m, k = a.shape
+        n = b.shape[1]
+        bm, bn, bk = self.tile
+        nt = b.stride() == (1, k)
+        local_span = max(
+            (bm - 1) * k + bk, (bn - 1) * k + bk if nt else (bk - 1) * n + bn
+        )
+        output_begin, output_end = c.data_ptr(), c.data_ptr() + 2 * m * n
+        disjoint = all(
+            output_end <= t.data_ptr() or t.data_ptr() + 2 * count <= output_begin
+            for t, count in ((a, m * k), (b, k * n))
+        )
+        return (
+            m > 0
+            and n > 0
+            and k >= 8
+            and k % 8 == 0
+            and (nt or n % 8 == 0)
+            and b.shape[0] == k
+            and tuple(c.shape) == (m, n)
+            and a.stride() == (k, 1)
+            and (nt or b.stride() == (n, 1))
+            and c.stride() == (n, 1)
+            and a.dtype == b.dtype == c.dtype
+            and a.dtype in (torch.bfloat16, torch.float16)
+            and a.device == b.device == c.device
+            and a.device.type == "cuda"
+            and all(t.data_ptr() % 16 == 0 for t in (a, b, c))
+            and not c.requires_grad
+            and (not c.is_inference() or torch.is_inference_mode_enabled())
+            and disjoint
+            and max(m, n, k) < 2**31
+            and 2 * m * n < 2**31
+            and (2 * local_span < 2**31 or max(2 * m * k, 2 * k * n) < 2**31)
+        )
+
+
+@cache
+def _shared_compile_parameters(config, transposed_b):
+    options = {
+        "num_warps": prod(config.warps),
+        "num_stages": 5,
+        "waves_per_eu": 1,
+        "loop_unroll_stage": "post-pipeline",
+        "schedule_hint": "local-prefetch",
+        "lds_dma_alias_workaround": True,
+        "prefer_wide_async_copy": True,
+        "kpack": 2,
+        "mmac_warps_m": config.warps[0],
+        "mmac_transposed": True,
+        "optimize_epilogue": True,
+        "rebase_buffer_store": False,
+        "terminal_readonly_publication": False,
+        "GROUP_M": config.group_m,
+        "BLOCK_M": config.tile[0],
+        "BLOCK_N": config.tile[1],
+        "BLOCK_K": config.tile[2],
+        "USE_TLE": True,
+        "ASYNC_LOAD": True,
+        "ASYNC_LOAD_MASK": 3,
+        "LOAD_MODE": 3,
+        "LARGE_TILE_CONFIGS": True,
+        "LOOP_UNROLL_FACTOR": 4,
+        "B_K_CONTIGUOUS": transposed_b,
+    }
+    if config.address_mode != "direct":
+        options.update(
+            coalesce_lgkm_waits=True,
+            combine_shifted_disjoint_or=True,
+            buffer_store_scalar_offset=config.address_mode == "scalar",
+            buffer_store_split_immediate=True,
+            buffer_store_preserve_masked_base=True,
+        )
+    # Cache immutable items; callers never share a mutable options dictionary.
+    return tuple(options.items())
+
+
+@lru_cache(maxsize=1)
+def _ordinary_mm_entry():
+    # Fixed family candidates launch the same JIT function without the tuner.
+    kernel = mm_kernel
+    while not isinstance(kernel, triton.runtime.JITFunction):
+        kernel = kernel.fn
+    return libentry()(kernel)
+
+
+def launch_shared_mm(a, b, c, config):
+    """Launch one explicit ordinary GEMM candidate through the real LibEntry."""
+    if not config.supports(a, b, c):
+        raise ValueError("unsupported matrix storage, vector extent or address range")
+    m, k = a.shape
+    n = b.shape[1]
+    bm, bn, _ = config.tile
+    tiles_m, tiles_n = triton.cdiv(m, bm), triton.cdiv(n, bn)
+    padded_m, padded_n = tiles_m * bm, tiles_n * bn
+    options = dict(_shared_compile_parameters(config, b.stride() == (1, k)))
+    options.update(
+        MASK_EDGES=m % bm != 0 or n % bn != 0,
+        K_DIVISIBLE_BY_16=k % 16 == 0,
+        # Only tile coordinates and output offsets are narrowed. Block-pointer
+        # shapes/strides and global input origins retain their i64 arithmetic.
+        USE_I32_INDEX=max(
+            tiles_m * tiles_n,
+            config.group_m * tiles_n,
+            padded_m,
+            padded_n,
+            2 * ((padded_m - 1) * n + padded_n),
+        )
+        < 2**31,
+    )
+    with torch_device_fn.device(a.device):
+        return _ordinary_mm_entry()[(triton.cdiv(m, bm) * triton.cdiv(n, bn),)](
+            a,
+            b,
+            c,
+            tl.constexpr(m),
+            tl.constexpr(n),
+            tl.constexpr(k),
+            *(tl.constexpr(s) for s in a.stride()),
+            *(tl.constexpr(s) for s in b.stride()),
+            *(tl.constexpr(s) for s in c.stride()),
+            **options,
+        )
+
+
+@lru_cache(maxsize=1)
+def shared_mm_configs():
+    """Logical tiles and traversal choices, shared by NN and NT.
+
+    Lane ownership, shared layout, copy instruction and synchronization are
+    selected by the compiler. Do not duplicate candidates for those details.
+    """
+    return (
+        SharedMMConfig((64, 128, 32)),
+        SharedMMConfig((32, 64, 64)),
+        SharedMMConfig((128, 128, 32)),
+        SharedMMConfig((128, 256, 16)),
+        SharedMMConfig((64, 64, 64)),
+        SharedMMConfig((256, 256, 16), warps=(4, 2), group_m=1, address_mode="scalar"),
+        SharedMMConfig((256, 256, 16), warps=(4, 2), address_mode="fold"),
+        SharedMMConfig((256, 256, 16), warps=(4, 2), group_m=1, address_mode="fold"),
+        SharedMMConfig((128, 128, 16), address_mode="scalar"),
+        SharedMMConfig((256, 256, 16), warps=(4, 2)),
+        SharedMMConfig((128, 256, 16), address_mode="scalar"),
+        SharedMMConfig((64, 64, 64), group_m=1),
+    )
+
+
+@dataclass(frozen=True)
+class ShortKMMConfig:
+    block_k: int
+
+
+SHORT_K_MM_CONFIGS = (ShortKMMConfig(32), ShortKMMConfig(64))
+_SHORT_K_STORAGE = SharedMMConfig((128, 128, 16))
+
+
+def short_k_mm_candidates(a, b, c):
+    m, k = a.shape
+    n = b.shape[1]
+    if min(m, n) < 128 or not 64 <= k <= 256 or not _SHORT_K_STORAGE.supports(a, b, c):
+        return ()
+    compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
+    if triton.cdiv(m, 128) * triton.cdiv(n, 128) < compute_units:
+        return ()
+    # Two to four whole K panels can be folded into a straight-line
+    # synchronous schedule. The regular tuner remains in the competition.
+    return tuple(
+        config for config in SHORT_K_MM_CONFIGS
+        if k % config.block_k == 0 and 2 <= k // config.block_k <= 4
+    )
+
+
+def launch_short_k_mm(a, b, c, config):
+    m, k = a.shape
+    n = b.shape[1]
+    with torch_device_fn.device(a.device):
+        return _ordinary_mm_entry()[(triton.cdiv(m, 128) * triton.cdiv(n, 128),)](
+            a, b, c, m, n, tl.constexpr(k), *a.stride(), *b.stride(), *c.stride(),
+            BLOCK_M=128, BLOCK_N=128, BLOCK_K=config.block_k, GROUP_M=4,
+            MASK_EDGES=m % 128 != 0 or n % 128 != 0,
+            USE_TLE=True, LOAD_MODE=0, K_DIVISIBLE_BY_16=True,
+            B_K_CONTIGUOUS=b.stride() == (1, k), LOOP_UNROLL_FACTOR=4,
+            mmac_warps_m=2, mmac_transposed=True, optimize_epilogue=True,
+            schedule_hint="local-prefetch", kpack=2, num_warps=4, num_stages=2,
+        )
+
+
+# Cooperative kernel capability, configurations and launch.
+
+
+@lru_cache(maxsize=1)
+def _cooperative_supported():
+    try:
+        from triton._C.libtriton import hcu
+        from triton.backends.hcu.compiler import HIPOptions
+        import triton.experimental.tle.language as tle
+        from triton.language.extra.hip import accumulator_fence, cta_barrier
+    except ImportError:
+        return False
+    options = {
+        "structured_register_prepack_address",
+        "structured_register_unclamped_column",
+        "priority_after_first_mmac",
+        "buffer_store_scalar_offset",
+        "interleave_global_lds_reads",
+        "interleave_global_lds_reads_fences",
+        "tupled_register_fences",
+    }
+    return (
+        options <= HIPOptions.__dataclass_fields__.keys()
+        and all(
+            callable(op)
+            for op in (
+                cta_barrier,
+                accumulator_fence,
+                tle.gpu.alloc,
+                tle.gpu.warp_specialize,
+            )
+        )
+        and all(
+            callable(getattr(hcu, name, None))
+            for name in (
+                "create_cta_barrier",
+                "has_warp_specialize",
+                "create_accumulator_fence",
+            )
+        )
+    )
+
+
+@dataclass(frozen=True)
+class CooperativeMMConfig:
+    group_m: int = 0
+
+    def __post_init__(self):
+        if type(self.group_m) is not int or self.group_m < 0:
+            raise ValueError("CTA grouping must be a nonnegative integer")
+
+    def supports(self, a, b, c):
+        if not _cooperative_supported() or any(t.ndim != 2 for t in (a, b, c)):
+            return False
+        m, k = a.shape
+        n = b.shape[1]
+        begin, end = c.data_ptr(), c.data_ptr() + 2 * m * n
+        disjoint = all(
+            end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
+            for t, count in ((a, m * k), (b, k * n))
+        )
+        return (
+            m > 0
+            and n > 0
+            and 64 <= k < 8192
+            and k % 64 == 0
+            and b.shape[0] == k
+            and c.shape == (m, n)
+            and a.stride() == (k, 1)
+            and b.stride() == (1, k)
+            and c.stride() == (n, 1)
+            and a.dtype == b.dtype == c.dtype
+            and a.dtype in (torch.bfloat16, torch.float16)
+            and a.device == b.device == c.device
+            and a.device.type == "cuda"
+            and all(t.data_ptr() % 16 == 0 for t in (a, b, c))
+            and not c.requires_grad
+            and (not c.is_inference() or torch.is_inference_mode_enabled())
+            and disjoint
+            and max(m, n) < 2**31
+            # Each CTA rebases C in i64; only its local byte offsets are i32.
+            and 512 * n < 2**31
+            and (not self.group_m or triton.cdiv(m, 256) * triton.cdiv(n, 256) < 2**31)
+        )
+
+
+def launch_cooperative_mm(a, b, c, config):
+    if not config.supports(a, b, c):
+        raise ValueError("unsupported cooperative matrix storage or pipeline extent")
+    m, k = a.shape
+    n = b.shape[1]
+    with torch_device_fn.device(a.device):
+        target = triton.runtime.driver.active.get_current_target()
+        if target.backend != "hip" or target.arch != "gfx936":
+            raise ValueError("cooperative GEMM currently requires gfx936")
+        return _mm_cooperative_kernel[(triton.cdiv(m, 256), triton.cdiv(n, 256))](
+            a,
+            b,
+            c,
+            m,
+            n,
+            k,
+            GROUP_M=config.group_m,
+            num_warps=4,
+            num_stages=1,
+            prefer_wide_async_copy=True,
+            kpack=2,
+            mmac_warps_m=4,
+            mmac_transposed=True,
+            disable_llvm_loop_unroll=True,
+            structured_register_prepack_address=True,
+            structured_register_unclamped_column=True,
+            priority_after_first_mmac=True,
+            buffer_store_scalar_offset=True,
+            interleave_global_lds_reads=True,
+            interleave_global_lds_reads_fences=True,
+            tupled_register_fences=True,
+        )
+
+
+@lru_cache(maxsize=1)
+def cooperative_mm_configs():
+    """Two CTA traversal choices for one logical producer/consumer algorithm."""
+    return (CooperativeMMConfig(), CooperativeMMConfig(4))
+
+
+# CTA-local Split-K configurations and launch shared with MV.
+
+
+def _matches_strides(tensor, expected):
+    return all(
+        size == 1 or actual == stride
+        for size, actual, stride in zip(tensor.shape, tensor.stride(), expected)
+    )
+
+
+@dataclass(frozen=True)
+class LocalSplitMMConfig:
+    tile: tuple = (32, 32)
+    k_step: int = 256
+    m_tiles: int = 1
+    num_stages: int = 1
+
+    def __post_init__(self):
+        object.__setattr__(self, "tile", tuple(self.tile))
+        if len(self.tile) != 2 or any(
+            type(x) is not int or x < 16 or x & (x - 1) for x in self.tile
+        ):
+            raise ValueError("local split tile dimensions must be powers of two >=16")
+        if type(self.k_step) is not int or self.k_step not in (128, 256):
+            raise ValueError("unsupported local split K step")
+        if type(self.num_stages) is not int or self.num_stages not in (1, 2):
+            raise ValueError("local split uses one or two pipeline stages")
+        if type(self.m_tiles) is not int or self.m_tiles < 1:
+            raise ValueError("m_tiles must be a positive integer")
+        bm, bn = self.tile
+        # Bound the simultaneous input planes and cross-wave FP32 output
+        # scratch independently. Their lifetimes do not overlap.
+        if max(2 * self.k_step * (self.m_tiles * bm + bn), 16 * bm * bn) > 65536:
+            raise ValueError("local split tiles exceed the 64KiB shared allocation")
+
+    def supports(self, a, b, c):
+        if any(t.ndim != 2 for t in (a, b, c)):
+            return False
+        m, k = a.shape
+        n = b.shape[1]
+        bm, bn = self.tile
+        begin, end = c.data_ptr(), c.data_ptr() + 2 * m * n
+        disjoint = all(
+            end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
+            for t, count in ((a, m * k), (b, k * n))
+        )
+        return (
+            min(m, n, k) > 0
+            and b.shape[0] == k
+            and c.shape == (m, n)
+            and _matches_strides(a, (k, 1))
+            and (_matches_strides(b, (1, k)) or _matches_strides(b, (n, 1)))
+            and _matches_strides(c, (n, 1))
+            and a.dtype == b.dtype == c.dtype
+            and a.dtype in (torch.bfloat16, torch.float16)
+            and a.device == b.device == c.device
+            and a.device.type == "cuda"
+            and not c.requires_grad
+            and (not c.is_inference() or torch.is_inference_mode_enabled())
+            and all(t.data_ptr() % 2 == 0 for t in (a, b, c))
+            and disjoint
+            # Coordinates and masks use signed i32, including inactive lanes.
+            # All global pointer origins and element offsets use i64.
+            and triton.cdiv(m, self.m_tiles * bm) * (self.m_tiles * bm) <= 2**31
+            and triton.cdiv(n, bn) * bn <= 2**31
+            and triton.cdiv(k, self.k_step) * self.k_step <= 2**31
+        )
+
+
+_LOCAL_SPLIT_CONFIGS = tuple(
+    LocalSplitMMConfig(tile, k_step=step, m_tiles=rows, num_stages=stages)
+    for stages in (1, 2)
+    for tile, step, rows in (
+        ((16, 32), 128, 1),
+        ((32, 32), 256, 1),
+        ((16, 16), 256, 1),
+        ((16, 32), 256, 5),
+    )
+)
+
+
+def local_split_mm_configs():
+    try:
+        from triton.backends.hcu.compiler import HIPOptions
+    except ImportError:
+        return ()
+    required = {"wave_private_sync", "kpack", "disable_llvm_loop_unroll"}
+    return (
+        _LOCAL_SPLIT_CONFIGS
+        if required <= HIPOptions.__dataclass_fields__.keys()
+        else ()
+    )
+
+
+def launch_local_split_mm(a, b, c, config):
+    if not isinstance(config, LocalSplitMMConfig) or not config.supports(a, b, c):
+        raise ValueError("unsupported local split matrix storage or coordinate range")
+    m, k = a.shape
+    n = b.shape[1]
+    bm, bn = config.tile
+    with torch_device_fn.device(a.device):
+        target = triton.runtime.driver.active.get_current_target()
+        if target.backend != "hip" or target.arch != "gfx936":
+            raise ValueError("local split GEMM currently requires gfx936")
+        return _mm_local_splitk_kernel[
+            (triton.cdiv(m, bm * config.m_tiles), triton.cdiv(n, bn), 1)
+        ](
+            a,
+            b,
+            c,
+            m,
+            n,
+            k,
+            bm,
+            bn,
+            K_STEP=config.k_step,
+            B_ROW_MAJOR=_matches_strides(b, (n, 1)),
+            M_TILES=config.m_tiles,
+            num_warps=4,
+            num_stages=config.num_stages,
+            waves_per_eu=1,
+            schedule_hint="local-prefetch" if config.num_stages == 2 else "none",
+            wave_private_sync=True,
+            disable_llvm_loop_unroll=True,
+            kpack=2,
+            mmac_transposed=False,
+        )
+
+
+# MM family shortlist, replay selection and choice cache.
+
+
+_mm_family_choices = {}
+_mm_family_measurements = {}
+_mm_family_lock = threading.RLock()
+_SPLITK_LOCAL = (
+    LocalSplitMMConfig((16, 16)),
+    LocalSplitMMConfig((16, 16), num_stages=2),
+)
+_SPLITK_LOCAL_WIDE = LocalSplitMMConfig((32, 32), num_stages=2)
+_SPLITK_SHARED = SharedMMConfig((32, 64, 64))
+
+
+@lru_cache(maxsize=1)
+def _shared_supported():
+    try:
+        from triton.backends.hcu.compiler import HIPOptions
+        import triton.experimental.tle.language as tle
+    except ImportError:
+        return False
+    return (
+        callable(tle.load)
+        and {"prefer_wide_async_copy", "mmac_warps_m", "lds_dma_alias_workaround"}
+        <= HIPOptions.__dataclass_fields__.keys()
+    )
+
+
+def mm_family_candidates(a, b, c, *, splitk_pool=False):
+    if a.ndim != 2 or b.ndim != 2 or c.ndim != 2 or a.device.type != "cuda":
+        return ()
+    with torch_device_fn.device(a.device):
+        target = triton.runtime.driver.active.get_current_target()
+    if target.backend != "hip" or target.arch != "gfx936":
+        return ()
+    local_configs = local_split_mm_configs()
+    shared_configs = shared_mm_configs() if _shared_supported() else ()
+    if splitk_pool:
+        m, n = c.shape
+        compute_units = torch_device_fn.get_device_properties(a.device).multi_processor_count
+        bm, bn = _SPLITK_LOCAL_WIDE.tile
+        local_tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        local_shortlist = _SPLITK_LOCAL
+        if (m >= bm and n >= bn) or local_tiles * 2 >= compute_units:
+            local_shortlist += (_SPLITK_LOCAL_WIDE,)
+        local_configs = tuple(config for config in local_shortlist if config in local_configs)
+        # Consider the smallest Shared tile only when its CTA grid can
+        # supply at least one wave per compute unit in aggregate.
+        bm, bn, _ = _SPLITK_SHARED.tile
+        shared_tiles = triton.cdiv(m, bm) * triton.cdiv(n, bn)
+        shared_configs = (
+            (_SPLITK_SHARED,)
+            if _SPLITK_SHARED in shared_configs
+            and shared_tiles * prod(_SPLITK_SHARED.warps) >= compute_units
+            else ()
+        )
+    local = tuple(config for config in local_configs if config.supports(a, b, c))
+    shared = tuple(config for config in shared_configs if config.supports(a, b, c))
+    if splitk_pool:
+        return local + shared + grouped_mv_candidates(a, b, compute_units)
+    cooperative = tuple(
+        config for config in cooperative_mm_configs() if config.supports(a, b, c)
+    )
+    short_k = short_k_mm_candidates(a, b, c) if shared_configs else ()
+    return shared + cooperative + local + short_k
+
+
+def _mm_candidate_label(candidate):
+    if isinstance(candidate, CooperativeMMConfig):
+        return dict(family="cooperative", **asdict(candidate))
+    if isinstance(candidate, LocalSplitMMConfig):
+        return dict(family="local_split", **asdict(candidate))
+    if isinstance(candidate, GroupedMVConfig):
+        return dict(family="grouped_mv", **asdict(candidate))
+    if isinstance(candidate, ShortKMMConfig):
+        return dict(family="short_k", **asdict(candidate))
+    return asdict(candidate) if isinstance(candidate, SharedMMConfig) else candidate
+
+
+def clear_mm_family_choices():
+    with _mm_family_lock:
+        _mm_family_choices.clear()
+        _mm_family_measurements.clear()
+
+
+def try_mm_family(
+    a, b, c, ordinary, *, tuning_key, ordinary_with_output=None, splitk_pool=False
+):
+    """Compare real candidates with the existing Default/Expanded TL tuner.
+
+    Cache only the selected index, never tensors. A cold graph capture defers
+    family selection to the incumbent path. In the Split-K region, the
+    incumbent is the Split-K tuner and only a fixed shortlist challenges it.
+    """
+    if any(t.ndim != 2 for t in (a, b, c)) or a.device.type != "cuda":
+        return False
+    m, k = a.shape
+    n = b.shape[1]
+    begin, end = c.data_ptr(), c.data_ptr() + 2 * m * n
+    storage = (
+        tuple(t.data_ptr() % 16 == 0 for t in (a, b, c)),
+        all(
+            end <= t.data_ptr() or t.data_ptr() + 2 * count <= begin
+            for t, count in ((a, m * k), (b, k * n))
+        ),
+        c.untyped_storage().data_ptr()
+        not in (a.untyped_storage().data_ptr(), b.untyped_storage().data_ptr()),
+        c.requires_grad,
+        c.is_inference(),
+        torch.is_inference_mode_enabled(),
+    )
+    key = (
+        a.device,
+        b.device,
+        c.device,
+        a.dtype,
+        b.dtype,
+        c.dtype,
+        tuple(a.shape),
+        tuple(b.shape),
+        tuple(c.shape),
+        tuple(a.stride()),
+        tuple(b.stride()),
+        tuple(c.stride()),
+        tuning_key,
+        (
+            "shared-family-v5-grouped-mv",
+            storage,
+            splitk_pool,
+            ordinary_with_output is not None,
+        ),
+    )
+    with torch_device_fn.device(a.device):
+        cached = _mm_family_choices.get(key)
+        if cached is None:
+            if torch.cuda.is_current_stream_capturing():
+                return False
+            with _mm_family_lock:
+                cached = _mm_family_choices.get(key)
+                if cached is None:
+                    candidates = mm_family_candidates(a, b, c, splitk_pool=splitk_pool)
+                    if not candidates:
+                        return False
+                    from triton.flagtune.runtime.graph_benchmark import (
+                        do_bench_hcu_graph,
+                    )
+
+                    ordinary()
+                    calls = (ordinary,) + tuple(
+                        lambda candidate=candidate: _dispatch_hygon_mm_candidate(
+                            a, b, c, candidate
+                        )
+                        for candidate in candidates
+                    )
+                    for call in calls[1:]:
+                        call()
+                    samples = tuple([] for _ in calls)
+                    for repeat in range(3):
+                        order = range(len(calls))
+                        if repeat % 2:
+                            order = reversed(order)
+                        for index in order:
+                            samples[index].append(
+                                float(
+                                    do_bench_hcu_graph(
+                                        calls[index],
+                                        rep=10,
+                                        n_retries=3,
+                                        device_interface=torch.cuda,
+                                    )
+                                )
+                            )
+                    medians = tuple(statistics.median(x) for x in samples)
+                    choice = min(range(len(calls)), key=medians.__getitem__)
+                    finalists = tuple(
+                        i
+                        for i in sorted(range(len(calls)), key=medians.__getitem__)
+                        if medians[i] <= medians[choice] * 1.05
+                    )[:3]
+                    refined = {}
+                    if ordinary_with_output is not None and len(finalists) > 1:
+                        refined_samples = {i: [] for i in finalists}
+                        for repeat in range(3):
+                            order = (
+                                finalists if repeat % 2 == 0 else reversed(finalists)
+                            )
+                            for index in order:
+
+                                def fresh_output():
+                                    output = torch.empty_like(c)
+                                    if index:
+                                        _dispatch_hygon_mm_candidate(
+                                            a, b, output, candidates[index - 1]
+                                        )
+                                    else:
+                                        ordinary_with_output(output)
+                                    return output
+
+                                refined_samples[index].append(
+                                    float(
+                                        do_bench_hcu_graph(
+                                            fresh_output,
+                                            rep=100,
+                                            n_retries=10,
+                                            device_interface=torch.cuda,
+                                        )
+                                    )
+                                )
+                        refined = {
+                            i: statistics.median(x) for i, x in refined_samples.items()
+                        }
+                        choice = min(finalists, key=refined.__getitem__)
+                    _mm_family_measurements[key] = dict(
+                        variants=(("splitk_pool" if splitk_pool else "ordinary_tl"),)
+                        + tuple(_mm_candidate_label(x) for x in candidates),
+                        screened_ms=medians,
+                        refined_allocating_ms=refined,
+                        choice=choice,
+                    )
+                    cached = (choice, candidates)
+                    _mm_family_choices[key] = cached
+                    logger.debug(
+                        "Hygon MM family=%s screening=%s refined=%s ms",
+                        choice,
+                        medians,
+                        refined,
+                    )
+        choice, candidates = cached
+        if choice:
+            _dispatch_hygon_mm_candidate(a, b, c, candidates[choice - 1])
+        else:
+            ordinary()
+    return True
+
+
 _ordered_datatypes = [torch.float16, torch.bfloat16, torch.float32, torch.float64]
 
 
@@ -874,20 +2199,27 @@ def mm(a, b):
         return mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c_dtype)
 
     c = torch.empty((M, N), device=device, dtype=c_dtype)
-    _launch_matrix_mm(a, b, c)
+    _dispatch_hygon_mm(a, b, c)
     return c
 
 
-def _launch_matrix_mm(a, b, c):
-    from .mm_splitk import try_mm_splitk
+def _dispatch_hygon_mm_candidate(a, b, c, candidate):
+    """Launch a fixed configuration selected by the family tuner."""
+    if isinstance(candidate, SharedMMConfig):
+        return launch_shared_mm(a, b, c, candidate)
+    if isinstance(candidate, CooperativeMMConfig):
+        return launch_cooperative_mm(a, b, c, candidate)
+    if isinstance(candidate, GroupedMVConfig):
+        return launch_grouped_mv(a, b, c, candidate)
+    if isinstance(candidate, ShortKMMConfig):
+        return launch_short_k_mm(a, b, c, candidate)
+    return launch_local_split_mm(a, b, c, candidate)
 
-    if not try_mm_splitk(a, b, c, compare_local_split=True):
-        _launch_mm_family(a, b, c)
 
-
-def _launch_mm_family(a, b, c):
-    from .mm_family import try_mm_family
-
+def _dispatch_hygon_mm(a, b, c):
+    """Choose the regular or small-output MM pool and launch its winner."""
+    if try_mm_splitk(a, b, c, compare_local_split=True):
+        return
     mm_kernel._apply_flagtune()
     tuner = mm_kernel.fn
     # Offline fixed-config collection must reach the requested ordinary tuner.
@@ -902,6 +2234,21 @@ def _launch_mm_family(a, b, c):
         ordinary_with_output=lambda output: _launch_ordinary_mm(a, b, output),
     ):
         _launch_ordinary_mm(a, b, c)
+
+
+def _hygon_mm_requires_edge_mask(M, N, large_tile_configs=False):
+    if large_tile_configs and (M % 128 or N % 128):
+        return True
+    # Divisors that occur only in Expanded (for example BLOCK_M=1) cannot
+    # prove the default shortlist safe. If any default tile divides the
+    # output, pruning retains only dividing tiles; otherwise mask edges.
+    return not any(
+        _hygon_mm_output_tile_fits(
+            M, N, config.kwargs["BLOCK_M"], config.kwargs["BLOCK_N"]
+        )
+        for config in _HYGON_MM_DEFAULT_CONFIGS
+        if not _hygon_mm_is_single_wave_config(config)
+    )
 
 
 def _launch_ordinary_mm(a, b, c):
@@ -986,5 +2333,5 @@ def mm_out(a, b, *, out):
         c.copy_(mv(b.transpose(0, 1), a[0]).reshape(1, N).to(c.dtype))
         return c
 
-    _launch_matrix_mm(a, b, c)
+    _dispatch_hygon_mm(a, b, c)
     return c

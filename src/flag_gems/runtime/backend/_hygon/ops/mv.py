@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Hygon Triton/TLE implementation of ``aten.mv``.
-
-The vector reduction is measured against a matrix-instruction candidate that
-reuses the ordinary CTA-local split-K GEMM implementation.
+"""Hygon Triton/TLE MV, including the matrix-instruction candidate
+that reuses the CTA-local split-K GEMM implementation.
 """
 
 import logging
+import statistics
+import threading
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache, lru_cache
 
 import torch
 import triton
@@ -65,7 +65,7 @@ def grouped_mv_candidates(a, b, compute_units):
 @libtuner(
     # Keep the default config fallback for callers that do not opt into
     # FlagTune.  The real-model acceptance path sets FLAGTUNE_INCLUDE=mv,
-    # which switches this tuner to mv_hygon_expand.yaml at first launch.
+    # which selects the MV section of mm_hygon_expand.yaml at first launch.
     configs=runtime.get_tuned_config("mv"),
     key=["M", "N", "stride_an", "stride_am", "stride_bm"],
     strategy=runtime.common.DEFAULT_STRATEGIES["mv_hygon"],
@@ -179,8 +179,12 @@ def _mv_out(inp, vec, out):
     assert inp.dim() == 2 and vec.dim() == out.dim() == 1
     N, M = inp.shape
     assert vec.shape[0] == M and out.shape[0] == N
-    from .mv_mmac import try_mv_mmac
+    _dispatch_hygon_mv(inp, vec, out)
+    return out
 
+
+def _dispatch_hygon_mv(inp, vec, out):
+    """Choose the vector reduction or the MMAC candidate."""
     mv_kernel._apply_flagtune()
     tuner = mv_kernel.fn
     if tuner._run_mode == "normal":
@@ -189,9 +193,8 @@ def _mv_out(inp, vec, out):
         if try_mv_mmac(inp, vec, out,
                        lambda output: _launch_ordinary_mv(inp, vec, output),
                        tuning_key=tuning_key):
-            return out
+            return
     _launch_ordinary_mv(inp, vec, out)
-    return out
 
 
 def _launch_ordinary_mv(inp, vec, out):
@@ -212,6 +215,121 @@ def _launch_ordinary_mv(inp, vec, out):
         )
 
     return out
+
+
+# MV matrix-instruction candidate and replay selection.
+
+
+_mv_mmac_choices = {}
+_mv_mmac_measurements = {}
+_mv_mmac_lock = threading.RLock()
+
+
+@cache
+def _mmac_config():
+    from .mm import LocalSplitMMConfig
+
+    return LocalSplitMMConfig((16, 16), num_stages=2)
+
+
+def _mv_mmac_eligible(inp, vec, out):
+    from .mm import local_split_mm_configs
+
+    n, k = inp.shape
+    config = _mmac_config()
+    if (
+        vec.shape != (k,)
+        or out.shape != (n,)
+        or vec.stride() != (1,)
+        or out.stride() != (1,)
+        or config not in local_split_mm_configs()
+    ):
+        return False
+    if not config.supports(vec.view(1, k), inp.t(), out.view(1, n)):
+        return False
+    with torch_device_fn.device(inp.device):
+        target = triton.runtime.driver.active.get_current_target()
+    return target.backend == "hip" and target.arch == "gfx936"
+
+
+def _launch_mmac(inp, vec, out):
+    from .mm import launch_local_split_mm
+
+    n, k = inp.shape
+    return launch_local_split_mm(
+        vec.view(1, k), inp.t(), out.view(1, n), _mmac_config()
+    )
+
+
+def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
+    if not _mv_mmac_eligible(inp, vec, out):
+        return False
+    key = (
+        inp.device,
+        inp.dtype,
+        vec.dtype,
+        out.dtype,
+        _mmac_config(),
+        tuple(inp.shape),
+        tuple(inp.stride()),
+        tuple(vec.stride()),
+        tuple(out.stride()),
+        tuning_key,
+        "mv-mmac-ordinary-tl-family-v3",
+    )
+    with torch_device_fn.device(inp.device):
+        choice = _mv_mmac_choices.get(key)
+        if choice is None:
+            if torch.cuda.is_current_stream_capturing():
+                return False
+            with _mv_mmac_lock:
+                choice = _mv_mmac_choices.get(key)
+                if choice is None:
+                    from triton.flagtune.runtime.graph_benchmark import (
+                        do_bench_hcu_graph,
+                    )
+
+                    # Resolve the unchanged Default/Expanded tuner first.
+                    ordinary_with_output(out)
+                    _launch_mmac(inp, vec, out)
+                    samples = ([], [])
+                    for repeat in range(3):
+                        for index in (0, 1) if repeat % 2 == 0 else (1, 0):
+
+                            def fresh_output(index=index):
+                                output = torch.empty_like(out)
+                                if index:
+                                    _launch_mmac(inp, vec, output)
+                                else:
+                                    ordinary_with_output(output)
+                                return output
+
+                            samples[index].append(
+                                float(
+                                    do_bench_hcu_graph(
+                                        fresh_output,
+                                        rep=100,
+                                        n_retries=10,
+                                        device_interface=torch.cuda,
+                                    )
+                                )
+                            )
+                    medians = tuple(statistics.median(x) for x in samples)
+                    choice = min(range(2), key=medians.__getitem__)
+                    _mv_mmac_measurements[key] = {
+                        "variants": ("ordinary", "mmac_k256_bn16_s2"),
+                        "allocating_ms": medians,
+                        "choice": choice,
+                    }
+                    _mv_mmac_choices[key] = choice
+                    logger.debug(
+                        "Hygon MV family choice=%s allocating=%s ms", choice, medians
+                    )
+        if choice:
+            _launch_mmac(inp, vec, out)
+        else:
+            ordinary_with_output(out)
+    return True
 
 
 __all__ = ["mv", "mv_kernel"]

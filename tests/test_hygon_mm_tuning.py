@@ -328,15 +328,13 @@ def test_hygon_mm_mv_out_preserves_inference_rules(hygon_mm, cpu_mv_raw_write, M
 
 @pytest.fixture(scope="module")
 def hygon_splitk(hygon_mm):
-    return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_splitk")
+    return hygon_mm
 
 
 def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
     from itertools import product
 
-    configs = hygon_splitk.runtime.ops_get_configs(
-        "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-    )
+    configs = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
 
     def key(c):
         meta = dict(c.kwargs)
@@ -402,9 +400,7 @@ def test_hygon_small_mm_expanded_regular_partition_profiles(hygon_splitk):
     "mask,expected_modes", [(0, {0}), (1, {0}), (2, {0, 2}), (3, {0, 2})]
 )
 def test_hygon_small_mm_prunes_capability_only(hygon_splitk, mask, expected_modes):
-    configs = hygon_splitk.runtime.ops_get_configs(
-        "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-    )
+    configs = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
     tail = hygon_splitk._splitk_prune(
         configs,
         dict(M=33, N=48, K=4112),
@@ -429,6 +425,7 @@ def test_hygon_small_mm_resolver_and_timed_post(hygon_splitk):
     tuner = hygon_splitk._mm_splitk_partial.fn
     assert tuner._flagtune_op_name == "mm"
     assert tuner._flagtune_expand_op_name == "mm_hygon_splitk"
+    assert tuner._flagtune_yaml_path == hygon_splitk.EXPAND_CONFIG_FILENAME
     assert tuner.keys == [
         "M",
         "N",
@@ -446,9 +443,7 @@ def test_hygon_small_mm_resolver_and_timed_post(hygon_splitk):
     )
     assert [c.all_kwargs() for c in configs] == [
         c.all_kwargs()
-        for c in hygon_splitk.runtime.ops_get_configs(
-            "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-        )
+        for c in hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
     ]
     assert strategy == ["default"] * len(tuner.keys)
     # Exercise normalization after the actual Expanded mode switch.
@@ -528,7 +523,6 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
     from types import SimpleNamespace
 
     split = hygon_splitk
-    family = importlib.import_module(split.__package__ + ".mm_family")
     a = torch.empty((2, 2048), dtype=torch.bfloat16)
     b = (
         torch.empty((64, 2048), dtype=torch.bfloat16).t()
@@ -560,7 +554,7 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
         ordinary_with_output(torch.empty_like(c))
         return True
 
-    monkeypatch.setattr(family, "try_mm_family", compete)
+    monkeypatch.setattr(split, "try_mm_family", compete)
     assert split.try_mm_splitk(a, b, c, compare_local_split=True)
     assert len(eligibility_checks) == 1
     assert len(outputs) == 2 and outputs[0] is c and outputs[1] is not c
@@ -568,9 +562,7 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
 
 @pytest.mark.parametrize("mask", [0, 3])
 def test_hygon_small_mm_older_backend_keeps_global_profiles(hygon_splitk, mask):
-    configs = hygon_splitk.runtime.ops_get_configs(
-        "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-    )
+    configs = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
     before = [copy.deepcopy(c.all_kwargs()) for c in configs]
     pruned = hygon_splitk._splitk_prune(
         configs, {}, ASYNC_LOAD_MASK=mask, WAVE_PRIVATE_SYNC_SUPPORTED=False
@@ -594,6 +586,11 @@ def test_hygon_small_mm_post_is_independently_expanded(hygon_splitk):
         "mm", hygon_splitk.runtime.TuningMode.EXPANDED
     )
     assert tuner._flagtune_expand_op_name == "mm_hygon_splitk_post"
+    assert tuner._flagtune_yaml_path == hygon_splitk.EXPAND_CONFIG_FILENAME
+    assert [c.all_kwargs() for c in configs] == [
+        c.all_kwargs()
+        for c in hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk_post")
+    ]
     assert tuner.keys == ["MN", "SPLITS"] and strategy == ["default"] * 2
     assert len(configs) == 2 and {c.kwargs["BLOCK"] for c in configs} == {128, 256}
     defaults, _ = tuner._flagtune_configs_for_mode(
@@ -828,29 +825,17 @@ def test_hygon_mv_expanded_preserves_pre_hook(hygon_mm):
 
 
 def test_hygon_combined_expanded_budget(hygon_mm, hygon_splitk):
-    local = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_local_split")
-    partial = hygon_splitk.runtime.ops_get_configs(
-        "mm_hygon_splitk", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-    )
-    post = hygon_splitk.runtime.ops_get_configs(
-        "mm_hygon_splitk_post", yaml_path=hygon_splitk.EXPAND_CONFIG_FILENAME
-    )
-    from flag_gems.runtime.backend._hygon.ops.mm_shared import (
-        SHORT_K_MM_CONFIGS,
-        shared_mm_configs,
-    )
-
+    partial = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk")
+    post = hygon_splitk.runtime.ops_get_configs("mm_hygon_splitk_post")
     # The ordinary registry is identical for both input strides, like the YAML
     # pool above. Count its configurations once; retain layout-specific legacy
     # algorithms separately. Dtype/shape/stride specializations are not new configs.
-    local_configs = local.local_split_mm_configs()
-    from flag_gems.runtime.backend._hygon.ops.mm_cooperative import cooperative_mm_configs
     from flag_gems.runtime.backend._hygon.ops.mv import _GROUPED_MV_CONFIGS
     python_candidates = (
-        len(shared_mm_configs())
-        + len(SHORT_K_MM_CONFIGS)
-        + len(cooperative_mm_configs())
-        + len(local_configs)
+        len(hygon_mm.shared_mm_configs())
+        + len(hygon_mm.SHORT_K_MM_CONFIGS)
+        + len(hygon_mm.cooperative_mm_configs())
+        + len(hygon_mm.local_split_mm_configs())
         + len(_GROUPED_MV_CONFIGS)
         + 1
     )

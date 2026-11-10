@@ -10,7 +10,7 @@ import torch
 
 @pytest.fixture(scope="module")
 def shared():
-    return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm_shared")
+    return importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
 
 
 def _tensor(shape, stride, pointer):
@@ -73,7 +73,7 @@ def test_shared_partial_wave_tiles_are_compiler_choices(shared):
 
 def test_shared_backend_options_are_not_mutated_across_launches(shared):
     config = shared.SharedMMConfig((256, 256, 16), warps=(4, 2))
-    first = dict(shared._compile_parameters(config, False))
+    first = dict(shared._shared_compile_parameters(config, False))
     assert "post_mma_wait" not in first and "mma_phase_schedule" not in first
     assert first["mmac_warps_m"] == 4 and first["mmac_transposed"]
     assert first["prefer_wide_async_copy"] and first["USE_TLE"]
@@ -86,7 +86,7 @@ def test_shared_backend_options_are_not_mutated_across_launches(shared):
         and "WAIT_MODE" not in first
     )
     first.pop("num_warps")
-    assert dict(shared._compile_parameters(config, False))["num_warps"] == 8
+    assert dict(shared._shared_compile_parameters(config, False))["num_warps"] == 8
 
 
 def test_shared_policy_allows_disjoint_views_of_one_storage(shared):

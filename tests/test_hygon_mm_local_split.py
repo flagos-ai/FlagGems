@@ -11,7 +11,7 @@ import torch
 @pytest.fixture(scope="module")
 def local():
     return importlib.import_module(
-        "flag_gems.runtime.backend._hygon.ops.mm_local_split"
+        "flag_gems.runtime.backend._hygon.ops.mm"
     )
 
 
@@ -148,11 +148,11 @@ def test_pool_contains_logical_tiles_and_standard_pipeline_stages(local):
 
 
 def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
-    module = importlib.import_module(local.__package__ + ".mv_mmac")
+    module = importlib.import_module(local.__package__ + ".mv")
     graph = importlib.import_module("triton.flagtune.runtime.graph_benchmark")
-    monkeypatch.setattr(module, "_choices", {})
-    monkeypatch.setattr(module, "_choice_measurements", {})
-    monkeypatch.setattr(module, "_eligible", lambda *args: True)
+    monkeypatch.setattr(module, "_mv_mmac_choices", {})
+    monkeypatch.setattr(module, "_mv_mmac_measurements", {})
+    monkeypatch.setattr(module, "_mv_mmac_eligible", lambda *args: True)
     monkeypatch.setattr(module.torch_device_fn, "device", lambda _: nullcontext())
     monkeypatch.setattr(torch.cuda, "is_current_stream_capturing", lambda: False)
     monkeypatch.setattr(module, "_launch_mmac", lambda a, b, out: out.fill_(1))
@@ -172,4 +172,4 @@ def test_mv_mmac_cache_separates_dtype(local, monkeypatch):
             a, b, out, lambda result: result.fill_(1), tuning_key=("test",)
         )
     assert len(calls) == 12
-    assert len(module._choices) == 2
+    assert len(module._mv_mmac_choices) == 2
