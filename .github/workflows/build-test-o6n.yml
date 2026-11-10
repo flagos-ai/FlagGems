@@ -1,0 +1,43 @@
+name: ARM CI (O6N)
+
+on:
+  push:
+    branches: [arm-ci]
+  workflow_dispatch:
+
+concurrency:
+  group: arm-ci-o6n
+  cancel-in-progress: true
+
+jobs:
+  arm-tests:
+    runs-on: [self-hosted, o6n]
+    timeout-minutes: 30
+    env:
+      REPO_DIR: repo
+    steps:
+      # The lab network SNI-blocks github.com from the board, but
+      # codeload.github.com tarballs go through; fetch the snapshot that way.
+      - name: Fetch source via codeload tarball
+        run: |
+          curl -fsSL --retry 5 --retry-delay 10 \
+            -o src.tar.gz \
+            "https://codeload.github.com/${GITHUB_REPOSITORY}/tar.gz/${GITHUB_SHA}"
+          mkdir -p "$REPO_DIR"
+          tar -xzf src.tar.gz -C "$REPO_DIR" --strip-components=1
+
+      - name: Run ARM test suite
+        run: |
+          cd "$REPO_DIR"
+          source ~/ci/flagtree-main-venv/bin/activate
+          GEMS_VENDOR=arm PYTHONPATH="$PWD/src" \
+            python -m pytest tests/test_arm_int8_linear.py tests/test_arm_w4a8_g128.py \
+              -v --tb=short 2>&1 | tee pytest-arm.log
+
+      - name: Archive pytest log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-arm-log
+          path: ${{ env.REPO_DIR }}/pytest-arm.log
+          retention-days: 30
