@@ -317,6 +317,7 @@ from .bmm import bmm, bmm_out
 from .bucketize import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
+from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -500,9 +501,11 @@ from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
+from .hash_tensor import hash_tensor
 from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
+from .histogramdd import histogramdd
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -534,6 +537,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .kl_div import kl_div  # noqa: F401
@@ -1425,8 +1429,10 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_",
     "hardsigmoid_out",
+    "hash_tensor",
     "hinge_embedding_loss",
     "histc",
+    "histogramdd",
     "hsplit",
     "hstack",
     "hypot",
@@ -1460,6 +1466,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
     "kl_div",
