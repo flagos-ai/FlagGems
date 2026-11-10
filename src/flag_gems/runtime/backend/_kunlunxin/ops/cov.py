@@ -185,10 +185,15 @@ def _cov_kernel(
             w = tl.load(w_ptr + offs_m, mask=mask_m, other=0.0).to(tl.float32)
             xi_centered = xi_centered * w[None, :]
 
-        # Re-mask padding lanes to 0 (not -mean) so the dot product stays exact
-        # for observation counts that are not a multiple of BLOCK_M.
-        xi_centered = tl.where(mask_m[None, :], xi_centered, 0.0)
-        xj_centered = tl.where(mask_m[None, :], xj_centered, 0.0)
+        # Re-zero padding lanes (not -mean) so the dot product stays exact for
+        # observation counts that are not a multiple of BLOCK_M. Scaling by a
+        # float32 0/1 column vector is equivalent to the where-select it
+        # replaces, but avoids materializing a broadcast i1 mask: the XPU
+        # backend (flagtree 0.7.0, the CI compiler) aborts such broadcasts with
+        # "Unsupported data element type".
+        col_valid = mask_m.to(tl.float32)
+        xi_centered = xi_centered * col_valid[None, :]
+        xj_centered = xj_centered * col_valid[None, :]
 
         if HIGH_PRECISION:
             acc += tl.dot(
