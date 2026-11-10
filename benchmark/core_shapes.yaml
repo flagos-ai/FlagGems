@@ -1272,8 +1272,25 @@ bmm_w8a8:
   shape_desc: "B, M, N, K"
 
 sage_attention:
+  # H3-shaped local attention only, excluding TP/SP communication.
+  # Refiner full-head shape; smaller-head refiner probes are optional below.
   shapes:
-    - [44, 44]
-    - [1108, 1792]
-    - [9529, 9529]
-  shape_desc: "NQ, NK (B=1, H=2, D=128)"
+    - [44, 44, 56]
+    # 360p, 720p, 1080p local sequence lengths with explicit head shards.
+    - [8598, 8598, 56]
+    - [8598, 8598, 28]
+    - [8598, 8598, 14]
+    - [8598, 8598, 7]
+    - [34498, 34498, 56]
+    - [34498, 34498, 28]
+    - [34498, 34498, 14]
+    - [34498, 34498, 7]
+    - [75938, 75938, 56]
+    - [75938, 75938, 28]
+    - [75938, 75938, 14]
+    - [75938, 75938, 7]
+    # Optional refiner head-shard probes (not measured distributed execution):
+    # - [44, 44, 28]
+    # - [44, 44, 14]
+    # - [44, 44, 7]
+  shape_desc: "NQ, NK, H (B=1, D=128; local attention only)"

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""End-to-end attention-call timing, including Sage quantization/allocation."""
+"""End-to-end attention-call timing, including quantization and allocation.
+
+H3-shaped local attention probes, not distributed TP/SP or full-model timing.
+Head counts 28/14/7 simulate local head shards; communication is not measured.
+"""
 
 import pytest
 import torch
@@ -23,7 +27,10 @@ from . import base
 
 
 class SageBenchmark(base.Benchmark):
-    DEFAULT_SHAPES = [(44, 44), (1108, 1792), (9529, 9529)]
+    DEFAULT_SHAPES = [(44, 44, 56)] + [
+        (n, n, h) for n in (8598, 34498, 75938) for h in (56, 28, 14, 7)
+    ]
+    DEFAULT_SHAPE_DESC = "NQ, NK, H (B=1, D=128; local attention only)"
 
     def get_input_iter(self, dtype):
         for shape in self.shapes:
@@ -31,9 +38,9 @@ class SageBenchmark(base.Benchmark):
 
 
 def inputs(shape, dtype, device):
-    nq, nk = shape
-    q = torch.randn((1, nq, 2, 128), device=device, dtype=dtype)
-    k, v = [torch.randn((1, nk, 2, 128), device=device, dtype=dtype) for _ in range(2)]
+    nq, nk, h = shape
+    q = torch.randn((1, nq, h, 128), device=device, dtype=dtype)
+    k, v = [torch.randn((1, nk, h, 128), device=device, dtype=dtype) for _ in range(2)]
     yield q, k, v
 
 

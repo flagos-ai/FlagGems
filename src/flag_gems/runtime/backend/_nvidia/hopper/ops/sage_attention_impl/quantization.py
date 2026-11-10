@@ -237,6 +237,52 @@ def _quant_v(
     )
 
 
+@triton.jit
+def _quant_v_short(
+    X,
+    S,
+    Y,
+    XZ: tl.constexpr,
+    XN: tl.constexpr,
+    XH: tl.constexpr,
+    H: tl.constexpr,
+    NK: tl.constexpr,
+    NP: tl.constexpr,
+    D: tl.constexpr,
+    BN: tl.constexpr,
+    BD: tl.constexpr,
+):
+    # Load canonical token order, including for weakly aligned strided inputs.
+    # The existing SAFE_STRIDED path uses this address expression too.
+    bh = tl.program_id(1)
+    h = bh % H
+    b = bh // H
+    n = tl.arange(0, BN)
+    d = tl.program_id(0) * BD + tl.arange(0, BD)
+    x = tl.load(
+        X + b * XZ + n[None, :] * XN + h * XH + d[:, None],
+        (n[None, :] < NK) & (d[:, None] < D),
+        other=0,
+    ).to(tl.float32)
+    maximum = tl.max(tl.abs(x), axis=1)
+    # Keep division direction, zero/NaN branch behavior, and the FP32 rounding
+    # boundary of the original scale and reciprocal kernels.
+    scale = tl.where(maximum > 0, maximum / 448.0, 1.0)
+    inverse = tl.where(maximum > 0, 448.0 / maximum, 1.0)
+    tl.store(S + bh * D + d, scale, d < D)
+    y = (x * inverse[:, None]).to(tl.float8e4nv)
+    y = (
+        y.reshape((BD, BN // 16, 2, 2, 2, 2))
+        .permute((0, 1, 3, 4, 2, 5))
+        .reshape((BD, BN))
+    )
+    tl.store(
+        Y + (bh * D + d[:, None]) * NP + n[None, :],
+        y,
+        (n[None, :] < NP) & (d[:, None] < D),
+    )
+
+
 def quantize_sage_sm90(query, key, value, *, tensor_layout="NHD"):
     """Internal quantization boundary exposed only for validation."""
     if tensor_layout == "HND":
@@ -293,31 +339,55 @@ def quantize_sage_sm90(query, key, value, *, tensor_layout="NHD"):
         nks,
         d,
     )
-    nb = triton.cdiv(nk, 256)
-    partial = torch.empty((b, h, nb, d), device=query.device, dtype=torch.float32)
-    vs = torch.empty((b, h, d), device=query.device, dtype=torch.float32)
-    vr = torch.empty_like(vs)
-    vf = torch.empty((b, h, d, npad), device=query.device, dtype=torch.float8_e4m3fn)
-    _v_partial[(nb, triton.cdiv(d, 16), b * h)](
-        value, partial, *value.stride()[:3], h, nk, nb, d, 256, 16
-    )
-    _v_scales[(triton.cdiv(d, 16), b * h)](
-        partial, vs, vr, h, nb, d, triton.next_power_of_2(nb), 16
-    )
-    safe_strided = value.data_ptr() % 16 != 0 or any(
-        (stride * value.element_size()) % 16 for stride in value.stride()[:3]
-    )
-    _quant_v[(triton.cdiv(npad, 256), triton.cdiv(d, 16), b * h)](
-        value,
-        vr,
-        vf,
-        *value.stride()[:3],
-        h,
-        nk,
-        npad,
-        d,
-        256,
-        16,
-        SAFE_STRIDED=safe_strided,
-    )
+    # A single padded K tile bounds register use and preserves the native
+    # FP8 operand format. Dispatch is shape-only, before executing V kernels.
+    if nk <= 128:
+        vs = torch.empty((b, h, d), device=query.device, dtype=torch.float32)
+        vf = torch.empty(
+            (b, h, d, npad), device=query.device, dtype=torch.float8_e4m3fn
+        )
+        _quant_v_short[(triton.cdiv(d, 16), b * h)](
+            value,
+            vs,
+            vf,
+            *value.stride()[:3],
+            h,
+            nk,
+            npad,
+            d,
+            128,
+            16,
+            num_warps=4,
+            enable_fp_fusion=False,
+        )
+    else:
+        nb = triton.cdiv(nk, 256)
+        partial = torch.empty((b, h, nb, d), device=query.device, dtype=torch.float32)
+        vs = torch.empty((b, h, d), device=query.device, dtype=torch.float32)
+        vr = torch.empty_like(vs)
+        vf = torch.empty(
+            (b, h, d, npad), device=query.device, dtype=torch.float8_e4m3fn
+        )
+        _v_partial[(nb, triton.cdiv(d, 16), b * h)](
+            value, partial, *value.stride()[:3], h, nk, nb, d, 256, 16
+        )
+        _v_scales[(triton.cdiv(d, 16), b * h)](
+            partial, vs, vr, h, nb, d, triton.next_power_of_2(nb), 16
+        )
+        safe_strided = value.data_ptr() % 16 != 0 or any(
+            (stride * value.element_size()) % 16 for stride in value.stride()[:3]
+        )
+        _quant_v[(triton.cdiv(npad, 256), triton.cdiv(d, 16), b * h)](
+            value,
+            vr,
+            vf,
+            *value.stride()[:3],
+            h,
+            nk,
+            npad,
+            d,
+            256,
+            16,
+            SAFE_STRIDED=safe_strided,
+        )
     return qi, qs, ki, ks, vf, vs, mean
