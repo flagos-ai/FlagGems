@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -93,20 +94,24 @@ def gelu_backward_tanh(x, dy):
 
 def gelu(self, *, approximate="none"):
     logger.debug("GEMS_ASCEND GELU_FORWARD")
-    if approximate == "tanh":
-        out = gelu_tanh(self)
-    else:
-        out = gelu_none(self)
-    return out
+    kernel = gelu_tanh if approximate == "tanh" else gelu_none
+    if self.is_contiguous():
+        return kernel(self)
+    # Ascend empty_like may not preserve a transposed input's strides. Pass
+    # the output explicitly so pointwise_dynamic checks its layout as well.
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    return kernel(self, out0=out)
 
 
 def gelu_backward(grad_output, self, *, approximate="none"):
     logger.debug("GEMS_ASCEND GELU_BACKWARD")
-    if approximate == "tanh":
-        in_grad = gelu_backward_tanh(self, grad_output)
-    else:
-        in_grad = gelu_backward_none(self, grad_output)
-    return in_grad
+    kernel = gelu_backward_tanh if approximate == "tanh" else gelu_backward_none
+    if self.is_contiguous() and grad_output.is_contiguous():
+        return kernel(self, grad_output)
+    # Include the output layout even when both inputs share transposed strides.
+    dtype = torch.promote_types(self.dtype, grad_output.dtype)
+    in_grad = torch.empty(self.shape, dtype=dtype, device=self.device)
+    return kernel(self, grad_output, out0=in_grad)
 
 
 def gelu_(A, *, approximate="none"):

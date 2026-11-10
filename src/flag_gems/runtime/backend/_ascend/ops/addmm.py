@@ -26,6 +26,7 @@ from flag_gems.runtime.backend._ascend import heuristics_config_utils as _hcu
 from flag_gems.utils import broadcastable_to, libentry, libtuner
 
 logger = logging.getLogger(__name__)
+_MAX_ADDMM_PROGRAMS = 32768
 
 
 # The 910B compiler reads the environment; keep compilation and launch aligned.
@@ -400,15 +401,14 @@ def _launch_addmm(bias, mat1, mat2, out, alpha, beta):
         bias_stride_m = bias.stride(0)
         bias_stride_n = bias.stride(1)
     dot_out_dtype = tl.float32
-    MAX_CORE_DIM = 65535
 
     def _addmm_grid(META):
         grid_m = triton.cdiv(M, META["BLOCK_M"])
         grid_n = triton.cdiv(N, META["BLOCK_N"])
         grid_2d = grid_m * grid_n
         split_k = META.get("SPLIT_K", 1)
-        # Cap the first dimension, accounting for SPLIT_K
-        capped_grid = min(grid_2d, MAX_CORE_DIM // split_k)
+        # Bound workspace across all tuning candidates, accounting for SPLIT_K.
+        capped_grid = min(grid_2d, _MAX_ADDMM_PROGRAMS // split_k)
         return (capped_grid, split_k)
 
     with torch_device_fn.device(mat1.device), _blockified():

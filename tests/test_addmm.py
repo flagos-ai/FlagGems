@@ -447,6 +447,46 @@ def test_addmm_dtype_out_beta_zero_ignores_bias():
 
 
 # Ascend large-tensor and coreDim regressions.
+@pytest.fixture
+def release_addmm_tuning_tensors():
+    # LibTuner retains its last inputs/output for offline benchmark replay.
+    # These tests do not replay them: release the captured tensors between
+    # cases so the previous multi-GiB output does not overlap the next case.
+    tuner = flag_gems.addmm.__globals__["addmm_kernel"]
+    while not isinstance(tuner, triton.runtime.Autotuner):
+        tuner = tuner.fn
+
+    def release():
+        tuner._last_benchmark_args = None
+        tuner._last_benchmark_meta = None
+
+    release()
+    try:
+        yield
+    finally:
+        release()
+
+
+def _assert_large_addmm_close(out, bias, mat1, mat2, *, alpha=1, beta=1):
+    # Launch Gems on the full matrix, but compute and compare the reference in
+    # row chunks. A second full output (and assert_close's temporaries) can
+    # exhaust a shared NPU even when the operator itself fits comfortably.
+    # Visit every output element and retain the usual reference dtype/tolerance.
+    M, N = out.shape
+    rows_per_chunk = max(1, min(256, (1 << 22) // N))
+    ref_mat2 = utils.to_reference(mat2, True)
+    bias = bias.broadcast_to(out.shape)
+    for start in range(0, M, rows_per_chunk):
+        end = min(start + rows_per_chunk, M)
+        ref_mat1 = utils.to_reference(mat1[start:end], True)
+        ref_bias = utils.to_reference(bias[start:end], True)
+        ref_out = torch.addmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
+        utils.gems_assert_close(
+            out[start:end], ref_out, out.dtype, reduce_dim=mat1.shape[1]
+        )
+        del ref_mat1, ref_bias, ref_out
+
+
 @pytest.mark.addmm
 @pytest.mark.skipif(
     flag_gems.vendor_name != "ascend",
@@ -457,39 +497,31 @@ def test_addmm_dtype_out_beta_zero_ignores_bias():
     [
         # Small baseline
         (512, 512, 512, "Baseline"),
-        # Just below threshold: sqrt(65535) ≈ 256, so 256*256 = 65536 (exceeds)
-        # Use 255*128 = 32640 (safe), 250*128 = 32000 (safe)
-        (200 * 128, 200 * 128, 512, "Below threshold (200*200=40k tiles) ~1.5GB"),
+        # Tile counts below assume BLOCK_M = BLOCK_N = 128.
+        (200 * 128, 200 * 128, 512, "Below threshold (200*200=40k tiles)"),
         # Just above threshold: 256*256 = 65536
-        (256 * 128, 256 * 128, 512, "Above threshold (256*256=65k tiles) ~4GB"),
+        (256 * 128, 256 * 128, 512, "Above threshold (256*256=65k tiles)"),
         # Larger - use smaller K to control memory
-        (300 * 128, 300 * 128, 512, "Large square (300*300=90k tiles) ~6.5GB"),
+        (300 * 128, 300 * 128, 512, "Large square (300*300=90k tiles)"),
         # Non-square large matrices - keep total memory low
-        (512 * 128, 200 * 128, 512, "Non-square (512*200=102k tiles) ~6.5GB"),
-        (200 * 128, 512 * 128, 512, "Non-square (200*512=102k tiles) ~6.5GB"),
+        (512 * 128, 200 * 128, 512, "Non-square (512*200=102k tiles)"),
+        (200 * 128, 512 * 128, 512, "Non-square (200*512=102k tiles)"),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.usefixtures("release_addmm_tuning_tensors")
 def test_addmm_large_matrix(M, N, K, description, dtype):
     """Test addmm with large matrices that trigger coreDim > 65535.
 
-    Memory estimate (float32):
-    - M=N=256*128=32768, K=512: ~4.2 GB
-    - M=N=300*128=38400, K=512: ~6.5 GB
-    - M=512*128=65536, N=200*128=25600, K=512: ~6.5 GB
+    Output alone (float32): 4 GiB for M=N=32768, 5.49 GiB for M=N=38400,
+    and 6.25 GiB for M=65536, N=25600. Reference chunks avoid doubling that.
     """
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
 
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_bias = utils.to_reference(bias, True)
-
-    ref_out = torch.addmm(ref_bias, ref_mat1, ref_mat2)
     res_out = flag_gems.addmm(bias, mat1, mat2)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    _assert_large_addmm_close(res_out, bias, mat1, mat2)
 
 
 @pytest.mark.addmm
@@ -500,31 +532,25 @@ def test_addmm_large_matrix(M, N, K, description, dtype):
 @pytest.mark.parametrize(
     "M,N,K",
     [
-        (256 * 128, 256 * 128, 512),  # ~4 GB
-        (300 * 128, 200 * 128, 512),  # ~4.5 GB, non-square
+        (256 * 128, 256 * 128, 512),
+        (300 * 128, 200 * 128, 512),
     ],
 )
 @pytest.mark.parametrize("alpha,beta", [(1.0, 1.0), (2.0, 0.5)])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.usefixtures("release_addmm_tuning_tensors")
 def test_addmm_large_matrix_alpha_beta(M, N, K, alpha, beta, dtype):
     """Test addmm with large matrices and different alpha/beta values.
 
-    Memory estimate (float32):
-    - M=N=32768, K=512: ~4.2 GB
-    - M=38400, N=25600, K=512: ~4.5 GB
+    The float32 matrix bias and output require up to 8 GiB together.
+    Compute the reference in chunks to leave room for kernel workspace.
     """
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
     mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
     bias = torch.randn((M, N), dtype=dtype, device=flag_gems.device)
 
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_bias = utils.to_reference(bias, True)
-
-    ref_out = torch.addmm(ref_bias, ref_mat1, ref_mat2, alpha=alpha, beta=beta)
     res_out = flag_gems.addmm(bias, mat1, mat2, alpha=alpha, beta=beta)
-
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
+    _assert_large_addmm_close(res_out, bias, mat1, mat2, alpha=alpha, beta=beta)
 
 
 @pytest.mark.addmm
@@ -580,11 +606,12 @@ def test_addmm_small_square_large(N, dtype):
 @pytest.mark.parametrize(
     "M,N,K",
     [
-        (256 * 128, 256 * 128, 512),  # ~4 GB
-        (300 * 128, 200 * 128, 512),  # ~4.5 GB
+        (256 * 128, 256 * 128, 512),
+        (300 * 128, 200 * 128, 512),
     ],
 )
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.usefixtures("release_addmm_tuning_tensors")
 def test_addmm_out_large_matrix(M, N, K, dtype):
     """Test addmm_out with large matrices."""
     mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
@@ -592,15 +619,57 @@ def test_addmm_out_large_matrix(M, N, K, dtype):
     bias = torch.randn((N,), dtype=dtype, device=flag_gems.device)
     out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
 
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_bias = utils.to_reference(bias, True)
-    ref_out = utils.to_reference(out, True)
+    result = flag_gems.addmm_out(bias, mat1, mat2, out=out)
+    assert result is out
+    _assert_large_addmm_close(out, bias, mat1, mat2)
 
-    torch.addmm(ref_bias, ref_mat1, ref_mat2, out=ref_out)
-    flag_gems.addmm_out(bias, mat1, mat2, out=out)
 
-    utils.gems_assert_close(out, ref_out, dtype, reduce_dim=K)
+@pytest.mark.addmm
+@pytest.mark.addmm_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend addmm workspace and grid-stride regression",
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_addmm_bounded_workspace(monkeypatch, dtype, use_out):
+    # A small limit exercises repeated grid-stride iterations and masked tails
+    # without requiring a multi-GiB allocation just to test the launch policy.
+    M, N, K = 513, 769, 67
+    op_globals = flag_gems.addmm.__globals__
+    kernel = op_globals["addmm_kernel"]
+    program_limit = 7
+    grids = []
+
+    class CheckedKernel:
+        def __getitem__(self, grid):
+            def checked_grid(meta):
+                launch_grid = grid(meta)
+                assert 0 < launch_grid[0] * launch_grid[1] <= program_limit
+                tiles = triton.cdiv(M, meta["BLOCK_M"]) * triton.cdiv(
+                    N, meta["BLOCK_N"]
+                )
+                assert tiles > launch_grid[0]
+                grids.append(launch_grid)
+                return launch_grid
+
+            return kernel[checked_grid]
+
+    monkeypatch.setitem(op_globals, "_MAX_ADDMM_PROGRAMS", program_limit)
+    monkeypatch.setitem(op_globals, "addmm_kernel", CheckedKernel())
+    mat1 = torch.randn((M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.randn((K, N), dtype=dtype, device=flag_gems.device)
+    bias = torch.randn(
+        (M, N) if use_out else (N,), dtype=dtype, device=flag_gems.device
+    )
+    if use_out:
+        out = torch.empty((M, N), dtype=dtype, device=flag_gems.device)
+        result = flag_gems.addmm_out(bias, mat1, mat2, alpha=2, beta=0.5, out=out)
+        assert result is out
+    else:
+        out = flag_gems.addmm(bias, mat1, mat2, alpha=2, beta=0.5)
+    assert grids
+    _assert_large_addmm_close(out, bias, mat1, mat2, alpha=2, beta=0.5)
 
 
 @pytest.mark.addmm
