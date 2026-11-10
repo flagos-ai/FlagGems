@@ -99,6 +99,8 @@ from .foreach_minimum_list_ import foreach_minimum_list_
 from .foreach_minimum_scalar import foreach_minimum_scalar
 from .foreach_minimum_scalar_ import foreach_minimum_scalar_
 from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
+from .foreach_minimum_scalar_list_ import foreach_minimum_scalar_list_
+from .foreach_mul_list import foreach_mul_list
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -334,6 +336,8 @@ __all__ = [
     "foreach_minimum_scalar",
     "foreach_minimum_scalar_",
     "foreach_minimum_scalar_list",
+    "foreach_minimum_scalar_list_",
+    "foreach_mul_list",
     "full",
     "full_like",
     "gcd_",
