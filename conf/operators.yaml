@@ -358,6 +358,20 @@ ops:
   - Math
   stages:
   - alpha: '5.5'
+- id: _make_dual
+  description: 'Creates a dual tensor for forward-mode AD by attaching the tangent
+    to the primal at the given level.
+
+    '
+  for:
+  - _make_dual
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: _philox_uniform_
   description: |
     Fills the tensor in place with samples from a uniform distribution over
@@ -4645,6 +4659,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: cudnn_affine_grid_generator
+  description: |
+    Triton kernel implementation for cudnn_affine_grid_generator.
+  for:
+  - cudnn_affine_grid_generator
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5.0'
 - id: cudnn_affine_grid_generator_backward
   description: Triton kernel implementation for cudnn_affine_grid_generator_backward.
   for:
@@ -4665,6 +4691,18 @@ tensor into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - Math
+  stages:
+  - alpha: '5.5.0'
+- id: cudnn_affine_grid_generator_out
+  description: A variant of cudnn_affine_grid_generator() that writes the result into
+    the out tensor.
+  for:
+  - cudnn_affine_grid_generator.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
   stages:
   - alpha: '5.5.0'
 - id: cudnn_attention_backward
@@ -5676,6 +5714,18 @@ tensor into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - beta: '5.4'
+- id: efficientzerotensor
+  description: |
+    Create a lazy immutable ZeroTensor with native dispatch metadata and no materialized data.
+  for:
+    - _efficientzerotensor
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: einsum
   description: 'Sums the product of the elements of the input `operands` along dimensions
     specified using a notation
@@ -5876,6 +5926,23 @@ tensor into the caller-supplied `out` buffer.
     '
   for:
   - GenerateEmbeddingSpMDM
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
+  source:
+  - fbgemm
+- id: embedding_spmdm_grad
+  description: 'Standalone backward of embedding_spmdm: scatters the [B, D] upstream
+    gradient, optionally scaled by per-sample weights, into a [V, D] embedding-table
+    gradient and, when per-sample weights were used, also returns their [B, bag_size]
+    gradient.
+    '
+  for:
+  - GenerateEmbeddingSpMDMGrad
   labels:
   - fused
   - Reduction
@@ -22157,6 +22224,18 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '4.1'
   - stable: '5.3'
+- id: to_dense_backward
+  description: Converts grad into the scalar type and sparse layout carried by
+    input, implementing the backward of to_dense.
+  for:
+  - to_dense_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: to_sparse_semi_structured
   description: Compresses a dense 2D tensor to the CUTLASS semi-structured (2:4
     / 1:2) sparse representation, returning the packed values and metadata.
@@ -23363,11 +23442,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: validate_sparse_bsr_tensor_args
+  description: |
+    Validate BSR tensor metadata and compressed index invariants.
+  for:
+    - _validate_sparse_bsr_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
 - id: validate_sparse_csc_tensor_args
   description: |
     Validate sparse tensor arguments and index invariants without modifying inputs.
   for:
     - _validate_sparse_csc_tensor_args
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5.0'
+- id: validate_sparse_csr_tensor_args
+  description: |
+    Validate sparse tensor arguments and index invariants without modifying inputs.
+  for:
+    - _validate_sparse_csr_tensor_args
   labels:
     - aten
     - KernelGen
