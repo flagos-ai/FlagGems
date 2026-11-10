@@ -88,6 +88,7 @@ from .foreach_log1p import foreach_log1p
 from .foreach_log2 import foreach_log2
 from .foreach_log2_ import foreach_log2_
 from .foreach_max import foreach_max
+from .foreach_maximum_list import foreach_maximum_list
 from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
 from .full import full
 from .full_like import full_like
@@ -313,6 +314,7 @@ __all__ = [
     "foreach_log2",
     "foreach_log2_",
     "foreach_max",
+    "foreach_maximum_list",
     "foreach_minimum_scalar_list",
     "full",
     "full_like",
