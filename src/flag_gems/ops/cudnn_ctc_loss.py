@@ -501,15 +501,8 @@ def _launch_backward(
     num_classes,
     state_count_max,
     blank,
-    zero_infinity,
     init_grad=True,
 ):
-    if zero_infinity:
-        grad_output = torch.where(
-            torch.isinf(neg_log_likelihood),
-            torch.zeros_like(grad_output),
-            grad_output,
-        )
     block_s = triton.next_power_of_2(state_count_max)
     launch_params = _launch_params(block_s)
     with torch_device_fn.device(work_log_probs.device):
@@ -666,8 +659,10 @@ def _cudnn_ctc_loss_impl(
     # cuDNN materializes the gradient of `log_probs` eagerly, so it is returned
     # as a plain tensor alongside the loss. PyTorch's native autograd rule for
     # `_cudnn_ctc_loss` consumes exactly this pair: it scales `raw_grad` by the
-    # per-batch upstream gradient and applies the `zero_infinity` mask, so no
-    # custom backward is needed through the dispatcher.
+    # per-batch upstream gradient and applies the `zero_infinity` mask itself.
+    # So `zero_infinity` is accepted only to match the schema -- masking here
+    # would hand the autograd rule an already-masked gradient and make the
+    # returned `raw_grad` diverge from what the native kernel reports.
     if batch_size > 0:
         _launch_backward(
             work_log_probs,
@@ -684,7 +679,6 @@ def _cudnn_ctc_loss_impl(
             num_classes,
             state_count_max,
             blank,
-            zero_infinity,
             init_grad=True,
         )
 
