@@ -16,6 +16,7 @@ from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc
 from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .cross_attention import cross_attention
@@ -175,6 +176,7 @@ __all__ = [
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "conv_tbc",
     "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
