@@ -62,7 +62,7 @@ bmm_spacemit:
   - META:
       TILE_M: 32
       TILE_N: 64
-      TILE_K: 64
+      TILE_K: 128
       MICRO_M: 16
       MICRO_N: 32
       MICRO_K: 8
@@ -103,8 +103,29 @@ log_softmax:
     BLOCK_N: 512
 mm_spacemit:
   - META:
-      # Block sizes are selected by the existing mm host dispatch.
-      # K3 FP16 defaults; config_pre_hook adjusts for the input dtype and target.
+      BLOCK_SIZE_M: 16
+      BLOCK_SIZE_N: 32
+      BLOCK_SIZE_K: 256
+      MICRO_M: 16
+      MICRO_N: 32
+      MICRO_K: 8
+    num_warps: 0
+    num_ctas: 0
+    num_stages: 1
+  - META:
+      BLOCK_SIZE_M: 32
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 256
+      MICRO_M: 16
+      MICRO_N: 32
+      MICRO_K: 8
+    num_warps: 0
+    num_ctas: 0
+    num_stages: 1
+  - META:
+      BLOCK_SIZE_M: 64
+      BLOCK_SIZE_N: 64
+      BLOCK_SIZE_K: 256
       MICRO_M: 16
       MICRO_N: 32
       MICRO_K: 8
@@ -408,6 +429,9 @@ mv:
 - META:
     BLOCK_M: 32
     BLOCK_N: 32
+- META:
+    BLOCK_M: 128
+    BLOCK_N: 8
 nonzero:
 - gen: true
   param_map:
@@ -616,6 +640,18 @@ conv2d_forward:
       BLOCK_NI_HO_WO: 32
       BLOCK_CO: 32
       BLOCK_CI: 32
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 32
+      BLOCK_CO: 32
+      BLOCK_CI: 16
+    num_warps: 4
+    num_stages: 2
+  - META:
+      BLOCK_NI_HO_WO: 64
+      BLOCK_CO: 32
+      BLOCK_CI: 16
     num_warps: 4
     num_stages: 2
 

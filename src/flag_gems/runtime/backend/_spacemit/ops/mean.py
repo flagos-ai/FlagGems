@@ -18,8 +18,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import dim_compress, libentry
+from flag_gems.utils import dim_compress, libentry, libtuner
 from flag_gems.utils import triton_lang_extension as tle
 
 from ..heuristics_config_utils import (
@@ -116,56 +117,29 @@ def mean(inp, *, dtype=None):
 
 
 @libentry()
-@triton.heuristics(
-    {
-        # mean_spacemit_v1's tune config was static (BLOCK_M=1, BLOCK_N=256);
-        # both are made adaptive: BLOCK_N covers a whole row so the N-loop
-        # collapses to one iteration (a loop-carried accumulator feeding the
-        # next iteration lowers to per-iteration DDR scratch traffic), and
-        # BLOCK_M stays at one row per program for all but huge M (this
-        # stack's runtime dispatches multi-thousand-program grids fine, and
-        # the per-row shape benchmarked faster than wide [BLOCK_M, BLOCK_N]
-        # tiles)
-        "BLOCK_M": lambda args: max(
-            1, triton.next_power_of_2(triton.cdiv(args["M"], 4096))
-        ),
-        "BLOCK_N": lambda args: min(triton.next_power_of_2(args["N"]), 8192),
-    }
-)
+@libtuner(configs=runtime.get_tuned_config("mean"), key=["M", "N"])
 @triton.jit
-def mean_dim_kernel(X, Mean, M, N, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr):
-    row_start = tl.program_id(0) * BLOCK_M
-
-    _mean_acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-    num_pid_n = tl.cdiv(N, BLOCK_N)
-
-    x_ptr_desc = tl.make_block_ptr(
-        base=X,
-        shape=[M, N],
-        strides=[N, 1],
-        offsets=[row_start, 0],
-        block_shape=[BLOCK_M, BLOCK_N],
-        order=[1, 0],
-    )
-
-    for off_n in range(0, num_pid_n):
-        a = tl.load(x_ptr_desc, boundary_check=[0, 1], padding_option="zero").to(
-            tl.float32
-        )
-        _mean_acc += a
-        x_ptr_desc = tl.advance(x_ptr_desc, [0, BLOCK_N])
-
-    mean = tl.sum(_mean_acc, axis=1) / N
-
-    mean_ptr_desc = tl.make_block_ptr(
-        base=Mean,
-        shape=[M],
-        strides=[1],
-        offsets=[row_start],
-        block_shape=[BLOCK_M],
-        order=[0],
-    )
-    tl.store(mean_ptr_desc, mean.to(Mean.dtype.element_ty), boundary_check=[0])
+def mean_dim_kernel(X, Mean, M: tl.constexpr, N: tl.constexpr, TILE_N: tl.constexpr):
+    # Keep launches within the K3 runtime's 512-program limit.
+    for row_block in range(tl.cdiv(M, 512)):
+        row = row_block * 512 + tl.program_id(0)
+        if M <= 512 or row < M:
+            x_ptr_desc = tl.make_block_ptr(
+                base=X + row * N,
+                shape=[N],
+                strides=[1],
+                offsets=[0],
+                block_shape=[TILE_N],
+                order=[0],
+            )
+            total = tl.full((), 0, tl.float32)
+            for _ in range(tl.cdiv(N, TILE_N)):
+                values = tl.load(
+                    x_ptr_desc, boundary_check=[0], padding_option="zero"
+                ).to(tl.float32)
+                total += tl.sum(values, axis=0)
+                x_ptr_desc = tl.advance(x_ptr_desc, [TILE_N])
+            tl.store(Mean + row, (total / N).to(Mean.dtype.element_ty))
 
 
 if HAS_SMT_RVISA:
@@ -243,8 +217,7 @@ if HAS_SMT_RVISA:
             _mean_dim1_rvisa_host[(triton.cdiv(M, block),)](
                 x, scratch, M, N, BLOCK=block, F16=x.dtype == torch.float16
             )
-        # out still carries the reduced dim as 1 (the squeeze happens in the
-        # caller); reshape so copy_ does not try to broadcast
+        # Match the caller's output shape before copying the flat scratch buffer.
         out.copy_(scratch.reshape(out.shape))
 
 
@@ -261,13 +234,19 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
 
     shape = list(x.shape)
     dim = [d % x.ndim for d in dim]
-    x = dim_compress(x, dim)
+    if not (
+        x.is_contiguous() and sorted(dim) == list(range(x.ndim - len(dim), x.ndim))
+    ):
+        x = dim_compress(x, dim)
     N = 1
     for i in dim:
         N *= shape[i]
         shape[i] = 1
     M = x.numel() // N
-    out = torch.empty(shape, dtype=dtype, device=x.device)
+    out_shape = (
+        shape if keepdim else [size for i, size in enumerate(shape) if i not in dim]
+    )
+    out = torch.empty(out_shape, dtype=dtype, device=x.device)
     if (
         smt_rvisa_enabled()
         and x.dtype in (torch.float16, torch.float32)
@@ -276,11 +255,9 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     ):
         _mean_dim_rvisa(x, out, M, N)
     else:
-        grid = lambda META: (triton.cdiv(M, META["BLOCK_M"]),)
+        grid = (min(M, 512),)
         with torch_device_fn.device(x.device):
             mean_dim_kernel[grid](x, out, M, N)
-    if not keepdim:
-        out = out.squeeze(dim)
     return out
 
 

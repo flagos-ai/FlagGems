@@ -34,6 +34,7 @@ from .bitwise_or import (  # noqa: F401
 )
 from .bmm import bmm, bmm_out  # noqa: F401
 from .clamp import clamp, clamp_, clamp_tensor, clamp_tensor_  # noqa: F401
+from .conv2d import conv2d  # noqa: F401
 from .cos import cos, cos_  # noqa: F401
 from .div import true_divide, true_divide_  # noqa: F401
 from .eq import eq, eq_scalar  # noqa: F401
@@ -110,6 +111,7 @@ __all__ = [
     "clamp_",
     "clamp_tensor",
     "clamp_tensor_",
+    "conv2d",
     "cos",
     "cos_",
     "eq",

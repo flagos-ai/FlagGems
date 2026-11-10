@@ -48,6 +48,7 @@ if os.environ.get("SPINE_TRITON_RPC_HOST"):
     release_mbarrier = None
 
 logger = logging.getLogger(__name__)
+_MaxResult = namedtuple("max", ["values", "indices"])
 
 
 @libentry()
@@ -387,6 +388,4 @@ def max_dim(inp, dim=None, keepdim=False):
         grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
         with torch_device_fn.device(inp.device):
             max_kernel[grid](inp, out_value, out_index, M, N)
-    Max_out = namedtuple("max", ["values", "indices"])
-    out = Max_out(values=out_value, indices=out_index)
-    return out
+    return _MaxResult(values=out_value, indices=out_index)

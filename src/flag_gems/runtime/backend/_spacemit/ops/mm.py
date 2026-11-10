@@ -25,70 +25,9 @@ from triton.language.extra.smt_rvisa import index, mem
 from flag_gems import runtime
 from flag_gems.utils import libentry, libtuner
 
+from ..utils.config_pre_hook import prepare_tuned_configs
+
 logger = logging.getLogger(__name__)
-
-
-@libentry()
-@triton.jit
-def _mm_fallback_kernel(
-    A,
-    B,
-    C,
-    M,
-    N,
-    K,
-    stride_am,
-    stride_ak,
-    stride_bk,
-    stride_bn,
-    stride_cm,
-    stride_cn,
-    BLOCK_N: tl.constexpr,
-    BLOCK_K: tl.constexpr,
-):
-    # Scalar products also support dtypes/layouts rejected by the matrix engine.
-    # Bound the launch grid on runtimes which support at most 512 programs.
-    tiles_n = tl.cdiv(N, BLOCK_N)
-    for task in range(tl.program_id(0), M * tiles_n, tl.num_programs(0)):
-        row = task // tiles_n
-        cols = task % tiles_n * BLOCK_N + tl.arange(0, BLOCK_N)
-        acc = tl.zeros((BLOCK_N,), tl.float32)
-        for k_start in range(tl.cdiv(K, BLOCK_K)):
-            ks = k_start * BLOCK_K + tl.arange(0, BLOCK_K)
-            a = tl.load(A + row * stride_am + ks * stride_ak, ks < K, other=0).to(
-                tl.float32
-            )
-            b = tl.load(
-                B + ks[:, None] * stride_bk + cols[None, :] * stride_bn,
-                (ks[:, None] < K) & (cols[None, :] < N),
-                other=0,
-            ).to(tl.float32)
-            acc += tl.sum(a[:, None] * b, axis=0)
-        tl.store(C + row * stride_cm + cols * stride_cn, acc, cols < N)
-
-
-def _mm_fallback(a, b, out):
-    M, K = a.shape
-    N = b.shape[1]
-    if M == 0 or N == 0:
-        return out
-    _mm_fallback_kernel[(min(M * triton.cdiv(N, 16), 512),)](
-        a,
-        b,
-        out,
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        out.stride(0),
-        out.stride(1),
-        BLOCK_N=16,
-        BLOCK_K=32,
-    )
-    return out
 
 
 _f16 = tle.f16
@@ -503,8 +442,8 @@ def _mm_mN_t_host(a, W, C, M, K, N, NB, CS):
 
 # ---------------------------------------------------------------------------
 # tl.dot mm kernel (standard Triton dot, spine-mlir-main-rv64 lowering).
-#   Fallback for M>1 prefill when smt.dot path unavailable. Uses input strides.
-#   1.27x-2.42x faster than vfwmacc.vv. smt.dot path is 4x faster than this.
+#   Stride-aware fallback for shapes that do not use the SMT/raw vector path.
+#   The host wrapper chunks N so every launch stays within the 512-program limit.
 # ---------------------------------------------------------------------------
 @triton.jit
 def mm_tldot_kernel(
@@ -560,17 +499,15 @@ def mm_tldot_kernel(
 
 # ---------------------------------------------------------------------------
 # smt.dot mm kernel (K3 matrix engine via linalg.mmt4d). Fastest path.
-#   K-loop with unpack-before-accumulate: smt.dot returns packed MICRO-tile
-#   result; must smt.view(..., (1,1)) to unpack to plain tensor before +=.
-#   Direct packed accumulate (acc += smt.dot(a,b) without unpack) produces
-#   wrong results — tl.zeros+smt.view init creates incompatible tensor format.
-#   BK=256 fixed (K3 MICRO_K=8, 32 K-tiles per BK). 4x faster than tl.dot.
-#   TCM ~256KB (within 384KB limit); noloop BK=K variant needed 608KB (over).
+#   Keep each K-block result in FP32 and unpack before accumulation.
+#   Zero-fill K tails before packing so partial tiles cannot contribute garbage.
+#   Tile sizes come from YAML; config_pre_hook selects the legal micro tile.
 # ---------------------------------------------------------------------------
 @libentry()
 @libtuner(
     configs=runtime.get_tuned_config("mm_spacemit"),
-    key=["M", "N", "K"],
+    key=["M", "N", "K", "stride_am", "stride_ak", "stride_bk", "stride_bn"],
+    prune_configs_by={"early_config_prune": prepare_tuned_configs},
     disable_aabs=True,
 )
 @triton.jit
@@ -594,155 +531,115 @@ def mm_smt_kernel(
     MICRO_K: tl.constexpr,
     MICRO_N: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-    acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
-    for ki in tl.range(0, tl.cdiv(K, BLOCK_SIZE_K)):
-        a_bp = tl.make_block_ptr(
-            base=a_ptr,
-            shape=[M, K],
-            strides=[stride_am, stride_ak],
-            offsets=[pid_m * BLOCK_SIZE_M, ki * BLOCK_SIZE_K],
-            block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_K],
-            order=[1, 0],
-        )
-        b_bp = tl.make_block_ptr(
-            base=b_ptr,
-            shape=[K, N],
-            strides=[stride_bk, stride_bn],
-            offsets=[ki * BLOCK_SIZE_K, pid_n * BLOCK_SIZE_N],
-            block_shape=[BLOCK_SIZE_K, BLOCK_SIZE_N],
-            order=[1, 0],
-        )
-        a_desc = smt.descriptor_load(a_bp, (0, 0))
-        a = smt.view(a_desc, (0, 0), (BLOCK_SIZE_M, BLOCK_SIZE_K), (MICRO_M, MICRO_K))
-        b_desc = smt.descriptor_load(b_bp, (0, 0))
-        b = smt.view(b_desc, (0, 0), (BLOCK_SIZE_K, BLOCK_SIZE_N), (MICRO_K, MICRO_N))
-        partial = smt.dot(a, b)
-        partial = smt.view(partial, (0, 0), (BLOCK_SIZE_M, BLOCK_SIZE_N), (1, 1))
-        acc += partial
-    c = acc.to(c_ptr.dtype.element_ty)
-    c_bp = tl.make_block_ptr(
-        base=c_ptr,
-        shape=[M, N],
-        strides=[stride_cm, stride_cn],
-        offsets=[pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N],
-        block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N],
-        order=[1, 0],
+    partial_ptr = smt.alloc(
+        (BLOCK_SIZE_M // MICRO_M, BLOCK_SIZE_N // MICRO_N, MICRO_M, MICRO_N),
+        type=tl.float32,
     )
-    tl.store(c_bp, c, boundary_check=(0, 1))
+    tiles_n = tl.cdiv(N, BLOCK_SIZE_N)
+    tiles = tl.cdiv(M, BLOCK_SIZE_M) * tiles_n
+    for task in tl.range(tl.program_id(0), tiles, tl.num_programs(0)):
+        pid_m = task // tiles_n
+        pid_n = task % tiles_n
+        acc = tl.zeros((BLOCK_SIZE_M, BLOCK_SIZE_N), dtype=tl.float32)
+        for ki in tl.range(0, tl.cdiv(K, BLOCK_SIZE_K)):
+            a_bp = tl.make_block_ptr(
+                base=a_ptr,
+                shape=[M, K],
+                strides=[stride_am, stride_ak],
+                offsets=[pid_m * BLOCK_SIZE_M, ki * BLOCK_SIZE_K],
+                block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_K],
+                order=[1, 0],
+            )
+            b_bp = tl.make_block_ptr(
+                base=b_ptr,
+                shape=[K, N],
+                strides=[stride_bk, stride_bn],
+                offsets=[ki * BLOCK_SIZE_K, pid_n * BLOCK_SIZE_N],
+                block_shape=[BLOCK_SIZE_K, BLOCK_SIZE_N],
+                order=[1, 0],
+            )
+            a_tile = tl.load(a_bp, boundary_check=(0, 1), padding_option="zero")
+            a = smt.view(
+                a_tile, (0, 0), (BLOCK_SIZE_M, BLOCK_SIZE_K), (MICRO_M, MICRO_K)
+            )
+            b_tile = tl.load(b_bp, boundary_check=(0, 1), padding_option="zero")
+            b = smt.view(
+                b_tile, (0, 0), (BLOCK_SIZE_K, BLOCK_SIZE_N), (MICRO_K, MICRO_N)
+            )
+            partial = smt.descriptor_load(partial_ptr, (0, 0, 0, 0))
+            smt.dot(a, b, partial)
+            partial = smt.view(partial, (0, 0), (BLOCK_SIZE_M, BLOCK_SIZE_N), (1, 1))
+            acc += partial
+        c = acc.to(c_ptr.dtype.element_ty)
+        c_bp = tl.make_block_ptr(
+            base=c_ptr,
+            shape=[M, N],
+            strides=[stride_cm, stride_cn],
+            offsets=[pid_m * BLOCK_SIZE_M, pid_n * BLOCK_SIZE_N],
+            block_shape=[BLOCK_SIZE_M, BLOCK_SIZE_N],
+            order=[1, 0],
+        )
+        tl.store(c_bp, c, boundary_check=(0, 1))
 
 
 _TLDOT_BK = 256
 _TLDOT_BM = 32
 _SMT_BK = 256
-_SMT_BM = 32
-
-
-def _pick_smt_bn(N):
-    """Per-shape BN. 256 for N>=2048, else 64. BN=512 crashes the kernel
-    (tile size limit, rule 53 pattern) so large N is handled by chunked
-    launches in _mm_smt_path instead of bumping BN."""
-    if N >= 2048:
-        return 256
-    return 64
-
-
-# BN=256, max grid_n=512 → max cols per kernel launch (rule 56: grid>512 corrupts).
-_SMT_MAX_COLS_PER_LAUNCH = 256 * 512  # 131072
 
 
 def _mm_smt_path(a, b, c, M, K, N):
-    """smt.dot matrix-engine fast path for M>1 prefill. 4x faster than tl.dot
-    for proj mm shapes (N≤4096). For very large N (lm_head N=151936) chunked
-    launch with BN=256 is slower than vfwmacc.vv NB=512 (smt.dot BN=512 crashes
-    — matrix engine tile limit stricter than vector unit), so caller skips
-    smt.dot when N > _SMT_MAX_COLS_PER_LAUNCH.
-
-    Returns True on success, False to fall back. Handles arbitrary N via
-    chunked launches (each ≤131072 cols, BN=256) + per-chunk main/tail split."""
-    bn = _pick_smt_bn(N)
-    if N > _SMT_MAX_COLS_PER_LAUNCH:
-        # Chunked smt.dot would be slower than vfwmacc.vv NB=512 — let caller fall back.
+    # smt.view requires a complete packed K tile.  Let tl.dot handle the
+    # partial-K cases so tails do not reach linalg.pack with a short shape.
+    if N == 0 or K == 0 or K % _SMT_BK:
         return False
-    grid_m = (M + _SMT_BM - 1) // _SMT_BM
-    n_done = 0
-    while n_done < N:
-        chunk_n = min(_SMT_MAX_COLS_PER_LAUNCH, N - n_done)
-        n_main = (chunk_n // bn) * bn
-        n_tail = chunk_n - n_main
-        if n_main > 0:
-            grid_n = n_main // bn
-            if grid_m * grid_n > 512:
-                return False
-            a_chunk = a
-            b_chunk = b[:, n_done : n_done + n_main]
-            c_chunk = c[:, n_done : n_done + n_main]
-            mm_smt_kernel[(grid_m, grid_n)](
-                a_chunk,
-                b_chunk,
-                c_chunk,
-                M,
-                n_main,
-                K,
-                a_chunk.stride(0),
-                a_chunk.stride(1),
-                b_chunk.stride(0),
-                b_chunk.stride(1),
-                c_chunk.stride(0),
-                c_chunk.stride(1),
-                BLOCK_SIZE_M=_SMT_BM,
-                BLOCK_SIZE_N=bn,
-                BLOCK_SIZE_K=_SMT_BK,
-            )
-        if n_tail > 0:
-            c_tail = c[:, n_done + n_main : n_done + n_main + n_tail]
-            b_tail = b[:, n_done + n_main : n_done + n_main + n_tail]
-            _mm_fallback(a, b_tail, c_tail)
-        n_done += chunk_n
+
+    def grid(meta):
+        tiles_m = triton.cdiv(M, meta["BLOCK_SIZE_M"])
+        tiles_n = triton.cdiv(N, meta["BLOCK_SIZE_N"])
+        return (min(tiles_m * tiles_n, 512),)
+
+    mm_smt_kernel[grid](a, b, c, M, N, K, *a.stride(), *b.stride(), *c.stride())
     return True
 
 
 def _pick_tldot_bn(N):
-    """Per-shape BN from sweep. Returns 0 if N too large (fall back).
-    N>4096 falls back (BN=512 crashes tl.dot too — same K3 tile limit as smt.dot;
-    vfwmacc.vv handles large N via _mm_transposed_tail)."""
+    """Per-shape BN from the K3 tl.dot sweep."""
     if N <= 1024:
         return 64
     elif N <= 2048:
         return 256
     elif N <= 4096:
         return 128
-    return 0
+    return 128
 
 
 def _mm_tldot_path(a, b, c, M, K, N):
-    """tl.dot fallback for M>1 prefill, reading B with its original strides.
-    Returns True on success, False to fall back. Only for proj mms."""
+    """Run the stride-aware tl.dot kernel in chunks that fit the grid limit."""
     bn = _pick_tldot_bn(N)
-    if bn == 0:
+    grid_m = triton.cdiv(M, _TLDOT_BM)
+    if grid_m > 512:
         return False
-    grid_m = (M + _TLDOT_BM - 1) // _TLDOT_BM
-    grid_n = (N + bn - 1) // bn
-    if grid_m * grid_n > 512:
-        return False
-    mm_tldot_kernel[(grid_m, grid_n)](
-        a,
-        b,
-        c,
-        M,
-        N,
-        K,
-        a.stride(0),
-        a.stride(1),
-        b.stride(0),
-        b.stride(1),
-        c.stride(0),
-        c.stride(1),
-        BLOCK_M=_TLDOT_BM,
-        BLOCK_N=bn,
-        BLOCK_K=_TLDOT_BK,
-    )
+    max_tiles_n = max(1, 512 // grid_m)
+    chunk_n = max_tiles_n * bn
+    for n_start in range(0, N, chunk_n):
+        n_end = min(n_start + chunk_n, N)
+        b_chunk = b[:, n_start:n_end]
+        c_chunk = c[:, n_start:n_end]
+        grid_n = triton.cdiv(n_end - n_start, bn)
+        mm_tldot_kernel[(grid_m, grid_n)](
+            a,
+            b_chunk,
+            c_chunk,
+            M,
+            n_end - n_start,
+            K,
+            *a.stride(),
+            *b_chunk.stride(),
+            *c_chunk.stride(),
+            BLOCK_M=_TLDOT_BM,
+            BLOCK_N=bn,
+            BLOCK_K=_TLDOT_BK,
+        )
     return True
 
 
@@ -790,13 +687,32 @@ def _mm_transposed_tail(a, b, c, M, K, N):
 
 
 def _check_mm_inputs(a, b):
-    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[0]:
+    if a.ndim != 2 or b.ndim != 2:
+        raise RuntimeError("mm expects two matrices with compatible dimensions")
+    M, K = a.shape
+    K_b, N = b.shape
+    if K != K_b:
         raise RuntimeError("mm expects two matrices with compatible dimensions")
     if a.dtype != b.dtype or a.device != b.device:
         raise RuntimeError("mm inputs must have the same dtype and device")
     if a.dtype not in (torch.float16, torch.float32):
         raise RuntimeError("SpacemiT mm only supports float16 and float32")
-    return a.shape[0], a.shape[1], b.shape[1]
+    return M, K, N
+
+
+def _materialize_mm_inputs(a, b):
+    """Normalize layouts rejected by the K3 matrix/vector fast paths.
+
+    Keep row-major and transposed weights in their original storage: both are
+    supported by the stride-aware kernels and copying them is expensive for
+    autoregressive decode.  A tensor with neither dimension contiguous is the
+    only layout that needs materialization.
+    """
+    if not a.is_contiguous():
+        a = a.contiguous()
+    if b.stride(0) != 1 and b.stride(1) != 1:
+        b = b.contiguous()
+    return a, b
 
 
 def mm(a, b):
@@ -804,6 +720,18 @@ def mm(a, b):
     M, K, N = _check_mm_inputs(a, b)
     # allocates output
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
+    if M == 0 or N == 0:
+        return c
+    if K == 0:
+        c.zero_()
+        return c
+    # Matrix kernels support both FP16 and FP32; only the raw vector kernels
+    # below require FP16 and K alignment. Read B using its original strides.
+    if M > 1 and a.is_contiguous() and K > 0 and (b.stride(0) == 1 or b.stride(1) == 1):
+        if _mm_smt_path(a, b, c, M, K, N):
+            return c
+        if _mm_tldot_path(a, b, c, M, K, N):
+            return c
     # vfwmacc fast paths (pure llvm-direct sibling, no host-side copy):
     #   M==1 decode:  mm_m1_raw (vfwmacc.vf, contiguous b) or
     #                 mm_m1_t_raw (vfwmacc.vv, transposed b=W.T)
@@ -815,26 +743,22 @@ def mm(a, b):
         if M == 1:
             if b.is_contiguous() and b.stride(1) == 1 and N % 64 == 0:
                 NB = 64
-                grid = (N // NB,)
-                _mm_m1_host[grid](a, b, c, K, N, NB=NB)
-                return c
+                if N // NB <= 512:
+                    grid = (N // NB,)
+                    _mm_m1_host[grid](a, b, c, K, N, NB=NB)
+                    return c
             if b.stride(0) == 1 and b.stride(1) == K and N % 8 == 0:
                 _mm_transposed_tail(a, b, c, M, K, N)
                 return c
-        else:
-            # M>1 prefill: try smt.dot (matrix engine, 4x faster) first,
-            # fall back to tl.dot, then vfwmacc. Only for proj mms (N<=4096).
-            # SMT/tl.dot read contiguous and transposed B using its strides.
-            # The raw vfwmacc path requires tightly packed rows of W=B.T.
-            if (b.stride(0) == 1 or b.stride(1) == 1) and N % 8 == 0:
-                if _mm_smt_path(a, b, c, M, K, N):
-                    return c
-                if _mm_tldot_path(a, b, c, M, K, N):
-                    return c
-                if b.stride(0) == 1 and b.stride(1) == K:
-                    _mm_transposed_tail(a, b, c, M, K, N)
-                    return c
-    return _mm_fallback(a, b, c)
+        elif M > 1 and b.stride(0) == 1 and b.stride(1) == K and N % 8 == 0:
+            _mm_transposed_tail(a, b, c, M, K, N)
+            return c
+    a, b = _materialize_mm_inputs(a, b)
+    if M > 1 and _mm_smt_path(a, b, c, M, K, N):
+        return c
+    if _mm_tldot_path(a, b, c, M, K, N):
+        return c
+    raise RuntimeError("SpacemiT mm shape exceeds the supported grid")
 
 
 def mm_out(a, b, *, out):
@@ -844,26 +768,42 @@ def mm_out(a, b, *, out):
         raise RuntimeError("mm output must match the input dtype and device")
     if out.shape != (M, N):
         out.resize_((M, N))
+    if M == 0 or N == 0:
+        return out
+    if K == 0:
+        out.copy_(torch.zeros((M, N), dtype=out.dtype, device=out.device))
+        return out
+
+    if M > 1 and a.is_contiguous() and K > 0 and (b.stride(0) == 1 or b.stride(1) == 1):
+        if _mm_smt_path(a, b, out, M, K, N):
+            return out
+        if _mm_tldot_path(a, b, out, M, K, N):
+            return out
 
     if a.dtype == torch.float16 and a.is_contiguous() and K > 0 and K % 64 == 0:
         if M == 1 and out.is_contiguous():
             if b.is_contiguous() and b.stride(1) == 1 and N % 64 == 0:
                 NB = 64
-                grid = (N // NB,)
-                _mm_m1_host[grid](a, b, out, K, N, NB=NB)
-                return out
+                if N // NB <= 512:
+                    grid = (N // NB,)
+                    _mm_m1_host[grid](a, b, out, K, N, NB=NB)
+                    return out
             if b.stride(0) == 1 and b.stride(1) == K and N % 8 == 0:
                 _mm_transposed_tail(a, b, out, M, K, N)
                 return out
-        elif M > 1:
-            # SMT/tl.dot use B's strides; the raw fallback needs packed W=B.T.
-            if (b.stride(0) == 1 or b.stride(1) == 1) and N % 8 == 0:
-                if _mm_smt_path(a, b, out, M, K, N):
-                    return out
-                if _mm_tldot_path(a, b, out, M, K, N):
-                    return out
-                if out.is_contiguous() and b.stride(0) == 1 and b.stride(1) == K:
-                    _mm_transposed_tail(a, b, out, M, K, N)
-                    return out
+        elif (
+            M > 1
+            and out.is_contiguous()
+            and b.stride(0) == 1
+            and b.stride(1) == K
+            and N % 8 == 0
+        ):
+            _mm_transposed_tail(a, b, out, M, K, N)
+            return out
 
-    return _mm_fallback(a, b, out)
+    a, b = _materialize_mm_inputs(a, b)
+    if M > 1 and _mm_smt_path(a, b, out, M, K, N):
+        return out
+    if _mm_tldot_path(a, b, out, M, K, N):
+        return out
+    raise RuntimeError("SpacemiT mm shape exceeds the supported grid")

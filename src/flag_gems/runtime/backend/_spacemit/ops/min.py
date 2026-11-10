@@ -40,6 +40,7 @@ if os.environ.get("SPINE_TRITON_RPC_HOST"):
     release_mbarrier = None
 
 logger = logging.getLogger(__name__)
+_MinResult = namedtuple("min", ["values", "indices"])
 
 
 @libentry()
@@ -250,6 +251,4 @@ def min_dim(inp, dim=None, keepdim=False):
     grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
     with torch_device_fn.device(inp.device):
         min_kernel[grid](inp, out_value, out_index, M, N)
-    Min_out = namedtuple("min", ["values", "indices"])
-    out = Min_out(values=out_value, indices=out_index)
-    return out
+    return _MinResult(values=out_value, indices=out_index)

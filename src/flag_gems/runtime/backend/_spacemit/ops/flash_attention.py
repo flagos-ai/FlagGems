@@ -75,16 +75,25 @@ def _attn_fwd_inner(
     q = smt.view(q_desc, (0, 0), (BLOCK_M, BLOCK_SIZE_K), (MICRO_M, MICRO_K))
     ones_desc = smt.descriptor_load(ONES_block_ptr, (0, 0))
     ones_v = smt.view(ones_desc, (0, 0), (BLOCK_N, MICRO_N), (MICRO_K, MICRO_N))
+    pv_ptr = smt.alloc(
+        (num_m_tiles, BLOCK_SIZE_K // MICRO_N, MICRO_M, MICRO_N), type=tl.float32
+    )
+    sum_ptr = smt.alloc((num_m_tiles, 1, MICRO_M, MICRO_N), type=tl.float32)
     m_bc = tl.reshape(m_i_2d, (num_m_tiles, 1, MICRO_M, 1))
     offs_m_4d = tl.reshape(offs_m, (num_m_tiles, 1, MICRO_M, 1))
     offs_n_4d = tl.reshape(offs_n, (1, num_n_tiles, 1, MICRO_N))
     causal_offset = KV_CTX - Q_CTX
+    # Keep logits in FP32: rounding QK to FP16 before softmax changes sharp
+    # attention probabilities even when the final output remains finite.
+    qk_ptr = smt.alloc((num_m_tiles, num_n_tiles, MICRO_M, MICRO_N), type=tl.float32)
     for start_n in tl.range(lo, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_desc = smt.descriptor_load(K_block_ptr, (0, 0))
         k = smt.view(k_desc, (0, 0), (BLOCK_N, BLOCK_SIZE_K), (MICRO_N, MICRO_K))
         trans_k = tl.permute(k, (1, 0, 3, 2))
-        qk = smt.dot(q, trans_k) * qk_scale
+        qk = smt.descriptor_load(qk_ptr, (0, 0, 0, 0))
+        smt.dot(q, trans_k, qk)
+        qk = qk * qk_scale
         mask_n = (start_n + offs_n) < KV_CTX
         mask_n_4d = tl.reshape(mask_n, (1, num_n_tiles, 1, MICRO_N))
         qk = tl.where(mask_n_4d, qk, -1.0e6)
@@ -97,8 +106,12 @@ def _attn_fwd_inner(
         v = smt.view(v_desc, (0, 0), (BLOCK_N, BLOCK_SIZE_K), (MICRO_K, MICRO_N))
         p_cast = p.to(v.dtype)
         p_cast = smt.view(p_cast, (0, 0), (BLOCK_M, BLOCK_N), (MICRO_M, MICRO_K))
-        acc += smt.dot(p_cast, v)
-        l_acc += smt.dot(p_cast, ones_v)
+        pv = smt.descriptor_load(pv_ptr, (0, 0, 0, 0))
+        smt.dot(p_cast, v, pv)
+        acc += pv
+        row_sum = smt.descriptor_load(sum_ptr, (0, 0, 0, 0))
+        smt.dot(p_cast, ones_v, row_sum)
+        l_acc += row_sum
         V_block_ptr = tl.advance(V_block_ptr, (BLOCK_N, 0))
         K_block_ptr = tl.advance(K_block_ptr, (BLOCK_N, 0))
     return acc, l_acc
@@ -137,12 +150,17 @@ def _attn_max_pass(
     offs_m_4d = tl.reshape(offs_m, (num_m_tiles, 1, MICRO_M, 1))
     offs_n_4d = tl.reshape(offs_n, (1, num_n_tiles, 1, MICRO_N))
     causal_offset = KV_CTX - Q_CTX
+    # Keep logits in FP32: rounding QK to FP16 before softmax changes sharp
+    # attention probabilities even when the final output remains finite.
+    qk_ptr = smt.alloc((num_m_tiles, num_n_tiles, MICRO_M, MICRO_N), type=tl.float32)
     for start_n in tl.range(lo, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_desc = smt.descriptor_load(K_block_ptr, (0, 0))
         k = smt.view(k_desc, (0, 0), (BLOCK_N, BLOCK_SIZE_K), (MICRO_N, MICRO_K))
         trans_k = tl.permute(k, (1, 0, 3, 2))
-        qk = smt.dot(q, trans_k) * qk_scale
+        qk = smt.descriptor_load(qk_ptr, (0, 0, 0, 0))
+        smt.dot(q, trans_k, qk)
+        qk = qk * qk_scale
         mask_n = (start_n + offs_n) < KV_CTX
         mask_n_4d = tl.reshape(mask_n, (1, num_n_tiles, 1, MICRO_N))
         qk = tl.where(mask_n_4d, qk, -1.0e6)
@@ -788,7 +806,7 @@ def scaled_dot_product_attention(
     B, Hq, Mq, D = query.shape
     _, Hkv, Mk, _ = key.shape
     if (
-        query.dtype == torch.float16
+        query.dtype in (torch.float16, torch.float32)
         and D in (64, 128)
         and B == 1
         and key.shape[0] == value.shape[0] == 1
@@ -809,7 +827,7 @@ def scaled_dot_product_attention(
         and dropout_p == 0.0
     ):
         sc = scale if scale is not None else (1.0 / math.sqrt(D))
-        if Mq == 1 and D == 128:
+        if query.dtype == torch.float16 and Mq == 1 and D == 128:
             return _sdpa_m1_fused(query, key, value, sc, is_causal)
         return Attention.apply(query, key, value, sc, is_causal, enable_gqa)
     sc = scale if scale is not None else (1.0 / math.sqrt(D))
@@ -828,6 +846,6 @@ def scaled_dot_product_flash_attention_for_cpu(
     attn_mask=None,
     scale=None,
 ):
-    """CPU flash ATen bridge returning both output and float accumulation LSE."""
+    """Direct CPU bridge; ordinary use_gems registration uses public SDPA."""
     logger.debug("GEMS_SPACEMIT SCALED_DOT_PRODUCT_FLASH_ATTENTION_FOR_CPU")
     return _attention_forward(query, key, value, attn_mask, dropout_p, is_causal, scale)

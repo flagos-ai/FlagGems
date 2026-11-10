@@ -56,6 +56,9 @@ def bmm_kernel(
     MICRO_N: tl.constexpr,
     MICRO_K: tl.constexpr,
     num_ctas: tl.constexpr,
+    Bias=None,
+    stride_bias_b=0,
+    stride_bias_m=0,
 ):
     # Keep every K-block result in FP32, including for FP16 inputs.
     partial_ptr = smt.alloc(
@@ -94,6 +97,14 @@ def bmm_kernel(
             partial = smt.descriptor_load(partial_ptr, (0, 0, 0, 0))
             smt.dot(a, b, partial)
             acc += smt.view(partial, (0, 0), (TILE_M, TILE_N), (1, 1))
+        if Bias is not None:
+            rows = pid_m * TILE_M + tl.arange(0, TILE_M)
+            bias = tl.load(
+                Bias + pid_b * stride_bias_b + rows * stride_bias_m,
+                rows < M,
+                other=0,
+            ).to(tl.float32)
+            acc += bias[:, None]
         out_ptr = tl.make_block_ptr(
             base=O + pid_b * stride_ob,
             shape=(M, N),
@@ -106,26 +117,24 @@ def bmm_kernel(
 
 
 def bmm(A, B):
+    return bmm_out(A, B)
+
+
+def bmm_out(A, B, out=None):
     logger.debug("GEMS_SPACEMIT BMM")
     assert A.ndim == B.ndim == 3, "Expected batched matrices"
-    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
-    assert A.shape[2] == B.shape[1], "K dim mismatch"
-    out = torch.empty(
-        (A.shape[0], A.shape[1], B.shape[2]), dtype=A.dtype, device=A.device
-    )
-    return bmm_out(A, B, out)
-
-
-def bmm_out(A, B, out):
-    logger.debug("GEMS_SPACEMIT BMM_OUT")
-    assert A.ndim == B.ndim == 3, "Expected batched matrices"
-    assert A.shape[0] == B.shape[0], "Batch dim mismatch"
-    assert A.shape[2] == B.shape[1], "K dim mismatch"
     batch, M, K = A.shape
-    N = B.shape[2]
-    assert out.shape == (batch, M, N), "Output shape mismatch"
-    assert A.dtype == B.dtype == out.dtype, "Dtype mismatch"
-    assert A.device == B.device == out.device, "Device mismatch"
+    batch_b, K_b, N = B.shape
+    assert batch == batch_b, "Batch dim mismatch"
+    assert K == K_b, "K dim mismatch"
+    assert A.dtype == B.dtype, "Dtype mismatch"
+    assert A.device == B.device, "Device mismatch"
+    if out is None:
+        out = torch.empty((batch, M, N), dtype=A.dtype, device=A.device)
+    else:
+        assert out.shape == (batch, M, N), "Output shape mismatch"
+        assert out.dtype == A.dtype, "Dtype mismatch"
+        assert out.device == A.device, "Device mismatch"
     if batch == 0 or M == 0 or N == 0:
         return out
     if K == 0:
@@ -138,10 +147,13 @@ def bmm_out(A, B, out):
         return general_bmm_out(A, B, out)
 
     # Packing supports contiguous or transposed matrix dimensions.
-    if A.stride(1) != 1 and A.stride(2) != 1:
+    stride_a, stride_b = A.stride(), B.stride()
+    if stride_a[1] != 1 and stride_a[2] != 1:
         A = A.contiguous()
-    if B.stride(1) != 1 and B.stride(2) != 1:
+        stride_a = A.stride()
+    if stride_b[1] != 1 and stride_b[2] != 1:
         B = B.contiguous()
+        stride_b = B.stride()
 
     def grid(meta):
         tiles = batch * triton.cdiv(M, meta["TILE_M"]) * triton.cdiv(N, meta["TILE_N"])
@@ -156,14 +168,8 @@ def bmm_out(A, B, out):
         M,
         N,
         K,
-        A.stride(0),
-        A.stride(1),
-        A.stride(2),
-        B.stride(0),
-        B.stride(1),
-        B.stride(2),
-        out.stride(0),
-        out.stride(1),
-        out.stride(2),
+        *stride_a,
+        *stride_b,
+        *out.stride(),
     )
     return out
