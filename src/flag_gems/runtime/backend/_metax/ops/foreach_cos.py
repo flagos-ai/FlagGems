@@ -368,7 +368,7 @@ def _launch_cos(inp, out, fp64):
         NDIM=nd,
         BLOCK=block,
         num_warps=_STRIDED_WARPS,
-        num_stages=1，
+        num_stages=1,
     )
     return out
 
@@ -396,7 +396,7 @@ def _launch_cos_multi(group, n, fp64):
         NT=nt,
         BLOCK=block,
         num_warps=_FLAT_WARPS,
-        num_stages=1，
+        num_stages=1,
     )
 
 
@@ -429,7 +429,7 @@ def _launch_cos_complex(t, out, fp64):
         NDIM=nd,
         BLOCK=block,
         num_warps=_STRIDED_WARPS,
-        num_stages=1，
+        num_stages=1,
     )
     return out
 
