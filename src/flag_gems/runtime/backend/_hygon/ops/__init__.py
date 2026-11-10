@@ -124,6 +124,7 @@ from .inner import inner
 from .int_mm import int_mm, int_mm_out
 from .isin import isin
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
+from .layernorm import layer_norm, native_layer_norm
 from .lcm import lcm, lcm_
 from .ldexp_ import ldexp_
 from .lift_fresh import lift_fresh
@@ -345,6 +346,7 @@ __all__ = [
     "int_mm_out",
     "isin",
     "jagged_to_padded_dense_forward",
+    "layer_norm",
     "lcm",
     "lcm_",
     "ldexp_",
@@ -387,6 +389,7 @@ __all__ = [
     "nanmedian_out",
     "nansum",
     "nansum_out",
+    "native_layer_norm",
     "nll_loss_backward",
     "nonzero_numpy",
     "norm_scalaropt_dim",
