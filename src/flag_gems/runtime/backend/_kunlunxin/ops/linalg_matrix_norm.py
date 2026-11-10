@@ -923,20 +923,152 @@ def _svd_bidiag_sturm(Ab, B, M, N, mode):
         return sig[:, :K].sum(dim=1)
 
 
+@libentry()
+@triton.jit(do_not_specialize=["B", "M", "N", "PAD"])
+def _absmax_sum_kernel(
+    A,
+    Partial,
+    B,
+    M,
+    N,
+    PAD,
+    IS_MIN: tl.constexpr,
+    ALONG_ROWS: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    """Stage 1 of |A| sum -> max/min: per-lane abs-sums of the summed dim.
+
+    ``ALONG_ROWS=True``  -> ord +/-inf: survive over M, sum over N (axis=1).
+    ``ALONG_ROWS=False`` -> ord +/-1:   survive over N, sum over M.  The summed
+    dimension (M) is loaded transposed so the reduce is still ``axis=1`` -- the
+    backend cannot lower ``axis=0`` 2-D reductions (``arith.addf`` type
+    mismatch) and cannot lower ``tl.atomic_{min,max}`` (uni_sram OOR).
+
+    Each program emits one *vector* ``Partial[b, pid*BLOCK : (pid+1)*BLOCK]``
+    of surviving-lane sums; stage 2 folds those vectors.  A single
+    ``tl.sum(axis=1)`` reduction per program keeps the legalizer's reduce group
+    consistent (two reduces of different ranks in one kernel trip
+    ``reduceRowsPerCore_``).  Loads are never ``other=``-masked; indices are
+    clamped and masked lanes are zeroed by multiplication before the sum.
+    """
+    pid = tl.program_id(0)
+    b = tl.program_id(1)
+    base = A + b * M * N
+    nrows = tl.arange(0, BLOCK_M)
+    ncols = tl.arange(0, BLOCK_N)
+
+    if ALONG_ROWS:
+        r = pid * BLOCK_M + nrows
+        r_mask = r < M
+        r_safe = tl.minimum(r, M - 1)
+        acc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
+        for n0 in range(0, N, BLOCK_N):
+            c = n0 + ncols
+            c_mask = c < N
+            c_safe = tl.minimum(c, N - 1)
+            x = tl.load(base + r_safe[:, None] * N + c_safe[None, :]).to(tl.float32)
+            m = (r_mask[:, None] & c_mask[None, :]).to(tl.float32)
+            acc += tl.abs(x) * m
+        res = tl.sum(acc, axis=1)
+        if IS_MIN:
+            res = tl.where(r_mask, res, tl.full([BLOCK_M], float("inf"), dtype=tl.float32))
+        else:
+            res = tl.where(r_mask, res, tl.full([BLOCK_M], float("-inf"), dtype=tl.float32))
+        tl.store(Partial + b * PAD + pid * BLOCK_M + nrows, res)
+    else:
+        c = pid * BLOCK_N + ncols
+        c_mask = c < N
+        c_safe = tl.minimum(c, N - 1)
+        acc = tl.zeros([BLOCK_N, BLOCK_M], dtype=tl.float32)
+        for m0 in range(0, M, BLOCK_M):
+            r = m0 + nrows
+            r_mask = r < M
+            r_safe = tl.minimum(r, M - 1)
+            # tile[i, j] = A[r_safe[j], c_safe[i]]  (transposed load -> axis=1)
+            x = tl.load(base + r_safe[None, :] * N + c_safe[:, None]).to(tl.float32)
+            m = (c_mask[:, None] & r_mask[None, :]).to(tl.float32)
+            acc += tl.abs(x) * m
+        res = tl.sum(acc, axis=1)
+        if IS_MIN:
+            res = tl.where(c_mask, res, tl.full([BLOCK_N], float("inf"), dtype=tl.float32))
+        else:
+            res = tl.where(c_mask, res, tl.full([BLOCK_N], float("-inf"), dtype=tl.float32))
+        tl.store(Partial + b * PAD + pid * BLOCK_N + ncols, res)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "SURVIVE", "PAD"])
+def _absmax_combine_kernel(
+    Partial,
+    Out,
+    B,
+    SURVIVE,
+    PAD,
+    IS_MIN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Stage 2: fold the per-lane sums ``Partial[b, :SURVIVE]`` into ``Out[b]``."""
+    b = tl.program_id(0)
+    idx = tl.arange(0, BLOCK)
+    mask = idx < SURVIVE
+    safe = tl.minimum(idx, SURVIVE - 1)
+    x = tl.load(Partial + b * PAD + safe).to(tl.float32)
+    if IS_MIN:
+        x = tl.where(mask, x, tl.full([BLOCK], float("inf"), dtype=tl.float32))
+        tl.store(Out + b, tl.min(x))
+    else:
+        x = tl.where(mask, x, tl.full([BLOCK], float("-inf"), dtype=tl.float32))
+        tl.store(Out + b, tl.max(x))
+
+
 def _absmax_norm(Ab, B, M, N, is_min, along_rows):
-    """|A| row/column sums followed by a max (or min) over the survivors.
+    """|A| row/column abs sums followed by a max (or min) over the survivors.
 
     ``along_rows=True``  -> ord = +/-inf (sum over N, then max/min over M)
     ``along_rows=False`` -> ord = +/-1   (sum over M, then max/min over N)
+
+    Two kernels (no DMA transpose, no ``torch.full`` padding, no atomics, one
+    reduction each): stage 1 produces the per-lane abs-sums, stage 2 folds them
+    to a scalar.  The previous implementation transposed the whole matrix
+    through the DMA engine for ord=+/-1 and ran two ``_row_reduce`` kernels
+    (with ``torch.full`` padding) for every ord -- ~4-15x slower than native on
+    the small benchmark shapes.
     """
     if along_rows:
-        base, R, C = Ab, B * M, N
+        block = _BLOCK_M
+        survive = M
     else:
-        base = _native_contiguous(Ab.transpose(-2, -1))
-        R, C = B * N, M
-    sums = _row_reduce(base.reshape(R, C), R, C, _OP_SUMABS)
-    inner = R // B
-    return _row_reduce(sums.reshape(B, inner), B, inner, _OP_MIN if is_min else _OP_MAX)
+        block = _BLOCK_N
+        survive = N
+    n_outer = triton.cdiv(survive, block)
+    pad = n_outer * block
+    partial = torch.empty((B, pad), dtype=torch.float32, device=Ab.device)
+    _absmax_sum_kernel[(n_outer, B)](
+        Ab,
+        partial,
+        B,
+        M,
+        N,
+        pad,
+        IS_MIN=is_min,
+        ALONG_ROWS=along_rows,
+        BLOCK_M=_BLOCK_M,
+        BLOCK_N=_BLOCK_N,
+        buffer_size_limit=2048,
+    )
+    out = torch.empty((B,), dtype=torch.float32, device=Ab.device)
+    _absmax_combine_kernel[(B,)](
+        partial,
+        out,
+        B,
+        survive,
+        pad,
+        IS_MIN=is_min,
+        BLOCK=triton.next_power_of_2(survive),
+        buffer_size_limit=2048,
+    )
+    return out
 
 
 def linalg_matrix_norm(

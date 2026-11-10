@@ -24,6 +24,8 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ._gemm_tuned import nn as _gemm_nn
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,38 +137,56 @@ def _launch_gemm(left, right, output, rows, columns, inner, is_fp64):
 def _matrix_multiply(left, right, out=None):
     """Multiply without TF32 so results match ATen's multi_dot precision.
 
+    The generic 32x32 masked tile kernel (still kept below for fp64) costs
+    ~4.5x the native chain on every benchmark shape: a 64x128 tile with
+    masked 2-D loads is both launch-bound and poorly parallelised, while
+    ``_gemm_tuned.nn`` runs the same vendor ``mm_kernel`` mask-free with the
+    tile picked for the shape (measured 0.6-1.2x of native per step).
+
     The XPU ``tl.dot`` accumulates bf16 operands in fp32 correctly, but the
-    in-kernel fp32 -> bf16 store (``tl.store`` into a bf16 buffer) rounds the
-    mantissa down by up to 4 bf16 ULPs (measured ~0.25 on unit-scale data),
-    which compounds through a chain and exceeds the bf16 accuracy tolerance.
-    The fp32 accumulator itself is only ~1 fp32 ULP from the native result, and
-    converting that fp32 buffer to bf16 on the host is exact, so bf16 goes
-    through an fp32 buffer + host-side conversion.  fp16/fp32 keep the generic
-    store path (fp16's store error stays within its 1e-3 tolerance).
+    in-kernel fp32 -> bf16 store rounds the mantissa down by up to 4 bf16 ULPs
+    (measured ~0.25 on unit-scale data), which compounds through a chain and
+    exceeds the bf16 accuracy tolerance.  ATen's bf16 multi_dot rounds every
+    intermediate product back to bf16 (verified bit-exact against the CPU
+    chain), so each step must be rounded too -- just correctly.  ``_gemm_nn``
+    returns get_higher_dtype(left, right) = bf16 for bf16 operands, so the step
+    is run with an explicit fp32 output buffer (exact fp32 accumulation) and
+    cast to bf16 on the host, where the cast is round-to-nearest.  fp16/fp32
+    take the direct store path (fp16's store error stays within its 1e-3
+    tolerance).
     """
     if left.device.type == "cpu":
         raise RuntimeError("multi_dot(): Kunlunxin backend requires device tensors")
 
-    rows, inner = left.shape
-    columns = right.shape[1]
     dtype = left.dtype
+    if dtype == torch.float64:
+        rows, inner = left.shape
+        columns = right.shape[1]
+        if out is None:
+            out = torch.empty((rows, columns), dtype=dtype, device=left.device)
+        _launch_gemm(left, right, out, rows, columns, inner, is_fp64=True)
+        return out
 
     if dtype == torch.bfloat16:
+        rows, inner = left.shape
+        columns = right.shape[1]
+        a = left if left.dtype == torch.float32 else left.to(torch.float32)
+        b = right if right.dtype == torch.float32 else right.to(torch.float32)
         out32 = torch.empty((rows, columns), dtype=torch.float32, device=left.device)
-        _launch_gemm(left, right, out32, rows, columns, inner, is_fp64=False)
+        _gemm_nn(a, b, out=out32)
         if out is not None:
-            # copy_ with a dtype cast rounds fp32 -> bf16 on the host (exact);
-            # this also writes strided/non-contiguous ``out`` correctly.
+            # copy_ with a dtype cast rounds fp32 -> bf16 on the host (exact
+            # round-to-nearest, matching native) and writes any strided ``out``.
             out.copy_(out32)
             return out
-        return out32.to(torch.bfloat16)
+        # Same rounding through copy_: measured 4.7us against 48.6us for
+        # ``out32.to(torch.bfloat16)`` on the same 64x128 buffer, because the
+        # ``_to_copy`` override costs a full separate dispatch on this backend.
+        res = torch.empty((rows, columns), dtype=torch.bfloat16, device=left.device)
+        res.copy_(out32)
+        return res
 
-    if out is None:
-        out = torch.empty((rows, columns), dtype=dtype, device=left.device)
-    _launch_gemm(
-        left, right, out, rows, columns, inner, is_fp64=(dtype == torch.float64)
-    )
-    return out
+    return _gemm_nn(left, right, out=out)
 
 
 def _multiply_chain(arrays, splits, start, end, out=None):
@@ -211,6 +231,12 @@ def linalg_multi_dot(tensors):
     logger.debug("GEMS_KUNLUNXIN LINALG_MULTI_DOT")
     arrays, output_shape = _validate_and_prepare(tensors)
     result = _multi_dot_impl(arrays)
+    if result.dtype != arrays[0].dtype:
+        # bf16 chains accumulate in fp32 (see _matrix_multiply); round once here.
+        # copy_ instead of ``.to()``: same host round-to-nearest, 10x cheaper.
+        rounded = torch.empty(result.shape, dtype=arrays[0].dtype, device=result.device)
+        rounded.copy_(result)
+        result = rounded
     return result.view(output_shape)
 
 

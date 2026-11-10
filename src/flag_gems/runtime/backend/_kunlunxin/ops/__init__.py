@@ -542,6 +542,7 @@ from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .kl_div import kl_div  # noqa: F401
 from .kron import kron
 from .kthvalue import kthvalue
+from .l1_loss import l1_loss  # noqa: F401
 from .layernorm import layer_norm, layer_norm_backward
 from .lcm import lcm, lcm_
 from .le import le, le_, le_scalar, le_scalar_
@@ -556,6 +557,7 @@ from .lift_out import lift_out  # noqa: F401
 from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
+from .linalg_eigh import linalg_eigh
 from .linalg_householder_product import linalg_householder_product
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
@@ -567,12 +569,14 @@ from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
 from .linalg_slogdet import linalg_slogdet
+from .linalg_solve_ex import linalg_solve_ex
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
     linalg_solve_triangular_out,
 )
 from .linalg_svd import linalg_svd
 from .linalg_svdvals import linalg_svdvals
+from .linalg_vander import linalg_vander
 from .linear import linear
 from .linear_backward import linear_backward
 from .linspace import linspace
@@ -1471,6 +1475,7 @@ __all__ = [
     "kl_div",
     "kron",
     "kthvalue",
+    "l1_loss",
     "layer_norm",
     "layer_norm_backward",
     "lcm",
@@ -1503,6 +1508,7 @@ __all__ = [
     "linalg_cross_out",
     "linalg_det",
     "linalg_det_out",
+    "linalg_eigh",
     "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_lstsq",
@@ -1517,10 +1523,12 @@ __all__ = [
     "linalg_multi_dot",
     "linalg_multi_dot_out",
     "linalg_slogdet",
+    "linalg_solve_ex",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
     "linalg_svdvals",
+    "linalg_vander",
     "linear",
     "linear_backward",
     "linspace",

@@ -369,7 +369,15 @@ def v_norm_kernel(X, Out, M, N, ord, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexp
         mask = row_mask and col_mask
 
         a = tl.load(X + cols, mask, other=0.0).to(tl.float32)
-        _sum += pow(tl.abs(a), ord)
+        # XPU ignores ``other=0.0`` on masked loads: out-of-range lanes read
+        # adjacent memory.  For ord < 0 a near-zero garbage value makes
+        # ``|a|**ord`` huge (or inf), which then dominates the row sum and
+        # drives the final ``sum**(1/ord)`` to 0.  Neutralise the masked lanes
+        # arithmetically (to 1.0, which is finite for every ord) and zero their
+        # contribution afterwards, without relying on ``other``.
+        colf = col_mask.to(tl.float32) * row_mask.to(tl.float32)
+        a = a * colf + (1.0 - colf)
+        _sum += pow(tl.abs(a), ord) * colf
     sum = tl.sum(_sum, axis=1)
     out = pow(sum, 1 / ord)[:, None]
     tl.store(Out, out, row_mask)
