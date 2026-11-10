@@ -48,6 +48,7 @@ from .foreach_expm1 import foreach_expm1
 from .foreach_expm1_ import foreach_expm1_
 from .foreach_floor import foreach_floor
 from .foreach_floor_ import foreach_floor_
+from .foreach_frac import foreach_frac
 from .foreach_frac_ import foreach_frac_
 from .full import full
 from .full_like import full_like
@@ -233,6 +234,7 @@ __all__ = [
     "foreach_expm1_",
     "foreach_floor",
     "foreach_floor_",
+    "foreach_frac",
     "foreach_frac_",
     "full",
     "full_like",
