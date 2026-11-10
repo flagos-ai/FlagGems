@@ -49,6 +49,15 @@ from typing import (
 import triton
 
 try:
+    # OutOfResources is a TritonError, NOT a RuntimeError, so it is not caught by
+    # a bare `except RuntimeError` during config benchmarking. Catch it too so an
+    # over-large config (e.g. one exceeding the LDS/shared-memory limit) is
+    # pruned instead of crashing the whole tuning run.
+    from triton.runtime.errors import OutOfResources as _TritonOutOfResources
+except Exception:  # pragma: no cover - older/newer triton layouts
+    _TritonOutOfResources = ()
+
+try:
     import triton.flagtune  # noqa: F401
 except ModuleNotFoundError as exc:
     if exc.name != "triton.flagtune":
@@ -413,6 +422,14 @@ class LibTuner(triton.runtime.Autotuner):
                 from triton.testing import do_bench_cudagraph
 
                 def do_bench(kernel_call, quantiles):
+                    from flag_gems.runtime import device
+
+                    if device.vendor_name == "mthreads":
+                        next_power_of_2 = triton.next_power_of_2
+                        try:
+                            importlib.import_module("torchada")
+                        finally:
+                            triton.next_power_of_2 = next_power_of_2
                     return do_bench_cudagraph(
                         kernel_call,
                         rep=rep if rep is not None else 100,
@@ -563,7 +580,7 @@ class LibTuner(triton.runtime.Autotuner):
         )
         self.cache = libcache[self.config_table_name]
 
-    def apply_flagtune(self):
+    def apply_flagtune(self, arguments=None):
         supports_cost_model = _supports_flagtune_cost_model(self)
         if self._flagtune_op_name is None and not supports_cost_model:
             return False
@@ -574,11 +591,10 @@ class LibTuner(triton.runtime.Autotuner):
         intent = runtime.resolve_cost_model_intent(
             supports_cost_model=supports_cost_model
         )
+        key = cost_model.failure_key(self, arguments or {})
+        self._flagtune_failure_key = key
         auto_disabled = (
-            intent is runtime.CostModelIntent.AUTO
-            and cost_model.is_auto_disabled(
-                self._flagtune_op_id, self._flagtune_variant
-            )
+            intent is runtime.CostModelIntent.AUTO and cost_model.is_auto_disabled(*key)
         )
         # A changed effective mode invalidates this entry's compiled dispatch
         # caches. REQUIRED deliberately ignores the AUTO fuse.
@@ -992,30 +1008,29 @@ class LibTuner(triton.runtime.Autotuner):
         """
         self.benchmark_success_count = 0
         self.benchmark_cache_hit_count = 0
-        # Direct LibTuner callers must also honor the operator fuse before a
-        # best-config cache hit can bypass policy execution.
-        if (
-            cost_model.is_auto_disabled(
-                getattr(self, "_flagtune_op_id", None),
-                getattr(self, "_flagtune_variant", None),
+        # Bind this invocation before consulting its model's failure state.
+        self.nargs = dict(zip(self.arg_names, args))
+        retry_cost_model = False
+        # Direct callers must reselect when switching model identities, and
+        # revisit a failed identity before a best-config cache hit bypasses it.
+        if _supports_flagtune_cost_model(self) and cost_model._COST_MODEL_DISABLED_OPS:
+            arguments = {**self.nargs, **kwargs}
+            key = cost_model.failure_key(self, arguments)
+            failure = cost_model.auto_failure_state(*key)
+            if key != getattr(self, "_flagtune_failure_key", None) or failure[0]:
+                self.apply_flagtune(arguments)
+            retry_cost_model = failure == (True, False) and (
+                runtime.resolve_cost_model_intent(supports_cost_model=True)
+                is runtime.CostModelIntent.AUTO
             )
-            and runtime.resolve_cost_model_intent(
-                supports_cost_model=_supports_flagtune_cost_model(self)
-            )
-            is runtime.CostModelIntent.AUTO
-        ):
-            self.apply_flagtune()
         run_mode = LibTunerRunMode(getattr(self, "_run_mode", LibTunerRunMode.NORMAL))
         self._flagtune_fallback_cache = None
-        bypass_config_cache = run_mode is not LibTunerRunMode.NORMAL
+        bypass_config_cache = run_mode is not LibTunerRunMode.NORMAL or retry_cost_model
         exhaustive_collection = run_mode is LibTunerRunMode.EXHAUSTIVE_COLLECTION
         if hasattr(self, "seen_tuned_metas"):
             self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
         self._last_benchmark_args = tuple(args)
         self._last_benchmark_meta = dict(kwargs)
-        # `arg_names` corresponds to the arguments of the `JITFunction`'s signature,
-        # so please make sure the orders of `arg_names` and `args` match.
-        self.nargs = dict(zip(self.arg_names, args))
         used_cached_result = True
         cost_model_mode = (
             getattr(self, "_flagtune_mode", runtime.TuningMode.DEFAULT)
@@ -1046,7 +1061,7 @@ class LibTuner(triton.runtime.Autotuner):
                     if ret is None:
                         try:
                             ret = self._bench(*args, config=config, **kwargs)
-                        except RuntimeError as e:
+                        except (RuntimeError, _TritonOutOfResources) as e:
                             if getattr(self, "_flagtune_strict_benchmark", False):
                                 raise
                             # A config whose COMPILE raises a plain RuntimeError
@@ -1133,11 +1148,52 @@ class LibTuner(triton.runtime.Autotuner):
             self.shared_config_pre_hook(full_nargs)
         elif config.pre_hook is not None:
             config.pre_hook(full_nargs)
-        ret = self.fn.run(
-            *args,
-            **kwargs,
-            **config.all_kwargs(),
-        )
+        try:
+            ret = self.fn.run(
+                *args,
+                **kwargs,
+                **config.all_kwargs(),
+            )
+        except _TritonOutOfResources:
+            # The selected config exceeds a hardware limit (e.g. LDS/shared
+            # memory) on this device. Some selection paths (single-config, cost
+            # model, cached result) never launch the kernel during tuning, so
+            # the limit only surfaces here. Retry the remaining configs,
+            # smallest first, and keep the first one that fits.
+            def _cfg_size(c):
+                blocks = 1
+                for k, v in c.kwargs.items():
+                    if isinstance(v, int) and "BLOCK" in k.upper():
+                        blocks *= max(1, v)
+                return (getattr(c, "num_stages", 1) or 1, blocks)
+
+            # Honor early_config_prune so the retry never picks a config the
+            # user's prune hook already ruled out; fall back to all configs if
+            # pruning is unset or fails.
+            candidate_configs = self.configs
+            if getattr(self, "early_config_prune", None) is not None:
+                try:
+                    pruned = self.early_config_prune(self.configs, self.nargs, **kwargs)
+                    if pruned:
+                        candidate_configs = pruned
+                except Exception:
+                    candidate_configs = self.configs
+
+            ret = None
+            for alt in sorted(candidate_configs, key=_cfg_size):
+                if alt is config:
+                    continue
+                try:
+                    if alt.pre_hook is not None:
+                        alt.pre_hook({**self.nargs, **kwargs, **alt.all_kwargs()})
+                    ret = self.fn.run(*args, **kwargs, **alt.all_kwargs())
+                    config = alt
+                    self.best_config = alt
+                    break
+                except _TritonOutOfResources:
+                    continue
+            if ret is None:
+                raise
         self.nargs = None
         return ret
 
@@ -1385,12 +1441,16 @@ class LibEntry(triton.KernelInterface):
     def __init__(
         self,
         fn,
+        *,
+        cache_binding=False,
     ):
         self.fn = fn
         self.arg_names = fn.arg_names
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
         self._has_flagtune_tuner = self._contains_flagtune_tuner(fn)
+        self._flagtune_state = None
+        self._flagtune_tuners = self._cost_model_tuners(fn)
         self._cpu_cache = dict()
 
         while not isinstance(fn, triton.runtime.JITFunction):
@@ -1414,6 +1474,34 @@ class LibEntry(triton.KernelInterface):
         else:
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
+        self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+        # The cached binder follows Triton 3.3-3.6 launch argument conventions.
+        self._cache_binding = (
+            cache_binding and major_version == 3 and 3 <= minor_version <= 6
+        )
+        if self._cache_binding:
+            self._init_cached_binding()
+
+    @staticmethod
+    def _resolve_tensor_spec_fn():
+        # On backends whose pointer specialization depends on tensor size (AMD
+        # and hygon mark tensors <2GB so their pointers use 32-bit buffer-op
+        # addressing), that specialization must be part of the kernel cache key.
+        # Otherwise a kernel compiled for a <2GB tensor is wrongly reused for a
+        # >2GB tensor and its 32-bit offset overflows.
+        vendor = device.vendor_name
+        backend = None
+        try:
+            if vendor == "amd":
+                from triton.backends.amd.compiler import HIPBackend as backend
+            elif vendor == "hygon" and hasattr(triton.backends, "hcu"):
+                from triton.backends.hcu.compiler import HIPBackend as backend
+        except ImportError:
+            backend = None
+        if backend is None:
+            return None
+        fn = getattr(backend, "get_tensor_specialization", None)
+        return fn if callable(fn) else None
 
     @staticmethod
     def _contains_flagtune_tuner(fn):
@@ -1431,40 +1519,97 @@ class LibEntry(triton.KernelInterface):
                 break
         return False
 
-    def _apply_flagtune(self):
-        changed = False
-        fn = self.fn
+    @staticmethod
+    def _cost_model_tuners(fn):
+        """Collect tuners whose model identity depends on launch arguments."""
+        tuners = []
         while not isinstance(fn, triton.runtime.JITFunction):
-            apply_flagtune = getattr(fn, "apply_flagtune", None)
-            if apply_flagtune is not None:
-                changed = apply_flagtune() or changed
+            if _supports_flagtune_cost_model(fn):
+                tuners.append(fn)
             fn = getattr(fn, "fn", None)
             if fn is None:
                 break
-        if changed:
-            for cache in self.kernel_cache:
-                cache.clear()
-            self._cpu_cache.clear()
+        return tuple(tuners)
+
+    def _apply_flagtune(self, device=None, args=(), kwargs=None):
+        from flag_gems.runtime.flagtune import _flagtune_state_key
+
+        if device is None:
+            device = torch_device_fn.current_device()
+        arguments = None
+
+        def failure_states():
+            nonlocal arguments
+            if not cost_model._COST_MODEL_DISABLED_OPS or not self._flagtune_tuners:
+                return ()
+            arguments = {
+                **dict(zip(getattr(self, "arg_names", ()), args)),
+                **(kwargs or {}),
+            }
+            states = []
+            for tuner in self._flagtune_tuners:
+                key = cost_model.failure_key(tuner, arguments)
+                failure = cost_model.auto_failure_state(*key)
+                if failure[0]:
+                    states.append((key, failure))
+            return tuple(states)
+
+        state = (
+            device,
+            _flagtune_state_key(),
+            failure_states(),
+        )
+        if state == self._flagtune_state:
+            return
+        with self.lock:
+            # Recheck after waiting for another thread's initialization. Commit
+            # the state only after success, so failed validation is retried.
+            state = (
+                device,
+                _flagtune_state_key(),
+                failure_states(),
+            )
+            if state == self._flagtune_state:
+                return
+            if arguments is None:
+                arguments = {
+                    **dict(zip(getattr(self, "arg_names", ()), args)),
+                    **(kwargs or {}),
+                }
+            # A cooldown may expire before any launch selected fallback mode.
+            # Even if the effective mode is still CM, its cached fallback
+            # kernel must not prevent the policy from retrying the model.
+            changed = (
+                self._flagtune_state is not None and state[2] != self._flagtune_state[2]
+            )
+            fn = self.fn
+            while not isinstance(fn, triton.runtime.JITFunction):
+                apply_flagtune = getattr(fn, "apply_flagtune", None)
+                if apply_flagtune is not None:
+                    changed = (
+                        apply_flagtune(arguments)
+                        if _supports_flagtune_cost_model(fn)
+                        else apply_flagtune()
+                    ) or changed
+                fn = getattr(fn, "fn", None)
+                if fn is None:
+                    break
+            if changed:
+                for cache in self.kernel_cache:
+                    cache.clear()
+                self._cpu_cache.clear()
+                plans = getattr(self, "_launch_plans", None)
+                if plans is not None:
+                    plans.clear()
+            self._flagtune_state = state
 
     def key(self, spec_args, dns_args, const_args):
         def spec_arg(arg):
             if hasattr(arg, "data_ptr"):
-                if device.vendor_name == "hygon" and hasattr(triton.backends, "hcu"):
-                    try:
-                        from triton.backends.hcu.compiler import HIPBackend
-                    except ImportError:
-                        tensor_spec = None
-                    else:
-                        tensor_spec = getattr(
-                            HIPBackend, "get_tensor_specialization", None
-                        )
-                    if callable(tensor_spec):
-                        return (
-                            arg.dtype,
-                            arg.data_ptr() % self.divisibility == 0,
-                            tensor_spec(arg),
-                        )
-                return (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                base = (arg.dtype, arg.data_ptr() % self.divisibility == 0)
+                if self._tensor_spec_fn is not None:
+                    return base + (self._tensor_spec_fn(arg),)
+                return base
             return (type(arg), arg)
 
         def dns_arg(arg):
@@ -1485,6 +1630,23 @@ class LibEntry(triton.KernelInterface):
         return tuple(spec_key + dns_key + const_key)
 
     def _first_run(self, *args, **kwargs):
+        try:
+            return self._first_run_once(*args, **kwargs)
+        except _TritonOutOfResources:
+            # A fixed-config kernel has no tuner to fall back on when it exceeds
+            # shared memory (e.g. RDNA's 64KB LDS). num_stages only sets the
+            # software-pipelining depth, not the result, so retry shallower.
+            if not isinstance(self.fn, triton.runtime.JITFunction):
+                raise
+            stages = kwargs.get("num_stages") or 2
+            for s in range(stages - 1, 0, -1):
+                try:
+                    return self._first_run_once(*args, **{**kwargs, "num_stages": s})
+                except _TritonOutOfResources:
+                    continue
+            raise
+
+    def _first_run_once(self, *args, **kwargs):
         """Run the tuner once for a fresh entry key, with AABS disabled when
         the caller passes constexpr values as keyword arguments, or when the
         kernel opted out with ``libtuner(disable_aabs=True)``.
@@ -1513,9 +1675,14 @@ class LibEntry(triton.KernelInterface):
             knobs_obj.adjust_block_size = previous
 
     def run(self, *args, **kwargs):
+        if self._cache_binding:
+            cached = self._run_cached(args, kwargs)
+            if cached is not None:
+                return cached
         grid = kwargs["grid"]
+        device = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
-            self._apply_flagtune()
+            self._apply_flagtune(device, args, kwargs)
 
         # collect all the arguments
         spec_args = []  # specialize arguments
@@ -1560,7 +1727,6 @@ class LibEntry(triton.KernelInterface):
             )
 
         entry_key = self.key(spec_args, dns_args, const_args)
-        device = torch_device_fn.current_device()
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
         # This branch is CPU-generic — any future x86 / RISC-V CPU backend
@@ -1669,6 +1835,126 @@ class LibEntry(triton.KernelInterface):
             kernel[grid[0:3]](*k_args.values())
         return kernel, constexprs
 
+    def _init_cached_binding(self):
+        import torch
+
+        self._launch_plans = {}
+        self._binding_tensor_type = torch.Tensor
+        self._binding_scalar_types = (int, bool, float, str, type(None))
+        self._binding_param_names = tuple(p.name for p in self.jit_function.params)
+        self._binding_param_kinds = tuple(
+            0 if p.is_constexpr else 2 if p.do_not_specialize else 1
+            for p in self.jit_function.params
+        )
+        self._binding_param_defaults = tuple(
+            p.default for p in self.jit_function.params
+        )
+        self._binding_dtype_names = {}
+
+    def _run_cached(self, args, kwargs):
+        """Bind ordinary tensor/scalar launches without rebuilding OrderedDicts.
+
+        Cold entries and descriptors still use the complete generic path. The
+        key preserves tensor alignment, scalar specialization, integer widths,
+        defaults and FlagTune dtype identity. Plans store constants only; each
+        launch supplies its current tensors and unspecialized scalar values.
+        """
+        count = len(args)
+        if count > len(self._binding_param_names):
+            return None
+        keys = ([], [], [])
+        dtype_names = []
+        for kind, value in zip(self._binding_param_kinds, args):
+            if not (
+                isinstance(value, self._binding_tensor_type)
+                or type(value) in self._binding_scalar_types
+            ):
+                return None
+            if kind == 0 and isinstance(value, self._binding_tensor_type):
+                return None
+            keys[kind].append(value)
+            if self._has_flagtune_tuner and isinstance(
+                value, self._binding_tensor_type
+            ):
+                dtype = value.dtype
+                name = self._binding_dtype_names.get(dtype)
+                if name is None:
+                    name = self._binding_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        for name, kind, default in zip(
+            self._binding_param_names[count:],
+            self._binding_param_kinds[count:],
+            self._binding_param_defaults[count:],
+        ):
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                continue
+            if not (
+                isinstance(value, self._binding_tensor_type)
+                or type(value) in self._binding_scalar_types
+            ):
+                return None
+            if kind == 0 and isinstance(value, self._binding_tensor_type):
+                return None
+            keys[kind].append(value)
+            if self._has_flagtune_tuner and isinstance(
+                value, self._binding_tensor_type
+            ):
+                dtype = value.dtype
+                name = self._binding_dtype_names.get(dtype)
+                if name is None:
+                    name = self._binding_dtype_names[dtype] = str(dtype)
+                dtype_names.append(name)
+        if self._has_flagtune_tuner:
+            keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
+        # Generic order is specialized, unspecialized, then constexpr values.
+        entry_key = self.key(keys[1], keys[2], keys[0])
+        device_index = torch_device_fn.current_device()
+        if self._has_flagtune_tuner:
+            self._apply_flagtune(device_index, args, kwargs)
+        cache = (
+            self._cpu_cache
+            if device_index == "cpu"
+            else self.kernel_cache[device_index]
+        )
+        entry = cache.get(entry_key)
+        if entry is None:
+            return None
+        kernel, constexprs, tune_constexprs, heur_constexprs, hooks = entry
+        plan_key = (device_index, entry_key, count)
+        saved = self._launch_plans.get(plan_key)
+        if saved is None or saved[0] is not entry:
+            defaults = []
+            for name, default in zip(
+                self._binding_param_names[count:], self._binding_param_defaults[count:]
+            ):
+                if default is inspect._empty:
+                    if name in tune_constexprs:
+                        default = tune_constexprs[name]
+                    elif name in heur_constexprs:
+                        default = heur_constexprs[name]
+                    else:
+                        default = constexprs.get(name, inspect._empty)
+                defaults.append((name, default))
+            saved = (entry, tuple(defaults))
+            self._launch_plans[plan_key] = saved
+        all_args = list(args)
+        for name, default in saved[1]:
+            value = kwargs.get(name, default)
+            if value is inspect._empty:
+                return None
+            all_args.append(value)
+        grid = kwargs["grid"]
+        if callable(grid):
+            grid = grid({**dict(zip(self.arg_names, args)), **kwargs, **constexprs})
+        grid = grid + (1, 1)
+        if hooks:
+            hook_nargs = {**dict(zip(self.arg_names, args)), **kwargs}
+            for pre_hook, hook_kwargs in hooks:
+                pre_hook({**hook_nargs, **hook_kwargs})
+        kernel[grid[:3]](*all_args)
+        return kernel, constexprs
+
 
 def find_flagtune_benchmark_target(
     public_operator: Callable[..., Any], op_id: str, variant: str
@@ -1741,12 +2027,19 @@ def clear_libentry_dispatch_cache(entry: "LibEntry") -> None:
     for cache in entry.kernel_cache:
         cache.clear()
     entry._cpu_cache.clear()
+    plans = getattr(entry, "_launch_plans", None)
+    if plans is not None:
+        plans.clear()
 
 
-def libentry():
-    """Decorator for triton library entries."""
+def libentry(*, cache_binding=False):
+    """Decorate a kernel, optionally caching warm-launch argument binding.
+
+    Disabled by default. Cold launches and unsupported arguments use the
+    ordinary LibEntry path. The optimization is independent of the backend.
+    """
 
     def decorator(fn):
-        return LibEntry(fn)
+        return LibEntry(fn, cache_binding=cache_binding)
 
     return decorator

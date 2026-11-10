@@ -32,6 +32,9 @@ def test_special_hermite_polynomial_h(shape, dtype):
     # Test with tensor n in [0, 9]
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = torch.randint(0, 10, (1,), device=flag_gems.device).squeeze()
 
@@ -42,9 +45,12 @@ def test_special_hermite_polynomial_h(shape, dtype):
     ref_out = torch.special.hermite_polynomial_h(ref_inp, utils.to_reference(n))
     res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
-    # gems uses the same in-dtype recurrence as PyTorch, so results match the
-    # reference to default precision for both float32 and float64.
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # gems uses the same in-dtype recurrence as PyTorch, but FMA contraction can
+    # differ by device; near a root of H_n the cancellation turns a rounding
+    # difference at the polynomial's magnitude into a large relative error, so
+    # bound the absolute error by that magnitude.
+    atol = max(1e-4, 16 * torch.finfo(dtype).eps * ref_out.abs().max().item())
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
 @pytest.mark.special_hermite_polynomial_h
@@ -55,6 +61,9 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     # Test with scalar n = 9 (largest supported degree)
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     n = 9
 
@@ -64,9 +73,12 @@ def test_special_hermite_polynomial_h_scalar(shape, dtype):
     ref_out = torch.special.hermite_polynomial_h(ref_inp, n)
     res_out = flag_gems.special_hermite_polynomial_h(inp, n)
 
-    # gems uses the same in-dtype recurrence as PyTorch, so results match the
-    # reference to default precision for both float32 and float64.
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    # gems uses the same in-dtype recurrence as PyTorch, but FMA contraction can
+    # differ by device; near a root of H_n the cancellation turns a rounding
+    # difference at the polynomial's magnitude into a large relative error, so
+    # bound the absolute error by that magnitude.
+    atol = max(1e-4, 16 * torch.finfo(dtype).eps * ref_out.abs().max().item())
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
 
 
 @pytest.mark.special_hermite_polynomial_h
@@ -75,6 +87,8 @@ def test_special_hermite_polynomial_h_out_of_range(dtype):
     # Verify that n >= 10 or n < 0 raises ValueError
     if flag_gems.vendor_name == "cambricon" and dtype == torch.float64:
         pytest.skip("Issue #5253: Not supported")
+    if flag_gems.vendor_name == "tsingmicro":
+        pytest.skip("Issue #8621: Not supported")
     inp = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
 
     with pytest.raises(ValueError, match="only supports n"):

@@ -64,8 +64,7 @@ def test_empty_permuted(shape, physical_layout, dtype, caplog):
 @pytest.mark.parametrize("shape", utils.SPECIAL_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_empty(shape, dtype):
-    with flag_gems.use_gems():
-        res_out = torch.empty(*shape, dtype=dtype, device=flag_gems.device)
+    res_out = flag_gems.empty(shape, dtype=dtype, device=flag_gems.device)
 
     # empty() contents are uninitialized by contract, so only the tensor
     # metadata is validated here.
@@ -79,8 +78,7 @@ def test_empty(shape, dtype):
 def test_empty_default_dtype():
     # Tests empty() with default dtype (not explicitly specified) to verify
     # proper dtype inference when only shape and device are given.
-    with flag_gems.use_gems():
-        res_out = torch.empty(10, 20, device=flag_gems.device)
+    res_out = flag_gems.empty((10, 20), device=flag_gems.device)
 
     assert res_out.shape == (10, 20)
     assert res_out.dtype == torch.get_default_dtype()

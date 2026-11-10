@@ -462,6 +462,33 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+linear:
+  # Matched by op_name, which set_shapes() looks up before falling back to
+  # the MRO class name, so this override leaves every other BlasBenchmark op
+  # on the shared square shapes above.
+  #
+  # The first five entries are exactly the shared BlasBenchmark squares, so
+  # --level core keeps the shape set it always reported for this op. The next
+  # five are LoRA-rank small-K shapes (K=32-64), the region where the Ascend
+  # kernel beats the vendor path; they are added on top of the baseline, not
+  # in place of it, so both the large-K and the small-K regions are measured.
+  #
+  # The leading B is decorative: test_linear.py's _input_fn takes b and
+  # ignores it, building only [m, k], so the two 4096^3 squares below differ
+  # only in that ignored field (they were both in the baseline list).
+  shapes:
+    - [2, 384, 384, 384]
+    - [2, 4096, 4096, 4096]
+    - [16, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [16, 4096, 4096, 4096]
+    - [1, 4096, 4096, 32]
+    - [2, 4096, 4096, 64]
+    - [1, 4096, 8192, 64]
+    - [16, 8192, 4096, 32]
+    - [1, 4096, 14336, 64]
+  shape_desc: "B, M, N, K"
+
 addmm_vector_bias:
   shapes:
     - [1, 64, 256, 184]
@@ -486,6 +513,16 @@ grouped_mm:
     - [16, 2560, 2048]
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"   # shapes are defined as (Groups, N, K)
+
+sparse_mm_reduce_impl:
+  shapes:
+    - [2, 512, 512, 512]
+    - [8, 1024, 1024, 1024]
+    - [16, 2048, 2048, 2048]
+    - [4, 4096, 4096, 4096]
+    - [2, 4096, 1024, 4096]
+    - [8, 4096, 256, 4096]
+  shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K); B is ignored
 
 sparse_sampled_addmm:
   shapes:
@@ -740,6 +777,23 @@ huber_loss:
     - [4096, 65536]
     - [3072, 49152]
     - [3072, 65536]
+  shape_desc: "M, N"
+
+# frobenius_norm is a reduction op whose kernel tiles (M rows x N cols): tiny
+# reduction widths (N << BLOCK_N) previously fell back to the wide-tile
+# vector_norm config family and ran an order of magnitude slower than eager
+# torch. Keep the default 2D shapes and add small-N rows to lock in the
+# narrow-tile config path.
+frobenius_norm:
+  shapes:
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [1024, 1024, 1024]
+    - [1048576, 2]
+    - [2097152, 4]
+    - [1048576, 16]
+    - [65536, 64]
   shape_desc: "M, N"
 
 # O(N*C^2): keep the class axis representative without inheriting the generic
@@ -1236,3 +1290,10 @@ batch_norm_elemt:
     - [128, 256, 32, 32]
     - [4, 32, 8, 8, 8]
   shape_desc: "N, C, *spatial"
+
+bmm_w8a8:
+  shapes:
+    - [1, 1, 1024, 4096]
+    - [1, 128, 1024, 4096]
+    - [2, 33, 65, 129]
+  shape_desc: "B, M, N, K"
