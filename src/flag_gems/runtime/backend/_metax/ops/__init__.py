@@ -29,6 +29,7 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (
     fake_quantize_per_tensor_affine_cachemask_backward,
 )
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_div_scalar_ import foreach_div_scalar_
 from .foreach_div_scalar_list import foreach_div_scalar_list
 from .foreach_div_scalar_list_ import foreach_div_scalar_list_
 from .foreach_div_tensor import foreach_div_tensor
@@ -205,6 +206,7 @@ __all__ = [
     "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_div_scalar_",
     "foreach_div_scalar_list",
     "foreach_div_scalar_list_",
     "foreach_div_tensor",
