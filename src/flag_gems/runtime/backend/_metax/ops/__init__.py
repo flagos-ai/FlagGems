@@ -19,6 +19,7 @@ from .conv_depthwise2d import _conv_depthwise2d
 from .conv_tbc import conv_tbc
 from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .convolution_double_backward import _convolution_double_backward
 from .cross_attention import cross_attention
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
@@ -149,6 +150,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
