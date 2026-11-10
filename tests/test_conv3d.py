@@ -211,7 +211,7 @@ def test_ascend_conv3d_regressions(case):
     try:
         if case == "forced_grid":
             module._CONV3D_MAX_GRID = 2
-        previous_registrar = flag_gems.current_work_registrar
+        previous_registrar = getattr(flag_gems, "current_work_registrar", None)
         lib = torch.library.Library("aten", "IMPL")
         try:
             flag_gems.only_enable(lib=lib, include=["conv3d"])

@@ -165,7 +165,7 @@ def test_ascend_index_add_graph_replay(dtype, shape, inplace, registered):
     src_base = torch.ones((2, *shape[1:]), dtype=dtype)
     src = src_base.to(inp.device)
     lib = None
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     try:
         if registered:
             lib = torch.library.Library("aten", "IMPL")
@@ -264,7 +264,7 @@ def test_ascend_index_add_padding_graph(tokens, registered):
     values_cpu = torch.arange(tokens * 8, dtype=torch.float32).reshape(tokens, 8) / 8
     values = values_cpu.to(cache.device)
     lib = None
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     try:
         if registered:
             lib = torch.library.Library("aten", "IMPL")

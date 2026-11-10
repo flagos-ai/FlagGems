@@ -163,7 +163,7 @@ def test_ascend_where_uniform_condition_graph(
     backing = torch.full((width, 2), 1, dtype=dtype, device=left.device)
     output = backing[:, 1]
     lib = None
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     try:
         if registered:
             lib = torch.library.Library("aten", "IMPL")
@@ -288,7 +288,7 @@ def test_ascend_where_row_scalar_graph(shape, mode, registered):
     backing = torch.full((numel + 1,), 33, dtype=torch.int8, device=values.device)
     output = backing[1:].view(shape) if mode == "out" else None
     other = 0 if mode == "python" else scalar
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     lib = None
     try:
         if registered:

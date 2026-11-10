@@ -182,7 +182,7 @@ def test_ascend_index_copy_wide_row_graph(dtype, layout, index_dtype, registered
     source.copy_(source_cpu)
     index_storage = torch.tensor([1, 99, 3, 99], dtype=index_dtype, device=inp.device)
     index = index_storage[::2]
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     lib = None
     try:
         if registered:

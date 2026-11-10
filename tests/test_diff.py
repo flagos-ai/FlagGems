@@ -134,7 +134,7 @@ def test_ascend_diff_zero_order_copy(layout, registered):
     append = torch.full_like(x, 100)
     expected = torch.diff(x, n=0, prepend=prepend, append=append)
     if registered:
-        previous_registrar = flag_gems.current_work_registrar
+        previous_registrar = getattr(flag_gems, "current_work_registrar", None)
         lib = torch.library.Library("aten", "IMPL")
         try:
             flag_gems.only_enable(lib=lib, include=["diff"])

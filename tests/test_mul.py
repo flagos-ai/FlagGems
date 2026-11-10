@@ -718,7 +718,7 @@ def test_ascend_mul_packed_complex_graph(numel, mode, registered):
     a, b = a_storage[1:-1], b_storage[1:-1]
     backing = torch.full((numel + 2,), 3 + 4j, dtype=torch.complex64, device=a.device)
     out = backing[1:-1]
-    previous_registrar = flag_gems.current_work_registrar
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
     lib = None
     try:
         if registered:
