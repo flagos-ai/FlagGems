@@ -682,6 +682,7 @@ from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out  # noqa: F401
 from .norm import norm, norm_scalar, norm_scalaropt_dim
+from .norm_except_dim import norm_except_dim  # noqa: F401
 from .normal import (
     normal_,
     normal_float_tensor,
