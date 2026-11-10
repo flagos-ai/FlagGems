@@ -741,7 +741,7 @@ _FULL_CONFIG = (
         "adaptive_avg_pool3d",
         adaptive_avg_pool3d,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
     (
