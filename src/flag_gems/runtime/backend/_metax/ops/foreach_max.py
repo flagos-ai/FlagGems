@@ -520,7 +520,7 @@ def _launch(
             OT=tl_ot,
             IDENT=ident,
             OTHER=other,
-            num_warps=4
+            num_warps=4,
         )
         if n_multi:
             _stage2_s[(n_multi,)](
@@ -535,7 +535,7 @@ def _launch(
                 OT=tl_ot,
                 IDENT=ident,
                 OTHER=other,
-                num_warps=4
+                num_warps=4,
             )
         return
 
