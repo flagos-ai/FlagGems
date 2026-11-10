@@ -85,7 +85,7 @@ def _input_fn(shape, dtype, device, weighted):
     yield grad_output, table, indices, weights
 
 
-@pytest.mark.embedding_spmdm
+@pytest.mark.embedding_spmdm_grad
 @pytest.mark.parametrize("weighted", (False, True))
 def test_embedding_spmdm_grad_benchmark(weighted):
     op_name = "embedding_spmdm_grad_weighted" if weighted else "embedding_spmdm_grad"
