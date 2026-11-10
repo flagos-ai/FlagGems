@@ -37,11 +37,10 @@ def _make_input(shape, dtype, device=flag_gems.device):
 
 def _reference_input(inp):
     # Never send integers through the floating-point upcast: their reference has
-    # to stay exact. Apply ATen's integer promotion (int64) up front instead:
-    # some backends promote uint8 to uint64 and cannot reduce that natively
-    # (muDNN rejects uint8 -> uint64 in Reduce::Run).
+    # to stay exact. muDNN promotes uint8 to uint64 and rejects it in
+    # Reduce::Run, so apply ATen's integer promotion (int64) up front instead.
     ref = utils.to_reference(inp, inp.is_floating_point())
-    if not ref.is_floating_point():
+    if flag_gems.vendor_name == "mthreads" and not ref.is_floating_point():
         ref = ref.to(torch.int64)
     return ref
 

@@ -16,6 +16,9 @@ def _torch_nansum(inp, *args, **kwargs):
     return torch.nansum(inp, *args, **kwargs)
 
 
+TORCH_NANSUM = _torch_nansum if flag_gems.vendor_name == "mthreads" else torch.nansum
+
+
 class _NansumBenchmark(base.UnaryReductionBenchmark):
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:
@@ -46,7 +49,7 @@ class _NansumBenchmark(base.UnaryReductionBenchmark):
 def test_benchmark_nansum():
     bench = _NansumBenchmark(
         op_name="nansum",
-        torch_op=_torch_nansum,
+        torch_op=TORCH_NANSUM,
         dtypes=DTYPES,
     )
     bench.set_gems(flag_gems.nansum)
