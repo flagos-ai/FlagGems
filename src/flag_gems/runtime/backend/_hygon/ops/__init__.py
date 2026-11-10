@@ -125,6 +125,7 @@ from .lstm import lstm
 from .masked_scale import masked_scale
 from .masked_scatter_backward import masked_scatter_backward
 from .matmul_bf16 import matmul_bf16
+from .matmul_bias_activation import matmul_bias_activation
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices import (
     max_pool3d_backward,
@@ -328,6 +329,7 @@ __all__ = [
     "masked_scale",
     "masked_scatter_backward",
     "matmul_bf16",
+    "matmul_bias_activation",
     "matmul_int8",
     "max_pool3d_backward",
     "max_pool3d_with_indices",
