@@ -99,6 +99,7 @@ from .lcm_ import lcm_
 from .lift_fresh import lift_fresh
 from .lift_out import lift_out
 from .linalg_cholesky import linalg_cholesky
+from .linalg_householder_product import linalg_householder_product
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linalg_tensorinv import linalg_tensorinv
@@ -276,6 +277,7 @@ __all__ = [
     "lift_fresh",
     "lift_out",
     "linalg_cholesky",
+    "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_tensorinv",
     "linear",
