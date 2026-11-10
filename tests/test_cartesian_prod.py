@@ -35,9 +35,12 @@ CARTESIAN_PROD_SIZES = [
     (2, 4, 3),
     (8, 16, 32),
     (2, 5, 8, 3),
+    # K > the specialised 8-pointer kernel width.
+    (2,) * 9,
+    (1,) * 10,
 ]
 
-CARTESIAN_PROD_BACKWARD_SIZES = [(8,), (3, 5), (2, 4, 3), (16, 16)]
+CARTESIAN_PROD_BACKWARD_SIZES = [(8,), (3, 5), (2, 4, 3), (16, 16), (2,) * 9]
 
 
 @pytest.mark.cartesian_prod
@@ -164,6 +167,14 @@ def test_cartesian_prod_rejects_multidim_input(shape):
     inp = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.cartesian_prod(inp, inp)
+
+
+@pytest.mark.cartesian_prod
+def test_cartesian_prod_rejects_mixed_device():
+    a = torch.randn((3,), dtype=torch.float32, device=flag_gems.device)
+    b = torch.randn((5,), dtype=torch.float32, device="cpu")
+    with pytest.raises(RuntimeError, match="same device"):
+        flag_gems.cartesian_prod(a, b)
 
 
 @pytest.mark.cartesian_prod
