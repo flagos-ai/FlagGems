@@ -186,6 +186,7 @@ from ._native_batch_norm_legit import (
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
 from ._pdist_backward import _pdist_backward
@@ -1104,6 +1105,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
     "_pdist_backward",
