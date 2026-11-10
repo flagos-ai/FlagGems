@@ -17,8 +17,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 
 
@@ -42,7 +40,6 @@ def test_efficientzerotensor(monkeypatch):
     bench = EfficientZeroTensorBenchmark(
         op_name="efficientzerotensor",
         torch_op=torch.ops.aten._efficientzerotensor.default,
-        gems_op=flag_gems._efficientzerotensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

@@ -5719,6 +5719,7 @@ tensor into the caller-supplied `out` buffer.
     Create a lazy immutable ZeroTensor with native dispatch metadata and no materialized data.
   for:
     - _efficientzerotensor
+    - _efficientzerotensor.out
   labels:
     - aten
     - KernelGen

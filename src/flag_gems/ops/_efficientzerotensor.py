@@ -17,7 +17,14 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
+from flag_gems.utils import triton_lang_extension as ext
+
+device_ = device
 logger = logging.getLogger(__name__)
 
 # Both are call-invariant; building them per call costs ~0.6us (keyset) and
@@ -117,3 +124,226 @@ def _efficientzerotensor(
     # which breaks under flag_gems.enable() with "raw Tensor object is already
     # associated to a python object" and makes every registered call fail.
     return wrapper.as_strided(size, strides, 0)
+
+
+_BLOCK_SIZE = 1024
+_MAX_OUT_DIMS = 8
+# Dtypes whose pointers Triton can canonicalize and store 0.0 to. Complex and
+# the newer float8 variants are absent; they are filled through a uint8 alias
+# of the same storage instead, so the kernel stays dtype-agnostic.
+_TRITON_FILL_DTYPES = frozenset(
+    dtype
+    for dtype in (
+        torch.bool,
+        torch.uint8,
+        torch.int8,
+        torch.int16,
+        torch.int32,
+        torch.int64,
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        torch.float64,
+        getattr(torch, "float8_e4m3fn", None),
+        getattr(torch, "float8_e5m2", None),
+    )
+    if dtype is not None
+)
+
+
+@libentry()
+@triton.jit
+def _efficientzerotensor_out_kernel(out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+    pid = ext.program_id(axis=0)
+    block_start = pid * BLOCK_SIZE
+    offsets = block_start + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    tl.store(out_ptr + offsets, 0.0, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _efficientzerotensor_out_strided_kernel(
+    out_ptr,
+    n_elements,
+    s0,
+    s1,
+    s2,
+    s3,
+    s4,
+    s5,
+    s6,
+    s7,
+    t0,
+    t1,
+    t2,
+    t3,
+    t4,
+    t5,
+    t6,
+    t7,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = ext.program_id(axis=0)
+    rem = (pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)).to(tl.int64)
+    mask = rem < n_elements
+    addr = tl.zeros((BLOCK_SIZE,), dtype=tl.int64)
+    # Decompose the flat logical index innermost-dim first. Unused dims are
+    # padded with size 1 and stride 0, so they contribute nothing and leave
+    # ``rem`` unchanged.
+    c = rem % s7
+    rem = rem // s7
+    addr += c * t7
+    c = rem % s6
+    rem = rem // s6
+    addr += c * t6
+    c = rem % s5
+    rem = rem // s5
+    addr += c * t5
+    c = rem % s4
+    rem = rem // s4
+    addr += c * t4
+    c = rem % s3
+    rem = rem // s3
+    addr += c * t3
+    c = rem % s2
+    rem = rem // s2
+    addr += c * t2
+    c = rem % s1
+    rem = rem // s1
+    addr += c * t1
+    c = rem % s0
+    addr += c * t0
+    tl.store(out_ptr + addr, 0.0, mask=mask)
+
+
+def _pack_out_layout(out):
+    """Return ``(sizes, strides)`` padded to ``_MAX_OUT_DIMS``, or ``None``.
+
+    Size-1 dims are dropped and neighbouring dims that form a dense run are
+    merged, so a regular non-contiguous view needs far fewer than the eight
+    dims the strided fill kernel supports.
+    """
+    dims = []
+    for size, stride in zip(out.shape, out.stride()):
+        size = int(size)
+        if size == 1:
+            continue
+        dims.append((size, stride))
+    merged = []
+    for size, stride in dims:
+        if merged and merged[-1][1] == stride * size:
+            merged[-1] = (merged[-1][0] * size, stride)
+        else:
+            merged.append((size, stride))
+    if len(merged) > _MAX_OUT_DIMS:
+        return None
+    sizes = [1] * _MAX_OUT_DIMS
+    strides = [0] * _MAX_OUT_DIMS
+    for i, (size, stride) in enumerate(merged):
+        sizes[i] = size
+        strides[i] = stride
+    return sizes, strides
+
+
+def _byte_zero_fill(out):
+    """Zero ``out`` through a uint8 alias of its storage.
+
+    Filling bytes is correct for every dtype and layout, including complex and
+    float8 pointers Triton cannot canonicalize, and it never re-enters a
+    FlagGems override (a plain ``zero_`` would re-dispatch to the backend
+    kernel, whose flat write is not stride-aware).
+    """
+    element_size = out.element_size()
+    view = torch.empty(0, dtype=torch.uint8, device=out.device)
+    view.set_(
+        out.untyped_storage(),
+        out.storage_offset() * element_size,
+        tuple(out.shape) + (element_size,),
+        tuple(stride * element_size for stride in out.stride()) + (1,),
+    )
+    _fill_bytes(view)
+
+
+def _fill_bytes(view):
+    """Zero a uint8 storage alias, peeling leading dims until the rank fits."""
+    if view.dim() > _MAX_OUT_DIMS:
+        for index in range(view.shape[0]):
+            _fill_bytes(view[index])
+        return
+    sizes, strides = _pack_out_layout(view)
+    n_elements = view.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    with torch_device_fn.device(view.device):
+        _efficientzerotensor_out_strided_kernel[grid](
+            view, n_elements, *sizes, *strides, BLOCK_SIZE=_BLOCK_SIZE
+        )
+
+
+def _efficientzerotensor_out(size, *, out):
+    logger.debug("GEMS _EFFICIENTZEROTENSOR_OUT")
+    # A ZeroTensor owns no data and is immutable: refuse before a resize or a
+    # kernel launch could touch its data_ptr()==0 storage.
+    if out._is_zerotensor():
+        raise RuntimeError(
+            "ZeroTensors are immutable. Please use the materialized zero tensor "
+            "obtained using .clone() if you want a mutable tensor."
+        )
+    if out.requires_grad:
+        raise RuntimeError(
+            "aten::_efficientzerotensor(): functions with out=... arguments "
+            "don't support automatic differentiation, but one of the arguments "
+            "requires grad."
+        )
+    size = tuple(size)
+    for dim in size:
+        if dim < 0:
+            raise RuntimeError(
+                f"Trying to create tensor with negative dimension {dim}: {list(size)}"
+            )
+    # Native resizes mismatched outputs in place (deprecated, but still live),
+    # including meta outputs; the latter are otherwise returned untouched.
+    if out.shape != torch.Size(size):
+        out.resize_(size)
+    if out.device.type == "meta":
+        return out
+    n_elements = out.numel()
+    if n_elements == 0:
+        return out
+    on_backend = out.device.type == torch.device(device_.name).type
+    if not on_backend or out.data_ptr() == 0:
+        # CPU and foreign-device outputs keep their native stride-aware path;
+        # Triton is never launched for storage this backend does not own.
+        out.zero_()
+        return out
+    if out.dtype not in _TRITON_FILL_DTYPES:
+        # Complex (and some float8) pointers cannot be canonicalized by
+        # Triton; filling the byte alias covers every native dtype.
+        _byte_zero_fill(out)
+        return out
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+
+    def _fill():
+        with torch_device_fn.device(out.device):
+            if out.is_contiguous():
+                _efficientzerotensor_out_kernel[grid](
+                    out, n_elements, BLOCK_SIZE=_BLOCK_SIZE
+                )
+            else:
+                packed = _pack_out_layout(out)
+                if packed is None:
+                    # Beyond the packed rank: fill the byte alias instead.
+                    _byte_zero_fill(out)
+                else:
+                    sizes, strides = packed
+                    _efficientzerotensor_out_strided_kernel[grid](
+                        out, n_elements, *sizes, *strides, BLOCK_SIZE=_BLOCK_SIZE
+                    )
+
+    try:
+        _fill()
+    except Exception:
+        # Defensive: a dtype this Triton build rejects at launch must still
+        # zero the output rather than leak a compiler error.
+        _byte_zero_fill(out)
+    return out
