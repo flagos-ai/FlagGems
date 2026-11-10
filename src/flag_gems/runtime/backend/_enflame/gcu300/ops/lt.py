@@ -36,7 +36,7 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_ENFLAME LT")
     if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
         A = A.to(torch.int32)
@@ -48,6 +48,14 @@ def lt(A, B):
         B_cpu = B.cpu() if isinstance(B, torch.Tensor) else B
         return torch.lt(A_cpu, B_cpu).to(dev)
     return lt_func(A, B)
+
+
+def less_tensor(A, B):
+    return lt_tensor(A, B)
+
+
+def less_scalar(A, B):
+    return lt_scalar(A, B)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "ALWAYS_BOOL")])

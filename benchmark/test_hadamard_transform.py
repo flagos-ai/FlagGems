@@ -156,13 +156,6 @@ _TAG_FOR_DIM = {
     40960: "40N",
 }
 
-_FN_MAP = {
-    "12N": flag_gems.fast_hadamard_transform_12N,
-    "20N": flag_gems.fast_hadamard_transform_20N,
-    "28N": flag_gems.fast_hadamard_transform_28N,
-    "40N": flag_gems.fast_hadamard_transform_40N,
-}
-
 
 def ht_mn_input_fn(shape, dtype, device):
     batch, dim = shape
@@ -178,12 +171,6 @@ def torch_ht_mn(x):
     return special_hadamard_reference(x, int(tag[:-1]))
 
 
-def gems_ht_mn(x):
-    dim = x.shape[-1]
-    tag = _TAG_FOR_DIM[dim]
-    return _FN_MAP[tag](x)
-
-
 class HadamardMNBenchmark(base.GenericBenchmark2DOnly):
     DEFAULT_SHAPES = _HT_MN_SHAPES
     DEFAULT_SHAPE_DESC = "batch, dim"
@@ -192,20 +179,50 @@ class HadamardMNBenchmark(base.GenericBenchmark2DOnly):
         return []
 
     def set_shapes(self, *args, **kwargs):
-        self.shapes = self.DEFAULT_SHAPES
+        tag = self.op_name.rsplit("_", 1)[-1]
+        self.shapes = [
+            shape for shape in self.DEFAULT_SHAPES if _TAG_FOR_DIM[shape[-1]] == tag
+        ]
 
 
-@pytest.mark.fast_hadamard_transform_12N
-@pytest.mark.fast_hadamard_transform_20N
-@pytest.mark.fast_hadamard_transform_28N
-@pytest.mark.fast_hadamard_transform_40N
-@_skip_if_join_bug
-def test_fast_hadamard_transform_mn():
+def _run_special_hadamard_benchmark(op_name, gems_op):
     bench = HadamardMNBenchmark(
         input_fn=ht_mn_input_fn,
-        op_name="fast_hadamard_transform_mn",
+        op_name=op_name,
         torch_op=torch_ht_mn,
-        gems_op=gems_ht_mn,
+        gems_op=gems_op,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.fast_hadamard_transform_12N
+@_skip_if_join_bug
+def test_fast_hadamard_transform_12N():
+    _run_special_hadamard_benchmark(
+        "fast_hadamard_transform_12N", flag_gems.fast_hadamard_transform_12N
+    )
+
+
+@pytest.mark.fast_hadamard_transform_20N
+@_skip_if_join_bug
+def test_fast_hadamard_transform_20N():
+    _run_special_hadamard_benchmark(
+        "fast_hadamard_transform_20N", flag_gems.fast_hadamard_transform_20N
+    )
+
+
+@pytest.mark.fast_hadamard_transform_28N
+@_skip_if_join_bug
+def test_fast_hadamard_transform_28N():
+    _run_special_hadamard_benchmark(
+        "fast_hadamard_transform_28N", flag_gems.fast_hadamard_transform_28N
+    )
+
+
+@pytest.mark.fast_hadamard_transform_40N
+@_skip_if_join_bug
+def test_fast_hadamard_transform_40N():
+    _run_special_hadamard_benchmark(
+        "fast_hadamard_transform_40N", flag_gems.fast_hadamard_transform_40N
+    )
