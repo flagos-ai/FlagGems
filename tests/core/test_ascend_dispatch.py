@@ -244,6 +244,68 @@ def test_ascend_new_zeros_uses_source_device():
     utils.gems_assert_equal(result.cpu(), torch.zeros((3, 7), dtype=src.dtype))
 
 
+@pytest.mark.linear
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend bias rounding")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("features", [64, 256, 513])
+@pytest.mark.parametrize("batch", [1, 32])
+def test_ascend_linear_bias_cancellation_dispatch(dtype, features, batch):
+    epsilon = {
+        torch.float16: 2**-11,
+        torch.bfloat16: 2**-8,
+        torch.float32: 2**-22,
+    }[dtype]
+    cpu_input = torch.zeros((batch, features), dtype=dtype)
+    cpu_input[:, :2] = 1
+    cpu_weight = torch.zeros((33, features), dtype=dtype)
+    cpu_weight[:, 0] = 1
+    cpu_weight[::2, 1] = epsilon
+    cpu_weight[1::2, 1] = -epsilon
+    cpu_bias = torch.full((33,), -1, dtype=dtype)
+    expected = torch.nn.functional.linear(
+        cpu_input.float(), cpu_weight.float(), cpu_bias.float()
+    ).to(dtype)
+    inp = cpu_input.to(flag_gems.device)
+    weight = cpu_weight.to(inp.device)
+    bias = cpu_bias.to(inp.device)
+    with flag_gems.use_gems(include=["linear"]):
+        actual = torch.nn.functional.linear(inp, weight, bias)
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.linear
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend bias replay")
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("features", [64, 513])
+def test_ascend_linear_bias_graph(dtype, features):
+    epsilon = {
+        torch.float16: 2**-11,
+        torch.bfloat16: 2**-8,
+        torch.float32: 2**-22,
+    }[dtype]
+    cpu_input = torch.zeros((32, features), dtype=dtype)
+    cpu_input[:, :2] = 1
+    cpu_weight = torch.zeros((33, features), dtype=dtype)
+    cpu_weight[:, 0] = 1
+    cpu_weight[:, 1] = epsilon
+    inp = cpu_input.to(flag_gems.device)
+    weight = cpu_weight.to(inp.device)
+    bias = torch.full((33,), -1, dtype=dtype, device=inp.device)
+    with flag_gems.use_gems(include=["linear"]):
+        torch.nn.functional.linear(inp, weight, bias)
+        graph = torch.npu.NPUGraph()
+        with torch.npu.graph(graph):
+            actual = torch.nn.functional.linear(inp, weight, bias)
+    for value in [-1, 0]:
+        bias.fill_(value)
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.nn.functional.linear(
+            cpu_input.float(), cpu_weight.float(), torch.full((33,), value).float()
+        ).to(dtype)
+        utils.gems_assert_equal(actual.cpu(), expected)
+
+
 @pytest.mark.true_divide_
 @pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend dispatch")
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -260,7 +322,6 @@ def test_ascend_true_divide_inplace_alias(dtype, op, overload):
         actual = getattr(getattr(torch.ops.aten, op), overload)(inp, divisor)
     assert actual is inp
     utils.gems_assert_equal(inp.cpu(), expected)
-
 
 
 @pytest.mark.true_divide_
@@ -286,4 +347,3 @@ def test_ascend_true_divide_temperature_graph_dispatch(dtype):
             torch.npu.synchronize()
             assert actual is inp
             utils.gems_assert_equal(inp.cpu(), cpu.div(divisor))
-
