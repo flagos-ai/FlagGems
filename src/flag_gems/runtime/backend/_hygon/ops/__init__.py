@@ -117,6 +117,7 @@ from .histc import histc
 from .igamma import igamma
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
+from .index_reduce_out import index_reduce_out
 from .index_select_backward import index_select_backward
 from .inner import inner
 from .int_mm import int_mm, int_mm_out
@@ -333,6 +334,7 @@ __all__ = [
     "index_add_",
     "index_copy",
     "index_copy_",
+    "index_reduce_out",
     "index_select_backward",
     "inner",
     "int_mm",
