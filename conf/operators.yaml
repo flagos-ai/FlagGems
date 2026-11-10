@@ -11915,6 +11915,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: less__scalar
+  description: The scalar version of `less_()`.
+  for:
+  - less_.Scalar
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: less_equal
   description: Computes element-wise less-than-or-equal-to comparison.
   for:
@@ -11970,17 +11981,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.0'
-- id: less_scalar_
-  description: The scalar version of `less_()`.
-  for:
-  - less_.Scalar
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: less_tensor
   description: Computes that `input` is less than `other` element-wise.
   for:

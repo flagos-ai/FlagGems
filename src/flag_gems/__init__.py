@@ -1369,7 +1369,7 @@ _FULL_CONFIG = (
     ("lerp_.Tensor", lerp_tensor_),
     ("less.Scalar", less_scalar),
     ("less.Tensor", less_tensor),
-    ("less_.Scalar", less_scalar_),
+    ("less_.Scalar", less__scalar),
     ("less_.Tensor", less_),
     ("less_equal.Scalar", less_equal_scalar),
     ("less_equal.Tensor", less_equal),

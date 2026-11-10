@@ -603,8 +603,8 @@ from .logspace import logspace
 from .logsumexp import logsumexp
 from .lt import (
     less_,
+    less__scalar,
     less_scalar,
-    less_scalar_,
     less_tensor,
     lt_,
     lt_scalar,
@@ -1486,12 +1486,12 @@ __all__ = [
     "lerp_tensor",
     "lerp_tensor_",
     "less_",
+    "less__scalar",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
     "less_scalar",
-    "less_scalar_",
     "less_tensor",
     "lgamma",
     "lgamma_",

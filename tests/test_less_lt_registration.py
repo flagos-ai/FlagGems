@@ -93,3 +93,63 @@ def test_less_lt_dispatch(monkeypatch, name, overload):
         flag_gems.current_work_registrar = previous
     assert registered == calls == [key]
     utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.less__scalar
+def test_less__scalar_metadata():
+    path = Path(__file__).resolve().parents[1] / "conf/operators.yaml"
+    metadata = yaml.safe_load(path.read_text())["ops"]
+    op_id, key = "less__scalar", "less_.Scalar"
+    assert not any(item["id"] == "less_scalar_" for item in metadata)
+    assert sum(item["id"] == op_id for item in metadata) == 1
+    owners = [item for item in metadata if key in (item.get("for") or [])]
+    assert len(owners) == 1
+    assert owners[0]["id"] == op_id
+    assert owners[0]["for"] == [key]
+    assert owners[0]["stages"] == [{"alpha": "5.4"}]
+    entries = [entry for k, entry, *rest in flag_gems._FULL_CONFIG if k == key]
+    assert entries == [flag_gems.less__scalar]
+    assert entries[0].__name__ == op_id
+    assert ops.less__scalar.__name__ == op_id
+    assert op_id in ops.__all__
+    for module in (flag_gems, ops):
+        assert not hasattr(module, "less_scalar_")
+        assert "less_scalar_" not in module.__all__
+
+
+@pytest.mark.less__scalar
+def test_less__scalar_dispatch(monkeypatch):
+    key, op_id = "less_.Scalar", "less__scalar"
+    entry = flag_gems.less__scalar
+    a = torch.tensor([-float("inf"), -1, 0, 1, float("inf"), float("nan")])
+    expected = torch.ops.aten.less_.Scalar(a.clone(), 0.5)
+    a = a.to(flag_gems.device)
+    registered, calls = [], []
+    original_impl = torch.library.Library.impl
+
+    def intercept(library, overload, fn, *args, **kwargs):
+        if overload == key:
+            assert fn is entry
+            registered.append(overload)
+
+            @wraps(fn)
+            def counted(*call_args, **call_kwargs):
+                calls.append(key)
+                return entry(*call_args, **call_kwargs)
+
+            fn = counted
+        return original_impl(library, overload, fn, *args, **kwargs)
+
+    monkeypatch.setattr(torch.library.Library, "impl", intercept)
+    previous = flag_gems.current_work_registrar
+    try:
+        with flag_gems.use_gems(include=[op_id]):
+            assert flag_gems.current_work_registrar.get_all_keys() == [key]
+            assert flag_gems.current_work_registrar.get_all_ops() == [op_id]
+            actual = torch.ops.aten.less_.Scalar(a, 0.5)
+    finally:
+        flag_gems.current_work_registrar = previous
+    assert registered == calls == [key]
+    assert actual is a
+    utils.gems_assert_equal(actual, expected)
+    utils.gems_assert_equal(a, expected)

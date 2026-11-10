@@ -41,7 +41,7 @@ def less_func_scalar(x, y):
     return x.to(tl.float32) < y
 
 
-def less_scalar_(A, B):
-    logger.debug("GEMS LESS_SCALAR_")
+def less__scalar(A, B):
+    logger.debug("GEMS LESS__SCALAR")
     less_func_scalar(A, B, out0=A)
     return A

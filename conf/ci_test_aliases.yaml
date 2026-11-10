@@ -16,6 +16,7 @@
 #   means tests/test_addmm.py covers the addmm_out operator
 
 # _out variants - share test with base operator
+less__scalar: test_less_
 less_scalar: test_less
 less_tensor: test_less
 lt_scalar: test_lt

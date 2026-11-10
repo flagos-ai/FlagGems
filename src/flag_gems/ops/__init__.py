@@ -1017,7 +1017,7 @@ from flag_gems.ops.leaky_relu import (
     leaky_relu_out,
 )
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from flag_gems.ops.less_ import less_, less_scalar_
+from flag_gems.ops.less_ import less_, less__scalar
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
@@ -2740,12 +2740,12 @@ __all__ = [
     "lerp_tensor",
     "lerp_tensor_",
     "less_",
+    "less__scalar",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
     "less_scalar",
-    "less_scalar_",
     "less_tensor",
     "lgamma",
     "lgamma_",

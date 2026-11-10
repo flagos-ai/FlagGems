@@ -34,10 +34,10 @@ def test_less_():
     bench.run()
 
 
-@pytest.mark.less_scalar_
-def test_less_scalar_():
+@pytest.mark.less__scalar
+def test_less__scalar():
     bench = base.GenericBenchmark(
-        op_name="less_scalar_",
+        op_name="less__scalar",
         input_fn=_input_fn_scalar,
         torch_op=lambda a, b: torch.ops.aten.less_.Scalar(a, b),
         dtypes=consts.FLOAT_DTYPES,

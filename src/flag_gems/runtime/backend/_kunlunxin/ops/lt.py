@@ -313,5 +313,5 @@ def less_(A, B):
     return lt_(A, B)
 
 
-def less_scalar_(A, B):
+def less__scalar(A, B):
     return lt_scalar_(A, B)
