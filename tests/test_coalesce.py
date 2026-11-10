@@ -231,6 +231,35 @@ def test_coalesce(case, dtype):
     assert not inp.is_coalesced()
 
 
+# Key spaces above 2**26 make NB2 exceed the single-program scan width, which
+# the original 16-lane `_coalesce_blkoff` launch under-initialised.
+_LARGE_KEY_CASES = [((8193, 8193), 3000)]
+
+
+@pytest.mark.coalesce
+@pytest.mark.parametrize("case", _LARGE_KEY_CASES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_coalesce_large_key_space(case, dtype):
+    # This suite is validated on the device path; --ref=cpu moves the native
+    # reference to CPU and the device-only scan is skipped there.
+    if utils.TO_CPU:
+        pytest.skip("reference-device suite; skipped under --ref=cpu")
+    shape, nnz = case
+    inp = _make_sparse_input(shape, nnz, dtype)
+    assert not inp.is_coalesced()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.coalesce(ref_inp)
+    # Call the Gems implementation directly: aten dispatch is not enabled by
+    # this test module, so torch.ops.aten.coalesce would only compare native
+    # against native.
+    res_out = flag_gems.coalesce(inp)
+
+    _assert_coalesced(res_out, ref_out, dtype)
+    assert res_out is not inp
+    assert not inp.is_coalesced()
+
+
 @pytest.mark.coalesce
 @pytest.mark.parametrize("case", _COALESCED_CASES)
 @pytest.mark.parametrize("dtype", _COALESCE_DTYPES)
