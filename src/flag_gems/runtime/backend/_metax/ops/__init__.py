@@ -83,6 +83,7 @@ from .foreach_frac import foreach_frac
 from .foreach_frac_ import foreach_frac_
 from .foreach_log import foreach_log
 from .foreach_log10 import foreach_log10
+from .foreach_log10_ import foreach_log10_
 from .foreach_log1p import foreach_log1p
 from .full import full
 from .full_like import full_like
@@ -303,6 +304,7 @@ __all__ = [
     "foreach_frac_",
     "foreach_log",
     "foreach_log10",
+    "foreach_log10_",
     "foreach_log1p",
     "full",
     "full_like",
