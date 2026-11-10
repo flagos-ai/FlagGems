@@ -39,6 +39,7 @@ from .arange import arange, arange_start
 from .arctan2 import arctan2
 from .arctan2_ import arctan2_
 from .arctan_ import arctan_
+from .arctanh import arctanh
 from .arctanh_out import arctanh_out
 from .argmin import argmin
 from .argsort import argsort
@@ -214,6 +215,7 @@ __all__ = [
     "arctan2",
     "arctan2_",
     "arctan_",
+    "arctanh",
     "arctanh_out",
     "argmin",
     "argsort",
