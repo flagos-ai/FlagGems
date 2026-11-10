@@ -594,7 +594,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
-    ("_slow_conv2d_backward", _slow_conv2d_backward),
+    ("_slow_conv2d_backward.output_mask", _slow_conv2d_backward),
     ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
