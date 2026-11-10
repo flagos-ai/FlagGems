@@ -188,7 +188,7 @@ from .logical_not import logical_not
 from .logical_or import logical_or
 from .logical_xor import logical_xor
 from .logspace import logspace
-from .lt import less_scalar, less_tensor, lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt_scalar, lt_tensor
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter_backward import masked_scatter_backward
 from .masked_select import masked_select
@@ -545,8 +545,8 @@ __all__ = [
     "logical_or",
     "logical_xor",
     "logspace",
-    "lt",
     "lt_scalar",
+    "lt_tensor",
     "masked_fill",
     "masked_fill_",
     "masked_scatter_backward",

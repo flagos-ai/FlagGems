@@ -16,6 +16,10 @@
 #   means tests/test_addmm.py covers the addmm_out operator
 
 # _out variants - share test with base operator
+less_scalar: test_less
+less_tensor: test_less
+lt_scalar: test_lt
+lt_tensor: test_lt
 _ctc_loss_backward_out: test__ctc_loss_backward
 _ctc_loss_out: test__ctc_loss
 addcdiv_out: test_addcdiv
@@ -202,6 +206,28 @@ tensordot_out: test_tensordot
 upsample_nearest1d_backward_grad_input: test_upsample_nearest1d_backward
 
 # Compound / alternative names
+div_scalar_mode: test_division_aliases
+div__scalar_mode: test_division_aliases
+div_tensor_mode: test_division_aliases
+div__tensor_mode: test_division_aliases
+divide_scalar_mode: test_division_aliases
+divide__scalar_mode: test_division_aliases
+divide_tensor_mode: test_division_aliases
+divide__tensor_mode: test_division_aliases
+div_out: test_division_aliases
+div_scalar: test_division_aliases
+div__scalar: test_division_aliases
+div_tensor: test_division_aliases
+div__tensor: test_division_aliases
+divide_tensor: test_division_aliases
+divide__tensor: test_division_aliases
+divide_scalar: test_division_aliases
+divide__scalar: test_division_aliases
+true_divide_tensor: test_division_aliases
+true_divide__tensor: test_division_aliases
+true_divide_out: test_division_aliases
+true_divide_scalar: test_division_aliases
+true_divide__scalar: test_division_aliases
 arange_start_step: test_arange
 addmm_dtype: test_addmm
 addmm_out_vector_bias: test_addmm

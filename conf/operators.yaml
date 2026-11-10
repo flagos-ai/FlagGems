@@ -5447,6 +5447,68 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: div__scalar
+  description: This is the in-place version of `div_scalar()`.
+  for:
+  - div_.Scalar
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: div__scalar_mode
+  description: The in-place version of `div_scalar_mode()`.
+  for:
+  - div_.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: div__tensor
+  description: This is the in-place version of `div_tensor()`.
+  for:
+  - div_.Tensor
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: div__tensor_mode
+  description: Divides tensors in-place with optional rounding.
+  for:
+  - div_.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: div_out
+  description: This is a variant of `div()` with an `out` argument.
+  for:
+  - div.out
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '4.2'
+- id: div_scalar
+  description: This is the scalar version of `div()`.
+  for:
+  - div.Scalar
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
 - id: div_scalar_mode
   description: 'Divides each element of the `input` by the scalar `other`.
 
@@ -5462,19 +5524,26 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '1.0'
-- id: div_scalar_mode_
-  description: The in-place version of `div_scalar_mode()` for scalar division.
+- id: div_tensor
+  description: 'Divides each element of the input `input` by the corresponding element
+    of `other`.
+
+    Note that `torch.divide()` is an alias of `torch.div()` and `torch.true_divide()`
+
+    is an alias of `torch.div()` with `rounding_mode=None`.
+
+    '
   for:
-  - div_.Scalar_mode
+  - div.Tensor
   labels:
   - aten
   - pointwise
   kind:
   - Math
   stages:
-  - stable: '2.2'
+  - stable: '2.1'
 - id: div_tensor_mode
-  description: Divides two tensors with an optional rounding_mode.
+  description: Divides tensors with optional rounding.
   for:
   - div.Tensor_mode
   labels:
@@ -5484,10 +5553,21 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '1.0'
-- id: div_tensor_mode_
-  description: The in-place version of `div_tensor_mode()`.
+- id: divide__scalar
+  description: Divides each tensor element by a scalar in-place.
   for:
-  - div_.Tensor_mode
+  - divide_.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: divide__scalar_mode
+  description: Divides a tensor by a scalar in-place with optional rounding.
+  for:
+  - divide_.Scalar_mode
   labels:
   - aten
   - pointwise
@@ -5495,7 +5575,51 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.2'
-- id: divide
+- id: divide__tensor
+  description: Performs element-wise true division in-place between two tensors.
+  for:
+  - divide_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: divide__tensor_mode
+  description: Divides tensors in-place with optional rounding.
+  for:
+  - divide_.Tensor_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.2'
+- id: divide_scalar
+  description: Divides each tensor element by a scalar.
+  for:
+  - divide.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: divide_scalar_mode
+  description: Divides a tensor by a scalar with optional rounding.
+  for:
+  - divide.Scalar_mode
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '1.0'
+- id: divide_tensor
   description: An alias of `div()` for element-wise division.
   for:
   - divide.Tensor
@@ -5507,28 +5631,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: divide_scalar_mode
-  description: Alias of `div_scalar_mode()` for scalar division with optional rounding.
-  for:
-  - divide.Scalar_mode
-  labels:
-  - aten
-  - pointwise
-  kind:
-  - Math
-  stages:
-  - stable: '1.0'
-- id: divide_scalar_mode_
-  description: The in-place version of `divide_scalar_mode()`.
-  for:
-  - divide_.Scalar_mode
-  labels:
-  - aten
-  - pointwise
-  kind:
-  - Math
-  stages:
-  - stable: '2.2'
 - id: divide_tensor_mode
   description: Alias of `div_tensor_mode()` for tensor division with optional rounding.
   for:
@@ -5540,17 +5642,6 @@ tensor into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '1.0'
-- id: divide_tensor_mode_
-  description: The in-place version of `divide_tensor_mode()`.
-  for:
-  - divide_.Tensor_mode
-  labels:
-  - aten
-  - pointwise
-  kind:
-  - Math
-  stages:
-  - stable: '2.2'
 - id: dot
   description: Computes the dot product of two 1D tensors.
   for:
@@ -13469,17 +13560,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
-- id: lt
-  description: Computes that `input` is less than `other` element-wise.
-  for:
-  - lt.Tensor
-  labels:
-  - aten
-  - pointwise
-  kind:
-  - Math
-  stages:
-  - stable: '2.0'
 - id: lt_
   description: The in-place version of `lt()`.
   for:
@@ -13513,6 +13593,17 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
+- id: lt_tensor
+  description: Computes that `input` is less than `other` element-wise.
+  for:
+  - lt.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.0'
 - id: lu_solve
   description: |
     Returns the LU solve of the linear system Ax = b using the partially pivoted
@@ -22531,13 +22622,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: true_divide
-  description: Performs element-wise true division with tensor or scalar operands.
+- id: true_divide__scalar
+  description: Divides each tensor element by a scalar in-place.
   for:
-  - div.Scalar
-  - div.Tensor
-  - divide.Scalar
-  - true_divide.Scalar
+  - true_divide_.Scalar
   labels:
   - aten
   - pointwise
@@ -22545,35 +22633,10 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - stable: '2.1'
-- id: true_divide_
-  description: The in-place version of `true_divide()`.
+- id: true_divide__tensor
+  description: Performs element-wise true division in-place between two tensors.
   for:
-  - div_.Scalar
-  - div_.Tensor
-  - divide_.Scalar
-  - divide_.Tensor
-  - true_divide_.Scalar
-  labels:
-  - aten
-  kind:
-  - Math
-  stages:
-  - stable: '2.1'
-- id: true_divide_out
-  description: This is a variant of `true_divide()` with an `out` argument.
-  for:
-  - div.out
-  - true_divide.out
-  labels:
-  - aten
-  kind:
-  - Math
-  stages:
-  - stable: '4.2'
-- id: true_divide_tensor
-  description: Performs element-wise true division between two tensors.
-  for:
-  - true_divide.Tensor
+  - true_divide_.Tensor
   labels:
   - aten
   - KernelGen
@@ -22582,10 +22645,32 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Math
   stages:
   - alpha: '5.4'
-- id: true_divide_tensor_
-  description: Performs element-wise true division in-place between two tensors.
+- id: true_divide_out
+  description: Performs true division and writes the result to the output tensor.
   for:
-  - true_divide_.Tensor
+  - true_divide.out
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '4.2'
+- id: true_divide_scalar
+  description: Divides each tensor element by a scalar.
+  for:
+  - true_divide.Scalar
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.1'
+- id: true_divide_tensor
+  description: Performs element-wise true division between two tensors.
+  for:
+  - true_divide.Tensor
   labels:
   - aten
   - KernelGen

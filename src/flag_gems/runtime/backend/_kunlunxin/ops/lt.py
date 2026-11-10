@@ -32,7 +32,7 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN LT")
     return _lt(A, B)
 

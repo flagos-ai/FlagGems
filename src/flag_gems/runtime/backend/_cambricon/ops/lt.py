@@ -27,7 +27,7 @@ def lt_func(x, y):
     return x < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_CAMBRICON LT")
     return lt_func(A, B)
 

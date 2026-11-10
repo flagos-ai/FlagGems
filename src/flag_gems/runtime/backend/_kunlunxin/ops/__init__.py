@@ -606,10 +606,10 @@ from .lt import (
     less_scalar,
     less_scalar_,
     less_tensor,
-    lt,
     lt_,
     lt_scalar,
     lt_scalar_,
+    lt_tensor,
 )
 from .lu_unpack import lu_unpack, lu_unpack_out
 from .margin_ranking_loss import margin_ranking_loss
@@ -1555,10 +1555,10 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
-    "lt",
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lt_tensor",
     "lu_unpack",
     "lu_unpack_out",
     "margin_ranking_loss",

@@ -27,6 +27,9 @@ from flag_gems.logging_utils import setup_flaggems_logging, teardown_flaggems_lo
 from flag_gems.modules import *  # noqa: F403
 from flag_gems.ops import *  # noqa: F403
 from flag_gems.ops._dirichlet_grad import _HAS_MAP_ELEMENTWISE
+from flag_gems.ops._division_aliases import (
+    bind_division_aliases as _bind_division_aliases,
+)
 from flag_gems.ops._upsample_nearest_exact2d import _upsample_nearest_exact2d_out
 from flag_gems.patches import *  # noqa: F403
 from flag_gems.patches import patch_empty_vllm  # noqa: F401
@@ -63,7 +66,10 @@ backend_info = runtime.device
 aten_lib = torch.library.Library("aten", "IMPL")
 
 # Register all ops in the current backend with SpecOpRegistrar to support architecture-specialized implementations
+_division_defaults = globals().copy()
 SpecOpRegistrar(registry=globals(), vendor=vendor_name).apply()
+_bind_division_aliases(globals(), defaults=_division_defaults)
+del _division_defaults
 
 registrar = GeneralOpRegistrar
 current_work_registrar = None
@@ -1061,23 +1067,23 @@ _FULL_CONFIG = (
     # through its direct call path, mirroring the can_cast investigation.
     ("dim", dim),
     ("dist", dist),
-    ("div.out", true_divide_out),
-    ("div.Scalar", true_divide),
+    ("div.out", div_out),
+    ("div.Scalar", div_scalar),
     ("div.Scalar_mode", div_scalar_mode),
-    ("div.Tensor", true_divide),
+    ("div.Tensor", div_tensor),
     ("div.Tensor_mode", div_tensor_mode),
-    ("div_.Scalar", true_divide_),
-    ("div_.Scalar_mode", div_scalar_mode_),
-    ("div_.Tensor", true_divide_),
-    ("div_.Tensor_mode", div_tensor_mode_),
-    ("divide.Scalar", true_divide),
+    ("div_.Scalar", div__scalar),
+    ("div_.Scalar_mode", div__scalar_mode),
+    ("div_.Tensor", div__tensor),
+    ("div_.Tensor_mode", div__tensor_mode),
+    ("divide.Scalar", divide_scalar),
     ("divide.Scalar_mode", divide_scalar_mode),
-    ("divide.Tensor", divide),
+    ("divide.Tensor", divide_tensor),
     ("divide.Tensor_mode", divide_tensor_mode),
-    ("divide_.Scalar", true_divide_),
-    ("divide_.Scalar_mode", divide_scalar_mode_),
-    ("divide_.Tensor", true_divide_),
-    ("divide_.Tensor_mode", divide_tensor_mode_),
+    ("divide_.Scalar", divide__scalar),
+    ("divide_.Scalar_mode", divide__scalar_mode),
+    ("divide_.Tensor", divide__tensor),
+    ("divide_.Tensor_mode", divide__tensor_mode),
     ("dot", dot),
     ("dropout_", dropout_),
     ("dstack", dstack),
@@ -1497,7 +1503,7 @@ _FULL_CONFIG = (
     ("lstm.input", lstm),
     ("lstm_cell", lstm_cell),
     ("lt.Scalar", lt_scalar),
-    ("lt.Tensor", lt),
+    ("lt.Tensor", lt_tensor),
     ("lt_.Scalar", lt_scalar_),
     ("lt_.Tensor", lt_),
     ("lu_solve", lu_solve),
@@ -2143,10 +2149,10 @@ _FULL_CONFIG = (
     ("triu_", triu_),
     ("triu_indices", triu_indices),
     ("true_divide.out", true_divide_out),
-    ("true_divide.Scalar", true_divide),
+    ("true_divide.Scalar", true_divide_scalar),
     ("true_divide.Tensor", true_divide_tensor),
-    ("true_divide_.Scalar", true_divide_),
-    ("true_divide_.Tensor", true_divide_tensor_),
+    ("true_divide_.Scalar", true_divide__scalar),
+    ("true_divide_.Tensor", true_divide__tensor),
     ("trunc", trunc),
     ("trunc_", trunc_),
     ("unbind.int", unbind),

@@ -19,12 +19,13 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops._division_aliases import bind_division_aliases
 
 from . import accuracy_utils as utils
 
 
-# div.Tensor with true_divide
-@pytest.mark.true_divide
+# div.Tensor
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_tensor_tensor(shape, dtype):
@@ -34,24 +35,25 @@ def test_div_tensor_tensor(shape, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = torch.div(ref_inp1, ref_inp2)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-# div_.Tensor with true_divide_
-@pytest.mark.true_divide_
+# div_.Tensor
+@pytest.mark.div__tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_div_tensor_tensor_(shape, dtype):
+def test_div__tensor(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = ref_inp1.div_(ref_inp2)
-    res_out = flag_gems.true_divide_(inp1, inp2)
+    res_out = flag_gems.div__tensor(inp1, inp2)
 
+    assert res_out is inp1
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
@@ -82,10 +84,10 @@ DIVIDE_MODE_CASES = [
         marks=pytest.mark.divide_scalar_mode,
     ),
     pytest.param(
-        "divide_scalar_mode_",
+        "divide__scalar_mode",
         "divide_",
         "Scalar_mode",
-        marks=pytest.mark.divide_scalar_mode_,
+        marks=pytest.mark.divide__scalar_mode,
     ),
     pytest.param(
         "divide_tensor_mode",
@@ -94,10 +96,10 @@ DIVIDE_MODE_CASES = [
         marks=pytest.mark.divide_tensor_mode,
     ),
     pytest.param(
-        "divide_tensor_mode_",
+        "divide__tensor_mode",
         "divide_",
         "Tensor_mode",
-        marks=pytest.mark.divide_tensor_mode_,
+        marks=pytest.mark.divide__tensor_mode,
     ),
 ]
 
@@ -136,11 +138,11 @@ def test_divide_scalar_mode_alias(entry, packet, overload, rounding_mode, dtype)
     _check_divide_mode_alias(entry, packet, overload, rounding_mode, dtype)
 
 
-@pytest.mark.divide_scalar_mode_
+@pytest.mark.divide__scalar_mode
 @pytest.mark.parametrize("entry,packet,overload", DIVIDE_MODE_CASES[1:2])
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int64])
-def test_divide_scalar_mode_alias_(entry, packet, overload, rounding_mode, dtype):
+def test_divide__scalar_mode_alias(entry, packet, overload, rounding_mode, dtype):
     _check_divide_mode_alias(entry, packet, overload, rounding_mode, dtype)
 
 
@@ -152,22 +154,19 @@ def test_divide_tensor_mode_alias(entry, packet, overload, rounding_mode, dtype)
     _check_divide_mode_alias(entry, packet, overload, rounding_mode, dtype)
 
 
-@pytest.mark.divide_tensor_mode_
+@pytest.mark.divide__tensor_mode
 @pytest.mark.parametrize("entry,packet,overload", DIVIDE_MODE_CASES[3:4])
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor"])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int32, torch.int64])
-def test_divide_tensor_mode_alias_(entry, packet, overload, rounding_mode, dtype):
+def test_divide__tensor_mode_alias(entry, packet, overload, rounding_mode, dtype):
     _check_divide_mode_alias(entry, packet, overload, rounding_mode, dtype)
 
 
 @pytest.mark.parametrize("entry,packet,overload", DIVIDE_MODE_CASES)
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor", "invalid"])
-def test_divide_mode_backend_forwarding(
-    monkeypatch, entry, packet, overload, rounding_mode
-):
-    target = "div_tensor_mode" if overload == "Tensor_mode" else "div_scalar_mode"
-    if packet.endswith("_"):
-        target += "_"
+def test_divide_mode_backend_forwarding(entry, packet, overload, rounding_mode):
+    assert entry == f"{packet}_{overload.lower()}"
+    target = "div_mode_" if packet.endswith("_") else "div_mode"
     first, second, sentinel = object(), object(), object()
     calls = []
 
@@ -175,11 +174,13 @@ def test_divide_mode_backend_forwarding(
         calls.append((A, B, rounding_mode))
         return sentinel
 
-    monkeypatch.setattr(flag_gems, target, specialized)
-    assert (
-        getattr(flag_gems, entry)(first, second, rounding_mode=rounding_mode)
-        is sentinel
-    )
+    # Canonical aliases capture the specialized backend at binding time;
+    # they do not dynamically forward through another canonical div entry.
+    registry = vars(flag_gems).copy()
+    defaults = registry.copy()
+    registry[target] = specialized
+    bind_division_aliases(registry, defaults)
+    assert registry[entry](first, second, rounding_mode=rounding_mode) is sentinel
     assert calls == [(first, second, rounding_mode)]
 
 
@@ -218,27 +219,27 @@ def test_div_tensor_mode_int(shape, rounding_mode, dtype):
 
 
 # div_.Tensor_mode with rounding_mode keyword
-@pytest.mark.div_tensor_mode_
+@pytest.mark.div__tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
-def test_div_tensor_mode_float_(shape, rounding_mode, dtype):
+def test_div__tensor_mode_float(shape, rounding_mode, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = _make_nonzero_float_tensor(shape, dtype)
     ref_inp1 = utils.to_reference(inp1.clone(), False)
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_tensor_mode_
+@pytest.mark.div__tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
+def test_div__tensor_mode_int(shape, rounding_mode, dtype):
     inp1 = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
     )
@@ -247,7 +248,7 @@ def test_div_tensor_mode_int_(shape, rounding_mode, dtype):
     ref_inp2 = utils.to_reference(inp2, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
-    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     assert res_out is inp1
     utils.gems_assert_equal(res_out, ref_out)
@@ -286,26 +287,26 @@ def test_div_scalar_mode_int(shape, rounding_mode, dtype):
 
 
 # div_.Scalar_mode with rounding_mode keyword
-@pytest.mark.div_scalar_mode_
+@pytest.mark.div__scalar_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode,dtype", DIV_MODE_FLOAT_CASES)
-def test_div_scalar_mode_float_(shape, rounding_mode, dtype):
+def test_div__scalar_mode_float(shape, rounding_mode, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     scalar = -2.5
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
-    res_out = flag_gems.div_scalar_mode_(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__scalar_mode(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_mode_
+@pytest.mark.div__scalar_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ["trunc", "floor"])
 @pytest.mark.parametrize("dtype", utils.INT_DTYPES)
-def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
+def test_div__scalar_mode_int(shape, rounding_mode, dtype):
     inp = torch.randint(-100, 100, shape, dtype=dtype, device="cpu").to(
         flag_gems.device
     )
@@ -313,14 +314,14 @@ def test_div_scalar_mode_int_(shape, rounding_mode, dtype):
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
-    res_out = flag_gems.div_scalar_mode_(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__scalar_mode(inp, scalar, rounding_mode=rounding_mode)
 
     assert res_out is inp
     utils.gems_assert_equal(res_out, ref_out)
 
 
-# div.Tensor with true_divide
-@pytest.mark.true_divide
+# div.Scalar
+@pytest.mark.div_scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -333,17 +334,17 @@ def test_div_tensor_scalar(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1, False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, inp2, None)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_scalar(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-# div_.Tensor with true_divide_
-@pytest.mark.true_divide_
+# div_.Scalar
+@pytest.mark.div__scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_div_tensor_scalar_(shape, scalar, dtype):
+def test_div__scalar_tensor_input(shape, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
         pytest.skip("Issue #3796: not working")
 
@@ -352,28 +353,29 @@ def test_div_tensor_scalar_(shape, scalar, dtype):
     ref_inp1 = utils.to_reference(inp1.clone(), False)
 
     ref_out = utils.ref_div_rounding(ref_inp1, inp2, None)
-    res_out = flag_gems.true_divide_(inp1, inp2)
+    res_out = flag_gems.div__scalar(inp1, inp2)
 
+    assert res_out is inp1
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide_
+@pytest.mark.div__scalar
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_div_scalar_(shape, scalar, dtype):
+def test_div__scalar(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp.clone(), False)
 
     ref_out = utils.ref_div_rounding(ref_inp, scalar, None)
-    res_out = flag_gems.true_divide_(inp, scalar)
+    res_out = flag_gems.div__scalar(inp, scalar)
 
     assert res_out is inp
     utils.gems_assert_close(inp, ref_out, dtype, equal_nan=True)
 
 
-# div.Scalar with true_divide
-@pytest.mark.true_divide
+# div.Tensor with a zero-dimensional numerator
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
@@ -381,18 +383,19 @@ def test_div_scalar_tensor(shape, scalar, dtype):
     if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float16:
         pytest.skip("Issue #3796: not working")
 
-    inp1 = scalar
+    inp1 = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
     ref_inp2 = utils.to_reference(inp2, False)
 
-    ref_out = utils.ref_div_rounding(inp1, ref_inp2, None)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
+    res_out = flag_gems.div_tensor(inp1, inp2)
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-# div.Scalar with true_divide
-@pytest.mark.true_divide
+# div.Tensor with zero-dimensional operands
+@pytest.mark.div_tensor
 @pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
 def test_div_scalar_scalar(dtype):
     if dtype == torch.float32:
@@ -402,18 +405,21 @@ def test_div_scalar_scalar(dtype):
         inp1 = random.randint(1, 100)
         inp2 = random.randint(1, 100)
 
-    ref_out = torch.div(inp1, inp2)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    inp1 = torch.tensor(inp1, dtype=dtype, device=flag_gems.device)
+    inp2 = torch.tensor(inp2, dtype=dtype, device=flag_gems.device)
+    ref_inp1 = utils.to_reference(inp1, False)
+    ref_inp2 = utils.to_reference(inp2, False)
 
-    if dtype == torch.int64:
-        utils.gems_assert_equal(res_out, ref_out)
-    else:
-        utils.gems_assert_close(res_out, ref_out, dtype)
+    ref_out = torch.div(ref_inp1, ref_inp2)
+    res_out = flag_gems.div_tensor(inp1, inp2)
+
+    assert res_out.dtype == ref_out.dtype
+    utils.gems_assert_close(res_out, ref_out, ref_out.dtype)
 
 
 # div.Tensor
 # Complex
-@pytest.mark.true_divide
+@pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -435,7 +441,7 @@ def test_div_complex_complex(shape, complex_dtype):
     ref_inp2 = utils.to_reference(inp2, True)
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_tensor(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
@@ -447,7 +453,7 @@ def test_div_complex_complex(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.true_divide
+@pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -483,7 +489,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
         ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
 
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_tensor(inp1, inp2)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
@@ -493,7 +499,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 
 # div.Tensor
 # Complex
-@pytest.mark.true_divide
+@pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -520,7 +526,7 @@ def test_div_tensor_int(shape, complex_dtype):
         ref_inp2 = utils.to_reference(inp2, True)
         ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
 
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_tensor(inp1, inp2)
 
     if flag_gems.vendor_name in ("mthreads", "kunlunxin"):
         res_out = res_out.to("cpu")
@@ -528,7 +534,7 @@ def test_div_tensor_int(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide
+@pytest.mark.div_scalar
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
     reason="Issues #3267: Ascend NPU does not support complex32 dtype",
@@ -549,7 +555,7 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     ref_inp2 = inp2
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, None)
-    res_out = flag_gems.true_divide(inp1, inp2)
+    res_out = flag_gems.div_scalar(inp1, inp2)
 
     # mthreads does not support torch.isclose for complex types on device,
     # so move to CPU before comparison.
@@ -559,7 +565,7 @@ def test_div_complex_int_scalar(shape, complex_dtype):
     utils.gems_assert_close(res_out, ref_out, complex_dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide_out
+@pytest.mark.div_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_tensor_tensor(shape, dtype):
@@ -572,49 +578,54 @@ def test_div_out_tensor_tensor(shape, dtype):
     torch.div(ref_inp1, ref_inp2, out=ref_out)
 
     out = torch.empty_like(inp1)
-    res_out = flag_gems.true_divide_out(inp1, inp2, out)
+    res_out = flag_gems.div_out(inp1, inp2, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide_out
+@pytest.mark.div_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_tensor_scalar(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
+    ref_scalar = utils.to_reference(scalar_tensor, False)
 
     ref_out = torch.empty_like(ref_inp)
-    torch.div(ref_inp, scalar, out=ref_out)
+    torch.div(ref_inp, ref_scalar, out=ref_out)
 
     out = torch.empty_like(inp)
-    res_out = flag_gems.true_divide_out(inp, scalar, out)
+    res_out = flag_gems.div_out(inp, scalar_tensor, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.true_divide_out
+@pytest.mark.div_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_div_out_scalar_tensor(shape, scalar, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    scalar_tensor = torch.tensor(scalar, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, False)
+    ref_scalar = utils.to_reference(scalar_tensor, False)
 
-    ref_out = utils.ref_div_rounding(scalar, ref_inp, None)
+    ref_out = torch.empty_like(ref_inp)
+    torch.div(ref_scalar, ref_inp, out=ref_out)
 
     out = torch.empty_like(inp)
-    res_out = flag_gems.true_divide_out(scalar, inp, out)
+    res_out = flag_gems.div_out(scalar_tensor, inp, out)
 
     assert res_out is out
     utils.gems_assert_close(out, ref_out, dtype, equal_nan=True)
 
 
 # ---------------------------------------------------------------------------
-# div_tensor_mode / div_tensor_mode_ and div_scalar_mode / div_scalar_mode_
+# div_tensor_mode / div__tensor_mode and div_scalar_mode / div__scalar_mode
 # Covers aten: div.Tensor_mode, div.Scalar_mode, div_.Tensor_mode,
 #              div_.Scalar_mode (and their divide.* aliases)
 # ---------------------------------------------------------------------------
@@ -702,12 +713,12 @@ def test_div_scalar_mode(shape, scalar, rounding_mode, dtype):
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_tensor_mode_
+@pytest.mark.div__tensor_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_div_tensor_mode_(shape, rounding_mode, dtype):
-    # div_.Tensor_mode: div_tensor_mode_(Tensor, Tensor, rounding_mode=...)
+def test_div__tensor_mode(shape, rounding_mode, dtype):
+    # div_.Tensor_mode: div__tensor_mode(Tensor, Tensor, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
         pytest.skip(
             "trunc_divide uses libdevice.div_rn which only supports float32/float64"
@@ -734,7 +745,7 @@ def test_div_tensor_mode_(shape, rounding_mode, dtype):
 
     ref_out = utils.ref_div_rounding(ref_inp1, ref_inp2, rounding_mode)
 
-    res_out = flag_gems.div_tensor_mode_(inp1, inp2, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__tensor_mode(inp1, inp2, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
@@ -750,13 +761,13 @@ def test_div_tensor_mode_(shape, rounding_mode, dtype):
         utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
-@pytest.mark.div_scalar_mode_
+@pytest.mark.div__scalar_mode
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("scalar", utils.SCALARS)
 @pytest.mark.parametrize("rounding_mode", ROUNDING_MODES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_div_scalar_mode_(shape, scalar, rounding_mode, dtype):
-    # div_.Scalar_mode: div_scalar_mode_(Tensor, scalar, rounding_mode=...)
+def test_div__scalar_mode(shape, scalar, rounding_mode, dtype):
+    # div_.Scalar_mode: div__scalar_mode(Tensor, scalar, rounding_mode=...)
     if rounding_mode == "trunc" and dtype in (torch.float16, torch.bfloat16):
         pytest.skip(
             "trunc_divide uses libdevice.div_rn which only supports float32/float64"
@@ -772,7 +783,7 @@ def test_div_scalar_mode_(shape, scalar, rounding_mode, dtype):
         ref_out = utils.ref_div_rounding(ref_inp, scalar_tensor, rounding_mode)
     else:
         ref_out = utils.ref_div_rounding(ref_inp, scalar, rounding_mode)
-    res_out = flag_gems.div_scalar_mode_(inp, scalar, rounding_mode=rounding_mode)
+    res_out = flag_gems.div__scalar_mode(inp, scalar, rounding_mode=rounding_mode)
 
     # mthreads: floor/trunc division with float16/bfloat16 produces ±1~5 integer
     # boundary errors due to float16 not representing small divisors exactly (e.g.
