@@ -93,6 +93,7 @@ from .foreach_maximum_list_ import foreach_maximum_list_
 from .foreach_maximum_scalar import foreach_maximum_scalar
 from .foreach_maximum_scalar_ import foreach_maximum_scalar_
 from .foreach_maximum_scalar_list import foreach_maximum_scalar_list
+from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
 from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
 from .full import full
 from .full_like import full_like
@@ -323,6 +324,7 @@ __all__ = [
     "foreach_maximum_scalar",
     "foreach_maximum_scalar_",
     "foreach_maximum_scalar_list",
+    "foreach_maximum_scalar_list_",
     "foreach_minimum_scalar_list",
     "full",
     "full_like",
