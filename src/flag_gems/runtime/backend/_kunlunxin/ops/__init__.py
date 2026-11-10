@@ -683,6 +683,7 @@ from .nllloss import (
     nll_loss_nd_backward,
     nll_loss_nd_forward,
 )
+from .nnpack_spatial_convolution import nnpack_spatial_convolution  # noqa: F401
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out  # noqa: F401
@@ -1659,6 +1660,7 @@ __all__ = [
     "nll_loss_forward",
     "nll_loss_nd_backward",
     "nll_loss_nd_forward",
+    "nnpack_spatial_convolution",
     "nonzero",
     "nonzero_numpy",
     "norm",
