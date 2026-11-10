@@ -443,6 +443,9 @@ from flag_gems.ops._validate_sparse_bsr_tensor_args import (
 from flag_gems.ops._validate_sparse_csc_tensor_args import (
     _validate_sparse_csc_tensor_args,
 )
+from flag_gems.ops._validate_sparse_csr_tensor_args import (
+    _validate_sparse_csr_tensor_args,
+)
 from flag_gems.ops._values_copy import _values_copy, _values_copy_out
 from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
     _weight_int4pack_mm_with_scales_and_zeros,
@@ -2115,6 +2118,7 @@ __all__ = [
     "_upsample_nearest_exact3d_backward_grad_input",
     "_validate_sparse_bsr_tensor_args",
     "_validate_sparse_csc_tensor_args",
+    "_validate_sparse_csr_tensor_args",
     "_values_copy",
     "_values_copy_out",
     "_weight_int4pack_mm_with_scales_and_zeros",
