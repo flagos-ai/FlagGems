@@ -57,6 +57,7 @@ from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
 from .conv_transpose2d import conv_transpose2d
 from .copy import copy_
 from .cudnn_convolution import cudnn_convolution
+from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import (
@@ -231,6 +232,7 @@ __all__ = [
     "conv_transpose2d",
     "copy_",
     "cudnn_convolution",
+    "cummaxmin_backward",
     "deg2rad_",
     "diagonal_scatter",
     "div_mode",
