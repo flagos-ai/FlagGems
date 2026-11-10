@@ -344,7 +344,7 @@ def weight_bias_backward_kernel(
         tl.store(dB + pid, db, mask=col_mask)
 
 
-def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+def _layer_norm_generic(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     logger.debug("GEMS LAYERNORM_FORWARD")
 
     N = math.prod(normalized_shape)
@@ -407,6 +407,26 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 eps,
             )
     return y, mean, rstd
+
+
+_hygon_layer_norm = None
+
+
+def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
+    # Keep old dotted-path callers on the vendor implementation as well.
+    if runtime.device.vendor_name == "hygon":
+        global _hygon_layer_norm
+        if _hygon_layer_norm is None:
+            # Use the callable already selected by FlagGems backend dispatch.
+            from flag_gems import layer_norm as hygon_layer_norm
+
+            if hygon_layer_norm is layer_norm:
+                from flag_gems.runtime.backend._hygon.ops.layernorm import (
+                    layer_norm as hygon_layer_norm,
+                )
+            _hygon_layer_norm = hygon_layer_norm
+        return _hygon_layer_norm(input, normalized_shape, weight, bias, eps)
+    return _layer_norm_generic(input, normalized_shape, weight, bias, eps)
 
 
 def layer_norm_backward(
