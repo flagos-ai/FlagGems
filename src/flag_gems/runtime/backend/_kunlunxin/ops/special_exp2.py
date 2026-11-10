@@ -34,7 +34,6 @@ config_single_cta = CodeGenConfig(
     kunlunAutoGrid=True,
     unroll_num=8,
 )
-
 config_multi_cta_fp32 = CodeGenConfig(
     512,
     (65536, 65536, 65536),
