@@ -20,7 +20,7 @@ import triton.language as tl
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.gt")
 
 
 def _is_float64_scalar(*args):

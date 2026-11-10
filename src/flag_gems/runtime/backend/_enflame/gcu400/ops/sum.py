@@ -22,7 +22,7 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.sum")
 
 _min = builtins.min
 _max = builtins.max
