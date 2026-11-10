@@ -209,9 +209,9 @@ def div_tensor_mode(A, B, rounding_mode=None):
     return _div_mode(A, B, rounding_mode=rounding_mode)
 
 
-def div_tensor_mode_(A, B, rounding_mode=None):
+def div__tensor_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ENFLAME DIV_TENSOR_MODE_")
-    return _div_mode_(A, B, rounding_mode=rounding_mode)
+    return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
 def div_scalar_mode(A, B, rounding_mode=None):
@@ -219,9 +219,9 @@ def div_scalar_mode(A, B, rounding_mode=None):
     return _div_mode(A, B, rounding_mode=rounding_mode)
 
 
-def div_scalar_mode_(A, B, rounding_mode=None):
+def div__scalar_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ENFLAME DIV_SCALAR_MODE_")
-    return _div_mode_(A, B, rounding_mode=rounding_mode)
+    return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
 def _div_mode(A, B, rounding_mode=None):
@@ -236,7 +236,7 @@ def _div_mode(A, B, rounding_mode=None):
         raise ValueError(msg)
 
 
-def _div_mode_(A, B, rounding_mode=None):
+def _div_mode_inplace(A, B, rounding_mode=None):
     if rounding_mode is None:
         return true_divide_(A, B)
     elif rounding_mode == "trunc":

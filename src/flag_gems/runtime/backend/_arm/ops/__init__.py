@@ -20,10 +20,10 @@ from .attention import scaled_dot_product_attention
 from .bmm import bmm
 from .cumsum import cumsum
 from .div import (  # noqa: F401
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -64,10 +64,10 @@ __all__ = [
     "argmax",
     "bmm",
     "cumsum",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "exponential_",
     "floor_divide",
     "floor_divide_",

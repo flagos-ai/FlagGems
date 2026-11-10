@@ -735,10 +735,22 @@ from flag_gems.ops.dim import dim
 from flag_gems.ops.dim_arange import _dim_arange as dim_arange
 from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops.dist import dist
-from flag_gems.ops.div import div_scalar_mode as div_mode
-from flag_gems.ops.div import div_scalar_mode_ as div_mode_
-from flag_gems.ops.div import floor_divide, floor_divide_, true_divide_out
+from flag_gems.ops.div import (
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
+    floor_divide,
+    floor_divide_,
+    true_divide_out,
+)
 from flag_gems.ops.divide import divide
+from flag_gems.ops.divide_mode import (
+    divide__scalar_mode,
+    divide__tensor_mode,
+    divide_scalar_mode,
+    divide_tensor_mode,
+)
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
@@ -1733,27 +1745,19 @@ from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
 
-# Preserve legacy helpers (true_divide, true_divide_, true_divide_tensor_,
-# divide, div_mode, div_mode_) and their backend specialization names.
+# Preserve non-mode helpers and their backend specialization names.
+# Mode overloads above are independent canonical backend override targets.
 # Keep true_divide_tensor imported directly; the main module wraps it after
 # specialization along with these independent canonical registration entries.
 div__scalar = _division_entry("div__scalar", true_divide_)
-div__scalar_mode = _division_entry("div__scalar_mode", div_mode_)
 div__tensor = _division_entry("div__tensor", true_divide_)
-div__tensor_mode = _division_entry("div__tensor_mode", div_mode_)
 div_out = _division_entry("div_out", true_divide_out)
 div_scalar = _division_entry("div_scalar", true_divide)
-div_scalar_mode = _division_entry("div_scalar_mode", div_mode)
 div_tensor = _division_entry("div_tensor", true_divide)
-div_tensor_mode = _division_entry("div_tensor_mode", div_mode)
 divide__scalar = _division_entry("divide__scalar", true_divide_)
-divide__scalar_mode = _division_entry("divide__scalar_mode", div_mode_)
 divide__tensor = _division_entry("divide__tensor", true_divide_)
-divide__tensor_mode = _division_entry("divide__tensor_mode", div_mode_)
 divide_scalar = _division_entry("divide_scalar", true_divide)
-divide_scalar_mode = _division_entry("divide_scalar_mode", div_mode)
 divide_tensor = _division_entry("divide_tensor", divide)
-divide_tensor_mode = _division_entry("divide_tensor_mode", div_mode)
 true_divide__scalar = _division_entry("true_divide__scalar", true_divide_)
 true_divide__tensor = _division_entry("true_divide__tensor", true_divide_tensor_)
 true_divide_scalar = _division_entry("true_divide_scalar", true_divide)
@@ -2442,8 +2446,6 @@ __all__ = [
     "div__scalar_mode",
     "div__tensor",
     "div__tensor_mode",
-    "div_mode",
-    "div_mode_",
     "div_out",
     "div_scalar",
     "div_scalar_mode",

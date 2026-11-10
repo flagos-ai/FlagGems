@@ -60,10 +60,10 @@ from .cudnn_convolution import cudnn_convolution
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -234,10 +234,10 @@ __all__ = [
     "cudnn_convolution",
     "deg2rad_",
     "diagonal_scatter",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "dropout",
     "dropout_backward",
     "erfinv",

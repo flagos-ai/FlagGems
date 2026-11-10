@@ -58,7 +58,7 @@ def true_divide(A, B):
         return torch.tensor(A / B)
 
 
-def true_divide_(A, B):
+def _true_divide_inplace(A, B):
     logger.debug("GEMS_ILUVATAR TRUE_DIVIDE_")
     if isinstance(B, torch.Tensor):
         return true_div_func(A, B, out0=A)
@@ -253,9 +253,9 @@ def div_tensor_mode(A, B, rounding_mode=None):
     return _div_mode(A, B, rounding_mode=rounding_mode)
 
 
-def div_tensor_mode_(A, B, rounding_mode=None):
+def div__tensor_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ILUVATAR DIV_TENSOR_MODE_")
-    return _div_mode_(A, B, rounding_mode=rounding_mode)
+    return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
 def div_scalar_mode(A, B, rounding_mode=None):
@@ -263,9 +263,9 @@ def div_scalar_mode(A, B, rounding_mode=None):
     return _div_mode(A, B, rounding_mode=rounding_mode)
 
 
-def div_scalar_mode_(A, B, rounding_mode=None):
+def div__scalar_mode(A, B, rounding_mode=None):
     logger.debug("GEMS_ILUVATAR DIV_SCALAR_MODE_")
-    return _div_mode_(A, B, rounding_mode=rounding_mode)
+    return _div_mode_inplace(A, B, rounding_mode=rounding_mode)
 
 
 def _div_mode(A, B, rounding_mode=None):
@@ -280,9 +280,9 @@ def _div_mode(A, B, rounding_mode=None):
         raise ValueError(msg)
 
 
-def _div_mode_(A, B, rounding_mode=None):
+def _div_mode_inplace(A, B, rounding_mode=None):
     if rounding_mode is None:
-        return true_divide_(A, B)
+        return _true_divide_inplace(A, B)
     elif rounding_mode == "trunc":
         return trunc_divide_(A, B)
     elif rounding_mode == "floor":

@@ -55,10 +55,10 @@ from .cudnn_convolution import cudnn_convolution
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -264,10 +264,10 @@ __all__ = [
     "cudnn_convolution",
     "diagonal_scatter",
     "diff",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "embedding_bag_dense_backward",
     "expand_copy",
     "exponential",

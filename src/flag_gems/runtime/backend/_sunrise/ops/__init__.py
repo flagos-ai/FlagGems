@@ -70,10 +70,10 @@ from .ctc_loss import ctc_loss
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag_embed import diag_embed
 from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     remainder,
@@ -259,10 +259,10 @@ __all__ = [
     "cumsum",
     "cumsum_out",
     "diag_embed",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "dropout",
     "dropout_backward",
     "efficient_attention_backward",

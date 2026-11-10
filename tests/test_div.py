@@ -19,7 +19,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops._division_aliases import bind_division_aliases
+import flag_gems.ops as ops
 
 from . import accuracy_utils as utils
 
@@ -164,9 +164,11 @@ def test_divide__tensor_mode_alias(entry, packet, overload, rounding_mode, dtype
 
 @pytest.mark.parametrize("entry,packet,overload", DIVIDE_MODE_CASES)
 @pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor", "invalid"])
-def test_divide_mode_backend_forwarding(entry, packet, overload, rounding_mode):
+def test_divide_mode_backend_forwarding(
+    monkeypatch, entry, packet, overload, rounding_mode
+):
     assert entry == f"{packet}_{overload.lower()}"
-    target = "div_mode_" if packet.endswith("_") else "div_mode"
+    target = entry.replace("divide", "div", 1)
     first, second, sentinel = object(), object(), object()
     calls = []
 
@@ -174,13 +176,10 @@ def test_divide_mode_backend_forwarding(entry, packet, overload, rounding_mode):
         calls.append((A, B, rounding_mode))
         return sentinel
 
-    # Canonical aliases capture the specialized backend at binding time;
-    # they do not dynamically forward through another canonical div entry.
-    registry = vars(flag_gems).copy()
-    defaults = registry.copy()
-    registry[target] = specialized
-    bind_division_aliases(registry, defaults)
-    assert registry[entry](first, second, rounding_mode=rounding_mode) is sentinel
+    # The generic divide entry resolves the corresponding canonical div at runtime.
+    forward = getattr(ops, entry)
+    monkeypatch.setattr(flag_gems, target, specialized)
+    assert forward(first, second, rounding_mode=rounding_mode) is sentinel
     assert calls == [(first, second, rounding_mode)]
 
 

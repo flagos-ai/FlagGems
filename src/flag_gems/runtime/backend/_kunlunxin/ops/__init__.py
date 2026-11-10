@@ -379,10 +379,10 @@ from .digamma import digamma
 from .digamma_ import digamma_
 from .dist import dist
 from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     divide,
     floor_divide,
     floor_divide_,
@@ -1312,10 +1312,10 @@ __all__ = [
     "digamma",
     "digamma_",
     "dist",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "divide",
     "dot",
     "dropout",

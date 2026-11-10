@@ -24,27 +24,21 @@ def bind_division_aliases(registry, defaults=None):
     the shared true_divide entry. Snapshot targets before replacing names so
     those implementations (including backend overrides) remain independent.
     Explicit backend implementations of the canonical IDs take precedence.
+    Mode overloads are already canonical and are specialized directly by
+    SpecOpRegistrar; they need no alias binding.
     Legacy helpers retain their names and backend targets. Canonical IDs use
     key.lstrip('_').replace('.', '_').lower(), preserving internal underscores.
     """
     sources = {
         "div__scalar": "true_divide_",
-        "div__scalar_mode": "div_mode_",
         "div__tensor": "true_divide_",
-        "div__tensor_mode": "div_mode_",
         "div_out": "true_divide_out",
         "div_scalar": "true_divide",
-        "div_scalar_mode": "div_mode",
         "div_tensor": "true_divide",
-        "div_tensor_mode": "div_mode",
         "divide__scalar": "true_divide_",
-        "divide__scalar_mode": "div_mode_",
         "divide__tensor": "true_divide_",
-        "divide__tensor_mode": "div_mode_",
         "divide_scalar": "true_divide",
-        "divide_scalar_mode": "div_mode",
         "divide_tensor": "divide",
-        "divide_tensor_mode": "div_mode",
         "true_divide__scalar": "true_divide_",
         "true_divide__tensor": "true_divide_tensor_",
         "true_divide_scalar": "true_divide",

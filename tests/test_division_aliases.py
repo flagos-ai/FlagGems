@@ -23,6 +23,7 @@ import yaml
 import flag_gems
 import flag_gems.ops as ops
 from flag_gems.ops._division_aliases import bind_division_aliases
+from flag_gems.runtime.backend import SpecOpRegistrar
 
 from . import accuracy_utils as utils
 
@@ -62,12 +63,15 @@ def test_division_registration_metadata():
         assert getattr(flag_gems, entry.__name__) is entry
         assert callable(getattr(ops, name))
         assert name in ops.__all__
-        assert entry not in (flag_gems.div_mode, flag_gems.div_mode_)
         entries.append(entry)
         names.append(name)
     assert len(entries) == len(set(entries)) == 22
     assert len(names) == len(set(names)) == len(expected_names) == 22
     assert set(names) == expected_names
+    for name in ("div_mode", "div_mode_"):
+        assert not hasattr(ops, name)
+        assert name not in ops.__all__
+        assert not hasattr(flag_gems, name)
 
 
 @pytest.mark.parametrize("specialized", [False, True])
@@ -89,16 +93,8 @@ def test_backend_binding(specialized):
         "true_divide__tensor": "true_divide_tensor_",
         "true_divide_scalar": "true_divide",
         "true_divide__scalar": "true_divide_",
-        "div_scalar_mode": "div_mode",
-        "div__scalar_mode": "div_mode_",
-        "div_tensor_mode": "div_mode",
-        "div__tensor_mode": "div_mode_",
-        "divide_scalar_mode": "div_mode",
-        "divide__scalar_mode": "div_mode_",
-        "divide_tensor_mode": "div_mode",
-        "divide__tensor_mode": "div_mode_",
     }
-    assert len(sources) == 21
+    assert len(sources) == 13
     registry = {name: target(name) for name in set(sources.values())}
     bind_division_aliases(registry)
     defaults = registry.copy()
@@ -113,14 +109,64 @@ def test_backend_binding(specialized):
         assert registry[name].__qualname__ == name
         label = "explicit_" + name if specialized else "backend_" + source
         assert registry[name](1, out=2) == (label, (1,), {"out": 2})
-        if source in ("div_mode", "div_mode_"):
-            for rounding_mode in (None, "trunc", "floor"):
-                assert registry[name](1, 2, rounding_mode=rounding_mode) == (
-                    label,
-                    (1, 2),
-                    {"rounding_mode": rounding_mode},
-                )
     assert len({id(registry[name]) for name in sources}) == len(sources)
+
+
+_MODE_ENTRIES = tuple(
+    f"{packet}_{overload}_mode"
+    for packet in ("div", "div_", "divide", "divide_")
+    for overload in ("scalar", "tensor")
+)
+
+
+@pytest.mark.parametrize("entry", _MODE_ENTRIES)
+@pytest.mark.parametrize("rounding_mode", [None, "trunc", "floor", "invalid"])
+def test_mode_backend_event_binding(monkeypatch, entry, rounding_mode):
+    registry = vars(ops).copy()
+    defaults = registry.copy()
+    first, second, sentinel = object(), object(), object()
+    calls = []
+    events = []
+
+    def specialized(A, B, rounding_mode=None):
+        calls.append((A, B, rounding_mode))
+        return sentinel
+
+    specialized.__name__ = entry
+    specialized.__qualname__ = entry
+
+    class BackendEvent:
+        def is_available(self):
+            events.append("available")
+            return True
+
+        def get_ops(self, vendor):
+            events.append(vendor)
+            return [(entry, specialized)]
+
+    registrar = SpecOpRegistrar(registry, vendor="test_backend")
+    monkeypatch.setattr(registrar, "_get_specific_events", lambda: (BackendEvent(),))
+    registrar.apply()
+    bind_division_aliases(registry, defaults)
+    assert events == ["available", "test_backend"]
+    assert registry[entry] is specialized
+    for name in _MODE_ENTRIES:
+        if name != entry:
+            # Scalar/tensor and in-place/out-of-place overrides remain independent.
+            assert registry[name] is defaults[name]
+        monkeypatch.setattr(flag_gems, name, registry[name])
+
+    assert registry[entry](first, second, rounding_mode=rounding_mode) is sentinel
+    assert calls == [(first, second, rounding_mode)]
+    if entry.startswith("div_"):
+        calls.clear()
+        divide_entry = entry.replace("div", "divide", 1)
+        assert (
+            registry[divide_entry](first, second, rounding_mode=rounding_mode)
+            is sentinel
+        )
+        # Exactly one backend call also rules out recursive alias forwarding.
+        assert calls == [(first, second, rounding_mode)]
 
 
 def _check_registration(op_id, aten_key):
@@ -508,7 +554,7 @@ def test_divide__tensor_mode(division_case, rounding_mode):
 
 
 @pytest.mark.parametrize("scalar_operand", [False, True])
-def test_div_mode_compatibility(division_case, rounding_mode, scalar_operand):
+def test_div_mode_canonical(division_case, rounding_mode, scalar_operand):
     c = division_case
     other = -3 if scalar_operand else c.b
     ref_other = -3 if scalar_operand else c.ref_b
@@ -518,12 +564,13 @@ def test_div_mode_compatibility(division_case, rounding_mode, scalar_operand):
         else torch.ops.aten.div.Tensor_mode
     )
     ref_out = ref_op(c.ref_a, ref_other, rounding_mode=rounding_mode)
-    res_out = flag_gems.div_mode(c.a, other, rounding_mode=rounding_mode)
+    entry = flag_gems.div_scalar_mode if scalar_operand else flag_gems.div_tensor_mode
+    res_out = entry(c.a, other, rounding_mode=rounding_mode)
     _check_result(res_out, ref_out)
 
 
 @pytest.mark.parametrize("scalar_operand", [False, True])
-def test_div_mode_inplace_compatibility(inplace_case, rounding_mode, scalar_operand):
+def test_div_mode_inplace_canonical(inplace_case, rounding_mode, scalar_operand):
     c = inplace_case
     other = -3 if scalar_operand else c.b
     ref_other = -3 if scalar_operand else c.ref_b
@@ -533,5 +580,6 @@ def test_div_mode_inplace_compatibility(inplace_case, rounding_mode, scalar_oper
         else torch.ops.aten.div_.Tensor_mode
     )
     ref_out = ref_op(c.ref_a, ref_other, rounding_mode=rounding_mode)
-    res_out = flag_gems.div_mode_(c.a, other, rounding_mode=rounding_mode)
+    entry = flag_gems.div__scalar_mode if scalar_operand else flag_gems.div__tensor_mode
+    res_out = entry(c.a, other, rounding_mode=rounding_mode)
     _check_inplace(c, res_out, ref_out)

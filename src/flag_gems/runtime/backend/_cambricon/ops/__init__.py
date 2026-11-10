@@ -96,10 +96,10 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .digamma_ import digamma, digamma_
 from .div import (
+    div__scalar_mode,
+    div__tensor_mode,
     div_scalar_mode,
-    div_scalar_mode_,
     div_tensor_mode,
-    div_tensor_mode_,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -443,10 +443,10 @@ __all__ = [
     "diagonal_backward",
     "digamma",
     "digamma_",
+    "div__scalar_mode",
+    "div__tensor_mode",
     "div_scalar_mode",
-    "div_scalar_mode_",
     "div_tensor_mode",
-    "div_tensor_mode_",
     "dropout",
     "dropout_backward",
     "elu",

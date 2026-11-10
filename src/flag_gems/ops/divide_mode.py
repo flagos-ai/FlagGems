@@ -22,10 +22,10 @@ def divide_scalar_mode(A, B, rounding_mode=None):
     return flag_gems.div_scalar_mode(A, B, rounding_mode=rounding_mode)
 
 
-def divide_scalar_mode_(A, B, rounding_mode=None):
+def divide__scalar_mode(A, B, rounding_mode=None):
     import flag_gems
 
-    return flag_gems.div_scalar_mode_(A, B, rounding_mode=rounding_mode)
+    return flag_gems.div__scalar_mode(A, B, rounding_mode=rounding_mode)
 
 
 def divide_tensor_mode(A, B, rounding_mode=None):
@@ -34,7 +34,7 @@ def divide_tensor_mode(A, B, rounding_mode=None):
     return flag_gems.div_tensor_mode(A, B, rounding_mode=rounding_mode)
 
 
-def divide_tensor_mode_(A, B, rounding_mode=None):
+def divide__tensor_mode(A, B, rounding_mode=None):
     import flag_gems
 
-    return flag_gems.div_tensor_mode_(A, B, rounding_mode=rounding_mode)
+    return flag_gems.div__tensor_mode(A, B, rounding_mode=rounding_mode)
