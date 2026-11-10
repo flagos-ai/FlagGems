@@ -770,6 +770,7 @@ from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
+from flag_gems.ops.embedding_spmdm_grad import embedding_spmdm_grad
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_affine_quantized import (
     _empty_affine_quantized,
@@ -2456,6 +2457,7 @@ __all__ = [
     "embedding_renorm_",
     "embedding_sparse_backward",
     "embedding_spmdm",
+    "embedding_spmdm_grad",
     "empty",
     "empty_permuted",
     "eq",
