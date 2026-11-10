@@ -281,7 +281,7 @@ def _launch_strided(t, ov):
         RANK=rank,
         ACC64=t.dtype == torch.float64,
         BLOCK=_BLOCK,
-        num_warps=_WARPS
+        num_warps=_WARPS,
     )
 
 
