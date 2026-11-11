@@ -228,7 +228,7 @@ from .pad_sequence import pad_sequence
 from .pairwise_distance import pairwise_distance
 from .permute_copy import permute_copy
 from .polar import polar
-from .polygamma import polygamma_
+from .polygamma import polygamma, polygamma_, polygamma_out
 from .pow import (
     pow_scalar,
     pow_tensor_scalar,
@@ -579,7 +579,9 @@ __all__ = [
     "pairwise_distance",
     "permute_copy",
     "polar",
+    "polygamma",
     "polygamma_",
+    "polygamma_out",
     "pow_scalar",
     "pow_tensor_scalar",
     "pow_tensor_scalar_",
