@@ -230,7 +230,9 @@ from .special_shifted_chebyshev_polynomial_v import (
 )
 from .split_with_sizes_copy import split_with_sizes_copy
 from .thnn_fused_gru_cell_backward import (
-    _thnn_fused_gru_cell_backward as thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward,
+    _thnn_fused_gru_cell_backward_out,
+
 )
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
@@ -267,6 +269,8 @@ __all__ = [
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
+    "_thnn_fused_gru_cell_backward",
+    "_thnn_fused_gru_cell_backward_out",
     "_thnn_fused_lstm_cell",
     "_unique2",
     "adaptive_avg_pool2d_backward",
@@ -463,7 +467,6 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
     "SUPPORTED_FP8_DTYPE",
-    "thnn_fused_gru_cell_backward",
     "tile",
     "topk_w8a16_fp8",
     "triangular_solve",

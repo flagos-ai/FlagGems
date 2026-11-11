@@ -66,8 +66,10 @@ jobs:
           key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
           restore-keys: pre-commit-${{ runner.os }}-
 
+      # Pinned so a new pre-commit/pyyaml release can't silently change hook
+      # behavior or break on a cache miss; bump deliberately when needed.
       - name: Install pre-commit and pyyaml
-        run: pip install pre-commit pyyaml
+        run: pip install "pre-commit==4.2.0" "pyyaml==6.0.2"
 
       - name: Run pre-commit (code style)
         run: pre-commit run --show-diff-on-failure --color=always --all-files
