@@ -24,7 +24,7 @@ _atan2 = tl_extra_shim.atan2
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def atan2_kernel(x, y):
     return _atan2(x.to(tl.float32), y.to(tl.float32))

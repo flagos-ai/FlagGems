@@ -33,8 +33,7 @@ def acosh_func(x):
     # We need to handle x >= 1 case
     # Using the formula: acosh(x) = log(x + sqrt(x*x - 1))
     sqrt_term = tl.sqrt(x_f32 * x_f32 - 1.0)
-    result = tl.log(x_f32 + sqrt_term)
-    return result.to(x.dtype)
+    return tl.log(x_f32 + sqrt_term)
 
 
 def acosh(A):
