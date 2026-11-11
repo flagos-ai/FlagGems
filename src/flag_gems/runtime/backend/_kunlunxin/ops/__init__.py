@@ -775,6 +775,8 @@ from .resolve_conj import resolve_conj
 from .resolve_neg import resolve_neg
 from .rms_norm import rms_norm, rms_norm_backward, rms_norm_forward
 from .rnn_relu import rnn_relu
+from .rnn_relu_cell import rnn_relu_cell
+from .rnn_tanh_cell import rnn_tanh_cell
 from .roll import roll
 from .rot90 import rot90
 from .round import round, round_, round_out
@@ -1773,6 +1775,8 @@ __all__ = [
     "rms_norm_backward",
     "rms_norm_forward",
     "rnn_relu",
+    "rnn_relu_cell",
+    "rnn_tanh_cell",
     "roll",
     "rot90",
     "round",
