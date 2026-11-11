@@ -19,6 +19,30 @@ import flag_gems
 
 from . import base, consts
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
+
+# substituted / non-contract baseline: the native aten op has no device kernel
+def _substituted_batch_norm_backward_elemt(
+    grad_out, input, mean, invstd, weight, sum_dy, sum_dy_xmu, count
+):
+    shape = [1] * grad_out.ndim
+    shape[1] = -1
+    dtype = grad_out.dtype
+    xmu = input - mean.reshape(shape).to(dtype)
+    invstd_r = invstd.reshape(shape).to(dtype)
+    result = invstd_r * (
+        grad_out
+        - (
+            sum_dy.reshape(shape).to(dtype)
+            + xmu * (invstd_r * invstd_r) * sum_dy_xmu.reshape(shape).to(dtype)
+        )
+        / count.to(dtype)
+    )
+    if weight is not None:
+        result = weight.reshape(shape) * result
+    return result
+
 
 class NormBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
@@ -66,7 +90,11 @@ def test_batch_norm_backward_elemt():
     bench = NormBenchmark(
         input_fn=batch_norm_backward_elemt_input_fn,
         op_name="batch_norm_backward_elemt",
-        torch_op=torch.batch_norm_backward_elemt,
+        torch_op=(
+            _substituted_batch_norm_backward_elemt
+            if IS_KUNLUNXIN
+            else torch.batch_norm_backward_elemt
+        ),
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.set_gems(flag_gems.batch_norm_backward_elemt)

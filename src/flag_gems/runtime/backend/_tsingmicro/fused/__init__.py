@@ -12,21 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .cross_entropy_loss import cross_entropy_loss
-from .flash_mla import flash_mla
-from .fused_add_rms_norm import fused_add_rms_norm
-from .grouped_topk import grouped_topk
-from .moe_align_block_size import moe_align_block_size, moe_align_block_size_triton
-from .reshape_and_cache_flash import reshape_and_cache_flash
-from .rotary_embedding import apply_rotary_pos_emb
+"""Tsingmicro common fused ops entry.
 
-__all__ = [
-    "cross_entropy_loss",
-    "flash_mla",
-    "fused_add_rms_norm",
-    "grouped_topk",
-    "moe_align_block_size",
-    "moe_align_block_size_triton",
-    "reshape_and_cache_flash",
-    "apply_rotary_pos_emb",
-]
+All fused operators live in the fully isolated per-chip packages ``tx81/``
+and ``tx82/`` (ops, fused, utils, tune_configs.yaml,
+heuristics_config_utils.py). This module simply dispatches to the package
+matching the detected chip and re-exports its fused operators, so the
+framework observes the exact same set of fused ops as before.
+"""
+
+import importlib
+import inspect
+import os
+import sys
+
+from .. import ARCH_MAP, arch
+
+_arch_name = ARCH_MAP[arch]
+_vendor_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+sys.path.insert(0, _vendor_dir)
+try:
+    _arch_fused = importlib.import_module(f"{_arch_name}.fused")
+finally:
+    sys.path.remove(_vendor_dir)
+
+for _name, _fn in inspect.getmembers(_arch_fused, inspect.isfunction):
+    globals()[_name] = _fn
+
+__all__ = list(getattr(_arch_fused, "__all__", []))
