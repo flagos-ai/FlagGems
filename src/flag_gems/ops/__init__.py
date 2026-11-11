@@ -72,6 +72,7 @@ from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
+from flag_gems.ops._efficientzerotensor import _efficientzerotensor
 from flag_gems.ops._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from flag_gems.ops._embedding_bag_per_sample_weights_backward import (
     _embedding_bag_per_sample_weights_backward,
@@ -295,6 +296,7 @@ from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
 from flag_gems.ops._make_dep_token import _make_dep_token
+from flag_gems.ops._make_dual import _make_dual
 from flag_gems.ops._masked_scale import _masked_scale
 from flag_gems.ops._masked_softmax import _masked_softmax
 from flag_gems.ops._masked_softmax_backward import _masked_softmax_backward
@@ -437,8 +439,14 @@ from flag_gems.ops._upsample_nearest_exact3d_backward import (
     _upsample_nearest_exact3d_backward,
     _upsample_nearest_exact3d_backward_grad_input,
 )
+from flag_gems.ops._validate_sparse_bsr_tensor_args import (
+    _validate_sparse_bsr_tensor_args,
+)
 from flag_gems.ops._validate_sparse_csc_tensor_args import (
     _validate_sparse_csc_tensor_args,
+)
+from flag_gems.ops._validate_sparse_csr_tensor_args import (
+    _validate_sparse_csr_tensor_args,
 )
 from flag_gems.ops._values_copy import _values_copy, _values_copy_out
 from flag_gems.ops._weight_int4pack_mm_with_scales_and_zeros import (
@@ -682,6 +690,10 @@ from flag_gems.ops.cross_attention import cross_attention
 from flag_gems.ops.crow_indices import crow_indices
 from flag_gems.ops.crow_indices_copy import crow_indices_copy
 from flag_gems.ops.ctc_loss import ctc_loss
+from flag_gems.ops.cudnn_affine_grid_generator import (
+    cudnn_affine_grid_generator,
+    cudnn_affine_grid_generator_out,
+)
 from flag_gems.ops.cudnn_affine_grid_generator_backward import (
     cudnn_affine_grid_generator_backward,
     cudnn_affine_grid_generator_backward_out,
@@ -758,6 +770,7 @@ from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
+from flag_gems.ops.embedding_spmdm_grad import embedding_spmdm_grad
 from flag_gems.ops.empty import empty
 from flag_gems.ops.empty_affine_quantized import (
     _empty_affine_quantized,
@@ -1602,6 +1615,7 @@ from flag_gems.ops.svd import svd
 from flag_gems.ops.swapaxes import swapaxes
 from flag_gems.ops.swapaxes_ import swapaxes_
 from flag_gems.ops.swapdims import swapdims
+from flag_gems.ops.swapdims_ import swapdims_
 from flag_gems.ops.sym_size import sym_size, sym_size_int
 from flag_gems.ops.t_ import t_
 from flag_gems.ops.t_copy import t_copy, t_copy_out
@@ -1623,6 +1637,7 @@ from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
 from flag_gems.ops.to import to_copy
+from flag_gems.ops.to_dense_backward import to_dense_backward
 from flag_gems.ops.to_sparse_semi_structured import to_sparse_semi_structured
 from flag_gems.ops.topk import topk
 from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
@@ -1794,6 +1809,7 @@ __all__ = [
     "_dirichlet_grad",
     "_dyn_quant_matmul_4bit",
     "_dyn_quant_pack_4bit_weight",
+    "_efficientzerotensor",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_dense_backward",
@@ -1998,6 +2014,7 @@ __all__ = [
     "_logcumsumexp_out",
     "_lu_with_info",
     "_make_dep_token",
+    "_make_dual",
     "_make_dual_copy",
     "_make_dual_copy_out",
     "_make_per_channel_quantized_tensor",
@@ -2106,7 +2123,9 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward",
     "_upsample_nearest_exact3d_backward_grad_input",
+    "_validate_sparse_bsr_tensor_args",
     "_validate_sparse_csc_tensor_args",
+    "_validate_sparse_csr_tensor_args",
     "_values_copy",
     "_values_copy_out",
     "_weight_int4pack_mm_with_scales_and_zeros",
@@ -2365,8 +2384,10 @@ __all__ = [
     "crow_indices",
     "crow_indices_copy",
     "ctc_loss",
+    "cudnn_affine_grid_generator",
     "cudnn_affine_grid_generator_backward",
     "cudnn_affine_grid_generator_backward_out",
+    "cudnn_affine_grid_generator_out",
     "cudnn_attention_backward",
     "cudnn_attention_forward",
     "cudnn_batch_norm",
@@ -2435,6 +2456,7 @@ __all__ = [
     "embedding_renorm_",
     "embedding_sparse_backward",
     "embedding_spmdm",
+    "embedding_spmdm_grad",
     "empty",
     "empty_permuted",
     "eq",
@@ -3322,6 +3344,7 @@ __all__ = [
     "swapaxes",
     "swapaxes_",
     "swapdims",
+    "swapdims_",
     "sym_size",
     "sym_size_int",
     "t_",
@@ -3346,6 +3369,7 @@ __all__ = [
     "threshold_backward",
     "tile",
     "to_copy",
+    "to_dense_backward",
     "to_sparse_semi_structured",
     "topk",
     "topk_w8a16_fp8",
