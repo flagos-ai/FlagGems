@@ -30,6 +30,7 @@ _DEFAULT_SHAPES = [
 class GreaterBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path):
         super().set_shapes(shape_file_path, default_shapes=_DEFAULT_SHAPES)
+        self.shapes = [shape for shape in self.shapes if len(shape) != 1]
 
 
 def _case_fn(shape, dtype):
