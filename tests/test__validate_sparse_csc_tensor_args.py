@@ -444,6 +444,87 @@ def _assert_untouched(snapshot):
         assert (tensor.shape, tensor.stride(), tensor.storage_offset()) == geometry
 
 
+_MASTER_CSC_SHAPES = [
+    (0, 3, (), ()),
+    (3, 0, (), ()),
+    (3, 5, (), ()),
+    (3, 5, (2,), ()),
+    (3, 5, (2, 3), ()),
+    (3, 5, (0,), ()),
+    (3, 5, (), (2,)),
+    (3, 5, (2,), (2,)),
+]
+
+
+def _master_csc_inputs(shape, index_dtype, dtype, *, strided_batch=False):
+    ncols, nrows, batch, dense = shape
+    per_column = min(nrows, 2)
+    nnz = ncols * per_column
+    ccol = torch.arange(ncols + 1, dtype=torch.int64) * per_column
+    row = torch.arange(per_column, dtype=torch.int64).repeat(ncols)
+    ccol = _index_to_device(ccol.expand(*batch, ncols + 1).clone(), index_dtype)
+    row = _index_to_device(row.expand(*batch, nnz).clone(), index_dtype)
+    if strided_batch and batch:
+        ccol = torch.stack((ccol, ccol), dim=-2)[..., 0, :]
+        row = torch.stack((row, row), dim=-2)[..., 0, :]
+    values = torch.zeros((*batch, nnz, *dense), dtype=dtype, device=ccol.device)
+    return ccol, row, values, (*batch, nrows, ncols, *dense)
+
+
+def _master_validator_kwargs(op):
+    # On older ATen builds this schema has four arguments. All fixtures are
+    # ordinary unpinned tensors on the same device, so the implicit pinning
+    # policy does not change their validity.
+    if any(argument.name == "check_pinning" for argument in op._schema.arguments):
+        return {"check_pinning": False}
+    return {}
+
+
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
+@pytest.mark.parametrize(
+    "index_dtype",
+    [
+        dtype
+        for dtype in utils.ALL_INT_DTYPES
+        if dtype in (torch.int32, torch.int64) and _dtype_supported(dtype)
+    ],
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", _MASTER_CSC_SHAPES)
+@pytest.mark.parametrize("strided_batch", [False, True])
+def test_validate_sparse_csc_tensor_args_master_grid(
+    index_dtype, shape, strided_batch, dtype
+):
+    *inputs, size = _master_csc_inputs(
+        shape, index_dtype, dtype, strided_batch=strided_batch
+    )
+    snapshot = _snapshot(*inputs)
+    op = torch.ops.aten._validate_sparse_csc_tensor_args.default
+    options = _master_validator_kwargs(op)
+    reference = op(*(entry[1] for entry in snapshot), size, **options)
+    result = _call_validator(
+        *inputs, size, required_device=_required_device(), **options
+    )
+    assert result is reference is None
+    flag_gems.runtime.torch_device_fn.synchronize()
+    _assert_untouched(snapshot)
+
+
+@pytest.mark.underscore_validate_sparse_csc_tensor_args
+def test_validate_sparse_csc_tensor_args_unbatched_metadata():
+    ccol, row, values, size = _master_csc_inputs(
+        (2, 3, (), ()), INDEX_DTYPE_LONG, torch.float32
+    )
+    ccol = ccol[:-1]
+    op = torch.ops.aten._validate_sparse_csc_tensor_args.default
+    options = _master_validator_kwargs(op)
+    ref_inputs = tuple(tu.to_reference(tensor) for tensor in (ccol, row, values))
+    with pytest.raises(RuntimeError):
+        op(*ref_inputs, size, **options)
+    with pytest.raises(RuntimeError):
+        flag_gems._validate_sparse_csc_tensor_args(ccol, row, values, size, **options)
+
+
 def _invalid_csc_inputs(defect, size, nnz):
     # Build a structurally valid CSC call and then break exactly one host-side
     # precondition, named by defect.

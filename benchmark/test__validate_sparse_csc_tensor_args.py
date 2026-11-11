@@ -46,6 +46,15 @@ _WORKLOADS = [
     ((1024, 1024), 262144, 0, "int32"),
 ]
 
+# Master constructs two entries per column and zero-filled values for these
+# four workloads. Retain the existing descriptors and their order.
+_MASTER_WORKLOADS = (
+    ((5, 3), 6, 0, "int64"),
+    ((256, 256), 512, 0, "int64"),
+    ((4096, 4096), 8192, 0, "int64"),
+    ((8, 64, 64), 128, 0, "int64"),
+)
+
 # The index dtype travels as a name so the listed metadata stays JSON-compatible;
 # builder_args keeps the real torch dtype.
 _INDEX_DTYPES = {"int32": torch.int32, "int64": torch.int64}
@@ -86,7 +95,7 @@ def _index_dtype(name):
 # eight descriptors are kept.
 WORKLOADS = [
     descriptor
-    for descriptor in _WORKLOADS
+    for descriptor in (*_WORKLOADS, *_MASTER_WORKLOADS)
     if _dtype_supported(_index_dtype(descriptor[3]))
 ]
 
@@ -193,13 +202,16 @@ def _case_fn(shape, dtype):
     # tensors.
     del dtype
     size, nnz, dense_ndim, index_dtype = _plan_for(shape)
+    params = {
+        "nnz": nnz,
+        "dense_ndim": dense_ndim,
+        "index_dtype": index_dtype,
+    }
+    if (size, nnz, dense_ndim, index_dtype) in _MASTER_WORKLOADS:
+        params["value_init"] = "zeros"
     yield base.BenchmarkCasePlan(
         shape={"input": list(size)},
-        params={
-            "nnz": nnz,
-            "dense_ndim": dense_ndim,
-            "index_dtype": index_dtype,
-        },
+        params=params,
         builder_args=(list(size), nnz, dense_ndim, index_dtype),
     )
 
@@ -222,7 +234,12 @@ def _build_inputs_fn(plan, dtype, device):
         starts = ccol[:, :-1].contiguous()
         column = torch.searchsorted(starts, offsets, right=True) - 1
         row = offsets - torch.gather(starts, 1, column)
-    values = utils.generate_tensor_input(batch + (nnz,) + dense, dtype, device)
+    value_shape = batch + (nnz,) + dense
+    values = (
+        torch.zeros(value_shape, dtype=dtype, device=device)
+        if plan.params.get("value_init") == "zeros"
+        else utils.generate_tensor_input(value_shape, dtype, device)
+    )
     resolved = _index_dtype(index_dtype)
     return (
         ccol.reshape(batch + (ncols + 1,)).to(device, resolved),
@@ -238,7 +255,9 @@ class ValidateSparseCscTensorArgsBenchmark(OperatorBenchmark):
     def _candidate_call(self):
         registry = base.Config.override_registry
         override = registry.get_override(self.op_name) if registry is not None else None
-        candidate = override if override is not None else self.gems_op
+        candidate = (
+            override if override is not None else getattr(flag_gems, self.op_name, None)
+        )
         if not callable(candidate):
             raise RuntimeError(f"No callable candidate for {self.op_name}")
         return candidate, nullcontext(), override is not None
@@ -280,7 +299,6 @@ def test__validate_sparse_csc_tensor_args(high_dimensional):
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten._validate_sparse_csc_tensor_args,
-        gems_op=flag_gems._validate_sparse_csc_tensor_args,
         dtypes=_BENCH_DTYPES,
         high_dimensional=high_dimensional,
     )
