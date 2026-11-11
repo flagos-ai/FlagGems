@@ -521,6 +521,9 @@ class BaddbmmFunction(torch.autograd.Function):
         fast_out = _baddbmm_kernels.try_forward(bias, A, B, alpha, beta)
         if fast_out is not None:
             return fast_out
+        # Legacy kernels assume row-major operands.  Keep their original
+        # contract after giving stride-aware specialized paths the raw views.
+        bias, A, B = bias.contiguous(), A.contiguous(), B.contiguous()
         if _use_ws(bias, A, B, M, N, K):
             return baddbmm_sqmma_ws(bias, A, B, batch, M, N, K, alpha, beta)
         if _use_sqmma(A, B, N, K):
@@ -634,9 +637,9 @@ def baddbmm_out(bias, A, B, *, beta=1.0, alpha=1.0, out):
 
 def baddbmm(bias, A, B, beta=1.0, alpha=1.0):
     return BaddbmmFunction.apply(
-        bias.contiguous(),
-        A.contiguous(),
-        B.contiguous(),
+        bias,
+        A,
+        B,
         beta,
         alpha,
     )
