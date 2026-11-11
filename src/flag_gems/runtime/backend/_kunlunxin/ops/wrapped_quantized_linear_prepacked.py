@@ -100,6 +100,10 @@ def _wrapped_quantized_linear_prepacked_kernel(
     valid = offs < M * N
     rows = offs // N
     cols = offs % N
+    # Lanes past the last output element still index memory: clamp them so the
+    # kernel never reads outside the input, weight and bias buffers.
+    safe_rows = tl.minimum(rows, M - 1)
+    safe_cols = tl.minimum(cols, N - 1)
 
     input_scale_value = tl.load(input_scale).to(tl.float32)
     input_zero_point_value = tl.load(input_zero_point).to(tl.int32)
@@ -126,7 +130,7 @@ def _wrapped_quantized_linear_prepacked_kernel(
     acc = acc - shifted_input_zero_point * weight_sum
     acc = acc + K * shifted_input_zero_point * weight_zero_point_value
 
-    bias_values = tl.load(bias + cols, mask=valid, other=0.0)
+    bias_values = tl.load(bias + safe_cols, mask=valid, other=0.0)
     real_output = acc.to(tl.float32) * input_scale_value * weight_scale_value
     real_output = real_output + bias_values
 
