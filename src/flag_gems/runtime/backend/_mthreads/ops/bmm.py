@@ -98,7 +98,12 @@ _PERSISTENT_BM256_BN256_BK64_S3_GROUP4_UNROLL1_SHAPE = (16384, 2112, 7168)
 _EXPLICIT_BARRIER_BM256_BN256_BK64_S2_COOP_M4_SHAPE = (448, 7168, 256)
 _SPLIT_M_BM384_BN256_BK32_S3_COOP_M2_SHAPE = (14429, 7168, 1024)
 _SPMC_BM256_BN320_BK64_S2_COOP_N2_SHAPE = (14429, 2112, 7168)
-_SMALL_M_SHAPE = (4, 15, 160, 1024)
+_SMALL_M_SHAPES = {
+    (2, 32, 512, 4096),
+    (4, 15, 160, 1024),
+    (4, 32, 512, 4096),
+    (8, 32, 512, 4096),
+}
 _SQUARE_DIRECT_BM64_BN64_BK64_SHAPE = (2, 384, 384, 384)
 _SQUARE_PERSISTENT_BM256_BN256_BK64_S3_SHAPES = {
     (2, 4096, 4096, 4096),
@@ -727,15 +732,17 @@ def _contiguous_bf16_path_eligible(a, b, out, shape):
 
 
 def _small_m_path_eligible(a, b, out):
+    shape = (a.shape[0], a.shape[1], b.shape[2], a.shape[2])
     if (
-        (a.shape[0], a.shape[1], b.shape[2], a.shape[2]) != _SMALL_M_SHAPE
+        shape not in _SMALL_M_SHAPES
         or a.dtype not in (torch.float16, torch.bfloat16)
         or a.dtype != b.dtype
         or not a.is_contiguous()
         or not _fast_output_eligible(a, b, out)
     ):
         return False
-    return b.is_contiguous() or tuple(b.stride()) == (160 * 1024, 1, 1024)
+    n, k = b.shape[2], a.shape[2]
+    return b.is_contiguous() or tuple(b.stride()) == (n * k, 1, k)
 
 
 def _square_persistent_path_eligible(a, b, out):
