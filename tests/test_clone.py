@@ -126,3 +126,52 @@ def test_clone_autograd_non_contiguous():
     (ref_in_grad,) = torch.autograd.grad(ref_out.sum(), [ref_inp])
 
     utils.gems_assert_close(res_in_grad, ref_in_grad.to(torch.float32), torch.float32)
+
+
+@pytest.mark.clone
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend dispatch policy")
+def test_clone_registered_cpu_autograd_unchanged(monkeypatch):
+    import importlib
+
+    generic = importlib.import_module("flag_gems.ops.clone")
+
+    def forbid(*args, **kwargs):
+        raise AssertionError("CPU clone reached the NPU copy kernel")
+
+    monkeypatch.setattr(generic, "_launch_copy", forbid)
+    inp = torch.randn(7, requires_grad=True)
+    native_grad_type = type(inp.clone().grad_fn)
+    native_cpu_kernel = next(
+        row
+        for row in torch._C._dispatch_dump_table("aten::clone").splitlines()
+        if row.startswith("CPU:")
+    )
+    with flag_gems.use_gems(include=["clone"]):
+        cpu_kernel = next(
+            row
+            for row in torch._C._dispatch_dump_table("aten::clone").splitlines()
+            if row.startswith("CPU:")
+        )
+        assert cpu_kernel == native_cpu_kernel
+        out = inp.clone()
+        assert type(out.grad_fn) is native_grad_type
+        utils.gems_assert_equal(
+            torch.autograd.grad(out.sum(), inp)[0], torch.ones_like(inp)
+        )
+
+
+@pytest.mark.clone
+@pytest.mark.skipif(flag_gems.vendor_name != "ascend", reason="Ascend dispatch policy")
+def test_clone_registered_fake_tensor():
+    from torch._subclasses.fake_tensor import FakeTensorMode
+
+    real = torch.empty((2, 4, 64), device=flag_gems.device, dtype=torch.bfloat16)
+    mode = FakeTensorMode()
+    fake = mode.from_tensor(real)
+    with flag_gems.use_gems(include=["clone"]), mode:
+        for inp in (fake, fake.transpose(1, 2)):
+            out = inp.clone()
+            expected = torch.empty_like(inp, memory_format=torch.preserve_format)
+            assert out.shape == expected.shape
+            assert out.stride() == expected.stride()
+            assert out.dtype == inp.dtype and out.device == inp.device
