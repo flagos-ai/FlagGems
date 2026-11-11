@@ -280,6 +280,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -316,6 +318,7 @@ from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .bucketize import bucketize
+from .cast_Byte import cast_Byte  # noqa: F401
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
 from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
@@ -943,6 +946,7 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
@@ -1250,6 +1254,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bucketize",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",

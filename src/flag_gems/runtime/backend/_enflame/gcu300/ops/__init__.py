@@ -169,6 +169,7 @@ from .cosine_embedding_loss import cosine_embedding_loss
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
+from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
 from .cumsum import cumsum, cumsum_out, normed_cumsum
@@ -213,6 +214,7 @@ from .fill import (
 from .flip import flip
 from .flipud import flipud
 from .float_power_ import float_power_scalar_tensor_out
+from .float_power_tensor_scalar import float_power_tensor_scalar
 from .floor import floor, floor_, floor_out
 from .fmod import fmod_scalar, fmod_scalar_, fmod_tensor, fmod_tensor_
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
@@ -569,6 +571,7 @@ __all__ = [
     "count_nonzero",
     "ctc_loss",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
@@ -615,6 +618,7 @@ __all__ = [
     "flip",
     "flipud",
     "float_power_scalar_tensor_out",
+    "float_power_tensor_scalar",
     "floor",
     "floor_",
     "floor_divide",
