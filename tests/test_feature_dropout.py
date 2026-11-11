@@ -41,10 +41,12 @@ def test_feature_dropout(shape, p, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.feature_dropout(inp, p, True)
     assert res_out.shape == inp.shape
+    assert res_out.dtype == inp.dtype
+    assert res_out.device == inp.device
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
     # Native dropout may round the scale to the input dtype before multiplying.
-    scale_rtol = max(1e-4, 2 * torch.finfo(dtype).eps)
+    rounded_scale = inp.new_tensor(scale)
     inp_reshaped = inp.view(batch_size, num_channels, -1)
     out_reshaped = res_out.view(batch_size, num_channels, -1)
     for b in range(batch_size):
@@ -52,8 +54,10 @@ def test_feature_dropout(shape, p, dtype):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                torch.testing.assert_close(
-                    channel_out, channel_inp * scale, rtol=scale_rtol, atol=1e-5
+                assert torch.allclose(
+                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
+                ) or torch.allclose(
+                    channel_out, channel_inp * rounded_scale, rtol=1e-4, atol=1e-5
                 )
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
