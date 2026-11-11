@@ -35,6 +35,7 @@ FLOAT_DTYPES = [torch.float16, torch.float32]
 SHAPES = [
     ((1, 2, 5, 5), (1, 2, 3, 3), 1),
     ((2, 3, 9, 9), (4, 3, 3, 3), 1),
+    ((32, 8, 8, 8), (32, 8, 2, 2), 1),
     ((2, 4, 7, 7), (6, 2, 3, 3), 2),
 ]
 OUTPUT_MASKS = [
@@ -42,6 +43,7 @@ OUTPUT_MASKS = [
     [True, False, False],
     [False, True, False],
     [False, False, True],
+    [True, True, False],
 ]
 
 
@@ -100,13 +102,16 @@ def test_convolution_backward_overrideable(
         groups,
         output_mask,
     )
-    for enabled, result, reference in zip(output_mask, outputs, ref_outputs):
+    reduction_dims = (weight.shape[2], weight.shape[0], grad_output.shape[0])
+    for enabled, result, reference, reduce_dim in zip(
+        output_mask, outputs, ref_outputs, reduction_dims
+    ):
         if enabled:
             assert result.device == inp.device
             assert result.dtype == inp.dtype
             assert result.shape == reference.shape
             assert result is not inp
             assert result is not weight
-            utils.gems_assert_close(result, reference, dtype, reduce_dim=weight.shape[2])
+            utils.gems_assert_close(result, reference, dtype, reduce_dim=reduce_dim)
         else:
             assert result is None
