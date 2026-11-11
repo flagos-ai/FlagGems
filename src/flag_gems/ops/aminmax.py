@@ -143,13 +143,14 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         if out is not None:
             min_out = out[0] if isinstance(out, tuple) else out
             max_out = out[1] if isinstance(out, tuple) else out
-            if not keepdim:
-                min_out = min_out.squeeze()
-                max_out = max_out.squeeze()
+            # Global aminmax returns scalars; squeeze caller-provided outputs
+            # as ATen does even when keepdim=True.
+            min_out = min_out.squeeze()
+            max_out = max_out.squeeze()
         else:
-            # ATen's global bool aminmax keeps scalar shape even when
-            # keepdim=True; other dtypes preserve the historical [1] shape.
-            shape = () if not keepdim or dtype == torch.bool else (1,) * inp.dim()
+            # A global reduction has scalar output; keepdim only affects
+            # reductions with an explicit dimension.
+            shape = ()
             min_out = torch.empty(shape, dtype=dtype, device=inp.device)
             max_out = torch.empty(shape, dtype=dtype, device=inp.device)
 
