@@ -174,6 +174,7 @@ from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
 from .special_bessel_y1 import special_bessel_y1
+from .special_chebyshev_polynomial_w import special_chebyshev_polynomial_w
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
 from .special_modified_bessel_k0 import special_modified_bessel_k0
@@ -377,6 +378,7 @@ __all__ = [
     "special_bessel_j1",
     "special_bessel_y0",
     "special_bessel_y1",
+    "special_chebyshev_polynomial_w",
     "special_erfcx",
     "special_gammainc",
     "special_modified_bessel_k0",
