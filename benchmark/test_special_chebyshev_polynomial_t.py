@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from . import base, consts
 from .generated_operator_utils import OperatorBenchmark
 
@@ -60,23 +58,17 @@ class ChebyshevPolynomialTBenchmark(OperatorBenchmark):
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
-    for degree_kind in ("scalar", "tensor"):
-        yield base.BenchmarkCasePlan(
-            shape={"x": list(dims), "n": [] if degree_kind == "tensor" else None},
-            params={"degree_kind": degree_kind, "degree": 3},
-            builder_args=(dims, degree_kind),
-        )
+    yield base.BenchmarkCasePlan(
+        shape={"x": list(dims), "n": []},
+        params={"degree_kind": "tensor", "degree": 3},
+        builder_args=(dims,),
+    )
 
 
 def _build_inputs_fn(plan, dtype, device):
-    shape, degree_kind = plan.builder_args
-    torch.manual_seed(0)
-    x = torch.rand(shape, dtype=dtype, device=device) * 2 - 1
-    degree = (
-        torch.tensor(3, dtype=torch.int64, device=device)
-        if degree_kind == "tensor"
-        else 3
-    )
+    (shape,) = plan.builder_args
+    x = base.generate_tensor_input(shape, dtype, device) * 2 - 1
+    degree = torch.tensor(3, dtype=torch.int64, device=device)
     return x, degree
 
 
@@ -85,7 +77,6 @@ def test_special_chebyshev_polynomial_t():
     bench = ChebyshevPolynomialTBenchmark(
         op_name="special_chebyshev_polynomial_t",
         torch_op=torch.special.chebyshev_polynomial_t,
-        gems_op=flag_gems.special_chebyshev_polynomial_t,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
