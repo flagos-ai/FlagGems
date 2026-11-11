@@ -112,6 +112,7 @@ from .foreach_neg import foreach_neg
 from .foreach_neg_ import foreach_neg_
 from .foreach_norm_scalar import foreach_norm_scalar
 from .foreach_pow_scalar_ import foreach_pow_scalar_
+from .foreach_pow_scalar_and_tensor import foreach_pow_scalar_and_tensor
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -360,6 +361,7 @@ __all__ = [
     "foreach_neg_",
     "foreach_norm_scalar",
     "foreach_pow_scalar_",
+    "foreach_pow_scalar_and_tensor",
     "full",
     "full_like",
     "gcd_",
