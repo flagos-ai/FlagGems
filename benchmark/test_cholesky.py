@@ -34,7 +34,7 @@ CHOLESKY_SHAPES = [
     (16, 128, 128),
     (64, 256, 256),
 ]
-_ILUVATAR_MASTER_SHAPES = [(2, 2), (4, 4), (16, 16)]
+_ILUVATAR_MASTER_SHAPES = [(n, n) for n in (2, 4, 8, 16, 32, 64, 128, 256)]
 
 # The factorizer implements float32/float64/complex64/complex128 only (measured on
 # this backend), so consts.FLOAT_DTYPES, which also holds fp16 and bf16, is not
@@ -59,14 +59,9 @@ def _validate_shape(shape):
 
 def _case_fn(shape, dtype):
     _validate_shape(shape)
-    if flag_gems.vendor_name == "iluvatar" and shape in _ILUVATAR_MASTER_SHAPES:
-        # Only the real lower-triangular combinations exist in master.
-        if dtype in (torch.float32, torch.float64):
-            yield base.BenchmarkCasePlan(
-                shape={"input": shape},
-                params={"upper": False, "diagonal_shift": 0.1},
-                builder_args=(shape, False),
-            )
+    master_shape = flag_gems.vendor_name == "iluvatar" and shape in _ILUVATAR_MASTER_SHAPES
+    if master_shape and shape not in CHOLESKY_SHAPES:
+        yield from _master_case(shape, dtype)
         return
     # One plan per triangular form; both kernel paths are timed.
     for upper in (False, True):
@@ -74,6 +69,18 @@ def _case_fn(shape, dtype):
             shape={"input": shape},
             params={"upper": upper},
             builder_args=(shape, upper),
+        )
+    if master_shape:
+        yield from _master_case(shape, dtype)
+
+
+def _master_case(shape, dtype):
+    # Master times the implicit lower path for real matrices with a 0.1 shift.
+    if dtype in (torch.float32, torch.float64):
+        yield base.BenchmarkCasePlan(
+            shape={"input": shape},
+            params={"upper": False, "diagonal_shift": 0.1},
+            builder_args=(shape, False),
         )
 
 
@@ -101,7 +108,7 @@ class CholeskyBenchmark(OperatorBenchmark):
     # precedence over these defaults.
     def set_shapes(self, shape_file_path=None):
         shapes = (
-            CHOLESKY_SHAPES + _ILUVATAR_MASTER_SHAPES
+            CHOLESKY_SHAPES + [shape for shape in _ILUVATAR_MASTER_SHAPES if shape not in CHOLESKY_SHAPES]
             if flag_gems.vendor_name == "iluvatar"
             else CHOLESKY_SHAPES
         )
