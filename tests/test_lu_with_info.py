@@ -337,7 +337,7 @@ def test_lu_with_info_exact_zero_pivot_position(zero_pos, request):
     assert info.device == inp.device and info.dtype == torch.int32
     registry = getattr(request.config, "_override_registry", None)
     stock = registry is None or registry.get_override("_lu_with_info") is None
-    if stock and int(info.item()) != zero_pos + 1:
+    if stock and zero_pos in (0, 2) and int(info.item()) != zero_pos + 1:
         pytest.xfail("shared linalg_lu_factor divides by early zero pivots")
     compared = info.cpu() if ref_info.device.type == "cpu" else info
     utils.gems_assert_equal(compared, ref_info)
