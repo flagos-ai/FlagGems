@@ -116,6 +116,7 @@ from .hardsigmoid_backward import hardsigmoid_backward
 from .hash_tensor import hash_tensor
 from .histc import histc
 from .igamma import igamma
+from .index import index
 from .index_add import index_add, index_add_
 from .index_copy_ import index_copy, index_copy_
 from .index_reduce_out import index_reduce_out
@@ -340,6 +341,7 @@ __all__ = [
     "heur_block_n",
     "histc",
     "igamma",
+    "index",
     "index_add",
     "index_add_",
     "index_copy",
