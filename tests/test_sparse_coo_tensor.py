@@ -432,9 +432,11 @@ _FP64_CONSTRUCTOR_CAST = pytest.param(
 
 @pytest.mark.parametrize("dtype", [None, _FP64_CONSTRUCTOR_CAST, torch.float16])
 @pytest.mark.parametrize("explicit", [False, True])
-def test_sparse_coo_tensor_strided_long_indices(dtype, explicit):
+@pytest.mark.parametrize("index_dtype", [torch.int64, torch.int32, torch.float32, torch.complex64])
+def test_sparse_coo_tensor_conversion_and_strides(dtype, explicit, index_dtype):
     target, reference = _required_devices()
     indices, values = _master_components(74, 2, (3,), torch.float32, target)
+    indices = indices.to(index_dtype)
     _assert_master_constructor(
         indices[:, ::2],
         values[::2, ::2],
@@ -1209,50 +1211,6 @@ def test_sparse_coo_tensor_negative_non_integer_size():
             dtype=torch.float32,
             device=required_device,
             required_device=required_device,
-        ),
-    )
-
-
-@pytest.mark.sparse_coo_tensor_negative
-def test_sparse_coo_tensor_negative_indices_dtype():
-    required_device, reference_device = _required_devices()
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.int32, device=required_device
-    )
-    values = _make_values(2, (), torch.float32, required_device=required_device)
-    _assert_rejected(
-        lambda: _call_reference(
-            indices_t,
-            values,
-            [2, 3],
-            torch.float32,
-            required_device=required_device,
-            reference_device=reference_device,
-        ),
-        lambda: _call_candidate(
-            indices_t, values, [2, 3], torch.float32, required_device=required_device
-        ),
-    )
-
-
-@pytest.mark.sparse_coo_tensor_negative
-def test_sparse_coo_tensor_negative_indices_float():
-    required_device, reference_device = _required_devices()
-    indices_t = torch.tensor(
-        [[0, 1], [2, 0]], dtype=torch.long, device=required_device
-    ).float()
-    values = _make_values(2, (), torch.float32, required_device=required_device)
-    _assert_rejected(
-        lambda: _call_reference(
-            indices_t,
-            values,
-            [2, 3],
-            torch.float32,
-            required_device=required_device,
-            reference_device=reference_device,
-        ),
-        lambda: _call_candidate(
-            indices_t, values, [2, 3], torch.float32, required_device=required_device
         ),
     )
 
