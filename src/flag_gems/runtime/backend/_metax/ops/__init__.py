@@ -144,6 +144,7 @@ from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
+from .grid_sampler_3d import grid_sampler_3d
 from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
@@ -420,6 +421,7 @@ __all__ = [
     "full_like",
     "gcd_",
     "greater_equal_",
+    "grid_sampler_3d",
     "group_norm",
     "grouped_mm_w8a8",
     "gru",
