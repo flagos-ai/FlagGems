@@ -228,6 +228,7 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
+from .sum import sum_dim
 from .thnn_fused_gru_cell_backward import (
     _thnn_fused_gru_cell_backward,
     _thnn_fused_gru_cell_backward_out,
@@ -463,6 +464,7 @@ __all__ = [
     "special_shifted_chebyshev_polynomial_u",
     "special_shifted_chebyshev_polynomial_v",
     "split_with_sizes_copy",
+    "sum_dim",
     "SUPPORTED_FP8_DTYPE",
     "tile",
     "topk_w8a16_fp8",
