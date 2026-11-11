@@ -170,6 +170,10 @@ def test_inner_noncontiguous(dtype):
 
 @pytest.mark.inner
 def test_inner_dtype_mismatch():
+    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
+        # XPU (torch_xmlir) silently downcasts float64 tensors to float32, so
+        # a mismatched dtype pair cannot be created there.
+        pytest.skip("float64 is not supported by this device")
     inp = torch.randn((4, 8), dtype=torch.float32, device=flag_gems.device)
     other = torch.randn((4, 8), dtype=torch.float64, device=flag_gems.device)
 
