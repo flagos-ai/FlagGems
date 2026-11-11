@@ -79,3 +79,8 @@ repos:
       entry: python tools/ci_checks/check_operators_yaml.py --operators '[]'
       files: ^conf/operators\.yaml$
       pass_filenames: false
+    - id: check-fullwidth-punct
+      name: check fullwidth punctuation in code
+      language: system
+      entry: python tools/ci_checks/check_fullwidth_punct.py
+      types: [python]
