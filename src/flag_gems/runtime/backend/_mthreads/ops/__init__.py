@@ -160,6 +160,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
+from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -355,6 +356,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad2d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
