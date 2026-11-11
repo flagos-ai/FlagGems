@@ -26,7 +26,7 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 _BLOCK_SIZE = 1024
-_MAX_ELEMENTS = (1 << 31) - 1
+_MAX_ELEMENTS = 1 << 20
 
 
 @libentry()

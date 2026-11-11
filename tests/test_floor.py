@@ -63,7 +63,7 @@ def test_floor_out(shape, dtype):
     utils.gems_assert_equal(out, ref_out)
 
 
-_HYGON_FLOOR_SHAPES = [(), (1,), (1023,), (1024,), (1025,), (32, 32), (1048577,)]
+_HYGON_FLOOR_SHAPES = [(), (1,), (1023,), (1024,), (1025,), (32, 32)]
 
 
 def _hygon_floor_input(shape):
@@ -147,10 +147,29 @@ def test_floor_hygon_contiguous_storage_offset():
 
 
 @pytest.mark.floor
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon registration")
+def test_floor_hygon_aten_registration(monkeypatch):
+    provider = inspect.getmodule(flag_gems.floor)
+    calls = []
+    original = provider.floor
+
+    def routed(A):
+        calls.append(A)
+        return original(A)
+
+    monkeypatch.setattr(provider, "floor", routed)
+    flag_gems.only_enable(include=["floor"])
+    inp = torch.tensor([[-1.25, 0.5]], dtype=torch.float32, device=flag_gems.device)
+    result = torch.floor(inp)
+    torch.testing.assert_close(result.cpu(), torch.floor(inp.cpu()), rtol=0, atol=0)
+    assert len(calls) == 1 and calls[0] is inp
+
+
+@pytest.mark.floor
 @pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon fallback coverage")
 @pytest.mark.parametrize(
     "kind",
-    ["transpose", "slice", "fp16", "bf16", "empty", "requires_grad"],
+    ["transpose", "slice", "fp16", "bf16", "empty", "large", "requires_grad"],
 )
 def test_floor_hygon_fallback(kind, monkeypatch):
     cpu_inp = torch.linspace(-3.75, 3.75, 48, dtype=torch.float32).reshape(6, 8)
@@ -168,6 +187,9 @@ def test_floor_hygon_fallback(kind, monkeypatch):
     elif kind == "empty":
         inp = inp[:0]
         cpu_inp = cpu_inp[:0]
+    elif kind == "large":
+        cpu_inp = _hygon_floor_input((1048577,))
+        inp = cpu_inp.to(device=flag_gems.device)
     elif kind == "requires_grad":
         inp.requires_grad_(True)
 
