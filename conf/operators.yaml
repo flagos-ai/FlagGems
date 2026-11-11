@@ -13,6 +13,21 @@
 # limitations under the License.
 
 ops:
+- id: _adaptive_avg_pool3d
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, producing an output of the requested
+    size.
+
+    '
+  for:
+  - _adaptive_avg_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
 
@@ -27,6 +42,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: _adaptive_avg_pool3d_out
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, writing the result into a pre-allocated
+    output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _aminmax
   description: 'Computes the minimum and maximum values of the `input` tensor.
 
@@ -761,7 +791,7 @@ tensor into the caller-supplied `out` buffer.
 
     '
   for:
-  - _adaptive_avg_pool3d
+  - adaptive_avg_pool3d
   labels:
   - aten
   - KernelGen
@@ -790,7 +820,7 @@ tensor into the caller-supplied `out` buffer.
 
     '
   for:
-  - _adaptive_avg_pool3d.out
+  - adaptive_avg_pool3d.out
   labels:
   - aten
   - KernelGen
@@ -3067,6 +3097,17 @@ tensor into the caller-supplied `out` buffer.
   - _cast_Char
   labels:
   - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: cast_Short
+  description: Casts a tensor to int16, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Short
+  labels:
+  - aten
+  - KernelGen
   kind:
   - Tensor
   stages:
