@@ -137,6 +137,7 @@ from .foreach_tan import foreach_tan
 from .foreach_tan_ import foreach_tan_
 from .foreach_tanh import foreach_tanh
 from .foreach_tanh_ import foreach_tanh_
+from .foreach_trunc import foreach_trunc
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -411,6 +412,7 @@ __all__ = [
     "foreach_tan_",
     "foreach_tanh",
     "foreach_tanh_",
+    "foreach_trunc",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
