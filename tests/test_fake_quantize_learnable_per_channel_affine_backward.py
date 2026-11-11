@@ -65,6 +65,11 @@ def _make_inputs(shape, axis, quant_max):
     for _ in range(4):
         scaled = self_t * inv_scale
         tie = (scaled - torch.floor(scaled)) == 0.5
+        if flag_gems.vendor_name == "hygon":
+            # Direct division and reciprocal multiplication can round to
+            # opposite sides of a half-way point in CPU/device references.
+            quotient = self_t / scale.view(view)
+            tie |= (quotient - torch.floor(quotient)) == 0.5
         if not tie.any():
             break
         self_t = torch.where(tie, torch.nextafter(self_t, self_t + 1), self_t)
