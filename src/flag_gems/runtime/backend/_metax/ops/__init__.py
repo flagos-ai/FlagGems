@@ -368,6 +368,7 @@ __all__ = [
     "foreach_pow_scalar_list_",
     "foreach_reciprocal",
     "foreach_reciprocal_",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gcd_",
@@ -500,3 +501,4 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
