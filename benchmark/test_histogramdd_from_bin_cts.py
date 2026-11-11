@@ -29,9 +29,27 @@ _POINT_SHAPES = [
 ]
 
 
+_MASTER_POINT_SHAPES = [
+    (1024, 2),
+    (10000, 2),
+    (100000, 2),
+    (1000, 3),
+    (50000, 3),
+    (100000, 3),
+    (10000, 1),
+    (1000000, 1),
+]
+_FUNCTIONAL_POINT_SHAPES = list(dict.fromkeys(_MASTER_POINT_SHAPES + _POINT_SHAPES))
+
+
 class HistogramddFromBinCtsBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_POINT_SHAPES)
+        defaults = (
+            _FUNCTIONAL_POINT_SHAPES
+            if self.op_name == "_histogramdd_from_bin_cts"
+            else _POINT_SHAPES
+        )
+        super().set_shapes(shape_file_path, default_shapes=defaults)
 
 
 def _case_fn(shape, dtype):
@@ -64,7 +82,8 @@ def _build_inputs_fn(plan, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device) * 10
     kwargs = {"bins": bins, "range": range_}
     if mode == "weighted":
-        kwargs["weight"] = torch.rand(shape[:-1], dtype=dtype, device=device)
+        weight = torch.rand(shape[:-1], dtype=dtype, device=device)
+        kwargs["weight"] = weight * 5 if shape in _MASTER_POINT_SHAPES else weight
     elif mode == "density":
         kwargs["density"] = True
     return inp, kwargs
