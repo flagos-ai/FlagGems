@@ -343,6 +343,274 @@ def _call_candidate(indices, values, size, dtype, *, required_device, **extra):
     )
 
 
+def _master_components(nnz, sparse_dim, dense_shape, dtype, device):
+    indices = torch.randint(0, 13, (sparse_dim, nnz), device=device)
+    values = torch.randn((nnz, *dense_shape), dtype=dtype, device=device)
+    return indices, values
+
+
+def _assert_master_constructor(
+    indices,
+    values,
+    size=None,
+    dtype=None,
+    *,
+    required_device,
+    reference_device,
+    **options,
+):
+    ref_indices = _to_reference(
+        indices, required_device=required_device, reference_device=reference_device
+    )
+    ref_values = _to_reference(
+        values, required_device=required_device, reference_device=reference_device
+    )
+    size_args = (list(size),) if size is not None else ()
+    reference = torch.sparse_coo_tensor(
+        ref_indices, ref_values, *size_args, dtype=dtype, **options
+    )
+    result = _invoke_candidate(
+        indices,
+        values,
+        *size_args,
+        dtype=dtype,
+        required_device=required_device,
+        **options,
+    )
+    _assert_master_result(
+        result,
+        reference,
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    return result
+
+
+def _assert_master_result(result, reference, *, required_device, reference_device):
+    _assert_coo_structure(
+        result,
+        reference,
+        reference.shape,
+        reference._nnz(),
+        reference.dtype,
+        reference.sparse_dim(),
+        reference.dense_dim(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+    _assert_values(
+        result._values(),
+        reference._values(),
+        required_device=required_device,
+        reference_device=reference_device,
+    )
+
+
+@pytest.mark.parametrize("nnz", [0, 1, 37, 2051])
+@pytest.mark.parametrize("sparse_dim,dense_shape", [(1, ()), (2, (3, 2)), (0, (2,))])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sparse_coo_tensor_infer_size(nnz, sparse_dim, dense_shape, dtype):
+    target, reference = _required_devices()
+    indices, values = _master_components(nnz, sparse_dim, dense_shape, dtype, target)
+    result = _assert_master_constructor(
+        indices, values, required_device=target, reference_device=reference
+    )
+    if indices.numel():
+        assert result._indices().data_ptr() == indices.data_ptr()
+    if values.numel():
+        assert result._values().data_ptr() == values.data_ptr()
+
+
+@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_sparse_coo_tensor_strided_long_indices(dtype, explicit):
+    target, reference = _required_devices()
+    indices, values = _master_components(74, 2, (3,), torch.float32, target)
+    _assert_master_constructor(
+        indices[:, ::2],
+        values[::2, ::2],
+        (13, 13, 2) if explicit else None,
+        dtype,
+        required_device=target,
+        reference_device=reference,
+    )
+
+
+@pytest.mark.parametrize("dtype", [None, torch.float64])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_sparse_coo_tensor_scalar_values(dtype, explicit):
+    target, reference = _required_devices()
+    indices = torch.tensor([[2], [4]], device=target)
+    values = torch.tensor(3.0, device=target)
+    _assert_master_constructor(
+        indices,
+        values,
+        (3, 5) if explicit else None,
+        dtype,
+        required_device=target,
+        reference_device=reference,
+    )
+
+
+@pytest.mark.parametrize("coalesced", [None, False, True])
+def test_sparse_coo_tensor_inferred_coalesced(coalesced):
+    target, reference = _required_devices()
+    indices = torch.tensor([[0, 1, 2]], device=target)
+    values = torch.randn(3, device=target)
+    _assert_master_constructor(
+        indices,
+        values,
+        is_coalesced=coalesced,
+        required_device=target,
+        reference_device=reference,
+    )
+
+
+@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+def test_sparse_coo_tensor_autograd(dtype):
+    target, _ = _required_devices()
+    indices, values = _master_components(37, 2, (), torch.float32, target)
+    values.requires_grad_()
+    result = _invoke_candidate(indices, values, dtype=dtype, required_device=target)
+    result.to_dense().sum().backward()
+    torch.testing.assert_close(values.grad, torch.ones_like(values))
+
+
+def test_sparse_coo_tensor_large_reduction():
+    target, reference = _required_devices()
+    indices, values = _master_components(1024 * 1024 + 1, 2, (), torch.float32, target)
+    indices[0, -1] = 25
+    _assert_master_constructor(
+        indices, values, required_device=target, reference_device=reference
+    )
+    indices[1, -1] = -1
+    with pytest.raises(RuntimeError, match="negative index"):
+        _invoke_candidate(indices, values, required_device=target)
+
+
+def test_sparse_coo_tensor_inferred_invariant_check():
+    target, reference = _required_devices()
+    indices = torch.tensor([[1, 0]], device=target)
+    values = torch.ones(2, device=target)
+    with torch.sparse.check_sparse_tensor_invariants():
+        with pytest.raises(RuntimeError):
+            torch.sparse_coo_tensor(
+                indices.to(reference), values.to(reference), (2,), is_coalesced=True
+            )
+        with pytest.raises(RuntimeError):
+            _invoke_candidate(
+                indices, values, is_coalesced=True, required_device=target
+            )
+
+
+@pytest.mark.parametrize("nnz", [0, 1, 2051])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dense_shape", [(), (3,)])
+def test_sparse_coo_tensor_explicit_size(nnz, dtype, dense_shape):
+    target, reference = _required_devices()
+    indices, values = _master_components(nnz, 2, dense_shape, dtype, target)
+    _assert_master_constructor(
+        indices,
+        values,
+        (13, 13) + dense_shape,
+        required_device=target,
+        reference_device=reference,
+    )
+
+
+@pytest.mark.parametrize("case", ["shape", "nnz", "layout"])
+def test_sparse_coo_tensor_inferred_invalid_inputs(case):
+    target, reference = _required_devices()
+    indices, values = _master_components(37, 2, (), torch.float32, target)
+    options = {}
+    if case == "shape":
+        indices = indices.flatten()
+    elif case == "nnz":
+        values = values[:-1]
+    else:
+        options["layout"] = torch.sparse_csr
+    ref_indices = _to_reference(
+        indices, required_device=target, reference_device=reference
+    )
+    ref_values = _to_reference(
+        values, required_device=target, reference_device=reference
+    )
+    _assert_rejected(
+        lambda: torch.ops.aten.sparse_coo_tensor.indices(
+            ref_indices, ref_values, **options
+        ),
+        lambda: _invoke_candidate(indices, values, required_device=target, **options),
+    )
+
+
+@pytest.mark.parametrize("case", ["out_of_range", "negative_index"])
+def test_sparse_coo_tensor_explicit_bounds(case):
+    target, reference = _required_devices()
+    indices = torch.tensor([[1, 2]], device=target)
+    values = torch.ones(2, device=target)
+    size = (2,) if case == "out_of_range" else (3,)
+    if case == "negative_index":
+        indices[0, 0] = -1
+    ref_indices = _to_reference(
+        indices, required_device=target, reference_device=reference
+    )
+    ref_values = _to_reference(
+        values, required_device=target, reference_device=reference
+    )
+    with torch.sparse.check_sparse_tensor_invariants():
+        with pytest.raises(RuntimeError) as expected:
+            torch.sparse_coo_tensor(ref_indices, ref_values, size)
+        with pytest.raises(RuntimeError) as actual:
+            _invoke_candidate(indices, values, list(size), required_device=target)
+    assert str(actual.value) == str(expected.value)
+
+
+@pytest.mark.parametrize("pin_memory", [None, False, True])
+@pytest.mark.parametrize("coalesced", [None, False, True])
+def test_sparse_coo_tensor_inferred_pin_memory(pin_memory, coalesced):
+    target, _ = _required_devices()
+    indices = torch.tensor([[0, 1, 2]], device=target)
+    values = torch.ones(3, device=target)
+    options = {"pin_memory": pin_memory, "is_coalesced": coalesced}
+    try:
+        expected = torch.ops.aten.sparse_coo_tensor.indices(indices, values, **options)
+    except RuntimeError as error:
+        assert pin_memory is True
+        assert "pin" in str(error).lower()
+        with pytest.raises(RuntimeError) as actual:
+            _invoke_candidate(indices, values, required_device=target, **options)
+        assert str(actual.value) == str(error)
+    else:
+        actual = _invoke_candidate(indices, values, required_device=target, **options)
+        _assert_master_result(
+            actual, expected, required_device=target, reference_device=target
+        )
+        assert actual.is_pinned() == expected.is_pinned()
+
+
+@pytest.mark.parametrize("pin_memory", [None, False, True])
+def test_sparse_coo_tensor_explicit_pin_memory(pin_memory):
+    target, _ = _required_devices()
+    indices, values = _master_components(37, 2, (), torch.float32, target)
+    options = {"pin_memory": bool(pin_memory)}
+    if pin_memory:
+        with pytest.raises(RuntimeError):
+            torch.sparse_coo_tensor(indices, values, (13, 13), **options)
+        with pytest.raises(RuntimeError):
+            _invoke_candidate(
+                indices, values, [13, 13], required_device=target, **options
+            )
+    else:
+        _assert_master_constructor(
+            indices,
+            values,
+            (13, 13),
+            required_device=target,
+            reference_device=target,
+            **options,
+        )
+
+
 def _assert_rejected(ref_call, candidate_call):
     with pytest.raises(RuntimeError):
         ref_call()
