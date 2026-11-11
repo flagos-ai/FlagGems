@@ -38,6 +38,10 @@ def _build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.special_i1e_out
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native i1e lacks low-precision kernels; use the ops-baseline H800 data",
+)
 @pytest.mark.skipif(flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working")
 def test_special_i1e_out():
     OperatorBenchmark(
@@ -45,7 +49,6 @@ def test_special_i1e_out():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.special_i1e.out,
-        gems_op=getattr(flag_gems, "special_i1e_out", None),
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,
