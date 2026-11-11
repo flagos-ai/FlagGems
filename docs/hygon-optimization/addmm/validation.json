@@ -1,0 +1,8 @@
+{
+  "operator": "aten::addmm",
+  "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
+  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
+  "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
+  "test_file": "tests/test_hygon_addmm.py",
+  "raw_evidence": "private D:/ZZ/analysis/ artifacts"
+}
