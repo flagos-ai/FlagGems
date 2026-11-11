@@ -273,12 +273,13 @@ def _assert_terminal_reflector_equivalent(
 def _assert_real_reflector_tail_equivalent(inp, a, tau, ref_a, ref_tau):
     _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
     a, tau = a.cpu(), tau.cpu()
-    # Keep the packed comparison for every entry except the final component
-    # of the penultimate reflector at (-1, -2).
+    # Verify the penultimate reflector's tail and coefficient together below.
+    # All other packed values retain the original elementwise comparison.
     tu.assert_result_close(a[:-1], ref_a[:-1])
     tu.assert_result_close(a[-1, :-2], ref_a[-1, :-2])
     tu.assert_result_close(a[-1, -1:], ref_a[-1, -1:])
-    tu.assert_result_close(tau, ref_tau)
+    tu.assert_result_close(tau[:-2], ref_tau[:-2])
+    tu.assert_result_close(tau[-1:], ref_tau[-1:])
 
     original = inp.cpu().double()
     column_norms = torch.linalg.vector_norm(original, dim=0)
