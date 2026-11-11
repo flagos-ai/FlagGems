@@ -25,6 +25,7 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
 from ._masked_scale import _masked_scale
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
@@ -200,6 +201,7 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_functional_sym_constrain_range_for_size",
+    "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
     "_masked_scale",
     "_thnn_fused_lstm_cell_backward_impl",
