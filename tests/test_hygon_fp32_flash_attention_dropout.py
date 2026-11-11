@@ -41,19 +41,21 @@ def _reference(q, k, v, dout, scale, causal, dropout_p, mask):
         scores = scores.masked_fill(k_idx > q_idx + k.shape[1] - q.shape[1], -float("inf"))
     lse = torch.logsumexp(scores, dim=-1)
     probs = torch.softmax(scores, dim=-1)
-    if dropout_p > 0:
-        probs_drop = probs * mask.double() / (1.0 - dropout_p)
-    else:
-        probs_drop = probs
-    out = torch.einsum("bhqk,bkhd->bqhd", probs_drop, vf)
-
     do = dout.double()
     d_out_bh = do.permute(0, 2, 1, 3)
-    out_bh = out.permute(0, 2, 1, 3)
-    d_v = torch.einsum("bhqk,bqhd->bkhd", probs_drop, d_out_bh)
-    dp = torch.einsum("bhqd,bkhd->bhqk", d_out_bh, vf)
-    d = (out_bh * d_out_bh).sum(dim=-1, keepdim=True)
-    ds = probs_drop * (dp - d) * scale
+    if dropout_p > 0:
+        probs_drop = probs * mask.double() / (1.0 - dropout_p)
+        dp = torch.einsum("bhqd,bkhd->bhqk", d_out_bh, vf)
+        dp_drop = dp * mask.double() / (1.0 - dropout_p)
+    else:
+        probs_drop = probs
+        dp = torch.einsum("bhqd,bkhd->bhqk", d_out_bh, vf)
+        dp_drop = dp
+    out = torch.einsum("bhqk,bkhd->bqhd", probs_drop, vf)
+
+    d_v = torch.einsum("bhqk,bhqd->bkhd", probs_drop, d_out_bh)
+    d = (probs_drop * dp).sum(dim=-1, keepdim=True)
+    ds = probs * (dp_drop - d) * scale
     d_q = torch.einsum("bhqk,bkhd->bqhd", ds, kf)
     d_k = torch.einsum("bhqk,bqhd->bkhd", ds, qf)
     return out.float(), lse.float(), d_q.float(), d_k.float(), d_v.float()
@@ -173,5 +175,5 @@ def test_hygon_fp32_flash_attention_forward_and_backward_dropout(causal, head_si
     # The forward reservation must advance the generator by the dense matrix
     # footprint, rounded to a Philox group of four values.
     expected_increment = (batch * heads * seqlen * seqlen + 3) // 4 * 4
-    _, next_offset, _, _, _ = _run_forward(q, k, v, scale, causal, dropout_p)
+    _, _, _, next_offset, _ = _run_forward(q, k, v, scale, causal, dropout_p)
     assert int(next_offset.item()) - offset_i == expected_increment

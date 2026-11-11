@@ -280,11 +280,17 @@ def _flash_attn_bwd_dq_fused(
             s = s - alibi_slope * tl.abs(dist).to(tl.float32)
 
         s = tl.where(mask_s, s.to(tl.float32), float("-inf"))
+        # Keep the pre-dropout softmax probability separate from the
+        # probability used by the value path.  The softmax derivative is
+        # P * (dP - sum(P_drop * dP_drop)); using P_drop for the outer
+        # factor incorrectly applies the dropout mask to the subtraction term.
         p = tl.exp(s - Li[:, None])
         if FP32:
             dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
         else:
             dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        p_drop = p
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -296,16 +302,17 @@ def _flash_attn_bwd_dq_fused(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
         if FP32:
             dq = dq + tl.dot(ds, k, input_precision="ieee")
         else:
             dq = dq + tl.dot(ds.to(q.dtype), k)
 
         if DO_BIAS_GRAD:
-            ds_bias = p * (dp - Di[:, None])
+            ds_bias = p * (dp_drop - Di[:, None])
             bb_out = batch_idx * stride_bb + head_q_idx * stride_bh
             tl.store(
                 dBias
@@ -531,6 +538,8 @@ def _flash_attn_bwd_dkv(
             dp = tl.dot(do, tl.trans(v), input_precision="ieee").to(tl.float32)
         else:
             dp = tl.dot(do, tl.trans(v)).to(tl.float32)
+        p_drop = p
+        dp_drop = dp
 
         if IS_DROPOUT:
             rng_off = (
@@ -542,15 +551,16 @@ def _flash_attn_bwd_dkv(
             )
             rand_vals = tl.rand(seed, rng_off)
             drop_mask = rand_vals > dropout_p
-            p = tl.where(drop_mask, p * drop_scale, 0.0)
+            p_drop = tl.where(drop_mask, p * drop_scale, 0.0)
+            dp_drop = tl.where(drop_mask, dp * drop_scale, 0.0)
 
-        ds = p * (dp - Di[:, None]) * sm_scale
+        ds = p * (dp_drop - Di[:, None]) * sm_scale
         if FP32:
             dk = dk + tl.dot(tl.trans(ds), q, input_precision="ieee")
-            dv = dv + tl.dot(tl.trans(p), do, input_precision="ieee")
+            dv = dv + tl.dot(tl.trans(p_drop), do, input_precision="ieee")
         else:
             dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-            dv = dv + tl.dot(tl.trans(p.to(q.dtype)), do)
+            dv = dv + tl.dot(tl.trans(p_drop.to(q.dtype)), do)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
