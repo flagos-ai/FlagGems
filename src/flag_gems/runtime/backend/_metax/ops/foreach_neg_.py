@@ -311,7 +311,7 @@ def _capture(key, kernel):
                     None,
                     None,
                     None,
-                    *argvals
+                    *argvals,
                 )
 
         else:
