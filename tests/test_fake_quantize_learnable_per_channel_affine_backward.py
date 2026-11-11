@@ -39,10 +39,10 @@ GRAD_FACTORS = [1.0] if cfg.QUICK_MODE else [1.0, 0.5, 2.0]
 _ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward
 
 
-def _seed(seed=0):
-    torch.manual_seed(seed)
+def _seed():
+    torch.manual_seed(1234)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+        torch.cuda.manual_seed_all(1234)
 
 
 def _reference(tensor):
@@ -50,7 +50,7 @@ def _reference(tensor):
 
 
 def _make_inputs(shape, axis, quant_max):
-    _seed(1234)
+    _seed()
     channels = shape[axis]
     factory = {"device": flag_gems.device, "dtype": torch.float32}
     scale = torch.rand(channels, **factory) * 0.4 + 0.05
@@ -100,6 +100,7 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
         grad_factor,
     )
 
+    assert len(result) == 3
     reduce_size = self_t.numel() // shape[axis]
     for index, (actual, expected) in enumerate(zip(result, ref_out)):
         utils.gems_assert_close(
@@ -125,13 +126,14 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
 @pytest.mark.underscore_fake_quantize_learnable_per_channel_affine_backward
 def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
     shape, axis = (4, 16), 1
-    scale = torch.full((16,), 0.1, device=flag_gems.device)
-    zero_point = torch.zeros(16, device=flag_gems.device)
-    self_t = torch.zeros(shape, device=flag_gems.device)
+    _seed()
+    factory = {"device": flag_gems.device, "dtype": torch.float32}
+    scale = torch.full((16,), 0.1, **factory)
+    zero_point = torch.zeros(16, **factory)
+    self_t = torch.zeros(shape, **factory)
     self_t[:, 0] = float("inf")
     self_t[:, 1] = float("-inf")
-    _seed()
-    grad = torch.randn(shape, device=flag_gems.device)
+    grad = torch.randn(shape, **factory)
     inputs = grad, self_t, scale, zero_point
     ref_out = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, -128, 127, 1.0
