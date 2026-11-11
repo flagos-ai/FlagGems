@@ -184,6 +184,6 @@ def test_masked_select_hygon_registered_empty(monkeypatch):
     inp = torch.zeros((0, 3), device=flag_gems.device)
     mask = torch.ones((1, 3), dtype=torch.bool, device=flag_gems.device)
     monkeypatch.setattr(hygon_masked_select, "_generic_masked_select", _fail_generic)
-    with flag_gems.use_gems(include=["masked_select"]):
-        out = torch.masked_select(inp, mask)
+    flag_gems.enable()
+    out = torch.masked_select(inp, mask)
     assert out.shape == (0,) and out.dtype == inp.dtype
