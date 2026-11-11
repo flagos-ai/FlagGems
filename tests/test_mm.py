@@ -19,6 +19,8 @@ else:
         (1, 1, 32),
         (15, 160, 1024),
         (495, 5333, 71),
+        # Issue #8303: shape from the kunlunxin mm autotune crash report.
+        (128, 256, 64),
     ]
     FLOAT_DTYPES = utils.FLOAT_DTYPES
 

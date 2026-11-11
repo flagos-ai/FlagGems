@@ -35,7 +35,20 @@ autotune_decorator = triton.autotune(
 )
 
 
-KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "1") == "1"
+# 2026-11-11 (issue #8303): the generate_configs="mm" autotune path is not
+# usable on this backend, so it is no longer the default.  The autotuner
+# benchmarks every generated config with triton.testing.do_bench, whose warmup
+# estimate is derived from device-event elapsed time; on XPU (P800) that
+# estimate is 0.0 ms (measured: 26/26 generated configs at 1024^3), and
+# Triton <= 3.0.0 computes `n_warmup = max(1, int(warmup / estimate_ms))`
+# without the zero guard that newer Triton releases added, so the first
+# torch.mm under use_gems() aborts with
+#   ZeroDivisionError: float division by zero.
+# The fixed 256^3 tile is correct for every shape (loads wrap with `% M/N`,
+# stores are masked), so keep it as the default and require an explicit
+# KLX_USE_AUTOTUNE=1 opt-in for tuning experiments.  This matches the
+# heuristics-only direction already taken on master.
+KLX_USE_AUTOTUNE = os.environ.get("KLX_USE_AUTOTUNE", "0") == "1"
 
 if not KLX_USE_AUTOTUNE:
     autotune_decorator = triton.autotune(
