@@ -754,6 +754,12 @@ _FULL_CONFIG = (
         "_to_copy",
         to_copy,
         lambda: _parse_version(torch.__version__) >= _parse_version("2.4"),
+        (
+            ("PrivateUse1",)
+            if vendor_name == "hygon"
+            and torch._C._get_privateuse1_backend_name() == "flagos"
+            else ()
+        ),
     ),
     ("_to_sparse_semi_structured", to_sparse_semi_structured),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
