@@ -206,8 +206,6 @@ def test_row_stack_out_memory_format(shape, memory_format, dtype):
     """
     if flag_gems.vendor_name == "ascend" and memory_format != torch.contiguous_format:
         pytest.skip("Ascend supports only contiguous/preserve input memory formats")
-    if flag_gems.vendor_name == "kunlunxin" and memory_format != torch.contiguous_format:
-        pytest.skip("channels-last layout is not preserved by the reference on XPU")
     inp = [
         torch.randn(shape, dtype=dtype, device=flag_gems.device).to(
             memory_format=memory_format
@@ -286,8 +284,6 @@ def test_row_stack_out_resize(shape, dtype):
 @pytest.mark.row_stack_out
 def test_row_stack_out_dtype_cast():
     """ATen casts the result into a different (castable) out dtype."""
-    if flag_gems.vendor_name == "kunlunxin" and not utils.fp64_is_supported:
-        pytest.skip("float64 is not supported by this device")
     if flag_gems.vendor_name == "iluvatar":
         pytest.skip(
             "Iluvatar native row_stack out computes incorrect float32-to-float64 casts"
