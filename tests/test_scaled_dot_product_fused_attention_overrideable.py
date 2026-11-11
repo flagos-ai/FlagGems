@@ -30,9 +30,12 @@ def test_scaled_dot_product_fused_attention_overrideable(
     ).uniform_(-0.1, 0.1)
 
     ref_q, ref_k, ref_v = (utils.to_reference(x) for x in (q, k, v))
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.bfloat16:
+        # The native BF16 attention reference loses precision on causal rows.
+        ref_q, ref_k, ref_v = (x.float() for x in (ref_q, ref_k, ref_v))
     ref_output = torch.nn.functional.scaled_dot_product_attention(
         ref_q, ref_k, ref_v, is_causal=is_causal
-    )
+    ).to(dtype)
 
     # Get result from our implementation
     (
