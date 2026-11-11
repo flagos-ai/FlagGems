@@ -91,7 +91,7 @@ def test_histogramdd_bin_counts(shape, bins, dtype):
     result = flag_gems.histogramdd(inp, bins=bins)
 
     _assert_result(result, reference, dtype, inp.device, exact_hist=True)
-    utils.gems_assert_equal(inp, before)
+    torch.testing.assert_close(inp, before, atol=0, rtol=0)
 
 
 @pytest.mark.histogramdd
