@@ -104,7 +104,7 @@ def test_convolution_backward_overrideable(
     )
     reduction_dims = (weight.shape[2], weight.shape[0], grad_output.shape[0])
     for enabled, result, reference, reduce_dim in zip(
-        output_mask, outputs, ref_outputs, reduction_dims
+        output_mask, outputs, ref_outputs, reduction_dims, strict=True
     ):
         if enabled:
             assert result.device == inp.device
