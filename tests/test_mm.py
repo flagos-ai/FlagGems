@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import random
 
 import numpy as np
@@ -329,6 +330,25 @@ def test_hygon_mm_scientific_shapes(M, N, K):
     left = _hygon_mm_storage((M, K), (K, 1), 0, torch.float32, 73)
     right = _hygon_mm_storage((K, N), (1, K), 0, torch.float32, 91)
     _assert_hygon_mm(*left, *right)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon schedule regression")
+def test_hygon_mm_scientific_path_does_not_fallback(monkeypatch):
+    provider = inspect.getmodule(flag_gems.mm)
+
+    def unexpected_fallback(*args, **kwargs):
+        pytest.fail("Hygon FP32 scientific mm unexpectedly used _mm_default")
+
+    monkeypatch.setattr(provider, "_mm_default", unexpected_fallback)
+    for M, N, K in [(4096, 64, 64), (4096, 32, 64)]:
+        cpu_a = torch.randn((M, K), dtype=torch.float32)
+        cpu_b = torch.randn((K, N), dtype=torch.float32)
+        actual = flag_gems.mm(cpu_a.to(flag_gems.device), cpu_b.to(flag_gems.device))
+        expected = torch.mm(cpu_a, cpu_b)
+        torch.testing.assert_close(
+            actual.cpu(), expected, rtol=1e-4, atol=1e-5, equal_nan=True
+        )
 
 
 @pytest.mark.mm
