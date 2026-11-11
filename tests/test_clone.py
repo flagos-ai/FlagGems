@@ -104,3 +104,34 @@ def test_clone_autograd_non_contiguous():
     (ref_in_grad,) = torch.autograd.grad(ref_out.sum(), [ref_inp])
 
     utils.gems_assert_close(res_in_grad, ref_in_grad.to(torch.float32), torch.float32)
+
+
+@pytest.mark.clone
+@pytest.mark.parametrize("memory_format", [None, "contiguous", "preserve"])
+@pytest.mark.parametrize("transpose", [False, True])
+def test_clone_under_torch_compile(memory_format, transpose):
+    """``clone`` must trace under ``torch.compile`` without reading a data pointer.
+
+    ``aten::clone`` is a composite op whose Meta implementation is a "default
+    backend kernel": shape propagation re-runs the registered backend
+    implementation instead of a dedicated meta function.  Since FlagGems owns
+    the device dispatch key, that fallback used to land in the Triton launcher,
+    which calls ``data_ptr()`` on the FakeTensor and raises.  ``_clone_impl``
+    now resolves the layout for metadata-only inputs instead of launching.
+    """
+    inp = torch.randn((8, 16), dtype=torch.float32, device=flag_gems.device)
+    if transpose:
+        inp = inp.t()
+    fmt = {"contiguous": torch.contiguous_format, "preserve": torch.preserve_format}
+    kwargs = {} if memory_format is None else {"memory_format": fmt[memory_format]}
+
+    expected = torch.ops.aten.clone.default(inp, **kwargs)
+    compiled = torch.compile(
+        lambda x: torch.ops.aten.clone.default(x, **kwargs),
+        backend="eager",
+        fullgraph=True,
+    )
+    actual = compiled(inp)
+
+    utils.gems_assert_equal(actual, expected)
+    assert actual.stride() == expected.stride()
