@@ -67,7 +67,10 @@ def test_convolution_overrideable_out(monkeypatch):
         monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
     torch.backends.cudnn.allow_tf32 = False
 
-    ConvolutionOverrideableBenchmark(
+    def stock_out(*args, **kwargs):
+        return flag_gems.convolution_overrideable_out(*args, **kwargs)
+
+    bench = ConvolutionOverrideableBenchmark(
         op_name="convolution_overrideable_out",
         torch_op=torch.ops.aten.convolution.out,
         case_fn=_case_fn,
@@ -75,4 +78,6 @@ def test_convolution_overrideable_out(monkeypatch):
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,
         fresh_inputs=True,
-    ).run()
+    )
+    bench.set_gems(stock_out)
+    bench.run()
