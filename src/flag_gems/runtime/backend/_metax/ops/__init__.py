@@ -165,8 +165,10 @@ from .lcm import lcm
 from .lcm_ import lcm_
 from .ldexp_ import ldexp_
 from .lgamma_ import lgamma, lgamma_
+from .lift_fresh import lift_fresh
 from .linalg_cholesky import linalg_cholesky
 from .linalg_ldl_factor import ldl_factor
+from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_lstsq import linalg_lstsq
 from .linalg_matrix_exp import linalg_matrix_exp, linalg_matrix_exp_out
 from .linalg_matrix_power import linalg_matrix_power, linalg_matrix_power_out
@@ -188,6 +190,7 @@ from .lt_ import lt_, lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_, masked_scatter_impl
 from .masked_scatter_backward import masked_scatter_backward
+from .masked_select_backward import masked_select_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
@@ -216,6 +219,7 @@ from .nansum import nansum, nansum_out
 from .new_ones import new_ones
 from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
+from .nuclear_norm import nuclear_norm
 from .ones import ones
 from .ones_like import ones_like
 from .ormqr import ormqr
@@ -232,12 +236,14 @@ from .rnn_tanh import rnn_tanh
 from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
+from .scaled_dot_product_attention_math_for_mps import _scaled_dot_product_attention_math_for_mps
 from .segment_reduce import segment_reduce, segment_reduce_out
 from .sigmoid import sigmoid
 from .silu import silu
 from .special_bessel_j0 import special_bessel_j0, special_bessel_j0_out
 from .special_bessel_y0 import special_bessel_y0
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
+from .special_chebyshev_polynomial_v import special_chebyshev_polynomial_v
 from .special_chebyshev_polynomial_w import (
     special_chebyshev_polynomial_w,
     special_chebyshev_polynomial_w_out,
@@ -253,6 +259,7 @@ from .special_round_out import special_round_out
 from .special_shifted_chebyshev_polynomial_w import (
     special_shifted_chebyshev_polynomial_w,
 )
+from .standard_gamma_grad import standard_gamma_grad
 from .tanh import tanh
 from .to_copy import to_copy
 from .topk_w8a16_fp8 import topk_w8a16_fp8
@@ -273,6 +280,7 @@ __all__ = [
     "_convolution_double_backward",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
+    "_scaled_dot_product_attention_math_for_mps",
     "_thnn_fused_lstm_cell_backward_impl",
     "_unique2",
     "_unsafe_masked_index_put_accumulate",
@@ -451,8 +459,10 @@ __all__ = [
     "lcm_",
     "ldexp_",
     "ldl_factor",
+    "ldl_factor_ex",
     "lgamma",
     "lgamma_",
+    "lift_fresh",
     "linalg_cholesky",
     "linalg_lstsq",
     "linalg_matrix_exp",
@@ -482,6 +492,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_scatter_impl",
+    "masked_select_backward",
     "matmul_bf16",
     "matmul_int8",
     "max_pool3d_with_indices_backward",
@@ -506,6 +517,7 @@ __all__ = [
     "new_ones",
     "nonzero",
     "nonzero_numpy",
+    "nuclear_norm",
     "ones",
     "ones_like",
     "ormqr",
@@ -533,6 +545,7 @@ __all__ = [
     "special_bessel_j0_out",
     "special_bessel_y0",
     "special_chebyshev_polynomial_u",
+    "special_chebyshev_polynomial_v",
     "special_chebyshev_polynomial_w",
     "special_chebyshev_polynomial_w_out",
     "special_gammainc",
@@ -544,6 +557,7 @@ __all__ = [
     "special_round",
     "special_round_out",
     "special_shifted_chebyshev_polynomial_w",
+    "standard_gamma_grad",
     "tanh",
     "to_copy",
     "topk_w8a16_fp8",
