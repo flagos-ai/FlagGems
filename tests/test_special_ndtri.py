@@ -30,7 +30,7 @@ NDTRI_UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16]
 @pytest.mark.special_ndtri
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", NDTRI_DTYPES)
-def test_special_ndtri(shape, dtype, caplog):
+def test_special_ndtri(shape, dtype, caplog, pytestconfig):
     # ndtri is the inverse of the standard normal CDF, so the input is a
     # probability in [0, 1]. The interior of the range is sampled here; the
     # boundaries are covered separately below because they map to infinities.
@@ -43,15 +43,15 @@ def test_special_ndtri(shape, dtype, caplog):
     ):
         res_out = flag_gems.special_ndtri(inp)
 
-    assert (
-        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
-    )
+    if pytestconfig._override_registry.get_override("special_ndtri") is None:
+        prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
+        assert f"{prefix} SPECIAL_NDTRI" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_ndtri
 @pytest.mark.parametrize("dtype", NDTRI_DTYPES)
-def test_special_ndtri_edge_values(dtype, caplog):
+def test_special_ndtri_edge_values(dtype, caplog, pytestconfig):
     # p == 0 and p == 1 map to -inf and +inf, and inputs outside [0, 1] as well
     # as nan map to nan. These are exact values rather than approximations, so
     # they are compared with equality semantics instead of a tolerance.
@@ -68,9 +68,9 @@ def test_special_ndtri_edge_values(dtype, caplog):
     ):
         res_out = flag_gems.special_ndtri(inp)
 
-    assert (
-        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
-    )
+    if pytestconfig._override_registry.get_override("special_ndtri") is None:
+        prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
+        assert f"{prefix} SPECIAL_NDTRI" in caplog.text
     torch.testing.assert_close(
         res_out.to(torch.float32).cpu(),
         ref_out.to(torch.float32).cpu(),
@@ -82,7 +82,7 @@ def test_special_ndtri_edge_values(dtype, caplog):
 
 @pytest.mark.special_ndtri
 @pytest.mark.parametrize("dtype", NDTRI_DTYPES)
-def test_special_ndtri_non_contiguous(dtype, caplog):
+def test_special_ndtri_non_contiguous(dtype, caplog, pytestconfig):
     # A transposed view exercises the strided path of the pointwise kernel.
     inp = torch.empty((16, 32), dtype=dtype, device=flag_gems.device).uniform_(
         0.01, 0.99
@@ -96,9 +96,9 @@ def test_special_ndtri_non_contiguous(dtype, caplog):
     ):
         res_out = flag_gems.special_ndtri(inp)
 
-    assert (
-        f"{utils.gems_log_prefix(flag_gems.special_ndtri)} SPECIAL_NDTRI" in caplog.text
-    )
+    if pytestconfig._override_registry.get_override("special_ndtri") is None:
+        prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
+        assert f"{prefix} SPECIAL_NDTRI" in caplog.text
     assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype)
 
