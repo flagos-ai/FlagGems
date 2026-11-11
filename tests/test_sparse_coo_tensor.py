@@ -485,6 +485,60 @@ def test_sparse_coo_tensor_autograd(dtype):
     torch.testing.assert_close(values.grad, torch.ones_like(values))
 
 
+def test_sparse_coo_tensor_cpu_transfer():
+    target, reference_device = _required_devices()
+    indices = torch.tensor([[1, 2]])
+    values = torch.tensor([3.0, 4.0])
+    reference = torch.sparse_coo_tensor(indices, values, device=reference_device)
+    result = flag_gems.sparse_coo_tensor(indices, values, device=target)
+    _assert_master_result(
+        result, reference, required_device=target, reference_device=reference_device
+    )
+
+
+def test_sparse_coo_tensor_device_index():
+    if flag_gems.device != "cuda" or torch.cuda.device_count() < 2:
+        pytest.skip("requires two CUDA devices")
+    source = torch.device("cuda:1")
+    target = torch.device("cuda:0")
+    indices, values = _master_components(37, 2, (), torch.float32, source)
+    with torch.cuda.device(target):
+        reference = torch.sparse_coo_tensor(indices, values, device="cuda")
+        result = flag_gems.sparse_coo_tensor(indices, values, device="cuda")
+    _assert_master_result(
+        result, reference, required_device=target, reference_device=target
+    )
+
+
+def test_sparse_coo_tensor_mismatched_devices():
+    target, _ = _required_devices()
+    indices, values = _master_components(37, 2, (), torch.float32, target)
+    with pytest.raises(RuntimeError):
+        flag_gems.sparse_coo_tensor(indices.cpu(), values)
+
+
+def test_sparse_coo_tensor_rejects_sparse_indices():
+    target, reference_device = _required_devices()
+    indices = torch.tensor([[1, 2]], device=target)
+    values = torch.ones(2, device=target)
+    with pytest.raises((RuntimeError, ValueError)):
+        torch.ops.aten.sparse_coo_tensor.indices(
+            indices.to(reference_device).to_sparse(), values.to(reference_device)
+        )
+    with pytest.raises((RuntimeError, ValueError)):
+        flag_gems.sparse_coo_tensor(indices.to_sparse(), values)
+
+
+def test_sparse_coo_tensor_size_overflow():
+    target, reference_device = _required_devices()
+    indices = torch.tensor([[torch.iinfo(torch.int64).max]], device=target)
+    values = torch.ones(1, device=target)
+    with pytest.raises(RuntimeError):
+        torch.sparse_coo_tensor(indices.to(reference_device), values.to(reference_device))
+    with pytest.raises(RuntimeError, match="overflows|SymInt"):
+        flag_gems.sparse_coo_tensor(indices, values)
+
+
 def test_sparse_coo_tensor_large_reduction():
     target, reference = _required_devices()
     indices, values = _master_components(1024 * 1024 + 1, 2, (), torch.float32, target)
