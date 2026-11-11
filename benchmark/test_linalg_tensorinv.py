@@ -169,6 +169,7 @@ class LinalgTensorinvBenchmark(base.Benchmark):
                 ordinal,
                 base.BenchmarkCasePlan(
                     shape={"input": list(shape)},
+                    params={"ind": 1} if self.op_name == "linalg_tensorinv" else {},
                     builder_args=(shape,),
                 ),
             )
