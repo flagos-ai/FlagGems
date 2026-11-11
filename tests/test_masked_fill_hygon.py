@@ -246,10 +246,10 @@ def test_masked_fill_hygon_dispatch_and_inplace(tensor_value):
     expected = torch.masked_fill(
         inp.cpu(), mask.cpu(), value.cpu() if tensor_value else value
     )
-    with flag_gems.use_gems(include=["masked_fill", "masked_fill_"]):
-        actual = torch.masked_fill(inp, mask, value)
-        target = inp.clone()
-        returned = target.masked_fill_(mask, value)
+    flag_gems.enable()
+    actual = torch.masked_fill(inp, mask, value)
+    target = inp.clone()
+    returned = target.masked_fill_(mask, value)
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
     torch.testing.assert_close(target.cpu(), expected, rtol=0, atol=0)
     assert returned is target
