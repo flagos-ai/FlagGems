@@ -196,8 +196,13 @@ def test_accuracy_rnn_relu_cell_invalid_input():
     with pytest.raises(RuntimeError, match="elements"):
         flag_gems.rnn_relu_cell(input, hx, w_ih, w_hh, b_ih[:-1], b_hh)
 
+    dtype_mismatch_input = (
+        input.bfloat16() if flag_gems.vendor_name == "kunlunxin" else input.double()
+    )
+    # XPyTorch downgrades float64 to float32, so double() cannot create a dtype
+    # mismatch on kunlunxin; bfloat16 does not.
     with pytest.raises(RuntimeError, match="same dtype"):
-        flag_gems.rnn_relu_cell(input.double(), hx, w_ih, w_hh, b_ih, b_hh)
+        flag_gems.rnn_relu_cell(dtype_mismatch_input, hx, w_ih, w_hh, b_ih, b_hh)
 
 
 @pytest.mark.rnn_relu_cell
