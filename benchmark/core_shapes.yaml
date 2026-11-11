@@ -639,6 +639,33 @@ embedding_spmdm_weighted:
     - [131072, 64, 2048, 16]
   shape_desc: "V, D, B, S"
 
+embedding_spmdm_grad:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+embedding_spmdm_grad_weighted:
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
 
 # [N, C, H, W]
 UpsampleBenchmark:
@@ -795,6 +822,18 @@ frobenius_norm:
     - [1048576, 16]
     - [65536, 64]
   shape_desc: "M, N"
+
+# O(N*C^2): keep the class axis representative without inheriting the generic
+# 4096x4096 and 1024x65536 cases, which are not practical for this operator.
+multilabel_margin_loss_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
 
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.

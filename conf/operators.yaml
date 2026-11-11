@@ -13,6 +13,21 @@
 # limitations under the License.
 
 ops:
+- id: _adaptive_avg_pool3d
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, producing an output of the requested
+    size.
+
+    '
+  for:
+  - _adaptive_avg_pool3d
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _adaptive_avg_pool3d_backward
   description: 'Computes the gradient of 3D adaptive average pooling.
 
@@ -27,6 +42,21 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.1'
+- id: _adaptive_avg_pool3d_out
+  description: 'Applies a three-dimensional adaptive average pooling over an input
+    signal composed of several input planes, writing the result into a pre-allocated
+    output tensor.
+
+    '
+  for:
+  - _adaptive_avg_pool3d.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: _aminmax
   description: 'Computes the minimum and maximum values of the `input` tensor.
 
@@ -761,7 +791,7 @@ tensor into the caller-supplied `out` buffer.
 
     '
   for:
-  - _adaptive_avg_pool3d
+  - adaptive_avg_pool3d
   labels:
   - aten
   - KernelGen
@@ -790,7 +820,7 @@ tensor into the caller-supplied `out` buffer.
 
     '
   for:
-  - _adaptive_avg_pool3d.out
+  - adaptive_avg_pool3d.out
   labels:
   - aten
   - KernelGen
@@ -3067,6 +3097,17 @@ tensor into the caller-supplied `out` buffer.
   - _cast_Char
   labels:
   - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: cast_Short
+  description: Casts a tensor to int16, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Short
+  labels:
+  - aten
+  - KernelGen
   kind:
   - Tensor
   stages:
@@ -5927,6 +5968,23 @@ tensor into the caller-supplied `out` buffer.
     '
   for:
   - GenerateEmbeddingSpMDM
+  labels:
+  - fused
+  - Reduction
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5'
+  source:
+  - fbgemm
+- id: embedding_spmdm_grad
+  description: 'Standalone backward of embedding_spmdm: scatters the [B, D] upstream
+    gradient, optionally scaled by per-sample weights, into a [V, D] embedding-table
+    gradient and, when per-sample weights were used, also returns their [B, bag_size]
+    gradient.
+    '
+  for:
+  - GenerateEmbeddingSpMDMGrad
   labels:
   - fused
   - Reduction
@@ -14750,6 +14808,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: multilabel_margin_loss_backward
+  description: 'Gradient of the multi-label margin loss with respect to its input,
+    taking the forward per-class target membership mask alongside the target.'
+  for:
+  - multilabel_margin_loss_backward
+  labels:
+  - aten
+  - KernelGen
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multilabel_margin_loss_forward
   description: 'Computes the forward multi-label margin loss and returns both the
     loss and the per-class target membership mask.'
@@ -22379,6 +22450,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.1'
+- id: transpose_
+  description: |
+    Swaps two dimensions of a tensor in place. This rewrites the sizes and
+    strides of the operand without moving any data and returns the operand
+    itself.
+  for:
+    - transpose_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: transpose_copy
   description: |
     Returns a new contiguous tensor with the two specified dimensions swapped.
