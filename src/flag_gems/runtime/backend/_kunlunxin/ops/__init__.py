@@ -209,6 +209,7 @@ from ._scaled_dot_product_efficient_attention import (
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from ._slow_conv2d_forward import _slow_conv2d_forward  # noqa: F401
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
@@ -839,6 +840,7 @@ from .rot90 import rot90
 from .round import round, round_, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .row_stack import row_stack  # noqa: F401
+from .rrelu_ import rrelu_  # noqa: F401
 from .rrelu_with_noise_backward import rrelu_with_noise_backward
 from .rsqrt import rsqrt, rsqrt_
 from .rsub import rsub, rsub_scalar, rsub_tensor
@@ -1901,6 +1903,7 @@ __all__ = [
     "row_indices_copy",
     "row_indices_copy_out",
     "row_stack",
+    "rrelu_",
     "rrelu_with_noise_backward",
     "rsqrt",
     "rsqrt_",
