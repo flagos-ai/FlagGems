@@ -26,20 +26,22 @@ _SPECIAL_I1E_OUT_LOGGER = flag_gems.special_i1e_out.__module__
 @pytest.mark.special_i1e
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_special_i1e(shape, dtype, caplog):
+def test_special_i1e(shape, dtype, caplog, pytestconfig):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.special.i1e(ref_inp)
     with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_LOGGER):
         res_out = flag_gems.special_i1e(inp)
-    assert f"{utils.gems_log_prefix(flag_gems.special_i1e)} SPECIAL_I1E" in caplog.text
+    if pytestconfig._override_registry.get_override("special_i1e") is None:
+        prefix = utils.gems_log_prefix(flag_gems.special_i1e)
+        assert f"{prefix} SPECIAL_I1E" in caplog.text
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.special_i1e_out
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_special_i1e_out(shape, dtype, caplog):
+def test_special_i1e_out(shape, dtype, caplog, pytestconfig):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
@@ -50,7 +52,8 @@ def test_special_i1e_out(shape, dtype, caplog):
     with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_OUT_LOGGER):
         res_out = flag_gems.special_i1e_out(inp, out)
 
-    expected_prefix = utils.gems_log_prefix(flag_gems.special_i1e_out)
-    assert f"{expected_prefix} SPECIAL_I1E_OUT" in caplog.text
+    if pytestconfig._override_registry.get_override("special_i1e_out") is None:
+        prefix = utils.gems_log_prefix(flag_gems.special_i1e_out)
+        assert f"{prefix} SPECIAL_I1E_OUT" in caplog.text
     assert res_out is out
     utils.gems_assert_close(res_out, ref_out, dtype)
