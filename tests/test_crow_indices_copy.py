@@ -889,3 +889,18 @@ def test_crow_indices_copy_out_negative_wrong_dtype():
         torch.ops.aten.crow_indices_copy.out(ref_inp, out=ref_out)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.crow_indices_copy(inp, out=out)
+
+
+@pytest.mark.crow_indices_copy
+@pytest.mark.parametrize("shape,nnz", [((2, 3), 2), ((8, 16), 4), ((33, 65), 4), ((2, 3, 4), 3), ((2, 2, 3, 4), 3)])
+def test_crow_indices_copy_master_shapes(shape, nnz):
+    dtype = torch.float32
+    inp = _make_input("csr_batch" if len(shape) > 2 else "csr", shape, nnz, None, dtype)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.crow_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)

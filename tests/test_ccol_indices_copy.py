@@ -877,3 +877,18 @@ def test_ccol_indices_copy_out_negative_wrong_dtype():
         torch.ops.aten.ccol_indices_copy.out(ref_inp, out=ref_out)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.ccol_indices_copy(inp, out=out)
+
+
+@pytest.mark.ccol_indices_copy
+@pytest.mark.parametrize("shape,nnz", [((4, 6), 6), ((16, 32), 6), ((5, 5), 6), ((3, 1), 2)])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.INT_DTYPES + utils.BOOL_TYPES)
+def test_ccol_indices_copy_master_shapes(shape, nnz, dtype):
+    inp = _make_input("csc", shape, nnz, None, dtype)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.ccol_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.ccol_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
