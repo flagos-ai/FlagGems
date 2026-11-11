@@ -30,7 +30,13 @@ def test_arccosh_(shape, dtype):
     ref_inp = utils.to_reference(inp, True)
     act_inp = inp.clone()
 
+    original_pointer = act_inp.data_ptr()
     ref_inp.arccosh_()
-    flag_gems.arccosh_(act_inp)
+    result = flag_gems.arccosh_(act_inp)
 
-    utils.gems_assert_close(act_inp, ref_inp, dtype)
+    assert result is act_inp
+    assert result.data_ptr() == original_pointer
+    assert result.device == inp.device
+    assert result.dtype == dtype
+    assert result.shape == inp.shape
+    utils.gems_assert_close(result, ref_inp, dtype)
