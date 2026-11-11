@@ -143,15 +143,14 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         if out is not None:
             min_out = out[0] if isinstance(out, tuple) else out
             max_out = out[1] if isinstance(out, tuple) else out
-            # Global aminmax is scalar for numeric dtypes; the bool ATen
-            # overload preserves a singleton when keepdim=True.
-            if not (keepdim and dtype == torch.bool):
-                min_out = min_out.squeeze()
-                max_out = max_out.squeeze()
+            # Global aminmax returns scalar outputs; squeeze caller-provided
+            # outputs as ATen does even when keepdim=True.
+            min_out = min_out.squeeze()
+            max_out = max_out.squeeze()
         else:
-            # The bool overload preserves a singleton for keepdim=True;
-            # numeric global reductions return scalars.
-            shape = (1,) if keepdim and dtype == torch.bool else ()
+            # A global reduction has scalar output; keepdim only affects
+            # reductions with an explicit dimension.
+            shape = ()
             min_out = torch.empty(shape, dtype=dtype, device=inp.device)
             max_out = torch.empty(shape, dtype=dtype, device=inp.device)
 
