@@ -101,8 +101,11 @@ def _small_ops_det(A):
 def _ref_det(A):
     if A.device.type == "npu":
         return _small_ops_det(A)
+    if A.device.type != "cpu":
+        return torch.det(A)
+    # Use master's single-threaded LAPACK reference to avoid SLASWP hangs.
     prev = torch.get_num_threads()
-    torch.set_num_threads(min(prev, 64))
+    torch.set_num_threads(1)
     try:
         return torch.det(A)
     finally:
