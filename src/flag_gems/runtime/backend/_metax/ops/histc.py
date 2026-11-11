@@ -471,7 +471,7 @@ def histc(self, bins=100, min=0, max=0):
                 _BLOCK,
                 f64,
                 out_f32,
-                num_warps=4
+                num_warps=4,
             )
         else:
             xc = x.contiguous()
