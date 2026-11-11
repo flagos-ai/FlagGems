@@ -114,6 +114,7 @@ from .foreach_norm_scalar import foreach_norm_scalar
 from .foreach_pow_scalar_ import foreach_pow_scalar_
 from .foreach_pow_scalar_and_tensor import foreach_pow_scalar_and_tensor
 from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
+from .foreach_reciprocal import foreach_reciprocal
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -364,6 +365,7 @@ __all__ = [
     "foreach_pow_scalar_",
     "foreach_pow_scalar_and_tensor",
     "foreach_pow_scalar_list_",
+    "foreach_reciprocal",
     "full",
     "full_like",
     "gcd_",
