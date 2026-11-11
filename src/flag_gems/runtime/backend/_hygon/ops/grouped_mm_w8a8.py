@@ -41,6 +41,8 @@ def grouped_mm_w8a8_kernel(
     BN: tl.constexpr,
     BK: tl.constexpr,
     DIRECT: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    EVEN_N: tl.constexpr,
 ):
     tiles_n: tl.constexpr = (N + BN - 1) // BN
     pid = tl.program_id(0)
@@ -73,30 +75,47 @@ def grouped_mm_w8a8_kernel(
         tile_count = 1
 
     weight_col = expert.to(tl.int64) * N + col
-    scale_b = tl.load(Bs + weight_col, col < N, other=0)
+    if EVEN_N:
+        scale_b = tl.load(Bs + weight_col)
+    else:
+        scale_b = tl.load(Bs + weight_col, col < N, other=0)
     for tile in range(tile_count):
         row = row_start + tile * BM + tl.arange(0, BM)
         acc = tl.zeros((BM, BN), tl.int32)
         for block in range(tl.cdiv(K, BK)):
             red = block * BK + tl.arange(0, BK)
-            a = tl.load(
-                A + row[:, None].to(tl.int64) * K + red[None, :],
-                (row[:, None] < row_end) & (red[None, :] < K),
-                other=0,
-            )
-            b = tl.load(
-                B + weight_col[None, :] * K + red[:, None],
-                (red[:, None] < K) & (col[None, :] < N),
-                other=0,
-            )
+            a_ptrs = A + row[:, None].to(tl.int64) * K + red[None, :]
+            b_ptrs = B + weight_col[None, :] * K + red[:, None]
+            if EVEN_K:
+                a = tl.load(a_ptrs, row[:, None] < row_end, other=0)
+            else:
+                a = tl.load(
+                    a_ptrs,
+                    (row[:, None] < row_end) & (red[None, :] < K),
+                    other=0,
+                )
+            if EVEN_K and EVEN_N:
+                b = tl.load(b_ptrs)
+            elif EVEN_K:
+                b = tl.load(b_ptrs, col[None, :] < N, other=0)
+            else:
+                b = tl.load(
+                    b_ptrs,
+                    (red[:, None] < K) & (col[None, :] < N),
+                    other=0,
+                )
             acc = tl.dot(a, b, acc, out_dtype=tl.int32)
         scale_a = tl.load(As + row, row < row_end, other=0)
         value = acc.to(tl.float32) * scale_a[:, None] * scale_b[None, :]
-        tl.store(
-            C + row[:, None].to(tl.int64) * N + col[None, :],
-            value,
-            (row[:, None] < row_end) & (col[None, :] < N),
-        )
+        c_ptrs = C + row[:, None].to(tl.int64) * N + col[None, :]
+        if EVEN_N:
+            tl.store(c_ptrs, value, row[:, None] < row_end)
+        else:
+            tl.store(
+                c_ptrs,
+                value,
+                (row[:, None] < row_end) & (col[None, :] < N),
+            )
 
 
 def grouped_mm_w8a8(
@@ -165,7 +184,12 @@ def grouped_mm_w8a8(
             raise ValueError("C must not overlap an input")
 
     direct = m <= e
-    bm, bn, bk = (16, 64, 128) if direct else (64, 64, 64)
+    if direct:
+        # BK=512 only when K covers it exactly; a larger BK than K pads the
+        # reduction and doubles the load and dot work (K=256 for the down stage).
+        bm, bn, bk = 16, 64, 512 if k % 512 == 0 else 128
+    else:
+        bm, bn, bk = 64, 64, 64
     with torch_device_fn.device(A.device):
         if direct:
             row_ends, tile_ends = None, None
@@ -194,6 +218,8 @@ def grouped_mm_w8a8(
             bn,
             bk,
             DIRECT=direct,
+            EVEN_K=k % bk == 0,
+            EVEN_N=n % bn == 0,
             num_warps=4,
             num_stages=2,
             enable_fp_fusion=False,
