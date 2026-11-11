@@ -421,7 +421,16 @@ def test_sparse_coo_tensor_infer_size(nnz, sparse_dim, dense_shape, dtype):
         assert result._values().data_ptr() == values.data_ptr()
 
 
-@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+_FP64_CONSTRUCTOR_CAST = pytest.param(
+    torch.float64,
+    marks=pytest.mark.skipif(
+        flag_gems.vendor_name == "iluvatar",
+        reason="Iluvatar native FP32-to-FP64 casts zero sparse values and gradients",
+    ),
+)
+
+
+@pytest.mark.parametrize("dtype", [None, _FP64_CONSTRUCTOR_CAST, torch.float16])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_sparse_coo_tensor_strided_long_indices(dtype, explicit):
     target, reference = _required_devices()
@@ -436,7 +445,7 @@ def test_sparse_coo_tensor_strided_long_indices(dtype, explicit):
     )
 
 
-@pytest.mark.parametrize("dtype", [None, torch.float64])
+@pytest.mark.parametrize("dtype", [None, _FP64_CONSTRUCTOR_CAST])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_sparse_coo_tensor_scalar_values(dtype, explicit):
     target, reference = _required_devices()
@@ -466,7 +475,7 @@ def test_sparse_coo_tensor_inferred_coalesced(coalesced):
     )
 
 
-@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+@pytest.mark.parametrize("dtype", [None, _FP64_CONSTRUCTOR_CAST, torch.float16])
 def test_sparse_coo_tensor_autograd(dtype):
     target, _ = _required_devices()
     indices, values = _master_components(37, 2, (), torch.float32, target)
