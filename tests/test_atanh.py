@@ -42,3 +42,14 @@ def test_atanh(shape, dtype):
     utils.gems_assert_close(
         res_out, ref_out, utils.promoted_float_dtype(dtype, "atanh"), equal_nan=True
     )
+
+
+@pytest.mark.atanh_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_atanh__integer_rejects(shape, dtype):
+    # ATen raises for in-place atanh on integer/bool inputs; FlagGems mirrors
+    # that instead of silently truncating.
+    inp = torch.randint(0, 2, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.atanh_(inp)

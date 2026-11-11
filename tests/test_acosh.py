@@ -55,3 +55,17 @@ def test_acosh_(shape, dtype):
     res_out = flag_gems.acosh_(inp)
 
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.acosh_
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.SMALL_INT_DTYPES + utils.BOOL_TYPES)
+def test_acosh__integer_rejects(shape, dtype):
+    # ATen raises for in-place acosh on integer/bool inputs; FlagGems mirrors
+    # that instead of silently truncating.
+    if dtype is torch.bool:
+        inp = torch.zeros(shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    else:
+        inp = torch.randint(0, 3, shape, dtype=dtype, device="cpu").to(flag_gems.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.acosh_(inp)

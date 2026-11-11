@@ -44,5 +44,12 @@ def atanh(A):
 
 def atanh_(A):
     logger.debug("GEMS ATANH_")
+    # ATen rejects in-place atanh on integer and bool inputs (the float result
+    # cannot be cast back into the output buffer); mirror that instead of
+    # silently truncating.
+    if not A.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{A.dtype}"
+        )
     atanh_func(A, out0=A)
     return A
