@@ -59,6 +59,10 @@ at::Tensor addmm(const at::Tensor& self,
   // at::Tensor mat2_c = mat2.contiguous();
   at::Tensor out = at::empty({mat1_sizes[0], mat2_sizes[1]}, mat1.options());
   at::Tensor self_b = self.broadcast_to(out.sizes());
+  // The kernel needs the original bias shape: a 1-D bias of width N and a
+  // scalar bias both broadcast to (M, N) but take different stride paths.
+  const bool bias_is_vector = self.dim() == 1 && self.size(0) == mat2_sizes[1];
+  const bool bias_is_scalar = !bias_is_vector && self.numel() == 1;
   float alpha_val = alpha.to<float>();
   float beta_val = beta.to<float>();
 
@@ -98,6 +102,9 @@ at::Tensor addmm(const at::Tensor& self,
     /* BLOCK_M = */ config.block_m,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
+    /* BIAS_IS_VECTOR = */ bias_is_vector,
+    /* BIAS_IS_SCALAR = */ bias_is_scalar,
+    /* HAS_K = */ mat1_sizes[1] > 0,
     /* IS_FP64 = */ mat1.dtype() == at::kDouble);
   return out;
 }
@@ -116,6 +123,10 @@ at::Tensor& addmm_out(const at::Tensor& self,
   at::Tensor mat1_c = mat1.contiguous();
   // at::Tensor mat2_c = mat2.contiguous();
   at::Tensor self_b = self.broadcast_to(out.sizes());
+  // The kernel needs the original bias shape: a 1-D bias of width N and a
+  // scalar bias both broadcast to (M, N) but take different stride paths.
+  const bool bias_is_vector = self.dim() == 1 && self.size(0) == mat2_sizes[1];
+  const bool bias_is_scalar = !bias_is_vector && self.numel() == 1;
   float alpha_val = alpha.to<float>();
   float beta_val = beta.to<float>();
 
@@ -155,6 +166,9 @@ at::Tensor& addmm_out(const at::Tensor& self,
     /* BLOCK_M = */ config.block_m,
     /* BLOCK_N = */ config.block_n,
     /* BLOCK_K = */ config.block_k,
+    /* BIAS_IS_VECTOR = */ bias_is_vector,
+    /* BIAS_IS_SCALAR = */ bias_is_scalar,
+    /* HAS_K = */ mat1_sizes[1] > 0,
     /* IS_FP64 = */ mat1.dtype() == at::kDouble);
   return out;
 }
