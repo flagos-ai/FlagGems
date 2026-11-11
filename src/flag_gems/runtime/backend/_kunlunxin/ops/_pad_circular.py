@@ -44,16 +44,12 @@ The 2D/3D cases use the row-per-program layout (scalar row index derived with
 pattern of the generic 3D kernel, which is the only tile shape that
 legalizes on XPU; the generic 2D kernel's 2D tile is replaced.
 
-The vendor module also patches the generic
-``flag_gems.ops._pad_circular._pad_circular`` in ``sys.modules`` (same pattern
-as ``_kunlunxin/fused/bin_topk.py``) because ``tests/test_pad_circular.py``
-imports the function directly from the generic submodule, while ATen dispatch
-takes the vendor function through the ``SpecOpRegistrar``/``_FULL_CONFIG``
-mapping.
+ATen dispatch reaches this vendor function through the ``SpecOpRegistrar``/
+``_FULL_CONFIG`` mapping; ``flag_gems._pad_circular`` is therefore this
+function on XPU and tests must call it via ``flag_gems._pad_circular``.
 """
 
 import logging
-import sys
 
 import torch
 import triton
@@ -272,12 +268,3 @@ def _pad_circular(x: torch.Tensor, pad):
                 BLOCK_W=BLOCK_W,
             )
     return out
-
-
-# tests/test_pad_circular.py imports `_pad_circular` directly from the generic
-# submodule (``from flag_gems.ops._pad_circular import _pad_circular``), so the
-# vendor function must be installed there too; ATen dispatch resolves the
-# vendor function through the _FULL_CONFIG mapping (SpecOpRegistrar).
-_generic_mod = sys.modules.get("flag_gems.ops._pad_circular")
-if _generic_mod is not None:
-    _generic_mod._pad_circular = _pad_circular
