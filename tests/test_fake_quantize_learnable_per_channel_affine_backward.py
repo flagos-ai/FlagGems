@@ -181,7 +181,9 @@ def test_fake_quantize_learnable_per_channel_affine_backward_rejects_dtype():
         torch.ones(8, device=flag_gems.device),
         torch.zeros(8, device=flag_gems.device),
     ]
-    with pytest.raises(AssertionError):
+    with pytest.raises((AssertionError, RuntimeError)) as error:
         flag_gems._fake_quantize_learnable_per_channel_affine_backward(
             *tensors, axis, -128, 127, 1.0
         )
+    if isinstance(error.value, RuntimeError):
+        assert "dY.scalar_type() == ScalarType::Float" in str(error.value)
