@@ -15,8 +15,6 @@
 import pytest
 import torch
 
-import flag_gems
-
 from .generated_operator_utils import OperatorBenchmark
 from . import base, consts
 
@@ -36,6 +34,15 @@ _CCOLS = [
     ("bsc", (4096, 4096), 262144, (8, 8)),
     ("bsc", (8192, 8192), 65536, (16, 16)),
     ("bsc_batch", (4, 4096, 4096), 65536, (8, 8)),
+]
+
+
+# Master covers six values dtypes on these unbatched compressed layouts.
+_MASTER_CASES = [
+    ("csc", (64, 128), 256, None),
+    ("csc", (512, 512), 4096, None),
+    ("csc", (2048, 2048), 65536, None),
+    ("csc", (4096, 8192), 1048576, None),
 ]
 
 
@@ -115,8 +122,9 @@ def _make_input(layout, size, nnz, blocks, dtype, device):
 
 
 def _case_fn(shape, dtype):
-    del dtype
     layout, size, nnz, blocks = shape
+    if dtype not in consts.FLOAT_DTYPES and (layout, tuple(size), nnz, blocks) not in _MASTER_CASES:
+        return
     yield base.BenchmarkCasePlan(
         shape={"input": size},
         params={"nnz": nnz, "layout": layout},
@@ -135,7 +143,7 @@ class CcolIndicesCopyBenchmark(OperatorBenchmark):
     # dense shapes in core_shapes.yaml, so benchmark dedicated
     # (layout, size, nnz, blocks) cases instead.
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_CCOLS)
+        super().set_shapes(shape_file_path, default_shapes=_CCOLS + _MASTER_CASES)
 
 
 @pytest.mark.ccol_indices_copy
@@ -145,7 +153,6 @@ def test_ccol_indices_copy():
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch.ops.aten.ccol_indices_copy,
-        gems_op=getattr(flag_gems, "ccol_indices_copy", None),
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FLOAT_DTYPES + consts.INT_DTYPES + consts.BOOL_DTYPES,
     )
     bench.run()
