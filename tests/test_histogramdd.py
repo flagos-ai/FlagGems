@@ -47,7 +47,7 @@ def _reference(inp, bins, *, range=None, weight=None, density=False):
     return hist.to(inp.dtype), tuple(edge.to(inp.dtype) for edge in edges)
 
 
-def _assert_result(result, reference, dtype, device, *, hist_atol=1e-4):
+def _assert_result(result, reference, dtype, device, *, hist_atol=1e-4, exact_hist=False):
     hist, edges = result
     ref_hist, ref_edges = reference
     assert hist.device == device
@@ -55,7 +55,7 @@ def _assert_result(result, reference, dtype, device, *, hist_atol=1e-4):
     assert hist.shape == ref_hist.shape
     assert hist.dtype == ref_hist.dtype
     assert len(edges) == len(ref_edges)
-    if dtype in utils.ALL_FLOAT_DTYPES:
+    if not exact_hist and dtype in utils.ALL_FLOAT_DTYPES:
         utils.gems_assert_close(hist.cpu(), ref_hist, dtype, atol=hist_atol)
     else:
         utils.gems_assert_equal(hist.cpu(), ref_hist)
@@ -69,6 +69,8 @@ def _assert_result(result, reference, dtype, device, *, hist_atol=1e-4):
 @pytest.mark.parametrize("shape,bins", _POINT_CASES)
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_histogramdd_bin_counts(shape, bins, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
     torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     before = inp.clone()
@@ -76,7 +78,7 @@ def test_histogramdd_bin_counts(shape, bins, dtype):
 
     result = flag_gems.histogramdd(inp, bins=bins)
 
-    _assert_result(result, reference, dtype, inp.device)
+    _assert_result(result, reference, dtype, inp.device, exact_hist=True)
     utils.gems_assert_equal(inp, before)
 
 
@@ -163,11 +165,19 @@ def test_histogramdd_integer_bins_overload(dtype):
 def test_histogramdd_empty_and_degenerate_range():
     empty = torch.empty((0, 2), dtype=torch.float32, device=flag_gems.device)
     empty_result = flag_gems.histogramdd(empty, bins=[3, 3])
-    _assert_result(empty_result, _reference(empty, [3, 3]), torch.float32, empty.device)
+    _assert_result(
+        empty_result,
+        _reference(empty, [3, 3]),
+        torch.float32,
+        empty.device,
+        exact_hist=True,
+    )
 
     inp = torch.full((10, 2), 5.0, device=flag_gems.device)
     result = flag_gems.histogramdd(inp, bins=[3, 3])
-    _assert_result(result, _reference(inp, [3, 3]), torch.float32, inp.device)
+    _assert_result(
+        result, _reference(inp, [3, 3]), torch.float32, inp.device, exact_hist=True
+    )
 
 
 @pytest.mark.histogramdd
