@@ -114,4 +114,5 @@ def test_geqrf():
         torch_op=torch.ops.aten.geqrf.default,
         dtypes=GEQRF_BENCH_DTYPES,
     )
+    bench.set_gems(lambda inp: flag_gems.geqrf(inp))
     bench.run()
