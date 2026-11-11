@@ -37,11 +37,14 @@ FEATURE_DROPOUT_SHAPES = (
 @pytest.mark.parametrize("p", [0.3, 0.5, 0.7])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_feature_dropout(shape, p, dtype):
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     res_out = flag_gems.feature_dropout(inp, p, True)
     assert res_out.shape == inp.shape
     batch_size, num_channels = shape[0], shape[1]
     scale = 1.0 / (1.0 - p)
+    # Native dropout may round the scale to the input dtype before multiplying.
+    scale_rtol = max(1e-4, 2 * torch.finfo(dtype).eps)
     inp_reshaped = inp.view(batch_size, num_channels, -1)
     out_reshaped = res_out.view(batch_size, num_channels, -1)
     for b in range(batch_size):
@@ -49,8 +52,8 @@ def test_feature_dropout(shape, p, dtype):
             channel_out = out_reshaped[b, c]
             channel_inp = inp_reshaped[b, c]
             if not torch.all(channel_out == 0).item():
-                assert torch.allclose(
-                    channel_out, channel_inp * scale, rtol=1e-4, atol=1e-5
+                torch.testing.assert_close(
+                    channel_out, channel_inp * scale, rtol=scale_rtol, atol=1e-5
                 )
     out_by_channel = res_out.view(batch_size, num_channels, -1)
     dropped = sum(
