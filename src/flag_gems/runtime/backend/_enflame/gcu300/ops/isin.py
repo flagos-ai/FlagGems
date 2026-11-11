@@ -59,11 +59,14 @@ def isin_by_comparation_impl(
         col_mask = cols < N
         mask = row_mask & col_mask
         in1 = tl.load(in1_ravel_ptr + cols, mask, other=0)
-        block = tl.where(
-            mask,
-            tl.where(invert, block & (in0 != in1), block | (in0 == in1)),
-            invert,
-        )
+        # Avoid tl.where on bool tensors: the GCU300 compiler lowers it to
+        # tops_select_vbool, which cannot be linked (R_DTU_ADDR16_LO_ICALL).
+        # Masked positions are the neutral element of the running reduction,
+        # so the select folds into plain boolean bitwise ops.
+        if invert:
+            block = block & (~mask | (in0 != in1))
+        else:
+            block = block | (mask & (in0 == in1))
     out = tl.reduce(block, axis=1, combine_fn=(reduce_all if invert else reduce_any))
     tl.store(out_ptr, out[:, None], row_mask)
 
@@ -165,7 +168,9 @@ def isin_by_search_impl(
     for i in range(log_n):
         mid = tl.where(while_mask, start + (end - start) // 2, 0)
         mid_val = tl.load(in1_sorted_ptr + mid, mask=while_mask)
-        out = tl.where(while_mask, out | (mid_val == in0_ravel), out)  # found
+        # bool tl.where -> tops_select_vbool (unlinkable); a bitwise or keeps
+        # the same semantics because masked lanes keep their previous value.
+        out = out | (while_mask & (mid_val == in0_ravel))  # found
         start = tl.where(while_mask & (mid_val < in0_ravel), mid + 1, start)
         end = tl.where(while_mask & (mid_val > in0_ravel), mid, end)
         while_mask = start < end
@@ -219,12 +224,10 @@ def isin_by_search(
         )
     else:
         in0_ravel = in0.contiguous().ravel()
-    if unique_in1:
-        in1_ravel, _, _ = _unique2(
-            in1, sorted=True, return_inverse=False, return_counts=False
-        )
-    else:
-        in1_ravel, _ = torch.sort(in1.ravel())
+    # GCU300: _unique2 runs out of registers on multi-million element inputs
+    # (local_quick_unique_flat_kernel). The binary search only needs a sorted
+    # array and tolerates duplicates, so sort instead of deduplicating.
+    in1_ravel, _ = torch.sort(in1.ravel())
     # launch kernel func
     M = in0_ravel.numel()
     N = in1_ravel.numel()
