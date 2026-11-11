@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 from typing import Optional
 
 import torch
@@ -19,7 +21,11 @@ import torch
 from flag_gems.ops.clone import clone as _generic_clone
 
 
+logger = logging.getLogger(__name__)
+
+
 def clone(inp: torch.Tensor, memory_format: Optional[torch.memory_format] = None):
+    logger.debug("GEMS_ASCEND CLONE")
     return _generic_clone(inp, memory_format=memory_format)
 
 

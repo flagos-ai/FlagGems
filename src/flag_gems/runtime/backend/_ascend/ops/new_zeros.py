@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 
 from flag_gems.runtime import device as runtime_device
@@ -24,9 +26,13 @@ _NPU_DEVICE_TYPES = {
 }
 
 
+logger = logging.getLogger(__name__)
+
+
 def new_zeros(
     self, size, *, dtype=None, layout=None, device=None, pin_memory=None, out=None
 ):
+    logger.debug("GEMS_ASCEND NEW_ZEROS")
     if not isinstance(self, torch.Tensor):
         raise TypeError("new_zeros expects a Tensor as self")
     if out is None:
@@ -50,6 +56,7 @@ def new_zeros(
 def new_zeros_out(
     self, size, *, dtype=None, layout=None, device=None, pin_memory=None, out=None
 ):
+    logger.debug("GEMS_ASCEND NEW_ZEROS_OUT")
     return new_zeros(
         self,
         size,

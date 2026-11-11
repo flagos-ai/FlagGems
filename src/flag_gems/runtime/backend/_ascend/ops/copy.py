@@ -12,12 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 
 from flag_gems.ops.copy import copy_ as _generic_copy_
 
 
+logger = logging.getLogger(__name__)
+
+
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
+    logger.debug("GEMS_ASCEND COPY_")
     if dst.numel() == 0 and dst.layout == torch.strided:
         if dst._is_zerotensor():
             raise RuntimeError("ZeroTensors are immutable. Call clone() before copy_.")
@@ -35,6 +41,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 
 
 def copy(template: torch.Tensor, src: torch.Tensor, *, non_blocking=False):
+    logger.debug("GEMS_ASCEND COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )

@@ -82,6 +82,7 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
+    logger.debug("GEMS_ASCEND ZERO_")
     if x.numel() == 0:
         return x
     # Dense permutations cover one contiguous storage interval from data_ptr().

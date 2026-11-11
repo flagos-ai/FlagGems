@@ -253,7 +253,7 @@ def _triple(value, name):
 
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    logger.debug("GEMS ASCEND CONV3D")
+    logger.debug("GEMS_ASCEND CONV3D")
     for tensor, name in ((weight, "weight"), (bias, "bias")):
         if tensor is not None:
             if tensor.device != input.device:

@@ -1183,8 +1183,10 @@ def mul_(A, B):
 
 
 def multiply(A, B, *, out=None):
+    logger.debug("GEMS_ASCEND MULTIPLY")
     return mul(A, B, out=out)
 
 
 def multiply_(A, B):
+    logger.debug("GEMS_ASCEND MULTIPLY_")
     return mul_(A, B)

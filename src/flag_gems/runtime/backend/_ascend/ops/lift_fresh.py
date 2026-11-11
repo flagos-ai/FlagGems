@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 
 from flag_gems.ops.lift_fresh_copy import lift_fresh_copy as _generic_lift_fresh_copy
 from flag_gems.ops.lift_fresh_copy import (
     lift_fresh_copy_out as _generic_lift_fresh_copy_out,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _input_tensor(args, kwargs):
@@ -34,6 +39,7 @@ def _input_tensor(args, kwargs):
 def lift_fresh(*args, **kwargs):
     # ATen guarantees that the input is fresh and requires an aliasing result.
     # Only lift_fresh_copy materializes a separate allocation.
+    logger.debug("GEMS_ASCEND LIFT_FRESH")
     x = _input_tensor(args, kwargs)
     if x is None:
         raise ValueError("lift_fresh expects a Tensor argument")
@@ -41,6 +47,7 @@ def lift_fresh(*args, **kwargs):
 
 
 def lift_fresh_copy(*args, **kwargs):
+    logger.debug("GEMS_ASCEND LIFT_FRESH_COPY")
     x = _input_tensor(args, kwargs)
     if x is not None and x.numel() == 0:
         return x.clone()
@@ -48,6 +55,7 @@ def lift_fresh_copy(*args, **kwargs):
 
 
 def lift_fresh_copy_out(x: torch.Tensor, out: torch.Tensor = None):
+    logger.debug("GEMS_ASCEND LIFT_FRESH_COPY_OUT")
     if x.numel() == 0:
         if out is None:
             return x.clone()

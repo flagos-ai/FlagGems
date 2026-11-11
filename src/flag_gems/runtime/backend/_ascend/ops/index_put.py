@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import math
 
 import torch
@@ -21,6 +23,9 @@ import triton.language as tl
 from flag_gems.ops.index_put import index_put_ as generic_index_put_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import triton_lang_extension as ext
+
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -67,11 +72,13 @@ def _index_put_pairs_scalar_kernel(
 
 
 def index_put(inp, indices, values, accumulate=False):
+    logger.debug("GEMS_ASCEND INDEX_PUT")
     out = inp.clone()
     return index_put_(out, indices, values, accumulate)
 
 
 def index_put_(inp, indices, values, accumulate=False):
+    logger.debug("GEMS_ASCEND INDEX_PUT_")
     if values.dtype != inp.dtype:
         raise RuntimeError(
             "index_put_ requires source and destination tensors to have the same dtype"

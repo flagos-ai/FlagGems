@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
+
 import torch
 import triton
 import triton.language as tl
@@ -22,6 +24,9 @@ import triton.language as tl
 # use load masks; padded output columns are discarded by the host narrow view.
 # Output padding alone does not make reads beyond the input storage safe.
 # ---------------------------------------------------------------------------
+
+
+logger = logging.getLogger(__name__)
 
 
 @triton.jit
@@ -506,6 +511,7 @@ def _run_slow(
 
 
 def diff(x, n=1, dim=-1, prepend=None, append=None):
+    logger.debug("GEMS_ASCEND DIFF")
     n_ = int(n)
     if n_ < 0:
         raise RuntimeError(f"order must be non-negative but got {n_}")

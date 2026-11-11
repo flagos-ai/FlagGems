@@ -238,7 +238,6 @@ def _gather_function(
 
 
 def _index_impl(inp, indices):
-    logger.debug("GEMS_ASCEND INDEX")
     if not indices:
         raise ValueError("at least one index must be provided")
     if all(item is None for item in indices):
@@ -309,5 +308,6 @@ def _index_impl(inp, indices):
 
 
 def index(inp, indices):
+    logger.debug("GEMS_ASCEND INDEX")
     with torch_device_fn.device(inp.device):
         return _index_impl(inp, indices)

@@ -134,7 +134,6 @@ def _pad_fill_kernel(Y, N: tl.constexpr, VALUE: tl.constexpr, BLOCK: tl.constexp
 
 
 def _pad_impl(self, pad, mode="constant", value=None):
-    logger.debug("GEMS ASCEND PAD")
     padding = tuple(operator.index(p) for p in pad)
     if len(padding) % 2 or len(padding) > 2 * self.ndim:
         raise RuntimeError("Padding length must be even and at most twice input rank")
@@ -214,8 +213,10 @@ def _pad_impl(self, pad, mode="constant", value=None):
 
 
 def pad(self, pad, mode="constant", value=None):
+    logger.debug("GEMS_ASCEND PAD")
     return _pad_impl(self, pad, mode, value)
 
 
 def constant_pad_nd(self, pad, value=0):
+    logger.debug("GEMS_ASCEND CONSTANT_PAD_ND")
     return _pad_impl(self, pad, mode="constant", value=value)
