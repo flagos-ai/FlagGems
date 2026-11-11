@@ -167,8 +167,8 @@ def test_fake_quantize_learnable_per_channel_affine_backward_empty():
     assert result[0].shape == self_t.shape
     assert result[1].shape == scale.shape
     assert result[2].shape == zero_point.shape
-    utils.gems_assert_equal(result[1], torch.zeros_like(scale))
-    utils.gems_assert_equal(result[2], torch.zeros_like(zero_point))
+    flag_gems.testing.assert_equal(result[1], torch.zeros_like(scale))
+    flag_gems.testing.assert_equal(result[2], torch.zeros_like(zero_point))
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
