@@ -168,6 +168,7 @@ from ._functional_sym_constrain_range import _functional_sym_constrain_range
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_adagrad_ import _fused_adagrad_  # noqa: F401
 from ._fused_adam import _fused_adam, _fused_adam_
 from ._fused_rms_norm import _fused_rms_norm  # noqa: F401
 from ._is_all_true import _is_all_true
@@ -279,6 +280,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -317,6 +320,7 @@ from .bmm import bmm, bmm_out
 from .bucketize import bucketize
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
+from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
 from .cdist_backward import _cdist_backward
 from .ceil import ceil, ceil_, ceil_out
 from .celu import celu, celu_
@@ -475,6 +479,9 @@ from .fused_experts_impl import (
     inplace_fused_experts,
     outplace_fused_experts,
 )
+from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
+    fused_moving_avg_obs_fake_quant,
+)
 from .gather import gather, gather_backward
 from .gcd import gcd, gcd_, gcd_out
 from .ge import ge, ge_scalar, greater_equal_
@@ -485,6 +492,7 @@ from .get_scheduler_metadata import get_scheduler_metadata
 from .glu import glu, glu_backward
 from .greater import greater, greater_out, greater_scalar, greater_scalar_out
 from .grid_sample import grid_sample
+from .grid_sampler import grid_sampler
 from .grid_sampler_2d import grid_sampler_2d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
@@ -500,9 +508,11 @@ from .hardsigmoid import hardsigmoid, hardsigmoid_, hardsigmoid_out
 from .hardsigmoid_backward import hardsigmoid_backward  # noqa: F401
 from .hardswish_ import hardswish_  # noqa: F401
 from .hardtanh_backward import hardtanh_backward  # noqa: F401
+from .hash_tensor import hash_tensor
 from .heaviside_ import heaviside_  # noqa: F401
 from .hinge_embedding_loss import hinge_embedding_loss
 from .histc import histc
+from .histogramdd import histogramdd
 from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
@@ -534,6 +544,7 @@ from .isinf import isinf
 from .isnan import isnan
 from .isneginf import isneginf, isneginf_out
 from .isposinf import isposinf
+from .istft import istft
 from .ixor import ixor
 from .jagged_to_padded_dense_forward import jagged_to_padded_dense_forward
 from .kl_div import kl_div  # noqa: F401
@@ -934,6 +945,7 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
@@ -1084,6 +1096,7 @@ __all__ = [
     "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
+    "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
     "_index_put_impl_",
@@ -1386,6 +1399,7 @@ __all__ = [
     "full",
     "full_like",
     "fused_experts_impl",
+    "fused_moving_avg_obs_fake_quant",
     "gather",
     "gather_backward",
     "gcd",
@@ -1408,6 +1422,7 @@ __all__ = [
     "greater_scalar",
     "greater_scalar_out",
     "grid_sample",
+    "grid_sampler",
     "grid_sampler_2d",
     "grid_sampler_3d_backward",
     "group_mm",
@@ -1425,8 +1440,10 @@ __all__ = [
     "hardsigmoid",
     "hardsigmoid_",
     "hardsigmoid_out",
+    "hash_tensor",
     "hinge_embedding_loss",
     "histc",
+    "histogramdd",
     "hsplit",
     "hstack",
     "hypot",
@@ -1460,6 +1477,7 @@ __all__ = [
     "isneginf",
     "isneginf_out",
     "isposinf",
+    "istft",
     "ixor",
     "jagged_to_padded_dense_forward",
     "kl_div",
