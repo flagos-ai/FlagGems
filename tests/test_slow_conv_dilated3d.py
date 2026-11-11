@@ -105,7 +105,8 @@ def _to_reference(value, upcast):
     # Transfer storage values before promotion because Iluvatar has limited
     # device-side double conversion and convolution support.
     if value is not None and flag_gems.vendor_name == "iluvatar":
-        value = value.cpu()
+        cpu_value = value.cpu()
+        return cpu_value.to(torch.float64) if upcast else cpu_value
     return utils.to_reference(value, upcast)
 
 
