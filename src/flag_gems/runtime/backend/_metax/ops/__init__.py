@@ -190,6 +190,7 @@ from .lt_ import lt_, lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_scatter import masked_scatter, masked_scatter_, masked_scatter_impl
 from .masked_scatter_backward import masked_scatter_backward
+from .masked_select_backward import masked_select_backward
 from .matmul_bf16 import matmul_bf16
 from .matmul_int8 import matmul_int8
 from .max_pool3d_with_indices_backward import max_pool3d_with_indices_backward
@@ -486,6 +487,7 @@ __all__ = [
     "masked_scatter_",
     "masked_scatter_backward",
     "masked_scatter_impl",
+    "masked_select_backward",
     "matmul_bf16",
     "matmul_int8",
     "max_pool3d_with_indices_backward",
