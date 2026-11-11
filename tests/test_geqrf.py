@@ -208,6 +208,32 @@ def make_placed_special_input(dtype, scenario):
     return matrix
 
 
+def _assert_terminal_reflector_equivalent(inp, a, tau, ref_a, ref_tau):
+    assert a.device == tau.device == inp.device
+    assert a.dtype == tau.dtype == ref_a.dtype == ref_tau.dtype == inp.dtype
+    assert a.shape == ref_a.shape == inp.shape
+    assert tau.shape == ref_tau.shape == inp.shape[:-1]
+    assert ref_a.device == ref_tau.device == torch.device("cpu")
+    a, tau = a.cpu(), tau.cpu()
+
+    tu.assert_result_close(a[:-1], ref_a[:-1])
+    tu.assert_result_close(a[-1, :-1], ref_a[-1, :-1])
+    tu.assert_result_close(tau[:-1], ref_tau[:-1])
+
+    # The final square reflector acts only on one coordinate. LAPACK and
+    # Hygon may split that coordinate's phase differently between Q and R.
+    phase = torch.stack((1 - tau[-1], 1 - ref_tau[-1]))
+    torch.testing.assert_close(
+        phase.abs(),
+        torch.ones_like(phase.real),
+        atol=8 * torch.finfo(phase.real.dtype).eps,
+        rtol=0,
+    )
+    terminal = phase * torch.stack((a[-1, -1], ref_a[-1, -1]))
+    assert torch.isfinite(terminal).all()
+    tu.assert_result_close(terminal[0], terminal[1])
+
+
 @pytest.mark.geqrf
 @pytest.mark.parametrize("dtype", GEQRF_DTYPES)
 @pytest.mark.parametrize("shape", GEQRF_SHAPES)
@@ -220,8 +246,17 @@ def test_geqrf_value_range(shape, value_range, dtype):
     ref_a, ref_tau = torch.ops.aten.geqrf(ref_inp)
     res_a, res_tau = flag_gems.geqrf(inp)
 
-    tu.assert_result_close(res_a, ref_a)
-    tu.assert_result_close(res_tau, ref_tau)
+    if (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and dtype == torch.complex64
+        and shape == (256, 256)
+        and value_range == GEQRF_RANGE
+    ):
+        _assert_terminal_reflector_equivalent(inp, res_a, res_tau, ref_a, ref_tau)
+    else:
+        tu.assert_result_close(res_a, ref_a)
+        tu.assert_result_close(res_tau, ref_tau)
     # The default overload is not in-place.
     torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
