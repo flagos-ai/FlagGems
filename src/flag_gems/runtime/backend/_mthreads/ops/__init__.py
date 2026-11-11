@@ -99,6 +99,7 @@ from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
+from .kl_div import kl_div
 from .kthvalue import kthvalue
 from .lcm import lcm
 from .lcm_ import lcm_
@@ -283,6 +284,7 @@ __all__ = [
     "int_mm_out",
     "inverse",
     "isin",
+    "kl_div",
     "kthvalue",
     "lcm",
     "lcm_",
