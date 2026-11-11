@@ -1,5 +1,0 @@
-# External-pulled dirs and run artifacts (AGENTS.md red line: never commit)
-KernelOpt_Knowledge/
-harness-over-harness/
-perf_ir/
-run_logs/

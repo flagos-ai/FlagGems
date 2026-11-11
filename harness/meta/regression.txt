@@ -1,1 +1,0 @@
-test_fractional_max_pool3d_backward.py -m fractional_max_pool3d_backward --ref cpu

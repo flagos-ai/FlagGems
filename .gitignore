@@ -47,3 +47,6 @@ docs/benchmark/
 # Packaging build outputs (packaging/{debian,rpm} helpers)
 debian-packages/
 rpm-packages/
+
+# Local Kunlunxin operator-fix harness (not part of FlagGems)
+harness/
