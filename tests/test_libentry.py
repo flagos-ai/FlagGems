@@ -892,6 +892,68 @@ def test_libentry_key_buckets_integers_by_triton_width():
     )
 
 
+def test_libentry_launch_options_key_selects_compile_options():
+    """Only non-parameter keywords are keyed, independent of their order."""
+    entry = SimpleNamespace(_kernel_params=frozenset({"x", "BLOCK"}))
+    launch = dict(grid=(4,), warmup=False, BLOCK=64, num_warps=4, num_stages=2)
+
+    key = libentry_mod.LibEntry._launch_options_key(entry, launch)
+
+    assert key == (("num_stages", "2"), ("num_warps", "4"))
+    assert key == libentry_mod.LibEntry._launch_options_key(
+        entry, dict(reversed(launch.items()))
+    )
+    assert libentry_mod.LibEntry._launch_options_key(entry, {"grid": (4,)}) == ()
+    hash(libentry_mod.LibEntry._launch_options_key(entry, {"cluster_dims": [1, 1, 1]}))
+
+
+@pytest.mark.parametrize("cache_binding", [False, True])
+def test_libentry_run_separates_compile_options(monkeypatch, cache_binding):
+    """A launch must run a kernel compiled with the options it asked for."""
+
+    @triton.jit
+    def kernel(n, BLOCK: tl.constexpr):
+        pass
+
+    entry = libentry_mod.LibEntry(kernel, cache_binding=cache_binding)
+    monkeypatch.setattr(libentry_mod.torch_device_fn, "current_device", lambda: "cpu")
+    compiled_with = []
+    launched_with = []
+
+    class FakeCompiledKernel:
+        def __init__(self, num_stages):
+            self.num_stages = num_stages
+
+        def __getitem__(self, grid):
+            return lambda *args: launched_with.append(self.num_stages)
+
+    def fake_compile(*args, **kwargs):
+        compiled_with.append(kwargs.get("num_stages"))
+        return FakeCompiledKernel(kwargs.get("num_stages"))
+
+    monkeypatch.setattr(kernel, "run", fake_compile)
+    cached_launches = []
+    run_cached = entry._run_cached
+
+    def spy_run_cached(args, kwargs):
+        result = run_cached(args, kwargs)
+        cached_launches.append(result is not None)
+        return result
+
+    monkeypatch.setattr(entry, "_run_cached", spy_run_cached)
+    for num_stages in (2, 5, 2, 5):
+        entry.run(8, BLOCK=64, grid=(1,), num_stages=num_stages)
+
+    # The first launch of each option compiles through `kernel.run`; the repeats
+    # must hit the entry built with the same option, on either binding path.
+    assert compiled_with == [2, 5]
+    assert launched_with == [2, 5]
+    assert len(entry._cpu_cache) == 2
+    # The cached binder keys entries exactly as the generic path stores them, or
+    # it would miss every launch that carries an option and never engage.
+    assert cached_launches == ([False, False, True, True] if cache_binding else [])
+
+
 def test_hash_generation():
     @libtuner(
         configs=[

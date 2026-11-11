@@ -1475,6 +1475,7 @@ class LibEntry(triton.KernelInterface):
             self.lock = multiprocessing.Lock()
         self.signature = fn.signature
         self._tensor_spec_fn = self._resolve_tensor_spec_fn()
+        self._kernel_params = frozenset(p.name for p in self.jit_function.params)
         # The cached binder follows Triton 3.3-3.6 launch argument conventions.
         self._cache_binding = (
             cache_binding and major_version == 3 and 3 <= minor_version <= 6
@@ -1629,6 +1630,28 @@ class LibEntry(triton.KernelInterface):
         const_key = [_descriptor_cache_key(arg) for arg in const_args]
         return tuple(spec_key + dns_key + const_key)
 
+    def _launch_options_key(self, kwargs):
+        """Key the launch keywords that are compile options.
+
+        A hit below returns the cached kernel without reaching `JITFunction`,
+        whose own cache keys on these options. Leaving them out of the entry key
+        hands a launch asking for one `num_stages` a kernel built with another.
+        Results stay correct, but the requested option silently stops applying.
+
+        Anything that is not a kernel parameter is an option. `grid` and
+        `warmup` steer the launch rather than the build, as in `JITFunction.run`.
+        Values are keyed by `repr`, the way `JITFunction` stringifies its
+        options, which also keeps list-valued options hashable.
+        """
+        kernel_params = self._kernel_params
+        options = [
+            (name, repr(value))
+            for name, value in kwargs.items()
+            if name not in kernel_params and name != "grid" and name != "warmup"
+        ]
+        options.sort()
+        return tuple(options)
+
     def _first_run(self, *args, **kwargs):
         try:
             return self._first_run_once(*args, **kwargs)
@@ -1726,7 +1749,11 @@ class LibEntry(triton.KernelInterface):
                 ("flagtune_dtypes",) + tuple(str(value) for value in flagtune_dtypes)
             )
 
-        entry_key = self.key(spec_args, dns_args, const_args)
+        # The options are appended here, not inside `key`, which callers may
+        # use to rebuild the option-free part of an entry key.
+        entry_key = self.key(
+            spec_args, dns_args, const_args
+        ) + self._launch_options_key(kwargs)
         # CPU has one device per process and `current_device()` returns the
         # string "cpu" (can't index into the int-keyed `kernel_cache` tuple).
         # This branch is CPU-generic — any future x86 / RISC-V CPU backend
@@ -1907,8 +1934,11 @@ class LibEntry(triton.KernelInterface):
                 dtype_names.append(name)
         if self._has_flagtune_tuner:
             keys[0].append(("flagtune_dtypes",) + tuple(dtype_names))
-        # Generic order is specialized, unspecialized, then constexpr values.
-        entry_key = self.key(keys[1], keys[2], keys[0])
+        # Generic order is specialized, unspecialized, then constexpr values,
+        # followed by the compile options exactly as the generic path keys them.
+        entry_key = self.key(keys[1], keys[2], keys[0]) + self._launch_options_key(
+            kwargs
+        )
         device_index = torch_device_fn.current_device()
         if self._has_flagtune_tuner:
             self._apply_flagtune(device_index, args, kwargs)
