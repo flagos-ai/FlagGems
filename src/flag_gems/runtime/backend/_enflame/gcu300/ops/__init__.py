@@ -86,6 +86,7 @@ from .cosh import cosh, cosh_, cosh_out
 from .count_nonzero import count_nonzero
 from .ctc_loss import ctc_loss
 from .cummax import cummax
+from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .diag import diag
@@ -123,6 +124,9 @@ from .fill import (
     fill_tensor_out,
 )
 from .flip import flip
+from .flipud import flipud
+from .float_power_ import float_power_scalar_tensor_out
+from .float_power_tensor_scalar import float_power_tensor_scalar
 from .floor import floor, floor_, floor_out
 from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_backward
 from .full import full
@@ -386,6 +390,7 @@ __all__ = [
     "count_nonzero",
     "ctc_loss",
     "cummax",
+    "cummaxmin_backward",
     "cummin",
     "cumsum",
     "cumsum_out",
@@ -424,6 +429,9 @@ __all__ = [
     "flash_attention_forward",
     "flash_attn_varlen_func",
     "flip",
+    "flipud",
+    "float_power_scalar_tensor_out",
+    "float_power_tensor_scalar",
     "floor",
     "floor_",
     "floor_divide",
