@@ -24,42 +24,28 @@ _COV_SHAPES = [
     (64, 1024),
     (128, 1024),
     (256, 1024),
+    (256, 4096),
     (512, 2048),
+    (512, 4096),
 ]
 
 
 class CovBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=_COV_SHAPES)
+        self.shapes = _COV_SHAPES
 
 
 def _case_fn(shape, dtype):
     del dtype
     dims = tuple(shape)
-    for mode in ("default", "correction", "fweights", "aweights"):
-        yield base.BenchmarkCasePlan(
-            shape={"input": list(dims)},
-            params={"mode": mode},
-            builder_args=(dims, mode),
-        )
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(dims)}, params={}, builder_args=(dims,)
+    )
 
 
 def _build_inputs_fn(plan, dtype, device):
-    shape, mode = plan.builder_args
-    torch.manual_seed(0)
-    inp = torch.randn(shape, dtype=dtype, device=device)
-    kwargs = {}
-    if mode == "correction":
-        kwargs["correction"] = 0
-    elif mode == "fweights":
-        kwargs["fweights"] = torch.randint(
-            1, 5, (shape[-1],), dtype=torch.int64, device=device
-        )
-    elif mode == "aweights":
-        kwargs["aweights"] = torch.rand(
-            (shape[-1],), dtype=dtype, device=device
-        ) + 0.1
-    return inp, kwargs
+    (shape,) = plan.builder_args
+    return (torch.randn(shape, dtype=dtype, device=device),)
 
 
 @pytest.mark.cov
