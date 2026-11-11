@@ -354,6 +354,7 @@ __all__ = [
     "foreach_mul_tensor",
     "foreach_mul_tensor_",
     "foreach_neg",
+    "fractional_max_pool2d_backward",
     "full",
     "full_like",
     "gcd_",
@@ -486,3 +487,4 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
