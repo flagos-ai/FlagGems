@@ -187,8 +187,8 @@ def _wrapped_quantized_linear_prepacked(
         return output
 
     input_2d = input.reshape(M, K).contiguous()
-    # A wider block exceeds the compiler's pipeline-event budget on some
-    # toolchains, so keep the tile narrow.
+    # The scalar-k loop already needs most of the per-kernel pipeline-event
+    # budget on some toolchains, so run it without software pipelining.
     block_size = 64
     grid = (triton.cdiv(M * out_channel, block_size),)
     with torch_device_fn.device(input.device):
@@ -207,5 +207,6 @@ def _wrapped_quantized_linear_prepacked(
             K,
             input_2d.stride(0),
             BLOCK=block_size,
+            num_stages=1,
         )
     return output
