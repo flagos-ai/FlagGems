@@ -2994,7 +2994,7 @@ def _correct_negative_tolerance_rank(input, result, atol, rtol, hermitian):
 
 def linalg_matrix_rank(input, *, atol=None, rtol=None, hermitian=False):
     """Computes numerical matrix rank using shape-specialized Triton kernels."""
-    logger.debug("GEMS LINALG_MATRIX_RANK")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK")
     _check_input(input, hermitian)
 
     output_shape = input.shape[:-2]
@@ -3019,7 +3019,7 @@ def linalg_matrix_rank(input, *, atol=None, rtol=None, hermitian=False):
 
 def linalg_matrix_rank_tol(input, tol, hermitian=False):
     """NumPy-compatible legacy overload where tol is an absolute tolerance."""
-    logger.debug("GEMS LINALG_MATRIX_RANK_TOL")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_TOL")
     return linalg_matrix_rank(input, atol=tol, rtol=0.0, hermitian=hermitian)
 
 
@@ -3052,12 +3052,12 @@ def _copy_rank_to_out(input, result, out):
 
 
 def linalg_matrix_rank_out(input, *, atol=None, rtol=None, hermitian=False, out=None):
-    logger.debug("GEMS LINALG_MATRIX_RANK_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_OUT")
     result = linalg_matrix_rank(input, atol=atol, rtol=rtol, hermitian=hermitian)
     return _copy_rank_to_out(input, result, out)
 
 
 def linalg_matrix_rank_tol_out(input, tol, hermitian=False, *, out=None):
-    logger.debug("GEMS LINALG_MATRIX_RANK_TOL_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_RANK_TOL_OUT")
     result = linalg_matrix_rank_tol(input, tol, hermitian)
     return _copy_rank_to_out(input, result, out)

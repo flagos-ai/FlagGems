@@ -484,7 +484,7 @@ def linalg_ldl_solve(LD, pivots, B, *, hermitian=False):
     Solve a linear system using the compact LDL factorization produced by
     torch.linalg.ldl_factor_ex.
     """
-    logger.debug("GEMS LINALG_LDL_SOLVE")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LDL_SOLVE")
     _validate_inputs(LD, pivots, B)
 
     if LD.dtype not in REAL_DTYPES + COMPLEX_DTYPES:

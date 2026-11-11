@@ -248,7 +248,7 @@ def _prepare_out_tensor(in_t, out_size, scale, dtype=None, device=None):
 
 
 def _upsample_nearest_exact2d(*args, **kwargs):
-    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT2D")
+    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT2D")
     in_t, _, out_size, scale = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_size, scale)
     if out_t.numel() == 0:
@@ -259,7 +259,7 @@ def _upsample_nearest_exact2d(*args, **kwargs):
 
 
 def _upsample_nearest_exact2d_out(*args, **kwargs):
-    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT2D_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT2D_OUT")
     in_t, out_t, out_size, scale = _extract_io_and_params(args, kwargs, expect_out=True)
     if out_t.ndim != 4:
         raise ValueError(
@@ -283,7 +283,7 @@ def _upsample_nearest_exact2d_out(*args, **kwargs):
 
 
 def _upsample_nearest_exact2d_vec(*args, **kwargs):
-    logger.debug("GEMS _UPSAMPLE_NEAREST_EXACT2D_VEC")
+    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT2D_VEC")
     # Treat vec the same as base variant, allowing list-like output_size/scales
     in_t, _, out_size, scale = _extract_io_and_params(args, kwargs, expect_out=False)
     out_t = _prepare_out_tensor(in_t, out_size, scale)

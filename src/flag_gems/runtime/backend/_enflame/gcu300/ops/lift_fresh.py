@@ -43,7 +43,7 @@ def lift_fresh(*args, **kwargs):
     It is materialized here as an on-device Triton copy so the returned tensor
     is an independent allocation rather than an aliasing view.
     """
-    logger.debug("GEMS LIFT_FRESH")
+    logger.debug("GEMS_ENFLAME_GCU400 LIFT_FRESH")
     # Attempt to find the input tensor from args/kwargs
     x = None
     if len(args) > 0 and isinstance(args[0], torch.Tensor):

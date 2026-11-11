@@ -252,7 +252,7 @@ def _thnn_fused_gru_cell_backward_out(
     out4: torch.Tensor,
 ):
     """GRU cell 反向的 out 重载，签名与公共实现一致。"""
-    logger.debug("GEMS _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL_BACKWARD_OUT")
     if BASELINE_MODE == 1 or not FUSED_SINGLE_LAUNCH:
         return _public_out(
             grad_hy,

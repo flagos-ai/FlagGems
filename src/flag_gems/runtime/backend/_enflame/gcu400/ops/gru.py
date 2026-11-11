@@ -75,7 +75,7 @@ def gru_data(
     bidirectional=False,
 ):
     """packed GRU 前向，签名与公共实现一致。"""
-    logger.debug("GEMS GRU_DATA")
+    logger.debug("GEMS_ENFLAME_GCU400 GRU_DATA")
     if BASELINE_MODE == 1:
         return _public.gru_data(
             data,

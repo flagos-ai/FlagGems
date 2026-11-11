@@ -241,7 +241,7 @@ def conv3d_forward_kernel(
 
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
-    logger.debug("GEMS CONV3D")
+    logger.debug("GEMS_ENFLAME_GCU400 CONV3D")
     assert weight.ndim == 5, "Weights must be 5D, received shape {weight.shape}"
     assert (
         bias is None or bias.ndim == 1

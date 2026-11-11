@@ -96,7 +96,7 @@ def adaptive_max_pool2d_backward(
     Returns:
         grad_input: Gradient with respect to input, shape (N, C, in_H, in_W)
     """
-    logger.debug("GEMS ADAPTIVE_MAX_POOL2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_MAX_POOL2D_BACKWARD")
 
     input_is_3d = self.dim() == 3
     if input_is_3d:

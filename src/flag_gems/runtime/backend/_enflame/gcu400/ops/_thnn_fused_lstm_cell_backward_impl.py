@@ -159,7 +159,7 @@ def _thnn_fused_lstm_cell_backward_impl(
     has_bias: bool,
 ):
     """计算 fused LSTM cell 反向的三个输出，签名与公共实现一致。"""
-    logger.debug("GEMS _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
+    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL_BACKWARD_IMPL")
     if FUSED_TRITON == 0:
         return _public_equivalent(grad_hy, grad_cy, cx, cy, workspace, has_bias)
 

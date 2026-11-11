@@ -213,10 +213,10 @@ def _linalg_polar_impl(A, out_U=None, out_H=None):
 
 
 def linalg_polar(A):
-    logger.debug("GEMS LINALG_POLAR")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_POLAR")
     return _linalg_polar_impl(A)
 
 
 def linalg_polar_out(A, *, U, H):
-    logger.debug("GEMS LINALG_POLAR_OUT")
+    logger.debug("GEMS_ENFLAME_GCU400 LINALG_POLAR_OUT")
     return _linalg_polar_impl(A, U, H)

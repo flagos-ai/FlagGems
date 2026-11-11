@@ -116,7 +116,7 @@ def aminmax_kernel(
 
 
 def aminmax(inp, dim=None, keepdim=False, *, out=None):
-    logger.debug("GEMS AMINMAX")
+    logger.debug("GEMS_ENFLAME_GCU400 AMINMAX")
 
     if dim is None:
         M = inp.numel()

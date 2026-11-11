@@ -94,7 +94,7 @@ def amin_kernel(
 
 
 def amin(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMIN")
+    logger.debug("GEMS_ENFLAME_GCU400 AMIN")
     assert inp.dtype in (
         torch.float32,
         torch.float16,
@@ -161,7 +161,7 @@ def amin(inp, dim=None, keepdim=False):
 
 
 def amin_(inp, dim=None, keepdim=False):
-    logger.debug("GEMS AMIN_")
+    logger.debug("GEMS_ENFLAME_GCU400 AMIN_")
     assert inp.dtype in (
         torch.float32,
         torch.float16,

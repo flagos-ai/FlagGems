@@ -566,7 +566,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_ENFLAME_GCU400 _EMBEDDING_BAG_FORWARD_ONLY")
     return _embedding_bag_impl(
         weight,
         indices,

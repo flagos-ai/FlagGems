@@ -397,7 +397,7 @@ _scatter_func = ScatterFunction()
 
 
 def scatter_add_0(inp, dim, index, src):
-    logger.debug("GEMS SCATTER_ADD_0")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_ADD_0")
     N = index.numel()
     dtype_convert = False
     if (inp.dtype == torch.float16 or inp.dtype == torch.bfloat16) and N > 131072:
@@ -460,7 +460,7 @@ def clip_tensor_to_shape(b, a):
 
 
 def scatter_add_1(x, dim, index, src):
-    logger.debug("GEMS SCATTER_ADD_1")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_ADD_1")
     index_dim_n = index.size(dim)
     inp_dim_n = x.size(dim)
     origin = x
@@ -525,7 +525,7 @@ def scatter_add_(x, dim, index, src):
 
 
 def scatter_add(inp, dim, index, src):
-    logger.debug("GEMS SCATTER_ADD")
+    logger.debug("GEMS_ENFLAME_GCU400 SCATTER_ADD")
     # Non-inplace variant: produce out = inp (copied) then scatter-add src into it.
     #
     # The naive implementation ``out = inp.clone(); return scatter_add_(out, ...)``

@@ -94,7 +94,7 @@ def nested_compute_contiguous_strides_offsets(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """从 nested sizes 计算连续 strides 与 storage offsets（CPU 元数据）。"""
     if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("GEMS _NESTED_COMPUTE_CONTIGUOUS_STRIDES_OFFSETS")
+        logger.debug("GEMS_ENFLAME_GCU400 _NESTED_COMPUTE_CONTIGUOUS_STRIDES_OFFSETS")
 
     sizes = nested_size
 

@@ -191,7 +191,7 @@ def cudnn_rnn_backward(
     output_mask: list,
 ):
     """单层单向 LSTM 的 BPTT 梯度，签名与公共实现一致。"""
-    logger.debug("GEMS CUDNN_RNN_BACKWARD")
+    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_RNN_BACKWARD")
     if BASELINE_MODE == 1:
         return _public_baseline(
             input,
