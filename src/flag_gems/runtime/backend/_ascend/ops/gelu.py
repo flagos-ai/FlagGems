@@ -93,7 +93,7 @@ def gelu_backward_tanh(x, dy):
 
 
 def gelu(self, *, approximate="none"):
-    logger.debug("GEMS_ASCEND GELU_FORWARD")
+    logger.debug("GEMS_ASCEND GELU")
     kernel = gelu_tanh if approximate == "tanh" else gelu_none
     if self.is_contiguous():
         return kernel(self)
@@ -115,7 +115,7 @@ def gelu_backward(grad_output, self, *, approximate="none"):
 
 
 def gelu_(A, *, approximate="none"):
-    logger.debug("GEMS_ASCEND GELU__FORWARD")
+    logger.debug("GEMS_ASCEND GELU_")
     if approximate == "tanh":
         out = gelu_tanh(A, out0=A)
     else:

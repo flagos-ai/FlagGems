@@ -184,7 +184,6 @@ def rms_norm_grad_dw_kernel(
 class RmsNorm(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, normalized_shape, weight, eps=1e-5):
-        logger.debug("GEMS_ASCEND LAYERNORM_FORWARD")
         y, inv_rms = rms_norm_forward(x, normalized_shape, weight, eps)
 
         ctx.save_for_backward(x, inv_rms, weight)
@@ -194,7 +193,6 @@ class RmsNorm(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, dy):
-        logger.debug("GEMS_ASCEND LAYERNORM_BACKWARD")
         x, inv_rms, weight = ctx.saved_tensors
         dx, dw = rms_norm_backward(
             dy, x, inv_rms, ctx.normalized_shape, weight, ctx.eps

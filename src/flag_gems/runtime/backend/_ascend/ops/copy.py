@@ -289,7 +289,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
     # the whole copy; otherwise this only materialises the source.
     if src.element_size() < 4 and src.ndim > 0 and not src.is_contiguous():
         if dst.is_contiguous() and src.dtype == dst.dtype and src.shape == dst.shape:
-            logger.debug("GEMS COPY_")
+            logger.debug("GEMS_ASCEND COPY_")
             _gather_copy(dst, src)
             return dst
         contiguous_src = torch.empty_like(src, memory_format=torch.contiguous_format)
@@ -298,7 +298,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 
     plan = _flat_plan(dst, src)
     if plan is not None:
-        logger.debug("GEMS COPY_")
+        logger.debug("GEMS_ASCEND COPY_")
         _flat_copy(dst, src, *plan)
         return dst
 
@@ -336,7 +336,7 @@ def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS COPY (functional)")
+    logger.debug("GEMS_ASCEND COPY (functional)")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
