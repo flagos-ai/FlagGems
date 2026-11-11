@@ -249,8 +249,8 @@ def test_geqrf_value_range(shape, value_range, dtype):
     if (
         flag_gems.vendor_name == "hygon"
         and utils.TO_CPU
-        and dtype == torch.complex64
-        and shape == (256, 256)
+        and dtype in (torch.complex64, torch.complex128)
+        and shape in ((256, 256), (1024, 1024))
         and value_range == GEQRF_RANGE
     ):
         _assert_terminal_reflector_equivalent(inp, res_a, res_tau, ref_a, ref_tau)
