@@ -50,7 +50,7 @@ def test_special_i1e_out(shape, dtype, caplog, pytestconfig):
 
     out = torch.empty_like(inp)
     with caplog.at_level("DEBUG", logger=_SPECIAL_I1E_OUT_LOGGER):
-        res_out = flag_gems.special_i1e_out(inp, out)
+        res_out = flag_gems.special_i1e_out(inp, out=out)
 
     if pytestconfig._override_registry.get_override("special_i1e_out") is None:
         prefix = utils.gems_log_prefix(flag_gems.special_i1e_out)
