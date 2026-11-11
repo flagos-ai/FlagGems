@@ -565,6 +565,8 @@ from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
 from .linalg_householder_product import linalg_householder_product
+from .linalg_inv import linalg_inv
+from .linalg_inv_ex import linalg_inv_ex
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
 from .linalg_ldl_solve import linalg_ldl_solve
@@ -572,8 +574,10 @@ from .linalg_lstsq import linalg_lstsq
 from .linalg_lu import linalg_lu, linalg_lu_out  # noqa: F401
 from .linalg_lu_factor import linalg_lu_factor, linalg_lu_factor_out
 from .linalg_lu_factor_ex import linalg_lu_factor_ex, linalg_lu_factor_ex_out
+from .linalg_lu_solve import linalg_lu_solve
 from .linalg_matrix_norm import linalg_matrix_norm, linalg_matrix_norm_out
 from .linalg_multi_dot import linalg_multi_dot, linalg_multi_dot_out
+from .linalg_polar import linalg_polar, linalg_polar_out
 from .linalg_slogdet import linalg_slogdet
 from .linalg_solve_triangular import (
     linalg_solve_triangular,
@@ -1516,6 +1520,8 @@ __all__ = [
     "linalg_det",
     "linalg_det_out",
     "linalg_householder_product",
+    "linalg_inv",
+    "linalg_inv_ex",
     "linalg_ldl_solve",
     "linalg_lstsq",
     "linalg_lu",
@@ -1524,10 +1530,13 @@ __all__ = [
     "linalg_lu_factor_ex_out",
     "linalg_lu_factor_out",
     "linalg_lu_out",
+    "linalg_lu_solve",
     "linalg_matrix_norm",
     "linalg_matrix_norm_out",
     "linalg_multi_dot",
     "linalg_multi_dot_out",
+    "linalg_polar",
+    "linalg_polar_out",
     "linalg_slogdet",
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
