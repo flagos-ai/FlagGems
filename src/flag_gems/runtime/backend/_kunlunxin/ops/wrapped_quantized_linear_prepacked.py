@@ -27,14 +27,12 @@ logger = logging.getLogger(__name__)
 
 @triton.jit
 def _round_half_to_even(x):
-    floor_x = tl.floor(x)
-    fraction = x - floor_x
-    floor_is_even = (floor_x % 2.0) == 0.0
-    return tl.where(
-        fraction > 0.5,
-        floor_x + 1.0,
-        tl.where((fraction < 0.5) | floor_is_even, floor_x, floor_x + 1.0),
-    )
+    # Round-to-nearest, ties-to-even through the 2^23 + 2^22 magic constant:
+    # an extern `floor` call does not legalize on every toolchain.
+    # The domain here is the pre-clamp quantization ratio, so |x| stays far
+    # below 2^22 and the constant is exact.
+    magic: tl.constexpr = 12582912.0
+    return (x + magic) - magic
 
 
 @libentry()
