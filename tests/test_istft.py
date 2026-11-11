@@ -521,22 +521,18 @@ SPECIAL_CASES = tu.selected_cases(
 @pytest.mark.istft
 @pytest.mark.parametrize("scenario,placement,dtype", SPECIAL_CASES)
 def test_istft_special_spectrogram_values(scenario, placement, dtype):
-    if (
-        flag_gems.vendor_name == "iluvatar"
-        and utils.TO_CPU
-        and dtype == torch.complex64
-        and (scenario, placement)
-        in {
-            ("nan", "isolated"),
-            ("inf", "isolated"),
-            ("inf", "batched"),
-            ("mixed", "isolated"),
-            ("mixed", "batched"),
-        }
+    vendor = flag_gems.vendor_name
+    if utils.TO_CPU and (
+        (vendor == "iluvatar" and dtype == torch.complex64)
+        or (vendor == "metax" and dtype in (torch.complex64, torch.complex128))
     ):
-        pytest.skip(
-            "Iluvatar native ISTFT propagates these nonfinite values differently from CPU"
-        )
+        nan_placement = "isolated" if vendor == "iluvatar" else "batched"
+        if (scenario == "nan" and placement == nan_placement) or (
+            scenario in ("inf", "mixed") and placement in ("isolated", "batched")
+        ):
+            pytest.skip(
+                f"{vendor} native ISTFT propagates these nonfinite values differently from CPU"
+            )
     inp, n_fft = _special_spectrogram(dtype, scenario, placement)
     ref_inp = tu.to_reference(inp)
 
