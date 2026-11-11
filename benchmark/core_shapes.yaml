@@ -825,6 +825,18 @@ frobenius_norm:
 
 # O(N*C^2): keep the class axis representative without inheriting the generic
 # 4096x4096 and 1024x65536 cases, which are not practical for this operator.
+multilabel_margin_loss_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
+# O(N*C^2): keep the class axis representative without inheriting the generic
+# 4096x4096 and 1024x65536 cases, which are not practical for this operator.
 multilabel_margin_loss_forward:
   shapes:
     - [8, 128]
@@ -1324,3 +1336,26 @@ bmm_w8a8:
     - [1, 128, 1024, 4096]
     - [2, 33, 65, 129]
   shape_desc: "B, M, N, K"
+
+layernorm:
+  shape_desc: "input_shape, normalized_shape, eps"
+  shapes:
+    - [[200, 36], [36], 1e-05]
+    - [[4096, 100], [100], 1e-05]
+    - [[1, 40999], [40999], 1e-05]
+    - [[100, 40499], [40499], 1e-05]
+    - [[4096, 256], [256], 1e-05]
+    - [[256, 512], [512], 1e-05]
+    - [[4096, 512], [512], 1e-05]
+    - [[2048, 1024], [1024], 1e-05]
+    - [[1024, 2048], [2048], 1e-05]
+    - [[4, 64], [64], 1e-05]
+    - [[4, 8, 8], [8, 8], 1e-05]
+    - [[4, 4, 4, 4], [4, 4, 4], 1e-05]
+    - [[16, 16, 64], [16, 64], 1e-05]
+    - [[16, 16, 1024], [16, 1024], 1e-05]
+    - [[1, 8, 4, 4], [8, 4, 4], 1e-05]
+    - [[1, 2], [2], 1e-05]
+    - [[200, 40999], [40999], 1e-05]
+    - [[2, 32], [32], 1e-05]
+    - [[65536, 1, 1152], [1152], 1e-06]

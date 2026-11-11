@@ -114,7 +114,7 @@ _FULL_CONFIG = (
     ("_adaptive_avg_pool2d", adaptive_avg_pool2d),
     ("_adaptive_avg_pool2d.out", adaptive_avg_pool2d_out),
     ("_adaptive_avg_pool2d_backward", _adaptive_avg_pool2d_backward),
-    ("_adaptive_avg_pool3d", adaptive_avg_pool3d),
+    ("_adaptive_avg_pool3d", _adaptive_avg_pool3d),
     ("_adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
     ("_adaptive_avg_pool3d_backward", _adaptive_avg_pool3d_backward),
     ("_add_relu.Tensor", _add_relu),
@@ -142,6 +142,11 @@ _FULL_CONFIG = (
         "_cast_Char",
         cast_Char,
         lambda: torch_has_aten_overload("_cast_Char", "default"),
+    ),
+    (
+        "_cast_Short",
+        cast_Short,
+        lambda: torch_has_aten_overload("_cast_Short", "default"),
     ),
     ("_cdist_backward", _cdist_backward),
     ("_cdist_forward", _cdist_forward),
@@ -736,6 +741,18 @@ _FULL_CONFIG = (
     ("acosh", acosh),
     ("acosh_", acosh_),
     ("adaptive_avg_pool1d", adaptive_avg_pool1d),
+    # adaptive_avg_pool3d is CompositeImplicitAutograd in ATen with no dedicated
+    # Autograd kernel, so the device-key override below would drop its autograd
+    # formula. The autograd.Function wrapper supplies the backward and the
+    # Autograd fallthrough lets that wrapper own the whole differentiable path
+    # (cf. the ``clone`` entry).
+    (
+        "adaptive_avg_pool3d",
+        adaptive_avg_pool3d,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
+    ("adaptive_avg_pool3d.out", adaptive_avg_pool3d_out),
     (
         "adaptive_avg_pool3d_backward.grad_input",
         adaptive_avg_pool3d_backward_grad_input,
@@ -942,7 +959,7 @@ _FULL_CONFIG = (
         "clone",
         clone,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col2im", col2im),
@@ -1536,7 +1553,7 @@ _FULL_CONFIG = (
         "max_pool3d",
         max_pool3d,
         None,
-        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("max_pool3d_with_indices", max_pool3d_with_indices),
     ("max_pool3d_with_indices_backward", max_pool3d_with_indices_backward),
@@ -1586,6 +1603,7 @@ _FULL_CONFIG = (
     ),
     ("multilabel_margin_loss", multilabel_margin_loss),
     ("multilabel_margin_loss.out", multilabel_margin_loss),
+    ("multilabel_margin_loss_backward", multilabel_margin_loss_backward),
     ("multilabel_margin_loss_forward", multilabel_margin_loss_forward),
     ("multinomial", multinomial),
     ("multiply.Scalar", multiply),
@@ -2136,6 +2154,7 @@ _FULL_CONFIG = (
     ("trace", trace),
     ("trace_backward", trace_backward),
     ("transpose.int", transpose),
+    ("transpose_", transpose_),
     ("transpose_copy.int", transpose_copy),
     ("trapezoid.dx", trapz),
     ("trapezoid.x", trapezoid_x),
