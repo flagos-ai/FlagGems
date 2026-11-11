@@ -47,11 +47,11 @@ def _reference(inp, bins, *, range=None, weight=None, density=False):
     return hist.to(inp.dtype), tuple(edge.to(inp.dtype) for edge in edges)
 
 
-def _assert_result(result, reference, dtype):
+def _assert_result(result, reference, dtype, *, hist_atol=1e-4):
     hist, edges = result
     ref_hist, ref_edges = reference
     if dtype in utils.ALL_FLOAT_DTYPES:
-        utils.gems_assert_close(hist.cpu(), ref_hist, dtype, atol=1e-4)
+        utils.gems_assert_close(hist.cpu(), ref_hist, dtype, atol=hist_atol)
     else:
         utils.gems_assert_equal(hist.cpu(), ref_hist)
     assert hist.shape == ref_hist.shape
@@ -72,11 +72,38 @@ def test_histogramdd_bin_counts(shape, bins, dtype):
     before = inp.clone()
     reference = _reference(inp, bins)
 
-    with flag_gems.use_gems():
-        result = torch.histogramdd(inp, bins=bins)
+    result = flag_gems.histogramdd(inp, bins=bins)
 
     _assert_result(result, reference, dtype)
     utils.gems_assert_equal(inp, before)
+
+
+@pytest.mark.histogramdd
+@pytest.mark.parametrize("shape", [(60, 2), (40, 3)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_histogramdd_with_range(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    bins = [5] * shape[-1]
+    bounds = [-2.0, 2.0] * shape[-1]
+    reference = _reference(inp, bins, range=bounds)
+    result = flag_gems.histogramdd(inp, bins=bins, range=bounds)
+    utils.gems_assert_equal(result[0].cpu(), reference[0])
+    _assert_result(result, reference, dtype)
+
+
+@pytest.mark.histogramdd
+@pytest.mark.parametrize("shape", [(30, 2), (50, 3)])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_histogramdd_density(shape, dtype):
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    bins = [4] * shape[-1]
+    reference = _reference(inp, bins, density=True)
+    result = flag_gems.histogramdd(inp, bins=bins, density=True)
+    _assert_result(result, reference, dtype, hist_atol=1e-3)
 
 
 @pytest.mark.histogramdd
@@ -87,19 +114,14 @@ def test_histogramdd_range_weight_density(dtype, weighted, density):
     torch.manual_seed(0)
     inp = torch.randn((60, 2), dtype=dtype, device=flag_gems.device)
     weight = (
-        torch.rand((60,), dtype=dtype, device=flag_gems.device)
-        if weighted
-        else None
+        torch.rand((60,), dtype=dtype, device=flag_gems.device) if weighted else None
     )
     range_ = [-2.0, 2.0, -3.0, 3.0]
-    reference = _reference(
-        inp, [5, 4], range=range_, weight=weight, density=density
-    )
+    reference = _reference(inp, [5, 4], range=range_, weight=weight, density=density)
 
-    with flag_gems.use_gems():
-        result = torch.histogramdd(
-            inp, bins=[5, 4], range=range_, weight=weight, density=density
-        )
+    result = flag_gems.histogramdd(
+        inp, bins=[5, 4], range=range_, weight=weight, density=density
+    )
 
     _assert_result(result, reference, dtype)
 
@@ -118,8 +140,7 @@ def test_histogramdd_tensor_list_bins(dtype):
     )
     reference = _reference(inp, bins)
 
-    with flag_gems.use_gems():
-        result = torch.histogramdd(inp, bins=bins)
+    result = flag_gems.histogramdd(inp, bins=bins)
 
     _assert_result(result, reference, dtype)
 
@@ -131,8 +152,7 @@ def test_histogramdd_integer_bins_overload(dtype):
     inp = torch.randn((40, 3), dtype=dtype, device=flag_gems.device)
     reference = _reference(inp, 4)
 
-    with flag_gems.use_gems():
-        result = torch.histogramdd(inp, bins=4)
+    result = flag_gems.histogramdd(inp, bins=4)
 
     _assert_result(result, reference, dtype)
 
@@ -140,13 +160,11 @@ def test_histogramdd_integer_bins_overload(dtype):
 @pytest.mark.histogramdd
 def test_histogramdd_empty_and_degenerate_range():
     empty = torch.empty((0, 2), dtype=torch.float32, device=flag_gems.device)
-    with flag_gems.use_gems():
-        empty_result = torch.histogramdd(empty, bins=[3, 3])
+    empty_result = flag_gems.histogramdd(empty, bins=[3, 3])
     _assert_result(empty_result, _reference(empty, [3, 3]), torch.float32)
 
     inp = torch.full((10, 2), 5.0, device=flag_gems.device)
-    with flag_gems.use_gems():
-        result = torch.histogramdd(inp, bins=[3, 3])
+    result = flag_gems.histogramdd(inp, bins=[3, 3])
     _assert_result(result, _reference(inp, [3, 3]), torch.float32)
 
 
@@ -157,8 +175,7 @@ def test_histogramdd_noncontiguous_input():
     assert not inp.is_contiguous()
     reference = _reference(inp, [4, 5])
 
-    with flag_gems.use_gems():
-        result = torch.histogramdd(inp, bins=[4, 5])
+    result = flag_gems.histogramdd(inp, bins=[4, 5])
 
     _assert_result(result, reference, torch.float32)
 
@@ -167,5 +184,4 @@ def test_histogramdd_noncontiguous_input():
 def test_histogramdd_rejects_mismatched_bins():
     inp = torch.randn((20, 2), device=flag_gems.device)
     with pytest.raises(RuntimeError):
-        with flag_gems.use_gems():
-            torch.histogramdd(inp, bins=[4, 5, 6])
+        flag_gems.histogramdd(inp, bins=[4, 5, 6])
