@@ -115,10 +115,10 @@ def _wrapped_quantized_linear_prepacked_kernel(
     weight_sum = tl.zeros((BLOCK,), dtype=tl.int32)
 
     for k in range(0, K):
-        quantized_input = tl.load(input + rows * K + k, mask=valid, other=0).to(
+        quantized_input = tl.load(input + safe_rows * K + k, mask=valid, other=0).to(
             tl.int32
         )
-        quantized_weight = tl.load(weight + cols * K + k, mask=valid, other=0).to(
+        quantized_weight = tl.load(weight + safe_cols * K + k, mask=valid, other=0).to(
             tl.int32
         )
         acc += quantized_input * quantized_weight
