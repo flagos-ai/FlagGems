@@ -428,8 +428,8 @@ def layer_norm_backward(
     weight = None if weight is None else weight.contiguous()
     bias = None if bias is None else bias.contiguous()
 
-    M = input.shape[0]
-    N = input.numel() // M
+    N = math.prod(normalized_shape)
+    M = input.numel() // N
 
     if output_mask[0]:
         in_grad = torch.empty_like(input)
