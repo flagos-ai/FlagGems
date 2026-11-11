@@ -20,12 +20,11 @@ from flag_gems.ops.__rshift__ import __rshift__
 from flag_gems.ops.__xor__ import xor_scalar  # noqa: F401
 from flag_gems.ops.__xor__ import xor, xor_, xor_scalar_, xor_scalar_tensor
 from flag_gems.ops._adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
-from flag_gems.ops._adaptive_avg_pool3d import (
-    _adaptive_avg_pool3d as adaptive_avg_pool3d,
-)
+from flag_gems.ops._adaptive_avg_pool3d import _adaptive_avg_pool3d
 from flag_gems.ops._adaptive_avg_pool3d import (
     _adaptive_avg_pool3d_out as adaptive_avg_pool3d_out,
 )
+from flag_gems.ops._adaptive_avg_pool3d import adaptive_avg_pool3d
 from flag_gems.ops._add_relu import _add_relu
 from flag_gems.ops._add_relu_ import _add_relu_
 from flag_gems.ops._addmm_activation import _addmm_activation, _addmm_activation_out
@@ -604,6 +603,7 @@ from flag_gems.ops.can_cast import can_cast
 from flag_gems.ops.cartesian_prod import run as cartesian_prod
 from flag_gems.ops.cast_Byte import cast_Byte
 from flag_gems.ops.cast_Char import cast_Char
+from flag_gems.ops.cast_Short import cast_Short
 from flag_gems.ops.cat import cat, cat_out
 from flag_gems.ops.cauchy import cauchy, cauchy_
 from flag_gems.ops.ccol_indices import ccol_indices
@@ -1194,6 +1194,9 @@ from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss_out,
 )
 from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
+from flag_gems.ops.multilabel_margin_loss_backward import (
+    multilabel_margin_loss_backward,
+)
 from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
@@ -1644,6 +1647,7 @@ from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
+from flag_gems.ops.transpose_ import transpose_
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
@@ -1759,6 +1763,7 @@ __all__ = [
     "__lshift__",
     "__rshift__",
     "_adaptive_avg_pool2d_backward",
+    "_adaptive_avg_pool3d",
     "_adaptive_avg_pool3d_backward",
     "_add_relu",
     "_add_relu_",
@@ -2296,6 +2301,7 @@ __all__ = [
     "cartesian_prod",
     "cast_Byte",
     "cast_Char",
+    "cast_Short",
     "cat",
     "cat_out",
     "cauchy",
@@ -2910,6 +2916,7 @@ __all__ = [
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
     "multilabel_margin_loss",
+    "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
@@ -3376,6 +3383,7 @@ __all__ = [
     "trace",
     "trace_backward",
     "transpose",
+    "transpose_",
     "transpose_copy",
     "trapezoid_x",
     "trapz",
