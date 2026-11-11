@@ -7,13 +7,13 @@ from . import base, consts
 
 
 class ScaledDotProductFusedAttentionOverrideableBenchmark(base.GenericBenchmark):
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = [
-            (2, 8, 64, 64),
-            (4, 8, 128, 64),
-            (2, 8, 128, 128),
-            (1, 16, 256, 64),
-        ]
+    DEFAULT_SHAPES = [
+        (2, 8, 64, 64),
+        (4, 8, 128, 64),
+        (2, 8, 128, 128),
+        (1, 16, 256, 64),
+    ]
+    DEFAULT_SHAPE_DESC = "B, H, S, D"
 
 
 def _case_fn(shape, dtype):
