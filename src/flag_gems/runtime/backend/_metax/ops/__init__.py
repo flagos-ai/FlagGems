@@ -109,6 +109,37 @@ from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
 from .foreach_mul_tensor import foreach_mul_tensor
 from .foreach_mul_tensor_ import foreach_mul_tensor_
 from .foreach_neg import foreach_neg
+from .foreach_neg_ import foreach_neg_
+from .foreach_norm_scalar import foreach_norm_scalar
+from .foreach_pow_scalar_ import foreach_pow_scalar_
+from .foreach_pow_scalar_and_tensor import foreach_pow_scalar_and_tensor
+from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
+from .foreach_reciprocal import foreach_reciprocal
+from .foreach_reciprocal_ import foreach_reciprocal_
+from .foreach_round_ import foreach_round_
+from .foreach_rsqrt import foreach_rsqrt
+from .foreach_rsqrt_ import foreach_rsqrt_
+from .foreach_sigmoid import foreach_sigmoid
+from .foreach_sigmoid_ import foreach_sigmoid_
+from .foreach_sin import foreach_sin
+from .foreach_sin_ import foreach_sin_
+from .foreach_sinh import foreach_sinh
+from .foreach_sinh_ import foreach_sinh_
+from .foreach_sqrt import foreach_sqrt
+from .foreach_sqrt_ import foreach_sqrt_
+from .foreach_sub_list import foreach_sub_list
+from .foreach_sub_list_ import foreach_sub_list_
+from .foreach_sub_scalar import foreach_sub_scalar
+from .foreach_sub_scalar_ import foreach_sub_scalar_
+from .foreach_sub_scalar_list import foreach_sub_scalar_list
+from .foreach_sub_scalar_list_ import foreach_sub_scalar_list_
+from .foreach_tan import foreach_tan
+from .foreach_tan_ import foreach_tan_
+from .foreach_tanh import foreach_tanh
+from .foreach_tanh_ import foreach_tanh_
+from .foreach_trunc import foreach_trunc
+from .foreach_trunc_ import foreach_trunc_
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -354,6 +385,36 @@ __all__ = [
     "foreach_mul_tensor",
     "foreach_mul_tensor_",
     "foreach_neg",
+    "foreach_neg_",
+    "foreach_norm_scalar",
+    "foreach_pow_scalar_",
+    "foreach_pow_scalar_and_tensor",
+    "foreach_pow_scalar_list_",
+    "foreach_reciprocal",
+    "foreach_reciprocal_",
+    "foreach_round_",
+    "foreach_rsqrt",
+    "foreach_rsqrt_",
+    "foreach_sigmoid",
+    "foreach_sigmoid_",
+    "foreach_sin",
+    "foreach_sin_",
+    "foreach_sinh",
+    "foreach_sinh_",
+    "foreach_sqrt",
+    "foreach_sqrt_",
+    "foreach_sub_list",
+    "foreach_sub_list_",
+    "foreach_sub_scalar",
+    "foreach_sub_scalar_",
+    "foreach_sub_scalar_list",
+    "foreach_sub_scalar_list_",
+    "foreach_tan",
+    "foreach_tan_",
+    "foreach_tanh",
+    "foreach_tanh_",
+    "foreach_trunc",
+    "foreach_trunc_",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
