@@ -217,7 +217,25 @@ def make_placed_special_input(dtype, scenario):
     return matrix
 
 
-def _assert_terminal_reflector_equivalent(inp, a, tau, ref_a, ref_tau):
+def _assert_projected_terminal(column, a, tau):
+    # Apply only the preceding reflectors to e_last. Neither terminal packed
+    # value contributes to the projected coefficient used as the oracle.
+    basis = torch.zeros((column.numel(), 1), dtype=column.dtype, device="cpu")
+    basis[-1, 0] = 1
+    q_last = torch.ormqr(a[:, :-1].cdouble(), tau[:-1].cdouble(), basis).squeeze(-1)
+    eps = torch.finfo(a.real.dtype).eps
+    norm = q_last.norm()
+    torch.testing.assert_close(norm, torch.ones_like(norm), atol=8 * eps, rtol=0)
+    projected = torch.vdot(q_last, column)
+    terminal = (1 - tau[-1].cdouble()) * a[-1, -1].cdouble()
+    torch.testing.assert_close(
+        terminal, projected, atol=2 * eps * column.norm().item(), rtol=0
+    )
+
+
+def _assert_terminal_reflector_equivalent(
+    inp, a, tau, ref_a, ref_tau, *, check_projection=False
+):
     assert a.device == tau.device == inp.device
     assert a.dtype == tau.dtype == ref_a.dtype == ref_tau.dtype == inp.dtype
     assert a.shape == ref_a.shape == inp.shape
@@ -240,7 +258,12 @@ def _assert_terminal_reflector_equivalent(inp, a, tau, ref_a, ref_tau):
     )
     terminal = phase * torch.stack((a[-1, -1], ref_a[-1, -1]))
     assert torch.isfinite(terminal).all()
-    tu.assert_result_close(terminal[0], terminal[1])
+    if check_projection:
+        column = inp[:, -1].cpu().cdouble()
+        _assert_projected_terminal(column, a, tau)
+        _assert_projected_terminal(column, ref_a, ref_tau)
+    else:
+        tu.assert_result_close(terminal[0], terminal[1])
 
 
 @pytest.mark.geqrf
@@ -270,7 +293,18 @@ def test_geqrf_value_range(shape, value_range, dtype):
         and shape in ((256, 256), (1024, 1024))
         and value_range in (["-1", "1"], ["0", "1"], ["-1", "0"])
     ):
-        _assert_terminal_reflector_equivalent(inp, res_a, res_tau, ref_a, ref_tau)
+        _assert_terminal_reflector_equivalent(
+            inp,
+            res_a,
+            res_tau,
+            ref_a,
+            ref_tau,
+            check_projection=(
+                dtype == torch.complex64
+                and shape == (1024, 1024)
+                and value_range == GEQRF_RANGE
+            ),
+        )
     else:
         tu.assert_result_close(res_a, ref_a)
         tu.assert_result_close(res_tau, ref_tau)
