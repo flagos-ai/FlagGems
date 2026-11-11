@@ -333,7 +333,9 @@ def test_hygon_mm_scientific_shapes(M, N, K):
 
 
 @pytest.mark.mm
-@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon schedule regression")
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "hygon", reason="Hygon schedule regression"
+)
 def test_hygon_mm_scientific_path_does_not_fallback(monkeypatch):
     provider = inspect.getmodule(flag_gems.mm)
 
