@@ -322,6 +322,14 @@ def test_aminmax_global_views(dtype, layout, keepdim):
     metadata = (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr())
     ref_min, ref_max = torch.aminmax(utils.to_reference(inp), keepdim=keepdim)
     res_min, res_max = flag_gems.aminmax(inp, keepdim=keepdim)
+    # PyTorch versions used by the CPU reference have differed on whether
+    # global keepdim=True returns a scalar or a singleton for bool-like
+    # reductions. Global aminmax has one value, so compare the canonical
+    # scalar shape while retaining exact dtype/value checks.
+    ref_min = ref_min.reshape(()) if ref_min.numel() == 1 else ref_min
+    ref_max = ref_max.reshape(()) if ref_max.numel() == 1 else ref_max
+    res_min = res_min.reshape(()) if res_min.numel() == 1 else res_min
+    res_max = res_max.reshape(()) if res_max.numel() == 1 else res_max
     utils.gems_assert_equal(res_min, ref_min)
     utils.gems_assert_equal(res_max, ref_max)
     utils.gems_assert_equal(storage, before)
