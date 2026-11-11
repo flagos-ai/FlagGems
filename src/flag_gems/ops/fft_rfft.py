@@ -16,7 +16,7 @@
 
 """Triton implementation of ``fft_rfft`` (real-input 1-D DFT along ``dim``).
 
-Two direct-DFT kernels share one numerical core:
+Two tiled direct-DFT kernels share one numerical core:
   * ``_rfft_lastdim_kernel`` -- fast host path for the common case of a
     contiguous input whose transform axis is the trailing axis. The row base is
     simply ``r * N``, so the launch takes only ``N, n, K`` as runtime scalars.
@@ -24,16 +24,10 @@ Two direct-DFT kernels share one numerical core:
     explicit size / divisor / stride decomposition of the flattened batch, so a
     non-last ``dim`` and strided inputs work without host-side data movement.
 
-Both: one program per (batch row, output bin); the row is streamed in tiles of
-BLOCK_J samples; phases are formed as ``m = (j * k) mod n`` so the trig
+Both: one program per (batch row, BLOCK_K output bins); the row is streamed in
+tiles of BLOCK_J samples; phases are formed as ``m = (j * k) mod n`` so the trig
 argument stays in ``[0, 2*pi)`` and never loses precision to huge intermediate
 angles; DC and (even length) Nyquist imaginary parts are forced to exactly zero.
-
-The reduction is deliberately 1-D: the row accumulator is a ``[BLOCK_J]``
-tensor and a single ``tl.sum`` to a scalar runs after the loop. The previous
-``acc += tl.sum(mat, axis=1)`` (and its 2-D persisted-accumulator variant)
-mis-lower on the Kunlunxin/XPU backend (``uni_sram`` out-of-resource inside
-``TritonXPULegalize``), while a 1-D tile of at most 64 lanes is safe.
 """
 
 import torch
@@ -48,24 +42,30 @@ def _rfft_lastdim_kernel(
     N,
     n,
     K,
+    BLOCK_K: tl.constexpr,
     BLOCK_J: tl.constexpr,
     IS_F64: tl.constexpr,
     NORM: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    r = pid // K
-    k = pid % K
+    nk = tl.cdiv(K, BLOCK_K)
+    r = pid // nk
+    kb = pid - r * nk
 
     off_in = r * N
     off_out = r * K
 
+    k = kb * BLOCK_K + tl.arange(0, BLOCK_K)
+    kmask = k < K
+    keff = tl.where(kmask, k, 0)
+
     if IS_F64:
-        acc_re = tl.zeros((BLOCK_J,), dtype=tl.float64)
-        acc_im = tl.zeros((BLOCK_J,), dtype=tl.float64)
+        acc_re = tl.zeros((BLOCK_K,), dtype=tl.float64)
+        acc_im = tl.zeros((BLOCK_K,), dtype=tl.float64)
         step = 6.283185307179586476925286766559 / n.to(tl.float64)
     else:
-        acc_re = tl.zeros((BLOCK_J,), dtype=tl.float32)
-        acc_im = tl.zeros((BLOCK_J,), dtype=tl.float32)
+        acc_re = tl.zeros((BLOCK_K,), dtype=tl.float32)
+        acc_im = tl.zeros((BLOCK_K,), dtype=tl.float32)
         step = 6.283185307179586476925286766559 / n.to(tl.float32)
 
     nj = tl.minimum(n, N)
@@ -74,39 +74,37 @@ def _rfft_lastdim_kernel(
         j = j0 + tl.arange(0, BLOCK_J)
         jmask = j < nj
         xj = tl.load(x_ptr + (off_in + j), mask=jmask, other=0.0)
-        m = (j * k) % n
+        m = (j[None, :] * keff[:, None]) % n
         if IS_F64:
             ang = m.to(tl.float64) * step
         else:
             ang = m.to(tl.float32) * step
-        acc_re += xj * tl.cos(ang)
-        acc_im -= xj * tl.sin(ang)
+        xm = xj[None, :]
+        acc_re += tl.sum(xm * tl.cos(ang), axis=1)
+        acc_im -= tl.sum(xm * tl.sin(ang), axis=1)
 
-    re = tl.sum(acc_re)
-    im = tl.sum(acc_im)
-
-    is_nyq = (k * 2) == n
-    im0 = (k == 0) | ((n % 2 == 0) & is_nyq)
-    im = tl.where(im0, im * 0.0, im)
+    is_nyq = (keff * 2) == n
+    im0 = (keff == 0) | ((n % 2 == 0) & is_nyq)
+    acc_im = tl.where(im0, acc_im * 0.0, acc_im)
 
     if NORM == 1:
         if IS_F64:
             scale = 1.0 / n.to(tl.float64)
         else:
             scale = 1.0 / n.to(tl.float32)
-        re = re * scale
-        im = im * scale
+        acc_re = acc_re * scale
+        acc_im = acc_im * scale
     elif NORM == 2:
         if IS_F64:
             scale = 1.0 / tl.sqrt(n.to(tl.float64))
         else:
             scale = 1.0 / tl.sqrt(n.to(tl.float32))
-        re = re * scale
-        im = im * scale
+        acc_re = acc_re * scale
+        acc_im = acc_im * scale
 
     tmp = (off_out + k) * 2
-    tl.store(out_ptr + tmp, re)
-    tl.store(out_ptr + tmp + 1, im)
+    tl.store(out_ptr + tmp, acc_re, mask=kmask)
+    tl.store(out_ptr + tmp + 1, acc_im, mask=kmask)
 
 
 @triton.jit(do_not_specialize=["n"])
@@ -150,13 +148,15 @@ def _rfft_dft_kernel(
     o5,
     o6,
     o7,
+    BLOCK_K: tl.constexpr,
     BLOCK_J: tl.constexpr,
     IS_F64: tl.constexpr,
     NORM: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    r = pid // K
-    k = pid % K
+    nk = tl.cdiv(K, BLOCK_K)
+    r = pid // nk
+    kb = pid - r * nk
 
     d0 = r // q0
     d1 = r // q1
@@ -188,13 +188,17 @@ def _rfft_dft_kernel(
         + ((d7 % s7) * o7)
     )
 
+    k = kb * BLOCK_K + tl.arange(0, BLOCK_K)
+    kmask = k < K
+    keff = tl.where(kmask, k, 0)
+
     if IS_F64:
-        acc_re = tl.zeros((BLOCK_J,), dtype=tl.float64)
-        acc_im = tl.zeros((BLOCK_J,), dtype=tl.float64)
+        acc_re = tl.zeros((BLOCK_K,), dtype=tl.float64)
+        acc_im = tl.zeros((BLOCK_K,), dtype=tl.float64)
         step = 6.283185307179586476925286766559 / n.to(tl.float64)
     else:
-        acc_re = tl.zeros((BLOCK_J,), dtype=tl.float32)
-        acc_im = tl.zeros((BLOCK_J,), dtype=tl.float32)
+        acc_re = tl.zeros((BLOCK_K,), dtype=tl.float32)
+        acc_im = tl.zeros((BLOCK_K,), dtype=tl.float32)
         step = 6.283185307179586476925286766559 / n.to(tl.float32)
 
     nj = tl.minimum(n, N)
@@ -203,39 +207,37 @@ def _rfft_dft_kernel(
         j = j0 + tl.arange(0, BLOCK_J)
         jmask = j < nj
         xj = tl.load(x_ptr + (off_in + j * sd), mask=jmask, other=0.0)
-        m = (j * k) % n
+        m = (j[None, :] * keff[:, None]) % n
         if IS_F64:
             ang = m.to(tl.float64) * step
         else:
             ang = m.to(tl.float32) * step
-        acc_re += xj * tl.cos(ang)
-        acc_im -= xj * tl.sin(ang)
+        xm = xj[None, :]
+        acc_re += tl.sum(xm * tl.cos(ang), axis=1)
+        acc_im -= tl.sum(xm * tl.sin(ang), axis=1)
 
-    re = tl.sum(acc_re)
-    im = tl.sum(acc_im)
-
-    is_nyq = (k * 2) == n
-    im0 = (k == 0) | ((n % 2 == 0) & is_nyq)
-    im = tl.where(im0, im * 0.0, im)
+    is_nyq = (keff * 2) == n
+    im0 = (keff == 0) | ((n % 2 == 0) & is_nyq)
+    acc_im = tl.where(im0, acc_im * 0.0, acc_im)
 
     if NORM == 1:
         if IS_F64:
             scale = 1.0 / n.to(tl.float64)
         else:
             scale = 1.0 / n.to(tl.float32)
-        re = re * scale
-        im = im * scale
+        acc_re = acc_re * scale
+        acc_im = acc_im * scale
     elif NORM == 2:
         if IS_F64:
             scale = 1.0 / tl.sqrt(n.to(tl.float64))
         else:
             scale = 1.0 / tl.sqrt(n.to(tl.float32))
-        re = re * scale
-        im = im * scale
+        acc_re = acc_re * scale
+        acc_im = acc_im * scale
 
     tmp = (off_out + k * od) * 2
-    tl.store(out_ptr + tmp, re)
-    tl.store(out_ptr + tmp + 1, im)
+    tl.store(out_ptr + tmp, acc_re, mask=kmask)
+    tl.store(out_ptr + tmp + 1, acc_im, mask=kmask)
 
 
 def _next_pow2(v):
@@ -307,18 +309,24 @@ def fft_rfft(self, n=None, dim=-1, norm=None):
     else:
         ncode = 2
 
-    blk_j = max(16, min(64, _next_pow2(nn)))
+    blk_j = max(16, min(128, _next_pow2(nn)))
+    # The block must stay large enough to occupy the launched warps (~256
+    # elements), while a long row wants a narrower frequency tile so the
+    # per-program phase-matrix chain and element count stay modest.
+    blk_k = max(8, min(16, 256 // blk_j))
+    nk = (K + blk_k - 1) // blk_k
 
     # Fast host path: contiguous input, transform axis trailing -> row base is
     # just r * N, so the launch needs only N, n, K as runtime scalars.
     if d == ndim - 1 and x.is_contiguous():
         R = x.numel() // N
-        _rfft_lastdim_kernel[(R * K,)](
+        _rfft_lastdim_kernel[(R * nk,)](
             x,
             out_f,
             N,
             nn,
             K,
+            BLOCK_K=blk_k,
             BLOCK_J=blk_j,
             IS_F64=is_f64,
             NORM=ncode,
@@ -355,7 +363,7 @@ def fft_rfft(self, n=None, dim=-1, norm=None):
     i_pad = _pad8(batch_istr, 0)
     o_pad = _pad8(batch_ostr, 0)
 
-    _rfft_dft_kernel[(R * K,)](
+    _rfft_dft_kernel[(R * nk,)](
         x,
         out_f,
         N,
@@ -395,6 +403,7 @@ def fft_rfft(self, n=None, dim=-1, norm=None):
         o_pad[5],
         o_pad[6],
         o_pad[7],
+        BLOCK_K=blk_k,
         BLOCK_J=blk_j,
         IS_F64=is_f64,
         NORM=ncode,
