@@ -195,6 +195,51 @@ def test_lu_with_info_singular(shape, dtype):
     _assert_reconstruction(inp, lu, pivots, True, dtype)
 
 
+def _make_rank_deficient_at(shape, pos, device, dtype):
+    """Construct rank deficiency from the selected row without fixing pivot order."""
+    a = torch.randn(shape, dtype=dtype, device=device)
+    if pos == 0:
+        a[..., 0, :] = 0.0
+    else:
+        a[..., pos, :] = a[..., :pos, :].sum(dim=-2) * 0.5
+    return a
+
+
+@pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
+@pytest.mark.parametrize("pos", [0, 31, 63])
+@pytest.mark.parametrize("shape", [(64, 64), (2, 64, 64)])
+def test_lu_with_info_singular_positions(shape, pos, dtype):
+    inp = _make_rank_deficient_at(shape, pos, DEVICE, dtype)
+    _, _, ref_info = _reference_lu(
+        utils.to_reference(inp), pivot=True, check_errors=False
+    )
+    lu, pivots, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+
+    assert torch.isfinite(lu).all(), "LU contains non-finite values"
+    assert all(value.device == inp.device for value in (lu, pivots, info))
+    # Row combinations can cancel only approximately. Compare the exact info
+    # value against the reference instead of assuming an exact zero pivot.
+    utils.gems_assert_equal(info, ref_info)
+    _assert_reconstruction(inp, lu, pivots, True, dtype)
+
+
+@pytest.mark.lu_with_info
+@pytest.mark.underscore_lu_with_info
+@pytest.mark.parametrize("dtype", _TEST_DTYPES)
+@pytest.mark.parametrize("shape", [(6, 6), (4, 6, 6), (2, 3, 6, 6)])
+def test_lu_with_info_info_shape(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=DEVICE)
+    _, _, ref_info = _reference_lu(
+        utils.to_reference(inp), pivot=True, check_errors=False
+    )
+    _, _, info = flag_gems._lu_with_info(inp, pivot=True, check_errors=False)
+    assert info.device == inp.device
+    assert info.dtype == torch.int32
+    assert info.shape == ref_info.shape == inp.shape[:-2]
+
+
 @pytest.mark.lu_with_info
 @pytest.mark.underscore_lu_with_info
 @pytest.mark.parametrize("dtype", _TEST_DTYPES)
