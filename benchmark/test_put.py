@@ -31,7 +31,7 @@ class PutBenchmark(OperatorBenchmark):
         defaults = DEFAULT_SHAPES
         if (
             self.op_name == "put"
-            and base.vendor_name == "hygon"
+            and base.vendor_name in {"hygon", "iluvatar"}
             and base.Config.bench_level == consts.BenchLevel.CORE
             and shape_file_path is not None
             and Path(shape_file_path).resolve()
