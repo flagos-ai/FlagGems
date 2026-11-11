@@ -117,6 +117,8 @@ from .foreach_pow_scalar_list_ import foreach_pow_scalar_list_
 from .foreach_reciprocal import foreach_reciprocal
 from .foreach_reciprocal_ import foreach_reciprocal_
 from .foreach_round_ import foreach_round_
+from .foreach_rsqrt import foreach_rsqrt
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
@@ -370,6 +372,7 @@ __all__ = [
     "foreach_reciprocal",
     "foreach_reciprocal_",
     "foreach_round_",
+    "foreach_rsqrt",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
@@ -503,4 +506,3 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
