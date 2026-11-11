@@ -126,6 +126,7 @@ from .foreach_sin_ import foreach_sin_
 from .foreach_sinh import foreach_sinh
 from .foreach_sinh_ import foreach_sinh_
 from .foreach_sqrt import foreach_sqrt
+from .foreach_sqrt_ import foreach_sqrt_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -389,6 +390,7 @@ __all__ = [
     "foreach_sinh",
     "foreach_sinh_",
     "foreach_sqrt",
+    "foreach_sqrt_",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
