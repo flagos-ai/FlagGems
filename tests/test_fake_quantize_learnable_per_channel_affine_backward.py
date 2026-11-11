@@ -39,10 +39,10 @@ GRAD_FACTORS = [1.0] if cfg.QUICK_MODE else [1.0, 0.5, 2.0]
 _ATEN_OP = torch.ops.aten._fake_quantize_learnable_per_channel_affine_backward
 
 
-def _seed():
-    torch.manual_seed(0)
+def _seed(seed=0):
+    torch.manual_seed(seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(0)
+        torch.cuda.manual_seed_all(seed)
 
 
 def _reference(tensor):
@@ -50,12 +50,24 @@ def _reference(tensor):
 
 
 def _make_inputs(shape, axis, quant_max):
-    _seed()
+    _seed(1234)
     channels = shape[axis]
-    scale = torch.rand(channels, device=flag_gems.device) * 0.4 + 0.05
-    zero_point = torch.rand(channels, device=flag_gems.device) * (quant_max * 0.5)
-    self_t = torch.randn(shape, device=flag_gems.device) * (float(quant_max) * 0.05)
-    grad = torch.randn(shape, device=flag_gems.device)
+    factory = {"device": flag_gems.device, "dtype": torch.float32}
+    scale = torch.rand(channels, **factory) * 0.4 + 0.05
+    zero_point = torch.rand(channels, **factory) * (quant_max * 0.5)
+    self_t = torch.randn(shape, **factory) * (float(quant_max) * 0.05)
+    grad = torch.randn(shape, **factory)
+
+    # Avoid exact FP32 half-way ties at the quantization clamp boundary.
+    view = [1] * len(shape)
+    view[axis] = -1
+    inv_scale = (1.0 / scale).view(view)
+    for _ in range(4):
+        scaled = self_t * inv_scale
+        tie = (scaled - torch.floor(scaled)) == 0.5
+        if not tie.any():
+            break
+        self_t = torch.where(tie, torch.nextafter(self_t, self_t + 1), self_t)
     return grad, self_t, scale, zero_point
 
 
@@ -94,7 +106,7 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
             actual, expected, torch.float32, reduce_dim=1 if index == 0 else reduce_size
         )
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
+        flag_gems.testing.assert_equal(value, snapshot)
     assert result[0].shape == self_t.shape
     assert result[1].shape == scale.shape
     assert result[2].shape == zero_point.shape
