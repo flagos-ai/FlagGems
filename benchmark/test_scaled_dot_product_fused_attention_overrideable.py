@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -64,7 +66,9 @@ def torch_ref(
             mask = torch.ones(rows, cols, device=query.device, dtype=torch.bool)
             scores = scores.masked_fill(~mask.tril(), float("-inf"))
         weights = scores.softmax(dim=-1)
-        return (weights @ value.float()).to(query.dtype), scores.logsumexp(dim=-1)
+        output = (weights @ value.float()).to(query.dtype)
+        logsumexp_base2 = scores.logsumexp(dim=-1) * math.log2(math.e)
+        return output, logsumexp_base2
 
     return flag_gems.ops.scaled_dot_product_attention_forward(
         query, key, value, is_causal=is_causal
