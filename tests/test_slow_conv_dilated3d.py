@@ -101,6 +101,11 @@ def _atol(dtype):
 
 
 def _reference(inp, weight, kernel_size, bias, stride, padding, dilation):
+    # Iluvatar's FP64 device implementation disagrees with its CPU result.
+    if flag_gems.vendor_name == "iluvatar" and inp.dtype == torch.float64:
+        inp = inp.cpu()
+        weight = weight.cpu()
+        bias = None if bias is None else bias.cpu()
     return torch.ops.aten.slow_conv_dilated3d(
         inp,
         weight,
@@ -132,6 +137,7 @@ def test_slow_conv_dilated3d(shape, weight_shape, ks, s, p, d, bias_on, dtype):
     )
     res_out = flag_gems.slow_conv_dilated3d(inp, weight, ks, bias, s, p, d)
 
+    assert res_out.device == inp.device
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
     utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
@@ -258,10 +264,11 @@ def test_slow_conv_dilated3d_out(bias_on):
     out = torch.full(
         (1, 3, 4, 4, 4), -7.0, dtype=torch.float32, device=flag_gems.device
     )
+    pointer = out.data_ptr()
     res_out = flag_gems.slow_conv_dilated3d_out(inp, weight, 3, bias, 2, 1, 1, out=out)
 
     assert res_out is out
-    assert res_out.data_ptr() == out.data_ptr()
+    assert out.data_ptr() == pointer
     utils.gems_assert_close(out, ref_out, torch.float32)
 
 
@@ -280,11 +287,12 @@ def test_slow_conv_dilated3d_out_unbatched():
         1,
         1,
     )[0]
-    out = torch.full((3, 6, 6, 6), -7.0, dtype=torch.float32, device=flag_gems.device)
+    out = torch.full(ref_out.shape, -7.0, dtype=inp.dtype, device=inp.device)
+    pointer = out.data_ptr()
     res_out = flag_gems.slow_conv_dilated3d_out(inp, weight, 3, None, 1, 1, 1, out=out)
 
     assert res_out is out
-    assert out.data_ptr() == res_out.data_ptr()
+    assert out.data_ptr() == pointer
     utils.gems_assert_close(out, ref_out, torch.float32)
 
 
