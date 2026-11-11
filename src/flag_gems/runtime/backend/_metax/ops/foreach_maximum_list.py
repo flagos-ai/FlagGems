@@ -230,7 +230,7 @@ def _launch_strided(a, b, out, n):
         *_pad8(out.stride(), 0),
         _BLOCK,
         n > 2147483647,
-        num_warps=_WARPS
+        num_warps=_WARPS,
     )
 
 
