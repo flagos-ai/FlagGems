@@ -412,4 +412,6 @@ def test_nanquantile_errors():
             inp, torch.tensor(0.5, device=inp.device), interpolation="bad"
         )
     with pytest.raises(RuntimeError):
-        flag_gems.nanquantile(torch.empty(0, device=inp.device), 0.5)
+        flag_gems.nanquantile(
+            torch.empty(0, device=inp.device), torch.tensor(0.5, device=inp.device)
+        )
