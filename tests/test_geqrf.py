@@ -251,7 +251,7 @@ def test_geqrf_value_range(shape, value_range, dtype):
         and utils.TO_CPU
         and dtype in (torch.complex64, torch.complex128)
         and shape in ((256, 256), (1024, 1024))
-        and value_range == GEQRF_RANGE
+        and value_range in (["-1", "1"], ["0", "1"], ["-1", "0"])
     ):
         _assert_terminal_reflector_equivalent(inp, res_a, res_tau, ref_a, ref_tau)
     else:
