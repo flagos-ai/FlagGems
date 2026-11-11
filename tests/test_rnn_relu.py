@@ -38,6 +38,22 @@ def _seed_random_inputs():
     torch.manual_seed(0)
 
 
+@pytest.fixture(autouse=True)
+def _metax_full_precision():
+    if flag_gems.vendor_name != "metax":
+        yield
+        return
+    cudnn_tf32 = torch.backends.cudnn.allow_tf32
+    matmul_tf32 = torch.backends.cuda.matmul.allow_tf32
+    try:
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        yield
+    finally:
+        torch.backends.cudnn.allow_tf32 = cudnn_tf32
+        torch.backends.cuda.matmul.allow_tf32 = matmul_tf32
+
+
 @pytest.mark.parametrize("batch_first", [False, True])
 @pytest.mark.parametrize("input_size", [8, 16])
 @pytest.mark.parametrize("hidden_size", RNN_HIDDEN_SIZES)
@@ -81,6 +97,7 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
     # Compare outputs against the double-precision reference, with a per-dtype
     # tolerance sized for the low-precision rounding of the kernel.
     atol = {torch.float32: 1e-4, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
+    assert all(result.device == input_tensor.device for result in res_out)
     utils.gems_assert_close(res_out[0], ref_out[0], dtype, atol=atol)
     utils.gems_assert_close(res_out[1], ref_out[1], dtype, atol=atol)
 
@@ -131,6 +148,7 @@ def test_rnn_relu_direct_wrapper(
     # configs: float32≈1e-3, float16≈2e-3, bfloat16≈1.6e-2).  We use a
     # 2× safety margin for atol.
     atol = {torch.float32: 2e-3, torch.float16: 5e-3, torch.bfloat16: 3e-2}[dtype]
+    assert out.device == hidden.device == input_tensor.device
     utils.gems_assert_close(out, ref_out[0], dtype, atol=atol)
     utils.gems_assert_close(hidden, ref_out[1], dtype, atol=atol)
 
@@ -180,6 +198,7 @@ def test_rnn_relu_direct_backward():
     hid_r = h.unsqueeze(0)
     (out_r.sum() + hid_r.sum()).backward()
 
+    assert all(t.grad.device == t.device for t in (inp_g, hx_g, *params_g))
     utils.gems_assert_close(inp_g.grad, inp_r.grad, dtype)
     utils.gems_assert_close(hx_g.grad, hx_r.grad, dtype)
     for pg, pr in zip(params_g, params_r):
@@ -215,5 +234,6 @@ def test_rnn_relu_large_hidden(hidden_size):
     out_gems = gems_rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
 
     atol = 2e-3
+    assert all(result.device == inp.device for result in out_gems)
     utils.gems_assert_close(out_gems[0], ref[0], dtype, atol=atol)
     utils.gems_assert_close(out_gems[1], ref[1], dtype, atol=atol)
