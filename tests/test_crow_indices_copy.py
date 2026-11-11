@@ -904,3 +904,37 @@ def test_crow_indices_copy_master_shapes(shape, nnz):
 
     _assert_input_unchanged(inp, input_state)
     _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+
+
+@pytest.mark.crow_indices_copy
+@pytest.mark.parametrize(
+    "case",
+    [("bsr", (4, 6), 2, (2, 2))],
+)
+def test_crow_indices_copy_master_compressed_layouts(case):
+    inp = _make_input(*case, dtype=torch.float32)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    actual = flag_gems.crow_indices_copy(inp)
+
+    _assert_input_unchanged(inp, input_state)
+    _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+
+
+@pytest.mark.crow_indices_copy
+def test_crow_indices_copy_master_repeated_dispatch():
+    inp = _make_input("csr", (4, 8), 5, None, torch.float32, seed=7)
+    reference = tu.to_reference(inp)
+    expected = torch.ops.aten.crow_indices_copy(reference)
+    input_state = _capture_input(inp)
+
+    first = flag_gems.crow_indices_copy(inp)
+    _assert_copy_semantics(first, expected, inp, reference, inp.device)
+    for _ in range(3):
+        actual = flag_gems.crow_indices_copy(inp)
+        assert actual.data_ptr() != first.data_ptr()
+        assert torch.ops.aten._nnz(inp) == 5
+        _assert_copy_semantics(actual, expected, inp, reference, inp.device)
+    _assert_input_unchanged(inp, input_state)
