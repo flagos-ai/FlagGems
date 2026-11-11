@@ -919,6 +919,8 @@ def _build_case(
 def _assert_roundtrip_close(res, ref, device, dtype, atol):
     assert res.device == device
     assert res.dtype == dtype
+    if ref.device.type == "cpu":
+        res = res.cpu()
     utils.gems_assert_close(res, ref, dtype, atol=atol)
 
 
@@ -1059,6 +1061,10 @@ def test_istft_variants(dtype):
         return_complex=True,
         onesided=False,
     )
+    if flag_gems.vendor_name == "kunlunxin":
+        # torch_xmlir does not implement two-sided complex output.
+        ref_spec2 = ref_spec2.cpu()
+        ref_window2 = ref_window2.cpu()
     ref3 = torch.istft(
         ref_spec2,
         n_fft,
