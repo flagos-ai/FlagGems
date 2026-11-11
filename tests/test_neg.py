@@ -114,7 +114,9 @@ def test_neg_hygon_special_bits(hygon_neg_module):
     result = flag_gems.neg(inp)
     expected = bits ^ -2147483648
     torch.testing.assert_close(result.cpu().view(torch.int32), expected, rtol=0, atol=0)
-    utils.gems_assert_equal(result.cpu(), torch.neg(bits.view(torch.float32)), equal_nan=True)
+    utils.gems_assert_equal(
+        result.cpu(), torch.neg(bits.view(torch.float32)), equal_nan=True
+    )
     torch.testing.assert_close(inp.cpu().view(torch.int32), bits, rtol=0, atol=0)
 
 
