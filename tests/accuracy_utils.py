@@ -403,15 +403,25 @@ def init_seed(seed):
 
 
 def gems_log_prefix(fn):
-    """Derive the expected log prefix from the resolved function module.
+    """Return the expected log prefix for an operator implementation.
 
-    The generic implementation logs with the ``"GEMS"`` prefix, while
-    vendor-specific overrides log with ``"GEMS_<VENDOR>"``. Detect the
-    ``_<vendor>`` path component so this works for both short imported module
-    names and fully qualified backend module names.
+    Three module naming conventions exist across backends:
+
+    1. Generic ops: ``flag_gems.ops.<op>`` → prefix ``GEMS``
+    2. Vendor override loaded via ``import_vendor_extra_lib``:
+       ``_<vendor>.ops.<op>`` — the leading ``_<vendor>`` segment identifies
+       the vendor (e.g. ``_kunlunxin.ops.add``).
+    3. Arch-specific ops loaded by ``BackendArchEvent`` via ``sys.path``
+       injection: ``<arch>.ops.<op>`` with a bare arch name such as ``gcu300``,
+       ``hopper``, ``rdna4``, or ``tx81`` — these fall entirely outside the
+       ``flag_gems.*`` namespace.
+
+    Cases 2 and 3 both map to ``GEMS_<VENDOR>``.
     """
     module_parts = fn.__module__.split(".")
     if f"_{flag_gems.vendor_name}" in module_parts:
+        return f"GEMS_{flag_gems.vendor_name.upper()}"
+    if not fn.__module__.startswith("flag_gems."):
         return f"GEMS_{flag_gems.vendor_name.upper()}"
     return "GEMS"
 
