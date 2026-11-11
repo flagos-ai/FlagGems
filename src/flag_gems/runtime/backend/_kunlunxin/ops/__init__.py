@@ -187,6 +187,7 @@ from ._native_batch_norm_legit import (
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
 from ._pdist_backward import _pdist_backward
@@ -280,6 +281,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -316,6 +319,7 @@ from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .bucketize import bucketize
+from .cast_Byte import cast_Byte  # noqa: F401
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
 from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
@@ -687,6 +691,7 @@ from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out  # noqa: F401
 from .norm import norm, norm_scalar, norm_scalaropt_dim
+from .norm_except_dim import norm_except_dim  # noqa: F401
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -943,6 +948,7 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
@@ -1109,6 +1115,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
     "_pdist_backward",
@@ -1250,6 +1257,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bucketize",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",
