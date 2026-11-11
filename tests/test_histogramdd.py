@@ -32,15 +32,27 @@ _POINT_CASES = [
 ]
 
 
+def _random_input(factory, shape, dtype):
+    device = flag_gems.device
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        # Iluvatar's device FP64 RNG produces zeros; same-dtype copies work.
+        return factory(shape, dtype=dtype, device="cpu").to(device)
+    return factory(shape, dtype=dtype, device=device)
+
+
+def _cpu_input(inp):
+    if flag_gems.vendor_name == "iluvatar" and inp.dtype == torch.float64:
+        return inp.cpu()
+    return utils.to_reference(inp, True).cpu()
+
+
 def _reference(inp, bins, *, range=None, weight=None, density=False):
-    ref_inp = utils.to_reference(inp, True).to("cpu")
+    ref_inp = _cpu_input(inp)
     if isinstance(bins, (tuple, list)) and bins and isinstance(bins[0], torch.Tensor):
-        ref_bins = tuple(utils.to_reference(item, True).to("cpu") for item in bins)
+        ref_bins = tuple(_cpu_input(item) for item in bins)
     else:
         ref_bins = bins
-    ref_weight = (
-        utils.to_reference(weight, True).to("cpu") if weight is not None else None
-    )
+    ref_weight = _cpu_input(weight) if weight is not None else None
     hist, edges = torch.histogramdd(
         ref_inp, bins=ref_bins, range=range, weight=ref_weight, density=density
     )
@@ -116,9 +128,9 @@ def test_histogramdd_density(shape, dtype):
 @pytest.mark.parametrize("density", [False, True])
 def test_histogramdd_range_weight_density(dtype, weighted, density):
     torch.manual_seed(0)
-    inp = torch.randn((60, 2), dtype=dtype, device=flag_gems.device)
+    inp = _random_input(torch.randn, (60, 2), dtype)
     weight = (
-        torch.rand((60,), dtype=dtype, device=flag_gems.device) if weighted else None
+        _random_input(torch.rand, (60,), dtype) if weighted else None
     )
     range_ = [-2.0, 2.0, -3.0, 3.0]
     reference = _reference(inp, [5, 4], range=range_, weight=weight, density=density)
@@ -153,7 +165,7 @@ def test_histogramdd_tensor_list_bins(dtype):
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_histogramdd_integer_bins_overload(dtype):
     torch.manual_seed(0)
-    inp = torch.randn((40, 3), dtype=dtype, device=flag_gems.device)
+    inp = _random_input(torch.randn, (40, 3), dtype)
     reference = _reference(inp, 4)
 
     result = flag_gems.histogramdd(inp, bins=4)

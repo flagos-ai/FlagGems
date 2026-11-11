@@ -65,7 +65,10 @@ def _case_fn(shape, dtype):
 def _build_inputs_fn(plan, dtype, device):
     shape, bins_kind, density = plan.builder_args
     torch.manual_seed(0)
-    inp = torch.randn(shape, dtype=dtype, device=device)
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        inp = torch.randn(shape, dtype=dtype, device="cpu").to(device)
+    else:
+        inp = torch.randn(shape, dtype=dtype, device=device)
     dimension = shape[-1]
     if bins_kind == "master":
         kwargs = {"bins": [4] * dimension}
