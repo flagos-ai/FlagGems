@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+
 logger = logging.getLogger(__name__)
 
 # Optional override for tiling experiments (None => per-head-dim defaults).
@@ -196,6 +198,7 @@ def _flash_attn_kernel(
             p = tl.exp2(qk - m_new[:, None])
         else:
             p = tl.exp(qk - m_new[:, None])
+        p_dropout = p
         if HAS_DROPOUT:
             # Same philox consumption as the reference (flash_attn fwd_kernel):
             # per-element flat offset =
@@ -207,23 +210,22 @@ def _flash_attn_kernel(
             )
             rng = tl.rand(philox_seed, offs2d)
             keep = rng > dropout_p
-            p = tl.where(keep, p, 0.0)
+            p_dropout = tl.where(keep, p * (1.0 / (1.0 - dropout_p)), 0.0)
         if FP32_EXP2:
             alpha = tl.exp2(m_i - m_new)
         else:
             alpha = tl.exp(m_i - m_new)
+        # LSE/normalization always use the pre-dropout softmax probability.
         l_i = l_i * alpha + tl.sum(p, axis=1)
         if FP32:
-            pv = tl.dot(p, tl.trans(vv), input_precision="ieee")
+            pv = tl.dot(p_dropout, tl.trans(vv), input_precision="ieee")
         else:
-            pv = tl.dot(p.to(q.dtype), tl.trans(vv))
+            pv = tl.dot(p_dropout.to(q.dtype), tl.trans(vv))
         acc = acc * alpha[:, None] + pv
         m_i = m_new
 
     l_safe = tl.where(l_i > 0, l_i, 1.0)
     out = tl.where(l_i[:, None] > 0, acc / l_safe[:, None], 0.0)
-    if HAS_DROPOUT:
-        out = out / (1.0 - dropout_p)
     # softmax logsumexp of the scaled scores (same convention as the reference).
     if FP32_EXP2:
         lse_val = (m_i + tl.log2(l_safe)) * 0.6931471805599453
@@ -309,8 +311,6 @@ def _validate_fp32_inputs(
         raise ValueError("Hygon FP32 FlashAttention does not support variable lengths")
     if max_q != query.shape[1] or max_k != key.shape[1]:
         raise ValueError("max_q and max_k must match the fixed input sequence length")
-    if dropout_p != 0.0:
-        raise ValueError("Hygon FP32 FlashAttention does not support dropout")
     if return_debug_mask:
         raise ValueError("Hygon FP32 FlashAttention does not return a debug mask")
     if window_size_left is not None or window_size_right is not None:
@@ -428,11 +428,17 @@ def run(
         alibi_batch_stride = 0
 
     if dropout_p > 0.0:
-        gen = torch.cuda.default_generators[device.index]
-        st = gen.get_state()
-        iv = st.view(torch.int64)
-        philox_seed = int(iv[0])
-        philox_offset = int(iv[1])
+        # Reserve the complete dense attention matrix so the returned RNG pair
+        # can be replayed by the matching backward kernel and consecutive calls
+        # consume disjoint Philox ranges.
+        generator = torch_device_fn.default_generators[torch_device_fn.current_device()]
+        state = generator.get_state()
+        state_view = state.view(torch.int64)
+        philox_seed = int(state_view[0])
+        philox_offset = int(state_view[1])
+        increment = batch * nheads_q * seqlen_q * seqlen_k
+        state_view[1] += (increment + 3) // 4 * 4
+        generator.set_state(state)
     else:
         philox_seed = 0
         philox_offset = 0
@@ -538,11 +544,13 @@ def run(
         lse_res = lse_buf.view(nheads_q, batch, seqlen_q).permute(1, 0, 2)
     else:
         lse_res = lse_buf
-    # Reference-format RNG outputs. Values are not part of the checked contract;
-    # a single uninitialized allocation avoids per-scalar H2D syncs.
-    po = torch.empty(2, dtype=torch.int64, device=device)
+    # The seed/offset pair is part of the ATen contract: backward must replay
+    # exactly the mask consumed by this forward.
+    rng_state = torch.tensor(
+        [philox_seed, philox_offset], dtype=torch.int64, device=device
+    )
     dmask = torch.empty(0, dtype=torch.float32, device=device)
-    return (out_res, lse_res, po[0], po[1], dmask)
+    return (out_res, lse_res, rng_state[0], rng_state[1], dmask)
 
 
 # Alias for FlagGems import convention
