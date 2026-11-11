@@ -45,3 +45,27 @@ def glu(self, dim=-1):
     out = glu_kernel(a, b)
 
     return out.to(return_type)
+
+
+@pointwise_dynamic(
+    promotion_methods=[
+        (0, 1, 2, "DEFAULT"),
+        (0, 1, 2, "DEFAULT"),
+    ]
+)
+@triton.jit
+def glu_backward_kernel(grad_output, a, b):
+    sigmoid_b = 1 / (1 + exp(-b.to(tl.float32)))
+    da = grad_output * sigmoid_b
+    db = grad_output.to(tl.float32) * a * sigmoid_b * (1.0 - sigmoid_b)
+    return da, db
+
+
+def glu_backward(grad_output, self, dim=-1):
+    assert self.shape[dim] % 2 == 0, "Split dimension must be even"
+    logger.debug("GEMS_ENFLAME GLU_BACKWARD")
+    a, b = torch.chunk(self, 2, dim=dim)
+    grad_input = torch.empty_like(self, memory_format=torch.contiguous_format)
+    grad_a, grad_b = torch.chunk(grad_input, 2, dim=dim)
+    glu_backward_kernel(grad_output, a, b, out0=grad_a, out1=grad_b)
+    return grad_input
