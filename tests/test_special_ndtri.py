@@ -27,6 +27,11 @@ NDTRI_DTYPES = [torch.float32] + ([torch.float64] if utils.fp64_is_supported els
 NDTRI_UNSUPPORTED_DTYPES = [torch.float16, torch.bfloat16]
 
 
+def _probability_input(shape, dtype):
+    torch.manual_seed(0)
+    return torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(0.01, 0.99)
+
+
 @pytest.mark.special_ndtri
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", NDTRI_DTYPES)
@@ -34,7 +39,7 @@ def test_special_ndtri(shape, dtype, caplog, pytestconfig):
     # ndtri is the inverse of the standard normal CDF, so the input is a
     # probability in [0, 1]. The interior of the range is sampled here; the
     # boundaries are covered separately below because they map to infinities.
-    inp = torch.empty(shape, dtype=dtype, device=flag_gems.device).uniform_(0.01, 0.99)
+    inp = _probability_input(shape, dtype)
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
@@ -42,6 +47,7 @@ def test_special_ndtri(shape, dtype, caplog, pytestconfig):
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
         res_out = flag_gems.special_ndtri(inp)
+    assert res_out.device == inp.device
 
     if pytestconfig._override_registry.get_override("special_ndtri") is None:
         prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
@@ -67,27 +73,20 @@ def test_special_ndtri_edge_values(dtype, caplog, pytestconfig):
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
         res_out = flag_gems.special_ndtri(inp)
+    assert res_out.device == inp.device
 
     if pytestconfig._override_registry.get_override("special_ndtri") is None:
         prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
         assert f"{prefix} SPECIAL_NDTRI" in caplog.text
-    torch.testing.assert_close(
-        res_out.to(torch.float32).cpu(),
-        ref_out.to(torch.float32).cpu(),
-        equal_nan=True,
-        rtol=0,
-        atol=0,
-    )
+    utils.gems_assert_equal(res_out, ref_out.to(dtype=dtype), equal_nan=True)
 
 
 @pytest.mark.special_ndtri
 @pytest.mark.parametrize("dtype", NDTRI_DTYPES)
 def test_special_ndtri_non_contiguous(dtype, caplog, pytestconfig):
     # A transposed view exercises the strided path of the pointwise kernel.
-    inp = torch.empty((16, 32), dtype=dtype, device=flag_gems.device).uniform_(
-        0.01, 0.99
-    )
-    inp = inp.t()
+    inp = _probability_input((16, 32), dtype).t()
+    assert not inp.is_contiguous()
     ref_inp = utils.to_reference(inp, True)
 
     ref_out = torch.ops.aten.special_ndtri(ref_inp)
@@ -95,6 +94,7 @@ def test_special_ndtri_non_contiguous(dtype, caplog, pytestconfig):
         "DEBUG", logger=utils.gems_log_logger(flag_gems.special_ndtri)
     ):
         res_out = flag_gems.special_ndtri(inp)
+    assert res_out.device == inp.device
 
     if pytestconfig._override_registry.get_override("special_ndtri") is None:
         prefix = utils.gems_log_prefix(flag_gems.special_ndtri)
@@ -108,6 +108,6 @@ def test_special_ndtri_non_contiguous(dtype, caplog, pytestconfig):
 def test_special_ndtri_unsupported_dtype(dtype):
     # Half and BFloat16 are rejected by the operator itself, matching the
     # NotImplementedError that the PyTorch reference raises for these dtypes.
-    inp = torch.empty((8,), dtype=dtype, device=flag_gems.device).uniform_(0.01, 0.99)
+    inp = _probability_input((8,), dtype)
     with pytest.raises(NotImplementedError):
         flag_gems.special_ndtri(inp)
