@@ -92,6 +92,7 @@ from .gcd_ import gcd_
 from .geometric import geometric, geometric_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
+from .igamma import igamma
 from .im2col import im2col
 from .index_add import index_add, index_add_
 from .index_copy import index_copy
@@ -277,6 +278,7 @@ __all__ = [
     "geometric_",
     "grid_sampler_3d_backward",
     "histc",
+    "igamma",
     "im2col",
     "index_add",
     "index_add_",
