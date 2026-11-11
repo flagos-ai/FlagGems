@@ -15,10 +15,13 @@
 import pytest
 import torch
 
-from . import base, consts, utils
+from . import base, consts
 
 
-class HardsigmoidBackwardBenchmark(base.BinaryPointwiseBenchmark):
+class HardsigmoidBackwardBenchmark(base.GenericBenchmark):
+    def supports_cases(self):
+        return True
+
     def get_case_iter(self, dtype):
         for ordinal, shape in enumerate(self.shapes):
             dims = tuple(shape)
@@ -35,8 +38,8 @@ class HardsigmoidBackwardBenchmark(base.BinaryPointwiseBenchmark):
     def build_inputs(self, case):
         shape = case.builder_args[0].builder_args[0]
         torch.manual_seed(0)
-        grad_output = utils.generate_tensor_input(shape, case.dtype, self.device)
-        inp = utils.generate_tensor_input(shape, case.dtype, self.device)
+        inp = torch.randn(shape, dtype=case.dtype, device=self.device)
+        grad_output = torch.randn(shape, dtype=case.dtype, device=self.device)
         return grad_output, inp
 
 
