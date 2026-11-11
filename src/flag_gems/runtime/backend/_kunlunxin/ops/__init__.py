@@ -22,6 +22,8 @@ from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_in
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
+from ._ctc_loss import _ctc_loss, _ctc_loss_out
+from ._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -187,6 +189,7 @@ from ._native_batch_norm_legit import (
 from ._native_batch_norm_legit_no_training import _native_batch_norm_legit_no_training
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._nested_view_from_jagged_copy import _nested_view_from_jagged_copy
+from ._pad_circular import _pad_circular  # noqa: F401
 from ._pad_enum import _pad_enum
 from ._pad_packed_sequence import _pad_packed_sequence
 from ._pdist_backward import _pdist_backward
@@ -280,6 +283,8 @@ from .avg_pool3d import avg_pool3d
 from .avg_pool3d_backward import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_, baddbmm_out
 from .batch_norm import batch_norm, batch_norm_backward
+from .batch_norm_backward_elemt import batch_norm_backward_elemt  # noqa: F401
+from .batch_norm_backward_reduce import batch_norm_backward_reduce  # noqa: F401
 from .batch_norm_no_update import batch_norm_no_update
 from .bernoulli import bernoulli
 from .bernoulli_ import bernoulli_
@@ -316,6 +321,7 @@ from .bitwise_xor_tensor_ import bitwise_xor_tensor_
 from .block_diag import block_diag  # noqa: F401
 from .bmm import bmm, bmm_out
 from .bucketize import bucketize
+from .cast_Byte import cast_Byte  # noqa: F401
 from .cat import cat, cat_out
 from .cauchy import cauchy, cauchy_  # noqa: F401
 from .ccol_indices_copy import ccol_indices_copy, ccol_indices_copy_out  # noqa: F401
@@ -358,9 +364,11 @@ from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
+from .corrcoef import corrcoef
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
+from .cov import cov
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
@@ -368,6 +376,7 @@ from .cummax import cummax
 from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
+from .cumprod_backward import cumprod_backward
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
@@ -687,6 +696,7 @@ from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .nonzero_static import nonzero_static, nonzero_static_out  # noqa: F401
 from .norm import norm, norm_scalar, norm_scalaropt_dim
+from .norm_except_dim import norm_except_dim  # noqa: F401
 from .normal import (
     normal_,
     normal_float_tensor,
@@ -943,6 +953,7 @@ from .upsample_nearest_exact2d import (
 )
 from .upsample_nearest_exact2d_backward import upsample_nearest_exact2d_backward
 from .upsample_trilinear3d import upsample_trilinear3d
+from .vander import vander  # noqa: F401
 from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
@@ -983,6 +994,10 @@ __all__ = [
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
+    "_ctc_loss",
+    "_ctc_loss_backward",
+    "_ctc_loss_backward_out",
+    "_ctc_loss_out",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
@@ -1109,6 +1124,7 @@ __all__ = [
     "_native_batch_norm_legit_out",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged_copy",
+    "_pad_circular",
     "_pad_enum",
     "_pad_packed_sequence",
     "_pdist_backward",
@@ -1250,6 +1266,7 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bucketize",
+    "cast_Byte",
     "cat",
     "cat_out",
     "cauchy",
@@ -1297,14 +1314,17 @@ __all__ = [
     "copysign",
     "copysign_",
     "copysign_out",
+    "corrcoef",
     "cos",
     "cos_",
     "count_nonzero",
+    "cov",
     "cummax",
     "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
+    "cumprod_backward",
     "cumsum",
     "cumsum_",
     "cumsum_out",
