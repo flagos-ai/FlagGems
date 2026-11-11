@@ -270,26 +270,31 @@ def _assert_terminal_reflector_equivalent(
         tu.assert_result_close(terminal[0], terminal[1])
 
 
-def _assert_real_reflector_tail_equivalent(inp, a, tau, ref_a, ref_tau):
+def _assert_real_qr_factorization(inp, a, tau, ref_a, ref_tau):
     _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
-    a, tau = a.cpu(), tau.cpu()
-    # Verify the penultimate reflector's tail and coefficient together below.
-    # All other packed values retain the original elementwise comparison.
-    tu.assert_result_close(a[:-1], ref_a[:-1])
-    tu.assert_result_close(a[-1, :-2], ref_a[-1, :-2])
-    tu.assert_result_close(a[-1, -1:], ref_a[-1, -1:])
-    tu.assert_result_close(tau[:-2], ref_tau[:-2])
-    tu.assert_result_close(tau[-1:], ref_tau[-1:])
-
     original = inp.cpu().double()
+    assert torch.isfinite(original).all()
     column_norms = torch.linalg.vector_norm(original, dim=0)
     identity = torch.eye(inp.shape[-1], dtype=original.dtype, device="cpu")
     tolerance = 32 * torch.finfo(inp.dtype).eps
+
+    # Device and CPU can encode valid reflectors differently. Validate each
+    # packed pair against the original matrix rather than against each other.
     for packed, reflectors in ((a, tau), (ref_a, ref_tau)):
-        packed = packed.double()
-        q = torch.linalg.householder_product(packed, reflectors.double())
+        packed = packed.cpu().double()
+        reflectors = reflectors.cpu().double()
+        assert torch.isfinite(packed).all() and torch.isfinite(reflectors).all()
+        assert ((reflectors >= 0) & (reflectors <= 2)).all()
+        tail_norm_sq = packed.tril(-1).square().sum(dim=0)
+        active = reflectors != 0
+        assert (tail_norm_sq[~active] == 0).all()
+        norm_relation = reflectors[active] * (1 + tail_norm_sq[active])
+        torch.testing.assert_close(
+            norm_relation, torch.full_like(norm_relation, 2), rtol=0, atol=tolerance
+        )
+        q = torch.linalg.householder_product(packed, reflectors)
         residual = torch.linalg.vector_norm(q @ packed.triu() - original, dim=0)
-        assert torch.all(residual <= tolerance * column_norms)
+        assert (residual <= tolerance * column_norms).all()
         torch.testing.assert_close(q.T @ q, identity, rtol=0, atol=tolerance)
 
 
@@ -339,7 +344,7 @@ def test_geqrf_value_range(shape, value_range, dtype):
         and shape == (1024, 1024)
         and value_range == ["-1", "0"]
     ):
-        _assert_real_reflector_tail_equivalent(snapshot, res_a, res_tau, ref_a, ref_tau)
+        _assert_real_qr_factorization(snapshot, res_a, res_tau, ref_a, ref_tau)
     else:
         tu.assert_result_close(res_a, ref_a)
         tu.assert_result_close(res_tau, ref_tau)
