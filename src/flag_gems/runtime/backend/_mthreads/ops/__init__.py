@@ -85,6 +85,7 @@ from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
@@ -264,6 +265,7 @@ __all__ = [
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
+    "fractional_max_pool2d_backward",
     "gather",
     "gather_backward",
     "gcd_",
