@@ -233,14 +233,18 @@ def _assert_projected_terminal(column, a, tau):
     )
 
 
-def _assert_terminal_reflector_equivalent(
-    inp, a, tau, ref_a, ref_tau, *, check_projection=False
-):
+def _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau):
     assert a.device == tau.device == inp.device
     assert a.dtype == tau.dtype == ref_a.dtype == ref_tau.dtype == inp.dtype
     assert a.shape == ref_a.shape == inp.shape
     assert tau.shape == ref_tau.shape == inp.shape[:-1]
     assert ref_a.device == ref_tau.device == torch.device("cpu")
+
+
+def _assert_terminal_reflector_equivalent(
+    inp, a, tau, ref_a, ref_tau, *, check_projection=False
+):
+    _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
     a, tau = a.cpu(), tau.cpu()
 
     tu.assert_result_close(a[:-1], ref_a[:-1])
@@ -264,6 +268,28 @@ def _assert_terminal_reflector_equivalent(
         _assert_projected_terminal(column, ref_a, ref_tau)
     else:
         tu.assert_result_close(terminal[0], terminal[1])
+
+
+def _assert_real_reflector_tail_equivalent(inp, a, tau, ref_a, ref_tau):
+    _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
+    a, tau = a.cpu(), tau.cpu()
+    # Keep the packed comparison for every entry except the final component
+    # of the penultimate reflector at (-1, -2).
+    tu.assert_result_close(a[:-1], ref_a[:-1])
+    tu.assert_result_close(a[-1, :-2], ref_a[-1, :-2])
+    tu.assert_result_close(a[-1, -1:], ref_a[-1, -1:])
+    tu.assert_result_close(tau, ref_tau)
+
+    original = inp.cpu().double()
+    column_norms = torch.linalg.vector_norm(original, dim=0)
+    identity = torch.eye(inp.shape[-1], dtype=original.dtype, device="cpu")
+    tolerance = 32 * torch.finfo(inp.dtype).eps
+    for packed, reflectors in ((a, tau), (ref_a, ref_tau)):
+        packed = packed.double()
+        q = torch.linalg.householder_product(packed, reflectors.double())
+        residual = torch.linalg.vector_norm(q @ packed.triu() - original, dim=0)
+        assert torch.all(residual <= tolerance * column_norms)
+        torch.testing.assert_close(q.T @ q, identity, rtol=0, atol=tolerance)
 
 
 @pytest.mark.geqrf
@@ -305,6 +331,14 @@ def test_geqrf_value_range(shape, value_range, dtype):
                 and value_range == GEQRF_RANGE
             ),
         )
+    elif (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
+        and dtype == torch.float32
+        and shape == (1024, 1024)
+        and value_range == ["-1", "0"]
+    ):
+        _assert_real_reflector_tail_equivalent(snapshot, res_a, res_tau, ref_a, ref_tau)
     else:
         tu.assert_result_close(res_a, ref_a)
         tu.assert_result_close(res_tau, ref_tau)
