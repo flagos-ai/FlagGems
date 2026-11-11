@@ -22,6 +22,8 @@ from ._batch_norm_impl_index import batch_norm_impl_index as _batch_norm_impl_in
 from ._batch_norm_no_update import _batch_norm_no_update
 from ._cholesky_solve_helper import _cholesky_solve_helper
 from ._conj import _conj  # noqa: F401
+from ._ctc_loss import _ctc_loss, _ctc_loss_out
+from ._ctc_loss_backward import _ctc_loss_backward, _ctc_loss_backward_out
 from ._dirichlet_grad import _dirichlet_grad, _dirichlet_grad_into  # noqa: F401
 from ._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
@@ -362,9 +364,11 @@ from .conv_transpose3d import conv_transpose3d
 from .copy import copy, copy_
 from .copysign import copysign, copysign_out
 from .copysign_ import copysign_
+from .corrcoef import corrcoef
 from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
+from .cov import cov
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
@@ -372,6 +376,7 @@ from .cummax import cummax
 from .cummaxmin_backward import cummaxmin_backward
 from .cummin import cummin
 from .cumprod import cumprod, cumprod_
+from .cumprod_backward import cumprod_backward
 from .cumsum import cumsum, cumsum_out, normed_cumsum
 from .cumsum_ import cumsum_
 from .deg2rad import deg2rad, deg2rad_, deg2rad_out
@@ -989,6 +994,10 @@ __all__ = [
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
+    "_ctc_loss",
+    "_ctc_loss_backward",
+    "_ctc_loss_backward_out",
+    "_ctc_loss_out",
     "_dyn_quant_pack_4bit_weight",
     "_embedding_bag_dense_backward",
     "_euclidean_dist",
@@ -1305,14 +1314,17 @@ __all__ = [
     "copysign",
     "copysign_",
     "copysign_out",
+    "corrcoef",
     "cos",
     "cos_",
     "count_nonzero",
+    "cov",
     "cummax",
     "cummaxmin_backward",
     "cummin",
     "cumprod",
     "cumprod_",
+    "cumprod_backward",
     "cumsum",
     "cumsum_",
     "cumsum_out",
