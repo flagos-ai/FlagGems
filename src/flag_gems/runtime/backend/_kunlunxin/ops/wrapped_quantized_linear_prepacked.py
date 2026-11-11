@@ -187,7 +187,9 @@ def _wrapped_quantized_linear_prepacked(
         return output
 
     input_2d = input.reshape(M, K).contiguous()
-    block_size = 128
+    # A wider block exceeds the compiler's pipeline-event budget on some
+    # toolchains, so keep the tile narrow.
+    block_size = 64
     grid = (triton.cdiv(M * out_channel, block_size),)
     with torch_device_fn.device(input.device):
         _wrapped_quantized_linear_prepacked_kernel[grid](
