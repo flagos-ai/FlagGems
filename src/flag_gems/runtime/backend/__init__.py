@@ -149,7 +149,18 @@ class BackendArchEvent(BackendEventBase):
         return self.has_arch
 
     def get_functions_from_module(self, module):
-        return inspect.getmembers(module, inspect.isfunction) if module else []
+        # return inspect.getmembers(module, inspect.isfunction) if module else []
+        if not module:
+            return []
+        def _is_operator(value):
+            try:
+                unwrapped = inspect.unwrap(value)
+            except ValueError:
+                return False
+            return inspect.isfunction(unwrapped) or (
+                callable(value) and inspect.isfunction(getattr(value, "fn", None))
+            )
+        return inspect.getmembers(module, _is_operator)       
 
     def get_heuristics_configs(self):
         try:
