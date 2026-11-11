@@ -30,13 +30,8 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def arange_func(y_ptr, start, end, step, size, BLOCK_SIZE: tl.constexpr):
     pid = ext.program_id(0)
-    y_ptr += pid * BLOCK_SIZE
-    step_offset = pid * BLOCK_SIZE * step
-
-    cols = tl.arange(0, BLOCK_SIZE)
-    arange_val = cols * step + step_offset + start
-    mask = cols + pid * BLOCK_SIZE
-    tl.store(y_ptr + cols, arange_val, mask=mask < size)
+    offset = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    tl.store(y_ptr + offset, start + step * offset, mask=offset < size)
 
 
 def arange_start(
@@ -67,7 +62,10 @@ def arange_start(
     grid = triton.cdiv(size, BLOCK_SIZE)
 
     if dtype is None:
-        dtype = torch.int64
+        integer_args = all(
+            isinstance(v, (int, torch.SymInt)) for v in (start, end, step)
+        )
+        dtype = torch.int64 if integer_args else torch.get_default_dtype()
 
     if pin_memory is None:
         pin_memory = False
