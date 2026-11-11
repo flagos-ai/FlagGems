@@ -108,8 +108,13 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
     for value, snapshot in zip(inputs, snapshots):
         flag_gems.testing.assert_equal(value, snapshot)
     assert result[0].shape == self_t.shape
-    assert result[1].shape == scale.shape
-    assert result[2].shape == zero_point.shape
+    if self_t.ndim == 1:
+        # ATen reduces the learnable gradients to scalars for rank-one input.
+        assert result[1].shape == ref_out[1].shape
+        assert result[2].shape == ref_out[2].shape
+    else:
+        assert result[1].shape == scale.shape
+        assert result[2].shape == zero_point.shape
     assert all(value.dtype == torch.float32 for value in result)
 
 
