@@ -108,7 +108,9 @@ def scaled_dot_product_flash_attention_ref(q, k, v, scale, is_causal):
     if is_causal:
         q_index = torch.arange(q.shape[-2], device=q.device)[:, None]
         k_index = torch.arange(k.shape[-2], device=k.device)
-        causal_mask = k_index > q_index
+        # The low-level ATen FlashAttention op uses a lower-right causal mask
+        # (unlike functional SDPA's upper-left mask for nonsquare inputs).
+        causal_mask = k_index > q_index + k.shape[-2] - q.shape[-2]
         scores.masked_fill_(causal_mask, float("-inf"))
     logsumexp = torch.logsumexp(scores, dim=-1)
     output = torch.matmul(torch.softmax(scores, dim=-1), v.float())
@@ -147,8 +149,9 @@ def test_scaled_dot_product_flash_attention(
     ref_q = utils.to_reference(q, False)
     ref_k = utils.to_reference(k, False)
     ref_v = utils.to_reference(v, False)
-    # Use CPU reference when explicitly requested
-    if cfg.TO_CPU:
+    # Ascend has no native ATen FlashAttention kernel; use independent math
+    # on the selected reference device instead of its unsupported CPU fallback.
+    if cfg.TO_CPU or flag_gems.vendor_name == "ascend":
         ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
             ref_q, ref_k, ref_v, scale, is_causal
         )
@@ -157,7 +160,7 @@ def test_scaled_dot_product_flash_attention(
             ref_q, ref_k, ref_v, 0.0, is_causal, False, scale=scale
         )
         ref_out, ref_lse = ref_result[0], ref_result[1]
-    result = torch.ops.aten._scaled_dot_product_flash_attention.default(
+    result = flag_gems._scaled_dot_product_flash_attention(
         q, k, v, 0.0, is_causal, False, scale=scale
     )
 
@@ -167,6 +170,91 @@ def test_scaled_dot_product_flash_attention(
     assert result[2] is None
     assert result[3] is None
     assert result[4:6] == (q_seq_len, kv_seq_len)
+
+
+@pytest.mark.scaled_dot_product_flash_attention
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend dispatch regression"
+)
+@pytest.mark.parametrize(
+    "batch,num_head,q_seq_len,kv_seq_len,head_size",
+    SCALED_DOT_PRODUCT_FLASH_ATTENTION_SHAPES,
+)
+@pytest.mark.parametrize("is_causal", [False, True])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("layout", ["bshd", "strided_head"])
+def test_scaled_dot_product_flash_attention_ascend_dispatch(
+    batch, num_head, q_seq_len, kv_seq_len, head_size, is_causal, dtype, layout, caplog
+):
+    inputs = make_input(
+        batch,
+        num_head,
+        num_head,
+        q_seq_len,
+        kv_seq_len,
+        head_size,
+        dtype,
+        torch_device_fn.current_device(),
+    )
+    if layout == "bshd":
+        # Models commonly transpose a contiguous BSHD projection into BHSD.
+        q, k, v = [t.transpose(1, 2).contiguous().transpose(1, 2) for t in inputs]
+    else:
+        # Also exercise materialization when the last dimension is strided.
+        q, k, v = [torch.stack((t, t), dim=-1)[..., 0] for t in inputs]
+    assert all(not t.is_contiguous() for t in (q, k, v))
+    scale = head_size**-0.5
+    ref_out, ref_lse = scaled_dot_product_flash_attention_ref(
+        utils.to_reference(q),
+        utils.to_reference(k),
+        utils.to_reference(v),
+        scale,
+        is_causal,
+    )
+
+    with caplog.at_level(
+        "DEBUG",
+        logger=utils.gems_log_logger(flag_gems._scaled_dot_product_flash_attention),
+    ):
+        direct = flag_gems._scaled_dot_product_flash_attention(
+            q, k, v, 0.0, is_causal, False, scale=scale
+        )
+        # Scope the ATen registration to this case so subsequent reference
+        # calls cannot accidentally execute the FlagGems candidate.
+        previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+        lib = torch.library.Library("aten", "IMPL")
+        try:
+            flag_gems.only_enable(
+                lib=lib, include=["_scaled_dot_product_flash_attention"]
+            )
+            registered = torch.ops.aten._scaled_dot_product_flash_attention.default(
+                q, k, v, 0.0, is_causal, False, scale=scale
+            )
+        finally:
+            lib._destroy()
+            flag_gems.current_work_registrar = previous_registrar
+
+    # Both public entry points must reach the specialized Ascend wrapper.
+    assert (
+        sum(
+            record.getMessage() == "GEMS_ASCEND _SCALED_DOT_PRODUCT_FLASH_ATTENTION"
+            for record in caplog.records
+        )
+        == 2
+    )
+    for result in (direct, registered):
+        assert len(result) == 9
+        assert result[0].shape == q.shape
+        assert result[0].device == q.device
+        assert result[1].shape == (batch, num_head, q_seq_len)
+        assert result[1].device == q.device
+        assert result[2:6] == (None, None, q_seq_len, kv_seq_len)
+        assert all(isinstance(t, torch.Tensor) for t in result[6:])
+        assert all(t.device == q.device for t in result[6:])
+        utils.gems_assert_close(result[0], ref_out, dtype)
+        utils.gems_assert_close(result[1], ref_lse, torch.float)
+    torch.testing.assert_close(direct[0], registered[0], atol=0, rtol=0)
+    torch.testing.assert_close(direct[1], registered[1], atol=0, rtol=0)
 
 
 def torch_sdpa(q, k, v, scale, is_causal, enable_gqa=False):
