@@ -1195,6 +1195,9 @@ from flag_gems.ops.multi_margin_loss import (
     multi_margin_loss_out,
 )
 from flag_gems.ops.multilabel_margin_loss import multilabel_margin_loss
+from flag_gems.ops.multilabel_margin_loss_backward import (
+    multilabel_margin_loss_backward,
+)
 from flag_gems.ops.multilabel_margin_loss_forward import multilabel_margin_loss_forward
 from flag_gems.ops.multinomial import multinomial
 from flag_gems.ops.multiply import multiply
@@ -1645,6 +1648,7 @@ from flag_gems.ops.topk_w8a16_fp8 import topk_w8a16_fp8
 from flag_gems.ops.trace import trace
 from flag_gems.ops.trace_backward import trace_backward
 from flag_gems.ops.transpose import transpose
+from flag_gems.ops.transpose_ import transpose_
 from flag_gems.ops.transpose_copy import transpose_copy
 from flag_gems.ops.trapezoid import trapezoid_x
 from flag_gems.ops.trapz import trapz
@@ -2914,6 +2918,7 @@ __all__ = [
     "multi_margin_loss_backward_out",
     "multi_margin_loss_out",
     "multilabel_margin_loss",
+    "multilabel_margin_loss_backward",
     "multilabel_margin_loss_forward",
     "multinomial",
     "multiply",
@@ -3380,6 +3385,7 @@ __all__ = [
     "trace",
     "trace_backward",
     "transpose",
+    "transpose_",
     "transpose_copy",
     "trapezoid_x",
     "trapz",

@@ -542,7 +542,7 @@ def _launch_one(t, out, kind):
             RANK=t.dim(),
             F64=f64,
             FAST=fast,
-            num_warps=4
+            num_warps=4,
         )
 
 
