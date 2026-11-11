@@ -157,6 +157,7 @@ from .index_put import index_put, index_put_
 from .index_reduce import index_reduce, index_reduce_, index_reduce_out
 from .index_select import index_select
 from .inner import inner
+from .inverse import inverse
 from .isin import isin
 from .kthvalue import kthvalue
 from .layernorm import layer_norm, layer_norm_backward
@@ -440,6 +441,7 @@ __all__ = [
     "index_reduce_out",
     "index_select",
     "inner",
+    "inverse",
     "isin",
     "kthvalue",
     "layer_norm",
