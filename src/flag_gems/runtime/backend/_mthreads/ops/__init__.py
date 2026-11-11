@@ -22,7 +22,9 @@ from ._conj import _conj
 from ._fake_quantize_learnable_per_tensor_affine import (
     _fake_quantize_learnable_per_tensor_affine,
 )
-from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import _fake_quantize_per_tensor_affine_cachemask_tensor_qparams
+from ._fake_quantize_per_tensor_affine_cachemask_tensor_qparams import (
+    _fake_quantize_per_tensor_affine_cachemask_tensor_qparams,
+)
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
