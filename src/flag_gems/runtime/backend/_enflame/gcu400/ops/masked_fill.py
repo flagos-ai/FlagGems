@@ -22,7 +22,7 @@ from flag_gems.utils import broadcastable_to
 
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("flag_gems.ops.masked_fill")
 
 
 @pointwise_dynamic(is_tensor=[True, True, False], promotion_methods=[(0, "NO_OPMATH")])

@@ -912,7 +912,10 @@ def _mul(
         result = _try_contiguous(A, B, out, launchers[0], real_output)
         if result is not None:
             return result
-    logger.debug("GEMS MUL")
+    # Attribute the record to the public entry point (``mul`` / a vendor
+    # override that delegates here) rather than this internal helper, so the
+    # logged function name matches the operator that was actually enabled.
+    logger.debug("GEMS MUL", stacklevel=2)
     if isinstance(A, torch.Tensor) or isinstance(B, torch.Tensor):
         if (
             (isinstance(A, torch.Tensor) and A.is_complex())
@@ -939,7 +942,7 @@ def _mul_(
     real_output=_real_output,
     complex_mul=mul_complex_broadcast_func,
 ):
-    logger.debug("GEMS MUL_")
+    logger.debug("GEMS MUL_", stacklevel=2)
     if not isinstance(A, torch.Tensor):
         raise TypeError("mul_ expects the first argument to be a tensor")
     dtype = _result_dtype(A, B)

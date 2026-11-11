@@ -113,7 +113,12 @@ def test_enable_with_exclude(exclude_op, tmp_path):
     }
 
     for op in exclude_op:
-        present = [p for p in log_prefixes if op in p]
+        # Prefixes look like "[DEBUG] flag_gems.ops.sum.sum_out"; the last
+        # component is the implementing function's name. Match it exactly:
+        # excluding "sum" must not be read as excluding "sum_out", which is a
+        # separate registration and may still be reached through torch's
+        # native sum decomposition on some backends.
+        present = [p for p in log_prefixes if p.rsplit(".", 1)[-1] == op]
         assert not present, f"Found excluded op '{op}' in log file: {present}"
 
 
