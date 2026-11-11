@@ -100,12 +100,22 @@ def _atol(dtype):
     return 2e-2 if dtype in (torch.float16, torch.bfloat16) else 1e-4
 
 
+def _to_reference(value, upcast):
+    # Transfer storage values before promotion because Iluvatar has limited
+    # device-side double conversion and convolution support.
+    if value is not None and flag_gems.vendor_name == "iluvatar":
+        value = value.cpu()
+    return utils.to_reference(value, upcast)
+
+
+def _assert_close(result, reference, dtype, **kwargs):
+    assert result.device.type == torch.device(flag_gems.device).type
+    if reference.device.type == "cpu":
+        result = result.cpu()
+    utils.gems_assert_close(result, reference, dtype, **kwargs)
+
+
 def _reference(inp, weight, kernel_size, bias, stride, padding, dilation):
-    # Iluvatar's FP64 device implementation disagrees with its CPU result.
-    if flag_gems.vendor_name == "iluvatar" and inp.dtype == torch.float64:
-        inp = inp.cpu()
-        weight = weight.cpu()
-        bias = None if bias is None else bias.cpu()
     return torch.ops.aten.slow_conv_dilated3d(
         inp,
         weight,
@@ -127,10 +137,10 @@ def test_slow_conv_dilated3d(shape, weight_shape, ks, s, p, d, bias_on, dtype):
     bias = _make((weight_shape[0],), dtype, seed=2) if bias_on else None
 
     ref_out = _reference(
-        utils.to_reference(inp, True),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True),
+        _to_reference(weight, True),
         ks,
-        utils.to_reference(bias, True),
+        _to_reference(bias, True),
         s,
         p,
         d,
@@ -140,7 +150,7 @@ def test_slow_conv_dilated3d(shape, weight_shape, ks, s, p, d, bias_on, dtype):
     assert res_out.device == inp.device
     assert res_out.dtype == dtype
     assert res_out.shape == ref_out.shape
-    utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
+    _assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
 
 
 @pytest.mark.slow_conv_dilated3d
@@ -151,16 +161,16 @@ def test_slow_conv_dilated3d_geometry(shape, weight_shape, ks, s, p, d):
     bias = _make((weight_shape[0],), torch.float32, seed=5)
 
     ref_out = _reference(
-        utils.to_reference(inp, True),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True),
+        _to_reference(weight, True),
         ks,
-        utils.to_reference(bias, True),
+        _to_reference(bias, True),
         s,
         p,
         d,
     )
     res_out = flag_gems.slow_conv_dilated3d(inp, weight, ks, bias, s, p, d)
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    _assert_close(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.slow_conv_dilated3d
@@ -193,10 +203,10 @@ def test_slow_conv_dilated3d_unbatched_input():
     bias = _make((3,), torch.float32, seed=10)
 
     ref_5d = _reference(
-        utils.to_reference(inp, True).unsqueeze(0),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True).unsqueeze(0),
+        _to_reference(weight, True),
         3,
-        utils.to_reference(bias, True),
+        _to_reference(bias, True),
         1,
         0,
         1,
@@ -207,7 +217,7 @@ def test_slow_conv_dilated3d_unbatched_input():
     assert res_4d.dim() == 4
     assert res_4d.shape == ref_5d.shape[1:]
     assert torch.equal(res_4d, res_5d[0])
-    utils.gems_assert_close(res_4d, ref_5d[0], torch.float32)
+    _assert_close(res_4d, ref_5d[0], torch.float32)
 
 
 @pytest.mark.slow_conv_dilated3d
@@ -232,16 +242,16 @@ def test_slow_conv_dilated3d_non_contiguous(which):
     ).is_contiguous()
 
     ref_out = _reference(
-        utils.to_reference(inp.contiguous(), True),
-        utils.to_reference(weight.contiguous(), True),
+        _to_reference(inp.contiguous(), True),
+        _to_reference(weight.contiguous(), True),
         3,
-        utils.to_reference(bias.contiguous(), True),
+        _to_reference(bias.contiguous(), True),
         1,
         1,
         1,
     )
     res_out = flag_gems.slow_conv_dilated3d(inp, weight, 3, bias, 1, 1, 1)
-    utils.gems_assert_close(res_out, ref_out, torch.float32)
+    _assert_close(res_out, ref_out, torch.float32)
 
 
 @pytest.mark.slow_conv_dilated3d_out
@@ -253,10 +263,10 @@ def test_slow_conv_dilated3d_out(bias_on):
     bias = _make((3,), torch.float32, seed=16) if bias_on else None
 
     ref_out = _reference(
-        utils.to_reference(inp, True),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True),
+        _to_reference(weight, True),
         3,
-        utils.to_reference(bias, True),
+        _to_reference(bias, True),
         2,
         1,
         1,
@@ -269,7 +279,7 @@ def test_slow_conv_dilated3d_out(bias_on):
 
     assert res_out is out
     assert out.data_ptr() == pointer
-    utils.gems_assert_close(out, ref_out, torch.float32)
+    _assert_close(out, ref_out, torch.float32)
 
 
 @pytest.mark.slow_conv_dilated3d_out
@@ -279,8 +289,8 @@ def test_slow_conv_dilated3d_out_unbatched():
     weight = _make((3, 2, 3, 3, 3), torch.float32, seed=18)
 
     ref_out = _reference(
-        utils.to_reference(inp, True).unsqueeze(0),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True).unsqueeze(0),
+        _to_reference(weight, True),
         3,
         None,
         1,
@@ -293,7 +303,7 @@ def test_slow_conv_dilated3d_out_unbatched():
 
     assert res_out is out
     assert out.data_ptr() == pointer
-    utils.gems_assert_close(out, ref_out, torch.float32)
+    _assert_close(out, ref_out, torch.float32)
 
 
 @pytest.mark.slow_conv_dilated3d
@@ -319,8 +329,8 @@ def test_slow_conv_dilated3d_empty_batch():
     weight = _make((3, 2, 3, 3, 3), torch.float32, seed=19)
 
     ref_out = _reference(
-        utils.to_reference(inp, True),
-        utils.to_reference(weight, True),
+        _to_reference(inp, True),
+        _to_reference(weight, True),
         3,
         None,
         1,
