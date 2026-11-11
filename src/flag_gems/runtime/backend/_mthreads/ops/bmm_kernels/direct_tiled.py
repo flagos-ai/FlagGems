@@ -43,16 +43,16 @@ DIRECT_NT_BM64_BN128_BK64_F16_K71_PATH = (
 # Fixed, stride-aware launches avoid both the libtuner lookup in the generic
 # fallback and the full B.contiguous() copy for a transpose-view B tensor.
 _CATALOG_CONFIGS = {
-    (16384, 1, 4096): ("catalog_bm64_bn16_bk64_w4", 64, 16, 64, 4),
-    (512, 256, 2048): ("catalog_bm64_bn128_bk64_w8", 64, 128, 64, 8),
-    (128, 128, 64): ("catalog_bm64_bn64_bk64_w4", 64, 64, 64, 4),
-    (65, 257, 2049): ("catalog_bm32_bn64_bk64_w4", 32, 64, 64, 4),
+    (16384, 1, 4096): ("bm64_bn16_bk64_w4", 64, 16, 64, 4),
+    (512, 256, 2048): ("bm64_bn128_bk64_w8", 64, 128, 64, 8),
+    (128, 128, 64): ("bm64_bn64_bk64_w4", 64, 64, 64, 4),
+    (65, 257, 2049): ("bm32_bn64_bk64_w4", 32, 64, 64, 4),
 }
 _CATALOG_NT_GEMV_SHAPES = {(1, 64, 4096), (2, 16, 4096)}
-_CATALOG_PATH_PREFIX = "pr8526_"
-_CATALOG_NT_GEMV_PATH = "pr8526_nt_gemv"
+_CATALOG_PATH_PREFIX = "catalog_"
+_CATALOG_NT_GEMV_PATH = "catalog_nt_gemv"
 _CATALOG_GEMV4_SHAPE = (64, 4, 16384)
-_CATALOG_GEMV4_PATH = "pr8526_gemv4_bm1_bk2048_w4"
+_CATALOG_GEMV4_PATH = "catalog_gemv4_bm1_bk2048_w4"
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -385,11 +385,12 @@ def _common_inputs_eligible(a: torch.Tensor, b: torch.Tensor) -> bool:
 
 
 def _catalog_inputs_eligible(a: torch.Tensor, b: torch.Tensor) -> bool:
+    if a.ndim != 3 or b.ndim != 3:
+        return False
+
     shape = (a.shape[1], b.shape[2], a.shape[2])
     return (
-        a.ndim == 3
-        and b.ndim == 3
-        and a.shape[0] == b.shape[0]
+        a.shape[0] == b.shape[0]
         and a.shape[0] in (2, 4, 8)
         and a.shape[2] == b.shape[1]
         and (
