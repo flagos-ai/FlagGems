@@ -16,7 +16,7 @@ import logging
 
 import torch
 
-logger = logging.getLogger("flag_gems.ops.empty_permuted")
+logger = logging.getLogger(__name__)
 
 
 def _strides_from_physical_layout(size, physical_layout):

@@ -862,6 +862,18 @@ class WrapperGenerator:
         check: str = " == ".join(params)
         code.writeline(f"assert {check}, 'operand shapes mismatch'")
 
+    def _fill_scalar_fixed_tiles(self):
+        # Hopper+ fill_scalar tuning. Other vendors report unrelated "major"
+        # numbers from get_device_capability (e.g. ROCm gfx1201 -> 12).
+        import flag_gems
+
+        major, _ = get_device_capability()
+        return (
+            self.name.find("fill_scalar") != -1
+            and flag_gems.vendor_name == "nvidia"
+            and major >= 9
+        )
+
     def gen_task_partition(self, code: IndentedBuffer):
         code.writeline("# task partitioning")
         ndim = self.ndim
@@ -877,9 +889,10 @@ class WrapperGenerator:
             max_tile_size = self.config.max_tile_size
             if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
-            major, _ = get_device_capability()
-            if self.name.find("fill_scalar") != -1 and major >= 9:
-                code.writeline("tile_sizes = tuple([64])")
+            fill_fixed = self._fill_scalar_fixed_tiles()
+            if fill_fixed:
+                # One tile entry per dim: a 64-wide innermost tile, 1 elsewhere.
+                code.writeline(f"tile_sizes = tuple([1] * {ndim - 1} + [64])")
             else:
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size({max_tile_size}, *shape)"
@@ -895,7 +908,7 @@ class WrapperGenerator:
                     f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
                 )
             else:
-                if self.name.find("fill_scalar") != -1 and major >= 9:
+                if fill_fixed:
                     code.writeline("num_ctas = num_tiles")
                 else:
                     code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")
@@ -920,8 +933,8 @@ class WrapperGenerator:
             max_tile_size = self.config.max_tile_size
             if _tensor_inputs_all_complex(self.fx):
                 max_tile_size = max_tile_size // 2
-            major, _ = get_device_capability()
-            if self.name.find("fill_scalar") != -1 and major >= 9:
+            fill_fixed = self._fill_scalar_fixed_tiles()
+            if fill_fixed:
                 code.writeline("tile_sizes = tuple([1024])")
             else:
                 code.writeline(
@@ -937,7 +950,7 @@ class WrapperGenerator:
                     f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
                 )
             else:
-                if self.name.find("fill_scalar") != -1 and major >= 9:
+                if fill_fixed:
                     code.writeline("num_ctas = num_tiles")
                 else:
                     code.writeline(f"num_ctas = min({max_grid_size0}, num_tiles)")

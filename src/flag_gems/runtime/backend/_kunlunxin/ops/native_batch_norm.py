@@ -8,7 +8,7 @@ from torch import Tensor
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
 
-logger = logging.getLogger("flag_gems.ops.native_batch_norm")
+logger = logging.getLogger(__name__)
 rsqrt = tl_extra_shim.rsqrt
 
 

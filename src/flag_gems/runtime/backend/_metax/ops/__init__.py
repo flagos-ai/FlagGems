@@ -1,4 +1,3 @@
-from ._make_dep_token import _make_dep_token
 from ._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from .adaptive_avg_pool2d_backward import _adaptive_avg_pool2d_backward
@@ -12,20 +11,109 @@ from .arccosh_ import arccosh_
 from .as_strided_scatter import as_strided_scatter
 from .avg_pool3d import avg_pool3d_backward
 from .baddbmm import baddbmm, baddbmm_out
-from .bmm import bmm
-from .broadcast_to import broadcast_to
+from .bmm import bmm, bmm_out
+from .bmm_w8a8 import bmm_w8a8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .conv_depthwise2d import _conv_depthwise2d
+from .conv_tbc import conv_tbc
+from .conv_tbc_backward import conv_tbc_backward
 from .conv_transpose1d import conv_transpose1d, conv_transpose1d_output_size
+from .convolution_double_backward import _convolution_double_backward
+from .cross_attention import cross_attention
+from .dequantize import dequantize
 from .erfinv import erfinv
 from .erfinv_ import erfinv_
 from .exponential_ import exponential_
+from .fake_quantize_per_tensor_affine_cachemask_backward import (
+    fake_quantize_per_tensor_affine_cachemask_backward,
+)
 from .float_power_ import float_power_tensor_scalar_, float_power_tensor_tensor_
+from .foreach_abs import foreach_abs
+from .foreach_abs_ import foreach_abs_
+from .foreach_acos_ import foreach_acos_
+from .foreach_add_list import foreach_add_list
+from .foreach_add_list_ import foreach_add_list_
+from .foreach_add_scalar import foreach_add_scalar
+from .foreach_add_scalar_ import foreach_add_scalar_
+from .foreach_add_scalar_list import foreach_add_scalar_list
+from .foreach_add_scalar_list_ import foreach_add_scalar_list_
+from .foreach_addcdiv_scalar_ import foreach_addcdiv_scalar_
+from .foreach_addcdiv_scalar_list_ import foreach_addcdiv_scalar_list_
+from .foreach_addcdiv_tensor_ import foreach_addcdiv_tensor_
+from .foreach_addcmul_scalar_ import foreach_addcmul_scalar_
+from .foreach_addcmul_scalar_list_ import foreach_addcmul_scalar_list_
+from .foreach_asin_ import foreach_asin_
+from .foreach_atan import foreach_atan
+from .foreach_atan_ import foreach_atan_
+from .foreach_ceil import foreach_ceil
+from .foreach_clamp_max_list import foreach_clamp_max_list
+from .foreach_clamp_max_list_ import foreach_clamp_max_list_
+from .foreach_clamp_max_scalar import foreach_clamp_max_scalar
+from .foreach_clamp_max_scalar_ import foreach_clamp_max_scalar_
+from .foreach_clamp_max_scalar_list import foreach_clamp_max_scalar_list
+from .foreach_clamp_max_scalar_list_ import foreach_clamp_max_scalar_list_
+from .foreach_clamp_min_list import foreach_clamp_min_list
+from .foreach_clamp_min_list_ import foreach_clamp_min_list_
+from .foreach_clamp_min_scalar import foreach_clamp_min_scalar
+from .foreach_clamp_min_scalar_ import foreach_clamp_min_scalar_
+from .foreach_clamp_min_scalar_list import foreach_clamp_min_scalar_list
+from .foreach_clamp_min_scalar_list_ import foreach_clamp_min_scalar_list_
+from .foreach_copy_ import foreach_copy_
+from .foreach_cos import foreach_cos
+from .foreach_cos_ import foreach_cos_
+from .foreach_cosh import foreach_cosh
+from .foreach_cosh_ import foreach_cosh_
+from .foreach_div_list_ import foreach_div_list_
+from .foreach_div_scalar import foreach_div_scalar
+from .foreach_div_scalar_ import foreach_div_scalar_
+from .foreach_div_scalar_list import foreach_div_scalar_list
+from .foreach_div_scalar_list_ import foreach_div_scalar_list_
+from .foreach_div_tensor import foreach_div_tensor
+from .foreach_div_tensor_ import foreach_div_tensor_
+from .foreach_erf import foreach_erf
+from .foreach_erf_ import foreach_erf_
+from .foreach_exp import foreach_exp
+from .foreach_exp_ import foreach_exp_
+from .foreach_expm1 import foreach_expm1
+from .foreach_expm1_ import foreach_expm1_
+from .foreach_floor import foreach_floor
+from .foreach_floor_ import foreach_floor_
+from .foreach_frac import foreach_frac
+from .foreach_frac_ import foreach_frac_
+from .foreach_log import foreach_log
+from .foreach_log1p import foreach_log1p
+from .foreach_log2 import foreach_log2
+from .foreach_log2_ import foreach_log2_
+from .foreach_log10 import foreach_log10
+from .foreach_log10_ import foreach_log10_
+from .foreach_max import foreach_max
+from .foreach_maximum_list import foreach_maximum_list
+from .foreach_maximum_list_ import foreach_maximum_list_
+from .foreach_maximum_scalar import foreach_maximum_scalar
+from .foreach_maximum_scalar_ import foreach_maximum_scalar_
+from .foreach_maximum_scalar_list import foreach_maximum_scalar_list
+from .foreach_maximum_scalar_list_ import foreach_maximum_scalar_list_
+from .foreach_minimum_list import foreach_minimum_list
+from .foreach_minimum_list_ import foreach_minimum_list_
+from .foreach_minimum_scalar import foreach_minimum_scalar
+from .foreach_minimum_scalar_ import foreach_minimum_scalar_
+from .foreach_minimum_scalar_list import foreach_minimum_scalar_list
+from .foreach_minimum_scalar_list_ import foreach_minimum_scalar_list_
+from .foreach_mul_list import foreach_mul_list
+from .foreach_mul_list_ import foreach_mul_list_
+from .foreach_mul_scalar import foreach_mul_scalar
+from .foreach_mul_scalar_ import foreach_mul_scalar_
+from .foreach_mul_scalar_list import foreach_mul_scalar_list
+from .foreach_mul_scalar_list_ import foreach_mul_scalar_list_
+from .foreach_mul_tensor import foreach_mul_tensor
+from .foreach_mul_tensor_ import foreach_mul_tensor_
+from .foreach_neg import foreach_neg
 from .full import full
 from .full_like import full_like
 from .gcd_ import gcd_
 from .greater_equal import greater_equal_
+from .grouped_mm_w8a8 import grouped_mm_w8a8
 from .groupnorm import group_norm
 from .gru import gru, gru_data
 from .gt_scalar_ import gt_scalar_
@@ -81,6 +169,9 @@ except ImportError:
     # Skip the MetaX-only module when its backend is absent; the other modules
     # import normally and MetaX behaviour is unchanged.
     pass
+from ._make_dep_token import _make_dep_token
+from .mode import mode
+from .mul import mul, mul_
 from .mv import mv
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
@@ -102,6 +193,7 @@ from .replication_pad3d_backward import replication_pad3d_backward
 from .resolve_conj import resolve_conj
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rnn_tanh import rnn_tanh
+from .router_gemm import router_gemm
 from .rsqrt import rsqrt, rsqrt_
 from .scalar_tensor import scalar_tensor
 from .segment_reduce import segment_reduce, segment_reduce_out
@@ -142,6 +234,7 @@ from .zeros_like import zeros_like
 __all__ = [
     "_adaptive_avg_pool2d_backward",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
     "_make_dep_token",
     "_nested_view_from_buffer_copy",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -164,22 +257,109 @@ __all__ = [
     "baddbmm",
     "baddbmm_out",
     "bmm",
-    "broadcast_to",
+    "bmm_out",
+    "bmm_w8a8",
     "cholesky_inverse",
     "cholesky_solve",
     "cholesky_solve_out",
+    "conv_tbc",
+    "conv_tbc_backward",
     "conv_transpose1d",
     "conv_transpose1d_output_size",
+    "cross_attention",
+    "dequantize",
     "erfinv",
     "erfinv_",
     "exponential_",
+    "fake_quantize_per_tensor_affine_cachemask_backward",
     "float_power_tensor_scalar_",
     "float_power_tensor_tensor_",
+    "foreach_abs",
+    "foreach_abs_",
+    "foreach_acos_",
+    "foreach_add_list",
+    "foreach_add_list_",
+    "foreach_add_scalar",
+    "foreach_add_scalar_",
+    "foreach_add_scalar_list",
+    "foreach_add_scalar_list_",
+    "foreach_addcdiv_scalar_",
+    "foreach_addcdiv_scalar_list_",
+    "foreach_addcdiv_tensor_",
+    "foreach_addcmul_scalar_",
+    "foreach_addcmul_scalar_list_",
+    "foreach_asin_",
+    "foreach_atan",
+    "foreach_atan_",
+    "foreach_ceil",
+    "foreach_clamp_max_list",
+    "foreach_clamp_max_list_",
+    "foreach_clamp_max_scalar",
+    "foreach_clamp_max_scalar_",
+    "foreach_clamp_max_scalar_list",
+    "foreach_clamp_max_scalar_list_",
+    "foreach_clamp_min_list",
+    "foreach_clamp_min_list_",
+    "foreach_clamp_min_scalar",
+    "foreach_clamp_min_scalar_",
+    "foreach_clamp_min_scalar_list",
+    "foreach_clamp_min_scalar_list_",
+    "foreach_copy_",
+    "foreach_cos",
+    "foreach_cos_",
+    "foreach_cosh",
+    "foreach_cosh_",
+    "foreach_div_list_",
+    "foreach_div_scalar",
+    "foreach_div_scalar_",
+    "foreach_div_scalar_list",
+    "foreach_div_scalar_list_",
+    "foreach_div_tensor",
+    "foreach_div_tensor_",
+    "foreach_erf",
+    "foreach_erf_",
+    "foreach_exp",
+    "foreach_exp_",
+    "foreach_expm1",
+    "foreach_expm1_",
+    "foreach_floor",
+    "foreach_floor_",
+    "foreach_frac",
+    "foreach_frac_",
+    "foreach_log",
+    "foreach_log10",
+    "foreach_log10_",
+    "foreach_log1p",
+    "foreach_log2",
+    "foreach_log2_",
+    "foreach_max",
+    "foreach_maximum_list",
+    "foreach_maximum_list_",
+    "foreach_maximum_scalar",
+    "foreach_maximum_scalar_",
+    "foreach_maximum_scalar_list",
+    "foreach_maximum_scalar_list_",
+    "foreach_minimum_list",
+    "foreach_minimum_list_",
+    "foreach_minimum_scalar",
+    "foreach_minimum_scalar_",
+    "foreach_minimum_scalar_list",
+    "foreach_minimum_scalar_list_",
+    "foreach_mul_list",
+    "foreach_mul_list_",
+    "foreach_mul_scalar",
+    "foreach_mul_scalar_",
+    "foreach_mul_scalar_list",
+    "foreach_mul_scalar_list_",
+    "foreach_mul_tensor",
+    "foreach_mul_tensor_",
+    "foreach_neg",
     "full",
     "full_like",
     "gcd_",
     "greater_equal_",
     "group_norm",
+    "grouped_mm_w8a8",
     "gru",
     "gru_data",
     "gt_scalar_",
@@ -239,6 +419,9 @@ __all__ = [
     "mm_out",
     "mm_w8a8_int8",
     "mm_w8a8_int8_out",
+    "mode",
+    "mul",
+    "mul_",
     "mv",
     "mvlgamma",
     "mvlgamma_",
@@ -266,6 +449,7 @@ __all__ = [
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "rnn_tanh",
+    "router_gemm",
     "rsqrt",
     "rsqrt_",
     "scalar_tensor",

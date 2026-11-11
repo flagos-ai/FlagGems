@@ -38,6 +38,7 @@ MULTIROW_N = 256  # multi-row tile only pays off for normalized dims this small
 MULTIROW_M = 4096  # ... and only once there are enough rows to be launch-bound
 TILE_BUDGET = 8192  # rows * cols per 2D tile; keeps the tile in SRAM
 MULTIROW_MIN_GRID = 64  # keep at least ~this many programs so cores stay busy
+FLAT_BLOCK = 4096  # flat N==1 elementwise path block size (same as add_rms_norm)
 
 
 def _prev_pow2(n):
@@ -57,6 +58,34 @@ def _pick_tile_m(M, N):
     budget_cap = _prev_pow2(TILE_BUDGET // N)
     grid_cap = _prev_pow2(builtins.max(1, M // MULTIROW_MIN_GRID))
     return builtins.max(1, builtins.min(budget_cap, grid_cap))
+
+
+def _pick_tile_m_unmasked(M, N):
+    """TILE_M for the unmasked 2D tile kernel, or None if not applicable.
+
+    The tile kernel is strictly unmasked (any mask collapses block-DMA on XPU),
+    so it is only valid when M % TILE_M == 0 AND N fits the tile SRAM budget.
+    Same sweep as the XPU-validated add_rms_norm / rms_norm tile (TILE_M
+    power-of-2 is measurably faster than an odd value).
+    """
+    if N <= 256:
+        # Non-power-of-2 widths (e.g. N=100) get weak block-DMA; a larger tile
+        # amortizes both launch cost and the per-tile overhead (measured N=100:
+        # tm=64 ~1.7x faster than tm=32, plateau to tm=512). Power-of-2 N is
+        # already optimal at TILE_M=32/16, so keep those for the pow2 case.
+        cands = (64, 32, 16) if (N & (N - 1)) != 0 and M >= MULTIROW_M else (32, 16)
+        for cand in cands:
+            if M % cand == 0:
+                return cand
+        return None
+    tm = 16
+    while tm * N > 65536:  # keep the [TILE_M, N] fp32 tile within SRAM
+        tm //= 2
+    while tm >= 2:
+        if M % tm == 0:
+            return tm
+        tm //= 2
+    return None
 
 
 @libentry()
@@ -210,6 +239,69 @@ def fused_add_rmsnorm_multirow_kernel(
     tl.store(X + offs, y.to(X.dtype.element_ty), mask=m_mask[:, None])
 
 
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def fused_add_rmsnorm_tile2d_kernel(
+    X,  # pointer to the input (gets normalized output)
+    R,  # pointer to the residual (gets x + r)
+    W,  # pointer to the weight
+    eps,  # epsilon to avoid division by zero
+    TILE_M: tl.constexpr,
+    N: tl.constexpr,  # number of columns (normalized dim), used as tile width
+):
+    # Unmasked 2D multi-row tile (mirror add_rms_norm_tile2d_kernel). Strictly
+    # unmasked so XPU OffsetAnalysis emits block DMA; MUST only be launched when
+    # M % TILE_M == 0 (no out-of-range rows) and N is an exact constexpr width.
+    # The fused op additionally writes the residual sum back to R (one extra
+    # store vs add_rms_norm), matching fused_add_rmsnorm_multirow_kernel.
+    pid = ext.program_id(0)
+
+    n_off = tl.arange(0, N)
+    w = tl.load(W + n_off).to(tl.float32)
+
+    m_off = pid * TILE_M + tl.arange(0, TILE_M)
+    offs = m_off[:, None] * N + n_off[None, :]
+
+    x = tl.load(X + offs).to(tl.float32)
+    r = tl.load(R + offs).to(tl.float32)
+    x += r
+    # write the residual sum back to R
+    tl.store(R + offs, x.to(R.dtype.element_ty))
+
+    var = tl.sum(x * x, axis=1) / N
+    rrms = 1.0 / tl.sqrt(var + eps)
+
+    y = (x * rrms[:, None]).to(X.dtype.element_ty) * w[None, :]
+    # write the normalized output back to X
+    tl.store(X + offs, y.to(X.dtype.element_ty))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["eps"])
+def fused_add_rmsnorm_flat_kernel(
+    X,  # pointer to the input (gets normalized output)
+    R,  # pointer to the residual (gets x + r)
+    W,  # pointer to the weight (single element)
+    xnumel,  # total number of elements (== M, since N == 1)
+    eps,  # epsilon to avoid division by zero
+    BLOCK: tl.constexpr,
+):
+    # N == 1: every element is its own row, so rms_norm is elementwise
+    # y = (x+r) / sqrt((x+r)^2 + eps) * w[0]. A flat 1D kernel over numel in
+    # BLOCK-lane chunks avoids the per-row launch storm (same as rms_norm_flat_kernel).
+    pid = ext.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < xnumel
+    x = tl.load(X + offs, mask, other=0.0).to(tl.float32)
+    r = tl.load(R + offs, mask, other=0.0).to(tl.float32)
+    x += r
+    tl.store(R + offs, x.to(R.dtype.element_ty), mask=mask)
+    rrms = 1.0 / tl.sqrt(x * x + eps)
+    w = tl.load(W)
+    y = (x * rrms).to(X.dtype.element_ty) * w
+    tl.store(X + offs, y, mask=mask)
+
+
 def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     """
     This function performs fused residual addition and RMS normalization **in-place**.
@@ -224,6 +316,10 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
     BLOCK_SIZE = builtins.min(
         64 * 128, triton.next_power_of_2(N)
     )  # core_num * buffer_size_limit
+    # Keep contiguous: the kernels hardcode unit strides (tile kernel's `1`
+    # stride args) and assume row-contiguous layout, so these are correctness-
+    # necessary on non-contiguous inputs and no-ops (return self) when already
+    # contiguous. Native data movement, not aten fallback / CPU copy.
     x = x.contiguous()
     residual = residual.contiguous()
     weight = weight.contiguous()
@@ -234,30 +330,42 @@ def fused_add_rms_norm(x, residual, normalized_shape, weight, eps=1e-5):
             fused_add_rmsnorm_kernel_tile[M,](
                 x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
             )
-        elif N <= MULTIROW_N and M >= MULTIROW_M:
-            # Small N + many rows: the per-row kernel is launch-bound, so batch
-            # TILE_M rows per program to cut the grid from M to cdiv(M, TILE_M).
-            # Columns span exactly N (no padding) so the tile is one contiguous
-            # block -> block DMA. N is a constexpr for the same reason.
-            TILE_M = _pick_tile_m(M, N)
-            grid = (triton.cdiv(M, TILE_M),)
-            # The 2D multirow kernel does two masked stores (R then X); the
-            # TritonXPUUnrollControl pass fails on that store pattern, so disable
-            # it (same launch kwargs rms_norm's backward kernels use).
-            fused_add_rmsnorm_multirow_kernel[grid](
-                x,
-                residual,
-                weight,
-                M,
-                eps,
-                TILE_M,
-                N,
-                isCloseUnrollControl=True,
-                isCloseVectorization=True,
-            )
+        elif N == 1:
+            # Elementwise normalize: flat BLOCK-lane chunks (see kernel docstring).
+            grid = (triton.cdiv(M, FLAT_BLOCK),)
+            fused_add_rmsnorm_flat_kernel[grid](x, residual, weight, M, eps, FLAT_BLOCK)
         else:
-            need_mask = (N % BLOCK_SIZE) != 0
-            fused_add_rmsnorm_kernel[M,](
-                x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
-            )
+            TILE_M = _pick_tile_m_unmasked(M, N)
+            if TILE_M is not None:
+                # Unmasked 2D tile: strictly faster than any masked variant for
+                # every benchmark shape (see add_rms_norm / rms_norm tile2d notes).
+                grid = (M // TILE_M,)
+                fused_add_rmsnorm_tile2d_kernel[grid](
+                    x, residual, weight, eps, TILE_M, N
+                )
+            elif N <= MULTIROW_N and M >= MULTIROW_M:
+                # Small N + many rows, M not divisible by any unmasked TILE_M:
+                # batched masked multi-row fallback (correct, slower than the
+                # unmasked tile above, still better than per-row launches).
+                TILE_M = _pick_tile_m(M, N)
+                grid = (triton.cdiv(M, TILE_M),)
+                # The 2D multirow kernel does two masked stores (R then X); the
+                # TritonXPUUnrollControl pass fails on that store pattern, so disable
+                # it (same launch kwargs rms_norm's backward kernels use).
+                fused_add_rmsnorm_multirow_kernel[grid](
+                    x,
+                    residual,
+                    weight,
+                    M,
+                    eps,
+                    TILE_M,
+                    N,
+                    isCloseUnrollControl=True,
+                    isCloseVectorization=True,
+                )
+            else:
+                need_mask = (N % BLOCK_SIZE) != 0
+                fused_add_rmsnorm_kernel[M,](
+                    x, residual, weight, N, 1, N, 1, N, eps, BLOCK_SIZE, need_mask
+                )
     return x, residual

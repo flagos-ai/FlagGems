@@ -178,7 +178,6 @@ def cauchy_(self, median=0, sigma=1, *, generator=None):
 def cauchy(self, median=0, sigma=1, *, generator=None):
     """
     Out-of-place Cauchy distribution sampler.
-
     Returns a new tensor with elements drawn from the Cauchy distribution.
     """
     logger.debug("GEMS_KUNLUNXIN CAUCHY")
