@@ -19,6 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 # Shapes representative of common batch-norm workloads (2D up to 5D).
 # The feature dimension is always shape[1].
 SHAPES = [
@@ -102,15 +104,27 @@ def test_batch_norm_backward_elemt(shape, dtype, has_weight):
         ref_count,
     )
 
-    res_out = torch.batch_norm_backward_elemt(
-        grad_output,
-        inp,
-        mean,
-        invstd,
-        weight,
-        sum_dy,
-        sum_dy_xmu,
-        count,
-    )
+    if IS_KUNLUNXIN:
+        res_out = flag_gems.batch_norm_backward_elemt(
+            grad_output,
+            inp,
+            mean,
+            invstd,
+            weight,
+            sum_dy,
+            sum_dy_xmu,
+            count,
+        )
+    else:
+        res_out = torch.batch_norm_backward_elemt(
+            grad_output,
+            inp,
+            mean,
+            invstd,
+            weight,
+            sum_dy,
+            sum_dy_xmu,
+            count,
+        )
 
     utils.gems_assert_close(res_out, ref_out, dtype)
