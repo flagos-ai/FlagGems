@@ -170,14 +170,43 @@ def _dyn_quant_pack_4bit_weight(
 ) -> torch.Tensor:
     """Pack dynamic INT4 weights in ATen's portable fallback format."""
     logger.debug("GEMS_KUNLUNXIN _DYN_QUANT_PACK_4BIT_WEIGHT")
+    # Full contract validation, mirrored from the generic implementation so the
+    # backend override raises RuntimeError (not ZeroDivisionError) for the same
+    # invalid inputs. block_size <= 0 must be checked before any modulo.
+    if in_features <= 0 or in_features % 2 != 0:
+        raise RuntimeError("in_features must be positive and even for INT4 packing")
+    if out_features < 0:
+        raise RuntimeError("out_features must be nonnegative")
+    if block_size <= 0:
+        raise RuntimeError("block_size must be positive")
     if weights.dtype != torch.uint8:
         raise RuntimeError("_dyn_quant_pack_4bit_weight expects uint8 weights")
+    if weights.ndim != 2 or weights.shape != (out_features, in_features // 2):
+        raise RuntimeError("weights must have shape [out_features, in_features / 2]")
     if block_size != in_features and (
         block_size % 32 != 0 or in_features % block_size != 0
     ):
         raise RuntimeError(
             "group size must equal in_features or divide it as a multiple of 32"
         )
+    groups = in_features // block_size
+    scale_elements = out_features * groups
+    if not (
+        (scales_zeros.ndim == 1 and scales_zeros.numel() == scale_elements)
+        or (scales_zeros.ndim == 2 and scales_zeros.shape == (out_features, groups))
+    ):
+        raise RuntimeError(
+            "scales_zeros must have shape [out_features, in_features / block_size] "
+            "or its flat equivalent"
+        )
+    parameter_dtypes = (torch.float16, torch.bfloat16, torch.float32)
+    if scales_zeros.dtype not in parameter_dtypes:
+        raise RuntimeError("scales_zeros must have dtype float16, bfloat16 or float32")
+    if bias is not None:
+        if bias.ndim != 1 or bias.numel() != out_features:
+            raise RuntimeError("bias must have shape [out_features]")
+        if bias.dtype not in parameter_dtypes:
+            raise RuntimeError("bias must have dtype float16, bfloat16 or float32")
     if scales_zeros.device != weights.device or (
         bias is not None and bias.device != weights.device
     ):

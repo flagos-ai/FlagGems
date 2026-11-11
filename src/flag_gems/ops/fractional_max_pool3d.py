@@ -26,35 +26,15 @@ from flag_gems.utils.limits import get_dtype_min
 logger = logging.getLogger(__name__)
 
 
-FORWARD_CONFIGS = [
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 4}, num_warps=4),
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 8}, num_warps=4),
-    triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_warps=4),
-    triton.Config({"BLOCK_H": 4, "BLOCK_W": 16}, num_warps=4),
-    triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_warps=8),
-    triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_warps=8),
-]
-
-
 @libentry()
-@triton.autotune(
-    configs=FORWARD_CONFIGS,
-    key=["out_d", "out_h", "out_w", "kernel_d", "kernel_h", "kernel_w"],
-)
 @triton.jit
 def fractional_max_pool3d_forward_kernel(
     input_ptr,
     output_ptr,
     indices_ptr,
     random_samples_ptr,
-    # Input tensor strides
-    in_stride_n,
-    in_stride_c,
-    in_stride_d,
-    in_stride_h,
-    in_stride_w,
+    numel,
     # Input/Output shapes
-    in_c,
     in_d,
     in_h,
     in_w,
@@ -69,117 +49,91 @@ def fractional_max_pool3d_forward_kernel(
     kernel_d: tl.constexpr,
     kernel_h: tl.constexpr,
     kernel_w: tl.constexpr,
-    # Tiling meta-parameters
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    # Whether the plane-local flat index fits int32 (host-computed)
+    USE_INT32_IDX: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
     """Forward kernel for fractional max pool 3d.
 
-    Each program handles one (n, c) plane at a specific (d, h_tile, w_tile).
-    Grid: (N*C, out_d * cdiv(out_h, BLOCK_H) * cdiv(out_w, BLOCK_W))
+    One lane per output element (flat over N*C*D_out*H_out*W_out).  The pooling
+    window of every valid output position is guaranteed in-bounds by the host
+    assertion ``out + kernel - 1 <= in`` (alpha = (in - kernel) / (out - 1) >= 1),
+    so the per-window loads run without any mask; the tail lanes are folded onto
+    a valid position (safe_offsets) and only masked on the store.
     """
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    store_mask = offsets < numel
+    safe_offsets = tl.where(store_mask, offsets, 0)
 
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-    num_hw_blocks = num_h_blocks * num_w_blocks
+    out_hw = out_h * out_w
+    out_dhw = out_d * out_hw
+    nc = safe_offsets // out_dhw
+    rem = safe_offsets % out_dhw
+    d_out = rem // out_hw
+    rem2 = rem % out_hw
+    h_out = rem2 // out_w
+    w_out = rem2 % out_w
 
-    d_idx = pid_dhw // num_hw_blocks
-    hw_remainder = pid_dhw % num_hw_blocks
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
+    sample_d = tl.load(random_samples_ptr + nc * 3).to(tl.float32)
+    sample_h = tl.load(random_samples_ptr + nc * 3 + 1).to(tl.float32)
+    sample_w = tl.load(random_samples_ptr + nc * 3 + 2).to(tl.float32)
 
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
-    dtype = input_ptr.type.element_ty
-    min_val = get_dtype_min(dtype)
-
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
-
-    # Load random samples for this (n, c) plane
-    # random_samples layout: [N*C, 3] contiguous
-    sample_d = tl.load(random_samples_ptr + pid_nc * 3).to(tl.float32)
-    sample_h = tl.load(random_samples_ptr + pid_nc * 3 + 1).to(tl.float32)
-    sample_w = tl.load(random_samples_ptr + pid_nc * 3 + 2).to(tl.float32)
-
-    h_mask = h_out_offsets < out_h
-    w_mask = w_out_offsets < out_w
-
-    # Compute start positions inline for H and W dimensions
+    sample_alpha_d = (sample_d * alpha_d).to(tl.int32)
     sample_alpha_h = (sample_h * alpha_h).to(tl.int32)
     sample_alpha_w = (sample_w * alpha_w).to(tl.int32)
 
-    h_starts = ((h_out_offsets.to(tl.float32) + sample_h) * alpha_h).to(
+    d_start = ((d_out.to(tl.float32) + sample_d) * alpha_d).to(
+        tl.int32
+    ) - sample_alpha_d
+    h_start = ((h_out.to(tl.float32) + sample_h) * alpha_h).to(
         tl.int32
     ) - sample_alpha_h
-    w_starts = ((w_out_offsets.to(tl.float32) + sample_w) * alpha_w).to(
+    w_start = ((w_out.to(tl.float32) + sample_w) * alpha_w).to(
         tl.int32
     ) - sample_alpha_w
 
-    # Override last position: start[output_size - 1] = input_size - pool_size
-    h_starts = tl.where(h_out_offsets == out_h - 1, in_h - kernel_h, h_starts)
-    w_starts = tl.where(w_out_offsets == out_w - 1, in_w - kernel_w, w_starts)
+    # Override the last position: start[output_size - 1] = input_size - pool_size
+    d_start = tl.where(d_out == out_d - 1, in_d - kernel_d, d_start)
+    h_start = tl.where(h_out == out_h - 1, in_h - kernel_h, h_start)
+    w_start = tl.where(w_out == out_w - 1, in_w - kernel_w, w_start)
 
-    # Compute D start position for this d_idx
-    sample_alpha_d = (sample_d * alpha_d).to(tl.int32)
-    d_start = ((d_idx.to(tl.float32) + sample_d) * alpha_d).to(
-        tl.int32
-    ) - sample_alpha_d
-    # Override last D position
-    d_start = tl.where(d_idx == out_d - 1, in_d - kernel_d, d_start)
+    dtype = input_ptr.type.element_ty
+    min_val = get_dtype_min(dtype)
+    max_val = tl.full((BLOCK_SIZE,), min_val, dtype=tl.float32).to(dtype)
+    if USE_INT32_IDX:
+        max_idx = tl.full((BLOCK_SIZE,), -1, dtype=tl.int32)
+    else:
+        max_idx = tl.full((BLOCK_SIZE,), -1, dtype=tl.int64)
 
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
-
-    h_base = h_starts[:, None]
-    w_base = w_starts[None, :]
+    in_hw = in_h * in_w
+    in_dhw = in_d * in_hw
+    plane_base = input_ptr + nc * in_dhw
 
     for kd in range(kernel_d):
         d_in = d_start + kd
         for kh in range(kernel_h):
             for kw in range(kernel_w):
-                h_in = h_base + kh
-                w_in = w_base + kw
+                h_in = h_start + kh
+                w_in = w_start + kw
+                val = tl.load(plane_base + d_in * in_hw + h_in * in_w + w_in)
+                update = val > max_val
+                max_val = tl.where(update, val, max_val)
+                if USE_INT32_IDX:
+                    idx = d_in * in_hw + h_in * in_w + w_in
+                    max_idx = tl.where(update, idx, max_idx)
+                else:
+                    idx = (
+                        d_in.to(tl.int64) * in_hw
+                        + h_in.to(tl.int64) * in_w
+                        + w_in.to(tl.int64)
+                    )
+                    max_idx = tl.where(update, idx, max_idx)
 
-                in_mask = (
-                    h_mask[:, None]
-                    & w_mask[None, :]
-                    & (d_in >= 0)
-                    & (d_in < in_d)
-                    & (h_in >= 0)
-                    & (h_in < in_h)
-                    & (w_in >= 0)
-                    & (w_in < in_w)
-                )
-
-                input_offset = (
-                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
-                )
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=min_val
-                )
-                current_idx = d_in * in_h * in_w + h_in * in_w + w_in
-
-                update_mask = current_val > max_val_acc
-                max_val_acc = tl.where(update_mask, current_val, max_val_acc)
-                max_idx_acc = tl.where(update_mask, current_idx, max_idx_acc)
-
-    # Write output and indices
-    out_nc_offset = pid_nc * out_d * out_h * out_w
-    out_offsets = (
-        out_nc_offset
-        + d_idx * out_h * out_w
-        + h_out_offsets[:, None] * out_w
-        + w_out_offsets[None, :]
-    )
-    out_mask = h_mask[:, None] & w_mask[None, :]
-    tl.store(output_ptr + out_offsets, max_val_acc, mask=out_mask)
-    tl.store(indices_ptr + out_offsets, max_idx_acc, mask=out_mask)
+    tl.store(output_ptr + offsets, max_val, mask=store_mask)
+    if USE_INT32_IDX:
+        tl.store(indices_ptr + offsets, max_idx.to(tl.int64), mask=store_mask)
+    else:
+        tl.store(indices_ptr + offsets, max_idx, mask=store_mask)
 
 
 def fractional_max_pool3d(
@@ -271,24 +225,21 @@ def fractional_max_pool3d(
     if output.numel() == 0:
         return (output, indices) if return_indices else output
 
-    grid = lambda meta: (
-        in_n * in_c,
-        out_d
-        * triton.cdiv(out_h, meta["BLOCK_H"])
-        * triton.cdiv(out_w, meta["BLOCK_W"]),
-    )
+    # The plane-local flat index d*in_h*in_w + h*in_w + w fits int32 as long as
+    # the plane has fewer than 2**31 elements; use the cheaper int32 accumulator
+    # in that case, falling back to int64 for enormous planes.
+    use_int32_idx = (in_d * in_h * in_w) < (2**31)
+
+    numel = output.numel()
+    block_size = 128 if numel >= 8192 else 64
+    grid = (triton.cdiv(numel, block_size),)
 
     fractional_max_pool3d_forward_kernel[grid](
         input,
         output,
         indices,
         random_samples_flat,
-        input.stride(0),
-        input.stride(1),
-        input.stride(2),
-        input.stride(3),
-        input.stride(4),
-        in_c,
+        numel,
         in_d,
         in_h,
         in_w,
@@ -301,6 +252,13 @@ def fractional_max_pool3d(
         kernel_d,
         kernel_h,
         kernel_w,
+        USE_INT32_IDX=use_int32_idx,
+        BLOCK_SIZE=block_size,
+        num_warps=1,
+        # XPU codegen knobs (silently ignored on other backends): these are
+        # what lets the kunlunxin backend vectorize the strided per-lane gather.
+        isCloseVectorization=True,
+        buffer_size_limit=2048,
     )
 
     if return_indices:

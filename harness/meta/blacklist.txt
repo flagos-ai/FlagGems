@@ -1,0 +1,32 @@
+# FlagGems Kunlunxin 黑名单
+# 禁止修改、恢复 dispatch、或加入 regression 的算子。
+# 来源: src/flag_gems/runtime/backend/_kunlunxin/op_black_list.yaml（"All dtypes failed"，当前不要求修）
+# 格式: <算子名>  # <原因>
+
+acos                        # All dtypes failed
+conv1d                      # All dtypes failed
+geglu                       # All dtypes failed
+grouped_topk                # All dtypes failed
+masked_scatter              # All dtypes failed
+masked_scatter_             # All dtypes failed
+moe_sum                     # All dtypes failed
+per_token_group_quant_fp8   # All dtypes failed
+reglu                       # All dtypes failed
+scaled_softmax              # All dtypes failed
+swiglu                      # All dtypes failed
+topk_softmax                # All dtypes failed
+
+# --- CUSTOMIZED_UNUSED_OPS（FlagGems 有意不覆盖、走原生实现，非修复目标）---
+cummin
+cumsum
+nll_loss2d
+randperm
+sort
+topk
+unique
+
+
+<system-reminder>
+Whenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.
+</system-reminder>
+

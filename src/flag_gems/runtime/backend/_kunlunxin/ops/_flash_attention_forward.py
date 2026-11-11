@@ -53,8 +53,20 @@ _LAST = None  # (query, key, value, flags, rec)
 def _generic_entry():
     global _GENERIC
     if _GENERIC is None:
-        gen = importlib.import_module("flag_gems.ops._flash_attention_forward")
-        _GENERIC = gen._flash_attention_forward
+        # The generic entry (flag_gems.ops._flash_attention_forward) routes into
+        # the Triton online flash kernel (flash_kernel.flash_fwd_kernel), which
+        # cannot be lowered on this backend: its BLOCK_M=128 online-softmax loop
+        # exceeds the SDNN event/sram budget (uni_sram "event demand 89 > 80"),
+        # and raising TRITON_SDNN_EVENT_LIMIT past the safe bound produces a
+        # kernel exception (status 702). Route to the backend's own two-pass
+        # _fa_qk_m_kernel/_fa_lout_kernel implementation (32x32 blocks, -1e30
+        # prefill, clamp-max + explicit zeroing) instead -- see
+        # _kunlunxin/ops/attention.py::flash_attention_forward and
+        # harness/KernelOpt_Knowledge item 20/29.
+        gen = importlib.import_module(
+            "flag_gems.runtime.backend._kunlunxin.ops.attention"
+        )
+        _GENERIC = gen.flash_attention_forward
     return _GENERIC
 
 

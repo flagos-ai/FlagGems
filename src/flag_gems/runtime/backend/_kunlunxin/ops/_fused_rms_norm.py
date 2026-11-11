@@ -156,3 +156,34 @@ def _fused_rms_norm(x, normalized_shape, weight=None, eps=1e-5):
     n = math.prod(normalized_shape)
     unit_weight = torch.ones(n, dtype=x.dtype, device=x.device)
     return _fused_rms_norm_forward(x, normalized_shape, unit_weight, eps)
+
+
+def _fused_rms_norm_backward(
+    grad_out, input, normalized_shape, rstd, weight=None, output_mask=(True, True)
+):
+    """Kunlunxin override of aten::_fused_rms_norm_backward.
+
+    The generic `flag_gems.ops._fused_rms_norm` backward kernels no longer
+    legalize on this XPU triton (`tl.sum(axis=0)` over a 2D tile and a
+    `triton_xpu.reduce` type-inference failure), so route through the working
+    `.rms_norm.rms_norm_backward` kernels instead. For the no-weight case the
+    dx formula equals the weight=ones result, so a unit weight is passed and
+    the weight gradient is discarded.
+    """
+    if len(output_mask) != 2:
+        raise ValueError("output_mask must contain two booleans")
+    if output_mask[1] and weight is None:
+        raise RuntimeError("weight gradient requested without a weight tensor")
+
+    if weight is None:
+        if not output_mask[0]:
+            return None, None
+        n = math.prod(normalized_shape)
+        unit_weight = torch.ones(n, dtype=input.dtype, device=input.device)
+        dx, _ = rms_norm_backward(
+            grad_out, input, rstd, normalized_shape, unit_weight
+        )
+        return dx, None
+
+    dx, dw = rms_norm_backward(grad_out, input, rstd, normalized_shape, weight)
+    return (dx if output_mask[0] else None), (dw if output_mask[1] else None)

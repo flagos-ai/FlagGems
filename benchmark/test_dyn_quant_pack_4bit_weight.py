@@ -22,6 +22,22 @@ import flag_gems
 from . import base
 
 
+def _torch_reference(weights, scales_zeros, bias, block_size, in_features, out_features):
+    """Timing reference matching the portable packed representation.
+
+    The XPU ATen reference kernel does not support bias and raises
+    ``Bias is unsupported in reference implementation``. The portable layout is
+    ``[weights.flatten().float(), scales_zeros.flatten().float(), bias]``, so the
+    reference packs without bias and appends the bias segment manually.
+    """
+    packed = torch.ops.aten._dyn_quant_pack_4bit_weight.default(
+        weights, scales_zeros, None, block_size, in_features, out_features
+    )
+    if bias is None:
+        return packed
+    return torch.cat([packed, bias.flatten().float()])
+
+
 class DynQuantPack4BitWeightBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         # Representative linear-layer widths with full-width and grouped quantization.
@@ -54,7 +70,7 @@ class DynQuantPack4BitWeightBenchmark(base.Benchmark):
 def test_dyn_quant_pack_4bit_weight():
     bench = DynQuantPack4BitWeightBenchmark(
         op_name="dyn_quant_pack_4bit_weight",
-        torch_op=torch.ops.aten._dyn_quant_pack_4bit_weight.default,
+        torch_op=_torch_reference,
         gems_op=flag_gems._dyn_quant_pack_4bit_weight,
         # The portable packed representation stores float32 scales and bias values.
         dtypes=[torch.float32],
