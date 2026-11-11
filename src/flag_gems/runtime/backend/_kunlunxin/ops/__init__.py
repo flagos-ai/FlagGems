@@ -557,7 +557,6 @@ from .lift_out import lift_out  # noqa: F401
 from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
-from .linalg_eigh import linalg_eigh
 from .linalg_householder_product import linalg_householder_product
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
@@ -1508,7 +1507,6 @@ __all__ = [
     "linalg_cross_out",
     "linalg_det",
     "linalg_det_out",
-    "linalg_eigh",
     "linalg_householder_product",
     "linalg_ldl_solve",
     "linalg_lstsq",
