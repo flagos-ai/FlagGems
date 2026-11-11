@@ -67,6 +67,12 @@ variants:
     inputs:
       n_elements: {min: 1}
       n_cols: {min: 1}
+      # Row-broadcast defaults are for shape planning. Collection and inference
+      # supply the actual broadcast strides from the kernel arguments.
+      a_s0: {default: 1}
+      a_s1: {default: 0}
+      b_s0: {default: n_cols}
+      b_s1: {default: 1}
       has_rhs: {default: 1}
       output_rank: {default: 2}
       same_shape: {default: 0}
@@ -83,6 +89,10 @@ variants:
     features:
       - {name: n_elements, op: ident, args: [n_elements]}
       - {name: n_cols, op: ident, args: [n_cols]}
+      - {name: a_s0, op: ident, args: [a_s0]}
+      - {name: a_s1, op: ident, args: [a_s1]}
+      - {name: b_s0, op: ident, args: [b_s0]}
+      - {name: b_s1, op: ident, args: [b_s1]}
       - {name: BLOCK_SIZE, op: ident, args: [BLOCK_SIZE]}
       - {name: num_warps, op: ident, args: [num_warps]}
       - {name: num_stages, op: ident, args: [num_stages]}
