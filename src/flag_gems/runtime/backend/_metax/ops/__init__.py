@@ -129,6 +129,7 @@ from .foreach_sqrt import foreach_sqrt
 from .foreach_sqrt_ import foreach_sqrt_
 from .foreach_sub_list import foreach_sub_list
 from .foreach_sub_list_ import foreach_sub_list_
+from .foreach_sub_scalar import foreach_sub_scalar
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -395,6 +396,7 @@ __all__ = [
     "foreach_sqrt_",
     "foreach_sub_list",
     "foreach_sub_list_",
+    "foreach_sub_scalar",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
