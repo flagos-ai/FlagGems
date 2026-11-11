@@ -25,6 +25,107 @@ Tensor = torch.Tensor
 logger = logging.getLogger(__name__)
 
 
+# One wrapper per payload entry. Triton keys its compile cache on the function
+# source, so the three dtypes must not share a wrapper definition: with a single
+# shared body every dtype launches whichever entry was compiled first.
+def _mk_cmb_16(tle, callee):
+    @triton.jit
+    def _cmb_k16(M, G, I, O):
+        tle.raw.call(callee, (M, G, I, O))
+
+    return _cmb_k16
+
+
+def _mk_cmb_bf16(tle, callee):
+    @triton.jit
+    def _cmb_kbf16(M, G, I, O):
+        tle.raw.call(callee, (M, G, I, O))
+
+    return _cmb_kbf16
+
+
+def _mk_cmb_32(tle, callee):
+    @triton.jit
+    def _cmb_k32(M, G, I, O):
+        tle.raw.call(callee, (M, G, I, O))
+
+    return _cmb_k32
+
+
+_CMB_WRAPPERS = {
+    "cmb_16": _mk_cmb_16,
+    "cmb_bf16": _mk_cmb_bf16,
+    "cmb_32": _mk_cmb_32,
+}
+
+_CMB_PAYLOAD_GRID = 12  # physical clusters
+_CMB_PAYLOAD = {"init": False, "ok": False, "kern": {}}
+_CMB_META_CACHE = {}
+
+
+def _cmb_payload_init():
+    if _CMB_PAYLOAD["init"]:
+        return _CMB_PAYLOAD["ok"]
+    _CMB_PAYLOAD["init"] = True
+    try:
+        import os
+
+        import triton as _triton
+        import triton.experimental.tle as _tle
+
+        obj = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "payload",
+            "obj",
+            "cmb.o",
+        )
+        for sym in ("cmb_16", "cmb_bf16", "cmb_32"):
+            ns = {"_tle": _tle, "_OBJ": obj}
+            exec(
+                "@_tle.raw.dialect('xpu3', object=_OBJ, arch=3)\n"
+                f"def {sym}(meta, grad, idx, out):\n"
+                "    ...\n",
+                ns,
+            )
+            _CMB_PAYLOAD["kern"][sym] = _CMB_WRAPPERS[sym](_tle, ns[sym])
+        _CMB_PAYLOAD["ok"] = True
+    except Exception as _e:  # pragma: no cover - keep backend importable
+        logger.debug("GEMS CUMMAXMIN_BWD payload init failed: %r", _e)
+        _CMB_PAYLOAD["ok"] = False
+    return _CMB_PAYLOAD["ok"]
+
+
+def _cmb_payload_launch(grad, indices, rows, n, out):
+    """True when the payload handled the op.
+
+    ``indices`` must be the int64, contiguous cummax/cummin indices; the
+    payload relies on the non-decreasing index property they always have.
+    """
+    if rows <= 0 or n <= 0:
+        return False
+    if not _cmb_payload_init():
+        return False
+    key = (rows, n, grad.device.index)
+    meta = _CMB_META_CACHE.get(key)
+    if meta is None:
+        meta = torch.tensor([rows, n], dtype=torch.int32, device=grad.device)
+        if len(_CMB_META_CACHE) >= 64:
+            _CMB_META_CACHE.clear()
+        _CMB_META_CACHE[key] = meta
+    if grad.dtype == torch.float32:
+        sym, g, o = "cmb_32", grad, out
+    elif grad.dtype == torch.float16:
+        sym, g, o = "cmb_16", grad.view(torch.int16), out.view(torch.int16)
+    elif grad.dtype == torch.bfloat16:
+        sym, g, o = "cmb_bf16", grad.view(torch.int16), out.view(torch.int16)
+    else:
+        return False
+    kern = _CMB_PAYLOAD["kern"][sym]
+    with torch_device_fn.device(grad.device):
+        kern[(_CMB_PAYLOAD_GRID,)](meta, g.view(-1), indices.view(-1), o.view(-1))
+    return True
+
+
 @triton.jit
 def _seg_fwd_combine(a_key, a_val, b_key, b_val):
     # Segmented-sum combine over a monotonically non-decreasing key sequence.
@@ -218,10 +319,10 @@ def cummaxmin_backward(
     reduction_size = shape[dim]
 
     grad_c = grad_output.contiguous()
-    # Segment keys are reduction positions (< 2**31), so int32 is sufficient and
-    # halves the (reversed) index traffic versus the int64 indices produced by
-    # the cummax/cummin forward pass.
-    indices_c = indices.contiguous().to(torch.int32)
+    # Keep the int64 indices for the payload path: the conversion below costs a
+    # full extra pass over them, and that pass is the dominant traffic of this
+    # op (8 bytes per element).
+    indices_i64 = indices.contiguous()
 
     inner_size = 1
     for i in range(dim + 1, ndim):
@@ -229,6 +330,20 @@ def cummaxmin_backward(
     outer_size = 1
     for i in range(dim):
         outer_size *= shape[i]
+
+    # tle.raw payload: one core per row, streaming run accumulation in fp32.
+    # The scatter-add target of a cummax/cummin index run is a single slot, so
+    # the row reduces to "sum each run, store it once" - no accumulator buffer,
+    # no atomics, and indices are read as int64 without a conversion pass.
+    if inner_size == 1 and indices_i64.dtype == torch.int64:
+        out = torch.zeros(shape, dtype=grad_output.dtype, device=grad_output.device)
+        if _cmb_payload_launch(grad_c, indices_i64, outer_size, reduction_size, out):
+            return out
+
+    # Segment keys are reduction positions (< 2**31), so int32 is sufficient and
+    # halves the (reversed) index traffic versus the int64 indices produced by
+    # the cummax/cummin forward pass.
+    indices_c = indices_i64.to(torch.int32)
 
     # Float32 accumulator matching the reference upcast-accumulate semantics.
     grad_input_f32 = torch.zeros(shape, dtype=torch.float32, device=grad_output.device)
