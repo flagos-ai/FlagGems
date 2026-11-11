@@ -54,6 +54,27 @@ def _wrapped_quantized_linear_prepacked_empty_k_kernel(
 
 @libentry()
 @triton.jit
+def _quantize_input_kernel(
+    input,
+    input_scale,
+    input_zero_point,
+    quantized,
+    numel,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < numel
+    values = tl.load(input + offsets, mask=mask, other=0.0).to(tl.float32)
+    scale = tl.load(input_scale).to(tl.float32)
+    zero_point = tl.load(input_zero_point).to(tl.int32)
+    quantized_values = _round_half_to_even(values / scale) + zero_point
+    quantized_values = tl.minimum(tl.maximum(quantized_values, 0.0), 255.0)
+    quantized_values = quantized_values.to(tl.int32) - 128
+    tl.store(quantized + offsets, quantized_values.to(tl.int8), mask=mask)
+
+
+@libentry()
+@triton.jit
 def _wrapped_quantized_linear_prepacked_kernel(
     input,
     input_scale,
@@ -92,14 +113,8 @@ def _wrapped_quantized_linear_prepacked_kernel(
     weight_sum = tl.zeros((BLOCK,), dtype=tl.int32)
 
     for k in range(0, K):
-        values = tl.load(input + rows * stride_im + k, mask=valid, other=0.0).to(
-            tl.float32
-        )
-        quantized_input = (
-            _round_half_to_even(values / input_scale_value) + input_zero_point_value
-        )
-        quantized_input = (
-            tl.minimum(tl.maximum(quantized_input, 0.0), 255.0).to(tl.int32) - 128
+        quantized_input = tl.load(input + rows * K + k, mask=valid, other=0).to(
+            tl.int32
         )
         quantized_weight = tl.load(weight + cols * K + k, mask=valid, other=0).to(
             tl.int32
@@ -187,13 +202,24 @@ def _wrapped_quantized_linear_prepacked(
         return output
 
     input_2d = input.reshape(M, K).contiguous()
-    # The scalar-k loop already needs most of the per-kernel pipeline-event
-    # budget on some toolchains, so run it without software pipelining.
+    # Quantize once up front: the per-k loop then only multiplies int8 values,
+    # which keeps its memory-op count inside the per-kernel pipeline budget.
+    quantized_input = torch.empty((M, K), dtype=torch.int8, device=input.device)
+    quantize_block = 1024
+    with torch_device_fn.device(input.device):
+        _quantize_input_kernel[(triton.cdiv(M * K, quantize_block),)](
+            input_2d,
+            input_scale,
+            input_zero_point,
+            quantized_input,
+            M * K,
+            BLOCK_SIZE=quantize_block,
+        )
     block_size = 64
     grid = (triton.cdiv(M * out_channel, block_size),)
     with torch_device_fn.device(input.device):
         _wrapped_quantized_linear_prepacked_kernel[grid](
-            input_2d,
+            quantized_input,
             input_scale,
             input_zero_point,
             quantized_weight,
