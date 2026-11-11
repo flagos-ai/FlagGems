@@ -53,6 +53,19 @@ def torch_ref(
     return_debug_mask=False,
     scale=None,
 ):
+    if flag_gems.vendor_name == "metax":
+        # The generic fused comparator exceeds the shared-memory limit on
+        # some master core shapes. Keep the same attention math on device.
+        scores = (query.float() @ key.float().transpose(-2, -1)) * (
+            query.shape[-1] ** -0.5 if scale is None else scale
+        )
+        if is_causal:
+            rows, cols = scores.shape[-2:]
+            mask = torch.ones(rows, cols, device=query.device, dtype=torch.bool)
+            scores = scores.masked_fill(~mask.tril(), float("-inf"))
+        weights = scores.softmax(dim=-1)
+        return (weights @ value.float()).to(query.dtype), scores.logsumexp(dim=-1)
+
     return flag_gems.ops.scaled_dot_product_attention_forward(
         query, key, value, is_causal=is_causal
     )
