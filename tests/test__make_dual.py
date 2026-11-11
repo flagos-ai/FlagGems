@@ -336,7 +336,7 @@ def test_accuracy__make_dual_registration_wiring():
     import sys
 
     import flag_gems as fg_pkg
-    from flag_gems.ops import _make_dual as impl_fn
+    from flag_gems.ops import _make_dual as impl_fn  # noqa: flag_gems_dispatch
 
     # ``flag_gems.ops._make_dual`` is both a submodule and the re-exported
     # function, so fetch the module from sys.modules rather than by attribute.
