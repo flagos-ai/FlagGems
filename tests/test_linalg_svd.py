@@ -433,7 +433,7 @@ def test__linalg_svd_orthonormal(shape, dtype):
 
 @pytest.mark.underscore_linalg_svd
 @pytest.mark.skipif(
-    cfg.TO_CPU, reason="the driver= contract is CUDA-only; a CPU reference rejects all"
+    utils.TO_CPU, reason="the driver= contract is CUDA-only; a CPU reference rejects all"
 )
 @pytest.mark.parametrize("driver", ["gesvd", "gesvda", "gesdd", "bogus", "", "GESVD"])
 def test__linalg_svd_driver(driver):
