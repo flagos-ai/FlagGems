@@ -443,7 +443,7 @@ def _mm_mN_t_host(a, W, C, M, K, N, NB, CS):
 # ---------------------------------------------------------------------------
 # tl.dot mm kernel (standard Triton dot, spine-mlir-main-rv64 lowering).
 #   Stride-aware fallback for shapes that do not use the SMT/raw vector path.
-#   The host wrapper chunks N so every launch stays within the 512-program limit.
+#   Each program iterates over output tiles to keep the launch within 512 programs.
 # ---------------------------------------------------------------------------
 @triton.jit
 def mm_tldot_kernel(
@@ -463,38 +463,41 @@ def mm_tldot_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    pid_m = tl.program_id(0)
-    pid_n = tl.program_id(1)
-    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
-    for ki in range(0, tl.cdiv(K, BLOCK_K)):
-        a_bp = tl.make_block_ptr(
-            base=a_ptr,
-            shape=(M, K),
-            strides=(stride_am, stride_ak),
-            offsets=(pid_m * BLOCK_M, ki * BLOCK_K),
-            block_shape=(BLOCK_M, BLOCK_K),
+    tiles_n = tl.cdiv(N, BLOCK_N)
+    tiles = tl.cdiv(M, BLOCK_M) * tiles_n
+    for task in range(tl.program_id(0), tiles, tl.num_programs(0)):
+        pid_m = task // tiles_n
+        pid_n = task % tiles_n
+        acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+        for ki in range(0, tl.cdiv(K, BLOCK_K)):
+            a_bp = tl.make_block_ptr(
+                base=a_ptr,
+                shape=(M, K),
+                strides=(stride_am, stride_ak),
+                offsets=(pid_m * BLOCK_M, ki * BLOCK_K),
+                block_shape=(BLOCK_M, BLOCK_K),
+                order=(1, 0),
+            )
+            b_bp = tl.make_block_ptr(
+                base=b_ptr,
+                shape=(K, N),
+                strides=(stride_bk, stride_bn),
+                offsets=(ki * BLOCK_K, pid_n * BLOCK_N),
+                block_shape=(BLOCK_K, BLOCK_N),
+                order=(1, 0),
+            )
+            a = tl.load(a_bp, boundary_check=(0, 1), padding_option="zero")
+            b = tl.load(b_bp, boundary_check=(0, 1), padding_option="zero")
+            acc += tl.dot(a, b)
+        c_bp = tl.make_block_ptr(
+            base=c_ptr,
+            shape=(M, N),
+            strides=(stride_cm, stride_cn),
+            offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
+            block_shape=(BLOCK_M, BLOCK_N),
             order=(1, 0),
         )
-        b_bp = tl.make_block_ptr(
-            base=b_ptr,
-            shape=(K, N),
-            strides=(stride_bk, stride_bn),
-            offsets=(ki * BLOCK_K, pid_n * BLOCK_N),
-            block_shape=(BLOCK_K, BLOCK_N),
-            order=(1, 0),
-        )
-        a = tl.load(a_bp, boundary_check=(0, 1), padding_option="zero")
-        b = tl.load(b_bp, boundary_check=(0, 1), padding_option="zero")
-        acc += tl.dot(a, b)
-    c_bp = tl.make_block_ptr(
-        base=c_ptr,
-        shape=(M, N),
-        strides=(stride_cm, stride_cn),
-        offsets=(pid_m * BLOCK_M, pid_n * BLOCK_N),
-        block_shape=(BLOCK_M, BLOCK_N),
-        order=(1, 0),
-    )
-    tl.store(c_bp, acc.to(c_ptr.dtype.element_ty), boundary_check=(0, 1))
+        tl.store(c_bp, acc.to(c_ptr.dtype.element_ty), boundary_check=(0, 1))
 
 
 # ---------------------------------------------------------------------------
@@ -614,32 +617,23 @@ def _pick_tldot_bn(N):
 
 
 def _mm_tldot_path(a, b, c, M, K, N):
-    """Run the stride-aware tl.dot kernel in chunks that fit the grid limit."""
+    """Cover all output tiles with one bounded launch."""
     bn = _pick_tldot_bn(N)
-    grid_m = triton.cdiv(M, _TLDOT_BM)
-    if grid_m > 512:
-        return False
-    max_tiles_n = max(1, 512 // grid_m)
-    chunk_n = max_tiles_n * bn
-    for n_start in range(0, N, chunk_n):
-        n_end = min(n_start + chunk_n, N)
-        b_chunk = b[:, n_start:n_end]
-        c_chunk = c[:, n_start:n_end]
-        grid_n = triton.cdiv(n_end - n_start, bn)
-        mm_tldot_kernel[(grid_m, grid_n)](
-            a,
-            b_chunk,
-            c_chunk,
-            M,
-            n_end - n_start,
-            K,
-            *a.stride(),
-            *b_chunk.stride(),
-            *c_chunk.stride(),
-            BLOCK_M=_TLDOT_BM,
-            BLOCK_N=bn,
-            BLOCK_K=_TLDOT_BK,
-        )
+    tiles = triton.cdiv(M, _TLDOT_BM) * triton.cdiv(N, bn)
+    mm_tldot_kernel[(min(tiles, 512),)](
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        *a.stride(),
+        *b.stride(),
+        *c.stride(),
+        BLOCK_M=_TLDOT_BM,
+        BLOCK_N=bn,
+        BLOCK_K=_TLDOT_BK,
+    )
     return True
 
 
