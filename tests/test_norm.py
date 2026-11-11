@@ -6,6 +6,7 @@ import flag_gems
 from .accuracy_utils import (
     FLOAT_DTYPES,
     REDUCTION_SHAPES,
+    fp64_is_supported,
     gems_assert_close,
     to_reference,
 )
