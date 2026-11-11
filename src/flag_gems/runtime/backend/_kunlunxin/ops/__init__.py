@@ -199,6 +199,7 @@ from ._scaled_dot_product_efficient_attention import (
 from ._scaled_dot_product_fused_attention_overrideable import (
     _scaled_dot_product_fused_attention_overrideable,
 )
+from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_fused_gru_cell import _thnn_fused_gru_cell, _thnn_fused_gru_cell_out
 from ._thnn_fused_lstm_cell import _thnn_fused_lstm_cell
@@ -2096,3 +2097,52 @@ def _patch_adaptive_max_pool3d_aten():
 
 
 _patch_adaptive_max_pool3d_aten()
+
+
+_sobol_engine_ff_ops_patched = False
+_sobol_engine_ff_aten_lib = None
+
+
+def _patch_sobol_engine_ff_ops_module():
+    """Route ``flag_gems.ops._sobol_engine_ff_`` and the ATen dispatch to the
+    vendor kernel.
+
+    1. ``SpecOpRegistrar`` only swaps the top-level ``flag_gems.<name>``, but
+       ``tests/test_sobol_engine_ff_.py`` (KernelGen-generated) calls the ops
+       submodule directly (``flag_gems.ops._sobol_engine_ff_``), so the vendor
+       kernel would never be exercised without this explicit patch.  The
+       ``setattr`` is process-global and idempotent; ``flag_gems.ops`` is
+       already fully imported when this module is loaded (``flag_gems/__init__.py``
+       does ``from flag_gems.ops import *`` before the vendor registrar runs).
+    2. The ATen op ``_sobol_engine_ff_`` has no CUDA kernel on this stack
+       (``_dispatch_has_kernel_for_dispatch_key(... CUDA)`` is False; a plain
+       call on a CUDA tensor falls through to the XDNN codegen shim and
+       segfaults, as noted in ``tests/test_sobol_engine_ff_.py``), and
+       ``use_gems()``'s ``lib.impl`` registration never takes effect.  The
+       import-time ``Library("aten", "IMPL")`` registration below (same pattern
+       as ``cast_Byte`` / ``_patch_adaptive_max_pool{2,3}d_aten``) makes
+       ``torch.ops.aten._sobol_engine_ff_`` on CUDA use the vendor kernel.
+    """
+    global _sobol_engine_ff_ops_patched, _sobol_engine_ff_aten_lib
+    if _sobol_engine_ff_ops_patched:
+        return
+    _sobol_engine_ff_ops_patched = True
+
+    import flag_gems
+
+    # Guard against an unusual import order where flag_gems.ops is not yet
+    # bound; in that case the SpecOpRegistrar top-level swap still applies.
+    if getattr(flag_gems, "ops", None) is not None:
+        setattr(flag_gems.ops, "_sobol_engine_ff_", _sobol_engine_ff_)
+
+    # ATen dispatch (CUDA) -> vendor kernel; the Library handle must be kept
+    # alive for the process lifetime.
+    import torch
+
+    _sobol_engine_ff_aten_lib = torch.library.Library("aten", "IMPL")
+    _sobol_engine_ff_aten_lib.impl(
+        "_sobol_engine_ff_", _sobol_engine_ff_, "CUDA", allow_override=True
+    )
+
+
+_patch_sobol_engine_ff_ops_module()
