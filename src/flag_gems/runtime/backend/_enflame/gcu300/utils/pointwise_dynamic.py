@@ -1099,17 +1099,33 @@ class WrapperGenerator:
                 else:
                     code.writeline(f"out{i}_stride_order = (0,)")
             max_tile_size = self.config.max_tile_size
+            tile_budget = None
+            if ndim >= 4 and with_block_pointer:
+                # GCU300 lowers rank>=4 block-pointer tiles into doubled
+                # staging buffers that are kept in fp32 regardless of the
+                # element type, so the default tile budget (32K elements,
+                # scaled by `factor`) needs ~1.5MB of local memory for a
+                # 3-operand kernel and exceeds the 1572352-byte hardware
+                # limit. Cap the tile element count for these ranks.
+                tile_budget = 32 * 1024
+
+            def tile_budget_expr():
+                expr = f"{max_tile_size} * factor"
+                if tile_budget is not None:
+                    expr = f"min({expr}, {tile_budget})"
+                return expr
+
             code.writeline("if FlagOfNotUseDMA:")
             with code.indent():
                 code.writeline("factor = max(1, factor // 4)")
                 code.writeline(
                     f"tile_sizes = heuristics_for_tile_size_with_mmu_constraint("
-                    f"{max_tile_size} * factor, out0.element_size(), out0_strides, *shape)"
+                    f"{tile_budget_expr()}, out0.element_size(), out0_strides, *shape)"
                 )
             code.writeline("else:")
             with code.indent():
                 code.writeline(
-                    f"tile_sizes = heuristics_for_tile_size({max_tile_size} * factor, *shape)"
+                    f"tile_sizes = heuristics_for_tile_size({tile_budget_expr()}, *shape)"
                 )
             code.writeline("tile_size = math.prod(tile_sizes)")
             code.writeline(

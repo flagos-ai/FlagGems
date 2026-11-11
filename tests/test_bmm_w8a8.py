@@ -427,3 +427,33 @@ def test_channel_int8_bmm_keyword_config(out_dtype):
     torch.testing.assert_close(
         actual, expected, atol=1e-5, rtol=0.002 if out_dtype == torch.float16 else 0.01
     )
+
+
+@pytest.mark.parametrize(
+    "invalid_input", ["batch", "weight_layout", "scale_shape", "scale_dtype"]
+)
+@pytest.mark.bmm_w8a8
+@requires_channel_int8_bmm
+@pytest.mark.skipif(
+    not flag_gems.bmm_w8a8.__module__.endswith("_thead.ops.bmm_w8a8_int8"),
+    reason="THead layout and scale contract",
+)
+def test_channel_int8_bmm_input_contract(invalid_input):
+    activation = torch.empty((2, 8, 16), device=flag_gems.device, dtype=torch.int8)
+    weight = torch.empty(
+        (2, 32, 16), device=activation.device, dtype=torch.int8
+    ).transpose(1, 2)
+    activation_scale = torch.ones((2, 8), device=activation.device)
+    weight_scale = torch.ones((2, 32), device=activation.device)
+    error_type = ValueError
+    if invalid_input == "batch":
+        weight = weight[:1]
+    elif invalid_input == "weight_layout":
+        weight = weight.contiguous()
+    elif invalid_input == "scale_shape":
+        activation_scale = activation_scale[:, :7]
+    else:
+        weight_scale = weight_scale.to(torch.int8)
+        error_type = TypeError
+    with pytest.raises(error_type):
+        flag_gems.bmm_w8a8(activation, weight, activation_scale, weight_scale)

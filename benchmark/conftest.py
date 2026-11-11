@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import json
 import logging
 import os
@@ -19,6 +20,7 @@ from pathlib import Path
 
 import pytest
 import torch
+import triton
 import yaml
 
 import flag_gems
@@ -33,6 +35,7 @@ from .reference import reference_report, validate_reference_options
 
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
+
 recordLogger = logging.getLogger("flag_gems_benchmark")
 recordLogger.propagate = False
 Config = None
@@ -501,6 +504,22 @@ def pytest_unconfigure(config):
 def setup_once(request):
     if request.config.getoption("--query"):
         print("\nThis is query mode; all benchmark functions will be skipped.")
+    elif (
+        vendor_name == "mthreads"
+        and Config.mode == consts.BenchMode.CUDAGRAPH
+        and not (
+            Config.list_cases
+            or Config.preflight_only
+            or Config.reference_only
+            or Config.profile_only
+        )
+    ):
+        # Graph benchmarks need CUDA-to-MUSA aliases, but collection does not.
+        next_power_of_2 = triton.next_power_of_2
+        try:
+            importlib.import_module("torchada")
+        finally:
+            triton.next_power_of_2 = next_power_of_2
 
 
 @pytest.fixture(scope="function", autouse=True)
