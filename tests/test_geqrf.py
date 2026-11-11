@@ -223,7 +223,7 @@ def test_geqrf_value_range(shape, value_range, dtype):
     tu.assert_result_close(res_a, ref_a)
     tu.assert_result_close(res_tau, ref_tau)
     # The default overload is not in-place.
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
@@ -267,7 +267,7 @@ def test_geqrf_non_contiguous_input(layout, dtype):
 
     tu.assert_result_close(res_a, ref_a)
     tu.assert_result_close(res_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
@@ -291,7 +291,7 @@ def test_geqrf_out_buffers(shape, layout, dtype):
     assert out_buffer_metadata((out_a, out_tau)) == supplied_metadata
     tu.assert_result_close(out_a, ref_a)
     tu.assert_result_close(out_tau, ref_tau)
-    tu.assert_result_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, atol=0, rtol=0, equal_nan=True)
 
 
 @pytest.mark.geqrf
