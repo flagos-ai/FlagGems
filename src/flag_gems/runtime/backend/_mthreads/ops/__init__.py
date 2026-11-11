@@ -182,6 +182,7 @@ from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
+from .uniform import uniform
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
@@ -385,6 +386,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "uniform",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "var",
