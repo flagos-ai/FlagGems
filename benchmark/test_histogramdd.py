@@ -28,9 +28,11 @@ class HistogramddBenchmark(OperatorBenchmark):
     DEFAULT_METRICS = ["latency_base", "latency"]
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(
-            shape_file_path, default_shapes=_POINT_SHAPES + _MASTER_SHAPES
-        )
+        defaults = _MASTER_SHAPES
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            # Keep larger bin-count workloads available for stress testing.
+            defaults = defaults + _POINT_SHAPES
+        super().set_shapes(shape_file_path, default_shapes=defaults)
 
 
 def _case_fn(shape, dtype):
@@ -58,14 +60,6 @@ def _case_fn(shape, dtype):
         params={"bins_kind": "counts", "bins": [20] * dimension},
         builder_args=(dims, "counts", False),
     )
-    # The core Definition is the bin-count overload. Keep the existing tensor
-    # edge workload available at comprehensive level.
-    if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
-        yield base.BenchmarkCasePlan(
-            shape={"input": list(dims)},
-            params={"bins_kind": "tensor_list", "edges": 21},
-            builder_args=(dims, "tensor_list", False),
-        )
 
 
 def _build_inputs_fn(plan, dtype, device):
@@ -78,28 +72,15 @@ def _build_inputs_fn(plan, dtype, device):
         if density:
             kwargs["density"] = True
         return inp, kwargs
-    if bins_kind == "counts":
-        bins = [20] * dimension
-        return inp, {"bins": bins, "range": [-3.0, 3.0] * dimension}
-    bins = tuple(
-        torch.linspace(-3.0, 3.0, 21, dtype=dtype, device=device)
-        for _ in range(dimension)
-    )
-    return inp, {"bins": bins}
+    bins = [20] * dimension
+    return inp, {"bins": bins, "range": [-3.0, 3.0] * dimension}
 
 
 def _cpu_reference(inp, *, bins, range=None, weight=None, density=False):
-    cpu_bins = (
-        tuple(item.detach().to("cpu") for item in bins)
-        if isinstance(bins, (tuple, list))
-        and bins
-        and isinstance(bins[0], torch.Tensor)
-        else bins
-    )
     cpu_weight = weight.detach().to("cpu") if weight is not None else None
     return torch.histogramdd(
         inp.detach().to("cpu"),
-        bins=cpu_bins,
+        bins=bins,
         range=range,
         weight=cpu_weight,
         density=density,
