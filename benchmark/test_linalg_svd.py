@@ -22,7 +22,7 @@ from .test_linalg_cond import _MusaLinalgStaticBaseline
 SHAPES = [(8, 8), (16, 16), (32, 32), (64, 64)]
 
 
-class OperatorCaseBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
+class LinalgSvdBenchmark(_MusaLinalgStaticBaseline, OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = list(SHAPES)
         self.shape_desc = "(*B), M, N"
@@ -33,23 +33,42 @@ def _case_fn(shape, dtype):
     dims = tuple(shape)
     yield base.BenchmarkCasePlan(
         shape={"input": list(dims)},
-        params={"full_matrices": False},
+        params={"full_matrices": base.vendor_name != "mthreads"},
         builder_args=(dims,),
     )
 
 
 def _build_inputs_fn(plan, dtype, device):
     (shape,) = plan.builder_args
-    torch.manual_seed(0)
+    if base.vendor_name == "mthreads":
+        torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=device)
-    return (inp, {"full_matrices": False})
+    return inp, dict(plan.params)
 
 
 @pytest.mark.linalg_svd
 def test_linalg_svd():
-    OperatorCaseBenchmark(
+    LinalgSvdBenchmark(
         op_name="linalg_svd",
         torch_op=torch.linalg.svd,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
+        dtypes=[torch.float32],
+    ).run()
+
+
+
+class LinalgSvdPrivateBenchmark(OperatorBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = list(SHAPES)
+        self.shape_desc = "(*B), M, N"
+
+
+@pytest.mark.underscore_linalg_svd
+def test__linalg_svd():
+    LinalgSvdPrivateBenchmark(
+        op_name="_linalg_svd",
+        torch_op=torch.ops.aten._linalg_svd.default,
         case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         dtypes=[torch.float32],
