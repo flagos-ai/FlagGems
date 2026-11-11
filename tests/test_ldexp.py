@@ -93,6 +93,17 @@ def test_ldexp(shape, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+def _promotion_reference(inp, exponent):
+    if flag_gems.vendor_name == "iluvatar" and exponent.dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        return torch.ops.aten.ldexp.Tensor(inp.cpu(), exponent.cpu())
+    return torch.ops.aten.ldexp.Tensor(
+        utils.to_reference(inp), utils.to_reference(exponent)
+    )
+
+
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
     "self_dtype,other_dtype,expected_dtype",
@@ -118,15 +129,15 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     else:
         other = torch.randint(-8, 9, shape, dtype=other_dtype, device=flag_gems.device)
 
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    ref_out = _promotion_reference(self, other)
 
     res_out = flag_gems.ldexp(self, other)
 
     assert ref_out.dtype == expected_dtype
     assert res_out.dtype == ref_out.dtype
-    utils.gems_assert_close(res_out, ref_out, expected_dtype)
+    assert res_out.device == self.device
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    utils.gems_assert_close(compared, ref_out, expected_dtype)
 
 
 @pytest.mark.ldexp
@@ -143,15 +154,15 @@ def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
     other = torch.randn((), dtype=other_dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
 
-    ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
+    ref_out = _promotion_reference(self, other)
     res_out = flag_gems.ldexp(self, other)
 
     assert ref_out.dtype == expected_dtype
     assert res_out.dtype == ref_out.dtype
-    utils.gems_assert_close(res_out, ref_out, expected_dtype)
+    assert res_out.device == self.device
+    compared = res_out.cpu() if ref_out.device.type == "cpu" else res_out
+    utils.gems_assert_close(compared, ref_out, expected_dtype)
 
 
 @pytest.mark.ldexp
