@@ -590,6 +590,15 @@ def _jacobi_eigh_real(A, n, compute_v=True):
         _jacobi_eigh_global_init_kernel[(batch,)](
             A, work, V, N=n, BLOCK_N=block_n, COMPUTE_V=compute_v, num_warps=4
         )
+        # TEMP-DIAG (PR #8768): remove once the CI-only garbage output is root
+        # caused.  Prints only for the tiny shapes the failing case uses.
+        if n <= 8:
+            print(
+                f"EIGHDBG init n={n} batch={batch} "
+                f"A={A.reshape(-1)[:6].tolist()} "
+                f"work={work.reshape(-1)[:6].tolist()}",
+                flush=True,
+            )
         for _ in range(sweeps):
             for step in range(round_n - 1):
                 _jacobi_eigh_global_cs_kernel[(batch, half)](
@@ -624,6 +633,13 @@ def _jacobi_eigh_real(A, n, compute_v=True):
         _jacobi_eigh_extract_diag_kernel[(batch,)](
             work, W, n, BLOCK_N=block_n, num_warps=4
         )
+        if n <= 8:
+            print(
+                f"EIGHDBG diag n={n} "
+                f"work={work.reshape(-1)[:6].tolist()} "
+                f"W={W.reshape(-1)[:6].tolist()}",
+                flush=True,
+            )
     Ws = W
 
     # Ascending sort of eigenvalues; permute eigenvector columns only when V
@@ -635,6 +651,14 @@ def _jacobi_eigh_real(A, n, compute_v=True):
             _jacobi_eigh_sort_kernel[(batch, n)](
                 Ws, V, W_sorted, V_sorted, N=n, BLOCK_N=block_n, num_warps=1
             )
+            if n <= 8:
+                print(
+                    f"EIGHDBG sort n={n} "
+                    f"Ws={Ws.reshape(-1)[:6].tolist()} "
+                    f"W_sorted={W_sorted.reshape(-1)[:6].tolist()} "
+                    f"V_sorted={V_sorted.reshape(-1)[:9].tolist()}",
+                    flush=True,
+                )
         return W_sorted, V_sorted
     else:
         # Eigenvalues only: sort W ascending on device (no eigenvectors to
