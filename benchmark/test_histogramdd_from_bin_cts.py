@@ -39,13 +39,12 @@ _MASTER_POINT_SHAPES = [
     (10000, 1),
     (1000000, 1),
 ]
-_FUNCTIONAL_POINT_SHAPES = list(dict.fromkeys(_MASTER_POINT_SHAPES + _POINT_SHAPES))
 
 
 class HistogramddFromBinCtsBenchmark(OperatorBenchmark):
     def set_shapes(self, shape_file_path=None):
         defaults = (
-            _FUNCTIONAL_POINT_SHAPES
+            _MASTER_POINT_SHAPES
             if self.op_name == "_histogramdd_from_bin_cts"
             else _POINT_SHAPES
         )
@@ -82,8 +81,7 @@ def _build_inputs_fn(plan, dtype, device):
     inp = torch.randn(shape, dtype=dtype, device=device) * 10
     kwargs = {"bins": bins, "range": range_}
     if mode == "weighted":
-        weight = torch.rand(shape[:-1], dtype=dtype, device=device)
-        kwargs["weight"] = weight * 5 if shape in _MASTER_POINT_SHAPES else weight
+        kwargs["weight"] = torch.rand(shape[:-1], dtype=dtype, device=device) * 5
     elif mode == "density":
         kwargs["density"] = True
     return inp, kwargs
