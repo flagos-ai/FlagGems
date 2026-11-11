@@ -28,6 +28,7 @@ from . import base
 from .generated_operator_utils import OperatorBenchmark
 
 SHAPES = [(4, 4), (16, 1), (33, 16), (64, 64), (128, 128)]
+_METAX_MASTER_SHAPES = [(8, 8), (16, 16), (32, 32), (48, 32), (64, 1), (256, 64)]
 DTYPES = [torch.float32] + (
     [torch.float64] if flag_gems.runtime.device.support_fp64 else []
 )
@@ -347,7 +348,13 @@ class LinalgLuSolveBenchmark(OperatorBenchmark):
             self._lu_native_pending = False
 
     def set_shapes(self, shape_file_path=None):
-        super().set_shapes(shape_file_path, default_shapes=SHAPES)
+        # Ascend's static timing records cover only the existing five shapes.
+        shapes = (
+            SHAPES + _METAX_MASTER_SHAPES
+            if flag_gems.vendor_name == "metax"
+            else SHAPES
+        )
+        super().set_shapes(shape_file_path, default_shapes=shapes)
 
 
 def _case_fn(shape, dtype):
