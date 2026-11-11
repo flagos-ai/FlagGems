@@ -28,7 +28,14 @@ def test_special_bessel_y1(shape, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = utils.to_reference(inp, True)
 
+    # MetaX's native bessel_y1 kernel exceeds the configured private memory limit.
+    use_cpu_oracle = flag_gems.vendor_name == "metax"
+    if use_cpu_oracle:
+        ref_inp = ref_inp.cpu()
     ref_out = torch.special.bessel_y1(ref_inp)
     res_out = flag_gems.special_bessel_y1(inp)
+    assert res_out.device == inp.device
+    if use_cpu_oracle:
+        res_out = res_out.cpu()
 
     utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
