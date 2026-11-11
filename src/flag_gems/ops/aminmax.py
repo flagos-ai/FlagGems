@@ -129,6 +129,10 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
         # copy path for views; contiguous inputs (including offsets) are a no-op.
         inp = contiguous(inp)
         M = inp.numel()
+        if M == 0:
+            raise RuntimeError(
+                "aminmax(): reduction dim is empty and does not have an identity"
+            )
         block_size = triton.next_power_of_2(math.ceil(math.sqrt(M)))
         mid_size = triton.cdiv(M, block_size)
         block_mid = triton.next_power_of_2(mid_size)
@@ -143,13 +147,16 @@ def aminmax(inp, dim=None, keepdim=False, *, out=None):
                 min_out = min_out.squeeze()
                 max_out = max_out.squeeze()
         else:
-            if not keepdim:
-                min_out = torch.empty([], dtype=dtype, device=inp.device)
-                max_out = torch.empty([], dtype=dtype, device=inp.device)
-            else:
-                shape = [1] * inp.dim()
-                min_out = torch.empty(shape, dtype=dtype, device=inp.device)
-                max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            # ATen's global bool aminmax keeps scalar shape even when
+            # keepdim=True; other dtypes preserve the historical [1] shape.
+            shape = () if not keepdim or dtype == torch.bool else (1,) * inp.dim()
+            min_out = torch.empty(shape, dtype=dtype, device=inp.device)
+            max_out = torch.empty(shape, dtype=dtype, device=inp.device)
+
+        if inp.is_floating_point() and bool(torch.isnan(inp).any().item()):
+            min_out.fill_(float("nan"))
+            max_out.fill_(float("nan"))
+            return min_out, max_out
 
         with torch_device_fn.device(inp.device):
             aminmax_kernel_1[(mid_size, 1)](

@@ -328,7 +328,7 @@ def test_aminmax_global_views(dtype, layout, keepdim):
     assert (inp.shape, inp.stride(), inp.storage_offset(), inp.data_ptr()) == metadata
     assert res_min.dtype == res_max.dtype == dtype
     assert res_min.device == res_max.device == inp.device
-    assert res_min.shape == res_max.shape == ((1,) * inp.ndim if keepdim else ())
+    assert res_min.shape == res_max.shape == ref_min.shape
 
 
 @pytest.mark.aminmax
@@ -397,11 +397,6 @@ def test_aminmax_global_scalar(keepdim):
 
 
 @pytest.mark.aminmax
-@pytest.mark.xfail(
-    strict=True,
-    reason="Existing public global NaN propagation defect; independent of strides",
-    raises=AssertionError,
-)
 @pytest.mark.parametrize("strided", [False, True])
 def test_aminmax_global_logical_nan_contract(strided):
     storage = torch.tensor([1, 99, float("nan"), 99, -3, 99], device=flag_gems.device)
@@ -413,11 +408,6 @@ def test_aminmax_global_logical_nan_contract(strided):
 
 
 @pytest.mark.aminmax
-@pytest.mark.xfail(
-    strict=True,
-    reason="Observed host divide-by-zero in public global empty aminmax",
-    raises=ZeroDivisionError,
-)
 @pytest.mark.parametrize("shape", [(0,), (2, 0, 3)])
 def test_aminmax_global_empty_contract(shape):
     storage = torch.empty(shape, dtype=torch.float32, device=flag_gems.device)
