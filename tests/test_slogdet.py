@@ -477,11 +477,14 @@ def test_slogdet_backward(dtype):
     if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
         # Native Double implicit seeds are zero on this backend. The candidate's
         # target metadata is checked above; create only the loss seed on CPU.
-        logabsdet = logabsdet.cpu()
-    logabsdet.backward()
+        # Leaf gradient accumulation can also zero FP64 values on Iluvatar.
+        (gems_grad,) = torch.autograd.grad(logabsdet.cpu(), gems_A)
+    else:
+        logabsdet.backward()
+        gems_grad = gems_A.grad
 
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
@@ -505,11 +508,13 @@ def test_slogdet_batched_backward(dtype):
     gems_A = A.clone().requires_grad_(True)
     _, logabsdet = _candidate_slogdet(gems_A)
     if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
-        logabsdet = logabsdet.cpu()
-    logabsdet.sum().backward()
+        (gems_grad,) = torch.autograd.grad(logabsdet.cpu().sum(), gems_A)
+    else:
+        logabsdet.sum().backward()
+        gems_grad = gems_A.grad
 
     torch.testing.assert_close(
-        gems_A.grad.cpu(), ref_A.grad.cpu().to(gems_A.grad.dtype), **_tols(dtype, n)
+        gems_grad.cpu(), ref_A.grad.cpu().to(gems_grad.dtype), **_tols(dtype, n)
     )
 
 
