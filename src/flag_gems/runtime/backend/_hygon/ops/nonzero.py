@@ -29,7 +29,7 @@ _MAX_BLOCKS = 4096
 
 @libentry()
 @triton.jit
-def _count_nonzero(inp, work, N: tl.constexpr, BLOCK: tl.constexpr):
+def _count_nonzero(inp, work, N, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offsets = pid * BLOCK + tl.arange(0, BLOCK)
     values = tl.load(inp + offsets, mask=offsets < N, other=0)
@@ -39,7 +39,7 @@ def _count_nonzero(inp, work, N: tl.constexpr, BLOCK: tl.constexpr):
 
 @libentry()
 @triton.jit
-def _scan_counts(work, total, NB: tl.constexpr, SCAN: tl.constexpr):
+def _scan_counts(work, total, NB, SCAN: tl.constexpr):
     offsets = tl.arange(0, SCAN)
     counts = tl.load(work + offsets, mask=offsets < NB, other=0)
     inclusive = tl.cumsum(counts, axis=0)
@@ -53,9 +53,10 @@ def _scatter_nonzero(
     inp,
     work,
     out,
-    N: tl.constexpr,
-    NB: tl.constexpr,
-    SHAPE: tl.constexpr,
+    N,
+    NB,
+    shape,
+    ndim: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(0)
@@ -65,10 +66,11 @@ def _scatter_nonzero(
     local = tl.cumsum(selected.to(tl.int32), axis=0) - 1
     row = (tl.load(work + NB + pid) + local).to(tl.int64)
     flat = offsets.to(tl.int64)
-    for dim in tl.static_range(len(SHAPE) - 1, -1, -1):
-        coordinate = flat % SHAPE[dim]
-        flat = flat // SHAPE[dim]
-        tl.store(out + row * len(SHAPE) + dim, coordinate, mask=selected)
+    for dim in tl.static_range(ndim - 1, -1, -1):
+        dim_size = tl.load(shape + dim)
+        coordinate = flat % dim_size
+        flat = flat // dim_size
+        tl.store(out + row * ndim + dim, coordinate, mask=selected)
 
 
 def _can_use_block_scan(inp):
@@ -104,9 +106,10 @@ def nonzero(inp, *, as_tuple=False):
             # scalar to avoid a dispatching tensor index just to read the total.
             work = torch.empty((2 * nb,), dtype=torch.int32, device=inp.device)
             total = torch.empty((), dtype=torch.int32, device=inp.device)
-            _count_nonzero[(nb,)](inp, work, N=n, BLOCK=_BLOCK, num_warps=4)
+            shape = torch.tensor(inp.shape, dtype=torch.int32, device=inp.device)
+            _count_nonzero[(nb,)](inp, work, n, BLOCK=_BLOCK, num_warps=4)
             _scan_counts[(1,)](
-                work, total, NB=nb, SCAN=triton.next_power_of_2(nb), num_warps=4
+                work, total, nb, SCAN=triton.next_power_of_2(nb), num_warps=4
             )
             # Required device-to-host cardinality transfer / stream wait. Time
             # the full API, including this read and the following allocation.
@@ -117,9 +120,10 @@ def nonzero(inp, *, as_tuple=False):
                     inp,
                     work,
                     out,
-                    N=n,
-                    NB=nb,
-                    SHAPE=tuple(inp.shape),
+                    n,
+                    nb,
+                    shape,
+                    ndim,
                     BLOCK=_BLOCK,
                     num_warps=4,
                 )
