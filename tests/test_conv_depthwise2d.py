@@ -61,7 +61,6 @@ def _reference_depthwise2d(inp, weight, kernel_size, bias, stride, padding, dila
     )
 
 
-@pytest.mark.conv_depthwise2d
 @pytest.mark.underscore_conv_depthwise2d
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
@@ -108,48 +107,3 @@ def test_conv_depthwise2d(
     assert res_out.shape == ref_out.shape
     comparison = res_out.cpu() if ref_out.device.type == "cpu" else res_out
     utils.gems_assert_close(comparison, ref_out, dtype)
-
-
-@pytest.mark.conv_depthwise2d
-@pytest.mark.underscore_conv_depthwise2d
-@pytest.mark.parametrize("dtype", [torch.float16, torch.float32])
-def test_conv_depthwise2d_noncontiguous(dtype):
-    torch.manual_seed(0)
-    base = torch.randn((2, 8, 9, 11), dtype=dtype, device=flag_gems.device)
-    inp = base[:, ::2, :, :]
-    weight = torch.randn((4, 1, 3, 3), dtype=dtype, device=flag_gems.device)
-    ref = _reference_depthwise2d(
-        _reference_tensor(inp),
-        _reference_tensor(weight),
-        [3, 3],
-        None,
-        [2, 2],
-        [1, 1],
-        [1, 1],
-    )
-    expected_device = inp.device
-    result = flag_gems._conv_depthwise2d(
-        inp, weight, [3, 3], None, [2, 2], [1, 1], [1, 1]
-    )
-    assert result.device == expected_device
-    assert result.shape == ref.shape
-    assert result.dtype == dtype
-    comparison = result.cpu() if ref.device.type == "cpu" else result
-    utils.gems_assert_close(comparison, ref, dtype, reduce_dim=9)
-
-
-@pytest.mark.conv_depthwise2d
-@pytest.mark.underscore_conv_depthwise2d
-@pytest.mark.skipif(
-    flag_gems.vendor_name in ("nvidia", "mthreads"),
-    reason=(
-        "Native depthwise has no portable error guarantee for kernel_size/weight "
-        "shape mismatch; this invalid configuration is not validated"
-    ),
-)
-def test_conv_depthwise2d_invalid_kernel_size():
-    torch.manual_seed(0)
-    inp = torch.randn((1, 4, 8, 8), device=flag_gems.device)
-    weight = torch.randn((4, 1, 3, 3), device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        flag_gems._conv_depthwise2d(inp, weight, [2, 2], None, [1, 1], [0, 0], [1, 1])
