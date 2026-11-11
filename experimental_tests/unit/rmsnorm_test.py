@@ -78,6 +78,6 @@ def test_nmsnorm_accuracy(shape, dtype, eps):
     with flag_gems.use_gems():
         res_out = flag_gems.experimental_ops.rmsnorm(inp, weight=weight, eps=eps)
 
-    # Let gems_assert_close handle the device transfer so that res and ref
-    # always end up on the same device (avoids a CPU/device mismatch).
-    gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
+    # Both operands are moved to CPU: the alpha-ops harness may fall back to
+    # `torch.testing.assert_close`, which does not transfer devices itself.
+    gems_assert_close(res_out.cpu(), ref_out.cpu(), dtype, equal_nan=True)
