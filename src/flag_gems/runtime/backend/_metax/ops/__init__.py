@@ -121,6 +121,7 @@ from .foreach_rsqrt import foreach_rsqrt
 from .foreach_rsqrt_ import foreach_rsqrt_
 from .foreach_sigmoid import foreach_sigmoid
 from .foreach_sigmoid_ import foreach_sigmoid_
+from .foreach_sin import foreach_sin
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -379,6 +380,7 @@ __all__ = [
     "foreach_rsqrt_",
     "foreach_sigmoid",
     "foreach_sigmoid_",
+    "foreach_sin",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
