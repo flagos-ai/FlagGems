@@ -43,7 +43,6 @@ class SlowConvDilated3dBenchmark(base.Benchmark):
     """Benchmark for ``aten::slow_conv_dilated3d`` over a 3-D conv grid."""
 
     DEFAULT_SHAPE_DESC = "N, C_in, D, H, W, C_out, kD, kH, kW, stride, padding"
-    with_out = False
 
     def set_shapes(self, shape_file_path=None):
         self.shapes = SCC3D_CASES
@@ -59,7 +58,7 @@ class SlowConvDilated3dBenchmark(base.Benchmark):
                 ordinal,
                 base.BenchmarkCasePlan(
                     shape=shape,
-                    params={"out": True} if self.with_out else {},
+                    params={},
                     builder_args=(shape,),
                 ),
             )
@@ -84,23 +83,7 @@ class SlowConvDilated3dBenchmark(base.Benchmark):
             [padding, padding, padding],
             [1, 1, 1],
         )
-        if self.with_out:
-            d_out = (d + 2 * padding - (kd - 1) - 1) // stride + 1
-            h_out = (h + 2 * padding - (kh - 1) - 1) // stride + 1
-            w_out = (w + 2 * padding - (kw - 1) - 1) // stride + 1
-            out = torch.empty(
-                (n, c_out, d_out, h_out, w_out),
-                dtype=cur_dtype,
-                device=self.device,
-            )
-            return args + ({"out": out},)
         return args
-
-
-class SlowConvDilated3dOutBenchmark(SlowConvDilated3dBenchmark):
-    """Same grid, writing into a caller-provided ``out`` buffer."""
-
-    with_out = True
 
 
 @pytest.mark.slow_conv_dilated3d
@@ -108,16 +91,6 @@ def test_slow_conv_dilated3d():
     bench = SlowConvDilated3dBenchmark(
         op_name="slow_conv_dilated3d",
         torch_op=torch.ops.aten.slow_conv_dilated3d,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.slow_conv_dilated3d_out
-def test_slow_conv_dilated3d_out():
-    bench = SlowConvDilated3dOutBenchmark(
-        op_name="slow_conv_dilated3d_out",
-        torch_op=torch.ops.aten.slow_conv_dilated3d.out,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
