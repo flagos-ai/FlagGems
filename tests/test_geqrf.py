@@ -270,32 +270,38 @@ def _assert_terminal_reflector_equivalent(
         tu.assert_result_close(terminal[0], terminal[1])
 
 
-def _assert_real_qr_factorization(inp, a, tau, ref_a, ref_tau):
+def _assert_qr_factorization(inp, a, tau, ref_a, ref_tau):
     _assert_cpu_comparison_metadata(inp, a, tau, ref_a, ref_tau)
-    original = inp.cpu().double()
+    work_dtype = torch.complex128 if inp.is_complex() else torch.float64
+    original = inp.cpu().to(work_dtype)
     assert torch.isfinite(original).all()
     column_norms = torch.linalg.vector_norm(original, dim=0)
     identity = torch.eye(inp.shape[-1], dtype=original.dtype, device="cpu")
-    tolerance = 32 * torch.finfo(inp.dtype).eps
+    tolerance = 32 * torch.finfo(inp.real.dtype).eps
 
     # Device and CPU can encode valid reflectors differently. Validate each
     # packed pair against the original matrix rather than against each other.
     for packed, reflectors in ((a, tau), (ref_a, ref_tau)):
-        packed = packed.cpu().double()
-        reflectors = reflectors.cpu().double()
+        packed = packed.cpu().to(work_dtype)
+        reflectors = reflectors.cpu().to(work_dtype)
         assert torch.isfinite(packed).all() and torch.isfinite(reflectors).all()
-        assert ((reflectors >= 0) & (reflectors <= 2)).all()
-        tail_norm_sq = packed.tril(-1).square().sum(dim=0)
+        tail_norm_sq = packed.tril(-1).abs().square().sum(dim=0)
         active = reflectors != 0
         assert (tail_norm_sq[~active] == 0).all()
-        norm_relation = reflectors[active] * (1 + tail_norm_sq[active])
-        torch.testing.assert_close(
-            norm_relation, torch.full_like(norm_relation, 2), rtol=0, atol=tolerance
-        )
+        active_tau = reflectors[active]
+        if inp.is_complex():
+            # Unitarity of I - tau * v * vᴴ with an implicit leading one.
+            norm_relation = active_tau.abs().square() * (1 + tail_norm_sq[active])
+            expected = 2 * active_tau.real
+        else:
+            assert ((reflectors >= 0) & (reflectors <= 2)).all()
+            norm_relation = active_tau * (1 + tail_norm_sq[active])
+            expected = torch.full_like(norm_relation, 2)
+        torch.testing.assert_close(norm_relation, expected, rtol=0, atol=tolerance)
         q = torch.linalg.householder_product(packed, reflectors)
         residual = torch.linalg.vector_norm(q @ packed.triu() - original, dim=0)
         assert (residual <= tolerance * column_norms).all()
-        torch.testing.assert_close(q.T @ q, identity, rtol=0, atol=tolerance)
+        torch.testing.assert_close(q.mH @ q, identity, rtol=0, atol=tolerance)
 
 
 @pytest.mark.geqrf
@@ -321,6 +327,14 @@ def test_geqrf_value_range(shape, value_range, dtype):
     if (
         flag_gems.vendor_name == "hygon"
         and utils.TO_CPU
+        and dtype in (torch.float32, torch.complex64)
+        and shape == (1024, 1024)
+        and value_range == ["-1", "0"]
+    ):
+        _assert_qr_factorization(snapshot, res_a, res_tau, ref_a, ref_tau)
+    elif (
+        flag_gems.vendor_name == "hygon"
+        and utils.TO_CPU
         and dtype in (torch.complex64, torch.complex128)
         and shape in ((256, 256), (1024, 1024))
         and value_range in (["-1", "1"], ["0", "1"], ["-1", "0"])
@@ -337,14 +351,6 @@ def test_geqrf_value_range(shape, value_range, dtype):
                 and value_range == GEQRF_RANGE
             ),
         )
-    elif (
-        flag_gems.vendor_name == "hygon"
-        and utils.TO_CPU
-        and dtype == torch.float32
-        and shape == (1024, 1024)
-        and value_range == ["-1", "0"]
-    ):
-        _assert_real_qr_factorization(snapshot, res_a, res_tau, ref_a, ref_tau)
     else:
         tu.assert_result_close(res_a, ref_a)
         tu.assert_result_close(res_tau, ref_tau)
