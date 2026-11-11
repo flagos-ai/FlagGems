@@ -134,6 +134,7 @@ from .foreach_sub_scalar_ import foreach_sub_scalar_
 from .foreach_sub_scalar_list import foreach_sub_scalar_list
 from .foreach_sub_scalar_list_ import foreach_sub_scalar_list_
 from .foreach_tan import foreach_tan
+from .foreach_tan_ import foreach_tan_
 from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .full import full
 from .full_like import full_like
@@ -405,6 +406,7 @@ __all__ = [
     "foreach_sub_scalar_list",
     "foreach_sub_scalar_list_",
     "foreach_tan",
+    "foreach_tan_",
     "fractional_max_pool2d_backward",
     "full",
     "full_like",
