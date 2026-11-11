@@ -97,12 +97,13 @@ def test_special_chebyshev_polynomial_t_out(shape, dtype):
     ref_out = torch.special.chebyshev_polynomial_t(ref_x, n)
 
     out = torch.empty_like(x)
+    original_pointer = out.data_ptr()
     res_out = flag_gems.special_chebyshev_polynomial_t_out(x, n, out=out)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
-    # the out variant must write in place and return that very tensor
     assert res_out is out
-    assert res_out.data_ptr() == out.data_ptr()
+    assert res_out.device == x.device
+    assert res_out.data_ptr() == original_pointer
+    utils.gems_assert_close(res_out, ref_out, dtype, equal_nan=True)
 
 
 @pytest.mark.special_chebyshev_polynomial_t
@@ -110,5 +111,5 @@ def test_special_chebyshev_polynomial_t_rejects_unsupported_dtype():
     """The kernel is float32/float64 only, so other dtypes must be rejected."""
     x = torch.randint(0, 4, (16,), dtype=torch.int32, device=flag_gems.device)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="only supports float32/float64"):
         flag_gems.special_chebyshev_polynomial_t(x, 3)
