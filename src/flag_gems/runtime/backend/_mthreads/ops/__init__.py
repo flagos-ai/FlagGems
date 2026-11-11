@@ -25,6 +25,7 @@ from ._fake_quantize_learnable_per_tensor_affine import (
 from ._functional_sym_constrain_range_for_size import (
     _functional_sym_constrain_range_for_size,
 )
+from ._fused_moving_avg_obs_fq_helper import _fused_moving_avg_obs_fq_helper
 from ._masked_scale import _masked_scale
 from ._thnn_fused_lstm_cell_backward_impl import _thnn_fused_lstm_cell_backward_impl
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa
@@ -85,11 +86,13 @@ from .feature_dropout import feature_dropout, feature_dropout_
 from .fix import fix
 from .flip import flip
 from .fmod_ import fmod_, fmod_scalar_, fmod_tensor_
+from .fractional_max_pool2d_backward import fractional_max_pool2d_backward
 from .gather import gather, gather_backward
 from .gcd_ import gcd_
 from .geometric import geometric, geometric_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .histc import histc
+from .igamma import igamma
 from .im2col import im2col
 from .index_add import index_add, index_add_
 from .index_copy import index_copy
@@ -99,6 +102,7 @@ from .index_select import index_select
 from .int_mm import int_mm, int_mm_out
 from .inverse import inverse
 from .isin import isin
+from .kl_div import kl_div
 from .kthvalue import kthvalue
 from .lcm import lcm
 from .lcm_ import lcm_
@@ -159,6 +163,7 @@ from .repeat_interleave import (
     repeat_interleave_tensor,
 )
 from .replication_pad2d import replication_pad2d
+from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .round_ import round_
 from .scaled_grouped_mm import scaled_grouped_mm
@@ -170,6 +175,7 @@ from .special_bessel_j0 import special_bessel_j0
 from .special_bessel_j1 import special_bessel_j1
 from .special_bessel_y0 import special_bessel_y0
 from .special_bessel_y1 import special_bessel_y1
+from .special_chebyshev_polynomial_w import special_chebyshev_polynomial_w
 from .special_erfcx import special_erfcx
 from .special_gammainc import special_gammainc
 from .special_modified_bessel_k0 import special_modified_bessel_k0
@@ -182,6 +188,7 @@ from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
 from .trunc import trunc, trunc_
+from .uniform import uniform
 from .unique import _unique2
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
@@ -200,6 +207,7 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_fake_quantize_learnable_per_tensor_affine",
     "_functional_sym_constrain_range_for_size",
+    "_fused_moving_avg_obs_fq_helper",
     "_index_put_impl_",
     "_masked_scale",
     "_thnn_fused_lstm_cell_backward_impl",
@@ -264,6 +272,7 @@ __all__ = [
     "fmod_",
     "fmod_scalar_",
     "fmod_tensor_",
+    "fractional_max_pool2d_backward",
     "gather",
     "gather_backward",
     "gcd_",
@@ -271,6 +280,7 @@ __all__ = [
     "geometric_",
     "grid_sampler_3d_backward",
     "histc",
+    "igamma",
     "im2col",
     "index_add",
     "index_add_",
@@ -283,6 +293,7 @@ __all__ = [
     "int_mm_out",
     "inverse",
     "isin",
+    "kl_div",
     "kthvalue",
     "lcm",
     "lcm_",
@@ -353,6 +364,7 @@ __all__ = [
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
     "replication_pad2d",
+    "replication_pad3d_backward",
     "resolve_conj",
     "rms_norm_w8a16_fp8",
     "round_",
@@ -368,6 +380,7 @@ __all__ = [
     "special_bessel_j1",
     "special_bessel_y0",
     "special_bessel_y1",
+    "special_chebyshev_polynomial_w",
     "special_erfcx",
     "special_gammainc",
     "special_modified_bessel_k0",
@@ -385,6 +398,7 @@ __all__ = [
     "true_divide_out",
     "trunc",
     "trunc_",
+    "uniform",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "var",
