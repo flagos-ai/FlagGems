@@ -537,6 +537,26 @@ class _CurrentNativeStaticReference:
 class LdexpBenchmark(
     _CurrentNativeStaticReference, base.BinaryPointwiseBenchmark, OperatorBenchmark
 ):
+    def set_shapes(self, shape_file_path=None):
+        if (
+            self.op_name != "ldexp"
+            or base.vendor_name not in ("hygon", "iluvatar")
+            or Path(shape_file_path).resolve()
+            != Path(__file__).with_name("core_shapes.yaml").resolve()
+        ):
+            return super().set_shapes(shape_file_path)
+
+        self.shapes = [
+            (1,),
+            (1024,),
+            (1024, 1024),
+            (4096, 4096),
+            (16, 128, 64, 64),
+        ]
+        self.shape_desc = self.DEFAULT_SHAPE_DESC
+        if base.Config.bench_level == consts.BenchLevel.COMPREHENSIVE:
+            self.shapes.extend([(2**24,), (8192, 4096)])
+
     def supports_cases(self):
         return True
 
