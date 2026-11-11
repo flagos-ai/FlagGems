@@ -38,7 +38,13 @@ def ctc_loss_internal_build_inputs_fn(plan, dtype, device):
         pytest.skip("Kunlunxin native CTC does not preserve float64 outputs")
 
     raw = torch.randn(t_steps, batch, classes, dtype=torch.float32, device=device)
-    log_probs = raw.log_softmax(-1).to(dtype)
+    log_probs = raw.log_softmax(-1)
+    if flag_gems.vendor_name == "iluvatar" and dtype == torch.float64:
+        # The device FP32-to-FP64 cast corrupts values on this backend.
+        bits = log_probs.cpu().double().contiguous().view(torch.uint8)
+        log_probs = bits.to(device).view(torch.float64)
+    else:
+        log_probs = log_probs.to(dtype)
     targets = torch.randint(
         1, classes, (batch, max_target), dtype=torch.long, device=device
     )
@@ -65,6 +71,9 @@ class CtcLossInternalBenchmark(OperatorBenchmark):
 
 
 @pytest.mark.underscore_ctc_loss
+@pytest.mark.skip_native(
+    vendors=("iluvatar",), reason="Iluvatar native CTC does not produce valid FP64 results"
+)
 def test_perf__ctc_loss():
     bench = CtcLossInternalBenchmark(
         op_name="_ctc_loss",
@@ -104,6 +113,9 @@ def ctc_loss_internal_out_build_inputs_fn(plan, dtype, device):
 
 
 @pytest.mark.underscore_ctc_loss_out
+@pytest.mark.skip_native(
+    vendors=("iluvatar",), reason="Iluvatar native CTC does not produce valid FP64 results"
+)
 def test_perf__ctc_loss_out():
     CtcLossInternalBenchmark(
         op_name="_ctc_loss_out",
