@@ -6,29 +6,24 @@ import flag_gems
 from . import base, consts
 
 
-class AttentionBenchmark(base.GenericBenchmark):
-    DEFAULT_SHAPES = [
-        (2, 8, 64, 64),
-        (4, 8, 128, 64),
-        (2, 8, 128, 128),
-        (1, 16, 256, 64),
-    ]
-
-    def set_more_shapes(self):
-        return None
+class ScaledDotProductFusedAttentionOverrideableBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            (2, 8, 64, 64),
+            (4, 8, 128, 64),
+            (2, 8, 128, 128),
+            (1, 16, 256, 64),
+        ]
 
 
-def _case_fn_for(is_causal):
-    def case_fn(shape, dtype):
-        del dtype
-        dims = tuple(shape)
+def _case_fn(shape, dtype):
+    dims = tuple(shape)
+    for is_causal in (False, True):
         yield base.BenchmarkCasePlan(
             shape={"query": list(dims), "key": list(dims), "value": list(dims)},
             params={"is_causal": is_causal},
             builder_args=(dims,),
         )
-
-    return case_fn
 
 
 def _build_inputs_fn(plan, dtype, device):
@@ -63,15 +58,17 @@ def torch_ref(
     )
 
 
-@pytest.mark.scaled_dot_product_fused_attention_overrideable
 @pytest.mark.underscore_scaled_dot_product_fused_attention_overrideable
-@pytest.mark.parametrize("is_causal", [False, True])
-def test_scaled_dot_product_fused_attention_overrideable(is_causal):
-    bench = AttentionBenchmark(
+def test_scaled_dot_product_fused_attention_overrideable():
+    def stock_attention(*args, **kwargs):
+        return flag_gems._scaled_dot_product_fused_attention_overrideable(*args, **kwargs)
+
+    bench = ScaledDotProductFusedAttentionOverrideableBenchmark(
         op_name="_scaled_dot_product_fused_attention_overrideable",
-        case_fn=_case_fn_for(is_causal),
+        case_fn=_case_fn,
         build_inputs_fn=_build_inputs_fn,
         torch_op=torch_ref,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.set_gems(stock_attention)
     bench.run()
