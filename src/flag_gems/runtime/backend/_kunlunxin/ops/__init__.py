@@ -737,6 +737,7 @@ from .prelu import prelu
 from .prod import prod, prod_dim
 from .quantile import quantile
 from .quantized_lstm import quantized_lstm
+from .quantized_max_pool3d import quantized_max_pool3d, quantized_max_pool3d_out
 from .rad2deg import rad2deg, rad2deg_
 from .rand import rand
 from .rand_like import rand_like
@@ -1730,6 +1731,8 @@ __all__ = [
     "prod_dim",
     "quantile",
     "quantized_lstm",
+    "quantized_max_pool3d",
+    "quantized_max_pool3d_out",
     "rad2deg",
     "rad2deg_",
     "rand",
