@@ -187,6 +187,12 @@ from .special_shifted_chebyshev_polynomial_v import (
     special_shifted_chebyshev_polynomial_v,
 )
 from .split_with_sizes_copy import split_with_sizes_copy
+try:
+    from .thnn_fused_gru_cell_backward import (
+        _thnn_fused_gru_cell_backward as thnn_fused_gru_cell_backward,
+    )
+except ImportError:
+    pass
 from .tile import tile
 from .topk_w8a16_fp8 import topk_w8a16_fp8
 from .triangular_solve import triangular_solve, triangular_solve_out
