@@ -62,7 +62,6 @@ def _foreach_maximum_list_flat_kernel(
         mask = offs < N
         a = tl.load(p0 + offs, mask=mask).to(tl.float32)
         b = tl.load(p1 + offs, mask=mask).to(tl.float32)
-        c = tl.load(p2 + offs, mask=mask).to(tl.float32)
         result = tl.maximum(a, b)
         tl.store(out_ptr + offs, result, mask=mask)
 

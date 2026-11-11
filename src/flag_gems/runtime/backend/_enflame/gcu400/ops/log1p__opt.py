@@ -28,7 +28,6 @@ import torch
 import triton
 
 from flag_gems.runtime import torch_device_fn
-from flag_gems.runtime.backend._enflame.gcu400.ops.log1p import log1p as _prod_log1p
 from flag_gems.runtime.backend._enflame.gcu400.ops.log1p import (
     log1p_kernel as _kernel_wrapped,
 )

@@ -27,7 +27,6 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.cumsum import cumsum
-from flag_gems.runtime import device as runtime_device
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 

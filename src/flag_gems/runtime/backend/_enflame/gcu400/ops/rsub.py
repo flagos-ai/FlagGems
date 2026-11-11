@@ -14,9 +14,12 @@
 
 import logging
 
+import torch
 import triton
+import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +49,6 @@ def rsub_scalar(A, B, alpha=1):
 
 
 # ---- B2 flat fast path (2026-11-07) ----
-import torch
-import triton.language as tl
-
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
-
 _B2_BLOCK = 1024
 _B2_SIPS = 48
 # Step 4 B12 tuning (2026-11-08): large shapes benefit from bigger tiles /

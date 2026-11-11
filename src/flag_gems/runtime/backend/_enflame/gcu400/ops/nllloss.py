@@ -27,9 +27,9 @@ import torch
 import triton
 
 import flag_gems
+from flag_gems.ops.nllloss import nll_loss2d_backward as _common_nll_loss2d_backward
 
 _common = importlib.import_module("flag_gems.ops.nll_loss2d")
-from flag_gems.ops.nllloss import nll_loss2d_backward as _common_nll_loss2d_backward
 
 logger = logging.getLogger(__name__)
 

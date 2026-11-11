@@ -247,7 +247,6 @@ def scatter_reduce(
     dim, idx_axis, out_numel = candidate
     out_inner = _prod(inp.shape[dim + 1 :])
     out_axis = int(inp.shape[dim])
-    idx_inner = out_inner
 
     # t9 批 5/5：fp32 + 全连续输入时省掉 4 次 dtype 转换/拷贝
     # （ENFLAME_PT_OP_DEBUG_CONFIG=fallback_cpu=all_ops 口径下这些

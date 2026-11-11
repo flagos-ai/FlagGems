@@ -247,7 +247,6 @@ def scatter_reduce(
     dim, idx_axis, out_numel = candidate
     out_inner = _prod(inp.shape[dim + 1 :])
     out_axis = int(inp.shape[dim])
-    idx_inner = out_inner
 
     inp_f32 = inp.to(torch.float32).contiguous()
     src_f32 = src.to(torch.float32).contiguous()

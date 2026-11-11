@@ -21,9 +21,6 @@
 # when multiple output positions map to the same input index.
 # torch.zeros in the wrapper handles zeroing (autotune reset_to_zero removed).
 
-_AMP_BLOCK = 64
-_AMP_NW = 8
-
 import logging
 
 import torch
@@ -31,6 +28,9 @@ import triton
 import triton.language as tl
 
 from flag_gems.utils import libentry
+
+_AMP_BLOCK = 64
+_AMP_NW = 8
 
 logger = logging.getLogger(__name__)
 

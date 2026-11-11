@@ -133,7 +133,6 @@ def conv2d_forward_kernel(
     # GCU400: gcu-triton-fusion pass 在 num_warps=1 时崩溃，且原 PAD_LANES=12
     # workaround 是为 num_warps=1 的 dot lane 错误准备的，在 num_warps>=2 下
     # 会造成约 50% 元素错误。这里用连续行映射，配合 num_warps=8/num_stages=2。
-    PAD_LANES = 0
     lanes = tl.arange(0, BLOCK_NI_HO_WO)
     ni_ho_wo_offset = pid_ni_ho_wo * BLOCK_NI_HO_WO + lanes
     valid_row = lanes >= 0
@@ -457,9 +456,8 @@ class Conv2d(torch.autograd.Function):
         # BLOCK_NI_HO_WO along the in_n, out_height, and out_width dimensions,
         # BLOCK_CO along the out_c,
         # one group per cat.
-        # Each CTA reserves its first PAD_LANES rows as invalid (see
-        # conv2d_forward_kernel), so shift the covered range accordingly.
-        PAD_LANES = 12
+        # Grid covers the full NI*HO*WO range with continuous row mapping
+        # (no lane padding).
         grid = lambda META: (
             triton.cdiv(
                 in_n * out_height * out_width,

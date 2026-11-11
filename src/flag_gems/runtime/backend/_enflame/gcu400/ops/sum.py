@@ -111,13 +111,6 @@ def sum_global_direct_kernel(
 @triton.jit(do_not_specialize=["n_elem"])
 def sum_global_single_kernel(X, Out, n_elem, BLOCK: tl.constexpr):
     """小规模输入：单 program 一次归约到底，省掉第二阶段的启动开销。"""
-    if tl.constexpr(X.dtype.element_ty == tl.float16) | tl.constexpr(
-        X.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = X.dtype.element_ty
-
     offset = tl.arange(0, BLOCK)
     x = tl.load(X + offset, mask=offset < n_elem, other=0.0)
     tl.store(Out, tl.sum(x, axis=0).to(Out.dtype.element_ty))

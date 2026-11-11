@@ -294,7 +294,7 @@ from .linalg_cholesky import linalg_cholesky
 # looks the override up as flag_gems.<generic function __name__>, which for
 # aten::linalg_ldl_factor is "ldl_factor".  Without this alias, use_gems() would
 # keep registering the generic flag_gems.ops implementation instead of this one.
-from .linalg_ldl_factor import ldl_factor  # noqa: F401
+from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor import ldl_factor as linalg_ldl_factor
 from .linalg_ldl_solve import linalg_ldl_solve
 from .linalg_matrix_rank import linalg_matrix_rank
@@ -893,6 +893,7 @@ __all__ = [
     "min_dim",
     "minimum",
     "mm",
+    "mm_out",
     "mse_loss",
     "mul",
     "mul_",
@@ -915,6 +916,8 @@ __all__ = [
     "new_zeros_out",
     "nll_loss2d_backward",
     "nll_loss2d_forward",
+    "nll_loss_backward",
+    "nll_loss_forward",
     "nonzero",
     "nonzero_numpy",
     "normal_",

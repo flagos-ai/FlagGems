@@ -6,7 +6,6 @@
 小 shape 也用手写小 BLOCK kernel（回退公共实现会多一层派发开销）。
 """
 
-import torch
 import triton
 import triton.language as tl
 

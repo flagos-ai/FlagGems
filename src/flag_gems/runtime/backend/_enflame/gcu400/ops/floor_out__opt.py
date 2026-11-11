@@ -6,7 +6,6 @@ gt_scalar_ 上已验证 2^24/2^30 档 B131072/nw4 显著优于 B32768/nw4；
 微秒级小 shape 复用生产同一底层调用，避免额外 Python 判断造成回归。
 """
 
-import torch
 import triton
 import triton.language as tl
 

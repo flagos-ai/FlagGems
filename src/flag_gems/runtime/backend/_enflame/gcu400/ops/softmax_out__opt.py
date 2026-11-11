@@ -36,7 +36,6 @@ out 连续且 dtype 一致、K>1 且 K>=256、N>=64；其余
 全部委托生产 `softmax_out`，保证 correctness 全覆盖。
 """
 
-import torch
 import triton
 
 from flag_gems.ops.softmax import softmax_kernel_non_inner as _kernel_wrapped

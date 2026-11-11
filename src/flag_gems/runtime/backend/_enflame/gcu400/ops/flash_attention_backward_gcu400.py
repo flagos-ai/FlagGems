@@ -1596,7 +1596,7 @@ def scaled_dot_product_efficient_attention_backward(
 
 
 # 将后端特化实现同步绑定到公共 ops 命名空间，使 benchmark 的 flag_gems.ops.* 调用也走本实现
-import flag_gems.ops as _generic_ops
+import flag_gems.ops as _generic_ops  # noqa: E402
 
 _generic_ops.scaled_dot_product_efficient_attention_backward = (
     scaled_dot_product_efficient_attention_backward

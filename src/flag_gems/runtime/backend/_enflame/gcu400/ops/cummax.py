@@ -22,7 +22,6 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils import triton_lang_extension as ext
 from flag_gems.utils.limits import get_dtype_min
 
 from ..utils.tie_break import maximum_with_index_tie_break_right
