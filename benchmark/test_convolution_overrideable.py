@@ -48,3 +48,36 @@ def _build_inputs_fn(plan, dtype, device):
 @pytest.mark.convolution_overrideable
 def test_convolution_overrideable():
     ConvolutionOverrideableBenchmark(op_name="convolution_overrideable", torch_op=torch.ops.aten.convolution.default, gems_op=flag_gems.convolution_overrideable, case_fn=_case_fn, build_inputs_fn=_build_inputs_fn, dtypes=consts.FLOAT_DTYPES).run()
+
+
+def _build_out_inputs(plan, dtype, device):
+    (case,) = plan.builder_args
+    args, out_shape = _base_inputs(case, dtype, device)
+    out = torch.empty(out_shape, dtype=dtype, device=device)
+    return (*args, {"out": out})
+
+
+@pytest.mark.convolution_overrideable_out
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issue #4131: conv kernels not working",
+)
+def test_convolution_overrideable_out(monkeypatch):
+    if flag_gems.vendor_name == "hygon":
+        monkeypatch.setenv("TRITON_HIP_USE_NEW_STREAM_PIPELINE", "0")
+    torch.backends.cudnn.allow_tf32 = False
+
+    def stock_out(*args, **kwargs):
+        return flag_gems.convolution_overrideable_out(*args, **kwargs)
+
+    bench = ConvolutionOverrideableBenchmark(
+        op_name="convolution_overrideable_out",
+        torch_op=torch.ops.aten.convolution.out,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_out_inputs,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+        fresh_inputs=True,
+    )
+    bench.set_gems(stock_out)
+    bench.run()
