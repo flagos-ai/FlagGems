@@ -43,7 +43,6 @@ import triton.language as tl
 
 from flag_gems.ops.lstm_cell import (
     _ACC_DTYPE,
-    _ACC_TORCH_DTYPE,
     _ROUND_DTYPE,
     _block,
     _check_cell_args,
@@ -155,6 +154,13 @@ def _lstm_cell_combine_kernel_xpu(
             None, :
         ]
 
+    # This backend's tl.sigmoid/tl.exp only accept fp32/fp64, so promote the
+    # gates explicitly (they only widen implicitly when a bias is present).
+    gate_i = gate_i.to(ACC_DTYPE)
+    gate_f = gate_f.to(ACC_DTYPE)
+    gate_g = gate_g.to(ACC_DTYPE)
+    gate_o = gate_o.to(ACC_DTYPE)
+
     c_prev = tl.load(
         c_ptr + offs_b[:, None] * s_cb + offs_n[None, :] * s_ck,
         mask=out_mask,
@@ -214,11 +220,16 @@ def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     block_k = 64
     grid = (triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))
 
-    # Rounded ``linear(input, w_ih)`` and ``linear(hx[0], w_hh)`` tiles, in
-    # accumulator precision, consumed by the combine kernel.
+    # Rounded ``linear(input, w_ih)`` and ``linear(hx[0], w_hh)`` tiles, in the
+    # input dtype, consumed by the combine kernel (which widens to the
+    # accumulator dtype on load).  Holding them in the accumulator dtype is what
+    # the generic op does, but on XPU the projection kernels hang the device
+    # task when the rounded store widens the input dtype to a wider buffer (e.g.
+    # fp16 -> fp32), so the tiles are kept in the input dtype instead; the
+    # rounded values are identical.
     gi = torch.empty(
         (batch, 4 * hidden_size),
-        dtype=_ACC_TORCH_DTYPE[input.dtype],
+        dtype=input.dtype,
         device=input.device,
     )
     gh = torch.empty_like(gi)

@@ -56,52 +56,75 @@ _SWEEPS = 6
 
 @libentry()
 @triton.jit
-def _polar_osj_kernel(
-    B,
-    A,
-    UOUT,
-    HOUT,
-    m,
-    n,
-    BSTRIDE: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    """Turn the raw rotated SVD columns ``B`` into the polar factors."""
+def _polar_vh_kernel(BP, AP, VH, m, n, BLOCK: tl.constexpr):
+    """``Vh = diag(1/S^2) B^T A`` — one ``tl.dot`` per kernel.
+
+    XPU's Triton pipeline hangs the device task when a kernel carries two or
+    more ``tl.dot`` ops (measured: one dot runs, two+ never return and are
+    killed by the driver watchdog), so the polar post-processing is split into
+    three single-dot kernels.  Only constructs verified on this backend are
+    used: row-vector broadcasts ``x * v[None, :]`` and ``tl.trans`` as a
+    ``tl.dot`` operand (a standalone ``tl.trans`` and ``(BLOCK, 1)`` column
+    broadcasts miscompile here).  ``BP`` / ``AP`` arrive zero-padded to
+    ``BLOCK x BLOCK``; ``VH`` / ``UB`` are zero-initialised so the padding
+    lanes the masked stores skip stay zero for the downstream kernels.
+    """
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
     rmask = rows < m
     cmask = cols < n
     mask = rmask[:, None] & cmask[None, :]
-    srow = tl.where(rmask, rows, 0)
-    scol = tl.where(cmask, cols, 0)
 
-    # Masked loads may ignore ``other`` on this backend, so explicitly zero the
-    # padding lanes after the (safely indexed) load.
-    b = tl.load(B + srow[:, None] * BSTRIDE + scol[None, :], mask=mask, other=0.0)
-    b = tl.where(mask, b, 0.0)
-    a = tl.load(A + srow[:, None] * n + scol[None, :], mask=mask, other=0.0)
-    a = tl.where(mask, a, 0.0)
+    b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
+    a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
 
-    # Column norms of the raw rotated matrix are the singular values.
+    # Column norms of the raw rotated matrix are the singular values, and
+    # Vh = diag(1/S) Up^T A = diag(1/S^2) B^T A (Up = B diag(1/S)).
     s2 = tl.sum(b * b, axis=0)
     s = tl.sqrt(s2)
-    inv = tl.where(s > 1.0e-20, 1.0 / s, 0.0)
-    up = b * inv[None, :]
+    inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
+    vh = tl.dot(tl.trans(b * inv[None, :] * inv[None, :]), a, allow_tf32=False)
+    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], vh, mask=mask)
 
-    # Vh = diag(1/S) Up^T A
-    p = tl.dot(tl.trans(up), a, allow_tf32=False)
-    vh = p * inv[:, None]
+
+@libentry()
+@triton.jit
+def _polar_u_kernel(BP, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
+    """``U = Up Vh`` — one ``tl.dot``; ``UB`` is ``U`` padded to ``BLOCK``."""
+    rows = tl.arange(0, BLOCK)
+    cols = tl.arange(0, BLOCK)
+    rmask = rows < m
+    cmask = cols < n
+    mask = rmask[:, None] & cmask[None, :]
+
+    b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
+    vh = tl.load(VH + rows[:, None] * BLOCK + cols[None, :])
+
+    s2 = tl.sum(b * b, axis=0)
+    s = tl.sqrt(s2)
+    inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
+    up = b * inv[None, :]
 
     # U = Up Vh
     u = tl.dot(up, vh, allow_tf32=False)
-
-    # H = Vh^T diag(S) Vh, then symmetrise.
-    svh = vh * s[:, None]
-    h = tl.dot(tl.trans(vh), svh, allow_tf32=False)
-    h = 0.5 * (h + tl.trans(h))
-
     tl.store(UOUT + rows[:, None] * n + cols[None, :], u, mask=mask)
+    tl.store(UB + rows[:, None] * BLOCK + cols[None, :], u, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _polar_h_kernel(UB, AP, HOUT, m, n, BLOCK: tl.constexpr):
+    """``H = U^T A`` (polar: ``A = U H``, ``H`` symmetric PSD) — one ``tl.dot``."""
+    rows = tl.arange(0, BLOCK)
+    cols = tl.arange(0, BLOCK)
+    cmask = cols < n
     hmask = cmask[:, None] & cmask[None, :]
+
+    u = tl.load(UB + rows[:, None] * BLOCK + cols[None, :])
+    a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
+
+    # H = U^T A
+    h = tl.dot(tl.trans(u), a, allow_tf32=False)
     tl.store(HOUT + rows[:, None] * n + cols[None, :], h, mask=hmask)
 
 
@@ -130,6 +153,14 @@ def _polar_osj(A, out_U=None, out_H=None):
 
     B = torch.empty((batch, MP * NW), device=dev, dtype=A.dtype)
     scratch = torch.empty((MP * NW,), device=dev, dtype=A.dtype)
+    # Zero-padded (BLOCK x BLOCK) tiles for the polar post-processing kernels:
+    # padding lanes must be zero in memory (masked loads may ignore ``other``
+    # on this backend), and ``VH`` must be zero outside the masked store region
+    # because the ``u`` / ``h`` kernels read the whole tile.
+    BP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+    AP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+    VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+    UB = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
     if out_U is not None:
         U3 = out_U.reshape(batch, m, n)
         H3 = out_H.reshape(batch, n, n)
@@ -152,14 +183,35 @@ def _polar_osj(A, out_U=None, out_H=None):
                 num_warps=1,
                 num_stages=1,
             )
-            _polar_osj_kernel[(1,)](
-                B[b],
-                A2[b],
+            BP[b, :MP, :NW].copy_(B[b].reshape(MP, NW))
+            AP[b, :m, :n].copy_(A2[b])
+            _polar_vh_kernel[(1,)](
+                BP[b],
+                AP[b],
+                VH[b],
+                m,
+                n,
+                BLOCK=block,
+                num_warps=4,
+                num_stages=1,
+            )
+            _polar_u_kernel[(1,)](
+                BP[b],
+                VH[b],
                 U3[b],
+                UB[b],
+                m,
+                n,
+                BLOCK=block,
+                num_warps=4,
+                num_stages=1,
+            )
+            _polar_h_kernel[(1,)](
+                UB[b],
+                AP[b],
                 H3[b],
                 m,
                 n,
-                BSTRIDE=NW,
                 BLOCK=block,
                 num_warps=4,
                 num_stages=1,
