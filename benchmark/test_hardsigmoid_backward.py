@@ -31,10 +31,29 @@ def hardsigmoid_backward_input_fn(shape, dtype, device):
     yield grad_output, inp
 
 
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"grad_output": list(dims), "input": list(dims)},
+        params={},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    torch.manual_seed(0)
+    inp = torch.randn(shape, dtype=dtype, device=device)
+    grad_output = torch.randn(shape, dtype=dtype, device=device)
+    return grad_output, inp
+
+
 @pytest.mark.hardsigmoid_backward
 def test_hardsigmoid_backward():
     bench = HardsigmoidBackwardBenchmark(
-        input_fn=hardsigmoid_backward_input_fn,
+        case_fn=_case_fn,
+        build_inputs_fn=_build_inputs_fn,
         op_name="hardsigmoid_backward",
         torch_op=torch.ops.aten.hardsigmoid_backward,
         dtypes=consts.FLOAT_DTYPES,
