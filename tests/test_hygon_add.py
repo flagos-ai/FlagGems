@@ -102,3 +102,40 @@ def test_expanded_add_int64_scalar():
     a = torch.tensor([-(2**40), 2**40], dtype=torch.int64)
     actual = flag_gems.add(a.to(flag_gems.device), 3, alpha=2).cpu()
     assert torch.equal(actual, a + 6)
+
+
+@pytest.mark.add
+@pytest.mark.parametrize("kind", ["medium_scalar", "large_broadcast", "scalar_tensor"])
+def test_official_master_add_fallback_guards(monkeypatch, kind):
+    import importlib
+
+    impl = importlib.import_module("flag_gems.runtime.backend._hygon.ops.add")
+    generic = impl._generic_add
+    observed = []
+
+    def checked_generic(a, b, *, alpha=1):
+        observed.append(True)
+        return generic(a, b, alpha=alpha)
+
+    monkeypatch.setattr(impl, "_generic_add", checked_generic)
+    shape = {
+        "medium_scalar": (3, 101, 320),
+        "large_broadcast": (1, 40000, 256),
+        "scalar_tensor": (1025, 1024),
+    }[kind]
+    generator = torch.Generator().manual_seed(20261112)
+    a = torch.randint(-20, 20, shape, generator=generator).float()
+    if kind == "medium_scalar":
+        b = 1.0
+    elif kind == "large_broadcast":
+        b = torch.randint(-20, 20, (1, 1, shape[-1]), generator=generator).float()
+    else:
+        b = torch.tensor(1.0)
+    expected = torch.add(a, b, alpha=-2)
+    actual = impl.add(
+        a.to(flag_gems.device),
+        b.to(flag_gems.device) if isinstance(b, torch.Tensor) else b,
+        alpha=-2,
+    )
+    assert observed == [True], "regressed domains must retain the generic kernel"
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)

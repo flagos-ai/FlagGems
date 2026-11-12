@@ -411,7 +411,16 @@ def add(a, b, *, alpha=1):
     bv = None if scalar else b.broadcast_to(shape)
     size = math.prod(shape)
     irregular = not av.is_contiguous() or (bv is not None and not bv.is_contiguous())
+    # Official-master retesting exposed regressions in the legacy scalar tile
+    # and large contiguous-output broadcasts. Keep the generic baseline there.
+    if a.dtype == torch.float32 and av.is_contiguous():
+        if scalar and 65536 < size <= 131072:
+            return _generic_add(a, b, alpha=alpha)
+        if not scalar and b.numel() == 1 and size >= 1048576:
+            return _generic_add(a, b, alpha=alpha)
     if size > 8388608 and av.is_contiguous():
+        if not scalar and not bv.is_contiguous():
+            return _generic_add(a, b, alpha=alpha)
         return _legacy_add(a, b, alpha=alpha)
     if (
         size > 128
