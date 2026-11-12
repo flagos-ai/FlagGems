@@ -34,10 +34,6 @@ __all__ = ["rnn_tanh_cell"]
 def rnn_tanh_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     """Single tanh RNN cell step (kunlunxin)."""
     if input.shape[1] == 0:
-        input = torch.zeros(
-            (input.shape[0], 1), dtype=input.dtype, device=input.device
-        )
-        w_ih = torch.zeros(
-            (w_ih.shape[0], 1), dtype=w_ih.dtype, device=w_ih.device
-        )
+        input = torch.zeros((input.shape[0], 1), dtype=input.dtype, device=input.device)
+        w_ih = torch.zeros((w_ih.shape[0], 1), dtype=w_ih.dtype, device=w_ih.device)
     return _cell(input, hx, w_ih, w_hh, b_ih, b_hh)
