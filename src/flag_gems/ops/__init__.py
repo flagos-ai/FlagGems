@@ -69,6 +69,7 @@ from flag_gems.ops._cummax_helper import _cummax_helper
 from flag_gems.ops._cummin_helper import _cummin_helper
 from flag_gems.ops._dimI import _dimI
 from flag_gems.ops._dirichlet_grad import _dirichlet_grad
+from flag_gems.ops._division_aliases import _entry as _division_entry
 from flag_gems.ops._dyn_quant_matmul_4bit import _dyn_quant_matmul_4bit
 from flag_gems.ops._dyn_quant_pack_4bit_weight import _dyn_quant_pack_4bit_weight
 from flag_gems.ops._efficientzerotensor import _efficientzerotensor
@@ -782,13 +783,21 @@ from flag_gems.ops.dim_arange import _dim_arange as dim_arange
 from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops.dist import dist
 from flag_gems.ops.div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     floor_divide,
     floor_divide_,
     true_divide_out,
 )
 from flag_gems.ops.divide import divide
+from flag_gems.ops.divide_mode import (
+    divide__scalar_mode,
+    divide__tensor_mode,
+    divide_scalar_mode,
+    divide_tensor_mode,
+)
 from flag_gems.ops.dot import dot
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
@@ -1056,7 +1065,7 @@ from flag_gems.ops.leaky_relu import (
     leaky_relu_out,
 )
 from flag_gems.ops.lerp import lerp_scalar, lerp_scalar_, lerp_tensor, lerp_tensor_
-from flag_gems.ops.less_ import less_, less_scalar_
+from flag_gems.ops.less_ import less_, less__scalar
 from flag_gems.ops.less_equal import less_equal, less_equal_scalar
 from flag_gems.ops.less_equal_ import less_equal_, less_equal_scalar_
 from flag_gems.ops.lgamma_ import lgamma, lgamma_
@@ -1160,7 +1169,7 @@ from flag_gems.ops.logspace import logspace
 from flag_gems.ops.logsumexp import logsumexp
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lstm_cell import lstm_cell
-from flag_gems.ops.lt import lt, lt_scalar
+from flag_gems.ops.lt import less_scalar, less_tensor, lt_scalar, lt_tensor
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_solve import lu_solve, lu_solve_out
 from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
@@ -1790,6 +1799,23 @@ from flag_gems.ops.xlogy_ import xlogy_, xlogy_tensor_scalar_
 from flag_gems.ops.zero import zero, zero_out
 from flag_gems.ops.zeros import zero_, zeros
 from flag_gems.ops.zeros_like import zeros_like
+
+# Preserve non-mode helpers and their backend specialization names.
+# Mode overloads above are independent canonical backend override targets.
+# Keep true_divide_tensor imported directly; the main module wraps it after
+# specialization along with these independent canonical registration entries.
+div__scalar = _division_entry("div__scalar", true_divide_)
+div__tensor = _division_entry("div__tensor", true_divide_)
+div_out = _division_entry("div_out", true_divide_out)
+div_scalar = _division_entry("div_scalar", true_divide)
+div_tensor = _division_entry("div_tensor", true_divide)
+divide__scalar = _division_entry("divide__scalar", true_divide_)
+divide__tensor = _division_entry("divide__tensor", true_divide_)
+divide_scalar = _division_entry("divide_scalar", true_divide)
+divide_tensor = _division_entry("divide_tensor", divide)
+true_divide__scalar = _division_entry("true_divide__scalar", true_divide_)
+true_divide__tensor = _division_entry("true_divide__tensor", true_divide_tensor_)
+true_divide_scalar = _division_entry("true_divide_scalar", true_divide)
 
 __all__ = [
     "__iand___scalar",
@@ -2498,9 +2524,24 @@ __all__ = [
     "dim_arange",
     "dimV",
     "dist",
-    "div_mode",
-    "div_mode_",
+    "div__scalar",
+    "div__scalar_mode",
+    "div__tensor",
+    "div__tensor_mode",
+    "div_out",
+    "div_scalar",
+    "div_scalar_mode",
+    "div_tensor",
+    "div_tensor_mode",
     "divide",
+    "divide__scalar",
+    "divide__scalar_mode",
+    "divide__tensor",
+    "divide__tensor_mode",
+    "divide_scalar",
+    "divide_scalar_mode",
+    "divide_tensor",
+    "divide_tensor_mode",
     "dot",
     "dropout",
     "dropout_",
@@ -2782,11 +2823,13 @@ __all__ = [
     "lerp_tensor",
     "lerp_tensor_",
     "less_",
+    "less__scalar",
     "less_equal",
     "less_equal_",
     "less_equal_scalar",
     "less_equal_scalar_",
-    "less_scalar_",
+    "less_scalar",
+    "less_tensor",
     "lgamma",
     "lgamma_",
     "lift",
@@ -2901,10 +2944,10 @@ __all__ = [
     "logsumexp",
     "lstm",
     "lstm_cell",
-    "lt",
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lt_tensor",
     "lu_solve",
     "lu_solve_out",
     "lu_unpack",
@@ -3456,7 +3499,10 @@ __all__ = [
     "triu_indices",
     "true_divide",
     "true_divide_",
+    "true_divide__scalar",
+    "true_divide__tensor",
     "true_divide_out",
+    "true_divide_scalar",
     "true_divide_tensor",
     "true_divide_tensor_",
     "trunc",

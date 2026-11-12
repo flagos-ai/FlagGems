@@ -67,8 +67,10 @@ from .cummaxmin_backward import cummaxmin_backward
 from .deg2rad_ import deg2rad_
 from .diagonal_scatter import diagonal_scatter
 from .div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -259,8 +261,10 @@ __all__ = [
     "cummaxmin_backward",
     "deg2rad_",
     "diagonal_scatter",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "dropout",
     "dropout_backward",
     "erfinv",

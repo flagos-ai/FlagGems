@@ -23,53 +23,60 @@ def _true_divide_scalar_input_fn(shape, dtype, device):
     yield inp, 0.5
 
 
-@pytest.mark.div_tensor
-def test_true_divide():
+@pytest.mark.true_divide_tensor
+def test_true_divide_tensor():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="div_tensor",
-        torch_op=torch.true_divide,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.div_scalar
-def test_true_divide_scalar():
-    bench = base.GenericBenchmark(
-        input_fn=_true_divide_scalar_input_fn,
-        op_name="div_scalar",
-        torch_op=torch.true_divide,
-        dtypes=consts.FLOAT_DTYPES,
-    )
-    bench.run()
-
-
-@pytest.mark.div_scalar_
-def test_true_divide_inplace_scalar():
-    bench = base.GenericBenchmark(
-        input_fn=_true_divide_scalar_input_fn,
-        op_name="div_scalar_",
-        torch_op=lambda a, b: a.true_divide_(b),
-        dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
-
-
-@pytest.mark.true_divide
-def test_true_divide_tensor_dispatch():
-    bench = base.BinaryPointwiseBenchmark(
-        op_name="true_divide",
+        op_name="true_divide_tensor",
         torch_op=torch.ops.aten.true_divide.Tensor,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
-@pytest.mark.true_divide_
-def test_true_divide_tensor_inplace_dispatch():
+@pytest.mark.true_divide_scalar
+def test_true_divide_scalar():
+    bench = base.GenericBenchmark(
+        input_fn=_true_divide_scalar_input_fn,
+        op_name="true_divide_scalar",
+        torch_op=torch.ops.aten.true_divide.Scalar,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.true_divide__scalar
+def test_true_divide__scalar():
+    bench = base.GenericBenchmark(
+        input_fn=_true_divide_scalar_input_fn,
+        op_name="true_divide__scalar",
+        torch_op=torch.ops.aten.true_divide_.Scalar,
+        dtypes=consts.FLOAT_DTYPES,
+        is_inplace=True,
+    )
+    bench.run()
+
+
+@pytest.mark.true_divide_out
+def test_true_divide_out():
+    def input_fn(shape, dtype, device):
+        inp1 = utils.generate_tensor_input(shape, dtype, device)
+        inp2 = utils.generate_tensor_input(shape, dtype, device)
+        out = torch.empty_like(inp1)
+        yield inp1, inp2, {"out": out}
+
+    bench = base.GenericBenchmark(
+        op_name="true_divide_out",
+        input_fn=input_fn,
+        torch_op=torch.ops.aten.true_divide.out,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.true_divide__tensor
+def test_true_divide__tensor_dispatch():
     bench = base.BinaryPointwiseBenchmark(
-        op_name="true_divide_",
+        op_name="true_divide__tensor",
         torch_op=torch.ops.aten.true_divide_.Tensor,
         dtypes=consts.FLOAT_DTYPES,
         is_inplace=True,

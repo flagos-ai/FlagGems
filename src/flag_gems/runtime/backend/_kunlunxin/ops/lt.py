@@ -32,8 +32,17 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_KUNLUNXIN LT")
+    return _lt(A, B)
+
+
+def less_tensor(A, B):
+    logger.debug("GEMS_KUNLUNXIN LESS_TENSOR")
+    return _lt(A, B)
+
+
+def _lt(A, B):
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
     res = lt_func(A, B)
@@ -54,6 +63,15 @@ def lt_func_scalar(x, y):
 
 def lt_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN LT_SCALAR")
+    return _lt_scalar(A, B)
+
+
+def less_scalar(A, B):
+    logger.debug("GEMS_KUNLUNXIN LESS_SCALAR")
+    return _lt_scalar(A, B)
+
+
+def _lt_scalar(A, B):
     numel = A.numel()
     dtype = A.dtype
     if (
@@ -295,5 +313,5 @@ def less_(A, B):
     return lt_(A, B)
 
 
-def less_scalar_(A, B):
+def less__scalar(A, B):
     return lt_scalar_(A, B)

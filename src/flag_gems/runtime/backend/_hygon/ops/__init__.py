@@ -67,8 +67,10 @@ from .dequantize import dequantize
 from .diagonal_scatter import diagonal_scatter
 from .diff import diff
 from .div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     floor_divide,
     floor_divide_,
     remainder,
@@ -300,8 +302,10 @@ __all__ = [
     "dequantize",
     "diagonal_scatter",
     "diff",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "divide",
     "embedding_bag_dense_backward",
     "expand_copy",

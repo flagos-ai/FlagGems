@@ -28,7 +28,7 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_ENFLAME LT")
     return lt_func(A, B)
 
@@ -41,4 +41,14 @@ def lt_func_scalar(x, y):
 
 def lt_scalar(A, B):
     logger.debug("GEMS_ENFLAME LT_SCALAR")
+    return lt_func_scalar(A, B)
+
+
+def less_tensor(A, B):
+    logger.debug("GEMS_ENFLAME LESS_TENSOR")
+    return lt_func(A, B)
+
+
+def less_scalar(A, B):
+    logger.debug("GEMS_ENFLAME LESS_SCALAR")
     return lt_func_scalar(A, B)

@@ -27,7 +27,7 @@ def lt_func(x, y):
     return x < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_CAMBRICON LT")
     return lt_func(A, B)
 
@@ -40,4 +40,14 @@ def lt_func_scalar(x, y):
 
 def lt_scalar(A, B):
     logger.debug("GEMS_CAMBRICON LT_SCALAR")
+    return lt_func_scalar(A, B)
+
+
+def less_tensor(A, B):
+    logger.debug("GEMS_CAMBRICON LESS_TENSOR")
+    return lt_func(A, B)
+
+
+def less_scalar(A, B):
+    logger.debug("GEMS_CAMBRICON LESS_SCALAR")
     return lt_func_scalar(A, B)

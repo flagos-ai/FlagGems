@@ -36,8 +36,17 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
-def lt(A, B):
+def lt_tensor(A, B):
     logger.debug("GEMS_ENFLAME LT")
+    return _lt(A, B)
+
+
+def less_tensor(A, B):
+    logger.debug("GEMS_ENFLAME LESS_TENSOR")
+    return _lt(A, B)
+
+
+def _lt(A, B):
     if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
         A = A.to(torch.int32)
     if isinstance(B, torch.Tensor) and B.dtype == torch.int64:
@@ -58,6 +67,15 @@ def lt_func_scalar(x, y):
 
 def lt_scalar(A, B):
     logger.debug("GEMS_ENFLAME LT_SCALAR")
+    return _lt_scalar(A, B)
+
+
+def less_scalar(A, B):
+    logger.debug("GEMS_ENFLAME LESS_SCALAR")
+    return _lt_scalar(A, B)
+
+
+def _lt_scalar(A, B):
     if isinstance(A, torch.Tensor) and A.dtype == torch.int64:
         A = A.to(torch.int32)
     if isinstance(B, torch.Tensor) and B.dtype == torch.int64:

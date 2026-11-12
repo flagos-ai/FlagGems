@@ -84,8 +84,10 @@ from .diag_embed import diag_embed
 from .diagonal import diagonal_backward
 from .diagonal_copy import diagonal_copy
 from .div import (
-    div_mode,
-    div_mode_,
+    div__scalar_mode,
+    div__tensor_mode,
+    div_scalar_mode,
+    div_tensor_mode,
     floor_divide,
     floor_divide_,
     true_divide,
@@ -145,7 +147,7 @@ from .logical_not import logical_not, logical_not_
 from .logical_or import logical_or, logical_or_
 from .logical_xor import logical_xor
 from .logical_xor_ import logical_xor_
-from .lt import lt, lt_scalar
+from .lt import less_scalar, less_tensor, lt_scalar, lt_tensor
 from .lt_ import lt_, lt_scalar_
 from .masked_fill import masked_fill, masked_fill_
 from .masked_select import masked_select
@@ -347,8 +349,10 @@ __all__ = [
     "diag_embed",
     "diagonal_backward",
     "diagonal_copy",
-    "div_mode",
-    "div_mode_",
+    "div__scalar_mode",
+    "div__tensor_mode",
+    "div_scalar_mode",
+    "div_tensor_mode",
     "elu",
     "elu_",
     "elu_backward",
@@ -429,6 +433,8 @@ __all__ = [
     "lerp_tensor_",
     "less_equal",
     "less_equal_scalar",
+    "less_scalar",
+    "less_tensor",
     "lgamma",
     "lgamma_",
     "linear",
@@ -454,10 +460,10 @@ __all__ = [
     "logical_or_",
     "logical_xor",
     "logical_xor_",
-    "lt",
     "lt_",
     "lt_scalar",
     "lt_scalar_",
+    "lt_tensor",
     "masked_fill",
     "masked_fill_",
     "masked_select",
