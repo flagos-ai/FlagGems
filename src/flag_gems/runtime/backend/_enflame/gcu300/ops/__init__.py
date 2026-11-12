@@ -734,3 +734,7 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
+
+from ._foreach_unary_extra import _foreach_asin_, _foreach_erfc_  # noqa: E402
+
+__all__ += ["_foreach_asin_", "_foreach_erfc_"]
