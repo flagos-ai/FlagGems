@@ -153,3 +153,31 @@ def test_hygon_dense_gather_repeated_negative_indices(shape, count, dtype, index
     ix = rows.repeat((count + 3) // 4)[:count]
     actual = flag_gems.index(x.to(flag_gems.device), [ix.to(flag_gems.device)])
     assert torch.equal(actual.cpu(), x[ix])
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize("shape,count", [((1, 1), 31360), ((913, 3, 24), 2101)])
+def test_hygon_compact_reuse_keeps_generic_route(
+    monkeypatch, index_dtype, shape, count
+):
+    import importlib
+
+    implementation = importlib.import_module(
+        "flag_gems.runtime.backend._hygon.ops.index"
+    )
+
+    generic = implementation._generic_index
+    seen = []
+
+    def witnessed_generic(x, indices):
+        seen.append(True)
+        return generic(x, indices)
+
+    monkeypatch.setattr(implementation, "_generic_index", witnessed_generic)
+    x = torch.arange(math.prod(shape), dtype=torch.float32).reshape(shape)
+    idx = torch.tensor([-shape[0], -1, 0, shape[0] - 1], dtype=index_dtype)
+    idx = idx.repeat((count + 3) // 4)[:count]
+    actual = implementation.index(x.to(flag_gems.device), [idx.to(flag_gems.device)])
+    assert seen == [True]
+    assert torch.equal(actual.cpu(), x[idx])

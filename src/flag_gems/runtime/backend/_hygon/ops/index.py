@@ -349,7 +349,23 @@ def index(x, indices):
                     and ix.numel() >= 65536
                     and ix.numel() >= 16 * x.shape[0]
                 )
-                if tiny_tail or large_output or reused_int64:
+                repeated_singleton = (
+                    suffix_size == 1
+                    and ix.numel() >= 16384
+                    and ix.numel() >= 16 * x.shape[0]
+                )
+                compact_rows = (
+                    64 <= suffix_size <= 128
+                    and x.shape[0] <= 1024
+                    and 2**16 <= output_size <= 2**18
+                )
+                if (
+                    tiny_tail
+                    or large_output
+                    or reused_int64
+                    or repeated_singleton
+                    or compact_rows
+                ):
                     return _generic_index(x, indices)
             if (
                 ix.is_contiguous()
