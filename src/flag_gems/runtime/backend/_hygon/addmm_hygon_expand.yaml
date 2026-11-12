@@ -1,0 +1,43 @@
+# Large FlagTune search and future cost-model collection space.
+# Small kernel spaces live only in tune_configs.yaml.
+# Kernel legality/resource pruning applies during search.
+addmm:
+- gen: true
+  param_map:
+    META:
+      BLOCK_SIZE_M: block_m
+      BLOCK_SIZE_N: block_n
+      BLOCK_SIZE_K: block_k
+      GROUP_SIZE_M: group_m
+    num_stages: stages
+    num_warps: warps
+  block_m:
+  - 256
+  - 128
+  - 64
+  - 32
+  block_n:
+  - 256
+  - 128
+  - 64
+  - 32
+  block_k:
+  - 128
+  - 64
+  - 32
+  - 16
+  group_m:
+  - 16
+  - 8
+  - 4
+  - 2
+  - 1
+  warps:
+  - 8
+  - 4
+  - 2
+  stages:
+  - 4
+  - 3
+  - 2
+  - 1
