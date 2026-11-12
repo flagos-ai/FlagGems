@@ -139,7 +139,7 @@ def _gru_cell_combine_kernel(
 
 def gru_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     """Single GRU cell step (Kunlunxin/XPU specialization)."""
-    logger.debug("GEMS GRU_CELL")
+    logger.debug("GEMS_KUNLUNXIN GRU_CELL")
     _check_cell_args("gru_cell", input, hx, w_ih, w_hh, b_ih, b_hh, 3)
 
     batch, input_size = input.shape

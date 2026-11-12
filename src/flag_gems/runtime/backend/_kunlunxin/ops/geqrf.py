@@ -273,7 +273,7 @@ def geqrf(A):
         Householder vectors packed below the diagonal of the first
         k = min(m, n) columns; ``tau`` is (..., k).
     """
-    logger.debug("GEMS GEQRF")
+    logger.debug("GEMS_KUNLUNXIN GEQRF")
     if A.dim() < 2:
         raise RuntimeError("geqrf: input must have at least 2 dimensions")
     if A.dtype not in (torch.float32, torch.float64):
