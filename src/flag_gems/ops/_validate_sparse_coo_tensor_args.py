@@ -28,34 +28,30 @@ logger = logging.getLogger(__name__)
 # One tile spans 1024 stored coordinates; masks cover empty/tail entries.
 _BLOCK = 1024
 _NUM_WARPS = 4
-_MAX_SCALAR_DIMS = 8
 _INT64 = torch.int64
-_INT32 = torch.int32
+
+
+@triton.jit
+def _init_coo_stats_kernel(stats, COUNT: tl.constexpr, BLOCK: tl.constexpr):
+    offsets = tl.arange(0, BLOCK)
+    initial = tl.where(offsets % 2 == 0, 9223372036854775807, -9223372036854775808)
+    initial = tl.where(offsets == COUNT - 1, 0, initial)
+    tl.store(stats + offsets, initial, offsets < COUNT)
 
 
 @libentry()
 @triton.jit
 def _validate_coo_kernel(
     idx_ptr,
-    size_ptr,
-    flag_ptr,
+    stats_ptr,
     nnz,
     stride0,
     stride1,
-    e0,
-    e1,
-    e2,
-    e3,
-    e4,
-    e5,
-    e6,
-    e7,
     DO_COALESCED: tl.constexpr,
-    FROM_MEM: tl.constexpr,
     R: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    """Validate one tile of stored columns; flag any violation.
+    """Reduce coordinate extrema and flag invalid coalesced ordering.
 
     Bounds: every stored coordinate must lie in ``[0, size[d])``.
 
@@ -65,9 +61,7 @@ def _validate_coo_kernel(
     also a violation.  Comparing ``cols`` against ``cols + 1`` also covers the
     pair that straddles a tile boundary.
 
-    ``FROM_MEM`` selects the extent source: the eight scalar arguments for the
-    ranks a real COO descriptor has, or a device buffer for an arbitrarily high
-    rank (where no scalar vector is available).
+    Sparse rank is a constexpr loop bound, with no fixed-rank extent buffer.
     """
     pid = tl.program_id(0)
     cols = pid * BLOCK + tl.arange(0, BLOCK)
@@ -79,27 +73,13 @@ def _validate_coo_kernel(
     bad = tl.zeros((BLOCK,), dtype=tl.int1)
 
     for d in tl.static_range(R):
-        if FROM_MEM:
-            s_d = tl.load(size_ptr + d)
-        else:
-            s_d = e0
-            if d == 1:
-                s_d = e1
-            if d == 2:
-                s_d = e2
-            if d == 3:
-                s_d = e3
-            if d == 4:
-                s_d = e4
-            if d == 5:
-                s_d = e5
-            if d == 6:
-                s_d = e6
-            if d == 7:
-                s_d = e7
-
         a = tl.load(idx_ptr + d * stride0 + cols * stride1, mask=mask, other=0)
-        bad = bad | (mask & ((a < 0) | (a >= s_d)))
+        # Keep the actual extrema so the host reports the same first offending
+        # dimension and value as ATen, including errors in the high-rank path.
+        minimum = tl.min(tl.where(mask, a, 9223372036854775807), axis=0)
+        maximum = tl.max(tl.where(mask, a, -9223372036854775808), axis=0)
+        tl.atomic_min(stats_ptr + 2 * d, minimum)
+        tl.atomic_max(stats_ptr + 2 * d + 1, maximum)
 
         if DO_COALESCED:
             b = tl.load(idx_ptr + d * stride0 + cols1 * stride1, mask=mask1, other=0)
@@ -112,7 +92,7 @@ def _validate_coo_kernel(
         bad = bad | unresolved
 
     if tl.sum(bad.to(tl.int32), axis=0) > 0:
-        tl.atomic_max(flag_ptr, 1)
+        tl.atomic_max(stats_ptr + 2 * R, 1)
 
 
 def _validate_sparse_coo_tensor_args(
@@ -139,13 +119,12 @@ def _validate_sparse_coo_tensor_args(
 
     if indices.dim() != 2:
         raise RuntimeError(
-            "indices must be sparse_dim x nnz, but got a tensor of rank "
-            + str(indices.dim())
+            "indices must be sparse_dim x nnz, but got: " + str(list(indices.shape))
         )
     if indices.layout != torch.strided:
-        raise RuntimeError("expected indices to be a dense tensor")
-    if indices.numel() and indices.dtype is not _INT64:
-        raise RuntimeError("indices must be an int64 tensor")
+        raise RuntimeError(
+            "expected indices to be a dense tensor, but got indices of layout Sparse"
+        )
 
     if not isinstance(size, (list, tuple, torch.Size)):
         raise RuntimeError("size must be a list of ints")
@@ -163,7 +142,7 @@ def _validate_sparse_coo_tensor_args(
     dense_dim = max(values.dim(), 1) - 1
     if len(extents) != sparse_dim + dense_dim:
         raise RuntimeError(
-            "len(size) == sparse_dim + dense_dim is not satisfied: len(size) = "
+            "'len(size) == sparse_dim + dense_dim' is not satisfied: len(size) = "
             + str(len(extents))
             + ", sparse_dim = "
             + str(sparse_dim)
@@ -171,77 +150,76 @@ def _validate_sparse_coo_tensor_args(
             + str(dense_dim)
         )
     nnz = indices.shape[1]
-    if values.dim() and values.shape[0] != nnz:
-        raise RuntimeError("indices and values must have the same nnz")
 
     if check_pinning is not False and indices.is_pinned() != values.is_pinned():
         raise RuntimeError(
-            "memory pinning of indices must match memory pinning of values"
+            f"memory pinning of indices (={int(indices.is_pinned())}) must match "
+            f"memory pinning of values (={int(values.is_pinned())})"
         )
     do_coalesced = is_coalesced is True and (values.ndim > 0 and values.shape[0] > 1)
     # With no sparse dimension there is no stored coordinate to validate, and with
     # no stored column there is nothing to read, so neither needs a launch.
     if sparse_dim == 0 or nnz == 0:
         return None
+    if indices.dtype != _INT64:
+        # ATen's int64 accessor checks dtype after the metadata checks above.
+        scalar_names = {
+            torch.bool: "Bool",
+            torch.uint8: "Byte",
+            torch.int8: "Char",
+            torch.int16: "Short",
+            torch.int32: "Int",
+            torch.float16: "Half",
+            torch.bfloat16: "BFloat16",
+            torch.float32: "Float",
+            torch.float64: "Double",
+        }
+        name = scalar_names.get(indices.dtype, str(indices.dtype))
+        raise RuntimeError(f"expected scalar type Long but found {name}")
 
     # ---- Layer 2: coordinate validation on the target device ----
     device = indices.device
-    flag = torch.zeros(1, dtype=_INT32, device=device)
+    stats = torch.empty(2 * sparse_dim + 1, dtype=_INT64, device=device)
     grid = (triton.cdiv(nnz, _BLOCK),)
+    with torch_device_fn.device(device):
+        _init_coo_stats_kernel[(1,)](
+            stats, COUNT=stats.numel(), BLOCK=triton.next_power_of_2(stats.numel())
+        )
 
-    if sparse_dim <= _MAX_SCALAR_DIMS:
-        scalars = extents + [0] * (_MAX_SCALAR_DIMS - sparse_dim)
-        with torch_device_fn.device(indices.device):
-            _validate_coo_kernel[grid](
-                indices,
-                flag,
-                flag,
-                nnz,
-                indices.stride(0),
-                indices.stride(1),
-                scalars[0],
-                scalars[1],
-                scalars[2],
-                scalars[3],
-                scalars[4],
-                scalars[5],
-                scalars[6],
-                scalars[7],
-                DO_COALESCED=do_coalesced,
-                FROM_MEM=False,
-                R=sparse_dim,
-                BLOCK=_BLOCK,
-                num_warps=_NUM_WARPS,
-            )
-    else:
-        size_t = torch.tensor(extents, dtype=_INT64, device=device)
-        with torch_device_fn.device(indices.device):
-            _validate_coo_kernel[grid](
-                indices,
-                size_t,
-                flag,
-                nnz,
-                indices.stride(0),
-                indices.stride(1),
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                DO_COALESCED=do_coalesced,
-                FROM_MEM=True,
-                R=sparse_dim,
-                BLOCK=_BLOCK,
-                num_warps=_NUM_WARPS,
-            )
+    with torch_device_fn.device(device):
+        _validate_coo_kernel[grid](
+            indices,
+            stats,
+            nnz,
+            indices.stride(0),
+            indices.stride(1),
+            DO_COALESCED=do_coalesced,
+            R=sparse_dim,
+            BLOCK=_BLOCK,
+            num_warps=_NUM_WARPS,
+        )
 
-    if flag.item() != 0:
+    # One device-to-host transfer supplies both the verdict and exact native
+    # error details; no PyTorch reduction participates in validation.
+    result = stats.tolist()
+    for dim in range(sparse_dim):
+        minimum, maximum = result[2 * dim : 2 * dim + 2]
+        if minimum < 0:
+            raise RuntimeError(f"found negative index {minimum} for dim {dim}")
+        if maximum >= extents[dim]:
+            raise RuntimeError(
+                f"size is inconsistent with indices: for dim {dim}, "
+                f"size is {extents[dim]} but found index {maximum}"
+            )
+    if do_coalesced and nnz == 1:
+        # Native coalescing reaches an empty diff reduction for this descriptor.
         raise RuntimeError(
-            "size is inconsistent with indices, or is_coalesced was set to true "
-            "for an uncoalesced COO tensor"
+            "min(): Expected reduction dim to be specified for input.numel() == 0. "
+            "Specify the reduction dim with the 'dim' argument."
+        )
+    if result[-1]:
+        raise RuntimeError(
+            "cannot set is_coalesced to true if indices correspond to uncoalesced COO tensor"
         )
 
     return None
