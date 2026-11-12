@@ -226,6 +226,7 @@ from .adaptive_avg_pool3d_backward import (  # noqa: F401
     _adaptive_avg_pool3d_backward,
     adaptive_avg_pool3d_backward_grad_input,
 )
+from .adaptive_max_pool1d import adaptive_max_pool1d  # noqa: F401
 from .adaptive_max_pool2d import adaptive_max_pool2d
 from .adaptive_max_pool2d_backward import adaptive_max_pool2d_backward
 from .adaptive_max_pool3d import adaptive_max_pool3d
@@ -973,6 +974,7 @@ from .var import var, var_correction, var_dim
 from .var_mean import var_mean
 from .vdot import vdot
 from .vector_norm import vector_norm
+from .view_as_complex_copy import view_as_complex_copy  # noqa: F401
 from .view_copy import view_copy
 from .vstack import vstack
 from .weight_norm import _weight_norm
