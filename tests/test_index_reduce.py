@@ -78,10 +78,11 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
     )
 
     assert result is not inp
+    assert result.device == inp.device
     assert result.shape == inp.shape
     assert result.dtype == dtype
     utils.gems_assert_close(result, ref_out, dtype=dtype, reduce_dim=source.size(dim))
-    utils.gems_assert_equal(inp, snapshot)
+    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
 
 
 @pytest.mark.index_reduce
@@ -90,6 +91,7 @@ def test_index_reduce_noncontiguous(reduce):
     inp = _values((6, 4), torch.float32).t()
     source = _values((8, 4), torch.float32).t()
     index = torch.tensor([0, 2, 1, 0, 3, 1, 2, 0], device=flag_gems.device)
+    snapshot = inp.clone()
     ref_inp = utils.to_reference(inp, True)
     ref_out = torch.index_reduce(
         ref_inp,
@@ -103,7 +105,12 @@ def test_index_reduce_noncontiguous(reduce):
     result = flag_gems.index_reduce(inp, 1, index, source, reduce, include_self=False)
 
     assert result.is_contiguous()
+    assert result is not inp
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
     utils.gems_assert_close(result, ref_out, dtype=torch.float32, reduce_dim=8)
+    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("reduce", REDUCTIONS)
@@ -123,24 +130,16 @@ def test_index_reduce_index_pattern(reduce, index, inplace):
     ref_inp = utils.to_reference(inp.clone(), True)
     ref_source = utils.to_reference(source, True)
     ref_index = utils.to_reference(index, False)
-    if inplace:
-        ref_out = ref_inp.index_reduce_(
-            1, ref_index, ref_source, reduce, include_self=True
-        )
-        pointer = inp.data_ptr()
-        result = flag_gems.index_reduce_(
-            inp, 1, index, source, reduce, include_self=True
-        )
-        assert result is inp
-        assert result.data_ptr() == pointer
-    else:
-        ref_out = torch.index_reduce(
-            ref_inp, 1, ref_index, ref_source, reduce, include_self=True
-        )
-        result = flag_gems.index_reduce(
-            inp, 1, index, source, reduce, include_self=True
-        )
-        assert result is not inp
+    assert inplace
+    ref_out = ref_inp.index_reduce_(
+        1, ref_index, ref_source, reduce, include_self=True
+    )
+    pointer = inp.data_ptr()
+    result = flag_gems.index_reduce_(
+        inp, 1, index, source, reduce, include_self=True
+    )
+    assert result is inp
+    assert result.data_ptr() == pointer
     utils.gems_assert_close(result, ref_out, dtype=inp.dtype, reduce_dim=source.size(1))
 
 
@@ -150,6 +149,7 @@ def test_index_reduce_empty_index(include_self):
     inp = _values((3, 4), torch.float32)
     source = torch.empty((3, 0), dtype=inp.dtype, device=flag_gems.device)
     index = torch.empty((0,), dtype=torch.int64, device=flag_gems.device)
+    snapshot = inp.clone()
     ref_out = torch.index_reduce(
         utils.to_reference(inp, True),
         1,
@@ -163,7 +163,12 @@ def test_index_reduce_empty_index(include_self):
         inp, 1, index, source, "mean", include_self=include_self
     )
 
+    assert result is not inp
+    assert result.device == inp.device
+    assert result.dtype == inp.dtype
+    assert result.shape == inp.shape
     utils.gems_assert_close(result, ref_out, dtype=inp.dtype)
+    torch.testing.assert_close(inp, snapshot, rtol=0, atol=0)
 
 
 @pytest.mark.index_reduce
@@ -172,7 +177,10 @@ def test_index_reduce_rejects_invalid_reduce():
     source = torch.ones((2, 1), device=flag_gems.device)
     index = torch.zeros((1,), dtype=torch.int64, device=flag_gems.device)
 
-    with pytest.raises((AssertionError, RuntimeError)):
+    with pytest.raises(
+        (AssertionError, RuntimeError),
+        match=r"Unsupported reduce: sum|Expected reduce to be one of .* but got sum",
+    ):
         flag_gems.index_reduce(inp, 1, index, source, "sum")
 
 
