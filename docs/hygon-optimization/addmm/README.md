@@ -1,26 +1,29 @@
-# Hygon addmm optimization and precision guards
+# Hygon addmm kernels and precision guards
 
-Isolated official-master baseline `9a9aecb53103cc83dda27bc7458fc3bfd07f3188`. Hygon small/medium FP32, long-vector and BF16 kernels retain generic fallbacks. On HCU, large BF16 GEMMs use the established generic path after the specialized schedule measured severe spills/slowdowns.
+Independent verification uses official master `010d8083b0dc89ab795aee973ad62c83c9d2592d`, measured candidate `bee222e93b457a9ea054860de09c8e3256637957`, Hygon gfx936 and the actual FlagTree HIP/gfx936 target. All126 declared inputs were measured on **2026-11-13**, including83 workbook model contracts and43 expansion contracts. Focused hardware tests: **108 passed**. This complete run supersedes preceding9a-baseline and guarded-subset diagnostics; samples are never pooled.
 
-## Current official-master validation
+| Scope | Complete cases | Old/new/DAS correct | Qualified old/new | Gains >5% | Qualified new/DAS | DAS90 passes | Qualified DAS misses | New/DAS unqualified |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| Model contracts |83|83/83/83|63|16|70|50|20|13|
+| Full declared scope |126|123/125/122|87|27|98|75|23|28|
 
-The preceding full 126-case suite is finishing sampling/accounting. A newly observed FP32 vector comparison failure is explicitly preserved in `extreme-vector-regression.json`: bias[1], A[1,3145728] stride[48,1], B[3145728,1] stride[1,48]. Old FG and DAS pass, while the preceding candidate and its independent repeat differ from the CPU FP32 reference by0.0001296997. This is a new comparison failure under the frozen tolerance, not a historical failure. The split FP64 reduction changes accumulation order; no claim that the native FP32 reference is an exact real-number oracle is made.
+There are **no new correctness regressions**. The remaining candidate reference failure also fails old FG and DAS; all such cases retain complete diagnostic timings. Two previous old/DAS failures pass the candidate. The frozen tolerance is unchanged. Reference failures and A/A-inconclusive ratios do not count as accepted gains or DAS passes.
 
-Current source `e42573035c2ff5a3946288542c2f0aea649241dc` retains the original generic accumulation for FP32 vector reductions with K>=2**20. **94 focused hardware tests pass**, including both ordinary and explicit-output variants of the frozen regression. All12 local pre-commit checks pass. The reference tolerance is unchanged.
+Qualified old/new ratios span0.928331-12.946162x (model subset0.928331-3.951807x). Of27 gains above5%,25 execute specialized `_precise_vector`, `_gemv` or `_grouped_addmm`;2 use the existing fallback and are not attributed to the new kernels. Long BF16 HIP/gfx936 inputs retain upstream kernels: several still fall well below DAS90, without a corresponding old/new regression. This PR does not claim all workloads meet DAS.
 
-`source-equivalence.json` proves that this is the only production AST difference from the preceding full suite, and evaluates the guard on every declared input. Exactly1/126 inputs changes route; the other125 preserve the complete original production AST path. The affected case has passed a complete six-role rerun, both25-sample blocks and fresh unprofiled API controls. [Full correction evidence](vector-correction-20261112/README.md) records old/new0.999911495 and DAS/new4.078290446, all output and A/A gates passed. Its entire result will replace the earlier case regardless of the resulting A/A status; no successful-repeat selection or sample pooling is allowed.
+One qualified DiffDock case, `model285-0d5ec457ea9fb526f898`, remains **7.72% slower**: old8.808us,new9.488us,DAS13.280us. It falls outside specialization and both workers enter the upstream packaged Hygon generic launcher. Five relevant fallback/configuration files are byte-identical;all9 shared compiler keys in its group have identical instruction bodies after removing debug directives. These group-level artifacts do not identify the exact per-launch binary or establish the cause of the slowdown. The measured regression remains accepted and unresolved in [the audit](performance-master010-20261113/fallback-regression-audit.json); it is not removed or replaced by a favorable repeat.
+
+[Complete evidence](performance-master010-20261113/README.md) contains all samples, accepted and diagnostic results, source fingerprints, exact ATen/source/kernel witnesses, dates, and portable verifiers. Historical guard/vector evidence remains for traceability;it does not measure the final source on the current baseline. Large BF16 spills on earlier candidates and the introduced extreme-FP32-vector comparison failure motivated the current architecture/scalar guards. The final full suite confirms their corrected routes.
+
+## Reproduction and execution chain
 
 ```bash
 pytest tests/test_hygon_addmm.py --ref cpu -q
+python docs/hygon-optimization/addmm/performance-master010-20261113/verify_results.py
+python docs/hygon-optimization/addmm/performance-master010-20261113/test-accounting-boundaries.py
 pre-commit run --all-files
 ```
 
-This PR remains Draft until complete126-case performance accounting and latest-head CI. Tests run on Hygon gfx936, Torch2.10/Torch-FL R7, FlagTree HCU; frozen metadata-preserving generated inputs, not original model payloads. Both independent block-mean drifts must be<=5%. All producer-linked device activities are retained; API and compile costs are separate. Single-agent staged audit with independent provider processes/repeats, not independent-person approval.
+Frozen generated backing restores known shape/stride/offset/aliases and discloses uncaptured assumptions;this is not replay of original model tensor values. Exact `aten::addmm` -> process-private PrivateUse1 registration -> Hygon provider -> specialized or packaged upstream kernel is witnessed per case. Native DAS uses an independent process. The public source does not depend on the separate mm PR.
 
-## Performance guard repair in progress (2026-11-12)
-
-The full126-case audit after the extreme-vector correction has125 new correctness passes and one inherited numerical failure. It still exposes12 accepted old/new slowdowns>5%,including7 BF16 slowdowns of approximately5–15x. These are blockers,not accepted final performance. The former backend-label guard missed the actual `hip/gfx936` compiler target.
-
-The current candidate `0a2a9f28da8b3916c91a3b05085bca88d85c32ce` protects gfx936 as well as HCU and uses the generic route for default-scalar ragged/strided FP32 projections. An earlier unpublished guard attempt failed12 existing precision tests by also redirecting non-default alpha/beta and beta=0 reductions. The current scalar-aware guard preserves their precise path. **All108 focused hardware tests now pass** on job1102950;the same complete-output tolerances remain unchanged. Four BF16 route tests record the actual compiler target and forbid specialized launch. Full six-role performance confirmation of all16 changed metadata routes plus one predeclared unchanged control is running. Whole cases will be replaced regardless outcome;no filtered repeats or pooled samples.
-
-The PR stays Draft until final126-case accounting and latest-head CI pass. Earlier vector-only source proof remains valid for its preceding source;the additional guarded selection is recorded separately in `performance-guard-selection.json`.
+Six serial roles(old/new/DAS and their independent repeats) each have2x25 device ROIs,20calls/ROI. Both independent block drifts must be<=5%. Producer-linked device kernel sums define latency;memory copies,50-call synchronized unprofiled API controls,compilation and wrapper costs are separate. Only final same-thread nonproducing blocking waits crossing the right host boundary are audited separately;device and producing API containment remains strict,no timestamp shifts,trimming or omitted events. Nine boundary/counterexample tests cover this accounting. Eager/no_grad;no graph fusion,model-throughput or independent-person-signoff claim. Hardware: Hygon gfx936,Torch2.10/Torch-FL R7,FlagTree HIP/gfx936.
