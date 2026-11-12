@@ -218,7 +218,9 @@ def test_flatten_dense_tensors_mixed_dtype():
 
 @pytest.mark.flatten_dense_tensors
 def test_flatten_dense_tensors_empty_list():
-    with pytest.raises((RuntimeError, ValueError), match="expected a non-empty list of Tensors"):
+    with pytest.raises(
+        (RuntimeError, ValueError), match="expected a non-empty list of Tensors"
+    ):
         flag_gems.flatten_dense_tensors([])
 
 
