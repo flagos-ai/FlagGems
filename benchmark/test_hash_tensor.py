@@ -48,11 +48,14 @@ class HashTensorBenchmark(base.GenericBenchmark2DOnly, OperatorBenchmark):
         base.Benchmark.set_shapes(self, shape_file_path)
 
     get_case_iter = OperatorBenchmark.get_case_iter
+
+    _unsupported_reference_reason = "Iluvatar ATen hash_tensor returns uint32; benchmark requires uint64"
+
     def _run_cases(self, case_ids):
-        skipped_before = set(base.Config.skipped_case_ids)
+        self._skipped_unsupported_reference = False
         results = super()._run_cases(case_ids)
-        if not results and base.Config.skipped_case_ids - skipped_before:
-            pytest.skip("Iluvatar ATen hash_tensor returns uint32; benchmark requires uint64")
+        if not results and self._skipped_unsupported_reference:
+            pytest.skip(self._unsupported_reference_reason)
         return results
 
     def build_inputs(self, case):
@@ -60,10 +63,9 @@ class HashTensorBenchmark(base.GenericBenchmark2DOnly, OperatorBenchmark):
             probe = torch.ones((1, 2), dtype=case.dtype, device=self.device)
             result = self.torch_op(probe, [-1], keepdim=False, mode=0)
             if result.dtype == torch.uint32:
+                self._skipped_unsupported_reference = True
                 base.Config.skipped_case_ids.add(case.case_id)
-                pytest.skip(
-                    "Iluvatar ATen hash_tensor returns uint32; benchmark requires uint64"
-                )
+                pytest.skip(self._unsupported_reference_reason)
         return OperatorBenchmark.build_inputs(self, case)
 
 
