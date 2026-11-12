@@ -214,6 +214,70 @@ ADDITIONAL_CONV_TRANSPOSE2D_CASES = [
 ]
 
 
+def _reference_pair(value):
+    if isinstance(value, int):
+        return value, value
+    if len(value) != 2:
+        raise RuntimeError("expected a single int or a pair of ints")
+    return tuple(value)
+
+
+def hygon_conv_transpose2d_reference(
+    input, weight, bias=None, stride=1, padding=0, output_padding=0, groups=1, dilation=1
+):
+    """Reference for explicit Hygon correctness override, including invalid inputs."""
+    stride = _reference_pair(stride)
+    padding = _reference_pair(padding)
+    output_padding = _reference_pair(output_padding)
+    dilation = _reference_pair(dilation)
+
+    # Check the invalid-input contract before invoking the native backend.
+    # In particular, MIOpen can accept output padding PyTorch CPU rejects.
+    if input.dtype != weight.dtype or (bias is not None and input.dtype != bias.dtype):
+        raise NotImplementedError("input, weight and bias must have the same dtype")
+    if groups <= 0:
+        raise RuntimeError("groups must be a positive integer")
+    if min(stride) <= 0:
+        raise RuntimeError("non-positive stride is not supported")
+    if min(dilation) <= 0:
+        raise RuntimeError("dilation should be greater than zero")
+    if min(padding) < 0:
+        raise RuntimeError("negative padding is not supported")
+    if min(output_padding) < 0:
+        raise RuntimeError("negative output_padding is not supported")
+    if any(
+        extra >= max(step, spacing)
+        for extra, step, spacing in zip(output_padding, stride, dilation)
+    ):
+        raise RuntimeError("output padding must be smaller than either stride or dilation")
+
+    channels = input.shape[-3]
+    if channels != weight.shape[0]:
+        raise RuntimeError("expected input channel dimension to match weight input channels")
+    if channels % groups:
+        raise RuntimeError("input channels must be divisible by groups")
+    if bias is not None and bias.numel() != weight.shape[1] * groups:
+        raise RuntimeError("expected bias to have one element per output channel")
+    spatial_args = zip(
+        input.shape[-2:], weight.shape[-2:], stride, padding, dilation, output_padding
+    )
+    if any(
+        (size - 1) * step - 2 * pad + spacing * (kernel - 1) + extra + 1 <= 0
+        for size, kernel, step, pad, spacing, extra in spatial_args
+    ):
+        raise RuntimeError("calculated output size is too small")
+
+    # Widen only BF16 correctness reference arithmetic, then round once.
+    dtype = input.dtype
+    if dtype == torch.bfloat16:
+        input, weight = input.double(), weight.double()
+        if bias is not None:
+            bias = bias.double()
+    return torch.nn.functional.conv_transpose2d(
+        input, weight, bias, stride, padding, output_padding, groups, dilation
+    ).to(dtype)
+
+
 def _skip_if_unsupported_test_device(dtype):
     if torch.device(flag_gems.device).type != "cuda":
         pytest.skip("conv_transpose2d Triton kernels require CUDA")
