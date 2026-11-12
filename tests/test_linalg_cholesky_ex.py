@@ -274,6 +274,22 @@ def _out_buffers(shape, dtype, device, layout):
     return l_buf, info
 
 
+def _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info):
+    assert res_l.device == res_info.device == inp.device
+    assert res_l.dtype == ref_l.dtype == inp.dtype
+    assert res_l.shape == ref_l.shape == inp.shape
+    assert res_info.shape == ref_info.shape == inp.shape[:-2]
+    tu.assert_result_equal(res_info, ref_info)
+    successful = (ref_info == 0).reshape(-1)
+    if successful.any():
+        order = inp.shape[-1]
+        matrix_shape = (successful.numel(), order, order)
+        tu.assert_result_close(
+            res_l.reshape(matrix_shape)[successful.to(res_l.device)],
+            ref_l.reshape(matrix_shape)[successful],
+        )
+
+
 _RAW_ROWS = [
     (shape, dtype, value_range)
     for dtype in _DTYPES
@@ -299,19 +315,7 @@ def test_linalg_cholesky_ex_raw_range(shape, dtype, value_range):
     ref_l, ref_info = _reference_cholesky(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
 
-    assert res_l.device == res_info.device == inp.device
-    assert res_l.dtype == ref_l.dtype == inp.dtype
-    assert res_l.shape == ref_l.shape == inp.shape
-    assert res_info.shape == ref_info.shape == inp.shape[:-2]
-    tu.assert_result_equal(res_info, ref_info)
-    successful = (ref_info == 0).reshape(-1)
-    if successful.any():
-        order = inp.shape[-1]
-        matrix_shape = (successful.numel(), order, order)
-        tu.assert_result_close(
-            res_l.reshape(matrix_shape)[successful.to(res_l.device)],
-            ref_l.reshape(matrix_shape)[successful],
-        )
+    _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info)
 
 
 _PD_SHAPES = [(4, 4), (64, 64), (256, 256), (2, 16, 16)]
@@ -384,8 +388,7 @@ def test_linalg_cholesky_ex_upper(shape, dtype, value_range):
     ref_l, ref_info = _reference_cholesky(ref_inp, upper=True)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=True)
 
-    tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info)
 
 
 _PARAM_ROWS = [
@@ -514,17 +517,14 @@ _FAILURE_ROWS = [
 @pytest.mark.parametrize("kind,upper,dtype", tu.selected_cases(_FAILURE_ROWS, quick=[]))
 def test_linalg_cholesky_ex_failed_minor(kind, upper, dtype):
     # The negated diagonal entry fixes the failing minor: info is 1, 8 or
-    # [0, 8, 1] depending on kind and is confirmed by the reference. The entries
-    # past that minor are unspecified by the native contract yet are compared in
-    # full here, so a divergence is visible instead of being masked away.
+    # [0, 8, 1] depending on kind. Only successful factors have defined values.
     inp = _non_pd_input(dtype, 8, kind)
     ref_inp = _reference_input(inp)
 
     ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
-    tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info)
 
 
 _SPECIAL_PLACEMENTS = ["dense", "diagonal", "selected-triangle", "ignored-triangle"]
@@ -552,8 +552,7 @@ def test_linalg_cholesky_ex_special_values(placement, upper, dtype, scenario):
     ref_l, ref_info = _reference_cholesky(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
 
-    tu.assert_result_equal(res_info, ref_info)
-    tu.assert_result_close(res_l, ref_l)
+    _assert_defined_factor(inp, res_l, res_info, ref_l, ref_info)
 
 
 @pytest.mark.linalg_cholesky_ex
