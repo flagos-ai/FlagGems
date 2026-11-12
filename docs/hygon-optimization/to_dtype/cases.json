@@ -1,0 +1,650 @@
+[
+  {
+    "row": 1711,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · [1,145,2560]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            145,
+            2560
+          ],
+          "stride": [
+            371200,
+            2560,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 2.704,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · [1,145,2560]",
+      "工况调用次数": 137,
+      "工况累计耗时(μs)": 7132.41461198777,
+      "工况耗时占比": 0.03481428944242925,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.4575,
+      "H100 设备耗时(μs/次)": 2.704,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part01\\run\\experiments\\survey\\command-0003\\survey.json#S01887; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part01",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,145,2560],\"stride\":[371200,2560,1],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.float32\"],{}]"
+    }
+  },
+  {
+    "row": 1712,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · [1,4,145,256]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            4,
+            145,
+            256
+          ],
+          "stride": [
+            148480,
+            256,
+            1024,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 2.4,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · [1,4,145,256]",
+      "工况调用次数": 34,
+      "工况累计耗时(μs)": 1717.9676797240973,
+      "工况耗时占比": 0.008385634782662278,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.311,
+      "H100 设备耗时(μs/次)": 2.4,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part02\\run\\experiments\\survey\\command-0003\\survey.json#S01917; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part02",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,4,145,256],\"stride\":[148480,256,1024,1],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":false},\"torch.float32\"],{}]"
+    }
+  },
+  {
+    "row": 1713,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · [1,8,145,256]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            8,
+            145,
+            256
+          ],
+          "stride": [
+            296960,
+            256,
+            2048,
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 2.592,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · [1,8,145,256]",
+      "工况调用次数": 34,
+      "工况累计耗时(μs)": 1842.3227593302727,
+      "工况耗时占比": 0.008992628903246522,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.7755,
+      "H100 设备耗时(μs/次)": 2.592,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part01\\run\\experiments\\survey\\command-0003\\survey.json#S01915; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part01",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,8,145,256],\"stride\":[296960,256,2048,1],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":false},\"torch.float32\"],{}]"
+    }
+  },
+  {
+    "row": 1714,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · [2560]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            2560
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 2.1915,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · [2560]",
+      "工况调用次数": 137,
+      "工况累计耗时(μs)": 6822.934374213219,
+      "工况耗时占比": 0.03330367415143283,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.073,
+      "H100 设备耗时(μs/次)": 2.1915,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part01\\run\\experiments\\survey\\command-0003\\survey.json#S01888; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part01",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[2560],\"stride\":[1],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.float32\"],{}]"
+    }
+  },
+  {
+    "row": 1715,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · [256]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            256
+          ],
+          "stride": [
+            1
+          ],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 1.632,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · [256]",
+      "工况调用次数": 68,
+      "工况累计耗时(μs)": 3369.7091275826097,
+      "工况耗时占比": 0.016448010286345634,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 31.8925,
+      "H100 设备耗时(μs/次)": 1.632,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part01\\run\\experiments\\survey\\command-0003\\survey.json#S01898; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part01",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[256],\"stride\":[1],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.float32\"],{}]"
+    }
+  },
+  {
+    "row": 1716,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BF16 · []",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [],
+          "stride": [],
+          "dtype": "torch.bfloat16",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.bfloat16"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 0,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BF16 · []",
+      "工况调用次数": 1,
+      "工况累计耗时(μs)": 41.96004010736942,
+      "工况耗时占比": 0.00020481268417271367,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "未验证",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 8.5195,
+      "H100 设备耗时(μs/次)": 0,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": null,
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "未开始",
+      "负责人": "万",
+      "下一步/进度备注": "补正确性/路由和FG/DAS设备测量",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": null,
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": null,
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[],\"stride\":[],\"dtype\":\"torch.bfloat16\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.bfloat16\"],{}]"
+    }
+  },
+  {
+    "row": 1717,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "BOOL · [1,145]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            145
+          ],
+          "stride": [
+            145,
+            1
+          ],
+          "dtype": "torch.bool",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.int32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 1.632,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "BOOL · [1,145]",
+      "工况调用次数": 1,
+      "工况累计耗时(μs)": 50.98001565784216,
+      "工况耗时占比": 0.0002488404162467856,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "未验证",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.5355,
+      "H100 设备耗时(μs/次)": 1.632,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": null,
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "未开始",
+      "负责人": "万",
+      "下一步/进度备注": "补正确性/路由和FG/DAS设备测量",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": null,
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": null,
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,145],\"stride\":[145,1],\"dtype\":\"torch.bool\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.int32\"],{}]"
+    }
+  },
+  {
+    "row": 1718,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "FP32 · [1,145,256]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            145,
+            256
+          ],
+          "stride": [
+            37120,
+            256,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.bfloat16"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 1.184,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "FP32 · [1,145,256]",
+      "工况调用次数": 4,
+      "工况累计耗时(μs)": 178.03115770220757,
+      "工况耗时占比": 0.0008689943856598181,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "未验证",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.091,
+      "H100 设备耗时(μs/次)": 1.184,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": null,
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "未开始",
+      "负责人": "万",
+      "下一步/进度备注": "补正确性/路由和FG/DAS设备测量",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": null,
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": null,
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,145,256],\"stride\":[37120,256,1],\"dtype\":\"torch.float32\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.bfloat16\"],{}]"
+    }
+  },
+  {
+    "row": 1719,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "FP32 · [1,8,145,145]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            8,
+            145,
+            145
+          ],
+          "stride": [
+            168200,
+            21025,
+            145,
+            1
+          ],
+          "dtype": "torch.float32",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.bfloat16"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 1.312,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "FP32 · [1,8,145,145]",
+      "工况调用次数": 34,
+      "工况累计耗时(μs)": 1711.7282841354609,
+      "工况耗时占比": 0.008355179440988294,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "路由未接通",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 17.668,
+      "H100 设备耗时(μs/次)": 1.312,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": "2026-11-04",
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "路由未接通",
+      "负责人": "万",
+      "下一步/进度备注": "核对公共ATen路由后复测",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": "D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\batches\\batch-0032-part02\\run\\experiments\\survey\\command-0003\\survey.json#S01916; post-analysis=D:\\ZZ\\top20\\baseline-newenv-20261103-r7\\post-analysis\\batch-0032-part02",
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": "测试：路由未接通：fg: invalid_config Exact config key to.dtype must equal flaggems; das: invalid_config Exact config key to.dtype must equal boxing; fg-api: invalid_config Exact ",
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,8,145,145],\"stride\":[168200,21025,145,1],\"dtype\":\"torch.float32\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.bfloat16\"],{}]"
+    }
+  },
+  {
+    "row": 1720,
+    "operator": "aten::to.dtype",
+    "model": "MedGemma",
+    "description": "INT64 · [1,145,1]",
+    "status": "未测",
+    "owner": "万",
+    "metadata": [
+      [
+        {
+          "tensor": true,
+          "shape": [
+            1,
+            145,
+            1
+          ],
+          "stride": [
+            145,
+            1,
+            1
+          ],
+          "dtype": "torch.int64",
+          "device": "cuda:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true
+        },
+        "torch.float32"
+      ],
+      {}
+    ],
+    "sheet_fg_us": null,
+    "sheet_das_us": null,
+    "h100_device_us": 1.616,
+    "original_columns": {
+      "算子序号": "67",
+      "算子名称": "aten::to.dtype",
+      "模型": "MedGemma",
+      "输入 dtype / shape / n": "INT64 · [1,145,1]",
+      "工况调用次数": 2,
+      "工况累计耗时(μs)": 101.6020542010665,
+      "工况耗时占比": 0.0004959334973258814,
+      "算子累计调用次数": 452,
+      "算子耗时占比": 0.11211799799051,
+      "历史计时级别": "B 原生CUDA事件诊断",
+      "正确性": "未测",
+      "路由状态": "未验证",
+      "FG kernel中位数(μs)": null,
+      "DAS kernel中位数(μs)": null,
+      "H100 算子总耗时(μs/次)": 21,
+      "H100 设备耗时(μs/次)": 1.616,
+      "平均相对DAS性能": null,
+      "平均性能状态": "未测",
+      "性能测量日期": null,
+      "性能适用范围": "本模型精确工况未测",
+      "优化跟进状态": "未开始",
+      "负责人": "万",
+      "下一步/进度备注": "补正确性/路由和FG/DAS设备测量",
+      "历史来源": "experiments/bioscience-top20-20261021/final-results/medgemma-run-953271/boxing/aten-exact.json",
+      "性能证据来源": null,
+      "候选源码SHA256": null,
+      "工况说明 / 原验收结论": null,
+      "完整输入元数据JSON": "[[{\"tensor\":true,\"shape\":[1,145,1],\"stride\":[145,1,1],\"dtype\":\"torch.int64\",\"device\":\"cuda:0\",\"layout\":\"torch.strided\",\"storage_offset\":0,\"requires_grad\":false,\"is_contiguous\":true},\"torch.float32\"],{}]"
+    }
+  }
+]
