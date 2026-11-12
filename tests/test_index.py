@@ -336,7 +336,8 @@ def test_index_int32_offset_overflow():
     overflow int32 arithmetic in the generated kernels and caused
     out-of-bounds reads ("illegal memory access").
     """
-    memory_info = getattr(flag_gems.runtime.torch_device_fn, "mem_get_info", None)
+    device_api = getattr(torch, torch.device(flag_gems.device).type)
+    memory_info = getattr(device_api, "mem_get_info", None)
     if memory_info is None:
         pytest.skip(
             "backend has no portable free-memory query; Hygon has a HIP boundary test"
