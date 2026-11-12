@@ -1,15 +1,14 @@
-"""Selected FP64 bank phases with a shortened final K panel.
+"""Tail-bank configurations using the repaired native FP64 MMAC lane map.
 
-Only selected workbook configurations use this kernel. Full K blocks load
-valid wrapped rows/columns without a boundary mask; output stores still mask
-the original coordinates. Partial K blocks remain masked.
+The shared loader masks partial reduction/output panels and keeps the same
+lane ordering as the accumulator and transposed stores.
 """
 
 from triton.experimental import gluon as g
 from triton.experimental.gluon import language as gl
-from triton.experimental.gluon.language import BlockedLayout, SwizzledSharedLayout
+from triton.experimental.gluon.language import BlockedLayout
 
-from .mm_mmac_swizzle import compute, load_layout, parts, rev, store_acc
+from .mm_mmac_swizzle import compute, load, store_acc
 
 
 @g.jit
@@ -41,126 +40,31 @@ def load_banked_tail(
     SA_PER: gl.constexpr,
     SB_PER: gl.constexpr,
 ):
-    WN: gl.constexpr = WARPS // WM
-    LD: gl.constexpr = BlockedLayout([2], [64], [WARPS], [0])
-    if TRANS:
-        ax = gl.arange(0, WM * TM * 64 * PREFETCH, layout=LD)
-        rr = (pm * 16 * TM * WM + ax % (16 * TM * WM)) % M
-        kk = step * 4 * PREFETCH + ax // (16 * TM * WM)
-        if FULL:
-            av = gl.load(A + rr * AM + kk * AK)
-        elif FULL:
-            av = gl.load(A + rr * AM + kk * AK, rr < M, 0)
-        else:
-            av = gl.load(A + rr * AM + kk * AK, kk < K, 0)
-        bx = gl.arange(0, WN * TN * 64 * PREFETCH, layout=LD)
-        kk = step * 4 * PREFETCH + bx % (4 * PREFETCH)
-        cc = (pn * 16 * TN * WN + bx // (4 * PREFETCH)) % N
-        if FULL:
-            bv = gl.load(B + kk * BK + cc * BN)
-        elif FULL:
-            bv = gl.load(B + kk * BK + cc * BN, cc < N, 0)
-        else:
-            bv = gl.load(B + kk * BK + cc * BN, kk < K, 0)
-        av = gl.permute(gl.reshape(av, (4 * PREFETCH, 16 * TM * WM)), (1, 0))
-        bv = gl.permute(gl.reshape(bv, (16 * TN * WN, 4 * PREFETCH)), (1, 0))
-    else:
-        ax = gl.arange(0, WM * TM * 64 * PREFETCH, layout=LD)
-        rr = (pm * 16 * TM * WM + ax // (4 * PREFETCH)) % M
-        kk = step * 4 * PREFETCH + ax % (4 * PREFETCH)
-        if FULL:
-            av = gl.load(A + rr * AM + kk * AK)
-        elif FULL:
-            av = gl.load(A + rr * AM + kk * AK, rr < M, 0)
-        else:
-            av = gl.load(A + rr * AM + kk * AK, kk < K, 0)
-        bx = gl.arange(0, WN * TN * 64 * PREFETCH, layout=LD)
-        kk = step * 4 * PREFETCH + bx // (16 * TN * WN)
-        cc = (pn * 16 * TN * WN + bx % (16 * TN * WN)) % N
-        if FULL:
-            bv = gl.load(B + kk * BK + cc * BN)
-        elif FULL:
-            bv = gl.load(B + kk * BK + cc * BN, cc < N, 0)
-        else:
-            bv = gl.load(B + kk * BK + cc * BN, kk < K, 0)
-        av = gl.reshape(av, (16 * TM * WM, 4 * PREFETCH))
-        bv = gl.reshape(bv, (4 * PREFETCH, 16 * TN * WN))
-    SA: gl.constexpr = (
-        SwizzledSharedLayout(SA_VEC, SA_PER, SA_MAX, [1, 0])
-        if SWIZZLE
-        else SwizzledSharedLayout(1, 1, 1, [1, 0])
+    # The FP64 MMAC repair defines an explicit native lane mapping.  Bank
+    # specializations must use the same loader as compute/store_acc; the old
+    # cooperative-remap helpers no longer exist and are not precision-safe.
+    return load(
+        A,
+        B,
+        M,
+        N,
+        K,
+        AM,
+        AK,
+        BK,
+        BN,
+        WARPS,
+        WM,
+        TM,
+        TN,
+        PREFETCH,
+        pm,
+        pn,
+        step,
+        FULL,
+        SWIZZLE,
+        TRANS,
     )
-    SB: gl.constexpr = (
-        SwizzledSharedLayout(SB_VEC, SB_PER, SB_MAX, [1, 0])
-        if SWIZZLE
-        else SwizzledSharedLayout(1, 1, 1, [1, 0])
-    )
-    LA2: gl.constexpr = load_layout(TM, TN, WARPS, WM, PREFETCH, 0)
-    LB2: gl.constexpr = load_layout(TM, TN, WARPS, WM, PREFETCH, 1)
-    LA: gl.constexpr = BlockedLayout(
-        [1, 1, TM, 1, PREFETCH, 1],
-        [1, 1, 1, 16, 1, 4],
-        [WN, WM, 1, 1, 1, 1],
-        [3, 5, 4, 2, 1, 0],
-    )
-    LB: gl.constexpr = BlockedLayout(
-        [1, 1, TN, PREFETCH, 1, 1],
-        [1, 1, 1, 1, 4, 16],
-        [WN, WM, 1, 1, 1, 1],
-        [5, 4, 3, 2, 1, 0],
-    )
-    sa = gl.allocate_shared_memory(
-        gl.float64, (16 * TM * WM, 4 * PREFETCH), SA, value=av
-    )
-    sb = gl.allocate_shared_memory(
-        gl.float64, (4 * PREFETCH, 16 * TN * WN), SB, value=bv
-    )
-    av = sa.load(LA2)
-    bv = sb.load(LB2)
-    av = gl.reshape(av, (1, WM, TM, 16, PREFETCH, 4))
-    av = gl.convert_layout(av, LA)
-    av = (
-        av.to(gl.uint64, bitcast=True)
-        | gl.full((WN, WM, TM, 16, PREFETCH, 4), 0, gl.uint64, LA)
-    ).to(gl.float64, bitcast=True)
-    av = gl.reshape(av, (WARPS, TM, 16, PREFETCH, 4))
-    av = gl.permute(av, (0, 4, 2, 1, 3))
-    av = gl.reshape(av, (WARPS * 64, TM * PREFETCH))
-    bv = gl.permute(gl.reshape(bv, (PREFETCH, 4, WN, TN, 16)), (2, 3, 0, 1, 4))
-    bv = gl.reshape(bv, (WN, 1, TN, PREFETCH, 4, 16))
-    bv = gl.convert_layout(bv, LB)
-    bv = (
-        bv.to(gl.uint64, bitcast=True)
-        | gl.full((WN, WM, TN, PREFETCH, 4, 16), 0, gl.uint64, LB)
-    ).to(gl.float64, bitcast=True)
-    bv = gl.reshape(bv, (WARPS, TN, PREFETCH, 64))
-    bv = gl.permute(bv, (0, 3, 1, 2))
-    bv = gl.reshape(bv, (WARPS * 64, TN * PREFETCH))
-    ap = parts(av, WARPS, TM * PREFETCH)
-    bp = parts(bv, WARPS, TN * PREFETCH)
-    aa = ()
-    bb = ()
-    L1: gl.constexpr = BlockedLayout([1], [64], [WARPS], [0])
-    for ki in gl.static_range(PREFETCH):
-        for i in gl.static_range(TM):
-            aa += (
-                gl.convert_layout(
-                    gl.reshape(
-                        ap[rev(i * PREFETCH + ki, TM * PREFETCH)], (WARPS * 64,)
-                    ),
-                    L1,
-                ),
-            )
-        for j in gl.static_range(TN):
-            bb += (
-                gl.convert_layout(
-                    gl.reshape(
-                        bp[rev(j * PREFETCH + ki, TN * PREFETCH)], (WARPS * 64,)
-                    ),
-                    L1,
-                ),
-            )
-    return (aa, bb)
 
 
 @g.jit
