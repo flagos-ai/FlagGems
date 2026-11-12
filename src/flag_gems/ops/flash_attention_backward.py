@@ -21,6 +21,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
+
 try:
     from triton.knobs import autotuning as _autotuning_knobs
 except (ImportError, ModuleNotFoundError):
@@ -108,7 +110,15 @@ _DKV_CONFIGS = [
     # HAS_BIAS/DO_BIAS_GRAD must be part of the key: they change the kernel's
     # shared-memory footprint, and a config tuned without an attention bias
     # can exceed the device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "DO_BIAS_GRAD", "FP32"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "DO_BIAS_GRAD",
+        "FP32",
+        "IS_DROPOUT",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dq_fused(
@@ -333,7 +343,15 @@ def _flash_attn_bwd_dq_fused(
     # HAS_BIAS must be part of the key: it changes the kernel's shared-memory
     # footprint, and a config tuned without an attention bias can exceed the
     # device limit once recompiled with one.
-    key=["seqlen_q", "seqlen_k", "HEAD_DIM", "HAS_BIAS", "FP32"],
+    key=[
+        "seqlen_q",
+        "seqlen_k",
+        "HEAD_DIM",
+        "HAS_BIAS",
+        "FP32",
+        "IS_DROPOUT",
+        "COMPENSATE_DV",
+    ],
 )
 @triton.jit
 def _flash_attn_bwd_dkv(
@@ -391,6 +409,7 @@ def _flash_attn_bwd_dkv(
     HAS_ALIBI: tl.constexpr,
     HAS_BIAS: tl.constexpr,
     FP32: tl.constexpr,
+    COMPENSATE_DV: tl.constexpr,
 ):
     start_n = tl.program_id(0)
     batch_idx = tl.program_id(1)
@@ -558,7 +577,15 @@ def _flash_attn_bwd_dkv(
             dv = dv + tl.dot(tl.trans(p_drop), do, input_precision="ieee")
         else:
             dk = dk + tl.dot(tl.trans(ds.to(q.dtype)), q)
-            dv = dv + tl.dot(tl.trans(p_drop.to(q.dtype)), do)
+            p_hi = p_drop.to(q.dtype)
+            dv = dv + tl.dot(tl.trans(p_hi), do)
+            if COMPENSATE_DV:
+                # A single FP16/BF16 probability rounding can exceed the dV
+                # tolerance even when Q/K and the score accumulation are exact.
+                # Recover the residual with a second low-precision dot rather
+                # than discarding it before the FP32 accumulation.
+                p_lo = (p_drop - p_hi.to(tl.float32)).to(q.dtype)
+                dv = dv + tl.dot(tl.trans(p_lo), do)
 
     tl.store(
         dK + k_base + offs_n[:, None] * stride_km + offs_d[None, :] * stride_kd,
@@ -1366,6 +1393,7 @@ def flash_attn_backward(
                 IS_CAUSAL=is_causal,
                 IS_DROPOUT=use_dropout,
                 FP32=Q.dtype == torch.float32,
+                COMPENSATE_DV=runtime_device.vendor_name == "hygon",
                 HAS_WINDOW=has_window,
                 HAS_ALIBI=has_alibi,
                 HAS_BIAS=has_bias,
