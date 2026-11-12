@@ -55,8 +55,10 @@ def _make_inputs(layout, shape, index_dtype, dtype, device, strided_batch=False)
     comp = comp.expand(*batch, cdim + 1).clone()
     plain = plain.expand(*batch, nnz).clone()
     if strided_batch and batch:
-        comp = torch.stack((comp, comp), dim=-2)[..., 0, :]
-        plain = torch.stack((plain, plain), dim=-2)[..., 0, :]
+        # Select the second copy to cover nonzero storage offsets as well as
+        # noncontiguous batch strides.
+        comp = torch.stack((comp, comp), dim=-2)[..., 1, :]
+        plain = torch.stack((plain, plain), dim=-2)[..., 1, :]
     br, bc = (2, 3) if blocked else (1, 1)
     rows, cols = (cdim, dim) if row_major else (dim, cdim)
     block_shape = (br, bc) if blocked else ()
