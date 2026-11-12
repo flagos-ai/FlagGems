@@ -53,6 +53,13 @@ _DTYPES.append(torch.complex64)
 
 _COMPLEX_DTYPES = [dtype for dtype in _DTYPES if dtype.is_complex]
 
+
+def _reference_input(inp):
+    if flag_gems.vendor_name == "thead" and inp.is_complex() and not utils.TO_CPU:
+        pytest.skip("PPU native complex Cholesky can terminate; use CPU reference")
+    return tu.to_reference(inp)
+
+
 # A Cholesky factor exists only for a square matrix, so the spec shape levels
 # are adapted by rank: the rank 0 and rank 1 levels carry no square matrix and
 # are replaced by the empty-square, zero-batch and n == 1 boundaries below,
@@ -258,7 +265,7 @@ def test_linalg_cholesky_ex_raw_range(shape, dtype, value_range):
     # reports a failing minor through info; the full returned tuple is compared
     # either way.
     inp = _range_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
@@ -283,7 +290,7 @@ _PD_ROWS = [
 def test_linalg_cholesky_ex_pd_success(shape, dtype, value_range):
     # info == 0 by construction, so both triangles of the factor are defined.
     inp = _pd_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
@@ -306,7 +313,7 @@ _EXTREME_ROWS = [
 )
 def test_linalg_cholesky_ex_extreme_pd(symbol, upper, dtype):
     inp = _extreme_pd_input(dtype, symbol)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
@@ -332,7 +339,7 @@ def test_linalg_cholesky_ex_upper(shape, dtype, value_range):
     # upper is True, so the native reads the stored upper triangle and returns U
     # with A = U^H U; the ignored triangle of the input must not reach it.
     inp = _range_input(dtype, shape, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=True)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=True)
@@ -359,7 +366,7 @@ def test_linalg_cholesky_ex_param_combos(upper, check_errors, dtype):
     # by this kernel selection, so the probed supported dtypes carry both bool
     # parameters in every True/False combination.
     inp = _pd_input(dtype, (1024, 1024), ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(
         ref_inp, upper=upper, check_errors=check_errors
@@ -379,7 +386,7 @@ def test_linalg_cholesky_ex_default_arguments(dtype):
     # arguments checks that the candidate implements them, which passing the
     # same values explicitly does not.
     inp = _pd_input(dtype, (16, 16), ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
@@ -396,7 +403,7 @@ _LAYOUT_ROWS = [(kind, dtype) for dtype in _DTYPES for kind in _LAYOUT_KINDS]
 @pytest.mark.parametrize("layout,dtype", tu.selected_cases(_LAYOUT_ROWS, quick=[]))
 def test_linalg_cholesky_ex_layout(layout, dtype):
     inp = _layout_input(dtype, layout)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
@@ -426,7 +433,7 @@ def test_linalg_cholesky_ex_out_overload(shape, layout, upper, dtype):
     #     bool check_errors=False, Tensor(a!) L, Tensor(b!) info)
     # so both write-out buffers are keyword-only and are named L and info.
     inp = _pd_input(dtype, shape, ["-1", "1"])
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     # Reference buffers carry the reference dtype and live on the reference
     # tensor device; the candidate buffers use the candidate input device, so
@@ -471,7 +478,7 @@ def test_linalg_cholesky_ex_failed_minor(kind, upper, dtype):
     # past that minor are unspecified by the native contract yet are compared in
     # full here, so a divergence is visible instead of being masked away.
     inp = _non_pd_input(dtype, 8, kind)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
@@ -500,7 +507,7 @@ def test_linalg_cholesky_ex_special_values(placement, upper, dtype, scenario):
     # placed in one known region. The ignored-triangle rows, in particular the
     # finite asymmetric one, fail a candidate that reads the wrong triangle.
     inp = _special_input(dtype, placement, upper, scenario)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp, upper=upper)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp, upper=upper)
@@ -518,7 +525,7 @@ def test_linalg_cholesky_ex_complex_diagonal(dtype):
     inp = _pd_input(dtype, (4, 4), ["-1", "1"])
     imag = torch.arange(1, 5, dtype=torch.float32, device=flag_gems.device) * 1j
     inp = inp + torch.diag(imag.to(dtype))
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _reference_input(inp)
 
     ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex(ref_inp)
     res_l, res_info = flag_gems.linalg_cholesky_ex(inp)
@@ -539,7 +546,7 @@ def test_linalg_cholesky_ex_backward(upper, dtype):
     # the candidate gradient is built on the candidate input device and the
     # reference gradient is its equivalent on the reference device, so neither
     # autograd call is handed a tensor from the other device.
-    ref_inp = tu.to_reference(inp).detach().requires_grad_(True)
+    ref_inp = _reference_input(inp).detach().requires_grad_(True)
     res_inp = inp.detach().clone().requires_grad_(True)
     upstream = torch.randn(4, 4, dtype=dtype, device=flag_gems.device)
     ref_upstream = tu.to_reference(upstream)
@@ -626,3 +633,42 @@ def test_linalg_cholesky_ex_check_errors_raises(kind, upper, dtype):
     inp = _non_pd_input(dtype, 8, kind)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.linalg_cholesky_ex(inp, upper=upper, check_errors=True)
+
+
+_MASTER_SPD_CASES = [
+    ((), 2, False, torch.float32),
+    ((1,), 3, True, torch.float32),
+    ((2,), 4, False, torch.float64),
+    ((2, 3), 5, True, torch.float32),
+    ((1,), 7, False, torch.float64),
+    ((3,), 3, True, torch.float32),
+    ((2, 2), 4, False, torch.float32),
+    ((4,), 6, True, torch.float64),
+    ((1, 2, 1), 3, False, torch.float32),
+    ((2,), 8, True, torch.float64),
+]
+
+
+@pytest.mark.linalg_cholesky_ex
+@pytest.mark.parametrize("case", _MASTER_SPD_CASES)
+def test_linalg_cholesky_ex_master_spd(case):
+    batch, n, upper, dtype = case
+    if dtype == torch.float64 and not utils.fp64_is_supported:
+        pytest.skip("float64 is not supported by this device")
+    torch.manual_seed(0)
+    device = flag_gems.device
+    raw = torch.randn(*batch, n, n, dtype=dtype, device=device)
+    matrix = raw @ raw.transpose(-1, -2) + 2.0 * torch.eye(
+        n, dtype=dtype, device=device
+    )
+    ref_l, ref_info = torch.ops.aten.linalg_cholesky_ex.default(
+        utils.to_reference(matrix, True), upper=upper, check_errors=False
+    )
+    actual_l, actual_info = flag_gems.linalg_cholesky_ex(
+        matrix, upper=upper, check_errors=False
+    )
+    assert actual_l.device == actual_info.device == matrix.device
+    assert actual_l.dtype == dtype and actual_info.dtype == torch.int32
+    assert actual_l.shape == matrix.shape and actual_info.shape == batch
+    utils.gems_assert_close(actual_l, ref_l.to(dtype), dtype, reduce_dim=n * n)
+    utils.gems_assert_equal(actual_info, ref_info)
