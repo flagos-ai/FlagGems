@@ -25,14 +25,14 @@ def _gather_tiles(
     TILE_ROWS: tl.constexpr,
     TILE_COLS: tl.constexpr,
 ):
-    i = tl.program_id(0) * TILE_ROWS + tl.arange(0, TILE_ROWS)
-    row = tl.load(INDEX + i, i < COUNT, other=0)
+    i = tl.program_id(0).to(tl.int64) * TILE_ROWS + tl.arange(0, TILE_ROWS)
+    row = tl.load(INDEX + i, i < COUNT, other=0).to(tl.int64)
     tl.device_assert(
         (i >= COUNT) | ((row >= -ROWS) & (row < ROWS)), "index out of bounds"
     )
     row = tl.where(row < 0, row + ROWS, row)
     j = tl.arange(0, TILE_COLS)
-    cur = j
+    cur = j.to(tl.int64)
     offset = tl.full((TILE_COLS,), 0, tl.int64)
     for d in tl.static_range(len(SHAPE) - 1, 0, -1):
         offset += cur % SHAPE[d] * STRIDE[d]
@@ -58,9 +58,9 @@ def _gather_rows(
     STRIDE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    i = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     valid = i < SIZE
-    row = tl.load(INDEX + i // SUFFIX, valid, other=0)
+    row = tl.load(INDEX + i // SUFFIX, valid, other=0).to(tl.int64)
     tl.device_assert((~valid) | ((row >= -ROWS) & (row < ROWS)), "index out of bounds")
     row = tl.where(row < 0, row + ROWS, row)
     cur = i % SUFFIX
@@ -105,7 +105,7 @@ def _compact_mask(
     i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     take = tl.load(MASK + i, i < SIZE, other=0).to(tl.int32)
     rank = tl.cumsum(take, 0) - 1 + tl.load(PREFIX + tl.program_id(0))
-    cur = i
+    cur = i.to(tl.int64)
     offset = tl.full((BLOCK,), 0, tl.int64)
     for d in tl.static_range(len(SHAPE) - 1, -1, -1):
         offset += cur % SHAPE[d] * STRIDE[d]
@@ -115,7 +115,7 @@ def _compact_mask(
         tl.store(OUT + rank, value, (i < SIZE) & (take != 0))
     else:
         j = tl.arange(0, triton.next_power_of_2(SUFFIX))
-        cur_j = j
+        cur_j = j.to(tl.int64)
         offset_j = tl.full((triton.next_power_of_2(SUFFIX),), 0, tl.int64)
         for d in tl.static_range(len(SUFFIX_SHAPE) - 1, -1, -1):
             offset_j += cur_j % SUFFIX_SHAPE[d] * SUFFIX_STRIDE[d]
@@ -231,6 +231,8 @@ def _legacy_index(inp, indices):
 # Additional layouts: strided/column gathers and wide or broadcast masks.
 @triton.jit
 def _offset(i, SHAPE: tl.constexpr, STRIDE: tl.constexpr):
+    # Promote before multiplying by strides, including for int32 index tensors.
+    i = i.to(tl.int64)
     out = tl.full(i.shape, 0, tl.int64)
     for d in tl.static_range(len(SHAPE) - 1, -1, -1):
         out += (i % SHAPE[d]) * STRIDE[d]
@@ -255,9 +257,11 @@ def _axis_gather(
     INDEX_STRIDE: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
-    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    i = tl.program_id(0).to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
     valid = i < SIZE
-    row = tl.load(I + ((i // SUFFIX) % COUNT) * INDEX_STRIDE, valid, other=0)
+    row = tl.load(I + ((i // SUFFIX) % COUNT) * INDEX_STRIDE, valid, other=0).to(
+        tl.int64
+    )
     tl.device_assert((~valid) | ((row >= -ROWS) & (row < ROWS)), "index out of bounds")
     row = tl.where(row < 0, row + ROWS, row)
     offset = (
