@@ -15,6 +15,7 @@
 import importlib
 import itertools
 import random
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -402,27 +403,47 @@ def init_seed(seed):
         torch.cuda.manual_seed_all(seed)
 
 
+def _vendor_arch_names():
+    """Return the arch directory names of the current vendor backend.
+
+    ``BackendArchEvent`` treats every sub-directory of ``_<vendor>`` other than
+    ``ops``/``fused`` and private ones as an arch (e.g. ``hopper``, ``gcu300``).
+    """
+    backend_dir = Path(flag_gems.__file__).parent / "runtime" / "backend"
+    vendor_dir = backend_dir / f"_{flag_gems.vendor_name}"
+    if not vendor_dir.is_dir():
+        return set()
+    excluded = ("ops", "fused")
+    return {
+        p.name
+        for p in vendor_dir.iterdir()
+        if p.is_dir() and p.name not in excluded and not p.name.startswith("_")
+    }
+
+
 def gems_log_prefix(fn):
     """Return the expected log prefix for an operator implementation.
 
     Three module naming conventions exist across backends:
 
-    1. Generic ops: ``flag_gems.ops.<op>`` → prefix ``GEMS``
+    1. Generic ops: ``flag_gems.ops.<op>`` -> prefix ``GEMS``
     2. Vendor override loaded via ``import_vendor_extra_lib``:
-       ``_<vendor>.ops.<op>`` — the leading ``_<vendor>`` segment identifies
-       the vendor (e.g. ``_kunlunxin.ops.add``).
+       ``_<vendor>.ops.<op>``, or a fully qualified
+       ``flag_gems.runtime.backend._<vendor>.ops.<op>``.
     3. Arch-specific ops loaded by ``BackendArchEvent`` via ``sys.path``
        injection: ``<arch>.ops.<op>`` with a bare arch name such as ``gcu300``,
-       ``hopper``, ``rdna4``, or ``tx81`` — these fall entirely outside the
-       ``flag_gems.*`` namespace.
+       ``hopper``, ``rdna4``, or ``tx81``, outside the ``flag_gems.*`` namespace.
 
-    Cases 2 and 3 both map to ``GEMS_<VENDOR>``.
+    Cases 2 and 3 map to ``GEMS_<VENDOR>``. Both are matched on whole path
+    segments, so a module that merely shares a prefix with the vendor or arch
+    name (e.g. ``_<vendor>_extra``) stays ``GEMS``.
     """
     module_parts = fn.__module__.split(".")
+    vendor_prefix = f"GEMS_{flag_gems.vendor_name.upper()}"
     if f"_{flag_gems.vendor_name}" in module_parts:
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
-    if not fn.__module__.startswith("flag_gems."):
-        return f"GEMS_{flag_gems.vendor_name.upper()}"
+        return vendor_prefix
+    if module_parts[0] in _vendor_arch_names():
+        return vendor_prefix
     return "GEMS"
 
 
