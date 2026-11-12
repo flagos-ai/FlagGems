@@ -77,6 +77,14 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
         quant_max,
         grad_factor,
     )
+    # Native ATen reduces an empty axis tuple to a scalar for rank-one input.
+    # Freeze this observed public ABI before invoking the injected candidate.
+    expected_parameter_shape = () if len(shape) == 1 else tuple(scale.shape)
+    expected_shapes = (
+        tuple(shape), expected_parameter_shape, expected_parameter_shape
+    )
+    expected_device = grad.device
+    assert tuple(tuple(value.shape) for value in ref_out) == expected_shapes
     result = flag_gems._fake_quantize_learnable_per_channel_affine_backward(
         grad,
         self_t,
@@ -94,10 +102,10 @@ def test_fake_quantize_learnable_per_channel_affine_backward(
             actual, expected, torch.float32, reduce_dim=1 if index == 0 else reduce_size
         )
     for value, snapshot in zip(inputs, snapshots):
-        utils.gems_assert_equal(value, snapshot)
-    assert result[0].shape == self_t.shape
-    assert result[1].shape == scale.shape
-    assert result[2].shape == zero_point.shape
+        utils.gems_assert_equal(value, utils.to_reference(snapshot, False))
+    assert len(result) == len(expected_shapes)
+    assert tuple(tuple(value.shape) for value in result) == expected_shapes
+    assert all(value.device == expected_device for value in result)
     assert all(value.dtype == torch.float32 for value in result)
 
 
@@ -119,9 +127,14 @@ def test_fake_quantize_learnable_per_channel_affine_backward_extreme():
     ref_out = _ATEN_OP(
         *(_reference(tensor) for tensor in inputs), axis, -128, 127, 1.0
     )
+    expected_shapes = (tuple(shape), (shape[axis],), (shape[axis],))
+    expected_device = grad.device
     result = flag_gems._fake_quantize_learnable_per_channel_affine_backward(
         *inputs, axis, -128, 127, 1.0
     )
+    assert tuple(tuple(value.shape) for value in result) == expected_shapes
+    assert all(value.device == expected_device for value in result)
+    assert all(value.dtype == torch.float32 for value in result)
 
     for index, (actual, expected) in enumerate(zip(result, ref_out)):
         utils.gems_assert_close(
@@ -141,15 +154,34 @@ def test_fake_quantize_learnable_per_channel_affine_backward_empty():
     self_t = torch.empty(shape, device=flag_gems.device)
     scale = torch.empty(0, device=flag_gems.device)
     zero_point = torch.empty(0, device=flag_gems.device)
+    # Probe only the reference's zero-channel limitation before candidate entry.
+    # Both native CPU and device implementations reject this exact empty case.
+    try:
+        _ATEN_OP(
+            *(_reference(tensor) for tensor in (grad, self_t, scale, zero_point)),
+            axis, -128, 127, 1.0,
+        )
+    except RuntimeError as error:
+        if "input.numel() == 0" not in str(error):
+            raise
+        pytest.skip("Native per-channel backward does not support zero-channel input")
+    expected_shapes = (tuple(shape), (0,), (0,))
+    expected_device = grad.device
+    expected_scale = utils.to_reference(torch.zeros_like(scale), False)
+    expected_zero_point = utils.to_reference(torch.zeros_like(zero_point), False)
     result = flag_gems._fake_quantize_learnable_per_channel_affine_backward(
         grad, self_t, scale, zero_point, axis, -128, 127, 1.0
     )
 
-    assert result[0].shape == self_t.shape
-    assert result[1].shape == scale.shape
-    assert result[2].shape == zero_point.shape
-    utils.gems_assert_equal(result[1], torch.zeros_like(scale))
-    utils.gems_assert_equal(result[2], torch.zeros_like(zero_point))
+    assert tuple(tuple(value.shape) for value in result) == expected_shapes
+    assert all(value.device == expected_device for value in result)
+    assert all(value.dtype == torch.float32 for value in result)
+    utils.gems_assert_equal(
+        result[1], expected_scale
+    )
+    utils.gems_assert_equal(
+        result[2], expected_zero_point
+    )
 
 
 @pytest.mark.fake_quantize_learnable_per_channel_affine_backward
@@ -162,7 +194,9 @@ def test_fake_quantize_learnable_per_channel_affine_backward_rejects_dtype():
         torch.ones(8, device=flag_gems.device),
         torch.zeros(8, device=flag_gems.device),
     ]
-    with pytest.raises(AssertionError):
+    with pytest.raises(
+        (AssertionError, RuntimeError), match=r"grad.*float32|dY_?\.scalar_type"
+    ):
         flag_gems._fake_quantize_learnable_per_channel_affine_backward(
             *tensors, axis, -128, 127, 1.0
         )
