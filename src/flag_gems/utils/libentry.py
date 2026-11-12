@@ -1385,8 +1385,10 @@ class LibEntry(triton.KernelInterface):
     def __init__(
         self,
         fn,
+        cache_miss_fallback=None,
     ):
         self.fn = fn
+        self._cache_miss_fallback = cache_miss_fallback
         self.arg_names = fn.arg_names
         self.divisibility = 16
         self.kernel_cache = tuple(dict() for _ in range(DEVICE_COUNT))
@@ -1581,6 +1583,10 @@ class LibEntry(triton.KernelInterface):
             with self.lock:
                 if not bypass_cache and entry_key in cache:
                     break
+                if not bypass_cache and self._cache_miss_fallback is not None:
+                    result = self._cache_miss_fallback(self, args, kwargs)
+                    if result is not None:
+                        return result
                 kernel = self.fn.run(*args, **kwargs)
                 fn = self.fn
                 # collect constexpr arguments for grid computation
@@ -1750,10 +1756,10 @@ def clear_libentry_dispatch_cache(entry: "LibEntry") -> None:
     entry._cpu_cache.clear()
 
 
-def libentry():
-    """Decorator for triton library entries."""
+def libentry(*, cache_miss_fallback=None):
+    """Decorate an entry, optionally handling a miss without populating its cache."""
 
     def decorator(fn):
-        return LibEntry(fn)
+        return LibEntry(fn, cache_miss_fallback)
 
     return decorator

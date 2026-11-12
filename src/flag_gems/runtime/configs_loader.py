@@ -102,7 +102,7 @@ class TunedConfigLoader(object):
 
     def _build_configs_by_op(self, op_name, ranges, pre_hook=None):
         if op_name == "mm_hygon_splitk":
-            from flag_gems.runtime.backend._hygon.gemm_config_profiles import (
+            from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
                 build_split_configs,
             )
 
@@ -118,7 +118,7 @@ class TunedConfigLoader(object):
             ]
 
         if op_name == "mm_hygon":
-            from flag_gems.runtime.backend._hygon.gemm_config_profiles import (
+            from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import (
                 build_mm_configs,
             )
 
@@ -1072,8 +1072,9 @@ class TunedConfigLoader(object):
             "mm_hygon": {
                 "yaml_op_name": "mm",
                 "key": ["M", "N", "K", "stride_am", "stride_bk",
-                        "LARGE_TILE_CONFIGS", "ASYNC_LOAD_MASK", "K_DIVISIBLE_BY_16"],
-                "default_strategy": ["default"] * 8,
+                        "LARGE_TILE_CONFIGS", "ASYNC_LOAD_MASK", "K_DIVISIBLE_BY_16",
+                        "B_K_CONTIGUOUS"],
+                "default_strategy": ["default"] * 9,
                 "expand_yaml_path": mm_expand_yaml_path,
             },
             "mm_ppu": {

@@ -74,6 +74,7 @@ def test_hygon_mm_async_pruning(hygon_mm, M, N, K, large, masked, allow_async):
         hygon_mm._hygon_mm_configs(),
         dict(M=M, N=N, K=K, LARGE_TILE_CONFIGS=large),
         MASK_EDGES=masked,
+        ASYNC_LOAD_MASK=3,
     )
     packed = [config for config in configs if config.kwargs["ASYNC_LOAD"]]
     assert bool(packed) == allow_async
@@ -140,6 +141,7 @@ def test_hygon_mm_large_async_domain(hygon_mm, M, N, K, large, masked, expected)
         hygon_mm._hygon_mm_configs(),
         dict(M=M, N=N, K=K, LARGE_TILE_CONFIGS=large),
         MASK_EDGES=masked,
+        ASYNC_LOAD_MASK=3,
     )
     choices = [
         c for c in configs if c.kwargs["ASYNC_LOAD"] and c.kwargs["BLOCK_M"] == 256
@@ -251,14 +253,15 @@ def test_hygon_mm_expanded_resolver_and_capability_cache_key(hygon_mm):
     assert tuner._flagtune_expand_op_name == "mm_hygon"
     assert "ASYNC_LOAD_MASK" in tuner.keys
     assert "K_DIVISIBLE_BY_16" in tuner.keys
+    assert "B_K_CONTIGUOUS" in tuner.keys
     configs, strategy = tuner._flagtune_configs_for_mode(
         "mm", hygon_mm.runtime.TuningMode.EXPANDED
     )
     assert [c.all_kwargs() for c in configs] == [
         c.all_kwargs() for c in _expanded_configs(hygon_mm)
     ]
-    assert len(strategy) == len(tuner.keys) == 8
-    assert strategy == ["default"] * 8
+    assert len(strategy) == len(tuner.keys) == 9
+    assert strategy == ["default"] * 9
 
 
 @pytest.fixture
@@ -461,7 +464,7 @@ def test_hygon_small_mm_uses_launch_metadata_for_cached_post(
     hy = importlib.import_module("flag_gems.runtime.backend._hygon.ops.mm")
     calls = []
     posts = []
-    monkeypatch.setattr(m, "_splitk_parameters", lambda a, b, c: (32, 32, 32, 16))
+    monkeypatch.setattr(m, "_splitk_eligible", lambda a, b, c: True)
     monkeypatch.setattr(hy, "_hygon_mm_async_load_mask", lambda *a: 1)
     monkeypatch.setattr(m.torch_device_fn, "device", lambda d: contextlib.nullcontext())
     metas = [
@@ -504,7 +507,7 @@ def test_hygon_small_mm_uses_launch_metadata_for_cached_post(
         assert args[7:] == b.stride()
         assert kw == dict(
             B_K_CONTIGUOUS=transpose_b,
-            ASYNC_LOAD_MASK=1,
+            ASYNC_LOAD_MASK=0 if transpose_b else 1,
             WAVE_PRIVATE_SYNC_SUPPORTED=m._SPLITK_WAVE_PRIVATE_SYNC_SUPPORTED,
             M_ALIGNMENT=1,
             N_ALIGNMENT=16,
@@ -534,7 +537,7 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
 
     def eligible(*args):
         eligibility_checks.append(args)
-        return (32, 32, 32, 16)
+        return True
 
     def launch(a, b, out):
         outputs.append(out)
@@ -542,7 +545,7 @@ def test_hygon_splitk_compares_local_split_for_both_layouts(
     tuner = SimpleNamespace(
         _run_mode="normal", config_table_name="test", configs=(), _benchmark_protocol=()
     )
-    monkeypatch.setattr(split, "_splitk_parameters", eligible)
+    monkeypatch.setattr(split, "_splitk_eligible", eligible)
     monkeypatch.setattr(split, "_launch_mm_splitk", launch)
     monkeypatch.setattr(
         split, "_mm_splitk_partial", SimpleNamespace(fn=tuner, _apply_flagtune=lambda: None)
@@ -622,7 +625,7 @@ def test_hygon_small_mm_timed_post_grid_uses_post_metadata(hygon_splitk, monkeyp
 def test_hygon_mm_named_profiles_have_distinct_representatives(hygon_mm):
     from triton.backends.hcu.compiler import HIPOptions
 
-    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
 
     names = [
         "generic_min",
@@ -693,7 +696,7 @@ def test_hygon_mm_expanded_covers_default_baseline_launches(hygon_mm):
 
 
 def test_hygon_mm_default_baselines_respect_launch_ranges(hygon_mm):
-    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
 
     launches = {
         _mm_baseline_launch(config)
@@ -745,7 +748,7 @@ def test_hygon_mm_expanded_older_compiler_omits_ring_option(hygon_mm, monkeypatc
 def test_hygon_mm_scalar_copy_alias_needs_retained_control(hygon_mm):
     from triton.backends.hcu.compiler import HIPOptions
 
-    from flag_gems.runtime.backend._hygon.gemm_config_profiles import build_mm_configs
+    from flag_gems.runtime.backend._hygon.ops.gemm_config_profiles import build_mm_configs
 
     ranges = dict(BLOCK_M=[16], BLOCK_N=[64], BLOCK_K=[16], GROUP_M=[1], s=[2], w=[4])
     cases = [

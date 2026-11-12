@@ -93,6 +93,106 @@ def test_family_cold_graph_never_tunes(router, monkeypatch):
     assert not router._mm_family_choices
 
 
+@pytest.mark.parametrize("fail_on_cache_hit", [False, True])
+def test_optional_mm_compile_failure_preserves_incumbent(
+    router, monkeypatch, fail_on_cache_hit
+):
+    from triton.runtime.errors import OutOfResources
+
+    install_benchmark(monkeypatch)
+    config = router.SharedMMConfig((64, 128, 32))
+    monkeypatch.setattr(router, "mm_family_candidates", lambda *a, **kw: (config,))
+    fails = not fail_on_cache_hit
+    selected = []
+
+    def optional(*args):
+        if fails:
+            raise OutOfResources(65538, 65536, "shared memory")
+        selected.append("shared")
+        return 1
+
+    def incumbent():
+        selected.append("ordinary")
+        return 10
+
+    monkeypatch.setattr(router, "_dispatch_hygon_mm_candidate", optional)
+    args = operands()
+    assert router.try_mm_family(*args, incumbent, tuning_key=("expanded",))
+    assert selected[-1] == ("shared" if fail_on_cache_hit else "ordinary")
+    fails = True
+    assert router.try_mm_family(*args, incumbent, tuning_key=("expanded",))
+    assert selected[-1] == "ordinary"
+    assert next(iter(router._mm_family_choices.values()))[0] == 0
+
+
+def test_offline_mm_tuner_precedes_splitk(router, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("offline ordinary MM reached Split-K")
+
+    launched = []
+    monkeypatch.setattr(router.mm_kernel.fn, "_run_mode", "exhaustive_collection")
+    monkeypatch.setattr(router, "try_mm_splitk", forbidden)
+    monkeypatch.setattr(router, "_launch_ordinary_mm", lambda *a: launched.append(a))
+    args = operands()
+    router._dispatch_hygon_mm(*args)
+    assert launched == [args]
+
+
+def test_short_k_sync_admits_odd_n_in_both_layouts(router, monkeypatch):
+    m, n, k = 8192, 257, 128
+    monkeypatch.setattr(router, "_short_k_supported", lambda: True)
+    monkeypatch.setattr(
+        router.torch_device_fn, "get_device_properties",
+        lambda device: SimpleNamespace(multi_processor_count=128),
+    )
+    a = tensor((m, k), (k, 1), 0x100000)
+    c = tensor((m, n), (n, 1), 0x200000000)
+    nn = tensor((k, n), (n, 1), 0x100000000)
+    nt = tensor((k, n), (1, k), 0x100000000)
+    assert router.short_k_mm_candidates(a, nn, c) == router.SHORT_K_MM_CONFIGS
+    assert router.short_k_mm_candidates(a, nt, c) == router.SHORT_K_MM_CONFIGS
+    assert not router._SHORT_K_STORAGE.supports(a, nn, c)
+
+
+@pytest.mark.parametrize(
+    "nt,n,a_offset,b_offset,expected",
+    [
+        (False, 64, 0, 0, 3),
+        (True, 64, 0, 0, 3),
+        (False, 65, 0, 0, 1),
+        (True, 65, 0, 0, 3),
+        (True, 65, 0, 2, 1),
+        (True, 65, 2, 0, 2),
+    ],
+)
+def test_ordinary_async_layout_is_per_operand(
+    router, monkeypatch, nt, n, a_offset, b_offset, expected
+):
+    from triton import knobs
+
+    monkeypatch.setattr(router, "_HYGON_MM_LARGE_OPTIONS_SUPPORTED", True)
+    monkeypatch.setattr(router, "HAS_HYGON_TLE", True)
+    monkeypatch.setattr(
+        knobs, "hcu",
+        SimpleNamespace(
+            use_buffer_ops=True, use_async_copy=False,
+            use_block_pingpong=False, use_in_thread_transpose=False,
+        ),
+    )
+    driver = SimpleNamespace(
+        get_current_target=lambda: SimpleNamespace(backend="hip", arch="gfx936")
+    )
+    monkeypatch.setattr(router.triton.runtime.driver, "_active", driver)
+    m, k = 64, 128
+    a = tensor((m, k), (k, 1), 0x100000 + a_offset)
+    b = tensor((k, n), (1, k) if nt else (n, 1), 0x100000000 + b_offset)
+    c = tensor((m, n), (n, 1), 0x200000000)
+    c.is_contiguous = lambda: True
+    for t in (a, b, c):
+        t.untyped_storage = lambda: SimpleNamespace(nbytes=lambda: 1 << 20)
+    assert router._hygon_mm_async_load_mask(a, b, c, m, n, k) == expected
+
+
 @pytest.mark.parametrize(
     "m,n,k,nt,expected",
     [
@@ -196,3 +296,34 @@ def test_family_does_not_reuse_choice_for_different_output_shape(router, monkeyp
     assert router.try_mm_family(a, b, c, lambda: 10, tuning_key=("default",))
     c.shape = (34, 80)
     assert not router.try_mm_family(a, b, c, lambda: 10, tuning_key=("default",))
+
+
+@pytest.mark.parametrize(
+    "m,n,k,layout,expanded,b_offset,expected",
+    [
+        (4096, 2048, 192, "nn", True, 0, (4,)),
+        (3072, 2048, 192, "nn", True, 0, (4,)),
+        (2816, 2048, 192, "nn", True, 0, ()),
+        (16384, 376, 192, "nn", True, 0, ()),
+        (16384, 392, 192, "nn", True, 0, (4,)),
+        (4097, 2049, 192, "nn", True, 0, ()),
+        (4097, 2056, 192, "nn", True, 2, ()),
+        (4097, 2056, 193, "nn", True, 0, ()),
+        (4097, 2056, 192, "nn", False, 0, ()),
+        (512, 257, 192, "nt", False, 0, (0, 4)),
+    ],
+)
+def test_cooperative_shortlist_uses_layout_and_tile_coverage(
+    router, monkeypatch, m, n, k, layout, expanded, b_offset, expected
+):
+    monkeypatch.setattr(router, "_cooperative_supported", lambda: True)
+    monkeypatch.setattr(
+        router.torch_device_fn,
+        "get_device_properties",
+        lambda device: SimpleNamespace(multi_processor_count=128),
+    )
+    a = tensor((m, k), (k, 1), 0x100000)
+    b = tensor((k, n), (n, 1) if layout == "nn" else (1, k), 0x100000000 + b_offset)
+    c = tensor((m, n), (n, 1), 0x200000000)
+    configs = router._cooperative_mm_candidates(a, b, c, allow_nn=expanded)
+    assert tuple(config.group_m for config in configs) == expected

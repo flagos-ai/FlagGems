@@ -21,6 +21,7 @@ import statistics
 import threading
 from dataclasses import dataclass
 from functools import cache, lru_cache
+from math import inf, isfinite
 
 import torch
 import triton
@@ -30,6 +31,12 @@ from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, libtuner
 from flag_gems.utils import triton_lang_extension as ext
+
+from .gemm_utils import (
+    benchmark_gemm_candidate,
+    capture_gemm_fallback,
+    try_gemm_candidate,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +68,7 @@ def grouped_mv_candidates(a, b, compute_units):
     )
 
 
-@libentry()
+@libentry(cache_miss_fallback=capture_gemm_fallback)
 @libtuner(
     # Keep the default config fallback for callers that do not opt into
     # FlagTune.  The real-model acceptance path sets FLAGTUNE_INCLUDE=mv,
@@ -291,7 +298,10 @@ def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
 
                     # Resolve the unchanged Default/Expanded tuner first.
                     ordinary_with_output(out)
-                    _launch_mmac(inp, vec, out)
+                    succeeded, _ = try_gemm_candidate(_launch_mmac, inp, vec, out)
+                    if not succeeded:
+                        _mv_mmac_choices[key] = 0
+                        return True
                     samples = ([], [])
                     for repeat in range(3):
                         for index in (0, 1) if repeat % 2 == 0 else (1, 0):
@@ -305,16 +315,16 @@ def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
                                 return output
 
                             samples[index].append(
-                                float(
-                                    do_bench_hcu_graph(
-                                        fresh_output,
-                                        rep=100,
-                                        n_retries=10,
-                                        device_interface=torch.cuda,
-                                    )
+                                benchmark_gemm_candidate(
+                                    do_bench_hcu_graph, fresh_output,
+                                    optional=index != 0,
+                                    rep=100, n_retries=10, device_interface=torch.cuda,
                                 )
                             )
-                    medians = tuple(statistics.median(x) for x in samples)
+                    medians = tuple(
+                        statistics.median(x) if all(map(isfinite, x)) else inf
+                        for x in samples
+                    )
                     choice = min(range(2), key=medians.__getitem__)
                     _mv_mmac_measurements[key] = {
                         "variants": ("ordinary", "mmac_k256_bn16_s2"),
@@ -326,9 +336,13 @@ def try_mv_mmac(inp, vec, out, ordinary_with_output, *, tuning_key):
                         "Hygon MV family choice=%s allocating=%s ms", choice, medians
                     )
         if choice:
-            _launch_mmac(inp, vec, out)
-        else:
-            ordinary_with_output(out)
+            succeeded, _ = try_gemm_candidate(_launch_mmac, inp, vec, out)
+            if succeeded:
+                return True
+            with _mv_mmac_lock:
+                _mv_mmac_choices[key] = 0
+                _mv_mmac_measurements[key]["choice"] = 0
+        ordinary_with_output(out)
     return True
 
 

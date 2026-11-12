@@ -29,6 +29,8 @@ from pathlib import Path
 import triton
 import yaml
 
+from .gemm_utils import supports_hcu_options
+
 # name, load mode, stages, K packing, transposed MMAC, epilogue, base waves, LDS slots
 MM_PROFILES = (
     ("generic_min", 0, 1, 1, False, False, 1, 1),
@@ -113,7 +115,7 @@ def _append(configs, seen, meta, waves, stages, ranges, pre_hook):
 @lru_cache(maxsize=1)
 def _default_mm_launches():
     """Reuse the backend's default geometry and launch coverage."""
-    path = Path(__file__).with_name("tune_configs.yaml")
+    path = Path(__file__).parents[1] / "tune_configs.yaml"
     recipes = yaml.safe_load(path.read_text())["mm"]
     return tuple(
         sorted(
@@ -172,12 +174,12 @@ def build_mm_configs(ranges, pre_hook=None):
     selected = _profiles(
         ranges, tuple(p[0] for p in MM_PROFILES) + ("default_baselines",)
     )
-    try:
-        from triton.backends.hcu.compiler import HIPOptions
-    except ImportError:
-        supports_ring = False
-    else:
-        supports_ring = "sync_lds_buffers" in HIPOptions.__dataclass_fields__
+    if not supports_hcu_options((
+        "mmac_warps_m", "mmac_transposed", "optimize_epilogue", "schedule_hint",
+        "kpack", "waves_per_eu", "sched_latency",
+    )):
+        return []
+    supports_ring = supports_hcu_options(("sync_lds_buffers",))
     configs, seen = [], set()
     for bm, bn, bk, group in product(
         ranges["BLOCK_M"], ranges["BLOCK_N"], ranges["BLOCK_K"], ranges["GROUP_M"]
@@ -240,6 +242,8 @@ def build_split_configs(ranges, pre_hook=None):
     selected = _profiles(
         ranges, [p[0] for p in GLOBAL_SPLIT_PROFILES + LOCAL_SPLIT_PROFILES]
     )
+    if not supports_hcu_options(("optimize_epilogue", "schedule_hint")):
+        return []
     configs, seen = [], set()
     for bm, bn, bk in product(ranges["BM"], ranges["BN"], ranges["BK"]):
         for splits in ranges["SPLITS"]:
