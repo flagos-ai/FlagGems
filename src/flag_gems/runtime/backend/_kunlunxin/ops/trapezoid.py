@@ -19,10 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops.add import add as gems_add
-from flag_gems.ops.cat import cat as gems_cat
-from flag_gems.ops.mul import mul as gems_mul
-from flag_gems.ops.sub import sub as gems_sub
+import flag_gems
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -283,7 +280,7 @@ def _complex_from_parts(real, imag):
     if real.dim() == 0:
         return torch.view_as_complex(torch.stack([real, imag]).contiguous())
     return torch.view_as_complex(
-        gems_cat([real.unsqueeze(-1), imag.unsqueeze(-1)], -1).contiguous()
+        flag_gems.cat([real.unsqueeze(-1), imag.unsqueeze(-1)], -1).contiguous()
     )
 
 
@@ -297,8 +294,8 @@ def _parts(t, dtype):
 def _cprod_conj(a_r, a_i, b, dtype):
     """a * conj(b) for tensors whose imaginary part may be absent."""
     b_r, b_i = _parts(b, dtype)
-    real = gems_add(gems_mul(a_r, b_r), gems_mul(a_i, b_i))
-    imag = gems_sub(gems_mul(a_i, b_r), gems_mul(a_r, b_i))
+    real = flag_gems.add(flag_gems.mul(a_r, b_r), flag_gems.mul(a_i, b_i))
+    imag = flag_gems.sub(flag_gems.mul(a_i, b_r), flag_gems.mul(a_r, b_i))
     return _complex_from_parts(real, imag)
 
 
@@ -338,39 +335,39 @@ def _complex_pair_out(y, x, dim):
     y_real = not y.is_complex()
     x_real = not x.is_complex()
 
-    lpr_r = gems_add(
+    lpr_r = flag_gems.add(
         yl.real.contiguous().to(real_dtype), yr.real.contiguous().to(real_dtype)
     )
-    dx_r = gems_sub(
+    dx_r = flag_gems.sub(
         xr.real.contiguous().to(real_dtype), xl.real.contiguous().to(real_dtype)
     )
     lpr_i = None
     dx_i = None
     if not y_real:
-        lpr_i = gems_add(
+        lpr_i = flag_gems.add(
             yl.imag.contiguous().to(real_dtype), yr.imag.contiguous().to(real_dtype)
         )
     if not x_real:
-        dx_i = gems_sub(
+        dx_i = flag_gems.sub(
             xr.imag.contiguous().to(real_dtype), xl.imag.contiguous().to(real_dtype)
         )
 
-    prod_r = gems_mul(lpr_r, dx_r)
+    prod_r = flag_gems.mul(lpr_r, dx_r)
     if lpr_i is not None and dx_i is not None:
-        prod_r = gems_sub(prod_r, gems_mul(lpr_i, dx_i))
+        prod_r = flag_gems.sub(prod_r, flag_gems.mul(lpr_i, dx_i))
 
     prod_i = None
     if dx_i is not None:
-        prod_i = gems_mul(lpr_r, dx_i)
+        prod_i = flag_gems.mul(lpr_r, dx_i)
     if lpr_i is not None:
-        term = gems_mul(lpr_i, dx_r)
-        prod_i = term if prod_i is None else gems_add(prod_i, term)
+        term = flag_gems.mul(lpr_i, dx_r)
+        prod_i = term if prod_i is None else flag_gems.add(prod_i, term)
 
-    total_r = _reduce_dim(gems_mul(prod_r, 0.5), [dim])
+    total_r = _reduce_dim(flag_gems.mul(prod_r, 0.5), [dim])
     if prod_i is None:
         total_i = torch.zeros_like(total_r)
     else:
-        total_i = _reduce_dim(gems_mul(prod_i, 0.5), [dim])
+        total_i = _reduce_dim(flag_gems.mul(prod_i, 0.5), [dim])
     return _complex_from_parts(total_r, total_i)
 
 
@@ -455,9 +452,9 @@ def _unbroadcast(grad, target_shape):
 def _cat_any(parts, dim):
     """FlagGems cat that also accepts complex tensors (via the real view)."""
     if not parts[0].is_complex():
-        return gems_cat(parts, dim)
+        return flag_gems.cat(parts, dim)
     reals = [torch.view_as_real(p) for p in parts]
-    return torch.view_as_complex(gems_cat(reals, dim).contiguous())
+    return torch.view_as_complex(flag_gems.cat(reals, dim).contiguous())
 
 
 def _accumulate_plus(grad_diff, dim):
@@ -465,7 +462,9 @@ def _accumulate_plus(grad_diff, dim):
     # grad_y[k] = grad_diff[k] + grad_diff[k-1] (endpoints clamped). The concat and
     # element-wise sum route through FlagGems kernels (host-function convention).
     pad = _zeros_like(grad_diff.narrow(dim, 0, 1))
-    return gems_add(_cat_any([pad, grad_diff], dim), _cat_any([grad_diff, pad], dim))
+    return flag_gems.add(
+        _cat_any([pad, grad_diff], dim), _cat_any([grad_diff, pad], dim)
+    )
 
 
 def _accumulate_minus(grad_diff, dim):
@@ -473,7 +472,9 @@ def _accumulate_minus(grad_diff, dim):
     # grad_x[k] = grad_diff[k-1] - grad_diff[k] (endpoints clamped). The concat and
     # element-wise difference route through FlagGems kernels (host-function convention).
     pad = _zeros_like(grad_diff.narrow(dim, 0, 1))
-    return gems_sub(_cat_any([pad, grad_diff], dim), _cat_any([grad_diff, pad], dim))
+    return flag_gems.sub(
+        _cat_any([pad, grad_diff], dim), _cat_any([grad_diff, pad], dim)
+    )
 
 
 def _trapezoid_x_impl(y, x, dim):
@@ -584,11 +585,11 @@ def _trapezoid_x_impl(y, x, dim):
     compute_dtype = torch.float64 if out_dtype == torch.float64 else torch.float32
     left = y.narrow(dim, 0, N - 1)
     right = y.narrow(dim, 1, N - 1)
-    lpr = gems_add(left.to(compute_dtype), right.to(compute_dtype))
+    lpr = flag_gems.add(left.to(compute_dtype), right.to(compute_dtype))
 
     x_left = x_viewed.narrow(dim, 0, Nx - 1)
     x_right = x_viewed.narrow(dim, 1, Nx - 1)
-    dx = gems_sub(x_right.to(compute_dtype), x_left.to(compute_dtype))
+    dx = flag_gems.sub(x_right.to(compute_dtype), x_left.to(compute_dtype))
 
     pair_shape = torch.broadcast_shapes(lpr.shape, dx.shape)
     P = pair_shape[dim]
@@ -657,12 +658,12 @@ class _TrapezoidX(torch.autograd.Function):
 
         x_viewed = _view_x(x, y, dim)
 
-        lpr = gems_add(y.narrow(dim, 0, N - 1), y.narrow(dim, 1, N - 1))
+        lpr = flag_gems.add(y.narrow(dim, 0, N - 1), y.narrow(dim, 1, N - 1))
 
         Nx = x_viewed.shape[dim]
         x_left = x_viewed.narrow(dim, 0, Nx - 1)
         x_right = x_viewed.narrow(dim, 1, Nx - 1)
-        dx = gems_sub(x_right, x_left)
+        dx = flag_gems.sub(x_right, x_left)
 
         # The gems element-wise kernels broadcast internally, so lpr/dx are used
         # at their pre-broadcast shapes: an explicit broadcast_to here would
@@ -670,7 +671,7 @@ class _TrapezoidX(torch.autograd.Function):
         # rejects complex dtypes.
         # out = (lpr * dx).sum(dim) / 2; route the element-wise products through
         # the FlagGems mul kernel (host-function convention: no native compute).
-        grad_pair = gems_mul(grad_out.unsqueeze(dim), 0.5)
+        grad_pair = flag_gems.mul(grad_out.unsqueeze(dim), 0.5)
         if complex_case:
             wide = (torch.float64, torch.complex128)
             real_dtype = (
@@ -679,13 +680,13 @@ class _TrapezoidX(torch.autograd.Function):
                 else torch.float32
             )
             gp_r, gp_i = _parts(grad_out, real_dtype)
-            gp_r = gems_mul(gp_r.unsqueeze(dim), 0.5)
-            gp_i = gems_mul(gp_i.unsqueeze(dim), 0.5)
+            gp_r = flag_gems.mul(gp_r.unsqueeze(dim), 0.5)
+            gp_i = flag_gems.mul(gp_i.unsqueeze(dim), 0.5)
             grad_lpr_b = _cprod_conj(gp_r, gp_i, dx, real_dtype)
             grad_dx_b = _cprod_conj(gp_r, gp_i, lpr, real_dtype)
         else:
-            grad_lpr_b = gems_mul(grad_pair, dx)
-            grad_dx_b = gems_mul(grad_pair, lpr)
+            grad_lpr_b = flag_gems.mul(grad_pair, dx)
+            grad_dx_b = flag_gems.mul(grad_pair, lpr)
 
         grad_lpr = _unbroadcast(grad_lpr_b, lpr.shape)
         grad_dx = _unbroadcast(grad_dx_b, dx.shape)
