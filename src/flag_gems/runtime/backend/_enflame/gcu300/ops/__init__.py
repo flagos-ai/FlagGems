@@ -436,7 +436,7 @@ __all__ = [
     "_foreach_div_Scalar",
     "_foreach_div_ScalarList",
     "_foreach_erf_",
-    "_foreach_erfc_"
+    "_foreach_erfc_",
     "_foreach_exp_",
     "_foreach_expm1_",
     "_foreach_floor_",
