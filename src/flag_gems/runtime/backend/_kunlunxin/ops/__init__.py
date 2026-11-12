@@ -564,6 +564,7 @@ from .lift_out import lift_out  # noqa: F401
 from .linalg_cholesky import linalg_cholesky
 from .linalg_cross import linalg_cross, linalg_cross_out
 from .linalg_det import linalg_det, linalg_det_out
+from .linalg_eig import linalg_eig
 from .linalg_householder_product import linalg_householder_product
 from .linalg_ldl_factor import ldl_factor
 from .linalg_ldl_factor_ex import ldl_factor_ex
@@ -2030,7 +2031,7 @@ _adaptive_max_pool2d_aten_lib = None
 
 
 def _patch_adaptive_max_pool2d_aten():
-    """Route ``torch.ops.aten.adaptive_max_pool2d`` (CUDA) to the Gems forward.
+    """Route ``aten::adaptive_max_pool2d`` (CUDA) to the Gems forward.
 
     The vendor XDNN wrapper on this stack returns uninitialized index memory
     for float16/float32/bfloat16 (the output values are correct, the indices
@@ -2038,7 +2039,7 @@ def _patch_adaptive_max_pool2d_aten():
     consumes those indices either faults or disagrees with ATen.  The Gems
     ``adaptive_max_pool2d`` forward kernel computes ATen-exact flat spatial
     indices (``h * W + w``, same window math and tie-break); registering it
-    for the CUDA dispatch key makes every ``torch.ops.aten.adaptive_max_pool2d``
+    for the CUDA dispatch key makes every ``aten::adaptive_max_pool2d``
     call produce valid indices, both inside and outside ``use_gems()``
     scopes.  The registration is process-global (the Library handle is held in
     this module); the ``use_gems()`` registrar re-registers the same function
@@ -2060,11 +2061,33 @@ def _patch_adaptive_max_pool2d_aten():
 
 _patch_adaptive_max_pool2d_aten()
 
+
+def _patch_linalg_eig_ops_namespace():
+    """Bind flag_gems.ops.linalg_eig to the vendor implementation.
+
+    The KernelGen-generated test calls ``flag_gems.ops.linalg_eig`` directly
+    (module attribute binding), while SpecOpRegistrar only replaces the
+    top-level ``flag_gems.linalg_eig`` global.  ``flag_gems.ops`` is fully
+    imported before this vendor module loads, so the rebind is safe here.
+    """
+    try:
+        import flag_gems.ops as _ops_mod
+
+        if _ops_mod.linalg_eig is not linalg_eig:
+            _ops_mod.linalg_eig = linalg_eig
+    except Exception:
+        # import race during package init: top-level flag_gems.linalg_eig
+        # still gets the vendor implementation via SpecOpRegistrar.
+        pass
+
+
+_patch_linalg_eig_ops_namespace()
+
 _adaptive_max_pool3d_aten_lib = None
 
 
 def _patch_adaptive_max_pool3d_aten():
-    """Route ``torch.ops.aten.adaptive_max_pool3d`` (CUDA) to the Gems forward.
+    """Route ``aten::adaptive_max_pool3d`` (CUDA) to the Gems forward.
 
     The vendor XDNN wrapper on this stack returns uninitialized index memory
     for float16/float32 and rejects bfloat16, so a ``adaptive_max_pool3d_backward``
@@ -2072,7 +2095,7 @@ def _patch_adaptive_max_pool3d_aten():
     ATen.  The Gems ``adaptive_max_pool3d`` forward kernel computes ATen-exact
     flat spatial indices (``d * H * W + h * W + w``, same window math and
     tie-break); registering it for the CUDA dispatch key makes every
-    ``torch.ops.aten.adaptive_max_pool3d`` call produce valid indices, both
+    ``aten::adaptive_max_pool3d`` call produce valid indices, both
     inside and outside ``use_gems()`` scopes, so the vendor backward
     (``adaptive_max_pool3d_backward``) can consume them directly instead of
     recomputing them.  The registration is process-global (the Library handle
