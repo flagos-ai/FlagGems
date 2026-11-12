@@ -342,17 +342,24 @@ def test_index_int32_offset_overflow():
 
     rows = 2**28 + 1
     inp = torch.zeros((rows, 8), dtype=torch.int8, device=flag_gems.device)
-    idx = torch.tensor([2**28], dtype=torch.int32, device=flag_gems.device)
-
+    # Distinct boundary rows also catch incorrect reads that happen to land on
+    # zero-filled memory. Exercise negative wrapping and both index widths.
+    sentinel = torch.tensor(
+        [1, 2, 3, 4, 5, 6, 7, 8], dtype=torch.int8, device=flag_gems.device
+    )
+    inp[-1] = sentinel
+    inp[0] = -sentinel
     ref_inp = utils.to_reference(inp)
-    ref_idx = utils.to_reference(idx)
+    for index_dtype in (torch.int32, torch.int64):
+        idx = torch.tensor([-1, 2**28, 0], dtype=index_dtype, device=flag_gems.device)
+        ref_idx = utils.to_reference(idx)
 
-    # Contiguous input takes the linearized adjacent-index kernel.
-    ref_out = torch.ops.aten.index(ref_inp, [ref_idx])
-    out = flag_gems.index(inp, [idx])
-    utils.gems_assert_close(out, ref_out, torch.int8)
+        # Contiguous input takes the linearized adjacent-index kernel.
+        ref_out = torch.ops.aten.index(ref_inp, [ref_idx])
+        out = flag_gems.index(inp, [idx])
+        utils.gems_assert_close(out, ref_out, torch.int8)
 
-    # Transposed view takes the generic (code-generated) kernel.
-    ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
-    out_t = flag_gems.index(inp.t(), [None, idx])
-    utils.gems_assert_close(out_t, ref_out_t, torch.int8)
+        # Transposed view also covers the strided single-axis provider.
+        ref_out_t = torch.ops.aten.index(ref_inp.t(), [None, ref_idx])
+        out_t = flag_gems.index(inp.t(), [None, idx])
+        utils.gems_assert_close(out_t, ref_out_t, torch.int8)
