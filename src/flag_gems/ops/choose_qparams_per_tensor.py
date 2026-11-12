@@ -25,15 +25,19 @@ rejection, and fp32-rounded extrema even for fp64 inputs):
     mn_c, mx_c = min(mn, 0), max(mx, 0)   # widen the range to contain 0
     qmin, qmax = 0, (127 if reduce_range else 255)
     raw = (double(mx_c) - double(mn_c)) / qmax
-    if raw == 0:  scale = 0.1
-    else:         scale = max(raw, double(float(6.1e-5)))
-    # zero_point comes from the *unclamped* raw scale; its two candidate
-    # expressions differ by at most 1 ulp and the reference keeps the one with
-    # the smaller error term.
-    z_min = qmin - mn_c / raw
-    z_max = qmax - mx_c / raw
-    e_min = abs(qmin) + abs(mn_c / raw)
-    e_max = abs(qmax) + abs(mx_c / raw)
+    sf32 = float(raw)
+    if sf32 == 0 or 1.0f / sf32 is inf:   # subnormal raw scale
+        scale, min_used, max_used = 0.1, mn_c, mx_c
+    elif raw < double(float(6.1e-5)):     # fp32 floor branch
+        amp = float(6.1e-5) / sf32        # fp32 arithmetic
+        scale = double(float(6.1e-5))
+        min_used, max_used = float(mn_c) * amp, float(mx_c) * amp
+    else:
+        scale, min_used, max_used = raw, mn_c, mx_c
+    z_min = qmin - min_used / scale
+    z_max = qmax - max_used / scale
+    e_min = qmin - abs(min_used / scale)  # minus, not plus
+    e_max = qmax - abs(max_used / scale)
     zp = nearbyint(z_min if e_min < e_max else z_max)
     zp = max(zp, qmin); zp = min(zp, qmax)   # NaN survives both comparisons
     return float(scale), int(zp)             # NaN zp casts to INT32_MIN
@@ -239,13 +243,36 @@ def _finalize_kernel(
     qmaxd = tl.full((), QMAX, tl.float64)
     qmind = tl.full((), 0.0, tl.float64)
     raw = (mx_c - mn_c) / qmaxd
-    scale = tl.where(raw == 0.0, 0.1, tl.maximum(raw, _SCALE_FLOOR))
+
+    # The reference narrows the raw scale to fp32 and probes its reciprocal.
+    # A subnormal raw scale makes that fp32 reciprocal overflow to +inf, which
+    # selects the fixed 0.1 scale. Otherwise a raw scale below the fp32 floor is
+    # raised to the floor and the range endpoints are rescaled by the fp32
+    # amplifier before the zero point is derived; that rescaling decides
+    # half-integer zero points. Both rules are observable in the reference
+    # output, so neither collapses into a plain max() with the raw scale.
+    sf32 = raw.to(tl.float32)
+    one32 = tl.full((), 1.0, tl.float32)
+    recip32 = tl.math.div_rn(one32, sf32)
+    is_tiny = (sf32 == 0.0) | (recip32 == float("inf"))
+    use_floor = raw < _SCALE_FLOOR
+    floor32 = tl.full((), _SCALE_FLOOR, tl.float32)
+    amp32 = tl.math.div_rn(floor32, sf32)
+    # The tiny branch would form 0 * inf; it is never selected, but keep the
+    # amplifier finite so no NaN flows into the adjustment.
+    amp32 = tl.where(is_tiny, one32, amp32)
+    mn_adj = (mn_c.to(tl.float32) * amp32).to(tl.float64)
+    mx_adj = (mx_c.to(tl.float32) * amp32).to(tl.float64)
+
+    mn_used = tl.where(is_tiny, mn_c, tl.where(use_floor, mn_adj, mn_c))
+    mx_used = tl.where(is_tiny, mx_c, tl.where(use_floor, mx_adj, mx_c))
+    scale = tl.where(is_tiny, 0.1, tl.where(use_floor, _SCALE_FLOOR, raw))
 
     # Error-minimising selection between the two zero-point candidates.
-    z_min = qmind - mn_c / raw
-    z_max = qmaxd - mx_c / raw
-    e_min = tl.abs(qmind) + tl.abs(mn_c / raw)
-    e_max = tl.abs(qmaxd) + tl.abs(mx_c / raw)
+    z_min = qmind - mn_used / scale
+    z_max = qmaxd - mx_used / scale
+    e_min = qmind - tl.abs(mn_used / scale)
+    e_max = qmaxd - tl.abs(mx_used / scale)
     zp = tl.where(e_min < e_max, z_min, z_max)
 
     # nearbyint: round half to even.

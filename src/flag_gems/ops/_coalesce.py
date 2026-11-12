@@ -94,6 +94,20 @@ _ACC_DTYPE = {
 }
 
 
+_DTYPE_NAMES = {
+    torch.float16: "half",
+    torch.bfloat16: "bfloat16",
+    torch.float32: "float",
+    torch.float64: "double",
+    torch.int8: "char",
+    torch.uint8: "unsigned char",
+    torch.int16: "short",
+    torch.int32: "int",
+    torch.int64: "long",
+    torch.bool: "bool",
+}
+
+
 @triton.jit
 def _scatter_kernel(
     idx_ptr,
@@ -131,7 +145,7 @@ def _scatter_kernel(
     aty = acc_ptr.dtype.element_ty
     for j in tl.range(0, dv):
         v = tl.load(val_ptr + offs * dv + j, mask=ok, other=0)
-        tl.atomic_add(acc_ptr + kk, v.to(aty), mask=ok)
+        tl.atomic_add(acc_ptr + kk * dv + j, v.to(aty), mask=ok)
     tl.store(flag_ptr + kk, tl.full((BLOCK,), 1, tl.uint8), mask=ok)
 
 
@@ -275,6 +289,11 @@ def _coalesce_impl(self, out=None):
             "_coalesce only supports sparse coordinate (coo) tensors, "
             f"but got layout {getattr(self, 'layout', None)}"
         )
+    if self.is_coalesced():
+        raise RuntimeError(
+            "!self.is_coalesced() INTERNAL ASSERT FAILED at "
+            '"flag_gems/ops/_coalesce.py", please report a bug to PyTorch.'
+        )
     device = self.device
     if device.type != "cuda":
         raise NotImplementedError("_coalesce triton implementation requires CUDA")
@@ -295,7 +314,22 @@ def _coalesce_impl(self, out=None):
         if out is None:
             return res
         if not isinstance(out, torch.Tensor) or out.layout != torch.sparse_coo:
-            raise RuntimeError("_coalesce.out requires a sparse COO out tensor")
+            raise RuntimeError(
+                "copy_() between dense and sparse Tensors is not implemented"
+            )
+        if out.dtype != res.dtype:
+            raise RuntimeError(
+                "Expected out tensor to have dtype %s, but got %s instead"
+                % (
+                    _DTYPE_NAMES.get(res.dtype, str(res.dtype)),
+                    _DTYPE_NAMES.get(out.dtype, str(out.dtype)),
+                )
+            )
+        if tuple(out.shape) != tuple(res.shape):
+            raise NotImplementedError(
+                "Could not run 'aten::resize_' with arguments from the "
+                "'SparseCUDA' backend."
+            )
         out.copy_(res)
         out._coalesced_(True)
         return out
@@ -325,10 +359,16 @@ def _coalesce_impl(self, out=None):
     # The dense key space is only materialised when it stays small relative
     # to the number of stored elements; larger key spaces fall back to the
     # native implementation.
-    if numel > _DENSE_MAX or numel > 64 * self._nnz():
+    if numel * dv > _DENSE_MAX:
         raise NotImplementedError(
-            f"_coalesce currently handles dense key spaces up to {_DENSE_MAX} "
-            f"elements (got numel={numel}, nnz={self._nnz()})"
+            f"_coalesce currently handles dense accumulators up to {_DENSE_MAX} "
+            f"elements (got numel={numel}, dense_numel={dv}, "
+            f"numel*dv={numel * dv})"
+        )
+    if numel > 64 * self._nnz():
+        raise NotImplementedError(
+            f"_coalesce currently handles dense key spaces up to 64x the stored "
+            f"count (got numel={numel}, nnz={self._nnz()})"
         )
 
     is_bool = dtype == torch.bool
@@ -342,7 +382,7 @@ def _coalesce_impl(self, out=None):
     s0, s1, s2, s3, s4 = s
     d0, d1, d2, d3, d4 = d
 
-    acc_buf = torch.zeros(numel, dtype=acc_dtype, device=device)
+    acc_buf = torch.zeros(numel * dv, dtype=acc_dtype, device=device)
     flag_buf = torch.zeros(numel, dtype=torch.uint8, device=device)
 
     _scatter_kernel[(triton.cdiv(n, _SCAT_BLOCK),)](

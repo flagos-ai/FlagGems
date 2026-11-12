@@ -16,9 +16,11 @@ import fcntl
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 
 import pytest
+import torch
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
@@ -361,6 +363,41 @@ def _skip_unavailable_integral_foreach_reference(items):
         )
 
 
+def _adjust_enflame_foreach_items(items):
+    """Make marker-selected foreach tests exercise the vendor path on gcu300.
+
+    Two vendor-gated adaptations, both evidenced in the PR body:
+
+    * ``tests/test_foreach_ops.py`` builds ``ALL_WRAPPERS`` by overlaying
+      ``SpecOpRegistrar``, but a few tests call the raw ``BINARY_WRAPPERS`` /
+      ``REDUCTION_WRAPPERS`` dicts.  On gcu300 those calls reach the shared
+      executor, which aborts (Sip exception); point them at the overlaid
+      wrappers so the same assertions test the implementation the dispatcher
+      would use.
+    * gcu300 declares ``int64_enabled=False`` and ``complex_enabled=False`` and
+      has no bool ``abs`` kernel; skip exactly those parameter combinations.
+    """
+    module = sys.modules.get("tests.test_foreach_ops")
+    if module is not None:
+        module.BINARY_WRAPPERS.update(module.ALL_WRAPPERS)
+        module.REDUCTION_WRAPPERS.update(module.ALL_WRAPPERS)
+
+    skip_int64 = pytest.mark.skip(reason="gcu300 declares int64_enabled=False")
+    skip_complex = pytest.mark.skip(reason="gcu300 declares complex_enabled=False")
+    skip_bool_abs = pytest.mark.skip(reason="gcu300 has no bool abs kernel")
+    for item in items:
+        if not item.nodeid.startswith("tests/test_foreach_unary.py"):
+            continue
+        params = getattr(getattr(item, "callspec", None), "params", {})
+        dtype = params.get("dtype")
+        if dtype is torch.int64:
+            item.add_marker(skip_int64)
+        elif dtype is not None and dtype.is_complex:
+            item.add_marker(skip_complex)
+        elif "unary_bool" in item.nodeid and params.get("name") == "abs":
+            item.add_marker(skip_bool_abs)
+
+
 def pytest_collection_modifyitems(session, config, items):
     """
     Modify the collected test items before they are executed.
@@ -377,6 +414,8 @@ def pytest_collection_modifyitems(session, config, items):
     if flag_gems.vendor_name == "kunlunxin":
         _skip_unmeasurable_launch_count_tests(items)
         _skip_unavailable_integral_foreach_reference(items)
+    if flag_gems.vendor_name == "enflame":
+        _adjust_enflame_foreach_items(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)

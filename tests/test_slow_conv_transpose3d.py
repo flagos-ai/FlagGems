@@ -112,6 +112,44 @@ def test_slow_conv_transpose3d_bias(shape, weight_shape, stride, padding, dtype)
 
 
 @pytest.mark.slow_conv_transpose3d
+def test_slow_conv_transpose3d_strided_bias():
+    """A non-contiguous bias must be indexed by logical channel, not storage."""
+    # bias = arange(12)[::2] holds [0, 2, 4, 6, 8, 10] with stride 2; the kernel
+    # must not read the interleaved storage as [0, 1, 2, 3, 4, 5].
+    shape = (1, 3, 5, 5, 5)
+    weight_shape = (3, 6, 2, 2, 2)
+    dtype = torch.float32
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    weight = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)
+    bias = torch.arange(12, device=flag_gems.device, dtype=dtype)[::2]
+    assert not bias.is_contiguous()
+    ref_inp = utils.to_reference(inp, True)
+    ref_weight = utils.to_reference(weight, True)
+    ref_bias = utils.to_reference(bias, True)
+
+    kernel_size = [2, 2, 2]
+    stride = [1, 1, 1]
+    padding = [0, 0, 0]
+    output_padding = [0, 0, 0]
+    dilation = [1, 1, 1]
+
+    ref_out = torch.ops.aten.slow_conv_transpose3d(
+        ref_inp,
+        ref_weight,
+        kernel_size,
+        ref_bias,
+        stride,
+        padding,
+        output_padding,
+        dilation,
+    )
+    res_out = flag_gems.slow_conv_transpose3d(
+        inp, weight, kernel_size, bias, stride, padding, output_padding, dilation
+    )
+    utils.gems_assert_close(res_out, ref_out, dtype, atol=_atol(dtype))
+
+
+@pytest.mark.slow_conv_transpose3d
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_slow_conv_transpose3d_output_padding_dilation(dtype):
     """Non-trivial output padding and dilation exercise the size formula."""
