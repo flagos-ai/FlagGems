@@ -41,7 +41,6 @@ import triton.language as tl
 
 from flag_gems.ops.linalg_polar import _check_out, _copy_kernel, _validate_input
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 from .linalg_svd import _osj_pipeline
 
@@ -54,21 +53,35 @@ logger = logging.getLogger(__name__)
 _SWEEPS = 6
 
 
-@libentry()
-@triton.jit
-def _polar_vh_kernel(BP, AP, VH, m, n, BLOCK: tl.constexpr):
-    """``Vh = diag(1/S^2) B^T A`` — one ``tl.dot`` per kernel.
+# NOTE(2026-11-12): on the local sdnn-build Triton, dependent back-to-back
+# ``tl.dot`` kernels do NOT order against each other: the second dot silently
+# reads the first one's stale output (~100% in controlled loops), and neither
+# ``torch.cuda.synchronize()`` nor an unrelated torch op covers the dot
+# execution context.  The one reliable cross-kernel barrier is a *torch copy of
+# the produced data itself* (``dest.copy_(src)``), exactly the pattern the osj
+# sweeps already rely on (``BP.copy_(B)`` before the first dot kernel).
+# ``@libentry()`` makes the misordering worse, so these kernels are plain
+# ``@triton.jit``.  The chain below therefore keeps every ``tl.dot`` operand
+# either torch-copied or recomputed in-kernel, with the single dot-to-dot edge
+# (``U`` -> ``H``) bridged by a torch copy:
+#
+#     p (dot)  ->  vh (pure)  ->  u (dot, recomputes 1/S itself)
+#                ->  UB.copy_(UB2)  ->  h (dot)
+#
+# ``tl.sum`` axis reductions crash in a kernel with no ``tl.dot`` (MLIR
+# UnrollControl type error) and feeding a ``tl.dot`` result into a second
+# ``tl.dot`` hangs the device task (702/KEXCEPTION), so each dot kernel carries
+# exactly one ``tl.dot`` whose operands come from loads.  The single row-vector
+# broadcast ``b * inv[None, :]`` in a dot operand is the pattern the original
+# kernel compiled with on the CI flagtree pipeline; a *doubled* broadcast
+# multiply on a dot operand is what made flagtree's ``sdnn.core_specialize`` /
+# ``TritonSDNNOptimizeRcLayout`` fail with an ``OutOfResources`` (the previous
+# CI failure).
 
-    XPU's Triton pipeline hangs the device task when a kernel carries two or
-    more ``tl.dot`` ops (measured: one dot runs, two+ never return and are
-    killed by the driver watchdog), so the polar post-processing is split into
-    three single-dot kernels.  Only constructs verified on this backend are
-    used: row-vector broadcasts ``x * v[None, :]`` and ``tl.trans`` as a
-    ``tl.dot`` operand (a standalone ``tl.trans`` and ``(BLOCK, 1)`` column
-    broadcasts miscompile here).  ``BP`` / ``AP`` arrive zero-padded to
-    ``BLOCK x BLOCK``; ``VH`` / ``UB`` are zero-initialised so the padding
-    lanes the masked stores skip stay zero for the downstream kernels.
-    """
+
+@triton.jit
+def _polar_p_kernel(BP, AP, P, INV, m, n, BLOCK: tl.constexpr):
+    """``P = diag(1/S) B^T A`` and the reciprocal singular values."""
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
     rmask = rows < m
@@ -78,19 +91,37 @@ def _polar_vh_kernel(BP, AP, VH, m, n, BLOCK: tl.constexpr):
     b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
     a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
 
-    # Column norms of the raw rotated matrix are the singular values, and
-    # Vh = diag(1/S) Up^T A = diag(1/S^2) B^T A (Up = B diag(1/S)).
+    # Column norms of the raw rotated matrix are the singular values.
     s2 = tl.sum(b * b, axis=0)
     s = tl.sqrt(s2)
     inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
-    vh = tl.dot(tl.trans(b * inv[None, :] * inv[None, :]), a, allow_tf32=False)
-    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], vh, mask=mask)
+    up = b * inv[None, :]
+    p = tl.dot(tl.trans(up), a, allow_tf32=False)
+    tl.store(P + rows[:, None] * BLOCK + cols[None, :], p, mask=mask)
+    tl.store(INV + rows, inv)
 
 
-@libentry()
+@triton.jit
+def _polar_vh_kernel(P, INV, VH, m, n, BLOCK: tl.constexpr):
+    """``Vh = diag(1/S) P`` — pure elementwise scaling (no ``tl.dot``)."""
+    rows = tl.arange(0, BLOCK)
+    cols = tl.arange(0, BLOCK)
+
+    p = tl.load(P + rows[:, None] * BLOCK + cols[None, :])
+    inv = tl.load(INV + cols)
+    vh = p * inv[:, None]
+    tl.store(VH + rows[:, None] * BLOCK + cols[None, :], vh)
+
+
 @triton.jit
 def _polar_u_kernel(BP, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
-    """``U = Up Vh`` — one ``tl.dot``; ``UB`` is ``U`` padded to ``BLOCK``."""
+    """``U = B diag(1/S) Vh`` — one ``tl.dot`` on loaded tiles.
+
+    ``1/S`` is recomputed from ``BP`` in-kernel so this kernel never reads the
+    ``P`` dot kernel's output (a dot-to-dot dependency that races on XPU).
+    ``UB`` is ``U`` padded to ``BLOCK``; ``_polar_h_kernel`` consumes a torch
+    copy of it.
+    """
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
     rmask = rows < m
@@ -98,29 +129,25 @@ def _polar_u_kernel(BP, VH, UOUT, UB, m, n, BLOCK: tl.constexpr):
     mask = rmask[:, None] & cmask[None, :]
 
     b = tl.load(BP + rows[:, None] * BLOCK + cols[None, :])
-    vh = tl.load(VH + rows[:, None] * BLOCK + cols[None, :])
-
     s2 = tl.sum(b * b, axis=0)
     s = tl.sqrt(s2)
     inv = (1.0 / tl.maximum(s, 1.0e-20)) * (s > 1.0e-20)
+    vh = tl.load(VH + rows[:, None] * BLOCK + cols[None, :])
     up = b * inv[None, :]
-
-    # U = Up Vh
     u = tl.dot(up, vh, allow_tf32=False)
     tl.store(UOUT + rows[:, None] * n + cols[None, :], u, mask=mask)
     tl.store(UB + rows[:, None] * BLOCK + cols[None, :], u, mask=mask)
 
 
-@libentry()
 @triton.jit
-def _polar_h_kernel(UB, AP, HOUT, m, n, BLOCK: tl.constexpr):
+def _polar_h_kernel(UB2, AP, HOUT, m, n, BLOCK: tl.constexpr):
     """``H = U^T A`` (polar: ``A = U H``, ``H`` symmetric PSD) — one ``tl.dot``."""
     rows = tl.arange(0, BLOCK)
     cols = tl.arange(0, BLOCK)
     cmask = cols < n
     hmask = cmask[:, None] & cmask[None, :]
 
-    u = tl.load(UB + rows[:, None] * BLOCK + cols[None, :])
+    u = tl.load(UB2 + rows[:, None] * BLOCK + cols[None, :])
     a = tl.load(AP + rows[:, None] * BLOCK + cols[None, :])
 
     # H = U^T A
@@ -153,20 +180,6 @@ def _polar_osj(A, out_U=None, out_H=None):
 
     B = torch.empty((batch, MP * NW), device=dev, dtype=A.dtype)
     scratch = torch.empty((MP * NW,), device=dev, dtype=A.dtype)
-    # Zero-padded (BLOCK x BLOCK) tiles for the polar post-processing kernels:
-    # padding lanes must be zero in memory (masked loads may ignore ``other``
-    # on this backend), and ``VH`` must be zero outside the masked store region
-    # because the ``u`` / ``h`` kernels read the whole tile.
-    BP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-    AP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-    VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-    UB = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
-    if out_U is not None:
-        U3 = out_U.reshape(batch, m, n)
-        H3 = out_H.reshape(batch, n, n)
-    else:
-        U3 = torch.empty((batch, m, n), device=dev, dtype=A.dtype)
-        H3 = torch.empty((batch, n, n), device=dev, dtype=A.dtype)
 
     with torch_device_fn.device(dev):
         for b in range(batch):
@@ -183,11 +196,52 @@ def _polar_osj(A, out_U=None, out_H=None):
                 num_warps=1,
                 num_stages=1,
             )
+        # ``B`` must be fully written before the copies below read it; the
+        # zero-padded tiles are allocated after the sweeps complete so no
+        # buffer is created while the osj kernel is still in flight.
+        torch.cuda.synchronize()
+
+        # Zero-padded (BLOCK x BLOCK) tiles for the polar post-processing
+        # kernels: padding lanes must be zero in memory (masked loads may
+        # ignore ``other`` on this backend), and the intermediate tiles stay
+        # zero outside the masked store regions because the downstream kernels
+        # read the full tile.
+        BP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        AP = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        P = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        VH = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        # Torch copies are the only reliable cross-kernel barrier on this
+        # stack: the pure ``vh`` kernel's output is copied before the ``u``
+        # dot kernel reads it, and ``U``'s dot output is copied before the
+        # ``h`` dot kernel reads it.
+        VH2 = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        INV = torch.empty((batch, block), device=dev, dtype=A.dtype)
+        UB = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        UB2 = torch.zeros((batch, block, block), device=dev, dtype=A.dtype)
+        if out_U is not None:
+            U3 = out_U.reshape(batch, m, n)
+            H3 = out_H.reshape(batch, n, n)
+        else:
+            U3 = torch.empty((batch, m, n), device=dev, dtype=A.dtype)
+            H3 = torch.empty((batch, n, n), device=dev, dtype=A.dtype)
+
+        for b in range(batch):
             BP[b, :MP, :NW].copy_(B[b].reshape(MP, NW))
             AP[b, :m, :n].copy_(A2[b])
-            _polar_vh_kernel[(1,)](
+            _polar_p_kernel[(1,)](
                 BP[b],
                 AP[b],
+                P[b],
+                INV[b],
+                m,
+                n,
+                BLOCK=block,
+                num_warps=4,
+                num_stages=1,
+            )
+            _polar_vh_kernel[(1,)](
+                P[b],
+                INV[b],
                 VH[b],
                 m,
                 n,
@@ -195,9 +249,10 @@ def _polar_osj(A, out_U=None, out_H=None):
                 num_warps=4,
                 num_stages=1,
             )
+            VH2[b].copy_(VH[b])
             _polar_u_kernel[(1,)](
                 BP[b],
-                VH[b],
+                VH2[b],
                 U3[b],
                 UB[b],
                 m,
@@ -206,8 +261,9 @@ def _polar_osj(A, out_U=None, out_H=None):
                 num_warps=4,
                 num_stages=1,
             )
+            UB2[b].copy_(UB[b])
             _polar_h_kernel[(1,)](
-                UB[b],
+                UB2[b],
                 AP[b],
                 H3[b],
                 m,
