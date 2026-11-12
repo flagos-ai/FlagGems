@@ -13,16 +13,64 @@
 # limitations under the License.
 
 import logging
+import os
+import subprocess
+from functools import lru_cache
 
 import torch
 import triton
 import triton.language as tl
-
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _latency_hints_supported():
+    """Probe the selected HCU Clang once before using optional LLVM hints."""
+    try:
+        from triton.backends.hcu.compiler_hcu import HIPBackend
+
+        clang = HIPBackend.path_to_rocm_clang()
+        result = subprocess.run(
+            [
+                str(clang),
+                "-x",
+                "c",
+                "-c",
+                "-",
+                "-o",
+                os.devnull,
+                "-mllvm",
+                "--help-hidden",
+            ],
+            input="",
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (ImportError, AttributeError, OSError, subprocess.SubprocessError):
+        return False
+    help_text = result.stdout + result.stderr
+    return result.returncode == 0 and all(
+        name in help_text
+        for name in ("enable-latency-hack", "mmac-latency", "ds-load-store-latency")
+    )
+
+
+def _get_launch_options(cfg):
+    options = dict(cfg.get("launch_options", {}))
+    if (
+        options.get("sched_latency", "none") != "none"
+        and not _latency_hints_supported()
+    ):
+        # Scheduling preferences are optional; unsupported flags must not make
+        # an otherwise valid matrix multiplication fail to compile.
+        options.pop("sched_latency")
+    return options
 
 
 @triton.jit
@@ -352,7 +400,7 @@ def mm(a, b):
                 num_warps=cfg["warps"],
                 num_stages=cfg["stages"],
                 async_copy_use_single_buffer=False,
-                **cfg.get("launch_options", {}),
+                **_get_launch_options(cfg),
             )
         elif kind == "fasttile":
             bm, bn, bk = cfg["bm"], cfg["bn"], cfg["bk"]
@@ -411,7 +459,7 @@ def mm(a, b):
                 num_warps=cfg["warps"],
                 num_stages=cfg["stages"],
                 async_copy_use_single_buffer=False,
-                **cfg.get("launch_options", {}),
+                **_get_launch_options(cfg),
             )
             split_reduce[(triton.cdiv(m * n, 1024),)](
                 partial, c, m * n, split, 1024, num_warps=4
@@ -496,7 +544,7 @@ def mm(a, b):
                 SB_PER=cfg["sb_per"],
                 num_warps=warps,
                 num_stages=1,
-                **cfg.get("launch_options", {}),
+                **_get_launch_options(cfg),
             )
         elif kind == "banked":
             if triton.runtime.driver.active.get_current_target().arch != "gfx936":
@@ -541,7 +589,7 @@ def mm(a, b):
                 SB_MAX=cfg["sb_max"],
                 num_warps=warps,
                 num_stages=1,
-                **cfg.get("launch_options", {}),
+                **_get_launch_options(cfg),
             )
         elif kind == "native_fp32":
             if triton.runtime.driver.active.get_current_target().arch != "gfx936":

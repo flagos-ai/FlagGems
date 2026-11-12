@@ -105,7 +105,9 @@ def mmac_banked(
     for i in gl.static_range(TM * TN * 4):
         acc += (gl.full((WARPS * 64,), 0, gl.float64, L),)
     steps: gl.constexpr = K // (4 * PREFETCH)
-    if PIPE and steps > 0:
+    # Consume each MMAC bank before loading the next; a second live bank
+    # can overlap the fixed VGPR operands under the HCU compiler.
+    for step in range(steps):
         aa, bb = load_banked(
             A,
             B,
@@ -123,7 +125,7 @@ def mmac_banked(
             PREFETCH,
             pm,
             pn,
-            0,
+            step,
             True,
             SWIZZLE,
             TRANS,
@@ -132,66 +134,7 @@ def mmac_banked(
             SB_VEC,
             SB_MAX,
         )
-        for step in range(steps - 1):
-            na, nb = load_banked(
-                A,
-                B,
-                M,
-                N,
-                K,
-                AM,
-                AK,
-                BK,
-                BN,
-                WARPS,
-                WM,
-                TM,
-                TN,
-                PREFETCH,
-                pm,
-                pn,
-                step + 1,
-                True,
-                SWIZZLE,
-                TRANS,
-                SA_VEC,
-                SA_MAX,
-                SB_VEC,
-                SB_MAX,
-            )
-            acc = compute(aa, bb, acc, TM, TN, PREFETCH)
-            aa = na
-            bb = nb
         acc = compute(aa, bb, acc, TM, TN, PREFETCH)
-    else:
-        for step in range(steps):
-            aa, bb = load_banked(
-                A,
-                B,
-                M,
-                N,
-                K,
-                AM,
-                AK,
-                BK,
-                BN,
-                WARPS,
-                WM,
-                TM,
-                TN,
-                PREFETCH,
-                pm,
-                pn,
-                step,
-                True,
-                SWIZZLE,
-                TRANS,
-                SA_VEC,
-                SA_MAX,
-                SB_VEC,
-                SB_MAX,
-            )
-            acc = compute(aa, bb, acc, TM, TN, PREFETCH)
     if K % (4 * PREFETCH) != 0:
         aa, bb = load_banked(
             A,
