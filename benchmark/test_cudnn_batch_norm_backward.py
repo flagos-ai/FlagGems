@@ -456,9 +456,6 @@ def _master_inputs(shape, dtype, device, use_running_stats):
 
 
 def _build_inputs_fn(plan, dtype, device):
-    if not os.environ.get("FLAGGEMS_NV_BASELINE"):
-        (shape,) = plan.builder_args
-        return _master_inputs(shape, dtype, device, plan.params["use_running_stats"])
     if dtype == torch.bfloat16 and (
         flag_gems.vendor_name == "nvidia" or os.environ.get("FLAGGEMS_NV_BASELINE")
     ):
@@ -475,6 +472,13 @@ def _build_inputs_fn(plan, dtype, device):
     return inp, grad, weight, None, None, save_mean, save_var, 1e-5, reserve
 
 
+def _build_benchmark_inputs(plan, dtype, device):
+    if os.environ.get("FLAGGEMS_NV_BASELINE"):
+        return _build_inputs_fn(plan, dtype, device)
+    (shape,) = plan.builder_args
+    return _master_inputs(shape, dtype, device, plan.params["use_running_stats"])
+
+
 @pytest.mark.cudnn_batch_norm_backward
 def test_cudnn_batch_norm_backward():
     if os.environ.get("FLAGGEMS_NV_BASELINE"):
@@ -489,6 +493,6 @@ def test_cudnn_batch_norm_backward():
         op_name="cudnn_batch_norm_backward",
         torch_op=torch.ops.aten.cudnn_batch_norm_backward.default,
         case_fn=_case_fn,
-        build_inputs_fn=_build_inputs_fn,
+        build_inputs_fn=_build_benchmark_inputs,
         dtypes=dtypes,
     ).run()
