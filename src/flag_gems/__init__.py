@@ -144,6 +144,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Char", "default"),
     ),
     (
+        "_cast_Long",
+        cast_Long,
+        lambda: torch_has_aten_overload("_cast_Long", "default"),
+    ),
+    (
         "_cast_Short",
         cast_Short,
         lambda: torch_has_aten_overload("_cast_Short", "default"),
