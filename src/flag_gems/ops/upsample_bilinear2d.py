@@ -155,6 +155,14 @@ def upsample_bilinear2d(
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
 
+    # The kernel addresses the input as a dense (N, C, IH, IW) buffer
+    # (``(n * C + c) * IH * IW + h * IW + w``), so a strided view would be read
+    # with the wrong offsets and silently return wrong values. ATen honours the
+    # strides here, and the sibling upsamplers already normalise their input
+    # (``upsample_linear1d`` / ``upsample_trilinear3d``); the copy is skipped
+    # when the tensor is already contiguous.
+    input = input.contiguous()
+
     OH, OW = output_size
     N, C, IH, IW = input.shape
 
