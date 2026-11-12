@@ -24,6 +24,14 @@ from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
 from ._foreach_add__List import _foreach_add__List
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_mul__Scalar import _foreach_mul__Scalar
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 
 # Hygon internal implementation for attention
 from ._masked_scale import _masked_scale
@@ -266,6 +274,14 @@ __all__ = [
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
     "_foreach_add__List",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_div__Scalar",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_minimum__Scalar",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
     "_scaled_dot_product_flash_attention",
