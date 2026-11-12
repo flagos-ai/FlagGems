@@ -18,6 +18,10 @@ on:
       - '.github/workflows/build-deb.yml'
   workflow_dispatch:
 
+concurrency:
+  group: build-deb-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-deb:
     runs-on: ubuntu-latest
