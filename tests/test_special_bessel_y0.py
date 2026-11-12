@@ -18,8 +18,9 @@ def test_special_bessel_y0(shape, dtype):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     # bessel_y0 requires positive inputs (returns NaN for negative values)
+    torch.manual_seed(0)
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device).abs() + 0.1
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp, upcast=True)
     ref_out = torch.special.bessel_y0(ref_inp)
     res_out = flag_gems.special_bessel_y0(inp)
     utils.gems_assert_close(res_out, ref_out, dtype)

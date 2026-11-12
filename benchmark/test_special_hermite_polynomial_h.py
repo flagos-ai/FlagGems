@@ -18,20 +18,44 @@ import torch
 from . import base
 
 
+def _case_fn(shape, dtype):
+    del dtype
+    dims = tuple(shape)
+    yield base.BenchmarkCasePlan(
+        shape={"x": list(dims), "n": list(dims)},
+        params={"degree_kind": "tensor", "degree_max": 9},
+        builder_args=(dims,),
+    )
+
+
+def _build_inputs_fn(plan, dtype, device):
+    (shape,) = plan.builder_args
+    x = base.generate_tensor_input(shape, dtype, device)
+    degree = torch.randint(0, 10, shape, device=device).to(dtype)
+    return x, degree
+
+
+class _HermiteBenchmark(base.BinaryPointwiseBenchmark):
+    def get_case_iter(self, dtype):
+        ordinal = 0
+        for shape in self.shapes:
+            for plan in _case_fn(shape, dtype):
+                yield self._case_from_plan(dtype, ordinal, plan)
+                ordinal += 1
+
+    def build_inputs(self, case):
+        return _build_inputs_fn(case.builder_args[0], case.dtype, self.device)
+
+    def get_input_iter(self, dtype):
+        for case in self.get_case_iter(dtype):
+            yield self.build_inputs(case)
+
+
 @pytest.mark.special_hermite_polynomial_h
 def test_special_hermite_polynomial_h():
-    class _HermiteBenchmark(base.BinaryPointwiseBenchmark):
-        def get_input_iter(self, dtype):
-            for shape in self.shapes:
-                inp1 = base.generate_tensor_input(shape, dtype, self.device)
-                # n must be in [0, 9] per operator validation
-                inp2 = torch.randint(0, 10, shape, device=self.device).to(dtype)
-                yield inp1, inp2
-
     bench = _HermiteBenchmark(
         op_name="special_hermite_polynomial_h",
         torch_op=torch.special.hermite_polynomial_h,
-        # special.* ops only support float32
         dtypes=[torch.float32],
     )
     bench.run()
