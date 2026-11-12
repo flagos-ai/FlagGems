@@ -48,6 +48,13 @@ class HashTensorBenchmark(base.GenericBenchmark2DOnly, OperatorBenchmark):
         base.Benchmark.set_shapes(self, shape_file_path)
 
     get_case_iter = OperatorBenchmark.get_case_iter
+    def _run_cases(self, case_ids):
+        skipped_before = set(base.Config.skipped_case_ids)
+        results = super()._run_cases(case_ids)
+        if not results and base.Config.skipped_case_ids - skipped_before:
+            pytest.skip("Iluvatar ATen hash_tensor returns uint32; benchmark requires uint64")
+        return results
+
     def build_inputs(self, case):
         if flag_gems.vendor_name == "iluvatar":
             probe = torch.ones((1, 2), dtype=case.dtype, device=self.device)
