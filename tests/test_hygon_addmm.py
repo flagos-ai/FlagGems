@@ -333,3 +333,23 @@ def test_expanded_addmm_short_rowmajor_precision(shape, seed):
     with torch.no_grad():
         actual = flag_gems.addmm(cd, ad, bd)
     torch.testing.assert_close(actual.cpu(), expected)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("alpha,beta", [(1, 1), (0.5, -1)])
+def test_hygon_addmm_large_bf16_k1(alpha, beta):
+    g = torch.Generator().manual_seed(5923)
+    a = (torch.randn(1025, 1, generator=g) * 0.25).to(torch.bfloat16)
+    b = (torch.randn(1, 257, generator=g) * 0.25).to(torch.bfloat16)
+    bias = (torch.randn(257, generator=g) * 0.25).to(torch.bfloat16)
+    expected = torch.addmm(
+        bias.float(), a.float(), b.float(), alpha=alpha, beta=beta
+    ).to(torch.bfloat16)
+    actual = flag_gems.addmm(
+        bias.to(flag_gems.device),
+        a.to(flag_gems.device),
+        b.to(flag_gems.device),
+        alpha=alpha,
+        beta=beta,
+    )
+    torch.testing.assert_close(actual.cpu(), expected)

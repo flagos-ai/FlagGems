@@ -315,6 +315,16 @@ def _expanded_fp32(a, b):
 def _eligible(a, b):
     m, k = a.shape
     n = b.shape[1]
+    # Large BF16 tiles depend on the HIP-specific scheduling path. HCU
+    # compilers can spill these accumulators heavily; retain the established
+    # generic implementation instead of selecting an unsupported fast path.
+    if (
+        a.dtype == torch.bfloat16
+        and m >= 1024
+        and n >= 256
+        and triton.runtime.driver.active.get_current_target().backend == "hcu"
+    ):
+        return False
     return a.dtype in (torch.float16, torch.bfloat16, torch.float32) and (
         (m <= 8 and n <= 256 and k <= 4096)
         or _small_fp32(a, b)
