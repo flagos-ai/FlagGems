@@ -31,13 +31,20 @@ GREATER_SHAPES = [s for s in utils.POINTWISE_SHAPES if s != (1,)]
 def test_greater_(shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1)
+    ref_inp1 = utils.to_reference(inp1.clone())
     ref_inp2 = utils.to_reference(inp2)
 
     ref_inp1.greater_(ref_inp2)
-    flag_gems.greater_(inp1, inp2)
+    original_pointer = inp1.data_ptr()
+    other_before = inp2.clone()
+    result = flag_gems.greater_(inp1, inp2)
 
-    utils.gems_assert_equal(inp1, ref_inp1)
+    assert result is inp1
+    assert result.data_ptr() == original_pointer
+    assert result.device == inp2.device
+    assert result.dtype == dtype
+    assert torch.equal(inp2, other_before)
+    utils.gems_assert_equal(result, ref_inp1)
 
 
 @pytest.mark.greater_
@@ -58,10 +65,22 @@ def test_greater_fp64_precision(dtype):
 
     inp1 = torch.tensor([val1], dtype=dtype, device=flag_gems.device)
     inp2 = torch.tensor([val2], dtype=dtype, device=flag_gems.device)
-    ref_inp1 = utils.to_reference(inp1)
-    ref_inp2 = utils.to_reference(inp2)
+    # Iluvatar's native comparison rounds these distinct FP64 inputs to FP32.
+    use_cpu_oracle = flag_gems.vendor_name == "iluvatar"
+    if use_cpu_oracle:
+        ref_inp1, ref_inp2 = inp1.cpu().clone(), inp2.cpu()
+    else:
+        ref_inp1 = utils.to_reference(inp1.clone())
+        ref_inp2 = utils.to_reference(inp2)
 
     ref_inp1.greater_(ref_inp2)
-    flag_gems.greater_(inp1, inp2)
+    original_pointer = inp1.data_ptr()
+    other_before = inp2.clone()
+    result = flag_gems.greater_(inp1, inp2)
 
-    utils.gems_assert_equal(inp1, ref_inp1)
+    assert result is inp1
+    assert result.data_ptr() == original_pointer
+    assert result.device == inp2.device
+    assert result.dtype == dtype
+    assert torch.equal(inp2, other_before)
+    utils.gems_assert_equal(result.cpu() if use_cpu_oracle else result, ref_inp1)
