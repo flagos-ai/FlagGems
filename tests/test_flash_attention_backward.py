@@ -144,7 +144,14 @@ def _call_native_attention_reference(name, op, *args, **kwargs):
             )
             and "USE_MEM_EFF_ATTENTION was not enabled for build." in message
         )
-        if flag_gems.vendor_name == "hygon" and (missing_kernel or disabled_build):
+        disabled_cudnn_build = (
+            name == "_scaled_dot_product_cudnn_attention"
+            and "PyTorch was not compiled with cuDNN Flash Attention enabled!"
+            in message
+        )
+        if flag_gems.vendor_name == "hygon" and (
+            missing_kernel or disabled_build or disabled_cudnn_build
+        ):
             pytest.skip(
                 f"Hygon native reference unavailable: {message.splitlines()[0]}"
             )
@@ -160,6 +167,14 @@ def _call_native_attention_reference(name, op, *args, **kwargs):
             "_efficient_attention_forward",
             NotImplementedError(
                 "Could not run 'aten::_efficient_attention_forward' with arguments from the 'CUDA' backend."
+            ),
+            True,
+        ),
+        (
+            "hygon",
+            "_scaled_dot_product_cudnn_attention",
+            RuntimeError(
+                "PyTorch was not compiled with cuDNN Flash Attention enabled!"
             ),
             True,
         ),
