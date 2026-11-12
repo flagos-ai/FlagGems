@@ -128,6 +128,84 @@ def test_flash_attention_value_grad_cpu_reference(causal, left, right, expected)
     torch.testing.assert_close(actual.flatten(), torch.tensor(expected, dtype=q.dtype))
 
 
+def _call_native_attention_reference(name, op, *args, **kwargs):
+    try:
+        return op(*args, **kwargs)
+    except (NotImplementedError, RuntimeError) as exc:
+        message = str(exc)
+        missing_kernel = isinstance(exc, NotImplementedError) and (
+            f"Could not run 'aten::{name}'" in message
+        )
+        disabled_build = (
+            name
+            in (
+                "_efficient_attention_forward",
+                "_scaled_dot_product_efficient_attention",
+            )
+            and "USE_MEM_EFF_ATTENTION was not enabled for build." in message
+        )
+        if flag_gems.vendor_name == "hygon" and (missing_kernel or disabled_build):
+            pytest.skip(
+                f"Hygon native reference unavailable: {message.splitlines()[0]}"
+            )
+        raise
+
+
+@pytest.mark.flash_attention_backward
+@pytest.mark.parametrize(
+    "vendor,name,error,should_skip",
+    [
+        (
+            "hygon",
+            "_efficient_attention_forward",
+            NotImplementedError(
+                "Could not run 'aten::_efficient_attention_forward' with arguments from the 'CUDA' backend."
+            ),
+            True,
+        ),
+        (
+            "hygon",
+            "_scaled_dot_product_efficient_attention",
+            RuntimeError("USE_MEM_EFF_ATTENTION was not enabled for build."),
+            True,
+        ),
+        (
+            "hygon",
+            "_efficient_attention_forward",
+            RuntimeError("incorrect gradient"),
+            False,
+        ),
+        (
+            "hygon",
+            "_efficient_attention_forward",
+            NotImplementedError(
+                "Could not run 'aten::some_other_op' with arguments from the 'CUDA' backend."
+            ),
+            False,
+        ),
+        (
+            "nvidia",
+            "_efficient_attention_forward",
+            NotImplementedError(
+                "Could not run 'aten::_efficient_attention_forward' with arguments from the 'CUDA' backend."
+            ),
+            False,
+        ),
+    ],
+)
+def test_native_attention_reference_availability(
+    monkeypatch, vendor, name, error, should_skip
+):
+    monkeypatch.setattr(flag_gems, "vendor_name", vendor)
+
+    def unavailable():
+        raise error
+
+    expected = pytest.skip.Exception if should_skip else type(error)
+    with pytest.raises(expected):
+        _call_native_attention_reference(name, unavailable)
+
+
 def cudnn_attn_forward_native(
     Q,
     K,
@@ -145,7 +223,9 @@ def cudnn_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._scaled_dot_product_cudnn_attention(
+    results = _call_native_attention_reference(
+        "_scaled_dot_product_cudnn_attention",
+        torch.ops.aten._scaled_dot_product_cudnn_attention,
         Q_bhsd,
         K_bhsd,
         V_bhsd,
@@ -181,7 +261,9 @@ def efficient_attn_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._efficient_attention_forward(
+    results = _call_native_attention_reference(
+        "_efficient_attention_forward",
+        torch.ops.aten._efficient_attention_forward,
         Q,
         K,
         V,
@@ -221,7 +303,9 @@ def efficient_attn_sdp_forward_native(
         softmax_scale if softmax_scale is not None else (1.0 / math.sqrt(Q.shape[-1]))
     )
 
-    results = torch.ops.aten._scaled_dot_product_efficient_attention(
+    results = _call_native_attention_reference(
+        "_scaled_dot_product_efficient_attention",
+        torch.ops.aten._scaled_dot_product_efficient_attention,
         Q_bhsd,
         K_bhsd,
         V_bhsd,
