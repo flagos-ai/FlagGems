@@ -1,0 +1,1048 @@
+[
+  {
+    "id": "sum-row0636",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [126636,4,32],
+          "stride": [128,32,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 636,
+    "model": "GenScore",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0637",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [2806,4,32],
+          "stride": [128,32,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 637,
+    "model": "GenScore",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0638",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [61,1896,3],
+          "stride": [5688,3,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 638,
+    "model": "GenScore",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0639",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [61,20,3],
+          "stride": [60,3,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 639,
+    "model": "GenScore",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0640",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [96380,10],
+          "stride": [10,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "contiguous": true,
+          "requires_grad": false,
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 640,
+    "model": "GenScore",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0641",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [3,101],
+          "stride": [101,1],
+          "dtype": "torch.bool",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 641,
+    "model": "ESM-2",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0642",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [3,120,99,99],
+          "stride": [1176120,9801,99,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [-1,-2],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 642,
+    "model": "ESM-2",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0643",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,3],
+          "stride": [3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 643,
+    "model": "TargetDiff",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0644",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [854,854,3],
+          "stride": [2562,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 644,
+    "model": "TargetDiff",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0645",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [192,1,128],
+          "stride": [128,128,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [1],
+        true
+      ],
+      {
+        "dtype": "torch.float64"
+      }
+    ],
+    "seed": 20261110,
+    "sheet_row": 645,
+    "model": "MACE",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0646",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [3,192],
+          "stride": [192,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [0]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 646,
+    "model": "MACE",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0647",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [64,8],
+          "stride": [1,64],
+          "dtype": "torch.bool",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": false,
+          "storage_alias": "independent-0"
+        },
+        [0]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 647,
+    "model": "eSEN",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0648",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,8,25,128],
+          "stride": [25600,3200,128,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [0]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 648,
+    "model": "eSEN",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0649",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [2597,3],
+          "stride": [3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 649,
+    "model": "eSEN",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0650",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [400,3],
+          "stride": [3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 650,
+    "model": "eSEN",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0651",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,125,3],
+          "stride": [375,3,1],
+          "dtype": "torch.int64",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [2]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 651,
+    "model": "eSEN",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0652",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [480,16],
+          "stride": [16,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 652,
+    "model": "MatterSim",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0653",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [480,3],
+          "stride": [3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 653,
+    "model": "MatterSim",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0654",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [480,4,4],
+          "stride": [16,4,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [2],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 654,
+    "model": "MatterSim",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0655",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [56,4],
+          "stride": [4,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_offset": 0,
+          "storage_alias": "independent-0"
+        },
+        [1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 655,
+    "model": "MatterSim",
+    "metadata_assumptions": [
+      "original storage_offset not captured; explicit reconstructed offset0"
+    ]
+  },
+  {
+    "id": "sum-row0656",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,100,1200,3],
+          "stride": [360000,3600,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 656,
+    "model": "DPA-3",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0657",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,100,300,3],
+          "stride": [90000,900,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 657,
+    "model": "DPA-3",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0658",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,100],
+          "stride": [100,1],
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 658,
+    "model": "DPA-3",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0659",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "contiguous": true,
+          "device": "flagos:0",
+          "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
+          "dtype": "torch.float32",
+          "requires_grad": false,
+          "shape": [21,21],
+          "storage_alias": "storage_0",
+          "storage_offset": 0,
+          "stride": [21,1]
+        },
+        [-1,-2]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 659,
+    "model": "Protenix",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0660",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,32,1],
+          "stride": [32,1,1],
+          "dtype": "torch.bool",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-2],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 660,
+    "model": "La-Proteina",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0661",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,32,3],
+          "stride": [96,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-2],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 661,
+    "model": "La-Proteina",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0662",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [1,4],
+          "stride": [4,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 662,
+    "model": "DiffDock",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0663",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [115,1,5,1,1],
+          "stride": [5,5,1,1,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [4],
+        true
+      ],
+      {
+        "dtype": "torch.float32"
+      }
+    ],
+    "seed": 20261110,
+    "sheet_row": 663,
+    "model": "DiffDock",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0664",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,268,3],
+          "stride": [804,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 664,
+    "model": "DiffDock",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0665",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [33,33,3],
+          "stride": [99,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 665,
+    "model": "DiffDock",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-row0666",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "tensor": true,
+          "shape": [6,33,3],
+          "stride": [99,3,1],
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "layout": "torch.strided",
+          "storage_offset": 0,
+          "requires_grad": false,
+          "is_contiguous": true,
+          "storage_alias": "independent-0"
+        },
+        [-1]
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": 666,
+    "model": "DiffDock",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-fallback-width",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [8193,7],
+          "stride": [7,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        false
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -1,
+    "model": "regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-fallback-stride",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [8193,3],
+          "stride": [6,2],
+          "storage_offset": 3,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -2,
+    "model": "regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-0",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [2002,2,2],
+          "stride": [4,2,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -10,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-1",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [1,262144],
+          "stride": [3,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -11,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-2",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [35,1088,2],
+          "stride": [2176,2,1],
+          "storage_offset": 0,
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -12,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-3",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [265,265,2],
+          "stride": [530,2,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -13,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-4",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [1,2097152],
+          "stride": [3,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -14,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-5",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [142170,15],
+          "stride": [15,1],
+          "storage_offset": 0,
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -15,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-6",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [50836,2,13],
+          "stride": [26,13,1],
+          "storage_offset": 0,
+          "dtype": "torch.float32",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -16,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  },
+  {
+    "id": "sum-extension-7",
+    "op": "aten::sum.dim_IntList",
+    "spec": [
+      [
+        {
+          "shape": [111,3454,5],
+          "stride": [17270,5,1],
+          "storage_offset": 0,
+          "dtype": "torch.float64",
+          "device": "flagos:0",
+          "storage_alias": "independent-0"
+        },
+        [-1],
+        true
+      ],
+      {}
+    ],
+    "seed": 20261110,
+    "sheet_row": -17,
+    "model": "new-path regression",
+    "metadata_assumptions": []
+  }
+]
