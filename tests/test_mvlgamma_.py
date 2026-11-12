@@ -72,7 +72,7 @@ def test_special_multigammaln(shape, dtype, p, caplog, pytestconfig):
     atol = 1e-2 if dtype == torch.float16 else 1e-4
     utils.gems_assert_close(res_out, ref_out, dtype, atol=atol)
     # special_multigammaln is out-of-place: the input must stay unmodified
-    utils.gems_assert_equal(inp, before)
+    assert torch.equal(inp, before)
 
 
 @pytest.mark.mvlgamma_
