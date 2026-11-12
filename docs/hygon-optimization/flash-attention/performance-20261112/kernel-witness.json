@@ -1,0 +1,138 @@
+{
+  "cases": {
+    "flash-model_state": {
+      "aa": {
+        "kernel:_state_key_norms": 1000,
+        "kernel:void flash_vpackedlds<4, 3, 16, 1, 8, 2>(unsigned short const*, unsigned short const*, unsigned short const*, float const*, unsigned char*, unsigned short*, float*)": 1000,
+        "kernel:_state_stable": 1000
+      },
+      "das": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 128, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 128, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "das_repeat": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 128, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 128, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "new": {
+        "kernel:_state_key_norms": 1000,
+        "kernel:void flash_vpackedlds<4, 3, 16, 1, 8, 2>(unsigned short const*, unsigned short const*, unsigned short const*, float const*, unsigned char*, unsigned short*, float*)": 1000,
+        "kernel:_state_stable": 1000
+      },
+      "old": {
+        "kernel:flash_fwd_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:flash_fwd_kernel": 1000
+      }
+    },
+    "flash-expanded_small": {
+      "aa": {
+        "kernel:_state_stable": 1000
+      },
+      "das": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "das_repeat": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "new": {
+        "kernel:_state_stable": 1000
+      },
+      "old": {
+        "kernel:flash_fwd_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:flash_fwd_kernel": 1000
+      }
+    },
+    "flash-expanded_medium": {
+      "aa": {
+        "kernel:_state_stable": 1000
+      },
+      "das": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "das_repeat": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "new": {
+        "kernel:_state_stable": 1000
+      },
+      "old": {
+        "kernel:flash_fwd_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:flash_fwd_kernel": 1000
+      }
+    },
+    "flash-expanded_large": {
+      "aa": {
+        "kernel:void short_state_flash<4, 3, 16>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, float*, unsigned char*)": 1000
+      },
+      "das": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "das_repeat": {
+        "kernel:void flash_fwd_kernel_16x64_prefetch<Flash_fwd_kernel_16x64_prefetch_traits<128, 64, 64, 4, cutlass::bfloat16_t, 3, false, false, 128, Flash_kernel_traits<128, 64, 64, 4, cutlass::bfloat16_t> >, false, false, false, false, false, true, false, false>(Flash_fwd_params)": 1000
+      },
+      "new": {
+        "kernel:void short_state_flash<4, 3, 16>(unsigned short const*, unsigned short const*, unsigned short const*, unsigned short*, float*, unsigned char*)": 1000
+      },
+      "old": {
+        "kernel:flash_fwd_kernel": 1000
+      },
+      "old_repeat": {
+        "kernel:flash_fwd_kernel": 1000
+      }
+    }
+  },
+  "source_accounting_files": [
+    {
+      "path": "flash-attention-group-00/aa/accounting-0.json",
+      "sha256": "bee5dd528a27be14fb614d5e0ba9714ad6eaf3a328a1c09115004ac354ef92dc"
+    },
+    {
+      "path": "flash-attention-group-00/aa/accounting-1.json",
+      "sha256": "271e05886de96b001ce5afdf9e453bf55327821d99bc077944737cc68455ff42"
+    },
+    {
+      "path": "flash-attention-group-00/das/accounting-0.json",
+      "sha256": "b7628423839a996fe361e2a442dd65704d63120bad10fc4083fab018c161721a"
+    },
+    {
+      "path": "flash-attention-group-00/das/accounting-1.json",
+      "sha256": "3039ed3828616b311a0c9ed8e2bf675046253d7be41fd1b8ace2c7de1b73d8ee"
+    },
+    {
+      "path": "flash-attention-group-00/das_repeat/accounting-0.json",
+      "sha256": "deb7133087e69d9b216aeb663c87361a30c20384d93959c608257331df31be8f"
+    },
+    {
+      "path": "flash-attention-group-00/das_repeat/accounting-1.json",
+      "sha256": "504294278b81faac8e8c86ed20865ecaa0e28adc62ad3346f174f9e52d19f67a"
+    },
+    {
+      "path": "flash-attention-group-00/new/accounting-0.json",
+      "sha256": "6df9f097eb295ed167843d6a3bb6a9751d6021ec4ff12099e6f13985cdc78aab"
+    },
+    {
+      "path": "flash-attention-group-00/new/accounting-1.json",
+      "sha256": "1c52939e1f11b9abc9c2469911d81f5dd4179126e9c49160f768a424cf20b51e"
+    },
+    {
+      "path": "flash-attention-group-00/old/accounting-0.json",
+      "sha256": "26c9a7a521f4b16b75bc13eed84d75deb24665ef2aa41c06b92499563019b8e2"
+    },
+    {
+      "path": "flash-attention-group-00/old/accounting-1.json",
+      "sha256": "258084da22073793a6062b43e3c1abc20d3f0c327a7680fa694c0c10e9356421"
+    },
+    {
+      "path": "flash-attention-group-00/old_repeat/accounting-0.json",
+      "sha256": "02b614f507de40441063ae2345f85cfeab3726296e9df907e36a22efec9e1226"
+    },
+    {
+      "path": "flash-attention-group-00/old_repeat/accounting-1.json",
+      "sha256": "3d2b65bdbd8f86825b7c042e8f41a8778ff0c08df7890f9db912161230be8d2a"
+    }
+  ]
+}
