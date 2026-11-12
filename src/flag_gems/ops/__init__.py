@@ -314,6 +314,9 @@ from flag_gems.ops._native_batch_norm_legit_no_training import (
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
 from flag_gems.ops._nested_from_padded import _nested_from_padded
+from flag_gems.ops._nested_from_padded_and_nested_example import (
+    _nested_from_padded_and_nested_example,
+)
 from flag_gems.ops._nested_from_padded_tensor import _nested_from_padded_tensor
 from flag_gems.ops._nested_select_backward import _nested_select_backward
 from flag_gems.ops._nested_sum_backward import _nested_sum_backward
@@ -324,9 +327,11 @@ from flag_gems.ops._nested_tensor_from_mask_left_aligned import (
 from flag_gems.ops._nested_tensor_from_tensor_list import (
     _nested_tensor_from_tensor_list,
 )
+from flag_gems.ops._nested_tensor_size import _nested_tensor_size
 from flag_gems.ops._nested_tensor_softmax_with_shape import (
     _nested_tensor_softmax_with_shape,
 )
+from flag_gems.ops._nested_tensor_strides import _nested_tensor_strides
 from flag_gems.ops._nested_view_from_buffer import _nested_view_from_buffer
 from flag_gems.ops._nested_view_from_buffer_copy import _nested_view_from_buffer_copy
 from flag_gems.ops._nested_view_from_jagged import _nested_view_from_jagged
@@ -2069,13 +2074,16 @@ __all__ = [
     "_neg_view_copy",
     "_neg_view_copy_out",
     "_nested_from_padded",
+    "_nested_from_padded_and_nested_example",
     "_nested_from_padded_tensor",
     "_nested_select_backward",
     "_nested_sum_backward",
     "_nested_tensor_from_mask",
     "_nested_tensor_from_mask_left_aligned",
     "_nested_tensor_from_tensor_list",
+    "_nested_tensor_size",
     "_nested_tensor_softmax_with_shape",
+    "_nested_tensor_strides",
     "_nested_view_from_buffer",
     "_nested_view_from_buffer_copy",
     "_nested_view_from_jagged",

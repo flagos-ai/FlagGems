@@ -15450,6 +15450,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_from_padded_and_nested_example
+  description: |
+    Constructs a (strided-layout) nested tensor from a padded tensor, using
+    the metadata of an example nested tensor to describe the output structure.
+  for:
+  - _nested_from_padded_and_nested_example
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
@@ -15541,6 +15554,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_size
+  description: 'Returns the per-constituent sizes metadata of a nested tensor as a
+    CPU int64 tensor of shape (num_tensors, max_rank).
+
+    '
+  for:
+  - _nested_tensor_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
@@ -15562,6 +15589,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - _nested_tensor_storage_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: nested_tensor_strides
+  description: 'Returns the per-constituent strides metadata of a nested tensor as
+    a CPU int64 tensor of shape (num_tensors, max_rank).
+
+    '
+  for:
+  - _nested_tensor_strides
   labels:
   - aten
   - KernelGen
