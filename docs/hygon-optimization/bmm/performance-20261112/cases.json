@@ -6,16 +6,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            1,
-            33,
-            3
-          ],
-          "stride": [
-            99,
-            3,
-            1
-          ],
+          "shape": [1,33,3],
+          "stride": [99,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -26,16 +18,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            1,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [1,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -51,16 +35,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            1,
-            33,
-            3
-          ],
-          "stride": [
-            99,
-            3,
-            1
-          ],
+          "shape": [1,33,3],
+          "stride": [99,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -70,16 +46,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            1,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [1,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -117,16 +85,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [115,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -137,16 +97,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            10,
-            48
-          ],
-          "stride": [
-            4704,
-            48,
-            1
-          ],
+          "shape": [115,10,48],
+          "stride": [4704,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -162,16 +114,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [115,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -181,16 +125,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            10,
-            48
-          ],
-          "stride": [
-            4704,
-            48,
-            1
-          ],
+          "shape": [115,10,48],
+          "stride": [4704,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -228,16 +164,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [115,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -248,16 +176,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [115,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -273,16 +193,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [115,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -292,16 +204,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [115,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -339,16 +243,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [115,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -359,16 +255,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            48,
-            48
-          ],
-          "stride": [
-            4704,
-            48,
-            1
-          ],
+          "shape": [115,48,48],
+          "stride": [4704,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -384,16 +272,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            115,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [115,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -403,16 +283,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            115,
-            48,
-            48
-          ],
-          "stride": [
-            4704,
-            48,
-            1
-          ],
+          "shape": [115,48,48],
+          "stride": [4704,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -450,16 +322,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            1,
-            10
-          ],
-          "stride": [
-            118,
-            10,
-            1
-          ],
+          "shape": [33,1,10],
+          "stride": [118,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -470,16 +334,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            10,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,10,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -495,16 +351,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            1,
-            10
-          ],
-          "stride": [
-            118,
-            10,
-            1
-          ],
+          "shape": [33,1,10],
+          "stride": [118,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -514,16 +362,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            10,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,10,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -561,16 +401,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [33,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -581,16 +413,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            48,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,48,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -606,16 +430,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [33,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -625,16 +441,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            48,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,48,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -672,16 +480,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [33,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -692,16 +492,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            10,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,10,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -717,16 +509,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [33,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -736,16 +520,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            10,
-            2
-          ],
-          "stride": [
-            236,
-            2,
-            1
-          ],
+          "shape": [33,10,2],
+          "stride": [236,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -783,16 +559,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [33,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -803,16 +571,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            2
-          ],
-          "stride": [
-            6,
-            2,
-            1
-          ],
+          "shape": [33,3,2],
+          "stride": [6,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -828,16 +588,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [33,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -847,16 +599,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            33,
-            3,
-            2
-          ],
-          "stride": [
-            6,
-            2,
-            1
-          ],
+          "shape": [33,3,2],
+          "stride": [6,2,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -894,16 +638,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [542,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -914,16 +650,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -939,16 +667,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [542,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -958,16 +678,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1005,16 +717,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [542,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1025,16 +729,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [542,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1050,16 +746,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [542,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1069,16 +757,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [542,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1116,16 +796,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [542,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1136,16 +808,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [542,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1161,16 +825,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [542,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1180,16 +836,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [542,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1227,16 +875,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [542,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1247,16 +887,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1272,16 +904,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [542,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1291,16 +915,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1338,16 +954,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [542,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1358,16 +966,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [542,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1383,16 +983,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [542,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1402,16 +994,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [542,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1449,16 +1033,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            1,
-            3
-          ],
+          "shape": [542,3,10],
+          "stride": [30,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1469,16 +1045,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1494,16 +1062,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            1,
-            3
-          ],
+          "shape": [542,3,10],
+          "stride": [30,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1513,16 +1073,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [542,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1560,16 +1112,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [542,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1580,16 +1124,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [542,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1605,16 +1141,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [542,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1624,16 +1152,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            542,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [542,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1671,16 +1191,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1691,16 +1203,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1716,16 +1220,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1735,16 +1231,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1782,16 +1270,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1802,16 +1282,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [6432,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1827,16 +1299,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [6432,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1846,16 +1310,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [6432,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1893,16 +1349,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [6432,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1913,16 +1361,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1938,16 +1378,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [6432,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -1957,16 +1389,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2004,16 +1428,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [6432,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2024,16 +1440,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2049,16 +1457,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [6432,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2068,16 +1468,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2115,16 +1507,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [6432,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2135,16 +1519,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [6432,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2160,16 +1536,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [6432,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2179,16 +1547,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [6432,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2226,16 +1586,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2246,16 +1598,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2271,16 +1615,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [6432,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2290,16 +1626,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [6432,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2337,16 +1665,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [6432,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2357,16 +1677,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [6432,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2382,16 +1694,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [6432,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2401,16 +1705,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            6432,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [6432,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2448,16 +1744,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2468,16 +1756,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2493,16 +1773,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2512,16 +1784,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2559,16 +1823,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2579,16 +1835,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [8844,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2604,16 +1852,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            10
-          ],
-          "stride": [
-            10,
-            10,
-            1
-          ],
+          "shape": [8844,1,10],
+          "stride": [10,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2623,16 +1863,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [8844,10,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2670,16 +1902,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [8844,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2690,16 +1914,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [8844,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2715,16 +1931,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            3
-          ],
-          "stride": [
-            3,
-            3,
-            1
-          ],
+          "shape": [8844,1,3],
+          "stride": [3,3,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2734,16 +1942,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            118,
-            1,
-            3
-          ],
+          "shape": [8844,3,10],
+          "stride": [118,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2781,16 +1981,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [8844,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2801,16 +1993,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2826,16 +2010,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            48
-          ],
-          "stride": [
-            118,
-            48,
-            1
-          ],
+          "shape": [8844,1,48],
+          "stride": [118,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2845,16 +2021,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            48,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,48,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2892,16 +2060,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [8844,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2912,16 +2072,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [8844,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2937,16 +2089,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            1,
-            48
-          ],
-          "stride": [
-            48,
-            48,
-            1
-          ],
+          "shape": [8844,1,48],
+          "stride": [48,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -2956,16 +2100,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            48,
-            48
-          ],
-          "stride": [
-            4164,
-            48,
-            1
-          ],
+          "shape": [8844,48,48],
+          "stride": [4164,48,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3003,16 +2139,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            1,
-            3
-          ],
+          "shape": [8844,3,10],
+          "stride": [30,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3023,16 +2151,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3048,16 +2168,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            1,
-            3
-          ],
+          "shape": [8844,3,10],
+          "stride": [30,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3067,16 +2179,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            10,
-            10
-          ],
-          "stride": [
-            4164,
-            10,
-            1
-          ],
+          "shape": [8844,10,10],
+          "stride": [4164,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3114,16 +2218,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [8844,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3134,16 +2230,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [8844,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3159,16 +2247,8 @@
       [
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            3
-          ],
-          "stride": [
-            9,
-            1,
-            3
-          ],
+          "shape": [8844,3,3],
+          "stride": [9,1,3],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3178,16 +2258,8 @@
         },
         {
           "tensor": true,
-          "shape": [
-            8844,
-            3,
-            10
-          ],
-          "stride": [
-            30,
-            10,
-            1
-          ],
+          "shape": [8844,3,10],
+          "stride": [30,10,1],
           "dtype": "torch.float32",
           "device": "cuda:0",
           "layout": "torch.strided",
@@ -3229,18 +2301,10 @@
           "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
           "dtype": "torch.float32",
           "requires_grad": false,
-          "shape": [
-            980,
-            245,
-            245
-          ],
+          "shape": [980,245,245],
           "storage_alias": "storage_0",
           "storage_offset": 0,
-          "stride": [
-            60025,
-            245,
-            1
-          ]
+          "stride": [60025,245,1]
         },
         {
           "contiguous": true,
@@ -3248,18 +2312,10 @@
           "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
           "dtype": "torch.float32",
           "requires_grad": false,
-          "shape": [
-            980,
-            245,
-            32
-          ],
+          "shape": [980,245,32],
           "storage_alias": "storage_1",
           "storage_offset": 0,
-          "stride": [
-            7840,
-            32,
-            1
-          ]
+          "stride": [7840,32,1]
         }
       ],
       {}
@@ -3272,18 +2328,10 @@
           "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
           "dtype": "torch.float32",
           "requires_grad": false,
-          "shape": [
-            980,
-            245,
-            245
-          ],
+          "shape": [980,245,245],
           "storage_alias": "storage_0",
           "storage_offset": 0,
-          "stride": [
-            60025,
-            245,
-            1
-          ]
+          "stride": [60025,245,1]
         },
         {
           "contiguous": true,
@@ -3291,18 +2339,10 @@
           "dispatch_keys": "DispatchKeySet(PrivateUse1, ADInplaceOrView, AutogradPrivateUse1, AutocastPrivateUse1)",
           "dtype": "torch.float32",
           "requires_grad": false,
-          "shape": [
-            980,
-            245,
-            32
-          ],
+          "shape": [980,245,32],
           "storage_alias": "storage_1",
           "storage_offset": 0,
-          "stride": [
-            7840,
-            32,
-            1
-          ]
+          "stride": [7840,32,1]
         }
       ],
       {}
@@ -3320,32 +2360,16 @@
     "spec": [
       [
         {
-          "shape": [
-            60,
-            101,
-            101
-          ],
-          "stride": [
-            10201,
-            101,
-            1
-          ],
+          "shape": [60,101,101],
+          "stride": [10201,101,1],
           "dtype": "torch.float32",
           "device": "flagos:0",
           "storage_offset": 0,
           "storage_alias": "independent-0"
         },
         {
-          "shape": [
-            60,
-            101,
-            16
-          ],
-          "stride": [
-            16,
-            960,
-            1
-          ],
+          "shape": [60,101,16],
+          "stride": [16,960,1],
           "dtype": "torch.float32",
           "device": "flagos:0",
           "storage_offset": 0,
@@ -3357,30 +2381,14 @@
     "original_spec": [
       [
         {
-          "shape": [
-            60,
-            101,
-            101
-          ],
-          "stride": [
-            10201,
-            101,
-            1
-          ],
+          "shape": [60,101,101],
+          "stride": [10201,101,1],
           "dtype": "torch.float32",
           "device": "flagos:0"
         },
         {
-          "shape": [
-            60,
-            101,
-            16
-          ],
-          "stride": [
-            16,
-            960,
-            1
-          ],
+          "shape": [60,101,16],
+          "stride": [16,960,1],
           "dtype": "torch.float32",
           "device": "flagos:0"
         }
@@ -3425,32 +2433,16 @@
     "spec": [
       [
         {
-          "shape": [
-            60,
-            101,
-            16
-          ],
-          "stride": [
-            16,
-            960,
-            1
-          ],
+          "shape": [60,101,16],
+          "stride": [16,960,1],
           "dtype": "torch.float32",
           "device": "flagos:0",
           "storage_offset": 0,
           "storage_alias": "independent-0"
         },
         {
-          "shape": [
-            60,
-            16,
-            101
-          ],
-          "stride": [
-            16,
-            1,
-            960
-          ],
+          "shape": [60,16,101],
+          "stride": [16,1,960],
           "dtype": "torch.float32",
           "device": "flagos:0",
           "storage_offset": 0,
@@ -3462,30 +2454,14 @@
     "original_spec": [
       [
         {
-          "shape": [
-            60,
-            101,
-            16
-          ],
-          "stride": [
-            16,
-            960,
-            1
-          ],
+          "shape": [60,101,16],
+          "stride": [16,960,1],
           "dtype": "torch.float32",
           "device": "flagos:0"
         },
         {
-          "shape": [
-            60,
-            16,
-            101
-          ],
-          "stride": [
-            16,
-            1,
-            960
-          ],
+          "shape": [60,16,101],
+          "stride": [16,1,960],
           "dtype": "torch.float32",
           "device": "flagos:0"
         }
