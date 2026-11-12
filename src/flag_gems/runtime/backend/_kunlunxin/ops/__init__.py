@@ -210,7 +210,8 @@ from ._transform_bias_rescale_qkv import _transform_bias_rescale_qkv
 from ._unsafe_masked_index_put_accumulate import _unsafe_masked_index_put_accumulate
 from ._upsample_bilinear2d_aa import _upsample_bilinear2d_aa  # noqa: F401
 from ._upsample_lanczos2d_aa_backward import (  # noqa: F401
-    _install_generic_kernels as _install_lanczos_backward_kernels,
+    upsample_lanczos2d_aa_backward,
+    upsample_lanczos2d_aa_backward_grad_input,
 )
 from ._upsample_nearest_exact1d_backward import (  # noqa: F401
     _upsample_nearest_exact1d_backward,

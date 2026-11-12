@@ -24,7 +24,6 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems.ops._upsample_nearest_exact1d_backward as _generic
 from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -245,14 +244,3 @@ def _upsample_nearest_exact1d_backward_grad_input(
     return _upsample_nearest_exact1d_backward_impl(
         grad_output, output_size, input_size, scales, grad_input
     )
-
-
-def _install_generic_functions():
-    """Bind this module's entry points into the module tests/benchmarks import."""
-    _generic._upsample_nearest_exact1d_backward = _upsample_nearest_exact1d_backward
-    _generic._upsample_nearest_exact1d_backward_grad_input = (
-        _upsample_nearest_exact1d_backward_grad_input
-    )
-
-
-_install_generic_functions()
