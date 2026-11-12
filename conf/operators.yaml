@@ -443,23 +443,6 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
-- id: _reshape_alias
-  description: 'Creates a view of the input tensor with the given size and stride,
-
-    sharing the same storage as the input. This is an internal reshape
-
-    helper that skips the validity checks a normal reshape performs.
-
-    '
-  for:
-  - _reshape_alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: _reshape_alias_copy
   description: 'Returns a contiguous copy of the input tensor viewed through the
     given size and stride. It is the copy companion of _reshape_alias: the view
@@ -1336,17 +1319,6 @@ tensor into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
-- id: alias
-  description: Return a view tensor sharing the same storage (zero-copy alias).
-  for:
-  - alias
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: alias_copy
   description: 'Creates a new tensor that shares the same storage data as the original
     tensor,
@@ -3097,6 +3069,17 @@ tensor into the caller-supplied `out` buffer.
   - _cast_Char
   labels:
   - aten
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: cast_Long
+  description: Casts a tensor to int64, returning the input unchanged when its dtype already matches.
+  for:
+  - _cast_Long
+  labels:
+  - aten
+  - KernelGen
   kind:
   - Tensor
   stages:
@@ -6270,17 +6253,6 @@ tensor into the caller-supplied `out` buffer.
   - skip_precision_check
   kind:
   - Tensor
-  stages:
-  - alpha: '5.4'
-- id: expand_as
-  description: Expand tensor to the same size as another tensor (view operation).
-  for:
-  - expand_as
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
   stages:
   - alpha: '5.4'
 - id: expand_copy
@@ -13669,23 +13641,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - LinearAlg
   stages:
   - alpha: '5.4'
-- id: make_dep_token
-  description: 'Creates a scalar tensor as a dependency token for TorchScript tracing
-
-    and class-based compiler frameworks. The value of the returned tensor
-
-    is uninitialized and should not be consumed.
-
-    '
-  for:
-  - _make_dep_token
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
 - id: make_dual_copy
   description: 'Returns an independent copy of the primal tensor of a forward-mode
     dual tensor, instead of aliasing it as `_make_dual` does.
@@ -14807,6 +14762,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: multilabel_margin_loss_backward
+  description: 'Gradient of the multi-label margin loss with respect to its input,
+    taking the forward per-class target membership mask alongside the target.'
+  for:
+  - multilabel_margin_loss_backward
+  labels:
+  - aten
+  - KernelGen
+  - Loss
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.5'
 - id: multilabel_margin_loss_forward
   description: 'Computes the forward multi-label margin loss and returns both the
     loss and the per-class target membership mask.'
@@ -15437,6 +15405,19 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_from_padded_and_nested_example
+  description: |
+    Constructs a (strided-layout) nested tensor from a padded tensor, using
+    the metadata of an example nested tensor to describe the output structure.
+  for:
+  - _nested_from_padded_and_nested_example
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
@@ -15528,6 +15509,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5.0'
+- id: nested_tensor_size
+  description: 'Returns the per-constituent sizes metadata of a nested tensor as a
+    CPU int64 tensor of shape (num_tensors, max_rank).
+
+    '
+  for:
+  - _nested_tensor_size
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: nested_tensor_softmax_with_shape
   description: |
     Computes softmax over the last dimension of nested-tensor attention scores,
@@ -15549,6 +15544,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - _nested_tensor_storage_offsets
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: nested_tensor_strides
+  description: 'Returns the per-constituent strides metadata of a nested tensor as
+    a CPU int64 tensor of shape (num_tensors, max_rank).
+
+    '
+  for:
+  - _nested_tensor_strides
   labels:
   - aten
   - KernelGen
@@ -20006,6 +20015,71 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_log_softmax
+  description: 'Sparse COO log_softmax: normalizes stored values over a sparse or
+    dense axis with a two-pass log-sum-exp, coalescing duplicate coordinates first
+    and returning a coalesced COO tensor.
+
+    '
+  for:
+  - _sparse_log_softmax
+  - _sparse_log_softmax.int
+  - _sparse_log_softmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_log_softmax_backward_data
+  description: 'Computes the gradient of stored values for sparse COO log_softmax
+    from grad_output and the output values, pooling the gradient over all entries
+    that share the reduced coordinate.
+
+    '
+  for:
+  - _sparse_log_softmax_backward_data
+  - _sparse_log_softmax_backward_data.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_mask
+  description: 'Gathers a sparse COO tensor at the coordinates stored in a boolean
+    mask tensor, returning a COO tensor with the mask indices and the self values;
+    supports the out= form.
+
+    '
+  for:
+  - sparse_mask
+  - sparse_mask.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
+- id: sparse_mask_projection
+  description: 'Projects the stored entries of a sparse COO tensor onto the support
+    of a boolean mask COO tensor; with accumulate_matches the values are multiplied
+    by the number of matching mask entries.
+
+    '
+  for:
+  - _sparse_mask_projection
+  - _sparse_mask_projection.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: sparse_mla_fwd_interface
   description: 'A generic interface for sparse MLA (Multi-head Latent Attention) for
     DeepSeek v3/v3.2.
@@ -20022,6 +20096,22 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: sparse_mm
+  description: |
+    Computes the sparse-times-dense product of a 2-D CSR tensor (M, K) and a
+    dense (K, N) matrix, returning a dense (M, N) tensor. The .reduce overload
+    applies a reduction (sum / mean / amax / amin) over the per-nnz products of
+    each output element.
+  for:
+  - _sparse_mm
+  - _sparse_mm.reduce
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5.0'
 - id: sparse_mm_reduce_impl
   description: |
     Backend of aten::_sparse_mm.reduce: computes the sparse-times-dense
@@ -20096,6 +20186,35 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - BLAS
   stages:
   - alpha: '5.4'
+- id: sparse_semi_structured_apply
+  description: 'Applies a 2:4 sparsity mask to a dense matrix, returning the two packed
+    cutlass-style compressed operands (packed values and swizzled metadata) used by
+    semi-structured sparse matmul.
+
+    '
+  for:
+  - _sparse_semi_structured_apply
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
+- id: sparse_semi_structured_apply_dense
+  description: 'Keeps the elements of a dense matrix selected by a packed 2:4 sparsity
+    bit mask and sets the remaining elements to exact +0.0, matching aten::_sparse_semi_structured_apply_dense.
+
+    '
+  for:
+  - _sparse_semi_structured_apply_dense
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.5'
 - id: sparse_semi_structured_linear
   description: 'Performs a semi-structured (2:4) sparse linear transformation
 
@@ -20139,6 +20258,56 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - KernelGen
   kind:
   - BLAS
+  stages:
+  - alpha: '5.5'
+- id: sparse_softmax
+  description: 'Sparse COO softmax: entries sharing all sparse coordinates except
+    the reduced dim are normalized together for a sparse dim, and dense value rows
+    are normalized along the dense axis otherwise; supports the dtype conversion and
+    out= forms.
+
+    '
+  for:
+  - _sparse_softmax
+  - _sparse_softmax.int
+  - _sparse_softmax.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_softmax_backward_data
+  description: 'Computes the gradient of stored values for sparse COO softmax as y
+    * (dy - sum(dy * y)) pooled over the entries that share the reduced coordinate,
+    returning a coalesced COO tensor.
+
+    '
+  for:
+  - _sparse_softmax_backward_data
+  - _sparse_softmax_backward_data.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - alpha: '5.5'
+- id: sparse_sum_backward
+  description: 'Backward of sparse COO sum: scatters the gradient of the reduced tensor
+    back onto the sorted-unique coordinate support of the input sparse tensor, keeping
+    the sparse/dense dim split.
+
+    '
+  for:
+  - _sparse_sum_backward
+  - _sparse_sum_backward.out
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
   stages:
   - alpha: '5.5'
 - id: spdiags
@@ -21856,17 +22025,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.4'
-- id: t_
-  description: Transpose a 2D tensor in-place.
-  for:
-  - t_
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.5'
 - id: t_copy
   description: Transpose a 2D tensor into a new tensor with contiguous memory layout.
   for:
@@ -22436,6 +22594,20 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - Tensor
   stages:
   - alpha: '5.1'
+- id: transpose_
+  description: |
+    Swaps two dimensions of a tensor in place. This rewrites the sizes and
+    strides of the operand without moving any data and returns the operand
+    itself.
+  for:
+    - transpose_
+  labels:
+    - aten
+    - KernelGen
+  kind:
+    - Tensor
+  stages:
+    - alpha: '5.5'
 - id: transpose_copy
   description: |
     Returns a new contiguous tensor with the two specified dimensions swapped.
@@ -22765,17 +22937,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
   - RandomSampling
   stages:
   - alpha: '5.5.0'
-- id: unflatten
-  description: Expand a single dimension into multiple dimensions (inverse of flatten).
-  for:
-  - unflatten.int
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Math
-  stages:
-  - alpha: '5.4'
 - id: unflatten_dense_tensors
   description: |
     Given a flat buffer and a list of template tensors, returns one view per template carved out of the buffer at a running offset, preserving the buffer's alias, strides and storage offset; zero-numel templates yield fresh empty tensors. Metadata-only view op (no element-wise computation).
@@ -22993,23 +23154,6 @@ primal value saved by `fw_primal` into the caller-supplied `out` buffer.
     '
   for:
   - unsafe_split_with_sizes
-  labels:
-  - aten
-  - KernelGen
-  kind:
-  - Tensor
-  stages:
-  - alpha: '5.4'
-- id: unsafe_view
-  description: 'Creates a new view of an existing tensor with a different shape without
-
-    performing safety checks, such as verifying if the tensor is contiguous or
-
-    if the reshape is valid.
-
-    '
-  for:
-  - _unsafe_view
   labels:
   - aten
   - KernelGen
