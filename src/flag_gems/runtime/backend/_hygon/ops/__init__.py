@@ -23,6 +23,23 @@ from ._convolution_double_backward import _convolution_double_backward
 from ._convolution_mode import _convolution_mode
 from ._embedding_bag_dense_backward import _embedding_bag_dense_backward
 from ._flash_attention_forward import _flash_attention_forward
+from ._foreach_add__List import _foreach_add__List
+from ._foreach_add__Scalar import _foreach_add__Scalar
+from ._foreach_add__ScalarList import _foreach_add__ScalarList
+from ._foreach_addcdiv__Tensor import _foreach_addcdiv__Tensor
+from ._foreach_addcmul__Scalar import _foreach_addcmul__Scalar
+from ._foreach_clamp_max__Scalar import _foreach_clamp_max__Scalar
+from ._foreach_clamp_min__Scalar import _foreach_clamp_min__Scalar
+from ._foreach_div__Scalar import _foreach_div__Scalar
+from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
+from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
+from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_mul__List import _foreach_mul__List
+from ._foreach_mul__Scalar import _foreach_mul__Scalar
+from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
+from ._foreach_pow__Scalar import _foreach_pow__Scalar
+from ._foreach_pow__ScalarList import _foreach_pow__ScalarList
+from ._foreach_round_ import _foreach_round_
 from ._foreach_sign_ import _foreach_sign_
 
 # Hygon internal implementation for attention
@@ -265,6 +282,23 @@ __all__ = [
     "_embedding_bag_dense_backward",
     "_embedding_bag_forward_only",
     "_flash_attention_forward",
+    "_foreach_add__List",
+    "_foreach_add__Scalar",
+    "_foreach_add__ScalarList",
+    "_foreach_addcdiv__Tensor",
+    "_foreach_addcmul__Scalar",
+    "_foreach_clamp_max__Scalar",
+    "_foreach_clamp_min__Scalar",
+    "_foreach_div__Scalar",
+    "_foreach_maximum__Scalar",
+    "_foreach_maximum__ScalarList",
+    "_foreach_minimum__Scalar",
+    "_foreach_mul__List",
+    "_foreach_mul__Scalar",
+    "_foreach_mul__ScalarList",
+    "_foreach_pow__Scalar",
+    "_foreach_pow__ScalarList",
+    "_foreach_round_",
     "_foreach_sign_",
     "_masked_scale",
     "_scaled_dot_product_attention_math_for_mps",
