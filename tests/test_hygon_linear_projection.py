@@ -6,13 +6,15 @@ import flag_gems
 
 @pytest.mark.addmm
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("hygon", "nvidia"),
-    reason="The single-row K1 specialization targets flagos/CUDA tensors",
+    flag_gems.vendor_name != "hygon",
+    reason="The Hygon public addmm entry owns the K1 specialization",
 )
 @pytest.mark.parametrize("N", [1, 17, 257, 1025])
 @pytest.mark.parametrize("cancellation", [False, True])
 def test_addmm_single_row_k1_strided_cpu_reference(N, cancellation):
-    from flag_gems.ops.addmm import addmm as generic_addmm
+    from flag_gems.runtime.backend._hygon.ops.addmm import addmm
+
+    assert flag_gems.addmm is addmm
 
     generator = torch.Generator().manual_seed(20261109 + N)
     backing = [
@@ -31,7 +33,7 @@ def test_addmm_single_row_k1_strided_cpu_reference(N, cancellation):
     device_mat1 = device_backing[0].as_strided((1, 1), (3, 2), 2)
     device_mat2 = device_backing[1].as_strided((1, N), (1, 3), 3)
     device_bias = device_backing[2].as_strided((N,), (2,), 5)
-    actual = generic_addmm(device_bias, device_mat1, device_mat2)
+    actual = flag_gems.addmm(device_bias, device_mat1, device_mat2)
 
     torch.testing.assert_close(actual.cpu(), expected)
     assert actual.shape == (1, N)

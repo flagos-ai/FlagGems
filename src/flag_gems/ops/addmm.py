@@ -131,26 +131,6 @@ def addmm_kernel(
     tl.store(c_ptrs, result.to(c_ptr.dtype.element_ty), mask=mask)
 
 
-@libentry()
-@triton.jit
-def addmm_single_row_k1_kernel(
-    A,
-    B,
-    Bias,
-    C,
-    N: tl.constexpr,
-    B_STRIDE: tl.constexpr,
-    I_STRIDE: tl.constexpr,
-    BLOCK: tl.constexpr,
-):
-    index = ext.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    x = tl.load(A)
-    weight = tl.load(B + index * B_STRIDE, index < N, other=0.0)
-    bias = tl.load(Bias + index * I_STRIDE, index < N, other=0.0)
-    value = x * weight + bias
-    tl.store(C + index, value, index < N)
-
-
 def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     assert mat1.shape[1] == mat2.shape[0], "Incompatible dimensions"
     assert broadcastable_to(
@@ -158,39 +138,6 @@ def _addmm_impl(bias, mat1, mat2, out, beta, alpha):
     ), "Incompatible input shape"
     M, K = mat1.shape
     _, N = mat2.shape
-
-    if (
-        out is None
-        and M == 1
-        and K == 1
-        and N > 0
-        and type(alpha) in (int, float)
-        and type(beta) in (int, float)
-        and alpha == 1
-        and beta == 1
-        and mat1.dtype == torch.float32
-        and mat2.dtype == torch.float32
-        and bias.dtype == torch.float32
-        and mat1.device == mat2.device == bias.device
-        and mat1.device.type in ("flagos", "cuda")
-        and bias.ndim == 1
-        and bias.shape[0] == N
-    ):
-        result = torch.empty((1, N), device=mat1.device, dtype=mat1.dtype)
-        with torch_device_fn.device(mat1.device):
-            addmm_single_row_k1_kernel[(triton.cdiv(N, 256),)](
-                mat1,
-                mat2,
-                bias,
-                result,
-                N,
-                B_STRIDE=mat2.stride(1),
-                I_STRIDE=bias.stride(0),
-                BLOCK=256,
-                num_warps=4,
-                enable_fp_fusion=False,
-            )
-        return result
 
     # Preserve row- and column-contiguous matrices; materialize general views.
     if mat1.stride(0) > 1 and mat1.stride(1) > 1:

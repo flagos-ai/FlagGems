@@ -470,7 +470,6 @@ _FULL_CONFIG = (
     ("_logcumsumexp", _logcumsumexp),
     ("_logcumsumexp.out", _logcumsumexp_out),
     ("_lu_with_info", _lu_with_info),
-    ("_make_dep_token", _make_dep_token),
     ("_make_dual", _make_dual),
     ("_make_dual_copy", _make_dual_copy),
     ("_make_dual_copy.out", _make_dual_copy_out),
@@ -545,7 +544,6 @@ _FULL_CONFIG = (
     ("_prelu_kernel", _prelu_kernel),
     ("_prelu_kernel_backward", _prelu_kernel_backward),
     ("_remove_batch_dim", _remove_batch_dim),
-    ("_reshape_alias", _reshape_alias),
     ("_reshape_alias_copy", _reshape_alias_copy),
     ("_reshape_copy", _reshape_copy),
     ("_reshape_from_tensor", _reshape_from_tensor),
@@ -605,7 +603,7 @@ _FULL_CONFIG = (
         None,
         (SPARSE_DISPATCH_KEY, SPARSE_CSR_DISPATCH_KEY),
     ),
-    ("_slow_conv2d_backward", _slow_conv2d_backward),
+    ("_slow_conv2d_backward.output_mask", _slow_conv2d_backward),
     ("_slow_conv2d_forward", _slow_conv2d_forward),
     ("_sobol_engine_draw", underscore_sobol_engine_draw),
     ("_sobol_engine_ff_", _sobol_engine_ff_),
@@ -669,6 +667,29 @@ _FULL_CONFIG = (
         _sparse_mask_projection_out,
         None,
         (SPARSE_DISPATCH_KEY,),
+    ),
+    # Both overloads are CompositeImplicitAutograd in ATen (no per-backend
+    # dispatch block in native_functions.yaml): the Autograd composite key is
+    # checked *before* the sparse backend keys, so a SparseCsrCUDA/SparseCUDA
+    # registration alone is shadowed in normal grad mode and the aten
+    # decomposition runs instead (same pitfall as nested_to_padded_tensor).
+    # Register the composite key as well so use_gems()/only_enable() actually
+    # intercept the operator.
+    (
+        "_sparse_mm",
+        _sparse_mm,
+        None,
+        (
+            SPARSE_DISPATCH_KEY,
+            SPARSE_CSR_DISPATCH_KEY,
+            "CompositeImplicitAutograd",
+        ),
+    ),
+    (
+        "_sparse_mm.reduce",
+        _sparse_mm,
+        None,
+        (SPARSE_CSR_DISPATCH_KEY, "CompositeImplicitAutograd"),
     ),
     (
         "_sparse_mm_reduce_impl",
@@ -766,7 +787,6 @@ _FULL_CONFIG = (
     ("_unsafe_index_put", unsafe_index_put),
     ("_unsafe_masked_index", _unsafe_masked_index),
     ("_unsafe_masked_index_put_accumulate", _unsafe_masked_index_put_accumulate),
-    ("_unsafe_view", _unsafe_view),
     ("_upsample_bicubic2d_aa", _upsample_bicubic2d_aa),
     ("_upsample_bicubic2d_aa_backward", _upsample_bicubic2d_aa_backward),
     ("_upsample_bilinear2d_aa", _upsample_bilinear2d_aa),
@@ -883,7 +903,6 @@ _FULL_CONFIG = (
     ("adjoint", adjoint),
     ("affine_grid_generator", affine_grid_generator),
     ("affine_grid_generator_backward", affine_grid_generator_backward),
-    ("alias", alias),
     ("alias_copy", alias_copy),
     ("alias_copy.out", alias_copy_out),
     ("all", all),
@@ -1224,7 +1243,6 @@ _FULL_CONFIG = (
     ("exp2_", exp2_),
     ("exp_", exp_),
     ("expand", expand),
-    ("expand_as", expand_as),
     ("expand_copy", expand_copy),
     ("expm1", expm1),
     ("expm1.out", expm1_out),
@@ -2220,7 +2238,6 @@ _FULL_CONFIG = (
     ("swapdims", swapdims),
     ("swapdims_", swapdims_),
     ("sym_size.int", sym_size_int),
-    ("t_", t_),
     ("t_copy", t_copy),
     ("t_copy.out", t_copy_out),
     ("take", take),
@@ -2268,7 +2285,6 @@ _FULL_CONFIG = (
     ("trunc_", trunc_),
     ("unbind.int", unbind),
     ("unbind_copy.int", unbind_copy),
-    ("unflatten.int", unflatten),
     ("unflatten_dense_tensors", unflatten_dense_tensors),
     ("unfold", unfold),
     ("unfold_backward", unfold_backward),
