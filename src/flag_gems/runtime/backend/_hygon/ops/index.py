@@ -337,6 +337,20 @@ def index(x, indices):
             shape = (*x.shape[:axis], ix.numel(), *x.shape[axis + 1 :])
             output_size = math.prod(shape)
             suffix_size = math.prod(x.shape[axis + 1 :])
+            # On Hygon these dense gathers are faster in the generic index
+            # kernel: tiny row tails, large outputs and highly reused int64
+            # scalar inputs. Keep layout/negative-index handling there intact.
+            if axis == 0 and ix.is_contiguous() and x.is_contiguous():
+                tiny_tail = 1 < suffix_size <= 16 and output_size <= 1024
+                large_output = suffix_size >= 32 and output_size >= 2**23
+                reused_int64 = (
+                    x.ndim == 1
+                    and x.dtype == torch.int64
+                    and ix.numel() >= 65536
+                    and ix.numel() >= 16 * x.shape[0]
+                )
+                if tiny_tail or large_output or reused_int64:
+                    return _generic_index(x, indices)
             if (
                 ix.is_contiguous()
                 and axis == 0

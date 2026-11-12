@@ -1,5 +1,7 @@
 """Numerical and layout regressions for the Hygon small-kernel paths."""
 
+import math
+
 import pytest
 import torch
 
@@ -127,3 +129,27 @@ def test_hygon_index_offsets_above_int32(index_dtype):
         assert torch.equal(actual.cpu(), expected)
         transposed = implementation(inp.t(), [None, idx])
         assert torch.equal(transposed.cpu(), expected.t())
+
+
+@pytest.mark.index
+@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
+@pytest.mark.parametrize(
+    "shape,count,dtype",
+    [
+        ((1, 3, 3), 56, torch.float32),
+        ((25, 3), 57, torch.float32),
+        ((91, 2, 2), 208, torch.float32),
+        ((4819, 4, 32), 126636, torch.float32),
+        ((854, 256), 40992, torch.float32),
+        ((4096,), 80599, torch.int64),
+        ((65536,), 1289579, torch.int64),
+    ],
+)
+def test_hygon_dense_gather_repeated_negative_indices(shape, count, dtype, index_dtype):
+    # Full-output validation for dense gather regimes, including repeated
+    # positive and negative boundary rows.
+    x = torch.arange(math.prod(shape), dtype=dtype).reshape(shape)
+    rows = torch.tensor([-shape[0], -1, 0, shape[0] - 1], dtype=index_dtype)
+    ix = rows.repeat((count + 3) // 4)[:count]
+    actual = flag_gems.index(x.to(flag_gems.device), [ix.to(flag_gems.device)])
+    assert torch.equal(actual.cpu(), x[ix])
