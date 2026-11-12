@@ -41,3 +41,15 @@ def test_hygon_clone_layout(memory_format, kind):
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name != "hygon", reason="Hygon kernels"
 )
+
+
+@pytest.mark.clone
+@pytest.mark.parametrize("shape", [(1024, 1025), (17, 32, 64, 33)])
+def test_hygon_clone_large_fp64_layout_conversion(shape):
+    base = torch.randn(shape, dtype=torch.float64, device=flag_gems.device)
+    inp = base.transpose(-2, -1)
+    expected = inp.cpu().clone(memory_format=torch.contiguous_format)
+    actual = flag_gems.clone(inp, memory_format=torch.contiguous_format)
+    assert actual.is_contiguous()
+    assert not torch._C._is_alias_of(actual, inp)
+    assert torch.equal(actual.cpu(), expected)

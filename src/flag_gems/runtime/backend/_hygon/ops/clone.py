@@ -76,6 +76,15 @@ class _Clone(torch.autograd.Function):
 
 
 def clone(inp, memory_format=None):
+    # The scalar gather copy loses bandwidth on large FP64 layout conversions.
+    # Preserve the existing tiled/native copy path for this workload class.
+    if (
+        inp.dtype == torch.float64
+        and inp.numel() >= 2**20
+        and memory_format == torch.contiguous_format
+        and not inp.is_contiguous()
+    ):
+        return _generic_clone(inp, memory_format=memory_format)
     if inp.is_complex() or inp.is_conj() or inp.is_neg():
         return _generic_clone(inp, memory_format=memory_format)
     return _Clone.apply(inp, memory_format or torch.preserve_format)
