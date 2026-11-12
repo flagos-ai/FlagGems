@@ -1,25 +1,20 @@
 # Hygon `aten::bmm` optimization
 
-This branch is based on official FlagGems `master` (`4d3d9f70c9c92ae9adf004ed0202355fe26fd511`) and contains only the `bmm` implementation, focused Hygon tests, and this compact review note.
+The isolated branch targets official master. The independent hardware control is pinned to `9a9aecb53103cc83dda27bc7458fc3bfd07f3188`; tested candidate production commit: `60b01904510660fc692d02104d887837d41abbab`.
 
-## Implementation
+## Correctness and performance
 
-The Hygon backend dispatches the public ATen overload to the specialized `bmm` implementation and retains the generic fallback for unsupported layouts/dtypes. The source is copied from the validated internal change set `7ca605ff2692059e7e73e5bd144376264f6f5a37`; source hashes are recorded below.
+On 2026-11-12 all **32 declared reconstructed workloads passed new-FG full-output correctness**, with complete old/new/DAS timing and independent repeats. No new numerical regression was observed. Eleven old/new pairs meet the correctness and 5% A/A gates; their speedups range from approximately **1.00x to 21.42x**. Fifteen new/DAS pairs qualify independently; all fifteen meet DAS 90%. The remaining pairs have explicit A/A failure flags; their point ratios are diagnostic, not accepted speedups or attainment claims.
 
-## Validation status
+The full per-case input metadata, assumptions, all samples and trace/source fingerprints are in [performance-20261112](performance-20261112/README.md). Inputs use fixed generated values and disclosed effective geometry/aliases. These measurements do not establish replay acceptance for uncaptured original model operands. Historical internal results are separate from this independent official-master comparison.
 
-The source change was numerically and performance tested in the internal Hygon validation on reconstructed model/expanded inputs. Before this branch is marked Ready for Review, rerun the focused test and hardware acceptance from this official-master-derived branch; no full raw profiler archive is included here.
-
-- Focused test: `pytest tests/test_hygon_bmm.py -q --ref cpu`
-- Static checks: `python -m compileall -q src tests`; `git diff --check`
-- Acceptance rule: each comparable case must pass full output correctness, A/A stability, and `T_DAS / T_FG >= 0.90`. Historical/common-provider failures remain diagnostic and are not counted as optimization passes.
-
-## Source fingerprints
-
-```json
-{
-  "src/flag_gems/runtime/backend/_hygon/ops/bmm.py": "37c4595b39504e7a820ec03f5c2195c811dd9a07563627edcca011677e313d48"
-}
+```bash
+pytest tests/test_hygon_bmm.py -q --ref cpu
+python docs/hygon-optimization/bmm/performance-20261112/verify_results.py
 ```
 
-Full raw traces and scheduler artifacts remain in the private evidence directories under `D:/ZZ/analysis/`; they are not part of the public source change.
+The official Hygon CI and required rule checks passed for the production source. Raw profiler binaries remain outside this repository.
+
+## Bottom-layer execution path
+
+Public `aten::bmm` uses a process-private PrivateUse1 binding to the selected FG export; worker traces verify the exact executed source entry and schema. Supported cases enter the Hygon provider, while unsupported layouts/dtypes retain the generic provider. `kernel-witness.json` lists the actual producer-linked device kernels per case and role. DAS executes in an independent process with no FG source frames. Full input backing hashes match across all providers. Device samples sum attributed kernel durations per ROI and divide by the number of calls; API, compiler/autotune, and memory-copy durations are tracked separately. Execution is eager, without graph fusion.

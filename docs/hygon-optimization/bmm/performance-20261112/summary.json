@@ -1,0 +1,13 @@
+{
+  "cases": 32,
+  "complete_timing": 32,
+  "new_correct": 32,
+  "qualified_fg_pairs": 11,
+  "qualified_fg_das_pairs": 15,
+  "target90": 15,
+  "regressions": [],
+  "source_fingerprints": {
+    "src/flag_gems/runtime/backend/_hygon/ops/__init__.py": "2e0bd41b7e5b00e1dcfc397eae294abd7f74fb94194f260911f7781b99791cda",
+    "src/flag_gems/runtime/backend/_hygon/ops/bmm.py": "37c4595b39504e7a820ec03f5c2195c811dd9a07563627edcca011677e313d48"
+  }
+}
