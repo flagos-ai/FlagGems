@@ -34,6 +34,7 @@ from ._foreach_div__Scalar import _foreach_div__Scalar
 from ._foreach_maximum__Scalar import _foreach_maximum__Scalar
 from ._foreach_maximum__ScalarList import _foreach_maximum__ScalarList
 from ._foreach_minimum__Scalar import _foreach_minimum__Scalar
+from ._foreach_mul__List import _foreach_mul__List
 from ._foreach_mul__Scalar import _foreach_mul__Scalar
 from ._foreach_mul__ScalarList import _foreach_mul__ScalarList
 
@@ -288,6 +289,7 @@ __all__ = [
     "_foreach_maximum__Scalar",
     "_foreach_maximum__ScalarList",
     "_foreach_minimum__Scalar",
+    "_foreach_mul__List",
     "_foreach_mul__Scalar",
     "_foreach_mul__ScalarList",
     "_masked_scale",
