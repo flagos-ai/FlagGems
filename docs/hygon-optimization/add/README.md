@@ -1,33 +1,22 @@
-# Hygon `aten::add` optimization
+# Hygon add optimization
 
-This branch is based on official FlagGems `master` (`4d3d9f70c9c92ae9adf004ed0202355fe26fd511`) and contains only the `add` implementation, focused Hygon tests, and this compact review note.
+Current guarded production source: `baa3719bd423bec0c179af709dc8404f42ca655b`,integrated on official master `010d8083b0dc89ab795aee973ad62c83c9d2592d`. Focused hardware gate: **76 tests passed** on2026-11-13. The **full200-case final performance repeat is running**;this PR remains Draft pending complete correctness,device accounting,stability review and latest-head required CI.
 
-## Implementation
+## Why the additional guard and full repeat
 
-The Hygon backend dispatches the public ATen overload to the specialized `add` implementation and retains the generic fallback for unsupported layouts/dtypes. The source is copied from the validated internal change set `7ca605ff2692059e7e73e5bd144376264f6f5a37`; source hashes are recorded below.
+The complete preceding serial200 capture has200/200 old/new/DAS correctness,79 qualified old/new pairs,44 gains>5%,and3 qualified device regressions: large row broadcast0.859160x,INT64 vector0.945983x,and an intermediate transpose0.603094x. Synchronized API controls improve for all three,but do not establish device-kernel acceptance.99 new/DAS pairs qualify,75 meet90%;other comparisons retain A/A diagnostics. The complete [preceding serial capture](diagnostic-serial-20261113/README.md) remains auditable,as does [the original concurrent-process diagnostic](diagnostic-concurrent-20261112/README.md).
 
-## Validation status
+The guard uses general dtype,volume,stride and broadcast domains,selecting exactly3 of the frozen200 workload metadata records. All other production-module AST is unchanged. Every200 case is being rerun on the pinned optimized master with fresh six-role captures and API controls,not just the three regressed shapes. No previous samples are pooled or selected by outcome. The previous9a ADD leaf/config equivalence and three actual current-master route controls are historical support,not a claim that an entire9a execution used the010 package.
 
-The source change was numerically and performance tested in the internal Hygon validation on reconstructed model/expanded inputs. Before this branch is marked Ready for Review, rerun the focused test and hardware acceptance from this official-master-derived branch; no full raw profiler archive is included here.
+## Reproduction and actual execution
 
-- Focused test: `pytest tests/test_hygon_add.py -q --ref cpu`
-- Static checks: `python -m compileall -q src tests`; `git diff --check`
-- Acceptance rule: each comparable case must pass full output correctness, A/A stability, and `T_DAS / T_FG >= 0.90`. Historical/common-provider failures remain diagnostic and are not counted as optimization passes.
-
-## Source fingerprints
-
-```json
-{
-  "src/flag_gems/runtime/backend/_hygon/ops/add.py": "f8aa3867b495d3742cd3b4a239b104d936c6eb88ddb131e332bcc22800103a2d"
-}
+```bash
+pytest tests/test_hygon_add.py -q --ref cpu
+python docs/hygon-optimization/add/diagnostic-serial-20261113/verify_results.py
+python docs/hygon-optimization/add/diagnostic-serial-20261113/test-accounting-boundaries.py
+pre-commit run --all-files
 ```
 
-Full raw traces and scheduler artifacts remain in the private evidence directories under `D:/ZZ/analysis/`; they are not part of the public source change.
+Public `aten::add.Tensor` uses an exact private PrivateUse1 binding to the real candidate source. The provider selects contiguous/ordered/transpose kernels or generic pointwise fallback. Full output and input backing,known alias,stride,offset and immutability are checked outside the ROI. Inputs reconstruct fixed generated metadata contracts with explicit assumptions,not original model tensor payloads. Six sequential provider roles each have2x25 valid device ROIs and20calls/ROI,with independent block drift<=5%. Device metric is the complete producer-linked kernel-duration sum. Separate50-call synchronized API controls include CPU dispatch,allocation,launch and synchronization and are not model throughput. Eager execution,no graph fusion claim.
 
-## Diagnostic status: no accepted performance ratios
-
-All200 original cases and all6role samples are present. Old/new/DAS full-output correctness is200/200 for each. **Zero FG-old/new and zero new/DAS pairs qualify** because the independent process repeats fail the frozen5% block-mean stability gate. These are inconclusive measurements,not missing tests,correctness failures or accepted speedups.
-
-For `model285-f82b55d7fcde304e3a6a`,profiled new kernel median679.607425us contrasts with the same-source independent new-repeat8.019975us;unprofiled synchronized API medians135.192us and136.057us agree much more closely. Old-repeat and DAS-repeat also show the high-duration regime. Producer-linked events name the actual add kernels rather than the excluded gate kernel. This suggests a profiling/runtime/context interaction but does not establish its root cause. The fixed-output route/timing receipts and all raw arrays remain preserved;no samples are removed.
-
-An entire200-case confirmation now runs one provider process at a time(job1103083),with the same production source,input metadata,seeds,reference tolerance,2x25 samples/role and complete device duration boundary. Every case replaces its whole result regardless outcome;the preceding capture remains diagnostic. It changes process scheduling,not kernel arithmetic or the acceptance threshold. Final performance and Ready status remain blocked until valid evidence and latest-head CI are available. No diagnostics from this pack are written to Feishu as accepted ratios.
+The V5 accountant records a final same-thread nonproducing HIP wait overrun separately while preserving exact producing-API and device containment. All events and timestamps remain;no epsilon,trimming or sample exclusion. Exact source and9 boundary counterexamples are included. Hygon gfx936,Torch2.10/Torch-FL R7,FlagTree HIP/gfx936. Single-agent staged audit with independent provider processes/repeats,no independent-person signoff claim.

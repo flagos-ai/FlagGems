@@ -1,33 +1,29 @@
 {
   "operator": "aten::add",
   "source_commit": "7ca605ff2692059e7e73e5bd144376264f6f5a37",
-  "official_master": "4d3d9f70c9c92ae9adf004ed0202355fe26fd511",
+  "official_master": "010d8083b0dc89ab795aee973ad62c83c9d2592d",
   "internal_validation": "PR1 full revised-list validation; official-master branch retest pending",
   "test_file": "tests/test_hygon_add.py",
   "raw_evidence": "private D:/ZZ/analysis/ artifacts",
-  "tested_candidate": "d06609e2540e02e23a495f1e28bd6f4ec6539ab5",
-  "date": "2026-11-12",
+  "tested_candidate": "baa3719bd423bec0c179af709dc8404f42ca655b",
+  "date": "2026-11-13",
   "focused_hardware": {
-    "passed": 72,
+    "passed": 76,
     "failed": 0,
-    "skipped": 0,
-    "job": 1102260
+    "job": 1103687
   },
   "performance": {
-    "status": "all200 correct;zero qualified pairs;serial complete-case confirmation pending",
+    "status": "full200 guarded current-master repeat running;preceding serial200 retained as diagnostic",
+    "hardware_job": 1103687,
+    "analysis_job": 1103688,
     "declared_cases": 200,
-    "complete_six_role_timing": 200,
-    "old_correct": 200,
-    "new_correct": 200,
-    "das_correct": 200,
-    "qualified_old_new": 0,
-    "qualified_new_das": 0,
-    "target90": 0,
-    "diagnostic_hardware_job": 1102260,
-    "diagnostic_analysis_job": 1102261,
-    "confirmation_hardware_job": 1103083,
-    "confirmation_analysis_job": 1103084,
-    "diagnostic_evidence": "diagnostic-concurrent-20261112/README.md",
-    "root_cause": "unresolved profiler/runtime/context disparity;not a confirmed kernel regression"
+    "preceding_complete": 200,
+    "preceding_all_three_correct": 200,
+    "preceding_fg_pairs": 79,
+    "preceding_gains5": 44,
+    "preceding_qualified_regressions": 3,
+    "preceding_DAS_pairs": 99,
+    "preceding_DAS90": 75,
+    "evidence": "diagnostic-serial-20261113/README.md"
   }
 }
