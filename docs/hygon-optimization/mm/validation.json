@@ -12,7 +12,7 @@
     "command": "pytest tests/test_hygon_extended_mm.py tests/test_hygon_mm.py tests/test_hygon_native_fp32.py --ref cpu -q"
   },
   "performance": {
-    "status": "in_progress_not_qualified",
+    "status": "complete_all207_with_per_case_qualification",
     "requested_model_cases": 98,
     "declared_extended_cases": 109,
     "roles": [
@@ -23,7 +23,144 @@
     ],
     "samples_per_role": 50,
     "calls_per_roi": 20,
-    "aa_block_drift_limit": 0.05
+    "aa_block_drift_limit": 0.05,
+    "complete_cases": 207,
+    "new_correct": 161,
+    "old_correct": 160,
+    "das_correct": 160,
+    "qualified_old_new": 150,
+    "qualified_new_das": 149,
+    "target90": 122,
+    "main98": {
+      "cases": 98,
+      "complete_timing": 98,
+      "old_correct": 71,
+      "new_correct": 72,
+      "das_correct": 71,
+      "new_correctness_regressions": [],
+      "fixed_baseline_failure": [
+        "mm98-row0140"
+      ],
+      "qualified_old_new": 66,
+      "old_new_range": [
+        1.5750015227794565,
+        24.993174061433447
+      ],
+      "qualified_new_das": 65,
+      "correct_stable_target90": 50,
+      "correct_stable_below90": 15,
+      "timing_stable_regardless_correctness": 91,
+      "timing_stable_point90_regardless_correctness": 74,
+      "timing_stable_below90_regardless_correctness": 17,
+      "timing_unstable": 7,
+      "point90_without_stability_gate": 80,
+      "point_below90_without_stability_gate": 18,
+      "main_legacy_new_correctness_failures": [
+        "mm98-row0056",
+        "mm98-row0057",
+        "mm98-row0058",
+        "mm98-row0060",
+        "mm98-row0061",
+        "mm98-row0063",
+        "mm98-row0064",
+        "mm98-row0114",
+        "mm98-row0116",
+        "mm98-row0117",
+        "mm98-row0120",
+        "mm98-row0123",
+        "mm98-row0125",
+        "mm98-row0126",
+        "mm98-row0127",
+        "mm98-row0128",
+        "mm98-row0132",
+        "mm98-row0133",
+        "mm98-row0134",
+        "mm98-row0135",
+        "mm98-row0137",
+        "mm98-row0138",
+        "mm98-row0139",
+        "mm98-row0141",
+        "mm98-row0142",
+        "mm98-row0143"
+      ],
+      "main_qualified_target_misses": [
+        {
+          "id": "mm98-row0067",
+          "das_over_new": 0.41006339144215526
+        },
+        {
+          "id": "mm98-row0068",
+          "das_over_new": 0.33644131355972035
+        },
+        {
+          "id": "mm98-row0069",
+          "das_over_new": 0.8471957967387869
+        },
+        {
+          "id": "mm98-row0070",
+          "das_over_new": 0.830636461704423
+        },
+        {
+          "id": "mm98-row0074",
+          "das_over_new": 0.7933064766036566
+        },
+        {
+          "id": "mm98-row0077",
+          "das_over_new": 0.585545867632028
+        },
+        {
+          "id": "mm98-row0079",
+          "das_over_new": 0.6732082736389685
+        },
+        {
+          "id": "mm98-row0083",
+          "das_over_new": 0.42430540363159047
+        },
+        {
+          "id": "mm98-row0084",
+          "das_over_new": 0.28844237794752575
+        },
+        {
+          "id": "mm98-row0085",
+          "das_over_new": 0.5776693903723484
+        },
+        {
+          "id": "mm98-row0089",
+          "das_over_new": 0.423362494126154
+        },
+        {
+          "id": "mm98-row0092",
+          "das_over_new": 0.6874100999351839
+        },
+        {
+          "id": "mm98-row0095",
+          "das_over_new": 0.6485207100591716
+        },
+        {
+          "id": "mm98-row0097",
+          "das_over_new": 0.5350978135788262
+        },
+        {
+          "id": "mm98-row0098",
+          "das_over_new": 0.4821942680133277
+        }
+      ],
+      "candidate_source_formatting_equivalence": {
+        "tested": "e554c140099cb3a4b216f26bc1093e7cb42a2bf1",
+        "published_production_head": "3bd22264878d356b1e18b58564dcf059219bd092",
+        "differences": [
+          {
+            "path": "src/flag_gems/runtime/backend/_hygon/ops/mm.py",
+            "tested_sha256": "13b60c5fdae220fe2be36663685f88121f2aa2243ab1d8258e7095c54a8d74c2",
+            "published_sha256": "fd798f49a6b78575c262279f60c29d60588291b8b08c4a265a53db048414dfa9",
+            "ast_equivalent": true
+          }
+        ]
+      }
+    },
+    "evidence": "performance-20261112/README.md",
+    "hardware_job": 1100996,
+    "offline_analysis_job": 1101915
   },
   "historical_evidence": "historical-two-case-validation.json"
 }
