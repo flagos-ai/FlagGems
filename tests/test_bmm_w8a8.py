@@ -146,7 +146,7 @@ def test_bmm_w8a8(out_dtype, shape, transpose):
         a, b, sa[:, :, None], sb[:, None, :], out_dtype=out_dtype, out=out
     )
     assert actual is out
-    gems_assert_equal(actual.cpu(), expected.to(out_dtype))
+    gems_assert_close(actual.cpu(), expected.to(out_dtype), dtype=out_dtype)
     untouched = torch.ones(storage.shape, dtype=torch.bool)
     untouched[:, ::2, ::2] = False
     untouched_values = storage.cpu()[untouched]
@@ -177,11 +177,11 @@ def test_bmm_w8a8_aligned(shape):
     ).transpose(1, 2)
     sa = torch.rand(batch, m, device=flag_gems.device) * 0.001
     sb = torch.rand(batch, n, device=flag_gems.device) * 0.001
-    expected = (
-        torch.bmm(a.double(), b.double()) * sa[:, :, None] * sb[:, None, :]
-    ).bfloat16()
+    expected = torch.bmm(a.cpu().long(), b.cpu().long()).float()
+    expected *= sa.cpu()[:, :, None]
+    expected *= sb.cpu()[:, None, :]
     actual = flag_gems.bmm_w8a8(a, b, sa, sb)
-    torch.testing.assert_close(actual, expected, atol=1e-5, rtol=0.01)
+    gems_assert_close(actual.cpu(), expected.bfloat16(), dtype=torch.bfloat16)
 
 
 @pytest.mark.skipif(flag_gems.vendor_name != "metax", reason="MetaX graph fast path")
@@ -395,15 +395,11 @@ def test_channel_int8_bmm_output_arguments(out_dtype, call_style):
             out_dtype=out_dtype,
             out=out,
         )
-    expected = (
-        torch.bmm(activation.double(), weight.double())
-        * activation_scale[:, :, None]
-        * weight_scale[:, None, :]
-    ).to(out_dtype)
+    expected = torch.bmm(activation.cpu().long(), weight.cpu().long()).float()
+    expected *= activation_scale.cpu()[:, :, None]
+    expected *= weight_scale.cpu()[:, None, :]
     assert actual is out
-    torch.testing.assert_close(
-        actual, expected, atol=1e-5, rtol=0.002 if out_dtype == torch.float16 else 0.01
-    )
+    gems_assert_close(actual.cpu(), expected.to(out_dtype), dtype=out_dtype)
 
 
 @pytest.mark.bmm_w8a8
@@ -432,7 +428,7 @@ def test_channel_int8_bmm_keyword_config(out_dtype):
     expected *= activation_scale.cpu()[:, :, None]
     expected *= weight_scale.cpu()[:, None, :]
     assert actual is out
-    gems_assert_equal(actual.cpu(), expected.to(out_dtype))
+    gems_assert_close(actual.cpu(), expected.to(out_dtype), dtype=out_dtype)
 
 
 @pytest.mark.parametrize(
