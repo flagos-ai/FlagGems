@@ -642,6 +642,7 @@ from .miopen_batch_norm import miopen_batch_norm
 from .miopen_batch_norm_backward import miopen_batch_norm_backward
 from .mish import mish, mish_
 from .mish_backward import mish_backward
+from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm, mm_out
 from .mode import mode
 from .moe_sum import moe_sum
@@ -1611,6 +1612,7 @@ __all__ = [
     "mish",
     "mish_",
     "mish_backward",
+    "mixed_dtypes_linear",
     "mm",
     "mm_out",
     "mode",
