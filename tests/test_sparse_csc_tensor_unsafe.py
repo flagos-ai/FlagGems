@@ -19,6 +19,8 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 CSC_UNSAFE_DTYPES = utils.FLOAT_DTYPES
 
 
@@ -43,6 +45,8 @@ def _assert_sparse_equal(res, ref):
     assert res.layout == torch.sparse_csc
     assert ref.layout == torch.sparse_csc
     assert res.shape == ref.shape
+    if IS_KUNLUNXIN:
+        res = res.cpu()
     utils.gems_assert_equal(res.ccol_indices(), ref.ccol_indices())
     utils.gems_assert_equal(res.row_indices(), ref.row_indices())
     utils.gems_assert_equal(res.values(), ref.values())
@@ -56,9 +60,13 @@ def test_sparse_csc_tensor_unsafe(nnz, dtype):
     size = (4, 4)
 
     ref_values = utils.to_reference(values)
+    ref_ccol = utils.to_reference(ccol)
+    ref_row = utils.to_reference(row)
+    if IS_KUNLUNXIN:
+        ref_values, ref_ccol, ref_row = ref_values.cpu(), ref_ccol.cpu(), ref_row.cpu()
     ref = torch.ops.aten._sparse_csc_tensor_unsafe(
-        utils.to_reference(ccol),
-        utils.to_reference(row),
+        ref_ccol,
+        ref_row,
         ref_values,
         size,
         dtype=ref_values.dtype,
@@ -81,9 +89,13 @@ def test_sparse_csc_tensor_unsafe_hybrid(nnz, dtype):
     size = (4, 4, 2)
 
     ref_values = utils.to_reference(values)
+    ref_ccol = utils.to_reference(ccol)
+    ref_row = utils.to_reference(row)
+    if IS_KUNLUNXIN:
+        ref_values, ref_ccol, ref_row = ref_values.cpu(), ref_ccol.cpu(), ref_row.cpu()
     ref = torch.ops.aten._sparse_csc_tensor_unsafe(
-        utils.to_reference(ccol),
-        utils.to_reference(row),
+        ref_ccol,
+        ref_row,
         ref_values,
         size,
         dtype=ref_values.dtype,
@@ -130,9 +142,13 @@ def test_sparse_csc_tensor_unsafe_skips_index_validation():
     size = (4, 4)
 
     ref_values = utils.to_reference(values)
+    ref_ccol = utils.to_reference(ccol)
+    ref_row = utils.to_reference(row)
+    if IS_KUNLUNXIN:
+        ref_values, ref_ccol, ref_row = ref_values.cpu(), ref_ccol.cpu(), ref_row.cpu()
     ref = torch.ops.aten._sparse_csc_tensor_unsafe(
-        utils.to_reference(ccol),
-        utils.to_reference(row),
+        ref_ccol,
+        ref_row,
         ref_values,
         size,
         dtype=ref_values.dtype,
