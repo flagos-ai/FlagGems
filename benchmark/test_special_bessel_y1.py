@@ -5,6 +5,10 @@ from . import base
 
 
 @pytest.mark.special_bessel_y1
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native bessel_y1 exceeds the MetaX per-thread private memory limit",
+)
 def test_special_bessel_y1():
     bench = base.UnaryPointwiseBenchmark(
         op_name="special_bessel_y1",

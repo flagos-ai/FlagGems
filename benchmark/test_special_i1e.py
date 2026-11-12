@@ -21,6 +21,10 @@ from . import base, consts
 
 
 @pytest.mark.special_i1e
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native i1e lacks low-precision kernels; use the ops-baseline H800 data",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
@@ -32,6 +36,10 @@ def test_special_i1e():
 
 
 @pytest.mark.special_i1e_out
+@pytest.mark.skip_native(
+    vendors=["metax"],
+    reason="Native i1e lacks low-precision kernels; use the ops-baseline H800 data",
+)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
 )
