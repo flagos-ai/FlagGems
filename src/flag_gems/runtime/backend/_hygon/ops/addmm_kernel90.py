@@ -312,7 +312,7 @@ def _expanded_fp32(a, b):
     )
 
 
-def _eligible(a, b):
+def _eligible(a, b, alpha=1, beta=1):
     m, k = a.shape
     n = b.shape[1]
     # Extremely long FP32 vector reductions use the established accumulation
@@ -329,7 +329,9 @@ def _eligible(a, b):
         # The backend label alone does not identify the spilling schedule.
         if target.backend == "hcu" or str(target.arch) == "gfx936":
             return False
-    if a.dtype == b.dtype == torch.float32:
+    # Preserve the precise path for non-default scalar arithmetic, including
+    # beta=0 reductions, where generic FP32 accumulation loses accuracy.
+    if a.dtype == b.dtype == torch.float32 and alpha == 1 and beta == 1:
         ragged_medium = (
             128 <= m <= 1024
             and 128 <= n <= 512
@@ -703,7 +705,7 @@ def _launch(bias, a, b, out, alpha, beta):
 
 
 def addmm(bias, a, b, *, beta=1, alpha=1):
-    if not _eligible(a, b):
+    if not _eligible(a, b, alpha, beta):
         return _generic_addmm(bias, a, b, beta=beta, alpha=alpha)
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     out = torch.empty((a.shape[0], b.shape[1]), dtype=a.dtype, device=a.device)
@@ -711,7 +713,7 @@ def addmm(bias, a, b, *, beta=1, alpha=1):
 
 
 def addmm_out(bias, a, b, *, beta=1, alpha=1, out=None):
-    if not _eligible(a, b):
+    if not _eligible(a, b, alpha, beta):
         return _generic_addmm_out(bias, a, b, beta=beta, alpha=alpha, out=out)
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     if out is None:

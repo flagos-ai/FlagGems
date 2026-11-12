@@ -451,3 +451,13 @@ def test_hygon_ragged_projection_generic_values(
     else:
         result = flag_gems.addmm(cd, ad, bd)
     torch.testing.assert_close(result.cpu(), expected)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("alpha,beta", [(-0.5, 1.25), (1.0, 0.0)])
+def test_hygon_ragged_nondefault_scalars_keep_precision(alpha, beta):
+    from flag_gems.runtime.backend._hygon.ops import addmm_kernel90
+
+    a = torch.empty((303, 320), device=flag_gems.device)
+    b = torch.empty((320, 320), device=flag_gems.device).t()
+    assert addmm_kernel90._eligible(a, b, alpha, beta)
