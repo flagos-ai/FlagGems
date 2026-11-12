@@ -1,5 +1,7 @@
 """Numerical and layout regressions for the Hygon small-kernel paths."""
 
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -107,7 +109,14 @@ pytestmark = pytest.mark.skipif(
 def test_hygon_bmm_uses_specialized_export():
     from flag_gems.runtime.backend._hygon.ops.bmm_specialized import bmm
 
-    assert flag_gems.bmm is bmm
+    # Vendor registration imports _hygon.ops; a fully qualified import can
+    # create a second function object from the same sealed source file.
+    actual = getattr(flag_gems, "bmm")
+    assert (
+        Path(actual.__code__.co_filename).resolve()
+        == Path(bmm.__code__.co_filename).resolve()
+    )
+    assert actual.__code__.co_firstlineno == bmm.__code__.co_firstlineno
 
 
 @pytest.mark.bmm
