@@ -27,9 +27,11 @@ Two paths (mirroring the KernelGen SimpleOpt best candidate, round 8):
   matrices, where cuSOLVER's launch overhead dominates).
 * **large path**: A is transposed into a column-major working buffer W (every
   column access contiguous), then blocked Householder: each 32-column panel is
-  factored by a single-program kernel, and the panel reflectors are applied to
-  the trailing columns by one program per (batch, trailing column).  ``a`` is
-  returned as the transpose view of W (zero-copy, strided like LAPACK output).
+  factored column-by-column (one launch per column, because the flagtree XPU
+  backend cannot lower ``tl.sum`` inside nested dynamic loops), and the panel
+  reflectors are applied to the trailing columns by one program per (batch,
+  trailing column).  ``a`` is returned as the transpose view of W (zero-copy,
+  strided like LAPACK output).
 
 tau=0 (no reflection, e.g. 1x1 columns) follows LAPACK dlarfg.
 """
@@ -52,10 +54,13 @@ _SMALL_ELEMS_BYTES = 65536
 _PANEL_NB = 32
 # Trailing-update / panel tile: rows per program in the column-major buffer.
 _TILE = 64
-# Max reduction width for the panel kernels: XPU uni_sram cannot hold a
-# tl.sum reduction over more than ~64 lanes, so full-column reductions are
-# accumulated in chunks of this size.
-CHUNK = 1024
+# Minimum full-column tile for the per-column kernels.  The flagtree XPU
+# backend fails to lower tt.reduce inside nested scf.for loops (it marks
+# tt.reduce illegal there), so each panel column is factored by its own
+# launch with the reflector loop as the only dynamic loop.  The column tile
+# must be at least 1024 wide: at BLOCK=512 the apply kernel runs out of
+# uni_sram on flagtree, while BLOCK=1024 compiles for every shape.
+_MIN_COLUMN_BLOCK = 1024
 
 
 @libentry()
@@ -87,81 +92,55 @@ def _geqrf_transpose_kernel(
 
 @libentry()
 @triton.jit
-def _geqrf_panel_factor_kernel(
+def _geqrf_factor_column_kernel(
     w_ptr,
     tau_ptr,
     m,
     k,
     j0,
-    jend,
+    c,
     sWb,
-    CHUNK: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    # Factor panel columns j0..jend-1 of the column-major buffer W in one
-    # program per batch element: column c first absorbs reflectors j0..c-1,
-    # then is factorized (dlarfg) and packed in place.  Full-column dot
-    # products and the final norms are accumulated in <=CHUNK-element
-    # chunks so XPU lowering stays within uni_sram.
+    # Factor one panel column ``c`` of the column-major buffer W in one program
+    # per batch element: the column first absorbs reflectors j0..c-1 (already
+    # factored), then is factorized (dlarfg) and packed in place.  Each panel
+    # column gets its own launch because the flagtree XPU backend marks
+    # ``tt.reduce`` illegal inside nested dynamic loops: with the reflector
+    # loop as the only dynamic loop, the ``tl.sum`` reductions stay legal.  A
+    # full-column tile also removes the old CHUNK loop, which nested two loops
+    # deep on the same backend.
     b = tl.program_id(0)
     base = b * sWb
-    for c in range(j0, jend):
-        for r in range(j0, c):
-            tau_r = tl.load(tau_ptr + b * k + r)
-            dot = 0.0
-            for rb in range(0, m, CHUNK):
-                rows = rb + tl.arange(0, CHUNK)
-                mask = rows < m
-                # Clamp the address index so the masked tail lanes never read
-                # the next column (W is column-major: (col*m+rows) for rows>=m
-                # spills into col+1) or past the buffer; XPU does not honour
-                # `other` on a masked load, so re-zero the value explicitly.
-                raddr = tl.minimum(rows, m - 1)
-                ref = tl.load(
-                    w_ptr + base + r * m + raddr, mask=(rows > r) & mask, other=0.0
-                )
-                ref = tl.where((rows > r) & mask, ref, 0.0)
-                v = tl.where(rows == r, 1.0, ref)
-                colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-                colc = tl.where(mask, colc, 0.0)
-                dot += tl.sum(v * colc)
-            for rb in range(0, m, CHUNK):
-                rows = rb + tl.arange(0, CHUNK)
-                mask = rows < m
-                raddr = tl.minimum(rows, m - 1)
-                ref = tl.load(
-                    w_ptr + base + r * m + raddr, mask=(rows > r) & mask, other=0.0
-                )
-                ref = tl.where((rows > r) & mask, ref, 0.0)
-                v = tl.where(rows == r, 1.0, ref)
-                colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-                colc = tl.where(mask, colc, 0.0)
-                colc = colc - tau_r * dot * v
-                tl.store(w_ptr + base + c * m + raddr, colc, mask=mask)
-        alpha = 0.0
-        x2 = 0.0
-        for rb in range(0, m, CHUNK):
-            rows = rb + tl.arange(0, CHUNK)
-            mask = rows < m
-            raddr = tl.minimum(rows, m - 1)
-            colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-            colc = tl.where(mask, colc, 0.0)
-            alpha += tl.sum(tl.where(rows == c, colc, 0.0))
-            x2 += tl.sum(tl.where(rows > c, colc * colc, 0.0))
-        normx = tl.sqrt(alpha * alpha + x2)
-        safe = x2 > 0.0
-        sgn = tl.where(alpha >= 0.0, 1.0, -1.0)
-        beta = tl.where(safe, -sgn * normx, alpha)
-        vb0 = tl.where(safe, alpha - beta, 1.0)
-        tau_c = tl.where(safe, (beta - alpha) / beta, 0.0)
-        for rb in range(0, m, CHUNK):
-            rows = rb + tl.arange(0, CHUNK)
-            mask = rows < m
-            raddr = tl.minimum(rows, m - 1)
-            colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-            colc = tl.where(mask, colc, 0.0)
-            out = tl.where(rows == c, beta, tl.where(rows > c, colc / vb0, colc))
-            tl.store(w_ptr + base + c * m + raddr, out, mask=mask)
-        tl.store(tau_ptr + b * k + c, tau_c)
+    rows = tl.arange(0, BLOCK)
+    rmask = rows < m
+    # Clamp the address index so the masked tail lanes never read the next
+    # column (W is column-major: (col*m+rows) for rows>=m spills into col+1)
+    # or past the buffer; XPU does not honour `other` on a masked load, so
+    # re-zero the value explicitly.
+    raddr = tl.minimum(rows, m - 1)
+    colc = tl.load(w_ptr + base + c * m + raddr, mask=rmask, other=0.0)
+    colc = tl.where(rmask, colc, 0.0)
+    for r in range(j0, c):
+        tau_r = tl.load(tau_ptr + b * k + r)
+        ref = tl.load(
+            w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0
+        )
+        ref = tl.where((rows > r) & rmask, ref, 0.0)
+        v = tl.where(rows == r, 1.0, ref)
+        dot = tl.sum(v * colc)
+        colc = colc - tau_r * dot * v
+    alpha = tl.sum(tl.where(rows == c, colc, 0.0))
+    x2 = tl.sum(tl.where(rows > c, colc * colc, 0.0))
+    normx = tl.sqrt(alpha * alpha + x2)
+    safe = x2 > 0.0
+    sgn = tl.where(alpha >= 0.0, 1.0, -1.0)
+    beta = tl.where(safe, -sgn * normx, alpha)
+    vb0 = tl.where(safe, alpha - beta, 1.0)
+    tau_c = tl.where(safe, (beta - alpha) / beta, 0.0)
+    out = tl.where(rows == c, beta, tl.where(rows > c, colc / vb0, colc))
+    tl.store(w_ptr + base + c * m + raddr, out, mask=rmask)
+    tl.store(tau_ptr + b * k + c, tau_c)
 
 
 @libentry()
@@ -175,45 +154,33 @@ def _geqrf_panel_apply_kernel(
     j0,
     jend,
     sWb,
-    CHUNK: tl.constexpr,
+    BLOCK: tl.constexpr,
 ):
-    # Apply the panel of reflectors j0..jend-1 to trailing columns
-    # jend..n-1, one program per (batch, trailing column).  Full-column dot
-    # products are accumulated in <=CHUNK-element chunks for XPU uni_sram.
+    # Apply the panel of reflectors j0..jend-1 to trailing columns jend..n-1,
+    # one program per (batch, trailing column), with the reflector loop as the
+    # only dynamic loop so the tl.sum reductions stay legal on flagtree XPU
+    # (same rationale as _geqrf_factor_column_kernel).
     pid = tl.program_id(0)
     ncol = n - jend
     b = pid // ncol
     cc = pid - b * ncol
     c = jend + cc
     base = b * sWb
+    rows = tl.arange(0, BLOCK)
+    rmask = rows < m
+    raddr = tl.minimum(rows, m - 1)
+    colc = tl.load(w_ptr + base + c * m + raddr, mask=rmask, other=0.0)
+    colc = tl.where(rmask, colc, 0.0)
     for r in range(j0, jend):
         tau_r = tl.load(tau_ptr + b * k + r)
-        dot = 0.0
-        for rb in range(0, m, CHUNK):
-            rows = rb + tl.arange(0, CHUNK)
-            mask = rows < m
-            raddr = tl.minimum(rows, m - 1)
-            ref = tl.load(
-                w_ptr + base + r * m + raddr, mask=(rows > r) & mask, other=0.0
-            )
-            ref = tl.where((rows > r) & mask, ref, 0.0)
-            v = tl.where(rows == r, 1.0, ref)
-            colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-            colc = tl.where(mask, colc, 0.0)
-            dot += tl.sum(v * colc)
-        for rb in range(0, m, CHUNK):
-            rows = rb + tl.arange(0, CHUNK)
-            mask = rows < m
-            raddr = tl.minimum(rows, m - 1)
-            ref = tl.load(
-                w_ptr + base + r * m + raddr, mask=(rows > r) & mask, other=0.0
-            )
-            ref = tl.where((rows > r) & mask, ref, 0.0)
-            v = tl.where(rows == r, 1.0, ref)
-            colc = tl.load(w_ptr + base + c * m + raddr, mask=mask, other=0.0)
-            colc = tl.where(mask, colc, 0.0)
-            colc = colc - tau_r * dot * v
-            tl.store(w_ptr + base + c * m + raddr, colc, mask=mask)
+        ref = tl.load(
+            w_ptr + base + r * m + raddr, mask=(rows > r) & rmask, other=0.0
+        )
+        ref = tl.where((rows > r) & rmask, ref, 0.0)
+        v = tl.where(rows == r, 1.0, ref)
+        dot = tl.sum(v * colc)
+        colc = colc - tau_r * dot * v
+    tl.store(w_ptr + base + c * m + raddr, colc, mask=rmask)
 
 
 @libentry()
@@ -302,21 +269,28 @@ def geqrf(A):
     # output, matching torch's cuSOLVER layout).  The former single-program
     # small path is not used on XPU: its 2-D register tile / 2-D reductions
     # (tl.sum(axis=0/1), 2-D broadcast masks) fail XPU Triton lowering.
+    # Each panel column is factored by its own launch (flagtree XPU rejects
+    # tt.reduce inside nested dynamic loops), so the reflector loop is the
+    # only dynamic loop in every kernel.
     w = torch.empty((B, n, m), dtype=A.dtype, device=A.device)
     sWb = n * m
     nt = triton.cdiv(m * n, _TILE)
     _geqrf_transpose_kernel[(B, nt)](A, w, m, n, sAb, sAm, sAn, sWb, _TILE, num_warps=4)
     nw = 8 if BM >= 1024 else 4
+    # Full-column tile: at least 1024 wide (the apply kernel runs out of
+    # uni_sram at BLOCK=512 on flagtree), covering every test/benchmark m.
+    block = max(_MIN_COLUMN_BLOCK, BM)
     j = 0
     while j < k:
         jend = j + _PANEL_NB if j + _PANEL_NB < k else k
-        _geqrf_panel_factor_kernel[(B,)](
-            w, tau, m, k, j, jend, sWb, CHUNK, num_warps=nw
-        )
+        for c in range(j, jend):
+            _geqrf_factor_column_kernel[(B,)](
+                w, tau, m, k, j, c, sWb, block, num_warps=nw
+            )
         if jend < n:
             ntrail = n - jend
             _geqrf_panel_apply_kernel[(B * ntrail,)](
-                w, tau, m, n, k, j, jend, sWb, CHUNK, num_warps=nw
+                w, tau, m, n, k, j, jend, sWb, block, num_warps=nw
             )
         j = jend
     if A.dim() == 2:
